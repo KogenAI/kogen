@@ -35,12 +35,34 @@ describe("stop-verify-planner-gate", { concurrency: false }, () => {
     delete process.env["CODEGEN_LOG_PATH"];
   });
 
-  /** Write a cycle log whose planner role event body is the given plan prose. */
+  /** Write a cycle log whose planner role event body is the given plan prose
+   * (no plan_gate event) — used for "no structured gate" fixtures. */
   function writeLog(planBody: string): void {
     const line = JSON.stringify({
       ev: "role",
       role: "planner-phoenix",
       body: planBody,
+    });
+    fs.writeFileSync(
+      path.join(
+        tmpDir,
+        "codegen",
+        "logging",
+        "20260601_120000_my-step_cycle.jsonl",
+      ),
+      line + "\n",
+    );
+  }
+
+  /** Write a cycle log with a structured {"ev":"plan_gate",...} event —
+   * mirrors what `codegen-log append <role> --plan-gate @-` writes. */
+  function writePlanGate(command: string, mode = "short", timeout = 0): void {
+    const line = JSON.stringify({
+      ev: "plan_gate",
+      role: "planner-phoenix",
+      command,
+      mode,
+      timeout,
     });
     fs.writeFileSync(
       path.join(
@@ -88,7 +110,7 @@ describe("stop-verify-planner-gate", { concurrency: false }, () => {
 
   // Skip: non-planner agents
   it("skips for non-planner agent", async () => {
-    writeLog("## Plan\n\n**Gate**: make test\n");
+    writePlanGate("make test");
     const stderr = await runHook("developer-phoenix-backend");
     assert.ok(!stderr.includes("stop-verify-planner-gate"), "expected no warning");
   });
@@ -108,84 +130,43 @@ describe("stop-verify-planner-gate", { concurrency: false }, () => {
     assert.ok(!stderr.includes("stop-verify-planner-gate"), "expected no warning");
   });
 
-  // Valid gate-json block
-  it("does not warn when valid gate-json block is present", async () => {
-    writeLog([
-      "## Plan",
-      "",
-      "**Gate**:",
-      "",
-      "```gate-json",
-      '{"command": "make test", "mode": "short", "timeout": 0}',
-      "```",
-      "",
-    ].join("\n"));
+  // Valid structured plan_gate event
+  it("does not warn when a plan_gate event is present", async () => {
+    writePlanGate("make test", "short", 0);
     const stderr = await runHook("planner-phoenix");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
-  // Valid prose Gate
-  it("does not warn when prose **Gate**: line present", async () => {
-    writeLog("## Plan\n\n**Gate**: make test\n");
-    const stderr = await runHook("planner-phoenix");
-    assert.ok(!stderr.includes("WARNING"), "expected no warning");
-  });
-
-  // Warn: gate missing
-  it("warns when **Gate**: is absent", async () => {
+  // Warn: gate missing (no plan_gate event; stale prose is never re-parsed)
+  it("warns when no plan_gate event exists", async () => {
     writeLog("## Plan\n\nSome plan without a gate declaration.\n");
     const stderr = await runHook("planner-phoenix");
     assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
-    assert.ok(stderr.includes("missing or placeholder"));
+    assert.ok(stderr.includes("no plan_gate event"));
+  });
+
+  it("warns when a stale **Gate**: prose line exists but no plan_gate event", async () => {
+    writeLog("## Plan\n\n**Gate**: make test\n");
+    const stderr = await runHook("planner-phoenix");
+    assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
+    assert.ok(stderr.includes("no plan_gate event"));
   });
 
   // Warn: placeholder values
-  it("warns when **Gate**: value is TBD", async () => {
-    writeLog("## Plan\n\n**Gate**: TBD\n");
+  it("warns when plan_gate command is TBD", async () => {
+    writePlanGate("TBD");
     const stderr = await runHook("planner-phoenix");
     assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
   });
 
-  it("warns when **Gate**: value is pending", async () => {
-    writeLog("## Plan\n\n**Gate**: pending\n");
+  it("warns when plan_gate command is pending", async () => {
+    writePlanGate("pending");
     const stderr = await runHook("planner-phoenix");
     assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
   });
 
-  it("warns when **Gate**: value is <make target>", async () => {
-    writeLog("## Plan\n\n**Gate**: <make target>\n");
-    const stderr = await runHook("planner-phoenix");
-    assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
-  });
-
-  // Warn: malformed gate-json
-  it("warns when gate-json block is malformed JSON", async () => {
-    writeLog([
-      "## Plan",
-      "",
-      "**Gate**:",
-      "",
-      "```gate-json",
-      '{"command": "make test"  // missing closing brace',
-      "```",
-      "",
-    ].join("\n"));
-    const stderr = await runHook("planner-phoenix");
-    assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
-    assert.ok(stderr.includes("malformed"));
-  });
-
-  it("warns when gate-json block missing required fields", async () => {
-    writeLog([
-      "## Plan",
-      "",
-      "**Gate**:",
-      "",
-      "```gate-json",
-      '{"command": "make test"}',
-      "```",
-      "",
-    ].join("\n"));
+  it("warns when plan_gate command is <make target>", async () => {
+    writePlanGate("<make target>");
     const stderr = await runHook("planner-phoenix");
     assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
   });

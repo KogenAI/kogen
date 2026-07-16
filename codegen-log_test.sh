@@ -695,6 +695,98 @@ assert_contains "(jj) role-spine fallback is actually in use (no ev:turn, no sum
 assert_contains "(jj) invoked-but-no-body anomaly fires for committer under role-spine fallback" "$ANOM_JJ" "committer: invoked but wrote no body"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# (kk) `append <role> --plan-gate @-` emits a structured plan_gate event with
+# command/mode/timeout fields verbatim from the JSON payload.
+WS_KK="$(new_workspace)"
+LOG_KK="$(init_log "$WS_KK" test-plan-gate)"
+printf '{"command":"make ci","mode":"short","timeout":900}' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_KK" \
+    "$CODEGEN_LOG" append planner-phoenix --plan-gate @- --slug test-plan-gate >/dev/null
+check "(kk) plan-gate emits exactly one plan_gate event" "1" "$(jq_count "$LOG_KK" 'select(.ev=="plan_gate" and .role=="planner-phoenix")')"
+check "(kk) plan-gate command field" "make ci" "$(jq -r 'select(.ev=="plan_gate")|.command' "$LOG_KK")"
+check "(kk) plan-gate mode field" "short" "$(jq -r 'select(.ev=="plan_gate")|.mode' "$LOG_KK")"
+check "(kk) plan-gate timeout field" "900" "$(jq -r 'select(.ev=="plan_gate")|.timeout' "$LOG_KK")"
+
+# (ll) --plan-gate malformed JSON exits 2, writes nothing.
+set +e
+ERR_LL=$(printf 'not json' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_KK" \
+    "$CODEGEN_LOG" append planner-phoenix --plan-gate @- --slug test-plan-gate 2>&1)
+RC_LL=$?
+set -e
+check "(ll) plan-gate malformed JSON exits 2" "2" "$RC_LL"
+check "(ll) plan-gate malformed JSON writes no new event" "1" "$(jq_count "$LOG_KK" 'select(.ev=="plan_gate")')"
+
+# (mm) --plan-gate missing required field exits 2.
+set +e
+ERR_MM=$(printf '{"command":"make ci","mode":"short"}' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_KK" \
+    "$CODEGEN_LOG" append planner-phoenix --plan-gate @- --slug test-plan-gate 2>&1)
+RC_MM=$?
+set -e
+check "(mm) plan-gate missing timeout exits 2" "2" "$RC_MM"
+assert_contains "(mm) error names missing field" "$ERR_MM" "timeout"
+
+# (nn) --plan-gate invalid mode exits 2.
+set +e
+ERR_NN=$(printf '{"command":"make ci","mode":"weird","timeout":900}' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_KK" \
+    "$CODEGEN_LOG" append planner-phoenix --plan-gate @- --slug test-plan-gate 2>&1)
+RC_NN=$?
+set -e
+check "(nn) plan-gate invalid mode exits 2" "2" "$RC_NN"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (oo) `append <role> --files-to-touch @-` emits a structured files_to_touch
+# event with a JSON array of relative paths.
+WS_OO="$(new_workspace)"
+LOG_OO="$(init_log "$WS_OO" test-files-to-touch)"
+printf '["context/foo.md","lib/bar.ex"]' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_OO" \
+    "$CODEGEN_LOG" append planner-phoenix --files-to-touch @- --slug test-files-to-touch >/dev/null
+check "(oo) files-to-touch emits exactly one event" "1" "$(jq_count "$LOG_OO" 'select(.ev=="files_to_touch" and .role=="planner-phoenix")')"
+check "(oo) files-to-touch array count" "2" "$(jq -r 'select(.ev=="files_to_touch")|.files | length' "$LOG_OO")"
+check "(oo) files-to-touch first file" "context/foo.md" "$(jq -r 'select(.ev=="files_to_touch")|.files[0]' "$LOG_OO")"
+
+# (pp) --files-to-touch non-array JSON exits 2.
+set +e
+ERR_PP=$(printf '{"not":"an array"}' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_OO" \
+    "$CODEGEN_LOG" append planner-phoenix --files-to-touch @- --slug test-files-to-touch 2>&1)
+RC_PP=$?
+set -e
+check "(pp) files-to-touch non-array exits 2" "2" "$RC_PP"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (qq) `append <role> --files-modified @-` emits a structured files_modified
+# event, authored by a developer role.
+WS_QQ="$(new_workspace)"
+LOG_QQ="$(init_log "$WS_QQ" test-files-modified)"
+printf '["lib/bar.ex"]' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_QQ" \
+    "$CODEGEN_LOG" append developer-phoenix-backend --files-modified @- --slug test-files-modified >/dev/null
+check "(qq) files-modified emits exactly one event" "1" "$(jq_count "$LOG_QQ" 'select(.ev=="files_modified" and .role=="developer-phoenix-backend")')"
+check "(qq) files-modified array content" "lib/bar.ex" "$(jq -r 'select(.ev=="files_modified")|.files[0]' "$LOG_QQ")"
+
+# (rr) --plan-gate/--files-to-touch/--files-modified are mutually exclusive
+# with each other and with --learned/--died/--verdict; and are append-only.
+set +e
+ERR_RR=$(printf '{"command":"make ci","mode":"short","timeout":900}' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_QQ" \
+    "$CODEGEN_LOG" append planner-phoenix --plan-gate @- --learned "text" --slug test-files-modified 2>&1)
+RC_RR=$?
+set -e
+check "(rr) --plan-gate + --learned mutually exclusive exits 2" "2" "$RC_RR"
+
+set +e
+ERR_RR2=$(printf '["a"]' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_QQ" \
+    "$CODEGEN_LOG" section planner-phoenix --files-to-touch @- --slug test-files-modified 2>&1)
+RC_RR2=$?
+set -e
+check "(rr) --files-to-touch on section (not append) exits 2" "2" "$RC_RR2"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
 

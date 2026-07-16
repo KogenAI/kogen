@@ -10,6 +10,9 @@
 #   codegen-log append <role> --no-learning "<text>" [--slug <slug>]
 #   codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]
 #   codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]
+#   codegen-log append <role> --plan-gate @<json-file-or-@-> [--slug <slug>]
+#   codegen-log append <role> --files-to-touch @<json-file-or-@-> [--slug <slug>]
+#   codegen-log append <role> --files-modified @<json-file-or-@-> [--slug <slug>]
 #   codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]
 #   codegen-log relocate --new-slug <slug> [--slug <slug>]
 #   codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]
@@ -61,6 +64,13 @@
 #   died:    {"ev":"died","role":<role>,"kind":"interrupted"|"aborted","cause":<c-or-empty>}
 #   gate:    {"ev":"gate","role":<role>,"verdict":"clear"|"failed"|"inconclusive",
 #             ...gate metadata for the `verdict` subcommand}
+#   plan_gate: {"ev":"plan_gate","role":<role>,"command":<cmd>,"mode":"short"|"long",
+#             "timeout":<seconds>} — planner's typed gate SELECTION (not the
+#             VERDICT — see `gate`/`verdict` above). Written by --plan-gate.
+#   files_to_touch: {"ev":"files_to_touch","role":<role>,"files":[<relpath>,...]}
+#             — planner's typed files-to-touch list. Written by --files-to-touch.
+#   files_modified: {"ev":"files_modified","role":<role>,"files":[<relpath>,...]}
+#             — developer's typed files-modified list. Written by --files-modified.
 #
 # Substance filter (--learned / --no-learning / section+append role BODY):
 # codegen-log is the SOLE writer of the cycle log, so it is the one place
@@ -117,6 +127,22 @@
 #   --died interrupted [--cause]  -> {"ev":"died","kind":"interrupted",...} (append only)
 #   --died aborted                -> {"ev":"died","kind":"aborted",...} (append only)
 #   --verdict clear|failed|inconclusive -> {"ev":"gate","verdict":<v>,...} (append only)
+#   --plan-gate @<file-or-@->     -> {"ev":"plan_gate",...} (append only). Value
+#                                     is a JSON OBJECT read from the given
+#                                     source (same @-file / @- stdin convention
+#                                     as --body), REQUIRED fields "command"
+#                                     (string), "mode" ("short"|"long"),
+#                                     "timeout" (integer). Malformed/missing
+#                                     fields exit 2 at write time — the typed
+#                                     writer validates shape so a bad selection
+#                                     can never reach the log.
+#   --files-to-touch @<file-or-@-> -> {"ev":"files_to_touch",...} (append only).
+#                                     Value is a JSON ARRAY of relative path
+#                                     strings, read the same way. Planner's
+#                                     typed files-to-touch list.
+#   --files-modified @<file-or-@-> -> {"ev":"files_modified",...} (append only).
+#                                     Same shape as --files-to-touch. Developer's
+#                                     typed files-modified list.
 #
 # Target-log resolution (section/append), in precedence order:
 #   1. CODEGEN_LOG_PATH env var, if set.
@@ -176,6 +202,9 @@ NO_LEARNING_TEXT=""
 DIED_KIND=""
 DIED_CAUSE=""
 VERDICT_KIND=""
+PLAN_GATE_SOURCE=""
+FILES_TO_TOUCH_SOURCE=""
+FILES_MODIFIED_SOURCE=""
 NEW_SLUG=""
 GATE_CMD=""
 GATE_MODE=""
@@ -194,6 +223,9 @@ usage() {
     printf '  codegen-log append --role <role> --no-learning "<text>" [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
+    printf '  codegen-log append --role <role> --plan-gate @<file-or-@-> [--slug <slug>]\n' >&2
+    printf '  codegen-log append --role <role> --files-to-touch @<file-or-@-> [--slug <slug>]\n' >&2
+    printf '  codegen-log append --role <role> --files-modified @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
     printf '  codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]\n' >&2
@@ -301,6 +333,30 @@ while [[ $# -gt 0 ]]; do
         VERDICT_KIND="$2"
         shift 2
         ;;
+    --plan-gate=*)
+        PLAN_GATE_SOURCE="${1#--plan-gate=}"
+        shift
+        ;;
+    --plan-gate)
+        PLAN_GATE_SOURCE="$2"
+        shift 2
+        ;;
+    --files-to-touch=*)
+        FILES_TO_TOUCH_SOURCE="${1#--files-to-touch=}"
+        shift
+        ;;
+    --files-to-touch)
+        FILES_TO_TOUCH_SOURCE="$2"
+        shift 2
+        ;;
+    --files-modified=*)
+        FILES_MODIFIED_SOURCE="${1#--files-modified=}"
+        shift
+        ;;
+    --files-modified)
+        FILES_MODIFIED_SOURCE="$2"
+        shift 2
+        ;;
     --new-slug=*)
         NEW_SLUG="${1#--new-slug=}"
         shift
@@ -405,13 +461,16 @@ MARKER_FLAG_COUNT=0
 [[ -n "$NO_LEARNING_TEXT" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$DIED_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$VERDICT_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+[[ -n "$PLAN_GATE_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+[[ -n "$FILES_TO_TOUCH_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+[[ -n "$FILES_MODIFIED_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 if [[ "$MARKER_FLAG_COUNT" -gt 1 ]]; then
-    printf 'codegen-log: --learned, --no-learning, --died, and --verdict are mutually exclusive\n' >&2
+    printf 'codegen-log: --learned, --no-learning, --died, --verdict, --plan-gate, --files-to-touch, and --files-modified are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" ]]; then
+if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" || -n "$PLAN_GATE_SOURCE" || -n "$FILES_TO_TOUCH_SOURCE" || -n "$FILES_MODIFIED_SOURCE" ]]; then
     if [[ "$SUBCOMMAND" != "append" ]]; then
-        printf 'codegen-log: --died/--verdict/--no-learning are only valid with the append subcommand\n' >&2
+        printf 'codegen-log: --died/--verdict/--no-learning/--plan-gate/--files-to-touch/--files-modified are only valid with the append subcommand\n' >&2
         exit 2
     fi
 fi
@@ -662,6 +721,28 @@ append_event_line() {
     local path="$1"
     local line="$2"
     printf '%s\n' "$line" >>"$path"
+}
+
+# read_at_source <flag-name> <source> — read the raw text behind an
+# @<file>/@- source argument, same convention as --body. Exits 2 (naming the
+# flag) when the source does not start with @, or the named file is missing.
+read_at_source() {
+    local flag_name="$1"
+    local source="$2"
+    if [[ "$source" != @* ]]; then
+        printf 'codegen-log: %s must start with @ (got %q)\n' "$flag_name" "$source" >&2
+        exit 2
+    fi
+    if [[ "$source" != @- ]]; then
+        local file_path="${source#@}"
+        if [[ ! -f "$file_path" ]]; then
+            printf 'codegen-log: %s file not found: %s\n' "$flag_name" "$file_path" >&2
+            exit 2
+        fi
+        cat "$file_path"
+    else
+        cat
+    fi
 }
 
 # show_summary_file — derive the sibling cycle-summary.jsonl path for a given
@@ -1029,6 +1110,65 @@ append)
             ;;
         esac
         line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg verdict "$VERDICT_KIND" '{ev: "gate", role: $role, verdict: $verdict}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    if [[ -n "$PLAN_GATE_SOURCE" ]]; then
+        plan_gate_json="$(read_at_source --plan-gate "$PLAN_GATE_SOURCE")"
+        if ! printf '%s' "$plan_gate_json" | jq -e . >/dev/null 2>&1; then
+            printf 'codegen-log: --plan-gate value is not valid JSON\n' >&2
+            exit 2
+        fi
+        pg_command="$(printf '%s' "$plan_gate_json" | jq -r '.command // empty' 2>/dev/null)"
+        pg_mode="$(printf '%s' "$plan_gate_json" | jq -r '.mode // empty' 2>/dev/null)"
+        pg_timeout="$(printf '%s' "$plan_gate_json" | jq -r '.timeout // empty' 2>/dev/null)"
+        if [[ -z "$pg_command" ]]; then
+            printf 'codegen-log: --plan-gate JSON missing required field "command"\n' >&2
+            exit 2
+        fi
+        if [[ -z "$pg_mode" ]]; then
+            printf 'codegen-log: --plan-gate JSON missing required field "mode"\n' >&2
+            exit 2
+        fi
+        case "$pg_mode" in
+        short | long) ;;
+        *)
+            printf 'codegen-log: --plan-gate JSON invalid "mode" %q (must be short or long)\n' "$pg_mode" >&2
+            exit 2
+            ;;
+        esac
+        if [[ -z "$pg_timeout" || ! "$pg_timeout" =~ ^[0-9]+$ ]]; then
+            printf 'codegen-log: --plan-gate JSON missing/invalid required field "timeout" (must be an integer)\n' >&2
+            exit 2
+        fi
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg command "$pg_command" --arg mode "$pg_mode" --argjson timeout "$pg_timeout" \
+            '{ev: "plan_gate", role: $role, command: $command, mode: $mode, timeout: $timeout}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    if [[ -n "$FILES_TO_TOUCH_SOURCE" ]]; then
+        ftt_json="$(read_at_source --files-to-touch "$FILES_TO_TOUCH_SOURCE")"
+        if ! printf '%s' "$ftt_json" | jq -e 'type == "array" and all(.[]; type == "string")' >/dev/null 2>&1; then
+            printf 'codegen-log: --files-to-touch value must be a JSON array of strings\n' >&2
+            exit 2
+        fi
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --argjson files "$ftt_json" '{ev: "files_to_touch", role: $role, files: $files}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    if [[ -n "$FILES_MODIFIED_SOURCE" ]]; then
+        fm_json="$(read_at_source --files-modified "$FILES_MODIFIED_SOURCE")"
+        if ! printf '%s' "$fm_json" | jq -e 'type == "array" and all(.[]; type == "string")' >/dev/null 2>&1; then
+            printf 'codegen-log: --files-modified value must be a JSON array of strings\n' >&2
+            exit 2
+        fi
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --argjson files "$fm_json" '{ev: "files_modified", role: $role, files: $files}')"
         append_event_line "$log_file" "$line"
         printf '%s\n' "$log_file"
         exit 0

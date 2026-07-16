@@ -67,22 +67,6 @@ Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-
 
 Never omit the load-bearing fact.
 
-## Output Marker
-
-The curator's context-curator role event body (written via `codegen-log section context-curator`) MUST end with a line:
-
-```
-Files edited: <space-separated repo-relative paths>
-```
-
-or, if no files were changed:
-
-```
-Files edited: none
-```
-
-This line is the durable intent record — it mirrors the developer's `## Files Modified` contract, documenting what was intended even if disk/staging later reverts a file. Write it as the final line of your section body.
-
 ## Stale-Line Preference
 
 Before any edit:

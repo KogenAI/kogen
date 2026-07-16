@@ -44,19 +44,15 @@ defmodule CodegenTestHarness.LoopGateTest do
     test "planner gate-json block in step log wins", %{dir: dir} do
       step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
 
-      plan_body = """
-      ## Plan
-
-      **Gate**:
-
-      ```gate-json
-      {"command": "make custom-gate", "mode": "short", "timeout": 42}
-      ```
-      """
-
       File.write!(
         step_log,
-        Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => plan_body}) <> "\n"
+        Jason.encode!(%{
+          "ev" => "plan_gate",
+          "role" => "planner-phoenix",
+          "command" => "make custom-gate",
+          "mode" => "short",
+          "timeout" => 42
+        }) <> "\n"
       )
 
       assert LoopGate.decide_gate(dir, step_log) == {"make custom-gate", "short", 42}
@@ -67,15 +63,15 @@ defmodule CodegenTestHarness.LoopGateTest do
 
       step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
 
-      plan_body = """
-      ## Plan
-
-      **Gate**: `make custom-gate`
-      """
-
       File.write!(
         step_log,
-        Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => plan_body}) <> "\n"
+        Jason.encode!(%{
+          "ev" => "plan_gate",
+          "role" => "planner-phoenix",
+          "command" => "make custom-gate",
+          "mode" => "short",
+          "timeout" => 900
+        }) <> "\n"
       )
 
       assert {"make custom-gate", _mode, _timeout} = LoopGate.decide_gate(dir, step_log)
@@ -84,22 +80,12 @@ defmodule CodegenTestHarness.LoopGateTest do
     test "raises when gate_select_decide returns a parse-error sentinel (crash loud)", %{dir: dir} do
       step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
 
-      plan_body = """
-      ## Plan
+      # Malformed plan_gate event (not valid JSON on the line) still resolves
+      # to the unresolved sentinel when no other gate source is configured —
+      # gate_select_decide must raise loud, never silently fall through.
+      File.write!(step_log, "not-json-at-all\n")
 
-      **Gate**:
-
-      ```gate-json
-      {"command": "make x"
-      ```
-      """
-
-      File.write!(
-        step_log,
-        Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => plan_body}) <> "\n"
-      )
-
-      assert_raise RuntimeError, ~r/gate_select_decide returned a parse error/, fn ->
+      assert_raise RuntimeError, ~r/could not resolve a gate/, fn ->
         LoopGate.decide_gate(dir, step_log)
       end
     end
@@ -796,19 +782,15 @@ defmodule CodegenTestHarness.LoopGateEnvScrubTest do
   test "default runner scrubs CODEGEN_BUILD_* from the gate subprocess", %{dir: dir} do
     step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
 
-    plan_body = """
-    ## Plan
-
-    **Gate**:
-
-    ```gate-json
-    {"command": "env | grep -c '^CODEGEN_BUILD_'", "mode": "short", "timeout": 0}
-    ```
-    """
-
     File.write!(
       step_log,
-      Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => plan_body}) <> "\n"
+      Jason.encode!(%{
+        "ev" => "plan_gate",
+        "role" => "planner-phoenix",
+        "command" => "env | grep -c '^CODEGEN_BUILD_'",
+        "mode" => "short",
+        "timeout" => 0
+      }) <> "\n"
     )
 
     # No run_fn override → exercises the REAL default_run_fn/2.

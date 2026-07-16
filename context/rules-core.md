@@ -69,6 +69,10 @@ The carve-out parenthetical is the most error-prone location for this slip — e
 
 The `codegen-log` binary resolves role via precedence chain: `ROLE_OVERRIDE` env var (test-only) > `AGENT_TYPE` env var (shape/ops/debug launchers) > `CLAUDE_ROLE` env var (legacy, shape-mode only) > `--role <literal>` flag. The env-var fallback is kept (valid for non-build launchers), but **build subagents spawned via `codegen-build` Task export NO role env vars** — they must use `--role <literal>` explicitly in their `codegen-log section`/`append` instructions. Teaching every subagent prompt to emit the literal ensures correct role resolution across all contexts (build + shape + debug).
 
+## Typed Marker Flags — `--plan-gate` / `--files-to-touch` / `--files-modified`
+
+Gate-SELECTION and read-discipline markers are first-class JSONL events (`ev:plan_gate`/`ev:files_to_touch`/`ev:files_modified`), written via typed `codegen-log append <role> --plan-gate|--files-to-touch|--files-modified @-` calls — never re-parsed out of a role's free-form `body` prose. planner* authors `plan_gate` (gate command/mode/timeout) and `files_to_touch` (the files a developer may Read `context/*.md` under); developer* authors `files_modified` (the files a reviewer may Read `context/*.md` under). `gate-select.sh` and `subagent-read-discipline.sh` read the field from its AUTHOR's event, never the calling role's own — a caller-authored self-read cannot self-authorize a Read. Full contract: `shared/rules/_core/session-log.md` § Ownership.
+
 ## Pitfalls
 
 - **Rule changes are not live** — must `make install` to regenerate agent prompts; running agents see old baked rules

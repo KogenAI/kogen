@@ -19,13 +19,23 @@
 #   committer       → deny PROJECT_CONTEXT.md, context/*.md, codegen/pitches/**
 #   developer-*     → deny codegen/pitches/** always (plan is self-contained);
 #                     deny PROJECT_CONTEXT.md always;
-#                     context/*.md allowed ONLY if path is listed in active
-#                     step log's ## Plan block under "Files to touch:"
+#                     context/*.md allowed ONLY if path is listed in the
+#                     PLANNER's typed {"ev":"files_to_touch",...} event in the
+#                     active cycle log (written via
+#                     `codegen-log append <role> --files-to-touch @-`)
 #   reviewer-*      → deny codegen/pitches/** always;
 #                     deny PROJECT_CONTEXT.md always;
-#                     context/*.md allowed ONLY if path is listed in active
-#                     step log's ## Files Modified block
+#                     context/*.md allowed ONLY if path is listed in the
+#                     DEVELOPER's typed {"ev":"files_modified",...} event in
+#                     the active cycle log (written via
+#                     `codegen-log append <role> --files-modified @-`)
 #   (other / empty) → pass through (orchestrator handled by orchestrator-read-discipline.sh)
+#
+# The field is read from its AUTHOR's event (planner's files_to_touch,
+# developer's files_modified) — never from the calling role's own event.
+# This is a typed JSONL event, never re-parsed out of a role's free-form
+# body prose (session-log.md § the body is opaque, never re-parsed as
+# structure).
 #
 # Fail-open: if TRANSCRIPT_PATH is missing or step log is not found,
 # allow the Read (avoids false-negatives during session initialisation).
@@ -131,7 +141,8 @@ developer-*)
         exit 0
     fi
 
-    # context/*.md: allowed only if listed in step log ## Plan → Files to touch.
+    # context/*.md: allowed only if listed in the PLANNER's typed
+    # files_to_touch event.
     if [ "$is_context_dir" -eq 1 ]; then
         step_log=$(session_log_from_transcript)
         if [ -z "$step_log" ] || [ ! -r "$step_log" ]; then
@@ -144,22 +155,15 @@ developer-*)
             exit 0
         fi
 
-        # Cycle logs are append-only JSONL (one JSON object per line, "ev"
-        # discriminator). Reconstruct this role's concatenated body text
-        # (jq -r unescapes \n to real newlines) before awk-scanning for the
-        # "## Plan" heading — raw-byte awk on the JSONL file itself can never
-        # match (body text is JSON-escaped, not literal markdown).
-        role_body=$(jq -r --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r) | .body' "$step_log" 2>/dev/null)
-
-        # Extract ## Plan block (from "## Plan" to next "## " heading).
-        plan_block=$(printf '%s\n' "$role_body" | awk '/^## Plan$/{found=1; next} found && /^## /{exit} found{print}')
-
-        # Check if rel_path appears in "Files to touch:" lines within the plan block.
-        if printf '%s' "$plan_block" | grep -qF "$rel_path"; then
+        # Read the PLANNER's typed files_to_touch event, not the developer's
+        # own body — the field is read from its AUTHOR's event.
+        if jq -e --arg p "$rel_path" \
+            'select(.ev=="files_to_touch" and (.role | startswith("planner"))) | .files[]? | select(. == $p)' \
+            "$step_log" >/dev/null 2>&1; then
             exit 0
         fi
 
-        deny "Developer cannot read $FILE_PATH for orientation. Read context/*.md only when the path appears in planner's ## Files to touch as an (EDIT) or (NEW) target."
+        deny "Developer cannot read $FILE_PATH for orientation. Read context/*.md only when the path appears in planner's files_to_touch event as an (EDIT) or (NEW) target."
         exit 0
     fi
     ;;
@@ -177,7 +181,8 @@ reviewer-*)
         exit 0
     fi
 
-    # context/*.md: allowed only if listed in step log ## Files Modified.
+    # context/*.md: allowed only if listed in the DEVELOPER's typed
+    # files_modified event.
     if [ "$is_context_dir" -eq 1 ]; then
         step_log=$(session_log_from_transcript)
         if [ -z "$step_log" ] || [ ! -r "$step_log" ]; then
@@ -190,20 +195,15 @@ reviewer-*)
             exit 0
         fi
 
-        # Cycle logs are append-only JSONL — reconstruct this role's
-        # concatenated body text (jq -r unescapes \n) before awk-scanning.
-        # See matching comment in the developer-* branch above.
-        role_body=$(jq -r --arg r "$AGENT_TYPE" 'select(.ev=="role" and .role==$r) | .body' "$step_log" 2>/dev/null)
-
-        # Extract ## Files Modified block (from heading to next "## " heading).
-        files_modified_block=$(printf '%s\n' "$role_body" | awk '/^## Files Modified$/{found=1; next} found && /^## /{exit} found{print}')
-
-        # Check if rel_path appears in ## Files Modified.
-        if printf '%s' "$files_modified_block" | grep -qF "$rel_path"; then
+        # Read the DEVELOPER's typed files_modified event, not the
+        # reviewer's own body — the field is read from its AUTHOR's event.
+        if jq -e --arg p "$rel_path" \
+            'select(.ev=="files_modified" and (.role | startswith("developer"))) | .files[]? | select(. == $p)' \
+            "$step_log" >/dev/null 2>&1; then
             exit 0
         fi
 
-        deny "Reviewer cannot read $FILE_PATH — it is not listed in ## Files Modified. Review only files that developer modified."
+        deny "Reviewer cannot read $FILE_PATH — it is not listed in developer's files_modified event. Review only files that developer modified."
         exit 0
     fi
     ;;

@@ -259,6 +259,53 @@ assert "--verdict failed emits gate event with verdict=failed" "1" "$(jq_count "
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict inconclusive >/dev/null
 assert "--verdict inconclusive emits gate event with verdict=inconclusive" "1" "$(jq_count "$marker_log" 'select(.ev=="gate" and .verdict=="inconclusive")')"
 
+# Test 8b: --plan-gate/--files-to-touch/--files-modified emit structured
+# events the gate-select/read-discipline reader hooks jq-select for.
+plan_gate_out="$(
+    cd "$PROJECT" && printf '{"command":"make ci","mode":"short","timeout":900}' |
+        env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan-gate @-
+)"
+plan_gate_path="$(printf '%s' "$plan_gate_out" | tail -n 1)"
+assert "--plan-gate wrote to the marker-flags log" "0" "$([ "$plan_gate_path" = "$marker_log" ] && printf 0 || printf 1)"
+assert "--plan-gate emits exactly one plan_gate event" "1" "$(jq_count "$marker_log" 'select(.ev=="plan_gate" and .role=="planner-phoenix")')"
+assert "--plan-gate command field" "0" "$([ "$(jq -r 'select(.ev=="plan_gate")|.command' "$marker_log")" = "make ci" ] && printf 0 || printf 1)"
+assert "--plan-gate mode field" "0" "$([ "$(jq -r 'select(.ev=="plan_gate")|.mode' "$marker_log")" = "short" ] && printf 0 || printf 1)"
+assert "--plan-gate timeout field" "0" "$([ "$(jq -r 'select(.ev=="plan_gate")|.timeout' "$marker_log")" = "900" ] && printf 0 || printf 1)"
+
+set +e
+plan_gate_bad_rc=0
+(cd "$PROJECT" && printf 'not json' |
+    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan-gate @-) >/dev/null 2>&1
+plan_gate_bad_rc=$?
+set -e
+assert "--plan-gate malformed JSON exits 2" "2" "$plan_gate_bad_rc"
+assert "--plan-gate malformed JSON writes no new event" "1" "$(jq_count "$marker_log" 'select(.ev=="plan_gate")')"
+
+files_to_touch_out="$(
+    cd "$PROJECT" && printf '["context/foo.md","lib/bar.ex"]' |
+        env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --files-to-touch @-
+)"
+files_to_touch_path="$(printf '%s' "$files_to_touch_out" | tail -n 1)"
+assert "--files-to-touch wrote to the marker-flags log" "0" "$([ "$files_to_touch_path" = "$marker_log" ] && printf 0 || printf 1)"
+assert "--files-to-touch emits exactly one event" "1" "$(jq_count "$marker_log" 'select(.ev=="files_to_touch" and .role=="planner-phoenix")')"
+assert "--files-to-touch array count" "0" "$([ "$(jq -r 'select(.ev=="files_to_touch")|.files|length' "$marker_log")" = "2" ] && printf 0 || printf 1)"
+
+files_modified_out="$(
+    cd "$PROJECT" && printf '["lib/bar.ex"]' |
+        env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --files-modified @-
+)"
+files_modified_path="$(printf '%s' "$files_modified_out" | tail -n 1)"
+assert "--files-modified wrote to the marker-flags log" "0" "$([ "$files_modified_path" = "$marker_log" ] && printf 0 || printf 1)"
+assert "--files-modified emits exactly one event" "1" "$(jq_count "$marker_log" 'select(.ev=="files_modified" and .role=="developer-phoenix-backend")')"
+
+set +e
+mutex_rc=0
+(cd "$PROJECT" && printf '{"command":"make ci","mode":"short","timeout":900}' |
+    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan-gate @- --learned "text") >/dev/null 2>&1
+mutex_rc=$?
+set -e
+assert "--plan-gate + --learned mutually exclusive exits 2" "2" "$mutex_rc"
+
 # Test 9: init writes the .active sentinel with the resolved absolute log path.
 unset CODEGEN_LOG_PATH
 unset AGENT_TYPE

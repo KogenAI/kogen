@@ -34,6 +34,8 @@ Plan → delegation prompt for developer-static follows the standard planner out
 
 (static sites have no CI gate; build check runs via deploy hook)
 
+Write the gate selection AND files-to-touch list as typed `codegen-log` events (not just `## Plan` prose) — per § Typed Events above. Static's gate command is `"none"` (per § Gate above).
+
 ## Slices
 
 1. content — one slice for Vite static apps (no data-layer split)
@@ -46,7 +48,7 @@ Write a self-contained prompt embedding:
 - Domain context files dev should Read
 - `## Files to touch` section — each marked (NEW|EXISTING), what changes in each file
 - Risks + edge cases (from Plan)
-- Gate command (from Plan's **Gate** field)
+- Gate command (from Plan's **Gate** field — already recorded as a typed plan_gate event)
 - Session log path + "Populate ## Files Modified from git status --short, then call `codegen-log section planner-static --slug <slug>` (pipe body via stdin — full CLI contract in session-log rules § Ownership) to write your section body at canonical rank." `<slug>` = the build slug the orchestrator passed you in this task.
 
 NO placeholder shapes. NO `<...>` slots. Write actual content. Orchestrator copies verbatim.

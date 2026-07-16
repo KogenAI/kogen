@@ -32,15 +32,13 @@ The loop delegates to you BECAUSE it can't read the codebase. Do the reading the
 
 The loop is a deterministic sequencer. Planner = opus — one expensive turn. Planner owns ALL orchestration decisions.
 
-Outputs: (1) **Gate** structured block, (2) **Delegation prompt** copy-paste verbatim, (3) **Redundancy check**.
+Outputs: (1) **Gate** typed event, (2) **Delegation prompt** copy-paste verbatim, (3) **Redundancy check**.
 
-**Gate** = structured ```gate-json block in `## Plan`. The loop reads it (`LoopGate.decide_gate`) to run the gate after the developer role; missing/malformed → the loop crashes loud rather than proceeding with an undecidable gate.
+**Gate** = a typed `{"ev":"plan_gate",...}` event written via `codegen-log append <role> --plan-gate @-`, piping the JSON payload on stdin, in the SAME turn you write your `## Plan` section. This is the source of truth the loop reads (`LoopGate.decide_gate` → `gate_select_read_planner_gate`) to run the gate after the developer role — it is a first-class JSONL event, never re-parsed out of your plan prose. Missing → the loop crashes loud rather than proceeding with an undecidable gate.
 
-Gate block SCOPING: gate-json block MUST immediately follow `**Gate**:` line (max one blank line). Only that block is parsed — free-floating example blocks elsewhere are ignored.
+Payload format (piped as `--plan-gate @-` stdin):
 
-Gate block format:
-
-```gate-json
+```json
 {
   "command": "make ci",
   "mode": "short",
@@ -51,6 +49,10 @@ Gate block format:
 - `command` (string, REQUIRED): exact gate command
 - `mode` (string, REQUIRED): "short" | "long" — "long" for any gate containing `make llm` or `rebuild-seed-then`
 - `timeout` (integer, REQUIRED): 0 for short gates, 900 for `make ci`, 1500 for `make llm`, 1800 for combined
+
+`codegen-log` validates this shape at write time (exits 2 on malformed JSON or a missing/invalid field) — a bad selection can never reach the log. You may still narrate the gate command in your `## Plan` prose as a human-readable `**Gate**:` line for the reader's benefit, but nothing keys on that prose anymore — the typed event is authoritative.
+
+Your `## Files to touch` list is likewise written as a typed event — `codegen-log append <role> --files-to-touch @-`, piping a JSON array of relative path strings (e.g. `["context/foo.md","lib/bar.ex"]`). This is what `subagent-read-discipline.sh` reads to decide whether a developer may Read a `context/*.md` file for orientation — keep listing the same paths in your `## Files to touch` prose for the plan's readability, but the typed event is what actually grants the read.
 
 ❌ Never write a commit message or suggest one. Committer owns commit messages.
 

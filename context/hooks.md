@@ -243,6 +243,7 @@ Place **specific arms BEFORE wildcards** in shell case statements. Example: a sp
 - `append <role> --learned "<text>" --slug <slug>` — append `{"ev":"learned",...}`.
 - `append <role> --died interrupted|aborted --slug <slug>` — append `{"ev":"died",...}`.
 - `append <role> --verdict clear|failed|inconclusive --slug <slug>` — append `{"ev":"gate",...}`.
+- `append <role> --plan-gate|--files-to-touch|--files-modified @- --slug <slug>` — typed gate-selection/read-discipline markers (JSON on stdin, shape-validated at write). planner* authors plan_gate+files_to_touch; developer* authors files_modified. `gate-select.sh`/`subagent-read-discipline.sh` read from the AUTHOR's event, never a prose fallback.
 - `verdict --gate <cmd> --mode <mode> --result "<text>" --slug <slug>` — the loop's dev-gate step verdict writer.
 - `relocate --new-slug <slug>` — rename + update `.active`.
 
@@ -266,11 +267,7 @@ Place **specific arms BEFORE wildcards** in shell case statements. Example: a sp
 
 ## Bash Hook Test Debugging — Silent Crashes & Early Exits
 
-When ALL blocking tests fail while non-blocking pass, **suspect an early fatal crash (unbound var under `set -u`, syntax error) not logic errors** — hook exits non-zero before `block()`, verdict JSON never emitted, looks like "allow" (no block JSON = PASSED).
-
-**Diagnostic**: `bash -x harnesses/claude/hooks/your-hook.sh 2>&1 | head -50` — find where execution stops (typically a var referenced before assignment under `set -u`). Fix by hoisting assignment before first use, or `${var:-}` guard if optional.
-
-**Test implication**: suite flips "all pass"→"all blocking fail" → check unbound-variable crashes first, not logic regression.
+ALL blocking tests fail while non-blocking pass → suspect an early fatal crash (unbound var under `set -u`, syntax error), not logic errors — hook exits non-zero before `block()`, verdict JSON never emitted, looks like "allow". Diagnostic: `bash -x harnesses/claude/hooks/your-hook.sh 2>&1 | head -50` — find where execution stops; fix by hoisting assignment before first use or `${var:-}` guard.
 
 ## Trigger Keywords
 

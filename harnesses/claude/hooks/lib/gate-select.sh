@@ -12,9 +12,10 @@
 #   timeout=<seconds>   (0 for short gates; the foreground poll budget for long gates)
 #
 # Inputs (in priority order):
-#   1. The active step log's `## Plan` section first `**Gate**:` (or `Gate:`)
-#      line, or its ```gate-json block. If present, planner wins — gate = that
-#      string, mode/timeout from the JSON sideband or `gate_mode_for`/`gate_timeout_for`.
+#   1. The active step log's structured {"ev":"plan_gate",...} event, written
+#      by the planner via `codegen-log append <role> --plan-gate @-`. If
+#      present, planner wins — gate = its "command" field, mode/timeout from
+#      its "mode"/"timeout" fields directly (no re-derivation).
 #   2. Otherwise, per-app config `<project_dir>/.claude/gate-config.sh`, sourced
 #      for a single required variable GATE_COMMAND. If GATE_COMMAND is non-empty,
 #      gate = GATE_COMMAND (mode/timeout via gate_mode_for/gate_timeout_for).
@@ -23,6 +24,11 @@
 #      stack-guessing fallback and NO default gate — an unresolved gate is a
 #      real misconfiguration the caller must surface (block / raise), never
 #      silently skip.
+#
+# The gate SELECTION is a first-class JSONL event ({"ev":"plan_gate",...}) —
+# never re-parsed out of the planner's free-form role body prose. See
+# shared/rules/_core/session-log.md § the body is opaque, never re-parsed as
+# structure.
 #
 # Per-app config contract (`<project_dir>/.claude/gate-config.sh`):
 #   GATE_COMMAND — the exact gate command for this app (e.g. "make ci" for a
@@ -155,103 +161,16 @@ gate_mode_for() {
     fi
 }
 
-# gate_select_read_planner_json <step_log_file>
-# Extracts a ```gate-json block from the planner's role body (decoded from
-# the JSONL cycle log via planner_body_from_log — the body text is treated as
-# though it were still a "## Plan" section, since that's the prose shape
-# planners still write inside the opaque body string).
-# On success: prints gate command to stdout and sets the env vars
-#   __GATE_JSON_MODE and __GATE_JSON_TIMEOUT (caller reads them after).
-# On malformed/invalid JSON block: prints "__GATE_PARSE_ERROR__:<reason>" and returns 0.
-# On no block found: prints nothing and returns 0 (caller falls through).
-# Uses jq for validation.
-gate_select_read_planner_json() {
-    local log_file="$1"
-    [ -f "$log_file" ] || {
-        printf ''
-        return 0
-    }
-
-    local body
-    body=$(planner_body_from_log "$log_file")
-    [ -z "$body" ] && {
-        printf ''
-        return 0
-    }
-
-    # Extract the gate-json block that immediately follows a **Gate**: line.
-    # This avoids picking up gate-json blocks that appear as FORMAT EXAMPLES in
-    # the plan body. The body IS the planner's role prose (the "## Plan"
-    # section content, or the whole body if no such sub-heading is present) —
-    # scan the entire body directly; a "## <other> Section" heading inside a
-    # planner's own body would only appear as a stray, non-authoritative
-    # string (planner bodies do not carry OTHER roles' sections under
-    # per-event JSONL storage), so no early-exit boundary is needed.
-    local json_block
-    json_block=$(printf '%s' "$body" | awk '
-        /^\*\*Gate\*\*:/ { after_gate = 1; next }
-        after_gate && /^[[:space:]]*$/ { next }
-        after_gate && /^```gate-json[[:space:]]*$/ { in_block = 1; after_gate = 0; next }
-        after_gate { after_gate = 0 }
-        in_block && /^```[[:space:]]*$/ { in_block = 0; exit }
-        in_block { print }
-    ' 2>/dev/null)
-
-    # No block found — fall through to prose parser
-    [ -z "$json_block" ] && {
-        printf ''
-        return 0
-    }
-
-    # Validate JSON with jq
-    if ! printf '%s' "$json_block" | jq -e . >/dev/null 2>&1; then
-        printf '__GATE_PARSE_ERROR__:gate-json block is not valid JSON'
-        return 0
-    fi
-
-    # Extract required fields
-    local cmd mode timeout
-    cmd=$(printf '%s' "$json_block" | jq -r '.command // empty' 2>/dev/null)
-    mode=$(printf '%s' "$json_block" | jq -r '.mode // empty' 2>/dev/null)
-    timeout=$(printf '%s' "$json_block" | jq -r '.timeout // empty' 2>/dev/null)
-
-    if [ -z "$cmd" ]; then
-        printf '__GATE_PARSE_ERROR__:gate-json block missing required field "command"'
-        return 0
-    fi
-    if [ -z "$mode" ]; then
-        printf '__GATE_PARSE_ERROR__:gate-json block missing required field "mode"'
-        return 0
-    fi
-    if [ -z "$timeout" ]; then
-        printf '__GATE_PARSE_ERROR__:gate-json block missing required field "timeout"'
-        return 0
-    fi
-
-    # Validate mode
-    case "$mode" in
-    short | long) ;;
-    *)
-        printf '__GATE_PARSE_ERROR__:gate-json block invalid mode "%s" (must be short or long)' "$mode"
-        return 0
-        ;;
-    esac
-
-    # Output: command on first line, then __GATE_JSON_MODE=<mode> and
-    # __GATE_JSON_TIMEOUT=<timeout> on subsequent lines. Caller parses with sed.
-    printf '%s\n__GATE_JSON_MODE=%s\n__GATE_JSON_TIMEOUT=%s\n' "$cmd" "$mode" "$timeout"
-}
-
-# gate_select_read_planner_gate <step_log_file> — print the planner's
-# `**Gate**:` value (without the `**Gate**:` prefix and surrounding markdown),
-# or empty if absent. Reads the planner role body decoded from the JSONL
-# cycle log (planner_body_from_log) — the body IS the "## Plan" prose.
-#
-# NEW: tries gate_select_read_planner_json first. On valid JSON block, returns
-# the command on the first line followed by __GATE_JSON_MODE=<mode> and
-# __GATE_JSON_TIMEOUT=<timeout> lines (for gate_select_decide to parse).
-# On parse error, returns the __GATE_PARSE_ERROR__ sentinel. Only falls through
-# to the awk prose parser when no JSON block is found (backward compat).
+# gate_select_read_planner_gate <step_log_file> — read the planner's typed
+# gate-SELECTION event ({"ev":"plan_gate","role":<planner*>,"command":<cmd>,
+# "mode":"short"|"long","timeout":<seconds>}), written by
+# `codegen-log append <role> --plan-gate @-`. Prints the command on the first
+# line followed by __GATE_JSON_MODE=<mode> and __GATE_JSON_TIMEOUT=<timeout>
+# lines (same output contract gate_select_decide already parses). Empty when
+# the log is missing, unreadable, or carries no plan_gate event for a
+# planner* role — caller falls through to its existing "no gate found" path.
+# No prose fallback: a missing structured field blocks, it never re-parses
+# `body` (session-log.md § the body is opaque, never re-parsed as structure).
 gate_select_read_planner_gate() {
     local log_file="$1"
     [ -f "$log_file" ] || {
@@ -259,59 +178,25 @@ gate_select_read_planner_gate() {
         return 0
     }
 
-    # Try JSON path first
-    local json_result
-    json_result=$(gate_select_read_planner_json "$log_file")
-
-    # Parse error — propagate sentinel directly
-    case "$json_result" in
-    __GATE_PARSE_ERROR__:*)
-        printf '%s' "$json_result"
-        return 0
-        ;;
-    esac
-
-    # Valid JSON result (non-empty, not error) — includes mode/timeout lines
-    if [ -n "$json_result" ]; then
-        printf '%s' "$json_result"
-        return 0
-    fi
-
-    # No JSON block — fall through to existing prose awk parser (backward
-    # compat), scanning the decoded planner body directly.
-    local body
-    body=$(planner_body_from_log "$log_file")
-    [ -z "$body" ] && {
+    local last_event
+    last_event=$(jq -c 'select(.ev == "plan_gate" and (.role | startswith("planner")))' \
+        "$log_file" 2>/dev/null | tail -n 1)
+    [ -z "$last_event" ] && {
         printf ''
         return 0
     }
-    printf '%s' "$body" | awk '
-        {
-            line = $0
-            # Match **Gate**: or Gate:
-            if (match(line, /^\*\*Gate\*\*:[[:space:]]*/) || match(line, /^Gate:[[:space:]]*/)) {
-                rest = substr(line, RSTART + RLENGTH)
-                # Decide backtick-wrapping on the RAW rest BEFORE stripping.
-                gsub(/^[[:space:]]+/, "", rest)
-                if (substr(rest, 1, 1) == "`") {
-                    # Wrapped gate: take content between the first opening and
-                    # next closing backtick verbatim. No prose truncation.
-                    inner = substr(rest, 2)
-                    if (match(inner, /`/)) { inner = substr(inner, 1, RSTART - 1) }
-                    rest = inner
-                    gsub(/[[:space:]]+$/, "", rest)
-                } else {
-                    # Bare gate: trim, then truncate at prose separators.
-                    gsub(/[[:space:]]+$/, "", rest)
-                    if (match(rest, / *\(/))       { rest = substr(rest, 1, RSTART - 1) }
-                    else if (match(rest, / *—/))   { rest = substr(rest, 1, RSTART - 1) }
-                    else if (match(rest, / +-+ /)) { rest = substr(rest, 1, RSTART - 1) }
-                    gsub(/[[:space:]]+$/, "", rest)
-                }
-                if (length(rest) > 0) { print rest; exit }
-            }
-        }
-    '
+
+    local cmd mode timeout
+    cmd=$(printf '%s' "$last_event" | jq -r '.command // empty' 2>/dev/null)
+    mode=$(printf '%s' "$last_event" | jq -r '.mode // empty' 2>/dev/null)
+    timeout=$(printf '%s' "$last_event" | jq -r '.timeout // empty' 2>/dev/null)
+
+    [ -z "$cmd" ] && {
+        printf ''
+        return 0
+    }
+
+    printf '%s\n__GATE_JSON_MODE=%s\n__GATE_JSON_TIMEOUT=%s\n' "$cmd" "$mode" "${timeout:-0}"
 }
 
 # gate_select_decide <project_dir> [<step_log_file>]
@@ -320,18 +205,12 @@ gate_select_decide() {
     local project_dir="$1"
     local step_log="${2:-}"
 
-    # 1. Planner gate wins.
+    # 1. Planner gate wins. Malformed selections can never reach the log —
+    # codegen-log validates --plan-gate JSON shape at write time — so there
+    # is no parse-error sentinel to propagate here anymore.
     if [ -n "$step_log" ] && [ -f "$step_log" ]; then
         local planner_out
         planner_out=$(gate_select_read_planner_gate "$step_log")
-
-        # Propagate parse error sentinel directly — callers (stop-verify) handle it
-        case "$planner_out" in
-        __GATE_PARSE_ERROR__:*)
-            printf '%s' "$planner_out"
-            return 0
-            ;;
-        esac
 
         if [ -n "$planner_out" ]; then
             # Extract command (first line), and optional JSON sideband fields

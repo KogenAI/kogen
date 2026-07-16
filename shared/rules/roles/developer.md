@@ -6,14 +6,14 @@ For all developer-\* subagents. NOT for reviewers.
 
 State this upfront, as methodology — the plan is self-contained by design, not merely by hook denial. Hooks DO fire under the Elixir loop (a loop-invoked role is a native `claude --agent <role>` spawn carrying its full guard bundle), but treat this discipline as how you work regardless, not just what stops you. This is presence-conditional, not stack-specific — self-detect from what your delegation prompt actually carries:
 
-- **Read**: when your delegation prompt carries a `## Plan` section, it is self-contained — do not Read the pitch or `PROJECT_CONTEXT.md` for orientation, and read `context/*.md` ONLY when the path appears in `## Plan` → Files to touch with an `(EDIT)`/`(NEW)` marker. When your delegation prompt carries NO `## Plan` (no planner ran this cycle), the pitch text is already inlined in your prompt — that IS the complete scope; there is nothing further to Read for orientation.
+- **Read**: when your delegation prompt carries a `## Plan` section, it is self-contained — do not Read the pitch or `PROJECT_CONTEXT.md` for orientation, and read `context/*.md` ONLY when the path appears in the planner's TYPED `files_to_touch` event (written via `codegen-log append <role> --files-to-touch @-` — the `## Plan` → Files to touch prose is narrative for you to read, but `subagent-read-discipline.sh` grants the Read based on the typed event, not the prose) with an `(EDIT)`/`(NEW)` marker in the prose. When your delegation prompt carries NO `## Plan` (no planner ran this cycle), the pitch text is already inlined in your prompt — that IS the complete scope; there is nothing further to Read for orientation.
 - **Bash**: unrestricted, EXCEPT the CI gate. Never run `make ci`, `mix test` (bare/full-suite), or dialyzer mid-implementation — those fire once on handoff, not during your work.
 
 ## Context Files Are Off-Limits
 
 NEVER Read `PROJECT_CONTEXT.md`, `context/*.md`, OR `codegen/pitches/**` for orientation. When a `## Plan` is present it is self-contained — everything you need is in it. When no `## Plan` is present, the pitch text already inlined in your prompt is the complete scope — everything you need is already there.
 
-Read `context/*.md` ONLY when the path appears in planner's `## Files to touch` with an `(EDIT)` or `(NEW)` marker — meaning you are the one editing that file. Context updates from retrospectives are curator's job post-reviewer. Hook `subagent-read-discipline.sh` enforces.
+Read `context/*.md` ONLY when the path appears in planner's TYPED `files_to_touch` event (`{"ev":"files_to_touch",...}`, written via `codegen-log append <role> --files-to-touch @-`) — the same path also appears in `## Files to touch` prose with an `(EDIT)` or `(NEW)` marker, but that prose is narrative only; the typed event is what actually grants the Read. Context updates from retrospectives are curator's job post-reviewer. Hook `subagent-read-discipline.sh` enforces, reading the field from the planner's own event — never from your own body.
 
 ## Recipes
 
@@ -44,6 +44,8 @@ Disallowed in build-runtime. Elsewhere ≤4 options per call.
 ## Gate
 
 `Gate: none` → zero test commands. Deliver edited files, populate `## Files Modified`, done.
+
+**Files Modified is ALSO a typed event.** Alongside your `## Files Modified` prose (from `git status --short`), pipe the same relative paths as a JSON array via `codegen-log append <role> --files-modified @- --slug <slug>`. This is what `subagent-read-discipline.sh` reads to let the REVIEWER read a `context/*.md` file you touched — the reviewer's read is granted from YOUR typed event, not from your prose.
 
 **Legacy (non-loop, real-subagent) mode:** Dev MUST NOT run CI gate — gate fires on hand-off. Fix failures during impl. Wire new modules: grep new symbol across `lib/`/`test/`. The `developer-no-self-gate` hook caps you at 3 CI/test-command invocations per session in this mode.
 

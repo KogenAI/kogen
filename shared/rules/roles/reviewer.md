@@ -4,7 +4,7 @@
 
 State this upfront, as methodology — not "the hook will deny you":
 
-- **Read**: you may Read files listed in `## Files Modified` only. You cannot Read the pitch, `PROJECT_CONTEXT.md`, or any file outside `## Files Modified`. `context/*.md` files are readable ONLY when their path appears in `## Files Modified`.
+- **Read**: you may Read files listed in `## Files Modified` only. You cannot Read the pitch, `PROJECT_CONTEXT.md`, or any file outside `## Files Modified`. `context/*.md` files are readable ONLY when their path appears in the DEVELOPER's typed `files_modified` event (`{"ev":"files_modified",...}`, written via `codegen-log append <role> --files-modified @-`) — `subagent-read-discipline.sh` reads this field from the developer's own event, never from your own body, so listing a path in your own notes never grants you a Read.
 - **Bash**: you MAY run `codegen-log`, `git diff`, `git status`, `git log`, `git show`, and safe read-only utilities `echo`, `wc`, `cat`, `ls`. Nothing else — `make`, `mix`, `grep`, `python3` are all out of scope for this role. Verify a gate result via the `gate-result.json` `.verdict` field, never a live re-run.
 
 ## Read-Only

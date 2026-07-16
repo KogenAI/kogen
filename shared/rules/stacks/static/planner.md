@@ -25,9 +25,15 @@ First-build Vite plans MUST include in `Files to touch`:
 
 ## Gate
 
-Static sites use gate-json block with command "none" — no CI gate; build check runs via deploy hook.
+Static sites use command "none" — no CI gate; build check runs via deploy hook. Write it as the typed event, piping this payload:
 
-```gate-json
+```
+codegen-log append <role> --plan-gate @- --slug <slug>
+```
+
+stdin payload:
+
+```json
 {
   "command": "none",
   "mode": "short",

@@ -3,14 +3,24 @@
 #
 # Tests:
 #   1: planner-phoenix Stop, no TRANSCRIPT_PATH → exit 0 (skip)
-#   2: planner-phoenix Stop, transcript references log with **Gate**: make ci → exit 0 (allow)
-#   3: planner-phoenix Stop, transcript references log with **Gate**: TBD → exit 2 (block)
-#   4: planner-phoenix Stop, transcript references log with NO **Gate**: line → exit 2 (block)
+#   2: planner-phoenix Stop, log carries a plan_gate event (command=make ci) → exit 0 (allow)
+#   3: planner-phoenix Stop, plan_gate event with placeholder command "TBD" → exit 2 (block)
+#   4: planner-phoenix Stop, log carries NO plan_gate event → exit 2 (block)
 #   5: developer-phoenix-backend Stop → exit 0 (skip — non-planner)
 #   6: planner-phoenix Stop with STOP_HOOK_ACTIVE=true → exit 0 (recursion guard)
-#   7: planner-phoenix Stop, transcript references log with **Gate**: pending → exit 2 (block)
+#   7: planner-phoenix Stop, plan_gate event with placeholder command "pending" → exit 2 (block)
+#   8: planner-phoenix Stop, log carries stale **Gate**: prose but NO plan_gate
+#      event → exit 2 (block) — proves the prose scanner is truly gone
+#   9: planner-phoenix Stop, plan_gate event with long mode/timeout → exit 0 (allow)
 
 set -u
+
+# Neutralize an ambient CODEGEN_LOG_PATH pin from the launching (this very)
+# dev session — session_log_from_transcript() binds to it FIRST (see
+# session-log.md § Resolution precedence), ahead of every fixture built
+# below. Left set, it would silently redirect every case here onto the live
+# session's own cycle log instead of the per-test tmp fixture.
+unset CODEGEN_LOG_PATH
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/stop-verify-planner-gate.sh"
@@ -67,20 +77,23 @@ make_transcript_with_log_write() {
         "$log_path" >"$transcript_path"
 }
 
-# make_step_log_with_gate <log_path> <gate_value>
-# Writes a JSONL cycle log with a planner-phoenix role event whose body
-# contains "## Plan" prose and "**Gate**: <gate_value>".
-make_step_log_with_gate() {
+# make_step_log_with_plan_gate <log_path> <command> [<mode>] [<timeout>]
+# Writes a JSONL cycle log with a single {"ev":"plan_gate",...} event
+# authored by planner-phoenix — the structured event stop-verify-planner-gate
+# actually reads (via gate_select_read_planner_gate), matching what
+# `codegen-log append <role> --plan-gate @-` writes on disk.
+make_step_log_with_plan_gate() {
     local log_path="$1"
-    local gate_value="$2"
-    local body
-    body=$(printf '# Step 1 — test\n\n## Plan\n\n**Gate**: %s' "$gate_value")
-    jq -c -n --arg role "planner-phoenix" --arg body "$body" '{ev: "role", role: $role, body: $body}' >"$log_path"
+    local command="$2"
+    local mode="${3:-short}"
+    local timeout="${4:-900}"
+    jq -c -n --arg role "planner-phoenix" --arg command "$command" --arg mode "$mode" --argjson timeout "$timeout" \
+        '{ev: "plan_gate", role: $role, command: $command, mode: $mode, timeout: $timeout}' >"$log_path"
 }
 
 # make_step_log_no_gate <log_path>
-# Writes a JSONL cycle log with a planner-phoenix role event body containing
-# "## Plan" prose but NO **Gate**: line.
+# Writes a JSONL cycle log with a planner-phoenix role event body but NO
+# plan_gate event.
 make_step_log_no_gate() {
     local log_path="$1"
     local body
@@ -88,12 +101,15 @@ make_step_log_no_gate() {
     jq -c -n --arg role "planner-phoenix" --arg body "$body" '{ev: "role", role: $role, body: $body}' >"$log_path"
 }
 
-# make_step_log_with_body <log_path> <body>
-# Writes a JSONL cycle log with a planner-phoenix role event whose body is the
-# given raw text verbatim (used for gate-json block fixtures).
-make_step_log_with_body() {
+# make_step_log_stale_prose_no_event <log_path>
+# Writes a JSONL cycle log whose role body contains OLD-style "**Gate**:"
+# prose but carries NO plan_gate event — proves the prose scanner is gone:
+# this body would have satisfied the old awk parser, and must now block
+# exactly like make_step_log_no_gate.
+make_step_log_stale_prose_no_event() {
     local log_path="$1"
-    local body="$2"
+    local body
+    body=$(printf '# Step 1 — test\n\n## Plan\n\n**Gate**: `make ci`\n\nstuff')
     jq -c -n --arg role "planner-phoenix" --arg body "$body" '{ev: "role", role: $role, body: $body}' >"$log_path"
 }
 
@@ -103,30 +119,30 @@ out=$(make_stop_input "$T1_dir" "planner-phoenix" false "" | bash "$HOOK" 2>/dev
 assert_not_contains "planner Stop, no TRANSCRIPT_PATH → no block" '"decision"' "$out"
 rm -rf "$T1_dir"
 
-# ── Test 2: transcript references log with **Gate**: make ci → allow ─────────
+# ── Test 2: plan_gate event (command=make ci) → allow ───────────────────────
 T2_dir=$(mktemp -d)
 mkdir -p "$T2_dir/codegen/logging"
 T2_log="$T2_dir/codegen/logging/20260518_test_cycle.jsonl"
 T2_transcript="$T2_dir/transcript.jsonl"
-make_step_log_with_gate "$T2_log" "make ci"
+make_step_log_with_plan_gate "$T2_log" "make ci"
 make_transcript_with_log_write "$T2_transcript" "$T2_log"
 out=$(make_stop_input "$T2_dir" "planner-phoenix" false "$T2_transcript" | bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "planner Stop, **Gate**: make ci → allow" '"decision"' "$out"
+assert_not_contains "planner Stop, plan_gate command=make ci → allow" '"decision"' "$out"
 rm -rf "$T2_dir"
 
-# ── Test 3: transcript references log with **Gate**: TBD → block ─────────────
+# ── Test 3: plan_gate event with placeholder command "TBD" → block ──────────
 T3_dir=$(mktemp -d)
 mkdir -p "$T3_dir/codegen/logging"
 T3_log="$T3_dir/codegen/logging/20260518_test_cycle.jsonl"
 T3_transcript="$T3_dir/transcript.jsonl"
-make_step_log_with_gate "$T3_log" "TBD (planner to determine)"
+make_step_log_with_plan_gate "$T3_log" "TBD"
 make_transcript_with_log_write "$T3_transcript" "$T3_log"
 out=$(make_stop_input "$T3_dir" "planner-phoenix" false "$T3_transcript" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "planner Stop, **Gate**: TBD → block" '"decision"' "$out"
+assert_contains "planner Stop, plan_gate command=TBD → block" '"decision"' "$out"
 assert_contains "block reason cites step log" 'stop-verify-planner-gate' "$out"
 rm -rf "$T3_dir"
 
-# ── Test 4: transcript references log with NO **Gate**: line → block ──────────
+# ── Test 4: log carries NO plan_gate event → block ───────────────────────────
 T4_dir=$(mktemp -d)
 mkdir -p "$T4_dir/codegen/logging"
 T4_log="$T4_dir/codegen/logging/20260518_test_cycle.jsonl"
@@ -134,7 +150,7 @@ T4_transcript="$T4_dir/transcript.jsonl"
 make_step_log_no_gate "$T4_log"
 make_transcript_with_log_write "$T4_transcript" "$T4_log"
 out=$(make_stop_input "$T4_dir" "planner-phoenix" false "$T4_transcript" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "planner Stop, no **Gate**: line → block" '"decision"' "$out"
+assert_contains "planner Stop, no plan_gate event → block" '"decision"' "$out"
 rm -rf "$T4_dir"
 
 # ── Test 5: developer-phoenix-backend Stop → no block ────────────────────────
@@ -159,59 +175,40 @@ out=$(make_stop_input "$T6_dir" "planner-phoenix" true "$T6_transcript" | bash "
 assert_not_contains "planner Stop STOP_HOOK_ACTIVE=true → no block (recursion guard)" '"decision"' "$out"
 rm -rf "$T6_dir"
 
-# ── Test 7: transcript references log with **Gate**: pending → block ──────────
+# ── Test 7: plan_gate event with placeholder command "pending" → block ──────
 T7_dir=$(mktemp -d)
 mkdir -p "$T7_dir/codegen/logging"
 T7_log="$T7_dir/codegen/logging/20260518_test_cycle.jsonl"
 T7_transcript="$T7_dir/transcript.jsonl"
-make_step_log_with_gate "$T7_log" "pending"
+make_step_log_with_plan_gate "$T7_log" "pending"
 make_transcript_with_log_write "$T7_transcript" "$T7_log"
 out=$(make_stop_input "$T7_dir" "planner-phoenix" false "$T7_transcript" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "planner Stop, **Gate**: pending → block" '"decision"' "$out"
+assert_contains "planner Stop, plan_gate command=pending → block" '"decision"' "$out"
 rm -rf "$T7_dir"
 
-# ── Test 8: gate-json parse error → block with parse-error reason ─────────────
+# ── Test 8: stale **Gate**: prose with NO plan_gate event → block ────────────
+# Proves the prose scanner is gone: a body carrying old-style "**Gate**:"
+# markdown (which the old awk parser would have accepted) must now block
+# exactly like a log with no gate signal at all.
 T8_dir=$(mktemp -d)
 mkdir -p "$T8_dir/codegen/logging"
 T8_log="$T8_dir/codegen/logging/20260518_test_cycle.jsonl"
 T8_transcript="$T8_dir/transcript.jsonl"
-# Write a log with a malformed gate-json block
-make_step_log_with_body "$T8_log" '# Step 1 — test
-
-## Plan
-
-**Gate**:
-
-```gate-json
-{ "command": "make ci", bad json here
-```'
+make_step_log_stale_prose_no_event "$T8_log"
 make_transcript_with_log_write "$T8_transcript" "$T8_log"
 out=$(make_stop_input "$T8_dir" "planner-phoenix" false "$T8_transcript" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "planner Stop, malformed gate-json → block" '"decision"' "$out"
-assert_contains "block reason cites parse error" 'stop-verify-planner-gate' "$out"
+assert_contains "planner Stop, stale **Gate**: prose (no event) → block" '"decision"' "$out"
 rm -rf "$T8_dir"
 
-# ── Test 9: valid gate-json block → allow ─────────────────────────────────────
+# ── Test 9: plan_gate event with long mode/timeout → allow ───────────────────
 T9_dir=$(mktemp -d)
 mkdir -p "$T9_dir/codegen/logging"
 T9_log="$T9_dir/codegen/logging/20260518_test_cycle.jsonl"
 T9_transcript="$T9_dir/transcript.jsonl"
-make_step_log_with_body "$T9_log" '# Step 1 — test
-
-## Plan
-
-**Gate**:
-
-```gate-json
-{
-  "command": "make ci",
-  "mode": "short",
-  "timeout": 900
-}
-```'
+make_step_log_with_plan_gate "$T9_log" "make ci && make llm" "long" "1800"
 make_transcript_with_log_write "$T9_transcript" "$T9_log"
 out=$(make_stop_input "$T9_dir" "planner-phoenix" false "$T9_transcript" | bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "planner Stop, valid gate-json block → allow" '"decision"' "$out"
+assert_not_contains "planner Stop, plan_gate long mode/timeout → allow" '"decision"' "$out"
 rm -rf "$T9_dir"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

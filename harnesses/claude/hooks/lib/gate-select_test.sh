@@ -23,18 +23,31 @@ assert_eq() {
     fi
 }
 
-# write_planner_log <path> <heredoc-body-via-stdin> — wraps the given
-# markdown body (the "## Plan" prose planners write) into a single JSONL
-# "role" event line, matching what codegen-log actually writes on disk. Test
-# fixtures below pipe their markdown heredocs through this helper instead of
-# writing raw markdown bytes directly, since gate_select_read_planner_gate /
-# gate_select_decide now read the planner body via planner_body_from_log
-# (jq-decoded from the JSONL cycle log), not raw file bytes.
-write_planner_log() {
+# write_plan_gate_event <path> <command> <mode> <timeout> [<role>] — writes a
+# single {"ev":"plan_gate",...} JSONL line, matching what
+# `codegen-log append <role> --plan-gate @-` actually writes on disk. This is
+# the structured event gate_select_read_planner_gate / gate_select_decide
+# read — the old markdown "**Gate**:"/```gate-json prose scanners were
+# hard-deleted; a plan_gate event is the ONLY input they accept now.
+write_plan_gate_event() {
     local path="$1"
-    local body
-    body="$(cat)"
-    jq -c -n --arg role "planner-phoenix" --arg body "$body" \
+    local command="$2"
+    local mode="$3"
+    local timeout="$4"
+    local role="${5:-planner-phoenix}"
+    jq -c -n --arg role "$role" --arg command "$command" --arg mode "$mode" --argjson timeout "$timeout" \
+        '{ev: "plan_gate", role: $role, command: $command, mode: $mode, timeout: $timeout}' >"$path"
+}
+
+# write_role_body <path> <role> <body> — writes a plain {"ev":"role",...}
+# event with free-form prose body. Used to prove the prose scanner is truly
+# gone: a body containing "**Gate**:"/```gate-json markdown must NOT be
+# picked up by the structured reader.
+write_role_body() {
+    local path="$1"
+    local role="$2"
+    local body="$3"
+    jq -c -n --arg role "$role" --arg body "$body" \
         '{ev: "role", role: $role, body: $body}' >"$path"
 }
 
@@ -56,137 +69,47 @@ assert_eq "gate_mode_for(make ci && make llm) = long" "long" "$(gate_mode_for 'm
 assert_eq "gate_mode_for(make llm-phoenix-validate) = short" "short" "$(gate_mode_for 'make llm-phoenix-validate')"
 assert_eq "gate_mode_for(rebuild-seed-then) = long" "long" "$(gate_mode_for 'CODEGEN_VE_GATE=rebuild-seed-then make llm-phoenix')"
 
-# ── gate_select_read_planner_gate ───────────────────────────────────────────
+# ── gate_select_read_planner_gate — structured event only ──────────────────
 
-# Case 1: backticked gate value
+# Case 1: a plan_gate event resolves command/mode/timeout verbatim.
 TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `make ci`
-
-stuff
-MD
-assert_eq "read_planner_gate: backticked" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+write_plan_gate_event "$TMP" "make ci" "short" "900"
+out=$(gate_select_read_planner_gate "$TMP")
+assert_eq "read_planner_gate: command" "make ci" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "read_planner_gate: mode" "__GATE_JSON_MODE=short" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "read_planner_gate: timeout" "__GATE_JSON_TIMEOUT=900" "$(printf '%s' "$out" | sed -n '3p')"
 rm -f "$TMP"
 
-# Case 2: backticked + prose suffix
+# Case 2: no plan_gate event in the log (only a plain role body) → empty,
+# even when that body contains old-style "**Gate**:" prose. Proves the
+# prose scanner is truly gone — this body would have matched the old awk
+# parser, and must NOT match the structured reader.
 TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
+write_role_body "$TMP" "planner-phoenix" "## Plan
 
-## Plan
+**Gate**: \`make evil\`
 
-**Gate**: `make ci` (single-step task, full gate required)
-
-stuff
-MD
-assert_eq "read_planner_gate: backticked + prose" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+stuff"
+assert_eq "no plan_gate event: prose **Gate**: line is never re-parsed" "" "$(gate_select_read_planner_gate "$TMP")"
 rm -f "$TMP"
 
-# Case 3: bare value, no suffix
+# Case 3: missing log file → empty
+assert_eq "missing log file: empty" "" "$(gate_select_read_planner_gate "/nonexistent/path/does-not-exist.jsonl")"
+
+# Case 4: plan_gate event authored by a non-planner role is ignored
 TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: make ci
-
-stuff
-MD
-assert_eq "read_planner_gate: bare value" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+write_plan_gate_event "$TMP" "make ci" "short" "900" "developer-phoenix-backend"
+assert_eq "plan_gate authored by non-planner role is ignored" "" "$(gate_select_read_planner_gate "$TMP")"
 rm -f "$TMP"
 
-# Case 4: bare value + paren prose
+# Case 5: multiple plan_gate events (planner re-run) — the LAST one wins.
 TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: make ci (note)
-
-stuff
-MD
-assert_eq "read_planner_gate: bare + paren prose" "make ci" "$(gate_select_read_planner_gate "$TMP")"
-rm -f "$TMP"
-
-# Case 5: bare value + em dash (U+2014)
-TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: make ci — note
-
-stuff
-MD
-assert_eq "read_planner_gate: bare + em dash" "make ci" "$(gate_select_read_planner_gate "$TMP")"
-rm -f "$TMP"
-
-# Case 6: plain Gate: prefix (no bold)
-TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
-
-## Plan
-
-Gate: make ci
-
-stuff
-MD
-assert_eq "read_planner_gate: plain Gate: prefix" "make ci" "$(gate_select_read_planner_gate "$TMP")"
-rm -f "$TMP"
-
-# Case 7: ## Plan section with no Gate line
-TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
-
-## Plan
-
-some content but no gate line
-
-stuff
-MD
-assert_eq "read_planner_gate: no Gate line" "" "$(gate_select_read_planner_gate "$TMP")"
-rm -f "$TMP"
-
-# Case 8: Gate: line present later in the SAME planner body (no separate
-# "## Approach" role-boundary exists any more — the whole body belongs to
-# the planner's single "role" event under JSONL storage, so a Gate: line
-# anywhere in that body is picked up).
-TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
-
-## Plan
-
-no gate here
-
-## Approach
-
-Gate: make ci
-MD
-assert_eq "read_planner_gate: Gate line found anywhere in the planner's own body" "make ci" "$(gate_select_read_planner_gate "$TMP")"
-rm -f "$TMP"
-
-# Case 9: bare value + ASCII hyphen with surrounding spaces
-TMP=$(mktemp)
-write_planner_log "$TMP" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: make ci - note
-
-stuff
-MD
-assert_eq "read_planner_gate: bare + hyphen separator" "make ci" "$(gate_select_read_planner_gate "$TMP")"
+{
+    jq -c -n '{ev: "plan_gate", role: "planner-phoenix", command: "make old", mode: "short", timeout: 900}'
+    jq -c -n '{ev: "plan_gate", role: "planner-phoenix", command: "make new", mode: "long", timeout: 1500}'
+} >"$TMP"
+out=$(gate_select_read_planner_gate "$TMP")
+assert_eq "multiple plan_gate events: last wins" "make new" "$(printf '%s' "$out" | sed -n '1p')"
 rm -f "$TMP"
 
 # ── No-config fallback (non-Phoenix) → unresolved sentinel ─────────────────
@@ -247,211 +170,72 @@ rm -rf "$TGC2"
 # ── Planner gate wins over per-app GATE_COMMAND ─────────────────────────────
 TGC3=$(make_project)
 write_gate_command_config "$TGC3" "make ci"
-LOG="$TGC3/step.md"
-write_planner_log "$LOG" <<'MD'
-# Step
-
-## Plan
-
-**Gate**: `make custom-gate`
-
-stuff
-MD
+LOG="$TGC3/step.jsonl"
+write_plan_gate_event "$LOG" "make custom-gate" "short" "900"
 out=$(gate_select_decide "$TGC3" "$LOG")
 assert_eq "planner gate wins over GATE_COMMAND" "gate=make custom-gate" "$(printf '%s' "$out" | sed -n '1p')"
 rm -rf "$TGC3"
 
-# ── JSON gate block tests ───────────────────────────────────────────────────
+# ── plan_gate event tests (mode/timeout carried verbatim from the event) ───
 
-# Case J1: Valid gate-json block → correct command/mode/timeout extracted
+# Case J1: plan_gate event → correct command/mode/timeout extracted
 TJ1=$(mktemp)
-write_planner_log "$TJ1" <<'MD'
-# Step 1 — test
-
-## Plan
-
-**Gate**:
-
-```gate-json
-{
-  "command": "make ci",
-  "mode": "short",
-  "timeout": 900
-}
-```
-
-## Slices
-MD
+write_plan_gate_event "$TJ1" "make ci" "short" "900"
 out=$(gate_select_decide "$(mktemp -d)" "$TJ1")
-assert_eq "json gate: command" "gate=make ci" "$(printf '%s' "$out" | sed -n '1p')"
-assert_eq "json gate: mode=short" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
-assert_eq "json gate: timeout=900" "timeout=900" "$(printf '%s' "$out" | sed -n '3p')"
+assert_eq "plan_gate: command" "gate=make ci" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "plan_gate: mode=short" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "plan_gate: timeout=900" "timeout=900" "$(printf '%s' "$out" | sed -n '3p')"
 rm -f "$TJ1"
 
-# Case J2: Valid gate-json block with long mode
+# Case J2: plan_gate event with long mode
 TJ2=$(mktemp)
-write_planner_log "$TJ2" <<'MD'
-# Step 1 — test
-
-## Plan
-
-**Gate**:
-
-```gate-json
-{
-  "command": "make ci && make llm",
-  "mode": "long",
-  "timeout": 1800
-}
-```
-
-## Slices
-MD
+write_plan_gate_event "$TJ2" "make ci && make llm" "long" "1800"
 out=$(gate_select_decide "$(mktemp -d)" "$TJ2")
-assert_eq "json gate long: command" "gate=make ci && make llm" "$(printf '%s' "$out" | sed -n '1p')"
-assert_eq "json gate long: mode=long" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
-assert_eq "json gate long: timeout=1800" "timeout=1800" "$(printf '%s' "$out" | sed -n '3p')"
+assert_eq "plan_gate long: command" "gate=make ci && make llm" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "plan_gate long: mode=long" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "plan_gate long: timeout=1800" "timeout=1800" "$(printf '%s' "$out" | sed -n '3p')"
 rm -f "$TJ2"
 
-# Case J3: Malformed JSON block → __GATE_PARSE_ERROR__
-TJ3=$(mktemp)
-write_planner_log "$TJ3" <<'MD'
-# Step 1 — test
-
-## Plan
-
-**Gate**:
-
-```gate-json
-{ "command": "make ci", bad json here
-```
-
-## Slices
-MD
-out=$(gate_select_decide "$(mktemp -d)" "$TJ3")
-# gate_select_decide propagates the parse error sentinel
-if printf '%s' "$out" | grep -q '__GATE_PARSE_ERROR__'; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: malformed json block → __GATE_PARSE_ERROR__\n'
-    pass=$((pass + 1))
-else
-    printf 'FAIL: malformed json block → expected __GATE_PARSE_ERROR__\n  out: %s\n' "$out"
-    fail=$((fail + 1))
-fi
-rm -f "$TJ3"
-
-# Case J4: No JSON block → prose fallback still works
-TJ4=$(mktemp)
-write_planner_log "$TJ4" <<'MD'
-# Step 1 — test
-
-## Plan
-
-**Gate**: `make test`
-
-## Slices
-MD
-out=$(gate_select_decide "$(mktemp -d)" "$TJ4")
-assert_eq "no json block prose fallback: command" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
-assert_eq "no json block prose fallback: mode" "mode=short" "$(printf '%s' "$out" | sed -n '2p')"
-rm -f "$TJ4"
-
-# Case J5: JSON mode/timeout override classifier (command says make test but json says long/1500)
+# Case J5: event mode/timeout override the classifier (command says make
+# test, which the classifier would call short/0, but the event says
+# long/1500 — the event's own fields are authoritative, never re-derived).
 TJ5=$(mktemp)
-write_planner_log "$TJ5" <<'MD'
-# Step 1 — test
-
-## Plan
-
-**Gate**:
-
-```gate-json
-{
-  "command": "make test",
-  "mode": "long",
-  "timeout": 1500
-}
-```
-MD
+write_plan_gate_event "$TJ5" "make test" "long" "1500"
 out=$(gate_select_decide "$(mktemp -d)" "$TJ5")
-assert_eq "json mode override: mode=long (classifier would say short)" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
-assert_eq "json timeout override: timeout=1500 (classifier would say 0)" "timeout=1500" "$(printf '%s' "$out" | sed -n '3p')"
+assert_eq "event mode override: mode=long (classifier would say short)" "mode=long" "$(printf '%s' "$out" | sed -n '2p')"
+assert_eq "event timeout override: timeout=1500 (classifier would say 0)" "timeout=1500" "$(printf '%s' "$out" | sed -n '3p')"
 rm -f "$TJ5"
 
-# Case J6: JSON block missing required field → parse error
-TJ6=$(mktemp)
-write_planner_log "$TJ6" <<'MD'
-# Step 1 — test
-
-## Plan
-
-**Gate**:
-
-```gate-json
-{
-  "mode": "short",
-  "timeout": 900
-}
-```
-MD
-out=$(gate_select_decide "$(mktemp -d)" "$TJ6")
-if printf '%s' "$out" | grep -q '__GATE_PARSE_ERROR__'; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: json missing command field → __GATE_PARSE_ERROR__\n'
-    pass=$((pass + 1))
-else
-    printf 'FAIL: json missing command field → expected __GATE_PARSE_ERROR__\n  out: %s\n' "$out"
-    fail=$((fail + 1))
-fi
-rm -f "$TJ6"
-
-# Case J7: gate-json block in plan body as an EXAMPLE (not after **Gate**:) → prose fallback used
+# Case J7: a role body containing example gate-json/prose markdown (never a
+# plan_gate event) → falls through to per-app GATE_COMMAND / unresolved.
+# Proves example prose in a body is never mistaken for the authoritative
+# selection now that the awk scanner is gone.
 TJ7=$(mktemp)
-write_planner_log "$TJ7" <<'MD'
-# Step — test
+write_role_body "$TJ7" "planner-phoenix" "## Plan
 
-## Plan
+**Gate format (new)**: gate-json block after **Gate**: in ## Plan.
 
-**Goal**: Illustrate new gate format.
-
-**Gate format (new)**: gate-json block after **Gate**: in ## Plan, jq-parsed.
-
-**Key assumptions**:
-- Example only: the block below is INSIDE a code fence demo, not the authoritative gate.
-
-**Gate**: `make test`
+**Gate**: \`make test\`
 
 ## Files Modified
 
-nothing
-MD
+nothing"
 out=$(gate_select_decide "$(mktemp -d)" "$TJ7")
-assert_eq "example block in body not extracted: prose gate wins" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "prose-only body (no plan_gate event) never selects a gate" "1" "$(printf '%s' "$out" | grep -c '^__GATE_UNRESOLVED__:')"
 rm -f "$TJ7"
 
-# Case J8: gate-json block after **Gate**: in ## Plan → authoritative (not example)
+# Case J8: a log carrying BOTH a prose role body (with stale-looking
+# **Gate**: text) AND a real plan_gate event → the event wins, prose is
+# ignored entirely.
 TJ8=$(mktemp)
-write_planner_log "$TJ8" <<'MD'
-# Step — test
-
-## Plan
-
-**Goal**: Real gate-json block.
-
-**Gate**:
-
-```gate-json
 {
-  "command": "make test",
-  "mode": "short",
-  "timeout": 0
-}
-```
+    jq -c -n --arg body '## Plan
 
-## Files Modified
-
-nothing
-MD
+**Gate**: `make stale-prose-gate`' '{ev: "role", role: "planner-phoenix", body: $body}'
+    jq -c -n '{ev: "plan_gate", role: "planner-phoenix", command: "make test", mode: "short", timeout: 0}'
+} >"$TJ8"
 out=$(gate_select_decide "$(mktemp -d)" "$TJ8")
-assert_eq "authoritative gate-json block extracted" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "plan_gate event wins over stale prose in the same log" "gate=make test" "$(printf '%s' "$out" | sed -n '1p')"
 rm -f "$TJ8"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
