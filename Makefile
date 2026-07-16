@@ -600,6 +600,34 @@ doctor:
 		exit 1; \
 	fi
 
+.PHONY: build-ready
+build-ready:
+	@set +e; \
+	fails=0; \
+	echo "🚦 Running OCG build-ready preflight..."; \
+	echo ""; \
+	echo "--- (a) required binaries ---"; \
+	$(MAKE) --no-print-directory doctor; \
+	if [ $$? -ne 0 ]; then fails=$$((fails + 1)); fi; \
+	echo ""; \
+	echo "--- (b) installed harness currency ---"; \
+	source "$(SCRIPT_DIR)/harnesses/shared/build-ready-currency.sh"; \
+	check_install_currency "$(SCRIPT_DIR)" "$$HOME/.local/bin/.ocg-install-stamp"; \
+	if [ $$? -ne 0 ]; then fails=$$((fails + 1)); fi; \
+	echo ""; \
+	echo "--- (c) make test (deterministic, no LLM) ---"; \
+	$(MAKE) --no-print-directory test; \
+	if [ $$? -ne 0 ]; then echo "FAIL: make test"; fails=$$((fails + 1)); fi; \
+	echo ""; \
+	if [ $$fails -eq 0 ]; then \
+		echo "✅ build-ready: box is build-ready"; \
+		exit 0; \
+	else \
+		echo "❌ build-ready: $$fails check(s) failed"; \
+		echo "build-ready: RED — drain dispatch refused. Fix the above, re-run 'ocg build-ready'."; \
+		exit 2; \
+	fi
+
 
 help:
 	@echo "Optimum Codegen"
@@ -621,6 +649,7 @@ help:
 	@echo "  make show-verdicts  Pretty-print durable gate-verdict history"
 	@echo "  make format         Format all shell scripts and files"
 	@echo "  make doctor         Check required tools and config"
+	@echo "  make build-ready    Preflight gate: doctor + install currency + make test (refuses drain dispatch on red)"
 	@echo "  make uninstall      Remove global CLI installation (via ocg)"
 	@echo "  make update         Update all AI agents (via ocg)"
 	@echo "  make help           Show this help"

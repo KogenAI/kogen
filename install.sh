@@ -851,6 +851,18 @@ if [ -d "$CODEGEN_DIR/shared" ]; then
     fi
 fi
 
+# Stamp install currency (sha + working-tree content hash of the source set
+# `make install` consumes) so `make build-ready` can detect a stale/edited
+# install on a remote box before a paid drain dispatches to it. See
+# harnesses/shared/build-ready-currency.sh (single source of the source-set
+# list + hash formula, shared with the reader in Makefile's build-ready
+# target).
+if [ -f "$CODEGEN_DIR/harnesses/shared/build-ready-currency.sh" ]; then
+    # shellcheck source=harnesses/shared/build-ready-currency.sh
+    source "$CODEGEN_DIR/harnesses/shared/build-ready-currency.sh"
+    build_ready_write_stamp "$CODEGEN_DIR" "$INSTALL_DIR/.ocg-install-stamp"
+fi
+
 echo ""
 echo "✅ Installation complete!"
 echo ""
