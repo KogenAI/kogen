@@ -87,10 +87,21 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @default_max_retries 3
   @default_retry_delays [30, 120, 300]
   @default_max_consecutive_fails 3
-  # Retention window for `codegen/logging/*_build.log` console captures —
-  # ephemeral gitignored build-forensics; never applied to `*_cycle.jsonl`
-  # (the canonical, durable per-role session logs).
-  @build_log_retention_secs 7 * 24 * 3600
+  # Per-class GC windows over `codegen/logging/` — see `gc_logging/1`. Floor
+  # is codegen-analyze's default `--since` window (14 days); margins are
+  # widened for classes with no durable reader (build forensics, subagent
+  # transcripts, legacy session md) or a wider confirmed consumer window
+  # (`*_cycle.jsonl`: analyze 14d + operator back-dated `--since` +
+  # `codegen-log`'s active-log-only read + future bilevel replay). Never
+  # applied to the ACTIVE cycle log or `gate-verdicts.jsonl` (append-only
+  # history, never auto-GC'd).
+  @build_forensics_gzip_secs 14 * 24 * 3600
+  @build_forensics_delete_secs 30 * 24 * 3600
+  @transcript_gzip_secs 14 * 24 * 3600
+  @transcript_delete_secs 45 * 24 * 3600
+  @session_md_delete_secs 30 * 24 * 3600
+  @failures_delete_secs 30 * 24 * 3600
+  @cycle_log_gzip_secs 90 * 24 * 3600
   @default_pitch_budget_secs 7200
   # `mix codegen.loop`'s distinct exit code for `CodegenTestHarness.InfraAbort`
   # (see `Mix.Tasks.Codegen.Loop` `@infra_abort_exit_code`) — a fault no
@@ -232,10 +243,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # Ignore {:error, :enoent} (absent is the normal case).
         File.rm(Path.join([cwd, "codegen", "gate-pending", "build-queue.json"]))
 
-        # Best-effort: bound the aggregate footprint of console captures.
-        # Never touches `*_cycle.jsonl` (canonical session logs). A failed
-        # cleanup (permission error, race) must never abort the drain.
-        prune_old_build_logs(cwd)
+        # Best-effort: bound the aggregate footprint of `codegen/logging/`
+        # across every ephemeral class (build forensics, subagent
+        # transcripts, legacy session md, failure dumps) plus a long-tail
+        # gzip of aged cycle logs. Never touches the active cycle log or
+        # `gate-verdicts.jsonl`. A failed cleanup (permission error, race)
+        # must never abort the drain.
+        gc_logging(cwd)
 
         state = %{
           harness: harness,
@@ -362,27 +376,294 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
-  # fail-loud-exempt: best-effort cleanup of an ephemeral gitignored
-  # scratch artifact (codegen/logging/*_build.log). A stat/rm failure here
-  # (permission race, concurrent removal, mid-run truncation) must never
-  # abort the drain — mirrors the pre-existing leg-1 File.rm(build-queue.json)
-  # above, which already ignores its return for the identical reason.
-  defp prune_old_build_logs(cwd) do
-    cutoff = System.system_time(:second) - @build_log_retention_secs
+  # fail-loud-exempt: best-effort per-class retention GC over the ephemeral
+  # gitignored `codegen/logging/` scratch dir. A stat/rm/gzip failure on any
+  # ONE file (permission race, concurrent removal, mid-run truncation) must
+  # never abort the drain — mirrors the pre-existing leg-1
+  # File.rm(build-queue.json) above, which already ignores its return for
+  # the identical reason. NEVER touches the `.active` sentinel's target
+  # (the currently-live cycle log) or `gate-verdicts.jsonl` (append-only
+  # history, kept whole, never auto-GC'd).
+  #
+  # Classes, glob, and policy (see module doc / pitch for consumer-window
+  # derivation):
+  #
+  #   * build forensics (`*_build.jsonl`, `*_build.log`) — no durable
+  #     reader; gzip @14d, delete @30d.
+  #   * subagent transcripts (per-cycle `<stamp>_<slug>/` dirs of
+  #     `NN-role.jsonl` files) — no durable reader; gzip @14d, delete @45d.
+  #   * legacy session md (`*_session.md`) — no reader; delete @30d.
+  #   * failure dumps (`failures/*.jsonl`) — codegen-analyze 14d window;
+  #     delete @30d.
+  #   * cycle logs (`*_cycle.jsonl`) — analyze 14d + operator back-dated
+  #     `--since` + codegen-log active-log read + future bilevel replay;
+  #     gzip @90d, never auto-delete. The active log is excluded by path.
+  defp gc_logging(cwd) do
+    logging_dir = Path.join([cwd, "codegen", "logging"])
+    active_path = active_cycle_log_path(logging_dir)
 
-    [cwd, "codegen", "logging", "*_build.log"]
-    |> Path.join()
-    |> Path.wildcard()
-    |> Enum.each(fn path ->
-      case File.stat(path, time: :posix) do
-        {:ok, %{mtime: mtime}} when mtime < cutoff -> File.rm(path)
-        {:ok, %{mtime: _mtime}} -> :ok
-        {:error, _reason} -> :ok
-      end
-    end)
+    build_stats =
+      gzip_then_delete_class(
+        [
+          Path.join([logging_dir, "*_build.jsonl"]),
+          Path.join([logging_dir, "*_build.log"])
+        ],
+        @build_forensics_gzip_secs,
+        @build_forensics_delete_secs
+      )
+
+    transcript_stats =
+      gzip_then_delete_transcript_dirs(
+        logging_dir,
+        @transcript_gzip_secs,
+        @transcript_delete_secs
+      )
+
+    session_md_deleted =
+      delete_only_class([Path.join([logging_dir, "*_session.md"])], @session_md_delete_secs)
+
+    failures_deleted =
+      delete_only_class(
+        [Path.join([logging_dir, "failures", "*.jsonl"])],
+        @failures_delete_secs
+      )
+
+    cycle_stats =
+      gzip_only_class(
+        [Path.join([logging_dir, "*_cycle.jsonl"])],
+        @cycle_log_gzip_secs,
+        active_path
+      )
+
+    kept_cycle = count_wildcard(Path.join([logging_dir, "*_cycle.jsonl"]))
+    kept_gate_verdicts = count_wildcard(Path.join([logging_dir, "gate-verdicts.jsonl"]))
+
+    reclaimed_bytes =
+      build_stats.reclaimed_bytes + transcript_stats.reclaimed_bytes +
+        session_md_deleted.reclaimed_bytes + failures_deleted.reclaimed_bytes
+
+    IO.puts(
+      :stderr,
+      "queue: GC codegen/logging — reclaimed #{human_bytes(reclaimed_bytes)}: " <>
+        "build-forensics #{build_stats.total}(gz #{build_stats.gzipped}, del #{build_stats.deleted}), " <>
+        "transcripts #{transcript_stats.total}(gz #{transcript_stats.gzipped}), " <>
+        "session-md #{session_md_deleted.total}(del), " <>
+        "failures #{failures_deleted.total}(del); " <>
+        "kept cycle-logs #{kept_cycle}, gate-verdicts #{kept_gate_verdicts}" <>
+        if(cycle_stats.gzipped > 0, do: " (gz #{cycle_stats.gzipped})", else: "")
+    )
 
     :ok
   end
+
+  # Reads the `.active` sentinel (written by `codegen-log init`/`relocate`)
+  # and returns the absolute path it points at, or nil when absent/unreadable
+  # (fail-open — GC then applies its window uniformly, including to what
+  # would have been the active log; a missing sentinel is not this GC's
+  # problem to diagnose).
+  defp active_cycle_log_path(logging_dir) do
+    case File.read(Path.join(logging_dir, ".active")) do
+      {:ok, contents} -> String.trim(contents)
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp count_wildcard(glob) do
+    glob |> Path.wildcard() |> length()
+  end
+
+  defp file_size(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, %{size: size}} -> size
+      {:error, _reason} -> 0
+    end
+  end
+
+  # gzip a file in place: writes `<path>.gz`, then removes the original.
+  # Fail-open on any step — a partial gzip (write ok, rm fails) leaves both
+  # files on disk rather than losing data; a failed read/write leaves the
+  # original untouched.
+  defp gzip_in_place(path) do
+    with {:ok, contents} <- File.read(path),
+         gz_path = path <> ".gz",
+         :ok <- File.write(gz_path, :zlib.gzip(contents)) do
+      File.rm(path)
+      :ok
+    else
+      {:error, _reason} -> :error
+    end
+  end
+
+  # Sweeps the given globs: files older than `delete_secs` are deleted
+  # (gzip'd copies included, matched by re-globbing after the gzip pass);
+  # files between `gzip_secs` and `delete_secs` are gzip'd in place; files
+  # newer than `gzip_secs` are left alone. Returns per-class counters.
+  defp gzip_then_delete_class(globs, gzip_secs, delete_secs) do
+    now = System.system_time(:second)
+    gzip_cutoff = now - gzip_secs
+    delete_cutoff = now - delete_secs
+
+    paths = Enum.flat_map(globs, &Path.wildcard/1)
+    total = length(paths)
+
+    {gzipped, deleted, reclaimed_bytes} =
+      Enum.reduce(paths, {0, 0, 0}, fn path, {gz_acc, del_acc, bytes_acc} ->
+        case File.stat(path, time: :posix) do
+          {:ok, %{mtime: mtime}} when mtime < delete_cutoff ->
+            size = file_size(path)
+            File.rm(path)
+            {gz_acc, del_acc + 1, bytes_acc + size}
+
+          {:ok, %{mtime: mtime}} when mtime < gzip_cutoff ->
+            case gzip_in_place(path) do
+              :ok -> {gz_acc + 1, del_acc, bytes_acc}
+              :error -> {gz_acc, del_acc, bytes_acc}
+            end
+
+          {:ok, %{mtime: _mtime}} ->
+            {gz_acc, del_acc, bytes_acc}
+
+          {:error, _reason} ->
+            {gz_acc, del_acc, bytes_acc}
+        end
+      end)
+
+    # Second pass: already-gzipped copies (from THIS or an earlier run) past
+    # the delete window get deleted too — same globs + ".gz" suffix.
+    gz_paths = Enum.flat_map(globs, fn glob -> Path.wildcard(glob <> ".gz") end)
+
+    extra_deleted_bytes =
+      Enum.reduce(gz_paths, 0, fn path, bytes_acc ->
+        case File.stat(path, time: :posix) do
+          {:ok, %{mtime: mtime}} when mtime < delete_cutoff ->
+            size = file_size(path)
+            File.rm(path)
+            bytes_acc + size
+
+          _ ->
+            bytes_acc
+        end
+      end)
+
+    %{
+      total: total,
+      gzipped: gzipped,
+      deleted: deleted,
+      reclaimed_bytes: reclaimed_bytes + extra_deleted_bytes
+    }
+  end
+
+  # Same policy as `gzip_then_delete_class/3` but scoped to per-cycle
+  # subagent transcript directories (`<stamp>_<slug>/NN-role.jsonl`) rather
+  # than flat files: gzip every `.jsonl` member in place once the DIRECTORY
+  # is past `gzip_secs` old (by dir mtime), delete the whole directory once
+  # past `delete_secs` old.
+  defp gzip_then_delete_transcript_dirs(logging_dir, gzip_secs, delete_secs) do
+    now = System.system_time(:second)
+    gzip_cutoff = now - gzip_secs
+    delete_cutoff = now - delete_secs
+
+    dirs =
+      case File.ls(logging_dir) do
+        {:ok, entries} ->
+          entries
+          |> Enum.map(&Path.join(logging_dir, &1))
+          |> Enum.filter(fn path ->
+            # Digit-stamp prefix (`<stamp>_<slug>/`) naturally excludes
+            # `failures/` (its name has no leading timestamp) — no separate
+            # basename guard needed.
+            File.dir?(path) and Regex.match?(~r/^[0-9]{8}_[0-9]{6}_/, Path.basename(path))
+          end)
+
+        {:error, _reason} ->
+          []
+      end
+
+    total = length(dirs)
+
+    {gzipped, reclaimed_bytes} =
+      Enum.reduce(dirs, {0, 0}, fn dir, {gz_acc, bytes_acc} ->
+        case File.stat(dir, time: :posix) do
+          {:ok, %{mtime: mtime}} when mtime < delete_cutoff ->
+            bytes = dir_size(dir)
+            File.rm_rf(dir)
+            {gz_acc, bytes_acc + bytes}
+
+          {:ok, %{mtime: mtime}} when mtime < gzip_cutoff ->
+            member_gzipped =
+              dir
+              |> Path.join("*.jsonl")
+              |> Path.wildcard()
+              |> Enum.count(fn member -> gzip_in_place(member) == :ok end)
+
+            if member_gzipped > 0, do: {gz_acc + 1, bytes_acc}, else: {gz_acc, bytes_acc}
+
+          _ ->
+            {gz_acc, bytes_acc}
+        end
+      end)
+
+    %{total: total, gzipped: gzipped, reclaimed_bytes: reclaimed_bytes}
+  end
+
+  defp dir_size(dir) do
+    dir
+    |> Path.join("**")
+    |> Path.wildcard()
+    |> Enum.reject(&File.dir?/1)
+    |> Enum.reduce(0, fn path, acc -> acc + file_size(path) end)
+  end
+
+  # Delete-only sweep (no gzip stage) for classes with no read-after-write
+  # value once expired — legacy session md, failure dumps.
+  defp delete_only_class(globs, delete_secs) do
+    cutoff = System.system_time(:second) - delete_secs
+    paths = Enum.flat_map(globs, &Path.wildcard/1)
+    total = length(paths)
+
+    reclaimed_bytes =
+      Enum.reduce(paths, 0, fn path, bytes_acc ->
+        case File.stat(path, time: :posix) do
+          {:ok, %{mtime: mtime}} when mtime < cutoff ->
+            size = file_size(path)
+            File.rm(path)
+            bytes_acc + size
+
+          _ ->
+            bytes_acc
+        end
+      end)
+
+    %{total: total, reclaimed_bytes: reclaimed_bytes}
+  end
+
+  # gzip-only sweep (never deletes) for cycle logs — long-tail durable class,
+  # kept forever, just compressed past the window. The active log's path
+  # (from `.active`, when readable) is always excluded, even if it happens
+  # to be old (a long-running cycle must never have its own live log
+  # rewritten out from under it).
+  defp gzip_only_class(globs, gzip_secs, exempt_path) do
+    cutoff = System.system_time(:second) - gzip_secs
+    paths = Enum.flat_map(globs, &Path.wildcard/1)
+    paths = Enum.reject(paths, fn path -> exempt_path != nil and path == exempt_path end)
+
+    gzipped =
+      Enum.count(paths, fn path ->
+        case File.stat(path, time: :posix) do
+          {:ok, %{mtime: mtime}} when mtime < cutoff -> gzip_in_place(path) == :ok
+          _ -> false
+        end
+      end)
+
+    %{gzipped: gzipped}
+  end
+
+  defp human_bytes(bytes) when bytes >= 1_073_741_824,
+    do: "#{Float.round(bytes / 1_073_741_824, 2)}G"
+
+  defp human_bytes(bytes) when bytes >= 1_048_576, do: "#{Float.round(bytes / 1_048_576, 1)}M"
+  defp human_bytes(bytes) when bytes >= 1024, do: "#{Float.round(bytes / 1024, 1)}K"
+  defp human_bytes(bytes), do: "#{bytes}B"
 
   # ── Main loop ─────────────────────────────────────────────────────────────
 

@@ -260,26 +260,120 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
            ) == nil
   end
 
-  test "1g2: retention prunes _build.log older than 7 days, keeps recent + _cycle.jsonl", ctx do
+  test "1g2: GC deletes build forensics past 30d, gzips 14-30d, keeps recent", ctx do
     logging_dir = Path.join([ctx.dir, "codegen", "logging"])
     File.mkdir_p!(logging_dir)
 
-    old_build = Path.join(logging_dir, "20200101_000000_old_build.log")
+    ancient_build = Path.join(logging_dir, "20200101_000000_ancient_build.log")
+    aging_build = Path.join(logging_dir, "20200601_000000_aging_build.jsonl")
     recent_build = Path.join(logging_dir, "20991231_000000_recent_build.log")
-    keep_cycle = Path.join(logging_dir, "20200101_000000_old_cycle.jsonl")
 
-    File.write!(old_build, "old console capture\n")
+    File.write!(ancient_build, "ancient console capture\n")
+    File.write!(aging_build, "aging jsonl capture\n")
     File.write!(recent_build, "recent console capture\n")
-    File.write!(keep_cycle, ~s({"ev":"init"}\n))
 
-    eight_days_ago = System.system_time(:second) - 8 * 24 * 3600
-    :ok = File.touch(old_build, eight_days_ago)
+    thirty_one_days_ago = System.system_time(:second) - 31 * 24 * 3600
+    twenty_days_ago = System.system_time(:second) - 20 * 24 * 3600
+    :ok = File.touch(ancient_build, thirty_one_days_ago)
+    :ok = File.touch(aging_build, twenty_days_ago)
 
     assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
 
-    refute File.exists?(old_build)
+    refute File.exists?(ancient_build)
+    refute File.exists?(aging_build)
+    assert File.exists?(aging_build <> ".gz")
     assert File.exists?(recent_build)
-    assert File.exists?(keep_cycle)
+  end
+
+  test "1g3: GC never touches the active cycle log or gate-verdicts.jsonl", ctx do
+    logging_dir = Path.join([ctx.dir, "codegen", "logging"])
+    File.mkdir_p!(logging_dir)
+
+    active_cycle = Path.join(logging_dir, "20200101_000000_solo_cycle.jsonl")
+    gate_verdicts = Path.join(logging_dir, "gate-verdicts.jsonl")
+
+    File.write!(active_cycle, ~s({"ev":"init"}\n))
+    File.write!(gate_verdicts, ~s({"verdict":"clear"}\n))
+    File.write!(Path.join(logging_dir, ".active"), active_cycle)
+
+    ancient = System.system_time(:second) - 200 * 24 * 3600
+    :ok = File.touch(active_cycle, ancient)
+    :ok = File.touch(gate_verdicts, ancient)
+
+    assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+
+    assert File.exists?(active_cycle)
+    refute File.exists?(active_cycle <> ".gz")
+    assert File.exists?(gate_verdicts)
+    assert File.read!(gate_verdicts) == ~s({"verdict":"clear"}\n)
+  end
+
+  test "1g4: GC gzips a non-active cycle log past 90d, deletes session-md and failures past 30d, gzips+deletes transcript dirs",
+       ctx do
+    logging_dir = Path.join([ctx.dir, "codegen", "logging"])
+    failures_dir = Path.join(logging_dir, "failures")
+    File.mkdir_p!(failures_dir)
+
+    old_cycle = Path.join(logging_dir, "20200101_000000_old_cycle.jsonl")
+    session_md = Path.join(logging_dir, "20200101_000000_old_session.md")
+    failure_dump = Path.join(failures_dir, "abc-123.jsonl")
+
+    aging_transcript_dir = Path.join(logging_dir, "20200601_000000_aging-slug")
+    ancient_transcript_dir = Path.join(logging_dir, "20200101_000000_ancient-slug")
+    File.mkdir_p!(aging_transcript_dir)
+    File.mkdir_p!(ancient_transcript_dir)
+    File.write!(Path.join(aging_transcript_dir, "01-planner-phoenix.jsonl"), "planner turn\n")
+    File.write!(Path.join(ancient_transcript_dir, "01-developer.jsonl"), "developer turn\n")
+
+    File.write!(old_cycle, ~s({"ev":"init"}\n))
+    File.write!(session_md, "# old session\n")
+    File.write!(failure_dump, ~s({"result":"boom"}\n))
+
+    ninety_one_days_ago = System.system_time(:second) - 91 * 24 * 3600
+    thirty_one_days_ago = System.system_time(:second) - 31 * 24 * 3600
+    forty_six_days_ago = System.system_time(:second) - 46 * 24 * 3600
+    twenty_days_ago = System.system_time(:second) - 20 * 24 * 3600
+
+    :ok = File.touch(old_cycle, ninety_one_days_ago)
+    :ok = File.touch(session_md, thirty_one_days_ago)
+    :ok = File.touch(failure_dump, thirty_one_days_ago)
+    :ok = File.touch(ancient_transcript_dir, forty_six_days_ago)
+    :ok = File.touch(aging_transcript_dir, twenty_days_ago)
+
+    assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+
+    refute File.exists?(old_cycle)
+    assert File.exists?(old_cycle <> ".gz")
+    refute File.exists?(session_md)
+    refute File.exists?(failure_dump)
+    refute File.exists?(ancient_transcript_dir)
+    assert File.dir?(aging_transcript_dir)
+
+    assert File.exists?(Path.join(aging_transcript_dir, "01-planner-phoenix.jsonl.gz"))
+    refute File.exists?(Path.join(aging_transcript_dir, "01-planner-phoenix.jsonl"))
+  end
+
+  test "1g5: GC prints a per-class reclaimed-bytes summary line to stderr", ctx do
+    logging_dir = Path.join([ctx.dir, "codegen", "logging"])
+    File.mkdir_p!(logging_dir)
+
+    ancient_build = Path.join(logging_dir, "20200101_000000_ancient_build.log")
+    File.write!(ancient_build, "ancient console capture\n")
+    thirty_one_days_ago = System.system_time(:second) - 31 * 24 * 3600
+    :ok = File.touch(ancient_build, thirty_one_days_ago)
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+      end)
+
+    assert output =~ "queue: GC codegen/logging — reclaimed"
+    assert output =~ "build-forensics"
+    assert output =~ "transcripts"
+    assert output =~ "session-md"
+    assert output =~ "failures"
+    assert output =~ "kept cycle-logs"
+    assert output =~ "gate-verdicts"
   end
 
   test "1h: failure diagnostics on isolated skip — result/session_id surfaced, FAILED line emitted",
