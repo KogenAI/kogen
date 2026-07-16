@@ -121,13 +121,13 @@ committer)
 developer-*)
     # Pitch: always denied — plan is self-contained.
     if [ "$is_pitch" -eq 1 ]; then
-        deny "Developer cannot read the pitch — plan is self-contained, use ## Plan in the session log."
+        deny "Developer cannot read the pitch — when a ## Plan is present it is self-contained, use it from the session log; when no ## Plan is present, the pitch text is already inlined in your delegation prompt."
         exit 0
     fi
 
     # PROJECT_CONTEXT.md: always denied — plan is self-contained.
     if [ "$is_project_context" -eq 1 ]; then
-        deny "Developer cannot read PROJECT_CONTEXT.md for orientation. Plan is self-contained — use ## Plan in active step log."
+        deny "Developer cannot read PROJECT_CONTEXT.md for orientation. When a ## Plan is present it is self-contained — use it from the active step log; when absent, the pitch text already inlined in your prompt is the complete scope."
         exit 0
     fi
 
@@ -167,13 +167,13 @@ developer-*)
 reviewer-*)
     # Pitch: always denied — reviewer reviews against ## Plan and ## Files Modified.
     if [ "$is_pitch" -eq 1 ]; then
-        deny "Reviewer cannot read the pitch — review against ## Plan and ## Files Modified in the active step log."
+        deny "Reviewer cannot read the pitch — review against ## Plan (when present) and ## Files Modified in the active step log; when no ## Plan was threaded (plan-less stack), report plan-fulfillment checks N/A rather than reading the pitch."
         exit 0
     fi
 
     # PROJECT_CONTEXT.md: always denied — reviewer reads ## Files Modified, not raw context.
     if [ "$is_project_context" -eq 1 ]; then
-        deny "Reviewer cannot read PROJECT_CONTEXT.md. Check plan fulfillment via ## Plan Goal line in active step log."
+        deny "Reviewer cannot read PROJECT_CONTEXT.md. Check plan fulfillment via ## Plan Goal line in active step log when present; when absent, report N/A — no ## Plan in the active step log (plan-less stack)."
         exit 0
     fi
 

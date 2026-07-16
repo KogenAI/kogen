@@ -534,6 +534,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   defp planner_role?(role), do: String.starts_with?(role, "planner-")
 
+  defp reviewer_role?(role), do: String.starts_with?(role, "reviewer-")
+
   # Resolves the planner's plan text for threading into build_prompt/2, via
   # the :planner_plan_fn seam (default reads the real cycle log through
   # LoopGate.planner_body/1 + extract_plan_section/1). Fail-closed: a blank
@@ -2152,18 +2154,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # Thread the planner's ACTUAL plan (resolved+validated at role-result-store
     # time in run_roles/4, stashed at ctx.artifacts[:planner_plan] — NOT the
     # envelope `result`'s `value`, which is the planner's final chat message
-    # and can be a recap with no plan in it) to the developer under the exact
-    # `## Plan` heading developer.md contracts on, so it implements what was
-    # actually planned instead of re-deriving scope from the raw pitch. (This
+    # and can be a recap with no plan in it) to the developer AND the reviewer
+    # under the exact `## Plan` heading their baked rules contract on, so each
+    # works from what was actually planned instead of re-deriving scope from
+    # the raw pitch (developer) or reviewing blind with vacuous plan-fulfillment
+    # checks (reviewer — see pitch "reviewer checks bind to reality"). (This
     # is the real value: prior-role context threading — see structural gap
     # #6. We do NOT try to suppress "gold-plating" like SEO/OG/JSON-LD: that
     # is normal, harmless polish, not a defect — an earlier iteration
     # mis-treated it as one.) Static has no planner in its sequence, so this
-    # is always absent there — the prompt stays the raw pitch, unchanged.
+    # is always absent there — the prompt stays the raw pitch, unchanged, for
+    # both developer-static and reviewer-static.
     plan = get_in(ctx, [:artifacts, :planner_plan])
 
     base =
-      if developer_role?(role) and is_binary(plan) and String.trim(plan) != "" do
+      if (developer_role?(role) or reviewer_role?(role)) and is_binary(plan) and
+           String.trim(plan) != "" do
         base <> "\n\n" <> plan
       else
         base

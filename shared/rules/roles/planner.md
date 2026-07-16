@@ -71,7 +71,7 @@ Outcome rule per `(NEW)` entity:
 - Existing equivalent found → REUSE it: downgrade the entity to `(EXISTING)` in `Files to touch`, name the real path, do NOT create a duplicate. Hand the developer the exact existing entity to reuse IN THE PLAN (the developer reads nothing new — self-contained-plan bet preserved).
 - None found → `(NEW)` is justified; record the verdict.
 
-Emit the result in the `## Plan` `**Redundancy check**` field: for each `(NEW)` entity, the grep run + verdict. When the plan adds no `(NEW)` file/module/fn, the field reads `none — plan adds no (NEW) entities`.
+Emit the result in the `## Plan` `**Redundancy check**` field in a MACHINE-CHECKABLE shape the reviewer gates on: for each `(NEW)` entity, one line `CLEAR — <entity>: <grep run>, no equivalent found` or `DUPLICATE: <entity> at <path>` (equivalent found — this MUST NOT appear if the entity was correctly downgraded to `(EXISTING)` per the outcome rule above; a lingering `DUPLICATE:` verdict is a blocking reviewer finding). When the plan adds no `(NEW)` file/module/fn, the field reads `none — plan adds no (NEW) entities`.
 
 ## Module Skeletons (Mandatory for NEW Elixir files)
 
@@ -114,7 +114,7 @@ Verdict: `composes` (no conflict) or `contradiction: <sibling names>`. **FORBIDD
 
 Re-read plan: consistency, framework fit, redundancy, edge cases, integration points, test coverage, delegation prompt concrete, alternatives weighed, risks classified, no "investigate further" deferrals.
 
-Existing-entity scan run: every `(NEW)` entity in Files to touch grepped against its owning slice; equivalents downgraded to `(EXISTING)`; `**Redundancy check**` field emitted with grep transcripts (or `none` when no `(NEW)` entities).
+Existing-entity scan run: every `(NEW)` entity in Files to touch grepped against its owning slice; equivalents downgraded to `(EXISTING)`; `**Redundancy check**` field emitted with a `CLEAR`/`DUPLICATE:` verdict per `(NEW)` entity and grep transcripts (or `none` when no `(NEW)` entities).
 
 ## Rule J — Parallel Cases Get Parallel Treatment
 

@@ -1112,7 +1112,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert content == "raw pitch text"
     end
 
-    test "non-developer role prompt is not enriched with the plan block" do
+    test "reviewer-phoenix prompt IS enriched with the plan block" do
       plan = "## Plan\n\n**Approach**: do the thing."
 
       ctx = %{
@@ -1123,7 +1123,32 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
 
-      refute content =~ "**Approach**: do the thing."
+      assert content =~ "## Plan"
+      assert content =~ "**Approach**: do the thing."
+    end
+
+    test "reviewer-static prompt is NOT enriched (static has no planner, artifact absent)" do
+      ctx = %{cwd: "/tmp", pitch: "raw pitch text", artifacts: %{}}
+
+      content = OrchestrationLoop.build_prompt("reviewer-static", ctx)
+
+      refute content =~ "## Plan"
+    end
+
+    test "committer and context-curator prompts are not enriched with the plan block" do
+      plan = "## Plan\n\n**Approach**: do the thing."
+
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "raw pitch text",
+        artifacts: %{planner_plan: plan}
+      }
+
+      committer_content = OrchestrationLoop.build_prompt("committer", ctx)
+      curator_content = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      refute committer_content =~ "**Approach**: do the thing."
+      refute curator_content =~ "**Approach**: do the thing."
     end
   end
 
