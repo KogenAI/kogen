@@ -20,6 +20,24 @@
 
 set -uo pipefail
 
+# Ambient OS/shell-owned env var names — never supplied by a deployer via
+# .env; owned by the OS/shell environment itself. A required read of one of
+# these can never be "undeclared app config" and must never be flagged.
+# LC_* is matched as a prefix family (POSIX locale vars: LC_ALL, LC_COLLATE,
+# LC_CTYPE, ...); the rest are exact, case-sensitive whole-name matches.
+AMBIENT_OS_VARS="HOME USER LOGNAME PATH PWD SHELL TERM TMPDIR LANG HOSTNAME"
+
+is_ambient_var() {
+    local name="$1" candidate
+    case "$name" in
+    LC_*) return 0 ;;
+    esac
+    for candidate in $AMBIENT_OS_VARS; do
+        [ "$name" = "$candidate" ] && return 0
+    done
+    return 1
+}
+
 repo_root="${1:-}"
 if [ -z "$repo_root" ]; then
     exit 0
@@ -60,6 +78,7 @@ fi
 undocumented_vars=""
 while IFS= read -r var_name; do
     [ -z "$var_name" ] && continue
+    is_ambient_var "$var_name" && continue
     if ! grep -qE "^(export )?${var_name}=" .env.sample 2>/dev/null ||
         ! grep -qE "^(export )?${var_name}=" .env.prod.sample 2>/dev/null; then
         undocumented_vars="${undocumented_vars}${var_name}

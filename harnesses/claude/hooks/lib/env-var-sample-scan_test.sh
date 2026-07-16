@@ -129,5 +129,50 @@ assert_exit "undeclared defaulted spaced read → exit 0" "0" "$rc"
 assert_eq "undeclared defaulted spaced read → empty stdout" "" "$out"
 rm -rf "$TJ"
 
+# --- Test K: undeclared ambient System.get_env("HOME") → exit 0, exempt ---
+TK=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.get_env("HOME")\nend\n' >"$TK/lib/foo.ex"
+out=$(bash "$SCAN" "$TK")
+rc=$?
+assert_exit "undeclared ambient HOME → exit 0" "0" "$rc"
+assert_eq "undeclared ambient HOME → empty stdout" "" "$out"
+rm -rf "$TK"
+
+# --- Test L: undeclared ambient HOME + undeclared real app var → only app var printed ---
+TL=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.get_env("HOME")\n  def baz, do: System.get_env("MY_APP_TOKEN")\nend\n' >"$TL/lib/foo.ex"
+out=$(bash "$SCAN" "$TL")
+rc=$?
+assert_exit "ambient + real var mixed → exit 1" "1" "$rc"
+assert_eq "ambient + real var mixed → prints only MY_APP_TOKEN" "MY_APP_TOKEN" "$out"
+rm -rf "$TL"
+
+# --- Test M: undeclared System.get_env("LC_ALL") → exit 0, exempt (LC_* glob) ---
+TM=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.get_env("LC_ALL")\nend\n' >"$TM/lib/foo.ex"
+out=$(bash "$SCAN" "$TM")
+rc=$?
+assert_exit "undeclared LC_ALL → exit 0" "0" "$rc"
+assert_eq "undeclared LC_ALL → empty stdout" "" "$out"
+rm -rf "$TM"
+
+# --- Test N: undeclared System.fetch_env("PATH") → exit 0, exempt (fetch_env too) ---
+TN=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.fetch_env("PATH")\nend\n' >"$TN/lib/foo.ex"
+out=$(bash "$SCAN" "$TN")
+rc=$?
+assert_exit "undeclared fetch_env PATH → exit 0" "0" "$rc"
+assert_eq "undeclared fetch_env PATH → empty stdout" "" "$out"
+rm -rf "$TN"
+
+# --- Test O: undeclared System.get_env("HOME_GROWN") → exit 1 (exact-match, not prefix) ---
+TO=$(new_repo)
+printf 'defmodule Foo do\n  def bar, do: System.get_env("HOME_GROWN")\nend\n' >"$TO/lib/foo.ex"
+out=$(bash "$SCAN" "$TO")
+rc=$?
+assert_exit "undeclared HOME_GROWN → exit 1" "1" "$rc"
+assert_eq "undeclared HOME_GROWN → prints var" "HOME_GROWN" "$out"
+rm -rf "$TO"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
