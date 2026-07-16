@@ -8,9 +8,11 @@ Atomic unit of work. One problem, one solution sketch, one appetite. Written by 
 
 ## Frontmatter (machine-readable metadata)
 
-A pitch opens with a YAML frontmatter block (`---`-delimited) BEFORE the `## Problem` heading, carrying typed machine fields: `status:` (SKELETON | SHAPING | SHAPED), `appetite:` (small | big), `blocks_on:` (a flow-list of dependency slugs, e.g. `blocks_on: [dep-one]`, or `blocks_on: []`), and `summary:` (a YAML block-scalar `>` holding the 1–3 sentence what/effect/user-impact summary, persisted at SHAPED). The body below the closing `---` stays free markdown (Problem/Scope/Solution sketch/etc.) — the frontmatter is metadata only, never re-parsed as structure.
+A pitch opens with a YAML frontmatter block (`---`-delimited) BEFORE the `## Problem` heading, carrying typed machine fields: `status:` (SKELETON | SHAPING | SHAPED), `appetite:` (small | big), `blocks_on:` (a flow-list of dependency slugs, e.g. `blocks_on: [dep-one]`, or `blocks_on: []`), `scope:` (a flow-list of repo-relative paths this pitch will edit — inline or multiline; absent = unrouted, never guessed at), `shipped_sha:` (the short commit hash that shipped this pitch, written by the retire machinery at ship time), `shipped_range:` (the `<before>..<after>` range of that commit, written at ship time), and `summary:` (a YAML block-scalar `>` holding the 1–3 sentence what/effect/user-impact summary, persisted at SHAPED). The body below the closing `---` stays free markdown (Problem/Scope/Solution sketch/etc.) — the frontmatter is metadata only, never re-parsed as structure.
 
 **Dual-read**: pre-existing pitches with no frontmatter block fall back to the legacy prose conventions — a `> Status:` blockquote for status, `Blocks-on:`/`## Dependencies` prose lines for dependencies. Both `LoopQueue.parse_edges/2` (build-queue topo-sort) and the pitch-format-validators (`.sh`/`.ts`) read frontmatter first, falling back to prose when absent. New pitches should emit frontmatter.
+
+**Ship recording**: when a pitch is retired (moved `ready/ → shipped/`), the retirer machinery writes `shipped_sha:` and `shipped_range:` into the pitch file immediately before the rename, and mirrors the sha + range as a git note on the landing commit (`refs/notes/pitches`). The frontmatter entry answers "what shipped this pitch?" at the point of contact (opening `shipped/<slug>.md`); the git note answers "which pitch is this commit?" via `git log --notes=pitches`. Both are written atomically by `LoopQueue.record_ship/4`.
 
 ## Where to write: relative or abs-in-cwd — both accepted
 
@@ -34,11 +36,25 @@ The write-surface hook (`orchestrator-no-source-edit.sh`, used by `shape` and ot
 
 Launchers like `shape` also auto-edit pitches via this same resolved path. If a different path was used, the launcher can't find the file.
 
+## Scope field requirement
+
+**Mandatory: every pitch promoted to `ready/` MUST carry a `scope:` frontmatter field.** The field is a YAML flow-list of repo-relative paths this pitch will edit (e.g. `scope: [test_harness/lib/loop_queue.ex, shared/rules/_core/]`). Write it inline when short, or multiline (key alone on one line, then `[`/items/`]` on following lines) when the list is longer. `/ready` refuses to move a pitch from `draft/` when `scope:` is absent or malformed. The `mix codegen.pitches.scope` reader (see § System Components, below) uses this field to partition parallel work and detect conflicts between pitches.
+
 ## Slug conventions
 
 - Lowercase, hyphens only: `fix-session-log-ordering.md`
 - Descriptive but short (3–5 words)
 - No dates in slug — file timestamps track that
+
+## System Components
+
+**`mix codegen.pitches.scope [--dir=ready|draft|shipped]`** — read-only operator tool that analyzes pitches in the named directory and reports collision/disjoint/unrouted status:
+
+- **COLLISIONS** — pairs of pitches that declare overlapping edit surfaces (shared file paths in both `scope:` lists). Identifies potential merge conflicts if both run in parallel.
+- **DISJOINT** — pitches with `scope:` fields that touch no shared paths with any other scoped pitch in the batch. Safe to run in parallel without conflicts.
+- **UNROUTED** — pitches with no `scope:` field (or no frontmatter block at all). Cannot be partitioned; a human must route these manually or investigate whether they have a real scope.
+
+Run before a multi-pitch drain (`--queue`) to detect which pitches can safely run in parallel on separate machines.
 
 ## Cross-reference
 

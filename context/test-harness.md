@@ -19,10 +19,11 @@ Tests live under `test_harness/test/stacks/` organized by stack (phoenix, static
 | `test_harness/lib/codegen_test_harness/role_resolver.ex`      | Resolves `{role, harness}` → `{model, effort}` via `config.yaml`; `resolve_harness/2` resolves the per-role harness override. Agent identity (system prompt, allowed tools) is NOT resolved here — claude_code invokes roles natively via `claude --agent <role>`. **Critical**: reads `.harness.<role>.<harness>.*` (e.g. `.harness.ops.claude.model`), NOT `.roles.<role>.*` (read by live launchers, e.g. `claude-ops.sh` reads `.roles.ops.model`) — distinct blocks. Hermetic tests in `role_resolver_test.exs`. |
 | `test_harness/lib/codegen_test_harness/orchestration_loop.ex` | Deterministic cycle driver: sequences roles per stack, invokes each via `RoleResolver` → `codegen-call`, runs the gate via `LoopGate`. Hermetic tests in `orchestration_loop_test.exs`. |
 | `test_harness/lib/codegen_test_harness/loop_gate.ex`          | Runs the gate as a loop step by shelling `gate-select.sh`/`gate-result.sh` — no gate-logic reimplementation.                                                                            |
-| `test_harness/lib/codegen_test_harness/loop_queue.ex`         | Kahn topo-sort + transient-error classification; ported from removed `build-queue.sh`. See "Orchestration Loop" § below. Tests: `loop_queue_test.exs`. |
+| `test_harness/lib/codegen_test_harness/loop_queue.ex`         | Kahn topo-sort + transient-error classification; ported from removed `build-queue.sh`. Also parses `scope:` frontmatter (`parse_scope/2`, `scope_report/1`). See "Orchestration Loop" § below. Tests: `loop_queue_test.exs`. |
 | `test_harness/lib/codegen_test_harness/loop_queue_drain.ex`   | Multi-pitch drain — `LoopQueue`'s live caller. See "Orchestration Loop" § below. Tests: `loop_queue_drain_test.exs`. |
 | `test_harness/lib/mix/tasks/codegen.loop.ex`                  | `mix codegen.loop --harness=<claude_code\|pi> --stack=<phoenix\|static> --cwd=<dir> <pitch>` — entrypoint `dispatch.sh`'s build path execs.                                             |
 | `test_harness/lib/mix/tasks/codegen.loop.queue.ex`            | `mix codegen.loop.queue --harness=<claude\|pi> --stack=<S> --cwd=<dir>` — wraps `LoopQueueDrain.drain/1`; invoked by `--queue` launcher flags. |
+| `test_harness/lib/mix/tasks/codegen.pitches.scope.ex`         | `mix codegen.pitches.scope [--dir=ready\|draft\|shipped] [--cwd=<dir>]` — read-only COLLISIONS/DISJOINT/UNROUTED report over `LoopQueue.scope_report/1`. No gate, no partitioning. Tests: `codegen_pitches_scope_test.exs`. |
 | `test_harness/record-green.sh`                                | Records current commit SHA + timestamp to `last_green.json`; accepts `--auto-commit` flag for scoped fail-soft commit                                                                   |
 | `test_harness/last_green.json`                                | Baseline: last commit SHA where full test suite passed                                                                                                                                  |
 | `test_harness/test/harness_parity/pi_parity_test.exs`         | Cross-harness build parity tests (claude vs pi); tagged `@moduletag :harness_parity`                                                                                                    |
@@ -185,11 +186,11 @@ Hermetic bash test files (e.g., `prompt-content-parity_test.sh`) using sequentia
 
 ### Fixture Invalidation on Hook Logic Changes
 
-When a hook's conditional logic widens (e.g., `agentType === "planner-phoenix"` → `agentType.startsWith("planner")`), fixtures relying on the literal condition falling through to an `else` branch become INVALID post-widen — they must be **converted**, not kept as-is. Example (session 20260613_planner-header-churn): a `subagent-retrospective-guard.ts` fixture relied on the old exact-match falling through; after widening, the fixture's header was never found and the hook silently skipped. **Critical**: when narrowing/widening hook logic, grep paired test file(s) for fixtures the change may invalidate; convert before landing or the suite emits false-positive passes.
+When a hook's conditional logic widens (e.g., exact-match → `startsWith`), fixtures relying on the literal condition falling through to an `else` branch become INVALID post-widen — must be **converted**, not kept as-is. Example: a fixture relied on old exact-match falling through; after widening, its header was never found and the hook silently skipped. **Critical**: when narrowing/widening hook logic, grep paired test file(s) for fixtures the change may invalidate; convert before landing.
 
 ### Test Mock Anti-Pattern: Encoding the Prod Bug
 
-A test fixture can encode the SAME false premise as the production bug it is meant to catch — keeping suite green through multiple commits of regression. Example (queue-drain-gate-freshness-inverts-commit-order pitch): a mock returned post-commit HEAD where the real gate only ever writes pre-commit HEAD; both modeled the same wrong world, so the suite stayed green through the bug. **Fix**: re-model the fixture to the correct assumption, and add producer/consumer reconciliation tests running the REAL producer (e.g. `LoopGate.run_gate/2` in a real tmp git repo) against the REAL consumer's own predicate — that test class was absent, letting the false premise hide.
+A test fixture can encode the SAME false premise as the prod bug it should catch — suite stays green through regressions. Example: a mock returned post-commit HEAD where the real gate only ever writes pre-commit HEAD. **Fix**: re-model the fixture correctly + add producer/consumer reconciliation tests running the REAL producer against the REAL consumer's predicate.
 
 ### Fixture and Build Patterns
 
@@ -248,4 +249,4 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 
 ## Trigger Keywords
 
-test_harness, test-stacks, last_green, record-green.sh, stack scaffold test, ExUnit assertions, role resolver, orchestration loop, mix codegen.loop, mix codegen.loop.queue, LoopGate, LoopQueue, LoopQueueDrain, claude-build --queue, pi-build --queue, flake triage, hermetic regression guards
+test_harness, test-stacks, last_green, record-green.sh, stack scaffold test, ExUnit assertions, role resolver, orchestration loop, mix codegen.loop, mix codegen.loop.queue, mix codegen.pitches.scope, LoopGate, LoopQueue, LoopQueueDrain, claude-build --queue, pi-build --queue, flake triage, hermetic regression guards, scope: frontmatter

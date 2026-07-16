@@ -205,6 +205,47 @@ defmodule CodegenTestHarness.LoopQueueTest do
 
       assert LoopQueue.ordered_slugs(dir) == ["a", "b"]
     end
+
+    test "MULTILINE frontmatter blocks_on: parses every item (regression — used to silently -> [])",
+         %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      blocks_on:
+        [
+          dep-one,
+          dep-two,
+        ]
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "dep-one"}, {"c", "dep-two"}]
+    end
+
+    test "multiline frontmatter blocks_on: with a scope: key following still stops at the boundary",
+         %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      blocks_on:
+        [
+          dep-one,
+        ]
+      scope:
+        [
+          lib/foo.ex,
+        ]
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_edges("c", path) == [{"c", "dep-one"}]
+    end
   end
 
   describe "strip_frontmatter/1" do
@@ -228,6 +269,145 @@ defmodule CodegenTestHarness.LoopQueueTest do
       content = "---\nstatus: ready\nno closing delimiter here\n"
 
       assert LoopQueue.strip_frontmatter(content) == content
+    end
+  end
+
+  describe "parse_scope/2" do
+    test "returns {:ok, nil} for a missing file", %{dir: dir} do
+      assert LoopQueue.parse_scope("slug", Path.join(dir, "nope.md")) == {:ok, nil}
+    end
+
+    test "returns {:ok, nil} when no frontmatter block is present", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "# Just a task\n\nDo the thing.\n")
+
+      assert LoopQueue.parse_scope("c", path) == {:ok, nil}
+    end
+
+    test "returns {:ok, nil} when frontmatter is present but scope: key is absent", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\n---\n# Problem\n")
+
+      assert LoopQueue.parse_scope("c", path) == {:ok, nil}
+    end
+
+    test "inline scope: [a, b] parses both paths", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nscope: [lib/foo.ex, lib/bar.ex]\n---\n# Problem\n")
+
+      assert LoopQueue.parse_scope("c", path) == {:ok, ["lib/foo.ex", "lib/bar.ex"]}
+    end
+
+    test "scope: [] explicit empty list parses as {:ok, []}", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nscope: []\n---\n# Problem\n")
+
+      assert LoopQueue.parse_scope("c", path) == {:ok, []}
+    end
+
+    test "MULTILINE scope: (the only hand-written form in the corpus) parses every path",
+         %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      scope:
+        [
+          test_harness/lib/codegen_test_harness/loop_queue.ex,
+          shared/rules/_core/,
+        ]
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_scope("c", path) ==
+               {:ok,
+                ["test_harness/lib/codegen_test_harness/loop_queue.ex", "shared/rules/_core/"]}
+    end
+
+    test "multiline scope: followed by another top-level key stops at the boundary", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      scope:
+        [
+          lib/foo.ex,
+        ]
+      appetite: small
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_scope("c", path) == {:ok, ["lib/foo.ex"]}
+    end
+
+    test "scope: present but not a parseable flow-list raises loud, naming the slug", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nscope: not-a-list\n---\n# Problem\n")
+
+      assert_raise RuntimeError, ~r/c has a scope: value that is not a parseable/, fn ->
+        LoopQueue.parse_scope("c", path)
+      end
+    end
+  end
+
+  describe "scope_report/1" do
+    test "a pitch with no scope: is UNROUTED", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\n---\n# a\n")
+
+      assert LoopQueue.scope_report(dir) == {[], [], ["a"]}
+    end
+
+    test "two pitches with disjoint scope: lists are both DISJOINT", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n")
+
+      assert LoopQueue.scope_report(dir) == {["a", "b"], [], []}
+    end
+
+    test "two pitches sharing a path are both COLLISIONS, naming the shared path", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex, lib/a.ex]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex, lib/b.ex]\n---\n# b\n"
+      )
+
+      assert LoopQueue.scope_report(dir) == {[], [{"a", "b", ["lib/shared.ex"]}], []}
+    end
+
+    test "scope: [] explicit empty is DISJOINT, not UNROUTED", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: []\n---\n# a\n")
+
+      assert LoopQueue.scope_report(dir) == {["a"], [], []}
+    end
+
+    test "mixed batch: collision + disjoint + unrouted all classified correctly", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# b\n"
+      )
+
+      File.write!(Path.join(dir, "c.md"), "---\nstatus: SHAPED\nscope: [lib/c.ex]\n---\n# c\n")
+      File.write!(Path.join(dir, "d.md"), "---\nstatus: SHAPED\n---\n# d\n")
+
+      assert LoopQueue.scope_report(dir) ==
+               {["c"], [{"a", "b", ["lib/shared.ex"]}], ["d"]}
+    end
+
+    test "empty dir returns all-empty report", %{dir: dir} do
+      assert LoopQueue.scope_report(dir) == {[], [], []}
     end
   end
 

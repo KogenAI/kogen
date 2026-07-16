@@ -81,7 +81,7 @@ Rules:
 The in-scope pitch begins with a YAML frontmatter block (`---`-delimited) carrying `status:` (enum: SKELETON | SHAPING | SHAPED). Keep it current as you work:
 
 - **On first advance** — the first time you edit a loaded SKELETON pitch to advance it, set `status: SHAPING` in the frontmatter. Also write `status: SHAPING` when running headless and you exit after writing a `## Questions` block.
-- **On completion** — when the compaction step is done and the pitch is buildable, set `status: SHAPED` in the frontmatter.
+- **On completion** — when the compaction step is done and the pitch is buildable, set `status: SHAPED` in the frontmatter, and write `scope:` — a flow-list of the repo-relative paths this pitch will edit (inline `scope: [a, b]`, or multiline for a long list), distilled from whatever blast-radius map the investigation produced.
 
 If the pitch has no frontmatter block yet, add one as the very first lines of the file (opening `---` MUST be line 1). Only one frontmatter block per file. A pre-existing pitch that still carries the legacy `> Status:` blockquote (no frontmatter) may keep it — dual-read means both forms are recognized — but prefer emitting frontmatter going forward.
 

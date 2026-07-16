@@ -107,6 +107,142 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
+  @doc """
+  Parses the `scope:` frontmatter field out of the pitch file at
+  `pitch_path` — repo-relative paths this pitch will edit (see
+  `codegen/pitches/ready/a-pitch-declares-the-files-it-will-touch.md`).
+
+  Reuses the SAME multiline-capable frontmatter reader as
+  `parse_edges/2`'s `blocks_on:` parse (`extract_frontmatter_key/2`) —
+  `scope:`'s only hand-written instance in the corpus is multiline (a
+  path list rarely fits inline), so multiline is the norm here, not an
+  edge case.
+
+  Returns:
+
+    - `{:ok, [path, ...]}` — `scope:` present and a well-formed flow-list
+      (possibly empty, `scope: []`)
+    - `{:ok, nil}` — no `scope:` key, or no frontmatter block at all —
+      the documented "unrouted" sentinel, not an error
+    - raises — `scope:` key present but its value is not a parseable
+      `[...]` flow-list (e.g. a bare scalar). A confidently-wrong empty
+      partition is worse than a loud crash naming the slug.
+  """
+  @spec parse_scope(slug(), String.t()) :: {:ok, [String.t()] | nil}
+  def parse_scope(slug, pitch_path) do
+    if File.exists?(pitch_path) do
+      content = File.read!(pitch_path)
+
+      case frontmatter_block(content) do
+        nil ->
+          {:ok, nil}
+
+        block ->
+          case extract_frontmatter_key(block, "scope:") do
+            "" ->
+              {:ok, nil}
+
+            raw ->
+              case parse_flow_list_strict(raw) do
+                {:ok, paths} ->
+                  {:ok, paths}
+
+                :error ->
+                  raise "LoopQueue.parse_scope: #{slug} has a scope: value that is " <>
+                          "not a parseable [...] flow-list: #{inspect(raw)}"
+              end
+          end
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
+  # Like parse_flow_list/1 but distinguishes "not a flow-list at all"
+  # (:error, for parse_scope/2's loud raise) from "flow-list, possibly
+  # empty" ({:ok, list}). parse_flow_list/1 keeps its own [] collapse
+  # for blocks_on:'s dual-read semantics (absent == no deps, unchanged).
+  @spec parse_flow_list_strict(String.t()) :: {:ok, [String.t()]} | :error
+  defp parse_flow_list_strict(value) do
+    trimmed = String.trim(value)
+
+    case Regex.run(~r/^\[(.*)\]$/s, trimmed) do
+      [_, inner] ->
+        paths =
+          inner
+          |> String.split(",")
+          |> Enum.map(&String.trim/1)
+          |> Enum.map(&unquote_flow_item/1)
+          |> Enum.reject(&(&1 == ""))
+
+        {:ok, paths}
+
+      _ ->
+        :error
+    end
+  end
+
+  @doc """
+  Scans the `.md` slugs under `pitches_dir` and returns
+  `{disjoint, collisions, unrouted}`:
+
+    - `disjoint` — slugs whose `scope:` paths share no file with any
+      other scoped pitch in the batch
+    - `collisions` — `{slug_a, slug_b, shared_paths}` triples for every
+      pair of scoped pitches sharing at least one path
+    - `unrouted` — slugs with no `scope:` field (or empty frontmatter)
+
+  Pure/deterministic — no LLM, no network. A pitch with `scope: []`
+  (present, explicitly empty) is DISJOINT (it declares it touches
+  nothing), not unrouted — only a genuinely ABSENT key is unrouted.
+  """
+  @spec scope_report(String.t()) ::
+          {disjoint :: [slug()], collisions :: [{slug(), slug(), [String.t()]}],
+           unrouted :: [slug()]}
+  def scope_report(pitches_dir) do
+    slugs =
+      pitches_dir
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.map(&Path.basename(&1, ".md"))
+      |> Enum.sort()
+
+    scoped =
+      Enum.reduce(slugs, %{}, fn slug, acc ->
+        case parse_scope(slug, Path.join(pitches_dir, "#{slug}.md")) do
+          {:ok, nil} -> acc
+          {:ok, paths} -> Map.put(acc, slug, paths)
+        end
+      end)
+
+    unrouted = Enum.reject(slugs, &Map.has_key?(scoped, &1))
+
+    scoped_slugs = scoped |> Map.keys() |> Enum.sort()
+
+    collisions =
+      for {slug_a, i} <- Enum.with_index(scoped_slugs),
+          slug_b <- Enum.drop(scoped_slugs, i + 1),
+          shared = shared_paths(scoped[slug_a], scoped[slug_b]),
+          shared != [] do
+        {slug_a, slug_b, shared}
+      end
+
+    collided_slugs = collisions |> Enum.flat_map(fn {a, b, _} -> [a, b] end) |> MapSet.new()
+    disjoint = Enum.reject(scoped_slugs, &MapSet.member?(collided_slugs, &1))
+
+    {disjoint, collisions, unrouted}
+  end
+
+  defp shared_paths(paths_a, paths_b) do
+    set_a = MapSet.new(paths_a)
+    set_b = MapSet.new(paths_b)
+
+    set_a
+    |> MapSet.intersection(set_b)
+    |> MapSet.to_list()
+    |> Enum.sort()
+  end
+
   # Returns the raw text between the opening and closing `---` delimiters
   # when `content` starts with a frontmatter block, else nil. The opening
   # delimiter MUST be the very first line (no leading blank lines).
@@ -162,23 +298,64 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
-  # Reads a `blocks_on: [a, b]` inline flow-list from a frontmatter block
-  # body. Absent key, or `blocks_on: []`, returns [].
+  # Reads a `blocks_on: [a, b]` flow-list from a frontmatter block body —
+  # either the INLINE form (`blocks_on: [a, b]` on one line) or the
+  # MULTILINE form (the key alone on one line, `[`/items/`]` on the
+  # lines that follow — the only form ever hand-written for `scope:`,
+  # see `parse_scope/2`). Absent key, or `blocks_on: []`, returns [].
   @spec parse_frontmatter_blocks_on(String.t()) :: [slug()]
   defp parse_frontmatter_blocks_on(block) do
     block
-    |> String.split("\n")
-    |> Enum.find_value("", &frontmatter_blocks_on_line/1)
+    |> extract_frontmatter_key("blocks_on:")
     |> parse_flow_list()
   end
 
-  defp frontmatter_blocks_on_line(line) do
-    trimmed = String.trim(line)
+  # Extracts the raw value text for `key` (e.g. "blocks_on:" or "scope:")
+  # from a frontmatter block, handling BOTH grammars:
+  #
+  #   - inline:    `key: [a, b]`               -> "[a, b]"
+  #   - multiline: `key:` alone, then following
+  #                lines up to the next top-level
+  #                `other_key:` line or block end -> those lines joined
+  #
+  # Returns "" when `key` is absent — the documented "no value" sentinel
+  # consumed by `parse_flow_list/1`.
+  @spec extract_frontmatter_key(String.t(), String.t()) :: String.t()
+  defp extract_frontmatter_key(block, key) do
+    lines = String.split(block, "\n")
 
-    if String.starts_with?(trimmed, "blocks_on:") do
-      String.trim_leading(trimmed, "blocks_on:")
+    case Enum.find_index(lines, &frontmatter_key_line?(&1, key)) do
+      nil ->
+        ""
+
+      idx ->
+        line = Enum.at(lines, idx)
+        tail = String.trim(String.trim_leading(String.trim(line), key))
+
+        if tail == "" do
+          # Multiline form: the key line carries no value — collect
+          # every following line up to (not including) the next
+          # top-level "word:" line or the end of the block.
+          lines
+          |> Enum.drop(idx + 1)
+          |> Enum.take_while(&(not top_level_key_line?(&1)))
+          |> Enum.join("\n")
+        else
+          tail
+        end
     end
   end
+
+  defp frontmatter_key_line?(line, key) do
+    String.starts_with?(String.trim(line), key)
+  end
+
+  # A "word:" line at the frontmatter's own indentation (no leading
+  # whitespace) marks the start of the NEXT top-level key — the
+  # boundary that ends a multiline value's continuation lines. Lines
+  # indented under the value (e.g. "  test_harness/...,") never match.
+  @top_level_key_regex ~r/^[a-zA-Z_][a-zA-Z0-9_]*:/
+  defp top_level_key_line?(line), do: Regex.match?(@top_level_key_regex, line)
 
   defp parse_flow_list(value) do
     trimmed = String.trim(value)
