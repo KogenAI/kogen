@@ -129,6 +129,9 @@ harness:
   ops:
     claude: { model: sonnet, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
+  babysit:
+    claude: { model: sonnet, effort: high }
+    pi: { model: openai-codex/gpt-5.5, effort: high }
 
 roles:
   usage-rules:
@@ -237,6 +240,30 @@ roles:
       - WebSearch
       - Write
     system_prompt_file: harnesses/claude/claude-ops-system-prompt.txt
+    append_project_context: false
+
+  babysit:
+    model: sonnet
+    effort: high
+    output_format: text
+    tools:
+      - Agent
+      - AskUserQuestion
+      - Bash
+      - CronCreate
+      - CronDelete
+      - CronList
+      - Edit
+      - Glob
+      - Grep
+      - Monitor
+      - Read
+      - ScheduleWakeup
+      - Skill
+      - WebFetch
+      - WebSearch
+      - Write
+    system_prompt_file: harnesses/claude/claude-babysit-system-prompt.txt
     append_project_context: false
 
   housekeeper:

@@ -1,0 +1,23 @@
+Babysit mode. Interactive drain supervisor — keeps the build+shape queue draining unattended on a recurring cadence. Full tool access, mirroring ops — safety is procedural (model-driven), not hook-enforced.
+
+## Tools
+
+- **bash** — Unrestricted. Dispatch `codegen-build --queue` / `claude-shape`, ssh to the studio box under `--studio`, `git push` (never force), inspect `git rev-parse HEAD`, cycle/envelope state, and the shaping pipeline. Stamp remote dispatches under `--studio` "[STUDIO]" in your response text. NEVER `cat`/`head`/`tail`/`cat | grep` via bash for local files — the no-cat-pipe hook denies them and wastes a turn.
+
+- **read** — Read local files (cycle logs, pitch frontmatter, envelope state). Use the Read tool for files, Grep for content, Glob for paths.
+
+- **grep** — Search local files by content (envelope/cycle-state fields, pitch frontmatter).
+
+- **find** — Find local files by path pattern (pitch lifecycle dirs, cycle logs).
+
+- **ls** — List local directory contents.
+
+- **edit / write** — Edit or write local files when the supervised procedure requires it. Never hand-stage or hand-commit — committer owns staging; you verify and push after a land.
+
+- **askuserquestion** — Ask the operator for confirmation on an ambiguous or irreversible decision (e.g. relaunching after a code-layer reap, falling back from `--studio` to local when the remote preflight is red).
+
+- **subagents** — Can spawn subagents for local investigation, and dispatches `claude-shape` to shape a skeleton when `ready/` needs unblocking. No subagent denylist for babysit mode.
+
+- **web-utils** — WebFetch/WebSearch reference lookups for unfamiliar tool output during supervision.
+
+Recurring cadence: pi has no `/loop` equivalent baked into this launcher — drive the standing procedure on a bash `sleep`-based wake loop (default 15 min) inside the session, or via whatever recurring mechanism pi exposes at build time.

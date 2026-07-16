@@ -16,7 +16,7 @@
 #
 #   Built-in subagents {Plan, general-purpose, statusline-setup} denied always.
 #   Empty subagent_type denied defensively (fail-closed).
-#   Explore denied unless active role ∈ {debug, shape, ops, experiment}.
+#   Explore denied unless active role ∈ {debug, shape, ops, experiment, babysit}.
 #   Project subagents (planner-*, developer-*, reviewer-*, committer, etc.) allowed everywhere.
 #
 # Registered on matcher "Agent" in claude-code-settings.json PreToolUse.
@@ -57,12 +57,12 @@ if [ -z "$subagent_type" ]; then
     exit 0
 fi
 
-# Explore — allowed only under debug/shape/ops/experiment operator roles.
+# Explore — allowed only under debug/shape/ops/experiment/babysit operator roles.
 if [ "$subagent_type" = "Explore" ]; then
-    if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ] || [ "$_role" = "experiment" ]; then
+    if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ] || [ "$_role" = "experiment" ] || [ "$_role" = "babysit" ]; then
         exit 0
     fi
-    deny "BLOCKED by operator-subagent-allowlist: Explore subagent is only available under claude-debug, claude-shape, or claude-ops launcher modes. Use planner-phoenix / planner-static / etc. instead for investigation within a standard orchestrator session."
+    deny "BLOCKED by operator-subagent-allowlist: Explore subagent is only available under claude-debug, claude-shape, claude-ops, claude-experiment, or claude-babysit launcher modes. Use planner-phoenix / planner-static / etc. instead for investigation within a standard orchestrator session."
     exit 0
 fi
 

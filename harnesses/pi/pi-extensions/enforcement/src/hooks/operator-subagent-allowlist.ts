@@ -8,7 +8,7 @@
  * Rules (mirroring operator-subagent-allowlist.sh):
  *   Built-in subagent types {Plan, general-purpose, statusline-setup} — denied always.
  *   Empty subagent_type — denied defensively (fail-closed).
- *   Explore — allowed only under debug/shape/experiment PI_ROLE.
+ *   Explore — allowed only under debug/shape/experiment/babysit PI_ROLE.
  *   All other project subagents — allowed.
  */
 
@@ -61,13 +61,21 @@ export function register(pi: ExtensionAPI): void {
       );
     }
 
-    // Explore — allowed only under debug/shape/experiment operator roles.
+    // Explore — allowed only under debug/shape/experiment/babysit operator
+    // roles. NOTE: "ops" is deliberately NOT included here — pre-existing
+    // asymmetry vs the bash twin, out of scope for this change. babysit is
+    // added regardless since it needs Explore for local investigation too.
     if (subagentType === "Explore") {
-      if (role === "debug" || role === "shape" || role === "experiment") {
+      if (
+        role === "debug" ||
+        role === "shape" ||
+        role === "experiment" ||
+        role === "babysit"
+      ) {
         return;
       }
       return deny(
-        `BLOCKED by operator-subagent-allowlist: Explore subagent is only available under pi-debug or pi-shape launcher modes. Use planner-phoenix / planner-static / etc. instead for investigation within a standard build session.`,
+        `BLOCKED by operator-subagent-allowlist: Explore subagent is only available under pi-debug, pi-shape, pi-experiment, or pi-babysit launcher modes. Use planner-phoenix / planner-static / etc. instead for investigation within a standard build session.`,
       );
     }
 

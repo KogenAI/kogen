@@ -153,6 +153,14 @@ run_test_role "ops mode Write to arbitrary on-box path allows" "0" "ops" "$FIXTU
 FIXTURE_OPS_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "ops mode Edit on lib/ allows" "0" "ops" "$FIXTURE_OPS_LIB"
 
+# Test 18f: CLAUDE_ROLE=babysit + Write arbitrary local path — ALLOW (full write surface)
+FIXTURE_BABYSIT_LOCAL='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/ready/foo.md","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "babysit mode Write to pitches/ready/ allows" "0" "babysit" "$FIXTURE_BABYSIT_LOCAL"
+
+# Test 18g: CLAUDE_ROLE=babysit + Edit lib/ — ALLOW (babysit has full write surface, ops-equivalent)
+FIXTURE_BABYSIT_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
+run_test_role "babysit mode Edit on lib/ allows" "0" "babysit" "$FIXTURE_BABYSIT_LIB"
+
 # Test 19: CLAUDE_ROLE=debug + subagent Edit on lib/ — BLOCK (subagent bypass disabled under debug/shape)
 FIXTURE_DEBUG_SUB_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"general-purpose"}'
 run_test_role "debug mode subagent Edit on lib/ blocks" "2" "debug" "$FIXTURE_DEBUG_SUB_LIB"

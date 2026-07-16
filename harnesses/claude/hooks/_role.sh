@@ -12,10 +12,10 @@
 # Returns the first non-empty value; exits 0 with empty stdout when all unset.
 #
 # is_build_mode() is the canonical build-cycle gate: the investigative set is
-# {shape, debug, ops, experiment, refactor} — resolve_role() returning any of
-# those means "skip" (investigative mode). build, empty, and any unknown role
-# are fail-safe ACTIVE (guards run) — a build that ever loses its role still
-# gets guarded.
+# {shape, debug, ops, experiment, refactor, babysit} — resolve_role() returning
+# any of those means "skip" (investigative mode). build, empty, and any unknown
+# role are fail-safe ACTIVE (guards run) — a build that ever loses its role
+# still gets guarded.
 #
 # Usage:
 #   source "$(dirname "$0")/_role.sh"
@@ -40,7 +40,7 @@ resolve_role() {
 # modes. Fail-safe: a build that ever loses its role still gets guarded.
 is_build_mode() {
     case "$(resolve_role)" in
-    shape | debug | ops | experiment | refactor) return 1 ;;
+    shape | debug | ops | experiment | refactor | babysit) return 1 ;;
     *) return 0 ;;
     esac
 }

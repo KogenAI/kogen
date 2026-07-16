@@ -18,13 +18,15 @@
 # is "") is also blocked — per CLAUDE.md only the committer may touch
 # history.
 #
-# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) scopes the gate to destructive
-# git verbs ONLY — non-git Bash and read-only git (status/diff/log/show)
-# pass straight through for interactive ops on live boxes. Destructive git
-# ALSO requires CODEGEN_OPS_GIT_UNLOCK=1 — a two-signal gate. Role alone no
-# longer unlocks destructive git under the fail-closed-everywhere ruling;
-# the operator must explicitly confirm intent via a second, harness-only
-# toggle (NOT an app runtime var — do not add to .env.sample/.env.prod.sample).
+# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) and babysit mode (CLAUDE_ROLE=babysit
+# / PI_ROLE=babysit) scope the gate to destructive git verbs ONLY — non-git
+# Bash, read-only git (status/diff/log/show), and a plain `git push` pass
+# straight through for interactive ops on live boxes or the drain supervisor's
+# post-ship push. Destructive git ALSO requires CODEGEN_OPS_GIT_UNLOCK=1 — a
+# two-signal gate. Role alone no longer unlocks destructive git under the
+# fail-closed-everywhere ruling; the operator must explicitly confirm intent
+# via a second, harness-only toggle (NOT an app runtime var — do not add to
+# .env.sample/.env.prod.sample).
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
@@ -38,12 +40,14 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
-# ops mode: scope the gate to destructive git verbs only. Non-git Bash and
-# read-only git (status/diff/log/show/blame/ls-files) pass straight through
-# — the gate must NOT return a verdict for all Bash before checking whether
-# the command is even a destructive git invocation.
+# ops/babysit mode: scope the gate to destructive git verbs only. Non-git Bash
+# and read-only git (status/diff/log/show/blame/ls-files) — and a plain `git
+# push` — pass straight through; the gate must NOT return a verdict for all
+# Bash before checking whether the command is even a destructive git
+# invocation. babysit needs this same posture: it plain-pushes after every
+# verified ship but never force-pushes or mutates history.
 _role=$(resolve_role)
-if [ "$_role" = "ops" ]; then
+if [ "$_role" = "ops" ] || [ "$_role" = "babysit" ]; then
     # Fail-closed subject transform (see strip_quoted() in hooks-lib.sh):
     # a destructive git verb inside a quoted remote payload or string
     # argument is not a real local invocation; strip before matching.

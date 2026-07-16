@@ -6,7 +6,7 @@
  * Precedence preserves the Pi convention: PI_ROLE > CLAUDE_ROLE.
  */
 
-const INVESTIGATIVE = new Set(["shape", "debug", "ops", "experiment", "refactor"]);
+const INVESTIGATIVE = new Set(["shape", "debug", "ops", "experiment", "refactor", "babysit"]);
 
 /** Resolve the active Pi role (PI_ROLE primary). Empty = build/unknown. */
 export function resolveRole(): string {

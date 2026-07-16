@@ -186,6 +186,15 @@ run_test "experiment + Explore allowed" "allow" "experiment" "$(mk_agent 'Explor
 # 19h: experiment + Plan denied (built-in denied always, even under experiment)
 run_test "experiment + Plan denied" "deny" "experiment" "$(mk_agent 'Plan')"
 
+# 19i: babysit + Explore allowed (babysit needs Agent/Explore for local investigation)
+run_test "babysit + Explore allowed" "allow" "babysit" "$(mk_agent 'Explore')"
+
+# 19j: babysit + Plan denied (built-in denied always, even under babysit)
+run_test "babysit + Plan denied" "deny" "babysit" "$(mk_agent 'Plan')"
+
+# 19k: babysit + developer-phoenix-backend allowed (project subagents always allowed)
+run_test "babysit + developer-phoenix-backend allowed" "allow" "babysit" "$(mk_agent 'developer-phoenix-backend')"
+
 # PI_ROLE parity tests (via env var, no CLAUDE_ROLE set)
 
 run_test_env() {

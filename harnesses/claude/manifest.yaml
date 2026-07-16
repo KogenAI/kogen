@@ -38,6 +38,8 @@ launchers:
     src: harnesses/claude/claude-experiment.sh
   - name: claude-ops
     src: harnesses/claude/claude-ops.sh
+  - name: claude-babysit
+    src: harnesses/claude/claude-babysit.sh
   - name: codegen-document
     src: codegen-document
   - name: codegen-analyze
@@ -47,6 +49,7 @@ launchers:
 
 # ─── Zsh completions ──────────────────────────────────────────────────────────
 completions:
+  - _claude-babysit
   - _claude-build
   - _claude-debug
   - _claude-experiment
@@ -152,6 +155,36 @@ modes:
       - harnesses/shared/prompt-bodies/ops.txt
       - shared/prompt-fragments/_forbidden-bash-brief.txt
 
+  babysit:
+    model: opus
+    effort: high
+    output_format: text
+    tools:
+      [
+        Agent,
+        AskUserQuestion,
+        Bash,
+        CronCreate,
+        CronDelete,
+        CronList,
+        Edit,
+        Glob,
+        Grep,
+        Monitor,
+        Read,
+        ScheduleWakeup,
+        Skill,
+        WebFetch,
+        WebSearch,
+        Write,
+      ]
+    system_prompt_file: harnesses/claude/claude-babysit-system-prompt.txt
+    tools_header: harnesses/claude/tools-header/babysit.txt
+    prompt_body:
+      - shared/rules/_core/output-style.md
+      - harnesses/shared/prompt-bodies/babysit.txt
+      - shared/prompt-fragments/_forbidden-bash-brief.txt
+
 # ─── Install / uninstall steps (declarative record) ──────────────────────────
 # Actual execution is in install.sh manifest-driven loop.
 install_steps:
@@ -168,5 +201,5 @@ uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed-by-ocg manifest
   - remove_commands # rm commands_dir/*.md from installed-by-ocg manifest
   - remove_hooks # rm hooks_dir/*.sh
-  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,codegen-propose,claude-build,claude-debug,claude-experiment,claude-shape,claude-ops}
-  - remove_completions # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-experiment,_claude-shape}
+  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,codegen-propose,claude-build,claude-debug,claude-experiment,claude-shape,claude-ops,claude-babysit}
+  - remove_completions # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-experiment,_claude-shape,_claude-babysit}

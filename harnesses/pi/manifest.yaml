@@ -37,9 +37,12 @@ launchers:
     src: harnesses/pi/pi-experiment.sh
   - name: pi-ops
     src: harnesses/pi/pi-ops.sh
+  - name: pi-babysit
+    src: harnesses/pi/pi-babysit.sh
 
 # ─── Zsh completions ──────────────────────────────────────────────────────────
 completions:
+  - _pi-babysit
   - _pi-build
   - _pi-debug
   - _pi-experiment
@@ -117,6 +120,21 @@ modes:
       - harnesses/shared/prompt-bodies/ops.txt
       - shared/prompt-fragments/_forbidden-bash-brief.txt
 
+  babysit:
+    model: openai-codex/gpt-5.5 # from config.yaml harness.babysit.pi
+    effort: high
+    tools: read,grep,find,ls,edit,write,bash
+    extensions:
+      - askuserquestion
+      - subagents
+      - web-utils
+    system_prompt_file: harnesses/pi/pi-babysit-system-prompt.txt
+    tools_header: harnesses/pi/tools-header/babysit.txt
+    prompt_body:
+      - shared/rules/_core/output-style.md
+      - harnesses/shared/prompt-bodies/babysit.txt
+      - shared/prompt-fragments/_forbidden-bash-brief.txt
+
 # ─── Install / uninstall steps (declarative record) ──────────────────────────
 # Actual execution is in install.sh manifest-driven loop.
 install_steps:
@@ -129,5 +147,5 @@ install_steps:
 uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed manifest
   - remove_prompts # rm prompts_dir/document.md
-  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,pi-build,pi-debug,pi-experiment,pi-shape,pi-ops}
-  - remove_completions # rm ZSH_COMPLETION_DST/{_pi-build,_pi-debug,_pi-experiment,_pi-shape}
+  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,pi-build,pi-debug,pi-experiment,pi-shape,pi-ops,pi-babysit}
+  - remove_completions # rm ZSH_COMPLETION_DST/{_pi-build,_pi-debug,_pi-experiment,_pi-shape,_pi-babysit}

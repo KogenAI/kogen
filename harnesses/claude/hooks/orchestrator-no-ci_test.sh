@@ -18,6 +18,8 @@
 #   14: PI_ROLE=ops make ci → allow (0) — ops bypass via resolve_role
 #   15: CLAUDE_ROLE=experiment make ci → allow (0) — experiment bypass via resolve_role
 #   16: PI_ROLE=experiment make ci → allow (0) — experiment bypass via resolve_role
+#   19: CLAUDE_ROLE=babysit make ci → allow (0) — babysit bypass via resolve_role
+#   20: PI_ROLE=babysit make ci → allow (0) — babysit bypass via resolve_role
 
 set -euo pipefail
 
@@ -124,6 +126,14 @@ run_test "codegen-log write narrating gated phrase allowed" "0" \
 
 # Test 18: real standalone make ci still denied unchanged
 run_test "orchestrator real make ci still denied (unchanged)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
+
+# Test 19: CLAUDE_ROLE=babysit make ci → allow (babysit bypass — dispatches codegen-build --queue)
+CLAUDE_ROLE=babysit run_test "CLAUDE_ROLE=babysit make ci → allow (babysit bypass)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
+
+# Test 20: PI_ROLE=babysit make ci → allow (babysit bypass via PI_ROLE parity)
+PI_ROLE=babysit run_test "PI_ROLE=babysit make ci → allow (babysit bypass)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
 echo ""

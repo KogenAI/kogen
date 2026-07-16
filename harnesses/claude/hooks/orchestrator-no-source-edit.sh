@@ -40,6 +40,12 @@ if [ "$role" = "ops" ]; then
     exit 0
 fi
 
+# Babysit mode — full write surface, no restriction (drain supervisor dispatches
+# claude-shape, which writes pitches, and needs the same ops-equivalent posture).
+if [ "$role" = "babysit" ]; then
+    exit 0
+fi
+
 # Experiment mode — source-writable for the role. Confinement is the native
 # claude --worktree the launcher runs in (the hook has no worktree awareness),
 # NOT a path restriction. Discard-at-exit is the guardrail. Distinct from the

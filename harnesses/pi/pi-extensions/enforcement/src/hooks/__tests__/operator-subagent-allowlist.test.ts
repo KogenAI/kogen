@@ -97,6 +97,21 @@ describe("operator-subagent-allowlist", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  it("allows Explore under babysit role", async () => {
+    const result = await runHook("Explore", "babysit");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks built-in Plan subagent under babysit role", async () => {
+    const result = await runHook("Plan", "babysit");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("allows project subagents (developer-phoenix-backend) under babysit role", async () => {
+    const result = await runHook("developer-phoenix-backend", "babysit");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   it("passes through non-subagent tool calls", async () => {
     process.env["PI_ROLE"] = "build";
     const { register } = await import("../operator-subagent-allowlist");

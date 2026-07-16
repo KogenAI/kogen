@@ -11,7 +11,7 @@
  *      (denial anchored on LEADING token only so git/make/date/cp pass through)
  *
  * Bypass ladder (same order as claude hook):
- *   1. Role debug|shape|experiment (PI_ROLE) → allow
+ *   1. Role debug|shape|experiment|babysit (PI_ROLE) → allow
  *   2. Not outer session (AGENT_TYPE non-empty = subagent) → allow
  *   3. Orchestrator (AGENT_TYPE empty) → apply gates
  */
@@ -73,9 +73,18 @@ export function register(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "read" && event.toolName !== "bash") return;
 
-    // Bypass 1: role debug|shape|experiment
+    // Bypass 1: role debug|shape|experiment|babysit
+    // NOTE: "ops" is deliberately NOT included here — pre-existing asymmetry
+    // vs the bash twin, out of scope for this change. babysit is added
+    // regardless since it needs full read/investigation access on Pi too.
     const role = resolveRole();
-    if (role === "debug" || role === "shape" || role === "experiment") return;
+    if (
+      role === "debug" ||
+      role === "shape" ||
+      role === "experiment" ||
+      role === "babysit"
+    )
+      return;
 
     // Bypass 2: subagent (AGENT_TYPE non-empty = not orchestrator)
     if (!isOuterSession()) return;

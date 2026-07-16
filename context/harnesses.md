@@ -39,13 +39,13 @@ A role = one `codegen-call` invocation. Identity flags: `--system-prompt` (REPLA
 
 ```
 harnesses/claude/
-  claude-build.sh, claude-debug.sh, claude-experiment.sh, claude-shape.sh, claude-ops.sh
+  claude-build.sh, claude-debug.sh, claude-experiment.sh, claude-shape.sh, claude-ops.sh, claude-babysit.sh
   dispatch.sh, load-role.sh
-  tools-header/{debug,experiment,shape,ops}.txt  ← disk path uses hyphen
+  tools-header/{debug,experiment,shape,ops,babysit}.txt  ← disk path uses hyphen
   claude-code-settings.json
   commands/
 harnesses/pi/
-  pi-build.sh, pi-debug.sh, pi-experiment.sh, pi-shape.sh, pi-ops.sh
+  pi-build.sh, pi-debug.sh, pi-experiment.sh, pi-shape.sh, pi-ops.sh, pi-babysit.sh
   dispatch.sh
   pi-prompts/
 harnesses/shared/prompt-bodies/
@@ -198,7 +198,7 @@ Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via c
 
 ## Headless Investigative Mode
 
-The three Claude investigative launchers (`claude-shape`, `claude-ops`, `claude-debug`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array. **Important distinction**: investigative launchers deliberately restrict `--setting-sources` to `project` (no user-scope agents/hooks) because they export `CLAUDE_ROLE` and gate the Agent tool to project subagents only. Build dispatch (`codegen-build --non-interactive`) uses `user,project,local` to load the full agent set + user-level gating hooks.
+The Claude investigative/supervisory launchers (`claude-shape`, `claude-ops`, `claude-debug`, `claude-babysit`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array. **Important distinction**: investigative launchers deliberately restrict `--setting-sources` to `project` (no user-scope agents/hooks) because they export `CLAUDE_ROLE` and gate the Agent tool to project subagents only. Build dispatch (`codegen-build --non-interactive`) uses `user,project,local` to load the full agent set + user-level gating hooks.
 
 **`CLAUDE_NONINTERACTIVE` branch signal**: The same condition `[[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]` that gates `NON_INTERACTIVE_FLAGS` array building also gates interactive-vs-headless `--settings` JSON/array construction in shape/debug/experiment/ops launchers. When the condition is true (headless), `SETTINGS_JSON` or `SETTINGS_FLAGS` use the unchanged object (no AFK-timeout key); when false (interactive, env empty or unset), the object adds `CLAUDE_AFK_TIMEOUT_MS`. This co-location ensures the two branches stay synchronized and prevents accidental 24h hangs on headless builds.
 
@@ -325,4 +325,4 @@ The goal is truthful hooks that accurately reflect capability limits, not featur
 
 ## Trigger Keywords
 
-claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence, runtime porting, reduced fidelity, transcript access, event blocking asymmetry
+claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, claude-babysit, pi-babysit, babysit mode, drain supervisor, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence, runtime porting, reduced fidelity, transcript access, event blocking asymmetry

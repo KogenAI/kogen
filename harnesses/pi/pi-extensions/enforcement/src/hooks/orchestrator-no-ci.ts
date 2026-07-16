@@ -7,8 +7,9 @@
  *
  * Only enforces when AGENT_TYPE is empty AND AGENT_ID is empty (orchestrator level).
  * Subagents (any non-empty AGENT_TYPE or AGENT_ID) pass through.
- * ops/experiment mode (CLAUDE_ROLE / PI_ROLE) bypasses — full gate-command access.
- * ops runs on live boxes; experiment is a standalone source-writable dev session.
+ * ops/experiment/babysit mode (CLAUDE_ROLE / PI_ROLE) bypasses — full gate-command access.
+ * ops runs on live boxes; experiment is a standalone source-writable dev session;
+ * babysit dispatches the existing codegen-build --queue drain.
  *
  * Blocks:
  *   make ci / ci-cover / predeploy
@@ -42,17 +43,20 @@ export function register(pi: ExtensionAPI): void {
       `agent_type=${agentType} agent_id=${agentId}`,
     );
 
-    // ops/experiment bypass — full gate-command access on live boxes (ops) or
-    // standalone source-writable dev sessions (experiment).
+    // ops/experiment/babysit bypass — full gate-command access on live boxes
+    // (ops), standalone source-writable dev sessions (experiment), or the
+    // drain supervisor dispatching codegen-build (babysit).
     const piRole = process.env["PI_ROLE"] ?? "";
     const claudeRole = process.env["CLAUDE_ROLE"] ?? "";
     if (
       piRole === "ops" ||
       claudeRole === "ops" ||
       piRole === "experiment" ||
-      claudeRole === "experiment"
+      claudeRole === "experiment" ||
+      piRole === "babysit" ||
+      claudeRole === "babysit"
     ) {
-      debugLog("orchestrator-no-ci", "skip: ops/experiment bypass");
+      debugLog("orchestrator-no-ci", "skip: ops/experiment/babysit bypass");
       return;
     }
 

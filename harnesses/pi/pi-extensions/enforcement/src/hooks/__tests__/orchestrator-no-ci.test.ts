@@ -152,6 +152,17 @@ describe("orchestrator-no-ci", { concurrency: false }, () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  // Bypass cases — babysit role (drain supervisor dispatching codegen-build)
+  it("bypasses when PI_ROLE=babysit", async () => {
+    const result = await runHook("make ci", "", "", "babysit");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("bypasses when CLAUDE_ROLE=babysit", async () => {
+    const result = await runHook("make ci", "", "", "", "babysit");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
   it("allows codegen-log write narrating gated phrase", async () => {
     const result = await runHook(
       'codegen-log section --slug test --body @- <<EOF\n## orchestrator Section\nDelegated to developer; make ci ran green in the gate.\nEOF',
