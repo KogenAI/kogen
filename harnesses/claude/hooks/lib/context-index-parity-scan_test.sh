@@ -18,6 +18,10 @@
 #      with no row → exit 1 (full-tree pass catches what the delta pass misses)
 #  14: user-app layout (codegen/PROJECT_CONTEXT.md), pre-existing orphan with no
 #      delta → exit 0 (full-tree/keyword strict passes stay root-layout-only)
+#  15: root layout WITHOUT codegen sentinel (downstream app), pre-existing
+#      orphan → exit 0 (full-tree pass must not fire outside codegen self-build)
+#  16: root layout WITH codegen sentinel, pre-existing orphan → exit 1
+#      (boundary confirmed: full-tree pass still fires for codegen self-build)
 
 set -euo pipefail
 
@@ -50,6 +54,14 @@ commit_all() {
     local dir="$1"
     local msg="$2"
     (cd "$dir" && git -c user.email=a@a -c user.name=a add -A && git -c user.email=a@a -c user.name=a commit -q -m "$msg")
+}
+
+# add_codegen_sentinel <dir> — mark a fixture as a codegen self-build repo so
+# the full-tree pass (root layout + sentinel) is exercised.
+add_codegen_sentinel() {
+    local dir="$1"
+    mkdir -p "$dir/harnesses/claude"
+    printf 'name: claude\n' >"$dir/harnesses/claude/manifest.yaml"
 }
 
 run_test() {
@@ -173,6 +185,7 @@ run_test "user-app layout ADD with row → exit 0" "0" "$dir9"
 # Keywords section → exit 1 (full-tree pass, committed so no working-tree delta)
 # ---------------------------------------------------------------------------
 dir10=$(init_fixture 10)
+add_codegen_sentinel "$dir10"
 printf '# doc\n\n`context/x.md` | always | never | foo, bar\n' >"$dir10/PROJECT_CONTEXT.md"
 printf '# X\n\nsome content, no keywords section\n' >"$dir10/context/x.md"
 commit_all "$dir10" init
@@ -183,6 +196,7 @@ run_test "root layout, pre-existing file missing Trigger Keywords → exit 1" "1
 # Test 11: root layout, keyword drift (file kw != index cell) → exit 1
 # ---------------------------------------------------------------------------
 dir11=$(init_fixture 11)
+add_codegen_sentinel "$dir11"
 printf '# doc\n\n`context/x.md` | always | never | foo, bar\n' >"$dir11/PROJECT_CONTEXT.md"
 printf '# X\n\n## Trigger Keywords\n\nfoo, baz\n' >"$dir11/context/x.md"
 commit_all "$dir11" init
@@ -193,6 +207,7 @@ run_test "root layout, keyword drift → exit 1" "1" "$dir11"
 # Test 12: root layout, non-.md clutter in context/ → exit 1
 # ---------------------------------------------------------------------------
 dir12=$(init_fixture 12)
+add_codegen_sentinel "$dir12"
 printf '# doc\n' >"$dir12/PROJECT_CONTEXT.md"
 printf 'junk\n' >"$dir12/context/.DS_Store"
 commit_all "$dir12" init
@@ -205,6 +220,7 @@ run_test "root layout, non-.md clutter in context/ → exit 1" "1" "$dir12"
 # the delta pass misses (full-tree pass must catch it).
 # ---------------------------------------------------------------------------
 dir13=$(init_fixture 13)
+add_codegen_sentinel "$dir13"
 printf '# doc\n' >"$dir13/PROJECT_CONTEXT.md"
 printf '# X\n\n## Trigger Keywords\n\nfoo, bar\n' >"$dir13/context/x.md"
 commit_all "$dir13" init
@@ -222,6 +238,30 @@ printf '# X\n\nno keywords, no row\n' >"$dir14/context/x.md"
 commit_all "$dir14" init
 
 run_test "user-app layout, pre-existing orphan (no delta) → exit 0" "0" "$dir14"
+
+# ---------------------------------------------------------------------------
+# Test 15: root layout WITHOUT the codegen sentinel (downstream app carries
+# its own root PROJECT_CONTEXT.md, no harnesses/claude/manifest.yaml) →
+# full-tree pass must NOT fire even though a pre-existing orphan is present.
+# ---------------------------------------------------------------------------
+dir15=$(init_fixture 15)
+printf '# doc\n' >"$dir15/PROJECT_CONTEXT.md"
+printf '# X\n\nno keywords, no row\n' >"$dir15/context/x.md"
+commit_all "$dir15" init
+
+run_test "root layout, no codegen sentinel, pre-existing orphan → exit 0" "0" "$dir15"
+
+# ---------------------------------------------------------------------------
+# Test 16: root layout WITH the codegen sentinel → full-tree pass still
+# fires on a pre-existing orphan (boundary confirmed both directions).
+# ---------------------------------------------------------------------------
+dir16=$(init_fixture 16)
+add_codegen_sentinel "$dir16"
+printf '# doc\n' >"$dir16/PROJECT_CONTEXT.md"
+printf '# X\n\nno keywords, no row\n' >"$dir16/context/x.md"
+commit_all "$dir16" init
+
+run_test "root layout, codegen sentinel present, pre-existing orphan → exit 1" "1" "$dir16"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

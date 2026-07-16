@@ -127,15 +127,23 @@ $ref_names
 EOF2
 fi
 
-# Full-tree parity pass — root/platform layout ONLY (PROJECT_CONTEXT.md at repo
-# root, i.e. codegen self-build). The ADD/DELETE pass above is delta-based
-# (working tree vs HEAD, this turn only) and misses a PRE-EXISTING context/*.md
-# that was already committed with no index row (or no Trigger Keywords
-# section, or drifted keywords) — the case that used to live in the deleted
-# `make test` gate test `context-index-coverage_test.sh`. Downstream/user-app
-# layout (codegen/PROJECT_CONTEXT.md) is a different index-doc convention and
-# keeps ONLY the delta + phantom-ref passes above — no behavior change there.
-if [ "$index_path" = "PROJECT_CONTEXT.md" ]; then
+# Full-tree parity pass — codegen SELF-BUILD ONLY. Root-layout detection
+# alone (PROJECT_CONTEXT.md at repo root) is NOT sufficient to mean "codegen
+# self-build" — downstream Phoenix/static apps also carry a root
+# PROJECT_CONTEXT.md (their own project index), so gating on root layout
+# alone false-positives this codegen-private Trigger-Keywords/coverage
+# convention against every downstream app's context/*.md files. Require the
+# codegen-repo sentinel (harnesses/claude/manifest.yaml, tracked at codegen
+# repo root only — a downstream app vendors the harness under
+# codegen/harnesses/…, never at its own root) in addition to root layout.
+# The ADD/DELETE pass above is delta-based (working tree vs HEAD, this turn
+# only) and misses a PRE-EXISTING context/*.md that was already committed
+# with no index row (or no Trigger Keywords section, or drifted keywords) —
+# the case that used to live in the deleted `make test` gate test
+# `context-index-coverage_test.sh`. Downstream/user-app layout
+# (codegen/PROJECT_CONTEXT.md) is a different index-doc convention and keeps
+# ONLY the delta + phantom-ref passes above — no behavior change there.
+if [ "$index_path" = "PROJECT_CONTEXT.md" ] && [ -f "$repo_root/harnesses/claude/manifest.yaml" ]; then
     ctx_dir="$repo_root/context"
 
     # Basenames referenced in the Domain table (col-1 backtick pattern).
