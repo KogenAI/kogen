@@ -17,7 +17,6 @@
 #   --effort=<e>              effort override
 #   --max-budget-usd=<n>      passthrough flag forwarded to dispatch
 #   --fallback-model=<m>      passthrough flag forwarded to dispatch
-#   --extension=<path>        passthrough flag forwarded to dispatch
 #   --print-dir               print this script's directory and exit 0
 #   --print-argv              dry-run: parse + validate every flag, print the
 #                             would-be `mix codegen.loop` argv one arg per
@@ -44,7 +43,7 @@ PRINT_ARGV=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--extension=<path>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n' >&2
+    printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n' >&2
     exit 2
 }
 
@@ -106,14 +105,6 @@ while [[ $# -gt 0 ]]; do
         fi
         shift
         ;;
-    --extension=* | --extension)
-        EXTRA_FLAGS+=("$1")
-        if [[ "$1" == "--extension" ]]; then
-            EXTRA_FLAGS+=("$2")
-            shift
-        fi
-        shift
-        ;;
     --print-dir)
         printf '%s\n' "$SCRIPT_DIR"
         exit 0
@@ -123,7 +114,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     -h | --help)
-        printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--extension=<path>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n'
+        printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n'
         exit 0
         ;;
     --)

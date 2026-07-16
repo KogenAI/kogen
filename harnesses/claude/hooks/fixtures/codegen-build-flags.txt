@@ -2,7 +2,6 @@
 # update deliberately in the same commit; never delete the assertion.
 --cwd
 --effort
---extension
 --fallback-model
 --harness
 --help

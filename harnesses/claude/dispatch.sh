@@ -23,8 +23,11 @@ fi
 CWD="${CODEGEN_BUILD_CWD:-}"
 PRINT_ARGV="${CODEGEN_BUILD_PRINT_ARGV:-}"
 
-# Extra flags (--max-budget-usd, --fallback-model, etc.) passed through as $@
-# Last arg is the PROMPT (only if any positional args were given)
+# Extra flags (--max-budget-usd, --fallback-model, etc.) are NOT forwarded via
+# $@ — this script never splats codegen-build's positionals onward. Any such
+# flag that reaches the loop is threaded through by name (env var or explicit
+# argv entry), never blind-passed. Only the last positional is read below, and
+# only as the PROMPT (only if any positional args were given).
 if [[ $# -gt 0 ]]; then
     PROMPT="${*: -1}"
 else

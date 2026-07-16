@@ -19,7 +19,10 @@ if ! codegen-log --version >/dev/null 2>&1; then
     exit 2
 fi
 
-# Extra flags and prompt: last positional arg is PROMPT (only if any positional args given)
+# Extra flags (--max-budget-usd, --fallback-model, etc.) are NOT $@-forwarded
+# to the loop from here; any such flag threads through by name, not by splat.
+# Only the last positional arg is read below, and only as PROMPT (only if any
+# positional args were given).
 if [[ $# -gt 0 ]]; then
     PROMPT="${*: -1}"
 else
