@@ -69,6 +69,20 @@ Cross-reference: `shared/rules/shared/shell-script-discipline.md` — "Derive Ro
 
 Order: context → codegen → platform. Deploy docs show actual SSH invocations verbatim, not prose. Each repo committed before next. ❌ Bundle changes across repos in prose ✅ Numbered SSH/git commands.
 
+## Multi-Node Fleet Drain — Possession Discipline
+
+`codegen-drain` (`codegen-drain assign|status|init`) dispatches pitches from `codegen/pitches/ready/` between fleet nodes when running `--watch` on more than one box. Its whole design rests on one invariant: **exactly one copy of a pitch exists across the fleet at any time.** Dispatch is `mv` — transfer, then delete the source only after the destination is checksum-verified — never `cp`. There is no lease, no TTL, no heartbeat: the failure mode a lease has (a dead box leaves a stale claim behind) has no analogue here, because there is no claim object, only a file that is somewhere.
+
+Inventory lives at `codegen/drain-nodes.yaml` (gitignored — machine-local topology, same posture as `<app>/codegen/manifest.yaml`). Each node entry: `name`, `repo` (absolute path on that node), optional `host` (ssh target; omit for the local node), optional `run_as` (see below), optional `launch` (descriptive only — `codegen-drain` never starts a watcher on any node).
+
+**ssh-lands-as-root discipline.** Some fleet hosts land an interactive `ssh` session as `root` even though the actual repo is owned by a dedicated service user (e.g. `studio`). A plain `scp`/`ssh` write in that situation creates a **root-owned file inside a non-root-owned repo** — it looks harmless (the pitch still builds; `mv` only needs directory permission) until `LoopQueue.record_ship/4` tries to write the ship record **into the pitch file itself** and hits `EACCES`, raising and refusing the ship. The pitch is then stuck in `ready/` with its work already landed — a corpse manufactured by a `chown` bit, not a code bug.
+
+`codegen-drain` avoids this by staging every remote transfer through `/tmp` (root-writable, harmless), then using `install -o <run_as> -g <run_as>` to land the file inside `codegen/pitches/.incoming/` with the CORRECT ownership before it ever enters the tracked repo tree, then `su - <run_as> -c 'mv ...'` for the final same-filesystem move into `ready/`. Nodes with no `run_as` in the inventory (the ssh user already owns the repo) skip the `install -o` step — there is no ownership boundary to cross.
+
+**Why the transfer never uses `scp -p`.** The `--watch` engine's quiescence gate (`quiescence_exclude/1` in `loop_queue_drain.ex`) treats a file as "still arriving" when `mtime > cutoff` — i.e. a recent mtime is what excludes a file from being selected mid-transfer. `scp -p` preserves the SOURCE mtime on the destination, which would make a freshly-arrived file read as "already old" and thus immediately eligible for build selection while bytes might still be incomplete on a slower path. `codegen-drain` never passes `-p` to `scp`; the final landing step is always a same-filesystem `mv`, which (per the engine's own moduledoc) is "already-quiescent the instant it lands" regardless of the mtime it carries.
+
+**`.incoming/` is a queue-invisible staging directory.** Every consumer of `codegen/pitches/ready/` globs that directory by name explicitly (`find "$READY_DIR" -maxdepth 1 -name "*.md"` in `claude-build.sh`); none glob all subdirectories of `codegen/pitches/`. A sibling `.incoming/` directory is therefore invisible to the build queue by construction, not by a filter added for this purpose.
+
 ## Pitfalls
 
 - **`CODEGEN_DIR` must be absolute** — Relative paths break symlink resolution.
@@ -78,7 +92,7 @@ Order: context → codegen → platform. Deploy docs show actual SSH invocations
 
 ## Trigger Keywords
 
-deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source, codegen root, where does codegen run, three-repo ordering, context codegen platform, worktree cwd ephemeral
+deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source, codegen root, where does codegen run, three-repo ordering, context codegen platform, worktree cwd ephemeral, codegen-drain, drain-nodes.yaml, possession, fleet, multi-node, ssh lands as root, run_as, .incoming, quiescence gate, scp -p
 
 ---
 

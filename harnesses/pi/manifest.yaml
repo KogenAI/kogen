@@ -23,6 +23,8 @@ launchers:
     src: codegen-call
   - name: codegen-scaffold
     src: codegen-scaffold
+  - name: codegen-drain
+    src: codegen-drain
   - name: codegen-document
     src: codegen-document
   - name: codegen-analyze
