@@ -172,6 +172,85 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "curator_learning_signal/1" do
+    test "nil log_file returns :absent, never raises" do
+      assert LoopGate.curator_learning_signal(nil) == :absent
+    end
+
+    test "missing log file on disk returns :absent" do
+      assert LoopGate.curator_learning_signal("/tmp/does-not-exist-loop-gate-test.jsonl") ==
+               :absent
+    end
+
+    test "log with an ev:learned event returns :learned", %{dir: dir} do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      lines =
+        [
+          %{"ev" => "role", "role" => "developer-phoenix-backend", "body" => "dev work"},
+          %{"ev" => "learned", "role" => "developer-phoenix-backend", "text" => "caught a bug"}
+        ]
+        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
+
+      File.write!(step_log, lines)
+
+      assert LoopGate.curator_learning_signal(step_log) == :learned
+    end
+
+    test "log with zero ev:learned and >=1 ev:no_learning returns :no_learning", %{dir: dir} do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      lines =
+        [
+          %{"ev" => "role", "role" => "developer-phoenix-backend", "body" => "dev work"},
+          %{
+            "ev" => "no_learning",
+            "role" => "developer-phoenix-backend",
+            "text" => "routine fix, nothing durable"
+          }
+        ]
+        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
+
+      File.write!(step_log, lines)
+
+      assert LoopGate.curator_learning_signal(step_log) == :no_learning
+    end
+
+    test "log with BOTH ev:learned and ev:no_learning (mixed cycle) returns :learned", %{
+      dir: dir
+    } do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      lines =
+        [
+          %{"ev" => "learned", "role" => "planner-phoenix", "text" => "caught a bug"},
+          %{"ev" => "no_learning", "role" => "reviewer-phoenix", "text" => "routine review"}
+        ]
+        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
+
+      File.write!(step_log, lines)
+
+      assert LoopGate.curator_learning_signal(step_log) == :learned
+    end
+
+    test "log with neither ev:learned nor ev:no_learning (legacy log) returns :absent", %{
+      dir: dir
+    } do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      lines =
+        [
+          %{"ev" => "init", "pitch" => "x"},
+          %{"ev" => "role", "role" => "developer-phoenix-backend", "body" => "dev work"}
+        ]
+        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
+
+      File.write!(step_log, lines)
+
+      assert LoopGate.curator_learning_signal(step_log) == :absent
+    end
+  end
+
   describe "run_gate/2" do
     test "clear verdict on exit 0, non-static stack (no render check)", %{dir: dir} do
       write_gate_config!(dir, "make test")

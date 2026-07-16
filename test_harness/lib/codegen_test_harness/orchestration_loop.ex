@@ -491,6 +491,36 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  defp run_roles([role | rest], harness, ctx, opts) when role == "context-curator" do
+    # No-op-curator-spawn-when-nothing-was-learned: read the cycle's own
+    # log for the mechanical learning signal BEFORE invoking the curator at
+    # all — unlike the generic clause below, this one can skip the
+    # `invoke_with_retry` call entirely. `:learned` or `:absent` (fail-SAFE
+    # default — a missing/unreadable signal is never read as "skip") spawn
+    # the curator exactly as before. `:no_learning` (every role that ran
+    # this cycle honestly declared, on the record, that it learned nothing
+    # durable) skips the LLM spawn, but the doc-integrity scans and the
+    # CURATED state advance still run unconditionally — those are the only
+    # reason this step can't be deleted outright (see run_curator_doc_check/6),
+    # and a pre-existing doc violation still routes back into a real
+    # curator spawn via run_curator_doc_check's :violations branch.
+    signal_fn = Keyword.get(opts, :curator_learning_signal_fn, &LoopGate.curator_learning_signal/1)
+    log_file = Process.get(@log_path_key)
+
+    case signal_fn.(log_file) do
+      :no_learning ->
+        run_format_step(ctx.cwd, opts)
+        run_curator_doc_check(role, rest, harness, ctx, opts, 0)
+
+      signal when signal in [:learned, :absent] ->
+        with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
+          ctx = put_in(ctx, [:artifacts, role], result)
+          run_format_step(ctx.cwd, opts)
+          run_curator_doc_check(role, rest, harness, ctx, opts, 0)
+        end
+    end
+  end
+
   defp run_roles([role | rest], harness, ctx, opts) do
     with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
       ctx = put_in(ctx, [:artifacts, role], result)
@@ -519,10 +549,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         developer_role?(role) ->
           run_format_step(ctx.cwd, opts)
           run_env_var_step(role, rest, harness, ctx, opts, 0)
-
-        role == "context-curator" ->
-          run_format_step(ctx.cwd, opts)
-          run_curator_doc_check(role, rest, harness, ctx, opts, 0)
 
         true ->
           run_roles(rest, harness, ctx, opts)

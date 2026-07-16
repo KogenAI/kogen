@@ -2032,6 +2032,173 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     fn _cwd -> {:clean} end
   end
 
+  describe "run/1 — context-curator conditional spawn (learning signal)" do
+    # See LoopGate.curator_learning_signal/1 for the :learned/:no_learning/
+    # :absent contract this predicate reads.
+    test "signal :learned spawns the curator (unchanged behavior)", %{calls_agent: calls_agent} do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 curator_learning_signal_fn: fn _log_file -> :learned end
+               )
+
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator")) == 1
+    end
+
+    test "signal :absent spawns the curator (fail-SAFE default — never skip on a missing signal)",
+         %{calls_agent: calls_agent} do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 curator_learning_signal_fn: fn _log_file -> :absent end
+               )
+
+      assert Agent.get(calls_agent, & &1) == @static_sequence
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator")) == 1
+    end
+
+    test "signal :no_learning skips the curator spawn but still reaches the committer", %{
+      calls_agent: calls_agent
+    } do
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 curator_learning_signal_fn: fn _log_file -> :no_learning end
+               )
+
+      # "context-curator" never appears in calls_agent — no spawn happened —
+      # but the sequence still terminates at the committer.
+      refute "context-curator" in Agent.get(calls_agent, & &1)
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "signal :no_learning still runs the format step (doc scan runs on the pre-existing tree)",
+         %{calls_agent: calls_agent} do
+      {:ok, format_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(format_calls_agent), do: Agent.stop(format_calls_agent) end)
+
+      format_fn = fn cwd ->
+        Agent.update(format_calls_agent, fn calls -> calls ++ [cwd] end)
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 format_fn: format_fn,
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 curator_learning_signal_fn: fn _log_file -> :no_learning end
+               )
+
+      # developer-static (pre-gate) format call PLUS the skip-path's own
+      # format call (my run_roles clause calls run_format_step before
+      # run_curator_doc_check even when the LLM spawn itself is skipped) =
+      # 2 format calls, same total as the unconditional-spawn path.
+      assert Agent.get(format_calls_agent, & &1) == ["/tmp/irrelevant", "/tmp/irrelevant"]
+    end
+
+    test "signal :no_learning still advances CURATED state (via run_curator_doc_check's :clean branch)" do
+      {:ok, verdicts_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(verdicts_agent), do: Agent.stop(verdicts_agent) end)
+
+      advance_fn = fn state, _step_log, _session_id, verdict, _cwd ->
+        Agent.update(verdicts_agent, fn v -> v ++ [{state, verdict}] end)
+        :ok
+      end
+
+      {:ok, calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(calls_agent), do: Agent.stop(calls_agent) end)
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: advance_fn,
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 curator_learning_signal_fn: fn _log_file -> :no_learning end
+               )
+
+      assert {"CURATED", ""} in Agent.get(verdicts_agent, & &1)
+    end
+
+    test "signal :no_learning with a doc violation still spawns the curator for rework", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+        if n == 0, do: {:violations, "CLAUDE.md:1 bad path"}, else: {:clean}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: scan_fn,
+                 curator_learning_signal_fn: fn _log_file -> :no_learning end
+               )
+
+      # The skipped spawn does NOT suppress the violation path — a
+      # pre-existing doc violation still forces exactly one real curator
+      # spawn for rework, even though the learning signal said "no_learning".
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 1
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert Agent.get(scan_calls_agent, & &1) == 2
+    end
+  end
+
   describe "run/1 — curator doc check cycle (factcheck + index-parity)" do
     test "clean scan advances CURATED and reaches the committer", %{calls_agent: calls_agent} do
       assert :ok ==

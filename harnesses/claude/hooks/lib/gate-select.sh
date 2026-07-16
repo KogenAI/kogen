@@ -52,6 +52,44 @@ planner_body_from_log() {
         "$log_file" 2>/dev/null
 }
 
+# curator_learning_signal_from_log <step_log_file> — mechanical predicate
+# for "does this cycle have anything for context-curator to curate?", read
+# from the cycle's own JSONL. Prints exactly one of:
+#
+#   learned      — >=1 {"ev":"learned"} event exists anywhere in the log.
+#   no_learning  — zero {"ev":"learned"} events AND >=1 {"ev":"no_learning"}
+#                  event exists (every role that ran honestly declared it
+#                  learned nothing durable).
+#   absent       — neither event kind present (missing/unreadable log,
+#                  truncated cycle, or a legacy log predating the
+#                  ev:no_learning contract). Fail-SAFE: callers must treat
+#                  `absent` the same as `learned` (spawn the curator) — a
+#                  missing signal is never read as permission to skip.
+#
+# `learned` wins over `no_learning` whenever both are present (mixed cycle:
+# some roles learned something, others didn't — there IS something to
+# curate). Never raises; jq errors are swallowed (fail-open to `absent`,
+# which is itself fail-SAFE at the caller).
+curator_learning_signal_from_log() {
+    local log_file="$1"
+    [ -f "$log_file" ] || {
+        printf 'absent'
+        return 0
+    }
+
+    local has_learned has_no_learning
+    has_learned=$(jq -e 'select(.ev == "learned")' "$log_file" >/dev/null 2>&1 && echo 1 || echo 0)
+    has_no_learning=$(jq -e 'select(.ev == "no_learning")' "$log_file" >/dev/null 2>&1 && echo 1 || echo 0)
+
+    if [ "$has_learned" = "1" ]; then
+        printf 'learned'
+    elif [ "$has_no_learning" = "1" ]; then
+        printf 'no_learning'
+    else
+        printf 'absent'
+    fi
+}
+
 # gate_timeout_for <command> — print timeout in seconds for a gate command.
 # The timeout budget is based on substring matching, independent of gate mode:
 #   make ci (with or without llm)  → present in combined → contributes 900

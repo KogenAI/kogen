@@ -155,6 +155,43 @@ defmodule CodegenTestHarness.LoopGate do
   end
 
   @doc """
+  Mechanical predicate for "does this cycle have anything for
+  context-curator to curate?", read from the cycle's own JSONL via
+  `gate-select.sh`'s `curator_learning_signal_from_log`. Returns one of:
+
+  - `:learned` — >=1 `{"ev":"learned"}` event exists anywhere in the log.
+  - `:no_learning` — zero `ev:learned` events AND >=1 `{"ev":"no_learning"}`
+    event (every role that ran honestly declared nothing durable learned).
+  - `:absent` — neither event kind present (missing/unreadable log,
+    truncated cycle, or a legacy log predating the `ev:no_learning`
+    contract). Fail-SAFE: callers MUST treat `:absent` the same as
+    `:learned` (spawn the curator) — a missing signal is never read as
+    permission to skip.
+
+  Returns `:absent` when `log_file` is `nil` (mirrors `planner_body/1`'s
+  nil-tolerance). Never raises.
+  """
+  @spec curator_learning_signal(String.t() | nil) :: :learned | :no_learning | :absent
+  def curator_learning_signal(nil), do: :absent
+
+  def curator_learning_signal(log_file) when is_binary(log_file) do
+    unless File.exists?(@gate_select_lib) do
+      raise "LoopGate: gate-select.sh not found at #{@gate_select_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@gate_select_lib)} && curator_learning_signal_from_log #{shell_quote(log_file)}"
+
+    {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
+
+    case String.trim(output) do
+      "learned" -> :learned
+      "no_learning" -> :no_learning
+      _ -> :absent
+    end
+  end
+
+  @doc """
   Runs the gate for `project_dir`: decides the gate command, executes it
   in `project_dir`, writes `gate-result.json` via `write_gate_result`, and
   returns `{verdict, gate_command}`.
