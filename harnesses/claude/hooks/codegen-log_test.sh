@@ -847,6 +847,37 @@ drift_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$
 assert "show no longer reports plan_gate/files_to_touch/files_modified/exit as unknown" \
     "0" "$(printf '%s' "$drift_show" | grep -qF 'other events:' && printf 1 || printf 0)"
 
+# Test 34: --body accepts literal text directly (no leading @) — the
+# naturally-typed form. @- and @<path> keep their existing meanings.
+unset CODEGEN_LOG_PATH
+literal_log="$PROJECT/codegen/logging/20260113_000000_literal-body_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"literal-body",path:"",stamp:{}}' >"$literal_log"
+
+literal_section_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug literal-body --body "plain literal text, no @ prefix")"
+literal_rc=$?
+literal_section_path="$(printf '%s' "$literal_section_out" | tail -n 1)"
+assert "section --body <literal text> exits 0" "0" "$literal_rc"
+assert "section --body <literal text> wrote to the targeted log" "0" "$([ "$literal_section_path" = "$literal_log" ] && printf 0 || printf 1)"
+assert "section --body <literal text> body matches the literal text verbatim" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$literal_log" | grep -qxF 'plain literal text, no @ prefix' && printf 0 || printf 1)"
+
+literal_append_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append developer-phoenix-backend --slug literal-body --body "appended literal text")"
+literal_append_rc=$?
+assert "append --body <literal text> exits 0" "0" "$literal_append_rc"
+assert "append --body <literal text> appended a second role event with the literal text" "1" "$(jq_count "$literal_log" 'select(.ev=="role" and .role=="developer-phoenix-backend" and .body=="appended literal text")')"
+
+# Test 35: --body @<missing-file> still fails loud (literal-text acceptance
+# must not silently swallow a genuine @-prefixed source that fails to read).
+missing_file_stderr="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug literal-body --body @/no/such/file-xyz 2>&1 1>/dev/null)" || missing_file_rc=$?
+assert "section --body @<missing file> still exits 2" "2" "${missing_file_rc:-0}"
+assert "section --body @<missing file> still names the missing file" "0" "$(printf '%s' "$missing_file_stderr" | grep -qF 'body file not found' && printf 0 || printf 1)"
+
+# Test 36: bare `codegen-log` with no subcommand names the problem before the
+# Usage: dump (previously a bare Usage: block with zero reason line).
+nosub_stderr="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" 2>&1 1>/dev/null)" || nosub_rc=$?
+assert "no-subcommand invocation exits 2" "2" "${nosub_rc:-0}"
+assert "no-subcommand invocation names the problem before Usage:" "0" "$(printf '%s' "$nosub_stderr" | grep -qF 'no subcommand given' && printf 0 || printf 1)"
+assert "no-subcommand Usage: block shows the taught positional-stdin form" "0" "$(printf '%s' "$nosub_stderr" | grep -qF 'codegen-log section <role>' && printf 0 || printf 1)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

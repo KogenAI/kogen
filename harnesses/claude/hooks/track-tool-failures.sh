@@ -22,7 +22,10 @@
 # payload from Claude Code.
 #
 # Ledger location: ~/.claude/tool-failures/<session_id>_<agent_id>.jsonl
-# Each line: {"ts":"<ISO>","tool":"<name>","error":"<msg>"}
+# Each line: {"ts":"<ISO>","tool":"<name>","error":"<msg>","command":"<cmd>"}
+# "command" is .tool_input.command (Bash calls only — empty for non-Bash
+# tools such as Read/Edit, whose tool_input has no "command" key) so a
+# failure names the call that caused it, not just the tool name + error.
 #
 # Safety rules:
 #   - Exits 0 in all cases — observability only, never blocks.
@@ -38,6 +41,10 @@ parse_input
 # Pull .tool_response.error (PostToolUseFailure payload). Falls back to
 # .error for harness variants. Truncate to 4kB to avoid runaway ledger growth.
 ERROR_MSG=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_response.error // .error // ""' 2>/dev/null | head -c 4096)
+
+# COMMAND is parsed by parse_input (hooks-lib.sh) from .tool_input.command —
+# empty string for non-Bash tools. Truncate to 4kB, same cap as ERROR_MSG.
+COMMAND_MSG=$(printf '%s' "${COMMAND:-}" | head -c 4096)
 
 debug_log track-tool-failures "tool=$TOOL_NAME agent_id=$AGENT_ID session=$SESSION_ID err_len=${#ERROR_MSG}"
 
@@ -56,7 +63,8 @@ jq -nc \
     --arg ts "$ts" \
     --arg tool "$TOOL_NAME" \
     --arg error "$ERROR_MSG" \
-    '{ts: $ts, tool: $tool, error: $error}' \
+    --arg command "$COMMAND_MSG" \
+    '{ts: $ts, tool: $tool, error: $error, command: $command}' \
     >>"$ledger" 2>/dev/null || true
 
 debug_log track-tool-failures "appended ledger=$ledger"
@@ -72,7 +80,8 @@ if [ -n "${CWD:-}" ] && [ -f "$CWD/shared/enforcement/registry.yaml" ]; then
         --arg tool "$TOOL_NAME" \
         --arg error "$ERROR_MSG" \
         --arg agent "$agent_slug" \
-        '{ts: $ts, tool: $tool, error: $error, agent: $agent}' \
+        --arg command "$COMMAND_MSG" \
+        '{ts: $ts, tool: $tool, error: $error, agent: $agent, command: $command}' \
         >>"$local_dir/${session_slug}.jsonl" 2>/dev/null || true
     debug_log track-tool-failures "appended local=$local_dir/${session_slug}.jsonl"
 fi

@@ -8,7 +8,7 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
-# rationale: codegen-log is the SOLE writer of cycle logs — raw Edit/Write/MultiEdit on codegen/logging/*.jsonl, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section --body @- / section --role <role> / append --role <role>.
+# rationale: codegen-log is the SOLE writer of cycle logs — raw Edit/Write/MultiEdit on codegen/logging/*.jsonl, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section <role> (stdin or --body "<text>") / append <role>.
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.

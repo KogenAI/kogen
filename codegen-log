@@ -262,16 +262,18 @@ def event_schema:
 usage() {
     printf 'Usage:\n' >&2
     printf '  codegen-log init --slug <slug> [--stamp <YYYYMMDD_HHMMSS>]\n' >&2
-    printf '  codegen-log section --body @- [--role <role>] [--slug <slug>]\n' >&2
-    printf '  codegen-log section --body @- --learned "<text>" [--role <role>] [--slug <slug>]\n' >&2
-    printf '  codegen-log append --role <role> --body @- [--slug <slug>]\n' >&2
-    printf '  codegen-log append --role <role> --learned "<text>" [--slug <slug>]\n' >&2
-    printf '  codegen-log append --role <role> --no-learning "<text>" [--slug <slug>]\n' >&2
-    printf '  codegen-log append --role <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]\n' >&2
-    printf '  codegen-log append --role <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
-    printf '  codegen-log append --role <role> --plan-gate @<file-or-@-> [--slug <slug>]\n' >&2
-    printf '  codegen-log append --role <role> --files-to-touch @<file-or-@-> [--slug <slug>]\n' >&2
-    printf '  codegen-log append --role <role> --files-modified @<file-or-@-> [--slug <slug>]\n' >&2
+    printf '  printf "%%s" "$body" | codegen-log section <role> [--slug <slug>]   # taught form: role positional, body via stdin\n' >&2
+    printf '  codegen-log section <role> --body "<text>" [--slug <slug>]         # literal text also accepted\n' >&2
+    printf '  printf "%%s" "$body" | codegen-log section <role> --learned "<text>" [--slug <slug>]\n' >&2
+    printf '  codegen-log section --body @- [--role <role>] [--slug <slug>]      # alias form\n' >&2
+    printf '  codegen-log append <role> --body "<text>"|@- [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --learned "<text>" [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --no-learning "<text>" [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --plan-gate @<file-or-@-> [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --files-to-touch @<file-or-@-> [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --files-modified @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
     printf '  codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]\n' >&2
@@ -525,6 +527,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$SUBCOMMAND" ]]; then
+    printf 'codegen-log: no subcommand given (expected one of: init, section, append, verdict, relocate, exit, show)\n' >&2
     usage
 fi
 
@@ -1146,12 +1149,12 @@ init)
     ;;
 section)
     # Implicit stdin: --body is optional. Omitted -> read stdin (same as @-).
+    # A value that does not start with @ is treated as literal body text
+    # (e.g. --body "some prose"). @- and @<path> keep their existing meanings.
     [[ -z "$BODY_SOURCE" ]] && BODY_SOURCE="@-"
     if [[ "$BODY_SOURCE" != @* ]]; then
-        printf 'codegen-log section: --body must start with @ (got %q)\n' "$BODY_SOURCE" >&2
-        exit 2
-    fi
-    if [[ "$BODY_SOURCE" != @- ]]; then
+        body="$BODY_SOURCE"
+    elif [[ "$BODY_SOURCE" != @- ]]; then
         body_path="${BODY_SOURCE#@}"
         if [[ ! -f "$body_path" ]]; then
             printf 'codegen-log section: body file not found: %s\n' "$body_path" >&2
@@ -1317,12 +1320,12 @@ append)
     fi
 
     # Plain --body append (no marker flag): implicit stdin when omitted.
+    # A value that does not start with @ is treated as literal body text
+    # (e.g. --body "some prose"). @- and @<path> keep their existing meanings.
     [[ -z "$BODY_SOURCE" ]] && BODY_SOURCE="@-"
     if [[ "$BODY_SOURCE" != @* ]]; then
-        printf 'codegen-log append: --body must start with @ (got %q)\n' "$BODY_SOURCE" >&2
-        exit 2
-    fi
-    if [[ "$BODY_SOURCE" != @- ]]; then
+        body="$BODY_SOURCE"
+    elif [[ "$BODY_SOURCE" != @- ]]; then
         body_path="${BODY_SOURCE#@}"
         if [[ ! -f "$body_path" ]]; then
             printf 'codegen-log append: body file not found: %s\n' "$body_path" >&2

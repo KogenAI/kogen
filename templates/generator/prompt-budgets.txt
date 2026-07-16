@@ -39,12 +39,12 @@ shared/rules/stacks/static/tailwind.md 114
 shared/rules/stacks/static/vite.md 112
 
 # --- rendered agent prompts (byte count) ---
-shared/subagents/phoenix/developer-phoenix-backend.md.j2 103436
-shared/subagents/phoenix/developer-phoenix-frontend.md.j2 111455
-shared/subagents/phoenix/planner-phoenix.md.j2 107915
-shared/subagents/phoenix/reviewer-phoenix.md.j2 102970
-shared/subagents/shared/committer.md.j2 61577
-shared/subagents/shared/context-curator.md.j2 59651
-shared/subagents/static/developer-static.md.j2 91345
-shared/subagents/static/planner-static.md.j2 80096
-shared/subagents/static/reviewer-static.md.j2 85631
+shared/subagents/phoenix/developer-phoenix-backend.md.j2 103473
+shared/subagents/phoenix/developer-phoenix-frontend.md.j2 111492
+shared/subagents/phoenix/planner-phoenix.md.j2 107952
+shared/subagents/phoenix/reviewer-phoenix.md.j2 103007
+shared/subagents/shared/committer.md.j2 61614
+shared/subagents/shared/context-curator.md.j2 59688
+shared/subagents/static/developer-static.md.j2 91382
+shared/subagents/static/planner-static.md.j2 80133
+shared/subagents/static/reviewer-static.md.j2 85668

@@ -184,6 +184,31 @@ fi
 GLOBAL_LEDGER_T8="$TMP_DIR/.claude/tool-failures/sess-t8_agent-008.jsonl"
 assert_jsonl_field "global ledger still written when sentinel absent" "$GLOBAL_LEDGER_T8" "tool" "Read"
 
+# Test 9: Bash failure records tool_input.command in the "command" field
+LEDGER_T9="$TMP_DIR/.claude/tool-failures/sess-t9_agent-009.jsonl"
+FAILURE_T9=$(jq -n \
+    '{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"cat /nonexistent-file-xyz"},"tool_response":{"error":"cat: /nonexistent-file-xyz: No such file or directory"},"agent_type":"developer-phoenix-backend","agent_id":"agent-009","session_id":"sess-t9"}')
+printf '%s' "$FAILURE_T9" | bash "$GUARD" 2>/dev/null || true
+assert_jsonl_field "ledger records the failing Bash command" "$LEDGER_T9" "command" "cat /nonexistent-file-xyz"
+
+# Test 10: Non-Bash failure (no tool_input.command) records empty command field
+LEDGER_T10="$TMP_DIR/.claude/tool-failures/sess-t10_agent-010.jsonl"
+FAILURE_T10=$(jq -n \
+    '{"hook_event_name":"PostToolUseFailure","tool_name":"Read","tool_response":{"error":"file not found"},"agent_type":"developer-phoenix-backend","agent_id":"agent-010","session_id":"sess-t10"}')
+printf '%s' "$FAILURE_T10" | bash "$GUARD" 2>/dev/null || true
+assert_jsonl_field "non-Bash failure records empty command field" "$LEDGER_T10" "command" ""
+
+# Test 11: local (per-cwd) ledger also records the command field
+CWD_T11="$TMP_DIR/cwd-t11"
+mkdir -p "$CWD_T11/shared/enforcement"
+touch "$CWD_T11/shared/enforcement/registry.yaml"
+T11_INPUT=$(jq -n \
+    --arg cwd "$CWD_T11" \
+    '{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"mix test path/to/file.exs"},"tool_response":{"error":"cmd failed"},"agent_type":"developer-phoenix-backend","agent_id":"agent-011","session_id":"sess-t11","cwd":$cwd}')
+printf '%s' "$T11_INPUT" | bash "$GUARD" 2>/dev/null || true
+LOCAL_LEDGER_T11="$CWD_T11/codegen/logging/failures/sess-t11.jsonl"
+assert_jsonl_field "local ledger records the failing command" "$LOCAL_LEDGER_T11" "command" "mix test path/to/file.exs"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
