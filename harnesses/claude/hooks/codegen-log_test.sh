@@ -791,6 +791,62 @@ show_retried_stderr="$(cat "$TMP_DIR/show_retried_stderr")"
 assert "show across a retried slug notes the older log on stderr" "0" "$(printf '%s' "$show_retried_stderr" | grep -qF "$show_run1" && printf 0 || printf 1)"
 assert "show across a retried slug names the newest log in the note" "0" "$(printf '%s' "$show_retried_stderr" | grep -qF "$show_run2" && printf 0 || printf 1)"
 
+# Test 32: `exit` appends a process-level "exit" event with NO role field.
+# --status required; --signal/--stderr-tail optional. Resolution mirrors
+# section/append EXCEPT unresolvable -> exit 0, writes nothing (loud stderr
+# note instead of a hard failure — the loop may have died before init).
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+exit_log="$PROJECT/codegen/logging/20260112_000000_exit-record_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"exit-record",path:"",stamp:{}}' >"$exit_log"
+
+exit_out="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" exit --slug exit-record --status 1 --signal 0 --stderr-tail "boom: RuntimeError"
+)"
+exit_path="$(printf '%s' "$exit_out" | tail -n 1)"
+assert "exit wrote to the exit-record log" "0" "$([ "$exit_path" = "$exit_log" ] && printf 0 || printf 1)"
+assert "exit emits exactly one exit event" "1" "$(jq_count "$exit_log" 'select(.ev=="exit")')"
+assert "exit event carries no role field" "0" "$([ "$(jq -r 'select(.ev=="exit")|has("role")' "$exit_log")" = "false" ] && printf 0 || printf 1)"
+assert "exit status field" "0" "$([ "$(jq -r 'select(.ev=="exit")|.status' "$exit_log")" = "1" ] && printf 0 || printf 1)"
+assert "exit stderr_tail field" "0" "$([ "$(jq -r 'select(.ev=="exit")|.stderr_tail' "$exit_log")" = "boom: RuntimeError" ] && printf 0 || printf 1)"
+
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" exit --slug exit-record --status 137 --signal 9 >/dev/null
+assert "exit signal death carries signal=9" "1" "$(jq_count "$exit_log" 'select(.ev=="exit" and .status==137 and .signal==9)')"
+
+set +e
+exit_missing_status_rc=0
+(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" exit --slug exit-record) >/dev/null 2>&1
+exit_missing_status_rc=$?
+set -e
+assert "exit without --status exits 2" "2" "$exit_missing_status_rc"
+
+# exit unresolvable (no --slug, no .active, no logs at all in a fresh empty
+# project root) -> exit 0, writes nothing, loud stderr note.
+NOLOG_PROJECT="$TMP_DIR/nolog-project"
+mkdir -p "$NOLOG_PROJECT/codegen/logging"
+exit_norecord_rc=0
+exit_norecord_stderr="$(
+    cd "$NOLOG_PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" exit --status 1 2>&1 1>/dev/null
+)" || exit_norecord_rc=$?
+assert "exit with unresolvable log exits 0 (not a hard failure)" "0" "$exit_norecord_rc"
+assert "exit with unresolvable log notes the skip on stderr" "0" "$(printf '%s' "$exit_norecord_stderr" | grep -qF 'not recorded' && printf 0 || printf 1)"
+assert "exit with unresolvable log wrote no file" "0" "$([ -z "$(find "$NOLOG_PROJECT/codegen/logging" -name '*_cycle.jsonl' 2>/dev/null)" ] && printf 0 || printf 1)"
+
+# Test 33: known_kinds drift fix — plan_gate/files_to_touch/files_modified/exit
+# no longer render as "other events:" in `show` — they were previously
+# missing from the known-kinds allowlist despite being first-class writers.
+unset CODEGEN_LOG_PATH
+drift_log="$PROJECT/codegen/logging/20260112_000100_known-kinds-drift_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"known-kinds-drift",path:"",stamp:{}}' >"$drift_log"
+jq -c -n '{ev:"role",role:"planner-phoenix",body:"plan body"}' >>"$drift_log"
+jq -c -n '{ev:"plan_gate",role:"planner-phoenix",command:"make ci",mode:"short",timeout:900}' >>"$drift_log"
+jq -c -n '{ev:"files_to_touch",role:"planner-phoenix",files:["a.ex"]}' >>"$drift_log"
+jq -c -n '{ev:"files_modified",role:"developer-phoenix-backend",files:["a.ex"]}' >>"$drift_log"
+jq -c -n '{ev:"exit",status:0,signal:null,stderr_tail:""}' >>"$drift_log"
+drift_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug known-kinds-drift 2>/dev/null)"
+assert "show no longer reports plan_gate/files_to_touch/files_modified/exit as unknown" \
+    "0" "$(printf '%s' "$drift_show" | grep -qF 'other events:' && printf 1 || printf 0)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

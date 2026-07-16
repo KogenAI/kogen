@@ -226,7 +226,7 @@ Guards scoped to the main-agent session (empty `AGENT_TYPE`/`AGENT_ID`) use `kin
 
 ## Shell Case Branching Pattern
 
-Place **specific arms BEFORE wildcards** in shell case statements. Example: a specific `INCONCLUSIVE:render-check-cmd-missing)` arm before a bare `INCONCLUSIVE:*)` arm — first-match semantics ensure the specific handler wins and the wildcard doesn't swallow it. `LoopGate.decide_gate/2` follows the same discipline in Elixir `case` form (see `render-check.js`'s `INCONCLUSIVE:<reason>` verdict vocabulary it dispatches on).
+Specific arms BEFORE wildcards in shell `case` (first-match wins). `LoopGate.decide_gate/2` follows the same discipline in Elixir.
 
 ## Git Status Porcelain Parsing
 
@@ -246,6 +246,7 @@ Place **specific arms BEFORE wildcards** in shell case statements. Example: a sp
 - `append <role> --plan-gate|--files-to-touch|--files-modified @- --slug <slug>` — typed gate-selection/read-discipline markers (JSON on stdin, shape-validated at write). planner* authors plan_gate+files_to_touch; developer* authors files_modified. `gate-select.sh`/`subagent-read-discipline.sh` read from the AUTHOR's event, never a prose fallback.
 - `verdict --gate <cmd> --mode <mode> --result "<text>" --slug <slug>` — the loop's dev-gate step verdict writer.
 - `relocate --new-slug <slug>` — rename + update `.active`.
+- `exit --status <n> [--signal <n>] [--stderr-tail "<text>"]` — append `{"ev":"exit",...}` (no role). Written by `dispatch.sh` after `wait`ing the loop child; no resolvable log → one stderr note, exit 0, nothing written.
 
 **Resolution**: `CODEGEN_LOG_PATH` env > `--slug` > `.active` sentinel > mtime — same order for the CLI AND both guard resolvers (`session_log_from_transcript`, `getActiveStepLog`), so a rival same-process `init` cannot hijack what a guard grades. Full contract: `shared/rules/_core/session-log.md` § Ownership.
 

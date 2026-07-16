@@ -205,5 +205,97 @@ else
     pass=$((pass + 1))
 fi
 
+# ── Test 6: loop child non-zero exit → exit code propagates verbatim, and a
+# codegen-log exit record is written IFF the loop inited its own log (.active
+# changed during the spawn). ──────────────────────────────────────────────────
+FAKE_BIN_EXITREC="$TMP_ROOT/bin-exitrec"
+mkdir -p "$FAKE_BIN_EXITREC"
+EXITREC_CWD="$TMP_ROOT/exitrec-cwd"
+mkdir -p "$EXITREC_CWD/codegen/logging"
+CODEGEN_LOG_ARGS_FILE="$TMP_ROOT/codegen-log-args.txt"
+FAKE_CODEGEN_EXITREC="$TMP_ROOT/codegen-exitrec"
+mkdir -p "$FAKE_CODEGEN_EXITREC/test_harness"
+# The real codegen-log binary lives at $CODEGEN_DIR/codegen-log (derived from
+# OCG_CODEGEN_DIR here) — dispatch.sh resolves it by that path, NEVER $PATH.
+cat >"$FAKE_CODEGEN_EXITREC/codegen-log" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "--version" ]]; then
+    printf 'codegen-log root=resolved\n'
+    exit 0
+fi
+printf '%s\n' "$*" >>"$CODEGEN_LOG_ARGS_FILE"
+exit 0
+STUB
+chmod +x "$FAKE_CODEGEN_EXITREC/codegen-log"
+# PATH-visible codegen-log too (preflight check uses bare `codegen-log`).
+cp "$FAKE_CODEGEN_EXITREC/codegen-log" "$FAKE_BIN_EXITREC/codegen-log"
+# mix stub: writes .active (simulating the loop's own `codegen-log init`),
+# then exits non-zero — the death class this record exists to catch.
+cat >"$FAKE_BIN_EXITREC/mix" <<STUB
+#!/usr/bin/env bash
+printf '%s' "$EXITREC_CWD/codegen/logging/20260101_000000_exitrec_cycle.jsonl" >"$EXITREC_CWD/codegen/logging/.active"
+echo "simulated loop stacktrace" >&2
+exit 1
+STUB
+chmod +x "$FAKE_BIN_EXITREC/mix"
+
+rm -f "$CODEGEN_LOG_ARGS_FILE"
+rc=0
+out=$(
+    CODEGEN_LOG_ARGS_FILE="$CODEGEN_LOG_ARGS_FILE" \
+        env -i \
+        HOME="${HOME:-/tmp}" \
+        PATH="$FAKE_BIN_EXITREC:$PATH" \
+        OCG_CODEGEN_DIR="$FAKE_CODEGEN_EXITREC" \
+        CODEGEN_BUILD_STACK=phoenix \
+        CODEGEN_BUILD_CWD="$EXITREC_CWD" \
+        CODEGEN_LOG_ARGS_FILE="$CODEGEN_LOG_ARGS_FILE" \
+        bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
+        2>&1
+) || rc=$?
+assert_eq "loop child non-zero exit: dispatch.sh propagates it verbatim" "1" "$rc"
+if [[ -f "$CODEGEN_LOG_ARGS_FILE" ]]; then
+    CODEGEN_LOG_ARGS="$(cat "$CODEGEN_LOG_ARGS_FILE")"
+    assert_contains "exit record: codegen-log exit invoked" "exit --status 1" "$CODEGEN_LOG_ARGS"
+else
+    printf 'FAIL: exit record — codegen-log exit was never invoked\n'
+    fail=$((fail + 1))
+fi
+
+# ── Test 7: loop dies before ever creating a log (.active unchanged) — no
+# exit record is written; dispatch.sh notes it on stderr instead. ───────────
+rm -f "$CODEGEN_LOG_ARGS_FILE"
+rm -rf "$EXITREC_CWD/codegen/logging/.active"
+FAKE_BIN_NOLOG="$TMP_ROOT/bin-nolog"
+mkdir -p "$FAKE_BIN_NOLOG"
+cp "$FAKE_CODEGEN_EXITREC/codegen-log" "$FAKE_BIN_NOLOG/codegen-log"
+cat >"$FAKE_BIN_NOLOG/mix" <<STUB
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$FAKE_BIN_NOLOG/mix"
+rc=0
+out=$(
+    env -i \
+        HOME="${HOME:-/tmp}" \
+        PATH="$FAKE_BIN_NOLOG:$PATH" \
+        OCG_CODEGEN_DIR="$FAKE_CODEGEN_EXITREC" \
+        CODEGEN_BUILD_STACK=phoenix \
+        CODEGEN_BUILD_CWD="$EXITREC_CWD" \
+        CODEGEN_LOG_ARGS_FILE="$CODEGEN_LOG_ARGS_FILE" \
+        bash "$FAKE_HARNESS/dispatch.sh" "dummy-prompt" \
+        2>&1
+) || rc=$?
+assert_eq "no-log death: dispatch.sh propagates the loop's exit code" "1" "$rc"
+assert_contains "no-log death: stderr notes the record was skipped" \
+    "before a cycle log existed" "$out"
+if [[ -f "$CODEGEN_LOG_ARGS_FILE" ]]; then
+    printf 'FAIL: no-log death — codegen-log exit must NOT have been invoked\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: no-log death — codegen-log exit not invoked\n'
+    pass=$((pass + 1))
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

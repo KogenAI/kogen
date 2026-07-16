@@ -15,6 +15,7 @@
 #   codegen-log append <role> --files-modified @<json-file-or-@-> [--slug <slug>]
 #   codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]
 #   codegen-log relocate --new-slug <slug> [--slug <slug>]
+#   codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]
 #   codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]
 #   codegen-log --version
 #
@@ -71,6 +72,10 @@
 #             — planner's typed files-to-touch list. Written by --files-to-touch.
 #   files_modified: {"ev":"files_modified","role":<role>,"files":[<relpath>,...]}
 #             — developer's typed files-modified list. Written by --files-modified.
+#   exit:    {"ev":"exit","status":<n>,"signal":<n-or-null>,"stderr_tail":<text-or-empty>}
+#             — dispatch.sh's record of the loop CHILD PROCESS's raw wait
+#             status, written from OUTSIDE any role (no "role" field — a
+#             process exit has no role). Written by `codegen-log exit`.
 #
 # Substance filter (--learned / --no-learning / section+append role BODY):
 # codegen-log is the SOLE writer of the cycle log, so it is the one place
@@ -116,6 +121,15 @@
 #         events). JSONL append is unconditional — there is no "section must
 #         exist first" precondition (that constraint only existed to protect
 #         markdown section-insertion order, which JSONL has no concept of).
+# exit: append ONE "exit" event line — NO role (a process exit has no role).
+#       Resolution mirrors section/append (CODEGEN_LOG_PATH > --slug >
+#       .active > mtime) EXCEPT: when NONE of those resolve to an existing
+#       log, `exit` does not fail loud — it prints one stderr note and exits
+#       0 without writing (the loop may have died before ever init'ing a
+#       log; there is nothing to pin the record to, and that absence is
+#       itself diagnostic — see dispatch.sh). --status is required
+#       (integer, the raw `wait` exit status); --signal (integer) and
+#       --stderr-tail (text) are optional.
 #
 # Marker flags — emit a structured event. Mutually exclusive with each other.
 #   --learned "<text>"            -> {"ev":"learned",...}. Valid on BOTH
@@ -212,6 +226,9 @@ RESULT_TEXT=""
 DETAIL_TEXT=""
 SHOW_FORMAT="table"
 SHOW_FULL=""
+EXIT_STATUS=""
+EXIT_SIGNAL=""
+EXIT_STDERR_TAIL=""
 
 usage() {
     printf 'Usage:\n' >&2
@@ -228,6 +245,7 @@ usage() {
     printf '  codegen-log append --role <role> --files-modified @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
+    printf '  codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]\n' >&2
     printf '  codegen-log --version\n' >&2
     printf '\n' >&2
@@ -251,7 +269,7 @@ done
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    init | section | append | relocate | verdict | show)
+    init | section | append | relocate | verdict | exit | show)
         if [[ -n "$SUBCOMMAND" ]]; then
             printf 'codegen-log: only one subcommand is allowed\n' >&2
             usage
@@ -395,6 +413,30 @@ while [[ $# -gt 0 ]]; do
         ;;
     --detail)
         DETAIL_TEXT="$2"
+        shift 2
+        ;;
+    --status=*)
+        EXIT_STATUS="${1#--status=}"
+        shift
+        ;;
+    --status)
+        EXIT_STATUS="$2"
+        shift 2
+        ;;
+    --signal=*)
+        EXIT_SIGNAL="${1#--signal=}"
+        shift
+        ;;
+    --signal)
+        EXIT_SIGNAL="$2"
+        shift 2
+        ;;
+    --stderr-tail=*)
+        EXIT_STDERR_TAIL="${1#--stderr-tail=}"
+        shift
+        ;;
+    --stderr-tail)
+        EXIT_STDERR_TAIL="$2"
         shift 2
         ;;
     --format=*)
@@ -588,7 +630,14 @@ write_active_sentinel() {
 latest_cycle_log() {
     local root
     root="$(repo_root)"
-    ls -t "$root"/codegen/logging/*_cycle.jsonl 2>/dev/null | head -n 1
+    # `ls` exits non-zero when the glob matches nothing (no logs exist at
+    # all yet) — under `set -o pipefail` that failure propagates through the
+    # pipe to `head`, and under `set -e` a bare command substitution
+    # assignment (`log_file="$(latest_cycle_log)"` at the call site) would
+    # then abort the WHOLE script silently, before the caller's own
+    # "-z $log_file" no-log-found check ever runs. `|| true` here keeps the
+    # legitimate "nothing to fall back to" case a clean empty result.
+    ls -t "$root"/codegen/logging/*_cycle.jsonl 2>/dev/null | head -n 1 || true
 }
 
 validate_slug() {
@@ -813,7 +862,7 @@ show_build_model() {
         --argjson events "$events_json" \
         --argjson summary "$summary_json" \
         '
-        def known_kinds: ["init","role","learned","no_learning","died","gate","turn"];
+        def known_kinds: ["init","role","learned","no_learning","died","gate","turn","plan_gate","files_to_touch","files_modified","exit"];
 
         ($events) as $ev
         | ($ev | map(select(.ev=="init")) | .[0] // {}) as $init
@@ -823,6 +872,7 @@ show_build_model() {
         | ($ev | map(select(.ev=="died")) ) as $died
         | ($ev | map(select(.ev=="gate")) ) as $gates
         | ($ev | map(select(.ev=="turn")) ) as $turns
+        | ($ev | map(select(.ev=="exit")) ) as $exits
         | ($ev | map(select(. as $item | known_kinds | index($item.ev) | not)) | group_by(.ev) | map({kind: .[0].ev, count: length})) as $unknown_kinds
 
         # role_names: every role that has EITHER an invocation record
@@ -862,7 +912,8 @@ show_build_model() {
               ($rows[] | select((.bodies | length) == 0) | "role \(.role): invoked but wrote no body"),
               ($rows[] | select((.learned | length) == 0 and (.no_learning | length) == 0) | "role \(.role): no learned/no_learning event"),
               (if ($trailing_verdict != null and $trailing_verdict != "clear") then "trailing gate verdict: \($trailing_verdict)" else empty end),
-              ($summary[] | select(.status != null and .status != "success") | "cycle-summary role \(.role): status=\(.status)")
+              ($summary[] | select(.status != null and .status != "success") | "cycle-summary role \(.role): status=\(.status)"),
+              ($exits[] | select(.status != 0 or .signal != null) | "exit: status \(.status)" + (if .signal != null then " (signal \(.signal))" else "" end) + (if (.stderr_tail // "") != "" then " — " + .stderr_tail else "" end))
             ] | unique
           ) as $anomalies
 
@@ -1275,6 +1326,40 @@ verdict)
         --arg result "$RESULT_TEXT" \
         --arg detail "${DETAIL_TEXT:-}" \
         '{ev: "gate", role: $role, verdict: $verdict, gate: $gate, mode: $mode, result: $result, detail: $detail}')"
+    append_event_line "$log_file" "$line"
+    printf '%s\n' "$log_file"
+    ;;
+exit)
+    if [[ -z "$EXIT_STATUS" ]]; then
+        printf 'codegen-log exit: --status is required\n' >&2
+        usage
+    fi
+    if [[ ! "$EXIT_STATUS" =~ ^-?[0-9]+$ ]]; then
+        printf 'codegen-log exit: --status must be an integer (got %q)\n' "$EXIT_STATUS" >&2
+        exit 2
+    fi
+    if [[ -n "$EXIT_SIGNAL" && ! "$EXIT_SIGNAL" =~ ^[0-9]+$ ]]; then
+        printf 'codegen-log exit: --signal must be an integer (got %q)\n' "$EXIT_SIGNAL" >&2
+        exit 2
+    fi
+    # Resolution mirrors section/append EXCEPT: no log resolving is not an
+    # error here. The loop may have died before it ever init'd a cycle log —
+    # there is nothing to pin the record to, and writing into an unrelated
+    # (mtime-fallback) log would misattribute this exit to the wrong run.
+    # That absence is itself diagnostic (see dispatch.sh); note it loudly on
+    # stderr and exit 0 without writing.
+    log_file="$(resolve_log_file)"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        printf 'codegen-log exit: no cycle log found for this run — loop exited (status=%s) before a cycle log existed, not recorded\n' "$EXIT_STATUS" >&2
+        exit 0
+    fi
+    if [[ -n "$EXIT_SIGNAL" ]]; then
+        line="$(jq -c -n --argjson status "$EXIT_STATUS" --argjson signal "$EXIT_SIGNAL" --arg tail "${EXIT_STDERR_TAIL:-}" \
+            '{ev: "exit", status: $status, signal: $signal, stderr_tail: $tail}')"
+    else
+        line="$(jq -c -n --argjson status "$EXIT_STATUS" --arg tail "${EXIT_STDERR_TAIL:-}" \
+            '{ev: "exit", status: $status, signal: null, stderr_tail: $tail}')"
+    fi
     append_event_line "$log_file" "$line"
     printf '%s\n' "$log_file"
     ;;

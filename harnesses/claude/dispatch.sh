@@ -86,6 +86,22 @@ fi
 # child_pid == PGID, so `kill -TERM -$child_pid` reaches the loop AND every
 # descendant it spawns. Mirrors the shipped build-queue.sh trap pattern
 # (codegen/pitches/shipped/build-queue-process-supervision.md).
+#
+# Snapshot .active BEFORE the spawn: the exit-record write (below) needs to
+# tell "the loop inited its own log for this run" apart from "the loop died
+# before it ever inited one" — comparing .active before/after is how.
+_active_sentinel="$CWD/codegen/logging/.active"
+_active_before=""
+[[ -f "$_active_sentinel" ]] && _active_before="$(cat "$_active_sentinel" 2>/dev/null || true)"
+
+# Bounded stderr capture: the child's stderr is teed to a temp file (last
+# 8 KB kept) from INSIDE the inner bash -c wrapper, so a clean exit's raise
+# stacktrace survives even though nothing else durable does. A SIGKILL of
+# the process group kills the tee too — the tail may be short there, which
+# costs nothing because the raw `status` (137) already IS the diagnosis.
+_stderr_tail_file="$(mktemp)"
+trap 'rm -f "$_stderr_tail_file"' EXIT
+
 set -m
 env \
     -u ANTHROPIC_API_KEY \
@@ -101,8 +117,9 @@ env \
         if [[ -n "$5" ]]; then _loop_argv+=("--fallback-model=$5"); fi
         if [[ -n "$6" ]]; then _loop_argv+=("--max-budget-usd=$6"); fi
         _loop_argv+=(-- "$4")
-        exec "${_loop_argv[@]}"' \
-    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" &
+        "${_loop_argv[@]}" 2> >(tee "$7" >&2)
+        exit "$?"' \
+    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" &
 child_pid=$!
 
 forward_term() {
@@ -110,7 +127,38 @@ forward_term() {
 }
 trap 'forward_term' INT TERM
 
-wait "$child_pid"
-exit_code=$?
+# The child's wait status must be captured with `||`, never a bare `wait`:
+# under `set -e`, a bare `wait "$child_pid"` returning non-zero ABORTS this
+# script at that line — exit_code=$? and everything after it would never
+# run on exactly the death classes this record exists to catch.
+exit_code=0
+wait "$child_pid" || exit_code=$?
 trap - INT TERM
+
+# Decode signal deaths (128+N convention — see
+# test_harness/lib/codegen_test_harness/build_signal_handler.ex moduledoc,
+# which encodes the same convention for its own halt codes).
+_signal=""
+if [[ "$exit_code" -gt 128 ]]; then
+    _signal=$((exit_code - 128))
+fi
+_stderr_tail=""
+if [[ -s "$_stderr_tail_file" ]]; then
+    _stderr_tail="$(tail -c 8192 "$_stderr_tail_file" 2>/dev/null || true)"
+fi
+
+# Write the exit record. Fail-loud-non-blocking: a codegen-log failure here
+# prints to stderr and never changes exit_code (log-write-not-a-gate).
+_active_after=""
+[[ -f "$_active_sentinel" ]] && _active_after="$(cat "$_active_sentinel" 2>/dev/null || true)"
+if [[ -n "$_active_after" && "$_active_after" != "$_active_before" ]]; then
+    _exit_args=(exit --status "$exit_code")
+    [[ -n "$_signal" ]] && _exit_args+=(--signal "$_signal")
+    [[ -n "$_stderr_tail" ]] && _exit_args+=(--stderr-tail "$_stderr_tail")
+    CODEGEN_LOG_PATH="$_active_after" "$CODEGEN_DIR/codegen-log" "${_exit_args[@]}" >/dev/null 2>&1 ||
+        printf 'claude dispatch: codegen-log exit record failed (non-fatal)\n' >&2
+else
+    printf 'claude dispatch: loop exited %s before a cycle log existed — not recorded\n' "$exit_code" >&2
+fi
+
 exit "$exit_code"
