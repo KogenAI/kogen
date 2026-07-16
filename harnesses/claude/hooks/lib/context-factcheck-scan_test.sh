@@ -323,5 +323,33 @@ case "$out" in
 esac
 rm -rf "$T26" "$mirror26"
 
+# --- Test 27: placeholder-segment path (`<app>/context/core.md`) → skipped, exit 0 ---
+# Locks the accidental-turned-intentional escape: a doc describing a path
+# inside a provisioned/downstream app (not this repo) uses a placeholder
+# segment so claim class 1 never asserts it against repo_root.
+T27=$(new_repo)
+printf 'See `<app>/context/core.md` for the provisioned stub.\n' >"$T27/CLAUDE.md"
+out=$(bash "$SCAN" "$T27")
+rc=$?
+assert_exit "placeholder-segment path → exit 0" "0" "$rc"
+assert_eq "placeholder-segment path → empty stdout" "" "$out"
+rm -rf "$T27"
+
+# --- Test 28: bare (non-placeholder) missing path → violation message names
+# the placeholder-segment escape hatch ---
+T28=$(new_repo)
+printf 'See `context/core.md` for details.\n' >"$T28/CLAUDE.md"
+out=$(bash "$SCAN" "$T28")
+rc=$?
+assert_exit "bare missing path → exit 1" "1" "$rc"
+case "$out" in
+*"placeholder segment"*"<app>/context/core.md"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: bare missing path → message should teach the placeholder-segment escape\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+rm -rf "$T28"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

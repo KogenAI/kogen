@@ -191,7 +191,7 @@ while IFS= read -r doc_path; do
                     ;;
                 esac
                 if [ "$resolved" -eq 0 ]; then
-                    msg="context-factcheck-scan: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path or remove the claim."
+                    msg="context-factcheck-scan: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path, remove the claim, or — if it names a path inside a provisioned/downstream app rather than this repo — write it with a placeholder segment (e.g. \`<app>/context/core.md\`)."
                     violations="${violations}${violations:+$nl}${msg}"
                 fi
             fi

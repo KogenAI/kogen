@@ -53,7 +53,7 @@ Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-
 
 **Adding or removing a `context/*.md` file requires a matching `PROJECT_CONTEXT.md` § Domain Context Files row that names the file's basename** — the in-loop `run_curator_doc_check` step (post-your-turn) re-invokes you if this parity is missing (the step enforces; this rule is the pointer).
 
-**Factcheck (named-path claims, count anchors, `_`→`*` corruption):** `context-factcheck-edit-gate.sh` denies an Edit/Write/MultiEdit to any orientation doc, in your own turn, when the PROJECTED post-write content fails the scan. Fix in-turn before finishing. `run_curator_doc_check` re-scans your touched docs post-turn as a backstop (catches a Bash `sed`/`printf>`/`mv` write the edit-gate never saw).
+**Factcheck (named-path claims, count anchors, `_`→`*` corruption):** `context-factcheck-edit-gate.sh` denies an Edit/Write/MultiEdit to any orientation doc, in your own turn, when the PROJECTED post-write content fails the scan. Fix in-turn before finishing. `run_curator_doc_check` re-scans your touched docs post-turn as a backstop (catches a Bash `sed`/`printf>`/`mv` write the edit-gate never saw). **Named-path claims are checked against THIS repo** — a path you describe as living inside a provisioned/downstream app (not this repo) will be denied as nonexistent unless you write it with a placeholder segment, e.g. `` `<app>/context/core.md` `` instead of `` `context/core.md` ``.
 
 ## Rule-File Cap Check
 

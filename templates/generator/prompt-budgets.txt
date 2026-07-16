@@ -44,7 +44,7 @@ shared/subagents/phoenix/developer-phoenix-frontend.md.j2 112102
 shared/subagents/phoenix/planner-phoenix.md.j2 108193
 shared/subagents/phoenix/reviewer-phoenix.md.j2 103617
 shared/subagents/shared/committer.md.j2 61855
-shared/subagents/shared/context-curator.md.j2 59929
+shared/subagents/shared/context-curator.md.j2 60216
 shared/subagents/static/developer-static.md.j2 91992
 shared/subagents/static/planner-static.md.j2 80374
 shared/subagents/static/reviewer-static.md.j2 86278
