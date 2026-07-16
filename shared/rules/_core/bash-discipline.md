@@ -219,3 +219,7 @@ When a test stub uses a heredoc (e.g., heredoc-based mock pi binary emitting JSO
 ## Printf Format Strings: Hyphen-Prefix Escape Requirement
 
 `printf` format strings that start with a literal hyphen (e.g., `"- item: %s\n"` or `"--flag %s\n"`) are misparsed as option flags by `printf` (runtime error: "invalid option"). **Always use `printf --` when the format string itself begins with `-`** to signal end-of-options. Pattern: `printf -- "- item: %s\n" "$value"` rather than `printf "- item: %s\n" "$value"`. This escapes the format string's leading `-` and prevents misparse. Syntax validation via `bash -n` passes (the format string is syntactically valid); the bug is runtime-only, revealed only when `printf` executes the format string and sees a leading `-` character.
+
+## jq Filter Rebinding in select()
+
+Inside `select(EXPR)`, piping a literal array constant into a filter rebinds `.` to that array BEFORE the filter runs. Example: `select(known_kinds | index(.ev))` where `known_kinds` is an array — the pipe rebinds `.` to the array, so `.ev` tries to index an array (not the original item). **Fix**: capture the item via `. as $item`, then use `$item.ev` to reference it: `select(. as $item | known_kinds | index($item.ev))`. Also: `--slurpfile VAR file` already produces the array itself as `$VAR` — using `$VAR[0]` treats the array as a single-element array (common double-wrap mistake). Use `$VAR` directly, or iterate `$VAR[]` to project elements.

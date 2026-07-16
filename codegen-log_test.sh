@@ -39,6 +39,19 @@
 # (ee) --no-learning emits a structured no_learning event (the legal,
 #      countable "nothing to learn" exit); mutually exclusive with
 #      --learned/--died/--verdict; append-only
+# (ff) `show` read-only render: default table format renders role rows,
+#      "no anomalies", and a totals line; --format md/html render alternate
+#      formats (html escapes special chars); --role drills into one role's
+#      body/learned/no_learning; --full prints every role's body
+# (gg) `show` anomaly detection: a role invoked (per cycle-summary) with no
+#      ev:role body, and a role with neither learned nor no_learning, both
+#      surface as anomalies; a clean cycle prints "no anomalies"
+# (hh) `show` degrades deterministically: no sibling cycle-summary dir ->
+#      turns/cost render "—", one stderr note, exit 0; unknown ev kind is
+#      counted and reported, never dropped
+# (ii) `show` error paths: bad --format exits 2; --role naming a role absent
+#      from the log exits 2; a malformed (non-JSON) log line exits non-zero
+#      instead of a partial render
 
 set -euo pipefail
 
@@ -507,6 +520,160 @@ ERR_EE2=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
 RC_EE2=$?
 set -e
 check "(ee) --no-learning on section exits 2 (append-only)" "2" "$RC_EE2"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (ff) `show` default table render, --format md/html, --role drill-down,
+# --full.
+WS_FF="$(new_workspace)"
+LOG_FF="$(init_log "$WS_FF" test-show-render)"
+printf 'did the work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "learned something real this step" >/dev/null
+
+TABLE_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
+    "$CODEGEN_LOG" show --slug test-show-render)
+assert_contains "(ff) table render shows the role row" "$TABLE_FF" "developer-phoenix-backend"
+assert_contains "(ff) table render shows no anomalies" "$TABLE_FF" "no anomalies"
+assert_contains "(ff) table render shows totals line" "$TABLE_FF" "role invocations"
+
+MD_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
+    "$CODEGEN_LOG" show --slug test-show-render --format md)
+assert_contains "(ff) md render has a markdown table header" "$MD_FF" "| # | Role |"
+
+HTML_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
+    "$CODEGEN_LOG" show --slug test-show-render --format html)
+assert_contains "(ff) html render contains a table tag" "$HTML_FF" "<table"
+
+WS_FF2="$(new_workspace)"
+LOG_FF2="$(init_log "$WS_FF2" test-show-html-escape)"
+printf 'body with <script>&amp;\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF2" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "text with < and & escaped in html output" >/dev/null
+HTML_ESCAPE_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF2" \
+    "$CODEGEN_LOG" show --slug test-show-html-escape --format html --full)
+assert_contains "(ff) html --full escapes body content (no raw <script>)" "$HTML_ESCAPE_FF" "&lt;"
+
+ROLE_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
+    "$CODEGEN_LOG" show --slug test-show-render --role developer-phoenix-backend)
+assert_contains "(ff) --role drill-down shows the body" "$ROLE_FF" "did the work"
+assert_contains "(ff) --role drill-down shows the learned text" "$ROLE_FF" "learned something real this step"
+
+FULL_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
+    "$CODEGEN_LOG" show --slug test-show-render --full)
+assert_contains "(ff) --full shows role section marker" "$FULL_FF" "=== developer-phoenix-backend ==="
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (gg) `show` anomaly detection: cycle-summary-only role (no ev:role body)
+# and a role with neither learned nor no_learning both surface; clean cycle
+# shows "no anomalies".
+WS_GG="$(new_workspace)"
+LOG_GG="$(init_log "$WS_GG" test-show-anomalies)"
+STEM_GG="${LOG_GG%_cycle.jsonl}"
+mkdir -p "$STEM_GG"
+cat >"$STEM_GG/cycle-summary.jsonl" <<'SUMMARY'
+{"cost_usd":0.1,"num_turns":3,"role":"committer","seq":1,"status":"success","transcript":"/tmp/c.jsonl"}
+SUMMARY
+ANOM_GG=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_GG" \
+    "$CODEGEN_LOG" show --slug test-show-anomalies)
+assert_contains "(gg) invoked-but-no-body anomaly fires for committer" "$ANOM_GG" "committer: invoked but wrote no body"
+assert_contains "(gg) no-learned/no_learning anomaly fires for committer" "$ANOM_GG" "no learned/no_learning event"
+
+WS_GG2="$(new_workspace)"
+LOG_GG2="$(init_log "$WS_GG2" test-show-clean)"
+printf 'clean work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_GG2" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "clean cycle, real learning text here" >/dev/null
+CLEAN_GG=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_GG2" \
+    "$CODEGEN_LOG" show --slug test-show-clean)
+assert_contains "(gg) clean cycle prints literal no anomalies" "$CLEAN_GG" "no anomalies"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (hh) `show` degrades deterministically: no sibling summary dir -> "—" +
+# stderr note, exit 0; unknown ev kind counted, never dropped.
+WS_HH="$(new_workspace)"
+LOG_HH="$(init_log "$WS_HH" test-show-no-summary)"
+printf 'solo body\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_HH" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "no summary sibling exists for this cycle" >/dev/null
+OUT_HH=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_HH" \
+    "$CODEGEN_LOG" show --slug test-show-no-summary 2>/tmp/show_hh_stderr.txt)
+RC_HH=$?
+check "(hh) missing-sibling show exits 0" "0" "$RC_HH"
+assert_contains "(hh) missing-sibling turns render as em dash" "$OUT_HH" "—"
+assert_contains "(hh) missing-sibling stderr names the missing dir" "$(cat /tmp/show_hh_stderr.txt)" "no cycle-summary.jsonl sibling found"
+rm -f /tmp/show_hh_stderr.txt
+
+echo '{"ev":"mystery-kind","foo":"bar"}' >>"$LOG_HH"
+UNKNOWN_HH=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_HH" \
+    "$CODEGEN_LOG" show --slug test-show-no-summary)
+assert_contains "(hh) unknown ev kind reported, not dropped" "$UNKNOWN_HH" "other events: mystery-kindx1"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (ii) `show` error paths: bad --format exits 2; unknown --role exits 2;
+# malformed log line exits non-zero (no partial render).
+WS_II="$(new_workspace)"
+LOG_II="$(init_log "$WS_II" test-show-errors)"
+printf 'body\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_II" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- >/dev/null
+
+set +e
+ERR_II1=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_II" \
+    "$CODEGEN_LOG" show --slug test-show-errors --format zzz 2>&1)
+RC_II1=$?
+set -e
+check "(ii) bad --format exits 2" "2" "$RC_II1"
+assert_contains "(ii) bad --format error names the allowed values" "$ERR_II1" "table|md|html"
+
+set +e
+ERR_II2=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_II" \
+    "$CODEGEN_LOG" show --slug test-show-errors --role bogus-role-xyz 2>&1)
+RC_II2=$?
+set -e
+check "(ii) unknown --role exits 2" "2" "$RC_II2"
+assert_contains "(ii) unknown --role error names the role" "$ERR_II2" "bogus-role-xyz"
+
+echo "not valid json" >>"$LOG_II"
+set +e
+env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_II" \
+    "$CODEGEN_LOG" show --slug test-show-errors >/dev/null 2>&1
+RC_II3=$?
+set -e
+check "(ii) malformed log line exits non-zero (not 0)" "1" "$([[ "$RC_II3" -ne 0 ]] && echo 1 || echo 0)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (jj) `show` invoked-but-no-body anomaly under the ROLE-spine fallback (no
+# ev:turn events, no cycle-summary.jsonl sibling): a role that only has a
+# died event (invoked, then dropped before ever writing a body) must still
+# trip "invoked but wrote no body" — this is the exact branch that was dead
+# code before the fix (it only ever fired via .turn, which is always null
+# on the role spine).
+WS_JJ="$(new_workspace)"
+LOG_JJ="$(init_log "$WS_JJ" test-show-role-spine-anomaly)"
+printf 'clean work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_JJ" \
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "role-spine fallback fixture, real learning text" >/dev/null
+env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_JJ" \
+    "$CODEGEN_LOG" append --role committer --died interrupted --cause "session dropped before writing anything" >/dev/null
+ANOM_JJ=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_JJ" \
+    "$CODEGEN_LOG" show --slug test-show-role-spine-anomaly)
+assert_contains "(jj) role-spine fallback is actually in use (no ev:turn, no summary sibling)" "$ANOM_JJ" "spine: role"
+assert_contains "(jj) invoked-but-no-body anomaly fires for committer under role-spine fallback" "$ANOM_JJ" "committer: invoked but wrote no body"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

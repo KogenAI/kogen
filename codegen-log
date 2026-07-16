@@ -12,7 +12,28 @@
 #   codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]
 #   codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]
 #   codegen-log relocate --new-slug <slug> [--slug <slug>]
+#   codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]
 #   codegen-log --version
+#
+# show: READ-ONLY operator projection of one cycle log. Writes NOTHING — not
+# the log, not .active, not a rendered file on disk. Resolves the log via the
+# SAME precedence as section/append (CODEGEN_LOG_PATH > --slug/positional >
+# .active > mtime). Builds a per-role spine, preferring (in order) ev:turn
+# events (if a future log carries them), then the sibling
+# <log-dir>/<ts>_<slug>/cycle-summary.jsonl (role/seq/num_turns/cost_usd/
+# status/transcript), then the ev:role events themselves — each fallback
+# prints ONE stderr note naming the spine used. Renders to STDOUT ONLY in one
+# of three formats (--format table, default; md; html — html escapes every
+# interpolated value via jq's @html filter). --role <role> drills into that
+# role's body/learning/transcript path; --full prints every role's body in
+# seq order. Derives a fixed, deterministic anomaly list (turn/summary status
+# != success, any ev:died, an invoked role with zero ev:role body, a role
+# with neither ev:learned nor ev:no_learning, a trailing gate verdict !=
+# clear) — "no anomalies" prints explicitly when the list is empty. Unknown
+# ev kinds are never dropped: a trailing "other events: <kind>xN" line
+# accounts for every kind `show` does not otherwise render. Exits 2 (fail
+# loud, no partial render) on: bad --format, --role naming a role absent
+# from the resolved log, or no cycle log found at all.
 #
 # --version: cheap read-only presence/preflight probe. Prints
 #   "codegen-log root=<resolved|unresolved-root>" to stdout and exits 0.
@@ -151,6 +172,8 @@ GATE_CMD=""
 GATE_MODE=""
 RESULT_TEXT=""
 DETAIL_TEXT=""
+SHOW_FORMAT="table"
+SHOW_FULL=""
 
 usage() {
     printf 'Usage:\n' >&2
@@ -164,6 +187,7 @@ usage() {
     printf '  codegen-log append --role <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
     printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
+    printf '  codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]\n' >&2
     printf '  codegen-log --version\n' >&2
     printf '\n' >&2
     printf "section and append both APPEND a new event line to the JSONL cycle log — there is no overwrite/replace semantics.\n" >&2
@@ -186,7 +210,7 @@ done
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    init | section | append | relocate | verdict)
+    init | section | append | relocate | verdict | show)
         if [[ -n "$SUBCOMMAND" ]]; then
             printf 'codegen-log: only one subcommand is allowed\n' >&2
             usage
@@ -300,6 +324,18 @@ while [[ $# -gt 0 ]]; do
         DETAIL_TEXT="$2"
         shift 2
         ;;
+    --format=*)
+        SHOW_FORMAT="${1#--format=}"
+        shift
+        ;;
+    --format)
+        SHOW_FORMAT="$2"
+        shift 2
+        ;;
+    --full)
+        SHOW_FULL=1
+        shift
+        ;;
     --help | -h)
         usage
         ;;
@@ -316,6 +352,14 @@ while [[ $# -gt 0 ]]; do
         if [[ ("$SUBCOMMAND" == "section" || "$SUBCOMMAND" == "append") && -z "$ROLE_OVERRIDE" && -z "$ROLE_POSITIONAL_SEEN" ]]; then
             ROLE_OVERRIDE="$1"
             ROLE_POSITIONAL_SEEN=1
+            shift
+        elif [[ "$SUBCOMMAND" == "show" && -z "$SLUG_SET" ]]; then
+            # show's bare positional is a SLUG, never a role — show has its
+            # own SLUG-only positional form (distinct from section/append's
+            # role positional above), so it must not route through
+            # ROLE_OVERRIDE.
+            SLUG="$1"
+            SLUG_SET=1
             shift
         else
             printf 'codegen-log: unexpected argument %q\n' "$1" >&2
@@ -562,6 +606,218 @@ append_event_line() {
     local path="$1"
     local line="$2"
     printf '%s\n' "$line" >>"$path"
+}
+
+# show_summary_file — derive the sibling cycle-summary.jsonl path for a given
+# cycle log path (log dir + basename minus the "_cycle.jsonl" suffix). Prints
+# the path unconditionally; callers check -f before reading (an absent
+# sibling is a legitimate, tolerated fallback rung, not an error).
+show_summary_file() {
+    local log_file="$1"
+    local dir base stem
+    dir="$(dirname "$log_file")"
+    base="$(basename "$log_file")"
+    stem="${base%_cycle.jsonl}"
+    printf '%s/%s/cycle-summary.jsonl' "$dir" "$stem"
+}
+
+# show_build_model — build the single JSON model `show` renders from, as one
+# compact JSON object on stdout. Two jq passes: this pass only ASSEMBLES the
+# model (spine + anomalies + unknown-kind counts); show_render (below) does
+# all format-specific presentation. Emits fallback notes to FD 3 (passed in
+# by the caller) rather than stdout, so the model stream itself stays pure
+# JSON.
+#
+# Spine preference order (an explicit ladder, never silent): ev:turn events
+# (if present in this log) > cycle-summary.jsonl sibling rows > bare ev:role
+# events. Whichever rung is used, exactly one stderr note is printed via FD 3.
+show_build_model() {
+    local log_file="$1"
+    local summary_file="$2"
+    local notes_fd="$3"
+
+    # Fail loud on a malformed (non-JSON) log line — no partial render exiting
+    # 0. This validation must be a DIRECT command (not inside a process
+    # substitution or a `||`-guarded test), so its non-zero exit actually
+    # propagates under `set -e`.
+    local events_json
+    events_json="$(jq -c -s '.' "$log_file")"
+
+    local has_turn has_summary
+    has_turn="$(printf '%s' "$events_json" | jq -e '.[] | select(.ev=="turn")' >/dev/null 2>&1 && printf 1 || printf 0)"
+    has_summary=0
+    if [[ -f "$summary_file" ]]; then
+        has_summary="$(jq -e '.' "$summary_file" >/dev/null 2>&1 && printf 1 || printf 0)"
+    fi
+
+    local spine_used
+    if [[ "$has_turn" == "1" ]]; then
+        spine_used="turn"
+    elif [[ "$has_summary" == "1" ]]; then
+        spine_used="cycle-summary"
+    else
+        spine_used="role"
+    fi
+    printf 'codegen-log show: using %s spine%s\n' "$spine_used" \
+        "$([[ "$spine_used" != "turn" ]] && printf ' (no ev:turn events in this log)' || true)" >&"$notes_fd"
+    if [[ "$has_summary" != "1" ]]; then
+        printf 'codegen-log show: no cycle-summary.jsonl sibling found — turns/cost render as "—"\n' >&"$notes_fd"
+    fi
+
+    local summary_json
+    if [[ "$has_summary" == "1" ]]; then
+        summary_json="$(jq -c -s '.' "$summary_file")"
+    else
+        summary_json="[]"
+    fi
+
+    jq -c -n \
+        --arg spine "$spine_used" \
+        --argjson events "$events_json" \
+        --argjson summary "$summary_json" \
+        '
+        def known_kinds: ["init","role","learned","no_learning","died","gate","turn"];
+
+        ($events) as $ev
+        | ($ev | map(select(.ev=="init")) | .[0] // {}) as $init
+        | ($ev | map(select(.ev=="role")) ) as $roles
+        | ($ev | map(select(.ev=="learned")) ) as $learned
+        | ($ev | map(select(.ev=="no_learning")) ) as $no_learning
+        | ($ev | map(select(.ev=="died")) ) as $died
+        | ($ev | map(select(.ev=="gate")) ) as $gates
+        | ($ev | map(select(.ev=="turn")) ) as $turns
+        | ($ev | map(select(. as $item | known_kinds | index($item.ev) | not)) | group_by(.ev) | map({kind: .[0].ev, count: length})) as $unknown_kinds
+
+        # role_names: every role that has EITHER an invocation record
+        # (turn/cycle-summary) OR at least one in-log event — the union
+        # `show --role` validates against.
+        | (
+            (if $spine == "turn" then ($turns | map(.role))
+             elif $spine == "cycle-summary" then ($summary | map(.role))
+             else ($roles | map(.role)) end)
+            + ($roles | map(.role)) + ($learned | map(.role)) + ($no_learning | map(.role)) + ($died | map(.role))
+            | unique
+          ) as $role_names
+
+        | ($role_names | map(. as $r | {
+            role: $r,
+            bodies: ($roles | map(select(.role==$r) | .body)),
+            learned: ($learned | map(select(.role==$r) | .text)),
+            no_learning: ($no_learning | map(select(.role==$r) | .text)),
+            died: ($died | map(select(.role==$r))),
+            turn: (
+                if $spine == "turn" then ($turns | map(select(.role==$r)) | .[0] // null)
+                elif $spine == "cycle-summary" then (
+                    ($summary | map(select(.role==$r)) | .[0]) as $s
+                    | if $s then {role: $r, outcome: $s.status, seq: $s.seq, num_turns: $s.num_turns, cost_usd: $s.cost_usd, transcript: $s.transcript} else null end
+                )
+                else null end
+            )
+          })) as $rows
+
+        | ($gates) as $gate_events
+        | (if ($gate_events | length) > 0 then ($gate_events | .[-1].verdict) else null end) as $trailing_verdict
+
+        | (
+            [
+              ($rows[] | select(.turn != null and .turn.outcome != null and .turn.outcome != "success") | "role \(.role): outcome=\(.turn.outcome)"),
+              ($died[] | "role \(.role): died (\(.kind))"),
+              ($rows[] | select((.bodies | length) == 0) | "role \(.role): invoked but wrote no body"),
+              ($rows[] | select((.learned | length) == 0 and (.no_learning | length) == 0) | "role \(.role): no learned/no_learning event"),
+              (if ($trailing_verdict != null and $trailing_verdict != "clear") then "trailing gate verdict: \($trailing_verdict)" else empty end),
+              ($summary[] | select(.status != null and .status != "success") | "cycle-summary role \(.role): status=\(.status)")
+            ] | unique
+          ) as $anomalies
+
+        | {
+            pitch: ($init.pitch // ""),
+            path: ($init.path // ""),
+            stamp: ($init.stamp // {}),
+            spine: $spine,
+            rows: $rows,
+            gates: $gate_events,
+            trailing_verdict: $trailing_verdict,
+            anomalies: $anomalies,
+            unknown_kinds: $unknown_kinds
+          }
+        '
+}
+
+# show_render — render the model built by show_build_model into the
+# requested format. `$1` model json, `$2` format, `$3` role filter (empty =
+# none), `$4` full flag (1/empty). Writes to stdout ONLY.
+show_render() {
+    local model="$1"
+    local format="$2"
+    local role_filter="$3"
+    local full="$4"
+
+    case "$format" in
+    table)
+        printf '%s' "$model" | jq -r '
+            "Cycle: \(.pitch)  (spine: \(.spine))",
+            "Gate verdicts: " + (if (.gates|length) > 0 then ([.gates[] | .verdict] | join(" -> ")) else "(none)" end),
+            "",
+            "# ROLE TURNS COST OUTCOME LEARNED?",
+            (.rows[] | "\(.turn.seq // "-") \(.role) \(.turn.num_turns // "—") \(if .turn.cost_usd then ("$"+(.turn.cost_usd|tostring)) else "—" end) \(if .turn then (.turn.outcome // .turn.status // "—") else "—" end) \(if (.learned|length)>0 then "yes" elif (.no_learning|length)>0 then "none (honest)" else "⚠ missing" end)"),
+            "",
+            (if (.anomalies|length) > 0 then (["Anomalies:"] + (.anomalies | map("  - " + .))) | join("\n") else "no anomalies" end),
+            (if (.unknown_kinds|length) > 0 then ("other events: " + ([.unknown_kinds[] | "\(.kind)x\(.count)"] | join(", "))) else empty end),
+            "",
+            "total \([.rows[].turn.num_turns // 0] | add // 0) turns · $\([.rows[].turn.cost_usd // 0] | add // 0) · \(.rows|length) role invocations · \(.anomalies|length) anomalies"
+        '
+        ;;
+    md)
+        printf '%s' "$model" | jq -r '
+            "# Cycle: \(.pitch) (spine: \(.spine))",
+            "",
+            "| # | Role | Turns | Cost | Outcome | Learned? |",
+            "|---|------|-------|------|---------|----------|",
+            (.rows[] | "| \(.turn.seq // "-") | \(.role) | \(.turn.num_turns // "—") | \(if .turn.cost_usd then ("$"+(.turn.cost_usd|tostring)) else "—" end) | \(if .turn then (.turn.outcome // .turn.status // "—") else "—" end) | \(if (.learned|length)>0 then "yes" elif (.no_learning|length)>0 then "none (honest)" else "⚠ missing" end) |"),
+            "",
+            (if (.anomalies|length) > 0 then (["**Anomalies:**"] + (.anomalies | map("- " + .))) | join("\n") else "**no anomalies**" end),
+            (if (.unknown_kinds|length) > 0 then ("\nOther events: " + ([.unknown_kinds[] | "\(.kind)×\(.count)"] | join(", "))) else empty end)
+        '
+        ;;
+    html)
+        printf '%s' "$model" | jq -r '
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>Cycle " + (.pitch|@html) + "</title></head><body>",
+            "<h1>Cycle: " + (.pitch|@html) + " (spine: " + (.spine|@html) + ")</h1>",
+            "<table border=1><tr><th>#</th><th>Role</th><th>Turns</th><th>Cost</th><th>Outcome</th><th>Learned?</th></tr>",
+            (.rows[] | "<tr><td>" + ((.turn.seq // "-")|tostring|@html) + "</td><td>" + (.role|@html) + "</td><td>" + ((.turn.num_turns // "—")|tostring|@html) + "</td><td>" + ((if .turn.cost_usd then ("$"+(.turn.cost_usd|tostring)) else "—" end)|@html) + "</td><td>" + ((if .turn then (.turn.outcome // .turn.status // "—") else "—" end)|@html) + "</td><td>" + ((if (.learned|length)>0 then "yes" elif (.no_learning|length)>0 then "none (honest)" else "⚠ missing" end)|@html) + "</td></tr>"),
+            "</table>",
+            (if (.anomalies|length) > 0 then ("<h2>Anomalies</h2><ul>" + ([.anomalies[] | "<li>" + (.|@html) + "</li>"] | join("")) + "</ul>") else "<p>no anomalies</p>" end),
+            (if (.unknown_kinds|length) > 0 then ("<p>other events: " + ([.unknown_kinds[] | (.kind|@html) + "x" + (.count|tostring)] | join(", ")) + "</p>") else empty end),
+            "</body></html>"
+        '
+        ;;
+    esac
+
+    # Drill-down text is escaped via @html ONLY when format=html, so raw
+    # bodies/learnings render as plain text in table/md but are safe to embed
+    # in an html document (matches the compact-view escaping discipline).
+    local html_escape_filter="."
+    [[ "$format" == "html" ]] && html_escape_filter="@html"
+
+    if [[ -n "$role_filter" ]]; then
+        printf '\n--- drill-down: %s ---\n' "$role_filter"
+        printf '%s' "$model" | jq -r --arg r "$role_filter" --arg esc "$html_escape_filter" '
+            def esc_text: if $esc == "@html" then (@html) else . end;
+            .rows[] | select(.role==$r) |
+            (.bodies[] // empty | "\nBODY:\n" + (. | esc_text)),
+            (.learned[] // empty | "\nLEARNED:\n" + (. | esc_text)),
+            (.no_learning[] // empty | "\nNO_LEARNING:\n" + (. | esc_text)),
+            (if .turn.transcript then "\nTRANSCRIPT: " + (.turn.transcript | esc_text) else empty end)
+        '
+    elif [[ -n "$full" ]]; then
+        printf '\n--- full bodies (seq order) ---\n'
+        printf '%s' "$model" | jq -r --arg esc "$html_escape_filter" '
+            def esc_text: if $esc == "@html" then (@html) else . end;
+            .rows | sort_by(.turn.seq // 0) | .[] |
+            "\n=== \(.role) ===",
+            (.bodies[] // empty | esc_text)
+        '
+    fi
 }
 
 case "$SUBCOMMAND" in
@@ -825,5 +1081,33 @@ verdict)
         '{ev: "gate", role: $role, verdict: $verdict, gate: $gate, mode: $mode, result: $result, detail: $detail}')"
     append_event_line "$log_file" "$line"
     printf '%s\n' "$log_file"
+    ;;
+show)
+    case "$SHOW_FORMAT" in
+    table | md | html) ;;
+    *)
+        printf 'codegen-log: --format must be table|md|html (got %q)\n' "$SHOW_FORMAT" >&2
+        exit 2
+        ;;
+    esac
+
+    log_file="$(resolve_log_file)"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        printf 'codegen-log show: no cycle log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        exit 2
+    fi
+
+    summary_file="$(show_summary_file "$log_file")"
+    model="$(show_build_model "$log_file" "$summary_file" 2)"
+
+    if [[ -n "$ROLE_OVERRIDE" ]]; then
+        role_present="$(printf '%s' "$model" | jq -e --arg r "$ROLE_OVERRIDE" '.rows[] | select(.role==$r)' >/dev/null 2>&1 && printf 1 || printf 0)"
+        if [[ "$role_present" != "1" ]]; then
+            printf 'codegen-log show: role %s has no events in %s\n' "$ROLE_OVERRIDE" "$log_file" >&2
+            exit 2
+        fi
+    fi
+
+    show_render "$model" "$SHOW_FORMAT" "$ROLE_OVERRIDE" "$SHOW_FULL"
     ;;
 esac

@@ -542,6 +542,138 @@ assert "init refusal created no new *_cycle.jsonl file" "0" "$([ "$files_before"
 active_after="$(cat "$PROJECT/codegen/logging/.active")"
 assert "init refusal left .active byte-identical" "0" "$([ "$active_before" = "$active_after" ] && printf 0 || printf 1)"
 
+# Test 22: `show` read-only render — default table, --format md/html
+# (html escapes special chars), --role drill-down, --full.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+show_log="$PROJECT/codegen/logging/20260111_000000_show-render_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"show-render",path:"",stamp:{}}' >"$show_log"
+(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-render --learned "learned something real this step" <<'EOF' >/dev/null
+did the work
+EOF
+)
+table_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-render)"
+assert "table render shows the role" "0" "$(printf '%s' "$table_show" | grep -qF 'developer-phoenix-backend' && printf 0 || printf 1)"
+assert "table render shows no anomalies" "0" "$(printf '%s' "$table_show" | grep -qF 'no anomalies' && printf 0 || printf 1)"
+assert "table render shows totals line" "0" "$(printf '%s' "$table_show" | grep -qF 'role invocations' && printf 0 || printf 1)"
+
+md_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-render --format md)"
+assert "md render has a markdown table header" "0" "$(printf '%s' "$md_show" | grep -qF '| # | Role |' && printf 0 || printf 1)"
+
+html_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-render --format html)"
+assert "html render contains a table tag" "0" "$(printf '%s' "$html_show" | grep -qF '<table' && printf 0 || printf 1)"
+
+show_escape_log="$PROJECT/codegen/logging/20260111_000100_show-html-escape_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"show-html-escape",path:"",stamp:{}}' >"$show_escape_log"
+(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-html-escape --learned "text with < and & escaped in html output" <<'EOF' >/dev/null
+body with <script>&amp;
+EOF
+)
+html_escape_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-html-escape --format html --full)"
+assert "html --full escapes body content" "0" "$(printf '%s' "$html_escape_show" | grep -qF '&lt;' && printf 0 || printf 1)"
+
+role_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-render --role developer-phoenix-backend)"
+assert "--role drill-down shows the body" "0" "$(printf '%s' "$role_show" | grep -qF 'did the work' && printf 0 || printf 1)"
+assert "--role drill-down shows learned text" "0" "$(printf '%s' "$role_show" | grep -qF 'learned something real this step' && printf 0 || printf 1)"
+
+full_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-render --full)"
+assert "--full shows role section marker" "0" "$(printf '%s' "$full_show" | grep -qF '=== developer-phoenix-backend ===' && printf 0 || printf 1)"
+
+# Test 23: `show` anomaly detection — cycle-summary-only role (no ev:role
+# body) and a role with neither learned nor no_learning both surface; a
+# clean cycle prints "no anomalies".
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+anomaly_log="$PROJECT/codegen/logging/20260111_000200_show-anomalies_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"show-anomalies",path:"",stamp:{}}' >"$anomaly_log"
+anomaly_stem="${anomaly_log%_cycle.jsonl}"
+mkdir -p "$anomaly_stem"
+cat >"$anomaly_stem/cycle-summary.jsonl" <<'SUMMARY'
+{"cost_usd":0.1,"num_turns":3,"role":"committer","seq":1,"status":"success","transcript":"/tmp/c.jsonl"}
+SUMMARY
+anomaly_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-anomalies)"
+assert "invoked-but-no-body anomaly fires for committer" "0" "$(printf '%s' "$anomaly_show" | grep -qF 'committer: invoked but wrote no body' && printf 0 || printf 1)"
+assert "no-learned/no_learning anomaly fires for committer" "0" "$(printf '%s' "$anomaly_show" | grep -qF 'no learned/no_learning event' && printf 0 || printf 1)"
+
+clean_log="$PROJECT/codegen/logging/20260111_000300_show-clean_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"show-clean",path:"",stamp:{}}' >"$clean_log"
+(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-clean --learned "clean cycle, real learning text here" <<'EOF' >/dev/null
+clean work
+EOF
+)
+clean_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-clean)"
+assert "clean cycle prints literal no anomalies" "0" "$(printf '%s' "$clean_show" | grep -qF 'no anomalies' && printf 0 || printf 1)"
+
+# Test 24: `show` degrades deterministically — no sibling summary dir -> "—"
+# + stderr note, exit 0; unknown ev kind counted and reported, never dropped.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+nosum_log="$PROJECT/codegen/logging/20260111_000400_show-no-summary_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"show-no-summary",path:"",stamp:{}}' >"$nosum_log"
+(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-no-summary --learned "no summary sibling exists for this cycle" <<'EOF' >/dev/null
+solo body
+EOF
+)
+nosum_stderr_file="$TMP_DIR/show-no-summary.stderr"
+nosum_rc=0
+nosum_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-no-summary 2>"$nosum_stderr_file")" || nosum_rc=$?
+assert "missing-sibling show exits 0" "0" "$nosum_rc"
+assert "missing-sibling turns render as em dash" "0" "$(printf '%s' "$nosum_out" | grep -qF '—' && printf 0 || printf 1)"
+assert "missing-sibling stderr names the missing dir" "0" "$(grep -qF 'no cycle-summary.jsonl sibling found' "$nosum_stderr_file" && printf 0 || printf 1)"
+
+printf '%s\n' '{"ev":"mystery-kind","foo":"bar"}' >>"$nosum_log"
+unknown_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-no-summary)"
+assert "unknown ev kind reported, not dropped" "0" "$(printf '%s' "$unknown_show" | grep -qF 'other events: mystery-kindx1' && printf 0 || printf 1)"
+
+# Test 25: `show` error paths — bad --format exits 2; unknown --role exits
+# 2; malformed log line exits non-zero (no partial render).
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+err_log="$PROJECT/codegen/logging/20260111_000500_show-errors_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"show-errors",path:"",stamp:{}}' >"$err_log"
+(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-errors --body @- <<<"body" >/dev/null
+)
+
+format_rc=0
+format_err="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-errors --format zzz 2>&1)" || format_rc=$?
+assert "bad --format exits 2" "2" "$format_rc"
+assert "bad --format error names allowed values" "0" "$(printf '%s' "$format_err" | grep -qF 'table|md|html' && printf 0 || printf 1)"
+
+role_rc=0
+role_err="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-errors --role bogus-role-xyz 2>&1)" || role_rc=$?
+assert "unknown --role exits 2" "2" "$role_rc"
+assert "unknown --role error names the role" "0" "$(printf '%s' "$role_err" | grep -qF 'bogus-role-xyz' && printf 0 || printf 1)"
+
+printf '%s\n' 'not valid json' >>"$err_log"
+malformed_rc=0
+(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-errors >/dev/null 2>&1) || malformed_rc=$?
+assert "malformed log line exits non-zero" "0" "$([ "$malformed_rc" -ne 0 ] && printf 0 || printf 1)"
+
+# Test 26: `show` invoked-but-no-body anomaly under the ROLE-spine fallback
+# (no ev:turn events, no cycle-summary.jsonl sibling): a role that only has
+# a died event (invoked, then dropped before ever writing a body) must still
+# trip "invoked but wrote no body" — this is the exact branch that was dead
+# code before the fix (it only ever fired via .turn, which is always null
+# on the role spine).
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+rolespine_log="$PROJECT/codegen/logging/20260111_000600_show-role-spine-anomaly_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"show-role-spine-anomaly",path:"",stamp:{}}' >"$rolespine_log"
+(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-role-spine-anomaly --learned "role-spine fallback fixture, real learning text" <<'EOF' >/dev/null
+clean work
+EOF
+)
+(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append committer --slug show-role-spine-anomaly --died interrupted --cause "session dropped before writing anything" >/dev/null)
+rolespine_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-role-spine-anomaly)"
+assert "role-spine fallback is actually in use (no ev:turn, no summary sibling)" "0" "$(printf '%s' "$rolespine_show" | grep -qF 'spine: role' && printf 0 || printf 1)"
+assert "invoked-but-no-body anomaly fires for committer under role-spine fallback" "0" "$(printf '%s' "$rolespine_show" | grep -qF 'committer: invoked but wrote no body' && printf 0 || printf 1)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
