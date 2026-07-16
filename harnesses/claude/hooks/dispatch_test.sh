@@ -297,5 +297,112 @@ else
     pass=$((pass + 1))
 fi
 
+# ── Test 8: dispatch.sh under a real pty must NOT stop on SIGTTIN — the
+# backgrounded loop spawn (`set -m` + `&`) must not inherit the terminal on
+# stdin. Regression for the "finished build never returns the prompt" defect:
+# a background process group that reads the tty gets SIGTTIN and stops (T)
+# forever. The fix is `</dev/null` on the spawn; reverting it makes this
+# hang until the deadline kills it, turning the hang into a FAIL.
+FAKE_BIN_PTY="$TMP_ROOT/bin-pty"
+mkdir -p "$FAKE_BIN_PTY"
+cp "$FAKE_BIN/codegen-log" "$FAKE_BIN_PTY/codegen-log"
+cat >"$FAKE_BIN_PTY/mix" <<'STUB'
+#!/usr/bin/env bash
+# Real mix codegen.loop never reads stdin — this stub matches that contract
+# so the test proves the pgroup doesn't inherit/need the tty at all.
+printf 'pty-mix-ran\n'
+exit 0
+STUB
+chmod +x "$FAKE_BIN_PTY/mix"
+
+FAKE_CODEGEN_PTY="$TMP_ROOT/codegen-pty"
+mkdir -p "$FAKE_CODEGEN_PTY/test_harness"
+FAKE_HARNESS_PTY="$TMP_ROOT/harness-pty"
+mkdir -p "$FAKE_HARNESS_PTY"
+cp "$DISPATCH" "$FAKE_HARNESS_PTY/dispatch.sh"
+chmod +x "$FAKE_HARNESS_PTY/dispatch.sh"
+
+PTY_OUT_FILE="$TMP_ROOT/pty-out.txt"
+PTY_RC_FILE="$TMP_ROOT/pty-rc.txt"
+rm -f "$PTY_OUT_FILE" "$PTY_RC_FILE"
+
+python3 - "$FAKE_HARNESS_PTY/dispatch.sh" "$FAKE_BIN_PTY" "$FAKE_CODEGEN_PTY" "$PTY_OUT_FILE" "$PTY_RC_FILE" <<'PYEOF'
+import os
+import pty
+import select
+import signal
+import sys
+import time
+
+dispatch, fake_bin, fake_codegen, out_file, rc_file = sys.argv[1:6]
+
+env = dict(os.environ)
+env["PATH"] = fake_bin + ":" + env.get("PATH", "")
+env["OCG_CODEGEN_DIR"] = fake_codegen
+env["CODEGEN_BUILD_STACK"] = "phoenix"
+
+pid, master_fd = pty.fork()
+if pid == 0:
+    os.execvpe("bash", ["bash", dispatch, "dummy-prompt"], env)
+    os._exit(127)
+
+deadline = time.time() + 15
+buf = b""
+while time.time() < deadline:
+    remaining = deadline - time.time()
+    if remaining <= 0:
+        break
+    # Bound the read itself, not just the loop re-entry — a stopped
+    # (SIGTTIN) child writes nothing, so a bare os.read would block past
+    # the deadline. select() enforces the timeout on the blocking read.
+    readable, _, _ = select.select([master_fd], [], [], remaining)
+    if not readable:
+        continue
+    try:
+        chunk = os.read(master_fd, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    buf += chunk
+    try:
+        done_pid, status = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        done_pid, status = pid, 0
+    if done_pid == pid:
+        break
+else:
+    # Deadline hit — the exact hang this test guards against.
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    with open(out_file, "wb") as f:
+        f.write(buf)
+    with open(rc_file, "w") as f:
+        f.write("TIMEOUT")
+    sys.exit(0)
+
+try:
+    done_pid, status = os.waitpid(pid, 0)
+except ChildProcessError:
+    status = 0
+
+with open(out_file, "wb") as f:
+    f.write(buf)
+with open(rc_file, "w") as f:
+    if os.WIFEXITED(status):
+        f.write(str(os.WEXITSTATUS(status)))
+    else:
+        f.write("SIGNALED")
+PYEOF
+
+PTY_RC="$(cat "$PTY_RC_FILE" 2>/dev/null || echo "MISSING")"
+assert_eq "pty: dispatch.sh returns (not stuck on SIGTTIN)" "0" "$PTY_RC"
+if [[ -f "$PTY_OUT_FILE" ]]; then
+    PTY_OUT="$(cat "$PTY_OUT_FILE")"
+    assert_contains "pty: loop stub actually ran" "pty-mix-ran" "$PTY_OUT"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

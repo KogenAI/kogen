@@ -108,7 +108,7 @@ env \
         _loop_argv+=(-- "$4")
         "${_loop_argv[@]}" 2> >(tee "$7" >&2)
         exit "$?"' \
-    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" &
+    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" </dev/null &
 child_pid=$!
 
 forward_term() {
