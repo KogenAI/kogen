@@ -86,6 +86,32 @@ defmodule CodegenTestHarness.RoleResolver do
   end
 
   @doc """
+  Resolves the EFFECTIVE harness a role should run on: the per-role
+  `.harness.<role>.harness` override in `config.yaml` when present, else
+  `build_default_harness` (the build's own `--harness` value) unchanged.
+
+  This is the ONE place a per-role provider assignment is read — every other
+  `RoleResolver` function, and every `OrchestrationLoop` call site that feeds
+  a role's `harness` into `resolve_role/2`, `resolve_escalation/2`,
+  `resolve_fallback/3`, or `guard_bundle_flag!/2`, MUST call this first and
+  use the returned value, never the raw build-wide harness, or a per-role
+  assignment silently would not take effect for that lookup.
+
+  A per-role override naming a harness that `config.yaml` has no
+  `.harness.<role>.<override>` entry for is NOT validated here — the
+  downstream `resolve_role/2` call raises loud on the missing key. This
+  function itself never raises: an absent/empty/null override is a
+  legitimate "use the build default" case, not an error.
+  """
+  @spec resolve_harness(role_harness(), role_harness()) :: role_harness()
+  def resolve_harness(role, build_default_harness) do
+    case config_yaml_read_optional(".harness.#{role}.harness") do
+      "" -> build_default_harness
+      override -> override
+    end
+  end
+
+  @doc """
   Resolves rung `rung` (0-indexed) of the `fallback:` ordered same-provider
   model chain for `role`/`harness`, reading
   `.harness.<role>.<config_harness>.fallback[<rung>].{model,effort}` from

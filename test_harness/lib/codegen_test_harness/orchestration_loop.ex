@@ -1784,8 +1784,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   defp maybe_escalate_model(ctx, _dev_role, _harness, _opts, false), do: ctx
 
-  defp maybe_escalate_model(ctx, dev_role, harness, opts, true) do
+  defp maybe_escalate_model(ctx, dev_role, build_harness, opts, true) do
     escalate_fn = Keyword.get(opts, :resolve_escalation_fn, &RoleResolver.resolve_escalation/2)
+
+    resolve_harness_fn =
+      Keyword.get(opts, :resolve_harness_fn, &RoleResolver.resolve_harness/2)
+
+    harness = resolve_harness_fn.(dev_role, build_harness)
 
     case escalate_fn.(dev_role, harness) do
       {model, effort} ->
@@ -2130,9 +2135,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # the fallback chain and escalating on the final gate-retry attempt are
   # mutually exclusive per invocation (a role only ever has one active
   # override at a time), so sharing the seam is safe.
-  defp handle_switch_model_failure(role, harness, ctx, opts, invoke_fn, attempt, reason) do
+  defp handle_switch_model_failure(role, build_harness, ctx, opts, invoke_fn, attempt, reason) do
     resolve_fallback_fn =
       Keyword.get(opts, :resolve_fallback_fn, &RoleResolver.resolve_fallback/3)
+
+    resolve_harness_fn =
+      Keyword.get(opts, :resolve_harness_fn, &RoleResolver.resolve_harness/2)
+
+    harness = resolve_harness_fn.(role, build_harness)
 
     rung = get_in(ctx, [:artifacts, :fallback_rung]) || 0
     rungs_tried = get_in(ctx, [:artifacts, :fallback_rungs_tried]) || []
@@ -2407,8 +2417,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   """
   @spec invoke_role(String.t(), harness(), map(), run_opts()) ::
           {:ok, map()} | {:error, String.t()}
-  def invoke_role(role, harness, ctx, opts) do
+  def invoke_role(role, build_harness, ctx, opts) do
     resolve_fn = Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)
+
+    # Per-role harness override (config.yaml `.harness.<role>.harness`).
+    # Resolved ONCE here and used for every downstream lookup this
+    # invocation makes (model/effort resolution, the codegen-call --harness
+    # flag, and the guard bundle default_codegen_call/12 picks from it) —
+    # never the raw build-wide harness. Absent override -> build_harness
+    # unchanged, byte-for-byte today's behavior.
+    resolve_harness_fn =
+      Keyword.get(opts, :resolve_harness_fn, &RoleResolver.resolve_harness/2)
+
+    harness = resolve_harness_fn.(role, build_harness)
 
     cycle_id = Process.get(@cycle_id_key)
     seq = Process.get(@transcript_seq_key, 0) + 1

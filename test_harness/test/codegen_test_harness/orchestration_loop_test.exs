@@ -810,6 +810,49 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert reason =~ "model X is currently unavailable"
     end
 
+    test "switch_model fallback resolution uses the per-role resolve_harness_fn override, not the build harness" do
+      {:ok, harness_seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(harness_seen_agent), do: Agent.stop(harness_seen_agent) end)
+
+      resolve_harness_fn = fn "developer-static", "claude_code" -> "pi" end
+
+      resolve_fallback_fn = fn "developer-static", harness, 0 ->
+        Agent.update(harness_seen_agent, fn seen -> seen ++ [harness] end)
+        {"openai-codex/gpt-5.4", "medium"}
+      end
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        model =
+          case get_in(ctx, [:artifacts, :escalated_model]) do
+            {m, _e} -> m
+            _ -> "sonnet"
+          end
+
+        if role == "developer-static" and model == "sonnet" do
+          {:error, "model X is currently unavailable"}
+        else
+          {:ok, %{"status" => "success"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 resolve_harness_fn: resolve_harness_fn,
+                 resolve_fallback_fn: resolve_fallback_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert Agent.get(harness_seen_agent, & &1) == ["pi"]
+    end
+
     test "default :log_died_fn with no cycle log initialized (nil path) → silent no-op, run still completes" do
       {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
       on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
@@ -918,6 +961,63 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           codegen_call_fn: codegen_call_fn
         )
       end
+    end
+
+    test "per-role harness override (resolve_harness_fn) is used for both resolve_fn and codegen_call_fn, not the build harness" do
+      harness_seen_by_resolve_fn = Agent.start_link(fn -> nil end) |> elem(1)
+      harness_seen_by_codegen_call_fn = Agent.start_link(fn -> nil end) |> elem(1)
+
+      on_exit(fn ->
+        if Process.alive?(harness_seen_by_resolve_fn), do: Agent.stop(harness_seen_by_resolve_fn)
+        if Process.alive?(harness_seen_by_codegen_call_fn),
+          do: Agent.stop(harness_seen_by_codegen_call_fn)
+      end)
+
+      resolve_harness_fn = fn "developer-static", "claude_code" -> "pi" end
+
+      resolve_fn = fn _role, harness ->
+        Agent.update(harness_seen_by_resolve_fn, fn _ -> harness end)
+        {"openai-codex/gpt-5.4", "medium"}
+      end
+
+      codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
+        Agent.update(harness_seen_by_codegen_call_fn, fn _ -> harness end)
+        %{"result" => %{"status" => "success", "value" => "x"}}
+      end
+
+      assert {:ok, _result} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_harness_fn: resolve_harness_fn,
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
+
+      assert Agent.get(harness_seen_by_resolve_fn, & &1) == "pi"
+      assert Agent.get(harness_seen_by_codegen_call_fn, & &1) == "pi"
+    end
+
+    test "no per-role harness override (default resolve_harness_fn against real config.yaml) -> build harness unchanged" do
+      codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
+        assert harness == "claude_code"
+        %{"result" => %{"status" => "success", "value" => "x"}}
+      end
+
+      resolve_fn = fn _role, harness ->
+        assert harness == "claude_code"
+        {"sonnet", "medium"}
+      end
+
+      assert {:ok, _result} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
     end
   end
 
@@ -2086,6 +2186,42 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # initial call (no escalation, not a rework retry) + one rework retry
       # (the final allowed attempt -> escalated).
       assert Agent.get(seen_ctx_agent, & &1) == [nil, {"opus", "high"}]
+    end
+
+    test "count-bound path: escalation resolution uses the per-role resolve_harness_fn override, not the build harness",
+         %{calls_agent: calls_agent} do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      {:ok, harness_seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(harness_seen_agent), do: Agent.stop(harness_seen_agent) end)
+
+      resolve_harness_fn = fn "developer-static", "claude_code" -> "pi" end
+
+      resolve_escalation_fn = fn "developer-static", harness ->
+        Agent.update(harness_seen_agent, fn seen -> seen ++ [harness] end)
+        {"openai-codex/gpt-5.4", "high"}
+      end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 resolve_harness_fn: resolve_harness_fn,
+                 resolve_escalation_fn: resolve_escalation_fn
+               )
+
+      assert Agent.get(harness_seen_agent, & &1) == ["pi"]
     end
 
     test "count-bound path: no escalation configured -> ctx unchanged, normal tier throughout", %{

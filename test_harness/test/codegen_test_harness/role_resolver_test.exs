@@ -64,6 +64,23 @@ defmodule CodegenTestHarness.RoleResolverTest do
     end
   end
 
+  describe "resolve_harness/2" do
+    test "no per-role override configured -> build_default_harness unchanged" do
+      assert RoleResolver.resolve_harness("developer-phoenix-backend", "claude_code") ==
+               "claude_code"
+
+      assert RoleResolver.resolve_harness("developer-phoenix-backend", "pi") == "pi"
+    end
+
+    test "unknown role -> build_default_harness unchanged, never raises" do
+      assert RoleResolver.resolve_harness("no-such-role-xyz", "claude_code") == "claude_code"
+    end
+
+    test "committer (no override) -> build_default_harness unchanged" do
+      assert RoleResolver.resolve_harness("committer", "pi") == "pi"
+    end
+  end
+
   describe "resolve_fallback/3" do
     test "claude: reads rung 0 of the fallback chain from real config.yaml" do
       assert RoleResolver.resolve_fallback("developer-phoenix-backend", "claude", 0) ==
