@@ -16,7 +16,11 @@
 #   --model=<m>               model override
 #   --effort=<e>              effort override
 #   --max-budget-usd=<n>      passthrough flag forwarded to dispatch
-#   --fallback-model=<m>      passthrough flag forwarded to dispatch
+#   --fallback-model=<m>      prepend <m> as rung 0 of every role's
+#                             `fallback:` chain for this build only (one-build
+#                             override of templates/generator/config.yaml);
+#                             threaded via CODEGEN_BUILD_FALLBACK_MODEL, not
+#                             EXTRA_FLAGS -- never blind-passed to dispatch
 #   --print-dir               print this script's directory and exit 0
 #   --print-argv              dry-run: parse + validate every flag, print the
 #                             would-be `mix codegen.loop` argv one arg per
@@ -38,6 +42,7 @@ STACK=""
 CWD="$PWD"
 MODEL=""
 EFFORT=""
+FALLBACK_MODEL=""
 EXTRA_FLAGS=()
 PRINT_ARGV=""
 PROMPT=""
@@ -97,13 +102,13 @@ while [[ $# -gt 0 ]]; do
         fi
         shift
         ;;
-    --fallback-model=* | --fallback-model)
-        EXTRA_FLAGS+=("$1")
-        if [[ "$1" == "--fallback-model" ]]; then
-            EXTRA_FLAGS+=("$2")
-            shift
-        fi
+    --fallback-model=*)
+        FALLBACK_MODEL="${1#--fallback-model=}"
         shift
+        ;;
+    --fallback-model)
+        FALLBACK_MODEL="$2"
+        shift 2
         ;;
     --print-dir)
         printf '%s\n' "$SCRIPT_DIR"
@@ -225,6 +230,7 @@ export CODEGEN_BUILD_STACK="$STACK"
 export CODEGEN_BUILD_CWD="$CWD"
 export CODEGEN_BUILD_MODEL="${MODEL:-}"
 export CODEGEN_BUILD_EFFORT="${EFFORT:-}"
+export CODEGEN_BUILD_FALLBACK_MODEL="${FALLBACK_MODEL:-}"
 export CODEGEN_BUILD_PRINT_ARGV="${PRINT_ARGV:-}"
 export CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=0
 export CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0

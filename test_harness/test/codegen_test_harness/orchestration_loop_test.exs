@@ -595,6 +595,97 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 3
     end
 
+    test "role fails with a switch_model reason → walks the fallback chain instead of retrying the same model",
+         %{calls_agent: calls_agent} do
+      {:ok, died_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(died_agent), do: Agent.stop(died_agent) end)
+      {:ok, models_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(models_agent), do: Agent.stop(models_agent) end)
+
+      resolve_fn = fn _r, _h -> {"sonnet", "medium"} end
+      resolve_fallback_fn = fn _role, _harness, 0 -> {"opus", "medium"} end
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        model =
+          case get_in(ctx, [:artifacts, :escalated_model]) do
+            {m, _e} -> m
+            _ -> "sonnet"
+          end
+
+        Agent.update(models_agent, fn calls -> calls ++ [{role, model}] end)
+
+        if role == "developer-static" and model == "sonnet" do
+          {:error, "Claude Fable 5 is currently unavailable"}
+        else
+          {:ok, %{"status" => "success"}}
+        end
+      end
+
+      log_died_fn = fn role, kind, cause, _cycle_log ->
+        Agent.update(died_agent, fn calls -> calls ++ [{role, kind, cause}] end)
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 resolve_fn: resolve_fn,
+                 resolve_fallback_fn: resolve_fallback_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 log_died_fn: log_died_fn
+               )
+
+      # First attempt at the normal model (sonnet), second attempt at
+      # fallback rung 0 (opus) — never a second attempt on sonnet.
+      dev_models =
+        models_agent
+        |> Agent.get(& &1)
+        |> Enum.filter(fn {role, _model} -> role == "developer-static" end)
+
+      assert dev_models == [
+               {"developer-static", "sonnet"},
+               {"developer-static", "opus"}
+             ]
+
+      assert Agent.get(died_agent, & &1) == [
+               {"developer-static", "interrupted", "Claude Fable 5 is currently unavailable"}
+             ]
+    end
+
+    test "role fails with a switch_model reason and the fallback chain is exhausted → fails loud naming every rung tried" do
+      resolve_fallback_fn = fn _role, _harness, _rung -> :none end
+
+      invoke_fn = fn _role, _harness, _ctx, _opts ->
+        {:error, "model X is currently unavailable"}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 resolve_fallback_fn: resolve_fallback_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn()
+               )
+
+      assert reason =~ "exhausted model fallback chain"
+      assert reason =~ "no fallback rungs configured"
+      assert reason =~ "model X is currently unavailable"
+    end
+
     test "default :log_died_fn with no cycle log initialized (nil path) → silent no-op, run still completes" do
       {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
       on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)

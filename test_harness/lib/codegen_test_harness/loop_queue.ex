@@ -28,6 +28,14 @@ defmodule CodegenTestHarness.LoopQueue do
 
   @retryable_regex ~r/Stream idle timeout|Unable to connect|FailedToOpenSocket|ConnectionRefused|API Error: 529|API Error: 500|API Error: 502|API Error: 503|API Error: 504|overloaded_error|Internal server error|upstream connect error|connection reset|socket hang up|ETIMEDOUT|context deadline exceeded|File has been modified since read|has been unexpectedly modified|socket connection was closed|Connection closed mid-response/
 
+  # switch_model_regex ported from harnesses/shared/retryable-errors.sh — the
+  # MODEL is down/gone, not a transport blip. Distinct from @retryable_regex:
+  # retrying the SAME model is pointless here; the caller
+  # (OrchestrationLoop.do_invoke_attempt/6) walks the role's `fallback:` chain
+  # instead. Case-insensitive to match both "Model X is currently unavailable"
+  # and "model unavailable" phrasing.
+  @switch_model_regex ~r/model.*unavailable|provider.*unavailable|model.*disabled|model.*not found|unknown model|is currently unavailable/i
+
   @doc """
   Returns the `.md` slugs (basenames without extension) under `ready_dir`,
   topologically ordered so that a pitch's `Blocks-on:` dependencies come
@@ -349,6 +357,20 @@ defmodule CodegenTestHarness.LoopQueue do
     do: Regex.match?(@retryable_regex, reason)
 
   def retryable_reason?(_), do: false
+
+  @doc """
+  Classifies a single failure REASON STRING against the `switch_model_regex`
+  taxonomy — the model itself is unavailable/disabled/not-found, distinct
+  from a transient transport blip (`retryable_reason?/1`). Used by
+  `OrchestrationLoop.do_invoke_attempt/6` to decide whether to walk the
+  role's `fallback:` chain (`RoleResolver.resolve_fallback/3`) instead of
+  retrying the same dead model.
+  """
+  @spec switch_model_reason?(String.t()) :: boolean()
+  def switch_model_reason?(reason) when is_binary(reason),
+    do: Regex.match?(@switch_model_regex, reason)
+
+  def switch_model_reason?(_), do: false
 
   @doc """
   Classifies a captured console capture at `jsonl_path` as transient

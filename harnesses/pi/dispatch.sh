@@ -19,9 +19,11 @@ if ! codegen-log --version >/dev/null 2>&1; then
     exit 2
 fi
 
-# Extra flags (--max-budget-usd, --fallback-model, etc.) are NOT $@-forwarded
-# to the loop from here; any such flag threads through by name, not by splat.
-# Only the last positional arg is read below, and only as PROMPT (only if any
+# Extra flags (--max-budget-usd, etc.) are NOT $@-forwarded to the loop from
+# here; any such flag threads through by name, not by splat. --fallback-model
+# is threaded via CODEGEN_BUILD_FALLBACK_MODEL (below) into an explicit
+# `--fallback-model=<m>` argv entry to `mix codegen.loop` below. Only the
+# last positional arg is read below, and only as PROMPT (only if any
 # positional args were given).
 if [[ $# -gt 0 ]]; then
     PROMPT="${*: -1}"
@@ -32,6 +34,7 @@ fi
 # Consume CWD env var set by codegen-build
 CWD="${CODEGEN_BUILD_CWD:-}"
 PRINT_ARGV="${CODEGEN_BUILD_PRINT_ARGV:-}"
+FALLBACK_MODEL="${CODEGEN_BUILD_FALLBACK_MODEL:-}"
 if [[ -n "$CWD" ]]; then
     cd "$CWD"
 fi
@@ -54,7 +57,12 @@ fi
 # --print-argv dry-run: print the would-be loop argv, one arg per line, exit
 # 0. Never execs the loop -- no spend, no mutation.
 if [[ -n "$PRINT_ARGV" ]]; then
-    printf '%s\n' mix codegen.loop --harness=pi "--stack=$STACK" "--cwd=$CWD" -- "$PROMPT"
+    if [[ -n "$FALLBACK_MODEL" ]]; then
+        printf '%s\n' mix codegen.loop --harness=pi "--stack=$STACK" "--cwd=$CWD" \
+            "--fallback-model=$FALLBACK_MODEL" -- "$PROMPT"
+    else
+        printf '%s\n' mix codegen.loop --harness=pi "--stack=$STACK" "--cwd=$CWD" -- "$PROMPT"
+    fi
     exit 0
 fi
 
@@ -72,8 +80,12 @@ env \
     -u OPENAI_API_KEY \
     -u ANTHROPIC_API_KEY \
     -u CURSOR_API_KEY \
-    bash -c 'cd "$1" && exec mix codegen.loop --harness=pi "--stack=$2" "--cwd=$3" -- "$4"' \
-    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" &
+    bash -c 'cd "$1" && if [[ -n "$5" ]]; then
+        exec mix codegen.loop --harness=pi "--stack=$2" "--cwd=$3" "--fallback-model=$5" -- "$4"
+    else
+        exec mix codegen.loop --harness=pi "--stack=$2" "--cwd=$3" -- "$4"
+    fi' \
+    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" &
 child_pid=$!
 
 forward_term() {

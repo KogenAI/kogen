@@ -337,6 +337,48 @@ defmodule CodegenTestHarness.LoopQueueTest do
     end
   end
 
+  describe "switch_model_reason?/1" do
+    test "reason string matching the switch_model taxonomy is a model failure" do
+      assert LoopQueue.switch_model_reason?("Claude Fable 5 is currently unavailable")
+      assert LoopQueue.switch_model_reason?("model X is currently unavailable")
+      assert LoopQueue.switch_model_reason?("provider openai-codex unavailable")
+      assert LoopQueue.switch_model_reason?("model gpt-9 not found")
+      assert LoopQueue.switch_model_reason?("unknown model requested")
+    end
+
+    test "reason string with no switch_model pattern is not a model failure" do
+      refute LoopQueue.switch_model_reason?("API Error: 529 overloaded_error")
+      refute LoopQueue.switch_model_reason?("deterministic failure")
+      refute LoopQueue.switch_model_reason?("socket hang up")
+    end
+
+    test "non-binary input is not a model failure, never raises" do
+      refute LoopQueue.switch_model_reason?(nil)
+      refute LoopQueue.switch_model_reason?(:some_atom)
+      refute LoopQueue.switch_model_reason?(%{reason: "unavailable"})
+    end
+  end
+
+  describe "@switch_model_regex parity with harnesses/shared/retryable-errors.sh" do
+    @retryable_errors_sh_for_switch Path.expand(
+                                      "../../../harnesses/shared/retryable-errors.sh",
+                                      __DIR__
+                                    )
+
+    test "every token in retryable-errors.sh's switch_model_regex is matched by LoopQueue.switch_model_reason?/1" do
+      content = File.read!(@retryable_errors_sh_for_switch)
+      [_, sh_pattern] = Regex.run(~r/^switch_model_regex='([^']*)'/m, content)
+
+      tokens = String.split(sh_pattern, "|")
+      assert length(tokens) > 0
+
+      for token <- tokens do
+        assert LoopQueue.switch_model_reason?(token),
+               "token #{inspect(token)} from retryable-errors.sh's switch_model_regex is not recognized by LoopQueue.switch_model_reason?/1"
+      end
+    end
+  end
+
   describe "@retryable_regex parity with harnesses/shared/retryable-errors.sh" do
     @retryable_errors_sh Path.expand(
                            "../../../harnesses/shared/retryable-errors.sh",

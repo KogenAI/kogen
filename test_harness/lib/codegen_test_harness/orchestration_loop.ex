@@ -21,6 +21,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # one API blip must not kill an unattended overnight build.
   @deterministic_attempts 2
   @transient_attempts 4
+  # Safety bound on how many `fallback:` rungs a switch_model classification
+  # will walk in one role invocation, independent of how long config.yaml's
+  # list actually is (RoleResolver.resolve_fallback/3 returning :none ends
+  # the walk first in the normal case). Prevents a pathological/typo'd
+  # config (e.g. an accidentally-huge fallback list) from looping forever.
+  @max_fallback_rungs 5
 
   @type harness :: String.t()
   @type stack :: String.t()
@@ -1867,6 +1873,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   #     between them. A single "Connection closed mid-response" blip used to
   #     burn a whole build (both attempts landing inside the same bad window);
   #     an unattended overnight queue cannot afford that.
+  #   * switch_model reason (the MODEL itself is unavailable/disabled/not
+  #     found, LoopQueue.switch_model_reason?/1) -> classified BEFORE the
+  #     transient/deterministic split above, since retrying the same dead
+  #     model (either budget) is pointless. Walks the role's `fallback:`
+  #     chain (RoleResolver.resolve_fallback/3) one rung per failure, each on
+  #     a fresh cold session (switching models forfeits warm resume — the
+  #     other model never saw the prior session). Chain exhausted -> fails
+  #     loud naming every rung tried, never a silent downgrade to nothing.
   defp do_invoke_attempt(role, harness, ctx, opts, invoke_fn, attempt) do
     # Mint a session id for every COLD attempt-start — attempt 1 always, and
     # any later attempt that is starting fresh because the prior session
@@ -1889,57 +1903,160 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         {:ok, result}
 
       {:error, reason} ->
-        # A stale-session reason can ONLY be produced by a --resume against a
-        # session this loop itself just minted (never a role's own doing), so
-        # it is classified with the SAME budget as the transient failure that
-        # caused the resume in the first place — it is a continuation of that
-        # transient chain, not a new deterministic failure of the role.
-        resuming? = not is_nil(get_in(ctx, [:artifacts, :resume_session_id]))
-        stale? = resuming? and stale_session_reason?(reason)
-        transient? = stale? or LoopQueue.retryable_reason?(reason)
-        max_attempts = if transient?, do: @transient_attempts, else: @deterministic_attempts
+        switch_model? = LoopQueue.switch_model_reason?(reason)
 
-        if attempt < max_attempts do
+        if switch_model? do
+          handle_switch_model_failure(role, harness, ctx, opts, invoke_fn, attempt, reason)
+        else
+          do_invoke_attempt_non_model_failure(role, harness, ctx, opts, invoke_fn, attempt, reason)
+        end
+    end
+  end
+
+  # Walks one rung of the role's `fallback:` chain. `rung` is the NEXT rung
+  # to try (0-indexed) — `ctx.artifacts.fallback_rung` tracks the last rung
+  # tried, absent/nil on the first switch_model failure. Each rung's
+  # {model, effort} rides `ctx.artifacts.escalated_model`, the exact seam
+  # `invoke_role/4` already reads for give-up-boundary escalation — walking
+  # the fallback chain and escalating on the final gate-retry attempt are
+  # mutually exclusive per invocation (a role only ever has one active
+  # override at a time), so sharing the seam is safe.
+  defp handle_switch_model_failure(role, harness, ctx, opts, invoke_fn, attempt, reason) do
+    resolve_fallback_fn =
+      Keyword.get(opts, :resolve_fallback_fn, &RoleResolver.resolve_fallback/3)
+
+    rung = get_in(ctx, [:artifacts, :fallback_rung]) || 0
+    rungs_tried = get_in(ctx, [:artifacts, :fallback_rungs_tried]) || []
+
+    if rung >= @max_fallback_rungs do
+      log_died(role, "aborted", reason, opts)
+      {:error, fallback_exhausted_reason(role, reason, rungs_tried)}
+    else
+      case resolve_fallback_rung(role, harness, rung, opts, resolve_fallback_fn) do
+        {model, effort} ->
           log_died(role, "interrupted", reason, opts)
-          retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
 
-          # A transient drop resumes the SAME session on the next attempt —
-          # unless the session itself turned out to be unresumable (never
-          # persisted before the drop), in which case fall back to a fresh
-          # cold attempt with a brand-new id rather than looping forever on
-          # a session that will never exist.
+          operator_note(
+            "role #{role}: switching model — #{reason} — trying fallback rung #{rung}: #{model}/#{effort}"
+          )
+
           retry_ctx =
-            if transient? and not stale? do
-              put_in(
-                retry_ctx,
-                [:artifacts, :resume_session_id],
-                ctx.artifacts.transport_session_id
-              )
-            else
-              Map.update!(retry_ctx, :artifacts, &Map.delete(&1, :resume_session_id))
-            end
-
-          if transient? do
-            sleep_fn = Keyword.get(opts, :sleep_fn, &Process.sleep/1)
-            sleep_fn.(backoff_ms(attempt))
-          end
-
-          if transient? and not stale? do
-            operator_note(
-              "role #{role}: transport drop — resuming session #{ctx.artifacts.transport_session_id} (attempt #{attempt + 1}/#{max_attempts})"
-            )
-          end
+            ctx
+            |> put_in([:artifacts, :last_failure_reason], reason)
+            |> put_in([:artifacts, :escalated_model], {model, effort})
+            |> put_in([:artifacts, :fallback_rung], rung + 1)
+            |> put_in([:artifacts, :fallback_rungs_tried], rungs_tried ++ [{model, reason}])
+            # Switching models forfeits warm resume — the other model never
+            # saw the prior session; always start the next attempt cold.
+            |> Map.update!(:artifacts, &Map.delete(&1, :resume_session_id))
 
           do_invoke_attempt(role, harness, retry_ctx, opts, invoke_fn, attempt + 1)
-        else
-          log_died(role, "aborted", reason, opts)
 
-          if attempt == 2 do
-            {:error, "role #{role} failed twice: #{reason}"}
-          else
-            {:error, "role #{role} failed after #{attempt} attempts: #{reason}"}
-          end
+        :none ->
+          log_died(role, "aborted", reason, opts)
+          {:error, fallback_exhausted_reason(role, reason, rungs_tried)}
+      end
+    end
+  end
+
+  # Resolves rung `rung` of `role`'s fallback chain, honoring
+  # `opts[:fallback_model_override]` (threaded from `codegen-build
+  # --fallback-model=<m>` via `mix codegen.loop --fallback-model`) as rung 0
+  # for EVERY role — a one-build override of config.yaml, per the pitch's
+  # "prepend as rung 0" contract. When the override is set, config.yaml's own
+  # list shifts down by one (rung 1 here reads config.yaml rung 0, etc.).
+  # Absent override (the common case) -> unchanged, reads config.yaml
+  # directly at `rung`.
+  @spec resolve_fallback_rung(
+          String.t(),
+          harness(),
+          non_neg_integer(),
+          run_opts(),
+          (String.t(), harness(), non_neg_integer() -> {String.t(), String.t()} | :none)
+        ) :: {String.t(), String.t()} | :none
+  defp resolve_fallback_rung(role, harness, rung, opts, resolve_fallback_fn) do
+    case Keyword.get(opts, :fallback_model_override) do
+      override when is_binary(override) and override != "" ->
+        if rung == 0 do
+          {_normal_model, normal_effort} =
+            (Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)).(role, harness)
+
+          {override, normal_effort}
+        else
+          resolve_fallback_fn.(role, harness, rung - 1)
         end
+
+      _ ->
+        resolve_fallback_fn.(role, harness, rung)
+    end
+  end
+
+  defp fallback_exhausted_reason(role, last_reason, rungs_tried) do
+    tried_desc =
+      case rungs_tried do
+        [] ->
+          "no fallback rungs configured"
+
+        rungs ->
+          rungs
+          |> Enum.map(fn {model, reason} -> "#{model} (#{reason})" end)
+          |> Enum.join(", ")
+      end
+
+    "role #{role} exhausted model fallback chain: #{tried_desc}; last error: #{last_reason}"
+  end
+
+  defp do_invoke_attempt_non_model_failure(role, harness, ctx, opts, invoke_fn, attempt, reason) do
+    # A stale-session reason can ONLY be produced by a --resume against a
+    # session this loop itself just minted (never a role's own doing), so
+    # it is classified with the SAME budget as the transient failure that
+    # caused the resume in the first place — it is a continuation of that
+    # transient chain, not a new deterministic failure of the role.
+    resuming? = not is_nil(get_in(ctx, [:artifacts, :resume_session_id]))
+    stale? = resuming? and stale_session_reason?(reason)
+    transient? = stale? or LoopQueue.retryable_reason?(reason)
+    max_attempts = if transient?, do: @transient_attempts, else: @deterministic_attempts
+
+    if attempt < max_attempts do
+      log_died(role, "interrupted", reason, opts)
+      retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
+
+      # A transient drop resumes the SAME session on the next attempt —
+      # unless the session itself turned out to be unresumable (never
+      # persisted before the drop), in which case fall back to a fresh
+      # cold attempt with a brand-new id rather than looping forever on
+      # a session that will never exist.
+      retry_ctx =
+        if transient? and not stale? do
+          put_in(
+            retry_ctx,
+            [:artifacts, :resume_session_id],
+            ctx.artifacts.transport_session_id
+          )
+        else
+          Map.update!(retry_ctx, :artifacts, &Map.delete(&1, :resume_session_id))
+        end
+
+      if transient? do
+        sleep_fn = Keyword.get(opts, :sleep_fn, &Process.sleep/1)
+        sleep_fn.(backoff_ms(attempt))
+      end
+
+      if transient? and not stale? do
+        operator_note(
+          "role #{role}: transport drop — resuming session #{ctx.artifacts.transport_session_id} (attempt #{attempt + 1}/#{max_attempts})"
+        )
+      end
+
+      do_invoke_attempt(role, harness, retry_ctx, opts, invoke_fn, attempt + 1)
+    else
+      log_died(role, "aborted", reason, opts)
+
+      if attempt == 2 do
+        {:error, "role #{role} failed twice: #{reason}"}
+      else
+        {:error, "role #{role} failed after #{attempt} attempts: #{reason}"}
+      end
     end
   end
 

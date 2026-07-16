@@ -22,12 +22,15 @@ fi
 # Consume env vars set by codegen-build
 CWD="${CODEGEN_BUILD_CWD:-}"
 PRINT_ARGV="${CODEGEN_BUILD_PRINT_ARGV:-}"
+FALLBACK_MODEL="${CODEGEN_BUILD_FALLBACK_MODEL:-}"
 
-# Extra flags (--max-budget-usd, --fallback-model, etc.) are NOT forwarded via
-# $@ — this script never splats codegen-build's positionals onward. Any such
-# flag that reaches the loop is threaded through by name (env var or explicit
-# argv entry), never blind-passed. Only the last positional is read below, and
-# only as the PROMPT (only if any positional args were given).
+# Extra flags (--max-budget-usd, etc.) are NOT forwarded via $@ — this script
+# never splats codegen-build's positionals onward. Any such flag that reaches
+# the loop is threaded through by name (env var or explicit argv entry),
+# never blind-passed. --fallback-model is threaded via CODEGEN_BUILD_FALLBACK_MODEL
+# (above) into an explicit `--fallback-model=<m>` argv entry to `mix
+# codegen.loop` below. Only the last positional is read below, and only as
+# the PROMPT (only if any positional args were given).
 if [[ $# -gt 0 ]]; then
     PROMPT="${*: -1}"
 else
@@ -59,7 +62,12 @@ fi
 # --print-argv dry-run: print the would-be loop argv, one arg per line, exit
 # 0. Never execs the loop -- no spend, no mutation.
 if [[ -n "$PRINT_ARGV" ]]; then
-    printf '%s\n' mix codegen.loop --harness=claude_code "--stack=$STACK" "--cwd=$CWD" -- "$PROMPT"
+    if [[ -n "$FALLBACK_MODEL" ]]; then
+        printf '%s\n' mix codegen.loop --harness=claude_code "--stack=$STACK" "--cwd=$CWD" \
+            "--fallback-model=$FALLBACK_MODEL" -- "$PROMPT"
+    else
+        printf '%s\n' mix codegen.loop --harness=claude_code "--stack=$STACK" "--cwd=$CWD" -- "$PROMPT"
+    fi
     exit 0
 fi
 
@@ -83,8 +91,12 @@ env \
     -u CLAUDE_CODE_EXECPATH \
     -u AI_AGENT \
     CODEGEN_DIR="$CODEGEN_DIR" \
-    bash -c 'cd "$1" && exec mix codegen.loop --harness=claude_code "--stack=$2" "--cwd=$3" -- "$4"' \
-    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" &
+    bash -c 'cd "$1" && if [[ -n "$5" ]]; then
+        exec mix codegen.loop --harness=claude_code "--stack=$2" "--cwd=$3" "--fallback-model=$5" -- "$4"
+    else
+        exec mix codegen.loop --harness=claude_code "--stack=$2" "--cwd=$3" -- "$4"
+    fi' \
+    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" &
 child_pid=$!
 
 forward_term() {

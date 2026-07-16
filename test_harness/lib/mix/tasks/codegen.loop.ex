@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   @shortdoc "Runs the deterministic orchestration loop for one pitch."
 
   @moduledoc """
-  `mix codegen.loop --harness=<claude_code|pi> --stack=<phoenix|static> --cwd=<dir> <pitch>`
+  `mix codegen.loop --harness=<claude_code|pi> --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] <pitch>`
 
   Execs from the build-mode `dispatch.sh` path in place of a single
   self-orchestrating agent session. Runs `CodegenTestHarness.OrchestrationLoop.run/1`
@@ -16,6 +16,11 @@ defmodule Mix.Tasks.Codegen.Loop do
   - `--harness` — required, `claude_code` | `pi`
   - `--stack` — required, `phoenix` | `static`
   - `--cwd` — required, project directory the loop operates in
+  - `--fallback-model` — optional. Prepends `<m>` as rung 0 of EVERY role's
+    `fallback:` chain for this run only (a one-build override of
+    `templates/generator/config.yaml`, threaded from `codegen-build
+    --fallback-model=<m>` via `CODEGEN_BUILD_FALLBACK_MODEL`). Absent →
+    every role's chain is exactly what `config.yaml` declares, unchanged.
   - `<pitch>` — required positional arg, the prompt/pitch text (or `@<path>`
     to read it from a file, matching `codegen-call`'s `@<path>` convention)
   """
@@ -39,7 +44,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   def run(argv) do
     {opts, positional, invalid} =
       OptionParser.parse(argv,
-        strict: [harness: :string, stack: :string, cwd: :string]
+        strict: [harness: :string, stack: :string, cwd: :string, fallback_model: :string]
       )
 
     if invalid != [] do
@@ -50,6 +55,9 @@ defmodule Mix.Tasks.Codegen.Loop do
     harness = Keyword.get(opts, :harness) || missing_flag!("--harness")
     stack = Keyword.get(opts, :stack) || missing_flag!("--stack")
     cwd = Keyword.get(opts, :cwd) || missing_flag!("--cwd")
+    # Optional: absent -> nil -> OrchestrationLoop.run/1 does not override
+    # any role's fallback chain, exactly today's behavior.
+    fallback_model = Keyword.get(opts, :fallback_model)
 
     # Move 2: install the SIGTERM handler for the solo path (SIGINT cannot
     # be caught at the BEAM level — see BuildSignalHandler moduledoc; the
@@ -94,7 +102,8 @@ defmodule Mix.Tasks.Codegen.Loop do
           cwd: cwd,
           pitch: pitch,
           cycle_id: cycle_id,
-          slug: slug
+          slug: slug,
+          fallback_model_override: fallback_model
         )
       end)
 

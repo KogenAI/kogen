@@ -11,6 +11,13 @@ defmodule CodegenTestHarness.RoleResolver do
   roles natively via `claude --agent <role>`, which resolves prompt + tools
   from the installed `~/.claude/agents/<role>.md` itself.
 
+  `resolve_escalation/2` and `resolve_fallback/3` read two DISTINCT override
+  mechanisms from the same config: escalation is a single give-up-boundary
+  tier tried once on the final gate-retry attempt before a rework gives up;
+  fallback is an ORDERED chain walked one rung per attempt whenever a role's
+  failure classifies `switch_model` (`LoopQueue.switch_model_reason?/1`) — the
+  model itself is unavailable/disabled, not merely overloaded.
+
   Every missing/malformed input raises loud — no silent defaults.
   """
 
@@ -72,6 +79,36 @@ defmodule CodegenTestHarness.RoleResolver do
            config_yaml_read_optional(".harness.#{role}.#{config_harness}.escalate_model"),
          effort when is_binary(effort) and effort != "" <-
            config_yaml_read_optional(".harness.#{role}.#{config_harness}.escalate_effort") do
+      {model, effort}
+    else
+      _ -> :none
+    end
+  end
+
+  @doc """
+  Resolves rung `rung` (0-indexed) of the `fallback:` ordered same-provider
+  model chain for `role`/`harness`, reading
+  `.harness.<role>.<config_harness>.fallback[<rung>].{model,effort}` from
+  `config.yaml`.
+
+  Fail-safe, not fail-open (mirrors `resolve_escalation/2`): an absent
+  `fallback:` list, a `rung` past the end of the list, or a role/harness pair
+  unknown to `config.yaml` entirely all resolve to `:none` rather than
+  raising or falling back to a guessed model. `:none` is the caller's
+  ("switch_model" reason classified but chain exhausted) signal to fail loud
+  naming every rung tried, never to silently keep retrying the dead model.
+  """
+  @spec resolve_fallback(role_harness(), role_harness(), non_neg_integer()) ::
+          {String.t(), String.t()} | :none
+  def resolve_fallback(role, harness, rung) when is_integer(rung) and rung >= 0 do
+    config_harness = normalize_harness(harness)
+
+    with model when is_binary(model) and model != "" <-
+           config_yaml_read_optional(".harness.#{role}.#{config_harness}.fallback[#{rung}].model"),
+         effort when is_binary(effort) and effort != "" <-
+           config_yaml_read_optional(
+             ".harness.#{role}.#{config_harness}.fallback[#{rung}].effort"
+           ) do
       {model, effort}
     else
       _ -> :none

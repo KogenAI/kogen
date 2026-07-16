@@ -51,6 +51,15 @@ harness:
   planner-static:
     claude: { model: opus, effort: high }
     pi: { model: openai-codex/gpt-5.5, effort: high }
+  # `fallback:` is an ordered same-provider rung list walked on a
+  # switch_model classification (LoopQueue.switch_model_reason?/1) — a
+  # role's primary model reporting "unavailable"/"disabled"/"not found".
+  # Distinct from `escalate_model`/`escalate_effort` (a single give-up-
+  # boundary override tried once on the FINAL gate-retry attempt): a
+  # fallback rung is tried on ANY attempt whose failure classifies
+  # switch_model, immediately, not only at the end. Cross-provider rungs
+  # (Anthropic model on a pi/openai-codex role or vice versa) are OUT OF
+  # SCOPE here — see codegen/pitches/draft/cross-provider-model-fallback.md.
   developer-phoenix-backend:
     claude:
       {
@@ -58,6 +67,7 @@ harness:
         effort: medium,
         escalate_model: opus,
         escalate_effort: high,
+        fallback: [{ model: opus, effort: medium }],
       }
     pi:
       {
@@ -65,6 +75,7 @@ harness:
         effort: medium,
         escalate_model: openai-codex/gpt-5.5,
         escalate_effort: high,
+        fallback: [{ model: openai-codex/gpt-5.5, effort: medium }],
       }
   developer-phoenix-frontend:
     claude:
@@ -73,6 +84,7 @@ harness:
         effort: medium,
         escalate_model: opus,
         escalate_effort: high,
+        fallback: [{ model: opus, effort: medium }],
       }
     pi:
       {
@@ -80,6 +92,7 @@ harness:
         effort: medium,
         escalate_model: openai-codex/gpt-5.5,
         escalate_effort: high,
+        fallback: [{ model: openai-codex/gpt-5.5, effort: medium }],
       }
   developer-static:
     claude:
@@ -88,6 +101,7 @@ harness:
         effort: high,
         escalate_model: opus,
         escalate_effort: high,
+        fallback: [{ model: opus, effort: high }],
       }
     pi:
       {
@@ -95,6 +109,7 @@ harness:
         effort: medium,
         escalate_model: openai-codex/gpt-5.5,
         escalate_effort: high,
+        fallback: [{ model: openai-codex/gpt-5.5, effort: medium }],
       }
   reviewer-phoenix:
     claude: { model: sonnet, effort: medium }

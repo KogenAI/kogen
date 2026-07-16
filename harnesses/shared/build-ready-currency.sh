@@ -18,10 +18,10 @@ _BUILD_READY_SOURCE_SET="shared/rules shared/subagents harnesses/claude/manifest
 # / shasum binary, which differs macOS vs Linux.
 build_ready_content_hash() {
     local codegen_dir="$1"
-    git -C "$codegen_dir" ls-files -- $_BUILD_READY_SOURCE_SET \
-        | sort \
-        | git -C "$codegen_dir" hash-object --stdin-paths \
-        | git hash-object --stdin
+    git -C "$codegen_dir" ls-files -- $_BUILD_READY_SOURCE_SET |
+        sort |
+        git -C "$codegen_dir" hash-object --stdin-paths |
+        git hash-object --stdin
 }
 
 # build_ready_write_stamp <codegen_dir> <stamp_path>

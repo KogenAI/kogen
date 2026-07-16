@@ -63,4 +63,33 @@ defmodule CodegenTestHarness.RoleResolverTest do
       assert RoleResolver.resolve_escalation("no-such-role-xyz", "claude") == :none
     end
   end
+
+  describe "resolve_fallback/3" do
+    test "claude: reads rung 0 of the fallback chain from real config.yaml" do
+      assert RoleResolver.resolve_fallback("developer-phoenix-backend", "claude", 0) ==
+               {"opus", "medium"}
+    end
+
+    test "pi: reads pi-specific rung 0" do
+      assert RoleResolver.resolve_fallback("developer-phoenix-backend", "pi", 0) ==
+               {"openai-codex/gpt-5.5", "medium"}
+    end
+
+    test "claude_code canonical harness name normalizes to claude" do
+      assert RoleResolver.resolve_fallback("developer-phoenix-backend", "claude_code", 0) ==
+               {"opus", "medium"}
+    end
+
+    test "rung past the end of a configured chain -> :none, never raises" do
+      assert RoleResolver.resolve_fallback("developer-phoenix-backend", "claude", 1) == :none
+    end
+
+    test "role with no fallback key configured -> :none, never raises" do
+      assert RoleResolver.resolve_fallback("committer", "claude", 0) == :none
+    end
+
+    test "unknown role -> :none, never raises (fail-safe, not fail-open)" do
+      assert RoleResolver.resolve_fallback("no-such-role-xyz", "claude", 0) == :none
+    end
+  end
 end
