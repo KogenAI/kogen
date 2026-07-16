@@ -229,6 +229,67 @@ LATENCY_MS=$((END_TS_MS - START_TS_MS))
 # Extract the last result event from stream-json
 RESULT_EVENT="$(jq -c -R 'fromjson? | select(.type == "result")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
 
+# ── Summarize tool-trace metrics (assistant tool_use / user tool_result) ────
+# TMP_OUT already carries the FULL stream-json trace (every assistant/user
+# event with tool_use/tool_result content); today the envelope discards it
+# once RESULT_EVENT is extracted above. One extra jq pass over the same
+# on-disk temp file folds it into a compact `metrics` block — no new claude
+# invocation, no second model pass. Fields the stream cannot supply (e.g.
+# stop_reason/rate_limited when the source events are absent) are OMITTED,
+# never defaulted to a fake zero/false — a faked datum is exactly the
+# green-on-empty defect this exists to fix. Only attached to the SUCCESS
+# envelope below (see STATUS gate) — a failure/watchdog/no-result path has no
+# trustworthy trace to summarize.
+_summarize_metrics() {
+    jq -c -R 'fromjson?' "$TMP_OUT" 2>/dev/null | jq -s '
+        . as $all
+        | ($all | map(select(.type == "assistant"))) as $asst
+        | ($asst
+            | map({parent: .parent_tool_use_id, tu: (.message.content[]? | select(.type == "tool_use"))})
+          ) as $tool_uses
+        | ($tool_uses | map(select(.parent == null) | .tu)) as $top_tus
+        | ($top_tus | map(select(.name == "Read")) | length) as $read_count
+        | ($top_tus | map(select(.name == "Edit" or .name == "MultiEdit")) | length) as $edit_count
+        | ($top_tus | map(select(.name == "Write")) | length) as $write_count
+        | ($top_tus | map(select(.name == "Bash")) | length) as $bash_count
+        | ($top_tus | group_by(.name) | map({key: .[0].name, value: length}) | from_entries) as $tool_counts
+        | ($tool_uses | map(select(.parent != null))) as $sub_tus
+        | ($asst
+            | map(.message.content[]? | select(.type == "tool_use" and .name == "Agent"))
+            | map({(.id): .input.subagent_type})
+            | add // {}
+          ) as $agent_id_to_type
+        | (
+            $sub_tus
+            | map(. + {subagent_type: ($agent_id_to_type[.parent] // "unknown")})
+            | group_by(.subagent_type)
+            | map({
+                key: .[0].subagent_type,
+                value: {
+                    read_count: (map(select(.tu.name == "Read")) | length),
+                    edit_count: (map(select(.tu.name == "Edit" or .tu.name == "MultiEdit")) | length),
+                    write_count: (map(select(.tu.name == "Write")) | length),
+                    bash_count: (map(select(.tu.name == "Bash")) | length)
+                }
+              })
+            | from_entries
+          ) as $per_subagent
+        | ($all | map(select(.type == "result")) | last) as $result_ev
+        | ($all | map(select(.type == "rate_limit_event")) | last) as $rl_ev
+        | {
+            read_count: $read_count,
+            edit_count: $edit_count,
+            write_count: $write_count,
+            bash_count: $bash_count
+          }
+          + (if ($tool_counts | length) > 0 then {tool_counts: $tool_counts} else {} end)
+          + (if ($per_subagent | length) > 0 then {per_subagent: $per_subagent} else {} end)
+          + (if $edit_count > 0 then {read_edit_ratio: ($read_count / $edit_count)} else {} end)
+          + (if $result_ev != null and ($result_ev.stop_reason // null) != null then {stop_reason: $result_ev.stop_reason} else {} end)
+          + (if $rl_ev != null then {rate_limited: (($rl_ev.rate_limit_info.status // "allowed") != "allowed")} else {} end)
+    ' 2>/dev/null || true
+}
+
 # Watchdog stall (no salvageable result event) → emit a proper failed envelope
 # with a retryable-taxonomy reason and exit 0 (NOT 1) so the loop reads the
 # FULL untruncated reason via Jason.decode! rather than synthesizing its own
@@ -362,6 +423,15 @@ else
     REASON="unexpected result subtype: $SUBTYPE"
 fi
 
+# Tool-trace metrics — success only. A failed/schema-exhausted call's trace is
+# not trustworthy evidence of a normal run; omit rather than emit a metrics
+# block that reads as real data for an abnormal call.
+METRICS="null"
+if [[ "$STATUS" == "success" ]]; then
+    METRICS="$(_summarize_metrics)"
+    [[ -z "$METRICS" ]] && METRICS="null"
+fi
+
 # Extract structured value
 # If json-schema was requested, try to find JSON in the assistant message
 VALUE_JSON="null"
@@ -414,9 +484,11 @@ if [[ -n "$JSON_SCHEMA_CONTENT" ]] && [[ "$STATUS" == "success" ]] && [[ "$VALUE
     if [[ "$VALIDATE_CODE" -eq 1 ]]; then
         STATUS="failed"
         REASON="schema validation failed: ${VALIDATE_ERR}"
+        METRICS="null"
     elif [[ "$VALIDATE_CODE" -eq 2 ]]; then
         STATUS="failed"
         REASON="schema validator unavailable (ajv not resolvable) — cannot verify structured output; run npm install in codegen"
+        METRICS="null"
     fi
 fi
 
@@ -435,6 +507,7 @@ jq -n \
     --arg model "$MODEL" \
     --argjson num_turns "$NUM_TURNS" \
     --arg session_id "$SESSION_ID" \
+    --argjson metrics "$METRICS" \
     '{
         result: {
             status: $status,
@@ -455,5 +528,6 @@ jq -n \
         error: null,
         harness: "claude_code",
         session_id: (if $session_id == "" then null else $session_id end)
-    }'
+    }
+    + (if $metrics == null then {} else {metrics: $metrics} end)'
 exit 0

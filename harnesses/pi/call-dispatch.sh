@@ -283,6 +283,35 @@ LATENCY_MS=$((END_TS_MS - START_TS_MS))
 # Find last agent_end event
 AGENT_END_EVENT="$(jq -c 'select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
 
+# ── Summarize tool-trace metrics (tool_execution_end events) ────────────────
+# pi's event vocabulary differs from claude's (tool_execution_start/_end with
+# lowercase toolName, no parent_tool_use_id, no rate_limit_event, and its
+# agent_end carries no top-level usage/num_turns — see
+# harnesses/claude/call-dispatch.sh for the claude-side summarizer). Fields
+# pi's stream cannot supply (rate_limited, per_subagent, stop_reason) are
+# OMITTED here, never faked — the schema stays uniform by omission, not by a
+# claude-shaped block backfilled with fabricated data. Only attached to the
+# SUCCESS envelope below (see STATUS gate).
+_summarize_metrics() {
+    jq -c '.' "$TMP_OUT" 2>/dev/null | jq -s '
+        . as $all
+        | ($all | map(select(.type == "tool_execution_end"))) as $ends
+        | ($ends | map(select(.toolName == "read")) | length) as $read_count
+        | ($ends | map(select(.toolName == "edit" or .toolName == "multiedit")) | length) as $edit_count
+        | ($ends | map(select(.toolName == "write")) | length) as $write_count
+        | ($ends | map(select(.toolName == "bash")) | length) as $bash_count
+        | ($ends | group_by(.toolName) | map({key: .[0].toolName, value: length}) | from_entries) as $tool_counts
+        | {
+            read_count: $read_count,
+            edit_count: $edit_count,
+            write_count: $write_count,
+            bash_count: $bash_count
+          }
+          + (if ($tool_counts | length) > 0 then {tool_counts: $tool_counts} else {} end)
+          + (if $edit_count > 0 then {read_edit_ratio: ($read_count / $edit_count)} else {} end)
+    ' 2>/dev/null || true
+}
+
 # Watchdog stall (no salvageable agent_end event) → emit a proper failed
 # envelope with a retryable-taxonomy reason and exit 0 (NOT 1) so the loop
 # reads the FULL untruncated reason via Jason.decode! rather than
@@ -442,6 +471,13 @@ else
     VALUE_JSON="$(printf '%s' "$ASSISTANT_TEXT" | jq -Rs '.')"
 fi
 
+# Tool-trace metrics — success only (mirrors harnesses/claude/call-dispatch.sh).
+METRICS="null"
+if [[ "$STATUS" == "success" ]]; then
+    METRICS="$(_summarize_metrics)"
+    [[ -z "$METRICS" ]] && METRICS="null"
+fi
+
 # ── Schema validation (only when a schema was requested and call succeeded) ──
 if [[ -n "$JSON_SCHEMA_CONTENT" ]] && [[ "$STATUS" == "success" ]] && [[ "$VALUE_JSON" != "null" ]]; then
     SCHEMA_TMP="$(mktemp -t codegen-call-schema.XXXXXX.json)"
@@ -455,9 +491,11 @@ if [[ -n "$JSON_SCHEMA_CONTENT" ]] && [[ "$STATUS" == "success" ]] && [[ "$VALUE
     if [[ "$VALIDATE_CODE" -eq 1 ]]; then
         STATUS="failed"
         REASON="schema validation failed: ${VALIDATE_ERR}"
+        METRICS="null"
     elif [[ "$VALIDATE_CODE" -eq 2 ]]; then
         STATUS="failed"
         REASON="schema validator unavailable (ajv not resolvable) — cannot verify structured output; run npm install in codegen"
+        METRICS="null"
     fi
 fi
 
@@ -475,6 +513,7 @@ jq -n \
     --arg model "$MODEL" \
     --argjson num_turns "$NUM_TURNS" \
     --arg session_id "$EFFECTIVE_SESSION_ID" \
+    --argjson metrics "$METRICS" \
     '{
         result: {
             status: $status,
@@ -495,5 +534,6 @@ jq -n \
         error: null,
         harness: "pi",
         session_id: (if $session_id == "" then null else $session_id end)
-    }'
+    }
+    + (if $metrics == null then {} else {metrics: $metrics} end)'
 exit 0

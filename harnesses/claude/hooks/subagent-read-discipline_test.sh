@@ -300,7 +300,7 @@ TRANS27="${TMP27}/transcript.jsonl"
 make_step_log "$STEP27" "developer-phoenix-backend" "- context/builds.md (EDIT) — update section" ""
 make_transcript "$TRANS27" "$STEP27"
 F27='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS27"'","cwd":"'"$TMP27"'"}'
-out27=$(printf '%s' "$F27" | bash "$GUARD" 2>/dev/null || true)
+out27=$(printf '%s' "$F27" | env -u CODEGEN_LOG_PATH bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$out27" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
     printf 'FAIL: fixture-driven ALLOW must resolve via the isolated cwd fixture, not fall through to an unrelated real log — got deny\n  stdout: %s\n' "$out27"
     fail=$((fail + 1))

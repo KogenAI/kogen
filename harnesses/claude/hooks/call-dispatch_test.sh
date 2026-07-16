@@ -1092,6 +1092,155 @@ assert_jq \
 assert_log_absent_line "$BASE_TMP/wd_z_stderr.log" "watchdog killing claude" \
     "(z) loop-gate off: watchdog never engages"
 
+# ── Tool-trace metrics envelope block (real probed stream-json fixtures) ─────
+FIXTURE_TOOL_TRACE="$HOOKS_DIR/fixtures/tool_trace.jsonl"
+FIXTURE_TOOL_TRACE_SUBAGENT="$HOOKS_DIR/fixtures/tool_trace_subagent.jsonl"
+PI_FIXTURE_TOOL_TRACE="$HOOKS_DIR/fixtures/pi_tool_trace.jsonl"
+
+# (m) tool_trace fixture: literal count constants (read/write/bash == 1 each)
+(
+    export FIXTURE_PATH="$FIXTURE_TOOL_TRACE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do file work."
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/metrics_m_envelope.json" 2>/dev/null || true
+M_ENVELOPE="$(cat "$BASE_TMP/metrics_m_envelope.json")"
+
+assert_jq "(m) metrics.read_count == 1" "$M_ENVELOPE" ".metrics.read_count" "1"
+assert_jq "(m) metrics.write_count == 1" "$M_ENVELOPE" ".metrics.write_count" "1"
+assert_jq "(m) metrics.bash_count == 1" "$M_ENVELOPE" ".metrics.bash_count" "1"
+
+# (n) tool_trace fixture: tool_counts.Read == 1
+assert_jq "(n) metrics.tool_counts.Read == 1" "$M_ENVELOPE" ".metrics.tool_counts.Read" "1"
+
+# (o) tool_trace fixture: stop_reason + rate_limited present (real result/rate_limit_event)
+assert_jq "(o) metrics.stop_reason == end_turn" "$M_ENVELOPE" ".metrics.stop_reason" "end_turn"
+assert_jq "(o) metrics.rate_limited == false" "$M_ENVELOPE" ".metrics.rate_limited" "false"
+
+# (p) subagent fixture: per_subagent join via parent_tool_use_id -> Agent.input.subagent_type
+(
+    export FIXTURE_PATH="$FIXTURE_TOOL_TRACE_SUBAGENT"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Spawn a subagent."
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/metrics_p_envelope.json" 2>/dev/null || true
+P_ENVELOPE="$(cat "$BASE_TMP/metrics_p_envelope.json")"
+
+assert_jq "(p) per_subagent[general-purpose].bash_count == 1" "$P_ENVELOPE" \
+    '.metrics.per_subagent["general-purpose"].bash_count' "1"
+
+# (q) is_error fixture: metrics absent entirely (no faked zeros on a failure path)
+(
+    export FIXTURE_PATH="$FIXTURE_ERR"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do something."
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/metrics_q_envelope.json" 2>/dev/null || true
+Q_ENVELOPE="$(cat "$BASE_TMP/metrics_q_envelope.json")"
+
+assert_jq "(q) failure envelope: metrics key absent" "$Q_ENVELOPE" 'has("metrics")' "false"
+
+# (r) old text-only fixture (question_mark_reply, no tool events): still exits
+# 0, result.status == success — additive key breaks no existing back-compat path.
+(
+    export FIXTURE_PATH="$FIXTURE_QMARK"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Tell me something."
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/metrics_r_envelope.json" 2>/dev/null || true
+R_ENVELOPE="$(cat "$BASE_TMP/metrics_r_envelope.json")"
+
+assert_jq "(r) back-compat: result.status still success" "$R_ENVELOPE" ".result.status" "success"
+
+# (s) pi fixture: metrics.read_count == 1; rate_limited/per_subagent OMITTED
+# (pi's event vocabulary cannot supply them — omission, not faking).
+PI_METRICS_STUB_DIR="$BASE_TMP/pi_metrics_stub_bin"
+mkdir -p "$PI_METRICS_STUB_DIR"
+cat >"$PI_METRICS_STUB_DIR/pi" <<'PIMETRICSSTUB'
+#!/usr/bin/env bash
+cat "$PI_FIXTURE_PATH"
+PIMETRICSSTUB
+chmod +x "$PI_METRICS_STUB_DIR/pi"
+
+(
+    export PATH="$PI_METRICS_STUB_DIR:$PATH"
+    export PI_FIXTURE_PATH="$PI_FIXTURE_TOOL_TRACE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test assistant."
+    export CODEGEN_CALL_MODEL="gpt-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Do file work."
+    unset CODEGEN_CALL_AGENT 2>/dev/null || true
+    unset CODEGEN_CALL_RESUME 2>/dev/null || true
+    unset CODEGEN_CALL_EXTENSION_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_SESSION_ID 2>/dev/null || true
+    bash "$PI_DISPATCH_SCRIPT" 2>/dev/null
+) >"$BASE_TMP/metrics_s_envelope.json" 2>/dev/null || true
+S_ENVELOPE="$(cat "$BASE_TMP/metrics_s_envelope.json")"
+
+assert_jq "(s) pi metrics.read_count == 1" "$S_ENVELOPE" ".metrics.read_count" "1"
+assert_jq "(s) pi metrics.rate_limited omitted (not faked)" "$S_ENVELOPE" 'has("rate_limited")' "false"
+assert_jq "(s) pi metrics has(\"rate_limited\") within metrics also absent" "$S_ENVELOPE" '.metrics | has("rate_limited")' "false"
+assert_jq "(s) pi metrics.per_subagent omitted" "$S_ENVELOPE" '.metrics | has("per_subagent")' "false"
+
+# (t) RED-then-GREEN: synthetic pre-fix builder (no metrics summarization) —
+# proves assertion (m) is load-bearing, not a vacuous grep. Mirrors the
+# RED-then-GREEN idiom used above for FIX-1/FIX-3 (case g).
+PRE_METRICS_SCRIPT="$BASE_TMP/call-dispatch.pre-metrics.sh"
+cat >"$PRE_METRICS_SCRIPT" <<'PREMETRICS'
+#!/usr/bin/env bash
+# Synthetic reproduction of the pre-fix envelope: no metrics block at all,
+# regardless of tool events present in the source stream.
+set -euo pipefail
+jq -n '{
+    result: {status: "success", value: "ok", reason: null, retry_meta: null},
+    usage: {input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cost_usd: 0, latency_ms: 0, model: "test", num_turns: 1},
+    error: null,
+    harness: "claude_code",
+    session_id: null
+}'
+PREMETRICS
+chmod +x "$PRE_METRICS_SCRIPT"
+
+PRE_METRICS_ENVELOPE="$(bash "$PRE_METRICS_SCRIPT")"
+PRE_METRICS_READ_COUNT="$(printf '%s' "$PRE_METRICS_ENVELOPE" | jq -r '.metrics.read_count // "MISSING"')"
+if [[ "$PRE_METRICS_READ_COUNT" == "MISSING" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: RED-then-GREEN — pre-fix envelope fails the (m) metrics.read_count assertion as expected\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: RED-then-GREEN — pre-fix envelope unexpectedly satisfies the (m) metrics assertion (got %q)\n' "$PRE_METRICS_READ_COUNT"
+    fail=$((fail + 1))
+fi
+rm -f "$PRE_METRICS_SCRIPT"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
