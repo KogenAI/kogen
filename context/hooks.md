@@ -204,7 +204,7 @@ If a file is committed with prettier multi-line formatting, the committed versio
 
 **Critical gate ordering**: Edit registry → `make install` FIRST (regenerates committed generated files) → `make test`. Reversed order causes `enforce-registry-parity` drift failure. Never run prettier on compiler-generated files.
 
-**Multi-value `role:` compiler case-arm join**: `enforcement_compiler.py`'s `_bash_agent_guard` joins multi-value `role: "a|b"` tokens with `" | "` (space-padded), not a bare `|`, when emitting the bash `case "$AGENT_TYPE" in a | b) ;; ...` guard. `hook_registrations.py`'s role-parity checker (`validate_role_body`) requires EACH token to independently satisfy either `<token>)` (last token) or `<token> |` (space before the pipe, earlier tokens) as a literal substring in the generated body — a bare `a|b)` join leaves every non-last token unmatched, failing `make hook-parity` with "declares role: X but body does not contain...". `reviewer-bash-allowlist` (first generated denial entry with a multi-value role) surfaced this; POSIX `case` syntax accepts space around `|` in patterns, so the fix is compiler-side and applies to all future multi-role generated hooks.
+**Multi-value `role:` compiler case-arm join**: compiler joins `role: "a|b"` with `" | "` (space-padded, not bare `|`) in generated `case "$AGENT_TYPE" in a | b) ;;` guards — `hook_registrations.py`'s parity checker requires each token to match `<token>)` or `<token> |` literally; a bare `a|b)` join fails `make hook-parity`. Fix is compiler-side (POSIX `case` accepts space around `|`).
 
 ## Quote-Aware Matching — `strip_quoted`/`ignore_quoted`
 
@@ -237,7 +237,7 @@ Place **specific arms BEFORE wildcards** in shell case statements. Example: a sp
 `codegen-log` is the SOLE writer of cycle logs (append-only JSONL). Raw Edit/Write/Bash writes denied by `session-log-writer-only` hook.
 
 **Core ops**:
-- `init --slug <slug>` — create log; loop-only, refuses (exit 2, `.active` untouched) when `CODEGEN_LOG_PATH` set — role MUST NOT `init` inside a cycle.
+- `init --slug <slug> [--stamp <ts>]` — create log; binds by RUN IDENTITY (path from `--stamp`, or `date -u` when omitted), never a slug-only glob, so a retry mints its own log; loop-only, refuses (exit 2, `.active` untouched) when `CODEGEN_LOG_PATH` set — role MUST NOT `init` inside a cycle.
 - `section <role> --slug <slug>` — append `{"ev":"role","role":<role>,"body":<prose>}`.
 - `append <role> --slug <slug>` — append `{"ev":"role",...}` event.
 - `append <role> --learned "<text>" --slug <slug>` — append `{"ev":"learned",...}`.

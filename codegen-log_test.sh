@@ -121,6 +121,18 @@ init_log() {
         "$CODEGEN_LOG" init --slug "$slug"
 }
 
+# init_log_stamped <root> <slug> <stamp> — init pinned to an explicit
+# YYYYMMDD_HHMMSS run-identity stamp, so re-init calls in the same test can
+# assert exact-path adoption without racing the wall clock.
+init_log_stamped() {
+    local root="$1"
+    local slug="$2"
+    local stamp="$3"
+    env -u AGENT_TYPE -u CLAUDE_ROLE \
+        OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$root" \
+        "$CODEGEN_LOG" init --slug "$slug" --stamp "$stamp"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # (a) --role override yields correct role event, ignoring ambient env
 WS_A="$(new_workspace)"
@@ -171,13 +183,20 @@ check "(e) unsupported --role foo exits 2" "2" "$RC_E"
 assert_contains "(e) unsupported-role error names --role remedy" "$ERR_E" "--role"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# (g) init is idempotent: re-init on an existing slug prints the same path;
-# a distinct slug forks a NEW path.
+# (g) init binds by RUN IDENTITY: re-init with the SAME slug+stamp adopts the
+# exact existing path (idempotent at the exact-path level); re-init with the
+# SAME slug but a DIFFERENT stamp (a genuine retry) forks a NEW path — a
+# slug alone is never enough to reuse a predecessor's log. A distinct slug
+# also forks a new path.
 WS_G="$(new_workspace)"
-LOG_G1="$(init_log "$WS_G" test-idempotent)"
-LOG_G2="$(init_log "$WS_G" test-idempotent)"
-check "(g) idempotent init returns the same path on re-init" "$LOG_G1" "$LOG_G2"
-LOG_G3="$(init_log "$WS_G" test-idempotent-other)"
+LOG_G1="$(init_log_stamped "$WS_G" test-idempotent 20260101_100000)"
+LOG_G1_AGAIN="$(init_log_stamped "$WS_G" test-idempotent 20260101_100000)"
+check "(g) same slug+stamp re-init adopts the exact same path" "$LOG_G1" "$LOG_G1_AGAIN"
+LOG_G2="$(init_log_stamped "$WS_G" test-idempotent 20260101_110000)"
+IDEMPOTENT_RETRY_DISTINCT=1
+[ "$LOG_G1" = "$LOG_G2" ] && IDEMPOTENT_RETRY_DISTINCT=0
+check "(g) same slug, different stamp (a retry) forks a new log" "1" "$IDEMPOTENT_RETRY_DISTINCT"
+LOG_G3="$(init_log_stamped "$WS_G" test-idempotent-other 20260101_100000)"
 IDEMPOTENT_DISTINCT=1
 [ "$LOG_G1" = "$LOG_G3" ] && IDEMPOTENT_DISTINCT=0
 check "(g) a distinct slug forks a new log" "1" "$IDEMPOTENT_DISTINCT"

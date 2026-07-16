@@ -142,7 +142,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   end
 
   defp log_init_fn_for(log_path) do
-    fn _slug, _cwd -> log_path end
+    fn _slug, _cwd, _stamp -> log_path end
   end
 
   defp append_role_body!(log_path, role, body) do
@@ -4046,8 +4046,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       File.write!(log_path, Jason.encode!(%{"ev" => "init", "pitch" => "x"}) <> "\n")
       on_exit(fn -> File.rm(log_path) end)
 
-      log_init_fn = fn slug, cwd ->
-        Agent.update(init_calls_agent, fn calls -> calls ++ [{slug, cwd}] end)
+      log_init_fn = fn slug, cwd, stamp ->
+        Agent.update(init_calls_agent, fn calls -> calls ++ [{slug, cwd, stamp}] end)
         # Called before the first role: calls_agent must still be empty.
         assert Agent.get(calls_agent, & &1) == []
         log_path
@@ -4055,6 +4055,50 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        body = "did the thing"
+        append_role_body!(log_path, role, body)
+        {:ok, %{"status" => "success", "value" => body, "session_id" => "sid-#{role}"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 slug: "my-test-slug",
+                 stamp: "20260101_120000",
+                 log_init_fn: log_init_fn,
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn()
+               )
+
+      assert Agent.get(init_calls_agent, & &1) == [
+               {"my-test-slug", "/tmp/irrelevant", "20260101_120000"}
+             ]
+    end
+
+    test "run/1 without :stamp passes nil to log_init_fn — no crash on the unit-test path" do
+      {:ok, init_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(init_calls_agent), do: Agent.stop(init_calls_agent) end)
+
+      log_path =
+        Path.join(System.tmp_dir!(), "init_pin_#{System.unique_integer([:positive])}.jsonl")
+
+      File.write!(log_path, Jason.encode!(%{"ev" => "init", "pitch" => "x"}) <> "\n")
+      on_exit(fn -> File.rm(log_path) end)
+
+      log_init_fn = fn slug, cwd, stamp ->
+        Agent.update(init_calls_agent, fn calls -> calls ++ [{slug, cwd, stamp}] end)
+        log_path
+      end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
         body = "did the thing"
         append_role_body!(log_path, role, body)
         {:ok, %{"status" => "success", "value" => body, "session_id" => "sid-#{role}"}}
@@ -4077,11 +4121,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  env_var_scan_fn: always_clean_env_var_fn()
                )
 
-      assert Agent.get(init_calls_agent, & &1) == [{"my-test-slug", "/tmp/irrelevant"}]
+      assert Agent.get(init_calls_agent, & &1) == [{"my-test-slug", "/tmp/irrelevant", nil}]
     end
 
     test "a raising log_init_fn makes run/1 raise — no silent log-less cycle" do
-      log_init_fn = fn _slug, _cwd -> raise "codegen-log init failed (2): boom" end
+      log_init_fn = fn _slug, _cwd, _stamp -> raise "codegen-log init failed (2): boom" end
 
       assert_raise RuntimeError, ~r/codegen-log init failed/, fn ->
         OrchestrationLoop.run(
@@ -4271,7 +4315,7 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
 end
 
 # Isolated for the same reason as OrchestrationLoopLockTest: exercises the
-# REAL default_log_init/2 (no :log_init_fn stub) against a real, ambient
+# REAL default_log_init/3 (no :log_init_fn stub) against a real, ambient
 # CODEGEN_LOG_PATH — a process-global env var — so it cannot share async:
 # true execution with the ~38 unrelated role-sequencing tests above.
 defmodule CodegenTestHarness.OrchestrationLoopDefaultLogInitTest do
@@ -4299,12 +4343,12 @@ defmodule CodegenTestHarness.OrchestrationLoopDefaultLogInitTest do
   # codegen-log binary via System.cmd. System.cmd inherits the calling BEAM
   # process's OS-level env unless explicitly overridden per key — so if this
   # test's ambient CODEGEN_LOG_PATH (set via System.put_env, ExUnit's own
-  # process env) is not explicitly cleared by default_log_init/2's env list,
+  # process env) is not explicitly cleared by default_log_init/3's env list,
   # the loop's own `codegen-log init` call would refuse itself (exit 2, since
   # `init` now hard-refuses under any non-empty pin) and run/1 would raise —
   # a self-build (or any nested build) would never get past cycle-log
   # creation. This test proves the loop clears its own pin before init'ing.
-  test "run/1 succeeds via the real default_log_init/2 even with an ambient CODEGEN_LOG_PATH set",
+  test "run/1 succeeds via the real default_log_init/3 even with an ambient CODEGEN_LOG_PATH set",
        ctx do
     ambient_pin = Path.join(ctx.dir, "codegen/logging/some_unrelated_cycle.jsonl")
     File.write!(ambient_pin, Jason.encode!(%{"ev" => "init", "pitch" => "unrelated"}) <> "\n")
@@ -4315,7 +4359,7 @@ defmodule CodegenTestHarness.OrchestrationLoopDefaultLogInitTest do
     # Neutralize an ambient CODEGEN_BUILD_CWD/CLAUDE_PROJECT_DIR the dev
     # session running THIS suite may have exported (codegen-log's LOG_ROOT
     # falls back to either before $PWD — see codegen-log:113). Left set, the
-    # loop's `cd: cwd` option is silently overridden and default_log_init/2
+    # loop's `cd: cwd` option is silently overridden and default_log_init/3
     # mints its log under the wrong root entirely, masking this test's real
     # assertion (the ambient-pin-clearing behavior) behind an unrelated path
     # bug. Same isolation pattern codegen-log_test.sh already documents.
@@ -4358,7 +4402,7 @@ defmodule CodegenTestHarness.OrchestrationLoopDefaultLogInitTest do
              )
 
     # The cycle minted its OWN log under ctx.dir/codegen/logging — distinct
-    # from the ambient pin — proving default_log_init/2 actually ran (rather
+    # from the ambient pin — proving default_log_init/3 actually ran (rather
     # than, say, silently reusing the ambient pin because it never cleared
     # it).
     minted =

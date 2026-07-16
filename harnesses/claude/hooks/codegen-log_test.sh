@@ -674,6 +674,76 @@ rolespine_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DI
 assert "role-spine fallback is actually in use (no ev:turn, no summary sibling)" "0" "$(printf '%s' "$rolespine_show" | grep -qF 'spine: role' && printf 0 || printf 1)"
 assert "invoked-but-no-body anomaly fires for committer under role-spine fallback" "0" "$(printf '%s' "$rolespine_show" | grep -qF 'committer: invoked but wrote no body' && printf 0 || printf 1)"
 
+# Test 27: two inits, same slug, different stamps -> two distinct logs; the
+# first gains zero events (the run-identity fix's core invariant — a retry
+# must never be silently absorbed into its predecessor's log).
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+run1_path="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug retry-run-identity --stamp 20260201_010000)"
+run2_path="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug retry-run-identity --stamp 20260201_020000)"
+assert "two inits, same slug, different stamps, produce different paths" "0" "$([ "$run1_path" != "$run2_path" ] && printf 0 || printf 1)"
+assert "run1 log exists" "0" "$([ -f "$run1_path" ] && printf 0 || printf 1)"
+assert "run2 log exists" "0" "$([ -f "$run2_path" ] && printf 0 || printf 1)"
+run1_lines="$(wc -l <"$run1_path" | tr -d ' ')"
+assert "run1 log still carries only its own single init event" "1" "$run1_lines"
+
+# Test 28: --stamp composes the exact path.
+unset CODEGEN_LOG_PATH
+exact_path="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug exact-stamp-path --stamp 20260301_093000)"
+assert "--stamp composes the exact path" "$PROJECT/codegen/logging/20260301_093000_exact-stamp-path_cycle.jsonl" "$exact_path"
+
+# Test 29: --stamp naming an existing log adopts it — exit 0, prints that
+# path, .active rewritten, no second file, no duplicate ev:init line.
+unset CODEGEN_LOG_PATH
+adopt_first="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug adopt-same-stamp --stamp 20260302_100000)"
+files_before_adopt="$(find "$PROJECT/codegen/logging" -name '*adopt-same-stamp*_cycle.jsonl' | sort)"
+adopt_second="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug adopt-same-stamp --stamp 20260302_100000)"
+files_after_adopt="$(find "$PROJECT/codegen/logging" -name '*adopt-same-stamp*_cycle.jsonl' | sort)"
+assert "adopt: same slug+stamp re-init returns the same path" "$adopt_first" "$adopt_second"
+assert "adopt: no second file was created" "0" "$([ "$files_before_adopt" = "$files_after_adopt" ] && printf 0 || printf 1)"
+adopt_lines="$(wc -l <"$adopt_first" | tr -d ' ')"
+assert "adopt: no duplicate init event was appended" "1" "$adopt_lines"
+adopt_active="$(cat "$PROJECT/codegen/logging/.active")"
+assert "adopt: .active rewritten to the adopted log" "$adopt_first" "$adopt_active"
+
+# Test 30: malformed --stamp exits 2, creates no file. Cases: hyphens instead
+# of underscore separator, no underscore at all, non-numeric garbage.
+for bad_stamp in "2026-02-01_120000" "20260201120000" "abc"; do
+    unset CODEGEN_LOG_PATH
+    files_before_bad="$(find "$PROJECT/codegen/logging" -name '*bad-stamp-case*_cycle.jsonl' 2>/dev/null | sort)"
+    bad_rc=0
+    (cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug bad-stamp-case --stamp "$bad_stamp" >/dev/null 2>&1) || bad_rc=$?
+    assert "malformed --stamp '$bad_stamp' exits 2" "2" "$bad_rc"
+    files_after_bad="$(find "$PROJECT/codegen/logging" -name '*bad-stamp-case*_cycle.jsonl' 2>/dev/null | sort)"
+    assert "malformed --stamp '$bad_stamp' created no file" "0" "$([ "$files_before_bad" = "$files_after_bad" ] && printf 0 || printf 1)"
+done
+
+# Test 31: `show <slug>` across two same-slug logs -> exit 0, renders the
+# newest run, and stderr carries ONE note naming the older.
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+show_run1="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug retried-show-slug --stamp 20260401_010000)"
+(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR CODEGEN_LOG_PATH="$show_run1" "$CODEGEN/codegen-log" section developer-phoenix-backend --learned "first attempt learning, real content here" <<'EOF' >/dev/null
+first attempt work
+EOF
+)
+show_run2="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug retried-show-slug --stamp 20260401_020000)"
+(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR CODEGEN_LOG_PATH="$show_run2" "$CODEGEN/codegen-log" section developer-phoenix-backend --learned "second attempt learning, real content here" <<'EOF' >/dev/null
+second attempt work
+EOF
+)
+unset CODEGEN_LOG_PATH
+show_retried_rc=0
+show_retried_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug retried-show-slug --full 2>"$TMP_DIR/show_retried_stderr")" || show_retried_rc=$?
+assert "show across a retried slug exits 0" "0" "$show_retried_rc"
+assert "show across a retried slug renders the newest run's body" "0" "$(printf '%s' "$show_retried_out" | grep -qF 'second attempt work' && printf 0 || printf 1)"
+assert "show across a retried slug does not render the older run's body" "0" "$(printf '%s' "$show_retried_out" | grep -qF 'first attempt work' && printf 1 || printf 0)"
+show_retried_stderr="$(cat "$TMP_DIR/show_retried_stderr")"
+assert "show across a retried slug notes the older log on stderr" "0" "$(printf '%s' "$show_retried_stderr" | grep -qF "$show_run1" && printf 0 || printf 1)"
+assert "show across a retried slug names the newest log in the note" "0" "$(printf '%s' "$show_retried_stderr" | grep -qF "$show_run2" && printf 0 || printf 1)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

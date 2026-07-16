@@ -266,8 +266,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         :ok
 
       slug ->
-        log_init_fn = Keyword.get(opts, :log_init_fn, &default_log_init/2)
-        Process.put(@log_path_key, log_init_fn.(slug, cwd))
+        stamp = Keyword.get(opts, :stamp)
+        log_init_fn = Keyword.get(opts, :log_init_fn, &default_log_init/3)
+        Process.put(@log_path_key, log_init_fn.(slug, cwd, stamp))
     end
 
     # Turn-0 gate preflight: resolve the app's gate command BEFORE invoking
@@ -1289,20 +1290,31 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   # Creates THIS cycle's log via the sole writer (codegen-log) and returns
-  # its resolved path (printed on stdout). Idempotent: re-init on an
-  # existing slug prints that log's path and exits 0, so this is safe to
-  # call unconditionally at cycle start (including on a resumed/retried
-  # run). A non-zero exit is fatal — a cycle with no log of its own would
-  # otherwise silently append its roles' sections into whatever unrelated
-  # log happens to be newest on disk.
-  @spec default_log_init(String.t(), String.t()) :: String.t()
-  defp default_log_init(slug, cwd) do
+  # its resolved path (printed on stdout). Binds by RUN IDENTITY, not slug:
+  # `stamp` (this run's own already-minted cycle_id-prefix, or nil for
+  # callers with no stamp of their own — e.g. many unit tests) is passed
+  # through as --stamp so a retry of the same slug mints its own log instead
+  # of silently adopting a predecessor's. init IS idempotent at the
+  # exact-path level: re-init naming the SAME slug+stamp (a path that
+  # already exists) prints that log's path and exits 0 without creating a
+  # second log — safe to call unconditionally at cycle start. A non-zero
+  # exit is fatal — a cycle with no log of its own would otherwise silently
+  # append its roles' sections into whatever unrelated log happens to be
+  # newest on disk.
+  @spec default_log_init(String.t(), String.t(), String.t() | nil) :: String.t()
+  defp default_log_init(slug, cwd, stamp) do
     unless File.exists?(@codegen_log_bin) do
       raise "OrchestrationLoop: codegen-log not found at #{@codegen_log_bin}"
     end
 
+    args =
+      case stamp do
+        nil -> ["init", "--slug", slug]
+        s -> ["init", "--slug", slug, "--stamp", s]
+      end
+
     {output, exit_code} =
-      System.cmd(@codegen_log_bin, ["init", "--slug", slug],
+      System.cmd(@codegen_log_bin, args,
         stderr_to_stdout: true,
         env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", nil}],
         cd: cwd
@@ -1413,7 +1425,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Adds :cycle_log (THIS cycle's log path, from Process.get(@log_path_key))
   # to opts before it reaches LoopGate.run_gate/2 — the gate itself has no
   # way to resolve the log path; the loop is the sole holder of it (set by
-  # default_log_init/2 at cycle start, or nil when no log was initialized,
+  # default_log_init/3 at cycle start, or nil when no log was initialized,
   # e.g. most unit tests). Adds a key only; never overwrites a :cycle_log a
   # test already supplied in opts.
   @spec gate_opts(run_opts()) :: run_opts()

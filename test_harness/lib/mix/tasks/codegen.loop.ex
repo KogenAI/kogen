@@ -118,6 +118,7 @@ defmodule Mix.Tasks.Codegen.Loop do
           pitch: pitch,
           cycle_id: cycle_id,
           slug: slug,
+          stamp: stamp,
           fallback_model_override: fallback_model,
           max_budget_usd: max_budget_usd
         )

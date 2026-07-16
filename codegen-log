@@ -2,7 +2,7 @@
 # codegen-log — canonical cycle-log writer.
 #
 # Usage:
-#   codegen-log init --slug <slug>
+#   codegen-log init --slug <slug> [--stamp <YYYYMMDD_HHMMSS>]
 #   codegen-log section [<role>] [--body @-] [--role <role>] [--slug <slug>]
 #   codegen-log section [<role>] [--body @-] --learned "<text>" [--slug <slug>]
 #   codegen-log append <role> [--body @-] [--slug <slug>]
@@ -84,10 +84,18 @@
 # zero code"), not restate the absence of a learning.
 #
 # init: create a new codegen/logging/<ts>_<slug>_cycle.jsonl containing only
-#       the initial "init" event line. Idempotent: re-running init with a
-#       slug that already has a matching log prints that log's path and
-#       exits 0 WITHOUT creating a second log; more than one match is
-#       ambiguous and exits 2.
+#       the initial "init" event line. Binds by RUN IDENTITY (the <ts>
+#       stamp), never by slug alone: a slug's log path is composed directly
+#       from --stamp (or, when omitted, `date -u +%Y%m%d_%H%M%S`) — there is
+#       no glob-by-slug lookup. A retry of the same pitch mints its OWN log
+#       because it carries its own fresh stamp; two runs of the same slug
+#       never collide. init IS idempotent at the exact-path level: re-running
+#       init with the SAME --slug AND --stamp (naming a path that already
+#       exists) adopts it — prints that log's path, rewrites .active, exits 0
+#       WITHOUT creating a second log or a duplicate init event. Passing the
+#       loop's own already-minted stamp (mix codegen.loop's `stamp`, which
+#       also names the run's cycle_id / transcript dir) is what makes this
+#       exact-match adoption meaningful rather than accidental.
 # section: append ONE "role" event line with the given role + full body.
 #          --role overrides AGENT_TYPE/CLAUDE_ROLE-derived role when present.
 #          A second `section` call for the same role APPENDS another "role"
@@ -159,6 +167,7 @@ LOG_ROOT="${CODEGEN_BUILD_CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 SUBCOMMAND=""
 SLUG=""
 SLUG_SET=""
+STAMP=""
 BODY_SOURCE=""
 ROLE_OVERRIDE=""
 ROLE_POSITIONAL_SEEN=""
@@ -177,7 +186,7 @@ SHOW_FULL=""
 
 usage() {
     printf 'Usage:\n' >&2
-    printf '  codegen-log init --slug <slug>\n' >&2
+    printf '  codegen-log init --slug <slug> [--stamp <YYYYMMDD_HHMMSS>]\n' >&2
     printf '  codegen-log section --body @- [--role <role>] [--slug <slug>]\n' >&2
     printf '  codegen-log section --body @- --learned "<text>" [--role <role>] [--slug <slug>]\n' >&2
     printf '  codegen-log append --role <role> --body @- [--slug <slug>]\n' >&2
@@ -226,6 +235,14 @@ while [[ $# -gt 0 ]]; do
     --slug)
         SLUG="$2"
         SLUG_SET=1
+        shift 2
+        ;;
+    --stamp=*)
+        STAMP="${1#--stamp=}"
+        shift
+        ;;
+    --stamp)
+        STAMP="$2"
         shift 2
         ;;
     --body=*)
@@ -543,7 +560,42 @@ resolve_by_slug() {
     printf '%s' "${matches[0]}"
 }
 
+# resolve_by_slug_newest — READ-ONLY counterpart to resolve_by_slug. A slug
+# now legitimately matches more than one log (each retry mints its own run
+# identity), so a read (show) takes the NEWEST match by stamp rather than
+# refusing. Stamps are fixed-width YYYYMMDD_HHMMSS, so lexical sort on the
+# filename equals chronological order — same assumption the queue drain
+# already makes (stamp >= spawn_stamp comparisons). Zero matches still exits
+# 2 (nothing to show); 2+ matches prints ONE stderr note naming the older
+# logs, mirroring the explicit-ladder note `show` already prints elsewhere
+# for its spine choice.
+resolve_by_slug_newest() {
+    local slug="$1"
+    local root matches=() candidate
+    root="$(repo_root)"
+    for candidate in "$root"/codegen/logging/*_"${slug}"_cycle.jsonl; do
+        [[ -e "$candidate" ]] || continue
+        matches+=("$candidate")
+    done
+    if [[ "${#matches[@]}" -eq 0 ]]; then
+        printf 'codegen-log: no cycle log matches slug %s\n' "$slug" >&2
+        exit 2
+    fi
+    if [[ "${#matches[@]}" -eq 1 ]]; then
+        printf '%s' "${matches[0]}"
+        return
+    fi
+    local sorted newest last_idx
+    sorted=($(printf '%s\n' "${matches[@]}" | sort))
+    last_idx=$((${#sorted[@]} - 1))
+    newest="${sorted[$last_idx]}"
+    printf 'codegen-log show: %d logs match slug %s — showing the newest run (%s); older: %s\n' \
+        "${#matches[@]}" "$slug" "$newest" "$(printf '%s ' "${sorted[@]:0:$last_idx}")" >&2
+    printf '%s' "$newest"
+}
+
 resolve_log_file() {
+    local mode="${1:-write}"
     if [[ -n "${CODEGEN_LOG_PATH:-}" ]]; then
         printf '%s' "$CODEGEN_LOG_PATH"
         return
@@ -554,7 +606,11 @@ resolve_log_file() {
     fi
     if [[ -n "$SLUG" ]]; then
         validate_slug "$SLUG"
-        resolve_by_slug "$SLUG"
+        if [[ "$mode" == "read" ]]; then
+            resolve_by_slug_newest "$SLUG"
+        else
+            resolve_by_slug "$SLUG"
+        fi
         return
     fi
     local sentinel_log
@@ -836,24 +892,24 @@ init)
         printf 'codegen-log init: --slug must match [a-z0-9_-]+ (got %q)\n' "$SLUG" >&2
         exit 2
     fi
-    root="$(repo_root)"
-    existing=()
-    for candidate in "$root"/codegen/logging/*_"${SLUG}"_cycle.jsonl; do
-        [[ -e "$candidate" ]] || continue
-        existing+=("$candidate")
-    done
-    if [[ "${#existing[@]}" -eq 1 ]]; then
-        write_active_sentinel "${existing[0]}"
-        printf '%s\n' "${existing[0]}"
-        exit 0
-    fi
-    if [[ "${#existing[@]}" -gt 1 ]]; then
-        printf 'codegen-log init: ambiguous slug %s: %d logs match\n' "$SLUG" "${#existing[@]}" >&2
-        printf '%s\n' "${existing[@]}" >&2
+    if [[ -n "$STAMP" && ! "$STAMP" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
+        printf 'codegen-log init: --stamp must match YYYYMMDD_HHMMSS (got %q)\n' "$STAMP" >&2
         exit 2
     fi
-    timestamp="$(date -u +%Y%m%d_%H%M%S)"
+    root="$(repo_root)"
+    timestamp="${STAMP:-$(date -u +%Y%m%d_%H%M%S)}"
     path="$root/codegen/logging/${timestamp}_${SLUG}_cycle.jsonl"
+    # Bind by RUN IDENTITY (the exact stamp+slug path), never by a slug-only
+    # glob. Re-running init against a path that already exists on disk is a
+    # deliberate re-bind (e.g. the same stamp passed twice) — adopt it:
+    # print, rewrite .active, exit 0, without a second log or a duplicate
+    # init event. A DIFFERENT stamp for the same slug (a genuine retry)
+    # never matches here — it composes a brand-new path below.
+    if [[ -f "$path" ]]; then
+        write_active_sentinel "$path"
+        printf '%s\n' "$path"
+        exit 0
+    fi
     mkdir -p "$(dirname "$path")"
     # Best-effort pitch path — empty string (not a masking-default fake path)
     # when it cannot be resolved. codegen-log has no reliable way to know the
@@ -1091,7 +1147,7 @@ show)
         ;;
     esac
 
-    log_file="$(resolve_log_file)"
+    log_file="$(resolve_log_file read)"
     if [[ -z "$log_file" || ! -f "$log_file" ]]; then
         printf 'codegen-log show: no cycle log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
         exit 2
