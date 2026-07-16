@@ -40,6 +40,10 @@ Grep this file's trigger table with task keywords before writing a plan. Each re
 | oban job cancel reschedule reminder notification idempotent lifecycle delete-before-schedule                                                         | oban-job-rescheduling.md                | Cancel-before-schedule pattern for Oban jobs with defensive processing for deleted entities.                                                         |
 | oban worker perform return-value explicit-ok snooze cancel discard logger port                                                                       | oban-worker-return-contract.md          | Explicit :ok at end of perform/1 prevents warnings from loggers and port ops returning true.                                                         |
 | admin http-basic-auth secure-routes environment-credentials unauthorized-logging plug pipeline                                                       | phoenix-admin-basic-auth.md             | HTTP Basic Auth plug for admin routes with env-based credentials and unauthorized attempt logging.                                                   |
+| dependency-upgrade hex-outdated bump-deps mix-lock version-bump gate-failure routine-maintenance                                                     | phoenix-dependency-upgrade.md           | Four-step procedure to enumerate, bump, and gate dependency upgrades — fail open on the single dep that breaks the gate.                             |
+| rate-limit ets throttle 429 too-many-requests per-ip fixed-window no-hammer plug                                                                     | phoenix-ets-rate-limit.md               | Pure-ETS per-IP fixed-window rate limiter with a plug returning 429 and retry-after, no Hammer dependency.                                           |
+| remote-ip real-client-ip proxy caddy x-forwarded-for forwarded header spoofing plug                                                                  | phoenix-remote-ip.md                    | Wire the remote_ip plug ahead of the router so conn.remote_ip reflects the real client behind a proxy.                                               |
+| session-login single-user shared-credential login-form on-mount liveview-gate require-login secure-compare                                           | phoenix-session-login.md                | Session-cookie login with a shared credential, require_login plug, and on_mount LiveView gating.                                                     |
 | async liveview feature-test DBConnection.OwnershipError sandbox parallel playwright database                                                         | phoenix-async-feature-test-liveview.md  | Enable async: true for LiveView browser tests with proper SQL Sandbox metadata in User-Agent.                                                        |
 | async-test connected-socket metadata nil hook-order sandbox liveview troubleshoot DBConnection                                                       | phoenix-async-test-debugging.md         | Debug async feature test failures caused by connected?(socket) trap and metadata nil issues.                                                         |
 | messagepack binary-serialization phoenix-channels flutter bandwidth mobile 40-70-percent msgpax                                                      | phoenix-channels-messagepack-flutter.md | MessagePack serialization for Phoenix Channels gives 40-70% bandwidth savings over JSON.                                                             |
@@ -277,6 +281,30 @@ Grep this file's trigger table with task keywords before writing a plan. Each re
 **When**: Admin routes need HTTP Basic Authentication with environment-based credentials and audit logging.
 **What it gives you**: `AdminAuth` plug with secure credential comparison, unauthorized attempt logging, and separate router pipeline.
 **Triggers**: admin http-basic-auth secure-routes environment-credentials unauthorized-logging plug pipeline
+
+### phoenix-dependency-upgrade.md
+
+**When**: Doing routine "bump the deps" maintenance, or a dependency bump needs a defined procedure instead of ad-hoc handling.
+**What it gives you**: Fixed procedure — `mix hex.outdated` to enumerate, bump pins + `mix.lock`, run the gate, and on a gate-breaking dep, revert only that pin and report it rather than blocking the whole upgrade or shipping red.
+**Triggers**: dependency-upgrade hex-outdated bump-deps mix-lock version-bump gate-failure routine-maintenance
+
+### phoenix-ets-rate-limit.md
+
+**When**: An endpoint needs per-IP rate limiting (login form, public API, contact form) without adding a Hammer or Redis dependency.
+**What it gives you**: Named ETS table + fixed-window counter keyed by client IP, incremented atomically via `:ets.update_counter/4`, with a plug that halts 429 + `retry-after` when the limit is exceeded.
+**Triggers**: rate-limit ets throttle 429 too-many-requests per-ip fixed-window no-hammer plug
+
+### phoenix-remote-ip.md
+
+**When**: An app sits behind a reverse proxy (Caddy, nginx, load balancer) and `conn.remote_ip` shows the proxy's address instead of the real client's.
+**What it gives you**: `remote_ip` plug wired ahead of the router, rewriting `conn.remote_ip` in place from a trusted forwarding header — every downstream reader gets the real IP with no call-site changes.
+**Triggers**: remote-ip real-client-ip proxy caddy x-forwarded-for forwarded header spoofing plug
+
+### phoenix-session-login.md
+
+**When**: A single-tenant app or internal tool needs a proper session-cookie login (not `phx.gen.auth`'s per-user accounts, not HTTP Basic Auth's per-request prompt).
+**What it gives you**: Shared credential from runtime env, `SessionController` with `secure_compare/2` verification, `require_login` plug for dead routes, and an `on_mount` hook gating LiveViews with redirect-on-unauthenticated.
+**Triggers**: session-login single-user shared-credential login-form on-mount liveview-gate require-login secure-compare
 
 ### phoenix-async-feature-test-liveview.md
 
