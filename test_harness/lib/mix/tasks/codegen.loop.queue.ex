@@ -29,6 +29,12 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
   - `--harness` — required, `claude` | `pi`
   - `--stack` — required, e.g. `phoenix` | `static`
   - `--cwd` — required, project directory whose `codegen/pitches/ready/` is drained
+  - `--watch` — optional. When `ready/` empties, do not exit — sleep and
+    keep scanning so a pitch that arrives later (e.g. via `scp` from
+    another machine) is picked up without a human relaunching the node.
+    See `CodegenTestHarness.LoopQueueDrain` moduledoc "`:watch`". Every
+    other exit (Ctrl-C, spend ceiling, consecutive-fail breaker,
+    orphan/infra abort) is unchanged.
 
   ## Operator toggles (build-time; read by the drain, not this task)
 
@@ -48,6 +54,12 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
     record) is UNACCOUNTABLE spend: under an active ceiling the drain halts
     rather than risk sailing past it; with no ceiling set it is merely
     unreported, byte-for-byte today's behavior.
+  - `CODEGEN_BUILD_QUEUE_POLL_SECS` — `--watch`-only: seconds slept between
+    empty-`ready/` scans (default 60).
+  - `CODEGEN_BUILD_QUEUE_QUIESCE_SECS` — `--watch`-only: a `.md` in
+    `ready/` whose mtime is newer than this many seconds ago is treated as
+    not-yet-arrived (default 30) — guards against selecting a pitch
+    mid-`scp`.
   """
 
   use Mix.Task
@@ -59,7 +71,9 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
   @spec run([String.t()]) :: no_return() | :ok
   def run(argv) do
     {opts, _positional, invalid} =
-      OptionParser.parse(argv, strict: [harness: :string, stack: :string, cwd: :string])
+      OptionParser.parse(argv,
+        strict: [harness: :string, stack: :string, cwd: :string, watch: :boolean]
+      )
 
     if invalid != [] do
       Mix.shell().error("codegen.loop.queue: invalid flags: #{inspect(invalid)}")
@@ -69,6 +83,7 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
     harness = Keyword.get(opts, :harness) || missing_flag!("--harness")
     stack = Keyword.get(opts, :stack) || missing_flag!("--stack")
     cwd = Keyword.get(opts, :cwd) || missing_flag!("--cwd")
+    watch = Keyword.get(opts, :watch, false)
 
     # Move 2: install the SIGTERM handler BEFORE the drain acquires its lock
     # or spawns anything — a Ctrl-C landing before the first pitch even
@@ -87,7 +102,7 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
       exit({:shutdown, 2})
     end
 
-    case LoopQueueDrain.drain(harness: harness, stack: stack, cwd: cwd) do
+    case LoopQueueDrain.drain(harness: harness, stack: stack, cwd: cwd, watch: watch) do
       {:ok, n} ->
         Mix.shell().info("codegen.loop.queue: #{n} shipped")
         :ok

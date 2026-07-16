@@ -2351,6 +2351,205 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     assert output =~ "queue: 2 shipped, 0 failed, unknown (unaccountable child spend) total"
   end
+
+  # ── --watch: terminal-condition continuation, quiescence gate, keychain ──
+  #
+  # `:watch` never returns on its own on an empty scan (that IS the pitch —
+  # the drain keeps polling forever). Every test below runs the drain to
+  # some assertable side effect, then deliberately breaks out of the
+  # otherwise-infinite watch loop by having `sleep_fn` raise a sentinel
+  # error once its assertions are already satisfied — caught via
+  # `assert_raise`. This is the SAME idiom the file already uses to bound
+  # cyclic/unreachable-else raises (see test 4 "cyclic dependency").
+
+  defmodule WatchStop do
+    defexception message: "watch_stop_sentinel"
+  end
+
+  describe "drain/1 :watch — terminal continuation" do
+    test "empty ready/ does not return — sleeps, then ships a pitch that arrives mid-wake", ctx do
+      wakes = start_agent(0)
+
+      sleep_fn = fn _secs ->
+        n = Agent.get_and_update(wakes, fn n -> {n, n + 1} end)
+
+        cond do
+          n == 0 ->
+            # Simulate an scp landing while the drain is asleep on the
+            # first empty scan.
+            write_pitch(ctx.ready_dir, "arrived")
+            :ok
+
+          n == 1 ->
+            # "arrived" has shipped and ready/ is empty again — stop here,
+            # the assertion under test (it shipped) already happened.
+            raise WatchStop
+
+          true ->
+            :ok
+        end
+      end
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      opts =
+        shipped_opts(ctx,
+          spawn_fn: spawn_fn,
+          sleep_fn: sleep_fn,
+          watch: true,
+          mtime_fn: fn _path -> 0 end
+        )
+
+      output =
+        capture_io(:stderr, fn ->
+          assert_raise WatchStop, fn -> LoopQueueDrain.drain(opts) end
+        end)
+
+      assert output =~ "queue: watching"
+      assert Agent.get(wakes, & &1) >= 2
+      assert File.exists?(Path.join(ctx.shipped_dir, "arrived.md"))
+    end
+
+    test "without :watch, empty ready/ still returns immediately (default unchanged)", ctx do
+      assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+    end
+  end
+
+  describe "drain/1 :watch — quiescence gate" do
+    test "a pitch with a fresh mtime is excluded from this scan, built once quiesced", ctx do
+      write_pitch(ctx.ready_dir, "fresh")
+
+      wakes = start_agent(0)
+
+      # First scan sees "fresh" as mid-arrival (mtime way "in the future" of
+      # now_fn's frozen clock, well inside the quiesce window). After one
+      # sleep, report it as old (quiesced).
+      mtime_fn = fn _path ->
+        if Agent.get(wakes, & &1) == 0, do: 1_700_000_000, else: 0
+      end
+
+      sleep_fn = fn _secs ->
+        n = Agent.get_and_update(wakes, fn n -> {n, n + 1} end)
+        if n >= 1, do: raise(WatchStop)
+        :ok
+      end
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      opts =
+        shipped_opts(ctx,
+          spawn_fn: spawn_fn,
+          sleep_fn: sleep_fn,
+          mtime_fn: mtime_fn,
+          watch: true,
+          quiesce_secs: 30
+        )
+
+      # First scan: "fresh" is excluded (fresh mtime) -> ready/ looks empty
+      # -> watch branch sleeps (wake 0, no raise) -> second scan: "fresh"
+      # now quiesced -> built and shipped -> ready/ empty again -> watch
+      # branch sleeps again (wake 1) -> WatchStop.
+      assert_raise WatchStop, fn -> LoopQueueDrain.drain(opts) end
+      assert File.exists?(Path.join(ctx.shipped_dir, "fresh.md"))
+    end
+
+    test "a dependent is BLOCKED (not built) while its dep is still quiescing", ctx do
+      write_pitch(ctx.ready_dir, "dep")
+      write_pitch(ctx.ready_dir, "dependent", "# Pitch: dependent\n\nBlocks-on: dep\n")
+
+      wakes = start_agent(0)
+      built = start_agent([])
+
+      # "dep" reports a fresh mtime (mid-arrival) on the FIRST scan only —
+      # quiesced on every scan after. "dependent" is always old (it's a
+      # small hand-authored fixture, not mid-transfer).
+      mtime_fn = fn path ->
+        if String.contains?(path, "dep.md") and Agent.get(wakes, & &1) == 0 do
+          1_700_000_000
+        else
+          0
+        end
+      end
+
+      sleep_fn = fn _secs ->
+        Agent.update(wakes, &(&1 + 1))
+        # Both pitches have shipped and ready/ is empty again by the time
+        # this second sleep runs — stop the otherwise-infinite watch loop
+        # right there, the assertions below are already satisfied.
+        if Agent.get(built, & &1) == ["dep", "dependent"], do: raise(WatchStop)
+        :ok
+      end
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        Agent.update(built, &(&1 ++ [slug]))
+        {:exit_code, 0}
+      end
+
+      opts =
+        shipped_opts(ctx,
+          spawn_fn: spawn_fn,
+          sleep_fn: sleep_fn,
+          mtime_fn: mtime_fn,
+          watch: true,
+          quiesce_secs: 30
+        )
+
+      assert_raise WatchStop, fn -> LoopQueueDrain.drain(opts) end
+      # "dep" must be built (and shipped) strictly before "dependent" — the
+      # dependent must never see its dep as satisfied while quiescing.
+      assert Agent.get(built, & &1) == ["dep", "dependent"]
+      assert File.exists?(Path.join(ctx.shipped_dir, "dep.md"))
+      assert File.exists?(Path.join(ctx.shipped_dir, "dependent.md"))
+    end
+  end
+
+  describe "drain/1 :watch — Darwin keychain preflight" do
+    test "locked keychain skips the spawn and keeps watching until unlocked", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      checks = start_agent(0)
+
+      keychain_fn = fn ->
+        n = Agent.get_and_update(checks, fn n -> {n, n + 1} end)
+        n > 0
+      end
+
+      sleep_fn = fn _secs ->
+        # After the pitch ships, ready/ goes empty and the watch branch
+        # sleeps again — stop there once the shipped-file assertion below
+        # is guaranteed reachable.
+        if File.exists?(Path.join(ctx.shipped_dir, "solo.md")), do: raise(WatchStop)
+        :ok
+      end
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      opts =
+        shipped_opts(ctx,
+          spawn_fn: spawn_fn,
+          sleep_fn: sleep_fn,
+          mtime_fn: fn _path -> 0 end,
+          keychain_fn: keychain_fn,
+          watch: true
+        )
+
+      output =
+        capture_io(:stderr, fn ->
+          assert_raise WatchStop, fn -> LoopQueueDrain.drain(opts) end
+        end)
+
+      if match?({:unix, :darwin}, :os.type()) do
+        assert output =~ "queue: keychain locked"
+        assert Agent.get(checks, & &1) >= 2
+      else
+        # Non-Darwin: the preflight never runs — keychain_fn is never
+        # called, and the pitch ships on the first pass.
+        assert Agent.get(checks, & &1) == 0
+      end
+
+      assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    end
+  end
 end
 
 # Sibling module, async: false — holds every test in this file that mutates
@@ -2685,4 +2884,5 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
              end)
     end
   end
+
 end

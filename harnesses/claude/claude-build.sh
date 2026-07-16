@@ -8,17 +8,25 @@ BUILD_BIN="${BUILD_BIN:-$SCRIPT_DIR/codegen-build}"
 
 # --queue: drain codegen/pitches/ready/ one pitch at a time instead of
 # building a single pitch, via the Elixir multi-pitch drain
-# (mix codegen.loop.queue). Takes no slug arguments — any other arg
-# alongside --queue is a usage error.
+# (mix codegen.loop.queue). Takes no slug arguments except the optional
+# --watch flag (see CodegenTestHarness.LoopQueueDrain moduledoc "--watch")
+# — any other arg alongside --queue is a usage error.
 _has_queue_flag=0
+_has_watch_flag=0
 for _qarg in "$@"; do
     if [[ "$_qarg" == "--queue" ]]; then
         _has_queue_flag=1
+    elif [[ "$_qarg" == "--watch" ]]; then
+        _has_watch_flag=1
     fi
 done
+if [[ "$_has_watch_flag" -eq 1 && "$_has_queue_flag" -eq 0 ]]; then
+    printf 'claude-build: --watch requires --queue\n' >&2
+    exit 1
+fi
 if [[ "$_has_queue_flag" -eq 1 ]]; then
     for _qarg in "$@"; do
-        if [[ "$_qarg" != "--queue" ]]; then
+        if [[ "$_qarg" != "--queue" && "$_qarg" != "--watch" ]]; then
             printf 'claude-build: --queue takes no slug arguments — got: %s\n' "$_qarg" >&2
             exit 1
         fi
@@ -40,7 +48,22 @@ if [[ "$_has_queue_flag" -eq 1 ]]; then
         exit 2
     fi
     cd "$CODEGEN_DIR/test_harness"
-    exec mix codegen.loop.queue --harness=claude --stack="${STACK:-phoenix}" --cwd="$_QUEUE_CWD"
+    _QUEUE_ARGS=(mix codegen.loop.queue --harness=claude --stack="${STACK:-phoenix}" --cwd="$_QUEUE_CWD")
+    if [[ "$_has_watch_flag" -eq 1 ]]; then
+        _QUEUE_ARGS+=(--watch)
+    fi
+    # Darwin-only: sleep is the sole re-lock trigger for the login Keychain
+    # (no idle-lock by default) — a long --watch session left unattended
+    # would otherwise let the box sleep and every subsequent spawn die at
+    # $0.00 with a lying "OAuth session expired" error (see
+    # CodegenTestHarness.LoopQueueDrain moduledoc "Darwin idle-lock").
+    # caffeinate prevents sleep; the drain's own pre-spawn :keychain_fn
+    # check is the fail-closed backstop for a box with an idle-lock set
+    # despite caffeinate. Linux has no caffeinate and no Keychain.
+    if [[ "$_has_watch_flag" -eq 1 && "$(uname -s)" == "Darwin" ]] && command -v caffeinate >/dev/null 2>&1; then
+        exec caffeinate -dimsu "${_QUEUE_ARGS[@]+"${_QUEUE_ARGS[@]}"}"
+    fi
+    exec "${_QUEUE_ARGS[@]+"${_QUEUE_ARGS[@]}"}"
 fi
 
 # Normalise launch cwd to the nearest legal pitch root so the basename

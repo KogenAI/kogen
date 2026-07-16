@@ -82,6 +82,22 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   drain outright with `{:error, reason}`, leaving the in-flight pitch
   untouched in `ready_dir` — nothing about THAT pitch's diff was wrong. See
   `handle_infra_abort/4`.
+
+  `:watch` (see `drain/1` doc) changes ONLY the terminal "`ready/` is
+  empty" condition — every other exit (Ctrl-C, spend ceiling, the
+  consecutive-fail breaker, an orphan/infra abort) is unchanged. A watched
+  node holds `:lock_path` for the whole session, same physical file a solo
+  `codegen-build` locks — a watched node is a dedicated node; there is
+  nothing to interleave (see pitch "no-idle-node-while-ready-work-exists").
+  Arrivals mid-`scp` (non-atomic, gitignored `codegen/pitches/` transport)
+  are gated by mtime quiescence — see `quiescence_exclude/1` — applied
+  BEFORE `:ordered_fn`/`:blocked_fn` run, not after, so a half-written
+  dependency never silently satisfies a dependent's edge. On Darwin, sleep
+  is the sole re-lock trigger for the login Keychain (no idle-lock by
+  default) — `claude-build.sh`/`pi-build.sh` wrap a `:watch` session in
+  `caffeinate -dimsu`; this module's own backstop is the pre-spawn
+  `:keychain_fn` check (`run_watch_preflight/4`), fail-closed against a
+  box configured with an idle-lock despite `caffeinate`.
   """
 
   alias CodegenTestHarness.{BuildLock, LoopQueue}
@@ -107,6 +123,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @failures_delete_secs 30 * 24 * 3600
   @cycle_log_gzip_secs 90 * 24 * 3600
   @default_pitch_budget_secs 7200
+  @default_poll_interval_secs 60
+  @default_quiesce_secs 30
   # `mix codegen.loop`'s distinct exit code for `CodegenTestHarness.InfraAbort`
   # (see `Mix.Tasks.Codegen.Loop` `@infra_abort_exit_code`) — a fault no
   # developer edit could fix.
@@ -212,6 +230,38 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       verdict left on disk by an EARLIER cycle that shares the same
       `head_before` (two consecutive non-committing attempts have an
       identical base, so the sha leg alone cannot tell them apart).
+    * `:watch` — default `false`. When `true`, an EMPTY `ready/` (the
+      terminal condition below) does not return — instead the drain sleeps
+      `:poll_interval_secs`, recomputes `:total`, and re-enters `run_loop`
+      with the SAME state (so `:failed_slugs`/`:blocked_printed` persist
+      across wakes — a pitch that failed deterministically is never
+      rebuilt on a later wake). Every OTHER exit (Ctrl-C, spend ceiling,
+      consecutive-failure breaker, orphan/infra abort) is unchanged and
+      still returns/halts normally.
+    * `:poll_interval_secs` — default 60 (env
+      `CODEGEN_BUILD_QUEUE_POLL_SECS`); watch-only, seconds slept between
+      empty-`ready/` scans.
+    * `:quiesce_secs` — default 30 (env `CODEGEN_BUILD_QUEUE_QUIESCE_SECS`);
+      watch-only. A `.md` file in `ready_dir` whose `mtime_fn` reading is
+      newer than `now_fn() - quiesce_secs` is treated as ABSENT for this
+      scan (excluded from both `:ordered_fn`'s order and as a
+      dependency-satisfying presence for any other pitch's edge — see
+      `LoopQueue.ordered_slugs/2`/`blocked_by_unmet_dep/3`'s `exclude`
+      param) — guards against selecting a pitch mid-`scp` (non-atomic
+      arrival). A same-filesystem `mv` into `ready_dir` preserves the
+      source mtime and is unaffected (already-quiescent the instant it
+      lands). Not applied outside `:watch` (a human-launched drain always
+      saw a whole file, by construction).
+    * `:mtime_fn` — `(path -> integer unix secs)`, default
+      `File.stat(path, time: :posix)`; `0` (quiescent) when unstattable.
+      Watch-only.
+    * `:keychain_fn` — `(-> boolean)`, default runs `security
+      show-keychain-info login.keychain-db`; `true` = unlocked/buildable.
+      Watch + Darwin only — checked before EVERY spawn while watching (not
+      just at startup), fail-CLOSED: a locked keychain skips the spawn and
+      prints a wait message instead of burning `$0.00` on a doomed child
+      (see moduledoc "Darwin idle-lock" note). Never consulted on
+      non-Darwin or outside `:watch`.
   """
   @spec drain(drain_opts()) :: {:ok, non_neg_integer()} | {:error, String.t()}
   def drain(opts) do
@@ -291,6 +341,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
           gate_base_sha_fn: Keyword.get(opts, :gate_base_sha_fn, &default_gate_base_sha_fn/1),
           gate_mtime_fn: Keyword.get(opts, :gate_mtime_fn, &default_gate_mtime_fn/1),
+          watch: Keyword.get(opts, :watch, false),
+          poll_interval_secs:
+            Keyword.get(opts, :poll_interval_secs, poll_interval_secs_from_env()),
+          quiesce_secs: Keyword.get(opts, :quiesce_secs, quiesce_secs_from_env()),
+          mtime_fn: Keyword.get(opts, :mtime_fn, &default_mtime_fn/1),
+          keychain_fn: Keyword.get(opts, :keychain_fn, &default_keychain_fn/0),
           discover_session_log_fn:
             Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
           timed_out_slugs: MapSet.new(),
@@ -305,6 +361,11 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           # side-effect (see test 11) is NOT reflected in `total` — this is
           # intentional legacy parity, not a bug: legacy's TOTAL has the
           # identical "may understate after refill" caveat (build-queue.sh:355).
+          # Under `:watch`, `watch_and_continue/3` recomputes `total` once
+          # per wake (i.e. only when `ready/` was seen empty and the
+          # session slept) — a fresh stretch of arrivals gets its own
+          # accurate `[n/N]` count; the "set once" parity still holds
+          # WITHIN a single non-empty stretch.
           total: length(Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1).(ready_dir))
         }
 
@@ -680,8 +741,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # ── Main loop ─────────────────────────────────────────────────────────────
 
   defp run_loop(state, shipped_count, concluded_count) do
-    ordered = state.ordered_fn.(state.ready_dir)
-    blocked = state.blocked_fn.()
+    exclude = quiescence_exclude(state)
+    ordered = state.ordered_fn.(state.ready_dir) |> Enum.reject(&MapSet.member?(exclude, &1))
+    blocked = state.blocked_fn.() |> reblock_for_exclude(state, exclude)
 
     state = print_new_blocked(state, blocked)
 
@@ -714,8 +776,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           )
         end
 
-        spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
-        {:ok, shipped_count}
+        if state.watch do
+          watch_and_continue(state, shipped_count, concluded_count)
+        else
+          spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+          {:ok, shipped_count}
+        end
 
       [slug | _] ->
         # Ceiling check BEFORE spawning the next pitch: bounds NEW spend only
@@ -732,9 +798,93 @@ defmodule CodegenTestHarness.LoopQueueDrain do
              "queue: HALTED — #{reason}; #{length(remaining)} pitch(es) left in ready/: #{remaining_slugs}"}
 
           :ok ->
-            run_slug(state, slug, shipped_count, concluded_count)
+            run_watch_preflight(state, slug, shipped_count, concluded_count)
         end
     end
+  end
+
+  # `--watch` terminal continuation: `ready/` is empty THIS scan, but the
+  # session does not end — sleep, recompute `:total` (a wake may see a
+  # bigger batch than the scan that started the session; legacy `:total`
+  # "set once" parity still applies WITHIN a single non-empty stretch — see
+  # the `:total` field doc — this recompute only fires from the empty
+  # branch, i.e. between stretches), and re-enter `run_loop` with the SAME
+  # state so `:failed_slugs`/`:blocked_printed`/`:consecutive_fails` persist
+  # across the wake (a pitch that failed deterministically stays rejected
+  # on every subsequent scan — see moduledoc `failed_slugs` persistence).
+  defp watch_and_continue(state, shipped_count, concluded_count) do
+    IO.puts(
+      :stderr,
+      "queue: watching #{state.ready_dir} (poll #{state.poll_interval_secs}s) — ^C to stop"
+    )
+
+    state.sleep_fn.(state.poll_interval_secs)
+
+    total = length(state.ordered_fn.(state.ready_dir))
+    run_loop(%{state | total: total}, shipped_count, concluded_count)
+  end
+
+  # Darwin pre-spawn keychain preflight (watch-only, see moduledoc + doc
+  # `:keychain_fn`): a locked login keychain makes every spawned child die
+  # in ~12s at $0.00 with a LYING "OAuth session expired" message — 3 of
+  # those trip the consecutive-failure breaker on otherwise-healthy code.
+  # Fail-closed: skip the spawn, print a wait message, keep watching (no
+  # breaker strike). Non-Darwin or non-watch sessions never reach this
+  # check (no Keychain-on-sleep failure mode to guard against).
+  defp run_watch_preflight(state, slug, shipped_count, concluded_count) do
+    if state.watch and darwin?() and not state.keychain_fn.() do
+      IO.puts(
+        :stderr,
+        "queue: keychain locked — cannot build, waiting (unlock and I resume)"
+      )
+
+      state.sleep_fn.(state.poll_interval_secs)
+      run_loop(state, shipped_count, concluded_count)
+    else
+      run_slug(state, slug, shipped_count, concluded_count)
+    end
+  end
+
+  @spec darwin?() :: boolean()
+  defp darwin?, do: match?({:unix, :darwin}, :os.type())
+
+  # `--watch` quiescence gate (see moduledoc/doc "Quiescence gate"): a `.md`
+  # in `ready_dir` whose mtime is newer than `now_fn() - quiesce_secs` is
+  # not yet "arrived" — a live `scp` bumps mtime continuously; a
+  # same-filesystem `mv` preserves the source mtime and passes immediately.
+  # No-op (empty set) outside `:watch` — a human-launched drain always saw
+  # a whole file, by construction.
+  @spec quiescence_exclude(map()) :: MapSet.t(String.t())
+  defp quiescence_exclude(%{watch: false}), do: MapSet.new()
+
+  defp quiescence_exclude(state) do
+    cutoff = state.now_fn.() - state.quiesce_secs
+
+    state.ready_dir
+    |> Path.join("*.md")
+    |> Path.wildcard()
+    |> Enum.filter(fn path -> state.mtime_fn.(path) > cutoff end)
+    |> Enum.map(&Path.basename(&1, ".md"))
+    |> MapSet.new()
+  end
+
+  # `state.blocked_fn` (seam, arity 0) has no exclude parameter — it cannot
+  # know which slugs this scan's quiescence gate hid. When `exclude` is
+  # non-empty (watch mode, at least one file mid-arrival) the seam's answer
+  # is recomputed DIRECTLY against `LoopQueue.blocked_by_unmet_dep/3` so a
+  # quiesced-out dep is invisible as a dependency-satisfying presence too —
+  # not just dropped from the returned order (see `LoopQueue.ordered_slugs/2`
+  # moduledoc: filtering only the order, not the satisfied-dep answer, lets
+  # a dependent build ahead of its own half-written dep). Bypasses the
+  # `:blocked_fn` seam override in this one case — tests exercising
+  # quiescence inject `:mtime_fn`/`:now_fn` instead (real signature, real
+  # semantics), not a stand-in `:blocked_fn`.
+  @spec reblock_for_exclude(LoopQueue.blocked_map(), map(), MapSet.t(String.t())) ::
+          LoopQueue.blocked_map()
+  defp reblock_for_exclude(blocked, _state, exclude) when map_size(exclude) == 0, do: blocked
+
+  defp reblock_for_exclude(_blocked, state, exclude) do
+    LoopQueue.blocked_by_unmet_dep(state.ready_dir, state.shipped_dir, exclude)
   end
 
   # Print a SKIPPED line once per NEWLY-blocked slug (mirrors legacy
@@ -1372,6 +1522,24 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
+  @doc "Resolves `CODEGEN_BUILD_QUEUE_POLL_SECS`, default #{@default_poll_interval_secs}."
+  @spec poll_interval_secs_from_env() :: pos_integer()
+  def poll_interval_secs_from_env do
+    case System.get_env("CODEGEN_BUILD_QUEUE_POLL_SECS") do
+      nil -> @default_poll_interval_secs
+      str -> parse_pos_int(str, @default_poll_interval_secs)
+    end
+  end
+
+  @doc "Resolves `CODEGEN_BUILD_QUEUE_QUIESCE_SECS`, default #{@default_quiesce_secs}."
+  @spec quiesce_secs_from_env() :: pos_integer()
+  def quiesce_secs_from_env do
+    case System.get_env("CODEGEN_BUILD_QUEUE_QUIESCE_SECS") do
+      nil -> @default_quiesce_secs
+      str -> parse_pos_int(str, @default_quiesce_secs)
+    end
+  end
+
   @doc "Mention prefix for `harness`: `\"claude\"` -> `\"@\"`, `\"pi\"` -> `\"\"`."
   @spec mention_prefix(String.t()) :: String.t()
   def mention_prefix("claude"), do: "@"
@@ -1676,6 +1844,39 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @doc false
   @spec default_now_fn() :: integer()
   def default_now_fn, do: System.system_time(:second)
+
+  # Real mtime_fn for the `--watch` quiescence gate: last-modified unix secs
+  # of a pitch file. `0` (fail-open-old, i.e. treated as quiescent) when the
+  # file has already vanished (race with a build that just moved it) or is
+  # otherwise unstattable — never blocks a scan on a stat error.
+  @doc false
+  @spec default_mtime_fn(String.t()) :: integer()
+  def default_mtime_fn(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, %File.Stat{mtime: mtime}} -> mtime
+      # fail-loud-exempt: file vanished mid-scan (moved to shipped/ or a
+      # sibling drain reaped it) or is otherwise unstattable — treated as
+      # quiescent (old) rather than blocking the scan on a stat race.
+      {:error, _reason} -> 0
+    end
+  end
+
+  # Real keychain_fn for the Darwin `--watch` pre-spawn preflight: `true`
+  # when `security show-keychain-info login.keychain-db` exits 0 (unlocked/
+  # no-timeout), `false` otherwise (locked or `security` itself failing —
+  # fail-CLOSED, never spawns a build that will die at $0 with a lying
+  # "OAuth session expired" error). Non-Darwin platforms never call this
+  # (see `watch_loop/2`'s `uname -s` gate).
+  @doc false
+  @spec default_keychain_fn() :: boolean()
+  def default_keychain_fn do
+    case System.cmd("security", ["show-keychain-info", "login.keychain-db"],
+           stderr_to_stdout: true
+         ) do
+      {_output, 0} -> true
+      {_output, _other} -> false
+    end
+  end
 
   # ── Real git_stash_fn: tracked+staged+untracked ("-u"), fail-open ───────────
   #

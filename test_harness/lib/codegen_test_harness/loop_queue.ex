@@ -44,14 +44,24 @@ defmodule CodegenTestHarness.LoopQueue do
   constrain ordering).
 
   Raises on a dependency cycle among the batch.
+
+  `exclude` (default `MapSet.new()`) — slugs to treat as ABSENT from
+  `ready_dir` even though the file physically exists there. Used by
+  `LoopQueueDrain`'s `--watch` quiescence gate: a pitch mid-`scp` (mtime
+  newer than the quiesce window) is excluded from both the returned order
+  AND, critically, as a dependency-satisfying presence for any dependent —
+  see `blocked_by_unmet_dep/3`'s matching `exclude` param, which MUST be
+  called with the SAME set so a half-written dep never satisfies its
+  dependent's edge.
   """
-  @spec ordered_slugs(String.t()) :: [slug()]
-  def ordered_slugs(ready_dir) do
+  @spec ordered_slugs(String.t(), MapSet.t(slug())) :: [slug()]
+  def ordered_slugs(ready_dir, exclude \\ MapSet.new()) do
     slugs =
       ready_dir
       |> Path.join("*.md")
       |> Path.wildcard()
       |> Enum.map(&Path.basename(&1, ".md"))
+      |> Enum.reject(&MapSet.member?(exclude, &1))
       |> Enum.sort()
 
     edges =
@@ -277,14 +287,23 @@ defmodule CodegenTestHarness.LoopQueue do
 
   Pitches with no unmet dep are absent from the map (not included with a
   `nil`/empty value — absence IS the "not blocked" signal).
+
+  `exclude` (default `MapSet.new()`) — slugs to treat as ABSENT from
+  `ready_dir`, both as a scanned pitch (never appears as a map key) AND as
+  a dependency-satisfying presence for any OTHER pitch's edge (a dependent
+  whose sole dep is excluded is BLOCKED, not satisfied). See
+  `ordered_slugs/2` — callers MUST pass the identical `exclude` set to both
+  functions so a quiesced-out dep is invisible everywhere at once, not just
+  dropped from the returned order while still silently satisfying edges.
   """
-  @spec blocked_by_unmet_dep(String.t(), String.t()) :: blocked_map()
-  def blocked_by_unmet_dep(ready_dir, shipped_dir) do
+  @spec blocked_by_unmet_dep(String.t(), String.t(), MapSet.t(slug())) :: blocked_map()
+  def blocked_by_unmet_dep(ready_dir, shipped_dir, exclude \\ MapSet.new()) do
     ready_slugs =
       ready_dir
       |> Path.join("*.md")
       |> Path.wildcard()
       |> Enum.map(&Path.basename(&1, ".md"))
+      |> Enum.reject(&MapSet.member?(exclude, &1))
 
     ready_set = MapSet.new(ready_slugs)
 
