@@ -258,6 +258,122 @@ rm -f "$WIT_NONE"
 assert_eq "extract_witness missing file → empty + exit 0" \
     "ok" "$(extract_witness /nonexistent/log.txt >/dev/null 2>&1 && echo ok || echo err)"
 
+assert_eq "extract_witness empty arg → empty + exit 0" \
+    "ok" "$(extract_witness "" >/dev/null 2>&1 && echo ok || echo err)"
+
+# ── extract_witness: real ExUnit block anchor (no self-duplication) ───────────
+
+WIT_REAL_EXUNIT=$(mktemp)
+cat >"$WIT_REAL_EXUNIT" <<'LOG'
+
+
+  1) test creates a user (WprobeTest)
+     wprobe_standalone.exs:6
+     Assertion with == failed
+     code:  assert %{name: "a"} == %{name: "b"}
+     left:  %{name: "a"}
+     right: %{name: "b"}
+     stacktrace:
+       wprobe_standalone.exs:7: (test)
+LOG
+assert_eq "extract_witness real ExUnit → names test + cause via stacktrace frame, no self-duplication" \
+    "wprobe_standalone.exs:7 — 1) test creates a user (WprobeTest): Assertion with == failed" \
+    "$(extract_witness "$WIT_REAL_EXUNIT")"
+rm -f "$WIT_REAL_EXUNIT"
+
+# ── extract_witness: warning-preceded log must not hijack the location ───────
+
+WIT_WARN_EXUNIT=$(mktemp)
+cat >"$WIT_WARN_EXUNIT" <<'LOG'
+    warning: variable "unused" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    └─ wprobe_warn.exs:5:5: Warny.f/0
+
+  1) test creates a user (WarnTest)
+     wprobe_warn.exs:13
+     Assertion with == failed
+     code:  assert %{name: "a"} == %{name: "b"}
+     stacktrace:
+       wprobe_warn.exs:14: (test)
+LOG
+assert_eq "extract_witness warning-preceded log → locates the failure, not the warning" \
+    "wprobe_warn.exs:14 — 1) test creates a user (WarnTest): Assertion with == failed" \
+    "$(extract_witness "$WIT_WARN_EXUNIT")"
+rm -f "$WIT_WARN_EXUNIT"
+
+# ── extract_witness: setup-raise shape — n+1 is a test that never ran ────────
+
+WIT_SETUP_RAISE=$(mktemp)
+cat >"$WIT_SETUP_RAISE" <<'LOG'
+
+  1) test never runs (SetupFailTest)
+     shapes.exs:21
+     ** (RuntimeError) setup blew up
+     stacktrace:
+       shapes.exs:18: SetupFailTest.__ex_unit_setup_0/1
+LOG
+assert_eq "extract_witness setup-raise → uses stacktrace frame, not the misleading n+1 definition line" \
+    "shapes.exs:18 — 1) test never runs (SetupFailTest): ** (RuntimeError) setup blew up" \
+    "$(extract_witness "$WIT_SETUP_RAISE")"
+rm -f "$WIT_SETUP_RAISE"
+
+# ── extract_witness: block with no stacktrace section → falls back to n+1 ────
+
+WIT_NO_STACK=$(mktemp)
+cat >"$WIT_NO_STACK" <<'LOG'
+
+  1) test foo (FooTest)
+     test/foo_test.exs:42
+     ** (RuntimeError) boom
+LOG
+assert_eq "extract_witness no stacktrace section → falls back to n+1 definition line" \
+    "test/foo_test.exs:42 — 1) test foo (FooTest): ** (RuntimeError) boom" \
+    "$(extract_witness "$WIT_NO_STACK")"
+rm -f "$WIT_NO_STACK"
+
+# ── extract_witness: truncated block (EOF before cause line) ─────────────────
+
+WIT_TRUNCATED=$(mktemp)
+cat >"$WIT_TRUNCATED" <<'LOG'
+
+  1) test truncated (TruncTest)
+     test/trunc_test.exs:9
+LOG
+assert_eq "extract_witness truncated block → emits loc — headline, no crash" \
+    "test/trunc_test.exs:9 — 1) test truncated (TruncTest)" \
+    "$(extract_witness "$WIT_TRUNCATED")"
+rm -f "$WIT_TRUNCATED"
+
+# ── extract_witness: non-ExUnit numbered list must not false-positive ────────
+
+WIT_NONEXUNIT_LIST=$(mktemp)
+printf 'Steps:\n  1) run the thing\n  2) check output\nlib/z.ex:4 boom\n' >"$WIT_NONEXUNIT_LIST"
+assert_eq "extract_witness non-ExUnit numbered list → falls through to legacy path (equality-vs-today)" \
+    "lib/z.ex:4 — lib/z.ex:4 boom" \
+    "$(extract_witness "$WIT_NONEXUNIT_LIST")"
+rm -f "$WIT_NONEXUNIT_LIST"
+
+# ── extract_witness: credo / dialyzer / unparseable stay byte-identical ──────
+
+WIT_CREDO_EQ=$(mktemp)
+printf '┃ [W] ↗ lib/bar.ex:12:7 Pipe chain should...\n' >"$WIT_CREDO_EQ"
+assert_eq "extract_witness credo → byte-identical to legacy output" \
+    "lib/bar.ex:12 — ┃ [W] ↗ lib/bar.ex:12:7 Pipe chain should..." \
+    "$(extract_witness "$WIT_CREDO_EQ")"
+rm -f "$WIT_CREDO_EQ"
+
+WIT_DIAL_EQ=$(mktemp)
+printf 'lib/baz.ex:88:no_return Function loop/0 has no local return.\n' >"$WIT_DIAL_EQ"
+assert_eq "extract_witness dialyzer → byte-identical to legacy output" \
+    "lib/baz.ex:88 — lib/baz.ex:88:no_return Function loop/0 has no local return." \
+    "$(extract_witness "$WIT_DIAL_EQ")"
+rm -f "$WIT_DIAL_EQ"
+
+WIT_NONE_EQ=$(mktemp)
+printf 'just some unparseable noise with no location at all\n' >"$WIT_NONE_EQ"
+assert_eq "extract_witness unparseable → byte-identical (empty)" \
+    "" "$(extract_witness "$WIT_NONE_EQ")"
+rm -f "$WIT_NONE_EQ"
+
 # write_gate_result with witness (16th positional) → .witness present + equal
 DIR_WIT=$(mktemp -d)
 write_gate_result "make test" "short" "abc1234" 3 \

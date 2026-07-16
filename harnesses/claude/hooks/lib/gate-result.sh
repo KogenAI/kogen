@@ -109,6 +109,72 @@ extract_witness() {
         return 0
     }
     local line=""
+    # ExUnit block anchor: find the first "  N) test ..." headline, require a
+    # bare file:line on the very next non-blank line (this is the false-positive
+    # guard rejecting non-ExUnit numbered lists), then prefer the block's
+    # "stacktrace:" first frame over the n+1 definition line — the definition
+    # line misleads on setup-raise (points at a test that never ran) and on
+    # doctests (names the wrong file). Falls through to the legacy path below
+    # when the anchor or the n+1 location is absent.
+    local exunit_witness
+    exunit_witness=$(awk '
+        function emit(loc, headline, cause,    out) {
+            out = loc " — " headline
+            if (cause != "") out = out ": " cause
+            print out
+            emitted = 1
+            exit
+        }
+        /^[[:space:]]*[0-9]+\)[[:space:]]/ {
+            headline = $0
+            sub(/^[[:space:]]+/, "", headline)
+            sub(/[[:space:]]+$/, "", headline)
+            state = 1
+            next
+        }
+        state == 1 {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+            if (line !~ /^[A-Za-z0-9_.\/-]+\.(exs?|heex):[0-9]+$/) {
+                state = 0
+                next
+            }
+            def_loc = line
+            state = 2
+            next
+        }
+        state == 2 {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+            if (line == "") { emit(def_loc, headline, ""); }
+            cause = line
+            state = 3
+            next
+        }
+        state == 3 && /^[[:space:]]*stacktrace:[[:space:]]*$/ {
+            state = 4
+            next
+        }
+        state == 4 {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            if (match(line, /^[A-Za-z0-9_.\/-]+\.(exs?|heex):[0-9]+/)) {
+                stack_loc = substr(line, RSTART, RLENGTH)
+                emit(stack_loc, headline, cause)
+            }
+            state = 0
+            next
+        }
+        END {
+            if (!emitted && state >= 2 && def_loc != "") emit(def_loc, headline, cause)
+        }
+    ' "$log_path" 2>/dev/null || true)
+    if [ -n "$exunit_witness" ]; then
+        printf '%s' "$exunit_witness"
+        return 0
+    fi
     # ExUnit failure stacktrace location: "  test/foo_test.exs:42: ..." or
     # "  (myapp 1.0) lib/foo.ex:12: ..." → capture path:line.
     line=$(grep -oE '[A-Za-z0-9_./-]+\.(exs?|heex):[0-9]+' "$log_path" 2>/dev/null | head -n 1 || true)
