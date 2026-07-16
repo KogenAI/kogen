@@ -147,7 +147,6 @@ ESLINT_CONFIG_CONTENT="$(<"$TMPDIR/eslint.config.js")"
 assert_contains "eslint.config.js imports @eslint/js" "$ESLINT_CONFIG_CONTENT" "@eslint/js"
 assert_contains "eslint.config.js uses recommended config" "$ESLINT_CONFIG_CONTENT" "js.configs.recommended"
 
-
 # (f3) Makefile exists and has format: target + llm-static: target
 assert_file_exists "Makefile exists" "$TMPDIR/Makefile"
 MAKEFILE_CONTENT="$(<"$TMPDIR/Makefile")"
@@ -160,7 +159,6 @@ GATE_CONFIG_CONTENT="$(<"$TMPDIR/.claude/gate-config.sh")"
 assert_contains "gate-config.sh has GATE_STACK=static" "$GATE_CONFIG_CONTENT" "GATE_STACK=static"
 assert_contains "gate-config.sh has GATE_COMMAND=make ci" "$GATE_CONFIG_CONTENT" "GATE_COMMAND=\"make ci\""
 assert_contains "gate-config.sh is executable" "$GATE_CONFIG_CONTENT" "#!/usr/bin/env bash"
-
 
 # (prettier) scaffold output is prettier-clean (repo-pinned binary; absence = broken toolchain → FAIL)
 PRETTIER_BIN="$CODEGEN_ROOT/node_modules/.bin/prettier"
