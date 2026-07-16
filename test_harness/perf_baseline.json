@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "_note": "baseline 0 = not yet populated; check-regression skips zero-baseline metrics. Populate from a green run.",
+  "_note": "baseline 0 = not yet populated; check-regression skips zero-baseline metrics entirely (never evaluated). Populate a metric from a single green `make bench` run at a pinned SHA, not a hand-chosen number. `min_abs` (pass_rate) is always a hard failure regardless of --strict — it sits at a ceiling in normal operation, so any drop is unambiguous. `max_regression_pct` metrics (turns/cost/duration/tokens) stay informational-only (warning table, exit 0) unless `make bench BENCH_STRICT=1` is passed, since those baselines are still 0 here.",
   "metrics": {
     "claude.avg_build_duration_ms": { "baseline": 0, "max_regression_pct": 25 },
     "claude.avg_cost_usd": { "baseline": 0, "max_regression_pct": 30 },

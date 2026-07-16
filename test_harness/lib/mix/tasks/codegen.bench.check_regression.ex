@@ -8,13 +8,23 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
   ## Usage
 
       mix codegen.bench.check-regression --run path/to/run
+      mix codegen.bench.check-regression --run path/to/run --strict
 
   ## Behaviour
 
-  - Skips metrics with `baseline == 0` (not yet populated).
-  - For `max_regression_pct` metrics: warns when actual > baseline * (1 + pct/100).
-  - For `min_abs` metrics (pass_rate): warns when actual < threshold.
-  - Prints a warning table for any regression; always exits 0 (soft check).
+  - Metrics with `baseline == 0` (not yet populated) are skipped entirely —
+    never evaluated, never reported. Populate `perf_baseline.json` from a
+    green `make bench` run to activate a metric.
+  - `min_abs` metrics (currently only `pass_rate`) are HARD regressions
+    regardless of `--strict`: `pass_rate` sits at a ceiling (1.0) in normal
+    operation, so any drop below `min_abs` is an unambiguous break, not
+    noise. A `min_abs` violation always fails the task, `--strict` or not.
+  - `max_regression_pct` metrics (turns/cost/duration/tokens) are
+    INFORMATIONAL by default — printed as a warning table, task still
+    exits 0. Pass `--strict` to make these hard regressions too (fail the
+    task) once you trust the baseline enough to gate on it.
+  - Without `--strict`: only `min_abs` (pass_rate) violations fail the task.
+  - With `--strict`: any regression (min_abs or max_regression_pct) fails.
 
   ## Metric naming convention
 
@@ -26,9 +36,9 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
 
   use Mix.Task
 
-  @switches [run: :string]
+  @switches [run: :string, strict: :boolean]
 
-  @baseline_path Path.expand("../../perf_baseline.json", __DIR__)
+  @baseline_path Path.expand("../../../perf_baseline.json", __DIR__)
 
   @impl Mix.Task
   def run(argv) do
@@ -39,6 +49,7 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
     end
 
     run_dir = Keyword.get(opts, :run)
+    strict? = Keyword.get(opts, :strict, false)
 
     unless run_dir do
       Mix.raise("--run is required. Usage: mix codegen.bench.check-regression --run <path>")
@@ -61,19 +72,45 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
 
     regressions = check_regressions(baseline, actuals)
 
+    {hard, informational} = Enum.split_with(regressions, &hard_regression?(&1, strict?))
+
     if regressions == [] do
       Mix.shell().info("perf-regression: no regressions detected")
     else
-      Mix.shell().info("")
-      Mix.shell().info("⚠️  perf-regression warnings (soft — not failing the build):")
-      Mix.shell().info("")
-      Mix.shell().info(format_table(regressions))
-      Mix.shell().info("")
+      if informational != [] do
+        Mix.shell().info("")
+
+        Mix.shell().info(
+          "⚠️  perf-regression warnings (informational — not failing the build):"
+        )
+
+        Mix.shell().info("")
+        Mix.shell().info(format_table(informational))
+        Mix.shell().info("")
+      end
+
+      if hard != [] do
+        Mix.shell().info("")
+        Mix.shell().info("❌ perf-regression FAILURES:")
+        Mix.shell().info("")
+        Mix.shell().info(format_table(hard))
+        Mix.shell().info("")
+      end
     end
 
-    # Always exit 0 — soft check
-    :ok
+    if hard == [] do
+      :ok
+    else
+      exit({:shutdown, 1})
+    end
   end
+
+  # `min_abs` (pass_rate) is always a hard failure — it sits at a ceiling in
+  # normal operation, so any drop is unambiguous. `max_regression_pct`
+  # metrics are hard failures only under `--strict`.
+  @spec hard_regression?(regression(), boolean()) :: boolean()
+  defp hard_regression?(%{kind: :min_abs}, _strict?), do: true
+  defp hard_regression?(%{kind: :max_regression}, strict?), do: strict?
 
   # ── Baseline loading ──────────────────────────────────────────────────────────
 

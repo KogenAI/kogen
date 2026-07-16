@@ -374,6 +374,15 @@ test-stacks-pi-compile:
 # Requires REASON. Creates codegen/benchmarks/<UTC-ts>/, runs both harness
 # stack suites under that dir (real LLM, slow, costs tokens), then writes
 # <run-dir>/summary.md aggregating all per-test harness_summary JSONL records.
+#
+# After the summary, runs `mix codegen.bench.check-regression` against
+# perf_baseline.json — NOT a soft/informational-only check: a pass_rate drop
+# below its declared min_abs is always a hard failure (`make bench` exits
+# non-zero). max_regression_pct metrics (turns/cost/duration/tokens) stay
+# informational-only unless BENCH_STRICT=1 is passed, since most of those
+# baselines are still 0 (unpopulated) and skipped entirely regardless.
+# `make bench BENCH_STRICT=1 REASON="..."` promotes every populated metric
+# to a hard failure once you trust the baseline enough to gate on it.
 .PHONY: bench
 bench:
 	@if [ -z "$(REASON)" ]; then \
@@ -395,8 +404,10 @@ bench:
 	cat "$(BENCH_RUN_DIR)/summary-short.txt"; \
 	echo ""; \
 	echo "✅ summary: $(BENCH_RUN_DIR)/summary.md"; \
-	-cd "$(SCRIPT_DIR)/test_harness" && mix codegen.bench.check-regression --run "$(BENCH_RUN_DIR)" || true; \
-	exit $$BENCH_EXIT
+	cd "$(SCRIPT_DIR)/test_harness" && mix codegen.bench.check-regression --run "$(BENCH_RUN_DIR)" $(if $(BENCH_STRICT),--strict,); \
+	CHECK_EXIT=$$?; \
+	if [ $$BENCH_EXIT -ne 0 ]; then exit $$BENCH_EXIT; fi; \
+	exit $$CHECK_EXIT
 
 # test-all: full pre-deploy gate. Chains hook tests + stack tests, then
 # writes last_green.json. Only the all-green path overwrites last_green.json.

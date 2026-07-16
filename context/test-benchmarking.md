@@ -79,6 +79,20 @@ Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model
 
 `last_green.json` coexists unchanged; benchmarking is orthogonal to the green baseline.
 
+## Regression Checker — `mix codegen.bench.check-regression`
+
+Runs automatically at the end of `make bench` (after `summarize.js` writes `summary.md`), against `test_harness/perf_baseline.json`. **Not soft/informational-only end-to-end** — the split is per metric kind:
+
+- **`min_abs` (currently only `pass_rate`)** — ALWAYS a hard failure, `--strict` or not. `pass_rate` sits at a ceiling (1.0) in normal operation, so any drop below `min_abs` (`0.9`) is unambiguous, not noise. A violation makes the task `exit({:shutdown, 1})`, and `make bench` propagates that as its own non-zero exit (unless the harness test-stacks step itself already failed, which takes priority).
+- **`max_regression_pct` metrics** (turns/cost/duration/tokens) — informational-only by default: printed as a warning table, task still exits `:ok`. Pass `make bench BENCH_STRICT=1 REASON="..."` to promote these to hard failures too.
+- **`baseline: 0`** — skipped entirely, never evaluated, regardless of `--strict`. Every `max_regression_pct` metric in the committed `perf_baseline.json` is still `0` (unpopulated) as of this writing — `pass_rate` is the only metric with a real baseline today.
+
+**Populate a baseline from a single green `make bench` run at a pinned SHA** — never a hand-chosen number; that is the exact mistake this checker exists to catch. `perf_baseline.json`'s own `_note` field states this policy.
+
+**Metric-kind split rationale** (why `pass_rate` gets ceiling treatment and the rest don't): `pass_rate` is a **guard** — bench tasks assert structural existence (e.g. `File.exists?("mix.exs")`, `commits_after > commits_before`), so a healthy run sits at 100% and any drop is a real break. `avg_num_turns` / `avg_cost_usd` / `avg_build_duration_ms` are **meters** — continuous, free to move either direction, and the ones that would actually show whether a prompt/rule change helped or hurt. Do not conflate the two: arming `avg_input_tokens` as a baseline guards *cost*, not context-window health (that figure is summed across turns and cache-dominated, not a peak-occupancy signal — see `context/claude-token-mechanics.md` for the per-turn distinction).
+
+**Path note**: `@baseline_path` in the mix task is a compile-time-resolved path anchored to the module's own `__DIR__` (`test_harness/lib/mix/tasks/`) — it always resolves to the real, committed `test_harness/perf_baseline.json`, never test-injectable. Hermetic tests exercise the task against that real file with fixture JSONL run dirs; see `test_harness/test/mix/tasks/codegen_bench_check_regression_test.exs`.
+
 ## Trigger Keywords
 
 BENCH=1, REASON, benchmark capture, screenshot, bench artifacts, mix codegen.bench, summarize.js, JSONL harness_summary, last_green.json coexistence, playwright, agent prohibition, make bench, make test-stacks BENCH, human-operator discretion, benchmark-coverage, makefile-targets, bench-prereqs
