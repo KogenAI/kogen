@@ -216,12 +216,12 @@
 - kind: registration
   id: build-agent-app-confinement
   event: PreToolUse
-  tool_guard: "Write|Edit|MultiEdit"
+  tool_guard: "Write|Edit|MultiEdit|Bash|NotebookEdit"
   surface: user_global
   signal: none
   role: "*"
   harnesses: all
-  rationale: "Denies Write/Edit/MultiEdit when CODEGEN_BUILD_CWD is set and the target file resolves outside that dir, confining managed build subagents to the app sandbox. Fills the orchestrator-no-source-edit.sh subagent pass-through gap (AGENT_ID set -> exit 0). Env-keyed (CODEGEN_BUILD_CWD), role-agnostic; composes with orchestrator-no-source-edit and build-worker-cwd-guard."
+  rationale: "Denies Write/Edit/MultiEdit/NotebookEdit, and Bash write-vocab invocations (redirects, tee, cp/mv/install/rsync, sed -i/perl -pi, dd of=, truncate, ln -s), when CODEGEN_BUILD_CWD is set and the target resolves outside that dir, confining managed build subagents to the app sandbox. Fills the orchestrator-no-source-edit.sh subagent pass-through gap (AGENT_ID set -> exit 0) and the file-tool-only gap that let a relative symlink be truncated via a plain Bash redirect. Env-keyed (CODEGEN_BUILD_CWD), role-agnostic; composes with orchestrator-no-source-edit and build-worker-cwd-guard."
 
 - kind: registration
   id: clean-tree-before-ship

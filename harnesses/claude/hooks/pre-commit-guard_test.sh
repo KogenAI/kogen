@@ -226,9 +226,69 @@ run_test "git mv blocked for non-committer" "2" "$FIXTURE_MV_BLOCKED"
 FIXTURE_RESTORE_STAGED_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore --staged foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git restore --staged blocked for non-committer" "2" "$FIXTURE_RESTORE_STAGED_BLOCKED"
 
-# Test 22: git restore foo (NO --staged) for non-committer — MUST ALLOW
+# Test 22: git restore foo (NO --staged) for non-committer — MUST DENY (leg D:
+# plain `restore` can discard uncommitted working-tree edits just like
+# `restore --staged`; the plain-restore branch SUBSUMES --staged and is a
+# hard flip from the prior "allowed" assertion.)
 FIXTURE_RESTORE_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore foo"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
-run_test "git restore (no --staged) allowed for non-committer" "0" "$FIXTURE_RESTORE_ALLOWED"
+run_test "git restore (no --staged) denied for non-committer (leg D flip)" "2" "$FIXTURE_RESTORE_ALLOWED"
+
+# Test 22b: git checkout -- <path> for non-committer — MUST DENY (leg D)
+FIXTURE_CHECKOUT_PATH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git checkout -- foo.ex"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git checkout -- <path> denied for non-committer (leg D)" "2" "$FIXTURE_CHECKOUT_PATH"
+
+# Test 22c: git switch <branch> for non-committer — MUST DENY (leg D)
+FIXTURE_SWITCH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git switch main"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git switch denied for non-committer (leg D)" "2" "$FIXTURE_SWITCH"
+
+# Test 22d: git clean -fd for non-committer — MUST DENY (leg D)
+FIXTURE_CLEAN_FD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean -fd"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git clean -fd denied for non-committer (leg D)" "2" "$FIXTURE_CLEAN_FD"
+
+# Test 22e: git clean -n (dry-run) for non-committer — MUST ALLOW (carve-out)
+FIXTURE_CLEAN_DRYRUN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean -n"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git clean -n (dry-run) allowed for non-committer (carve-out)" "0" "$FIXTURE_CLEAN_DRYRUN"
+
+# Test 22f: git clean --dry-run for non-committer — MUST ALLOW (carve-out)
+FIXTURE_CLEAN_DRYRUN_LONG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean --dry-run -fd"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git clean --dry-run allowed for non-committer (carve-out)" "0" "$FIXTURE_CLEAN_DRYRUN_LONG"
+
+# Test 22g: git reset --merge for non-committer — MUST DENY (leg D)
+FIXTURE_RESET_MERGE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --merge HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git reset --merge denied for non-committer (leg D)" "2" "$FIXTURE_RESET_MERGE"
+
+# Test 22h: git reset --keep for non-committer — MUST DENY (leg D)
+FIXTURE_RESET_KEEP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --keep HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git reset --keep denied for non-committer (leg D)" "2" "$FIXTURE_RESET_KEEP"
+
+# Test 22i: committer STILL allowed for git checkout/restore/clean/switch (actor gate unaffected)
+FIXTURE_COMMITTER_CHECKOUT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git checkout -- foo.ex"},"agent_type":"committer","agent_id":"a"}'
+run_test "git checkout -- still allowed for committer (leg D)" "0" "$FIXTURE_COMMITTER_CHECKOUT"
+
+FIXTURE_COMMITTER_RESTORE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore foo"},"agent_type":"committer","agent_id":"a"}'
+run_test "git restore still allowed for committer (leg D)" "0" "$FIXTURE_COMMITTER_RESTORE"
+
+FIXTURE_COMMITTER_CLEAN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean -fd"},"agent_type":"committer","agent_id":"a"}'
+run_test "git clean -fd still allowed for committer (leg D)" "0" "$FIXTURE_COMMITTER_CLEAN"
+
+FIXTURE_COMMITTER_SWITCH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git switch main"},"agent_type":"committer","agent_id":"a"}'
+run_test "git switch still allowed for committer (leg D)" "0" "$FIXTURE_COMMITTER_SWITCH"
+
+# Test 22j: ops mode + git checkout WITHOUT unlock — MUST DENY (leg D ops-arm widened)
+FIXTURE_OPS_CHECKOUT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git checkout -- foo.ex"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops mode git checkout without unlock denied (leg D)" "2" "$FIXTURE_OPS_CHECKOUT" "CLAUDE_ROLE=ops"
+
+# Test 22k: ops mode + git checkout WITH unlock — MUST ALLOW
+FIXTURE_OPS_CHECKOUT_UNLOCK='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git checkout -- foo.ex"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops mode git checkout with unlock allowed (leg D)" "0" "$FIXTURE_OPS_CHECKOUT_UNLOCK" "CLAUDE_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
+
+# Test 22l: ops mode + git clean -n (dry-run) — MUST ALLOW without unlock (carve-out honored in ops arm too)
+FIXTURE_OPS_CLEAN_DRYRUN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean -n"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops mode git clean -n allowed without unlock (carve-out)" "0" "$FIXTURE_OPS_CLEAN_DRYRUN" "CLAUDE_ROLE=ops"
+
+# Test 22m: git show HEAD:<path> for non-committer — MUST ALLOW (the taught substitute)
+FIXTURE_SHOW_HEAD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git show HEAD:lib/foo.ex"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "git show HEAD:<path> allowed for non-committer (substitute)" "0" "$FIXTURE_SHOW_HEAD"
 
 # ── ops-mode scope regression: gate must not blanket-deny all Bash for ops ──
 # Bug: the ops branch previously returned a verdict for ALL Bash before

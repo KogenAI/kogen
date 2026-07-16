@@ -179,13 +179,13 @@ describe("pre-commit-guard", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows git restore foo (no --staged) for non-committer", async () => {
+  it("leg D: denies git restore foo (no --staged) for non-committer (flip)", async () => {
     const result = await runHook(
       "bash",
       "git restore foo",
       "developer-phoenix-backend",
     );
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+    assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("blocks git restore --staged foo for non-committer", async () => {
@@ -195,6 +195,62 @@ describe("pre-commit-guard", () => {
       "developer-phoenix-backend",
     );
     assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("leg D: denies git checkout -- <path> for non-committer", async () => {
+    const result = await runHook(
+      "bash",
+      "git checkout -- foo.ex",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("leg D: denies git switch for non-committer", async () => {
+    const result = await runHook("bash", "git switch main", "developer-phoenix-backend");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("leg D: denies git clean -fd for non-committer", async () => {
+    const result = await runHook("bash", "git clean -fd", "developer-phoenix-backend");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("leg D: allows git clean -n (dry-run) for non-committer", async () => {
+    const result = await runHook("bash", "git clean -n", "developer-phoenix-backend");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("leg D: denies git reset --merge for non-committer", async () => {
+    const result = await runHook(
+      "bash",
+      "git reset --merge HEAD~1",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("leg D: denies git reset --keep for non-committer", async () => {
+    const result = await runHook(
+      "bash",
+      "git reset --keep HEAD~1",
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("leg D: git checkout still allowed for committer", async () => {
+    const result = await runHook("bash", "git checkout -- foo.ex", "committer");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("leg D: git show HEAD:<path> allowed for non-committer (substitute)", async () => {
+    const result = await runHook(
+      "bash",
+      "git show HEAD:lib/foo.ex",
+      "developer-phoenix-backend",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
   // ── codegen-log carve-out: piped body prose containing git-verb tokens ──

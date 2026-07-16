@@ -54,7 +54,14 @@ if [ "$_role" = "ops" ] || [ "$_role" = "babysit" ]; then
     # Also normalize interposed git global options (git -C <dir> commit)
     # so they cannot evade the verb match — see strip_git_global_opts().
     _ops_cmd_unquoted=$(strip_git_global_opts "$(strip_quoted "$COMMAND")")
-    if printf '%s' "$_ops_cmd_unquoted" | grep -qE '\bgit[[:space:]]+(add|rm|mv|stash|commit|rebase|cherry-pick|revert|merge)\b|\bgit[[:space:]]+restore\b.*--staged\b|\bgit[[:space:]]+reset\b.*--hard\b|\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
+    _ops_is_destructive=0
+    if printf '%s' "$_ops_cmd_unquoted" | grep -qE '\bgit[[:space:]]+(add|rm|mv|stash|commit|rebase|cherry-pick|revert|merge|restore|checkout|switch)\b|\bgit[[:space:]]+reset\b.*--(hard|merge|keep)\b|\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
+        _ops_is_destructive=1
+    fi
+    if printf '%s' "$_ops_cmd_unquoted" | grep -qE '\bgit[[:space:]]+clean\b' && ! printf '%s' "$_ops_cmd_unquoted" | grep -qE '\bgit[[:space:]]+clean\b.*(-n\b|--dry-run\b)'; then
+        _ops_is_destructive=1
+    fi
+    if [ "$_ops_is_destructive" = 1 ]; then
         [ "${CODEGEN_OPS_GIT_UNLOCK:-}" = "1" ] && exit 0
         deny "BLOCKED by pre-commit-guard: ops role alone no longer unlocks destructive git. Set CODEGEN_OPS_GIT_UNLOCK=1 in the environment ALSO to confirm intent (two-signal gate)."
         exit 0
@@ -108,8 +115,18 @@ if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+mv\b'; then
     exit 0
 fi
 
-if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+restore\b.*--staged\b'; then
-    deny "BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent \"$AGENT_TYPE\" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop."
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+restore\b'; then
+    deny "BLOCKED by pre-commit-guard: git restore is forbidden for agent \"$AGENT_TYPE\" — this can DISCARD your own or another role's uncommitted working-tree edits (with or without --staged). To READ committed content use \`git show HEAD:<path>\`; to change a file you own use Edit/Write; a revert belongs to the committer. Do not restore; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop."
+    exit 0
+fi
+
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+(checkout|switch)\b'; then
+    deny "BLOCKED by pre-commit-guard: git checkout/switch is forbidden for agent \"$AGENT_TYPE\" — checkout of a path can DISCARD uncommitted working-tree edits (yours or another role's), and branch switches belong to the committer. To READ committed content use \`git show HEAD:<path>\`; to change a file you own use Edit/Write. Do not checkout/switch; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
+    exit 0
+fi
+
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+clean\b' && ! printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+clean\b.*(-n\b|--dry-run\b)'; then
+    deny "BLOCKED by pre-commit-guard: git clean (without -n/--dry-run) is forbidden for agent \"$AGENT_TYPE\" — it PERMANENTLY DELETES untracked files, including another role's uncommitted new files. Use \`git clean -n\` to preview only, or ask the committer. Do not clean; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
@@ -138,14 +155,14 @@ if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+merge\b'; then
     exit 0
 fi
 
-# git reset --hard / --keep (destructive).
-if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
-    deny "BLOCKED by pre-commit-guard: git reset --hard forbidden for agent \"$AGENT_TYPE\" — destructive, committer owns history. Do not reset; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
+# git reset --hard / --merge / --keep (all destructive to the working tree).
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b.*--(hard|merge|keep)\b'; then
+    deny "BLOCKED by pre-commit-guard: git reset --hard/--merge/--keep forbidden for agent \"$AGENT_TYPE\" — destructive, committer owns history. Do not reset; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop."
     exit 0
 fi
 
 # Soft/mixed reset is only allowed when it stays within this cycle's own HEAD.
-if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b' && ! printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b.*--hard\b'; then
+if printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b' && ! printf '%s' "$_cmd_unquoted" | grep -qE '\bgit[[:space:]]+reset\b.*--(hard|merge|keep)\b'; then
     build_start_ts="${CODEGEN_BUILD_START_TS:-}"
     if [ -n "$build_start_ts" ]; then
         project_dir="${CLAUDE_PROJECT_DIR:-${CWD:-$PWD}}"

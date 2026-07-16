@@ -172,6 +172,75 @@ READ_INPUT=$(jq -n \
     '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":$fp},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
 run_test "Read tool (not in scope) → ALLOW" "allow" "$READ_INPUT" "CODEGEN_BUILD_CWD=$SANDBOX"
 
+# ── Test 16 (leg B): sandbox itself under /tmp, escaping symlink inside it ────
+# The /tmp hatch must fire on the REAL (canonicalized) path, not the raw
+# lexical path — a symlink whose lexical path sits under /tmp but whose
+# real target escapes the sandbox must still be DENIED.
+TMP_SANDBOX="$(mktemp -d /tmp/confinement-tmpsandbox.XXXXXX)"
+TMP_OUTSIDE="$(mktemp -d /var/tmp/confinement-tmpoutside.XXXXXX)"
+touch "$TMP_OUTSIDE/secret.txt"
+TMP_ESCAPE_LINK="$TMP_SANDBOX/CLAUDE.md"
+ln -sf "$TMP_OUTSIDE/secret.txt" "$TMP_ESCAPE_LINK"
+INPUT_T16=$(make_input "Write" "$TMP_ESCAPE_LINK" "$TMP_SANDBOX")
+run_test "leg B: /tmp-sandboxed escaping symlink → DENY (canon-before-hatch)" "deny" "$INPUT_T16" "CODEGEN_BUILD_CWD=$TMP_SANDBOX"
+
+# ── Test 17 (leg B): genuine real file under /tmp sandbox → ALLOW ────────────
+TMP_REAL_FILE="$TMP_SANDBOX/real.txt"
+touch "$TMP_REAL_FILE"
+INPUT_T17=$(make_input "Write" "$TMP_REAL_FILE" "$TMP_SANDBOX")
+run_test "leg B: real file under /tmp sandbox → ALLOW" "allow" "$INPUT_T17" "CODEGEN_BUILD_CWD=$TMP_SANDBOX"
+rm -rf "$TMP_SANDBOX" "$TMP_OUTSIDE"
+
+# ── Test 18 (leg A): Bash redirect through an escaping symlink → DENY ────────
+BASH_SANDBOX="$(mktemp -d /var/tmp/confinement-bashsandbox.XXXXXX)"
+BASH_OUTSIDE="$(mktemp -d /var/tmp/confinement-bashoutside.XXXXXX)"
+touch "$BASH_OUTSIDE/secret.txt"
+BASH_ESCAPE_LINK="$BASH_SANDBOX/escape_link"
+ln -sf "$BASH_OUTSIDE/secret.txt" "$BASH_ESCAPE_LINK"
+BASH_INPUT_T18=$(jq -n --arg cmd "echo pwned > $BASH_ESCAPE_LINK" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "leg A: Bash redirect through escaping symlink → DENY" "deny" "$BASH_INPUT_T18" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+# ── Test 19 (leg A): Bash redirect inside sandbox (normal dev work) → ALLOW ──
+mkdir -p "$BASH_SANDBOX/lib"
+BASH_INPUT_T19=$(jq -n --arg cmd "echo hi > $BASH_SANDBOX/lib/foo.ex" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "leg A: Bash redirect inside sandbox → ALLOW" "allow" "$BASH_INPUT_T19" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+# ── Test 20 (leg A): Bash cp destination outside sandbox → DENY ─────────────
+touch "$BASH_SANDBOX/src.txt"
+BASH_INPUT_T20=$(jq -n --arg cmd "cp $BASH_SANDBOX/src.txt $BASH_OUTSIDE/dst.txt" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "leg A: Bash cp destination outside sandbox → DENY" "deny" "$BASH_INPUT_T20" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+# ── Test 21 (leg A): Bash sed -i on file outside sandbox → DENY ──────────────
+touch "$BASH_OUTSIDE/edit_me.txt"
+BASH_INPUT_T21=$(jq -n --arg cmd "sed -i '' 's/a/b/' $BASH_OUTSIDE/edit_me.txt" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "leg A: Bash sed -i outside sandbox → DENY" "deny" "$BASH_INPUT_T21" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+# ── Test 22 (leg A): cd .. combined with redirect in same segment → DENY (fail-closed) ──
+BASH_INPUT_T22=$(jq -n --arg cmd "cd $BASH_SANDBOX && cd .. && echo x > file.txt" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "leg A: cd .. + redirect → DENY (fail-closed)" "deny" "$BASH_INPUT_T22" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+# ── Test 23: genuine /tmp scratch write via Bash, sandbox elsewhere → ALLOW ──
+BASH_INPUT_T23=$(jq -n --arg cmd "echo hi > /tmp/confinement-scratch-$$.txt" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "genuine /tmp scratch via Bash, sandbox elsewhere → ALLOW" "allow" "$BASH_INPUT_T23" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+# ── Test 24: Bash command with no write-vocab (e.g. mix test) → ALLOW ───────
+BASH_INPUT_T24=$(jq -n --arg cmd "mix test test/foo_test.exs" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "Bash with no write-vocab → ALLOW" "allow" "$BASH_INPUT_T24" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+# ── Test 25: Bash redirect to /dev/null → ALLOW (ubiquitous idiom, not a real write) ──
+BASH_INPUT_T25=$(jq -n --arg cmd "mix test 2>/dev/null" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "Bash redirect to /dev/null → ALLOW" "allow" "$BASH_INPUT_T25" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+rm -rf "$BASH_SANDBOX" "$BASH_OUTSIDE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

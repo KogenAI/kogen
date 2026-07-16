@@ -61,9 +61,19 @@ export function register(pi: ExtensionAPI): void {
         `BLOCKED by pre-commit-guard: git mv is forbidden for agent "${agentType}" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
-    if (/\bgit\s+restore\b.*--staged\b/.test(scan)) {
+    if (/\bgit\s+restore\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git restore --staged is forbidden for agent "${agentType}" — committer owns all git staging. Do not stage; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
+        `BLOCKED by pre-commit-guard: git restore is forbidden for agent "${agentType}" — this can DISCARD your own or another role's uncommitted working-tree edits (with or without --staged). To READ committed content use \`git show HEAD:<path>\`; to change a file you own use Edit/Write; a revert belongs to the committer. Do not restore; leave changes in the working tree, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
+      );
+    }
+    if (/\bgit\s+(checkout|switch)\b/.test(scan)) {
+      return deny(
+        `BLOCKED by pre-commit-guard: git checkout/switch is forbidden for agent "${agentType}" — checkout of a path can DISCARD uncommitted working-tree edits (yours or another role's), and branch switches belong to the committer. To READ committed content use \`git show HEAD:<path>\`; to change a file you own use Edit/Write. Do not checkout/switch; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
+      );
+    }
+    if (/\bgit\s+clean\b/.test(scan) && !/\bgit\s+clean\b.*(-n\b|--dry-run\b)/.test(scan)) {
+      return deny(
+        `BLOCKED by pre-commit-guard: git clean (without -n/--dry-run) is forbidden for agent "${agentType}" — it PERMANENTLY DELETES untracked files, including another role's uncommitted new files. Use \`git clean -n\` to preview only, or ask the committer. Do not clean; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
     if (/\bgit\s+commit(?:[\s;&|]|$)/.test(scan)) {
@@ -91,13 +101,13 @@ export function register(pi: ExtensionAPI): void {
         `BLOCKED by pre-commit-guard: git merge forbidden for agent "${agentType}" — committer owns history. Do not merge; leave the branch as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
-    if (/\bgit\s+reset\b.*--hard\b/.test(scan)) {
+    if (/\bgit\s+reset\b.*--(hard|merge|keep)\b/.test(scan)) {
       return deny(
-        `BLOCKED by pre-commit-guard: git reset --hard forbidden for agent "${agentType}" — destructive, committer owns history. Do not reset; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
+        `BLOCKED by pre-commit-guard: git reset --hard/--merge/--keep forbidden for agent "${agentType}" — destructive, committer owns history. Do not reset; leave the working tree as-is, the loop's committer step runs after you — finish your remaining in-role work and stop.`,
       );
     }
 
-    if (/\bgit\s+reset\b/.test(scan) && !/\bgit\s+reset\b.*--hard\b/.test(scan)) {
+    if (/\bgit\s+reset\b/.test(scan) && !/\bgit\s+reset\b.*--(hard|merge|keep)\b/.test(scan)) {
       const buildStartTs = process.env["CODEGEN_BUILD_START_TS"] ?? "";
       if (buildStartTs) {
         const projectDir = process.env["CWD"] ?? process.cwd();

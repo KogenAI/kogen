@@ -132,9 +132,16 @@ describe("build-agent-app-confinement", { concurrency: 1 }, () => {
   });
 
   it("allows relative path resolving inside sandbox", async () => {
-    // Relative path "lib/new.ex" resolves under canonCwd → allowed
-    const result = await runHook("write", { path: "lib/new.ex" });
-    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+    // Relative path "lib/new.ex" resolves under process.cwd() — mirrors a
+    // real build where dispatch execs with cwd == CODEGEN_BUILD_CWD.
+    const savedCwd = process.cwd();
+    process.chdir(SYNTHETIC_SANDBOX);
+    try {
+      const result = await runHook("write", { path: "lib/new.ex" });
+      assert.ok(result == null || (result as { block?: boolean }).block !== true);
+    } finally {
+      process.chdir(savedCwd);
+    }
   });
 
   it("passes through non-write tool (read) even outside sandbox", async () => {
@@ -142,5 +149,100 @@ describe("build-agent-app-confinement", { concurrency: 1 }, () => {
       path: path.join(SYNTHETIC_OUTSIDE, "secrets.txt"),
     });
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  // ── leg A: Bash write-vocab coverage ──────────────────────────────────
+  it("leg A: denies bash redirect through escaping symlink", async () => {
+    const linkPath = path.join(SYNTHETIC_SANDBOX, "escape_link");
+    fs.symlinkSync(
+      path.join(SYNTHETIC_OUTSIDE, "secrets.txt"),
+      linkPath,
+    );
+    try {
+      const result = await runHook("bash", {
+        command: `echo pwned > ${linkPath}`,
+      });
+      assert.ok((result as { block?: boolean }).block === true);
+    } finally {
+      fs.rmSync(linkPath, { force: true });
+    }
+  });
+
+  it("leg A: allows bash redirect inside sandbox", async () => {
+    const result = await runHook("bash", {
+      command: `echo hi > ${path.join(SYNTHETIC_SANDBOX, "lib", "new2.ex")}`,
+    });
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("leg A: denies bash cp destination outside sandbox", async () => {
+    const src = path.join(SYNTHETIC_SANDBOX, "src.txt");
+    fs.writeFileSync(src, "");
+    const dst = path.join(SYNTHETIC_OUTSIDE, "dst.txt");
+    try {
+      const result = await runHook("bash", { command: `cp ${src} ${dst}` });
+      assert.ok((result as { block?: boolean }).block === true);
+    } finally {
+      fs.rmSync(src, { force: true });
+    }
+  });
+
+  it("leg A: denies cd .. combined with redirect (fail-closed)", async () => {
+    const result = await runHook("bash", {
+      command: `cd ${SYNTHETIC_SANDBOX} && cd .. && echo x > file.txt`,
+    });
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("leg A: allows genuine /tmp scratch write via bash, sandbox elsewhere", async () => {
+    const result = await runHook("bash", {
+      command: `echo hi > /tmp/confinement-ts-scratch-${process.pid}.txt`,
+    });
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("leg A: allows bash command with no write-vocab", async () => {
+    const result = await runHook("bash", { command: "mix test test/foo_test.exs" });
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  // ── leg B: canonicalize-before-hatch ───────────────────────────────────
+  it("leg B: denies write to /tmp-sandboxed escaping symlink", async () => {
+    const tmpSandbox = fs.mkdtempSync(path.join(os.tmpdir(), "confb-sandbox-"));
+    const tmpOutside = fs.mkdtempSync(path.join(os.tmpdir(), "confb-outside-"));
+    const outsideFile = path.join(tmpOutside, "secret.txt");
+    fs.writeFileSync(outsideFile, "");
+    const linkPath = path.join(tmpSandbox, "CLAUDE.md");
+    fs.symlinkSync(outsideFile, linkPath);
+    const saved = process.env["CODEGEN_BUILD_CWD"];
+    process.env["CODEGEN_BUILD_CWD"] = tmpSandbox;
+    try {
+      const result = await runHook("write", { path: linkPath });
+      assert.ok((result as { block?: boolean }).block === true);
+    } finally {
+      if (saved !== undefined) process.env["CODEGEN_BUILD_CWD"] = saved;
+      fs.rmSync(tmpSandbox, { recursive: true, force: true });
+      fs.rmSync(tmpOutside, { recursive: true, force: true });
+    }
+  });
+
+  it("leg A: allows bash redirect to /dev/null (ubiquitous idiom)", async () => {
+    const result = await runHook("bash", { command: "mix test 2>/dev/null" });
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("leg B: allows real file under /tmp sandbox", async () => {
+    const tmpSandbox = fs.mkdtempSync(path.join(os.tmpdir(), "confb2-sandbox-"));
+    const realFile = path.join(tmpSandbox, "real.txt");
+    fs.writeFileSync(realFile, "");
+    const saved = process.env["CODEGEN_BUILD_CWD"];
+    process.env["CODEGEN_BUILD_CWD"] = tmpSandbox;
+    try {
+      const result = await runHook("write", { path: realFile });
+      assert.ok(result == null || (result as { block?: boolean }).block !== true);
+    } finally {
+      if (saved !== undefined) process.env["CODEGEN_BUILD_CWD"] = saved;
+      fs.rmSync(tmpSandbox, { recursive: true, force: true });
+    }
   });
 });

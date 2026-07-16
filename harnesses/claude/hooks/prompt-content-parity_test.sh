@@ -281,6 +281,20 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL15"
 
+SENTINEL16="CAPABILITY-GRANT BOUNDARY-INTENT"
+assert_contains \
+    "capability-grant-boundary-intent sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL16"
+assert_contains \
+    "capability-grant-boundary-intent sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL16"
+assert_contains \
+    "capability-grant-boundary-intent sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL16"
+
 SENTINEL_DEADCODE="Dead-code retention / soft-deprecation"
 assert_contains \
     "dead-code-retention sentinel in claude-shape-system-prompt.txt" \
