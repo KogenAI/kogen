@@ -1549,6 +1549,122 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
+  # ── 9g. Real-git-repo: "fail" reason parks a named branch, not a stash ──
+
+  defp init_git_repo!(dir) do
+    File.mkdir_p!(dir)
+    System.cmd("git", ["init", "-q"], cd: dir)
+    System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+    System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+    File.write!(Path.join(dir, "README.md"), "seed\n")
+    System.cmd("git", ["add", "."], cd: dir)
+    System.cmd("git", ["commit", "-q", "-m", "seed"], cd: dir)
+  end
+
+  defp git_branches_matching(dir, glob) do
+    {out, 0} = System.cmd("git", ["branch", "--list", glob], cd: dir)
+
+    out
+    |> String.split("\n", trim: true)
+    |> Enum.map(&String.trim(&1, "* "))
+    |> Enum.map(&String.trim/1)
+  end
+
+  test "9g: real git repo — \"fail\" reason parks a queue-fail/<slug>/<ts> branch, clean tree",
+       ctx do
+    init_git_repo!(ctx.dir)
+    File.write!(Path.join(ctx.dir, "tracked.txt"), "dirty\n")
+    System.cmd("git", ["add", "tracked.txt"], cd: ctx.dir)
+
+    assert {:ok, branch} = LoopQueueDrain.default_git_stash_fn(ctx.dir, "myslug", "fail")
+    assert branch =~ ~r{^queue-fail/myslug/\d+$}
+
+    assert git_branches_matching(ctx.dir, "queue-fail/*") == [branch]
+
+    {status, 0} = System.cmd("git", ["status", "--porcelain"], cd: ctx.dir)
+    assert status == ""
+
+    {stash_list, 0} = System.cmd("git", ["stash", "list"], cd: ctx.dir)
+    assert stash_list == ""
+  end
+
+  test "9h: real git repo — parked branch diff reproduces the tree, including an untracked file",
+       ctx do
+    init_git_repo!(ctx.dir)
+    File.write!(Path.join(ctx.dir, "tracked.txt"), "dirty\n")
+    System.cmd("git", ["add", "tracked.txt"], cd: ctx.dir)
+    File.write!(Path.join(ctx.dir, "new_untracked.txt"), "brand new\n")
+
+    assert {:ok, branch} = LoopQueueDrain.default_git_stash_fn(ctx.dir, "myslug", "fail")
+
+    {diff, 0} = System.cmd("git", ["diff", "--name-only", "HEAD", branch], cd: ctx.dir)
+    files = diff |> String.split("\n", trim: true) |> Enum.sort()
+
+    assert files == ["new_untracked.txt", "tracked.txt"]
+  end
+
+  test "9i: real git repo — \"timeout\" reason creates no queue-fail/ branch, still stashes",
+       ctx do
+    init_git_repo!(ctx.dir)
+    File.write!(Path.join(ctx.dir, "tracked.txt"), "dirty\n")
+    System.cmd("git", ["add", "tracked.txt"], cd: ctx.dir)
+
+    assert :ok = LoopQueueDrain.default_git_stash_fn(ctx.dir, "myslug", "timeout")
+
+    assert git_branches_matching(ctx.dir, "queue-fail/*") == []
+
+    {stash_list, 0} = System.cmd("git", ["stash", "list"], cd: ctx.dir)
+    assert stash_list =~ "queue-timeout:myslug:"
+
+    assert :ok = LoopQueueDrain.default_git_stash_restore_fn(ctx.dir, "myslug")
+    {status, 0} = System.cmd("git", ["status", "--porcelain"], cd: ctx.dir)
+    assert status =~ "tracked.txt"
+  end
+
+  # `git stash branch` DROPS the stash as soon as it succeeds — a failure in
+  # a LATER step (`commit`) must not claim "work remains in stash" (it does
+  # not: the stash is already gone). Force that failure with a `pre-commit`
+  # hook that always rejects, deterministically triggering the post-branch-
+  # cut failure path without needing to stub System.cmd.
+  defp install_failing_pre_commit_hook!(dir) do
+    hooks_dir = Path.join(dir, ".git/hooks")
+    File.mkdir_p!(hooks_dir)
+    hook_path = Path.join(hooks_dir, "pre-commit")
+    File.write!(hook_path, "#!/bin/sh\nexit 1\n")
+    File.chmod!(hook_path, 0o755)
+  end
+
+  test "9j: real git repo — commit failure AFTER stash branch succeeds reports work is on the branch, not in a stash",
+       ctx do
+    init_git_repo!(ctx.dir)
+    File.write!(Path.join(ctx.dir, "tracked.txt"), "dirty\n")
+    System.cmd("git", ["add", "tracked.txt"], cd: ctx.dir)
+    install_failing_pre_commit_hook!(ctx.dir)
+
+    assert {:ok, branch} = LoopQueueDrain.default_git_stash_fn(ctx.dir, "myslug", "fail")
+    assert branch =~ ~r{^queue-fail/myslug/\d+$}
+
+    # The stash is already gone — `git stash branch` dropped it before the
+    # commit step ever ran. Asserting an empty stash list is the core
+    # regression guard: a stale "work remains in stash" message would be a
+    # lie here, since there is nothing left to pop.
+    {stash_list, 0} = System.cmd("git", ["stash", "list"], cd: ctx.dir)
+    assert stash_list == ""
+
+    # The branch exists and carries the work as UNCOMMITTED changes (commit
+    # was blocked by the hook) — the caller is left checked out on it so the
+    # operator's next `git status` sees exactly what needs finishing.
+    assert git_branches_matching(ctx.dir, "queue-fail/*") == [branch]
+
+    {current_branch_out, 0} =
+      System.cmd("git", ["symbolic-ref", "--short", "-q", "HEAD"], cd: ctx.dir)
+
+    assert String.trim(current_branch_out) == branch
+
+    {status, 0} = System.cmd("git", ["status", "--porcelain"], cd: ctx.dir)
+    assert status =~ "tracked.txt"
+  end
+
   # ── 10. Lock contention ─────────────────────────────────────────────────
 
   test "10a: live lock refuses a second queue", ctx do

@@ -53,10 +53,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   A deterministic child failure (or a pitch that burns through all of its
   own transient retries without succeeding) SKIPS-AND-CONTINUES rather than
   aborting the whole drain: the pitch stays physically in `ready_dir`, its
-  dirty tree is stashed under `queue-fail:<slug>:<ts>` (fail-open, parked
-  for operator forensics — never auto-popped; `:git_stash_restore_fn` only
-  matches the `queue-timeout:` prefix), and the slug is added to a
-  `failed_slugs` set rejected on every subsequent scan. This is guarded by a
+  dirty tree is committed to a named `queue-fail/<slug>/<ts>` branch (never
+  an invisible stash — `no-git-stash.sh` forbids exactly that everywhere
+  else in this repo; see `default_git_stash_fn/3`), surfaced by name in the
+  FAILED bucket and the HALTED message, and recoverable via a plain branch
+  checkout. It is NEVER auto-restored — `:git_stash_restore_fn` only matches
+  the `queue-timeout:` prefix, so a graded-and-rejected tree never silently
+  re-enters a retry. The slug is added to a `failed_slugs` set rejected on
+  every subsequent scan. This is guarded by a
   consecutive-failure circuit breaker (`:max_consecutive_fails`, default 3,
   env `CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS`): any ship resets the
   streak to 0; hitting the threshold HALTs the drain with `{:error, reason}`
@@ -160,11 +164,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       skipping-and-continuing (circuit breaker — see moduledoc)
     * `:spawn_fn` — `(slug, harness, stack, cwd, jsonl_path -> {:exit_code, integer} | :timeout)`
     * `:sleep_fn` — `(secs -> :ok)`
-    * `:git_stash_fn` — `(cwd, slug, reason -> :ok | {:error, reason})` where
-      `reason` is `"timeout"` or `"fail"`; label is `queue-<reason>:<slug>:<ts>`.
-      `"fail"`-reason stashes are NEVER auto-popped — `:git_stash_restore_fn`
-      only matches the `queue-timeout:` prefix, so they are parked for
-      operator forensics.
+    * `:git_stash_fn` — `(cwd, slug, reason -> :ok | {:ok, branch | nil} | {:error, reason})`
+      where `reason` is `"timeout"` or `"fail"`. `"timeout"` stashes the tree
+      under `queue-timeout:<slug>:<ts>` exactly as before (popped by
+      `:git_stash_restore_fn` before the retry — ungraded work, restoring is
+      a saving). `"fail"` commits the tree to a named `queue-fail/<slug>/<ts>`
+      branch (via a `stash push -u` + branch-cut + stash-drop — never a bare
+      stash, so the work stays visible/diffable/recoverable) and returns
+      `{:ok, branch}`; it is NEVER auto-popped — `:git_stash_restore_fn` only
+      matches the `queue-timeout:` prefix, so a graded-and-rejected tree is
+      parked for the operator, not silently retried.
     * `:git_stash_restore_fn` — `(cwd, slug -> :ok | {:error, reason})`, pops a
       prior `queue-timeout:<slug>:` stash (if any) before a retry attempt for
       `slug`. No matching stash -> `:ok` (no-op). A pop conflict fails loud
@@ -284,6 +293,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
           timed_out_slugs: MapSet.new(),
           failed_slugs: MapSet.new(),
+          parked_branches: %{},
           consecutive_fails: 0,
           blocked_printed: MapSet.new(),
           retry_count: 0,
@@ -692,7 +702,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         if MapSet.size(state.failed_slugs) > 0 do
           IO.puts(
             :stderr,
-            "queue: FAILED bucket: " <> Enum.join(state.failed_slugs, ", ")
+            "queue: FAILED bucket: " <>
+              Enum.map_join(state.failed_slugs, ", ", fn slug ->
+                case Map.fetch(state.parked_branches, slug) do
+                  {:ok, branch} -> "#{slug} -> #{branch} (recover: git checkout #{branch})"
+                  :error -> slug
+                end
+              end)
           )
         end
 
@@ -829,9 +845,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
       true ->
         # False exit-0: no verified commit under a fresh clear gate. Treat as
-        # a deterministic failure — stash whatever dirty tree is left (never
-        # auto-popped, `queue-fail:` prefix, operator forensics), skip and
-        # continue subject to the same consecutive-failure circuit breaker.
+        # a deterministic failure — park whatever dirty tree is left on a
+        # named `queue-fail/<slug>/<ts>` branch (never auto-restored), skip
+        # and continue subject to the same consecutive-failure circuit
+        # breaker.
         IO.puts(
           :stderr,
           "[#{idx}/#{state.total}] #{slug} ... exit 0 but no verified commit under a fresh clear gate — treating as FAILED"
@@ -839,23 +856,22 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
 
-        case state.git_stash_fn.(state.cwd, slug, "fail") do
-          :ok -> :ok
-          {:error, _reason} -> :ok
-        end
+        parked_branch = park_failed_tree(state, slug)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
+        parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
         consecutive_fails = state.consecutive_fails + 1
 
         if consecutive_fails >= state.max_consecutive_fails do
           {:error,
            "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
              "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
-             "failed pitches remain in ready/, work recoverable from queue-fail: stashes"}
+             "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
         else
           state = %{
             state
             | failed_slugs: failed_slugs,
+              parked_branches: parked_branches,
               consecutive_fails: consecutive_fails,
               retry_count: 0,
               last_slug: nil
@@ -875,6 +891,39 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     session = state.discover_session_log_fn.(state.cwd, slug, spawn_stamp)
     if session, do: IO.puts(:stderr, "  session log: " <> session)
     IO.puts(:stderr, "  build log:   " <> jsonl)
+  end
+
+  # Calls the fail-reason git_stash_fn and normalizes its return into a
+  # branch name (or nil — clean tree / stash-only fallback / genuine error,
+  # all fail-open, nothing to park).
+  @spec park_failed_tree(map(), String.t()) :: String.t() | nil
+  defp park_failed_tree(state, slug) do
+    case state.git_stash_fn.(state.cwd, slug, "fail") do
+      {:ok, branch} when is_binary(branch) -> branch
+      {:ok, nil} -> nil
+      :ok -> nil
+      {:error, _reason} -> nil
+    end
+  end
+
+  @spec put_parked_branch(%{String.t() => String.t()}, String.t(), String.t() | nil) ::
+          %{String.t() => String.t()}
+  defp put_parked_branch(parked_branches, _slug, nil), do: parked_branches
+  defp put_parked_branch(parked_branches, slug, branch), do: Map.put(parked_branches, slug, branch)
+
+  # Per-slug recovery text for the branches actually parked this run (falls
+  # back to bare slugs when a slug's tree was clean or the branch conversion
+  # failed — nothing to recover for those).
+  @spec parked_recovery_text(%{String.t() => String.t()}) :: String.t()
+  defp parked_recovery_text(parked_branches) when map_size(parked_branches) == 0 do
+    "no dirty trees were parked"
+  end
+
+  defp parked_recovery_text(parked_branches) do
+    "work recoverable via: " <>
+      Enum.map_join(parked_branches, "; ", fn {slug, branch} ->
+        "#{slug} -> git checkout #{branch}"
+      end)
   end
 
   defp ship(ready_dir, shipped_dir, slug) do
@@ -967,23 +1016,22 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       true ->
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
 
-        case state.git_stash_fn.(state.cwd, slug, "fail") do
-          :ok -> :ok
-          {:error, _reason} -> :ok
-        end
+        parked_branch = park_failed_tree(state, slug)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
+        parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
         consecutive_fails = state.consecutive_fails + 1
 
         if consecutive_fails >= state.max_consecutive_fails do
           {:error,
            "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
              "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
-             "failed pitches remain in ready/, work recoverable from queue-fail: stashes"}
+             "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
         else
           state = %{
             state
             | failed_slugs: failed_slugs,
+              parked_branches: parked_branches,
               consecutive_fails: consecutive_fails,
               retry_count: 0,
               last_slug: nil
@@ -1465,10 +1513,31 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @spec default_now_fn() :: integer()
   def default_now_fn, do: System.system_time(:second)
 
-  # ── Real git_stash_fn: tracked-only, fail-open ──────────────────────────────
-
+  # ── Real git_stash_fn: tracked+staged+untracked ("-u"), fail-open ───────────
+  #
+  # "timeout" reason: byte-identical to the original behavior — a plain
+  # `git stash push -u -m "queue-timeout:<slug>:<ts>"`, popped by
+  # `default_git_stash_restore_fn/2` before the retry attempt (ungraded work,
+  # restoring it is strictly a saving).
+  #
+  # "fail" reason: the tree was GRADED and REJECTED, so it must never be
+  # auto-restored (see `default_git_stash_restore_fn/2`'s `queue-timeout:`-only
+  # prefix match). Parking it in an invisible stash is exactly what
+  # `no-git-stash.sh` forbids every agent from doing ("Commit WIP to a scratch
+  # branch"), so the drain follows its own rule: push (still `-u`, so
+  # untracked new files are captured — `stash create` alone would silently
+  # DROP them), then `park_stash_as_branch/2` converts that stash into a
+  # committed `queue-fail/<slug>/<ts>` branch (via `git stash branch`, which
+  # is what actually recombines tracked+staged+untracked back into one
+  # working tree — `stash@{0}`'s own tree omits untracked files) and returns
+  # to the original ref, leaving it clean. Returns `{:ok, branch}` so callers
+  # can surface the exact recoverable ref. Any post-push step failing is
+  # fail-open (loud stderr, `{:ok, nil}`) — the work is still safely captured
+  # under the stash's `queue-fail:` label even if the branch conversion did
+  # not finish.
   @doc false
-  @spec default_git_stash_fn(String.t(), String.t(), String.t()) :: :ok | {:error, String.t()}
+  @spec default_git_stash_fn(String.t(), String.t(), String.t()) ::
+          :ok | {:ok, String.t() | nil} | {:error, String.t()}
   def default_git_stash_fn(cwd, slug, reason) do
     with {_out, 0} <-
            System.cmd("git", ["-C", cwd, "rev-parse", "--git-dir"], stderr_to_stdout: true),
@@ -1485,6 +1554,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         case System.cmd("git", ["-C", cwd, "stash", "push", "-u", "-m", msg],
                stderr_to_stdout: true
              ) do
+          {_out, 0} when reason == "fail" -> park_stash_as_branch(cwd, slug)
           {_out, 0} -> :ok
           {out, _} -> {:error, "git stash failed: #{out}"}
         end
@@ -1493,6 +1563,100 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       end
     else
       {out, _code} -> {:error, "not a git repo or git status failed: #{out}"}
+    end
+  end
+
+  # Converts the just-created `stash@{0}` into a named `queue-fail/<slug>/<ts>`
+  # branch carrying the FULL parked state (tracked + staged + untracked —
+  # `stash@{0}`'s own tree alone omits untracked files, which live under its
+  # 3rd parent; `stash apply`/`stash branch` is what actually combines them
+  # back into a working tree). Sequence: capture the current ref (branch name
+  # if on one, else detached sha) so we can return to EXACTLY where we
+  # started; `git stash branch <name>` creates+checks-out the branch from the
+  # stash's original base and re-applies the stash into the new branch's
+  # working tree (dirty, uncommitted); commit that combined state on the new
+  # branch; checkout back to the original ref (clean — original HEAD never
+  # moved, and the new branch now holds the commit).
+  #
+  # Fail-open, but the fail-open MESSAGE must match reality: `git stash
+  # branch` DROPS the stash as soon as it succeeds (that is standard git
+  # behavior — the stash entry is popped once its contents are re-applied
+  # onto the new branch). So a failure BEFORE that step leaves the work
+  # safely in the stash (accurate to say "work remains in stash"), but a
+  # failure AFTER it (the `add`/`commit`/`checkout` steps) means the stash
+  # is ALREADY GONE — the work now lives only in the dirty working tree of
+  # the newly-created (and possibly still-checked-out) `branch`. Reporting
+  # "work remains in stash" in that case would be a lie: there is no stash
+  # left to recover from, and the operator would look in the wrong place.
+  #
+  # Split the sequence into two `with` stages so each failure mode gets an
+  # accurate message and, for the post-branch-cut case, a best-effort
+  # recovery: leave the caller ON the parked branch (never silently return
+  # to `orig_ref` while the tree is uncommitted — that would strand dirty
+  # changes on whatever branch happens to be checked out) and surface the
+  # branch name so the operator can finish the commit/checkout by hand.
+  @spec park_stash_as_branch(String.t(), String.t()) :: {:ok, String.t() | nil}
+  defp park_stash_as_branch(cwd, slug) do
+    branch = "queue-fail/#{slug}/#{default_now_fn()}"
+
+    with {orig_out, 0} <-
+           System.cmd("git", ["-C", cwd, "symbolic-ref", "--short", "-q", "HEAD"],
+             stderr_to_stdout: true
+           ),
+         orig_ref <- String.trim(orig_out),
+         {_out, 0} <-
+           System.cmd("git", ["-C", cwd, "stash", "branch", branch, "stash@{0}"],
+             stderr_to_stdout: true
+           ) do
+      # Stash is now DROPPED — from here on, the work lives only on `branch`.
+      finish_parked_branch(cwd, slug, branch, orig_ref)
+    else
+      {out, _code} ->
+        IO.puts(
+          :stderr,
+          "queue: failed to park stash as branch #{branch} for #{slug} — work remains " <>
+            "in stash (queue-fail:#{slug}: label): #{out}"
+        )
+
+        {:ok, nil}
+    end
+  end
+
+  # Second stage, run only after `git stash branch` has ALREADY succeeded
+  # (stash dropped, dirty tree now live on `branch`, currently checked out).
+  # Commits that tree on `branch`, then returns to `orig_ref`. Any step here
+  # failing is fail-open but reports the TRUE location of the work — on
+  # `branch`, not in a stash — and deliberately does NOT check out
+  # `orig_ref` while `branch` is still dirty (that would strand the
+  # uncommitted work under whatever ref happens to be current, invisible to
+  # `git status` on `branch` and un-diffable). The caller is left ON
+  # `branch` so the operator's very next `git status`/`git diff` sees
+  # exactly what needs finishing.
+  @spec finish_parked_branch(String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, String.t() | nil}
+  defp finish_parked_branch(cwd, slug, branch, orig_ref) do
+    with {_out, 0} <-
+           System.cmd("git", ["-C", cwd, "add", "-A"], stderr_to_stdout: true),
+         {_out, 0} <-
+           System.cmd(
+             "git",
+             ["-C", cwd, "commit", "-q", "-m", "queue-fail:#{slug} parked WIP"],
+             stderr_to_stdout: true
+           ),
+         {_out, 0} <-
+           System.cmd("git", ["-C", cwd, "checkout", "-q", orig_ref], stderr_to_stdout: true) do
+      {:ok, branch}
+    else
+      {out, _code} ->
+        IO.puts(
+          :stderr,
+          "queue: stash for #{slug} was already converted to branch #{branch} but " <>
+            "committing/returning to #{orig_ref} failed — work is on #{branch} " <>
+            "(possibly still uncommitted; repo may be left checked out on #{branch}), " <>
+            "NOT in a stash: #{out}"
+        )
+
+        {:ok, branch}
     end
   end
 
