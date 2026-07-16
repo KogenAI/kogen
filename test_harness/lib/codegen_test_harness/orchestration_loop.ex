@@ -161,13 +161,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     `run_format_step`) and the commit-time `context-index-parity` hook
     (which only ever dead-ended the committer, which cannot Read/Edit
     `context/*.md`).
-  - `:max_curator_doc_cycles` — context-curator re-invokes allowed after a
-    curator-doc violation (factcheck or index-parity) before giving up
-    (default 1). Diverges from `:max_review_cycles` (which proceeds on
-    budget exhaustion): exhaustion fails the cycle LOUD instead of
-    proceeding — the committer cannot Read/Edit `context/*.md`, so handing
-    it a known-bad doc is an unfixable dead-end that used to deadlock as a
-    compounding dirty-tree retry.
+  - `:max_curator_doc_cycles` — a GUARANTEED FLOOR of context-curator
+    re-invokes allowed after a curator-doc violation (factcheck or
+    index-parity) before giving up (default 1: the first rework is always
+    granted). Beyond the floor, a rework is granted only when the curator
+    provably resolved at least one violation from the prior scan (the
+    current violation set is not a superset of the prior one) — a hard
+    ceiling (`@repair_progress_ceiling`, 15) bounds this regardless. A
+    thrashing or unsatisfiable-by-any-edit violation set dies at the SAME
+    turn it dies today; only a converging repair earns extra turns.
+    Diverges from `:max_review_cycles` (which proceeds on budget
+    exhaustion): exhaustion fails the cycle LOUD instead of proceeding — the
+    committer cannot Read/Edit `context/*.md`, so handing it a known-bad doc
+    is an unfixable dead-end that used to deadlock as a compounding
+    dirty-tree retry.
   - `:env_var_scan_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
     defaults to `default_env_var_scan/1` (shells
     `harnesses/claude/hooks/lib/env-var-sample-scan.sh <cwd>`, which scopes
@@ -179,9 +186,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     run as main-agent `codegen-call` invocations under the loop, so
     SubagentStop never fires here — same reasoning as `run_format_step` and
     `run_curator_doc_check`).
-  - `:max_env_var_cycles` — developer re-invokes allowed after an env-var
-    violation before giving up (default 1). Exhaustion fails the cycle LOUD
-    (same posture as `:max_curator_doc_cycles`, not `:max_review_cycles`'s
+  - `:max_env_var_cycles` — a GUARANTEED FLOOR of developer re-invokes
+    allowed after an env-var violation before giving up (default 1: the
+    first rework is always granted). Beyond the floor, the same
+    progress-past-the-floor extension as `:max_curator_doc_cycles` applies
+    (resolved-violation check, `@repair_progress_ceiling` hard cap).
+    Exhaustion fails the cycle LOUD (same posture as
+    `:max_curator_doc_cycles`, not `:max_review_cycles`'s
     proceed-on-exhaustion): an undeclared required env var is a real defect
     the app crashes on at runtime, so handing it onward unfixed is not safe.
   - `:lock_path` — per-cwd single-flight lock file, default
@@ -1130,14 +1141,16 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # (an ADD needs BOTH the file AND its index row, so whichever write lands
   # first would deadlock a PreToolUse gate), so it is inherently an
   # end-of-turn check, and this step is its only home. Clean → advance
-  # CURATED and continue. Violations within `:max_curator_doc_cycles` (default
-  # 1) → fold the combined violation list into context, re-invoke the
-  # context-curator (the last role that CAN edit `context/*.md`), re-format,
-  # re-scan, recurse. Budget-exhausted → FAIL LOUD (diverges from
+  # CURATED and continue. Violations within the `:max_curator_doc_cycles`
+  # guaranteed floor (default 1), OR beyond it while the curator keeps
+  # provably resolving violations (see `repair_allowed?/4`), → fold the
+  # combined violation list into context, re-invoke the context-curator (the
+  # last role that CAN edit `context/*.md`), re-format, re-scan, recurse.
+  # Budget-exhausted → FAIL LOUD (diverges from
   # `handle_review`'s proceed-on-exhaustion): the committer cannot Read/Edit
   # `context/*.md`, so handing it a known-bad doc is an unfixable dead-end
   # that used to compound into a dirty-tree retry loop.
-  defp run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle) do
+  defp run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle, prev_violations \\ nil) do
     max_cycles = Keyword.get(opts, :max_curator_doc_cycles, 1)
 
     case run_curator_doc_scan(ctx.cwd, opts) do
@@ -1162,16 +1175,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             opts,
             cycle,
             max_cycles,
-            violations
+            violations,
+            prev_violations
           )
         end
     end
   end
 
   # A curator edit CAN plausibly fix these doc violations — run the
-  # existing budget-bounded rework logic (unchanged from before infra
-  # classification was added; see `run_curator_doc_check/6`'s `:infra`
-  # branch above for the sibling that never reaches here).
+  # progress+ceiling-bounded rework logic (see `repair_allowed?/4`): the
+  # first rework (cycle < max_cycles, the guaranteed floor) is always
+  # granted; beyond the floor, only when the curator provably resolved at
+  # least one violation from the prior scan. See
+  # `run_curator_doc_check/6`'s `:infra` branch above for the sibling that
+  # never reaches here.
   defp run_curator_doc_check_rework(
          curator_role,
          rest,
@@ -1180,28 +1197,23 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          opts,
          cycle,
          max_cycles,
-         violations
-       )
-       when cycle < max_cycles do
-    rework_ctx = put_in(ctx, [:artifacts, :curator_doc_violations], violations)
+         violations,
+         prev_violations
+       ) do
+    if repair_allowed?(cycle, max_cycles, prev_violations, violations) do
+      rework_ctx = put_in(ctx, [:artifacts, :curator_doc_violations], violations)
 
-    with {:ok, curator_result} <- invoke_with_retry(curator_role, harness, rework_ctx, opts) do
-      ctx = put_in(rework_ctx, [:artifacts, curator_role], curator_result)
-      run_format_step(ctx.cwd, opts)
-      run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle + 1)
+      with {:ok, curator_result} <- invoke_with_retry(curator_role, harness, rework_ctx, opts) do
+        ctx = put_in(rework_ctx, [:artifacts, curator_role], curator_result)
+        run_format_step(ctx.cwd, opts)
+        run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle + 1, violations)
+      end
+    else
+      curator_doc_check_exhausted(ctx, cycle, violations)
     end
   end
 
-  defp run_curator_doc_check_rework(
-         _curator_role,
-         _rest,
-         _harness,
-         ctx,
-         _opts,
-         cycle,
-         _max_cycles,
-         violations
-       ) do
+  defp curator_doc_check_exhausted(ctx, cycle, violations) do
     {:error,
      "Turn-0 preflight verified #{preflight_legs(ctx.cwd)} clean at HEAD #{ctx.base_head}; " <>
        "the violations below arrived with this cycle's own edits.\n" <>
@@ -1297,14 +1309,16 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # the loop, roles run as main-agent `codegen-call` invocations with no
   # SubagentStop event, so this scan has to be driven explicitly here (same
   # reasoning as `run_format_step` and `run_curator_doc_check`). Scan clean →
-  # continue to the gate. Violations within `:max_env_var_cycles` (default
-  # 1) → fold the undocumented-var list into context, re-invoke the SAME
-  # developer role (the one that can edit `.env.sample`/`.env.prod.sample`),
-  # re-format, re-scan, recurse. Budget-exhausted → FAIL LOUD (same posture
+  # continue to the gate. Violations within the `:max_env_var_cycles`
+  # guaranteed floor (default 1), OR beyond it while the developer keeps
+  # provably resolving violations (see `repair_allowed?/4`), → fold the
+  # undocumented-var list into context, re-invoke the SAME developer role
+  # (the one that can edit `.env.sample`/`.env.prod.sample`), re-format,
+  # re-scan, recurse. Budget-exhausted → FAIL LOUD (same posture
   # as `run_curator_doc_check`, not `handle_review`'s proceed-on-exhaustion):
   # an undeclared required env var is a real defect the app crashes on at
   # runtime.
-  defp run_env_var_step(dev_role, rest, harness, ctx, opts, cycle) do
+  defp run_env_var_step(dev_role, rest, harness, ctx, opts, cycle, prev_violations \\ nil) do
     max_cycles = Keyword.get(opts, :max_env_var_cycles, 1)
 
     case run_env_var_scan(ctx.cwd, opts) do
@@ -1328,47 +1342,50 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             opts,
             cycle,
             max_cycles,
-            violations
+            violations,
+            prev_violations
           )
         end
     end
   end
 
   # A developer edit CAN plausibly fix these env-var violations — run the
-  # existing budget-bounded rework logic (unchanged from before infra
-  # classification was added; see `run_env_var_step/6`'s `:infra` branch
-  # above for the sibling that never reaches here).
-  defp run_env_var_step_rework(dev_role, rest, harness, ctx, opts, cycle, max_cycles, violations)
-       when cycle < max_cycles do
-    brief = capture_rework_brief(ctx.cwd, opts)
-
-    rework_ctx =
-      ctx
-      |> put_in([:artifacts, :env_var_violation], violations)
-      |> put_in([:artifacts, :rework_brief], brief)
-
-    with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
-      ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
-      run_format_step(ctx.cwd, opts)
-      run_env_var_step(dev_role, rest, harness, ctx, opts, cycle + 1)
-    end
-  end
-
+  # progress+ceiling-bounded rework logic (see `repair_allowed?/4`): the
+  # first rework (cycle < max_cycles, the guaranteed floor) is always
+  # granted; beyond the floor, only when the developer provably resolved at
+  # least one violation from the prior scan. See `run_env_var_step/6`'s
+  # `:infra` branch above for the sibling that never reaches here.
   defp run_env_var_step_rework(
-         _dev_role,
-         _rest,
-         _harness,
-         _ctx,
-         _opts,
+         dev_role,
+         rest,
+         harness,
+         ctx,
+         opts,
          cycle,
-         _max_cycles,
-         violations
+         max_cycles,
+         violations,
+         prev_violations
        ) do
-    {:error,
-     "env var sample-consistency unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
-       "Undeclared env var(s) are read (System.get_env/fetch_env) but not declared in " <>
-       ".env.sample and/or .env.prod.sample. Declare them in BOTH sample files and re-run " <>
-       "the cycle."}
+    if repair_allowed?(cycle, max_cycles, prev_violations, violations) do
+      brief = capture_rework_brief(ctx.cwd, opts)
+
+      rework_ctx =
+        ctx
+        |> put_in([:artifacts, :env_var_violation], violations)
+        |> put_in([:artifacts, :rework_brief], brief)
+
+      with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
+        ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
+        run_format_step(ctx.cwd, opts)
+        run_env_var_step(dev_role, rest, harness, ctx, opts, cycle + 1, violations)
+      end
+    else
+      {:error,
+       "env var sample-consistency unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
+         "Undeclared env var(s) are read (System.get_env/fetch_env) but not declared in " <>
+         ".env.sample and/or .env.prod.sample. Declare them in BOTH sample files and re-run " <>
+         "the cycle."}
+    end
   end
 
   # Dispatches the `:env_var_scan_fn` test seam; defaults to
@@ -1547,6 +1564,65 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Hard ceiling backstop: even with continuous progress, a run/1 cycle never
   # re-invokes the developer for gate failures more than this many times.
   @gate_progress_ceiling 15
+
+  # Hard ceiling backstop for the curator-doc and env-var repair loops (see
+  # `repair_allowed?/4`). Deliberately the SAME value as
+  # `@gate_progress_ceiling` — one number to reason about across every
+  # progress-bounded loop in this module — but a SEPARATE attribute because
+  # it bounds a distinct loop (repair-turn budget, not gate re-run budget);
+  # tuning one must never silently move the other.
+  @repair_progress_ceiling 15
+
+  # Splits a scan's violation text into a set of trimmed, non-blank lines.
+  # Both curator-doc scans (`context-index-parity-scan.sh`,
+  # `context-factcheck-scan.sh`) and the env-var scan
+  # (`env-var-sample-scan.sh`) emit one violation per line, and
+  # `combine_curator_doc_results/2` joins multi-leg violations with "\n" —
+  # so line-splitting needs no scan-side change. Used only to compare
+  # "what did the prior scan complain about" against "what does the current
+  # scan complain about" — never displayed, never re-parsed for structure.
+  @spec violation_set(String.t()) :: MapSet.t(String.t())
+  defp violation_set(violations) do
+    violations
+    |> String.split("\n", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> MapSet.new()
+  end
+
+  # Floor-guaranteed, then progress-bounded, then hard-ceiling-capped repair
+  # loop gate shared by `run_curator_doc_check_rework/9` and
+  # `run_env_var_step_rework/9`. `cycle < max_cycles` is kept as the FIRST
+  # disjunct so `:max_curator_doc_cycles`/`:max_env_var_cycles` become a
+  # GUARANTEED FLOOR rather than a ceiling: every existing caller's exact
+  # count-based behavior at/under the floor is preserved byte-for-byte
+  # (default 1 → the first rework is always granted; 0 → never rework).
+  # Beyond the floor, a rework is granted ONLY when the repairing role
+  # provably resolved at least one violation from the immediately prior
+  # scan (`prior_set` is not a subset of `current_set` — i.e. at least one
+  # prior violation is gone). `prior_set` is `nil` on the very first call
+  # (no prior scan to compare against), which makes `resolved_any?` false
+  # and therefore never grants a turn past the floor on cycle 0 — correct,
+  # since there is nothing yet to have resolved. A role that thrashes
+  # (identical violation set) or introduces a superset (fixes nothing, adds
+  # more) is refused at exactly the same turn as before this bound existed;
+  # only a converging repair earns turns past the floor, and even then never
+  # past `@repair_progress_ceiling`.
+  @spec repair_allowed?(non_neg_integer(), non_neg_integer(), String.t() | nil, String.t()) ::
+          boolean()
+  defp repair_allowed?(cycle, max_cycles, prev_violations, violations) do
+    resolved_any? =
+      case prev_violations do
+        nil ->
+          false
+
+        prev ->
+          prior_set = violation_set(prev)
+          current_set = violation_set(violations)
+          not MapSet.subset?(prior_set, current_set)
+      end
+
+    cycle < @repair_progress_ceiling and (cycle < max_cycles or resolved_any?)
+  end
 
   # Progress+ceiling bound for developer gate re-runs:
   #

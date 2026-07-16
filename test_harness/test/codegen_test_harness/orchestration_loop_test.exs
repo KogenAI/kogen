@@ -2630,6 +2630,142 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
+    test "curator introduces a superset (fixes nothing, adds a violation) → dies at the guaranteed floor",
+         %{calls_agent: calls_agent} do
+      # Pins the subset DIRECTION: a scan that grows (never shrinks) must be
+      # refused past the floor exactly like an unchanging thrash — proves
+      # `repair_allowed?/4` is not accidentally inverted.
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+        if n == 0, do: {:violations, "A"}, else: {:violations, "A\nB"}
+      end
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          curator_doc_check_fn: scan_fn,
+          max_curator_doc_cycles: 1
+        )
+
+      assert {:error, _reason} = result
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 2
+      refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "curator thrashes on doc scan (identical violation) → dies at the guaranteed floor",
+         %{calls_agent: calls_agent} do
+      # Mirrors the env-var side's thrash test: SAME violation text every
+      # call (no progress at all) must be refused past the floor exactly
+      # like today, with an explicit call-count assertion.
+      always_violates_fn = fn _cwd -> {:violations, "CLAUDE.md:1 bad path"} end
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          curator_doc_check_fn: always_violates_fn,
+          max_curator_doc_cycles: 1
+        )
+
+      assert {:error, _reason} = result
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 2
+      refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "curator resolves one violation while another surfaces → earns a turn past the guaranteed floor",
+         %{calls_agent: calls_agent} do
+      # The case that dies TODAY (budget=1) and must converge AFTER this
+      # change: A+B -> B+C -> C -> clean, each turn resolving exactly one
+      # violation from the prior scan.
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+
+        case n do
+          0 -> {:violations, "A\nB"}
+          1 -> {:violations, "B\nC"}
+          2 -> {:violations, "C"}
+          _ -> {:clean}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: scan_fn,
+                 max_curator_doc_cycles: 1
+               )
+
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 4
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "curator repair ceiling backstop: resolving one violation per turn from a large set still refuses past the hard ceiling",
+         %{calls_agent: calls_agent} do
+      # 30-member violation set, resolving exactly one per scan — never
+      # reaches clean. Proves @repair_progress_ceiling caps otherwise
+      # unbounded progress-earned turns.
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+        remaining = for i <- (n + 1)..29, do: "V#{i}"
+        {:violations, Enum.join(["V#{n}" | remaining], "\n")}
+      end
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          curator_doc_check_fn: scan_fn,
+          max_curator_doc_cycles: 1
+        )
+
+      assert {:error, _reason} = result
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 16
+      refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
     test "curator-doc violation classified :infra aborts loud — NEVER re-invokes context-curator",
          %{calls_agent: calls_agent} do
       always_violates_fn = fn _cwd ->
@@ -2839,6 +2975,80 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert reason =~ "env var"
       assert reason =~ "MY_VAR"
       refute "GATED" in Agent.get(states_agent, & &1)
+      refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "developer resolves one env-var violation while another surfaces → earns a turn past the guaranteed floor",
+         %{calls_agent: calls_agent} do
+      # Mirrors the curator-doc fix-A-surface-B case: the developer fixes
+      # MY_VAR, OTHER_VAR surfaces, then it's fixed too, then clean.
+      {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
+
+        case n do
+          0 -> {:violations, "MY_VAR\nOTHER_VAR"}
+          1 -> {:violations, "OTHER_VAR\nTHIRD_VAR"}
+          2 -> {:violations, "THIRD_VAR"}
+          _ -> {:clean}
+        end
+      end
+
+      {:ok, states_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+        Agent.update(states_agent, fn states -> states ++ [state] end)
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: advance_fn,
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 env_var_scan_fn: scan_fn,
+                 max_env_var_cycles: 1
+               )
+
+      dev_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static"))
+      assert dev_calls == 4
+      assert "GATED" in Agent.get(states_agent, & &1)
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "developer thrashes on env-var scan (identical violation) → dies at the guaranteed floor",
+         %{calls_agent: calls_agent} do
+      always_violates_fn = fn _cwd -> {:violations, "MY_VAR"} end
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          curator_doc_check_fn: always_clean_curator_doc_fn(),
+          env_var_scan_fn: always_violates_fn,
+          max_env_var_cycles: 1
+        )
+
+      assert {:error, _reason} = result
+      dev_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static"))
+      assert dev_calls == 2
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
