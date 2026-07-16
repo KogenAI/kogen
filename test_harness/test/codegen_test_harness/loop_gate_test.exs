@@ -374,6 +374,108 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "run_gate/2 — canary (the gate must prove it can fail)" do
+    test "canary returning :clear raises CanaryError and never certifies a verdict", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+      canary_fn = fn _gate, _evidence_fn -> :clear end
+
+      assert_raise LoopGate.CanaryError, ~r/the gate cannot fail/, fn ->
+        LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", canary_fn: canary_fn)
+      end
+
+      refute File.exists?(Path.join(dir, "codegen/gate-pending/gate-result.json"))
+    end
+
+    test "canary returning :failed (the required answer) lets the real gate proceed", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+      canary_fn = fn _gate, _evidence_fn -> :failed end
+
+      assert {:clear, "make test"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", canary_fn: canary_fn)
+    end
+
+    # This is the fail-closed proof: a STALE prior gate-result.json claiming
+    # `clear` must not survive a canary halt. Move A's first act (unlink
+    # before anything else can raise) is what makes this true — without it,
+    # a halted build would leave the committer reading yesterday's `clear`.
+    test "a stale prior clear gate-result.json does not survive a canary halt", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      gate_pending_dir = Path.join(dir, "codegen/gate-pending")
+      File.mkdir_p!(gate_pending_dir)
+
+      File.write!(
+        Path.join(gate_pending_dir, "gate-result.json"),
+        Jason.encode!(%{"verdict" => "clear", "verdict_marker" => "ALL CLEAR ✅"})
+      )
+
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+      canary_fn = fn _gate, _evidence_fn -> :clear end
+
+      assert_raise LoopGate.CanaryError, fn ->
+        LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", canary_fn: canary_fn)
+      end
+
+      refute File.exists?(Path.join(gate_pending_dir, "gate-result.json"))
+    end
+
+    test "canary returning :inconclusive also halts — only :failed certifies the gate can fail", %{
+      dir: dir
+    } do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+      canary_fn = fn _gate, _evidence_fn -> :inconclusive end
+
+      assert_raise LoopGate.CanaryError, fn ->
+        LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", canary_fn: canary_fn)
+      end
+    end
+
+    # The real (default) canary, exercised end-to-end against the actual
+    # `gate-result.sh` shell contract and the actual `evidence_fn` — no
+    # stubbed canary_fn. An empty gate log against any real gate command
+    # must always derive :failed; this is the regression test for the `1 1`
+    # incident class (constant-evidence disarm AND expected_segments=0
+    # disarm) at the level the incident actually happened: production
+    # arguments, not hand-picked test operands (ledger #12).
+    test "the real default canary derives :failed for a single-segment gate command", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"all good", 0} end
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+    end
+
+    test "the real default canary derives :failed for a chained multi-segment gate command", %{
+      dir: dir
+    } do
+      write_gate_config!(dir, "make ci && make llm")
+
+      run_fn = fn _gate, _project_dir ->
+        {"519 tests, 0 failures\n42 tests, 0 failures", 0}
+      end
+
+      assert {:clear, "make ci && make llm"} =
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+    end
+
+    # Reproduces the historical disarm directly: an evidence_fn hardcoded to
+    # `1 1` (the exact incident constants) makes the canary's own
+    # empty-log-against-real-command check come back :clear (1 < 1 is
+    # false) — proving the canary would have caught the actual incident had
+    # it existed at the time.
+    test "an evidence_fn hardcoded to the historical `1 1` disarms the canary, which then halts",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"", 0} end
+      evidence_fn = fn _gate, _output -> {1, 1} end
+
+      assert_raise LoopGate.CanaryError, fn ->
+        LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", evidence_fn: evidence_fn)
+      end
+    end
+  end
+
   describe "run_gate/2 — witness on an opaque non-zero exit" do
     test "a failed gate log carrying a parseable ExUnit failure location gets a non-empty witness",
          %{dir: dir} do

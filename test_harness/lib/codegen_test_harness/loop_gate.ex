@@ -12,6 +12,22 @@ defmodule CodegenTestHarness.LoopGate do
   @type verdict :: :clear | :failed
   @type fault_class :: :code | :infra
 
+  defmodule CanaryError do
+    @moduledoc """
+    Raised by `run_gate/2` when the gate's own no-op-gate detector
+    (`gate-result.sh`'s `_derive_verdict`) fails to prove it can still
+    return `failed` on a known-bad input (an empty gate log against the
+    real gate command's `evidence_fn`-derived `expected_segments`).
+
+    A gate that cannot fail is not a gate — see
+    `rearm-the-verifier-is-not-a-passenger` pitch. No verdict is issued
+    when this raises: `run_gate/2` unlinks any stale `gate-result.json`
+    BEFORE the canary check runs, so a raise here always leaves the
+    verdict absent (fail-closed), never a leftover prior `clear`.
+    """
+    defexception [:message]
+  end
+
   # Text signatures a FAILED gate/scan can carry that name a
   # box-provisioning fault rather than a code defect — matched against the
   # gate-run.log / scan-violation text a caller passes to `classify_failure/1`.
@@ -251,6 +267,16 @@ defmodule CodegenTestHarness.LoopGate do
     non-empty but carries no recognized footer (many gates, e.g. `npm run
     build`, print no test-count footer at all — only a truly EMPTY gate log
     must count as zero evidence).
+  - `:canary_fn` — test seam: `(gate_command, evidence_fn -> verdict() |
+    :inconclusive)`, defaults to `&default_canary/2`. Runs BEFORE the real
+    gate command: asks `_derive_verdict` to grade a known-bad input (an
+    empty gate log against the real command's own `expected_segments`) and
+    requires `:failed` back. Anything else means the no-op-gate detector
+    cannot fail — `run_gate/2` raises `CodegenTestHarness.LoopGate.CanaryError`
+    rather than certify any verdict from a gate proven unable to return
+    `FAILED ❌`. Any stale `gate-result.json` is unlinked BEFORE this check
+    runs, so the raise always leaves the verdict absent, never a leftover
+    prior `clear` (see `CanaryError` moduledoc).
 
   Never raises on a failing gate command or a failing render check — a
   `:failed` verdict is a legitimate return value, not an error. Missing
@@ -280,10 +306,30 @@ defmodule CodegenTestHarness.LoopGate do
     cycle_log = Keyword.get(opts, :cycle_log)
     log_verdict_fn = Keyword.get(opts, :log_verdict_fn, &default_log_verdict/4)
     evidence_fn = Keyword.get(opts, :evidence_fn, &default_evidence/2)
+    canary_fn = Keyword.get(opts, :canary_fn, &default_canary/2)
+
+    # Unlink any stale gate-result.json FIRST — before anything else in this
+    # function can raise (canary, preflight, a crash). Every abort path
+    # (canary failure, static_render_deps_preflight!'s raise, an unexpected
+    # exception) must leave the verdict ABSENT, never a leftover prior
+    # `clear` sitting on disk for `committer-gate-verdict-clear.sh` to read.
+    # `read_verdict/1` already raises loud on an absent file — "absent"
+    # already denies; this just makes every raise fail-closed instead of
+    # fail-open on a stale file (ledger #21).
+    File.rm(gate_result_path(project_dir))
 
     if stack == "static", do: preflight_fn.(project_dir)
 
     {gate, mode, timeout} = decide_gate(project_dir, step_log)
+
+    canary_verdict = canary_fn.(gate, evidence_fn)
+
+    unless canary_verdict == :failed do
+      raise CanaryError,
+            "LoopGate: the gate cannot fail — refusing to certify " <>
+              "(canary on #{inspect(gate)} returned #{inspect(canary_verdict)} " <>
+              "instead of :failed against an empty gate log)"
+    end
 
     started = now_iso8601()
     {output, exit_code} = run_with_deadline(run_fn, gate, project_dir, timeout)
@@ -641,7 +687,7 @@ defmodule CodegenTestHarness.LoopGate do
   # than writing a bogus event.
   @spec gate_verdict_marker(String.t()) :: String.t()
   defp gate_verdict_marker(project_dir) do
-    path = Path.join(project_dir, "codegen/gate-pending/gate-result.json")
+    path = gate_result_path(project_dir)
 
     with {:ok, contents} <- File.read(path),
          {:ok, %{"verdict_marker" => marker}} <- Jason.decode(contents),
@@ -650,6 +696,14 @@ defmodule CodegenTestHarness.LoopGate do
     else
       _ -> ""
     end
+  end
+
+  # Single source of the `gate-result.json` path — reused by the pre-canary
+  # unlink in `run_gate/2` and `gate_verdict_marker/1`'s read, so the two
+  # never drift.
+  @spec gate_result_path(String.t()) :: String.t()
+  defp gate_result_path(project_dir) do
+    Path.join(project_dir, "codegen/gate-pending/gate-result.json")
   end
 
   # Default :log_verdict_fn — shells `codegen-log verdict` against
@@ -857,6 +911,55 @@ defmodule CodegenTestHarness.LoopGate do
       end
 
     {execution_evidence, expected_segments}
+  end
+
+  # Default `:canary_fn` — asks `gate-result.sh`'s `_derive_verdict` to grade
+  # a KNOWN-BAD input: the real gate command's own `evidence_fn`-derived
+  # `{execution_evidence, expected_segments}` for an EMPTY gate log (via
+  # `default_evidence/2`'s own fallback branch, execution_evidence for ""
+  # is always 0 — a gate that produced no output produced no evidence of
+  # running). A gate that ran nothing must always be `:failed`; if
+  # `_derive_verdict` returns anything else, the no-op-gate detector is
+  # disarmed (constant evidence baked to a truthy value regardless of
+  # output — the historical `1 1` incident — or `expected_segments` zeroed
+  # — both are the SAME shape of bug this canary exists to catch) and
+  # `run_gate/2` raises `CanaryError` rather than certify a verdict from a
+  # gate that cannot fail.
+  #
+  # Deliberately calls `evidence_fn` (the real production seam), NOT a
+  # hand-written pair of operands — a canary asserting on its own
+  # hand-picked bad numbers proves only that `_derive_verdict` the FUNCTION
+  # can fail, which `gate-result_test.sh` already does and already did
+  # while production was disarmed. This calls the actual production path
+  # with the actual gate command, so a regression in `evidence_fn` itself
+  # (not just in `_derive_verdict`) is caught too.
+  @spec default_canary(
+          String.t(),
+          (String.t(), String.t() -> {non_neg_integer(), non_neg_integer()})
+        ) :: verdict() | :inconclusive
+  defp default_canary(gate_command, evidence_fn) do
+    {execution_evidence, expected_segments} = evidence_fn.(gate_command, "")
+
+    unless File.exists?(@gate_result_lib) do
+      raise "LoopGate: gate-result.sh not found at #{@gate_result_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@gate_result_lib)} && _derive_verdict true 0 " <>
+        "#{execution_evidence} #{expected_segments} '' ''"
+
+    case System.cmd("bash", ["-c", script], stderr_to_stdout: true) do
+      {output, 0} ->
+        case Regex.run(~r/^verdict=(\w+)$/m, output) do
+          [_, "clear"] -> :clear
+          [_, "failed"] -> :failed
+          [_, "inconclusive"] -> :inconclusive
+          _ -> :clear
+        end
+
+      {_output, _code} ->
+        :clear
+    end
   end
 
   # Maps `classify_failure/1`'s boolean-ish `:code | :infra` result to the

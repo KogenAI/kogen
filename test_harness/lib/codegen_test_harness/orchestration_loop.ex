@@ -2047,6 +2047,57 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  # A verifier surface is anything that can change whether the gate/grader
+  # itself is capable of catching a defect: test files, the loop's own gate
+  # module and its tests, the bash gate contracts, the enforcement registry
+  # + compiled hooks, and CI/gate Makefile wiring. Move C ("surface verifier
+  # edits to the reviewer — do not forbid them") from the pitch this
+  # implements: this is a CLASSIFY-and-SURFACE, never a deny — the reviewer
+  # decides, same as any other change; the notice only ensures a self-edit
+  # to the grader is never invisible in the diff the reviewer is handed.
+  @verifier_path_patterns [
+    ~r{(^|/)test/.*_test\.exs$},
+    ~r{(^|/)test/.*_test\.exe?x?s$},
+    ~r{_test\.sh$},
+    ~r{(^|/)loop_gate\.ex$},
+    ~r{(^|/)gate-result\.sh$},
+    ~r{(^|/)gate-select\.sh$},
+    ~r{(^|/)shared/enforcement/registry\.yaml$},
+    ~r{(^|/)shared/enforcement/enforcement_compiler\.py$},
+    ~r{(^|/)Makefile$},
+    ~r{gate-config\.sh$}
+  ]
+
+  # Classifies the loop-derived changed-file set (the SAME value already
+  # rendered under `## Files Modified` — no second file walk, no new git
+  # call) against `@verifier_path_patterns`. Empty `files` (nothing
+  # changed, or non-git cwd) yields no notice. Purely additive prose; never
+  # blocks, never denies — see the moduledoc note on this section.
+  @spec verifier_surface_notice(String.t()) :: String.t()
+  defp verifier_surface_notice(files) when is_binary(files) do
+    touched =
+      files
+      |> String.split("\n", trim: true)
+      |> Enum.filter(fn path ->
+        Enum.any?(@verifier_path_patterns, &Regex.match?(&1, path))
+      end)
+
+    if touched == [] do
+      ""
+    else
+      "\n\n## Verifier Surface Touched\n\n" <>
+        "This cycle's diff edits the gate/grader itself (test files, the loop's gate " <>
+        "module, the bash gate contracts, the enforcement registry, or gate/CI wiring), " <>
+        "not just the feature under test:\n\n" <>
+        "```\n" <> Enum.join(touched, "\n") <> "\n```\n\n" <>
+        "This is legitimate roughly half the time (fixing a broken test, wiring a new " <>
+        "gate check). Scrutinize it explicitly: does this change make the gate MORE able " <>
+        "to catch a defect, or does it weaken/relax what the gate can detect? Flag " <>
+        "`CHANGES_REQUESTED` if a test assertion was loosened, deleted, or its evidence " <>
+        "source replaced with a constant/no-op without a stated reason in the diff."
+    end
+  end
+
   # Single reviewer-invocation seam (first pass in run_roles/4 AND re-review
   # in handle_review/7 both route here) so no entry path can ship a reviewer
   # prompt without the loop-derived ## Files Modified set -- the gap that
@@ -2753,8 +2804,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             ""
           end
 
+        verifier_notice = verifier_surface_notice(files)
+
         base <>
           file_section <>
+          verifier_notice <>
           "\n\nReview these changes against normal reviewer checks (quality, security, " <>
           "silent-failure/Rule S, test coverage).\n\nEND your response with a line exactly " <>
           "`REVIEW_VERDICT: APPROVED` if the change is acceptable, or " <>

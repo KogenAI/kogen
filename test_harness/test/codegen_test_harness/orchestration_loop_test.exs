@@ -53,6 +53,84 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "build_prompt/2 — verifier surface notice (surface, never deny)" do
+    test "reviewer prompt gets a Verifier Surface Touched notice when the diff touches a gate test" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          review_file_set: "lib/foo.ex\ntest/codegen_test_harness/loop_gate_test.exs"
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "## Verifier Surface Touched"
+      assert content =~ "test/codegen_test_harness/loop_gate_test.exs"
+      refute content =~ "lib/foo.ex\n```"
+    end
+
+    test "reviewer prompt gets the notice when the diff touches loop_gate.ex itself" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_file_set: "lib/codegen_test_harness/loop_gate.ex"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "## Verifier Surface Touched"
+      assert content =~ "loop_gate.ex"
+    end
+
+    test "reviewer prompt gets the notice when the diff touches the bash gate contract" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_file_set: "harnesses/claude/hooks/lib/gate-result.sh"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-static", ctx)
+
+      assert content =~ "## Verifier Surface Touched"
+      assert content =~ "gate-result.sh"
+    end
+
+    test "reviewer prompt gets NO notice when the diff touches only feature code" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_file_set: "lib/foo.ex\nlib/bar.ex"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      refute content =~ "## Verifier Surface Touched"
+    end
+
+    test "no review_file_set at all → no notice (never a new file walk)" do
+      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{}}
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      refute content =~ "## Verifier Surface Touched"
+    end
+
+    test "the notice is advisory prose only — never a CHANGES_REQUESTED verdict itself" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_file_set: "shared/enforcement/registry.yaml"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "## Verifier Surface Touched"
+      assert content =~ "REVIEW_VERDICT: APPROVED"
+      assert content =~ "REVIEW_VERDICT: CHANGES_REQUESTED"
+    end
+  end
+
   describe "role_sequence/1" do
     test "phoenix is plan-first" do
       assert OrchestrationLoop.role_sequence("phoenix") == @phoenix_sequence
