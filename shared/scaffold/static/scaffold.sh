@@ -11,17 +11,23 @@
 # Writes:
 #   index.html            ← Vite entry (root); SEO/AI-discoverability baseline head tags
 #   vite.config.js        ← Vite config with @tailwindcss/vite plugin; publicDir: "static"
-#   package.json          ← scripts: build/serve/dev; devDeps: vite, @tailwindcss/vite, tailwindcss
+#   package.json          ← scripts: build/serve/dev/lint; devDeps: vite, @tailwindcss/vite, tailwindcss, eslint, @eslint/js
+#   eslint.config.js      ← flat-config; lints src/**/*.js
 #   src/main.js           ← app entry
 #   src/style.css         ← @import "tailwindcss"
 #   static/robots.txt     ← copied to public/ via publicDir
 #   README.md
 #   .gitignore
+#   Makefile              ← build surface with ci: target (linting, format check, build)
+#   .claude/gate-config.sh ← gate configuration for loop integration
 #   codegen/pitches/{draft,ready,shipped}/.gitkeep
 #
 # Does NOT: run npm install, touch git, Caddy, or any database.
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RENDER_SH="$SCRIPT_DIR/eex_render.sh"
+TEMPLATES_DIR="$SCRIPT_DIR/templates"
 
 SLUG=""
 CWD=""
@@ -121,14 +127,40 @@ cat >"$CWD/package.json" <<EOF
   "scripts": {
     "build": "vite build",
     "dev": "vite",
+    "lint": "eslint .",
     "serve": "vite build && python3 -u -m http.server --directory public 0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.0",
     "@tailwindcss/vite": "^4.0.0",
+    "eslint": "^10.0.0",
     "tailwindcss": "^4.0.0",
     "vite": "^8.0.0"
   }
 }
+EOF
+
+# ── eslint.config.js ──────────────────────────────────────────────────────────
+cat >"$CWD/eslint.config.js" <<'EOF'
+import js from "@eslint/js";
+
+export default [
+  js.configs.recommended,
+  {
+    ignores: ["public/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        document: "readonly",
+        window: "readonly",
+      },
+    },
+  },
+];
 EOF
 
 # ── src/main.js ───────────────────────────────────────────────────────────────
@@ -191,6 +223,23 @@ current
 public-*
 .DS_Store
 EOF
+
+# ── render() helper: minimal EEx template substitution ────────────────────────
+render() {
+    local template_rel="$1"
+    local output_rel="${template_rel%.eex}" # strip .eex suffix
+
+    # Ensure parent directory exists (handles nested paths like .claude/gate-config.sh)
+    mkdir -p "$CWD/$(dirname "$output_rel")"
+
+    "$RENDER_SH" \
+        "$TEMPLATES_DIR/$template_rel" \
+        "$CWD/$output_rel" \
+        "slug=$SLUG"
+}
+
+render "Makefile.eex"
+render ".claude/gate-config.sh.eex"
 
 # ── codegen/pitches lifecycle dirs ────────────────────────────────────────────
 for _d in draft ready shipped; do

@@ -116,6 +116,11 @@ assert_contains "package.json has build script" "$PKG_CONTENT" "\"build\""
 assert_contains "package.json has vite in devDependencies" "$PKG_CONTENT" "\"vite\""
 assert_contains "package.json has serve ending with http.server" "$PKG_CONTENT" "python3 -u -m http.server --directory public 0"
 
+# (c2) package.json has lint script + eslint devDeps
+assert_contains "package.json has lint script" "$PKG_CONTENT" "\"lint\": \"eslint .\""
+assert_contains "package.json has eslint in devDependencies" "$PKG_CONTENT" "\"eslint\""
+assert_contains "package.json has @eslint/js in devDependencies" "$PKG_CONTENT" "\"@eslint/js\""
+
 # (d) root index.html contains app-name and src/main.js script tag
 INDEX_CONTENT="$(<"$TMPDIR/index.html")"
 assert_contains "index.html contains app-name" "$INDEX_CONTENT" "$APP_NAME"
@@ -135,6 +140,27 @@ assert_file_exists "src/style.css exists" "$TMPDIR/src/style.css"
 VITE_CONTENT="$(<"$TMPDIR/vite.config.js")"
 assert_contains "vite.config.js has outDir public" "$VITE_CONTENT" '"public"'
 assert_contains "vite.config.js has @tailwindcss/vite" "$VITE_CONTENT" "@tailwindcss/vite"
+
+# (f2) eslint.config.js exists and has expected shape
+assert_file_exists "eslint.config.js exists" "$TMPDIR/eslint.config.js"
+ESLINT_CONFIG_CONTENT="$(<"$TMPDIR/eslint.config.js")"
+assert_contains "eslint.config.js imports @eslint/js" "$ESLINT_CONFIG_CONTENT" "@eslint/js"
+assert_contains "eslint.config.js uses recommended config" "$ESLINT_CONFIG_CONTENT" "js.configs.recommended"
+
+
+# (f3) Makefile exists and has format: target + llm-static: target
+assert_file_exists "Makefile exists" "$TMPDIR/Makefile"
+MAKEFILE_CONTENT="$(<"$TMPDIR/Makefile")"
+assert_contains "Makefile has format: target" "$MAKEFILE_CONTENT" "format:"
+assert_contains "Makefile has llm-static: target" "$MAKEFILE_CONTENT" "llm-static:"
+
+# (f4) .claude/gate-config.sh exists with GATE_STACK=static and GATE_COMMAND
+assert_file_exists ".claude/gate-config.sh exists" "$TMPDIR/.claude/gate-config.sh"
+GATE_CONFIG_CONTENT="$(<"$TMPDIR/.claude/gate-config.sh")"
+assert_contains "gate-config.sh has GATE_STACK=static" "$GATE_CONFIG_CONTENT" "GATE_STACK=static"
+assert_contains "gate-config.sh has GATE_COMMAND=make ci" "$GATE_CONFIG_CONTENT" "GATE_COMMAND=\"make ci\""
+assert_contains "gate-config.sh is executable" "$GATE_CONFIG_CONTENT" "#!/usr/bin/env bash"
+
 
 # (prettier) scaffold output is prettier-clean (repo-pinned binary; absence = broken toolchain → FAIL)
 PRETTIER_BIN="$CODEGEN_ROOT/node_modules/.bin/prettier"
@@ -381,6 +407,7 @@ mkdir -p "$STATIC_CI_CWD"
 CI_COUNT=$(grep -c '^ci:' "$STATIC_CI_CWD/Makefile" || true)
 check "static integrate creates ci: Makefile target" "1" "$CI_COUNT"
 CI_BODY="$(cat "$STATIC_CI_CWD/Makefile")"
+assert_contains "static ci: target runs npm run lint" "$CI_BODY" "npm run lint"
 assert_contains "static ci: target runs npm run build" "$CI_BODY" "npm run build"
 assert_contains "static ci: target runs prettier check" "$CI_BODY" "npx prettier --check ."
 assert_contains "static ci: target guards npm install on missing node_modules" "$CI_BODY" "[ -d node_modules ] || mise exec -- npm install"
@@ -391,6 +418,8 @@ CI_COUNT_AFTER=$(grep -c '^ci:' "$STATIC_CI_CWD/Makefile" || true)
 check "static ci: idempotent after re-run" "1" "$CI_COUNT_AFTER"
 PRETTIER_COUNT=$(grep -c 'npx prettier --check .' "$STATIC_CI_CWD/Makefile" || true)
 check "static ci: prettier line not duplicated" "1" "$PRETTIER_COUNT"
+LINT_COUNT=$(grep -c 'npm run lint' "$STATIC_CI_CWD/Makefile" || true)
+check "static ci: lint line not duplicated" "1" "$LINT_COUNT"
 
 # (z) Phoenix integrate writes usage_rules_INDEX.md
 USAGE_RULES_CWD="$BASE_TMP/usage_rules_test"
