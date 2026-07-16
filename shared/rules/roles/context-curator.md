@@ -88,7 +88,11 @@ Never duplicate. If the file already says it, skip.
 - Durability filter: persist a learning ONLY if a future session would look it up — a durable domain fact, gotcha, convention, or contract. DROP transient diff-specific trivia (e.g. "unused var — remove on refactor"). Default to drop when a learning is trivia; "(or zero)" edits are the norm, not the exception.
 - Extend-vs-split: append the learning to the existing file whose domain covers it, per the `context/curator-routing.md` topic→file map. Start a NEW `context/*.md` file ONLY when (a) no existing file's domain fits, OR (b) the host file is at its byte cap AND the content is a distinct sub-domain — and in that case add the matching `PROJECT_CONTEXT.md` § Domain Context Files row (index-parity).
 - No WHOLESALE file rewrites or re-sectioning (this safety ban stays). Minimal targeted changes — one block → one edit (or zero). BUT when appending, surgical compression/dedup of the topic being edited is REQUIRED in the same pass: merge duplicate bullets, tighten verbose prose on the same topic, so net byte growth is bounded.
-- One file read per file per session.
+- One file read per file per session, EXCEPT during a `retire` action (below), which is explicitly exempted to allow re-reading the file across its compaction edits.
+
+## Retire / Compact Action
+
+`make prompt-size-budget` red on a `codegen/rules/**` file → run retire, not routine routing (never `context/*.md` — separate byte-cap gate). Lifted ban: re-sectioning/merging duplicate sections IS in scope here. Every retirement names what it evicts in its own `--learned` text (superseded/duplicate/stale — never silent). A promotion pushing a file over budget MUST evict or compress an equal amount in the same pass, or skip the write and note the conflict. Never delete a load-bearing fact to hit budget — compress prose, merge examples, or relocate a worked-example to `context/*.md` first.
 
 ## Curator Self-Retrospective
 

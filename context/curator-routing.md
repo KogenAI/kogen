@@ -65,6 +65,10 @@ Always use `codegen/rules/**` (symlink path) — never `shared/rules/**` directl
 - ❌ `harnesses/<harness>/hooks/` — generated/validated by `hook-registrations.py`
 - ❌ `templates/` — schema/templates, edited via process_template.py not hand-edits
 
+## Retirement / Compaction
+
+`make prompt-size-budget` (component of `make test`) fails when a `codegen/rules/**` file (rendered agent prompt or raw rule file) exceeds its committed ceiling in `templates/generator/prompt-budgets.txt`. A red verdict here routes to the curator's `retire`/compact action (`shared/rules/roles/context-curator.md` § Retire / Compact Action) — the one place the curator's normal no-re-sectioning ban is lifted, scoped to the named over-budget file. Raising the ceiling instead of compacting is legal but must be a deliberate `--write` + committed diff, never a silent bump to unblock a build.
+
 ## Ambiguous Cases
 
 If a block spans both local and shared:

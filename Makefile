@@ -474,6 +474,18 @@ usage-rules-index-parity:
 	if [ $$rc -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "usage-rules-index-parity: PASS"; fi; \
 	exit $$rc
 
+# prompt-size-budget: fail-closed gate on the prompt attention surface — rule
+# files under shared/rules/{_core,roles,stacks}/ and rendered agent system
+# prompts must not exceed their committed ceiling in
+# templates/generator/prompt-budgets.txt. Growth past the ceiling is a red
+# gate, not silent drift; raising a budget is a reviewable diff (re-run with
+# --write). See prompt_size_budget.py docstring.
+.PHONY: prompt-size-budget
+prompt-size-budget:
+	@python3 "$(SCRIPT_DIR)/templates/generator/prompt_size_budget.py" --check; rc=$$?; \
+	if [ $$rc -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "prompt-size-budget: PASS"; fi; \
+	exit $$rc
+
 # show-failures: pretty-print the durable agent tool-failure store.
 .PHONY: show-failures
 show-failures:
@@ -656,6 +668,7 @@ help:
 	@echo "  make hook-parity    Verify hook registrations match claude-code-settings.json"
 	@echo "  make harness-path-check     Grep baked agents for stale harness-relative paths"
 	@echo "  make rule-render-freshness  Verify committed apps docs match a fresh render"
+	@echo "  make prompt-size-budget    Verify rule/agent-prompt sizes within committed ceiling"
 	@echo "  make show-failures  Pretty-print durable agent tool-failure store"
 	@echo "  make show-verdicts  Pretty-print durable gate-verdict history"
 	@echo "  make format         Format all shell scripts and files"

@@ -29,6 +29,8 @@ Rules are loaded into LLM context windows. Every token counts. Write for machine
 
 File exceeds target → split or compress. Don't loosen the target.
 
+**Enforcement**: `make prompt-size-budget` (component of `make test`) fails when a rule file or rendered agent prompt exceeds its committed ceiling in `templates/generator/prompt-budgets.txt` — this table is the TARGET new files should hit; the budget file is the ENFORCED ceiling, frozen at current measured size for files that pre-date this gate. Raising a ceiling is `prompt_size_budget.py --write` + a reviewable diff, never silent. A red verdict routes to context-curator's retire/compact action.
+
 **Cross-role deduplication:**
 
 - If content is identical across 2+ files loaded by different roles → extract to a shared file
