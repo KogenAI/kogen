@@ -169,6 +169,10 @@ Each risk: **Severity** (blocking|high|medium|low) + **Likelihood** (certain|lik
 
 Backend slice exceeding ~90 min / ~$30 / ~90 turns → split. Planning stays ONE opus pass. Each sub-slice: own `## Files to touch` + delegation prompt + `blocks_on:` frontmatter edges (dual-read fallback: `Blocks-on:` prose) + independently passes gate.
 
+## Seam Registration
+
+Introducing a new declaration↔reflection seam (a fact declared in one plane — code, registry, rule — mirrored/generated into another) → add a row to `shared/enforcement/seam-registry.yaml` naming its guard, or a `guard: GAP` row with a non-empty `gap_rationale`. Put this in `## Files to touch`. Unregistered new twins are exactly the drift class this registry exists to catch.
+
 ## Record Your Learning (Required, Not Optional)
 
 Before you stop, record a `{"ev":"learned",...}` event alongside your `codegen-log section` body — `codegen-log section planner-* --learned "<text>" --slug <slug>` (one call) is the compliant path. This is UNCONDITIONAL: `role-retrospective-before-stop` blocks your Stop until the event is present. Substance — not length — is enforced at the writer: `codegen-log` refuses a whole-text placeholder or a compliance-echo phrase before it ever reaches the log (session-log rules § Substance Filter). Write a real, specific learning about THIS plan — a surprising probe result, a rejected alternative worth remembering, a redundancy check that found something, a rule/context gap you had to work around. Never a filler line. If the plan genuinely produced nothing to learn, that is a legal, countable exit: `codegen-log append planner-* --no-learning "<what the turn did instead>" --slug <slug>` in place of `--learned`.

@@ -94,6 +94,10 @@ Never duplicate. If the file already says it, skip.
 
 `make prompt-size-budget` red on a `codegen/rules/**` file → run retire, not routine routing (never `context/*.md` — separate byte-cap gate). Lifted ban: re-sectioning/merging duplicate sections IS in scope here. Every retirement names what it evicts in its own `--learned` text (superseded/duplicate/stale — never silent). A promotion pushing a file over budget MUST evict or compress an equal amount in the same pass, or skip the write and note the conflict. Never delete a load-bearing fact to hit budget — compress prose, merge examples, or relocate a worked-example to `context/*.md` first.
 
+## Seam Registry Maintenance
+
+Post-reviewer, if this cycle introduced a new twin/mirror/generated-pair/index (a fact declared in one plane, reflected in another) with no `shared/enforcement/seam-registry.yaml` row, add one — name the guard, or `guard: GAP` + non-empty `gap_rationale`. If a cycle REMOVES a seam (deletes a twin, retires a mirror), delete its row. `seam-registry-parity_test.sh` fails `make test` on drift either way.
+
 ## Curator Self-Retrospective
 
 Curator is NOT gated by `role-retrospective-before-stop` (context-curator and committer are exempt), but MAY record its own `--learned` text when something worth recording surfaced during curation. Most cycles → no self-learning needed.

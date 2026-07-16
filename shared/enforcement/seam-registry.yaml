@@ -1,0 +1,177 @@
+# seam-registry.yaml — canonical inventory of declaration<->reflection seams.
+#
+# A "seam" is any place the repo declares one fact in a source-of-truth plane
+# (code, a registry file, a rule, a template) and REFLECTS that same fact into
+# a derived plane (a generated file, a mirrored twin, an index, a hand-written
+# doc). When the two planes drift, a build ships with a fact that is true in
+# one plane and stale/wrong in the other — usually invisible until runtime.
+#
+# This file does not implement any guard. It is the inventory a meta-guard
+# (seam-registry-parity_test.sh) reconciles against reality: every named guard
+# must exist and run; every guard-like file/target in the repo must be listed
+# here; every GAP row must carry a rationale.
+#
+# FIELDS
+#   id            — kebab-case slug, unique
+#   declares      — the single source of truth for this fact
+#   reflects      — the derived surface(s) that must stay in sync with declares
+#   guard         — Makefile .PHONY target name, OR a _test.sh path relative to
+#                   repo root, OR the literal string "GAP" when no guard exists
+#   guard_time    — when the guard runs: make-test | install | runtime
+#   pattern       — generated | checked-mirror | set-parity
+#                     generated:       reflects is fully derived by a compiler/renderer
+#                     checked-mirror:  reflects is hand-written but diffed/asserted against declares
+#                     set-parity:      declares and reflects are two independent sets, both directions checked
+#   gap_rationale — REQUIRED non-empty when guard is GAP; explains why unguarded
+#                   and what would close it (usually names a follow-on pitch)
+#
+# Maintained by context-curator post-reviewer (see shared/rules/roles/context-curator.md
+# § Seam Registry Maintenance) and by planner when a new seam is introduced
+# (see shared/rules/roles/planner.md § Seam Registration).
+
+seams:
+  - id: enforcement-registry-to-hooks
+    declares: shared/enforcement/registry.yaml (kind:denial entries)
+    reflects: harnesses/claude/hooks/no-*.sh, harnesses/pi/pi-extensions/enforcement/src/hooks/*.ts, index.ts
+    guard: enforce-registry-parity
+    guard_time: make-test
+    pattern: generated
+
+  - id: enforcement-registry-to-hook-headers
+    declares: shared/enforcement/registry.yaml (kind:registration entries)
+    reflects: harnesses/claude/hooks/*.sh (# HOOK-MANIFEST header block only; body hand-authored)
+    guard: hook-header-parity
+    guard_time: make-test
+    pattern: generated
+
+  - id: hooks-dir-to-settings-json
+    declares: harnesses/claude/hooks/ (script files present)
+    reflects: harnesses/claude/claude-code-settings.json (hook registrations)
+    guard: hook-parity
+    guard_time: make-test
+    pattern: generated
+
+  - id: rules-to-rendered-apps-md
+    declares: shared/rules/**, shared/apps/*.j2
+    reflects: shared/apps/*.md (committed rendered output)
+    guard: rule-render-freshness
+    guard_time: make-test
+    pattern: generated
+
+  - id: rules-fileset-to-index
+    declares: shared/rules/** (.md file set on disk)
+    reflects: shared/rules/INDEX.md (§ Folder Layout)
+    guard: harnesses/claude/hooks/rules-index-parity_test.sh
+    guard_time: make-test
+    pattern: set-parity
+
+  - id: role-boundary-prose-to-registry-allowlist
+    declares: shared/enforcement/registry.yaml (reviewer/committer allowlists)
+    reflects: shared/rules/roles/reviewer.md, shared/rules/roles/committer.md (boundary prose)
+    guard: harnesses/claude/hooks/role-boundary-parity_test.sh
+    guard_time: make-test
+    pattern: checked-mirror
+
+  - id: baked-prompt-content-sentinels
+    declares: shared/subagents/**/*.md.j2 (source includes)
+    reflects: rendered agent prompts (sentinel strings present)
+    guard: prompt-content-parity
+    guard_time: make-test
+    pattern: checked-mirror
+
+  - id: tools-header-no-cross-harness-dup
+    declares: harnesses/claude/tools-header, harnesses/pi/tools-header
+    reflects: (no file may duplicate lines byte-identical across both headers)
+    guard: harnesses/claude/hooks/tools-header-no-dup_test.sh
+    guard_time: make-test
+    pattern: checked-mirror
+
+  - id: context-docs-line-citations
+    declares: context/*.md, PROJECT_CONTEXT.md (line/module citations)
+    reflects: (citation must still resolve to real, current code/doc location)
+    guard: harnesses/claude/hooks/context-doc-provenance_test.sh
+    guard_time: make-test
+    pattern: checked-mirror
+
+  - id: codegen-build-to-dispatch-stubs
+    declares: codegen-build (argv contract)
+    reflects: harnesses/claude/dispatch.sh, harnesses/pi/dispatch.sh (stub consumption)
+    guard: harness-parity
+    guard_time: make-test
+    pattern: checked-mirror
+
+  - id: usage-rules-corpus-to-index
+    declares: shared/usage_rules/*.md (per-lib-version files)
+    reflects: shared/usage_rules/INDEX.md
+    guard: usage-rules-index-parity
+    guard_time: make-test
+    pattern: set-parity
+
+  - id: rule-file-size-ceilings
+    declares: templates/generator/prompt-budgets.txt (committed ceilings)
+    reflects: shared/rules/**/*.md line counts, shared/subagents/**/*.md.j2 rendered byte sizes
+    guard: prompt-size-budget
+    guard_time: make-test
+    pattern: checked-mirror
+
+  - id: hook-rationale-comment-required
+    declares: harnesses/claude/hooks/no-*.sh (denial hooks)
+    reflects: (each denial hook must carry a rationale comment explaining the deny)
+    guard: enforce-hook-rationale
+    guard_time: make-test
+    pattern: checked-mirror
+
+  - id: context-docs-to-project-context-index
+    declares: context/*.md (file set + § Trigger Keywords)
+    reflects: PROJECT_CONTEXT.md (§ Domain Context Files table rows + keyword cells)
+    guard: harnesses/claude/hooks/lib/context-index-parity-scan.sh
+    guard_time: runtime
+    pattern: set-parity
+
+  - id: test-harness-elixir-config-parity
+    declares: test_harness/ Elixir config (claude vs pi harness code paths)
+    reflects: (both harness legs of test_harness compile+behave consistently)
+    guard: test-harness-parity
+    guard_time: runtime
+    pattern: checked-mirror
+
+  - id: scaffold-project-context-template-to-generated-docs
+    declares: shared/apps/PROJECT_CONTEXT*.j2 (promises context/*.md files exist)
+    reflects: shared/scaffold/**/scaffold.sh (actual context/*.md files created in scaffolded app)
+    guard: GAP
+    guard_time: runtime
+    pattern: set-parity
+    gap_rationale: >
+      PROJECT_CONTEXT template references context/*.md files the scaffold
+      never creates; curator's runtime context-index-parity-scan hard-rejects
+      the first build of every scaffolded app. Tracked as its own pitch
+      (scaffold-owns-context-docs) — not resolved by this build.
+
+  - id: seam-registry-to-guard-machinery
+    declares: shared/enforcement/seam-registry.yaml (this file)
+    reflects: Makefile .PHONY targets, run-all-tests.sh wiring, harnesses/claude/hooks/*_test.sh files matching the parity/freshness/provenance naming convention
+    guard: harnesses/claude/hooks/seam-registry-parity_test.sh
+    guard_time: make-test
+    pattern: set-parity
+
+  - id: call-dispatch-twins
+    declares: harnesses/claude/call-dispatch.sh (CODEGEN_CALL_* env reads + envelope key-set)
+    reflects: harnesses/pi/call-dispatch.sh (CODEGEN_CALL_* env reads + envelope key-set)
+    guard: harnesses/shared/call-dispatch-parity_test.sh
+    guard_time: make-test
+    pattern: set-parity
+
+  - id: enforcement-registration-hook-behavior-twins
+    declares: shared/enforcement/registry.yaml (kind:registration entries, 47 of 49)
+    reflects: harnesses/claude/hooks/*.sh bodies vs harnesses/pi/pi-extensions/enforcement/src/hooks/*.ts bodies (hand-written twin BEHAVIOR, not just header/existence)
+    guard: GAP
+    guard_time: make-test
+    pattern: checked-mirror
+    gap_rationale: >
+      enforce-registry-parity + orphan-hook-check guard the generated header
+      and the file SET (no orphan .sh/.ts), but the 47 kind:registration
+      hand-written bash<->TS bodies are never behavior-diffed — only the 2
+      kind:denial entries get full generated-file parity. Closing this
+      requires extending enforcement_compiler.py to generate both twins from
+      shared pattern dialects (out of scope for this build; see pitch
+      "eliminate-at-source: extend compiler beyond kind:denial").
