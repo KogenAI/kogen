@@ -272,6 +272,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           pitch_budget_secs: Keyword.get(opts, :pitch_budget_secs, pitch_budget_from_env()),
           max_consecutive_fails:
             Keyword.get(opts, :max_consecutive_fails, max_consecutive_fails_from_env()),
+          queue_budget_usd: Keyword.get(opts, :queue_budget_usd, queue_budget_from_env()),
+          spend_usd: 0.0,
           spawn_fn: Keyword.get(opts, :spawn_fn, &default_spawn_fn/5),
           sleep_fn: Keyword.get(opts, :sleep_fn, &default_sleep_fn/1),
           git_stash_fn: Keyword.get(opts, :git_stash_fn, &default_git_stash_fn/3),
@@ -712,10 +714,26 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           )
         end
 
+        spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
         {:ok, shipped_count}
 
       [slug | _] ->
-        run_slug(state, slug, shipped_count, concluded_count)
+        # Ceiling check BEFORE spawning the next pitch: bounds NEW spend only
+        # — an in-flight pitch is never killed (its cost is already
+        # committed to the API by the time this runs). The in-flight pitch
+        # that just concluded stays wherever its own outcome left it
+        # (shipped/failed); only pitches AFTER it stay untouched in ready/.
+        case spend_ceiling_reached?(state) do
+          {:reached, reason} ->
+            remaining_slugs = Enum.join(remaining, ", ")
+            spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+
+            {:error,
+             "queue: HALTED — #{reason}; #{length(remaining)} pitch(es) left in ready/: #{remaining_slugs}"}
+
+          :ok ->
+            run_slug(state, slug, shipped_count, concluded_count)
+        end
     end
   end
 
@@ -763,7 +781,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         handle_infra_abort(jsonl, idx, state.total, slug)
 
       {:exit_code, _n} ->
-        handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts)
+        handle_nonzero_exit(
+          state,
+          slug,
+          jsonl,
+          head_before,
+          shipped_count,
+          concluded_count,
+          idx,
+          ts
+        )
 
       :timeout ->
         handle_timeout(state, slug, shipped_count, concluded_count, idx)
@@ -816,6 +843,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # skip-and-continue / circuit-breaker path as a deterministic nonzero
   # failure.
   defp handle_exit_zero(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts) do
+    # Accumulate THIS child's spend before anything else — every concluded
+    # child (incl. a retried one) cost real money and belongs in the total.
+    state = accumulate_spend(state, jsonl)
     known_base? = head_before != nil and head_before != ""
     head_after = if known_base?, do: state.git_head_fn.(state.cwd), else: nil
     head_moved? = known_base? and head_after != head_before
@@ -833,6 +863,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       orphaned? ->
         IO.puts(:stderr, orphan_remediation(head_before, head_after))
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
+        spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
 
         {:error,
          "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
@@ -863,6 +894,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         consecutive_fails = state.consecutive_fails + 1
 
         if consecutive_fails >= state.max_consecutive_fails do
+          spend_report(state, shipped_count, MapSet.size(failed_slugs))
+
           {:error,
            "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
              "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
@@ -909,7 +942,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @spec put_parked_branch(%{String.t() => String.t()}, String.t(), String.t() | nil) ::
           %{String.t() => String.t()}
   defp put_parked_branch(parked_branches, _slug, nil), do: parked_branches
-  defp put_parked_branch(parked_branches, slug, branch), do: Map.put(parked_branches, slug, branch)
+
+  defp put_parked_branch(parked_branches, slug, branch),
+    do: Map.put(parked_branches, slug, branch)
 
   # Per-slug recovery text for the branches actually parked this run (falls
   # back to bare slugs when a slug's tree was clean or the branch conversion
@@ -942,7 +977,19 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     :ok
   end
 
-  defp handle_nonzero_exit(state, slug, jsonl, head_before, shipped_count, concluded_count, idx, ts) do
+  defp handle_nonzero_exit(
+         state,
+         slug,
+         jsonl,
+         head_before,
+         shipped_count,
+         concluded_count,
+         idx,
+         ts
+       ) do
+    # Accumulate THIS child's spend before anything else — every concluded
+    # child (incl. a retried one) cost real money and belongs in the total.
+    state = accumulate_spend(state, jsonl)
     known_base? = head_before != nil and head_before != ""
     # Only re-read HEAD when there is a known base to compare against — mirrors
     # the pre-existing short-circuit (`head_before != nil and head_before !=
@@ -981,6 +1028,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # and leave the repo untouched; print the exact remediation.
         IO.puts(:stderr, orphan_remediation(head_before, head_after))
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
+        spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
 
         {:error,
          "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
@@ -1023,6 +1071,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         consecutive_fails = state.consecutive_fails + 1
 
         if consecutive_fails >= state.max_consecutive_fails do
+          spend_report(state, shipped_count, MapSet.size(failed_slugs))
+
           {:error,
            "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
              "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
@@ -1058,39 +1108,120 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # Fail-open jsonl parse (mirrors build-queue.sh:571-576): a malformed or
   # missing jsonl yields no result_text/session_id — never crashes the drain.
   defp emit_failure_diagnostics(jsonl, idx, total, slug) do
-    case File.read(jsonl) do
-      {:ok, content} ->
-        records =
-          content
-          |> String.split("\n", trim: true)
-          |> Enum.map(&Jason.decode/1)
-          |> Enum.filter(&match?({:ok, %{"type" => "result"}}, &1))
-          |> Enum.map(fn {:ok, map} -> map end)
+    case last_result_record(jsonl) do
+      nil ->
+        :ok
 
-        case List.last(records) do
-          nil ->
-            :ok
-
-          last ->
-            case Map.get(last, "result") do
-              result when is_binary(result) and result != "" -> IO.puts(:stderr, result)
-              _ -> :ok
-            end
-
-            case Map.get(last, "session_id") do
-              session_id when is_binary(session_id) and session_id != "" ->
-                IO.puts(:stderr, "session_id: " <> session_id)
-
-              _ ->
-                :ok
-            end
+      last ->
+        case Map.get(last, "result") do
+          result when is_binary(result) and result != "" -> IO.puts(:stderr, result)
+          _ -> :ok
         end
 
-      {:error, _reason} ->
-        :ok
+        case Map.get(last, "session_id") do
+          session_id when is_binary(session_id) and session_id != "" ->
+            IO.puts(:stderr, "session_id: " <> session_id)
+
+          _ ->
+            :ok
+        end
     end
 
     IO.puts(:stderr, "[#{idx}/#{total}] #{slug} ... FAILED")
+  end
+
+  # The child's LAST `{"type":"result"}` JSONL record (its final envelope,
+  # carrying `total_cost_usd` among other fields) — or `nil` on a
+  # missing/malformed jsonl (fail-open: mirrors build-queue.sh:571-576) or a
+  # jsonl with no result record at all (a killed/timed-out child never emits
+  # one). Shared by `emit_failure_diagnostics/4` (diagnostics) and
+  # `child_cost_usd/1` (spend accounting) — one parse, two readers.
+  @spec last_result_record(String.t()) :: map() | nil
+  defp last_result_record(jsonl) do
+    case File.read(jsonl) do
+      {:ok, content} ->
+        content
+        |> String.split("\n", trim: true)
+        |> Enum.map(&Jason.decode/1)
+        |> Enum.filter(&match?({:ok, %{"type" => "result"}}, &1))
+        |> Enum.map(fn {:ok, map} -> map end)
+        |> List.last()
+
+      {:error, _reason} ->
+        nil
+    end
+  end
+
+  # This child's spend in USD, or `nil` when UNACCOUNTABLE (no result record
+  # — a timed-out/crashed child that never got to emit one, or a malformed
+  # cost field). `nil` is NEVER coerced to `0.0`: under a queue budget
+  # ceiling, an unaccountable cost must halt the drain rather than silently
+  # let it sail past the ceiling (see `accumulate_spend/2`).
+  @spec child_cost_usd(String.t()) :: float() | nil
+  defp child_cost_usd(jsonl) do
+    case last_result_record(jsonl) do
+      nil ->
+        nil
+
+      record ->
+        case Map.get(record, "total_cost_usd") do
+          n when is_number(n) -> n * 1.0
+          _ -> nil
+        end
+    end
+  end
+
+  # Adds this child's cost onto the running queue-wide total. `nil` (an
+  # unaccountable child — see `child_cost_usd/1`) is recorded as the
+  # DISTINCT `:unknown` state so `spend_ceiling_reached?/1` can fail CLOSED
+  # under an active ceiling rather than silently treating unknown-and-non-zero
+  # spend as `0.0`.
+  @spec accumulate_spend(map(), String.t()) :: map()
+  defp accumulate_spend(state, jsonl) do
+    case {state.spend_usd, child_cost_usd(jsonl)} do
+      {:unknown, _} -> state
+      {_, nil} -> %{state | spend_usd: :unknown}
+      {total, cost} -> %{state | spend_usd: total + cost}
+    end
+  end
+
+  # `true` only when a ceiling is SET (queue_budget_usd != nil) and either
+  # the running total is unaccountable (`:unknown` — fail CLOSED, never
+  # silently continue past a cost the drain could not verify) or the known
+  # total has reached the ceiling.
+  @spec spend_ceiling_reached?(map()) :: {:reached, String.t()} | :ok
+  defp spend_ceiling_reached?(%{queue_budget_usd: nil}), do: :ok
+
+  defp spend_ceiling_reached?(%{queue_budget_usd: cap, spend_usd: :unknown}) do
+    {:reached,
+     "cannot account for the last pitch's spend (no result record); refusing to spend further under a $#{format_usd(cap)} ceiling"}
+  end
+
+  defp spend_ceiling_reached?(%{queue_budget_usd: cap, spend_usd: spent}) when spent >= cap do
+    {:reached, "spend ceiling reached ($#{format_usd(spent)} >= $#{format_usd(cap)})"}
+  end
+
+  defp spend_ceiling_reached?(_state), do: :ok
+
+  @spec format_usd(number()) :: String.t()
+  defp format_usd(n), do: :erlang.float_to_binary(n * 1.0, decimals: 2)
+
+  # Printed on EVERY terminal path (shipped, halted, or ready/ emptied) —
+  # the total-spend number that, before this pitch, existed nowhere.
+  @spec spend_report(map(), non_neg_integer(), non_neg_integer()) :: :ok
+  defp spend_report(state, shipped_count, failed_count) do
+    total_str =
+      case state.spend_usd do
+        :unknown -> "unknown (unaccountable child spend)"
+        n -> "$#{format_usd(n)}"
+      end
+
+    IO.puts(
+      :stderr,
+      "queue: #{shipped_count} shipped, #{failed_count} failed, #{total_str} total"
+    )
+
+    :ok
   end
 
   defp retry_eligible?(state, slug, jsonl, committed?, gate_clear?) do
@@ -1198,6 +1329,27 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     case System.get_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") do
       nil -> @default_max_consecutive_fails
       str -> parse_pos_int(str, @default_max_consecutive_fails)
+    end
+  end
+
+  @doc """
+  Resolves `CODEGEN_BUILD_QUEUE_BUDGET_USD` — the queue-WIDE spend ceiling
+  checked before every pitch spawn. Unlike its `_from_env/0` siblings above,
+  there is deliberately NO default: absent/unparseable -> `nil` -> unlimited,
+  exactly today's behavior. A default dollar figure would be a number nobody
+  here derived and therefore nobody defends (see pitch "Rabbit holes").
+  """
+  @spec queue_budget_from_env() :: float() | nil
+  def queue_budget_from_env do
+    case System.get_env("CODEGEN_BUILD_QUEUE_BUDGET_USD") do
+      nil ->
+        nil
+
+      str ->
+        case Float.parse(str) do
+          {n, ""} when n > 0 -> n
+          _ -> nil
+        end
     end
   end
 

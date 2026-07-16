@@ -510,7 +510,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # reason this step can't be deleted outright (see run_curator_doc_check/6),
     # and a pre-existing doc violation still routes back into a real
     # curator spawn via run_curator_doc_check's :violations branch.
-    signal_fn = Keyword.get(opts, :curator_learning_signal_fn, &LoopGate.curator_learning_signal/1)
+    signal_fn =
+      Keyword.get(opts, :curator_learning_signal_fn, &LoopGate.curator_learning_signal/1)
+
     log_file = Process.get(@log_path_key)
 
     case signal_fn.(log_file) do
@@ -1908,7 +1910,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         if switch_model? do
           handle_switch_model_failure(role, harness, ctx, opts, invoke_fn, attempt, reason)
         else
-          do_invoke_attempt_non_model_failure(role, harness, ctx, opts, invoke_fn, attempt, reason)
+          do_invoke_attempt_non_model_failure(
+            role,
+            harness,
+            ctx,
+            opts,
+            invoke_fn,
+            attempt,
+            reason
+          )
         end
     end
   end
@@ -1979,7 +1989,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       override when is_binary(override) and override != "" ->
         if rung == 0 do
           {_normal_model, normal_effort} =
-            (Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)).(role, harness)
+            Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2).(role, harness)
 
           {override, normal_effort}
         else
@@ -2264,13 +2274,41 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     case envelope do
       %{"result" => %{"status" => "success"} = result} ->
-        {:ok, Map.put(result, "session_id", envelope["session_id"])}
+        case check_budget(opts) do
+          :ok -> {:ok, Map.put(result, "session_id", envelope["session_id"])}
+          {:error, reason} -> {:error, reason}
+        end
 
       %{"result" => %{"status" => "failed", "reason" => reason}} ->
         {:error, reason || "role #{role} failed with no reason given"}
 
       other ->
         raise "OrchestrationLoop: unexpected codegen-call envelope for role #{role}: #{inspect(other)}"
+    end
+  end
+
+  # ── Per-cycle spend cap (`--max-budget-usd`, threaded via
+  # `opts[:max_budget_usd]`) ──────────────────────────────────────────────
+  # Checked AFTER the role that just ran has been accumulated into
+  # telemetry (its cost is already committed to the API — killing mid-call
+  # would save nothing), and BEFORE the next role is invoked. Absent cap
+  # (`nil`, the default) -> always `:ok`, exactly today's behavior.
+  @spec check_budget(run_opts()) :: :ok | {:error, String.t()}
+  defp check_budget(opts) do
+    case Keyword.get(opts, :max_budget_usd) do
+      nil ->
+        :ok
+
+      cap when is_number(cap) ->
+        spent = get_telemetry().cost_usd
+
+        if spent >= cap do
+          {:error,
+           "spend cap reached: $#{:erlang.float_to_binary(spent * 1.0, decimals: 2)} spent >= " <>
+             "$#{:erlang.float_to_binary(cap * 1.0, decimals: 2)} cap (--max-budget-usd)"}
+        else
+          :ok
+        end
     end
   end
 

@@ -21,7 +21,8 @@ defmodule CodegenTestHarness.InfraAbort do
   @impl true
   def exception(reason) when is_binary(reason) do
     %__MODULE__{
-      message: "INFRA ABORT: #{reason} — this is a box-provisioning problem, not something a developer re-run can fix.",
+      message:
+        "INFRA ABORT: #{reason} — this is a box-provisioning problem, not something a developer re-run can fix.",
       reason: reason
     }
   end

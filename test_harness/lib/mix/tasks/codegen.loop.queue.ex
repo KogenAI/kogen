@@ -38,6 +38,16 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
   - `CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS` — consecutive deterministic
     pitch failures (no ship in between) at which the drain HALTs instead of
     skipping-and-continuing (default 3)
+  - `CODEGEN_BUILD_QUEUE_BUDGET_USD` — queue-WIDE spend ceiling in USD,
+    checked BEFORE spawning each pitch (the in-flight pitch always
+    completes; only pitches AFTER it are bounded). Absent/unparseable ->
+    `nil` -> unlimited, exactly today's behavior — no default. Every drain,
+    capped or not, prints its accumulated total spend on every terminal
+    path (`queue: N shipped, M failed, $X.XX total`). A child that concludes
+    with no readable cost (killed/timed out before emitting its result
+    record) is UNACCOUNTABLE spend: under an active ceiling the drain halts
+    rather than risk sailing past it; with no ceiling set it is merely
+    unreported, byte-for-byte today's behavior.
   """
 
   use Mix.Task

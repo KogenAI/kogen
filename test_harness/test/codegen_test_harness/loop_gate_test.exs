@@ -407,7 +407,9 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "classifies a role-does-not-exist Postgrex error as :infra" do
-      text = "** (Postgrex.Error) FATAL 28000 (invalid_authorization_specification) role \"app_user\" does not exist"
+      text =
+        "** (Postgrex.Error) FATAL 28000 (invalid_authorization_specification) role \"app_user\" does not exist"
+
       assert LoopGate.classify_failure(text) == :infra
     end
 

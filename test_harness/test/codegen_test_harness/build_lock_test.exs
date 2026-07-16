@@ -65,9 +65,7 @@ defmodule CodegenTestHarness.BuildLockTest do
   describe "Move 3 — tree=<os_pid> token" do
     test "acquire/4 writes tree=<os_pid> when :tree_os_pid opt is given", ctx do
       assert :ok =
-               BuildLock.acquire(ctx.lock_path, "queue", fn _pid -> false end,
-                 tree_os_pid: 54321
-               )
+               BuildLock.acquire(ctx.lock_path, "queue", fn _pid -> false end, tree_os_pid: 54321)
 
       content = File.read!(ctx.lock_path)
       assert content == "#{System.pid()} queue tree=54321\n"

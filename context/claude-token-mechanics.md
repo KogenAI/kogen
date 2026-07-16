@@ -109,7 +109,7 @@ Note: `--bare` is API SDK probe only — not for `claude --agent <name> --print`
 
 `--max-turns N` is **FORBIDDEN in ALL codegen invocations** — a turn cap kills agentic builds (bouncer returned empty at `--max-turns 1`). NEVER pass it. The codegen build chain does not pass `--max-turns` and no caller should add it.
 
-`--max-budget-usd N` — permitted; passes through via `EXTRA_FLAGS` in `codegen-build`.
+`--max-budget-usd N` — permitted; threaded via `CODEGEN_BUILD_MAX_BUDGET_USD` into an explicit `--max-budget-usd=<n>` argv entry to `mix codegen.loop` (not `EXTRA_FLAGS`), and enforced between role invocations: once accumulated cross-role spend reaches the cap, the cycle aborts before the next role is invoked (the in-flight role always completes). Absent → no cap, unchanged behavior.
 
 ## 8. Context Window
 

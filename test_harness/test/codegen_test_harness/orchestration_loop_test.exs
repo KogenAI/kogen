@@ -797,6 +797,97 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "invoke_role/4 — per-cycle spend cap (--max-budget-usd / opts[:max_budget_usd])" do
+    # accumulate_telemetry/2 stores in the process dictionary — reset before
+    # AND after each test so no cost leaks across tests in this async: true
+    # module (each test runs in its own ExUnit process, but a stray value
+    # left by a prior failing assertion in this SAME process must not bleed
+    # into the next test run on that process).
+    setup do
+      Process.delete(:loop_telemetry)
+      on_exit(fn -> Process.delete(:loop_telemetry) end)
+      :ok
+    end
+
+    defp cost_envelope(cost_usd) do
+      %{
+        "result" => %{"status" => "success", "value" => "x"},
+        "usage" => %{"cost_usd" => cost_usd}
+      }
+    end
+
+    test "(a) accumulated spend crossing the cap aborts BETWEEN role invocations, naming spend and cap" do
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      # First call: $6, under a $10 cap -> succeeds.
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> cost_envelope(6.0) end,
+                 max_budget_usd: 10.0
+               )
+
+      # Second call: another $6 -> accumulated $12 >= $10 cap -> aborts.
+      assert {:error, reason} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> cost_envelope(6.0) end,
+                 max_budget_usd: 10.0
+               )
+
+      assert reason =~ "spend cap reached"
+      assert reason =~ "$12.00"
+      assert reason =~ "$10.00"
+      assert reason =~ "--max-budget-usd"
+    end
+
+    test "(a-integer) an integer-form cap value (OptionParser :float coercion) is honored" do
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> cost_envelope(25.0) end,
+                 # An integer literal (as OptionParser's :float type coerces
+                 # "20" -> 20.0) must compare correctly against a float spend.
+                 max_budget_usd: 20
+               )
+
+      assert reason =~ "spend cap reached"
+    end
+
+    test "(a2) no-cap control: max_budget_usd absent (nil) -> proceeds exactly as today, regardless of spend" do
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> cost_envelope(999.0) end
+               )
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> cost_envelope(999.0) end
+               )
+    end
+  end
+
   describe "warm resume on transient retry" do
     test "transient failure carries the SAME resume_session_id into the next attempt's ctx",
          %{calls_agent: calls_agent} do

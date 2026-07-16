@@ -15,7 +15,11 @@
 #   --cwd=<dir>               working directory (default: $PWD)
 #   --model=<m>               model override
 #   --effort=<e>              effort override
-#   --max-budget-usd=<n>      passthrough flag forwarded to dispatch
+#   --max-budget-usd=<n>      abort the cycle between role invocations once
+#                             accumulated spend reaches <n> USD (in-flight
+#                             role always completes); threaded via
+#                             CODEGEN_BUILD_MAX_BUDGET_USD, not EXTRA_FLAGS --
+#                             never blind-passed to dispatch. Omitted: no cap.
 #   --fallback-model=<m>      prepend <m> as rung 0 of every role's
 #                             `fallback:` chain for this build only (one-build
 #                             override of templates/generator/config.yaml);
@@ -43,6 +47,7 @@ CWD="$PWD"
 MODEL=""
 EFFORT=""
 FALLBACK_MODEL=""
+MAX_BUDGET_USD=""
 EXTRA_FLAGS=()
 PRINT_ARGV=""
 PROMPT=""
@@ -94,13 +99,13 @@ while [[ $# -gt 0 ]]; do
         EFFORT="$2"
         shift 2
         ;;
-    --max-budget-usd=* | --max-budget-usd)
-        EXTRA_FLAGS+=("$1")
-        if [[ "$1" == "--max-budget-usd" ]]; then
-            EXTRA_FLAGS+=("$2")
-            shift
-        fi
+    --max-budget-usd=*)
+        MAX_BUDGET_USD="${1#--max-budget-usd=}"
         shift
+        ;;
+    --max-budget-usd)
+        MAX_BUDGET_USD="$2"
+        shift 2
         ;;
     --fallback-model=*)
         FALLBACK_MODEL="${1#--fallback-model=}"
@@ -231,6 +236,7 @@ export CODEGEN_BUILD_CWD="$CWD"
 export CODEGEN_BUILD_MODEL="${MODEL:-}"
 export CODEGEN_BUILD_EFFORT="${EFFORT:-}"
 export CODEGEN_BUILD_FALLBACK_MODEL="${FALLBACK_MODEL:-}"
+export CODEGEN_BUILD_MAX_BUDGET_USD="${MAX_BUDGET_USD:-}"
 export CODEGEN_BUILD_PRINT_ARGV="${PRINT_ARGV:-}"
 export CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=0
 export CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0

@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   @shortdoc "Runs the deterministic orchestration loop for one pitch."
 
   @moduledoc """
-  `mix codegen.loop --harness=<claude_code|pi> --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] <pitch>`
+  `mix codegen.loop --harness=<claude_code|pi> --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] [--max-budget-usd=<n>] <pitch>`
 
   Execs from the build-mode `dispatch.sh` path in place of a single
   self-orchestrating agent session. Runs `CodegenTestHarness.OrchestrationLoop.run/1`
@@ -21,6 +21,12 @@ defmodule Mix.Tasks.Codegen.Loop do
     `templates/generator/config.yaml`, threaded from `codegen-build
     --fallback-model=<m>` via `CODEGEN_BUILD_FALLBACK_MODEL`). Absent →
     every role's chain is exactly what `config.yaml` declares, unchanged.
+  - `--max-budget-usd` — optional. Once accumulated spend (summed across every
+    role invocation, including gate retries) reaches this many USD, the loop
+    aborts BETWEEN role invocations (the in-flight role always completes —
+    its cost is already committed to the API). Threaded from `codegen-build
+    --max-budget-usd=<n>` via `CODEGEN_BUILD_MAX_BUDGET_USD`. Absent → no cap,
+    exactly today's behavior.
   - `<pitch>` — required positional arg, the prompt/pitch text (or `@<path>`
     to read it from a file, matching `codegen-call`'s `@<path>` convention)
   """
@@ -44,7 +50,13 @@ defmodule Mix.Tasks.Codegen.Loop do
   def run(argv) do
     {opts, positional, invalid} =
       OptionParser.parse(argv,
-        strict: [harness: :string, stack: :string, cwd: :string, fallback_model: :string]
+        strict: [
+          harness: :string,
+          stack: :string,
+          cwd: :string,
+          fallback_model: :string,
+          max_budget_usd: :float
+        ]
       )
 
     if invalid != [] do
@@ -58,6 +70,9 @@ defmodule Mix.Tasks.Codegen.Loop do
     # Optional: absent -> nil -> OrchestrationLoop.run/1 does not override
     # any role's fallback chain, exactly today's behavior.
     fallback_model = Keyword.get(opts, :fallback_model)
+    # Optional: absent -> nil -> OrchestrationLoop.run/1 enforces no spend
+    # cap, exactly today's behavior.
+    max_budget_usd = Keyword.get(opts, :max_budget_usd)
 
     # Move 2: install the SIGTERM handler for the solo path (SIGINT cannot
     # be caught at the BEAM level — see BuildSignalHandler moduledoc; the
@@ -103,7 +118,8 @@ defmodule Mix.Tasks.Codegen.Loop do
           pitch: pitch,
           cycle_id: cycle_id,
           slug: slug,
-          fallback_model_override: fallback_model
+          fallback_model_override: fallback_model,
+          max_budget_usd: max_budget_usd
         )
       end)
 

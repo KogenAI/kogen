@@ -2176,6 +2176,181 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert LoopQueueDrain.default_build_orphan_scan(random_cwd) == []
     end
   end
+
+  # ── Queue-wide spend cap (`CODEGEN_BUILD_QUEUE_BUDGET_USD` / `--max-budget-usd`
+  # sibling at the drain layer) ───────────────────────────────────────────────
+  # Every child's LAST `{"type":"result",...}` JSONL record carries
+  # `total_cost_usd` (produced by `Mix.Tasks.Codegen.Loop.emit_loop_telemetry/1`).
+  # These tests write that record directly via `spawn_fn`, mirroring the
+  # existing "1h" jsonl-write pattern above, and drive the accounting through
+  # the real `drain/1` entry point (never calling the private accumulator
+  # helpers directly).
+
+  test "(d) accumulation counts every concluded child incl. a retried slug, and the total is always reported",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    attempts = start_agent(0)
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      n = Agent.get_and_update(attempts, fn n -> {n, n + 1} end)
+
+      if n == 0 do
+        File.write!(jsonl, ~s({"type":"result","total_cost_usd":1.5}\n))
+        {:exit_code, 1}
+      else
+        File.write!(jsonl, ~s({"type":"result","total_cost_usd":2.25}\n))
+        {:exit_code, 0}
+      end
+    end
+
+    # Same fixture shape as test "4: transient failure retries once with
+    # backoff then ships" above — attempt 1 (nonzero) must NOT look
+    # committed/clear, else handle_nonzero_exit/7's committer-post-commit-
+    # hiccup branch ships early on the wrong attempt and the retry never
+    # actually re-spawns (silently masking this very accumulation bug).
+    head_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
+      if n == 3, do: "bbb", else: "aaa"
+    end
+
+    gate_calls = start_agent(0)
+
+    gate_verdict_fn = fn _cwd ->
+      n = Agent.get_and_update(gate_calls, fn n -> {n, n + 1} end)
+      if n == 1, do: "clear", else: "failed"
+    end
+
+    gate_base_sha_fn = fn _cwd -> "aaa" end
+    gate_mtime_fn = fn _cwd -> 1_700_000_000 end
+    transient_fn = fn _jsonl -> true end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     git_head_fn: git_head_fn,
+                     gate_verdict_fn: gate_verdict_fn,
+                     gate_base_sha_fn: gate_base_sha_fn,
+                     gate_mtime_fn: gate_mtime_fn,
+                     transient_fn: transient_fn
+                   )
+                 )
+      end)
+
+    assert Agent.get(attempts, & &1) == 2
+
+    # Both attempts (the retried failure AND the eventual ship) are counted:
+    # 1.5 + 2.25 = 3.75 — never just the last attempt's cost.
+    assert output =~ "queue: 1 shipped, 0 failed, $3.75 total"
+  end
+
+  test "(d2) no-cap control: report still prints total with no ceiling set", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      File.write!(jsonl, ~s({"type":"result","total_cost_usd":0.42}\n))
+      {:exit_code, 0}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+      end)
+
+    assert output =~ "queue: 1 shipped, 0 failed, $0.42 total"
+  end
+
+  test "(e) ceiling halts BEFORE the next spawn — remaining pitches stay in ready/", ctx do
+    write_pitch(ctx.ready_dir, "a")
+    write_pitch(ctx.ready_dir, "b", "# Pitch: b\n\nBlocks-on: a\n")
+    write_pitch(ctx.ready_dir, "c", "# Pitch: c\n\nBlocks-on: b\n")
+
+    calls = start_agent([])
+
+    spawn_fn = fn slug, _h, _s, _cwd, jsonl ->
+      Agent.update(calls, &(&1 ++ [slug]))
+      # Each pitch costs $6 — the second spawn crosses a $10 ceiling, so the
+      # THIRD spawn must never happen.
+      File.write!(jsonl, ~s({"type":"result","total_cost_usd":6.0}\n))
+      {:exit_code, 0}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:error, reason} =
+                 LoopQueueDrain.drain(
+                   shipped_opts(ctx, spawn_fn: spawn_fn, queue_budget_usd: 10.0)
+                 )
+
+        assert reason =~ "spend ceiling reached"
+        assert reason =~ "$12.00"
+        assert reason =~ "$10.00"
+        assert reason =~ "c"
+      end)
+
+    # Exactly two spawns — the third pitch never launches.
+    assert Agent.get(calls, & &1) == ["a", "b"]
+    assert output =~ "queue: 2 shipped, 0 failed, $12.00 total"
+
+    # a and b shipped (their own outcome already landed); c is untouched.
+    assert File.exists?(Path.join(ctx.shipped_dir, "a.md"))
+    assert File.exists?(Path.join(ctx.shipped_dir, "b.md"))
+    assert File.exists?(Path.join(ctx.ready_dir, "c.md"))
+  end
+
+  test "(f) fail-closed: unaccountable child spend halts the drain under an active ceiling",
+       ctx do
+    write_pitch(ctx.ready_dir, "a")
+    write_pitch(ctx.ready_dir, "b", "# Pitch: b\n\nBlocks-on: a\n")
+
+    calls = start_agent([])
+
+    spawn_fn = fn slug, _h, _s, _cwd, jsonl ->
+      Agent.update(calls, &(&1 ++ [slug]))
+      # No result record written at all — mirrors a killed/timed-out child
+      # that never got to emit its final envelope.
+      File.write!(jsonl, "no result record here")
+      {:exit_code, 0}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:error, reason} =
+                 LoopQueueDrain.drain(
+                   shipped_opts(ctx, spawn_fn: spawn_fn, queue_budget_usd: 10.0)
+                 )
+
+        assert reason =~ "cannot account for"
+        assert reason =~ "no result record"
+      end)
+
+    # Only the first pitch ever spawns — the drain halts before "b".
+    assert Agent.get(calls, & &1) == ["a"]
+    assert output =~ "queue: 1 shipped, 0 failed, unknown (unaccountable child spend) total"
+  end
+
+  test "(f2) sibling control: same unaccountable jsonl, NO ceiling -> drain completes normally",
+       ctx do
+    write_pitch(ctx.ready_dir, "a")
+    write_pitch(ctx.ready_dir, "b", "# Pitch: b\n\nBlocks-on: a\n")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      File.write!(jsonl, "no result record here")
+      {:exit_code, 0}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+      end)
+
+    assert output =~ "queue: 2 shipped, 0 failed, unknown (unaccountable child spend) total"
+  end
 end
 
 # Sibling module, async: false — holds every test in this file that mutates
@@ -2313,6 +2488,37 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
       System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "x")
       on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
       assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
+    end
+  end
+
+  describe "queue_budget_from_env/0" do
+    test "unset -> nil (unlimited, no default)" do
+      System.delete_env("CODEGEN_BUILD_QUEUE_BUDGET_USD")
+      assert LoopQueueDrain.queue_budget_from_env() == nil
+    end
+
+    test "\"40\" -> 40.0" do
+      System.put_env("CODEGEN_BUILD_QUEUE_BUDGET_USD", "40")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_BUDGET_USD") end)
+      assert LoopQueueDrain.queue_budget_from_env() == 40.0
+    end
+
+    test "\"12.50\" -> 12.5" do
+      System.put_env("CODEGEN_BUILD_QUEUE_BUDGET_USD", "12.50")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_BUDGET_USD") end)
+      assert LoopQueueDrain.queue_budget_from_env() == 12.5
+    end
+
+    test "\"0\" -> nil (sentinel, never a zero ceiling)" do
+      System.put_env("CODEGEN_BUILD_QUEUE_BUDGET_USD", "0")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_BUDGET_USD") end)
+      assert LoopQueueDrain.queue_budget_from_env() == nil
+    end
+
+    test "\"x\" (non-numeric) -> nil" do
+      System.put_env("CODEGEN_BUILD_QUEUE_BUDGET_USD", "x")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_BUDGET_USD") end)
+      assert LoopQueueDrain.queue_budget_from_env() == nil
     end
   end
 

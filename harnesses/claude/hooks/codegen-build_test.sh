@@ -24,6 +24,10 @@
 #        invokes the stubbed mix binary
 #  (pa2) --print-argv on pi leg: same, --harness=pi
 #  (pa3) --print-argv performs zero mutation — integrate pre-step skipped
+#  (b1) dry-run honesty: --max-budget-usd threads through
+#       CODEGEN_BUILD_MAX_BUDGET_USD into the print-argv'd loop argv (claude leg)
+#  (b2-pi) same dry-run honesty check on the pi leg
+#  (b3) non-adoption: codegen itself never passes --max-budget-usd
 #  (u) usage<->parse parity: every parsed flag appears in the usage string
 #      and vice versa
 #  (snap) public flag surface snapshot: parsed flags == committed fixture
@@ -687,6 +691,89 @@ else
     printf 'FAIL: (pa3) --print-argv mutated --cwd (AGENTS.md or codegen/ written)\n'
     fail=$((fail + 1))
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (b1) dry-run honesty: --max-budget-usd threads through
+# CODEGEN_BUILD_MAX_BUDGET_USD -> --print-argv output MUST contain
+# --max-budget-usd=<n>. RED-then-GREEN: this is the assertion that never
+# existed before the flag was actually wired (it only pinned the flag's mere
+# PARSE-time presence, never its effect) — confirm it would have failed
+# against the pre-fix dispatch.sh (blind $@ splat, never threaded by name).
+# ─────────────────────────────────────────────────────────────────────────────
+CB_B1="$(make_cb_root cb_b1)"
+make_claude_harness "$CB_B1" >/dev/null
+
+BIN_B1="$BASE_TMP/bin_b1"
+make_mix_stub "$BIN_B1"
+make_codegen_log_stub "$BIN_B1"
+
+MARKER_B1="$BASE_TMP/marker_b1"
+mkdir -p "$MARKER_B1"
+
+actual_ec=0
+OUT_B1=$(PATH="$BIN_B1:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_B1/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_B1" \
+    --max-budget-usd=20 --print-argv "b1 prompt" 2>/dev/null) || actual_ec=$?
+
+check "(b1) --print-argv with --max-budget-usd exits 0" "0" "$actual_ec"
+assert_contains "(b1) print-argv output contains --max-budget-usd=20" "$OUT_B1" "--max-budget-usd=20"
+assert_contains "(b1) output still mentions codegen.loop" "$OUT_B1" "codegen.loop"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (b2-pi) same dry-run honesty check on the pi leg.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_B1PI="$(make_cb_root cb_b1pi)"
+make_pi_harness "$CB_B1PI" >/dev/null
+
+BIN_B1PI="$BASE_TMP/bin_b1pi"
+make_mix_stub "$BIN_B1PI"
+make_codegen_log_stub "$BIN_B1PI"
+
+actual_ec=0
+OUT_B1PI=$(PATH="$BIN_B1PI:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
+    "$CB_B1PI/codegen-build" --harness=pi --stack=phoenix \
+    --max-budget-usd=7.50 --print-argv "b1pi prompt" 2>/dev/null) || actual_ec=$?
+
+check "(b2-pi) --print-argv with --max-budget-usd exits 0 on pi leg" "0" "$actual_ec"
+assert_contains "(b2-pi) print-argv output contains --max-budget-usd=7.50" "$OUT_B1PI" "--max-budget-usd=7.50"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (b3) non-adoption: zero occurrences of --max-budget-usd across
+# Makefile, codegen-*, harnesses/**, .env* outside the parser (codegen-build
+# itself), the two dispatch.sh scripts, docs, and this test file. Codegen
+# itself never passes the flag — the operator mandate from the pitch: wire
+# the mechanism, never adopt it here.
+# ─────────────────────────────────────────────────────────────────────────────
+nonadopt_scan() {
+    grep -rl -- '--max-budget-usd' \
+        "$CODEGEN_ROOT/Makefile" \
+        "$CODEGEN_ROOT"/codegen-* \
+        "$CODEGEN_ROOT/harnesses" \
+        "$CODEGEN_ROOT"/.env* \
+        2>/dev/null || true
+}
+
+# Each grep -v stage legitimately exits 1 when it filters out every line
+# (nothing left to select) — with `set -o pipefail` that mid-pipe non-zero
+# would otherwise abort this whole script under `set -e`. Wrap the full
+# pipeline in a `|| true` subshell rather than the individual stages so the
+# real filtering logic stays a plain, readable pipe.
+NONADOPT_HITS=$(
+    {
+        nonadopt_scan |
+            grep -vF -- "$CODEGEN_ROOT/codegen-build" |
+            grep -vF -- "$CODEGEN_ROOT/harnesses/claude/dispatch.sh" |
+            grep -vF -- "$CODEGEN_ROOT/harnesses/pi/dispatch.sh" |
+            grep -vF -- "$CODEGEN_ROOT/harnesses/claude/hooks/fixtures/codegen-build-flags.txt" |
+            grep -vF -- "$CODEGEN_ROOT/harnesses/claude/hooks/codegen-build_test.sh" ||
+            true
+    } | wc -l | tr -d ' '
+)
+check "(b3) codegen never adopts --max-budget-usd itself (0 stray occurrences)" "0" "$NONADOPT_HITS"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (u): usage<->parse parity — every parsed --flag appears in usage
