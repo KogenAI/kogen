@@ -200,8 +200,16 @@ export function stripQuoted(command: string): string {
 export function stripGitGlobalOpts(command: string): string {
   const words = command.split(/\s+/).filter((w) => w.length > 0);
   const out: string[] = [];
-  const valueTaking = new Set(["-C", "-c", "--git-dir", "--work-tree", "--exec-path", "--namespace"]);
-  const inlineOrBoolean = /^(--git-dir=|--work-tree=|--exec-path=|--namespace=|--no-pager$|--no-replace-objects$|--literal-pathspecs$|--bare$|--paginate$|-p$|-P$)/;
+  const valueTaking = new Set([
+    "-C",
+    "-c",
+    "--git-dir",
+    "--work-tree",
+    "--exec-path",
+    "--namespace",
+  ]);
+  const inlineOrBoolean =
+    /^(--git-dir=|--work-tree=|--exec-path=|--namespace=|--no-pager$|--no-replace-objects$|--literal-pathspecs$|--bare$|--paginate$|-p$|-P$)/;
 
   let i = 0;
   const n = words.length;
@@ -310,7 +318,14 @@ export function splitCommandSegments(command: string): string[] | null {
   return segments;
 }
 
-const WRAPPER_PREFIXES = new Set(["sudo", "env", "nohup", "time", "command", "exec"]);
+const WRAPPER_PREFIXES = new Set([
+  "sudo",
+  "env",
+  "nohup",
+  "time",
+  "command",
+  "exec",
+]);
 const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 /**
@@ -383,7 +398,11 @@ export function segmentArgvOf(segment: string): string {
  * A blank segment (nothing to resolve) is skipped, never treated as a match.
  * Mirrors command_invokes in hooks-lib.sh.
  */
-export function commandInvokes(command: string, wordRe: RegExp, argvRe?: RegExp): boolean {
+export function commandInvokes(
+  command: string,
+  wordRe: RegExp,
+  argvRe?: RegExp,
+): boolean {
   const segments = splitCommandSegments(command);
   if (segments === null) {
     // unbalanced quote — fail closed: treat as a match so the caller denies.

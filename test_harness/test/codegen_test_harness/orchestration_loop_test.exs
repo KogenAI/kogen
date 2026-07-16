@@ -1024,6 +1024,58 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 2
     end
+
+    test "phoenix: gate runs after developer-phoenix-backend (not post-planner), and a failed verdict re-invokes the developer",
+         %{calls_agent: calls_agent} do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      # gate_fn records a "GATE" marker into the same calls_agent list used by
+      # invoke_fn, so the interleave position (relative to role invocations)
+      # is directly observable — not just the eventual role-call counts.
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        Agent.update(calls_agent, fn calls -> calls ++ ["GATE"] end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 planner_plan_fn: stub_planner_plan_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+
+      # The gate interleaves immediately after developer-phoenix-backend —
+      # NOT immediately after planner-phoenix. First GATE marker sits right
+      # after the first developer-phoenix-backend call.
+      first_gate_idx = Enum.find_index(calls, &(&1 == "GATE"))
+      first_dev_idx = Enum.find_index(calls, &(&1 == "developer-phoenix-backend"))
+      first_planner_idx = Enum.find_index(calls, &(&1 == "planner-phoenix"))
+
+      assert first_gate_idx == first_dev_idx + 1
+      assert first_gate_idx > first_planner_idx + 1
+
+      # A :failed verdict re-invokes the DEVELOPER, never the planner:
+      # developer-phoenix-backend runs twice (initial + gate-failure rework),
+      # planner-phoenix runs exactly once.
+      assert Enum.count(calls, &(&1 == "developer-phoenix-backend")) == 2
+      assert Enum.count(calls, &(&1 == "planner-phoenix")) == 1
+
+      # Full role sequence still completes to the end (reviewer/curator/committer).
+      assert "reviewer-phoenix" in calls
+      assert "context-curator" in calls
+      assert "committer" in calls
+    end
   end
 
   describe "build_prompt/2 — planner plan threading" do
