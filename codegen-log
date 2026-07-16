@@ -18,26 +18,31 @@
 #   codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]
 #   codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]
 #   codegen-log --version
+#   codegen-log --kinds
 #
 # show: READ-ONLY operator projection of one cycle log. Writes NOTHING — not
 # the log, not .active, not a rendered file on disk. Resolves the log via the
 # SAME precedence as section/append (CODEGEN_LOG_PATH > --slug/positional >
-# .active > mtime). Builds a per-role spine, preferring (in order) ev:turn
-# events (if a future log carries them), then the sibling
-# <log-dir>/<ts>_<slug>/cycle-summary.jsonl (role/seq/num_turns/cost_usd/
-# status/transcript), then the ev:role events themselves — each fallback
-# prints ONE stderr note naming the spine used. Renders to STDOUT ONLY in one
-# of three formats (--format table, default; md; html — html escapes every
-# interpolated value via jq's @html filter). --role <role> drills into that
-# role's body/learning/transcript path; --full prints every role's body in
-# seq order. Derives a fixed, deterministic anomaly list (turn/summary status
-# != success, any ev:died, an invoked role with zero ev:role body, a role
-# with neither ev:learned nor ev:no_learning, a trailing gate verdict !=
-# clear) — "no anomalies" prints explicitly when the list is empty. Unknown
-# ev kinds are never dropped: a trailing "other events: <kind>xN" line
-# accounts for every kind `show` does not otherwise render. Exits 2 (fail
-# loud, no partial render) on: bad --format, --role naming a role absent
-# from the resolved log, or no cycle log found at all.
+# .active > mtime). Builds a per-role spine, preferring (in order) the
+# sibling <log-dir>/<ts>_<slug>/cycle-summary.jsonl (role/seq/num_turns/
+# cost_usd/status/transcript), then the ev:role events themselves — each
+# fallback prints ONE stderr note naming the spine used. Renders to STDOUT
+# ONLY in one of three formats (--format table, default; md; html — html
+# escapes every interpolated value via jq's @html filter). --role <role>
+# drills into that role's body/learning/transcript path; --full prints every
+# role's body in seq order. Derives a fixed, deterministic anomaly list
+# (summary status != success, any ev:died, an invoked role with zero ev:role
+# body, a role with neither ev:learned nor ev:no_learning, a trailing gate
+# verdict != clear) — "no anomalies" prints explicitly when the list is
+# empty. Unknown ev kinds are never dropped: a trailing "other events:
+# <kind>xN" line accounts for every kind `show` does not otherwise render.
+# Exits 2 (fail loud, no partial render) on: bad --format, --role naming a
+# role absent from the resolved log, or no cycle log found at all.
+#
+# --kinds: read-only. Prints every event kind codegen-log can emit (the
+# EVENT_SCHEMA_JQ table below), one per line, sorted. Exits 0. Used by
+# cycle-log-schema-parity_test.sh to assert session-log.md's prose
+# enumeration matches the table byte-for-byte.
 #
 # --version: cheap read-only presence/preflight probe. Prints
 #   "codegen-log root=<resolved|unresolved-root>" to stdout and exits 0.
@@ -53,29 +58,28 @@
 #
 # On-disk storage: codegen/logging/<ts>_<slug>_cycle.jsonl — append-only
 # JSONL, one JSON object per line, NEVER rewritten/ranked. Every event object
-# carries an "ev" discriminator field:
-#   init:    {"ev":"init","pitch":<slug>,"path":<pitch-path-or-empty>,
-#             "stamp":{"project","context","codegen","claude","at"}}
-#   role:    {"ev":"role","role":<role>,"body":<prose>} — one line per
-#            section/append call. Re-running `section`/`append` for the same
-#            role APPENDS a new "role" event; it never overwrites a prior one
-#            (there is no rank/order concept under JSONL).
-#   learned: {"ev":"learned","role":<role>,"text":<t>}
-#   no_learning: {"ev":"no_learning","role":<role>,"text":<t>}
-#   died:    {"ev":"died","role":<role>,"kind":"interrupted"|"aborted","cause":<c-or-empty>}
-#   gate:    {"ev":"gate","role":<role>,"verdict":"clear"|"failed"|"inconclusive",
-#             ...gate metadata for the `verdict` subcommand}
-#   plan_gate: {"ev":"plan_gate","role":<role>,"command":<cmd>,"mode":"short"|"long",
-#             "timeout":<seconds>} — planner's typed gate SELECTION (not the
-#             VERDICT — see `gate`/`verdict` above). Written by --plan-gate.
-#   files_to_touch: {"ev":"files_to_touch","role":<role>,"files":[<relpath>,...]}
-#             — planner's typed files-to-touch list. Written by --files-to-touch.
-#   files_modified: {"ev":"files_modified","role":<role>,"files":[<relpath>,...]}
-#             — developer's typed files-modified list. Written by --files-modified.
-#   exit:    {"ev":"exit","status":<n>,"signal":<n-or-null>,"stderr_tail":<text-or-empty>}
-#             — dispatch.sh's record of the loop CHILD PROCESS's raw wait
-#             status, written from OUTSIDE any role (no "role" field — a
-#             process exit has no role). Written by `codegen-log exit`.
+# carries an "ev" discriminator field. The canonical list of kinds and their
+# required/optional fields lives in EVENT_SCHEMA_JQ (below, search
+# "def event_schema") — the SINGLE source both write paths
+# (append_event_line, and init's own truncating write) validate against
+# before a line ever reaches disk, and known_kinds/`--kinds` both derive
+# from. A quick reference (kind: notable fields):
+#   init            — pitch, path, stamp{project,context,codegen,claude,at}
+#   role            — role, body (prose). Re-running section/append for the
+#                      same role APPENDS a new event; never overwrites.
+#   learned         — role, text
+#   no_learning     — role, text
+#   died            — role, kind (interrupted|aborted), cause
+#   gate            — role, verdict (clear|failed|inconclusive); optionally
+#                      carries gate/mode/result/detail (the `verdict`
+#                      subcommand's richer shape) — both shapes are legal.
+#   plan_gate       — role, command, mode (short|long), timeout. Planner's
+#                      typed gate SELECTION (not the verdict above).
+#   files_to_touch  — role, files[<relpath>,...]. Planner's typed list.
+#   files_modified  — role, files[<relpath>,...]. Developer's typed list.
+#   exit            — status, signal (n|null), stderr_tail. dispatch.sh's
+#                      record of the loop CHILD PROCESS's raw wait status —
+#                      no "role" field, a process exit has no role.
 #
 # Substance filter (--learned / --no-learning / section+append role BODY):
 # codegen-log is the SOLE writer of the cycle log, so it is the one place
@@ -230,6 +234,31 @@ EXIT_STATUS=""
 EXIT_SIGNAL=""
 EXIT_STDERR_TAIL=""
 
+# EVENT_SCHEMA_JQ — the single source of truth for every event kind
+# codegen-log emits. One jq `def` returning {kind: {required: [...],
+# optional: [...]}} for all 10 kinds this binary actually writes (see the
+# emit sites feeding append_event_line/init's own write, below). "ev" itself
+# is implicit — every kind requires it — so it is not listed per-kind.
+# known_kinds (show_build_model) and `--kinds` both derive from this table;
+# neither hand-copies the kind list anymore. Defined here (before usage()/
+# the --version and --kinds pre-dispatch loops) so `--kinds` can use it
+# without a subcommand.
+EVENT_SCHEMA_JQ='
+def event_schema:
+  {
+    init:            {required: ["pitch","path","stamp"],            optional: []},
+    role:            {required: ["role","body"],                     optional: []},
+    learned:         {required: ["role","text"],                     optional: []},
+    no_learning:     {required: ["role","text"],                     optional: []},
+    died:            {required: ["role","kind","cause"],              optional: []},
+    gate:            {required: ["role","verdict"],                  optional: ["gate","mode","result","detail"]},
+    plan_gate:       {required: ["role","command","mode","timeout"], optional: []},
+    files_to_touch:  {required: ["role","files"],                    optional: []},
+    files_modified:  {required: ["role","files"],                    optional: []},
+    exit:            {required: ["status","signal","stderr_tail"],   optional: []}
+  };
+'
+
 usage() {
     printf 'Usage:\n' >&2
     printf '  codegen-log init --slug <slug> [--stamp <YYYYMMDD_HHMMSS>]\n' >&2
@@ -248,6 +277,7 @@ usage() {
     printf '  codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]\n' >&2
     printf '  codegen-log --version\n' >&2
+    printf '  codegen-log --kinds\n' >&2
     printf '\n' >&2
     printf "section and append both APPEND a new event line to the JSONL cycle log — there is no overwrite/replace semantics.\n" >&2
     exit 2
@@ -263,6 +293,16 @@ for _arg in "$@"; do
         else
             printf 'codegen-log root=unresolved-root\n'
         fi
+        exit 0
+    fi
+done
+
+# --kinds: same shape as --version — handled BEFORE subcommand dispatch,
+# requires no subcommand. Read-only: prints every event kind EVENT_SCHEMA_JQ
+# declares, one per line, sorted, and exits 0.
+for _arg in "$@"; do
+    if [[ "$_arg" == "--kinds" ]]; then
+        jq -r "$EVENT_SCHEMA_JQ"'event_schema | keys[]' <<<'null' | sort
         exit 0
     fi
 done
@@ -764,11 +804,66 @@ version_stamp_json() {
         '{project: $project, context: $context, codegen: $codegen, claude: $claude, at: $at}'
 }
 
+# validate_event_line <compact-json-line> — checks a built event object
+# against EVENT_SCHEMA_JQ before it is ever written: kind present, kind
+# declared in the table, every required field present (null counts as
+# present — only a MISSING key fails). On failure: exits 2, writes nothing,
+# names the kind and (when known) the offending field. Called at BOTH write
+# paths (append_event_line below, and init's own truncating `>`) so no emit
+# site can bypass it. Every current emit is a hardcoded literal that already
+# satisfies the table — this exit path is unreachable today; it exists to
+# refuse a FUTURE malformed emit before it becomes a permanent line in an
+# append-only log.
+validate_event_line() {
+    local line="$1"
+    local verdict
+    verdict="$(printf '%s' "$line" | jq -r "$EVENT_SCHEMA_JQ"'
+        . as $obj
+        | ($obj.ev // null) as $kind
+        | if $kind == null then
+            "missing-ev"
+          elif (event_schema | has($kind) | not) then
+            "unknown-kind:\($kind)"
+          else
+            (event_schema[$kind].required
+              | map(select(. as $f | ($obj | has($f)) | not))) as $missing
+            | if ($missing | length) > 0 then
+                "missing-field:\($kind):\($missing | join(","))"
+              else
+                "ok"
+              end
+          end
+    ')"
+    if [[ "$verdict" == "ok" ]]; then
+        return 0
+    fi
+    case "$verdict" in
+    missing-ev)
+        printf 'codegen-log: refusing to write event with no "ev" field: %s\n' "$line" >&2
+        ;;
+    unknown-kind:*)
+        printf 'codegen-log: refusing to write unknown event kind %q (not in EVENT_SCHEMA_JQ): %s\n' "${verdict#unknown-kind:}" "$line" >&2
+        ;;
+    missing-field:*)
+        local rest="${verdict#missing-field:}"
+        local kind="${rest%%:*}"
+        local fields="${rest#*:}"
+        printf 'codegen-log: refusing to write %q event missing required field(s) %s: %s\n' "$kind" "$fields" "$line" >&2
+        ;;
+    *)
+        printf 'codegen-log: refusing to write malformed event (%s): %s\n' "$verdict" "$line" >&2
+        ;;
+    esac
+    exit 2
+}
+
 # append_event_line — append ONE compact JSON line to the given log file.
 # `$1` is the log path, `$2` is the already-built compact JSON object string.
+# Validates against EVENT_SCHEMA_JQ before writing (write path 1 of 2).
 append_event_line() {
     local path="$1"
     local line="$2"
+    validate_event_line "$line"
     printf '%s\n' "$line" >>"$path"
 }
 
@@ -829,23 +924,19 @@ show_build_model() {
     local events_json
     events_json="$(jq -c -s '.' "$log_file")"
 
-    local has_turn has_summary
-    has_turn="$(printf '%s' "$events_json" | jq -e '.[] | select(.ev=="turn")' >/dev/null 2>&1 && printf 1 || printf 0)"
+    local has_summary
     has_summary=0
     if [[ -f "$summary_file" ]]; then
         has_summary="$(jq -e '.' "$summary_file" >/dev/null 2>&1 && printf 1 || printf 0)"
     fi
 
     local spine_used
-    if [[ "$has_turn" == "1" ]]; then
-        spine_used="turn"
-    elif [[ "$has_summary" == "1" ]]; then
+    if [[ "$has_summary" == "1" ]]; then
         spine_used="cycle-summary"
     else
         spine_used="role"
     fi
-    printf 'codegen-log show: using %s spine%s\n' "$spine_used" \
-        "$([[ "$spine_used" != "turn" ]] && printf ' (no ev:turn events in this log)' || true)" >&"$notes_fd"
+    printf 'codegen-log show: using %s spine\n' "$spine_used" >&"$notes_fd"
     if [[ "$has_summary" != "1" ]]; then
         printf 'codegen-log show: no cycle-summary.jsonl sibling found — turns/cost render as "—"\n' >&"$notes_fd"
     fi
@@ -861,8 +952,8 @@ show_build_model() {
         --arg spine "$spine_used" \
         --argjson events "$events_json" \
         --argjson summary "$summary_json" \
-        '
-        def known_kinds: ["init","role","learned","no_learning","died","gate","turn","plan_gate","files_to_touch","files_modified","exit"];
+        "$EVENT_SCHEMA_JQ"'
+        def known_kinds: (event_schema | keys);
 
         ($events) as $ev
         | ($ev | map(select(.ev=="init")) | .[0] // {}) as $init
@@ -871,16 +962,14 @@ show_build_model() {
         | ($ev | map(select(.ev=="no_learning")) ) as $no_learning
         | ($ev | map(select(.ev=="died")) ) as $died
         | ($ev | map(select(.ev=="gate")) ) as $gates
-        | ($ev | map(select(.ev=="turn")) ) as $turns
         | ($ev | map(select(.ev=="exit")) ) as $exits
         | ($ev | map(select(. as $item | known_kinds | index($item.ev) | not)) | group_by(.ev) | map({kind: .[0].ev, count: length})) as $unknown_kinds
 
         # role_names: every role that has EITHER an invocation record
-        # (turn/cycle-summary) OR at least one in-log event — the union
+        # (cycle-summary) OR at least one in-log event — the union
         # `show --role` validates against.
         | (
-            (if $spine == "turn" then ($turns | map(.role))
-             elif $spine == "cycle-summary" then ($summary | map(.role))
+            (if $spine == "cycle-summary" then ($summary | map(.role))
              else ($roles | map(.role)) end)
             + ($roles | map(.role)) + ($learned | map(.role)) + ($no_learning | map(.role)) + ($died | map(.role))
             | unique
@@ -893,8 +982,7 @@ show_build_model() {
             no_learning: ($no_learning | map(select(.role==$r) | .text)),
             died: ($died | map(select(.role==$r))),
             turn: (
-                if $spine == "turn" then ($turns | map(select(.role==$r)) | .[0] // null)
-                elif $spine == "cycle-summary" then (
+                if $spine == "cycle-summary" then (
                     ($summary | map(select(.role==$r)) | .[0]) as $s
                     | if $s then {role: $r, outcome: $s.status, seq: $s.seq, num_turns: $s.num_turns, cost_usd: $s.cost_usd, transcript: $s.transcript} else null end
                 )
@@ -1049,6 +1137,9 @@ init)
     stamp_json="$(version_stamp_json)"
     init_line="$(jq -c -n --arg pitch "$SLUG" --arg path "" --argjson stamp "$stamp_json" \
         '{ev: "init", pitch: $pitch, path: $path, stamp: $stamp}')"
+    # Write path 2 of 2 (init creates the log with a truncating `>`, so it
+    # cannot route through append_event_line — see that fn's comment).
+    validate_event_line "$init_line"
     printf '%s\n' "$init_line" >"$path"
     write_active_sentinel "$path"
     printf '%s\n' "$path"

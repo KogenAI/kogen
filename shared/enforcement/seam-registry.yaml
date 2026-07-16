@@ -65,6 +65,13 @@ seams:
     guard_time: make-test
     pattern: set-parity
 
+  - id: cycle-log-event-schema-to-session-log-md
+    declares: codegen-log (EVENT_SCHEMA_JQ table; reflected via `codegen-log --kinds`)
+    reflects: shared/rules/_core/session-log.md (prose kind enumeration; baked into subagent prompts, cannot be generated away)
+    guard: harnesses/claude/hooks/cycle-log-schema-parity_test.sh
+    guard_time: make-test
+    pattern: set-parity
+
   - id: role-boundary-prose-to-registry-allowlist
     declares: shared/enforcement/registry.yaml (reviewer/committer allowlists)
     reflects: shared/rules/roles/reviewer.md, shared/rules/roles/committer.md (boundary prose)
