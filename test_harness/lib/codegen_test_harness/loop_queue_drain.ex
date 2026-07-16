@@ -869,7 +869,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
          "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
 
       committed? and gate_clear? ->
-        ship(state.ready_dir, state.shipped_dir, slug)
+        ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, head_after)
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
         run_loop(state, shipped_count + 1, concluded_count + 1)
@@ -961,17 +961,29 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       end)
   end
 
-  defp ship(ready_dir, shipped_dir, slug) do
+  defp ship(cwd, ready_dir, shipped_dir, slug, before_sha, after_sha) do
     src = Path.join(ready_dir, "#{slug}.md")
     dst = Path.join(shipped_dir, "#{slug}.md")
 
     cond do
-      # agent did not ship (non-compliant) -> drain ships as fallback
-      File.exists?(src) -> File.rename!(src, dst)
-      # agent already shipped (normal exit-0 path) -> no-op
-      File.exists?(dst) -> :ok
+      # agent did not ship (non-compliant) -> drain ships as fallback.
+      # Note-first, then frontmatter, then the mv — same ordering as
+      # Mix.Tasks.Codegen.Loop's solo path (LoopQueue.record_ship/4
+      # moduledoc), for the same reason: a stranded shipped_sha: on a
+      # still-ready/ pitch would be read by the NEXT build's prompt as
+      # "already shipped".
+      File.exists?(src) ->
+        LoopQueue.record_ship(cwd, slug, before_sha, after_sha)
+        File.rename!(src, dst)
+
+      # agent already shipped (normal exit-0 path) -> no-op. The child's
+      # own solo-path ship_ready_pitch/6 already recorded this ship.
+      File.exists?(dst) ->
+        :ok
+
       # genuine anomaly: pitch in neither dir -> fail loud, name the slug
-      true -> raise "LoopQueueDrain.ship: #{slug} in neither ready/ nor shipped/"
+      true ->
+        raise "LoopQueueDrain.ship: #{slug} in neither ready/ nor shipped/"
     end
 
     :ok
@@ -1046,7 +1058,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # committer-post-commit hiccup: commit landed, gate is clear, but the
         # pitch file is still sitting in ready/ (ship step never ran). Finish
         # the ship ourselves rather than halting the whole queue.
-        ship(state.ready_dir, state.shipped_dir, slug)
+        ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, head_after)
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
         run_loop(state, shipped_count + 1, concluded_count + 1)

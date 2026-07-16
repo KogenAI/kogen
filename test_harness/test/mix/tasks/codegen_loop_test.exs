@@ -63,7 +63,7 @@ defmodule Mix.Tasks.Codegen.LoopTest do
     assert result =~ "Body text."
   end
 
-  describe "maybe_ship_pitch/2" do
+  describe "maybe_ship_pitch/4" do
     test "happy-path move: ready file moves to shipped, content preserved", ctx do
       body = "# Pitch: foo\n"
       abs = Path.join(ctx.ready_dir, "foo.md")
@@ -140,6 +140,55 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert File.exists?(abs)
       refute File.exists?(shipped_dir)
     end
+
+    test "with before/after shas: records a git note and stamps frontmatter before the move",
+         ctx do
+      System.cmd("git", ["init", "-q", ctx.tmp])
+      System.cmd("git", ["-C", ctx.tmp, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", ctx.tmp, "config", "user.name", "Test"])
+      System.cmd("git", ["-C", ctx.tmp, "config", "commit.gpgsign", "false"])
+
+      File.write!(Path.join(ctx.tmp, "a.txt"), "content\n")
+      System.cmd("git", ["-C", ctx.tmp, "add", "."])
+      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "initial"])
+      {before_sha, 0} = System.cmd("git", ["-C", ctx.tmp, "rev-parse", "HEAD"])
+      before_sha = String.trim(before_sha)
+
+      body = "---\nstatus: ready\n---\n# Pitch: foo\n"
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, body)
+      System.cmd("git", ["-C", ctx.tmp, "add", "."])
+      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "add pitch"])
+      {after_sha, 0} = System.cmd("git", ["-C", ctx.tmp, "rev-parse", "HEAD"])
+      after_sha = String.trim(after_sha)
+
+      assert Loop.maybe_ship_pitch({:file, abs}, ctx.tmp, before_sha, after_sha) == :ok
+
+      shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
+      refute File.exists?(abs)
+      assert File.exists?(shipped_path)
+
+      shipped_content = File.read!(shipped_path)
+      assert shipped_content =~ "shipped_sha: #{after_sha}"
+      assert shipped_content =~ "shipped_range: #{before_sha}..#{after_sha}"
+
+      {note, 0} =
+        System.cmd("git", ["-C", ctx.tmp, "notes", "--ref=pitches", "show", after_sha])
+
+      assert note =~ "pitch: foo"
+      assert note =~ "range: #{before_sha}..#{after_sha}"
+    end
+
+    test "nil after_sha (non-git / unborn cwd): ships without recording, no raise", ctx do
+      body = "# Pitch: foo\n"
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, body)
+
+      assert Loop.maybe_ship_pitch({:file, abs}, ctx.tmp, nil, nil) == :ok
+
+      shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
+      assert File.read!(shipped_path) == body
+    end
   end
 
   describe "verify_commit_landed/2 — solo ship-gate floor" do
@@ -174,7 +223,8 @@ defmodule Mix.Tasks.Codegen.LoopTest do
 
       commit!(ctx.tmp, "b.txt", "second")
 
-      assert Loop.verify_commit_landed(before, ctx.tmp) == :ok
+      assert {:ok, after_sha} = Loop.verify_commit_landed(before, ctx.tmp)
+      assert is_binary(after_sha)
     end
 
     test "orphaning HEAD (history rewritten, not extended): raises-shaped error", ctx do
@@ -198,7 +248,7 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       before = Loop.git_head(ctx.tmp)
 
       assert before == :unborn
-      assert Loop.verify_commit_landed(before, ctx.tmp) == :ok
+      assert Loop.verify_commit_landed(before, ctx.tmp) == {:ok, nil}
     end
   end
 

@@ -432,4 +432,108 @@ defmodule CodegenTestHarness.LoopQueueTest do
       assert ex_tokens == sh_tokens
     end
   end
+
+  describe "record_ship/4" do
+    setup %{dir: dir} do
+      System.cmd("git", ["init", "-q", dir])
+      System.cmd("git", ["-C", dir, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", dir, "config", "user.name", "Test"])
+      System.cmd("git", ["-C", dir, "config", "commit.gpgsign", "false"])
+
+      ready_dir = Path.join([dir, "codegen", "pitches", "ready"])
+      File.mkdir_p!(ready_dir)
+
+      commit! = fn filename, message ->
+        File.write!(Path.join(dir, filename), "content\n")
+        System.cmd("git", ["-C", dir, "add", "."])
+        System.cmd("git", ["-C", dir, "commit", "-q", "-m", message])
+        {sha, 0} = System.cmd("git", ["-C", dir, "rev-parse", "HEAD"])
+        String.trim(sha)
+      end
+
+      {:ok, ready_dir: ready_dir, commit!: commit!}
+    end
+
+    test "writes a git note and inserts frontmatter fields on a block-carrying pitch", %{
+      dir: dir,
+      ready_dir: ready_dir,
+      commit!: commit!
+    } do
+      before_sha = commit!.("a.txt", "initial")
+
+      pitch_path = Path.join(ready_dir, "foo.md")
+      File.write!(pitch_path, "---\nstatus: ready\n---\n# Pitch: foo\n")
+      after_sha = commit!.("b.txt", "second")
+
+      assert LoopQueue.record_ship(dir, "foo", before_sha, after_sha) == :ok
+
+      content = File.read!(pitch_path)
+      assert content =~ "shipped_sha: #{after_sha}"
+      assert content =~ "shipped_range: #{before_sha}..#{after_sha}"
+      # Original frontmatter key survives the upsert.
+      assert content =~ "status: ready"
+      assert content =~ "# Pitch: foo"
+
+      {note, 0} = System.cmd("git", ["-C", dir, "notes", "--ref=pitches", "show", after_sha])
+      assert note =~ "pitch: foo"
+      assert note =~ "range: #{before_sha}..#{after_sha}"
+    end
+
+    test "mints a frontmatter block when the pitch has none", %{
+      dir: dir,
+      ready_dir: ready_dir,
+      commit!: commit!
+    } do
+      before_sha = commit!.("a.txt", "initial")
+
+      pitch_path = Path.join(ready_dir, "bar.md")
+      File.write!(pitch_path, "# Pitch: bar\n\nNo frontmatter here.\n")
+      after_sha = commit!.("b.txt", "second")
+
+      assert LoopQueue.record_ship(dir, "bar", before_sha, after_sha) == :ok
+
+      content = File.read!(pitch_path)
+      assert String.starts_with?(content, "---\n")
+      assert content =~ "shipped_sha: #{after_sha}"
+      assert content =~ "shipped_range: #{before_sha}..#{after_sha}"
+      assert content =~ "# Pitch: bar"
+    end
+
+    test "re-ship overwrites the field with the new sha rather than appending a duplicate", %{
+      dir: dir,
+      ready_dir: ready_dir,
+      commit!: commit!
+    } do
+      before_sha = commit!.("a.txt", "initial")
+
+      pitch_path = Path.join(ready_dir, "baz.md")
+      File.write!(pitch_path, "---\nstatus: ready\n---\n# Pitch: baz\n")
+      first_after = commit!.("b.txt", "second")
+
+      assert LoopQueue.record_ship(dir, "baz", before_sha, first_after) == :ok
+
+      second_after = commit!.("c.txt", "third")
+      assert LoopQueue.record_ship(dir, "baz", first_after, second_after) == :ok
+
+      content = File.read!(pitch_path)
+      assert content =~ "shipped_sha: #{second_after}"
+      refute content =~ "shipped_sha: #{first_after}"
+      # Exactly one shipped_sha: line, not two stacked from the two ships.
+      assert length(Regex.scan(~r/^shipped_sha:/m, content)) == 1
+    end
+
+    test "nil after_sha (non-git/unborn carve-out): no-op, no raise", %{dir: dir} do
+      assert LoopQueue.record_ship(dir, "foo", "deadbeef", nil) == :ok
+    end
+
+    test "non-git cwd: fails open, no raise", %{ready_dir: _ready_dir} do
+      non_git_dir =
+        Path.join(System.tmp_dir!(), "loop_queue_nongit_#{:erlang.unique_integer([:positive])}")
+
+      File.mkdir_p!(non_git_dir)
+      on_exit(fn -> File.rm_rf!(non_git_dir) end)
+
+      assert LoopQueue.record_ship(non_git_dir, "foo", "aaa", "bbb") == :ok
+    end
+  end
 end

@@ -100,8 +100,11 @@ defmodule CodegenTestHarness.LoopQueue do
   # Returns the raw text between the opening and closing `---` delimiters
   # when `content` starts with a frontmatter block, else nil. The opening
   # delimiter MUST be the very first line (no leading blank lines).
+  #
+  # Promoted to public (was defp) for `record_ship/4`, which needs to
+  # detect an existing block to insert-or-replace into vs. mint a fresh one.
   @spec frontmatter_block(String.t()) :: String.t() | nil
-  defp frontmatter_block(content) do
+  def frontmatter_block(content) do
     case String.split(content, "\n", parts: 2) do
       ["---", rest] ->
         case String.split(rest, "\n---", parts: 2) do
@@ -397,6 +400,129 @@ defmodule CodegenTestHarness.LoopQueue do
           not String.contains?(content, ~s("type":"result")) -> true
           true -> false
         end
+    end
+  end
+
+  @doc """
+  Records a pitch's retire as durable evidence, at the one moment a
+  retirer holds both shas — never re-derived after the fact (see
+  `codegen/pitches/ready/a-shipped-pitch-proves-what-shipped-it.md`).
+
+  Writes TWO things, in this order:
+
+    1. A `refs/notes/pitches` git note on `after_sha`, body
+       `"pitch: <slug>\\nrange: <before_sha>..<after_sha>"`. Answers
+       "which pitch is this commit?" — the ONLY medium that can, since
+       `codegen/` is gitignored and never reaches origin.
+    2. `shipped_sha:`/`shipped_range:` frontmatter fields inserted (or
+       replaced, on a re-ship) into `pitch_path`. Answers "what shipped
+       this pitch?" at the point of contact — opening the file.
+
+  Note BEFORE frontmatter, deliberately: `pitch_path` (a `ready/` pitch)
+  is `@`-mentioned into the NEXT build's prompt (`claude-build.sh:80,93`)
+  — an opaque whole-artifact read. A frontmatter write that lands but
+  whose note write then fails would strand a `shipped_sha:` stamp on a
+  pitch still sitting in `ready/`, and the next planner would read that
+  stamp as "already shipped" — manufacturing the exact false
+  already-done class this function exists to prevent. A stranded NOTE
+  on a real commit is inert by comparison: it truthfully describes a
+  cycle that ran, and a re-ship's `add -f` overwrites it cleanly.
+
+  Fails LOUD when git is present and either write fails: raises, naming
+  `slug`, `after_sha`, and the underlying error — a retire that cannot
+  be recorded must never ship silently unrecorded, which is the exact
+  defect this function exists to close.
+
+  Fails OPEN (no-op, returns `:ok`) on a non-git `cwd` / when
+  `after_sha` is `nil` — mirrors `verify_commit_landed/2`'s existing
+  non-git/unborn carve-out: `nil` from that function IS this carve-out,
+  not a second code path that could drift from it.
+
+  `pitch_path` is created a frontmatter block if none exists — a
+  legacy-formatted pitch (no leading `---` block) is not a mis-built
+  pitch; the write is additive either way.
+  """
+  @spec record_ship(String.t(), slug(), String.t(), String.t() | nil) :: :ok
+  def record_ship(_cwd, _slug, _before_sha, nil), do: :ok
+
+  def record_ship(cwd, slug, before_sha, after_sha) do
+    case System.cmd("git", ["-C", cwd, "rev-parse", "--show-toplevel"], stderr_to_stdout: true) do
+      {_out, 0} ->
+        write_note!(cwd, slug, before_sha, after_sha)
+        write_frontmatter!(cwd, slug, before_sha, after_sha)
+        :ok
+
+      # not a git repo / git unavailable — fail open, mirrors
+      # verify_commit_landed/2's and assert_clean_tree!/1's own posture.
+      {_out, _nonzero} ->
+        :ok
+    end
+  end
+
+  defp write_note!(cwd, slug, before_sha, after_sha) do
+    note = "pitch: #{slug}\nrange: #{before_sha}..#{after_sha}"
+
+    case System.cmd(
+           "git",
+           ["-C", cwd, "notes", "--ref=pitches", "add", "-f", "-m", note, after_sha],
+           stderr_to_stdout: true
+         ) do
+      {_out, 0} ->
+        :ok
+
+      {out, nonzero} ->
+        raise "LoopQueue.record_ship: failed to write ship note for #{slug} on #{after_sha} " <>
+                "(exit #{nonzero}): #{out}"
+    end
+  end
+
+  defp write_frontmatter!(cwd, slug, before_sha, after_sha) do
+    pitch_path = Path.join([cwd, "codegen", "pitches", "ready", "#{slug}.md"])
+
+    case File.read(pitch_path) do
+      {:ok, content} ->
+        updated = upsert_ship_frontmatter(content, before_sha, after_sha)
+        File.write!(pitch_path, updated)
+        :ok
+
+      {:error, reason} ->
+        raise "LoopQueue.record_ship: failed to read #{pitch_path} to stamp ship record for " <>
+                "#{slug} @ #{after_sha}: #{inspect(reason)}"
+    end
+  end
+
+  @spec upsert_ship_frontmatter(String.t(), String.t(), String.t()) :: String.t()
+  defp upsert_ship_frontmatter(content, before_sha, after_sha) do
+    stamp_lines = [
+      "shipped_sha: #{after_sha}",
+      "shipped_range: #{before_sha}..#{after_sha}"
+    ]
+
+    case frontmatter_block(content) do
+      nil ->
+        # No well-formed frontmatter block — mint one.
+        block = Enum.join(stamp_lines, "\n")
+        "---\n#{block}\n---\n#{content}"
+
+      block ->
+        new_block =
+          block
+          |> String.split("\n")
+          |> Enum.reject(
+            &(String.starts_with?(String.trim(&1), "shipped_sha:") or
+                String.starts_with?(String.trim(&1), "shipped_range:"))
+          )
+          |> Kernel.++(stamp_lines)
+          |> Enum.join("\n")
+
+        # Reconstruct via the SAME split grammar frontmatter_block/1 uses
+        # (never a raw string-replace on `block`, which would be brittle
+        # to incidental substring collisions) — split once on the leading
+        # "---\n", then once more on the closing "\n---" boundary that
+        # frontmatter_block/1 itself located.
+        ["---", rest] = String.split(content, "\n", parts: 2)
+        [^block, after_block] = String.split(rest, "\n---", parts: 2)
+        "---\n#{new_block}\n---" <> after_block
     end
   end
 end

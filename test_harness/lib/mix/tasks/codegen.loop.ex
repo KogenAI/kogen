@@ -132,9 +132,9 @@ defmodule Mix.Tasks.Codegen.Loop do
     case result do
       :ok ->
         case verify_commit_landed(head_before, cwd) do
-          :ok ->
+          {:ok, after_sha} ->
             Mix.shell().info("codegen.loop: COMMITTED, gate clear")
-            maybe_ship_pitch(source, cwd)
+            maybe_ship_pitch(source, cwd, before_sha(head_before), after_sha)
 
           {:error, reason} ->
             Mix.shell().error("codegen.loop: FAILED — #{reason}")
@@ -251,18 +251,41 @@ defmodule Mix.Tasks.Codegen.Loop do
     if File.exists?(abs), do: {:file, abs}, else: :literal
   end
 
-  @doc false
-  @spec maybe_ship_pitch({:file, String.t()} | :literal, String.t()) :: :ok
-  def maybe_ship_pitch(:literal, _cwd), do: :ok
+  # Extracts the sha string from git_head/1's {:ok, sha} | :unborn shape for
+  # threading into maybe_ship_pitch/4 — :unborn (non-git cwd) becomes nil,
+  # which is record_ship/4's own fail-open carve-out.
+  @spec before_sha({:ok, String.t()} | :unborn) :: String.t() | nil
+  defp before_sha({:ok, sha}), do: sha
+  defp before_sha(:unborn), do: nil
 
-  def maybe_ship_pitch({:file, abs}, cwd) do
+  @doc false
+  @spec maybe_ship_pitch(
+          {:file, String.t()} | :literal,
+          String.t(),
+          String.t() | nil,
+          String.t() | nil
+        ) :: :ok
+  def maybe_ship_pitch(source, cwd, before_sha \\ nil, after_sha \\ nil)
+
+  def maybe_ship_pitch(:literal, _cwd, _before_sha, _after_sha), do: :ok
+
+  def maybe_ship_pitch({:file, abs}, cwd, before_sha, after_sha) do
     ready_dir = Path.join([cwd, "codegen", "pitches", "ready"])
     name = Path.basename(abs)
     src_in_ready = Path.join(ready_dir, name)
 
     if Path.expand(abs) == Path.expand(src_in_ready) do
       shipped_dir = Path.join([cwd, "codegen", "pitches", "shipped"])
-      ship_ready_pitch(src_in_ready, Path.join(shipped_dir, name), cwd)
+      slug = Path.basename(abs, ".md")
+
+      ship_ready_pitch(
+        src_in_ready,
+        Path.join(shipped_dir, name),
+        cwd,
+        slug,
+        before_sha,
+        after_sha
+      )
     else
       :ok
     end
@@ -296,15 +319,20 @@ defmodule Mix.Tasks.Codegen.Loop do
     end
   end
 
+  # All three success arms return the SAME shape, {:ok, sha | nil} — nil is
+  # the non-git/unborn carve-out (mirrors assert_clean_tree!/1's fail-open
+  # posture) and is exactly the value maybe_ship_pitch/4 threads into
+  # LoopQueue.record_ship/4's own fail-open clause. One value, one meaning,
+  # rather than a second code path that could drift from it.
   @doc false
   @spec verify_commit_landed({:ok, String.t()} | :unborn, String.t()) ::
-          :ok | {:error, String.t()}
-  def verify_commit_landed(:unborn, _cwd), do: :ok
+          {:ok, String.t() | nil} | {:error, String.t()}
+  def verify_commit_landed(:unborn, _cwd), do: {:ok, nil}
 
   def verify_commit_landed({:ok, before_sha}, cwd) do
     case git_head(cwd) do
       :unborn ->
-        :ok
+        {:ok, nil}
 
       {:ok, after_sha} ->
         cond do
@@ -316,7 +344,7 @@ defmodule Mix.Tasks.Codegen.Loop do
              "HEAD advanced but #{before_sha} is not an ancestor of #{after_sha} (history rewritten, not extended)"}
 
           true ->
-            :ok
+            {:ok, after_sha}
         end
     end
   end
@@ -332,13 +360,18 @@ defmodule Mix.Tasks.Codegen.Loop do
     end
   end
 
-  defp ship_ready_pitch(src, dst, cwd) do
+  defp ship_ready_pitch(src, dst, cwd, slug, before_sha, after_sha) do
     cond do
       not File.exists?(src) and File.exists?(dst) ->
         :ok
 
       true ->
         assert_clean_tree!(cwd)
+        # Note-first, then frontmatter, then the mv — see
+        # LoopQueue.record_ship/4 moduledoc for why this order is
+        # load-bearing (a stranded shipped_sha: on a still-ready/ pitch is
+        # read by the NEXT build's prompt as "already shipped").
+        LoopQueue.record_ship(cwd, slug, before_sha, after_sha)
         File.mkdir_p!(Path.dirname(dst))
         File.rename!(src, dst)
         :ok
