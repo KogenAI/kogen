@@ -148,7 +148,7 @@ if [[ -n "$PI_PITCH_PATH" && -f "./PROJECT_CONTEXT.md" ]]; then
         [[ -f "./${_ctx_file}" ]] || continue
         _matched=0
         IFS=',' read -ra _id_arr <<<"$_ids"
-        for _id in "${_id_arr[@]}"; do
+        for _id in "${_id_arr[@]+"${_id_arr[@]}"}"; do
             _id="${_id## }"
             _id="${_id%% }"
             [[ -z "$_id" ]] && continue

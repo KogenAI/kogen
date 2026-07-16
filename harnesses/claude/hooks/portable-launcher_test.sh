@@ -17,6 +17,10 @@
 #      cutover; the loop runs an explicit format step instead)
 # 14. Static grep: no Areas/Optimum/codegen literal in launchers/dispatch/load-role
 # 15. Drift loop: SCRIPT_DIR + CODEGEN_DIR derivation block byte-identical across all non-build launchers
+# 20. Bash 3.2 empty-array splat guard: every "${arr[@]}" full-splat in mode
+#     launchers (claude-*.sh, pi-*.sh) must use the "${arr[@]+"${arr[@]}"}"
+#     empty-safe idiom. Includes a self-check on a synthetic fixture so a
+#     regression in the detection filter itself is caught.
 
 set -u
 
@@ -479,6 +483,47 @@ captured19=""
 # Count occurrences of REPO_STRUCTURE_CONTENT — should be exactly 1 (Tier-0, not doubled)
 occurrences19=$(printf '%s' "$captured19" | grep -c "REPO_STRUCTURE_CONTENT" 2>/dev/null || true)
 assert_eq "(19) Tier-1 dedup: Tier-0 file loaded exactly once" "1" "$occurrences19"
+
+# ── Test 20: bash-3.2 empty-array splat guard across mode launchers ──────────
+# Detection pipeline: find bare "${name[@]}" full-splats, excluding "${#..}"
+# length-checks and the empty-safe "${arr[@]+"${arr[@]}"}" idiom.
+splat_offenders() {
+    local file="$1"
+    grep -nE '\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}' "$file" 2>/dev/null | grep -vE '\$\{#|\[@\]\+' || true
+}
+
+# Self-check: guards the guard. A bare splat must be detected; a guarded one must not.
+T20_FIXTURE="$BASE_TMP/t20_fixture.sh"
+cat >"$T20_FIXTURE" <<'FIXTURE'
+#!/usr/bin/env bash
+Z="${C[@]}"
+X=("${A[@]+"${A[@]}"}")
+FIXTURE
+t20_selfcheck_hits=$(splat_offenders "$T20_FIXTURE" | wc -l | tr -d ' ')
+assert_eq "(20) self-check: detection pipeline flags exactly the bare splat, not the guarded one" "1" "$t20_selfcheck_hits"
+
+# Invariant: glob-discover mode launchers; assert zero bare full-splats.
+T20_LAUNCHERS=()
+while IFS= read -r -d '' f; do
+    T20_LAUNCHERS+=("$f")
+done < <(find "$CODEGEN_ROOT/harnesses/claude" "$CODEGEN_ROOT/harnesses/pi" -maxdepth 1 \( -name 'claude-*.sh' -o -name 'pi-*.sh' \) -print0 2>/dev/null)
+
+t20_offenders=""
+for f in "${T20_LAUNCHERS[@]+"${T20_LAUNCHERS[@]}"}"; do
+    hits=$(splat_offenders "$f")
+    if [[ -n "$hits" ]]; then
+        while IFS= read -r hit_line; do
+            t20_offenders="${t20_offenders} $(basename "$f"):${hit_line%%:*}"
+        done <<<"$hits"
+    fi
+done
+if [[ -z "$t20_offenders" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (20) no bare empty-unsafe array splats in mode launchers\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (20) bare empty-unsafe array splats found in:%s\n' "$t20_offenders"
+    fail=$((fail + 1))
+fi
 
 # ── Results ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"

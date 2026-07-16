@@ -93,7 +93,7 @@ for arg in "$@"; do
         PROMPT_PARTS+=("@codegen/pitches/ready/${matches[0]}.md")
     elif [[ ${#matches[@]} -gt 1 ]]; then
         printf 'claude-build: ambiguous basename %q; matches:\n' "$arg" >&2
-        for m in "${matches[@]}"; do printf '  %s\n' "$m" >&2; done
+        for m in "${matches[@]+"${matches[@]}"}"; do printf '  %s\n' "$m" >&2; done
         exit 1
     else
         # Permissive: no match → pass through as literal prompt token

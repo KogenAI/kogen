@@ -217,7 +217,7 @@ for arg in "$@"; do
         RESOLVED_ARGS+=("@codegen/pitches/draft/${matches[0]}.md")
     elif [[ ${#matches[@]} -gt 1 ]]; then
         printf 'claude-shape: ambiguous basename %q; matches:\n' "$arg" >&2
-        for m in "${matches[@]}"; do printf '  %s\n' "$m" >&2; done
+        for m in "${matches[@]+"${matches[@]}"}"; do printf '  %s\n' "$m" >&2; done
         exit 1
     else
         printf 'claude-shape: no draft matching %q in codegen/pitches/draft/\n' "$arg" >&2
@@ -263,7 +263,7 @@ if [[ ${#RESOLVED_ARGS[@]} -eq 1 ]] && [[ "${RESOLVED_ARGS[0]}" == *"codegen/pit
             # Check if any identifier matches the pitch body (case-insensitive, fixed-string)
             _matched=0
             IFS=',' read -ra _id_arr <<<"$_ids"
-            for _id in "${_id_arr[@]}"; do
+            for _id in "${_id_arr[@]+"${_id_arr[@]}"}"; do
                 _id="${_id## }"
                 _id="${_id%% }"
                 [[ -z "$_id" ]] && continue

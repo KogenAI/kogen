@@ -190,7 +190,7 @@ for arg in "$@"; do
         RESOLVED_ARGS+=("codegen/pitches/draft/${matches[0]}.md")
     elif [[ ${#matches[@]} -gt 1 ]]; then
         printf 'pi-shape: ambiguous basename %q; matches:\n' "$arg" >&2
-        for m in "${matches[@]}"; do printf '  %s\n' "$m" >&2; done
+        for m in "${matches[@]+"${matches[@]}"}"; do printf '  %s\n' "$m" >&2; done
         exit 1
     else
         printf 'pi-shape: no draft matching %q in codegen/pitches/draft/\n' "$arg" >&2
@@ -210,7 +210,7 @@ if [[ ${#RESOLVED_ARGS[@]} -gt 0 ]]; then
         PI_PROMPT_ARGS[0]+=" ${PASSTHROUGH_ARGS[*]}"
     fi
 else
-    PI_PROMPT_ARGS=("${PASSTHROUGH_ARGS[@]}")
+    PI_PROMPT_ARGS=("${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"}")
 fi
 
 if [[ -n "$PI_PITCH_PATH" && -f "./PROJECT_CONTEXT.md" ]]; then
@@ -238,7 +238,7 @@ if [[ -n "$PI_PITCH_PATH" && -f "./PROJECT_CONTEXT.md" ]]; then
         [[ -f "./${_ctx_file}" ]] || continue
         _matched=0
         IFS=',' read -ra _id_arr <<<"$_ids"
-        for _id in "${_id_arr[@]}"; do
+        for _id in "${_id_arr[@]+"${_id_arr[@]}"}"; do
             _id="${_id## }"
             _id="${_id%% }"
             [[ -z "$_id" ]] && continue

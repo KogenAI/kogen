@@ -288,6 +288,8 @@ The gate-selection hook (`harnesses/claude/hooks/lib/gate-select.sh`) reads ```g
 
 **Contrast**: System prompt bodies (`harnesses/shared/prompt-bodies/shape.txt`) ARE baked and DO require sentinel sync in `prompt-content-parity_test.sh`.
 
+**Bash 3.2 empty-array splat constraint**: macOS system bash is 3.2.57, which treats `"${arr[@]}"` on a zero-element array as an `unbound variable` error under `set -u` — even when the array was explicitly declared `arr=()`. Bash 4.4 fixed this; macOS never shipped it. Every array splat in a mode launcher (`claude-{build,shape,experiment,ops,babysit}.sh`, `pi-{build,shape,experiment}.sh`) that CAN be empty at runtime (loop bodies over parsed identifiers, `matches` arrays from ambiguous-basename resolution, `PASSTHROUGH_ARGS`/`CONTEXT_FLAGS` builders) MUST use the empty-safe idiom `"${arr[@]+"${arr[@]}"}"` instead of a bare `"${arr[@]}"`. `harnesses/claude/hooks/portable-launcher_test.sh` assertion (20) statically enforces this across all `claude-*.sh`/`pi-*.sh` mode launchers via a grep filter (excludes `${#..}` length checks and already-guarded `[@]+` forms), with a self-check fixture guarding the filter itself against regression.
+
 ## Shape Launcher `--draft` Flag
 
 Both shape launchers (`claude-shape.sh`, `pi-shape.sh`) accept a `--draft <path> "text"` flag that activates **capture-append mode**:

@@ -65,4 +65,4 @@ exec claude \
     --dangerously-skip-permissions \
     "${TOOL_FLAGS[@]+"${TOOL_FLAGS[@]}"}" \
     --system-prompt "$ROLE_SYSTEM_PROMPT" \
-    "${CONTEXT_FLAGS[@]}"
+    "${CONTEXT_FLAGS[@]+"${CONTEXT_FLAGS[@]}"}"
