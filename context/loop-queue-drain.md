@@ -53,6 +53,18 @@ everywhere in this repo). Recoverable via plain branch checkout. Never auto-rest
 seam only matches the `queue-timeout:` prefix, so a graded-and-rejected tree never silently re-enters a
 retry.
 
+**Terminal marker — read BEFORE `retry_eligible?/5`.** On a nonzero exit, `handle_nonzero_exit/8` first
+calls `:terminal_marker_fn` (default `default_terminal_marker_fn/1`, reads
+`codegen/gate-pending/terminal-state.json` — see the loop owner file's "Terminal Marker" section for the
+producer). A present marker (`{:terminal, reason, owner}`) routes straight to this same
+park+skip+breaker channel — printing `FAILED (deterministic: <owner> exhausted — <reason>) — parked, not
+retried` — and is NEVER retried, even when `LoopQueue.transient?/1` would otherwise classify the exit as
+retry-eligible. This is what makes a self-inflicted, deterministic exhaustion (a curator-doc or env-var
+check the owning role genuinely could not fix) stop costing a full `codegen-build` price on every retry
+instead of failing once. Absent or malformed marker (`:absent`) → falls through unchanged to
+`retry_eligible?/5` — fail-open is correct here: absence means no deterministic claim was made, exactly
+today's pre-marker behavior.
+
 ## Circuit Breaker
 
 `:max_consecutive_fails` (default 3, env `CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS`). Any ship resets
@@ -74,4 +86,4 @@ the drain).
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion

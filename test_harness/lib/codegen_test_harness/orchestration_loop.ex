@@ -338,6 +338,16 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         clean_tree_fn = Keyword.get(opts, :clean_tree_preflight_fn, &preflight_clean_tree!/1)
         clean_tree_fn.(cwd)
 
+        # A stale terminal-state.json from a PRIOR cycle must never leak
+        # into this one — a fresh cycle start has produced no deterministic
+        # exhaustion yet, so any marker on disk is left over from an
+        # earlier, already-concluded cycle. Never unlinked on the `:resume`
+        # branch above: exhaustion is terminal, not resumable, so a resumed
+        # cycle never legitimately carries one either — but leaving it
+        # alone there costs nothing (a resumed cycle only reaches a marker
+        # write path via its own fresh exhaustion, same as any other).
+        File.rm(Path.join([cwd, "codegen", "gate-pending", "terminal-state.json"]))
+
         ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}, base_head: cycle_base_head(cwd)}
         run_body_from(harness, cwd, all_roles, ctx, opts, nil)
     end
@@ -617,7 +627,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   # Names which legs the turn-0 preflight actually ran, for interpolation
-  # into the curator-doc exhaustion message (run_curator_doc_check_rework/8).
+  # into the curator-doc exhaustion message (run_curator_doc_check_rework/9).
   # index-parity always runs; factcheck's whole-tree leg only runs in the
   # codegen repo itself (sentinel-gated) — the exhaustion message must not
   # over-claim a leg that never executed downstream.
@@ -1485,6 +1495,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp curator_doc_check_exhausted(ctx, cycle, violations) do
+    write_terminal_marker(ctx.cwd, "context-curator doc check unresolved", "context-curator")
+
     {:error,
      "Turn-0 preflight verified #{preflight_legs(ctx.cwd)} clean at HEAD #{ctx.base_head}; " <>
        "the violations below arrived with this cycle's own edits.\n" <>
@@ -1685,6 +1697,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         run_env_var_step(dev_role, rest, harness, ctx, opts, cycle + 1, violations)
       end
     else
+      write_terminal_marker(ctx.cwd, "env var sample-consistency unresolved", dev_role)
+
       {:error,
        "env var sample-consistency unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
          "Undeclared env var(s) are read (System.get_env/fetch_env) but not declared in " <>
@@ -1987,10 +2001,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         ctx = update_in(ctx, [:artifacts], &Map.delete(&1, :last_failure_reason))
         run_roles(rest, harness, ctx, opts)
 
-      {:failed, _gate_cmd} ->
-        classify_fn = Keyword.get(opts, :gate_classify_fn, &default_gate_classify_fn/1)
+      {:failed, gate_cmd} ->
+        classify_fn = Keyword.get(opts, :gate_classify_fn, &default_gate_classify_fn/2)
 
-        case classify_fn.(ctx.cwd) do
+        case classify_fn.(ctx.cwd, dev_role) do
           :infra ->
             reason = gate_failure_reason(ctx.cwd)
 
@@ -2000,14 +2014,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                 "#{reason}"
             )
 
-          :code ->
-            do_gate_loop_rework(
-              dev_role,
+          {:owner, owner_role} ->
+            do_gate_loop_flake_check(
+              owner_role,
               rest,
               harness,
               ctx,
               opts,
               gate_fn,
+              gate_cmd,
               max_retries,
               attempt,
               prev_signature
@@ -2019,10 +2034,74 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  # A developer edit CAN plausibly fix this gate failure — run the
+  # One standalone re-run of the SAME gate command, serially, before any
+  # rework attempt is consumed — absorbs a LOAD FLAKE (a check green
+  # standalone, red only under `make test`'s parallel fan-out). Only ever
+  # runs ONCE per gate-failure occurrence (`attempt` is not incremented on
+  # this leg, so a repeated flake on the re-run itself is not re-flake-
+  # checked — it proceeds to real routing exactly like any other red).
+  #
+  # Green standalone -> load flake: re-run the FULL gate once more (does
+  # NOT consume a rework attempt) and re-enter `do_gate_loop/9` fresh — a
+  # second consecutive red at that point is treated as genuinely red, never
+  # re-flake-checked again.
+  #
+  # Red standalone -> real failure -> `do_gate_loop_rework/10` routes to the
+  # resolved OWNER (not always the developer).
+  defp do_gate_loop_flake_check(
+         owner_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         gate_fn,
+         gate_cmd,
+         max_retries,
+         attempt,
+         prev_signature
+       ) do
+    flake_check_fn = Keyword.get(opts, :flake_check_fn, gate_fn)
+
+    case flake_check_fn.(ctx.cwd, gate_opts(opts)) do
+      {:clear, ^gate_cmd} ->
+        operator_note(
+          "gate #{inspect(gate_cmd)}: passed standalone — treating as load flake, " <>
+            "re-running gate (attempt not consumed)"
+        )
+
+        do_gate_loop(
+          owner_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          max_retries,
+          attempt,
+          prev_signature
+        )
+
+      {_verdict, _cmd} ->
+        do_gate_loop_rework(
+          owner_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          max_retries,
+          attempt,
+          prev_signature
+        )
+    end
+  end
+
+  # An owning role's edit CAN plausibly fix this gate failure — run the
   # existing progress+ceiling-bounded rework logic (unchanged from before
   # infra classification was added; see `do_gate_loop/9`'s `:infra` branch
-  # above for the sibling that never reaches here).
+  # above for the sibling that never reaches here). `dev_role` here is the
+  # RESOLVED OWNER (developer or context-curator), not necessarily the
+  # original cycle's developer — see `default_gate_classify_fn/2`.
   defp do_gate_loop_rework(
          dev_role,
          rest,
@@ -2095,7 +2174,59 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         )
       end
     else
-      {:error, "gate verdict=failed after #{attempt + 1} developer attempt(s)"}
+      write_terminal_marker(ctx.cwd, "gate verdict=failed", dev_role)
+      {:error, "gate verdict=failed after #{attempt + 1} #{dev_role} attempt(s)"}
+    end
+  end
+
+  # Writes `codegen/gate-pending/terminal-state.json` — a durable, per-cycle
+  # marker distinguishing a DETERMINISTIC exhaustion ("this cycle cannot
+  # succeed however many times you run it") from a RECOVERABLE transient
+  # exit (a process death mid-cycle, resume-worthy). `LoopQueueDrain` reads
+  # this marker BEFORE `retry_eligible?/5` and, when present, routes to the
+  # existing park+skip+breaker channel instead of blind-retrying at full
+  # `codegen-build` price — see the pitch "route an exhausted or
+  # deterministic failure to its owner".
+  #
+  # Blast-radius rule (deliberately, not exit 3 / InfraAbort): every caller
+  # of this function is PITCH-SPECIFIC (this cycle's own gate/doc/env
+  # exhaustion) — the NEXT pitch is unaffected, so the queue should drain
+  # on rather than HALT. Exit 3 / `InfraAbort` stays reserved for genuinely
+  # repo-wide faults (see `LoopGate.infra_abort!/2`), untouched by this
+  # function.
+  #
+  # Best-effort: a write failure here must never block the exhaustion
+  # `{:error, ...}` return it accompanies — fail-loud-non-blocking,
+  # mirroring `default_log_verdict/5`'s own observability-write contract.
+  @spec write_terminal_marker(String.t(), String.t(), String.t() | nil) :: :ok
+  defp write_terminal_marker(cwd, reason, owner) do
+    dir = Path.join([cwd, "codegen", "gate-pending"])
+    path = Path.join(dir, "terminal-state.json")
+
+    payload = Jason.encode!(%{terminal: true, reason: reason, owner: owner})
+
+    case File.mkdir_p(dir) do
+      :ok ->
+        case File.write(path, payload) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            IO.puts(
+              :stderr,
+              "OrchestrationLoop: terminal marker write failed: #{inspect(reason)}"
+            )
+
+            :ok
+        end
+
+      {:error, reason} ->
+        IO.puts(
+          :stderr,
+          "OrchestrationLoop: terminal marker dir write failed: #{inspect(reason)}"
+        )
+
+        :ok
     end
   end
 
@@ -2133,18 +2264,59 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  # A witness (or, absent that, the raw gate log) naming a path under
+  # `context/*.md` or `PROJECT_CONTEXT.md` names a check only the
+  # context-curator can satisfy — the committer cannot Read/Edit those
+  # paths (subagent-read-discipline denies it), so routing that failure to
+  # the developer would be a guaranteed-exhaust dead end (see
+  # `curator_doc_check_exhausted/3`, the sibling check that already reaches
+  # this same conclusion for the curator's OWN dedicated scan step).
+  @curator_owned_signatures [
+    ~r{\bcontext/[A-Za-z0-9_-]+\.md\b},
+    ~r{\bPROJECT_CONTEXT\.md\b}
+  ]
+
   # Dispatches the `:gate_classify_fn` test seam; defaults to reading
   # `gate-run.log` (the same file `gate_failure_reason/1` reads) through
-  # `LoopGate.classify_failure/1`. Absent/unreadable log -> `:code` (the
-  # safe default per `LoopGate.classify_failure/1`'s own contract — an
-  # unrecognized/absent signal is never excused as infra).
-  @spec default_gate_classify_fn(String.t()) :: LoopGate.fault_class()
-  defp default_gate_classify_fn(cwd) do
+  # `LoopGate.classify_failure/1` for the infra/code split, then narrowing
+  # a `:code` verdict to its OWNING role: a context-doc-shaped witness ->
+  # `context-curator`, everything else -> `dev_role` (the cycle's own
+  # developer — today's behavior, preserved for every unmapped check).
+  @spec default_gate_classify_fn(String.t(), String.t()) :: LoopGate.owner_class()
+  defp default_gate_classify_fn(cwd, dev_role) do
     log_path = Path.join([cwd, "codegen", "gate-pending", "gate-run.log"])
 
-    case File.read(log_path) do
-      {:ok, content} -> LoopGate.classify_failure(content)
-      {:error, _reason} -> :code
+    content =
+      case File.read(log_path) do
+        {:ok, content} -> content
+        {:error, _reason} -> ""
+      end
+
+    case LoopGate.classify_failure(content) do
+      :infra ->
+        :infra
+
+      :code ->
+        {:owner, resolve_gate_owner(cwd, dev_role)}
+    end
+  end
+
+  # Resolves which role owns a `:code`-classified gate failure. Prefers the
+  # located witness (`LoopGate.failing_check/1`, the same `file:line —
+  # cause` text the Witness Discipline rule already threads to the
+  # developer's rework prompt) over the raw gate log — the witness is
+  # scoped to the EXACT located failure, so the owner-mapping regex never
+  # false-matches on incidental context-doc mentions elsewhere in a long
+  # log. Falls back to `dev_role` (today's behavior) when the witness is
+  # empty or matches no known owner signature.
+  @spec resolve_gate_owner(String.t(), String.t()) :: String.t()
+  defp resolve_gate_owner(cwd, dev_role) do
+    witness = LoopGate.failing_check(cwd)
+
+    if witness != "" and Enum.any?(@curator_owned_signatures, &Regex.match?(&1, witness)) do
+      "context-curator"
+    else
+      dev_role
     end
   end
 

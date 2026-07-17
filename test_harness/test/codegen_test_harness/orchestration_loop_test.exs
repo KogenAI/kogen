@@ -1610,9 +1610,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
       on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
 
+      # Calls: 0 = initial gate (failed), 1 = the flake-check standalone
+      # re-run (stays failed — a genuine red, not a load flake), 2 = the
+      # gate re-run after the developer's rework (clear).
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
-        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+        if n <= 1, do: {:failed, "make test"}, else: {:clear, "make test"}
       end
 
       assert :ok ==
@@ -1675,7 +1678,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
-      gate_classify_fn = fn _cwd -> :infra end
+      gate_classify_fn = fn _cwd, _dev_role -> :infra end
 
       assert_raise CodegenTestHarness.InfraAbort,
                    ~r/failed for a reason no developer edit can fix/,
@@ -1708,7 +1711,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
-        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+        if n <= 1, do: {:failed, "make test"}, else: {:clear, "make test"}
       end
 
       assert :ok ==
@@ -1719,7 +1722,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
-                 gate_classify_fn: fn _cwd -> :code end,
+                 gate_classify_fn: fn _cwd, dev_role -> {:owner, dev_role} end,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
@@ -1739,7 +1742,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
         Agent.update(calls_agent, fn calls -> calls ++ ["GATE"] end)
-        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+        if n <= 1, do: {:failed, "make test"}, else: {:clear, "make test"}
       end
 
       assert :ok ==
@@ -1778,6 +1781,167 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert "reviewer-phoenix" in calls
       assert "context-curator" in calls
       assert "committer" in calls
+    end
+  end
+
+  describe "run/1 — gate failure owner-routing" do
+    test "a context-doc-shaped witness routes the rework to context-curator, not the developer",
+         %{calls_agent: calls_agent} do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n <= 1, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      gate_classify_fn = fn _cwd, dev_role ->
+        # Simulates a witness naming context/foo.md — resolve_gate_owner/2's
+        # own signature match, exercised end-to-end via the seam rather than
+        # a real gate-run.log fixture.
+        _ = dev_role
+        {:owner, "context-curator"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: gate_classify_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 planner_plan_fn: stub_planner_plan_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+
+      # context-curator was invoked TWICE for this cycle: once as the
+      # gate-failure rework (owner-routed), once as the normal end-of-cycle
+      # curator step — the developer was NEVER re-invoked for the gate
+      # failure it did not own.
+      assert Enum.count(calls, &(&1 == "context-curator")) == 2
+      assert Enum.count(calls, &(&1 == "developer-phoenix-backend")) == 1
+    end
+
+    test "an unmapped witness still routes to the developer (today's behavior preserved)", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n <= 1, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 2
+    end
+  end
+
+  describe "run/1 — gate flake-check leg" do
+    test "a check green standalone re-runs the gate once WITHOUT consuming a rework attempt", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      # Call 0: initial gate -> failed. Call 1: flake-check standalone
+      # re-run -> CLEAR (the flake). Since do_gate_loop_flake_check's own
+      # clear branch re-enters do_gate_loop (not the rework path), the
+      # developer must never be re-invoked for this gate failure.
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      # developer-static invoked exactly ONCE — the load flake absorbed the
+      # failure without spending a rework attempt.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 1
+    end
+
+    test "a second consecutive red on the flake re-run is treated as genuinely red (no infinite flake loop)",
+         %{calls_agent: calls_agent} do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn()
+               )
+
+      assert reason =~ "gate verdict=failed"
+    end
+  end
+
+  describe "run/1 — terminal marker on deterministic gate exhaustion" do
+    test "gate exhaustion writes codegen/gate-pending/terminal-state.json naming the owner", %{
+      calls_agent: calls_agent
+    } do
+      tmp_cwd =
+        Path.join(System.tmp_dir!(), "loop-terminal-marker-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp_cwd)
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp_cwd,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn()
+               )
+
+      marker =
+        Path.join(tmp_cwd, "codegen/gate-pending/terminal-state.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert marker["terminal"] == true
+      assert marker["reason"] =~ "gate verdict=failed"
+      assert marker["owner"] == "developer-static"
     end
   end
 
@@ -2272,10 +2436,13 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       # Fails 3 times (more than the legacy max_gate_retries: 1 default),
       # then clears — only possible under the progress bound, not the old
-      # raw-count bound.
+      # raw-count bound. Each real failure now costs TWO gate_fn calls (the
+      # initial gate + the flake-check standalone re-run, which also stays
+      # failed — a genuine red, not a load flake) before a rework attempt
+      # is consumed: 3 real failures = 6 failed calls, then clear on the 7th.
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
-        if n < 3, do: {:failed, "make test"}, else: {:clear, "make test"}
+        if n < 6, do: {:failed, "make test"}, else: {:clear, "make test"}
       end
 
       # A fresh, always-different signature each call simulates continuous
@@ -2405,7 +2572,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
-        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+        if n <= 1, do: {:failed, "make test"}, else: {:clear, "make test"}
       end
 
       {:ok, seen_reason_agent} = Agent.start_link(fn -> nil end)
@@ -3121,6 +3288,45 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
+    test "curator-doc exhaustion writes the terminal marker naming context-curator as owner", %{
+      calls_agent: calls_agent
+    } do
+      tmp_cwd =
+        Path.join(
+          System.tmp_dir!(),
+          "loop-curator-doc-terminal-marker-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(tmp_cwd)
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      always_violates_fn = fn _cwd -> {:violations, "CLAUDE.md:1 bad path"} end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp_cwd,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_violates_fn,
+                 max_curator_doc_cycles: 1
+               )
+
+      marker =
+        Path.join(tmp_cwd, "codegen/gate-pending/terminal-state.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert marker["terminal"] == true
+      assert marker["reason"] =~ "context-curator doc check unresolved"
+      assert marker["owner"] == "context-curator"
+    end
+
     test "curator introduces a superset (fixes nothing, adds a violation) → dies at the guaranteed floor",
          %{calls_agent: calls_agent} do
       # Pins the subset DIRECTION: a scan that grows (never shrinks) must be
@@ -3467,6 +3673,46 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert reason =~ "MY_VAR"
       refute "GATED" in Agent.get(states_agent, & &1)
       refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "env-var exhaustion writes the terminal marker naming the developer as owner", %{
+      calls_agent: calls_agent
+    } do
+      tmp_cwd =
+        Path.join(
+          System.tmp_dir!(),
+          "loop-env-var-terminal-marker-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(tmp_cwd)
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      always_violates_fn = fn _cwd -> {:violations, "MY_VAR"} end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp_cwd,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 env_var_scan_fn: always_violates_fn,
+                 max_env_var_cycles: 1
+               )
+
+      marker =
+        Path.join(tmp_cwd, "codegen/gate-pending/terminal-state.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert marker["terminal"] == true
+      assert marker["reason"] =~ "env var sample-consistency unresolved"
+      assert marker["owner"] == "developer-static"
     end
 
     test "developer resolves one env-var violation while another surfaces → earns a turn past the guaranteed floor",

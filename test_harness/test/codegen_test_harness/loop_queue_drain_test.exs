@@ -42,6 +42,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # preserving the semantics of every failure-path test that doesn't
       # opt into a real gate record.
       gate_mtime_fn: fn _cwd -> 0 end,
+      terminal_marker_fn: fn _cwd -> :absent end,
       discover_session_log_fn: fn _cwd, _slug, _spawn_stamp -> nil end,
       blocked_fn: fn -> %{} end
     ]
@@ -400,6 +401,81 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert output =~ ~r/\[1\/1\] solo \.\.\. FAILED/
     assert output =~ "queue: FAILED bucket: solo"
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+  end
+
+  test "1h2: a terminal-marked nonzero exit parks + skips — NEVER retried, even though transient_fn is true",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      File.write!(jsonl, ~s({"type":"result","result":"boom","session_id":"sess-123"}\n))
+      {:exit_code, 1}
+    end
+
+    # transient_fn returns true — WITHOUT the terminal marker this would be
+    # retry-eligible. The marker must be read and win BEFORE
+    # retry_eligible?/5 is ever consulted (the ~$17 blind-retry this pitch
+    # closes).
+    transient_fn = fn _jsonl -> true end
+
+    terminal_marker_fn = fn _cwd ->
+      {:terminal, "gate verdict=failed", "developer-phoenix-backend"}
+    end
+
+    git_stash_fn = fn _cwd, _slug, _reason -> {:ok, "queue-fail/solo/20260101"} end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     terminal_marker_fn: terminal_marker_fn,
+                     git_stash_fn: git_stash_fn
+                   )
+                 )
+      end)
+
+    assert output =~ "FAILED (deterministic: developer-phoenix-backend exhausted"
+    assert output =~ "gate verdict=failed"
+    assert output =~ "parked, not retried"
+    refute output =~ "failed (retrying)"
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+  end
+
+  test "1h3: an UNMARKED nonzero exit still retries (regression guard — the diversion is narrow)",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    {:ok, attempts_agent} = Agent.start_link(fn -> 0 end)
+    on_exit(fn -> if Process.alive?(attempts_agent), do: Agent.stop(attempts_agent) end)
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      n = Agent.get_and_update(attempts_agent, fn n -> {n, n + 1} end)
+      File.write!(jsonl, ~s({"type":"result","result":"boom #{n}","session_id":"sess-#{n}"}\n))
+      {:exit_code, 1}
+    end
+
+    # No terminal_marker_fn override — base_opts/2 defaults to :absent
+    # (no on-disk marker), so retry_eligible?/5's transient_fn leg is what
+    # decides — unchanged from before this pitch.
+    transient_fn = fn _jsonl -> true end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     max_retries: 1
+                   )
+                 )
+      end)
+
+    assert Agent.get(attempts_agent, & &1) == 2
+    assert output =~ "failed (retrying)"
   end
 
   test "1i: streaming tee — child stdout/stderr echoed to :stderr AND persisted to jsonl", ctx do
@@ -2614,6 +2690,60 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
     end
   end
 
+  describe "default_terminal_marker_fn/1" do
+    setup do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "loop_queue_drain_terminal_marker_test_#{:erlang.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+      {:ok, dir: dir}
+    end
+
+    test "reads a well-formed marker", %{dir: dir} do
+      marker_dir = Path.join([dir, "codegen", "gate-pending"])
+      File.mkdir_p!(marker_dir)
+
+      File.write!(
+        Path.join(marker_dir, "terminal-state.json"),
+        Jason.encode!(%{terminal: true, reason: "gate verdict=failed", owner: "developer-static"})
+      )
+
+      assert LoopQueueDrain.default_terminal_marker_fn(dir) ==
+               {:terminal, "gate verdict=failed", "developer-static"}
+    end
+
+    test "absent file -> :absent (fail-open)", %{dir: dir} do
+      assert LoopQueueDrain.default_terminal_marker_fn(dir) == :absent
+    end
+
+    test "malformed JSON -> :absent (fail-open, never crashes the drain)", %{dir: dir} do
+      marker_dir = Path.join([dir, "codegen", "gate-pending"])
+      File.mkdir_p!(marker_dir)
+      File.write!(Path.join(marker_dir, "terminal-state.json"), "not json")
+
+      assert LoopQueueDrain.default_terminal_marker_fn(dir) == :absent
+    end
+
+    test "terminal: false -> :absent (only an explicit true claims a deterministic exhaustion)",
+         %{
+           dir: dir
+         } do
+      marker_dir = Path.join([dir, "codegen", "gate-pending"])
+      File.mkdir_p!(marker_dir)
+
+      File.write!(
+        Path.join(marker_dir, "terminal-state.json"),
+        Jason.encode!(%{terminal: false, reason: "", owner: nil})
+      )
+
+      assert LoopQueueDrain.default_terminal_marker_fn(dir) == :absent
+    end
+  end
+
   describe "pitch_budget_from_env/0" do
     test "unset -> 7200" do
       System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS")
@@ -2884,5 +3014,4 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
              end)
     end
   end
-
 end

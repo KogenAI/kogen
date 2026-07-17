@@ -23,17 +23,19 @@ owns the ExUnit stack SUITE, not the engine under test).
 
 ## The Decider Map — What Is LLM vs Deterministic (swept, exactly 4 LLM stages of 42)
 
-| Stage                                                             | Decider                                                                                                                                 | Where                                                                                        |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| dev-gate execution                                                | **LLM** (loop only renders prompt text)                                                                                                 | dev-role invocation                                                                          |
-| review verdict                                                    | **LLM**-authored, deterministically PARSED — unparseable → `:unknown` → **proceeds** (fail-open on parse, not on the verdict itself)    | reviewer body parse                                                                          |
-| the commit                                                        | **LLM** (committer subagent runs `git commit`)                                                                                          | committer invocation                                                                         |
-| `COMMITTED: <sha>` line                                           | **LLM**-authored — **no Elixir producer, parser, or consumer exists** for this exact string; do not build logic that expects to find it | committer.md convention only                                                                 |
-| gate verdict clear/failed                                         | **deterministic**; `"inconclusive"` fails closed to `:failed`                                                                           | `LoopGate` — see the cycle-record owner file's Gate Verdict Truth Table                      |
-| infra-vs-code classification                                      | **deterministic** — 6 regex signatures, default is always `:code` (never excuses a failure as infra unless matched)                     | `LoopGate.classify_failure/1`                                                                |
-| ship `ready/`→`shipped/`                                          | **deterministic** — `File.rename!`                                                                                                      | `Mix.Tasks.Codegen.Loop` (NOT `OrchestrationLoop.run/1` — a documented prior misattribution) |
-| commit verification                                               | **deterministic** — clean tree, exactly-one-commit, commit tree hash == graded tree hash                                                | `OrchestrationLoop` post-committer check                                                     |
-| budget cap, watchdog, lock, retries, fallback, signals, telemetry | **deterministic**                                                                                                                       | see below                                                                                    |
+| Stage                                                             | Decider                                                                                                                                                                                     | Where                                                                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| dev-gate execution                                                | **LLM** (loop only renders prompt text)                                                                                                                                                     | dev-role invocation                                                                                         |
+| review verdict                                                    | **LLM**-authored, deterministically PARSED — unparseable → `:unknown` → **proceeds** (fail-open on parse, not on the verdict itself)                                                        | reviewer body parse                                                                                         |
+| the commit                                                        | **LLM** (committer subagent runs `git commit`)                                                                                                                                              | committer invocation                                                                                        |
+| `COMMITTED: <sha>` line                                           | **LLM**-authored — **no Elixir producer, parser, or consumer exists** for this exact string; do not build logic that expects to find it                                                     | committer.md convention only                                                                                |
+| gate verdict clear/failed                                         | **deterministic**; `"inconclusive"` fails closed to `:failed`                                                                                                                               | `LoopGate` — see the cycle-record owner file's Gate Verdict Truth Table                                     |
+| infra-vs-code classification                                      | **deterministic** — 6 regex signatures, default is always `:code` (never excuses a failure as infra unless matched)                                                                         | `LoopGate.classify_failure/1`                                                                               |
+| gate-failure OWNER routing (`:code` → which role)                 | **deterministic** — a context-doc-shaped witness (`context/*.md`/`PROJECT_CONTEXT.md`) routes to `context-curator`; everything else routes to the cycle's own developer (unchanged default) | `OrchestrationLoop.default_gate_classify_fn/2` + `resolve_gate_owner/2`, reading `LoopGate.failing_check/1` |
+| gate-failure load-flake absorption                                | **deterministic** — one standalone re-run of the SAME gate command before any rework attempt is consumed; green → re-run full gate once (attempt not spent), red → real routing             | `OrchestrationLoop.do_gate_loop_flake_check/10`                                                             |
+| ship `ready/`→`shipped/`                                          | **deterministic** — `File.rename!`                                                                                                                                                          | `Mix.Tasks.Codegen.Loop` (NOT `OrchestrationLoop.run/1` — a documented prior misattribution)                |
+| commit verification                                               | **deterministic** — clean tree, exactly-one-commit, commit tree hash == graded tree hash                                                                                                    | `OrchestrationLoop` post-committer check                                                                    |
+| budget cap, watchdog, lock, retries, fallback, signals, telemetry | **deterministic**                                                                                                                                                                           | see below                                                                                                   |
 
 Every other stage in the 42-stage cycle is deterministic Elixir control flow. Treat "is this an LLM
 decision or a deterministic one" as answerable per-stage from this table — do not assume.
@@ -138,6 +140,25 @@ reason, never defaulting to `%{}`.
 receives (via `jq`'s `fromdateiso8601`, portable across macOS/Linux — never a bash `date -d`/`date -j`
 diff), recording `null` when either timestamp is unparseable.
 
+## Terminal Marker — Deterministic Exhaustion vs Recoverable Transient
+
+`OrchestrationLoop.write_terminal_marker/3` writes `codegen/gate-pending/terminal-state.json`
+(`{terminal: true, reason, owner}`) whenever a rework loop's OWNING role genuinely exhausts its
+progress+ceiling bound — gate rework (`do_gate_loop_rework/9`), curator-doc check
+(`curator_doc_check_exhausted/3`), or env-var check (`run_env_var_step_rework/9`) — immediately
+alongside the `{:error, ...}` it already returns. This DOES NOT change the `{:error}`/exit-1 return
+value; it is a durable, additional signal distinguishing a DETERMINISTIC exhaustion ("this cycle cannot
+succeed however many times you run it") from a RECOVERABLE transient exit (a process death mid-cycle).
+
+Deliberately NOT `InfraAbort`/exit 3: every marker-writing caller is PITCH-SPECIFIC (this cycle's own
+gate/doc/env exhaustion) — the next pitch in a drain is unaffected, so the queue should skip and continue
+rather than HALT. Exit 3 stays reserved for genuinely repo-wide infra faults (see Infra Abort above).
+
+The marker is unlinked at the start of every FULL (non-resumed) cycle — see `run_body/1`'s `:full`
+branch — so a stale marker from an earlier, already-concluded cycle never leaks into a fresh one.
+`LoopQueueDrain` is the consumer: see the loop-queue-drain owner file's "Deterministic Failure — Skip"
+section for how a marked nonzero exit routes to park+skip+breaker instead of `retry_eligible?/5`.
+
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, gate failure owner, flake check, load flake

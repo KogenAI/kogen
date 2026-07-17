@@ -230,6 +230,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       verdict left on disk by an EARLIER cycle that shares the same
       `head_before` (two consecutive non-committing attempts have an
       identical base, so the sha leg alone cannot tell them apart).
+    * `:terminal_marker_fn` — `(cwd -> {:terminal, reason, owner} | :absent)`,
+      default reads `codegen/gate-pending/terminal-state.json` (written by
+      `OrchestrationLoop.write_terminal_marker/3` on a DETERMINISTIC
+      exhaustion — a gate/doc/env-var check the owning role genuinely could
+      not fix). Read BEFORE `retry_eligible?/5` on a nonzero exit: when
+      present, routes straight to the existing park+skip+breaker channel
+      (never a retry, never HALT — see `handle_nonzero_exit/8`). Absent or
+      malformed -> `:absent`, and the failure takes today's path
+      (retry-eligible) — fail-open is correct here: absence means "no
+      deterministic claim was made", exactly today's behavior.
     * `:watch` — default `false`. When `true`, an EMPTY `ready/` (the
       terminal condition below) does not return — instead the drain sleeps
       `:poll_interval_secs`, recomputes `:total`, and re-enters `run_loop`
@@ -341,6 +351,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
           gate_base_sha_fn: Keyword.get(opts, :gate_base_sha_fn, &default_gate_base_sha_fn/1),
           gate_mtime_fn: Keyword.get(opts, :gate_mtime_fn, &default_gate_mtime_fn/1),
+          terminal_marker_fn:
+            Keyword.get(opts, :terminal_marker_fn, &default_terminal_marker_fn/1),
           watch: Keyword.get(opts, :watch, false),
           poll_interval_secs:
             Keyword.get(opts, :poll_interval_secs, poll_interval_secs_from_env()),
@@ -1211,6 +1223,49 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
         state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
         run_loop(state, shipped_count + 1, concluded_count + 1)
+
+      match?({:terminal, _reason, _owner}, state.terminal_marker_fn.(state.cwd)) ->
+        # A DETERMINISTIC exhaustion (owner genuinely could not fix it, or a
+        # self-inflicted curator-doc/env exhaustion) — never a transient, so
+        # NEVER retried, and pitch-specific, so never HALTs the whole queue
+        # (that channel is exit 3 / InfraAbort, reserved for repo-wide
+        # faults). Routes to the SAME park+skip+breaker channel the `true ->`
+        # catch-all below already uses — this arm only narrows WHICH exits
+        # land there without ever reaching `retry_eligible?/5` first (the
+        # ~$17 blind-retry this diverts around).
+        {:terminal, terminal_reason, terminal_owner} = state.terminal_marker_fn.(state.cwd)
+
+        IO.puts(
+          :stderr,
+          "[#{idx}/#{state.total}] #{slug} ... FAILED (deterministic: " <>
+            "#{terminal_owner || "unknown"} exhausted — #{terminal_reason}) — parked, not retried"
+        )
+
+        parked_branch = park_failed_tree(state, slug)
+
+        failed_slugs = MapSet.put(state.failed_slugs, slug)
+        parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
+        consecutive_fails = state.consecutive_fails + 1
+
+        if consecutive_fails >= state.max_consecutive_fails do
+          spend_report(state, shipped_count, MapSet.size(failed_slugs))
+
+          {:error,
+           "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
+             "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
+             "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
+        else
+          state = %{
+            state
+            | failed_slugs: failed_slugs,
+              parked_branches: parked_branches,
+              consecutive_fails: consecutive_fails,
+              retry_count: 0,
+              last_slug: nil
+          }
+
+          run_loop(state, shipped_count, concluded_count + 1)
+        end
 
       retry_eligible?(state, slug, jsonl, committed?, gate_clear?) ->
         retry_count = if state.last_slug == slug, do: state.retry_count, else: 0
@@ -2184,6 +2239,26 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     case File.stat(path, time: :posix) do
       {:ok, %{mtime: mtime}} -> mtime
       {:error, _reason} -> 0
+    end
+  end
+
+  # ── Real terminal_marker_fn: reads codegen/gate-pending/terminal-state.json ─
+  # Written by `OrchestrationLoop.write_terminal_marker/3` on a DETERMINISTIC
+  # exhaustion. Malformed/absent -> `:absent` (fail-open — see moduledoc).
+
+  @doc false
+  @spec default_terminal_marker_fn(String.t()) ::
+          {:terminal, String.t(), String.t() | nil} | :absent
+  def default_terminal_marker_fn(cwd) do
+    path = Path.join([cwd, "codegen", "gate-pending", "terminal-state.json"])
+
+    with {:ok, content} <- File.read(path),
+         {:ok, %{"terminal" => true} = decoded} <- Jason.decode(content) do
+      reason = Map.get(decoded, "reason", "")
+      owner = Map.get(decoded, "owner")
+      {:terminal, reason, owner}
+    else
+      _ -> :absent
     end
   end
 

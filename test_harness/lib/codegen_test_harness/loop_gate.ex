@@ -11,6 +11,7 @@ defmodule CodegenTestHarness.LoopGate do
 
   @type verdict :: :clear | :failed
   @type fault_class :: :code | :infra
+  @type owner_class :: {:owner, String.t()} | :infra
 
   defmodule CanaryError do
     @moduledoc """
@@ -569,6 +570,34 @@ defmodule CodegenTestHarness.LoopGate do
 
     {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
     String.trim(output)
+  end
+
+  @doc """
+  Reads the `witness` field the last `run_gate/2` call stamped into
+  `<project_dir>/codegen/gate-pending/gate-result.json` — the located
+  `file:line — <verbatim cause>` for a FAILED verdict (see the Witness
+  Discipline rule; `extract_witness/1` is the producer). Returns `""` when
+  the file/field is absent, unreadable, or the last gate was clear (no
+  failure to locate).
+
+  Used to resolve WHICH ROLE owns a gate failure (see
+  `OrchestrationLoop.default_gate_classify_fn/2`'s owner-mapping) and to
+  drive the standalone flake re-run: an owner-mapping regex matches against
+  this text, never against the raw gate log, so the mapping is scoped to
+  the exact located failure rather than incidental noise elsewhere in the
+  log.
+  """
+  @spec failing_check(String.t()) :: String.t()
+  def failing_check(project_dir) do
+    path = gate_result_path(project_dir)
+
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{"witness" => witness}} <- Jason.decode(contents),
+         true <- is_binary(witness) do
+      witness
+    else
+      _ -> ""
+    end
   end
 
   @doc """

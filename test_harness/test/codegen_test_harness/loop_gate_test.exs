@@ -420,9 +420,10 @@ defmodule CodegenTestHarness.LoopGateTest do
       refute File.exists?(Path.join(gate_pending_dir, "gate-result.json"))
     end
 
-    test "canary returning :inconclusive also halts — only :failed certifies the gate can fail", %{
-      dir: dir
-    } do
+    test "canary returning :inconclusive also halts — only :failed certifies the gate can fail",
+         %{
+           dir: dir
+         } do
       write_gate_config!(dir, "make test")
       run_fn = fn _gate, _project_dir -> {"all good", 0} end
       canary_fn = fn _gate, _evidence_fn -> :inconclusive end
@@ -509,6 +510,33 @@ defmodule CodegenTestHarness.LoopGateTest do
         |> Jason.decode!()
 
       assert result["witness"] == ""
+    end
+  end
+
+  describe "failing_check/1" do
+    test "reads the witness the last run_gate/2 call stamped into gate-result.json", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+
+      run_fn = fn _gate, _project_dir ->
+        {"  1) test foo (MyTest)\n     test/my_test.exs:42: assert 1 == 2", 1}
+      end
+
+      assert {:failed, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      assert LoopGate.failing_check(dir) =~ "test/my_test.exs:42"
+    end
+
+    test "empty when gate-result.json is absent (no gate has run yet)", %{dir: dir} do
+      assert LoopGate.failing_check(dir) == ""
+    end
+
+    test "empty when the last gate was clear (no witness to locate)", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"1 tests, 0 failures", 0} end
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      assert LoopGate.failing_check(dir) == ""
     end
   end
 
