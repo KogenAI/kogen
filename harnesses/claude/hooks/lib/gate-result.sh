@@ -244,6 +244,12 @@ write_gate_result() {
     fi
 
     # diff_files_count and evidence/segments always numeric
+    # duration_s: derived from the SAME started/ended ISO8601 UTC strings
+    # already threaded through (never a new clock read) — jq's fromdateiso8601
+    # is portable across macOS/Linux, unlike bash `date -d`/`date -j` diffing.
+    # null (not 0) when either timestamp is unparseable/empty — a fabricated
+    # 0s duration reads as "instant", which is the exact defect this field
+    # exists to end (see pitch "build-cycle-accounts-for-its-own-time").
     jq -n \
         --arg gate "$gate" \
         --arg mode "$mode" \
@@ -263,7 +269,11 @@ write_gate_result() {
         --arg log "$log" \
         --arg witness "$witness" \
         --arg graded_tree_sha "$graded_tree_sha" \
-        '{
+        '($started | try fromdateiso8601 catch null) as $started_epoch
+        | ($ended | try fromdateiso8601 catch null) as $ended_epoch
+        | (if $started_epoch != null and $ended_epoch != null
+           then ($ended_epoch - $started_epoch) else null end) as $duration_s
+        | {
             gate: $gate,
             mode: $mode,
             base_sha: $base_sha,
@@ -278,6 +288,7 @@ write_gate_result() {
             classification: $classification,
             started: $started,
             ended: $ended,
+            duration_s: $duration_s,
             session_id: $session_id,
             log: $log,
             witness: $witness,

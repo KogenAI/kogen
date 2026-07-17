@@ -870,7 +870,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
     max_cycles = Keyword.get(opts, :max_final_gate_cycles, 1)
 
-    case gate_fn.(ctx.cwd, gate_opts(opts)) do
+    case gate_fn.(ctx.cwd, gate_opts(opts, ctx)) do
       {:clear, _gate_cmd} ->
         run_committer(ctx, rest, harness, opts)
 
@@ -1840,7 +1840,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Runs the gate once (developer already ran) and returns the verdict atom.
   defp run_gate_once(ctx, opts) do
     gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
-    {verdict, _cmd} = gate_fn.(ctx.cwd, gate_opts(opts))
+    {verdict, _cmd} = gate_fn.(ctx.cwd, gate_opts(opts, ctx))
     verdict
   end
 
@@ -1861,10 +1861,33 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # default_log_init/3 at cycle start, or nil when no log was initialized,
   # e.g. most unit tests). Adds a key only; never overwrites a :cycle_log a
   # test already supplied in opts.
+  #
+  # Also adds :session_id — the acting developer role for THIS gate run, so
+  # `gate-verdicts.jsonl` records an attributable actor instead of the
+  # anonymous "" LoopGate.run_gate/2 defaults to (pitch
+  # "build-cycle-accounts-for-its-own-time" Move 5). `actor` (when given) is
+  # the caller's own already-known dev_role (do_gate_loop/9,
+  # rework_final_gate/5); nil callers (run_gate_once/2, which has no
+  # dev_role parameter) fall back to dev_role_from_ctx/1. Never overwrites a
+  # :session_id a test already supplied in opts.
   @spec gate_opts(run_opts()) :: run_opts()
-  defp gate_opts(opts) do
-    Keyword.put_new(opts, :cycle_log, Process.get(@log_path_key))
+  defp gate_opts(opts), do: gate_opts(opts, nil)
+
+  @spec gate_opts(run_opts(), map() | String.t() | nil) :: run_opts()
+  defp gate_opts(opts, dev_role) when is_binary(dev_role) do
+    opts
+    |> Keyword.put_new(:cycle_log, Process.get(@log_path_key))
+    |> Keyword.put_new(:session_id, dev_role)
   end
+
+  defp gate_opts(opts, ctx) when is_map(ctx) or is_nil(ctx) do
+    opts
+    |> Keyword.put_new(:cycle_log, Process.get(@log_path_key))
+    |> Keyword.put_new(:session_id, gate_actor(ctx))
+  end
+
+  defp gate_actor(nil), do: ""
+  defp gate_actor(ctx), do: dev_role_from_ctx(ctx) || ""
 
   # Hard ceiling backstop: even with continuous progress, a run/1 cycle never
   # re-invokes the developer for gate failures more than this many times.
@@ -1952,7 +1975,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          attempt,
          prev_signature
        ) do
-    case gate_fn.(ctx.cwd, gate_opts(opts)) do
+    case gate_fn.(ctx.cwd, gate_opts(opts, dev_role)) do
       {:clear, _gate_cmd} ->
         advance_cycle_state_step("GATED", ctx, opts)
 
@@ -3396,7 +3419,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   def get_telemetry, do: Process.get(@telemetry_key, zero_telemetry())
 
   @doc false
-  def accumulate_telemetry(role, %{"usage" => usage}) when is_map(usage) do
+  def accumulate_telemetry(role, %{"usage" => usage} = envelope) when is_map(usage) do
     acc = get_telemetry()
 
     role_entry = %{
@@ -3405,7 +3428,23 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       output_tokens: t_int(usage["output_tokens"]),
       cache_read_tokens: t_int(usage["cache_read_input_tokens"]),
       cache_creation_tokens: t_int(usage["cache_creation_input_tokens"]),
-      num_turns: t_int(usage["num_turns"])
+      num_turns: t_int(usage["num_turns"]),
+      # Previously-emitted, previously-unread signals — see pitch
+      # "build-cycle-accounts-for-its-own-time". Unknown stays unknown:
+      # t_opt_int/1 carries `nil` through rather than coercing an
+      # absent/malformed value to a fabricated 0 (unlike t_int/t_num above,
+      # which back existing arithmetic sums and must stay byte-identical).
+      latency_ms: t_opt_int(usage["latency_ms"]),
+      duration_ms: t_opt_int(usage["duration_ms"]),
+      duration_api_ms: t_opt_int(usage["duration_api_ms"]),
+      ttft_ms: t_opt_int(usage["ttft_ms"]),
+      permission_denials: t_opt_int(usage["permission_denials"]),
+      stop_reason: usage["stop_reason"],
+      # `metrics` is OMITTED (not zeroed) by the envelope on any abnormal
+      # call — see call-dispatch.sh's METRICS="null" guard. Reading it as
+      # nil-when-absent here preserves that "unknown, not zero" contract;
+      # never default to %{}.
+      metrics: Map.get(envelope, "metrics")
     }
 
     updated = %{
@@ -3441,7 +3480,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         "num_turns" => t_int(usage["num_turns"]),
         "cost_usd" => t_num(usage["cost_usd"]),
         "status" => get_in(envelope, ["result", "status"]),
-        "transcript" => transcript
+        "transcript" => transcript,
+        # Widened per pitch "build-cycle-accounts-for-its-own-time" Move 1/3
+        # — signals both harnesses already emit, previously dropped on
+        # arrival. Absent -> null, never a fabricated 0 (masking-default
+        # discipline); a null here means "unknown", not "zero".
+        "latency_ms" => t_opt_int(usage["latency_ms"]),
+        "duration_ms" => t_opt_int(usage["duration_ms"]),
+        "duration_api_ms" => t_opt_int(usage["duration_api_ms"]),
+        "ttft_ms" => t_opt_int(usage["ttft_ms"]),
+        "permission_denials" => t_opt_int(usage["permission_denials"]),
+        "stop_reason" => usage["stop_reason"],
+        "metrics" => Map.get(envelope, "metrics")
       })
 
     dir = Path.join([cwd, "codegen", "logging", cycle_id])
@@ -3474,4 +3524,25 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp t_int(_), do: 0
+
+  # Null-preserving siblings of t_int/1 and t_num/1 — used ONLY for the new
+  # observability fields (latency_ms, duration_ms, duration_api_ms, ttft_ms,
+  # permission_denials). Unlike t_int/1 (which backs existing arithmetic
+  # sums and must keep coercing absent -> 0 to avoid crashing them), these
+  # carry an absent/malformed value through as `nil` — a fabricated 0 would
+  # read as "instant"/"free"/"no denials" and mask exactly the gap this
+  # pitch exists to surface. t_int/1 and t_num/1 are left byte-identical.
+  @spec t_opt_int(term()) :: integer() | nil
+  defp t_opt_int(nil), do: nil
+  defp t_opt_int(n) when is_integer(n), do: n
+  defp t_opt_int(n) when is_float(n), do: trunc(n)
+
+  defp t_opt_int(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {i, _} -> i
+      :error -> nil
+    end
+  end
+
+  defp t_opt_int(_), do: nil
 end

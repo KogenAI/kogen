@@ -314,7 +314,7 @@ if [[ -n "$WATCHDOG_KILLED" ]] && [[ -z "$RESULT_EVENT" ]]; then
                 cost_usd: 0,
                 latency_ms: $latency_ms,
                 model: $model,
-                num_turns: 0
+                num_turns: null
             },
             error: "watchdog: Stream idle timeout",
             harness: "claude_code",
@@ -345,7 +345,7 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$RESULT_EVENT" ]]; then
                 cost_usd: 0,
                 latency_ms: $latency_ms,
                 model: $model,
-                num_turns: 0
+                num_turns: null
             },
             error: $error,
             harness: "claude_code",
@@ -376,7 +376,7 @@ if [[ -z "$RESULT_EVENT" ]]; then
                 cost_usd: 0,
                 latency_ms: $latency_ms,
                 model: $model,
-                num_turns: 0
+                num_turns: null
             },
             error: ("no result event; tail: " + $tail_out),
             harness: "claude_code",
@@ -389,8 +389,10 @@ fi
 SUBTYPE="$(printf '%s' "$RESULT_EVENT" | jq -r '.subtype // "unknown"')"
 IS_ERROR="$(printf '%s' "$RESULT_EVENT" | jq -r '.is_error // false')"
 RESULT_TEXT="$(printf '%s' "$RESULT_EVENT" | jq -r '.result // ""')"
-NUM_TURNS="$(printf '%s' "$RESULT_EVENT" | jq -r '.num_turns // 1')"
-TOTAL_COST="$(printf '%s' "$RESULT_EVENT" | jq -r '.total_cost_usd // 0')"
+# Null-preserving: absent num_turns/total_cost_usd must record as JSON null,
+# never a fabricated "1 turn" / "free" sentinel (masking-default discipline).
+NUM_TURNS="$(printf '%s' "$RESULT_EVENT" | jq -c '.num_turns // null')"
+TOTAL_COST="$(printf '%s' "$RESULT_EVENT" | jq -c '.total_cost_usd // null')"
 SESSION_ID="$(printf '%s' "$RESULT_EVENT" | jq -r '.session_id // ""')"
 
 # Extract usage tokens from result event
@@ -398,6 +400,16 @@ INPUT_TOKENS="$(printf '%s' "$RESULT_EVENT" | jq -r '.usage.input_tokens // 0')"
 OUTPUT_TOKENS="$(printf '%s' "$RESULT_EVENT" | jq -r '.usage.output_tokens // 0')"
 CACHE_READ="$(printf '%s' "$RESULT_EVENT" | jq -r '.usage.cache_read_input_tokens // 0')"
 CACHE_CREATION="$(printf '%s' "$RESULT_EVENT" | jq -r '.usage.cache_creation_input_tokens // 0')"
+
+# Model-vs-local split + hook-denial + cache signals — already present on the
+# result event today, previously unlifted (see pitch
+# "build-cycle-accounts-for-its-own-time" Move 2). Absent → JSON null, never
+# a fabricated zero.
+DURATION_MS="$(printf '%s' "$RESULT_EVENT" | jq -c '.duration_ms // null')"
+DURATION_API_MS="$(printf '%s' "$RESULT_EVENT" | jq -c '.duration_api_ms // null')"
+TTFT_MS="$(printf '%s' "$RESULT_EVENT" | jq -c '.ttft_ms // null')"
+PERMISSION_DENIALS_COUNT="$(printf '%s' "$RESULT_EVENT" | jq -c '(.permission_denials // null) | if . == null then null else length end')"
+STOP_REASON="$(printf '%s' "$RESULT_EVENT" | jq -c '.stop_reason // null')"
 
 # Determine status
 STATUS=""
@@ -508,6 +520,11 @@ jq -n \
     --argjson num_turns "$NUM_TURNS" \
     --arg session_id "$SESSION_ID" \
     --argjson metrics "$METRICS" \
+    --argjson duration_ms "$DURATION_MS" \
+    --argjson duration_api_ms "$DURATION_API_MS" \
+    --argjson ttft_ms "$TTFT_MS" \
+    --argjson permission_denials "$PERMISSION_DENIALS_COUNT" \
+    --argjson stop_reason "$STOP_REASON" \
     '{
         result: {
             status: $status,
@@ -523,7 +540,12 @@ jq -n \
             cost_usd: $cost_usd,
             latency_ms: $latency_ms,
             model: $model,
-            num_turns: $num_turns
+            num_turns: $num_turns,
+            duration_ms: $duration_ms,
+            duration_api_ms: $duration_api_ms,
+            ttft_ms: $ttft_ms,
+            permission_denials: $permission_denials,
+            stop_reason: $stop_reason
         },
         error: null,
         harness: "claude_code",

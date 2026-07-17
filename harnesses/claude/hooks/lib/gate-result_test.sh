@@ -146,6 +146,19 @@ assert_eq "json .session_id field" "abc123" "$(jq -r '.session_id' "$RESULT_FILE
 assert_eq "json .log field" "/tmp/gate.log" "$(jq -r '.log' "$RESULT_FILE")"
 assert_eq "json .started field" "2026-06-07T12:00:00Z" "$(jq -r '.started' "$RESULT_FILE")"
 assert_eq "json .ended field" "2026-06-07T12:03:11Z" "$(jq -r '.ended' "$RESULT_FILE")"
+assert_eq "json .duration_s field derived from started/ended" \
+    "191" "$(jq -r '.duration_s' "$RESULT_FILE")"
+
+# ── duration_s: null (not 0) on unparseable/empty started or ended ──────────
+
+DIR_DUR_NULL=$(mktemp -d)
+write_gate_result "make ci" "short" "a1b2c3d" 7 \
+    "true" 0 2 2 "PASS" "" \
+    "" "2026-06-07T12:03:11Z" \
+    "abc123" "/tmp/gate.log" "$DIR_DUR_NULL"
+assert_eq "json .duration_s null when started is empty" \
+    "null" "$(jq -c '.duration_s' "$DIR_DUR_NULL/codegen/gate-pending/gate-result.json")"
+rm -rf "$DIR_DUR_NULL"
 
 # ── gate_result_base_sha ──────────────────────────────────────────────────────
 

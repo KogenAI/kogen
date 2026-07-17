@@ -336,7 +336,7 @@ if [[ -n "$WATCHDOG_KILLED" ]] && [[ -z "$AGENT_END_EVENT" ]]; then
                 cost_usd: 0,
                 latency_ms: $latency_ms,
                 model: $model,
-                num_turns: 1
+                num_turns: null
             },
             error: "watchdog: Stream idle timeout",
             harness: "pi",
@@ -367,7 +367,7 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -z "$AGENT_END_EVENT" ]]; then
                 cost_usd: 0,
                 latency_ms: $latency_ms,
                 model: $model,
-                num_turns: 1
+                num_turns: null
             },
             error: $error,
             harness: "pi",
@@ -398,7 +398,7 @@ if [[ -z "$AGENT_END_EVENT" ]]; then
                 cost_usd: 0,
                 latency_ms: $latency_ms,
                 model: $model,
-                num_turns: 1
+                num_turns: null
             },
             error: ("no agent_end event; tail: " + $tail_out),
             harness: "pi",
@@ -433,7 +433,9 @@ OUTPUT_TOKENS="$(printf '%s' "$AGENT_END_EVENT" | jq -r '.usage.output_tokens //
 CACHE_READ="$(printf '%s' "$AGENT_END_EVENT" | jq -r '.usage.cache_read_input_tokens // 0' 2>/dev/null || printf '0')"
 CACHE_CREATION="$(printf '%s' "$AGENT_END_EVENT" | jq -r '.usage.cache_creation_input_tokens // 0' 2>/dev/null || printf '0')"
 COST_USD="$(printf '%s' "$AGENT_END_EVENT" | jq -r '.usage.cost_usd // 0' 2>/dev/null || printf '0')"
-NUM_TURNS="$(printf '%s' "$AGENT_END_EVENT" | jq -r '.num_turns // 1' 2>/dev/null || printf '1')"
+# Null-preserving: absent num_turns must record as JSON null, never a
+# fabricated "1 turn" sentinel (masking-default discipline).
+NUM_TURNS="$(printf '%s' "$AGENT_END_EVENT" | jq -c '.num_turns // null' 2>/dev/null || printf 'null')"
 
 # Fall back to scanning JSONL for usage events if agent_end had no usage
 if [[ "$INPUT_TOKENS" == "0" ]]; then
@@ -529,7 +531,12 @@ jq -n \
             cost_usd: $cost_usd,
             latency_ms: $latency_ms,
             model: $model,
-            num_turns: $num_turns
+            num_turns: $num_turns,
+            duration_ms: null,
+            duration_api_ms: null,
+            ttft_ms: null,
+            permission_denials: null,
+            stop_reason: null
         },
         error: null,
         harness: "pi",

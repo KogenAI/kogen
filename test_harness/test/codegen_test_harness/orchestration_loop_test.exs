@@ -285,6 +285,40 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "run/1 — gate opts carry an attributable :session_id" do
+    test "gate_fn receives :session_id == the developer role that just ran (not the anonymous default)",
+         %{calls_agent: calls_agent} do
+      {:ok, gate_opts_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(gate_opts_agent), do: Agent.stop(gate_opts_agent) end)
+
+      capturing_gate_fn = fn _cwd, opts ->
+        Agent.update(gate_opts_agent, &(&1 ++ [Keyword.get(opts, :session_id)]))
+        {:clear, "make test"}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: capturing_gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      session_ids = Agent.get(gate_opts_agent, & &1)
+      assert length(session_ids) > 0
+      # Never the pre-fix anonymous default: LoopGate.run_gate/2 itself
+      # defaults an absent :session_id to "" — the loop must always supply
+      # a non-blank actor now, for every gate call this cycle made.
+      assert Enum.all?(session_ids, &(&1 != "" and &1 != nil))
+      assert Enum.all?(session_ids, &String.starts_with?(&1, "developer-"))
+    end
+  end
+
   defp no_op_orientation_preflight_fn do
     fn _cwd -> {:clean} end
   end
@@ -1227,6 +1261,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       on_exit(fn ->
         if Process.alive?(harness_seen_by_resolve_fn), do: Agent.stop(harness_seen_by_resolve_fn)
+
         if Process.alive?(harness_seen_by_codegen_call_fn),
           do: Agent.stop(harness_seen_by_codegen_call_fn)
       end)
@@ -2969,7 +3004,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
-        if n == 0, do: {:violations, "CLAUDE.md:1 bad path — the specific violation text"}, else: {:clean}
+
+        if n == 0,
+          do: {:violations, "CLAUDE.md:1 bad path — the specific violation text"},
+          else: {:clean}
       end
 
       invoke_fn = fn role, _harness, ctx, _opts ->
@@ -4053,6 +4091,58 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       Process.delete(:loop_telemetry)
     end
+
+    test "accumulate_telemetry/2 carries latency_ms/duration_ms/metrics through to per_role, unsummed" do
+      Process.delete(:loop_telemetry)
+
+      envelope = %{
+        "usage" => %{
+          "cost_usd" => 0.5,
+          "num_turns" => 3,
+          "latency_ms" => 12_345,
+          "duration_ms" => 9_000,
+          "duration_api_ms" => 3_000,
+          "ttft_ms" => 2_100,
+          "permission_denials" => 4,
+          "stop_reason" => "end_turn"
+        },
+        "metrics" => %{"read_count" => 10, "edit_count" => 2}
+      }
+
+      assert :ok == OrchestrationLoop.accumulate_telemetry("developer-static", envelope)
+
+      t = OrchestrationLoop.get_telemetry()
+      [role_entry] = t.per_role["developer-static"]
+      assert role_entry.latency_ms == 12_345
+      assert role_entry.duration_ms == 9_000
+      assert role_entry.duration_api_ms == 3_000
+      assert role_entry.ttft_ms == 2_100
+      assert role_entry.permission_denials == 4
+      assert role_entry.stop_reason == "end_turn"
+      assert role_entry.metrics == %{"read_count" => 10, "edit_count" => 2}
+
+      Process.delete(:loop_telemetry)
+    end
+
+    test "accumulate_telemetry/2 records nil (not 0) for absent latency/duration/metrics fields" do
+      Process.delete(:loop_telemetry)
+
+      envelope = %{"usage" => %{"cost_usd" => 0.1, "num_turns" => 1}}
+
+      assert :ok == OrchestrationLoop.accumulate_telemetry("developer-static", envelope)
+
+      t = OrchestrationLoop.get_telemetry()
+      [role_entry] = t.per_role["developer-static"]
+      assert role_entry.latency_ms == nil
+      assert role_entry.duration_ms == nil
+      assert role_entry.duration_api_ms == nil
+      assert role_entry.ttft_ms == nil
+      assert role_entry.permission_denials == nil
+      assert role_entry.stop_reason == nil
+      assert role_entry.metrics == nil
+
+      Process.delete(:loop_telemetry)
+    end
   end
 
   describe "per-role transcript capture" do
@@ -4112,6 +4202,88 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert decoded["seq"] == 1
       assert decoded["status"] == "success"
       assert String.ends_with?(decoded["transcript"], "01-developer-static.jsonl")
+    end
+
+    test "invoke_role/4 writes latency_ms/duration_ms/metrics columns to cycle-summary.jsonl, null when absent" do
+      cwd = Path.join(System.tmp_dir!(), "octel-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      on_exit(fn -> File.rm_rf(cwd) end)
+
+      Process.put(:loop_cycle_id, "20260705_x_slug")
+      Process.put(:loop_transcript_seq, 0)
+
+      envelope = %{
+        "result" => %{"status" => "success", "value" => "x"},
+        "usage" => %{
+          "num_turns" => 3,
+          "cost_usd" => 0.02,
+          "latency_ms" => 5_500,
+          "duration_ms" => 5_000,
+          "duration_api_ms" => 1_200,
+          "ttft_ms" => 2_000,
+          "permission_denials" => 2,
+          "stop_reason" => "end_turn"
+        },
+        "metrics" => %{"read_count" => 3}
+      }
+
+      OrchestrationLoop.invoke_role(
+        "developer-static",
+        "claude_code",
+        %{cwd: cwd, pitch: "p", artifacts: %{}},
+        resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+        codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> envelope end
+      )
+
+      summary_path =
+        Path.join([cwd, "codegen", "logging", "20260705_x_slug", "cycle-summary.jsonl"])
+
+      [line] = summary_path |> File.read!() |> String.split("\n", trim: true)
+      decoded = Jason.decode!(line)
+
+      assert decoded["latency_ms"] == 5_500
+      assert decoded["duration_ms"] == 5_000
+      assert decoded["duration_api_ms"] == 1_200
+      assert decoded["ttft_ms"] == 2_000
+      assert decoded["permission_denials"] == 2
+      assert decoded["stop_reason"] == "end_turn"
+      assert decoded["metrics"] == %{"read_count" => 3}
+    end
+
+    test "invoke_role/4 writes null (not 0) for latency_ms/duration_ms/metrics when the envelope omits them" do
+      cwd = Path.join(System.tmp_dir!(), "octel-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      on_exit(fn -> File.rm_rf(cwd) end)
+
+      Process.put(:loop_cycle_id, "20260705_x_slug")
+      Process.put(:loop_transcript_seq, 0)
+
+      envelope = %{
+        "result" => %{"status" => "success", "value" => "x"},
+        "usage" => %{"num_turns" => 3, "cost_usd" => 0.02}
+      }
+
+      OrchestrationLoop.invoke_role(
+        "developer-static",
+        "claude_code",
+        %{cwd: cwd, pitch: "p", artifacts: %{}},
+        resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+        codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> envelope end
+      )
+
+      summary_path =
+        Path.join([cwd, "codegen", "logging", "20260705_x_slug", "cycle-summary.jsonl"])
+
+      [line] = summary_path |> File.read!() |> String.split("\n", trim: true)
+      decoded = Jason.decode!(line)
+
+      assert decoded["latency_ms"] == nil
+      assert decoded["duration_ms"] == nil
+      assert decoded["duration_api_ms"] == nil
+      assert decoded["ttft_ms"] == nil
+      assert decoded["permission_denials"] == nil
+      assert decoded["stop_reason"] == nil
+      assert decoded["metrics"] == nil
     end
 
     test "invoke_role/4 writes no cycle-summary file when cycle_id is nil" do
@@ -4281,7 +4453,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug ->
+          advance_cycle_state_fn: fn _state,
+                                     _step_log,
+                                     _session_id,
+                                     _verdict,
+                                     _project_dir,
+                                     _slug ->
             :ok
           end,
           clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
@@ -4333,7 +4510,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug ->
+          advance_cycle_state_fn: fn _state,
+                                     _step_log,
+                                     _session_id,
+                                     _verdict,
+                                     _project_dir,
+                                     _slug ->
             :ok
           end,
           clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
@@ -5222,7 +5404,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         preflight_probe_fn: all_present_preflight_probe_fn(),
         orientation_preflight_fn: no_op_orientation_preflight_fn(),
         orphan_scan_fn: fn _cwd -> [] end,
-        advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug ->
+        advance_cycle_state_fn: fn _state,
+                                   _step_log,
+                                   _session_id,
+                                   _verdict,
+                                   _project_dir,
+                                   _slug ->
           :ok
         end
       ]
@@ -5344,11 +5531,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                ["developer-static", "reviewer-static", "context-curator", "committer"]
     end
 
-    test "checkpoint stamped with an empty slug (pre-upgrade record) → full run, never resumes", %{
-      dir: dir,
-      base_head: base_head,
-      calls_agent: calls_agent
-    } do
+    test "checkpoint stamped with an empty slug (pre-upgrade record) → full run, never resumes",
+         %{
+           dir: dir,
+           base_head: base_head,
+           calls_agent: calls_agent
+         } do
       tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
       write_gate_result!(dir, "clear", tree_sha, base_head)
       write_cycle_state!(dir, "GATED")
@@ -5565,7 +5753,9 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
           "planner-phoenix, developer-phoenix-backend, developer-phoenix-frontend, " <>
           "reviewer-phoenix, context-curator, committer, developer-static, reviewer-static"
       end,
-      advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug -> :ok end,
+      advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug ->
+        :ok
+      end,
       orphan_scan_fn: fn _cwd -> [] end,
       planner_plan_fn: fn _log_file -> "## Plan\n\n**Approach**: do the thing." end
     ]

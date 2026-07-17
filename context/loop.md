@@ -117,6 +117,27 @@ Read/Edit `context/*.md`, so handing it a known-bad doc is an unfixable dead-end
 failures (not code/test failures), which the loop routes distinctly from a normal gate `:failed`
 verdict. See the cycle-record owner file's infra-vs-code classification section for the signature list.
 
+## Timing/Metrics Telemetry (consume, don't produce)
+
+`OrchestrationLoop.accumulate_telemetry/2` and the private `write_cycle_summary/6` both widen their read
+of the per-role envelope's `usage`/`metrics` fields rather than adding a new clock — both harnesses'
+`call-dispatch.sh` already compute `latency_ms` and (Claude only, success path) lift `duration_ms` /
+`duration_api_ms` / `ttft_ms` / `permission_denials` / `stop_reason` from the underlying `result` event
+(see `context/call-contract.md`). **Unknown stays unknown**: a dedicated `t_opt_int/1` helper (sibling
+of the pre-existing `t_int/1`, which backs arithmetic sums and stays byte-identical) carries an
+absent/malformed value through as `nil` rather than coercing it to a fabricated `0` — a `cycle-summary.jsonl`
+row with `"duration_ms": null` means unknown, never "instant". `metrics` is entirely OMITTED (not
+zeroed) by the envelope on any abnormal call; the loop reads it as `nil`-when-absent for the same
+reason, never defaulting to `%{}`.
+
+`LoopGate.run_gate/2`'s gate-verdict calls now carry an attributable `:session_id` — `gate_opts/2`
+(private) resolves it from the developer role that just ran (either the caller's own already-known
+`dev_role` parameter, or `dev_role_from_ctx/1` as a fallback) instead of the anonymous `""` default
+`LoopGate.run_gate/2` itself still falls back to when no opt is supplied. `gate-result.sh`'s
+`write_gate_result` derives `duration_s` from the same `started`/`ended` ISO8601 timestamps it already
+receives (via `jq`'s `fromdateiso8601`, portable across macOS/Linux — never a bash `date -d`/`date -j`
+diff), recording `null` when either timestamp is unparseable.
+
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry

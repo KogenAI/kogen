@@ -5,7 +5,7 @@ harness builders diverge. Producers: `harnesses/claude/call-dispatch.sh`, `harne
 (8 builders total — both harnesses × multiple exit paths per harness: normal completion, schema-invalid,
 early-exit variants).
 
-## Envelope Shape (top-level, 16 fields across 2 nesting levels)
+## Envelope Shape (top-level, 21 fields across 2 nesting levels)
 
 ```json
 {
@@ -13,7 +13,9 @@ early-exit variants).
   "usage": {
     "input_tokens": 0, "output_tokens": 0,
     "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
-    "cost_usd": 0, "latency_ms": 0, "model": "...", "num_turns": 0
+    "cost_usd": 0, "latency_ms": 0, "model": "...", "num_turns": 0,
+    "duration_ms": null|0, "duration_api_ms": null|0, "ttft_ms": null|0,
+    "permission_denials": null|0, "stop_reason": null|"..."
   },
   "error": null,
   "harness": "claude_code" | "pi",
@@ -21,6 +23,14 @@ early-exit variants).
   "metrics": {...}   // optional, present only when a JSON schema was supplied
 }
 ```
+
+**Model-vs-local split + hook-denial + cache signals** (`duration_ms`, `duration_api_ms`, `ttft_ms`,
+`permission_denials`, `stop_reason`) — lifted from the `result` event on Claude's success path (see
+pitch `build-cycle-accounts-for-its-own-time` Move 2); absent on the 3 abnormal Claude exit paths and on
+ALL of pi's builders (pi's `agent_end` carries no equivalent fields). **Absent → JSON `null`, never a
+fabricated `0`** — a `0` would read as "instant"/"free"/"no denials", masking the exact defect this field
+exists to surface. `usage.num_turns` and `usage.total_cost_usd`-derived `cost_usd` follow the same
+null-preserving contract on both harnesses (previously `// 1` / `// 0` masking-default sentinels).
 
 ## Claude vs Pi Asymmetries (17 total, swept; a sample — not exhaustive)
 
@@ -69,8 +79,10 @@ received text quoted (first ~200 bytes of stdout + stderr tail) instead of a bar
 
 ## Zero-Consumer Fields (documented, not dead — kept for forward compat / debugging)
 
-`usage.latency_ms` and `usage.model` are captured but have no current programmatic reader — visible only
-via raw JSON inspection or bench artifact dumps.
+`usage.model` is captured but has no current programmatic reader — visible only via raw JSON inspection
+or bench artifact dumps. `usage.latency_ms` previously had no reader; `OrchestrationLoop.accumulate_telemetry/2`
+and `write_cycle_summary/6` now both read it (see `context/loop.md` § Timing/Metrics Telemetry) — retired
+from this list.
 
 ## Trigger Keywords
 

@@ -43,10 +43,16 @@ retry/escalation purposes) — never silently treated as passing.
 
 `gate`, `mode`, `base_sha`, `diff_files_count`, `runner_found`, `exit`, `execution_evidence`,
 `expected_segments`, `render_verdict`, `verdict`, `verdict_marker`, `classification`, `started`, `ended`,
-`session_id`, `log`, `witness`, `graded_tree_sha`.
+`duration_s`, `session_id`, `log`, `witness`, `graded_tree_sha`.
 
 `graded_tree_sha` binds the verdict to the exact working-tree CONTENT it graded — `base_sha` alone only
 pins HEAD, not content (a post-gate revert leaves `base_sha` unchanged but changes tree content).
+
+`duration_s` is derived from `started`/`ended` (via `jq`'s `fromdateiso8601`, portable across
+macOS/Linux) — `null` when either timestamp is unparseable/empty, never a fabricated `0` (see pitch
+`build-cycle-accounts-for-its-own-time`). `session_id` is now populated by the loop's `gate_opts/2` with
+the acting developer role (`dev_role_from_ctx/1` fallback) rather than left at `LoopGate.run_gate/2`'s
+own anonymous `""` default — see `context/loop.md` § Timing/Metrics Telemetry.
 
 ## Witness Extraction
 

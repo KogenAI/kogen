@@ -200,6 +200,27 @@ else
     fail=$((fail + 1))
 fi
 
+# ── usage fields lifted from the result event (num_turns/cost already present;
+#    duration_ms/duration_api_ms/ttft_ms/permission_denials/stop_reason are new
+#    — see pitch "build-cycle-accounts-for-its-own-time" Move 2) ─────────────
+
+# num_turns/cost_usd present on this fixture's result event → lifted, not null
+assert_jq "usage.num_turns lifted from result event" "$ENVELOPE" ".usage.num_turns" "2"
+assert_jq "usage.cost_usd lifted from result event" "$ENVELOPE" ".usage.cost_usd" "0.001"
+
+# duration_ms/duration_api_ms/ttft_ms/permission_denials/stop_reason are ABSENT
+# on this fixture's result event → must record JSON null, never a fabricated 0
+assert_jq "usage.duration_ms is null when absent from result event (not 0)" \
+    "$ENVELOPE" ".usage.duration_ms" "null"
+assert_jq "usage.duration_api_ms is null when absent from result event (not 0)" \
+    "$ENVELOPE" ".usage.duration_api_ms" "null"
+assert_jq "usage.ttft_ms is null when absent from result event (not 0)" \
+    "$ENVELOPE" ".usage.ttft_ms" "null"
+assert_jq "usage.permission_denials is null when absent from result event (not 0)" \
+    "$ENVELOPE" ".usage.permission_denials" "null"
+assert_jq "usage.stop_reason is null when absent from result event" \
+    "$ENVELOPE" ".usage.stop_reason" "null"
+
 # ── Case (a): question-mark reply, no schema → success (NOT a clarifying question) ──
 (
     export FIXTURE_PATH="$FIXTURE_QMARK"
@@ -1123,6 +1144,18 @@ assert_jq "(n) metrics.tool_counts.Read == 1" "$M_ENVELOPE" ".metrics.tool_count
 # (o) tool_trace fixture: stop_reason + rate_limited present (real result/rate_limit_event)
 assert_jq "(o) metrics.stop_reason == end_turn" "$M_ENVELOPE" ".metrics.stop_reason" "end_turn"
 assert_jq "(o) metrics.rate_limited == false" "$M_ENVELOPE" ".metrics.rate_limited" "false"
+
+# (o2) tool_trace fixture: usage.duration_ms/duration_api_ms/ttft_ms/stop_reason
+# lifted from the result event when present (pitch
+# "build-cycle-accounts-for-its-own-time" Move 2)
+assert_jq "(o2) usage.duration_ms lifted from result event" "$M_ENVELOPE" ".usage.duration_ms" "6712"
+assert_jq "(o2) usage.duration_api_ms lifted from result event" "$M_ENVELOPE" ".usage.duration_api_ms" "8068"
+assert_jq "(o2) usage.ttft_ms lifted from result event" "$M_ENVELOPE" ".usage.ttft_ms" "2295"
+assert_jq "(o2) usage.stop_reason lifted from result event" "$M_ENVELOPE" ".usage.stop_reason" "end_turn"
+# permission_denials: [] on this fixture -> length 0, not null (empty array is
+# a known value, distinct from an absent key)
+assert_jq "(o2) usage.permission_denials counts an empty array as 0, not null" \
+    "$M_ENVELOPE" ".usage.permission_denials" "0"
 
 # (p) subagent fixture: per_subagent join via parent_tool_use_id -> Agent.input.subagent_type
 (
