@@ -71,6 +71,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                       __DIR__
                     )
 
+  @consumption_scan_lib Path.expand(
+                          "../../../harnesses/claude/hooks/lib/curator-consumption-scan.sh",
+                          __DIR__
+                        )
+
   @doc """
   Returns the ordered role sequence for `stack` (`"phoenix"` or
   `"static"`). Raises on any other stack name.
@@ -140,7 +145,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     `tree_signature/1` (a content-hash of the tracked+untracked working
     tree). Drives the progress bound on developer gate re-runs.
   - `:curator_doc_check_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
-    defaults to `default_curator_doc_scan/1`. Runs TWO checks after the
+    defaults to a closure over `default_curator_doc_scan/2` (see
+    `run_curator_doc_scan/2`). Runs THREE checks after the
     context-curator role: (1) cross-file index-parity (shells
     `harnesses/claude/hooks/lib/context-index-parity-scan.sh <cwd>`,
     detecting a working-tree `context/*.md` add/delete without matching
@@ -152,9 +158,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     `harnesses/claude/hooks/lib/context-factcheck-scan.sh <cwd> <doc>...`
     scoped to exactly those docs), catching a `sed`/`printf>`/`mv` Bash write
     the PreToolUse `context-factcheck-edit-gate` hook (which only fires on
-    Edit/Write/MultiEdit) never sees. Violations from either check are
-    joined into one message. Empty changed-docs AND clean index-parity →
-    `{:clean}` without shelling either scan. Runs after the context-curator
+    Edit/Write/MultiEdit) never sees; and (3) a consumption check (shells
+    `harnesses/claude/hooks/lib/curator-consumption-scan.sh <cwd> <cycle_log>`)
+    asserting that when this cycle captured upstream `{"ev":"learned"}`
+    events (planner/developer/reviewer), the curator either routed at least
+    one into a durable doc (`context/*.md` or `shared/rules/**.md` — NEVER
+    `codegen/rules/**`, a symlink spelling git never emits, see the scan's
+    own header comment) or recorded each drop as its own `{"ev":"learned"}`
+    event naming the reason. `<cycle_log>` comes from `opts[:cycle_log]`
+    (see `gate_opts/1`) — `nil` (no log initialized, e.g. most unit tests)
+    skips this leg with `{:clean}`, since a cycle with no log has nothing to
+    prove either way. Violations from any of the three checks are joined
+    into one message. Empty changed-docs AND clean index-parity AND (no
+    cycle_log OR nothing captured) → `{:clean}` without shelling any scan.
+    Runs after the context-curator
     role, replacing the dead-under-loop `context-factcheck-curator-stop`
     SubagentStop hook (roles run as main-agent `codegen-call` invocations
     under the loop, so SubagentStop never fires here — same reasoning as
@@ -1477,10 +1494,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
        "docs and re-run the cycle."}
   end
 
-  # Dispatches the `:curator_doc_check_fn` test seam; defaults to
-  # `default_curator_doc_scan/1` (the real shelled scans).
+  # Dispatches the `:curator_doc_check_fn` test seam; defaults to a closure
+  # over `default_curator_doc_scan/2` capturing `gate_opts(opts)` (for
+  # `:cycle_log` — `opts` alone does NOT carry it; this step runs from
+  # `run_roles/4`, upstream of `run_gate_once/2`'s own `gate_opts/1` call, so
+  # this is the first point in the curator-doc path that needs the log path
+  # and must resolve it itself, same as `run_gate_once/2` does) — the seam
+  # itself stays arity-1 so the 30+ existing test overrides
+  # (`(cwd -> {:clean} | {:violations, _}}`) are untouched.
   defp run_curator_doc_scan(cwd, opts) do
-    scan_fn = Keyword.get(opts, :curator_doc_check_fn, &default_curator_doc_scan/1)
+    scan_fn =
+      Keyword.get(opts, :curator_doc_check_fn, fn c ->
+        default_curator_doc_scan(c, gate_opts(opts))
+      end)
+
     scan_fn.(cwd)
   end
 
@@ -1504,13 +1531,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # `context-factcheck-scan.sh <cwd> <doc>...` scoped to exactly those docs.
   # exit 0 → clean; exit 1 with output → violations; anything else is an
   # infra fault — raise (fail-closed).
-  defp default_curator_doc_scan(cwd) do
+  defp default_curator_doc_scan(cwd, opts) do
     unless File.exists?(@index_parity_scan_lib) do
       raise "OrchestrationLoop: context-index-parity-scan.sh not found at #{@index_parity_scan_lib}"
     end
 
     unless File.exists?(@factcheck_scan_lib) do
       raise "OrchestrationLoop: context-factcheck-scan.sh not found at #{@factcheck_scan_lib}"
+    end
+
+    unless File.exists?(@consumption_scan_lib) do
+      raise "OrchestrationLoop: curator-consumption-scan.sh not found at #{@consumption_scan_lib}"
     end
 
     index_parity_result =
@@ -1545,7 +1576,27 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           end
       end
 
-    combine_curator_doc_results(index_parity_result, factcheck_result)
+    consumption_result =
+      case Keyword.get(opts, :cycle_log) do
+        nil ->
+          {:clean}
+
+        cycle_log ->
+          case System.cmd("bash", [@consumption_scan_lib, cwd, cycle_log], stderr_to_stdout: true) do
+            {_out, 0} ->
+              {:clean}
+
+            {out, 1} ->
+              {:violations, String.trim(out)}
+
+            {out, code} ->
+              raise "OrchestrationLoop: curator-consumption-scan.sh exited #{code} (expected 0 or 1): #{out}"
+          end
+      end
+
+    index_parity_result
+    |> combine_curator_doc_results(factcheck_result)
+    |> combine_curator_doc_results(consumption_result)
   end
 
   defp combine_curator_doc_results({:clean}, {:clean}), do: {:clean}

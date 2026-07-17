@@ -3775,6 +3775,142 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "run/1 — default curator doc scan consumption check (real scan.sh, temp git repo)" do
+    setup do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "consumption_scan_test_#{:erlang.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(Path.join(dir, "context"))
+      System.cmd("git", ["init", "-q"], cd: dir)
+      System.cmd("git", ["config", "user.email", "t@t"], cd: dir)
+      System.cmd("git", ["config", "user.name", "t"], cd: dir)
+      System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
+      File.write!(Path.join(dir, "PROJECT_CONTEXT.md"), "# PROJECT_CONTEXT.md\n")
+      System.cmd("git", ["add", "PROJECT_CONTEXT.md"], cd: dir)
+      System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
+
+      on_exit(fn -> File.rm_rf!(dir) end)
+      %{dir: dir}
+    end
+
+    defp fixture_cycle_log!(events) do
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "consumption_scan_cycle_#{System.unique_integer([:positive])}.jsonl"
+        )
+
+      body = events |> Enum.map(&Jason.encode!/1) |> Enum.join("\n")
+      File.write!(path, body <> "\n")
+      on_exit(fn -> File.rm(path) end)
+      path
+    end
+
+    test "nil :cycle_log (no log initialized) → third leg is skipped, reaches the committer",
+         %{calls_agent: calls_agent, dir: dir} do
+      # Simulated developer output — a real working-tree diff is required for
+      # invoke_reviewer/4 to proceed past its empty-diff refusal.
+      File.write!(Path.join(dir, "unrelated.txt"), "unrelated change\n")
+
+      # No :log_init_fn override → Process.get(@log_path_key) resolves to nil
+      # for this test process → gate_opts/1 threads :cycle_log as nil →
+      # default_curator_doc_scan/2's third leg is {:clean} without shelling.
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn_with_real_commit(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+               )
+
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "learnings captured this cycle + curator routes a shared/rules/**.md edit → clean, reaches the committer",
+         %{calls_agent: calls_agent, dir: dir} do
+      log_path =
+        fixture_cycle_log!([
+          %{"ev" => "init", "pitch" => "x"},
+          %{"ev" => "learned", "role" => "planner-phoenix", "text" => "[shared] a real learning"}
+        ])
+
+      File.mkdir_p!(Path.join([dir, "shared", "rules", "roles"]))
+      File.write!(Path.join(dir, "unrelated.txt"), "unrelated change\n")
+
+      invoke_fn = fn role, harness, ctx, opts ->
+        if role == "context-curator" do
+          File.write!(
+            Path.join([dir, "shared", "rules", "roles", "context-curator.md"]),
+            "# updated curator rule\n"
+          )
+        end
+
+        always_ok_invoke_fn_with_real_commit(calls_agent).(role, harness, ctx, opts)
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+                 log_init_fn: log_init_fn_for(log_path),
+                 slug: "consumption-scan-test"
+               )
+
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "learnings captured this cycle, curator routes nothing and records no drop → consumption check fails loud",
+         %{calls_agent: calls_agent, dir: dir} do
+      log_path =
+        fixture_cycle_log!([
+          %{"ev" => "init", "pitch" => "x"},
+          %{"ev" => "learned", "role" => "planner-phoenix", "text" => "[shared] a real learning"}
+        ])
+
+      File.write!(Path.join(dir, "unrelated.txt"), "unrelated change\n")
+
+      result =
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          max_curator_doc_cycles: 0,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+          orientation_preflight_fn: no_op_orientation_preflight_fn(),
+          log_init_fn: log_init_fn_for(log_path),
+          slug: "consumption-scan-test"
+        )
+
+      assert {:error, reason} = result
+      assert reason =~ "doc check unresolved"
+      assert reason =~ "curator-consumption-scan"
+      assert reason =~ "captured 1"
+    end
+  end
+
   describe "guard_bundle_flag!/2 — B-bucket guard bundle wiring" do
     setup do
       dir =

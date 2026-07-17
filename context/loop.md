@@ -80,6 +80,37 @@ checkpoint after an external commit → full run, never a corrupt resume). Resum
 pitch/plan prompt with a continuation prompt (the resumed session already carries prior tool-call history
 in its transcript). An empty or foreign slug → full run, never resume.
 
+## Curator-Doc Check (Three Legs)
+
+After the context-curator role, `run_curator_doc_check/6` shells `default_curator_doc_scan/2`
+(dispatched via the `:curator_doc_check_fn` seam, still arity-1 for the 30+ existing test overrides —
+the default closure captures `gate_opts(opts)` itself, since this step runs upstream of
+`run_gate_once/2`'s own `gate_opts/1` call and has to resolve `:cycle_log` on its own). Three checks,
+joined into one violations message via `combine_curator_doc_results/2` folded twice:
+
+1. **Index-parity** (`context-index-parity-scan.sh <cwd>`) — cross-file `context/*.md` add/delete vs
+   `PROJECT_CONTEXT.md` § Domain Context Files parity.
+2. **Factcheck backstop** (`context-factcheck-scan.sh <cwd> <doc>...`) — diff-scoped to this cycle's own
+   `changed_orientation_docs/1`; catches a Bash write the PreToolUse edit-gate hook never saw.
+3. **Consumption check** (`curator-consumption-scan.sh <cwd> <cycle_log>`) — asserts that when this
+   cycle captured upstream `{"ev":"learned"}` events (planner/developer/reviewer), the curator either
+   routed at least one into a durable doc (working-tree diff or untracked file matching
+   `^(context/[^/]+\.md|shared/rules/.*\.md)$`) or recorded each drop as its own `{"ev":"learned"}`
+   event. **Path-filter trap**: curator edits are conventionally spelled `codegen/rules/**` in docs/rules,
+   but `codegen/rules` is a symlink into `shared/rules/` and `/codegen/` is gitignored — `git` NEVER
+   reports a path spelled `codegen/rules/**` (`git check-ignore` on that spelling errors "pathspec is
+   beyond a symbolic link"). Any path filter consumed against `git diff`/`ls-files` output MUST use the
+   `shared/rules/**` spelling or it matches nothing, ever, and passes vacuously. `opts[:cycle_log]` is
+   `nil` for most unit tests (no `:slug` → `Process.put(@log_path_key, ...)` never runs in `run/1`) —
+   `nil` skips this leg with `{:clean}`, not an error; a present-but-unreadable log path is fail-closed
+   (exit 1, cannot prove consumption). See pitch `no-role-work-recorded-without-its-learning`.
+
+Violations from any leg that are NOT classified `:infra` (`LoopGate.classify_failure/1`) route into the
+progress-bounded rework loop (`:max_curator_doc_cycles`, floor 1, ceiling 15 via `repair_allowed?/4`);
+`:infra`-classified violations raise `LoopGate.infra_abort!/2` immediately (unsatisfiable by any curator
+edit). Budget exhaustion fails the cycle LOUD (`curator_doc_check_exhausted/3`) — the committer cannot
+Read/Edit `context/*.md`, so handing it a known-bad doc is an unfixable dead-end.
+
 ## Infra Abort
 
 `LoopGate.infra_abort!/2` raises `CodegenTestHarness.InfraAbort` — reserved for genuine infrastructure
@@ -88,4 +119,4 @@ verdict. See the cycle-record owner file's infra-vs-code classification section 
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing
