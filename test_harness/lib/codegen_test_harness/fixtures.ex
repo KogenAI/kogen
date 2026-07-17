@@ -127,6 +127,22 @@ defmodule CodegenTestHarness.Fixtures do
     {_, 0} =
       System.cmd("git", ["config", "commit.gpgsign", "false"], cd: path, stderr_to_stdout: true)
 
+    # Stage the fixture's own scaffolding (CLAUDE.md, .claude/, and — for the
+    # stack: branches below — the generated app tree) BEFORE the init commit.
+    #
+    # These files are written above, i.e. BEFORE `git init`, so an
+    # `--allow-empty` commit alone left every one of them untracked and the
+    # tree permanently dirty. OrchestrationLoop.run/1 gates each cycle on a
+    # clean tree ("a cycle must begin from a clean tree so no role inherits or
+    # commits foreign changes") and aborted before turn 0 — so EVERY stack test
+    # died in ~1s with `codegen-build failed (exit=1)` and zero model turns.
+    # The fixture's own scaffolding is precisely the "foreign changes" that
+    # gate means; committing it is what makes the tree clean, and it must land
+    # before the build so assert_git_committed!/1's commit-count delta still
+    # measures only what the BUILD committed.
+    {_add_out, 0} =
+      System.cmd("git", ["add", "-A"], cd: path, env: git_env(), stderr_to_stdout: true)
+
     {_commit_out, 0} =
       System.cmd(
         "git",
@@ -430,6 +446,8 @@ defmodule CodegenTestHarness.Fixtures do
     test_name = Keyword.get(opts, :test_name, "unnamed")
     prompt_with_contract = prompt <> @commit_contract_suffix
 
+    pre_integrate_and_commit!(cwd, stack)
+
     build_started_at = System.monotonic_time(:millisecond)
 
     {output, exit_code} =
@@ -490,6 +508,51 @@ defmodule CodegenTestHarness.Fixtures do
       )
 
     {exit_code, output}
+  end
+
+  # Runs the same `codegen-scaffold integrate` stage codegen-build runs as its
+  # pre-step, then commits whatever it wired, so the tree is CLEAN when the
+  # loop starts.
+  #
+  # Why this must happen test-side rather than inside codegen-build:
+  # codegen-build's integrate pre-step documents "The LLM then commits these
+  # along with the app code" — an assumption from the in-harness
+  # self-orchestration era. OrchestrationLoop.preflight_clean_tree!/1 (which
+  # subsumed that surface) now aborts the cycle BEFORE turn 0 unless the tree
+  # is clean, so integrate's own output (PROJECT_CONTEXT.md, restart_server.sh,
+  # Makefile, context/, .gitignore, codegen/ symlinks) made every
+  # scaffold-from-empty-dir build die in ~1s with exit=1 and zero model turns.
+  #
+  # Production never hits this: the consuming platform provisions the app dir
+  # and commits BEFORE calling codegen-build, so integrate is an idempotent no-op there and
+  # the tree is already clean. This mirrors that provisioning contract for the
+  # fixture. Running integrate here also makes codegen-build's own pre-step a
+  # no-op (it is guarded by existence checks), so the build path is unchanged.
+  #
+  # Commit-count safety: `change_request/4` snapshots commits_before AFTER the
+  # first build, and integrate is idempotent, so this commit can never inflate
+  # the {commits_before, commits_after} delta the iteration tests assert on.
+  defp pre_integrate_and_commit!(cwd, stack) do
+    if File.exists?(@codegen_scaffold) do
+      System.cmd(@codegen_scaffold, ["integrate", "--stack=#{stack}", "--cwd=#{cwd}"],
+        stderr_to_stdout: true
+      )
+    end
+
+    {status, 0} = System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true)
+
+    if String.trim(status) != "" do
+      {_, 0} = System.cmd("git", ["add", "-A"], cd: cwd, env: git_env(), stderr_to_stdout: true)
+
+      {_, 0} =
+        System.cmd("git", ["commit", "-m", "chore: wire codegen scaffold"],
+          cd: cwd,
+          env: git_env(),
+          stderr_to_stdout: true
+        )
+    end
+
+    :ok
   end
 
   @doc """

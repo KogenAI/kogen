@@ -67,7 +67,11 @@ PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness
 
 **Modes tests bench records**: `run_mode_launcher/4` (4th `opts` arg, `test_name:` key; default `"<mode>_mode"`) now writes JSONL records under `runs/<harness>/modes/<test_name>.jsonl`. Records contain only a `harness_summary` line (no raw codegen stream-json prefix) with mostly `:unknown` parsed metrics — modes tests don't produce structured usage output. Finalize with `Fixtures.bench_assertions_passed!("modes", test_name)` after last assertion.
 
-Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model_id, tokens_in, tokens_out, cost_api, duration_ms}`. Pi tokens may be missing → stored as `:unknown` atom (not 0, which would hide data loss). Claude shape consistently provides all fields.
+Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model_id, tokens_in, tokens_out, cost_api, duration_ms}`. Pi tokens were never actually missing — a prior parser bug searched pi's stdout for `agent_end`, an internal per-call event consumed inside `harnesses/pi/call-dispatch.sh` that codegen-build never surfaces, so every Pi record came back all-`:unknown` even on a green build. Both harnesses now read the loop's single `{"type":"result","engine":"elixir_loop"}` terminal line (`codegen-build` drives the same Elixir orchestration loop for both harnesses); `:unknown` now means a genuine parse failure, not a harness limitation. `agent_end` is retained only as a fallback for a raw `pi --mode json` capture (not loop-driven).
+
+Bench cost now includes FAILED builds too: the result-line filter used to require `subtype == "success"`, so a build that failed still spent real tokens (an observed failed static build billed $2.209391 across 94 turns) but recorded `cost_usd: :unknown` — under-reporting spend exactly on the runs that most need costing. The filter now accepts any subtype; pass/fail is carried separately via `assertion_passed` + `terminal_reason`, so this cannot make a red run look green.
+
+Do NOT edit `harnesses/*/call-dispatch.sh` while a bench run is in flight — it is re-read per role invocation, so a mid-run edit silently mixes pre/post-edit behaviour into one run's numbers.
 
 **Catalog module**: `CodegenTestHarness.BenchMetrics` — measurable metrics (pinned to values parsed above) + stub-with-gap entries (filled by viewer on comparison). No computed deltas at capture time; viewer calculates on load.
 
@@ -79,7 +83,9 @@ Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model
 
 `last_green.json` coexists unchanged; benchmarking is orthogonal to the green baseline.
 
-## Regression Checker — `mix codegen.bench.check-regression`
+## Regression Checker — `mix codegen.bench.check_regression`
+
+Task name is `check_regression` (UNDERSCORE) — Mix derives it from the `Mix.Tasks.Codegen.Bench.CheckRegression` module name and does not alias a dashed spelling; `mix codegen.bench.check-regression` (dash) exits "task could not be found". The Makefile `bench` target invoked the dashed name for its entire life, so the final step of every `make bench` run died AFTER the token spend. Existing hermetic tests never caught it because they called `CheckRegression.run/1` directly, bypassing CLI task-name resolution — see the CLI-name-wiring tests in `codegen_bench_check_regression_test.exs`.
 
 Runs automatically at the end of `make bench` (after `summarize.js` writes `summary.md`), against `test_harness/perf_baseline.json`. **Not soft/informational-only end-to-end** — the split is per metric kind:
 

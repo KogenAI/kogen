@@ -81,33 +81,63 @@ defmodule CodegenTestHarness.UsageParser do
   def parse(raw_stdout, :pi) do
     lines = decode_lines(raw_stdout)
 
-    agent_end =
-      Enum.find(lines, fn
-        %{"type" => "agent_end"} -> true
-        _ -> false
-      end)
-
-    case agent_end do
-      nil ->
-        %{
-          model: :unknown,
-          input_tokens: :unknown,
-          output_tokens: :unknown,
-          cache_read_tokens: :unknown,
-          cache_creation_tokens: :unknown,
-          cost_usd: :unknown,
-          duration_ms: :unknown,
-          duration_api_ms: :unknown,
-          num_turns: :unknown,
-          terminal_reason: :unknown
-        }
-
-      %{"messages" => messages} when is_list(messages) ->
-        extract_pi_metrics(messages)
+    # `codegen-build` drives the SAME Elixir orchestration loop for both
+    # harnesses, and the loop emits ONE terminal
+    # `{"type":"result","engine":"elixir_loop",...}` line carrying
+    # total_cost_usd / usage / num_turns / terminal_reason — identical shape to
+    # the claude leg above.
+    #
+    # `agent_end` is pi's INTERNAL per-call event. It is consumed inside
+    # harnesses/pi/call-dispatch.sh and never reaches codegen-build's stdout,
+    # so looking for it here always found nil → every pi bench record came back
+    # all-`:unknown` (cost "—", tokens 0) even on a fully successful build.
+    # That is why bench summaries showed real dollars for claude and nothing for
+    # pi. Read the loop result line first — same source as claude, so the two
+    # harnesses are finally measured on one axis.
+    #
+    # The agent_end path is retained as a fallback for a RAW pi stream (a
+    # direct `pi --mode json` capture rather than a loop-driven build).
+    case extract_loop_result(lines) do
+      %{} = result when map_size(result) > 0 ->
+        extract_loop_metrics(result)
 
       _ ->
-        unknown_pi_map()
+        case Enum.find(lines, &match?(%{"type" => "agent_end"}, &1)) do
+          %{"messages" => messages} when is_list(messages) -> extract_pi_metrics(messages)
+          _ -> unknown_pi_map()
+        end
     end
+  end
+
+  # The loop's terminal result line. Unlike extract_claude_result/1 this accepts
+  # ANY subtype: a failed build ("subtype":"error") still reports real
+  # total_cost_usd and per_role spend, and a bench run that discards the cost of
+  # failed attempts under-reports what the run actually billed.
+  defp extract_loop_result(lines) do
+    lines
+    |> Enum.filter(&match?(%{"type" => "result", "engine" => "elixir_loop"}, &1))
+    |> List.last()
+    |> case do
+      nil -> %{}
+      result -> result
+    end
+  end
+
+  defp extract_loop_metrics(result) do
+    usage = Map.get(result, "usage", %{})
+
+    %{
+      model: :unknown,
+      input_tokens: int_or_unknown(usage, "input_tokens"),
+      output_tokens: int_or_unknown(usage, "output_tokens"),
+      cache_read_tokens: int_or_unknown(usage, "cache_read_input_tokens"),
+      cache_creation_tokens: int_or_unknown(usage, "cache_creation_input_tokens"),
+      cost_usd: float_or_unknown(result, "total_cost_usd"),
+      duration_ms: :unknown,
+      duration_api_ms: :unknown,
+      num_turns: int_or_unknown(result, "num_turns"),
+      terminal_reason: Map.get(result, "terminal_reason") || :unknown
+    }
   end
 
   @type per_role_usage :: %{
@@ -278,13 +308,21 @@ defmodule CodegenTestHarness.UsageParser do
     end
   end
 
+  # Accepts ANY subtype, not just "success".
+  #
+  # Filtering to subtype == "success" meant a FAILED build reported no cost at
+  # all: the loop still emits `{"type":"result","subtype":"error",...}` carrying
+  # a real total_cost_usd (a failed static build was observed billing $2.2094
+  # across 94 turns), but the bench record stored `cost_usd: :unknown` and the
+  # summary printed "—". Benchmarks therefore under-reported spend precisely on
+  # the runs that burned money without shipping anything — the case you most
+  # need costed. Pass/fail is carried separately by `assertion_passed` +
+  # `terminal_reason`, so admitting error results here cannot make a red run
+  # look green.
   defp extract_claude_result(lines) do
     result_line =
       lines
-      |> Enum.filter(fn
-        %{"type" => "result", "subtype" => "success"} -> true
-        _ -> false
-      end)
+      |> Enum.filter(&match?(%{"type" => "result"}, &1))
       |> List.last()
 
     result_line || %{}

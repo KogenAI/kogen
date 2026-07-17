@@ -124,4 +124,39 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegressionTest do
       CheckRegression.run(["--run", missing_dir])
     end
   end
+
+  # ── CLI-name wiring ─────────────────────────────────────────────────────────
+  # Every test above calls CheckRegression.run/1 DIRECTLY, which bypasses Mix's
+  # CLI task-name resolution. That blind spot let the Makefile invoke
+  # `mix codegen.bench.check-regression` (dash) — a name Mix cannot resolve,
+  # since it derives `codegen.bench.check_regression` (underscore) from the
+  # module name and aliases no dashed spelling. Result: the final step of every
+  # `make bench` run failed AFTER the token spend, and no test noticed.
+  # These two tests pin the CLI name and the Makefile's use of it.
+
+  test "6: task is resolvable under its underscore CLI name" do
+    assert Mix.Task.get("codegen.bench.check_regression") == CheckRegression
+
+    refute Mix.Task.get("codegen.bench.check-regression"),
+           "dashed spelling must not be advertised — Mix cannot resolve it"
+  end
+
+  test "7: Makefile bench target invokes a task name Mix can actually resolve" do
+    makefile = Path.expand("../../../../Makefile", __DIR__)
+
+    invocations =
+      makefile
+      |> File.read!()
+      |> then(&Regex.scan(~r/mix\s+(codegen\.bench\.[a-z_.-]+)/, &1))
+      |> Enum.map(fn [_, task] -> task end)
+      |> Enum.uniq()
+
+    assert "codegen.bench.check_regression" in invocations,
+           "Makefile no longer invokes the regression checker: #{inspect(invocations)}"
+
+    for task <- invocations do
+      assert Mix.Task.get(task),
+             "Makefile invokes `mix #{task}`, which Mix cannot resolve to a task module"
+    end
+  end
 end

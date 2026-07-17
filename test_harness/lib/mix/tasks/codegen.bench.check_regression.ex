@@ -7,8 +7,16 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
 
   ## Usage
 
-      mix codegen.bench.check-regression --run path/to/run
-      mix codegen.bench.check-regression --run path/to/run --strict
+      mix codegen.bench.check_regression --run path/to/run
+      mix codegen.bench.check_regression --run path/to/run --strict
+
+  NOTE: the task name is `check_regression` (UNDERSCORE). Mix derives it from
+  this module's name and does NOT alias a dashed spelling — `mix
+  codegen.bench.check-regression` exits "task could not be found". The
+  Makefile `bench` target invoked the dashed name for its whole life, so the
+  final step of every `make bench` run died after the tokens were already
+  spent. The hermetic tests never caught it because they call
+  `CheckRegression.run/1` directly, bypassing CLI name resolution.
 
   ## Behaviour
 
@@ -52,7 +60,7 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
     strict? = Keyword.get(opts, :strict, false)
 
     unless run_dir do
-      Mix.raise("--run is required. Usage: mix codegen.bench.check-regression --run <path>")
+      Mix.raise("--run is required. Usage: mix codegen.bench.check_regression --run <path>")
     end
 
     unless File.dir?(run_dir) do
