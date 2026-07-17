@@ -50,6 +50,23 @@ copies are not cross-checked by an automated parity test.
 - `LoopQueueDrain` — reads `usage.cost_usd` for the queue-wide spend ceiling.
 - Bench/telemetry tooling — reads the full `usage` block.
 
+## Reading the Envelope: Stdout Only, Stderr Captured Separately
+
+The envelope is decoded from `codegen-call`'s **stdout alone** — never a merged stdout+stderr stream.
+Both reader sites (`OrchestrationLoop.default_codegen_call/12` via the private `run_call_split/4` +
+`decode_envelope!/3` helpers, and `Fixtures.run_codegen_call/3`) invoke `codegen-call` through a
+`sh -c 'exec "$@" 2>"$CG_ERR"'` wrapper: `exec` replaces the shell in place (no extra process layer, no
+altered pgid/kill semantics), stdout stays clean for the JSON parse, and stderr is redirected to a temp
+file that is read back and re-emitted to the caller's own stderr afterward — so it still reaches the
+drain's `_build.log` (a stdout+stderr Port capture), just at call completion rather than streaming live.
+
+Why this matters: a writer emitting a diagnostic line to stderr (e.g. `call-dispatch.sh`'s watchdog
+grace-kill notice, printed immediately before the terminal envelope on a `stderr_to_stdout: true` exit-0
+path) corrupts a merged-stream JSON parse at byte 0 — `Jason.decode!` raises
+`unexpected byte at position 0` naming the diagnostic line's first byte, not the actual defect. Splitting
+the streams at the reader removes the corruption; a still-malformed stdout on a zero exit raises with the
+received text quoted (first ~200 bytes of stdout + stderr tail) instead of a bare byte offset.
+
 ## Zero-Consumer Fields (documented, not dead — kept for forward compat / debugging)
 
 `usage.latency_ms` and `usage.model` are captured but have no current programmatic reader — visible only

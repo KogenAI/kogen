@@ -3188,26 +3188,95 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         ) ++
         log_path_env()
 
-    {output, exit_code} =
-      System.cmd(@codegen_call_bin, args, stderr_to_stdout: true, env: env, cd: cwd)
+    {stdout, stderr, exit_code} = run_call_split(@codegen_call_bin, args, env, cwd)
 
-    # A non-zero codegen-call exit is an OPERATIONAL failure (transient claude
-    # SIGTERM/exit 143, rate-limit kill, network blip) — NOT a programming error.
-    # Return a synthetic failed envelope so invoke_with_retry/4 retries the role
-    # ONCE instead of crashing the whole multi-role cycle. A genuinely broken
-    # role still fails cleanly (failed status after the retry), never a raw crash
-    # that discards all prior role work.
+    decode_envelope!(stdout, stderr, exit_code)
+  end
+
+  # Runs `bin` with `args` under `cd`/`env`, with stdout and stderr captured
+  # SEPARATELY rather than merged — a role call's JSON envelope lives on
+  # stdout alone; any diagnostic line the child writes to stderr (retry
+  # notices, watchdog grace-kill messages, etc.) must never be able to land
+  # in front of the envelope and corrupt the JSON parse. Implemented via a
+  # `sh -c 'exec "$@" 2>"$CG_ERR"'` wrapper: `exec` replaces the shell with
+  # `bin` in place, so no extra process layer is introduced and pgid/kill
+  # semantics are unchanged; stderr is redirected to a temp file, read back,
+  # and returned so the caller can still re-emit it (the drain's `_build.log`
+  # is a stdout+stderr capture — dropping stderr here would silently lose
+  # diagnostics that operators rely on).
+  @spec run_call_split(String.t(), [String.t()], list(), String.t()) ::
+          {String.t(), String.t(), non_neg_integer()}
+  defp run_call_split(bin, args, env, cwd) do
+    err_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codegen-call-stderr-#{System.unique_integer([:positive])}.log"
+      )
+
+    try do
+      {stdout, exit_code} =
+        System.cmd(
+          "sh",
+          ["-c", ~s(exec "$@" 2>"$CG_ERR"), "sh", bin | args],
+          env: [{"CG_ERR", err_path} | env],
+          cd: cwd,
+          stderr_to_stdout: false
+        )
+
+      stderr =
+        case File.read(err_path) do
+          {:ok, content} -> content
+          {:error, _reason} -> ""
+        end
+
+      # Re-emit captured stderr to this process's own stderr so it still
+      # reaches the drain's `_build.log` (a stdout+stderr Port capture) —
+      # content is preserved even though it now appears at call completion
+      # rather than streaming live.
+      if stderr != "", do: IO.write(:stderr, stderr)
+
+      {stdout, stderr, exit_code}
+    after
+      File.rm(err_path)
+    end
+  end
+
+  # Decodes a role call's stdout into its result envelope. A non-zero exit
+  # is an OPERATIONAL failure (transient claude SIGTERM/exit 143, rate-limit
+  # kill, network blip) — NOT a programming error. Return a synthetic failed
+  # envelope so invoke_with_retry/4 retries the role ONCE instead of crashing
+  # the whole multi-role cycle. A genuinely broken role still fails cleanly
+  # (failed status after the retry), never a raw crash that discards all
+  # prior role work.
+  #
+  # Malformed JSON on a zero exit IS an unexpected contract violation — crash
+  # loud, but name the cause: quote what was actually received (stdout head
+  # + stderr tail) instead of a bare byte-offset decode error.
+  @spec decode_envelope!(String.t(), String.t(), integer()) :: map()
+  defp decode_envelope!(stdout, stderr, exit_code) do
     if exit_code != 0 do
+      combined = stdout <> stderr
+
       %{
         "result" => %{
           "status" => "failed",
           "reason" =>
-            "codegen-call exited #{exit_code} (transient?): #{String.slice(output, max(String.length(output) - 400, 0), 400)}"
+            "codegen-call exited #{exit_code} (transient?): #{String.slice(combined, max(String.length(combined) - 400, 0), 400)}"
         }
       }
     else
-      # Malformed JSON on a zero exit IS an unexpected contract violation — crash loud.
-      Jason.decode!(output)
+      case Jason.decode(stdout) do
+        {:ok, decoded} ->
+          decoded
+
+        {:error, decode_error} ->
+          received = String.slice(stdout, 0, 200)
+          stderr_tail = String.slice(stderr, max(String.length(stderr) - 200, 0), 200)
+
+          raise "OrchestrationLoop: expected JSON envelope on codegen-call stdout, " <>
+                  "got: #{inspect(received)} (decode error: #{Exception.message(decode_error)}); " <>
+                  "stderr tail: #{inspect(stderr_tail)}"
+      end
     end
   end
 
@@ -3221,7 +3290,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   a foreign pitch's corpse. Pass `""` when no slug is known (mirrors the
   existing tolerance for empty `step_log`/`session_id`).
   """
-  @spec advance_cycle_state(String.t(), String.t(), String.t(), String.t(), String.t(), String.t()) ::
+  @spec advance_cycle_state(
+          String.t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          String.t()
+        ) ::
           :ok
   def advance_cycle_state(state, step_log, session_id, verdict, project_dir, slug \\ "") do
     unless File.exists?(@cycle_state_lib) do

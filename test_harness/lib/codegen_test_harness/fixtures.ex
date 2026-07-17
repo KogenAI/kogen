@@ -266,11 +266,26 @@ defmodule CodegenTestHarness.Fixtures do
     sp_path = write_tmp_file!(system_prompt, ".txt")
     schema_path = write_tmp_file!(schema, ".json")
 
+    err_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codegen-call-stderr-#{System.unique_integer([:positive])}.log"
+      )
+
     try do
+      # Stream split (not merged): the envelope lives on stdout alone — a
+      # stderr diagnostic line landing in front of it would corrupt the JSON
+      # parse. `exec "$@" 2>"$CG_ERR"` replaces the shell in place (no extra
+      # process layer); stderr is captured to a temp file and re-emitted
+      # below so it still reaches the caller's own stderr/log capture.
       {output, exit_code} =
         System.cmd(
-          codegen_call_path(),
+          "sh",
           [
+            "-c",
+            ~s(exec "$@" 2>"$CG_ERR"),
+            "sh",
+            codegen_call_path(),
             "--harness=#{harness_val}",
             "--model=#{model}",
             "--effort=#{effort}",
@@ -278,17 +293,38 @@ defmodule CodegenTestHarness.Fixtures do
             "--json-schema=@#{schema_path}",
             prompt
           ],
-          stderr_to_stdout: true
+          env: [{"CG_ERR", err_path}],
+          stderr_to_stdout: false
         )
 
+      stderr =
+        case File.read(err_path) do
+          {:ok, content} -> content
+          {:error, _reason} -> ""
+        end
+
+      if stderr != "", do: IO.write(:stderr, stderr)
+
       if exit_code != 0 do
-        raise "codegen-call failed (exit=#{exit_code}):\n#{output}"
+        raise "codegen-call failed (exit=#{exit_code}):\n#{output}\n#{stderr}"
       end
 
-      Jason.decode!(output)
+      case Jason.decode(output) do
+        {:ok, decoded} ->
+          decoded
+
+        {:error, decode_error} ->
+          received = String.slice(output, 0, 200)
+          stderr_tail = String.slice(stderr, max(String.length(stderr) - 200, 0), 200)
+
+          raise "Fixtures.run_codegen_call: expected JSON envelope on codegen-call stdout, " <>
+                  "got: #{inspect(received)} (decode error: #{Exception.message(decode_error)}); " <>
+                  "stderr tail: #{inspect(stderr_tail)}"
+      end
     after
       File.rm(sp_path)
       File.rm(schema_path)
+      File.rm(err_path)
     end
   end
 
