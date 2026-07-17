@@ -956,8 +956,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # 4 attempts total for the first role in the sequence (developer-static)
       assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 4
 
-      # 3 backoff sleeps between the 4 attempts, increasing per the backoff table
-      assert Agent.get(sleep_agent, & &1) == [15_000, 60_000, 120_000]
+      # 3 backoff sleeps between the 4 attempts, increasing per the backoff
+      # table — jittered +/-20% so parallel builds don't thunder-herd on
+      # recovery from a shared incident; assert bounded ranges, not exact
+      # values.
+      [sleep1, sleep2, sleep3] = Agent.get(sleep_agent, & &1)
+      assert sleep1 in 12_000..18_000
+      assert sleep2 in 48_000..72_000
+      assert sleep3 in 96_000..144_000
 
       assert Agent.get(died_agent, & &1) == [
                {"developer-static", "interrupted", "API Error: 529 overloaded_error"},

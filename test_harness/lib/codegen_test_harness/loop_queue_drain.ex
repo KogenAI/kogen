@@ -107,6 +107,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @default_max_retries 3
   @default_retry_delays [30, 120, 300]
   @default_max_consecutive_fails 3
+  # Ceiling on total outage-pause duration (secs) before the drain gives up
+  # and HALTs with a distinct "provider outage" reason — see
+  # `run_outage_pause/6` and `outage_pause_from_env/0`.
+  @default_outage_pause_secs 900
+  # Hard cap on the bounded liveness probe (default_probe_fn/1) — NEVER
+  # unbounded, see the moduledoc note under default_probe_fn/1.
+  @probe_timeout_ms 20_000
   # Per-class GC windows over `codegen/logging/` — see `gc_logging/1`. Floor
   # is codegen-analyze's default `--since` window (14 days); margins are
   # widened for classes with no durable reader (build forensics, subagent
@@ -217,6 +224,19 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     * `:now_fn` — `(-> integer unix secs)`
     * `:ordered_fn` — `(ready_dir -> [slug])`, default `LoopQueue.ordered_slugs/1`
     * `:transient_fn` — `(jsonl_path -> boolean)`, default `LoopQueue.transient?/1`
+    * `:probe_fn` — `(state -> :up | :down)`, default `default_probe_fn/1` — a
+      HARD-BOUNDED (~20s) liveness ping (`claude --print -- "ok"` via the same
+      `Port.open` + receive-timeout + `Port.close` idiom as `default_spawn_fn/5`)
+      used ONLY during an outage pause (see `run_outage_pause/6`). Never
+      unbounded — an unbounded ping against an unreachable provider hangs
+      indefinitely, reproducing the exact wedge this pause exists to avoid.
+    * `:outage_pause_secs` — total outage-pause ceiling (secs), default
+      `#{@default_outage_pause_secs}` (env `CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS`).
+      When a provider-classified transient failure triggers an outage pause
+      (see `run_outage_pause/6`) that exceeds this ceiling without the probe
+      recovering, the drain HALTs with a DISTINCT "provider outage" message —
+      never the "consecutive deterministic failures" misdiagnosis, and never
+      counted against `:consecutive_fails` or `:max_retries`.
     * `:blocked_fn` — `(-> %{slug => dep})`, default zero-arg closure binding
       `{ready_dir, shipped_dir}` into `LoopQueue.blocked_by_unmet_dep/2`.
       Recomputed on every scan (mirrors legacy `build-queue.sh`'s re-scan
@@ -385,6 +405,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           now_fn: Keyword.get(opts, :now_fn, &default_now_fn/0),
           ordered_fn: Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1),
           transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
+          probe_fn: Keyword.get(opts, :probe_fn, &default_probe_fn/1),
+          outage_pause_secs:
+            Keyword.get(opts, :outage_pause_secs, outage_pause_from_env()),
           blocked_fn:
             Keyword.get(opts, :blocked_fn, fn ->
               LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir)
@@ -1411,6 +1434,21 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           run_loop(state, shipped_count, concluded_count + 1)
         end
 
+      state.transient_fn.(jsonl) and not (gate_clear? and not committed?) ->
+        # Provider-classified transient failure (not the post-commit-hiccup
+        # non-commit case above) — enter an OUTAGE PAUSE instead of consuming
+        # a max_retries slot: probe provider liveness, hold without touching
+        # consecutive_fails/retry_count, resume the SAME slug on recovery. A
+        # sustained outage (provider down past :outage_pause_secs) HALTs with
+        # a DISTINCT message — never the "consecutive deterministic failures"
+        # misdiagnosis a burned-through retry ladder would otherwise emit.
+        IO.puts(
+          :stderr,
+          "[#{idx}/#{state.total}] #{slug} ... provider outage detected — pausing queue, probing"
+        )
+
+        run_outage_pause(state, slug, shipped_count, concluded_count, 0, 1)
+
       retry_eligible?(state, slug, jsonl, committed?, gate_clear?) ->
         retry_count = if state.last_slug == slug, do: state.retry_count, else: 0
         attempt = retry_count + 1
@@ -1595,6 +1633,54 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       retry_count < state.max_retries
   end
 
+  # Outage-aware pause: probe/hold/resume-same-slug on a provider-classified
+  # transient failure. Does NOT touch consecutive_fails or retry_count — an
+  # outage is not a deterministic failure, so it never burns a breaker
+  # strike or a max_retries slot. Sleeps capped-backoff-with-jitter between
+  # probes (reuses pick_delay/2 + the same jitter every retry ladder gets).
+  # On :up, resumes the SAME slug via run_slug/4. On ceiling exhaustion,
+  # HALTs with a message DISTINCT from "consecutive deterministic failures".
+  @spec run_outage_pause(
+          map(),
+          String.t(),
+          non_neg_integer(),
+          non_neg_integer(),
+          non_neg_integer(),
+          pos_integer()
+        ) ::
+          {:ok, non_neg_integer()} | {:error, String.t()}
+  defp run_outage_pause(state, slug, shipped_count, concluded_count, elapsed_secs, attempt) do
+    if elapsed_secs >= state.outage_pause_secs do
+      spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+
+      pause_min = div(state.outage_pause_secs, 60)
+
+      {:error,
+       "queue: HALTED — provider outage, paused #{pause_min} min without recovery; " <>
+         "#{slug} remains in ready/, re-run when the provider recovers"}
+    else
+      case state.probe_fn.(state) do
+        :up ->
+          IO.puts(:stderr, "provider recovered — resuming #{slug}")
+          run_slug(state, slug, shipped_count, concluded_count)
+
+        :down ->
+          delay = pick_delay(state.retry_delays, attempt)
+          IO.puts(:stderr, "provider still down — next probe in #{delay}s")
+          if delay > 0, do: state.sleep_fn.(delay)
+
+          run_outage_pause(
+            state,
+            slug,
+            shipped_count,
+            concluded_count,
+            elapsed_secs + delay,
+            attempt + 1
+          )
+      end
+    end
+  end
+
   defp handle_timeout(state, slug, shipped_count, concluded_count, idx) do
     budget = state.pitch_budget_secs
     second_timeout? = MapSet.member?(state.timed_out_slugs, {:once, slug})
@@ -1636,10 +1722,26 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   # ── Backoff ───────────────────────────────────────────────────────────────
 
+  # Jittered +/-20% so parallel drains don't thunder-herd on recovery from a
+  # shared provider incident; ceilings from `:retry_delays` are unchanged.
   @spec pick_delay([non_neg_integer()], pos_integer()) :: non_neg_integer()
   defp pick_delay(delays, attempt) do
     idx = min(attempt, length(delays)) - 1
-    Enum.at(delays, idx, List.last(delays) || 0)
+    base = Enum.at(delays, idx, List.last(delays) || 0)
+    jitter(base)
+  end
+
+  @spec jitter(non_neg_integer()) :: non_neg_integer()
+  defp jitter(0), do: 0
+
+  defp jitter(base_secs) when base_secs > 0 do
+    spread = div(base_secs, 5)
+
+    if spread <= 0 do
+      base_secs
+    else
+      base_secs - spread + :rand.uniform(2 * spread + 1) - 1
+    end
   end
 
   # ── Env-toggle resolution ────────────────────────────────────────────────
@@ -1693,6 +1795,63 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     case System.get_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") do
       nil -> @default_max_consecutive_fails
       str -> parse_pos_int(str, @default_max_consecutive_fails)
+    end
+  end
+
+  @doc "Resolves `CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS`, default #{@default_outage_pause_secs}."
+  @spec outage_pause_from_env() :: pos_integer()
+  def outage_pause_from_env do
+    case System.get_env("CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS") do
+      nil -> @default_outage_pause_secs
+      str -> parse_pos_int(str, @default_outage_pause_secs)
+    end
+  end
+
+  # Bounded liveness probe: spawns `claude --print -- "ok"` via the same
+  # Port.open + receive-timeout + Port.close idiom as `default_spawn_fn/5`,
+  # hard-capped at ~20s. rc 0 within the window -> :up. Non-zero exit OR a
+  # timeout (Port.close forced) -> :down. NEVER unbounded — an unbounded
+  # probe against an unreachable provider hangs indefinitely (measured
+  # >=120s, no exit), which would reproduce the exact wedge this pause path
+  # exists to avoid.
+  @spec default_probe_fn(map()) :: :up | :down
+  def default_probe_fn(_state) do
+    case System.find_executable("claude") do
+      nil ->
+        :down
+
+      claude_bin ->
+        port =
+          Port.open({:spawn_executable, claude_bin}, [
+            :binary,
+            :exit_status,
+            :stderr_to_stdout,
+            {:args, ["--print", "--", "ok"]}
+          ])
+
+        probe_receive(port)
+    end
+  end
+
+  defp probe_receive(port) do
+    receive do
+      {^port, {:data, _chunk}} ->
+        probe_receive(port)
+
+      {^port, {:exit_status, 0}} ->
+        :up
+
+      {^port, {:exit_status, _nonzero}} ->
+        :down
+    after
+      @probe_timeout_ms ->
+        try do
+          Port.close(port)
+        rescue
+          ArgumentError -> :already_closed
+        end
+
+        :down
     end
   end
 

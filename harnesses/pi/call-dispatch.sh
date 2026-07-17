@@ -202,18 +202,23 @@ START_TS_MS="$(_ts_ms)"
 # Mirrors harnesses/claude/call-dispatch.sh's watchdog: a dropped/stalled API
 # connection can leave pi emitting its full response then never exiting.
 # System.cmd in the Elixir loop has no timeout, so a hung pi wedges the whole
-# build indefinitely. Two kill triggers:
+# build indefinitely. Three kill triggers:
 #   (1) result-present fast-path: TMP_OUT already carries a terminal
 #       "agent_end" event AND the process is still alive after
 #       CODEGEN_CALL_RESULT_GRACE_SECS (default 30s) — salvage as success.
 #   (2) idle cap: TMP_OUT has not grown for CODEGEN_CALL_IDLE_CAP_SECS
 #       (default 900s) — a genuine mid-stream stall with nothing to salvage.
+#   (3) dead-stream cap: no output growth for CODEGEN_CALL_STREAM_IDLE_SECS
+#       (default 60s) AND no live tool subprocess (pgrep -P empty) — detects a
+#       dead socket fast without false-killing a role legitimately silent for
+#       minutes while a bash tool (e.g. make test) runs.
 # One-shot platform codegen-call (no CODEGEN_LOOP) runs the exec verbatim,
 # uncapped — byte-identical to pre-watchdog behavior.
 WATCHDOG_KILLED=""
 if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     RESULT_GRACE_SECS="${CODEGEN_CALL_RESULT_GRACE_SECS:-30}"
     IDLE_CAP_SECS="${CODEGEN_CALL_IDLE_CAP_SECS:-900}"
+    STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-60}"
 
     set +e
     env \
@@ -250,6 +255,16 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         # Trigger (2): idle cap — no output growth for IDLE_CAP_SECS.
         if (((NOW_MS - LAST_GROWTH_TS) / 1000 >= IDLE_CAP_SECS)); then
             printf 'codegen-call: watchdog killing pi (pid %s) — idle %ss with no output growth\n' "$CHILD_PID" "$IDLE_CAP_SECS" >&2
+            WATCHDOG_KILLED=1
+            break
+        fi
+
+        # Trigger (3): dead-stream cap — no output growth for STREAM_IDLE_SECS
+        # AND no live tool subprocess (pgrep -P empty). A role legitimately
+        # emits no bytes for minutes while a bash tool (e.g. `make test`) runs
+        # — the child-presence guard is what makes this short cap safe.
+        if [[ -z "$(pgrep -P "$CHILD_PID" 2>/dev/null)" ]] && (((NOW_MS - LAST_GROWTH_TS) / 1000 >= STREAM_IDLE_SECS)); then
+            printf 'codegen-call: watchdog killing pi (pid %s) — stream idle %ss, no tool subprocess\n' "$CHILD_PID" "$STREAM_IDLE_SECS" >&2
             WATCHDOG_KILLED=1
             break
         fi

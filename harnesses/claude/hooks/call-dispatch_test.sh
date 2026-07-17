@@ -1113,6 +1113,121 @@ assert_jq \
 assert_log_absent_line "$BASE_TMP/wd_z_stderr.log" "watchdog killing claude" \
     "(z) loop-gate off: watchdog never engages"
 
+# ── Watchdog: dead-stream cap (Trigger 3, CODEGEN_CALL_STREAM_IDLE_SECS) ─────
+# Stub pgrep on PATH so child-presence is deterministic regardless of host OS.
+PGREP_STUB_DIR="$BASE_TMP/pgrep_stub_bin"
+mkdir -p "$PGREP_STUB_DIR"
+
+# (aa) Dead stream: no output growth AND no live tool subprocess (pgrep empty)
+# → killed after STREAM_IDLE_SECS with the "stream idle" reason.
+cat >"$PGREP_STUB_DIR/pgrep" <<'PGREPEMPTY'
+#!/usr/bin/env bash
+# Always report no children — simulates a dead socket with no tool running.
+exit 1
+PGREPEMPTY
+chmod +x "$PGREP_STUB_DIR/pgrep"
+cp "$WATCHDOG_STALL_STUB_DIR/claude" "$PGREP_STUB_DIR/claude"
+
+WD_AA_EXIT=0
+WD_AA_START=$(date +%s)
+(
+    export PATH="$PGREP_STUB_DIR:$PATH"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_LOOP=1
+    export CODEGEN_CALL_RESULT_GRACE_SECS=30
+    export CODEGEN_CALL_IDLE_CAP_SECS=900
+    export CODEGEN_CALL_STREAM_IDLE_SECS=2
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_aa_stderr.log"
+) >"$BASE_TMP/wd_aa_envelope.json" || WD_AA_EXIT=$?
+WD_AA_ELAPSED=$(($(date +%s) - WD_AA_START))
+
+if [[ "$WD_AA_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (aa) dead-stream cap: dispatch exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (aa) dead-stream cap: dispatch exits 0 — got %d\n' "$WD_AA_EXIT"
+    fail=$((fail + 1))
+fi
+
+assert_file_contains "$BASE_TMP/wd_aa_stderr.log" "stream idle"
+
+if [[ "$WD_AA_ELAPSED" -lt 60 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (aa) dead-stream cap fires well under the 900s idle backstop (%ds)\n' "$WD_AA_ELAPSED"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (aa) dead-stream cap took too long (%ds)\n' "$WD_AA_ELAPSED"
+    fail=$((fail + 1))
+fi
+
+# (bb) Live-but-quiet: no output growth BUT a tool subprocess IS running
+# (pgrep -P non-empty) → the short dead-stream cap must NOT fire; only the
+# (much longer) 900s idle backstop governs. Simulate via a stub claude that
+# spawns a long-lived child (so pgrep -P sees it) and never itself emits output.
+cat >"$PGREP_STUB_DIR/pgrep_real" <<'PGREPREAL'
+#!/usr/bin/env bash
+exec /usr/bin/pgrep "$@"
+PGREPREAL
+chmod +x "$PGREP_STUB_DIR/pgrep_real"
+cat >"$PGREP_STUB_DIR/claude" <<'WDLIVESTUB'
+#!/usr/bin/env bash
+# Stub claude: spawn a long-lived child (simulates a bash tool subprocess
+# still running), emit no output itself, then hang.
+sleep 3600 &
+wait
+WDLIVESTUB
+chmod +x "$PGREP_STUB_DIR/claude"
+# Use the REAL pgrep for this case (need it to actually see the spawned child).
+rm -f "$PGREP_STUB_DIR/pgrep"
+cp "$PGREP_STUB_DIR/pgrep_real" "$PGREP_STUB_DIR/pgrep"
+
+WD_BB_EXIT=0
+WD_BB_START=$(date +%s)
+(
+    export PATH="$PGREP_STUB_DIR:$PATH"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_LOOP=1
+    export CODEGEN_CALL_RESULT_GRACE_SECS=30
+    export CODEGEN_CALL_IDLE_CAP_SECS=3
+    export CODEGEN_CALL_STREAM_IDLE_SECS=2
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_bb_stderr.log"
+) >"$BASE_TMP/wd_bb_envelope.json" || WD_BB_EXIT=$?
+WD_BB_ELAPSED=$(($(date +%s) - WD_BB_START))
+
+assert_log_absent_line "$BASE_TMP/wd_bb_stderr.log" "stream idle" \
+    "(bb) live-but-quiet (tool subprocess running): short dead-stream cap must not fire"
+
+assert_file_contains "$BASE_TMP/wd_bb_stderr.log" "idle 3s with no output growth"
+
+if [[ "$WD_BB_ELAPSED" -ge 3 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (bb) live-but-quiet: governed by the longer idle backstop (%ds), not the short cap\n' "$WD_BB_ELAPSED"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (bb) live-but-quiet: killed too early (%ds) — short cap fired despite live subprocess\n' "$WD_BB_ELAPSED"
+    fail=$((fail + 1))
+fi
+
+# (cc) default: CODEGEN_CALL_STREAM_IDLE_SECS unset → defaults to 60.
+assert_file_contains "$DISPATCH_SCRIPT" \
+    'STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-60}"'
+
 # ── Tool-trace metrics envelope block (real probed stream-json fixtures) ─────
 FIXTURE_TOOL_TRACE="$HOOKS_DIR/fixtures/tool_trace.jsonl"
 FIXTURE_TOOL_TRACE_SUBAGENT="$HOOKS_DIR/fixtures/tool_trace_subagent.jsonl"

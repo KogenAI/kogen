@@ -35,23 +35,39 @@ failure — same skip-and-continue path as a genuine nonzero exit.
 non-zero AFTER HEAD already moved, with a fresh clear gate verdict, still counts as shipped rather than
 halting the whole queue.
 
-## Timeout vs Transient-Retry — Two Separate Paths
+## Timeout vs Transient-Retry vs Outage-Pause — Three Separate Paths
 
 - **Watchdog timeout** (`:pitch_budget_secs`, default 7200s, env `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS`)
   — ALWAYS stashes the dirty tree + retries once + skips on second timeout. NEVER routed through
   `transient?/1` classification (mirrors legacy `build-queue.sh`'s early `continue` on the timeout
   branch, before the transient-check block runs).
-- **Transient retry** — `LoopQueue.transient?/1` classifies JSONL exit reasons; a transient failure
-  retries with backoff, non-transient does not.
+- **Outage pause** — `LoopQueue.transient?/1`-classified failures (excluding the post-commit-hiccup
+  non-commit case) now route to `run_outage_pause/6` BEFORE `retry_eligible?/5` is ever consulted — see
+  § Outage Pause below. A provider-classified transient failure no longer burns a `max_retries` slot or a
+  `consecutive_fails` breaker strike.
+- **Transient retry** (`retry_eligible?/5`) — still reachable for the post-commit-hiccup non-commit case
+  (`gate_clear? and not committed?`), which is not a provider-outage signal.
+
+## Outage Pause
+
+A `transient_fn.(jsonl)`-true failure (not the non-commit gate-clear case) enters an outage pause instead
+of a retry-ladder attempt: `:probe_fn` (default `default_probe_fn/1`, a HARD-BOUNDED ~20s
+`claude --print -- "ok"` liveness ping via the same `Port.open` + receive-timeout + `Port.close` idiom as
+`default_spawn_fn/5` — NEVER unbounded, an unbounded ping against an unreachable provider hangs
+indefinitely) is polled with capped-backoff-with-jitter sleeps (`pick_delay/2`, same ladder as the retry
+delays) between probes. `:up` resumes the SAME slug via `run_slug/4`; `:down` sleeps and re-probes. Neither
+outcome touches `:consecutive_fails` or `:retry_count`. Exceeding `:outage_pause_secs` (default 900s, env
+`CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS`) HALTs the drain with a message naming "provider outage" —
+DISTINCT from the "consecutive deterministic failures" breaker message (§ Circuit Breaker) — leaving the
+pitch untouched in `ready_dir` for a re-run once the provider recovers.
 
 ## Deterministic Failure — Skip, Never Silent Stash
 
-A deterministic child failure (or a pitch exhausting its own transient retries) SKIPS-AND-CONTINUES:
-the pitch stays physically in `ready_dir`, its dirty tree is committed to a NAMED
-`queue-fail/<slug>/<ts>` branch (never an invisible `git stash` — `no-git-stash.sh` forbids that
-everywhere in this repo). Recoverable via plain branch checkout. Never auto-restored — the stash-restore
-seam only matches the `queue-timeout:` prefix, so a graded-and-rejected tree never silently re-enters a
-retry.
+A deterministic child failure SKIPS-AND-CONTINUES: the pitch stays physically in `ready_dir`, its dirty
+tree is committed to a NAMED `queue-fail/<slug>/<ts>` branch (never an invisible `git stash` —
+`no-git-stash.sh` forbids that everywhere in this repo). Recoverable via plain branch checkout. Never
+auto-restored — the stash-restore seam only matches the `queue-timeout:` prefix, so a graded-and-rejected
+tree never silently re-enters a retry.
 
 **Terminal marker — read BEFORE `retry_eligible?/5`.** On a nonzero exit, `handle_nonzero_exit/8` first
 calls `:terminal_marker_fn` (default `default_terminal_marker_fn/1`, reads
@@ -72,6 +88,11 @@ the streak to 0. Hitting the threshold HALTs the drain with `{:error, reason}` �
 systemically-broken environment (not an isolated bad pitch) is failing every build. Isolated failures
 below the threshold are tolerated; `drain/1` returns `{:ok, shipped_count}` with a FAILED bucket naming
 every skipped slug.
+
+The increment lives at TWO identical sites in `handle_nonzero_exit/8` (the terminal-marker deterministic
+arm and the general catch-all deterministic arm) — an outage pause (§ Outage Pause) is a cond clause
+placed BEFORE both, so neither site is ever reached on a provider-classified transient failure; the
+breaker counts deterministic failures only.
 
 ## Publish — a Watched Node Publishes Its Own Commits
 

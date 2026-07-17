@@ -2994,10 +2994,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   # Backoff between transient retries (ms), indexed by the attempt that just
-  # failed. Beyond the list, the last value repeats.
+  # failed. Beyond the list, the last value repeats. Jittered +/-20% so
+  # parallel builds don't thunder-herd on recovery from a shared incident.
   defp backoff_ms(attempt) do
     delays = [15_000, 60_000, 120_000]
-    Enum.at(delays, attempt - 1, List.last(delays))
+    base = Enum.at(delays, attempt - 1, List.last(delays))
+    jitter(base)
+  end
+
+  # +/-20% jitter around a base delay (ms). :rand is process-seeded; no
+  # explicit seed needed. base=0 returns 0 (never negative or division by 0).
+  @spec jitter(non_neg_integer()) :: non_neg_integer()
+  defp jitter(0), do: 0
+
+  defp jitter(base_ms) when base_ms > 0 do
+    spread = div(base_ms, 5)
+    base_ms - spread + :rand.uniform(2 * spread + 1) - 1
   end
 
   # Writes a `{"ev":"died","kind":<kind>}` death stamp into THIS cycle's log

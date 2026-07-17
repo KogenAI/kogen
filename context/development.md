@@ -29,7 +29,7 @@ The codegen repo is a Bash + Python + TypeScript + Elixir toolchain. Primary dev
 
 ## Make Targets (Index)
 
-One-liner per target — for test target semantics see `context/test-harness.md`; for hook-parity semantics see `context/hooks.md`. **Launcher-test discovery**: `harnesses/claude/hooks/*_test.sh` files are auto-discovered by `run-tests.sh` (grep footer `N passed, N failed`); launcher helper tests in `harnesses/shared/*_test.sh` are NOT auto-discovered — they run via the `harness-parity` target's explicit `for t in` list (Makefile ~L145-152). New launcher test → add a list entry; `harness-parity` checks each test's EXIT CODE (rc -ne 0 → FAIL).
+One-liner per target — for test target semantics see `context/test-harness.md`; for hook-parity semantics see `context/hooks.md`. **Launcher-test discovery**: `harnesses/claude/hooks/*_test.sh` files are auto-discovered by `run-tests.sh` (grep footer `N passed, N failed`); launcher helper tests in `harnesses/shared/*_test.sh` ARE auto-discovered too — the `harness-parity` target globs `harnesses/shared/*_test.sh` directly (Makefile ~L164) rather than naming each file in an explicit list. `harness-parity` checks each test's EXIT CODE (rc -ne 0 → FAIL); a new `harnesses/shared/*_test.sh` file needs no Makefile edit to be picked up.
 
 | Target                    | Purpose                                                                                                                                                                    |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -96,13 +96,12 @@ printf '%s' "$count" >"$counter_file"
 
 # --- Inter-attempt backoff (space out retries; do not stampede an overloaded API) -------
 # Schedule keyed on attempt count (1..8). Immediate first retry preserves prior behavior;
-# subsequent waits grow then cap at 5 min. Hook `timeout` (360s) in the registration must
-# be >= the max delay (set in shared/enforcement/registry.yaml id: stop-resume).
+# subsequent waits grow then cap at 4 min.
 case "$count" in
 1) delay=0 ;;   # first retry: immediate
 2) delay=60 ;;  # 1 min
-3) delay=300 ;; # 5 min
-*) delay=300 ;; # cap subsequent waits at 5 min
+3) delay=240 ;; # 4 min
+*) delay=240 ;; # cap subsequent waits at 4 min
 esac
 if [ "$delay" -gt 0 ]; then
     sleep "$delay"

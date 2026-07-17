@@ -134,18 +134,23 @@ START_TS_MS="$(_ts_ms)"
 # A dropped/stalled API connection can leave claude emitting its full response
 # then never exiting (S+/sleeping on a stalled ESTABLISHED socket). System.cmd
 # in the Elixir loop has no timeout, so a hung claude wedges the whole build
-# indefinitely. The watchdog kills a hung child on either of two triggers:
+# indefinitely. The watchdog kills a hung child on any of three triggers:
 #   (1) result-present fast-path: TMP_OUT already carries a terminal "result"
 #       event AND the process is still alive after CODEGEN_CALL_RESULT_GRACE_SECS
 #       (default 30s) — the work is done; recover it as a salvaged success.
 #   (2) idle cap: TMP_OUT has not grown for CODEGEN_CALL_IDLE_CAP_SECS (default
 #       900s) — a genuine mid-stream stall with no result to salvage.
+#   (3) dead-stream cap: no output growth for CODEGEN_CALL_STREAM_IDLE_SECS
+#       (default 60s) AND no live tool subprocess (pgrep -P empty) — detects a
+#       dead socket fast without false-killing a role legitimately silent for
+#       minutes while a bash tool (e.g. make test) runs.
 # One-shot platform codegen-call (no CODEGEN_LOOP) runs the exec verbatim,
 # uncapped — byte-identical to pre-watchdog behavior.
 WATCHDOG_KILLED=""
 if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     RESULT_GRACE_SECS="${CODEGEN_CALL_RESULT_GRACE_SECS:-30}"
     IDLE_CAP_SECS="${CODEGEN_CALL_IDLE_CAP_SECS:-900}"
+    STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-60}"
 
     set +e
     env \
@@ -189,6 +194,16 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         # Trigger (2): idle cap — no output growth for IDLE_CAP_SECS.
         if (((NOW_MS - LAST_GROWTH_TS) / 1000 >= IDLE_CAP_SECS)); then
             printf 'codegen-call: watchdog killing claude (pid %s) — idle %ss with no output growth\n' "$CHILD_PID" "$IDLE_CAP_SECS" >&2
+            WATCHDOG_KILLED=1
+            break
+        fi
+
+        # Trigger (3): dead-stream cap — no output growth for STREAM_IDLE_SECS
+        # AND no live tool subprocess (pgrep -P empty). A role legitimately
+        # emits no bytes for minutes while a bash tool (e.g. `make test`) runs
+        # — the child-presence guard is what makes this short cap safe.
+        if [[ -z "$(pgrep -P "$CHILD_PID" 2>/dev/null)" ]] && (((NOW_MS - LAST_GROWTH_TS) / 1000 >= STREAM_IDLE_SECS)); then
+            printf 'codegen-call: watchdog killing claude (pid %s) — stream idle %ss, no tool subprocess\n' "$CHILD_PID" "$STREAM_IDLE_SECS" >&2
             WATCHDOG_KILLED=1
             break
         fi

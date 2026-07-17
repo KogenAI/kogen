@@ -262,7 +262,7 @@ else
 fi
 rm -f "$COUNTER_BB"
 
-# Test C: attempt 4 → delay=300 (cap) → sleep 300 invoked
+# Test C: attempt 4 → delay=240 (cap) → sleep 240 invoked
 rm -f "$SLEEP_CALLS"
 SESSION_BC="sess-bc-$(date +%s%N)"
 COUNTER_BC="/tmp/claude-resume-${SESSION_BC}.count"
@@ -270,11 +270,11 @@ printf '%s' "3" >"$COUNTER_BC"
 BC_INPUT="$(mk_stop_transcript "$SESSION_BC" '' \
     '{"isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"Stream idle timeout occurred"}]}}')"
 printf '%s' "$BC_INPUT" | env STOP_HOOK_ACTIVE=false PATH="$TMP_DIR:$PATH" bash "$GUARD" 2>/dev/null || true
-if [ -f "$SLEEP_CALLS" ] && grep -qx "300" "$SLEEP_CALLS"; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: attempt 4 — sleep 300 invoked (cap)\n'
+if [ -f "$SLEEP_CALLS" ] && grep -qx "240" "$SLEEP_CALLS"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: attempt 4 — sleep 240 invoked (cap)\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: attempt 4 — expected sleep 300, sleep-calls: %s\n' "$(cat "$SLEEP_CALLS" 2>/dev/null || echo "(absent)")"
+    printf 'FAIL: attempt 4 — expected sleep 240, sleep-calls: %s\n' "$(cat "$SLEEP_CALLS" 2>/dev/null || echo "(absent)")"
     fail=$((fail + 1))
 fi
 rm -f "$COUNTER_BC"

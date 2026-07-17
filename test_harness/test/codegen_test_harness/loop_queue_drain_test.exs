@@ -53,7 +53,14 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # exercise publish must never touch the network. A ship without an
       # override "publishes" trivially; preflight always passes.
       git_publish_fn: fn _cwd, _slug -> {:ok, :unchanged} end,
-      publish_preflight_fn: fn _cwd -> :ok end
+      publish_preflight_fn: fn _cwd -> :ok end,
+      # Hermetic-test guard: never let a transient-failure test shell a real
+      # `claude --print` liveness probe. Default :up — every pre-existing
+      # transient test expects the outage pause to resolve on its first
+      # probe (mirrors immediate-retry semantics); tests exercising a
+      # sustained outage override this explicitly.
+      probe_fn: fn _state -> :up end,
+      outage_pause_secs: 900
     ]
 
     Keyword.merge(defaults, extra)
@@ -453,7 +460,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
   end
 
-  test "1h3: an UNMARKED nonzero exit still retries (regression guard — the diversion is narrow)",
+  test "1h3: an UNMARKED nonzero exit still resumes via the outage pause (regression guard — the diversion is narrow)",
        ctx do
     write_pitch(ctx.ready_dir, "solo")
 
@@ -462,17 +469,28 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
       n = Agent.get_and_update(attempts_agent, fn n -> {n, n + 1} end)
-      File.write!(jsonl, ~s({"type":"result","result":"boom #{n}","session_id":"sess-#{n}"}\n))
-      {:exit_code, 1}
+
+      if n == 0 do
+        File.write!(jsonl, ~s({"type":"result","result":"boom #{n}","session_id":"sess-#{n}"}\n))
+        {:exit_code, 1}
+      else
+        {:exit_code, 0}
+      end
     end
 
     # No terminal_marker_fn override — base_opts/2 defaults to :absent
-    # (no on-disk marker), so retry_eligible?/5's transient_fn leg is what
-    # decides — unchanged from before this pitch.
+    # (no on-disk marker). transient_fn true now routes through the outage
+    # pause (before retry_eligible?/5 is ever consulted) — unchanged in that
+    # it still is NOT the deterministic-failure park+skip+breaker path.
     transient_fn = fn _jsonl -> true end
 
     output =
       capture_io(:stderr, fn ->
+        # git_head_fn defaults to nil (base_opts) -> exit-0 on attempt 2
+        # cannot be verified as a real commit, so it lands in the
+        # false-exit-0 FAILED arm rather than shipping — the point of this
+        # regression guard is that the outage pause fires and resumes
+        # exactly once (attempt count == 2), not the eventual outcome.
         assert {:ok, 0} =
                  LoopQueueDrain.drain(
                    base_opts(ctx,
@@ -484,7 +502,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end)
 
     assert Agent.get(attempts_agent, & &1) == 2
-    assert output =~ "failed (retrying)"
+    assert output =~ "provider outage detected"
+    assert output =~ "provider recovered — resuming solo"
   end
 
   test "1i: streaming tee — child stdout/stderr echoed to :stderr AND persisted to jsonl", ctx do
@@ -708,9 +727,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
   end
 
-  # ── 4. Transient failure -> retry -> ship ───────────────────────────────
+  # ── 4. Transient failure -> outage pause (probe :up) -> resume -> ship ──
 
-  test "4: transient failure retries once with backoff then ships", ctx do
+  test "4: transient failure pauses, probes :up on first check, resumes and ships", ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     attempts = start_agent(0)
@@ -775,33 +794,84 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
              )
 
     assert Agent.get(attempts, & &1) == 2
-    assert Agent.get(sleeps, & &1) == [30]
+    # probe_fn defaults to :up (base_opts) — the pause resolves on its FIRST
+    # probe, before any sleep, unlike the old retry-ladder path.
+    assert Agent.get(sleeps, & &1) == []
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
-  # ── 5. Transient exhausted -> skip-and-continue (isolated failure) ──────
+  # ── 5. Sustained provider outage -> HALTs distinctly, never a skip ─────
 
-  test "5: transient exhausted after max_retries skips-and-continues, left in ready/", ctx do
+  test "5: sustained transient outage HALTs with a distinct message, never 'consecutive deterministic failures', pitch stays in ready/",
+       ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     sleeps = start_agent([])
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
     transient_fn = fn _jsonl -> true end
+    # Provider never recovers within the pause ceiling.
+    probe_fn = fn _state -> :down end
     sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
 
-    assert {:ok, 0} =
-             LoopQueueDrain.drain(
-               base_opts(ctx,
-                 spawn_fn: spawn_fn,
-                 transient_fn: transient_fn,
-                 sleep_fn: sleep_fn,
-                 max_retries: 2
-               )
-             )
+    output =
+      capture_io(:stderr, fn ->
+        assert {:error, reason} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     probe_fn: probe_fn,
+                     sleep_fn: sleep_fn,
+                     # Tiny ceiling relative to the (jittered ~24-96s) first
+                     # probe delay so the pause exhausts on its very first
+                     # sleep — deterministic, no reliance on exact jitter.
+                     outage_pause_secs: 1
+                   )
+                 )
 
+        assert reason =~ "provider outage"
+        refute reason =~ "consecutive deterministic failures"
+      end)
+
+    assert output =~ "provider outage detected"
+    refute output =~ "consecutive deterministic failures"
+    # Never touches consecutive_fails/max_retries — the pitch is left
+    # untouched in ready/, not parked or skipped.
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
-    assert length(Agent.get(sleeps, & &1)) == 2
+    # Ceiling is 1s; the probe never fires again after exhaustion is detected
+    # on entry (elapsed_secs=0 < 1 passes once, then the recorded delay from
+    # the single :down probe pushes elapsed past the ceiling).
+    assert length(Agent.get(sleeps, & &1)) == 1
+  end
+
+  test "5b: outage-pause sleep stays within +/-20% of the base retry_delays entry (jitter bound)",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    sleeps = start_agent([])
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> true end
+    probe_fn = fn _state -> :down end
+    sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
+
+    capture_io(:stderr, fn ->
+      assert {:error, _reason} =
+               LoopQueueDrain.drain(
+                 base_opts(ctx,
+                   spawn_fn: spawn_fn,
+                   transient_fn: transient_fn,
+                   probe_fn: probe_fn,
+                   sleep_fn: sleep_fn,
+                   outage_pause_secs: 1
+                 )
+               )
+    end)
+
+    [first_delay] = Agent.get(sleeps, & &1)
+    # base = 30 (retry_delays[0], attempt 1); jitter +/-20% -> [24, 36]
+    assert first_delay in 24..36, "expected jittered delay in 24..36, got #{first_delay}"
   end
 
   # ── 6. Deterministic failure -> skip-and-continue (below breaker threshold) ──
@@ -1081,12 +1151,13 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert output =~ "queue: 0 shipped, 1 failed, 1 drafted,"
   end
 
-  test "D3: transient retry-then-terminal-fail calls draft_fn exactly once (terminal only)",
+  test "D3: sustained transient outage HALTs WITHOUT ever calling draft_fn (outage != terminal-fail)",
        ctx do
     write_pitch(ctx.ready_dir, "solo")
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
     transient_fn = fn _jsonl -> true end
+    probe_fn = fn _state -> :down end
 
     calls = start_agent([])
 
@@ -1097,19 +1168,25 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:ok, 0} =
+        assert {:error, reason} =
                  LoopQueueDrain.drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
+                     probe_fn: probe_fn,
+                     outage_pause_secs: 1,
                      max_retries: 2,
                      draft_fn: draft_fn
                    )
                  )
+
+        assert reason =~ "provider outage"
       end)
 
-    assert Agent.get(calls, & &1) == ["solo"]
-    assert output =~ "1 drafted,"
+    # A HALT (any HALT class, including this outage one) never drafts — draft_fn
+    # is only ever called from the two terminal-FAILED skip-and-continue arms.
+    assert Agent.get(calls, & &1) == []
+    assert output =~ "provider outage detected"
   end
 
   test "D4: HALT arms (infra abort, orphaned base) never call draft_fn", ctx do
@@ -2321,8 +2398,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end)
 
     # A retry of the SAME pitch never advances the index — both the
-    # "failed (retrying)" line and the later "shipped" line read "[1/1]".
-    assert output =~ "[1/1] solo ... failed (retrying)"
+    # "provider outage detected" line and the later "shipped" line read "[1/1]".
+    assert output =~ "[1/1] solo ... provider outage detected"
     assert output =~ "[1/1] solo ... shipped"
     refute output =~ "[2/1]"
   end
@@ -3171,6 +3248,31 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
       System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "x")
       on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
       assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
+    end
+  end
+
+  describe "outage_pause_from_env/0" do
+    test "unset -> 900" do
+      System.delete_env("CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS")
+      assert LoopQueueDrain.outage_pause_from_env() == 900
+    end
+
+    test "\"120\" -> 120" do
+      System.put_env("CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS", "120")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS") end)
+      assert LoopQueueDrain.outage_pause_from_env() == 120
+    end
+
+    test "\"0\" -> 900 (sentinel)" do
+      System.put_env("CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS", "0")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS") end)
+      assert LoopQueueDrain.outage_pause_from_env() == 900
+    end
+
+    test "\"x\" (non-numeric) -> 900" do
+      System.put_env("CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS", "x")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS") end)
+      assert LoopQueueDrain.outage_pause_from_env() == 900
     end
   end
 

@@ -53,6 +53,19 @@ check (`context/loop.md`), and the call-dispatch scripts' own early-exit branche
 in sync is a live parity concern — `LoopQueue.transient?/1` is unit-tested directly; the dispatch-script
 copies are not cross-checked by an automated parity test.
 
+At the queue-drain layer, a `transient?/1`-classified failure no longer consumes a `max_retries` slot
+directly — it routes to an OUTAGE PAUSE (probe/hold/resume-same-slug) before `retry_eligible?/5` is ever
+consulted, distinct from the deterministic-failure breaker path. See `context/loop-queue-drain.md` §
+Outage Pause.
+
+Both call-dispatch legs (`harnesses/claude/call-dispatch.sh`, `harnesses/pi/call-dispatch.sh`) also carry
+a THIRD watchdog trigger, `CODEGEN_CALL_STREAM_IDLE_SECS` (default 60s), alongside the pre-existing
+900s `CODEGEN_CALL_IDLE_CAP_SECS` backstop: it fires only when BOTH no output growth AND no live tool
+subprocess (`pgrep -P $CHILD_PID` empty) hold for the window — the child-presence guard is what makes a
+short cap safe against a role legitimately silent for minutes while a `make test`/`mix test` bash tool
+runs. Both legs read this var identically; `harnesses/shared/call-dispatch-parity_test.sh` enforces the
+cross-leg read-set stays in sync.
+
 ## Consumers
 
 - `OrchestrationLoop` — reads `result.status`, `usage.cost_usd` (accumulated for the per-cycle budget
