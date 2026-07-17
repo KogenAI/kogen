@@ -19,7 +19,7 @@ artifacts and the verdict table that session-log.md references but doesn't itsel
   `harnesses/claude/hooks/lib/gate-result.sh`, sourced by the loop's gate step). Overwritten each
   attempt (not append-only, unlike the cycle log).
 - `cycle-state.json` — durable checkpoint for warm-resume (`GATED`/`REVIEWED`/`CURATED`/`COMMITTED`).
-  See `context/loop.md` § Warm-Resume for the consuming logic.
+  Schema: `{ "state": "GATED|REVIEWED|CURATED|COMMITTED", "step_log": "path/to/cycle.log", "session_id": "cycle_id", "verdict": "clear|failed|inconclusive|\"\"", "slug": "pitch-name", "updated_at": "ISO-8601" }`. Fields `step_log`, `session_id`, and `slug` may be empty strings. The `slug` field is stamped by the loop during cycle execution and read by the resume guard to verify the checkpoint belongs to THIS pitch and not a foreign one (see `context/loop.md` § Warm-Resume).
 - `.active` — sentinel pointing at the currently-resolved cycle log path (written by `codegen-log init`).
 
 ## Gate Verdict Truth Table (`_derive_verdict`, fully deterministic)

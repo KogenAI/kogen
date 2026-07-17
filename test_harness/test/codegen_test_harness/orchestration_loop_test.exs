@@ -198,7 +198,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   # reach :clear (GATED) and that doesn't assert on advance_cycle_state_fn
   # itself.
   defp no_op_advance_cycle_state_fn do
-    fn _state, _step_log, _session_id, _verdict, _project_dir -> :ok end
+    fn _state, _step_log, _session_id, _verdict, _project_dir, _slug -> :ok end
   end
 
   defp all_present_preflight_probe_fn do
@@ -2588,7 +2588,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
 
-      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
         :ok
       end
@@ -2616,7 +2616,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, verdicts_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(verdicts_agent), do: Agent.stop(verdicts_agent) end)
 
-      advance_fn = fn state, _step_log, _session_id, verdict, _project_dir ->
+      advance_fn = fn state, _step_log, _session_id, verdict, _project_dir, _slug ->
         Agent.update(verdicts_agent, fn v -> v ++ [{state, verdict}] end)
         :ok
       end
@@ -2783,7 +2783,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, verdicts_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(verdicts_agent), do: Agent.stop(verdicts_agent) end)
 
-      advance_fn = fn state, _step_log, _session_id, verdict, _cwd ->
+      advance_fn = fn state, _step_log, _session_id, verdict, _cwd, _slug ->
         Agent.update(verdicts_agent, fn v -> v ++ [{state, verdict}] end)
         :ok
       end
@@ -2988,7 +2988,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
 
-      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
         :ok
       end
@@ -3310,7 +3310,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
 
-      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
         :ok
       end
@@ -3342,7 +3342,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
 
-      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
         :ok
       end
@@ -3393,7 +3393,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
 
-      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir ->
+      advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
         :ok
       end
@@ -4041,7 +4041,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                                             _step_log,
                                             _session_id,
                                             _verdict,
-                                            _project_dir ->
+                                            _project_dir,
+                                            _slug ->
                    :ok
                  end,
                  clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
@@ -4085,7 +4086,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug ->
             :ok
           end,
           clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
@@ -4137,7 +4138,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
-          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+          advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug ->
             :ok
           end,
           clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
@@ -4177,7 +4178,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                                             _step_log,
                                             _session_id,
                                             _verdict,
-                                            _project_dir ->
+                                            _project_dir,
+                                            _slug ->
                    :ok
                  end
                )
@@ -4968,10 +4970,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       )
     end
 
-    defp write_cycle_state!(dir, state) do
+    defp write_cycle_state!(dir, state, slug \\ "") do
       result_dir = Path.join([dir, "codegen", "gate-pending"])
       File.mkdir_p!(result_dir)
-      File.write!(Path.join(result_dir, "cycle-state.json"), Jason.encode!(%{"state" => state}))
+
+      File.write!(
+        Path.join(result_dir, "cycle-state.json"),
+        Jason.encode!(%{"state" => state, "slug" => slug})
+      )
     end
 
     # Writes `filename` (the prior cycle's simulated dev work) and returns
@@ -5021,7 +5027,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         preflight_probe_fn: all_present_preflight_probe_fn(),
         orientation_preflight_fn: no_op_orientation_preflight_fn(),
         orphan_scan_fn: fn _cwd -> [] end,
-        advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+        advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug ->
           :ok
         end
       ]
@@ -5036,12 +5042,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     } do
       tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
       write_gate_result!(dir, "clear", tree_sha, base_head)
-      write_cycle_state!(dir, "GATED")
+      write_cycle_state!(dir, "GATED", "matching-slug")
 
       assert :ok ==
                OrchestrationLoop.run(
                  resume_run_opts(dir, calls_agent,
+                   slug: "matching-slug",
                    cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   cycle_state_slug_fn: fn _cwd -> "matching-slug" end,
                    read_verdict_fn: fn _cwd -> :clear end,
                    gate_result_base_sha_fn: fn _cwd -> base_head end,
                    gate_tree_match_fn: fn _cwd -> true end,
@@ -5061,12 +5069,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     } do
       tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
       write_gate_result!(dir, "clear", tree_sha, base_head)
-      write_cycle_state!(dir, "REVIEWED")
+      write_cycle_state!(dir, "REVIEWED", "matching-slug")
 
       assert :ok ==
                OrchestrationLoop.run(
                  resume_run_opts(dir, calls_agent,
+                   slug: "matching-slug",
                    cycle_state_get_fn: fn _cwd -> "REVIEWED" end,
+                   cycle_state_slug_fn: fn _cwd -> "matching-slug" end,
                    read_verdict_fn: fn _cwd -> :clear end,
                    gate_result_base_sha_fn: fn _cwd -> base_head end,
                    gate_tree_match_fn: fn _cwd -> true end,
@@ -5087,12 +5097,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     } do
       tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
       write_gate_result!(dir, "clear", tree_sha, base_head)
-      write_cycle_state!(dir, "CURATED")
+      write_cycle_state!(dir, "CURATED", "matching-slug")
 
       assert :ok ==
                OrchestrationLoop.run(
                  resume_run_opts(dir, calls_agent,
+                   slug: "matching-slug",
                    cycle_state_get_fn: fn _cwd -> "CURATED" end,
+                   cycle_state_slug_fn: fn _cwd -> "matching-slug" end,
                    read_verdict_fn: fn _cwd -> :clear end,
                    gate_result_base_sha_fn: fn _cwd -> base_head end,
                    gate_tree_match_fn: fn _cwd -> true end,
@@ -5101,6 +5113,66 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) == ["committer"]
+    end
+
+    # Regression for pitch "a failed cycle leaves no checkpoint the NEXT
+    # pitch can resume into": a checkpoint stamped with a DIFFERENT pitch's
+    # slug must never be resumed, even when every other guard (state,
+    # verdict, tree, HEAD) is fully valid — that combination is exactly what
+    # a foreign pitch's checkpoint looks like from the resuming cycle's
+    # point of view. Every prior test in this describe block ran a single
+    # cycle; this one deliberately crosses a slug boundary, which is the gap
+    # the original bug slipped through (see the pitch's claim 6).
+    test "checkpoint stamped with a DIFFERENT slug → full run, never resumes a foreign pitch", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
+      write_gate_result!(dir, "clear", tree_sha, base_head)
+      write_cycle_state!(dir, "GATED", "pitch-a")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   slug: "pitch-b",
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   cycle_state_slug_fn: fn _cwd -> "pitch-a" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) ==
+               ["developer-static", "reviewer-static", "context-curator", "committer"]
+    end
+
+    test "checkpoint stamped with an empty slug (pre-upgrade record) → full run, never resumes", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
+      write_gate_result!(dir, "clear", tree_sha, base_head)
+      write_cycle_state!(dir, "GATED")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   slug: "pitch-b",
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   cycle_state_slug_fn: fn _cwd -> "" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) ==
+               ["developer-static", "reviewer-static", "context-curator", "committer"]
     end
 
     test "no cycle-state.json → full run from role 0 (developer-static first)", %{
@@ -5298,7 +5370,7 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
           "planner-phoenix, developer-phoenix-backend, developer-phoenix-frontend, " <>
           "reviewer-phoenix, context-curator, committer, developer-static, reviewer-static"
       end,
-      advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir -> :ok end,
+      advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug -> :ok end,
       orphan_scan_fn: fn _cwd -> [] end,
       planner_plan_fn: fn _log_file -> "## Plan\n\n**Approach**: do the thing." end
     ]
@@ -5480,7 +5552,8 @@ defmodule CodegenTestHarness.OrchestrationLoopDefaultLogInitTest do
                                           _step_log,
                                           _session_id,
                                           _verdict,
-                                          _project_dir ->
+                                          _project_dir,
+                                          _slug ->
                  :ok
                end,
                orphan_scan_fn: fn _cwd -> [] end,

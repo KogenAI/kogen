@@ -72,11 +72,13 @@ both success and failure paths (loop uses `try/after` semantics around the guard
 `resume_checkpoint/3` inspects `codegen/gate-pending/cycle-state.json` for a durable checkpoint
 (`GATED`/`REVIEWED`/`CURATED` states map to resuming at `reviewer`/`context-curator`/`committer`
 respectively via `resume_role_for_state/1`). A resume is honored ONLY when ALL of: the mapped resume
-role is present in `roles` for this stack, the gate verdict at checkpoint time reads as non-error
-(missing verdict is NOT silently treated as clear — an explicit check), and `resume_head_unmoved?/2`
-confirms HEAD hasn't moved since the checkpoint (stale checkpoint after an external commit → full run,
-never a corrupt resume). Resume replaces the full pitch/plan prompt with a continuation prompt (the
-resumed session already carries prior tool-call history in its transcript).
+role is present in `roles` for this stack, **the checkpoint's stamped `slug` matches this cycle's
+`opts[:slug]` (identity guard — prevents pitch A's orphaned checkpoint from being resumed by pitch B)**,
+the gate verdict at checkpoint time reads as non-error (missing verdict is NOT silently treated as clear —
+an explicit check), and `resume_head_unmoved?/2` confirms HEAD hasn't moved since the checkpoint (stale
+checkpoint after an external commit → full run, never a corrupt resume). Resume replaces the full
+pitch/plan prompt with a continuation prompt (the resumed session already carries prior tool-call history
+in its transcript). An empty or foreign slug → full run, never resume.
 
 ## Infra Abort
 

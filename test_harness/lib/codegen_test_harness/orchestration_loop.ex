@@ -1004,6 +1004,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   #
   #   * cycle-state.json exists and its state is GATED, REVIEWED, or CURATED
   #     (past-gate, pre-COMMITTED — COMMITTED/absent/unknown -> :full);
+  #   * the checkpoint's stamped slug equals THIS cycle's slug (opts[:slug])
+  #     — an empty stamp (pre-upgrade record, or a checkpoint written without
+  #     a slug) or a foreign slug both refuse the resume. This is the
+  #     identity guard: without it, a checkpoint left by pitch A is
+  #     indistinguishable from one left by pitch B, and a later cycle for B
+  #     can silently "resume" A's corpse (see pitch "a failed cycle leaves no
+  #     checkpoint the NEXT pitch can resume into"). Checked FIRST among the
+  #     guards below it depends on, but after the state-shape checks above
+  #     it, since an absent/malformed record has no slug to compare anyway;
   #   * the last gate run's verdict is :clear;
   #   * the tree right now is byte-identical to what the gate graded
   #     (graded_tree_sha_now == gate_result_graded_tree_sha, both non-empty);
@@ -1019,12 +1028,44 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     with state when is_binary(state) and state != "" <- state_fn.(cwd),
          target when is_binary(target) <- resume_role_for_state(state),
          resume_role when is_binary(resume_role) <- resolve_resume_role(target, roles),
+         true <- resume_slug_match?(cwd, opts),
          :clear <- safe_read_verdict(cwd, opts),
          true <- gate_tree_match?(cwd, opts),
          true <- resume_head_unmoved?(cwd, opts) do
       {:resume, resume_role, state}
     else
       _ -> :full
+    end
+  end
+
+  # A checkpoint is resumable only by the cycle that wrote it. `opts[:slug]`
+  # is the CURRENT cycle's slug (nil when the caller never passed one — a
+  # nil/absent slug can never match a stamped checkpoint, so it correctly
+  # refuses too). The stamped slug is read via :cycle_state_slug_fn — an
+  # empty stamp (checkpoint predates this guard, or was written with no
+  # slug) never matches, fail-closed by construction.
+  @spec resume_slug_match?(String.t(), run_opts()) :: boolean()
+  defp resume_slug_match?(cwd, opts) do
+    slug_fn = Keyword.get(opts, :cycle_state_slug_fn, &default_cycle_state_slug/1)
+    current_slug = Keyword.get(opts, :slug)
+    stamped_slug = slug_fn.(cwd)
+
+    is_binary(current_slug) and current_slug != "" and
+      is_binary(stamped_slug) and stamped_slug != "" and
+      current_slug == stamped_slug
+  end
+
+  defp default_cycle_state_slug(cwd) do
+    unless File.exists?(@cycle_state_lib) do
+      raise "OrchestrationLoop: cycle-state.sh not found at #{@cycle_state_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@cycle_state_lib)} && cycle_state_slug #{shell_quote(cwd)}"
+
+    case System.cmd("bash", ["-c", script], stderr_to_stdout: true) do
+      {output, 0} -> String.trim(output)
+      {_output, _code} -> ""
     end
   end
 
@@ -1076,19 +1117,24 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     Enum.drop_while(roles, &(&1 != resume_role))
   end
 
-  # Observability for a resumed cycle: one stderr line (always) + one
-  # best-effort cycle-log line tagged under the synthetic "loop-resume"
-  # pseudo-role (codegen-log's event vocabulary has no dedicated "resumed"
-  # kind — see shared/rules/_core/session-log.md § Event Schema — so this
-  # reuses the existing `ev:role` body-append surface rather than inventing
-  # a new codegen-log flag). Fail-loud-non-blocking: a codegen-log failure
-  # here must never abort a resume that is otherwise valid.
+  # Observability for a resumed cycle: one stderr line (always, names the
+  # slug so the identity guard's decision is operator-visible) + one
+  # best-effort cycle-log line appended under `resume_role` itself —
+  # `resume_role` is always a real role from codegen-log's vocabulary
+  # (planner*/developer-*/reviewer-*/context-curator/committer — see
+  # shared/rules/_core/session-log.md § Event Schema), so the resume note
+  # belongs to the role section it resumes into rather than an invented
+  # pseudo-role codegen-log would refuse. Fail-loud-non-blocking: a
+  # codegen-log failure here must never abort a resume that is otherwise
+  # valid.
   @spec log_resume(String.t(), String.t(), run_opts()) :: :ok
   defp log_resume(resume_role, state, opts) do
+    slug = Keyword.get(opts, :slug)
+
     IO.puts(
       :stderr,
-      "codegen.loop: resuming at #{resume_role} (prior state #{state}, gate clear, tree matched) " <>
-        "— skipping the completed prefix"
+      "codegen.loop: resuming at #{resume_role} (prior state #{state}, gate clear, tree matched, " <>
+        "slug #{slug}) — skipping the completed prefix"
     )
 
     log_resume_fn = Keyword.get(opts, :log_resume_fn, &default_log_resume/2)
@@ -1106,7 +1152,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           "on a matching tree; completed prefix skipped."
 
       {output, exit_code} =
-        System.cmd(@codegen_log_bin, ["append", "loop-resume", "--body", body],
+        System.cmd(@codegen_log_bin, ["append", resume_role, "--body", body],
           stderr_to_stdout: true,
           env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", cycle_log}]
         )
@@ -2360,16 +2406,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   defp executable_on_path?(bin), do: !!System.find_executable(bin)
 
   # Advances codegen/gate-pending/cycle-state.json to `state` via
-  # advance_cycle_state/5, threading the session id + active step log from
+  # advance_cycle_state/6, threading the session id + active step log from
   # ctx/opts when present (empty string when absent — cycle-state.sh
-  # tolerates "").
+  # tolerates "") and the cycle's own slug (opts[:slug], the same value the
+  # loop uses to init its own cycle log) — this is what lets a future resume
+  # attempt verify the checkpoint belongs to THIS pitch and not a foreign
+  # one (see resume_checkpoint/3's identity guard).
   defp advance_cycle_state_step(state, ctx, opts) do
-    advance_fn = Keyword.get(opts, :advance_cycle_state_fn, &advance_cycle_state/5)
-    step_log = Keyword.get(opts, :step_log, "")
-    session_id = Keyword.get(opts, :session_id, "")
+    advance_fn = Keyword.get(opts, :advance_cycle_state_fn, &advance_cycle_state/6)
+    step_log = Keyword.get(opts, :step_log, Process.get(@log_path_key) || "")
+    session_id = Keyword.get(opts, :session_id, Keyword.get(opts, :cycle_id) || "")
+    slug = Keyword.get(opts, :slug) || ""
     verdict = if state == "GATED", do: "clear", else: ""
 
-    advance_fn.(state, step_log, session_id, verdict, ctx.cwd)
+    advance_fn.(state, step_log, session_id, verdict, ctx.cwd, slug)
     :ok
   end
 
@@ -3220,17 +3270,26 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   Advances `codegen/gate-pending/cycle-state.json` for `project_dir` to
   `state` (one of `CYCLE_STATE_ORDER`: GATED, REVIEWED, CURATED,
   COMMITTED) via `cycle-state.sh`'s `write_cycle_state`. `verdict` is
-  meaningful only for `"GATED"` — pass `""` for other states.
+  meaningful only for `"GATED"` — pass `""` for other states. `slug` is the
+  pitch slug that owns this cycle — stamped into the checkpoint so a LATER
+  cycle can verify (before resuming) that the checkpoint is its own and not
+  a foreign pitch's corpse. Pass `""` when no slug is known (mirrors the
+  existing tolerance for empty `step_log`/`session_id`).
   """
-  @spec advance_cycle_state(String.t(), String.t(), String.t(), String.t(), String.t()) :: :ok
-  def advance_cycle_state(state, step_log, session_id, verdict, project_dir) do
+  @spec advance_cycle_state(String.t(), String.t(), String.t(), String.t(), String.t(), String.t()) ::
+          :ok
+  def advance_cycle_state(state, step_log, session_id, verdict, project_dir, slug \\ "") do
     unless File.exists?(@cycle_state_lib) do
       raise "OrchestrationLoop: cycle-state.sh not found at #{@cycle_state_lib}"
     end
 
     script =
       "source #{shell_quote(@cycle_state_lib)} && write_cycle_state " <>
-        Enum.map_join([state, step_log, session_id, verdict, project_dir], " ", &shell_quote/1)
+        Enum.map_join(
+          [state, step_log, session_id, verdict, project_dir, slug],
+          " ",
+          &shell_quote/1
+        )
 
     {_output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
     :ok

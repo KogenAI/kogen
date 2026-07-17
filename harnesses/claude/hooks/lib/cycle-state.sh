@@ -5,13 +5,18 @@
 # States declared in CYCLE_STATE_ORDER below (single source of truth for ordering).
 #
 # Sourceable. After sourcing:
-#   write_cycle_state <state> <step_log> <session_id> <verdict> <project_dir>
+#   write_cycle_state <state> <step_log> <session_id> <verdict> <project_dir> [slug]
 #       Writes codegen/gate-pending/cycle-state.json under <project_dir>.
 #       <verdict> meaningful only for GATED (clear|failed|inconclusive); pass "" otherwise.
+#       [slug] is OPTIONAL (6th positional, default "") — the pitch slug that
+#       owns this cycle. A resume checkpoint is only ever valid for the SAME
+#       pitch that wrote it; see cycle_state_slug below and
+#       OrchestrationLoop.resume_checkpoint/3's identity guard.
 #   cycle_state_get <project_dir>       — prints .state or "" if absent/malformed.
 #   cycle_state_step_log <project_dir>  — prints .step_log or "".
 #   cycle_state_verdict <project_dir>   — prints .verdict or "".
 #   cycle_state_session_id <project_dir>— prints .session_id or "".
+#   cycle_state_slug <project_dir>      — prints .slug or "".
 
 set -u
 
@@ -21,6 +26,7 @@ write_cycle_state() {
     local session_id="$3"
     local verdict="$4"
     local project_dir="$5"
+    local slug="${6:-}"
     local result_dir="$project_dir/codegen/gate-pending"
     mkdir -p "$result_dir"
     local now
@@ -31,12 +37,14 @@ write_cycle_state() {
         --arg session_id "$session_id" \
         --arg verdict "$verdict" \
         --arg updated_at "$now" \
+        --arg slug "$slug" \
         '{
             state: $state,
             step_log: $step_log,
             session_id: $session_id,
             verdict: $verdict,
-            updated_at: $updated_at
+            updated_at: $updated_at,
+            slug: $slug
         }' >"$result_dir/cycle-state.json"
 }
 
@@ -55,6 +63,7 @@ cycle_state_get() { _cycle_state_field "$1" state; }
 cycle_state_step_log() { _cycle_state_field "$1" step_log; }
 cycle_state_verdict() { _cycle_state_field "$1" verdict; }
 cycle_state_session_id() { _cycle_state_field "$1" session_id; }
+cycle_state_slug() { _cycle_state_field "$1" slug; }
 
 # ── Ordering table (single source of truth) ────────────────────────────────
 # Derive terminal state and successor from this list; NEVER hard-code

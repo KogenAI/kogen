@@ -87,6 +87,26 @@ got=$(cycle_state_session_id "$T9")
 assert_eq "session_id roundtrip" "my-unique-session-id-xyz" "$got"
 rm -rf "$T9"
 
+# --- Test 9b: slug roundtrip (6th positional arg) ---
+T9B=$(mktemp -d)
+write_cycle_state "GATED" "/logs/step1.md" "sess9b" "clear" "$T9B" "a-watched-node"
+got=$(cycle_state_slug "$T9B")
+assert_eq "slug roundtrip" "a-watched-node" "$got"
+rm -rf "$T9B"
+
+# --- Test 9c: slug omitted (5-arg call, back-compat) → cycle_state_slug = "" ---
+T9C=$(mktemp -d)
+write_cycle_state "GATED" "/logs/step1.md" "sess9c" "clear" "$T9C"
+got=$(cycle_state_slug "$T9C")
+assert_eq "slug omitted → empty string" "" "$got"
+rm -rf "$T9C"
+
+# --- Test 9d: cycle_state_slug on missing file → "" ---
+T9D=$(mktemp -d)
+got=$(cycle_state_slug "$T9D/does-not-exist")
+assert_eq "cycle_state_slug missing dir → empty string" "" "$got"
+rm -rf "$T9D"
+
 # --- Test 10: cycle_state_get on missing dir → "" (no crash) ---
 T10=$(mktemp -d)
 got=$(cycle_state_get "$T10/does-not-exist")
