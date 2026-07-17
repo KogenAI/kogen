@@ -200,7 +200,7 @@ Key: `line.startsWith(header)` is a prefix test, so `"## developer-phoenix-backe
 
 ### Full Claude Code Event Catalog
 
-Codegen registers `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SubagentStop`, `Stop`, and `SessionEnd` (inline). All other events (`SessionStart`, `Setup`, `UserPromptSubmit`, `UserPromptExpansion`, `PermissionRequest`, `PermissionDenied`, `PreCompact`, `PostCompact`, `SubagentStart`, `Notification`) are unused. Full event schema: https://code.claude.com/docs/en/hooks
+Codegen registers `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SubagentStop`, `Stop`, `SessionEnd`. Other events unused. Full schema: https://code.claude.com/docs/en/hooks
 
 ## Multi-Hook Composition Testing
 
@@ -259,6 +259,10 @@ fi
 ```
 
 Reversing (testing `! -r` before `! -e`) makes the absent-file branch unreachable.
+
+### `split_command_segments` — Escaped Quotes & Glob-Safe Splitting
+
+Consumes `\"` inside a dq region as an escaped PAIR (no toggle) — not a quote-close; fixes phantom fail-closed denies on balanced strings (e.g. `grep -n "deny \"" file` mis-denied as "recursive rm"). Unbalanced quotes still fail closed. `command_word_of_segment`/`segment_argv_of` (bash-only) scope `set -f` around word-split so `*`/`?` never glob-expand against caller cwd.
 
 ## Hook Output Protocol
 

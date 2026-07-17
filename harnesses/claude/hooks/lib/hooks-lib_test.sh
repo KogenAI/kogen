@@ -723,6 +723,76 @@ case "$result" in
 esac
 assert_eq "expand_command_indirection: depth-1 cap -> inner.sh body NOT chased" "1" "$r"
 
+# ── escaped-quote false positives (this pitch's core fix) ──────────────────
+# A backslash-escaped double-quote inside a dq string must NOT be treated as
+# closing the string — the walk must consume it as a literal pair. Before the
+# fix, any of these mis-parsed as unbalanced -> fail-closed -> phantom deny.
+
+# split_command_segments must still parse (not fail) on escaped quotes.
+split_command_segments 'grep "a\"b" file; echo done' >/dev/null 2>&1
+assert_eq "split_command_segments: escaped dq inside dq string -> parses (rc 0)" "0" "$?"
+
+result=$(split_command_segments 'grep "a\"b" file')
+assert_eq "split_command_segments: escaped dq stays inside one segment" 'grep "a\"b" file' "$result"
+
+# FP1 (live, 2026-07-17): grep -o pipeline with an escaped-quote pattern.
+if command_invokes 'grep -o "{% include \"[^\"]*\"" tmpl | sed -n 1p' '^rm$'; then r=0; else r=1; fi
+assert_eq "command_invokes FP1: grep -o pipeline w/ escaped quotes -> no rm invocation" "1" "$r"
+
+# FP2 (live, 2026-07-17): bash -c diagnostic containing an escaped-quote
+# string, no git token anywhere.
+if command_invokes 'grep -c "a\"b" file.txt | bash -c "cat"' '^git$' '^push\b'; then r=0; else r=1; fi
+assert_eq "command_invokes FP2: pipeline w/ escaped quotes -> no git push" "1" "$r"
+
+# Minimal repro from the pitch: grep "a\"b" file; echo done -> no rm invocation.
+if command_invokes 'grep "a\"b" file; echo done' '^rm$'; then r=0; else r=1; fi
+assert_eq "command_invokes MINIMAL: grep \"a\\\"b\" file; echo done -> no rm invocation" "1" "$r"
+
+# FP4 (live from the /ready gate on this pitch): grep -n "deny \"" <path>
+if command_invokes 'grep -n "deny \"" harnesses/claude/hooks/developer-no-self-gate-reset.sh' '^rm$'; then r=0; else r=1; fi
+assert_eq 'command_invokes FP4: grep -n "deny \"" <path> -> no rm invocation' "1" "$r"
+
+# FP5 (live from the /ready gate on this pitch): git grep with an escaped-quote pattern.
+if command_invokes 'git grep -n "ev\":\"committed\"" -- test_harness/lib codegen-log' '^rm$'; then r=0; else r=1; fi
+assert_eq 'command_invokes FP5: git grep -n "ev\":\"committed\"" -- <paths> -> no rm invocation' "1" "$r"
+
+# Deny-side controls: genuine destructive commands must still deny, even with
+# escaped quotes present in an unrelated argument.
+if command_invokes 'rm -rf /tmp/x' '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|--recursive\b'; then r=0; else r=1; fi
+assert_eq "command_invokes CONTROL: rm -rf /tmp/x -> still denies" "0" "$r"
+
+if command_invokes 'sudo env FOO=1 rm -rf x' '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|--recursive\b'; then r=0; else r=1; fi
+assert_eq "command_invokes CONTROL: sudo env FOO=1 rm -rf x -> still denies" "0" "$r"
+
+if command_invokes "bash -c 'rm -rf /x'" '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|--recursive\b'; then r=0; else r=1; fi
+assert_eq "command_invokes CONTROL: bash -c 'rm -rf /x' -> still denies" "0" "$r"
+
+if command_invokes 'rm -rf "/x\"y"' '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|--recursive\b'; then r=0; else r=1; fi
+assert_eq 'command_invokes CONTROL: rm -rf "/x\"y" (escaped quote in arg) -> still denies' "0" "$r"
+
+# Genuinely unbalanced quote (not escaped) must still fail-closed -> deny.
+if command_invokes 'echo "oops' '^(kill)$'; then r=0; else r=1; fi
+assert_eq "command_invokes CONTROL: genuinely unbalanced quote -> fail closed (matches)" "0" "$r"
+
+# ── command_word_of_segment / segment_argv_of — cwd-independence (defect 2) ─
+# Unquoted `local -a words=($seg)` performs glob expansion against cwd; the
+# fix scopes `set -f` around the split so tokenization never depends on the
+# files present in the calling directory.
+cwd_glob_dir="$(mktemp -d)"
+trap 'rm -rf "$cwd_glob_dir"' EXIT
+: >"$cwd_glob_dir/a.txt"
+: >"$cwd_glob_dir/b.txt"
+(
+    cd "$cwd_glob_dir" || exit 1
+    result_word=$(command_word_of_segment "grep foo *.txt")
+    result_argv=$(segment_argv_of "grep foo *.txt")
+    echo "$result_word|$result_argv"
+) >"$cwd_glob_dir/out.txt"
+cwd_glob_result="$(cat "$cwd_glob_dir/out.txt")"
+assert_eq "command_word_of_segment/segment_argv_of: literal *.txt, not glob-expanded" \
+    "grep|foo *.txt" "$cwd_glob_result"
+rm -rf "$cwd_glob_dir"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -573,6 +573,15 @@ split_command_segments() {
             continue
         fi
         if [ "$in_dq" = 1 ]; then
+            if [ "$ch" = '\' ]; then
+                # escaped pair inside a double-quoted string (e.g. \") — consume
+                # both chars verbatim, no quote-state toggle. A trailing lone
+                # backslash at end-of-string still leaves in_dq=1, so the
+                # unbalanced-quote fail-closed check below still fires.
+                seg+="${cmd:i:2}"
+                i=$((i + 2))
+                continue
+            fi
             seg+="$ch"
             [ "$ch" = '"' ] && in_dq=0
             i=$((i + 1))
@@ -672,7 +681,11 @@ read_tool_failures() {
 # to resolve, which is the safe (deny) direction.
 command_word_of_segment() {
     local seg="$1"
+    local _had_f
+    case $- in *f*) _had_f=1 ;; *) _had_f=0 ;; esac
+    set -f
     local -a words=($seg)
+    [ "$_had_f" = 0 ] && set +f
     local -i n=${#words[@]}
     local -i i=0
     local w
@@ -715,7 +728,11 @@ command_word_of_segment() {
 # already matched.
 segment_argv_of() {
     local seg="$1"
+    local _had_f
+    case $- in *f*) _had_f=1 ;; *) _had_f=0 ;; esac
+    set -f
     local -a words=($seg)
+    [ "$_had_f" = 0 ] && set +f
     local -i n=${#words[@]}
     local -i i=0
     local w

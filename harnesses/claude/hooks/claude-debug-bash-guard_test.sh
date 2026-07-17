@@ -230,6 +230,29 @@ run_test "bash -c 'kill 123' still blocked in debug role" "2" \
 run_test "rm -rf still blocked in debug role (regression check)" "2" \
     "$(mk 'rm -rf /tmp/foo')" "debug"
 
+# 42: a quoted grep command with an escaped double-quote inside the pattern
+# is allowed, and does NOT produce a phantom deny naming a verb the command
+# never contains (this pitch's core fix — the parser must not mis-read \"
+# as closing the string and falling into fail-closed).
+escaped_quote_stdout=$(printf '%s' "$(mk 'grep -o "{% include \"[^\"]*\"" tmpl | sed -n 1p')" |
+    CLAUDE_ROLE="debug" bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$escaped_quote_stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'FAIL: quoted grep with escaped quotes allowed in debug role — got deny: %s\n' \
+        "$escaped_quote_stdout"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: quoted grep with escaped quotes allowed in debug role\n'
+    pass=$((pass + 1))
+fi
+if printf '%s' "$escaped_quote_stdout" | grep -qE '(recursive rm|git push) forbidden'; then
+    printf 'FAIL: quoted grep with escaped quotes named a phantom verb: %s\n' \
+        "$escaped_quote_stdout"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: quoted grep with escaped quotes names no phantom verb\n'
+    pass=$((pass + 1))
+fi
+
 # PI_ROLE parity tests (run_test uses CLAUDE_ROLE env var; use separate helper for PI_ROLE)
 
 run_test_env() {

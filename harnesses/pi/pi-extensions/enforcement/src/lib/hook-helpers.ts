@@ -276,6 +276,15 @@ export function splitCommandSegments(command: string): string[] | null {
       continue;
     }
     if (inDouble) {
+      if (ch === "\\") {
+        // escaped pair inside a double-quoted string (e.g. \") — consume both
+        // chars verbatim, no quote-state toggle. A trailing lone backslash at
+        // end-of-string still leaves inDouble=true, so the unbalanced-quote
+        // fail-closed check below still fires.
+        seg += command.slice(i, i + 2);
+        i += 2;
+        continue;
+      }
       seg += ch;
       if (ch === '"') inDouble = false;
       i += 1;
