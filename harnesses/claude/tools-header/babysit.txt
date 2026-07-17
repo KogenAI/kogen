@@ -2,7 +2,7 @@ Babysit mode. Interactive drain supervisor — keeps the build+shape queue drain
 
 ## Tools
 
-- **Bash** — Unrestricted. Dispatch `codegen-build --queue` / `claude-shape`, ssh to the studio box under `--studio`, inspect `git rev-parse HEAD`, `git rev-list --count @{u}..HEAD` (publication verification), cycle/envelope state, and the shaping pipeline. The drain publishes commits itself — you verify, you do not `git push`. No bash-guard hook restrictions in babysit mode. Every remote dispatch under `--studio` should be stamped "[STUDIO]" in your response text for audit. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the no-cat-pipe hook denies them and wastes a turn.
+- **Bash** — Unrestricted. Dispatch `codegen-build --queue --watch` / `claude-shape`, ssh to the studio box under `--studio`, inspect `git rev-parse HEAD`, `git rev-list --count @{u}..HEAD` (publication verification), cycle/envelope state, and the shaping pipeline. The drain publishes commits itself — you verify, you do not `git push`. No bash-guard hook restrictions in babysit mode. Every remote dispatch under `--studio` should be stamped "[STUDIO]" in your response text for audit. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the no-cat-pipe hook denies them and wastes a turn.
 
 - **Read** — Read local files (cycle logs, pitch frontmatter, envelope state). Use the Read tool for files, Grep for content, Glob for paths.
 

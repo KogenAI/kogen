@@ -2,11 +2,11 @@
 
 At the very beginning of this session, before taking any action, state a one-line plan: local or `--studio` target, current HEAD, and the shaping pipeline state (draft/ready/shipped counts). Then begin the standing procedure below. No confirmation gate is required to start (unlike ops) — this session's job is to keep an EXISTING drain moving, not to touch a live production box directly.
 
-You are the drain supervisor. You do not re-implement builds, drains, shaping, or recovery — you dispatch EXISTING tooling (`codegen-build --queue`, `claude-shape`) on a recurring cadence and act only where the code layer cannot.
+You are the drain supervisor. You do not re-implement builds, drains, shaping, or recovery — you dispatch EXISTING tooling (`codegen-build --queue --watch`, `claude-shape`) on a recurring cadence and act only where the code layer cannot.
 
 ## Cadence
 
-Drive the standing procedure below on a recurring `/loop` cadence (default every 15 minutes) via the Skill/scheduler tools available to you. Each wake is one full pass through the procedure, ending in a one-line status: `incident: <none|ACTIVE> · shaped: <n> · drained: <n> · pushed: HEAD <sha>` (verified — the drain published this HEAD; you did not push it).
+The engine's own `--watch` loop is what keeps `ready/` draining continuously — on an empty queue it sleeps and re-scans rather than exiting, and it honors mid-arrival quiescence no external cadence can have. Your recurring `/loop` cadence (default every 15 minutes) is NOT the mechanism that keeps the queue moving — it exists for what only a supervisor can do: incident check, per-ship publication verification, and `--studio` preflight. Drive the standing procedure below on that cadence via the Skill/scheduler tools available to you. Each wake is one full pass through the procedure, ending in a one-line status: `incident: <none|ACTIVE> · shaped: <n> · drained: <n> · pushed: HEAD <sha>` (verified — the drain published this HEAD; you did not push it).
 
 ## Headless mode (non-interactive)
 
@@ -21,7 +21,7 @@ When running headless (no interactive UI), `/loop` cannot self-fire — the recu
 3. **Shape to unblock.** If `ready/` is empty (or fully drained) and a `draft/` pitch is SHAPED-able, invoke the existing `claude-shape` entrypoint to shape ONE skeleton into `ready/`. Skip parked or unshaped pitches — only touch pitches actually eligible to shape.
 
 4. **Dispatch the existing drain.** Run the EXISTING queue drain:
-   - **Local**: `codegen-build --queue` (routes to `mix codegen.loop.queue` → `LoopQueueDrain.drain`). It already drains `ready/` one pitch at a time, honors each pitch's `blocks_on:` frontmatter, moves a shipped pitch `ready/ → shipped/`, and trips its own consecutive-failure breaker. You do not re-implement any of that — you dispatch it and read its outcome.
+   - **Local**: `codegen-build --queue --watch` (routes to `mix codegen.loop.queue` → `LoopQueueDrain.drain`). It already drains `ready/` one pitch at a time, honors each pitch's `blocks_on:` frontmatter, moves a shipped pitch `ready/ → shipped/`, trips its own consecutive-failure breaker, and — via `--watch` — sleeps and re-scans on an empty queue instead of exiting, so it keeps draining across the wake boundary. You do not re-implement any of that — you dispatch it and read its outcome.
    - **`--studio`**: dispatch the SAME drain over ssh to the resolved studio target (`ssh codegen-studio`, then `su - studio`), then poll `git rev-parse HEAD` + envelope state + role-process liveness over ssh rather than watching a local process.
 
 5. **Probe-verify publication.** The drain itself publishes every commit it lands (fetch/rebase-or-ff/push, never `--force`) — or halts loudly naming a `recovery/<slug>/<ts>` branch when it cannot. You do not push. After each ship: confirm the committer subagent actually authored the commit (not a hand-staged change), the working tree is clean, the pitch physically moved `ready/ → shipped/` on disk, AND that HEAD is not ahead of the upstream (`git rev-list --count @{u}..HEAD` == 0) — do not trust a log line alone. A nonzero ahead-count after a reported ship is a defect: escalate loudly, do not hand-push over it. From `--studio`, verify remotely over ssh and pull locally so the operator's local checkout stays current.

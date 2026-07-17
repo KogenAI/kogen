@@ -57,6 +57,14 @@ What the developer subagent runs after any change:
 
 ---
 
+## Draining the Queue
+
+Multiple SHAPED pitches in `codegen/pitches/ready/` → drain with `claude-build --queue --watch`. This routes to `mix codegen.loop.queue` (`LoopQueueDrain`), which already: orders `ready/` by `blocks_on:` frontmatter, spawns one fresh `codegen-build` child per pitch, verifies each ship is non-orphaning (HEAD moved forward since the pre-spawn `head_before`, never reset away), moves `ready/<slug>.md → shipped/<slug>.md` only on a VERIFIED ship, and — with `--watch` — sleeps and re-scans on an empty queue instead of exiting, honoring mid-arrival quiescence. Cross-box possession: `codegen-drain assign`.
+
+**NEVER hand-roll a drain, driver, or relaunch loop** — no `/tmp/*.sh` polling `ready/`, no shell wrapper re-implementing ship verification or backoff. This has happened before, cost real commits, and the fix is always to use the shipped drain, not to patch the hand-rolled one.
+
+---
+
 ## Workspace Rules
 
 - Work in current directory only (never `../`)
