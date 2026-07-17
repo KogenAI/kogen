@@ -12,6 +12,9 @@
 #   8: planner-phoenix Stop, log carries stale **Gate**: prose but NO plan_gate
 #      event → exit 2 (block) — proves the prose scanner is truly gone
 #   9: planner-phoenix Stop, plan_gate event with long mode/timeout → exit 0 (allow)
+#  10: planner-phoenix Stop, plan_gate present but NO plan event → exit 2 (block)
+#  11: planner-phoenix Stop, plan_gate + plan events both present → exit 0 (allow)
+#  12: planner-phoenix Stop, plan event blank text → exit 2 (block, same as absent)
 
 set -u
 
@@ -91,6 +94,24 @@ make_step_log_with_plan_gate() {
         '{ev: "plan_gate", role: $role, command: $command, mode: $mode, timeout: $timeout}' >"$log_path"
 }
 
+# make_step_log_with_plan_gate_and_plan <log_path> <command> [<mode>] [<timeout>] [<plan_text>]
+# Writes a JSONL cycle log with BOTH a {"ev":"plan_gate",...} event AND a
+# {"ev":"plan",...} event, authored by planner-phoenix — the two typed
+# markers stop-verify-planner-gate now requires both of before allowing Stop.
+make_step_log_with_plan_gate_and_plan() {
+    local log_path="$1"
+    local command="$2"
+    local mode="${3:-short}"
+    local timeout="${4:-900}"
+    local plan_text="${5:-## Plan
+
+Do the thing.}"
+    jq -c -n --arg role "planner-phoenix" --arg command "$command" --arg mode "$mode" --argjson timeout "$timeout" \
+        '{ev: "plan_gate", role: $role, command: $command, mode: $mode, timeout: $timeout}' >"$log_path"
+    jq -c -n --arg role "planner-phoenix" --arg plan "$plan_text" \
+        '{ev: "plan", role: $role, plan: $plan}' >>"$log_path"
+}
+
 # make_step_log_no_gate <log_path>
 # Writes a JSONL cycle log with a planner-phoenix role event body but NO
 # plan_gate event.
@@ -119,12 +140,12 @@ out=$(make_stop_input "$T1_dir" "planner-phoenix" false "" | bash "$HOOK" 2>/dev
 assert_not_contains "planner Stop, no TRANSCRIPT_PATH → no block" '"decision"' "$out"
 rm -rf "$T1_dir"
 
-# ── Test 2: plan_gate event (command=make ci) → allow ───────────────────────
+# ── Test 2: plan_gate event (command=make ci) + plan event → allow ──────────
 T2_dir=$(mktemp -d)
 mkdir -p "$T2_dir/codegen/logging"
 T2_log="$T2_dir/codegen/logging/20260518_test_cycle.jsonl"
 T2_transcript="$T2_dir/transcript.jsonl"
-make_step_log_with_plan_gate "$T2_log" "make ci"
+make_step_log_with_plan_gate_and_plan "$T2_log" "make ci"
 make_transcript_with_log_write "$T2_transcript" "$T2_log"
 out=$(make_stop_input "$T2_dir" "planner-phoenix" false "$T2_transcript" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "planner Stop, plan_gate command=make ci → allow" '"decision"' "$out"
@@ -200,16 +221,53 @@ out=$(make_stop_input "$T8_dir" "planner-phoenix" false "$T8_transcript" | bash 
 assert_contains "planner Stop, stale **Gate**: prose (no event) → block" '"decision"' "$out"
 rm -rf "$T8_dir"
 
-# ── Test 9: plan_gate event with long mode/timeout → allow ───────────────────
+# ── Test 9: plan_gate event with long mode/timeout + plan event → allow ─────
 T9_dir=$(mktemp -d)
 mkdir -p "$T9_dir/codegen/logging"
 T9_log="$T9_dir/codegen/logging/20260518_test_cycle.jsonl"
 T9_transcript="$T9_dir/transcript.jsonl"
-make_step_log_with_plan_gate "$T9_log" "make ci && make llm" "long" "1800"
+make_step_log_with_plan_gate_and_plan "$T9_log" "make ci && make llm" "long" "1800"
 make_transcript_with_log_write "$T9_transcript" "$T9_log"
 out=$(make_stop_input "$T9_dir" "planner-phoenix" false "$T9_transcript" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "planner Stop, plan_gate long mode/timeout → allow" '"decision"' "$out"
 rm -rf "$T9_dir"
+
+# ── Test 10: plan_gate present, NO plan event → block ────────────────────────
+T10_dir=$(mktemp -d)
+mkdir -p "$T10_dir/codegen/logging"
+T10_log="$T10_dir/codegen/logging/20260518_test_cycle.jsonl"
+T10_transcript="$T10_dir/transcript.jsonl"
+make_step_log_with_plan_gate "$T10_log" "make ci"
+make_transcript_with_log_write "$T10_transcript" "$T10_log"
+out=$(make_stop_input "$T10_dir" "planner-phoenix" false "$T10_transcript" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "planner Stop, plan_gate present but no plan event → block" '"decision"' "$out"
+assert_contains "block reason names the missing plan event" "codegen-log append" "$out"
+rm -rf "$T10_dir"
+
+# ── Test 11: plan_gate + plan events both present → allow ────────────────────
+T11_dir=$(mktemp -d)
+mkdir -p "$T11_dir/codegen/logging"
+T11_log="$T11_dir/codegen/logging/20260518_test_cycle.jsonl"
+T11_transcript="$T11_dir/transcript.jsonl"
+make_step_log_with_plan_gate_and_plan "$T11_log" "make ci" "short" "900" "## Plan
+
+**Approach**: do the thing."
+make_transcript_with_log_write "$T11_transcript" "$T11_log"
+out=$(make_stop_input "$T11_dir" "planner-phoenix" false "$T11_transcript" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "planner Stop, plan_gate + plan both present → allow" '"decision"' "$out"
+rm -rf "$T11_dir"
+
+# ── Test 12: plan event blank text → block (same as absent) ──────────────────
+T12_dir=$(mktemp -d)
+mkdir -p "$T12_dir/codegen/logging"
+T12_log="$T12_dir/codegen/logging/20260518_test_cycle.jsonl"
+T12_transcript="$T12_dir/transcript.jsonl"
+make_step_log_with_plan_gate "$T12_log" "make ci"
+jq -c -n '{ev: "plan", role: "planner-phoenix", plan: "   "}' >>"$T12_log"
+make_transcript_with_log_write "$T12_transcript" "$T12_log"
+out=$(make_stop_input "$T12_dir" "planner-phoenix" false "$T12_transcript" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "planner Stop, blank plan event text → block" '"decision"' "$out"
+rm -rf "$T12_dir"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

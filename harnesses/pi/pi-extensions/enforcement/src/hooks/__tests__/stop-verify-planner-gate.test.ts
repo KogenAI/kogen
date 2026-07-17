@@ -75,6 +75,37 @@ describe("stop-verify-planner-gate", { concurrency: false }, () => {
     );
   }
 
+  /** Append a structured {"ev":"plan",...} event to the fixture log —
+   * mirrors what `codegen-log append <role> --plan @-` writes. */
+  function appendPlanEvent(plan: string): void {
+    const line = JSON.stringify({
+      ev: "plan",
+      role: "planner-phoenix",
+      plan,
+    });
+    fs.appendFileSync(
+      path.join(
+        tmpDir,
+        "codegen",
+        "logging",
+        "20260601_120000_my-step_cycle.jsonl",
+      ),
+      line + "\n",
+    );
+  }
+
+  /** Write a cycle log with BOTH a plan_gate event and a plan event —
+   * the two typed markers the hook now requires both of before allowing. */
+  function writePlanGateAndPlan(
+    command: string,
+    mode = "short",
+    timeout = 0,
+    plan = "## Plan\n\nDo the thing.",
+  ): void {
+    writePlanGate(command, mode, timeout);
+    appendPlanEvent(plan);
+  }
+
   async function runHook(agentType = "planner-phoenix"): Promise<string> {
     process.env["AGENT_TYPE"] = agentType;
 
@@ -130,11 +161,51 @@ describe("stop-verify-planner-gate", { concurrency: false }, () => {
     assert.ok(!stderr.includes("stop-verify-planner-gate"), "expected no warning");
   });
 
-  // Valid structured plan_gate event
-  it("does not warn when a plan_gate event is present", async () => {
-    writePlanGate("make test", "short", 0);
+  // Valid structured plan_gate + plan events
+  it("does not warn when plan_gate and plan events are both present", async () => {
+    writePlanGateAndPlan("make test", "short", 0);
     const stderr = await runHook("planner-phoenix");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
+  });
+
+  // Warn: plan_gate present but no plan event
+  it("warns when plan_gate is present but no plan event exists", async () => {
+    writePlanGate("make test", "short", 0);
+    const stderr = await runHook("planner-phoenix");
+    assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
+    assert.ok(stderr.includes('no {"ev":"plan"} event'));
+  });
+
+  // Warn: plan event present but blank
+  it("warns when the plan event text is blank", async () => {
+    writePlanGate("make test", "short", 0);
+    appendPlanEvent("   ");
+    const stderr = await runHook("planner-phoenix");
+    assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
+    assert.ok(stderr.includes('no {"ev":"plan"} event'));
+  });
+
+  // A stale role-body containing "## Plan" markdown, with no plan event, must
+  // still warn — proves the plan is a typed event, never re-parsed out of
+  // the free-form role body prose.
+  it("warns when role body contains ## Plan markdown but no plan event exists", async () => {
+    writePlanGate("make test", "short", 0);
+    fs.appendFileSync(
+      path.join(
+        tmpDir,
+        "codegen",
+        "logging",
+        "20260601_120000_my-step_cycle.jsonl",
+      ),
+      JSON.stringify({
+        ev: "role",
+        role: "planner-phoenix",
+        body: "## Plan\n\nDo the thing.",
+      }) + "\n",
+    );
+    const stderr = await runHook("planner-phoenix");
+    assert.ok(stderr.includes("stop-verify-planner-gate"), "expected warning");
+    assert.ok(stderr.includes('no {"ev":"plan"} event'));
   });
 
   // Warn: gate missing (no plan_gate event; stale prose is never re-parsed)

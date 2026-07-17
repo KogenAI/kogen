@@ -199,6 +199,33 @@ gate_select_read_planner_gate() {
     printf '%s\n__GATE_JSON_MODE=%s\n__GATE_JSON_TIMEOUT=%s\n' "$cmd" "$mode" "${timeout:-0}"
 }
 
+# gate_select_read_planner_plan <step_log_file> — read the planner's typed
+# PLAN event ({"ev":"plan","role":<planner*>,"plan":<text>}), written by
+# `codegen-log append <role> --plan @-`. Prints the raw plan text on stdout.
+# Last-wins on a planner re-run (mirrors gate_select_read_planner_gate).
+# Empty when the log is missing, unreadable, or carries no plan event for a
+# planner* role — caller (OrchestrationLoop.resolve_planner_plan!/2) treats
+# that as "no plan" and raises before invoking a developer. No prose
+# fallback: a missing structured field blocks, it never re-parses `body`
+# (session-log.md § the body is opaque, never re-parsed as structure).
+gate_select_read_planner_plan() {
+    local log_file="$1"
+    [ -f "$log_file" ] || {
+        printf ''
+        return 0
+    }
+
+    local last_event
+    last_event=$(jq -c 'select(.ev == "plan" and (.role | startswith("planner")))' \
+        "$log_file" 2>/dev/null | tail -n 1)
+    [ -z "$last_event" ] && {
+        printf ''
+        return 0
+    }
+
+    printf '%s' "$last_event" | jq -r '.plan // empty' 2>/dev/null
+}
+
 # gate_select_decide <project_dir> [<step_log_file>]
 # Prints "gate=<cmd>\nmode=<short|long>".
 gate_select_decide() {

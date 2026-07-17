@@ -710,17 +710,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       ctx = put_in(ctx, [:artifacts, role], result)
 
       # No-developer-invoked-without-its-plan: immediately after a planner
-      # role finishes, lift its ACTUAL plan (the `ev:role` body it wrote to
-      # the cycle log — hook-guaranteed non-blank by
-      # stop-verify-planner-gate.sh) rather than trusting the envelope
-      # `result`'s `value` (that's the planner's final CHAT MESSAGE, which
-      # can be a recap with no plan in it at all — see pitch
-      # no-ship-on-a-gate-that-didnt-grade-this-tree... no,
-      # no-developer-invoked-without-its-plan). A blank plan, or an
-      # AMBIGUOUS one (a re-run left 2+ `## Plan` sections in the joined
-      # body — gate-select.sh's first-gate-json-wins scan would then gate on
-      # a DIFFERENT plan than the one threaded here), raises here — one role
-      # in, before a developer is ever invoked on nothing.
+      # role finishes, lift its ACTUAL plan — the typed {"ev":"plan",...}
+      # event it wrote to the cycle log via `codegen-log append <role>
+      # --plan @-` (hook-guaranteed present by stop-verify-planner-gate.sh)
+      # — rather than trusting the envelope `result`'s `value` (that's the
+      # planner's final CHAT MESSAGE, which can be a recap with no plan in
+      # it at all) or re-parsing the free-form `ev:role` body prose (which
+      # is contractually opaque — see session-log.md § the body is opaque,
+      # never re-parsed as structure). An absent or blank plan event raises
+      # here — one role in, before a developer is ever invoked on nothing.
       ctx =
         if planner_role?(role) do
           plan = resolve_planner_plan!(role, opts)
@@ -747,81 +745,26 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   defp reviewer_role?(role), do: String.starts_with?(role, "reviewer-")
 
   # Resolves the planner's plan text for threading into build_prompt/2, via
-  # the :planner_plan_fn seam (default reads the real cycle log through
-  # LoopGate.planner_body/1 + extract_plan_section/1). Fail-closed: a blank
-  # plan, or a body carrying more than one `## Plan` section (a planner
-  # retry left two joined bodies — see run_roles/4 comment), raises
-  # immediately rather than letting a developer run with no plan or an
-  # ambiguous one.
+  # the :planner_plan_fn seam (default reads the real cycle log's typed
+  # {"ev":"plan",...} event through LoopGate.planner_plan/1). Fail-closed: an
+  # absent or blank plan event raises immediately rather than letting a
+  # developer run with no plan — the plan is a typed marker, never
+  # re-parsed out of the planner's free-form role body prose (see
+  # session-log.md § the body is opaque, never re-parsed as structure).
   defp resolve_planner_plan!(role, opts) do
     plan_fn = Keyword.get(opts, :planner_plan_fn, &default_planner_plan/1)
     log_file = Process.get(@log_path_key)
-    body = plan_fn.(log_file)
+    plan = plan_fn.(log_file)
 
-    case extract_plan_section(body) do
-      {:ok, plan} ->
-        plan
-
-      {:error, :blank} ->
-        raise "OrchestrationLoop: #{role} produced no ## Plan body in cycle log " <>
-                "#{inspect(log_file)} — refusing to invoke a developer with no plan"
-
-      {:error, {:ambiguous, count}} ->
-        raise "OrchestrationLoop: planner body carries #{count} ## Plan sections in cycle log " <>
-                "#{inspect(log_file)} — refusing to guess which plan the developer should implement"
+    if is_binary(plan) and String.trim(plan) != "" do
+      plan
+    else
+      raise "OrchestrationLoop: #{role} wrote no {\"ev\":\"plan\"} event to cycle log " <>
+              "#{inspect(log_file)} — refusing to invoke a developer with no plan"
     end
   end
 
-  defp default_planner_plan(log_file), do: LoopGate.planner_body(log_file)
-
-  # Slices the `## Plan` section out of a planner's role body: from the
-  # `## Plan` heading up to (not including) the next top-level `## ` heading,
-  # or the whole body when no `## Plan` heading is present at all (the same
-  # tolerance gate-select.sh's own scanners apply — some planner prose omits
-  # the sub-heading and the whole body IS the plan). More than one `## Plan`
-  # heading (a joined multi-attempt body) is ambiguous — see resolve_planner_plan!/2.
-  @spec extract_plan_section(String.t()) ::
-          {:ok, String.t()} | {:error, :blank} | {:error, {:ambiguous, pos_integer()}}
-  defp extract_plan_section(body) when not is_binary(body) or body == "" do
-    {:error, :blank}
-  end
-
-  defp extract_plan_section(body) do
-    lines = String.split(body, "\n")
-    plan_heading_count = Enum.count(lines, &(&1 == "## Plan"))
-
-    cond do
-      plan_heading_count > 1 ->
-        {:error, {:ambiguous, plan_heading_count}}
-
-      plan_heading_count == 0 ->
-        if String.trim(body) == "" do
-          {:error, :blank}
-        else
-          {:ok, body}
-        end
-
-      true ->
-        {_, start_idx} = Enum.find(Enum.with_index(lines), fn {l, _} -> l == "## Plan" end)
-
-        rest = Enum.slice(lines, start_idx, length(lines) - start_idx)
-
-        # Drop everything from the NEXT top-level "## " heading onward (but
-        # keep the "## Plan" heading line itself at index 0).
-        [_plan_heading | tail] = rest
-
-        tail_before_next_h2 =
-          Enum.take_while(tail, fn l -> not String.starts_with?(l, "## ") end)
-
-        section = Enum.join(["## Plan" | tail_before_next_h2], "\n")
-
-        if String.trim(section) == "" do
-          {:error, :blank}
-        else
-          {:ok, section}
-        end
-    end
-  end
+  defp default_planner_plan(log_file), do: LoopGate.planner_plan(log_file)
 
   # No-ship-on-a-gate-that-didn't-grade-this-tree: runs immediately BEFORE
   # the committer role is invoked (keyed on the role about to run, not its
@@ -2921,10 +2864,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     base = ctx[:pitch] || ""
 
     # Thread the planner's ACTUAL plan (resolved+validated at role-result-store
-    # time in run_roles/4, stashed at ctx.artifacts[:planner_plan] — NOT the
+    # time in run_roles/4, stashed at ctx.artifacts[:planner_plan] — read from
+    # the typed {"ev":"plan",...} event via LoopGate.planner_plan/1, NOT the
     # envelope `result`'s `value`, which is the planner's final chat message
-    # and can be a recap with no plan in it) to the developer AND the reviewer
-    # under the exact `## Plan` heading their baked rules contract on, so each
+    # and can be a recap with no plan in it, and NOT re-parsed out of the
+    # free-form ev:role body prose) to the developer AND the reviewer under
+    # the exact `## Plan` heading their baked rules contract on, so each
     # works from what was actually planned instead of re-deriving scope from
     # the raw pitch (developer) or reviewing blind with vacuous plan-fulfillment
     # checks (reviewer — see pitch "reviewer checks bind to reality"). (This

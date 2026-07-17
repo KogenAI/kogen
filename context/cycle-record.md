@@ -8,10 +8,10 @@ Full `codegen-log` CLI contract (subcommands, resolution precedence, substance f
 owned by `shared/rules/_core/session-log.md` — this file does not re-teach the CLI, it documents the
 artifacts and the verdict table that session-log.md references but doesn't itself own.
 
-## `ev` Event Kinds (10, not 6 — corrects a stale prior count)
+## `ev` Event Kinds (11, not 6 — corrects a stale prior count)
 
-`init`, `role`, `learned`, `no_learning`, `died`, `gate`, `plan_gate`, `files_to_touch`,
-`files_modified`, `exit`. Verified via `grep -oE '"ev":"[a-z_]+"' codegen-log | sort -u`.
+`init`, `role`, `learned`, `no_learning`, `died`, `gate`, `plan`, `plan_gate`, `files_to_touch`,
+`files_modified`, `exit`. Verified via `codegen-log --kinds`.
 
 ## `codegen/gate-pending/` Artifacts
 

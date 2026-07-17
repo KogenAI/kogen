@@ -10,6 +10,7 @@
 #   codegen-log append <role> --no-learning "<text>" [--slug <slug>]
 #   codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]
 #   codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]
+#   codegen-log append <role> --plan @<file-or-@-> [--slug <slug>]
 #   codegen-log append <role> --plan-gate @<json-file-or-@-> [--slug <slug>]
 #   codegen-log append <role> --files-to-touch @<json-file-or-@-> [--slug <slug>]
 #   codegen-log append <role> --files-modified @<json-file-or-@-> [--slug <slug>]
@@ -74,6 +75,9 @@
 #   gate            — role, verdict (clear|failed|inconclusive); optionally
 #                      carries gate/mode/result/detail (the `verdict`
 #                      subcommand's richer shape) — both shapes are legal.
+#   plan            — role, plan (text). Planner's typed PLAN document — the
+#                      developer/reviewer's ## Plan is threaded from this
+#                      event, never re-parsed out of the role body prose.
 #   plan_gate       — role, command, mode (short|long), timeout. Planner's
 #                      typed gate SELECTION (not the verdict above).
 #   files_to_touch  — role, files[<relpath>,...]. Planner's typed list.
@@ -146,6 +150,18 @@
 #   --died interrupted [--cause]  -> {"ev":"died","kind":"interrupted",...} (append only)
 #   --died aborted                -> {"ev":"died","kind":"aborted",...} (append only)
 #   --verdict clear|failed|inconclusive -> {"ev":"gate","verdict":<v>,...} (append only)
+#   --plan @<file-or-@->          -> {"ev":"plan","plan":<text>,...} (append
+#                                     only). Value is RAW TEXT read from the
+#                                     given source (same @-file / @- stdin
+#                                     convention as --body — NOT JSON; a plan
+#                                     is a markdown document, not a struct).
+#                                     Empty/whitespace-only text exits 2 at
+#                                     write time. This is the planner's typed
+#                                     PLAN — the developer/reviewer's ## Plan
+#                                     is threaded from this event, never
+#                                     re-parsed out of the role body prose
+#                                     (see session-log.md § the body is
+#                                     opaque, never re-parsed as structure).
 #   --plan-gate @<file-or-@->     -> {"ev":"plan_gate",...} (append only). Value
 #                                     is a JSON OBJECT read from the given
 #                                     source (same @-file / @- stdin convention
@@ -221,6 +237,7 @@ NO_LEARNING_TEXT=""
 DIED_KIND=""
 DIED_CAUSE=""
 VERDICT_KIND=""
+PLAN_SOURCE=""
 PLAN_GATE_SOURCE=""
 FILES_TO_TOUCH_SOURCE=""
 FILES_MODIFIED_SOURCE=""
@@ -253,6 +270,7 @@ def event_schema:
     no_learning:     {required: ["role","text"],                     optional: []},
     died:            {required: ["role","kind","cause"],              optional: []},
     gate:            {required: ["role","verdict"],                  optional: ["gate","mode","result","detail"]},
+    plan:            {required: ["role","plan"],                     optional: []},
     plan_gate:       {required: ["role","command","mode","timeout"], optional: []},
     files_to_touch:  {required: ["role","files"],                    optional: []},
     files_modified:  {required: ["role","files"],                    optional: []},
@@ -272,6 +290,7 @@ usage() {
     printf '  codegen-log append <role> --no-learning "<text>" [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --plan @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --plan-gate @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --files-to-touch @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --files-modified @<file-or-@-> [--slug <slug>]\n' >&2
@@ -392,6 +411,14 @@ while [[ $# -gt 0 ]]; do
         ;;
     --verdict)
         VERDICT_KIND="$2"
+        shift 2
+        ;;
+    --plan=*)
+        PLAN_SOURCE="${1#--plan=}"
+        shift
+        ;;
+    --plan)
+        PLAN_SOURCE="$2"
         shift 2
         ;;
     --plan-gate=*)
@@ -547,16 +574,17 @@ MARKER_FLAG_COUNT=0
 [[ -n "$NO_LEARNING_TEXT" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$DIED_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$VERDICT_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+[[ -n "$PLAN_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$PLAN_GATE_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$FILES_TO_TOUCH_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$FILES_MODIFIED_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 if [[ "$MARKER_FLAG_COUNT" -gt 1 ]]; then
-    printf 'codegen-log: --learned, --no-learning, --died, --verdict, --plan-gate, --files-to-touch, and --files-modified are mutually exclusive\n' >&2
+    printf 'codegen-log: --learned, --no-learning, --died, --verdict, --plan, --plan-gate, --files-to-touch, and --files-modified are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" || -n "$PLAN_GATE_SOURCE" || -n "$FILES_TO_TOUCH_SOURCE" || -n "$FILES_MODIFIED_SOURCE" ]]; then
+if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" || -n "$PLAN_SOURCE" || -n "$PLAN_GATE_SOURCE" || -n "$FILES_TO_TOUCH_SOURCE" || -n "$FILES_MODIFIED_SOURCE" ]]; then
     if [[ "$SUBCOMMAND" != "append" ]]; then
-        printf 'codegen-log: --died/--verdict/--no-learning/--plan-gate/--files-to-touch/--files-modified are only valid with the append subcommand\n' >&2
+        printf 'codegen-log: --died/--verdict/--no-learning/--plan/--plan-gate/--files-to-touch/--files-modified are only valid with the append subcommand\n' >&2
         exit 2
     fi
 fi
@@ -1254,6 +1282,19 @@ append)
             ;;
         esac
         line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg verdict "$VERDICT_KIND" '{ev: "gate", role: $role, verdict: $verdict}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    if [[ -n "$PLAN_SOURCE" ]]; then
+        plan_text="$(read_at_source --plan "$PLAN_SOURCE")"
+        plan_trimmed="$(printf '%s' "$plan_text" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        if [[ -z "$plan_trimmed" ]]; then
+            printf 'codegen-log: --plan value is empty/whitespace-only — a blank plan can never reach the log\n' >&2
+            exit 2
+        fi
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg plan "$plan_text" '{ev: "plan", role: $role, plan: $plan}')"
         append_event_line "$log_file" "$line"
         printf '%s\n' "$log_file"
         exit 0

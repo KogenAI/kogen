@@ -259,6 +259,34 @@ assert "--verdict failed emits gate event with verdict=failed" "1" "$(jq_count "
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict inconclusive >/dev/null
 assert "--verdict inconclusive emits gate event with verdict=inconclusive" "1" "$(jq_count "$marker_log" 'select(.ev=="gate" and .verdict=="inconclusive")')"
 
+# Test 8a: --plan emits the typed plan event the loop threads under ## Plan
+# — raw text (not JSON), same @-file/@- stdin convention as --body.
+plan_out="$(
+    cd "$PROJECT" && printf '## Plan\n\nDo the thing.\n' |
+        env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan @-
+)"
+plan_path="$(printf '%s' "$plan_out" | tail -n 1)"
+assert "--plan wrote to the marker-flags log" "0" "$([ "$plan_path" = "$marker_log" ] && printf 0 || printf 1)"
+assert "--plan emits exactly one plan event" "1" "$(jq_count "$marker_log" 'select(.ev=="plan" and .role=="planner-phoenix")')"
+assert "--plan preserves the raw text verbatim" "0" "$(jq -r 'select(.ev=="plan")|.plan' "$marker_log" | grep -qF 'Do the thing.' && printf 0 || printf 1)"
+
+set +e
+plan_empty_rc=0
+(cd "$PROJECT" && printf '   \n  \n' |
+    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan @-) >/dev/null 2>&1
+plan_empty_rc=$?
+set -e
+assert "--plan empty/whitespace-only exits 2" "2" "$plan_empty_rc"
+assert "--plan empty/whitespace-only writes no new event" "1" "$(jq_count "$marker_log" 'select(.ev=="plan")')"
+
+set +e
+plan_mutex_rc=0
+(cd "$PROJECT" && printf 'plan text' |
+    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan @- --learned "text") >/dev/null 2>&1
+plan_mutex_rc=$?
+set -e
+assert "--plan + --learned mutually exclusive exits 2" "2" "$plan_mutex_rc"
+
 # Test 8b: --plan-gate/--files-to-touch/--files-modified emit structured
 # events the gate-select/read-discipline reader hooks jq-select for.
 plan_gate_out="$(
@@ -840,6 +868,7 @@ unset CODEGEN_LOG_PATH
 drift_log="$PROJECT/codegen/logging/20260112_000100_known-kinds-drift_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"known-kinds-drift",path:"",stamp:{}}' >"$drift_log"
 jq -c -n '{ev:"role",role:"planner-phoenix",body:"plan body"}' >>"$drift_log"
+jq -c -n '{ev:"plan",role:"planner-phoenix",plan:"## Plan\n\nDo the thing."}' >>"$drift_log"
 jq -c -n '{ev:"plan_gate",role:"planner-phoenix",command:"make ci",mode:"short",timeout:900}' >>"$drift_log"
 jq -c -n '{ev:"files_to_touch",role:"planner-phoenix",files:["a.ex"]}' >>"$drift_log"
 jq -c -n '{ev:"files_modified",role:"developer-phoenix-backend",files:["a.ex"]}' >>"$drift_log"

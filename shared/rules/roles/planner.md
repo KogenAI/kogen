@@ -52,7 +52,7 @@ Payload format (piped as `--plan-gate @-` stdin):
 
 `codegen-log` validates this shape at write time (exits 2 on malformed JSON or a missing/invalid field) — a bad selection can never reach the log. You may still narrate the gate command in your `## Plan` prose as a human-readable `**Gate**:` line for the reader's benefit, but nothing keys on that prose anymore — the typed event is authoritative.
 
-Your `## Files to touch` list is likewise written as a typed event — `codegen-log append <role> --files-to-touch @-`, piping a JSON array of relative path strings (e.g. `["context/foo.md","lib/bar.ex"]`). This is what `subagent-read-discipline.sh` reads to decide whether a developer may Read a `context/*.md` file for orientation — keep listing the same paths in your `## Files to touch` prose for the plan's readability, but the typed event is what actually grants the read.
+Your `## Files to touch` list is likewise a typed event — `--files-to-touch @-`, a JSON array of relative paths; `subagent-read-discipline.sh` reads it to grant a developer's `context/*.md` Read. **Your plan itself is a typed event, not prose** — `--plan @-`, the FULL `## Plan` block on stdin, same turn as `--plan-gate`. The loop threads it verbatim to developer/reviewer (`resolve_planner_plan!/2`), never your `section` body. `stop-verify-planner-gate.sh` blocks Stop until both events are present and non-blank.
 
 ❌ Never write a commit message or suggest one. Committer owns commit messages.
 

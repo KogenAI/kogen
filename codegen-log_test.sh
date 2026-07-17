@@ -801,6 +801,46 @@ set -e
 check "(rr) --files-to-touch on section (not append) exits 2" "2" "$RC_RR2"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# (ss) `append <role> --plan @-` emits a structured plan event carrying the
+# RAW TEXT verbatim (not JSON) — the typed marker that replaces prose-scraped
+# ## Plan sections. Empty/whitespace-only text refuses at write time; mutually
+# exclusive with the other marker flags.
+WS_SS="$(new_workspace)"
+LOG_SS="$(init_log "$WS_SS" test-plan)"
+printf '## Plan\n\nDo the thing.\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_SS" \
+    "$CODEGEN_LOG" append planner-phoenix --plan @- --slug test-plan >/dev/null
+check "(ss) plan emits exactly one plan event" "1" "$(jq_count "$LOG_SS" 'select(.ev=="plan" and .role=="planner-phoenix")')"
+assert_contains "(ss) plan preserves raw text verbatim" "$(jq -r 'select(.ev=="plan")|.plan' "$LOG_SS")" "Do the thing."
+
+# (tt) --plan empty/whitespace-only exits 2, writes nothing.
+set +e
+ERR_TT=$(printf '   \n  \n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_SS" \
+    "$CODEGEN_LOG" append planner-phoenix --plan @- --slug test-plan 2>&1)
+RC_TT=$?
+set -e
+check "(tt) plan empty/whitespace-only exits 2" "2" "$RC_TT"
+check "(tt) plan empty/whitespace-only writes no new event" "1" "$(jq_count "$LOG_SS" 'select(.ev=="plan")')"
+
+# (uu) --plan is mutually exclusive with --learned; append-only (not on section).
+set +e
+ERR_UU=$(printf 'plan text' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_SS" \
+    "$CODEGEN_LOG" append planner-phoenix --plan @- --learned "text" --slug test-plan 2>&1)
+RC_UU=$?
+set -e
+check "(uu) --plan + --learned mutually exclusive exits 2" "2" "$RC_UU"
+
+set +e
+ERR_UU2=$(printf 'plan text' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_SS" \
+    "$CODEGEN_LOG" section planner-phoenix --plan @- --slug test-plan 2>&1)
+RC_UU2=$?
+set -e
+check "(uu) --plan on section (not append) exits 2" "2" "$RC_UU2"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
 

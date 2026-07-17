@@ -234,6 +234,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     File.write!(log_path, line <> "\n", [:append])
   end
 
+  # Writes a typed {"ev":"plan",...} event — the marker
+  # LoopGate.planner_plan/1 reads (via gate-select.sh's
+  # gate_select_read_planner_plan), NOT the free-form ev:role body.
+  defp append_plan_event!(log_path, role, plan) do
+    line = Jason.encode!(%{"ev" => "plan", "role" => role, "plan" => plan})
+    File.write!(log_path, line <> "\n", [:append])
+  end
+
   setup do
     {:ok, calls_agent} = Agent.start_link(fn -> [] end)
     on_exit(fn -> if Process.alive?(calls_agent), do: Agent.stop(calls_agent) end)
@@ -402,15 +410,23 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   end
 
   describe "run/1 — no developer invoked without its plan" do
-    test "phoenix cycle threads the planner's real ## Plan body (not the envelope chat message) into the developer prompt",
+    test "phoenix cycle threads the planner's typed plan event (not the envelope chat message, not the role body prose) into the developer prompt",
          %{calls_agent: calls_agent} do
       log_path = fresh_cycle_log!()
 
-      plan_body =
-        "Some chatty preamble.\n\n## Plan\n\n**Approach**: do the thing.\n\n" <>
+      # A role body full of decoy structure the OLD prose-scraper would have
+      # keyed on — proves the typed event, not this body, is what threads.
+      append_role_body!(
+        log_path,
+        "planner-phoenix",
+        "Some chatty preamble.\n\n## Plan\n\ndecoy body plan — must never thread"
+      )
+
+      plan_text =
+        "## Plan\n\n**Approach**: do the thing.\n\n" <>
           "**Files to touch**: lib/foo.ex (NEW)\n\n## Slices\n\nslice text"
 
-      append_role_body!(log_path, "planner-phoenix", plan_body)
+      append_plan_event!(log_path, "planner-phoenix", plan_text)
 
       seen_prompt = Agent.start_link(fn -> nil end) |> elem(1)
 
@@ -447,19 +463,23 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       prompt = Agent.get(seen_prompt, & &1)
       assert prompt =~ "## Plan"
       assert prompt =~ "**Files to touch**: lib/foo.ex (NEW)"
-      refute prompt =~ "## Slices"
+      # The WHOLE plan threads now — no next-## slicing (that was the old
+      # broken scraper's behavior, which silently dropped sibling sections
+      # like ## Slices/## Delegation prompt/## Files to touch).
+      assert prompt =~ "## Slices"
       refute prompt =~ "chat recap with no plan in it"
+      refute prompt =~ "decoy body plan"
     end
 
-    test "blank planner body raises before the developer is ever invoked" do
+    test "no plan event raises before the developer is ever invoked" do
       log_path = fresh_cycle_log!()
-      append_role_body!(log_path, "planner-phoenix", "")
+      append_role_body!(log_path, "planner-phoenix", "some retrospective prose, no plan event")
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         {:ok, %{"status" => "success", "value" => "did #{role}"}}
       end
 
-      assert_raise RuntimeError, ~r/refusing to invoke a developer with no plan/, fn ->
+      assert_raise RuntimeError, ~r/wrote no \{"ev":"plan"\} event/, fn ->
         OrchestrationLoop.run(
           harness: "claude_code",
           stack: "phoenix",
@@ -476,16 +496,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
-    test "two ## Plan sections in the joined planner body (re-run) raises as ambiguous" do
+    test "blank plan event raises before the developer is ever invoked" do
       log_path = fresh_cycle_log!()
-      append_role_body!(log_path, "planner-phoenix", "## Plan\n\nplan A")
-      append_role_body!(log_path, "planner-phoenix", "## Plan\n\nplan B")
+      append_plan_event!(log_path, "planner-phoenix", "")
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         {:ok, %{"status" => "success", "value" => "did #{role}"}}
       end
 
-      assert_raise RuntimeError, ~r/refusing to guess which plan/, fn ->
+      assert_raise RuntimeError, ~r/wrote no \{"ev":"plan"\} event/, fn ->
         OrchestrationLoop.run(
           harness: "claude_code",
           stack: "phoenix",
@@ -496,10 +515,50 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
           advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-          slug: "plan-thread-ambiguous-test",
+          slug: "plan-thread-blank-test-2",
           log_init_fn: log_init_fn_for(log_path)
         )
       end
+    end
+
+    test "multiple plan events (planner re-run) — the last one wins, not ambiguous" do
+      log_path = fresh_cycle_log!()
+      append_plan_event!(log_path, "planner-phoenix", "## Plan\n\nplan A")
+      append_plan_event!(log_path, "planner-phoenix", "## Plan\n\nplan B")
+
+      seen_prompt = Agent.start_link(fn -> nil end) |> elem(1)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        if role == "developer-phoenix-backend" do
+          Agent.update(seen_prompt, fn _ -> OrchestrationLoop.build_prompt(role, ctx) end)
+        end
+
+        value =
+          if role == "reviewer-phoenix",
+            do: "REVIEW_VERDICT: APPROVED",
+            else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 slug: "plan-thread-rerun-test",
+                 log_init_fn: log_init_fn_for(log_path)
+               )
+
+      prompt = Agent.get(seen_prompt, & &1)
+      assert prompt =~ "plan B"
+      refute prompt =~ "plan A"
     end
 
     test "static cycle (no planner) never resolves a plan and never raises", %{

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # stop-verify-planner-gate.sh — Stop hook that blocks a planner subagent from
-# stopping when the active step log has a missing or placeholder **Gate**: value.
+# stopping when the active step log is missing its typed {"ev":"plan_gate",...}
+# gate SELECTION event or its typed {"ev":"plan",...} PLAN event.
 #
 # HOOK-MANIFEST:
 # event: Stop
@@ -15,16 +16,21 @@
 #
 # Blocks Stop when:
 #   AGENT_TYPE matches planner-* AND the active step log resolved from the
-#   transcript has a missing or placeholder **Gate**: value in ## Plan.
+#   transcript has a missing or placeholder gate selection (via the typed
+#   {"ev":"plan_gate",...} event, `codegen-log append <role> --plan-gate @-`),
+#   OR is missing its typed {"ev":"plan",...} plan event
+#   (`codegen-log append <role> --plan @-`). Neither is re-parsed out of the
+#   free-form ev:role body prose — see session-log.md § the body is opaque,
+#   never re-parsed as structure.
 #
 # Skip when:
 #   - STOP_HOOK_ACTIVE=true (recursion guard)
 #   - TRANSCRIPT_PATH unset or unreadable
 #   - AGENT_TYPE does not match planner-*
 #   - No step log resolved from transcript
-#   - **Gate**: is present and not a placeholder value
+#   - Both the gate selection and the plan event are present and non-placeholder
 #
-# Placeholder denylist (case-insensitive):
+# Placeholder denylist (case-insensitive), applied to the gate command:
 #   ^(TBD|pending|<.*>|to be determined|todo)$
 
 set -u
@@ -68,25 +74,14 @@ fi
 
 debug_log stop-verify-planner-gate "resolved log=$log_file"
 
-# Extract **Gate**: value from ## Plan section
+# Read the typed gate SELECTION event ({"ev":"plan_gate",...}).
 gate_value=$(gate_select_read_planner_gate "$log_file")
 
 debug_log stop-verify-planner-gate "gate_value=$gate_value"
 
-# Block if gate-json block parse error
-case "$gate_value" in
-__GATE_PARSE_ERROR__:*)
-    parse_reason="${gate_value#__GATE_PARSE_ERROR__:}"
-    reason="stop-verify-planner-gate: planner stopped with a malformed \`\`\`gate-json block in \`## Plan\` of ${log_file}: ${parse_reason}. Fix the gate-json block so it is valid JSON with required fields command, mode, timeout (all strings/integers), then return."
-    debug_log stop-verify-planner-gate "BLOCK: gate-json parse error: $parse_reason"
-    block "$reason"
-    exit 0
-    ;;
-esac
-
 # Block if gate is empty
 if [ -z "$gate_value" ]; then
-    reason="stop-verify-planner-gate: planner stopped with \`**Gate**:\` missing or placeholder in \`## Plan\` of ${log_file}. Per codegen/rules/roles/planner.md Outputs (1), planner MUST declare exact gate command before Stop. Edit step log to set a \`\`\`gate-json block or \`**Gate**: <make target>\` inside ## Plan, then return."
+    reason="stop-verify-planner-gate: planner stopped with no {\"ev\":\"plan_gate\"} event in ${log_file}. Per codegen/rules/roles/planner.md Outputs (1), planner MUST declare the exact gate command before Stop. Write it via \`codegen-log append <role> --plan-gate @-\`, then return."
     debug_log stop-verify-planner-gate "BLOCK: gate empty"
     block "$reason"
     exit 0
@@ -96,11 +91,26 @@ fi
 gate_lower=$(printf '%s' "$gate_value" | tr '[:upper:]' '[:lower:]')
 if printf '%s' "$gate_lower" | grep -qE '^(tbd|pending|to be determined|todo)$' ||
     printf '%s' "$gate_value" | grep -qE '^<.*>$'; then
-    reason="stop-verify-planner-gate: planner stopped with \`**Gate**:\` missing or placeholder in \`## Plan\` of ${log_file}. Per codegen/rules/roles/planner.md Outputs (1), planner MUST declare exact gate command before Stop. Edit step log to set \`**Gate**: <make target>\` inside ## Plan, then return."
+    reason="stop-verify-planner-gate: planner stopped with a placeholder gate command (${gate_value}) in the {\"ev\":\"plan_gate\"} event of ${log_file}. Per codegen/rules/roles/planner.md Outputs (1), planner MUST declare the exact gate command before Stop. Write it via \`codegen-log append <role> --plan-gate @-\`, then return."
     debug_log stop-verify-planner-gate "BLOCK: gate is placeholder ($gate_value)"
     block "$reason"
     exit 0
 fi
 
-debug_log stop-verify-planner-gate "allow: gate=$gate_value"
+# Read the typed PLAN event ({"ev":"plan",...}). The plan is a typed marker
+# — never re-parsed out of the free-form ev:role body prose (session-log.md
+# § the body is opaque, never re-parsed as structure).
+plan_value=$(gate_select_read_planner_plan "$log_file")
+plan_trimmed=$(printf '%s' "$plan_value" | tr -d '[:space:]')
+
+debug_log stop-verify-planner-gate "plan_present=$([ -n "$plan_trimmed" ] && printf yes || printf no)"
+
+if [ -z "$plan_trimmed" ]; then
+    reason="stop-verify-planner-gate: planner stopped with no {\"ev\":\"plan\"} event in ${log_file} — write your plan via 'codegen-log append <role> --plan @-' before stopping."
+    debug_log stop-verify-planner-gate "BLOCK: plan event absent"
+    block "$reason"
+    exit 0
+fi
+
+debug_log stop-verify-planner-gate "allow: gate=$gate_value plan_present=yes"
 exit 0

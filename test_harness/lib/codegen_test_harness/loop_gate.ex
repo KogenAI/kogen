@@ -183,6 +183,33 @@ defmodule CodegenTestHarness.LoopGate do
   end
 
   @doc """
+  Reads the planner's typed PLAN event (`{"ev":"plan","role":<planner*>,
+  "plan":<text>}`, written via `codegen-log append <role> --plan @-`) from a
+  JSONL cycle log, via `gate-select.sh`'s `gate_select_read_planner_plan` —
+  the SAME decoder `gate_select_read_planner_gate`/`decide_gate/2` already
+  shells for the plan-gate selection, reused here rather than reimplemented.
+  Returns `""` when `log_file` is nil, missing, unreadable, or carries no
+  `ev:plan` event for a planner* role (never raises — the caller,
+  `OrchestrationLoop.resolve_planner_plan!/2`, decides what an empty plan
+  means: it raises before invoking a developer).
+  """
+  @spec planner_plan(String.t() | nil) :: String.t()
+  def planner_plan(nil), do: ""
+
+  def planner_plan(log_file) when is_binary(log_file) do
+    unless File.exists?(@gate_select_lib) do
+      raise "LoopGate: gate-select.sh not found at #{@gate_select_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@gate_select_lib)} && gate_select_read_planner_plan #{shell_quote(log_file)}"
+
+    {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
+
+    output
+  end
+
+  @doc """
   Mechanical predicate for "does this cycle have anything for
   context-curator to curate?", read from the cycle's own JSONL via
   `gate-select.sh`'s `curator_learning_signal_from_log`. Returns one of:

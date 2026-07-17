@@ -112,6 +112,57 @@ out=$(gate_select_read_planner_gate "$TMP")
 assert_eq "multiple plan_gate events: last wins" "make new" "$(printf '%s' "$out" | sed -n '1p')"
 rm -f "$TMP"
 
+# ── gate_select_read_planner_plan — structured event only ──────────────────
+
+# write_plan_event <path> <plan-text> [<role>] — writes a single
+# {"ev":"plan",...} JSONL line, matching what
+# `codegen-log append <role> --plan @-` actually writes on disk.
+write_plan_event() {
+    local path="$1"
+    local plan="$2"
+    local role="${3:-planner-phoenix}"
+    jq -c -n --arg role "$role" --arg plan "$plan" \
+        '{ev: "plan", role: $role, plan: $plan}' >"$path"
+}
+
+# Case 1: a plan event resolves the raw text verbatim.
+TMP=$(mktemp)
+write_plan_event "$TMP" "## Plan
+
+Do the thing."
+assert_eq "read_planner_plan: text" "## Plan
+
+Do the thing." "$(gate_select_read_planner_plan "$TMP")"
+rm -f "$TMP"
+
+# Case 2: no plan event in the log (only a plain role body) → empty, even
+# when that body itself contains "## Plan" markdown. Proves the plan is a
+# typed event, never re-parsed out of role body prose.
+TMP=$(mktemp)
+write_role_body "$TMP" "planner-phoenix" "## Plan
+
+Do the thing."
+assert_eq "no plan event: prose ## Plan heading is never re-parsed" "" "$(gate_select_read_planner_plan "$TMP")"
+rm -f "$TMP"
+
+# Case 3: missing log file → empty
+assert_eq "missing log file: empty" "" "$(gate_select_read_planner_plan "/nonexistent/path/does-not-exist.jsonl")"
+
+# Case 4: plan event authored by a non-planner role is ignored
+TMP=$(mktemp)
+write_plan_event "$TMP" "some plan text" "developer-phoenix-backend"
+assert_eq "plan authored by non-planner role is ignored" "" "$(gate_select_read_planner_plan "$TMP")"
+rm -f "$TMP"
+
+# Case 5: multiple plan events (planner re-run) — the LAST one wins.
+TMP=$(mktemp)
+{
+    jq -c -n '{ev: "plan", role: "planner-phoenix", plan: "old plan"}'
+    jq -c -n '{ev: "plan", role: "planner-phoenix", plan: "new plan"}'
+} >"$TMP"
+assert_eq "multiple plan events: last wins" "new plan" "$(gate_select_read_planner_plan "$TMP")"
+rm -f "$TMP"
+
 # ── No-config fallback (non-Phoenix) → unresolved sentinel ─────────────────
 T_NOCFG=$(mktemp -d)
 out=$(gate_select_decide "$T_NOCFG")
