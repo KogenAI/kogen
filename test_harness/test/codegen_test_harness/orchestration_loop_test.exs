@@ -4911,6 +4911,342 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(calls_agent, & &1) == @static_sequence
     end
   end
+
+  # ── Resume-checkpoint (pitch "no whole-build restart when the loop dies
+  # mid-cycle") ────────────────────────────────────────────────────────────
+  # A prior cycle that died AFTER a clear gate but BEFORE the committer
+  # landed leaves a durable checkpoint on disk (gate-result.json +
+  # cycle-state.json). A fresh run/1 call against the SAME (still-dirty)
+  # cwd must detect it and start from the mapped resume role instead of
+  # role 0 — skipping the (expensive, already-paid) prefix. Every
+  # invalidation path must fall through to a full run from role 0 exactly
+  # as if no checkpoint existed.
+  describe "resume-checkpoint" do
+    setup do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "resume_checkpoint_test_#{:erlang.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
+
+      # Real scaffolded apps gitignore codegen/ (cycle logs + gate-pending
+      # checkpoint files are ephemeral, never committed — see
+      # shared/rules/_core/session-log.md § Git Status). Mirror that here so
+      # the resume-checkpoint fixture files this describe block writes under
+      # codegen/gate-pending/ never enter what the committer stages, keeping
+      # the committed tree hash independent of the fixture's own bytes.
+      File.write!(Path.join(dir, ".gitignore"), "codegen/\n")
+      File.write!(Path.join(dir, "README.md"), "init\n")
+      {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
+
+      {out, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: dir)
+      base_head = String.trim(out)
+
+      {:ok, dir: dir, base_head: base_head}
+    end
+
+    defp write_gate_result!(dir, verdict, graded_tree_sha, base_sha) do
+      result_dir = Path.join([dir, "codegen", "gate-pending"])
+      File.mkdir_p!(result_dir)
+
+      File.write!(
+        Path.join(result_dir, "gate-result.json"),
+        Jason.encode!(%{
+          "verdict" => verdict,
+          "graded_tree_sha" => graded_tree_sha,
+          "base_sha" => base_sha
+        })
+      )
+    end
+
+    defp write_cycle_state!(dir, state) do
+      result_dir = Path.join([dir, "codegen", "gate-pending"])
+      File.mkdir_p!(result_dir)
+      File.write!(Path.join(result_dir, "cycle-state.json"), Jason.encode!(%{"state" => state}))
+    end
+
+    # Writes `filename` (the prior cycle's simulated dev work) and returns
+    # the REAL git tree hash that content produces — via `git add -A` +
+    # `git write-tree` (stages, but does not commit). assert_commit_matches_gate!/1
+    # (a real, un-mocked check in run_committer/4) compares the eventual
+    # commit's tree against gate-result.json's graded_tree_sha bit-for-bit,
+    # so a resume test asserting :ok must stamp the ACTUAL hash, not an
+    # arbitrary placeholder string.
+    defp real_tree_sha_after_write!(dir, filename, content) do
+      File.write!(Path.join(dir, filename), content)
+      {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {out, 0} = System.cmd("git", ["write-tree"], cd: dir)
+      String.trim(out)
+    end
+
+    # Common seam bundle every resume-checkpoint test needs: a real invoke_fn
+    # that records which roles were actually called, a permissive gate/orphan
+    # /preflight stack (never the object under test here), and a no-op
+    # advance_cycle_state_fn (writing the real cycle-state.json would
+    # overwrite the checkpoint this test set up).
+    defp resume_run_opts(dir, calls_agent, extra) do
+      base = [
+        harness: "claude_code",
+        stack: "static",
+        cwd: dir,
+        pitch: "do the thing",
+        invoke_fn: fn role, _harness, _ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+          if role == "committer" do
+            # Real committer role stages + commits whatever the (real or
+            # simulated) prior cycle left behind — commit exactly the dirty
+            # tree the checkpoint fixture set up, satisfying
+            # verify_committed!'s single-commit + clean-tree tail guard.
+            {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+            {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "resume test commit"], cd: dir)
+          end
+
+          value =
+            if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+          {:ok, %{"status" => "success", "value" => value}}
+        end,
+        gate_fn: always_clear_gate_fn(),
+        gate_preflight_fn: no_op_gate_preflight_fn(),
+        preflight_probe_fn: all_present_preflight_probe_fn(),
+        orientation_preflight_fn: no_op_orientation_preflight_fn(),
+        orphan_scan_fn: fn _cwd -> [] end,
+        advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir ->
+          :ok
+        end
+      ]
+
+      Keyword.merge(base, extra)
+    end
+
+    test "valid GATED checkpoint resumes at reviewer-static, skipping developer-static", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
+      write_gate_result!(dir, "clear", tree_sha, base_head)
+      write_cycle_state!(dir, "GATED")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      refute "developer-static" in calls
+      assert calls == ["reviewer-static", "context-curator", "committer"]
+    end
+
+    test "valid REVIEWED checkpoint resumes at context-curator, skipping developer+reviewer", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
+      write_gate_result!(dir, "clear", tree_sha, base_head)
+      write_cycle_state!(dir, "REVIEWED")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "REVIEWED" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      refute "developer-static" in calls
+      refute "reviewer-static" in calls
+      assert calls == ["context-curator", "committer"]
+    end
+
+    test "valid CURATED checkpoint resumes at committer only", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
+      write_gate_result!(dir, "clear", tree_sha, base_head)
+      write_cycle_state!(dir, "CURATED")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "CURATED" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) == ["committer"]
+    end
+
+    test "no cycle-state.json → full run from role 0 (developer-static first)", %{
+      dir: dir,
+      calls_agent: calls_agent
+    } do
+      # No checkpoint files written at all — the ordinary case.
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "" end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) ==
+               ["developer-static", "reviewer-static", "context-curator", "committer"]
+    end
+
+    test "cycle-state COMMITTED → full run from role 0 (terminal state never resumes)", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      # graded_tree_sha "" — the real (unmocked) assert_commit_matches_gate!/1
+      # skips comparison entirely on an empty stamped value; this test's
+      # committer stub creates real content the fixture value could never
+      # match, and matching is not what's under test here (the COMMITTED
+      # state itself is).
+      write_gate_result!(dir, "clear", "", base_head)
+      write_cycle_state!(dir, "COMMITTED")
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "COMMITTED" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) ==
+               ["developer-static", "reviewer-static", "context-curator", "committer"]
+    end
+
+    test "gate verdict not clear → full run from role 0", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      write_gate_result!(dir, "failed", "", base_head)
+      write_cycle_state!(dir, "GATED")
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   read_verdict_fn: fn _cwd -> :failed end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) ==
+               ["developer-static", "reviewer-static", "context-curator", "committer"]
+    end
+
+    test "read_verdict_fn raising (absent gate-result.json) → full run, never propagates", %{
+      dir: dir,
+      calls_agent: calls_agent
+    } do
+      write_cycle_state!(dir, "GATED")
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   read_verdict_fn: fn _cwd ->
+                     raise "LoopGate: unrecognized/missing verdict"
+                   end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) ==
+               ["developer-static", "reviewer-static", "context-curator", "committer"]
+    end
+
+    test "graded_tree_sha drifted since the gate ran → full run from role 0", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      write_gate_result!(dir, "clear", "", base_head)
+      write_cycle_state!(dir, "GATED")
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   # tree has drifted since the gate graded it
+                   gate_tree_match_fn: fn _cwd -> false end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) ==
+               ["developer-static", "reviewer-static", "context-curator", "committer"]
+    end
+
+    test "HEAD moved past base_sha (committer landed before dying) → full run from role 0", %{
+      dir: dir,
+      calls_agent: calls_agent
+    } do
+      write_gate_result!(dir, "clear", "", "0000000000000000000000000000000000000000")
+      write_cycle_state!(dir, "GATED")
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd ->
+                     "0000000000000000000000000000000000000000"
+                   end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) ==
+               ["developer-static", "reviewer-static", "context-curator", "committer"]
+    end
+  end
 end
 
 # Isolated in a sibling async: false module because these tests mutate the

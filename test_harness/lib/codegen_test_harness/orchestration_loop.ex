@@ -217,6 +217,28 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     refuses with `{:error, reason}` naming the pid(s) + a copy-paste
     inspect/reap command. Degrades to `[]` (lock-only enforcement) when
     `pgrep` itself is unavailable.
+  - `:cycle_state_get_fn` — test seam: `(cwd -> state_string)` for the
+    resume-checkpoint check (see pitch "no whole-build restart when the
+    loop dies mid-cycle"), defaults to shelling `cycle-state.sh`'s
+    `cycle_state_get`. Only consulted at turn 0, before the clean-tree
+    preflight, to decide whether this run continues a prior cycle's
+    checkpoint instead of starting fresh.
+  - `:read_verdict_fn` — test seam: `(cwd -> :clear | :failed)` for the
+    resume-checkpoint check, defaults to `LoopGate.read_verdict/1`. A raise
+    (the real function's behavior on an absent/malformed gate-result.json)
+    is caught internally and treated as "no checkpoint" — never propagates.
+  - `:gate_tree_match_fn` — test seam: `(cwd -> boolean())` for the
+    resume-checkpoint tree-match check, defaults to comparing
+    `LoopGate.graded_tree_sha_now/1` against
+    `LoopGate.gate_result_graded_tree_sha/1` (both non-empty). Also reused
+    by the committer's pre-commit re-gate check (`ensure_gate_graded_this_tree!`).
+  - `:gate_result_base_sha_fn` — test seam: `(cwd -> sha_string)` for the
+    resume-checkpoint HEAD-unmoved cross-check, defaults to
+    `LoopGate.gate_result_base_sha/1`.
+  - `:log_resume_fn` — test seam: `(resume_role, state -> :ok)`, defaults to
+    `default_log_resume/2` (appends a `codegen-log append loop-resume --body`
+    observability line to the cycle log; fail-loud-non-blocking).
+
   Returns `:ok` on COMMITTED + clear gate. Returns `{:error, reason}` on
   any role failure (after one retry), a non-clear gate (after the gate-retry
   bound is exhausted — progress-based, or `:max_gate_retries` when no
@@ -266,22 +288,50 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     cwd = Keyword.fetch!(opts, :cwd)
     pitch = Keyword.fetch!(opts, :pitch)
 
-    # Turn-0 clean-tree precondition: symmetric HEAD guard to verify_committed!'s
-    # tail guard. A cycle starting on an already-dirty tree is ambiguous — roles
-    # can read, modify, or commit foreign uncommitted changes, and the tail
-    # guard can only report the mess after a full (paid) cycle. Refuse here,
-    # cheaply, before any role runs or the gate resolves. Overridable via
-    # :clean_tree_preflight_fn — existing mocked tests simulate mid-cycle
-    # developer output (a real dirty tree BEFORE their stubbed invoke_fn runs)
-    # to exercise gate/factcheck/commit-guard behavior in isolation; those are
-    # not the "foreign uncommitted changes at true cycle start" this guard
-    # exists to catch, so they opt out with a no-op here.
-    clean_tree_fn = Keyword.get(opts, :clean_tree_preflight_fn, &preflight_clean_tree!/1)
-    clean_tree_fn.(cwd)
+    all_roles = role_sequence(stack)
 
-    roles = role_sequence(stack)
-    ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}, base_head: cycle_base_head(cwd)}
+    # Resume-checkpoint (see pitch "no whole-build restart when the loop
+    # dies mid-cycle"): a prior cycle that died AFTER a clear gate leaves a
+    # durable, verified checkpoint on disk (gate-result.json + cycle-state.json)
+    # even though the loop process itself left no trace. Check for one BEFORE
+    # the clean-tree refusal below — a valid checkpoint's dirty tree IS the
+    # prior cycle's sanctioned, gate-graded work, and must not be refused by
+    # the guard meant for foreign uncommitted changes at a true cycle start.
+    # An invalid/absent checkpoint (the overwhelmingly common case: no prior
+    # death, or a death before the gate) falls straight through unchanged.
+    case resume_checkpoint(cwd, all_roles, opts) do
+      {:resume, resume_role, state} ->
+        roles = resume_suffix(all_roles, resume_role)
+        ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}, base_head: cycle_base_head(cwd)}
+        run_body_from(harness, cwd, roles, ctx, opts, {resume_role, state})
 
+      :full ->
+        # Turn-0 clean-tree precondition: symmetric HEAD guard to
+        # verify_committed!'s tail guard. A cycle starting on an
+        # already-dirty tree is ambiguous — roles can read, modify, or
+        # commit foreign uncommitted changes, and the tail guard can only
+        # report the mess after a full (paid) cycle. Refuse here, cheaply,
+        # before any role runs or the gate resolves. Overridable via
+        # :clean_tree_preflight_fn — existing mocked tests simulate
+        # mid-cycle developer output (a real dirty tree BEFORE their
+        # stubbed invoke_fn runs) to exercise gate/factcheck/commit-guard
+        # behavior in isolation; those are not the "foreign uncommitted
+        # changes at true cycle start" this guard exists to catch, so they
+        # opt out with a no-op here.
+        clean_tree_fn = Keyword.get(opts, :clean_tree_preflight_fn, &preflight_clean_tree!/1)
+        clean_tree_fn.(cwd)
+
+        ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}, base_head: cycle_base_head(cwd)}
+        run_body_from(harness, cwd, all_roles, ctx, opts, nil)
+    end
+  end
+
+  # Shared tail of run_body/1 — identical for both the :full and :resume
+  # branches once `roles`/`ctx` are settled: mint the cycle log (unless
+  # already resumed with a nil slug in tests), preflight the gate + roles,
+  # then run. `resume_info` is `{resume_role, state}` on a resumed cycle
+  # (logged AFTER the cycle log is minted, below) or `nil` on a full run.
+  defp run_body_from(harness, cwd, roles, ctx, opts, resume_info) do
     Process.put(@transcript_seq_key, 0)
     Process.put(@cycle_id_key, Keyword.get(opts, :cycle_id))
 
@@ -300,6 +350,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         stamp = Keyword.get(opts, :stamp)
         log_init_fn = Keyword.get(opts, :log_init_fn, &default_log_init/3)
         Process.put(@log_path_key, log_init_fn.(slug, cwd, stamp))
+    end
+
+    case resume_info do
+      {resume_role, state} -> log_resume(resume_role, state, opts)
+      nil -> :ok
     end
 
     # Turn-0 gate preflight: resolve the app's gate command BEFORE invoking
@@ -912,6 +967,158 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       end
     else
       _ -> nil
+    end
+  end
+
+  # Maps a completed cycle-state to the role the resumed cycle must start
+  # from. Deliberately NOT `cycle-state.sh`'s `cycle_state_role` (that helper
+  # returns "" for GATED and is shaped for human block-message text, not a
+  # role-sequence lookup) — this is a distinct, resume-specific mapping.
+  @spec resume_role_for_state(String.t()) :: String.t() | nil
+  defp resume_role_for_state("GATED"), do: "reviewer"
+  defp resume_role_for_state("REVIEWED"), do: "context-curator"
+  defp resume_role_for_state("CURATED"), do: "committer"
+  defp resume_role_for_state(_other), do: nil
+
+  # Resolves a state's abstract "reviewer" target against the STACK-SPECIFIC
+  # role name actually present in `roles` (role_sequence/1 emits
+  # "reviewer-phoenix" or "reviewer-static", never a bare "reviewer") — never
+  # hardcode either variant here.
+  @spec resolve_resume_role(String.t(), [String.t()]) :: String.t() | nil
+  defp resolve_resume_role("reviewer", roles) do
+    Enum.find(roles, &(&1 == "reviewer-phoenix" or &1 == "reviewer-static"))
+  end
+
+  defp resolve_resume_role(role, roles), do: Enum.find(roles, &(&1 == role))
+
+  # Determines whether `cwd` carries a valid resume checkpoint: a durable,
+  # gate-clear, tree-matched record of a prior cycle that died AFTER the
+  # gate went green but BEFORE the committer landed. See pitch "no
+  # whole-build restart when the loop dies mid-cycle" for the full
+  # discipline this encodes.
+  #
+  # Returns `{:resume, resume_role, state}` only when EVERY one of these
+  # holds; any single failure (including the shell readers raising on an
+  # absent gate-result.json, which `read_verdict/1` does by design) falls
+  # through to `:full` — a checkpoint must never be guessed at:
+  #
+  #   * cycle-state.json exists and its state is GATED, REVIEWED, or CURATED
+  #     (past-gate, pre-COMMITTED — COMMITTED/absent/unknown -> :full);
+  #   * the last gate run's verdict is :clear;
+  #   * the tree right now is byte-identical to what the gate graded
+  #     (graded_tree_sha_now == gate_result_graded_tree_sha, both non-empty);
+  #   * HEAD has not moved since the gate ran (current HEAD starts with
+  #     gate-result.json's base_sha) — rules out the rare "committer
+  #     committed then died before advancing state to COMMITTED" edge;
+  #   * the mapped resume role is actually present in `roles` for this stack.
+  @spec resume_checkpoint(String.t(), [String.t()], run_opts()) ::
+          {:resume, String.t(), String.t()} | :full
+  defp resume_checkpoint(cwd, roles, opts) do
+    state_fn = Keyword.get(opts, :cycle_state_get_fn, &default_cycle_state_get/1)
+
+    with state when is_binary(state) and state != "" <- state_fn.(cwd),
+         target when is_binary(target) <- resume_role_for_state(state),
+         resume_role when is_binary(resume_role) <- resolve_resume_role(target, roles),
+         :clear <- safe_read_verdict(cwd, opts),
+         true <- gate_tree_match?(cwd, opts),
+         true <- resume_head_unmoved?(cwd, opts) do
+      {:resume, resume_role, state}
+    else
+      _ -> :full
+    end
+  end
+
+  # `LoopGate.read_verdict/1` RAISES when gate-result.json is absent or its
+  # verdict field is missing/unrecognized (by design — the loop must never
+  # silently treat a missing verdict as clear). A resume checkpoint that
+  # never had a gate run is a completely normal, common case (most builds
+  # die before the gate, or never die at all) — not an error here, just
+  # "no checkpoint". Rescue converts that raise into the same :full-routing
+  # non-match every other invalidation path already produces.
+  @spec safe_read_verdict(String.t(), run_opts()) :: :clear | :failed | :error
+  defp safe_read_verdict(cwd, opts) do
+    verdict_fn = Keyword.get(opts, :read_verdict_fn, &LoopGate.read_verdict/1)
+    verdict_fn.(cwd)
+  rescue
+    _ -> :error
+  end
+
+  defp default_cycle_state_get(cwd) do
+    unless File.exists?(@cycle_state_lib) do
+      raise "OrchestrationLoop: cycle-state.sh not found at #{@cycle_state_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@cycle_state_lib)} && cycle_state_get #{shell_quote(cwd)}"
+
+    case System.cmd("bash", ["-c", script], stderr_to_stdout: true) do
+      {output, 0} -> String.trim(output)
+      {_output, _code} -> ""
+    end
+  end
+
+  @spec resume_head_unmoved?(String.t(), run_opts()) :: boolean()
+  defp resume_head_unmoved?(cwd, opts) do
+    base_sha_fn = Keyword.get(opts, :gate_result_base_sha_fn, &LoopGate.gate_result_base_sha/1)
+    base_sha = base_sha_fn.(cwd)
+    head = cycle_base_head(cwd)
+
+    is_binary(base_sha) and base_sha != "" and is_binary(head) and
+      String.starts_with?(head, base_sha)
+  end
+
+  # Drops the completed prefix of `roles`, returning the tail starting at
+  # (and including) `resume_role`. `resume_role` is always a member of
+  # `roles` here — resume_checkpoint/3 only returns a resume_role it found
+  # via resolve_resume_role/2, which searches `roles` itself.
+  @spec resume_suffix([String.t()], String.t()) :: [String.t()]
+  defp resume_suffix(roles, resume_role) do
+    Enum.drop_while(roles, &(&1 != resume_role))
+  end
+
+  # Observability for a resumed cycle: one stderr line (always) + one
+  # best-effort cycle-log line tagged under the synthetic "loop-resume"
+  # pseudo-role (codegen-log's event vocabulary has no dedicated "resumed"
+  # kind — see shared/rules/_core/session-log.md § Event Schema — so this
+  # reuses the existing `ev:role` body-append surface rather than inventing
+  # a new codegen-log flag). Fail-loud-non-blocking: a codegen-log failure
+  # here must never abort a resume that is otherwise valid.
+  @spec log_resume(String.t(), String.t(), run_opts()) :: :ok
+  defp log_resume(resume_role, state, opts) do
+    IO.puts(
+      :stderr,
+      "codegen.loop: resuming at #{resume_role} (prior state #{state}, gate clear, tree matched) " <>
+        "— skipping the completed prefix"
+    )
+
+    log_resume_fn = Keyword.get(opts, :log_resume_fn, &default_log_resume/2)
+    log_resume_fn.(resume_role, state)
+  end
+
+  defp default_log_resume(resume_role, state) do
+    cycle_log = Process.get(@log_path_key)
+
+    if is_nil(cycle_log) or not File.exists?(@codegen_log_bin) do
+      :ok
+    else
+      body =
+        "Resumed at #{resume_role} — prior cycle reached state #{state} with a clear gate " <>
+          "on a matching tree; completed prefix skipped."
+
+      {output, exit_code} =
+        System.cmd(@codegen_log_bin, ["append", "loop-resume", "--body", body],
+          stderr_to_stdout: true,
+          env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", cycle_log}]
+        )
+
+      if exit_code != 0 do
+        IO.puts(
+          :stderr,
+          "OrchestrationLoop: codegen-log append (resume) failed (#{exit_code}): #{output}"
+        )
+      end
+
+      :ok
     end
   end
 
@@ -2089,7 +2296,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         "This cycle's diff edits the gate/grader itself (test files, the loop's gate " <>
         "module, the bash gate contracts, the enforcement registry, or gate/CI wiring), " <>
         "not just the feature under test:\n\n" <>
-        "```\n" <> Enum.join(touched, "\n") <> "\n```\n\n" <>
+        "```\n" <>
+        Enum.join(touched, "\n") <>
+        "\n```\n\n" <>
         "This is legitimate roughly half the time (fixing a broken test, wiring a new " <>
         "gate check). Scrutinize it explicitly: does this change make the gate MORE able " <>
         "to catch a defect, or does it weaken/relax what the gate can detect? Flag " <>

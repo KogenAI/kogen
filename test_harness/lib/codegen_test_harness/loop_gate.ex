@@ -523,6 +523,28 @@ defmodule CodegenTestHarness.LoopGate do
   end
 
   @doc """
+  Reads the `base_sha` field the last `run_gate/2` call stamped into
+  `<project_dir>/codegen/gate-pending/gate-result.json` — the cycle-start
+  HEAD the gate ran against. Returns `""` when the file/field is absent
+  (legacy record, or a gate that hasn't run). Used by
+  `OrchestrationLoop`'s resume-checkpoint validity check to confirm HEAD
+  has not moved since the gate ran (rules out the rare "committer
+  committed then died before advancing cycle-state to COMMITTED" edge).
+  """
+  @spec gate_result_base_sha(String.t()) :: String.t()
+  def gate_result_base_sha(project_dir) do
+    unless File.exists?(@gate_result_lib) do
+      raise "LoopGate: gate-result.sh not found at #{@gate_result_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@gate_result_lib)} && gate_result_base_sha #{shell_quote(project_dir)}"
+
+    {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
+    String.trim(output)
+  end
+
+  @doc """
   Recomputes the CURRENT working-tree content-hash for `project_dir` — the
   same computation `run_gate/2` stamps at gate time (see `graded_tree_sha/1`
   private helper), exposed publicly so the loop's pre-commit re-check
