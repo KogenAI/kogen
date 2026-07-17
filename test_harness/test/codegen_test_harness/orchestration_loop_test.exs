@@ -1292,6 +1292,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(harness_seen_by_codegen_call_fn, & &1) == "pi"
     end
 
+    # Uses reviewer-static: a role with NO `.harness.<role>.harness` key in the
+    # real config.yaml. It used to name developer-static, which acquired a
+    # deliberate `harness: pi` override (it runs on ChatGPT inside claude
+    # builds), so this test then asserted the opposite of the shipped config and
+    # failed. Keep this pinned to a genuinely override-free role — the point is
+    # the passthrough default, not the identity of the role.
     test "no per-role harness override (default resolve_harness_fn against real config.yaml) -> build harness unchanged" do
       codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
         assert harness == "claude_code"
@@ -1305,12 +1311,43 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert {:ok, _result} =
                OrchestrationLoop.invoke_role(
+                 "reviewer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
+    end
+
+    # Twin of the above: developer-static DOES carry `harness: pi`, so the
+    # build-wide harness must be overridden per role. This is the regression
+    # guard for the shipped "ChatGPT for developer-static" config — if someone
+    # drops the key from config.yaml, this fails loudly rather than silently
+    # routing the role back to claude.
+    test "per-role harness override (developer-static) -> pi wins over the build harness" do
+      test_pid = self()
+
+      codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
+        send(test_pid, {:harness_used, harness})
+        %{"result" => %{"status" => "success", "value" => "x"}}
+      end
+
+      resolve_fn = fn _role, harness ->
+        send(test_pid, {:resolved_for, harness})
+        {"openai-codex/gpt-5.6-terra", "high"}
+      end
+
+      assert {:ok, _result} =
+               OrchestrationLoop.invoke_role(
                  "developer-static",
                  "claude_code",
                  %{cwd: "/tmp", pitch: "x", artifacts: %{}},
                  resolve_fn: resolve_fn,
                  codegen_call_fn: codegen_call_fn
                )
+
+      assert_received {:resolved_for, "pi"}
+      assert_received {:harness_used, "pi"}
     end
   end
 
@@ -2631,7 +2668,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         {:ok, %{"status" => "success", "value" => "did #{role}"}}
       end
 
-      resolve_escalation_fn = fn "developer-static", "claude_code" -> {"opus", "high"} end
+      resolve_escalation_fn = fn "developer-static", _harness -> {"opus", "high"} end
 
       assert {:error, reason} =
                OrchestrationLoop.run(
@@ -2708,7 +2745,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         {:ok, %{"status" => "success", "value" => "did #{role}"}}
       end
 
-      resolve_escalation_fn = fn "developer-static", "claude_code" -> :none end
+      resolve_escalation_fn = fn "developer-static", _harness -> :none end
 
       assert {:error, _reason} =
                OrchestrationLoop.run(
@@ -2758,7 +2795,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         {:ok, %{"status" => "success", "value" => "did #{role}"}}
       end
 
-      resolve_escalation_fn = fn "developer-static", "claude_code" -> {"opus", "high"} end
+      resolve_escalation_fn = fn "developer-static", _harness -> {"opus", "high"} end
 
       assert {:error, _reason} =
                OrchestrationLoop.run(
@@ -5072,7 +5109,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         {:ok, %{"status" => "success", "value" => value}}
       end
 
-      resolve_escalation_fn = fn "developer-static", "claude_code" -> {"opus", "high"} end
+      resolve_escalation_fn = fn "developer-static", _harness -> {"opus", "high"} end
 
       assert :ok ==
                OrchestrationLoop.run(

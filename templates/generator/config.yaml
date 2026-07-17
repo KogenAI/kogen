@@ -94,7 +94,32 @@ harness:
         escalate_effort: high,
         fallback: [{ model: openai-codex/gpt-5.5, effort: medium }],
       }
+  # Pi rungs pinned to the gpt-5.6 generation (see `pi --list-models`).
+  # Tier map, from pi's own catalog cost table ($/Mtok in/out):
+  #   luna  1/6    (haiku tier)
+  #   terra 2.5/15 (sonnet tier)  ← identical price to the retired gpt-5.4,
+  #                                 but 372K ctx vs 272K. Strict upgrade.
+  #   sol   5/30   (opus tier)    ← identical price to gpt-5.5, newer gen.
+  # effort raised medium→high to match the claude rung: developer-static owns
+  # the whole static build, and its claude twin has always run effort: high.
   developer-static:
+    # PER-ROLE HARNESS OVERRIDE — this role runs on pi (ChatGPT) even inside an
+    # otherwise-claude build. RoleResolver.resolve_harness/2 reads
+    # `.harness.<role>.harness` and OrchestrationLoop.invoke_role/4 applies it
+    # per role, so `codegen-build --harness=claude` → `mix codegen.loop
+    # --harness=claude_code` still dispatches THIS role through pi, while
+    # planner-static / reviewer-static / committer stay on claude.
+    # Absent this key the role would inherit the build-wide harness.
+    # Model/effort below are then read from the `pi:` block, not `claude:`.
+    #
+    # NOTE for benchmarking: `make bench` runs its claude and pi arms off THIS
+    # file, so while this key is set the "claude" arm runs developer-static on
+    # pi too. Comment it out to isolate a pure claude-vs-pi comparison.
+    #
+    # Evidence for pi (bench 20260717_064438, static vite-react scaffold):
+    #   developer-static  claude/sonnet $1.5142  vs  pi/gpt-5.6-terra $0.4462  → 3.4x cheaper
+    #   whole build       claude $2.2094 FAILED  vs  pi $0.7564 PASSED
+    harness: pi
     claude:
       {
         model: sonnet,
@@ -105,11 +130,11 @@ harness:
       }
     pi:
       {
-        model: openai-codex/gpt-5.4,
-        effort: medium,
-        escalate_model: openai-codex/gpt-5.5,
+        model: openai-codex/gpt-5.6-terra,
+        effort: high,
+        escalate_model: openai-codex/gpt-5.6-sol,
         escalate_effort: high,
-        fallback: [{ model: openai-codex/gpt-5.5, effort: medium }],
+        fallback: [{ model: openai-codex/gpt-5.6-sol, effort: high }],
       }
   reviewer-phoenix:
     claude: { model: sonnet, effort: medium }

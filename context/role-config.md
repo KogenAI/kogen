@@ -12,22 +12,35 @@ consumer:
 
 ## Role → Model/Effort (Claude harness; Pi mirrors with its own model IDs)
 
-| Role                                                   | Model  | Effort |
-| ------------------------------------------------------ | ------ | ------ |
-| planner-phoenix / planner-static                       | opus   | high   |
-| developer-phoenix-backend / developer-phoenix-frontend | sonnet | medium |
-| developer-static                                       | sonnet | high   |
-| reviewer-phoenix / reviewer-static                     | sonnet | medium |
-| committer                                              | haiku  | low    |
-| context-curator                                        | haiku  | low    |
-| build (orchestrator)                                   | sonnet | medium |
-| inspector / debug / app_build                          | sonnet | medium |
-| shape / experiment                                     | opus   | high   |
-| ops                                                    | sonnet | high   |
+| Role                                                        | Model  | Effort |
+| ----------------------------------------------------------- | ------ | ------ |
+| planner-phoenix / planner-static                            | opus   | high   |
+| developer-phoenix-backend / developer-phoenix-frontend      | sonnet | medium |
+| developer-static (claude twin; see per-role override below) | sonnet | high   |
+| reviewer-phoenix / reviewer-static                          | sonnet | medium |
+| committer                                                   | haiku  | low    |
+| context-curator                                             | haiku  | low    |
+| build (orchestrator)                                        | sonnet | medium |
+| inspector / debug / app_build                               | sonnet | medium |
+| shape / experiment                                          | opus   | high   |
+| ops                                                         | sonnet | high   |
 
 `shape` and `experiment` are pinned opus/high by design — they drive architectural decisions and
 complex multi-file analysis. `debug` = sonnet/medium is also intentional (diagnostic, not creative). A
 cost-tuning proposal MUST NOT suggest downgrading these — out of scope, reject without further analysis.
+
+## Per-Role Harness Override — `developer-static` Runs on Pi
+
+`developer-static` carries a `harness: pi` key under `.harness.developer-static` in `config.yaml` —
+`RoleResolver.resolve_harness/2` reads it and `OrchestrationLoop.invoke_role/4` applies it PER ROLE, so
+`codegen-build --harness=claude --stack=static` still dispatches THIS role through Pi
+(`openai-codex/gpt-5.6-terra`, effort high; escalate/fallback `openai-codex/gpt-5.6-sol`, effort high)
+while `planner-static` / `reviewer-static` / `committer` stay on Claude. Escalation and fallback also
+resolve on the overridden harness — a Pi role never falls back to a Claude model. Measured ~3.4x
+cheaper than the Claude/sonnet twin for this role at equal call count (bench `20260717_064438`); the
+Claude `pi:` block above stays as the twin config for reference/reversion (comment out `harness: pi`
+to isolate a pure Claude-vs-Pi benchmark comparison). This is a per-role decision, not a policy of
+migrating other roles to Pi — every other role's harness stays whatever the build was invoked with.
 
 ## Two Distinct Retry Mechanisms — Do Not Conflate
 
