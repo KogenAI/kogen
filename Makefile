@@ -149,6 +149,7 @@ harness-parity:
 	for t in \
 		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/pi/dispatch_test.sh" \
+		"$(SCRIPT_DIR)/harnesses/pi/call-dispatch_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh" \
 		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-propose_test.sh" \
 		"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh" \

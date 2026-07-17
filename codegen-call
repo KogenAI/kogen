@@ -317,10 +317,38 @@ if [[ -n "$SETTINGS_PATH" ]]; then
     SETTINGS_ABS_PATH="$(_read_at_path "--settings" "$SETTINGS_PATH")"
 fi
 
-# Resolve extension path (optional)
+# Resolve extension path (optional).
+#
+# Unlike --system-prompt/--json-schema (whose contents we cat), --extension is
+# handed to `pi --extension` verbatim, and pi accepts EITHER a single entry
+# file OR a package directory (it resolves the entry itself, via package.json
+# `main`/`pi.extensions`). _read_at_path enforces `-f`, which rejected a
+# package dir outright:
+#   codegen-call: --extension file not found: harnesses/pi/pi-extensions/enforcement
+# That killed every pi loop role at 0 tokens — OrchestrationLoop passes
+# `--extension=@<enforcement package dir>` (orchestration_loop.ex:3158), and
+# the enforcement extension ships as a package dir (package.json →
+# main: dist/index.js), never a bare file. Verified against pi 0.80.10: a
+# package dir loads and the turn ends stopReason "stop".
+_read_at_path_or_dir() {
+    local flag_name="$1"
+    local value="$2"
+    local path
+    if [[ "$value" != @* ]]; then
+        printf 'codegen-call: %s value must start with @ (got %q)\n' "$flag_name" "$value" >&2
+        exit 2
+    fi
+    path="${value#@}"
+    if [[ ! -e "$path" ]]; then
+        printf 'codegen-call: %s path not found: %s\n' "$flag_name" "$path" >&2
+        exit 2
+    fi
+    printf '%s' "$path"
+}
+
 EXTENSION_ABS_PATH=""
 if [[ -n "$EXTENSION_PATH" ]]; then
-    EXTENSION_ABS_PATH="$(_read_at_path "--extension" "$EXTENSION_PATH")"
+    EXTENSION_ABS_PATH="$(_read_at_path_or_dir "--extension" "$EXTENSION_PATH")"
 fi
 
 # Resolve agents path (optional, claude only — pi ignores it)

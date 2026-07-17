@@ -237,7 +237,7 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
 
         # Trigger (1): terminal agent_end event already present.
         if [[ -z "$RESULT_SEEN_TS" ]]; then
-            if jq -c 'select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null | grep -q .; then
+            if jq -c -R 'fromjson? | select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null | grep -q .; then
                 RESULT_SEEN_TS="$NOW_MS"
             fi
         fi
@@ -280,8 +280,20 @@ END_TS_MS="$(_ts_ms)"
 LATENCY_MS=$((END_TS_MS - START_TS_MS))
 
 # ── Parse JSONL into envelope ─────────────────────────────────────────────────
-# Find last agent_end event
-AGENT_END_EVENT="$(jq -c 'select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
+# Find last agent_end event.
+#
+# `-R 'fromjson? | ...'` (raw-input + optional-decode) is LOAD-BEARING, not
+# style. pi is spawned with `2>&1`, so stderr chatter (cold-session warning,
+# model-catalog fetch, deprecation notice) lands in $TMP_OUT interleaved with
+# the JSONL. Plain `jq 'select(...)'` HARD-ABORTS on the first non-JSON line
+# and emits NOTHING — it does not skip and continue — so one stderr line made
+# a fully successful call parse as `no agent_end event found` (empty
+# AGENT_END_EVENT → the failed-envelope arm below). `fromjson?` drops
+# undecodable lines and keeps going. Mirrors harnesses/claude/call-dispatch.sh,
+# which has always parsed with `jq -c -R 'fromjson? | select(.type=="result")'`
+# — that tolerance, not a different stderr policy, is why claude never showed
+# this bug. Keep every $TMP_OUT scan in this file on `-R 'fromjson?'`.
+AGENT_END_EVENT="$(jq -c -R 'fromjson? | select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
 
 # ── Summarize tool-trace metrics (tool_execution_end events) ────────────────
 # pi's event vocabulary differs from claude's (tool_execution_start/_end with
@@ -293,7 +305,7 @@ AGENT_END_EVENT="$(jq -c 'select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null |
 # claude-shaped block backfilled with fabricated data. Only attached to the
 # SUCCESS envelope below (see STATUS gate).
 _summarize_metrics() {
-    jq -c '.' "$TMP_OUT" 2>/dev/null | jq -s '
+    jq -c -R 'fromjson?' "$TMP_OUT" 2>/dev/null | jq -s '
         . as $all
         | ($all | map(select(.type == "tool_execution_end"))) as $ends
         | ($ends | map(select(.toolName == "read")) | length) as $read_count
@@ -407,24 +419,47 @@ if [[ -z "$AGENT_END_EVENT" ]]; then
     exit 0
 fi
 
-# Extract assistant text from messages array in agent_end event
-# Messages may be an array of {role, content} objects
+# Extract assistant text from the LAST assistant message in the agent_end event.
+# Messages may be an array of {role, content} objects; content is either a
+# string or an array of typed blocks.
+#
+# NEVER pipe this through `head -1`. It used to, and that truncated EVERY
+# multi-line pi reply to its first line — silently, on the success path. The
+# loop's reviewer contract ("END your response with a line exactly
+# `REVIEW_VERDICT: APPROVED`") is the case that exposed it: a reviewer that
+# correctly emitted
+#
+#     | Check | Verdict | Notes |
+#     |---|---|---|
+#     | Quality | OK | clean |
+#
+#     REVIEW_VERDICT: APPROVED
+#
+# reached the loop as the single line `| Check | Verdict | Notes |`, so the
+# sentinel was gone and the cycle died with "reviewer output carried no
+# parseable REVIEW_VERDICT: sentinel after 2 attempt(s)" — blaming the model
+# for a truncation this script performed. Any pi role emitting a trailing
+# sentinel, a fenced JSON block, or plain prose past line 1 was corrupted the
+# same way. harnesses/claude/call-dispatch.sh takes `.result` whole and never
+# truncates; this is the pi twin of that.
+#
+# `[...] | last` selects the final assistant message (the reply), and the text
+# blocks within it are joined with newlines rather than having all but the
+# first discarded.
 ASSISTANT_TEXT="$(
     printf '%s' "$AGENT_END_EVENT" | jq -r '
-        .messages // [] |
-        reverse |
-        .[] |
-        select(.role == "assistant") |
-        (
-            if (.content | type) == "array" then
-                .content[] | select(.type == "text") | .text
-            elif (.content | type) == "string" then
-                .content
-            else
-                ""
-            end
-        )
-    ' 2>/dev/null | head -1 || true
+        [ .messages // [] | .[] | select(.role == "assistant") ]
+        | last
+        | if . == null then
+              ""
+          elif (.content | type) == "array" then
+              [ .content[] | select(.type == "text") | .text ] | join("\n")
+          elif (.content | type) == "string" then
+              .content
+          else
+              ""
+          end
+    ' 2>/dev/null || true
 )"
 
 # Extract usage from agent_end or from dedicated usage events in JSONL
@@ -437,15 +472,50 @@ COST_USD="$(printf '%s' "$AGENT_END_EVENT" | jq -r '.usage.cost_usd // 0' 2>/dev
 # fabricated "1 turn" sentinel (masking-default discipline).
 NUM_TURNS="$(printf '%s' "$AGENT_END_EVENT" | jq -c '.num_turns // null' 2>/dev/null || printf 'null')"
 
-# Fall back to scanning JSONL for usage events if agent_end had no usage
+# Fall back to pi's PER-MESSAGE usage when agent_end carries none.
+#
+# pi never emits a top-level `agent_end.usage`, nor any `{"type":"usage"}`
+# event — the two shapes the reads above and the previous fallback looked for.
+# It reports usage per assistant message, in its OWN vocabulary (not claude's):
+#
+#   {"input":420,"output":5,"cacheRead":0,"cacheWrite":0,"reasoning":0,
+#    "totalTokens":425,"cost":{"input":..,"output":..,"total":0.001125}}
+#
+# Probed live against pi 0.80.10; `.usage` on agent_end is literally absent.
+# So EVERY pi call reported input_tokens 0 / cost_usd 0.0, which is why bench
+# runs show pi cost as "—" and per_role sums of 0 while claude reports real
+# dollars — the harnesses were never actually comparable on cost.
+#
+# Sum across messages (a multi-turn role bills per turn) and translate pi's
+# field names to the envelope's claude-shaped contract. Cost comes from pi's
+# own priced `cost.total`, never recomputed here from a local price table that
+# would silently rot when the catalog changes.
 if [[ "$INPUT_TOKENS" == "0" ]]; then
-    USAGE_EVENT="$(jq -c 'select(.type == "usage")' "$TMP_OUT" 2>/dev/null | tail -1 || true)"
-    if [[ -n "$USAGE_EVENT" ]]; then
-        INPUT_TOKENS="$(printf '%s' "$USAGE_EVENT" | jq -r '.input_tokens // 0')"
-        OUTPUT_TOKENS="$(printf '%s' "$USAGE_EVENT" | jq -r '.output_tokens // 0')"
-        CACHE_READ="$(printf '%s' "$USAGE_EVENT" | jq -r '.cache_read_input_tokens // 0')"
-        CACHE_CREATION="$(printf '%s' "$USAGE_EVENT" | jq -r '.cache_creation_input_tokens // 0')"
-        COST_USD="$(printf '%s' "$USAGE_EVENT" | jq -r '.cost_usd // 0')"
+    PI_USAGE_SUM="$(
+        printf '%s' "$AGENT_END_EVENT" | jq -c '
+            [ .messages // [] | .[] | .usage | select(. != null) ]
+            | {
+                input_tokens:                (map(.input // 0)      | add // 0),
+                output_tokens:               (map(.output // 0)     | add // 0),
+                cache_read_input_tokens:     (map(.cacheRead // 0)  | add // 0),
+                cache_creation_input_tokens: (map(.cacheWrite // 0) | add // 0),
+                cost_usd:                    (map(.cost.total // 0) | add // 0)
+              }
+        ' 2>/dev/null || true
+    )"
+
+    # NOTE: the intermediate object above deliberately uses the SAME key names
+    # as the final envelope's `usage` block. harnesses/shared/
+    # call-dispatch-parity_test.sh asserts claude/pi envelope parity by
+    # SOURCE-SCANNING each script for `usage: {`-scoped key names, so any
+    # differently-named intermediate key here (e.g. a shorthand `cache_read`)
+    # leaks into that scan and trips the parity gate with a phantom mismatch.
+    if [[ -n "$PI_USAGE_SUM" ]]; then
+        INPUT_TOKENS="$(printf '%s' "$PI_USAGE_SUM" | jq -r '.input_tokens')"
+        OUTPUT_TOKENS="$(printf '%s' "$PI_USAGE_SUM" | jq -r '.output_tokens')"
+        CACHE_READ="$(printf '%s' "$PI_USAGE_SUM" | jq -r '.cache_read_input_tokens')"
+        CACHE_CREATION="$(printf '%s' "$PI_USAGE_SUM" | jq -r '.cache_creation_input_tokens')"
+        COST_USD="$(printf '%s' "$PI_USAGE_SUM" | jq -r '.cost_usd')"
     fi
 fi
 
@@ -456,7 +526,27 @@ VALUE_JSON="null"
 
 if [[ -z "$ASSISTANT_TEXT" ]]; then
     STATUS="failed"
-    REASON="pi returned empty reply"
+    # An errored turn still emits agent_end, but with content: [] — so an empty
+    # ASSISTANT_TEXT is the SAME observable as a genuine empty reply. The real
+    # cause lives in the assistant message's `errorMessage` (e.g. "Codex error:
+    # The 'X' model is not supported when using Codex with a ChatGPT account").
+    # Surface it: reporting a bare "pi returned empty reply" for a model/auth
+    # error sends every future debugger hunting the wrong bug, and the loop's
+    # retry classifier needs the real text to spot switch_model/auth failures.
+    PI_ERROR_MESSAGE="$(
+        printf '%s' "$AGENT_END_EVENT" | jq -r '
+            .messages // []
+            | reverse
+            | map(select(.errorMessage != null and .errorMessage != ""))
+            | first
+            | if . == null then "" else .errorMessage end
+        ' 2>/dev/null || true
+    )"
+    if [[ -n "$PI_ERROR_MESSAGE" ]]; then
+        REASON="$PI_ERROR_MESSAGE"
+    else
+        REASON="pi returned empty reply"
+    fi
 elif [[ -n "$JSON_SCHEMA_CONTENT" ]]; then
     # JSON schema was requested: try to parse assistant text as JSON
     PARSED="$(printf '%s' "$ASSISTANT_TEXT" | jq -c '.' 2>/dev/null || true)"

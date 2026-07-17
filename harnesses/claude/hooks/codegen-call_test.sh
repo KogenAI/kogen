@@ -825,6 +825,46 @@ APPEND_FLAG_COUNT="${APPEND_FLAG_COUNT:-0}"
 check "(p) codegen-call has zero --append-system-prompt tokens" "0" "$APPEND_FLAG_COUNT"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (extdir): --extension accepts a package DIRECTORY, not just a file.
+#
+# pi resolves a package dir's entry itself (package.json main/pi.extensions),
+# and the enforcement extension ships ONLY as a package dir — so the previous
+# `-f`-only check rejected every pi loop role at 0 tokens with
+# "--extension file not found". Uses --print-argv: pure argv assembly, no
+# model call, no token spend.
+# ─────────────────────────────────────────────────────────────────────────────
+EXT_DIR="$(mktemp -d)"
+mkdir -p "$EXT_DIR/dist"
+printf '{"name":"probe-ext","main":"dist/index.js"}' >"$EXT_DIR/package.json"
+printf 'export default {};' >"$EXT_DIR/dist/index.js"
+SP_FIXTURE="$EXT_DIR/system-prompt.txt"
+printf 'You are a probe.' >"$SP_FIXTURE"
+
+EXT_DIR_RC=0
+CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
+    --harness=pi \
+    --model=openai-codex/gpt-5.6-terra \
+    --effort=low \
+    --system-prompt="@$SP_FIXTURE" \
+    --extension="@$EXT_DIR" \
+    --print-argv \
+    "PING" >/dev/null 2>&1 || EXT_DIR_RC=$?
+check "(extdir) --extension accepts a package directory" "0" "$EXT_DIR_RC"
+
+EXT_MISSING_RC=0
+CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
+    --harness=pi \
+    --model=openai-codex/gpt-5.6-terra \
+    --effort=low \
+    --system-prompt="@$SP_FIXTURE" \
+    --extension="@$EXT_DIR/nope" \
+    --print-argv \
+    "PING" >/dev/null 2>&1 || EXT_MISSING_RC=$?
+check "(extdir2) --extension still rejects a nonexistent path" "2" "$EXT_MISSING_RC"
+
+rm -rf "$EXT_DIR"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
 

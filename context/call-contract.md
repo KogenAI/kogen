@@ -77,6 +77,46 @@ path) corrupts a merged-stream JSON parse at byte 0 — `Jason.decode!` raises
 the streams at the reader removes the corruption; a still-malformed stdout on a zero exit raises with the
 received text quoted (first ~200 bytes of stdout + stderr tail) instead of a bare byte offset.
 
+## Pi's Native Usage Shape (per-message, not top-level)
+
+Pi's `agent_end` event carries **no top-level `usage` object and no `{"type":"usage"}` event** — the
+two shapes `call-dispatch.sh` previously read, which is why every pi call reported `input_tokens: 0` /
+`cost_usd: 0.0` forever. Pi reports usage **per assistant message**, in its own field vocabulary:
+
+```json
+{
+  "input": 420,
+  "output": 5,
+  "cacheRead": 0,
+  "cacheWrite": 0,
+  "reasoning": 0,
+  "totalTokens": 425,
+  "cost": { "total": 0.001125 }
+}
+```
+
+`harnesses/pi/call-dispatch.sh` sums these across every assistant message in `agent_end.messages` and
+translates field names into the envelope's claude-shaped `usage` keys (`input`→`input_tokens`,
+`cacheRead`→`cache_read_input_tokens`, `cacheWrite`→`cache_creation_input_tokens`, `cost.total`→`cost_usd`).
+This ONLY fires as a fallback when `agent_end.usage.input_tokens` is `0` (i.e. always, for pi). The
+intermediate jq object deliberately uses the SAME key names as the final envelope's `usage` block —
+`harnesses/shared/call-dispatch-parity_test.sh` source-scans for `usage: {`-scoped key names, so a
+differently-named intermediate key leaks into that scan as a phantom parity mismatch.
+
+## Tolerant JSONL Parsing — Both Harnesses Are Spawned `2>&1`
+
+Both `pi` and `claude` are spawned with stderr merged into the same capture stream as stdout JSONL
+(cold-session warnings, model-catalog fetches, deprecation notices land inline). Plain `jq 'select(...)'`
+**hard-aborts at the first non-JSON line and emits nothing** — it does not skip and continue. Every
+`$TMP_OUT`/JSONL scan in both `call-dispatch.sh` scripts MUST use `jq -c -R 'fromjson? | select(...)'`
+(raw-input + optional-decode) so a single stderr line does not make a fully successful call parse as
+"no agent_end/result event found". Claude's script has always done this; pi's did not until this was
+caught as a live defect (a stderr warning made every successful pi call misreport as failed).
+
+Relatedly, the assistant reply text is extracted from the **last** assistant message with ALL its text
+blocks newline-joined — never `head -1`'d. A `head -1` truncation silently drops any trailing sentinel
+line (e.g. the loop's required `REVIEW_VERDICT: APPROVED` marker) from a correct multi-line reply.
+
 ## Zero-Consumer Fields (documented, not dead — kept for forward compat / debugging)
 
 `usage.model` is captured but has no current programmatic reader — visible only via raw JSON inspection
