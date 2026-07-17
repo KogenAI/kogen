@@ -203,3 +203,10 @@ seams:
     guard: test-hermetic
     guard_time: make-test
     pattern: checked-mirror
+
+  - id: ready-pitch-scope-declared
+    declares: "codegen/pitches/ready/*.md scope: frontmatter (every promoted pitch declares its edit surface)"
+    reflects: mix codegen.pitches.scope --check exit code
+    guard: pitch-scope-parity
+    guard_time: make-test
+    pattern: set-parity

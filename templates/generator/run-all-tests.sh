@@ -7,7 +7,7 @@
 # checks (hook-parity, hook-header-parity, harness-parity, test-generator,
 # enforce-registry-parity, enforce-hook-rationale, test-hermetic,
 # prompt-content-parity, tools-header-no-dup, rule-render-freshness,
-# usage-rules-index-parity, prompt-size-budget) run as backgrounded `make` stages alongside the
+# usage-rules-index-parity, prompt-size-budget, pitch-scope-parity) run as backgrounded `make` stages alongside the
 # existing hooks/scaffold/install/npm stages, so a single `make test` surfaces
 # every independent failure at once instead of stopping at the first failing
 # prereq.
@@ -54,6 +54,7 @@ tmp_tools_header_no_dup=$(mktemp)
 tmp_rule_render_freshness=$(mktemp)
 tmp_usage_rules_index_parity=$(mktemp)
 tmp_prompt_size_budget=$(mktemp)
+tmp_pitch_scope_parity=$(mktemp)
 pids=()
 labels=()
 tmps=()
@@ -117,6 +118,10 @@ tmps+=("$tmp_usage_rules_index_parity")
 pids+=($!)
 labels+=(prompt-size-budget)
 tmps+=("$tmp_prompt_size_budget")
+{ make --no-print-directory pitch-scope-parity; } >"$tmp_pitch_scope_parity" 2>&1 &
+pids+=($!)
+labels+=(pitch-scope-parity)
+tmps+=("$tmp_pitch_scope_parity")
 {
     fail=0
     for ext in enforcement askuserquestion subagents web-utils; do
@@ -192,5 +197,5 @@ rm -f "$tmp_hooks" "$tmp_scaffold" "$tmp_install" "$tmp_npm" "$tmp_subagents" \
     "$tmp_hook_parity" "$tmp_hook_header_parity" "$tmp_harness_parity" "$tmp_test_generator" \
     "$tmp_enforce_registry_parity" "$tmp_enforce_hook_rationale" "$tmp_test_hermetic" \
     "$tmp_prompt_content_parity" "$tmp_tools_header_no_dup" "$tmp_rule_render_freshness" \
-    "$tmp_usage_rules_index_parity" "$tmp_prompt_size_budget"
+    "$tmp_usage_rules_index_parity" "$tmp_prompt_size_budget" "$tmp_pitch_scope_parity"
 exit "$fail"

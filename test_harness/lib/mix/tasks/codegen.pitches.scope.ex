@@ -11,10 +11,13 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
 
   Delegates entirely to `CodegenTestHarness.LoopQueue.scope_report/1`
   (default output) and `LoopQueue.partition/2` (when `--lanes` is
-  given). This task is I/O + formatting only; it adds no gate and no
-  retire behavior — it is a report, not a scheduler. `--lanes` prints a
-  paste-ready partition; nothing is written or applied (see
+  given). This task is I/O + formatting only; without `--check` it adds
+  no gate and no retire behavior — it is a report, not a scheduler.
+  `--lanes` prints a paste-ready partition; nothing is written or
+  applied (see
   `codegen/pitches/ready/drain-partitions-lanes-by-edit-surface.md`).
+  With `--check`, it IS a gate: it fails loud when any pitch in the
+  scanned dir is UNROUTED (see `--check` under Flags and Exit codes).
 
   ## Flags
 
@@ -27,6 +30,14 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     byte-identical to the pre-`--lanes` report (COLLISIONS/DISJOINT/
     UNROUTED only). Present: additionally prints `LANE 1..N`,
     `GLOBAL-HOT`, and `UNROUTED` sections from `LoopQueue.partition/2`.
+  - `--check` — optional boolean flag. Absent: behavior/output/exit
+    code are byte-identical to today. Present: if `scope_report/1`
+    reports any UNROUTED pitch, prints the offending slug(s) to stderr
+    and `exit({:shutdown, 2})` BEFORE any of the normal report sections
+    are printed. A `scope: []` pitch (explicit empty list) is DISJOINT,
+    not UNROUTED, and passes. This is the `make test` /
+    `pitch-scope-parity` gate leg: every pitch promoted to `ready/`
+    must declare a `scope:` field.
 
   ## Output
 
@@ -56,7 +67,9 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
   - non-zero — a pitch's `scope:` value is present but not a parseable
     `[...]` flow-list (`LoopQueue.parse_scope/2` raises loud rather than
     silently returning an empty/wrong partition), `--dir` names an
-    unrecognized value, or `--lanes` is not a positive integer
+    unrecognized value, `--lanes` is not a positive integer, or
+    `--check` is given and the scanned dir has at least one UNROUTED
+    pitch
   """
 
   use Mix.Task
@@ -69,7 +82,9 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
   @spec run([String.t()]) :: :ok
   def run(argv) do
     {opts, _positional, invalid} =
-      OptionParser.parse(argv, strict: [dir: :string, cwd: :string, lanes: :string])
+      OptionParser.parse(argv,
+        strict: [dir: :string, cwd: :string, lanes: :string, check: :boolean]
+      )
 
     if invalid != [] do
       Mix.shell().error("codegen.pitches.scope: invalid flags: #{inspect(invalid)}")
@@ -98,6 +113,16 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     end
 
     {disjoint, collisions, unrouted} = LoopQueue.scope_report(pitches_dir)
+
+    if Keyword.get(opts, :check, false) and unrouted != [] do
+      Mix.shell().error(
+        "codegen.pitches.scope --check: #{length(unrouted)} unrouted " <>
+          "#{pitch_noun(length(unrouted))} in #{pitches_dir} (missing scope: field): " <>
+          Enum.join(unrouted, ", ")
+      )
+
+      exit({:shutdown, 2})
+    end
 
     print_collisions(collisions)
     print_disjoint(disjoint)

@@ -135,7 +135,7 @@ In any case: shaper SPLITS into N pitches. Does NOT ask the user "should I split
 
 **Grammar**: `blocks_on:` is a YAML frontmatter flow-list of bare slugs, e.g. `blocks_on: [dep-one, dep-two]`; empty/independent is `blocks_on: []`. **Dual-read**: no-frontmatter pitches fall back to legacy prose — a `## Dependencies` body of `Blocks-on: <slug>` lines, also accepted inside `## Related pitches`.
 
-**`scope:`** (sibling field, machine-readable edit surface) is a flow-list of repo-relative paths this pitch will edit — inline (`scope: [a, b]`) or multiline (key alone, `[`/items/`]` on following lines — the only hand-written form in the corpus). Shaper writes it alongside `status: SHAPED`. Read by `mix codegen.pitches.scope` (`LoopQueue.parse_scope/2`) — a report, no gate.
+**`scope:`** (sibling field, machine-readable edit surface) is a flow-list of repo-relative paths this pitch will edit — inline (`scope: [a, b]`) or multiline (key alone, `[`/items/`]` on following lines — the only hand-written form in the corpus). Shaper writes it alongside `status: SHAPED`. Read by `mix codegen.pitches.scope` (`LoopQueue.parse_scope/2`) — a report AND (via `--check` gate leg) the `make test` enforcer on `ready/` pitches: a `ready/` pitch with no `scope:` field fails the `pitch-scope-parity` gate leg, naming the slug.
 
 **Multi-pitch orchestrator enforcement**: `Blocks-on:` edges are validated BEFORE any building starts. `claude-build a b c`/`pi-build a b c` pre-checks argv order against declared edges; a violation STOPS with a report — no auto-reorder, no silent mis-sequencing.
 

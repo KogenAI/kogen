@@ -168,6 +168,40 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
     refute out =~ "LANE 3"
   end
 
+  test "--check absent: output/exit are byte-identical to today (regression)", ctx do
+    File.write!(Path.join(ctx.ready_dir, "a.md"), "---\nstatus: SHAPED\n---\n# a\n")
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}"]) end)
+
+    assert out =~ "UNROUTED (1 pitch — no scope: field; a human must place these)"
+    assert out =~ "COLLISIONS (0 pairs share an edit surface)"
+    assert out =~ "DISJOINT (0 pitches)"
+  end
+
+  test "--check with scope: [] (explicit empty list) is DISJOINT, not UNROUTED, and passes",
+       ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: []\n---\n# a\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--check"]) end)
+
+    assert out =~ "DISJOINT (1 pitch, safe to run in parallel)"
+    assert out =~ "UNROUTED (0 pitches)"
+  end
+
+  test "--check with all pitches routed exits normally (no raise)", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--check"]) end)
+
+    assert out =~ "DISJOINT (1 pitch, safe to run in parallel)"
+  end
+
   test "GLOBAL-HOT pitch is listed and never appears inside a LANE section", ctx do
     File.write!(
       Path.join(ctx.ready_dir, "hot.md"),
@@ -192,7 +226,6 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
     [_before, after_global_hot] = String.split(out, "GLOBAL-HOT", parts: 2)
     refute after_global_hot =~ ~r/LANE \d/
   end
-
 end
 
 # Mix.shell/1 mutates process-global state. Tests that swap in
@@ -269,5 +302,20 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeShellTest do
     assert_receive {:mix_shell, :error, [msg]}
     assert msg =~ "positive integer"
     assert msg =~ "abc"
+  end
+
+  test "--check with an unrouted pitch exits 2 naming the slug", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    File.write!(Path.join(ctx.ready_dir, "a.md"), "---\nstatus: SHAPED\n---\n# a\n")
+
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--check"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "unrouted"
+    assert msg =~ "a"
   end
 end

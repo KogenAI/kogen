@@ -475,6 +475,17 @@ usage-rules-index-parity:
 	if [ $$rc -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "usage-rules-index-parity: PASS"; fi; \
 	exit $$rc
 
+# pitch-scope-parity: fail-closed gate over codegen/pitches/ready/ — every
+# pitch promoted to ready/ must declare a scope: frontmatter field. Reuses
+# the mix codegen.pitches.scope report; --check exits non-zero when any
+# ready/ pitch is UNROUTED (no scope: field), naming the slug(s). See
+# context/pitch-writing-guide.md.
+.PHONY: pitch-scope-parity
+pitch-scope-parity:
+	@cd "$(SCRIPT_DIR)/test_harness" && MIX_BUILD_PATH=_build/claude_test mix codegen.pitches.scope --check --dir=ready --cwd=..; rc=$$?; \
+	if [ $$rc -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "pitch-scope-parity: PASS"; fi; \
+	exit $$rc
+
 # prompt-size-budget: fail-closed gate on the prompt attention surface — rule
 # files under shared/rules/{_core,roles,stacks}/ and rendered agent system
 # prompts must not exceed their committed ceiling in
