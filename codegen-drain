@@ -105,6 +105,24 @@ node_exists() {
     [[ -n "$hit" ]]
 }
 
+# watcher_probe_cmd <repo> — emits a self-contained shell snippet (string)
+# that resolves whether <repo> is under queue supervision, by reading the
+# single-flight lock BuildLock already writes at
+# codegen/gate-pending/queue.lock — NEVER by scanning argv (a process-list
+# grep over commandlines matches any process whose argv happens to quote
+# the search pattern,
+# including a solo `mix codegen.loop --cwd=<repo>` build, or the very agent
+# asking the question). Prints "yes" iff the lock names label "queue" AND
+# the recorded pid is alive (`kill -0`); "no" on any other state (absent,
+# unreadable, malformed, dead pid, or label "solo" — a single build is not
+# a watcher). One predicate, textually shared by both the local and remote
+# legs of cmd_status, so there is exactly one place this logic can drift.
+watcher_probe_cmd() {
+    local repo="$1"
+    printf 'lockf=%q; if [ -f "$lockf" ]; then read -r wpid wlabel _rest <"$lockf" 2>/dev/null; if [ "$wlabel" = "queue" ] && kill -0 "$wpid" 2>/dev/null; then echo yes; else echo no; fi; else echo no; fi' \
+        "$repo/codegen/gate-pending/queue.lock"
+}
+
 # remote_run <host> <run_as> <shell-command>
 # Wraps in `su - <run_as> -c '...'` when run_as is set (root-landing ssh
 # hosts); plain ssh exec otherwise (ssh user already owns the repo).
@@ -290,12 +308,10 @@ cmd_status() {
             if [[ -d "$repo/codegen/pitches/.incoming" ]]; then
                 incoming="$(find "$repo/codegen/pitches/.incoming" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')"
             fi
-            if pgrep -f "mix codegen.loop.*--cwd=$repo" >/dev/null 2>&1; then
-                watcher="yes"
-            fi
+            watcher="$(bash -c "$(watcher_probe_cmd "$repo")" 2>/dev/null || echo no)"
         else
             local remote_out
-            remote_out="$(remote_run "$host" "$run_as" "find '$repo/codegen/pitches/ready' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; find '$repo/codegen/pitches/.incoming' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; pgrep -f 'mix codegen.loop.*--cwd=$repo' >/dev/null 2>&1 && echo yes || echo no" 2>/dev/null || true)"
+            remote_out="$(remote_run "$host" "$run_as" "find '$repo/codegen/pitches/ready' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; find '$repo/codegen/pitches/.incoming' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; $(watcher_probe_cmd "$repo")" 2>/dev/null || true)"
             if [[ -z "$remote_out" ]]; then
                 reachable="0"
             else
@@ -318,6 +334,9 @@ cmd_status() {
                 printf '%-12s unreachable\n' "$node"
             else
                 printf '%-12s ready=%-4s incoming=%-4s watcher=%s\n' "$node" "$count" "$incoming" "$watcher"
+                if [[ "$watcher" == "no" ]]; then
+                    printf '             not supervised — start with: claude-build --queue --watch\n'
+                fi
             fi
         fi
     done <<<"$names"

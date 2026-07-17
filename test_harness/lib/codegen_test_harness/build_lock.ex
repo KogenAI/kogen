@@ -9,10 +9,16 @@ defmodule CodegenTestHarness.BuildLock do
   privately) so `OrchestrationLoop.run/1` can acquire the identical lock
   without duplicating the pid-liveness protocol.
 
-  Lock file format: `"<pid> <label>[ tree=<os_pid>]\\n"` — `<label>` is free
-  text (`"queue"` for the drain, `"solo"` for a single build) used only for
-  diagnostics; the liveness check is keyed on `<pid>` (the lock-writing
-  BEAM's own OS pid) alone. The optional trailing `tree=<os_pid>` token
+  Lock file format: `"<pid> <label>[ tree=<os_pid>]\\n"` — `<label>` is a
+  READ CONTRACT, not diagnostics-only text: it is exactly `"queue"` (the
+  drain, `LoopQueueDrain`) or `"solo"` (a single build, `OrchestrationLoop`),
+  and `codegen-drain status`'s `watcher=` column reads this exact field to
+  distinguish "the queue is supervised" from "one pitch happens to be
+  building" — see `codegen-drain`'s `watcher_probe_cmd/1`. Changing either
+  literal, or the field order, breaks that consumer silently (it fails
+  closed to `watcher=no`, never a crash). The liveness check itself is keyed
+  on `<pid>` (the lock-writing BEAM's own OS pid) alone. The optional
+  trailing `tree=<os_pid>` token
   (Move 3) records the OS pid of the SPAWNED CHILD TREE the lock-writer is
   supervising — distinct from `<pid>` itself. This closes the two-builders
   door: a drain BEAM can die (crash, OOM-kill, `kill -9` on the wrapper)

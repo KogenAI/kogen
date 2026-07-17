@@ -189,3 +189,10 @@ seams:
     guard: harnesses/claude/hooks/developer-no-self-gate-message-parity_test.sh
     guard_time: make-test
     pattern: checked-mirror
+
+  - id: build-lock-format-to-codegen-drain-status
+    declares: test_harness/lib/codegen_test_harness/build_lock.ex (lock line format + "queue"/"solo" label literals)
+    reflects: codegen-drain (cmd_status watcher_probe_cmd/1 — resolves watcher= from the lock file, never from argv)
+    guard: test-hermetic
+    guard_time: make-test
+    pattern: checked-mirror

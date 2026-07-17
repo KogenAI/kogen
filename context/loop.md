@@ -64,6 +64,14 @@ the same cwd. `pid_alive_fn` defaults to `BuildLock.default_pid_alive?/1` (`kill
 a stale lock from a dead PID is reclaimed, not blocked on forever. Released via `BuildLock.release/1` on
 both success and failure paths (loop uses `try/after` semantics around the guarded body).
 
+**`<label>` is a read contract, not diagnostics-only.** `LoopQueueDrain` writes exactly `"queue"`;
+`OrchestrationLoop` writes exactly `"solo"`. `codegen-drain status` (`context/deployment-topology.md`)
+reads this literal to resolve its `watcher=` column — `"queue"` + a live pid means the fleet node is
+under queue supervision, `"solo"` means one pitch is building unsupervised. Changing either literal, or
+the lock line's field order, silently breaks that consumer (fails closed to `watcher=no`, never a
+crash) — guarded by `test_harness/test/codegen_test_harness/build_lock_test.exs` and registered in
+`shared/enforcement/seam-registry.yaml` (`build-lock-format-to-codegen-drain-status`).
+
 ## Signal Handling
 
 `BuildSignalHandler` traps SIGINT/SIGTERM during a run and halts with exit code 130 (standard

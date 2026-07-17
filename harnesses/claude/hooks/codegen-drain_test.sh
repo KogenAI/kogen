@@ -196,6 +196,81 @@ check "(n) installed copy moved file via --cwd, not install location" "1" "$([[ 
 check "(n) installed copy source no longer holds file" "1" "$([[ ! -f "$TEST_PITCH_N" ]] && echo 1 || echo 0)"
 rm -rf "$(dirname "$INSTALLED_COPY")"
 
+# ── (o) status: live queue.lock with label=queue + live pid → watcher=yes ──
+WS_O="$(make_ws o)"
+setup_fixture "$WS_O"
+mkdir -p "$WS_O/nodeA/codegen/gate-pending"
+printf '%s queue tree=%s\n' "$$" "$$" >"$WS_O/nodeA/codegen/gate-pending/queue.lock"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_O/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(o) status exits 0" "0" "$ec"
+assert_contains "(o) nodeA shows watcher=yes for live queue lock" "$out" "watcher=yes"
+
+# ── (p) status: label=solo + live pid → watcher=no (solo is NOT a watcher) ─
+WS_P="$(make_ws p)"
+setup_fixture "$WS_P"
+mkdir -p "$WS_P/nodeA/codegen/gate-pending"
+printf '%s solo tree=%s\n' "$$" "$$" >"$WS_P/nodeA/codegen/gate-pending/queue.lock"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_P/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(p) status exits 0" "0" "$ec"
+assert_contains "(p) nodeA shows watcher=no for solo-labeled lock" "$out" "$(printf '%-12s ready=%-4s incoming=%-4s watcher=%s' "nodeA" "0" "0" "no")"
+
+# ── (q) status: dead pid in lock → watcher=no (stale lock) ─────────────────
+WS_Q="$(make_ws q)"
+setup_fixture "$WS_Q"
+mkdir -p "$WS_Q/nodeA/codegen/gate-pending"
+# Find a pid guaranteed dead: spawn+immediately reap a subshell.
+(:) &
+DEAD_PID=$!
+wait "$DEAD_PID" 2>/dev/null || true
+printf '%s queue tree=%s\n' "$DEAD_PID" "$DEAD_PID" >"$WS_Q/nodeA/codegen/gate-pending/queue.lock"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_Q/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(q) status exits 0" "0" "$ec"
+assert_contains "(q) nodeA shows watcher=no for dead pid" "$out" "$(printf '%-12s ready=%-4s incoming=%-4s watcher=%s' "nodeA" "0" "0" "no")"
+
+# ── (r) status: no lock file → watcher=no ───────────────────────────────────
+WS_R="$(make_ws r)"
+setup_fixture "$WS_R"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_R/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(r) status exits 0" "0" "$ec"
+assert_contains "(r) nodeA shows watcher=no with no lock file" "$out" "$(printf '%-12s ready=%-4s incoming=%-4s watcher=%s' "nodeA" "0" "0" "no")"
+
+# ── (s) status: malformed lock file → watcher=no ────────────────────────────
+WS_S="$(make_ws s)"
+setup_fixture "$WS_S"
+mkdir -p "$WS_S/nodeA/codegen/gate-pending"
+printf 'garbage\n' >"$WS_S/nodeA/codegen/gate-pending/queue.lock"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_S/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(s) status exits 0" "0" "$ec"
+assert_contains "(s) nodeA shows watcher=no with malformed lock" "$out" "$(printf '%-12s ready=%-4s incoming=%-4s watcher=%s' "nodeA" "0" "0" "no")"
+
+# ── (t) static: no argv-scanning liveness probe anywhere (self-match class
+# is closed by construction — a solo build or an agent quoting the pattern
+# must never satisfy the watcher check) ─────────────────────────────────────
+ec=0
+pgrep_hits="$(grep -cE '\bpgrep -f|ps .*\| *grep' "$DRAIN" || true)"
+check "(t) no pgrep-f / ps-pipe-grep liveness probe in codegen-drain" "0" "$pgrep_hits"
+
+# ── (u) status: watcher=no prints remediation in non-JSON output ───────────
+WS_U="$(make_ws u)"
+setup_fixture "$WS_U"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_U/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(u) status exits 0" "0" "$ec"
+assert_contains "(u) remediation names claude-build --queue --watch" "$out" "claude-build --queue --watch"
+
+# ── (v) --json status watcher=no still valid JSON shape (no extra key) ─────
+WS_V="$(make_ws v)"
+setup_fixture "$WS_V"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_V/drain-nodes.yaml" "$DRAIN" status --json 2>&1)" || ec=$?
+check "(v) status --json exits 0" "0" "$ec"
+assert_contains "(v) json watcher no" "$out" '"watcher":"no"'
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

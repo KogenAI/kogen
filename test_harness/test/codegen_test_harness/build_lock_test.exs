@@ -121,6 +121,26 @@ defmodule CodegenTestHarness.BuildLockTest do
     end
   end
 
+  describe "label is a read contract consumed by codegen-drain status" do
+    # codegen-drain's watcher_probe_cmd/1 reads field 2 of the lock line and
+    # treats exactly "queue" as supervised, anything else (incl. "solo") as
+    # not-a-watcher. These literals are load-bearing across a language
+    # boundary — a rename here silently breaks that consumer (fails closed
+    # to watcher=no, never a crash), so pin them explicitly rather than
+    # relying only on the pre-existing "solo"/"queue" usages above.
+    test "LoopQueueDrain's label literal is exactly \"queue\"", ctx do
+      assert :ok = BuildLock.acquire(ctx.lock_path, "queue", fn _pid -> false end)
+      [_pid, label | _rest] = ctx.lock_path |> File.read!() |> String.trim() |> String.split(" ")
+      assert label == "queue"
+    end
+
+    test "OrchestrationLoop's label literal is exactly \"solo\"", ctx do
+      assert :ok = BuildLock.acquire(ctx.lock_path, "solo", fn _pid -> false end)
+      [_pid, label | _rest] = ctx.lock_path |> File.read!() |> String.trim() |> String.split(" ")
+      assert label == "solo"
+    end
+  end
+
   describe "update_tree_pid/2" do
     test "rewrites the tree= token, preserving pid + label", ctx do
       File.write!(ctx.lock_path, "42 queue tree=1\n")
