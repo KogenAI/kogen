@@ -279,7 +279,7 @@ The `/ready` skill is a sibling investigation aid that gates a pitch's readiness
 
 This is a SEPARATE pitch and change, not folded into shape-mode tightening. The two surfaces drift independently; version-matching is not automatic.
 
-- **Sweep-class enforcement**: `/ready` blocks promotion when a sweep/purge/audit/collapse/rename/remove pitch is missing a full-vocabulary sweep transcript OR a producer/verifier reconciliation in `## References`. This enforcement is baked into the `/ready` skill body (not just context docs) via the `ready.md.j2` source.
+- **Sweep-class enforcement**: `/ready` blocks promotion when a sweep/purge/audit/collapse/rename/remove pitch lacks a full-vocabulary sweep transcript OR producer/verifier reconciliation in `## References`. Baked into `ready.md.j2`, not just context docs.
 
 ## Pitfalls
 

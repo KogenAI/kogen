@@ -159,11 +159,9 @@ Each entry: **What** was ambiguous / **Picked**: which interpretation / **Why**:
 
 ❌ "User wants the field nullable." ✅ "Field nullability: picked nullable. Why: existing rows lack the value (verified via Repo.aggregate). Alternative: NOT NULL with default — rejected because default has no business meaning."
 
-## Risk & Buy-In
+## Risk
 
 Each risk: **Severity** (blocking|high|medium|low) + **Likelihood** (certain|likely|possible|unlikely) + **Mitigation**. Blocking risk → propose path forward, not open question.
-
-`**Needs buy-in**: <what + why>` at end of plan when: migration >100K rows, new prod env var, breaking API change, new external dep. Never blocks the plan.
 
 ## Sub-Slice Splitting (Budget-Driven)
 

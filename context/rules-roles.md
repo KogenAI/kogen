@@ -121,10 +121,12 @@ Committer stages **ALL cycle output** in a single `git add -A` commit per cycle.
 
 ## Trigger Keywords
 
-orchestrator rules, planner rules, developer rules, reviewer rules, committer rules, context-curator rules, never-implement, full-cycle, delegation, INCONCLUSIVE table
+orchestrator rules, planner rules, developer rules, reviewer rules, committer rules, context-curator rules, never-implement, full-cycle, delegation, INCONCLUSIVE table, needs buy-in, planner has no questions, measurement probe, scoping guard, claim kind
 
 ## Pitfalls
 
+- **The planner has no buy-in/question form** — `shared/rules/roles/planner.md` § Risk states the only surviving contract: a blocking risk gets a severity + mitigation and a proposed path forward, never an open question. A pitch premise the planner cannot honestly plan around FAILS the plan; the drain (`LoopQueueDrain.park_failed_tree/2`) parks it to `queue-fail/<slug>/<ts>` and proceeds to the next pitch. There is no `Needs buy-in` escape hatch — deleted because the planner body is opaque prose (never re-parsed) with zero consumers.
+- **Scoping guard triggers on claim kind, not byte origin** — the probe-discipline spread requirement (byte-identical in `shape.txt`/`_probing.txt`/`ready.md.j2`) applies to any measurement probe (Outcome = a number over a sample: delta, net, N-of-M), in-repo or external — not just external-system claims. Widen the sample to the full population when enumerable and cheap; a number without a stated sample is `UNPROBED`.
 - **Rule changes are not live** — must `make install` to regenerate agent prompts
 - **Dev prompt boundary** — the developer delegation prompt ends at the gate. Never fold "Commit via committer" / `make install` / deploy into the dev prompt; commit is a separate post-reviewer+curator cycle stage. Sync sites carrying this rule: `harnesses/{claude,pi}/tools-header/build.txt` (responsibilities one-liner), `shared/apps/AGENTS-{phoenix,static}.md.j2`.
 - **Role identity at runtime** — hooks use two discriminators: `AGENT_TYPE` (per-subagent identity, set per-spawn) and `CLAUDE_ROLE_FAMILY` (per-launcher mode, set by outer session harness). `AGENT_TYPE` is used for per-role guards on subagents; `CLAUDE_ROLE_FAMILY` is used for `claude-debug`/`claude-shape` session-level guards. Not all hooks use both — check each hook's discriminator before assuming universal `$AGENT_TYPE` behavior
