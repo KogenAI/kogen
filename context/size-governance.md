@@ -24,7 +24,10 @@ Trigger for the full decision procedure.
 
 `_core`/shared rule files: <50 lines. `roles`/`stacks` rule files: <150 lines. Several files already
 exceed these as pre-existing scar tissue — the caps are advisory targets for new content, not a
-retroactive gate.
+retroactive gate. `context-curator-guard.sh`'s edit-time `warn_if_over_cap` no longer warns off these
+tier numbers — it predicts the committed `prompt-budgets.txt` row instead (see below), so a file at
+its full committed budget (even one that already exceeds its STYLE_GUIDE target) stays silent, and a
+file under its tier target but at its committed budget still warns correctly.
 
 ## `prompt-size-budget` Gate (hard, freezes current size as ceiling)
 

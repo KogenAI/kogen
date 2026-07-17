@@ -19,8 +19,9 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog, repoRelative } from "../lib/hook-helpers";
+import { deny, debugLog, repoRelative, resolveRealPath } from "../lib/hook-helpers";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 export const HANDLER_META = {
   name: "context-curator-guard",
@@ -30,18 +31,25 @@ export const HANDLER_META = {
 
 /**
  * warnIfOverCap — projects post-write line count and emits a stderr warning
- * when a rule-file write would exceed the STYLE_GUIDE tier cap.
+ * when a rule-file write would exceed the file's COMMITTED budget row in
+ * templates/generator/prompt-budgets.txt (the number make prompt-size-budget
+ * actually enforces — NOT the STYLE_GUIDE tier caps, which are advisory
+ * targets for new files only and disagree with the enforced gate on every
+ * pre-existing file already at/over its tier cap).
  * NEVER blocks — always returns undefined (warn-only).
  *
- * Tier caps mirror STYLE_GUIDE.md:
- *   /_core/ path segment → 50 lines
- *   /roles/ or /stacks/ path segment → 150 lines
+ * Resolution: resolve filePath to its real (symlink-free) path, then walk up
+ * parent directories looking for templates/generator/prompt-budgets.txt —
+ * that directory is the repo root. Look up the repo-relative key in the
+ * budgets file; compare projected lines to that row.
  *
  * Projection formula:
  *   Edit → (on-disk line count) - newlines(old_string) + newlines(new_string)
  *   Write → newlines(content)  [file is fully replaced]
  *
- * Skips silently on: MultiEdit, missing/unparseable payload, any I/O error.
+ * Skips silently on: MultiEdit, missing/unparseable payload, unresolvable
+ * repo root, no budget row for this file, unreadable budgets file, any I/O
+ * error.
  */
 function warnIfOverCap(
   filePath: string,
@@ -51,14 +59,34 @@ function warnIfOverCap(
   // MultiEdit has no single old/new_string — fail-open.
   if (toolName === "multiedit" || toolName === "MultiEdit") return;
 
-  // Derive tier cap from path segments.
+  const realPath = resolveRealPath(filePath);
+  if (!realPath) return;
+
+  let root = realPath;
+  let budgetsFile = "";
+  while (root !== path.dirname(root)) {
+    root = path.dirname(root);
+    const candidate = path.join(root, "templates", "generator", "prompt-budgets.txt");
+    if (fs.existsSync(candidate)) {
+      budgetsFile = candidate;
+      break;
+    }
+  }
+  if (!budgetsFile) return;
+
+  const key = path.relative(root, realPath);
   let cap = 0;
-  if (/(^|\/)_core(\/|$)/.test(filePath)) {
-    cap = 50;
-  } else if (/(^|\/)(?:roles|stacks)(\/|$)/.test(filePath)) {
-    cap = 150;
-  } else {
-    return; // No cap for this path tier.
+  try {
+    const budgetsContent = fs.readFileSync(budgetsFile, "utf8");
+    const row = budgetsContent
+      .split("\n")
+      .find((line) => line.startsWith(`${key} `));
+    if (!row) return;
+    const parsed = parseInt(row.slice(key.length + 1).trim(), 10);
+    if (Number.isNaN(parsed)) return;
+    cap = parsed;
+  } catch {
+    return; // Unreadable budgets file — fail-open.
   }
 
   // Count newlines in a string (\n occurrences).
@@ -94,7 +122,7 @@ function warnIfOverCap(
 
   if (projected > cap) {
     process.stderr.write(
-      `[pi-enforcement:context-curator-guard] WARNING: ${filePath} — projected ${projected} lines exceeds tier cap ${cap}. Compress or relocate the verbose example to context/*.md.\n`,
+      `[pi-enforcement:context-curator-guard] WARNING: ${filePath} — projected ${projected} lines exceeds committed budget ${cap} (templates/generator/prompt-budgets.txt). make prompt-size-budget will fail. Evict or compress an equal amount in this pass — the budget is operator-owned and not yours to raise.\n`,
     );
   }
 }

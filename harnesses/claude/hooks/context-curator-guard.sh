@@ -27,26 +27,44 @@ parse_input
 debug_log context-curator-guard "tool=$TOOL_NAME agent=$AGENT_TYPE file=$FILE_PATH"
 
 # warn_if_over_cap — projects post-write line count and prints a stderr warning
-# if the write would exceed the STYLE_GUIDE tier cap for rule files.
+# if the write would exceed the file's COMMITTED budget row in
+# templates/generator/prompt-budgets.txt (the number make prompt-size-budget
+# actually enforces — NOT the STYLE_GUIDE tier caps, which are advisory targets
+# for new files only and disagree with the enforced gate on every pre-existing
+# file already at/over its tier cap).
 # NEVER denies — always returns 0 (warn-only).
-# Tier caps mirror STYLE_GUIDE.md: _core/ segment → 50; roles/ or stacks/ → 150.
-# Skips silently on: MultiEdit, unparseable payload, any jq/file error.
+# Skips silently on: MultiEdit, unparseable payload, unresolvable repo root,
+# no budget row for this file, unreadable budgets file, any jq/file error.
 warn_if_over_cap() {
     # MultiEdit payload has no single old/new_string — skip (fail-open).
     if [ "$TOOL_NAME" = "MultiEdit" ]; then
         return 0
     fi
 
-    # Derive tier cap from path segments.
-    local cap=0
-    if printf '%s' "$FILE_PATH" | grep -qE '(^|/)_core(/|$)'; then
-        cap=50
-    elif printf '%s' "$FILE_PATH" | grep -qE '(^|/)(roles|stacks)(/|$)'; then
-        cap=150
-    else
-        # No cap for this path tier.
-        return 0
-    fi
+    # Resolve the real (symlink-free) path, then walk up parents looking for
+    # templates/generator/prompt-budgets.txt — that directory is the repo
+    # root. The hook is installed outside the repo (~/.claude/hooks/), so
+    # $(dirname "$0") cannot reach it; the edited path always lands in the
+    # codegen repo via the codegen/rules symlink.
+    local real_path
+    real_path=$(hooks_realpath "$FILE_PATH") || return 0
+    [ -z "$real_path" ] && return 0
+
+    local root="$real_path"
+    local budgets_file=""
+    while [ "$root" != "/" ] && [ -n "$root" ]; do
+        root=$(dirname "$root")
+        if [ -f "$root/templates/generator/prompt-budgets.txt" ]; then
+            budgets_file="$root/templates/generator/prompt-budgets.txt"
+            break
+        fi
+    done
+    [ -z "$budgets_file" ] && return 0
+
+    local key="${real_path#"$root"/}"
+    local cap
+    cap=$(grep -E "^${key//./\\.} " "$budgets_file" 2>/dev/null | awk '{print $2}') || return 0
+    [ -z "$cap" ] && return 0
 
     # Project post-write line count.
     local projected=0
@@ -75,7 +93,7 @@ warn_if_over_cap() {
     fi
 
     if [ "$projected" -gt "$cap" ]; then
-        printf >&2 '[context-curator-guard] WARNING: %s — projected %d lines exceeds tier cap %d. Compress or relocate the verbose example to context/*.md.\n' \
+        printf >&2 '[context-curator-guard] WARNING: %s — projected %d lines exceeds committed budget %d (templates/generator/prompt-budgets.txt). make prompt-size-budget will fail. Evict or compress an equal amount in this pass — the budget is operator-owned and not yours to raise.\n' \
             "$FILE_PATH" "$projected" "$cap"
     fi
     return 0
