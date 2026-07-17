@@ -243,6 +243,204 @@ defmodule CodegenTestHarness.LoopQueue do
     |> Enum.sort()
   end
 
+  @doc """
+  Folds the `scope:` collision graph over `pitches_dir` into `lane_count`
+  ordered lanes — the greedy connected-component fold described in
+  `codegen/pitches/ready/drain-partitions-lanes-by-edit-surface.md`.
+
+  Builds its OWN scoped map via `parse_scope/2` (does not reuse
+  `scope_report/1`'s return — that function discards per-slug scope
+  paths, keeping only the derived disjoint/collisions/unrouted lists,
+  which is not enough to fold a slug into a specific lane).
+
+  Connected components of the collision graph (edge = at least one
+  shared `scope:` path) are computed FIRST, via union-find over the
+  scoped slugs. A lane never splits a component — this is what keeps a
+  hot cluster whole on one lane and makes cross-lane collision weight
+  0 BY CONSTRUCTION, not by a greedy per-pitch tie-break that could
+  still split a cluster across two lanes.
+
+  Components are then greedily assigned to lanes: largest (by summed
+  `scope:` file count) first, each into whichever lane currently has
+  the smallest total scope-file count (a longest-processing-time bin
+  fold) — the free size-balance signal already present in the graph
+  (no cost estimator, no build-history input).
+
+  A component that shares at least one file with every OTHER
+  component (i.e. its own collision-adjacency, not lane membership,
+  touches the entire batch) is never placed in a lane — it is
+  returned separately as `global_hot`, alone, to be built serially.
+  `blocks_on:` edges are honored as CO-LOCATION constraints only (see
+  the pitch's Solution sketch: a `blocks_on:` edge is sometimes
+  produce/consume and sometimes a shared edit surface, and co-location
+  satisfies both readings without the fold needing to distinguish
+  them) — a `blocks_on:` pair is merged into the same union-find
+  component as any `scope:` collision would be, PROVIDED both ends are
+  present as scoped slugs in `pitches_dir` (an edge naming a slug
+  outside the scoped batch, e.g. because it already shipped, is a dead
+  edge and is silently ignored, matching `ordered_slugs/2`'s existing
+  intra-batch-only edge filter).
+
+  Each lane's slugs are ordered with `topo_sort/2` over the lane's own
+  `blocks_on:` edges (edges outside the lane are already unreachable —
+  co-location guarantees any edge between two scoped slugs lives
+  inside one lane).
+
+  Returns `{lanes, global_hot, unrouted}`:
+
+    - `lanes` — `lane_count` lists of slugs (a lane may be `[]` when
+      there are fewer components than lanes), each topo-sorted
+    - `global_hot` — slugs whose component collides with every lane
+      (never placed); `[]` when none
+    - `unrouted` — slugs with no `scope:` field (never placed; mirrors
+      `scope_report/1`'s UNROUTED)
+
+  Raises when `lane_count` is not a positive integer.
+  """
+  @spec partition(String.t(), pos_integer()) ::
+          {lanes :: [[slug()]], global_hot :: [slug()], unrouted :: [slug()]}
+  def partition(pitches_dir, lane_count) when is_integer(lane_count) and lane_count > 0 do
+    slugs =
+      pitches_dir
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.map(&Path.basename(&1, ".md"))
+      |> Enum.sort()
+
+    scoped =
+      Enum.reduce(slugs, %{}, fn slug, acc ->
+        case parse_scope(slug, Path.join(pitches_dir, "#{slug}.md")) do
+          {:ok, nil} -> acc
+          {:ok, paths} -> Map.put(acc, slug, paths)
+        end
+      end)
+
+    unrouted = Enum.reject(slugs, &Map.has_key?(scoped, &1))
+    scoped_slugs = scoped |> Map.keys() |> Enum.sort()
+
+    blocks_edges =
+      scoped_slugs
+      |> Enum.flat_map(fn slug ->
+        parse_edges(slug, Path.join(pitches_dir, "#{slug}.md"))
+      end)
+      |> Enum.filter(fn {s, dep} -> s in scoped_slugs and dep in scoped_slugs end)
+
+    # GLOBAL-HOT is computed at the raw per-slug collision-adjacency level,
+    # BEFORE union-find merging: a slug that shares a scope: path with EVERY
+    # other scoped slug. Checking this at the component level (post-merge)
+    # would be dead code — any slug colliding with everything else gets
+    # union-find-merged INTO one giant component together with them, so no
+    # component could ever "collide with every other component" (there
+    # would only be one component left). Extracting these hot slugs BEFORE
+    # merging, and excluding them from the placeable graph, is what makes
+    # GLOBAL-HOT reachable.
+    global_hot =
+      scoped_slugs
+      |> Enum.filter(&collides_with_every_other_slug?(&1, scoped_slugs, scoped))
+      |> Enum.sort()
+
+    placeable_slugs = scoped_slugs -- global_hot
+
+    scope_edges =
+      for {slug_a, i} <- Enum.with_index(placeable_slugs),
+          slug_b <- Enum.drop(placeable_slugs, i + 1),
+          shared_paths(scoped[slug_a], scoped[slug_b]) != [] do
+        {slug_a, slug_b}
+      end
+
+    placeable_blocks_edges =
+      Enum.filter(blocks_edges, fn {s, dep} -> s in placeable_slugs and dep in placeable_slugs end)
+
+    all_edges = scope_edges ++ Enum.map(placeable_blocks_edges, fn {s, dep} -> {s, dep} end)
+
+    components = connected_components(placeable_slugs, all_edges)
+
+    lanes =
+      components
+      |> Enum.sort_by(fn comp -> -component_scope_size(comp, scoped) end)
+      |> assign_components_to_lanes(lane_count, scoped)
+      |> Enum.map(fn lane_slugs ->
+        lane_edges =
+          Enum.filter(placeable_blocks_edges, fn {s, dep} ->
+            s in lane_slugs and dep in lane_slugs
+          end)
+
+        topo_sort(Enum.sort(lane_slugs), lane_edges)
+      end)
+
+    {lanes, global_hot, unrouted}
+  end
+
+  defp component_scope_size(comp, scoped) do
+    comp
+    |> Enum.flat_map(&Map.get(scoped, &1, []))
+    |> Enum.uniq()
+    |> length()
+  end
+
+  defp assign_components_to_lanes(sorted_components, lane_count, scoped) do
+    initial = List.duplicate([], lane_count)
+
+    {lanes, _sizes} =
+      Enum.reduce(sorted_components, {initial, List.duplicate(0, lane_count)}, fn comp,
+                                                                                  {lanes, sizes} ->
+        target_idx =
+          sizes |> Enum.with_index() |> Enum.min_by(fn {size, _idx} -> size end) |> elem(1)
+
+        new_lanes = List.update_at(lanes, target_idx, &(&1 ++ comp))
+        new_sizes = List.update_at(sizes, target_idx, &(&1 + component_scope_size(comp, scoped)))
+
+        {new_lanes, new_sizes}
+      end)
+
+    lanes
+  end
+
+  defp collides_with_every_other_slug?(slug, all_slugs, scoped) do
+    others = List.delete(all_slugs, slug)
+
+    others != [] and
+      Enum.all?(others, fn other_slug ->
+        shared_paths(Map.get(scoped, slug, []), Map.get(scoped, other_slug, [])) != []
+      end)
+  end
+
+  # Union-find over `slugs` given undirected `edges` (order-insensitive —
+  # both scope-collision pairs and blocks_on: pairs are treated as
+  # co-location, never as a directed ordering constraint here; ordering
+  # within a lane is topo_sort/2's job, run AFTER components are fixed).
+  defp connected_components(slugs, edges) do
+    parent = Map.new(slugs, &{&1, &1})
+
+    parent =
+      Enum.reduce(edges, parent, fn {a, b}, acc ->
+        union(acc, a, b)
+      end)
+
+    slugs
+    |> Enum.group_by(&find(parent, &1))
+    |> Map.values()
+    |> Enum.map(&Enum.sort/1)
+  end
+
+  defp find(parent, slug) do
+    case Map.get(parent, slug) do
+      ^slug -> slug
+      next -> find(parent, next)
+    end
+  end
+
+  defp union(parent, a, b) do
+    root_a = find(parent, a)
+    root_b = find(parent, b)
+
+    if root_a == root_b do
+      parent
+    else
+      Map.put(parent, root_a, root_b)
+    end
+  end
+
   # Returns the raw text between the opening and closing `---` delimiters
   # when `content` starts with a frontmatter block, else nil. The opening
   # delimiter MUST be the very first line (no leading blank lines).

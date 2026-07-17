@@ -1,5 +1,13 @@
 defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
-  use ExUnit.Case, async: true
+  # async: false: these tests assert on captured stdout via
+  # Mix.shell().info/.error, which implicitly depends on the ambient
+  # Mix.shell/1 default (Mix.Shell.IO) not being flipped concurrently.
+  # The ScopeShellTest sibling module below explicitly swaps in
+  # Mix.Shell.Process (process-global state) — running both async: true
+  # at once races: an in-flight ScopeTest capture_io assertion here can
+  # observe zero printed output when a concurrent ScopeShellTest test
+  # has temporarily flipped the global shell to Mix.Shell.Process.
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureIO
 
@@ -95,6 +103,123 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
     assert out =~ "no pitches in"
   end
 
+  test "scope: present but unparseable raises loud, naming the slug", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: not-a-list\n---\n# a\n"
+    )
+
+    assert_raise RuntimeError, ~r/a has a scope: value that is not a parseable/, fn ->
+      capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}"]) end)
+    end
+  end
+
+  # (Mix.shell()-mutating tests live in the async: false
+  # ScopeShellTest sibling module below to avoid cross-test races.)
+
+  test "without --lanes, output is byte-identical to the pre-lanes report (UNROUTED, no LANE/GLOBAL-HOT)",
+       ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}"]) end)
+
+    refute out =~ "LANE"
+    refute out =~ "GLOBAL-HOT"
+    assert out =~ "UNROUTED (0 pitches)"
+  end
+
+  test "--lanes=N prints LANE sections, GLOBAL-HOT, and UNROUTED (no bare DISJOINT-only UNROUTED path)",
+       ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n"
+    )
+
+    File.write!(Path.join(ctx.ready_dir, "c.md"), "---\nstatus: SHAPED\n---\n# c\n")
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=2"]) end)
+
+    assert out =~ "LANE 1"
+    assert out =~ "LANE 2"
+    assert out =~ "GLOBAL-HOT (0 pitches)"
+    assert out =~ "UNROUTED (1 pitch — no scope: field; a human must place these)"
+    assert out =~ "c"
+  end
+
+  test "--lanes exceeding routable pitch count prints fewer lanes and says so", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=3"]) end)
+
+    assert out =~ "3 lanes requested; only 1 routable pitch — printing 1"
+    assert out =~ "LANE 1"
+    refute out =~ "LANE 2"
+    refute out =~ "LANE 3"
+  end
+
+  test "GLOBAL-HOT pitch is listed and never appears inside a LANE section", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "hot.md"),
+      "---\nstatus: SHAPED\nscope: [lib/x.ex, lib/y.ex]\n---\n# hot\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/x.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/y.ex]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=2"]) end)
+
+    assert out =~ "GLOBAL-HOT (1 pitch — collides with every lane; build alone)"
+    assert out =~ "hot"
+
+    [_before, after_global_hot] = String.split(out, "GLOBAL-HOT", parts: 2)
+    refute after_global_hot =~ ~r/LANE \d/
+  end
+
+end
+
+# Mix.shell/1 mutates process-global state. Tests that swap in
+# Mix.Shell.Process to assert_receive an error message race against every
+# OTHER async: true test in this file that also calls Mix.shell(...) — see
+# the async: false sibling-module race-pitfall in context/development.md.
+# Isolated here, async: false, so assert_receive never observes a message
+# sent by a concurrently-running peer test.
+defmodule Mix.Tasks.Codegen.Pitches.ScopeShellTest do
+  use ExUnit.Case, async: false
+
+  alias Mix.Tasks.Codegen.Pitches.Scope
+
+  setup do
+    tmp =
+      Path.join(
+        System.tmp_dir!(),
+        "codegen_pitches_scope_shell_test_#{:erlang.unique_integer([:positive])}"
+      )
+
+    ready_dir = Path.join([tmp, "codegen", "pitches", "ready"])
+    File.mkdir_p!(ready_dir)
+    on_exit(fn -> File.rm_rf!(tmp) end)
+
+    {:ok, tmp: tmp, ready_dir: ready_dir}
+  end
+
   test "invalid --dir value exits 2 with an error naming the valid set", ctx do
     original_shell = Mix.shell()
     Mix.shell(Mix.Shell.Process)
@@ -120,14 +245,29 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
     assert msg =~ "invalid flags"
   end
 
-  test "scope: present but unparseable raises loud, naming the slug", ctx do
-    File.write!(
-      Path.join(ctx.ready_dir, "a.md"),
-      "---\nstatus: SHAPED\nscope: not-a-list\n---\n# a\n"
-    )
+  test "--lanes=0 exits 2 naming the invalid value", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
 
-    assert_raise RuntimeError, ~r/a has a scope: value that is not a parseable/, fn ->
-      capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}"]) end)
-    end
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--lanes=0"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "positive integer"
+    assert msg =~ "0"
+  end
+
+  test "--lanes=not-a-number exits 2 naming the invalid value", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--lanes=abc"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "positive integer"
+    assert msg =~ "abc"
   end
 end

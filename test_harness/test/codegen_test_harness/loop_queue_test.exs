@@ -411,6 +411,124 @@ defmodule CodegenTestHarness.LoopQueueTest do
     end
   end
 
+  describe "partition/2" do
+    test "disjoint pitches spread across lanes, largest component first", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n")
+
+      {lanes, global_hot, unrouted} = LoopQueue.partition(dir, 2)
+
+      all_placed = lanes |> List.flatten() |> Enum.sort()
+      assert all_placed == ["a", "b"]
+      assert global_hot == []
+      assert unrouted == []
+      # each lane got exactly one of the two disjoint, equal-size pitches
+      assert Enum.map(lanes, &length/1) |> Enum.sort() == [1, 1]
+    end
+
+    test "colliding pitches never split across lanes (component stays whole)", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex, lib/a.ex]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex, lib/b.ex]\n---\n# b\n"
+      )
+
+      File.write!(Path.join(dir, "c.md"), "---\nstatus: SHAPED\nscope: [lib/c.ex]\n---\n# c\n")
+
+      {lanes, global_hot, unrouted} = LoopQueue.partition(dir, 2)
+
+      # a and b share lib/shared.ex -> same component -> same lane
+      lane_with_a = Enum.find(lanes, &("a" in &1))
+      assert "b" in lane_with_a
+      assert global_hot == []
+      assert unrouted == []
+      assert lanes |> List.flatten() |> Enum.sort() == ["a", "b", "c"]
+    end
+
+    test "a lane's slugs are topo-sorted by their blocks_on: edges", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/a.ex]\nblocks_on: [b]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n"
+      )
+
+      {lanes, _global_hot, _unrouted} = LoopQueue.partition(dir, 1)
+
+      assert lanes == [["b", "a"]]
+    end
+
+    test "a dead blocks_on: edge (dep outside the scoped batch) is silently ignored", %{
+      dir: dir
+    } do
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/a.ex]\nblocks_on: [shipped-already]\n---\n# a\n"
+      )
+
+      {lanes, global_hot, unrouted} = LoopQueue.partition(dir, 1)
+
+      assert lanes == [["a"]]
+      assert global_hot == []
+      assert unrouted == []
+    end
+
+    test "a pitch colliding with every other component is GLOBAL-HOT, never placed", %{
+      dir: dir
+    } do
+      File.write!(
+        Path.join(dir, "hot.md"),
+        "---\nstatus: SHAPED\nscope: [lib/x.ex, lib/y.ex]\n---\n# hot\n"
+      )
+
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/x.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/y.ex]\n---\n# b\n")
+
+      {lanes, global_hot, unrouted} = LoopQueue.partition(dir, 2)
+
+      assert global_hot == ["hot"]
+      refute "hot" in List.flatten(lanes)
+      assert unrouted == []
+    end
+
+    test "unrouted pitches (no scope:) are never placed in a lane", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\n---\n# b\n")
+
+      {lanes, global_hot, unrouted} = LoopQueue.partition(dir, 2)
+
+      refute "b" in List.flatten(lanes)
+      assert global_hot == []
+      assert unrouted == ["b"]
+    end
+
+    test "requesting more lanes than routable pitches leaves trailing lanes empty", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n")
+
+      {lanes, _global_hot, _unrouted} = LoopQueue.partition(dir, 3)
+
+      assert length(lanes) == 3
+      assert Enum.count(lanes, &(&1 == [])) == 2
+      assert List.flatten(lanes) == ["a"]
+    end
+
+    test "empty dir returns lane_count empty lanes, no global_hot, no unrouted", %{dir: dir} do
+      assert LoopQueue.partition(dir, 3) == {[[], [], []], [], []}
+    end
+
+    test "raises on a non-positive lane_count" do
+      assert_raise FunctionClauseError, fn -> LoopQueue.partition("ready", 0) end
+      assert_raise FunctionClauseError, fn -> LoopQueue.partition("ready", -1) end
+    end
+  end
+
   describe "blocked_by_unmet_dep/2" do
     setup %{dir: dir} do
       ready_dir = Path.join(dir, "ready")
