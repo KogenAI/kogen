@@ -674,7 +674,8 @@ assert "missing-sibling stderr names the missing dir" "0" "$(grep -qF 'no cycle-
 
 printf '%s\n' '{"ev":"mystery-kind","foo":"bar"}' >>"$nosum_log"
 unknown_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-no-summary)"
-assert "unknown ev kind reported, not dropped" "0" "$(printf '%s' "$unknown_show" | grep -qF 'other events: mystery-kindx1' && printf 0 || printf 1)"
+assert "unknown ev kind promoted into anomaly list, not dropped" "0" "$(printf '%s' "$unknown_show" | grep -qF 'unknown event kind: mystery-kind (x1) — not in the schema' && printf 0 || printf 1)"
+assert "unknown ev kind no longer prints as clean" "0" "$(printf '%s' "$unknown_show" | grep -qF 'no anomalies' && printf 1 || printf 0)"
 
 # Test 25: `show` error paths — bad --format exits 2; unknown --role exits
 # 2; malformed log line exits non-zero (no partial render).

@@ -34,8 +34,9 @@
 # (summary status != success, any ev:died, an invoked role with zero ev:role
 # body, a role with neither ev:learned nor ev:no_learning, a trailing gate
 # verdict != clear) — "no anomalies" prints explicitly when the list is
-# empty. Unknown ev kinds are never dropped: a trailing "other events:
-# <kind>xN" line accounts for every kind `show` does not otherwise render.
+# empty. An event kind not declared in EVENT_SCHEMA_JQ is never dropped: it
+# is promoted into the anomaly list itself ("unknown event kind: <kind>
+# (xN) — not in the schema"), so a rogue write can never render as clean.
 # Exits 2 (fail loud, no partial render) on: bad --format, --role naming a
 # role absent from the resolved log, or no cycle log found at all.
 #
@@ -1004,7 +1005,8 @@ show_build_model() {
               ($rows[] | select((.learned | length) == 0 and (.no_learning | length) == 0) | "role \(.role): no learned/no_learning event"),
               (if ($trailing_verdict != null and $trailing_verdict != "clear") then "trailing gate verdict: \($trailing_verdict)" else empty end),
               ($summary[] | select(.status != null and .status != "success") | "cycle-summary role \(.role): status=\(.status)"),
-              ($exits[] | select(.status != 0 or .signal != null) | "exit: status \(.status)" + (if .signal != null then " (signal \(.signal))" else "" end) + (if (.stderr_tail // "") != "" then " — " + .stderr_tail else "" end))
+              ($exits[] | select(.status != 0 or .signal != null) | "exit: status \(.status)" + (if .signal != null then " (signal \(.signal))" else "" end) + (if (.stderr_tail // "") != "" then " — " + .stderr_tail else "" end)),
+              ($unknown_kinds[] | "unknown event kind: \(.kind) (x\(.count)) — not in the schema")
             ] | unique
           ) as $anomalies
 
@@ -1041,7 +1043,6 @@ show_render() {
             (.rows[] | "\(.turn.seq // "-") \(.role) \(.turn.num_turns // "—") \(if .turn.cost_usd then ("$"+(.turn.cost_usd|tostring)) else "—" end) \(if .turn then (.turn.outcome // .turn.status // "—") else "—" end) \(if (.learned|length)>0 then "yes" elif (.no_learning|length)>0 then "none (honest)" else "⚠ missing" end)"),
             "",
             (if (.anomalies|length) > 0 then (["Anomalies:"] + (.anomalies | map("  - " + .))) | join("\n") else "no anomalies" end),
-            (if (.unknown_kinds|length) > 0 then ("other events: " + ([.unknown_kinds[] | "\(.kind)x\(.count)"] | join(", "))) else empty end),
             "",
             "total \([.rows[].turn.num_turns // 0] | add // 0) turns · $\([.rows[].turn.cost_usd // 0] | add // 0) · \(.rows|length) role invocations · \(.anomalies|length) anomalies"
         '
@@ -1054,8 +1055,7 @@ show_render() {
             "|---|------|-------|------|---------|----------|",
             (.rows[] | "| \(.turn.seq // "-") | \(.role) | \(.turn.num_turns // "—") | \(if .turn.cost_usd then ("$"+(.turn.cost_usd|tostring)) else "—" end) | \(if .turn then (.turn.outcome // .turn.status // "—") else "—" end) | \(if (.learned|length)>0 then "yes" elif (.no_learning|length)>0 then "none (honest)" else "⚠ missing" end) |"),
             "",
-            (if (.anomalies|length) > 0 then (["**Anomalies:**"] + (.anomalies | map("- " + .))) | join("\n") else "**no anomalies**" end),
-            (if (.unknown_kinds|length) > 0 then ("\nOther events: " + ([.unknown_kinds[] | "\(.kind)×\(.count)"] | join(", "))) else empty end)
+            (if (.anomalies|length) > 0 then (["**Anomalies:**"] + (.anomalies | map("- " + .))) | join("\n") else "**no anomalies**" end)
         '
         ;;
     html)
@@ -1066,7 +1066,6 @@ show_render() {
             (.rows[] | "<tr><td>" + ((.turn.seq // "-")|tostring|@html) + "</td><td>" + (.role|@html) + "</td><td>" + ((.turn.num_turns // "—")|tostring|@html) + "</td><td>" + ((if .turn.cost_usd then ("$"+(.turn.cost_usd|tostring)) else "—" end)|@html) + "</td><td>" + ((if .turn then (.turn.outcome // .turn.status // "—") else "—" end)|@html) + "</td><td>" + ((if (.learned|length)>0 then "yes" elif (.no_learning|length)>0 then "none (honest)" else "⚠ missing" end)|@html) + "</td></tr>"),
             "</table>",
             (if (.anomalies|length) > 0 then ("<h2>Anomalies</h2><ul>" + ([.anomalies[] | "<li>" + (.|@html) + "</li>"] | join("")) + "</ul>") else "<p>no anomalies</p>" end),
-            (if (.unknown_kinds|length) > 0 then ("<p>other events: " + ([.unknown_kinds[] | (.kind|@html) + "x" + (.count|tostring)] | join(", ")) + "</p>") else empty end),
             "</body></html>"
         '
         ;;

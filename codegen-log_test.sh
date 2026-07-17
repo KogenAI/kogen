@@ -100,6 +100,19 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local desc="$1"
+    local haystack="$2"
+    local needle="$3"
+    if [[ "$haystack" != *"$needle"* ]]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected NOT to find %q\n  got: %s\n' "$desc" "$needle" "${haystack:0:400}"
+        fail=$((fail + 1))
+    fi
+}
+
 # jq_count <file> <jq-select-expr> — count matching JSONL lines.
 jq_count() {
     local file="$1" expr="$2"
@@ -635,7 +648,8 @@ echo '{"ev":"mystery-kind","foo":"bar"}' >>"$LOG_HH"
 UNKNOWN_HH=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_HH" \
     "$CODEGEN_LOG" show --slug test-show-no-summary)
-assert_contains "(hh) unknown ev kind reported, not dropped" "$UNKNOWN_HH" "other events: mystery-kindx1"
+assert_contains "(hh) unknown ev kind promoted into anomaly list, not dropped" "$UNKNOWN_HH" "unknown event kind: mystery-kind (x1) — not in the schema"
+assert_not_contains "(hh) unknown ev kind no longer prints as clean" "$UNKNOWN_HH" "no anomalies"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # (ii) `show` error paths: bad --format exits 2; unknown --role exits 2;
