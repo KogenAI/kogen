@@ -33,6 +33,10 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       sleep_fn: fn _secs -> :ok end,
       git_stash_fn: fn _cwd, _slug, _reason -> :ok end,
       git_stash_restore_fn: fn _cwd, _slug -> :ok end,
+      # Hermetic-test guard: never let a FAILED-arm test fire a real,
+      # billed `codegen-call` — see loop_queue_drain_test.exs's own draft_fn
+      # tests for the stubs that override this default.
+      draft_fn: fn _cwd, _slug, _jsonl, _gate_verdict -> {:ok, "/dev/null"} end,
       now_fn: fn -> 1_700_000_000 end,
       pid_alive_fn: fn _pid -> false end,
       git_head_fn: fn _cwd -> nil end,
@@ -894,6 +898,234 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.shipped_dir, "good.md"))
     assert output =~ "queue: FAILED bucket:"
     assert output =~ "bad"
+  end
+
+  # ── D. draft_fn — headless failure drafting ─────────────────────────────
+
+  test "D1: nonzero-exit terminal FAILED calls draft_fn once, reports drafted count", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+
+    calls = start_agent([])
+
+    draft_fn = fn cwd, slug, _jsonl, gate_verdict ->
+      Agent.update(calls, &(&1 ++ [{cwd, slug, gate_verdict}]))
+      {:ok, Path.join(cwd, "codegen/pitches/draft/#{slug}.md")}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     draft_fn: draft_fn
+                   )
+                 )
+      end)
+
+    assert Agent.get(calls, & &1) == [{ctx.dir, "solo", ""}]
+    assert output =~ "queue: 0 shipped, 1 failed, 1 drafted,"
+  end
+
+  test "D2: exit-0-without-verified-commit terminal FAILED calls draft_fn once", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    calls = start_agent([])
+
+    draft_fn = fn cwd, slug, _jsonl, _gate_verdict ->
+      Agent.update(calls, &(&1 ++ [slug]))
+      {:ok, Path.join(cwd, "codegen/pitches/draft/#{slug}.md")}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     git_head_fn: fn _cwd -> nil end,
+                     draft_fn: draft_fn
+                   )
+                 )
+      end)
+
+    assert Agent.get(calls, & &1) == ["solo"]
+    assert output =~ "queue: 0 shipped, 1 failed, 1 drafted,"
+  end
+
+  test "D3: transient retry-then-terminal-fail calls draft_fn exactly once (terminal only)",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> true end
+
+    calls = start_agent([])
+
+    draft_fn = fn _cwd, slug, _jsonl, _gate_verdict ->
+      Agent.update(calls, &(&1 ++ [slug]))
+      {:ok, "/dev/null"}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     max_retries: 2,
+                     draft_fn: draft_fn
+                   )
+                 )
+      end)
+
+    assert Agent.get(calls, & &1) == ["solo"]
+    assert output =~ "1 drafted,"
+  end
+
+  test "D4: HALT arms (infra abort, orphaned base) never call draft_fn", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    calls = start_agent([])
+
+    draft_fn = fn _cwd, slug, _jsonl, _gv ->
+      Agent.update(calls, &(&1 ++ [slug])) && {:ok, "x"}
+    end
+
+    infra_spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 3} end
+
+    capture_io(:stderr, fn ->
+      assert {:error, _reason} =
+               LoopQueueDrain.drain(base_opts(ctx, spawn_fn: infra_spawn_fn, draft_fn: draft_fn))
+    end)
+
+    assert Agent.get(calls, & &1) == []
+
+    # orphaned-base HALT: HEAD moves but is not a descendant of head_before.
+    # git_head_fn must return a NEW value each call (pre-spawn head_before,
+    # post-spawn head_after) — a constant value never satisfies head_moved?.
+    orphan_spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+    orphan_head_calls = start_agent(0)
+
+    git_head_fn = fn _cwd ->
+      n = Agent.get_and_update(orphan_head_calls, fn n -> {n, n + 1} end)
+      "head-#{n}"
+    end
+
+    git_ancestor_fn = fn _cwd, _ancestor, _descendant -> false end
+
+    capture_io(:stderr, fn ->
+      assert {:error, _reason} =
+               LoopQueueDrain.drain(
+                 base_opts(ctx,
+                   spawn_fn: orphan_spawn_fn,
+                   git_head_fn: git_head_fn,
+                   git_ancestor_fn: git_ancestor_fn,
+                   draft_fn: draft_fn
+                 )
+               )
+    end)
+
+    assert Agent.get(calls, & &1) == []
+  end
+
+  test "D5: draft_fn error is fail-open — drain continues, count unchanged, loud stderr", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+    draft_fn = fn _cwd, _slug, _jsonl, _gv -> {:error, :boom} end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     draft_fn: draft_fn
+                   )
+                 )
+      end)
+
+    assert output =~ "queue: draft skipped for solo"
+    assert output =~ "queue: 0 shipped, 1 failed, 0 drafted,"
+  end
+
+  test "D6: default_draft_fn/4 skeleton scan returns only status: SKELETON drafts", ctx do
+    draft_dir = Path.join([ctx.dir, "codegen", "pitches", "draft"])
+    File.mkdir_p!(draft_dir)
+
+    File.write!(
+      Path.join(draft_dir, "skel-one.md"),
+      "---\nstatus: SKELETON\n---\n\n## Problem\n\nfoo\n"
+    )
+
+    File.write!(
+      Path.join(draft_dir, "shaped-one.md"),
+      "---\nstatus: SHAPED\n---\n\n## Appetite\n\nbar\n"
+    )
+
+    script = Path.join(ctx.dir, "fake_codegen_call.sh")
+
+    File.write!(script, """
+    #!/usr/bin/env bash
+    echo "$@" > "#{ctx.dir}/call_args.txt"
+    cat "#{ctx.dir}/call_prompt.txt" > /dev/null 2>&1 || true
+    echo '{"result":{"status":"success","value":{"action":"new","slug":"captured","body":"x"}}}'
+    exit 0
+    """)
+
+    File.chmod!(script, 0o755)
+    Process.put(:__queue_drain_call_bin__, script)
+    on_exit(fn -> Process.delete(:__queue_drain_call_bin__) end)
+
+    jsonl = Path.join(ctx.dir, "out.jsonl")
+    File.write!(jsonl, ~s({"type":"result","result":"boom"}\n))
+
+    assert {:ok, _path} =
+             LoopQueueDrain.default_draft_fn(ctx.dir, "solo", jsonl, "failed")
+
+    args_line = File.read!(Path.join(ctx.dir, "call_args.txt"))
+    assert args_line =~ "skel-one"
+    refute args_line =~ "shaped-one"
+    assert File.exists?(Path.join(draft_dir, "captured.md"))
+  end
+
+  test "D7: merge rejects an unlisted target_slug — on-disk drafts unchanged", ctx do
+    draft_dir = Path.join([ctx.dir, "codegen", "pitches", "draft"])
+    File.mkdir_p!(draft_dir)
+
+    shaped_path = Path.join(draft_dir, "shaped-one.md")
+    shaped_body = "---\nstatus: SHAPED\n---\n\n## Appetite\n\nbar\n"
+    File.write!(shaped_path, shaped_body)
+
+    script = Path.join(ctx.dir, "fake_codegen_call_bad_merge.sh")
+
+    File.write!(script, """
+    #!/usr/bin/env bash
+    echo '{"result":{"status":"success","value":{"action":"merge","target_slug":"shaped-one","slug":"x","body":"overwritten"}}}'
+    exit 0
+    """)
+
+    File.chmod!(script, 0o755)
+    Process.put(:__queue_drain_call_bin__, script)
+    on_exit(fn -> Process.delete(:__queue_drain_call_bin__) end)
+
+    jsonl = Path.join(ctx.dir, "out.jsonl")
+    File.write!(jsonl, ~s({"type":"result","result":"boom"}\n))
+
+    assert {:error, reason} = LoopQueueDrain.default_draft_fn(ctx.dir, "solo", jsonl, "failed")
+    assert reason =~ "shaped-one"
+
+    assert File.read!(shaped_path) == shaped_body
   end
 
   # ── 6r. Committer-post-commit-hiccup recovery ───────────────────────────
@@ -2322,7 +2554,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     # Both attempts (the retried failure AND the eventual ship) are counted:
     # 1.5 + 2.25 = 3.75 — never just the last attempt's cost.
-    assert output =~ "queue: 1 shipped, 0 failed, $3.75 total"
+    assert output =~ "queue: 1 shipped, 0 failed, 0 drafted, $3.75 total"
   end
 
   test "(d2) no-cap control: report still prints total with no ceiling set", ctx do
@@ -2338,7 +2570,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
-    assert output =~ "queue: 1 shipped, 0 failed, $0.42 total"
+    assert output =~ "queue: 1 shipped, 0 failed, 0 drafted, $0.42 total"
   end
 
   test "(e) ceiling halts BEFORE the next spawn — remaining pitches stay in ready/", ctx do
@@ -2371,7 +2603,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     # Exactly two spawns — the third pitch never launches.
     assert Agent.get(calls, & &1) == ["a", "b"]
-    assert output =~ "queue: 2 shipped, 0 failed, $12.00 total"
+    assert output =~ "queue: 2 shipped, 0 failed, 0 drafted, $12.00 total"
 
     # a and b shipped (their own outcome already landed); c is untouched.
     assert File.exists?(Path.join(ctx.shipped_dir, "a.md"))
@@ -2407,7 +2639,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     # Only the first pitch ever spawns — the drain halts before "b".
     assert Agent.get(calls, & &1) == ["a"]
-    assert output =~ "queue: 1 shipped, 0 failed, unknown (unaccountable child spend) total"
+    assert output =~ "queue: 1 shipped, 0 failed, 0 drafted, unknown (unaccountable child spend) total"
   end
 
   test "(f2) sibling control: same unaccountable jsonl, NO ceiling -> drain completes normally",
@@ -2425,7 +2657,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
-    assert output =~ "queue: 2 shipped, 0 failed, unknown (unaccountable child spend) total"
+    assert output =~ "queue: 2 shipped, 0 failed, 0 drafted, unknown (unaccountable child spend) total"
   end
 
   # ── --watch: terminal-condition continuation, quiescence gate, keychain ──

@@ -84,6 +84,29 @@ every pitch spawn (not between role invocations within a cycle). Absent by defau
 directory between pitch spawns. Explicitly `# fail-loud-exempt` (best-effort; a GC failure never halts
 the drain).
 
+## Failure Drafting — `:draft_fn` Seam
+
+On the two TERMINAL FAILED arms only (exit-0-without-verified-commit, and nonzero-with-retries-exhausted
+— never a HALT arm: infra abort or orphaned base), the drain calls `:draft_fn` right after
+`park_failed_tree/2` (tree already parked/clean — sequencing moots any stash-sweep question). The gate
+verdict passed to `draft_fn` is the SAME `gate_verdict_fn.(cwd)` value each arm already read for its own
+`gate_clear?` check — `draft_failure/4` never re-reads it, so drafting adds zero extra `:gate_verdict_fn`
+calls (load-bearing for tests that count that seam's call sequence, e.g. the consecutive-fail-streak
+tests). Default
+`default_draft_fn/4` shells a headless `codegen-call --harness=claude_code --model=opus --effort=high
+--system-prompt @harnesses/claude/document-system-prompt.md --json-schema
+@harnesses/claude/document.schema.json`, mirroring `codegen-propose`'s precedent. Input: the failing
+slug, the gate verdict, the failing cycle's last result text, and the FULL BODY of every existing
+`status: SKELETON` draft under `<cwd>/codegen/pitches/draft/` (`skeleton_drafts/1` — SHAPING/SHAPED
+drafts are never read or merge targets). Response `{action: "new"|"merge", slug, target_slug, body}`:
+`new` writes `<slug>.md`; `merge` overwrites `target_slug` ONLY when that slug was among the supplied
+skeletons (`apply_draft_decision/3` — never a blind overwrite of an unlisted/in-flight draft). Fail-open:
+a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain continues — mirrors
+`park_failed_tree/2`'s own fail-open contract; the draft is an observation, not a required value.
+`spend_report/3` reports `state.drafted_count` in its end-of-run line.
+
 ## Trigger Keywords
 
 LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion
+
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, draft_fn, skeleton draft, document-system-prompt, drafted_count

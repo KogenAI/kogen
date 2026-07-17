@@ -131,6 +131,11 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @infra_abort_exit_code 3
 
   @codegen_build_bin Path.expand("../../../codegen-build", __DIR__)
+  @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
+  @draft_system_prompt Path.expand("../../../harnesses/claude/document-system-prompt.md", __DIR__)
+  @draft_schema Path.expand("../../../harnesses/claude/document.schema.json", __DIR__)
+  @draft_model "opus"
+  @draft_effort "high"
 
   # `:persistent_term` key holding the OS pid of the currently in-flight
   # spawned child (set right after `Port.open` in `default_spawn_fn/5`,
@@ -197,6 +202,18 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       `slug`. No matching stash -> `:ok` (no-op). A pop conflict fails loud
       with `{:error, reason}`, HALTing the whole drain — git retains the
       stash on a conflicting pop, so the error names a recoverable ref.
+    * `:draft_fn` — `(cwd, slug, jsonl, gate_verdict -> {:ok, String.t()} |
+      {:error, reason})`, called ONLY from the two terminal-FAILED arms
+      (exit-0-without-verified-commit, and nonzero-with-retries-exhausted —
+      never from a HALT arm), immediately AFTER `park_failed_tree/2` so the
+      tree is already parked/clean before any draft write. Drafts a
+      `status: SKELETON` pitch into `<cwd>/codegen/pitches/draft/` via a
+      headless `codegen-call` against `harnesses/claude/document-system-prompt.md`.
+      A merge target is fenced to an existing `status: SKELETON` draft ONLY —
+      never a `SHAPING`/`SHAPED` draft in flight. Fail-open on error: loud
+      stderr, `state.drafted_count` unchanged, drain continues (the draft is
+      an observation, not a required value — mirrors `park_failed_tree/2`'s
+      own fail-open contract).
     * `:now_fn` — `(-> integer unix secs)`
     * `:ordered_fn` — `(ready_dir -> [slug])`, default `LoopQueue.ordered_slugs/1`
     * `:transient_fn` — `(jsonl_path -> boolean)`, default `LoopQueue.transient?/1`
@@ -339,6 +356,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           git_stash_fn: Keyword.get(opts, :git_stash_fn, &default_git_stash_fn/3),
           git_stash_restore_fn:
             Keyword.get(opts, :git_stash_restore_fn, &default_git_stash_restore_fn/2),
+          draft_fn: Keyword.get(opts, :draft_fn, &default_draft_fn/4),
           now_fn: Keyword.get(opts, :now_fn, &default_now_fn/0),
           ordered_fn: Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1),
           transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
@@ -365,6 +383,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           failed_slugs: MapSet.new(),
           parked_branches: %{},
           consecutive_fails: 0,
+          drafted_count: 0,
           blocked_printed: MapSet.new(),
           retry_count: 0,
           last_slug: nil,
@@ -1018,8 +1037,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     committed? = head_moved? and not orphaned?
 
-    gate_clear? =
-      state.gate_verdict_fn.(state.cwd) == "clear" and gate_fresh?(state, head_before, ts)
+    gate_verdict = state.gate_verdict_fn.(state.cwd)
+    gate_clear? = gate_verdict == "clear" and gate_fresh?(state, head_before, ts)
 
     cond do
       orphaned? ->
@@ -1050,6 +1069,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
 
         parked_branch = park_failed_tree(state, slug)
+        state = draft_failure(state, slug, jsonl, gate_verdict)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
         parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
@@ -1098,6 +1118,29 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       {:ok, nil} -> nil
       :ok -> nil
       {:error, _reason} -> nil
+    end
+  end
+
+  # Calls `:draft_fn` for this terminal-FAILED slug, run immediately AFTER
+  # `park_failed_tree/2` so the tree is already parked/clean before any draft
+  # write (see moduledoc `:draft_fn` doc — sequencing moots whether a stash
+  # `-u` push could otherwise sweep an ignored draft file). Fail-open: the
+  # draft is an observation, not a required value — a `codegen-call` error
+  # must never abort the drain, only skip the count increment and warn loud.
+  # `gate_verdict` is threaded in from the CALLER's already-computed
+  # `state.gate_verdict_fn.(state.cwd)` read (both FAILED arms already read
+  # it for `gate_clear?`) rather than re-reading here — a second read would
+  # be an extra `:gate_verdict_fn` call per failure, rippling into every
+  # test that counts that seam's call sequence.
+  @spec draft_failure(map(), String.t(), String.t(), String.t()) :: map()
+  defp draft_failure(state, slug, jsonl, gate_verdict) do
+    case state.draft_fn.(state.cwd, slug, jsonl, gate_verdict) do
+      {:ok, _path} ->
+        %{state | drafted_count: state.drafted_count + 1}
+
+      {:error, reason} ->
+        IO.puts(:stderr, "queue: draft skipped for #{slug} — #{inspect(reason)}")
+        state
     end
   end
 
@@ -1191,8 +1234,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     # A stale "clear" record from an earlier cycle must not ship a real
     # commit twice-removed from the gate that actually verified it — apply
     # the same freshness predicate the exit-0 path uses.
-    gate_clear? =
-      state.gate_verdict_fn.(state.cwd) == "clear" and gate_fresh?(state, head_before, ts)
+    gate_verdict = state.gate_verdict_fn.(state.cwd)
+    gate_clear? = gate_verdict == "clear" and gate_fresh?(state, head_before, ts)
 
     cond do
       orphaned? ->
@@ -1281,6 +1324,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
 
         parked_branch = park_failed_tree(state, slug)
+        state = draft_failure(state, slug, jsonl, gate_verdict)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
         parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
@@ -1423,7 +1467,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   defp format_usd(n), do: :erlang.float_to_binary(n * 1.0, decimals: 2)
 
   # Printed on EVERY terminal path (shipped, halted, or ready/ emptied) —
-  # the total-spend number that, before this pitch, existed nowhere.
+  # the total-spend number that, before this pitch, existed nowhere. The
+  # drafted count is read from `state` (not a positional arg — every one of
+  # this fn's 6+ call sites already threads `state` through, so a new
+  # positional would be pure churn).
   @spec spend_report(map(), non_neg_integer(), non_neg_integer()) :: :ok
   defp spend_report(state, shipped_count, failed_count) do
     total_str =
@@ -1434,7 +1481,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     IO.puts(
       :stderr,
-      "queue: #{shipped_count} shipped, #{failed_count} failed, #{total_str} total"
+      "queue: #{shipped_count} shipped, #{failed_count} failed, #{state.drafted_count} drafted, #{total_str} total"
     )
 
     :ok
@@ -2142,6 +2189,136 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   defp extract_stash_ref(line) do
     [ref | _] = String.split(line, ":", parts: 2)
     if String.starts_with?(ref, "stash@{"), do: ref, else: nil
+  end
+
+  # ── Real draft_fn: headless codegen-call drafting a SKELETON pitch ─────────
+  # Mirrors codegen-propose's precedent (one codegen-call per unit of work,
+  # opus/high, --json-schema-validated response). Fail-open on any error
+  # (missing binary, non-zero exit, malformed/invalid response) — the caller
+  # (`draft_failure/3`) already treats `{:error, _}` as "warn, don't count,
+  # keep draining".
+  @doc false
+  @spec default_draft_fn(String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  def default_draft_fn(cwd, slug, jsonl, gate_verdict) do
+    call_bin = Process.get(:__queue_drain_call_bin__, @codegen_call_bin)
+
+    if File.exists?(call_bin) do
+      result_text =
+        case last_result_record(jsonl) do
+          %{"result" => result} when is_binary(result) -> result
+          _ -> ""
+        end
+
+      skeletons = skeleton_drafts(cwd)
+      prompt = build_draft_prompt(slug, gate_verdict, result_text, skeletons)
+
+      args = [
+        "--harness=claude_code",
+        "--model=#{@draft_model}",
+        "--effort=#{@draft_effort}",
+        "--system-prompt",
+        "@#{@draft_system_prompt}",
+        "--json-schema",
+        "@#{@draft_schema}",
+        "--",
+        prompt
+      ]
+
+      case System.cmd(call_bin, args, stderr_to_stdout: true, cd: cwd) do
+        {out, 0} -> apply_draft_decision(cwd, out, skeletons)
+        {out, code} -> {:error, "codegen-call exited #{code}: #{String.slice(out, 0, 400)}"}
+      end
+    else
+      {:error, "codegen-call not found at #{call_bin}"}
+    end
+  end
+
+  # Every `status: SKELETON` draft currently sitting in
+  # `<cwd>/codegen/pitches/draft/` — `{slug, body}` pairs. A merge target is
+  # fenced to THIS list only: a `SHAPING`/`SHAPED` draft (operator work in
+  # flight) is never a legal merge target.
+  @spec skeleton_drafts(String.t()) :: [{String.t(), String.t()}]
+  defp skeleton_drafts(cwd) do
+    draft_dir = Path.join([cwd, "codegen", "pitches", "draft"])
+
+    case File.ls(draft_dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&String.ends_with?(&1, ".md"))
+        |> Enum.map(fn entry ->
+          path = Path.join(draft_dir, entry)
+          slug = Path.basename(entry, ".md")
+          {slug, path}
+        end)
+        |> Enum.map(fn {slug, path} -> {slug, File.read(path)} end)
+        |> Enum.filter(&match?({_slug, {:ok, _body}}, &1))
+        |> Enum.map(fn {slug, {:ok, body}} -> {slug, body} end)
+        |> Enum.filter(fn {_slug, body} -> String.contains?(body, "status: SKELETON") end)
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  @spec build_draft_prompt(String.t(), String.t(), String.t(), [{String.t(), String.t()}]) ::
+          String.t()
+  defp build_draft_prompt(slug, gate_verdict, result_text, skeletons) do
+    skeleton_section =
+      case skeletons do
+        [] ->
+          "Existing SKELETON drafts: none."
+
+        list ->
+          "Existing SKELETON drafts (merge target MUST be one of these exact slugs, or omit " <>
+            "target_slug and use action \"new\"):\n\n" <>
+            Enum.map_join(list, "\n\n", fn {slug, body} -> "### #{slug}\n\n#{body}" end)
+      end
+
+    "Failing pitch slug: #{slug}\n" <>
+      "Gate verdict: #{gate_verdict}\n" <>
+      "Failing cycle result text:\n#{result_text}\n\n" <>
+      skeleton_section
+  end
+
+  # Parses `.result.value` out of a `codegen-call` response and writes the
+  # draft — `merge` overwrites `target_slug` ONLY when it was among the
+  # supplied skeleton slugs (never a blind overwrite of an unlisted, possibly
+  # SHAPING/SHAPED, draft); `new` writes `<slug>.md`.
+  @spec apply_draft_decision(String.t(), String.t(), [{String.t(), String.t()}]) ::
+          {:ok, String.t()} | {:error, term()}
+  defp apply_draft_decision(cwd, call_out, skeletons) do
+    known_slugs = Enum.map(skeletons, fn {slug, _body} -> slug end)
+
+    with {:ok, %{"result" => %{"status" => "success", "value" => value}}} <-
+           Jason.decode(call_out),
+         %{"action" => action, "slug" => slug, "body" => body} <- value do
+      draft_dir = Path.join([cwd, "codegen", "pitches", "draft"])
+      File.mkdir_p!(draft_dir)
+
+      case action do
+        "new" ->
+          path = Path.join(draft_dir, "#{slug}.md")
+          File.write!(path, body)
+          {:ok, path}
+
+        "merge" ->
+          target_slug = Map.get(value, "target_slug")
+
+          if target_slug in known_slugs do
+            path = Path.join(draft_dir, "#{target_slug}.md")
+            File.write!(path, body)
+            {:ok, path}
+          else
+            {:error, "merge target_slug #{inspect(target_slug)} not among known skeletons"}
+          end
+
+        other ->
+          {:error, "unknown action #{inspect(other)}"}
+      end
+    else
+      _ -> {:error, "malformed codegen-call response: #{String.slice(call_out, 0, 400)}"}
+    end
   end
 
   # ── Real git_head_fn: fail-open (mirrors `git rev-parse HEAD 2>/dev/null || true`) ──
