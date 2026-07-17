@@ -30,6 +30,17 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     byte-identical to the pre-`--lanes` report (COLLISIONS/DISJOINT/
     UNROUTED only). Present: additionally prints `LANE 1..N`,
     `GLOBAL-HOT`, and `UNROUTED` sections from `LoopQueue.partition/2`.
+  - `--json` — optional boolean flag. Requires `--lanes` (absent
+    `--lanes` → exit 2, naming the constraint — JSON output IS the
+    partition, and without a lane count there is no partition to
+    serialize). When both are given, replaces ALL prose sections
+    (COLLISIONS/DISJOINT/LANE/GLOBAL-HOT/UNROUTED) with a single line
+    of `Jason.encode!/1` JSON on stdout:
+    `{"lanes":[[slug,...],...],"global_hot":[slug,...],"unrouted":[slug,...]}`.
+    No `IO.ANSI` escapes, no `Mix.shell()` prose — this is the
+    machine-readable leg a caller (e.g. `codegen-drain assign --auto`)
+    parses. Mirrors the existing `codegen-drain status --json` shape
+    convention.
   - `--check` — optional boolean flag. Absent: behavior/output/exit
     code are byte-identical to today. Present: if `scope_report/1`
     reports any UNROUTED pitch, prints the offending slug(s) to stderr
@@ -67,9 +78,9 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
   - non-zero — a pitch's `scope:` value is present but not a parseable
     `[...]` flow-list (`LoopQueue.parse_scope/2` raises loud rather than
     silently returning an empty/wrong partition), `--dir` names an
-    unrecognized value, `--lanes` is not a positive integer, or
-    `--check` is given and the scanned dir has at least one UNROUTED
-    pitch
+    unrecognized value, `--lanes` is not a positive integer, `--json`
+    is given without `--lanes`, or `--check` is given and the scanned
+    dir has at least one UNROUTED pitch
   """
 
   use Mix.Task
@@ -83,7 +94,7 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
   def run(argv) do
     {opts, _positional, invalid} =
       OptionParser.parse(argv,
-        strict: [dir: :string, cwd: :string, lanes: :string, check: :boolean]
+        strict: [dir: :string, cwd: :string, lanes: :string, check: :boolean, json: :boolean]
       )
 
     if invalid != [] do
@@ -104,6 +115,16 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     end
 
     lane_count = parse_lane_count!(lanes_raw)
+    json? = Keyword.get(opts, :json, false)
+
+    if json? and is_nil(lane_count) do
+      Mix.shell().error(
+        "codegen.pitches.scope: --json requires --lanes — JSON output IS the " <>
+          "partition, and without a lane count there is no partition to serialize"
+      )
+
+      exit({:shutdown, 2})
+    end
 
     pitches_dir = Path.join([cwd, "codegen", "pitches", dir_name]) |> Path.expand()
 
@@ -124,14 +145,24 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
       exit({:shutdown, 2})
     end
 
-    print_collisions(collisions)
-    print_disjoint(disjoint)
-
-    if lane_count do
-      print_lanes(pitches_dir, lane_count)
+    if json? do
+      emit_json(pitches_dir, lane_count)
     else
-      print_unrouted(unrouted)
+      print_collisions(collisions)
+      print_disjoint(disjoint)
+
+      if lane_count do
+        print_lanes(pitches_dir, lane_count)
+      else
+        print_unrouted(unrouted)
+      end
     end
+  end
+
+  defp emit_json(pitches_dir, lane_count) do
+    {lanes, global_hot, unrouted} = LoopQueue.partition(pitches_dir, lane_count)
+
+    IO.puts(Jason.encode!(%{lanes: lanes, global_hot: global_hot, unrouted: unrouted}))
   end
 
   defp parse_lane_count!(nil), do: nil

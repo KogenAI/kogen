@@ -271,6 +271,93 @@ out="$(CODEGEN_DRAIN_INVENTORY="$WS_V/drain-nodes.yaml" "$DRAIN" status --json 2
 check "(v) status --json exits 0" "0" "$ec"
 assert_contains "(v) json watcher no" "$out" '"watcher":"no"'
 
+# ── assign --auto: hermetic tests via CODEGEN_DRAIN_SCOPE_CMD stub. No real
+# mix/BEAM run — the stub emits canned JSON in the exact shape
+# `mix codegen.pitches.scope --json` produces; this proves the JSON->lane->
+# node wiring, not the mix task itself (that is proven by the ExUnit suite
+# for Mix.Tasks.Codegen.Pitches.Scope). Inventories for these cases list only
+# DESTINATION nodes (never the --cwd/source box itself) — the source box's
+# own ready/ is what --auto partitions FROM, not a placement target; listing
+# it as a destination would make lane-1 a same-slug self-assign no-op. ─────
+setup_auto_fixture() {
+    local ws="$1"
+    mkdir -p "$ws/nodeA/codegen/pitches/ready"
+    mkdir -p "$ws/nodeB/codegen/pitches/ready"
+    mkdir -p "$ws/nodeC/codegen/pitches/ready"
+    cat >"$ws/drain-nodes.yaml" <<YAML
+nodes:
+  - name: nodeB
+    repo: $ws/nodeB
+  - name: nodeC
+    repo: $ws/nodeC
+YAML
+}
+
+# ── (w) assign --auto: happy path, 2 disjoint lanes -> 2 distinct nodes ────
+WS_W="$(make_ws w)"
+setup_auto_fixture "$WS_W"
+printf '# p1\n' >"$WS_W/nodeA/codegen/pitches/ready/p1.md"
+printf '# p2\n' >"$WS_W/nodeA/codegen/pitches/ready/p2.md"
+STUB_W='printf %s '"'"'{"lanes":[["p1"],["p2"]],"global_hot":[],"unrouted":[]}'"'"''
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_W/drain-nodes.yaml" CODEGEN_DRAIN_SCOPE_CMD="$STUB_W" "$DRAIN" assign --auto --cwd="$WS_W/nodeA" 2>&1)" || ec=$?
+check "(w) assign --auto happy path exits 0" "0" "$ec"
+assert_contains "(w) p1 assigned to nodeB (lane 1 -> node 1)" "$out" "assigned p1 -> nodeB"
+assert_contains "(w) p2 assigned to nodeC (lane 2 -> node 2)" "$out" "assigned p2 -> nodeC"
+check "(w) p1 landed on nodeB ready/" "1" "$([[ -f "$WS_W/nodeB/codegen/pitches/ready/p1.md" ]] && echo 1 || echo 0)"
+check "(w) p2 landed on nodeC ready/" "1" "$([[ -f "$WS_W/nodeC/codegen/pitches/ready/p2.md" ]] && echo 1 || echo 0)"
+check "(w) p1 source removed from nodeA" "1" "$([[ ! -f "$WS_W/nodeA/codegen/pitches/ready/p1.md" ]] && echo 1 || echo 0)"
+check "(w) p2 source removed from nodeA" "1" "$([[ ! -f "$WS_W/nodeA/codegen/pitches/ready/p2.md" ]] && echo 1 || echo 0)"
+
+# ── (x) assign --auto: UNROUTED slug printed by name, never moved ─────────
+WS_X="$(make_ws x)"
+setup_auto_fixture "$WS_X"
+printf '# p1\n' >"$WS_X/nodeA/codegen/pitches/ready/p1.md"
+printf '# u1\n' >"$WS_X/nodeA/codegen/pitches/ready/u1.md"
+STUB_X='printf %s '"'"'{"lanes":[["p1"],[]],"global_hot":[],"unrouted":["u1"]}'"'"''
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_X/drain-nodes.yaml" CODEGEN_DRAIN_SCOPE_CMD="$STUB_X" "$DRAIN" assign --auto --cwd="$WS_X/nodeA" 2>&1)" || ec=$?
+check "(x) assign --auto exits 0 with unrouted present" "0" "$ec"
+assert_contains "(x) UNROUTED printed by name" "$out" "UNROUTED"
+assert_contains "(x) u1 named in UNROUTED line" "$out" "u1"
+check "(x) u1 NOT moved (stays on nodeA)" "1" "$([[ -f "$WS_X/nodeA/codegen/pitches/ready/u1.md" ]] && echo 1 || echo 0)"
+
+# ── (y) assign --auto: zero reachable nodes -> exit 1, named ──────────────
+WS_Y="$(make_ws y)"
+mkdir -p "$WS_Y/nodeA/codegen/pitches/ready"
+cat >"$WS_Y/drain-nodes.yaml" <<YAML
+nodes:
+  - name: nodeUnreachable
+    host: definitely-not-a-real-host.invalid
+    repo: /nonexistent
+YAML
+printf '# p1\n' >"$WS_Y/nodeA/codegen/pitches/ready/p1.md"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_Y/drain-nodes.yaml" "$DRAIN" assign --auto --cwd="$WS_Y/nodeA" 2>&1)" || ec=$?
+check "(y) assign --auto with zero reachable nodes exits 1" "1" "$ec"
+assert_contains "(y) names zero reachable nodes" "$out" "zero reachable nodes"
+
+# ── (z) assign --auto: GLOBAL-HOT slug printed by name, never moved ───────
+WS_Z="$(make_ws z)"
+setup_auto_fixture "$WS_Z"
+printf '# hot\n' >"$WS_Z/nodeA/codegen/pitches/ready/hot.md"
+printf '# p1\n' >"$WS_Z/nodeA/codegen/pitches/ready/p1.md"
+STUB_Z='printf %s '"'"'{"lanes":[["p1"],[]],"global_hot":["hot"],"unrouted":[]}'"'"''
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_Z/drain-nodes.yaml" CODEGEN_DRAIN_SCOPE_CMD="$STUB_Z" "$DRAIN" assign --auto --cwd="$WS_Z/nodeA" 2>&1)" || ec=$?
+check "(z) assign --auto exits 0 with global_hot present" "0" "$ec"
+assert_contains "(z) GLOBAL-HOT printed by name" "$out" "GLOBAL-HOT"
+assert_contains "(z) hot named in GLOBAL-HOT line" "$out" "hot"
+check "(z) hot NOT moved (stays on nodeA)" "1" "$([[ -f "$WS_Z/nodeA/codegen/pitches/ready/hot.md" ]] && echo 1 || echo 0)"
+
+# ── (aa) assign --auto: --slug/--node mutually exclusive with --auto ──────
+WS_AA="$(make_ws aa)"
+setup_auto_fixture "$WS_AA"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AA/drain-nodes.yaml" "$DRAIN" assign --auto --slug=foo --cwd="$WS_AA/nodeA" 2>&1)" || ec=$?
+check "(aa) --auto with --slug exits 2 (mutually exclusive)" "2" "$ec"
+assert_contains "(aa) names mutually exclusive" "$out" "mutually exclusive"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

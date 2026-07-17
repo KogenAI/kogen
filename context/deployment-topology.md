@@ -85,6 +85,8 @@ Inventory lives at `codegen/drain-nodes.yaml` (gitignored — machine-local topo
 
 **`.incoming/` is a queue-invisible staging directory.** Every consumer of `codegen/pitches/ready/` globs that directory by name explicitly (`find "$READY_DIR" -maxdepth 1 -name "*.md"` in `claude-build.sh`); none glob all subdirectories of `codegen/pitches/`. A sibling `.incoming/` directory is therefore invisible to the build queue by construction, not by a filter added for this purpose.
 
+**`codegen-drain assign --auto` wires the lane partitioner to the mover — no human chooses slug→node.** `mix codegen.pitches.scope --lanes=N --json` (a machine-readable leg alongside the pre-existing ANSI-prose report; requires `--lanes`, mirrors the `codegen-drain status --json` shape convention) emits `{"lanes":[[slug,...],...],"global_hot":[slug,...],"unrouted":[slug,...]}` — the same partition `LoopQueue.partition/2` already computes (scope collisions balanced into lanes, `blocks_on` folded into the same union-find graph so a dependency pair never splits across lanes). `assign --auto` reads THIS box's fleet inventory, counts reachable nodes (`reachable_nodes`, same find-ready ssh probe `status` uses) as `N`, shells `mix codegen.pitches.scope --dir=ready --cwd=<this-box> --lanes=N --json` from `<cwd>/test_harness`, then places lane _i_ → reachable-node _i_ (inventory order) by calling the SAME single-slug transfer `assign --slug --node` already uses (extracted as `cmd_assign_one` — no new mover, no new checksum path, no new resurrection guard). `GLOBAL-HOT` and `UNROUTED` slugs are printed by name and never placed — `--auto` inherits the partitioner's own contract unchanged. Zero reachable nodes → refuse (exit 1, named); a mid-placement transfer failure stops immediately (fail-closed) — already-placed lanes stay placed, remaining lanes are not attempted. Test seam: `CODEGEN_DRAIN_SCOPE_CMD` overrides the mix shell-out with a stub emitting canned JSON, so hook tests prove the JSON→lane→node wiring hermetically without a real mix/BEAM run (the mix task's own `--json` output shape is proven by its ExUnit suite).
+
 ## Pitfalls
 
 - **`CODEGEN_DIR` must be absolute** — Relative paths break symlink resolution.
@@ -94,7 +96,7 @@ Inventory lives at `codegen/drain-nodes.yaml` (gitignored — machine-local topo
 
 ## Trigger Keywords
 
-deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source, codegen root, where does codegen run, three-repo ordering, context codegen platform, worktree cwd ephemeral, codegen-drain, drain-nodes.yaml, possession, fleet, multi-node, ssh lands as root, run_as, .incoming, quiescence gate, scp -p, watcher column, watcher probe, pgrep self-match, argv scanning, queue.lock, liveness probe, watcher=yes watcher=no
+deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source, codegen root, where does codegen run, three-repo ordering, context codegen platform, worktree cwd ephemeral, codegen-drain, drain-nodes.yaml, possession, fleet, multi-node, ssh lands as root, run_as, .incoming, quiescence gate, scp -p, watcher column, watcher probe, pgrep self-match, argv scanning, queue.lock, liveness probe, watcher=yes watcher=no, assign --auto, lane to node, auto-partition, --json partition, codegen.pitches.scope --json, reachable_nodes, CODEGEN_DRAIN_SCOPE_CMD
 
 ---
 

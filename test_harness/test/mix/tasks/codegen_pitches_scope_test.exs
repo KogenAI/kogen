@@ -226,6 +226,83 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
     [_before, after_global_hot] = String.split(out, "GLOBAL-HOT", parts: 2)
     refute after_global_hot =~ ~r/LANE \d/
   end
+
+  test "--json --lanes=N emits Jason-decodable JSON with lanes/global_hot/unrouted keys", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=2", "--json"]) end)
+
+    decoded = Jason.decode!(String.trim(out))
+
+    assert Map.keys(decoded) |> Enum.sort() == ["global_hot", "lanes", "unrouted"]
+    assert is_list(decoded["lanes"])
+    assert length(decoded["lanes"]) == 2
+    assert decoded["global_hot"] == []
+    assert decoded["unrouted"] == []
+    assert decoded["lanes"] |> List.flatten() |> Enum.sort() == ["a", "b"]
+  end
+
+  test "--json --lanes=N emits no ANSI escapes and no LANE/COLLISIONS prose", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=1", "--json"]) end)
+
+    refute out =~ "\e["
+    refute out =~ "LANE"
+    refute out =~ "COLLISIONS"
+    refute out =~ "DISJOINT"
+  end
+
+  test "--json: a GLOBAL-HOT slug lands in global_hot, never in a lane", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "hot.md"),
+      "---\nstatus: SHAPED\nscope: [lib/x.ex, lib/y.ex]\n---\n# hot\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/x.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/y.ex]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=2", "--json"]) end)
+
+    decoded = Jason.decode!(String.trim(out))
+
+    assert decoded["global_hot"] == ["hot"]
+    refute "hot" in List.flatten(decoded["lanes"])
+  end
+
+  test "--json: an unrouted slug lands in unrouted, never in a lane", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(Path.join(ctx.ready_dir, "c.md"), "---\nstatus: SHAPED\n---\n# c\n")
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=1", "--json"]) end)
+
+    decoded = Jason.decode!(String.trim(out))
+
+    assert decoded["unrouted"] == ["c"]
+    refute "c" in List.flatten(decoded["lanes"])
+  end
 end
 
 # Mix.shell/1 mutates process-global state. Tests that swap in
@@ -317,5 +394,17 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeShellTest do
     assert_receive {:mix_shell, :error, [msg]}
     assert msg =~ "unrouted"
     assert msg =~ "a"
+  end
+
+  test "--json without --lanes exits 2 naming the constraint", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--json"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "--json requires --lanes"
   end
 end

@@ -7,6 +7,7 @@
 #
 # Usage:
 #   codegen-drain assign --slug=<slug> --node=<node> [--cwd=<dir>]
+#   codegen-drain assign --auto [--cwd=<dir>]
 #   codegen-drain status [--json] [--cwd=<dir>]
 #   codegen-drain init [--cwd=<dir>]
 #
@@ -14,14 +15,26 @@
 #   assign    Move a pitch from THIS box's ready/ into <node>'s ready/. Ack
 #             (checksum-verified same-fs mv on the far side) BEFORE deleting
 #             the local copy. Refuses (fail-closed) on any doubt.
+#             --auto: partitions THIS box's ready/ into N lanes (N =
+#             reachable node count) via `mix codegen.pitches.scope --json`,
+#             then calls the same single-slug transfer once per lane->node
+#             (lane i -> reachable-node i, inventory order). GLOBAL-HOT and
+#             UNROUTED slugs are printed by name and never placed — the
+#             partitioner's own contract, unchanged. A failing transfer
+#             stops --auto immediately (fail-closed); already-placed lanes
+#             stay placed, remaining lanes are NOT attempted.
 #   status    ssh every configured node and print which pitches/build state
 #             each holds — restores the queue visibility single-copy costs.
 #   init      Interactively write codegen/drain-nodes.yaml (gitignored,
 #             machine-local fleet inventory).
 #
 # Options (assign):
-#   --slug=<slug>   required: must exist at codegen/pitches/ready/<slug>.md locally
-#   --node=<node>   required: must be a key in codegen/drain-nodes.yaml
+#   --slug=<slug>   required (unless --auto): must exist at
+#                    codegen/pitches/ready/<slug>.md locally
+#   --node=<node>   required (unless --auto): must be a key in
+#                    codegen/drain-nodes.yaml
+#   --auto          partition ready/ across all reachable nodes and place
+#                    every lane (mutually exclusive with --slug/--node)
 #
 # Options (status):
 #   --json          emit machine-readable JSON instead of table text
@@ -32,6 +45,18 @@
 #                    it must never derive the repo root from its own install
 #                    location; mirrors codegen-build's --cwd contract.
 #
+# Env (test seam):
+#   CODEGEN_DRAIN_SCOPE_CMD   override for the `mix codegen.pitches.scope`
+#                              invocation `assign --auto` shells out to
+#                              (default: `cd "$CWD/test_harness" &&
+#                              MIX_BUILD_PATH=_build/claude_test mix
+#                              codegen.pitches.scope --dir=ready --cwd="$CWD"
+#                              --lanes=<N> --json`). Hermetic hook tests set
+#                              this to a stub emitting canned JSON so no real
+#                              mix/BEAM run is required to prove the
+#                              JSON->lane->node wiring; the real mix leg is
+#                              proven by the ExUnit test for the task itself.
+#
 # Exit codes: 0 = success, 1 = runtime error, 2 = usage/config error.
 
 set -euo pipefail
@@ -41,6 +66,7 @@ CWD="$PWD"
 usage() {
     printf 'Usage:\n' >&2
     printf '  codegen-drain assign --slug=<slug> --node=<node> [--cwd=<dir>]\n' >&2
+    printf '  codegen-drain assign --auto [--cwd=<dir>]\n' >&2
     printf '  codegen-drain status [--json] [--cwd=<dir>]\n' >&2
     printf '  codegen-drain init [--cwd=<dir>]\n' >&2
     exit 2
@@ -136,7 +162,7 @@ remote_run() {
 }
 
 cmd_assign() {
-    local slug="" node=""
+    local slug="" node="" auto=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
         --slug=*)
@@ -155,12 +181,25 @@ cmd_assign() {
             node="$2"
             shift 2
             ;;
+        --auto)
+            auto="1"
+            shift
+            ;;
         *)
             printf 'codegen-drain assign: unknown option %q\n' "$1" >&2
             usage
             ;;
         esac
     done
+
+    if [[ -n "$auto" ]]; then
+        if [[ -n "$slug" || -n "$node" ]]; then
+            printf 'codegen-drain assign: --auto is mutually exclusive with --slug/--node\n' >&2
+            usage
+        fi
+        cmd_assign_auto
+        return $?
+    fi
 
     [[ -n "$slug" ]] || {
         printf 'codegen-drain assign: --slug required\n' >&2
@@ -173,6 +212,16 @@ cmd_assign() {
 
     require_yq
     require_inventory
+
+    cmd_assign_one "$slug" "$node"
+}
+
+# cmd_assign_one <slug> <node> — the single-slug transfer (checksum-verified
+# ack-before-delete on remote nodes; same-fs mv on local-fs nodes). Callers
+# (cmd_assign's --slug/--node leg, and cmd_assign_auto's per-lane loop) must
+# have already run require_yq/require_inventory.
+cmd_assign_one() {
+    local slug="$1" node="$2"
 
     local local_path="$CWD/codegen/pitches/ready/${slug}.md"
     if [[ ! -f "$local_path" ]]; then
@@ -267,6 +316,100 @@ cmd_assign() {
     local count
     count="$(remote_run "$host" "$run_as" "find '$repo/codegen/pitches/ready' -maxdepth 1 -name '*.md' | wc -l" 2>/dev/null | tr -d '[:space:]' || echo '?')"
     printf 'assigned %s -> %s (local copy removed; %s holds %s pitches)\n' "$slug" "$node" "$node" "$count"
+}
+
+# reachable_nodes — prints one reachable node name per line, in inventory
+# order. A local-fs node (no host:) is always reachable. A remote node is
+# reachable iff the same find-ready probe cmd_status uses returns non-empty
+# output. Unreachable nodes are silently excluded from the printed list
+# (the caller is responsible for naming what was excluded, if it cares).
+reachable_nodes() {
+    local names node host repo run_as probe_out
+    names="$(yq -r '.nodes[].name' "$INVENTORY")"
+    while IFS= read -r node; do
+        [[ -n "$node" ]] || continue
+        host="$(node_field "$node" host)"
+        if [[ -z "$host" ]]; then
+            printf '%s\n' "$node"
+            continue
+        fi
+        repo="$(node_field "$node" repo)"
+        run_as="$(node_field "$node" run_as)"
+        probe_out="$(remote_run "$host" "$run_as" "find '$repo/codegen/pitches/ready' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l" 2>/dev/null || true)"
+        [[ -n "$probe_out" ]] && printf '%s\n' "$node"
+    done <<<"$names"
+}
+
+# cmd_assign_auto — partitions THIS box's ready/ into N lanes (N = reachable
+# node count) via `mix codegen.pitches.scope --json`, then places lane i onto
+# reachable-node i (inventory order) via cmd_assign_one. GLOBAL-HOT and
+# UNROUTED slugs are printed by name and never placed. A failing transfer
+# stops immediately (fail-closed) — already-placed lanes stay placed,
+# remaining lanes are not attempted.
+cmd_assign_auto() {
+    require_yq
+    require_inventory
+
+    local -a nodes=()
+    local n
+    while IFS= read -r n; do
+        [[ -n "$n" ]] && nodes+=("$n")
+    done < <(reachable_nodes)
+
+    local lane_count="${#nodes[@]}"
+    if [[ "$lane_count" -eq 0 ]]; then
+        printf 'codegen-drain assign --auto: zero reachable nodes — refusing\n' >&2
+        exit 1
+    fi
+
+    local scope_cmd="${CODEGEN_DRAIN_SCOPE_CMD:-}"
+    local json_out
+    if [[ -n "$scope_cmd" ]]; then
+        json_out="$(CODEGEN_DRAIN_LANES="$lane_count" CODEGEN_DRAIN_CWD="$CWD" bash -c "$scope_cmd")" || {
+            printf 'codegen-drain assign --auto: scope command failed\n' >&2
+            exit 1
+        }
+    else
+        json_out="$(cd "$CWD/test_harness" && MIX_BUILD_PATH=_build/claude_test mix codegen.pitches.scope --dir=ready --cwd="$CWD" --lanes="$lane_count" --json)" || {
+            printf 'codegen-drain assign --auto: mix codegen.pitches.scope failed\n' >&2
+            exit 1
+        }
+    fi
+
+    [[ -n "$json_out" ]] || {
+        printf 'codegen-drain assign --auto: scope command produced no output\n' >&2
+        exit 1
+    }
+
+    local global_hot unrouted
+    global_hot="$(printf '%s' "$json_out" | yq -p=json -r '.global_hot[]' 2>/dev/null || true)"
+    unrouted="$(printf '%s' "$json_out" | yq -p=json -r '.unrouted[]' 2>/dev/null || true)"
+
+    if [[ -n "$global_hot" ]]; then
+        printf 'GLOBAL-HOT (never placed — build alone): %s\n' "$(printf '%s' "$global_hot" | tr '\n' ' ')"
+    fi
+    if [[ -n "$unrouted" ]]; then
+        printf 'UNROUTED (never placed — a human must place these): %s\n' "$(printf '%s' "$unrouted" | tr '\n' ' ')"
+    fi
+
+    local idx=0
+    local placed=0
+    for n in "${nodes[@]}"; do
+        local lane_slugs
+        lane_slugs="$(printf '%s' "$json_out" | yq -p=json -r ".lanes[$idx][]" 2>/dev/null || true)"
+        idx=$((idx + 1))
+
+        [[ -n "$lane_slugs" ]] || continue
+
+        local lane_slug
+        while IFS= read -r lane_slug; do
+            [[ -n "$lane_slug" ]] || continue
+            cmd_assign_one "$lane_slug" "$n"
+            placed=$((placed + 1))
+        done <<<"$lane_slugs"
+    done
+
+    printf 'assign --auto: placed %s pitch(es) across %s reachable node(s)\n' "$placed" "$lane_count"
 }
 
 cmd_status() {
