@@ -829,5 +829,24 @@ defmodule CodegenTestHarness.LoopQueueTest do
 
       assert LoopQueue.record_ship(non_git_dir, "foo", "aaa", "bbb") == :ok
     end
+
+    test "re-stamps a pitch already moved to shipped/ (post-rebase re-stamp path)", %{
+      dir: dir,
+      commit!: commit!
+    } do
+      before_sha = commit!.("a.txt", "initial")
+
+      shipped_dir = Path.join([dir, "codegen", "pitches", "shipped"])
+      File.mkdir_p!(shipped_dir)
+      pitch_path = Path.join(shipped_dir, "qux.md")
+      File.write!(pitch_path, "---\nstatus: ready\nshipped_sha: oldsha\n---\n# Pitch: qux\n")
+      after_sha = commit!.("b.txt", "second")
+
+      assert LoopQueue.record_ship(dir, "qux", before_sha, after_sha) == :ok
+
+      content = File.read!(pitch_path)
+      assert content =~ "shipped_sha: #{after_sha}"
+      refute content =~ "shipped_sha: oldsha"
+    end
   end
 end

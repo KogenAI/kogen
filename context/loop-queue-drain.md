@@ -73,6 +73,40 @@ systemically-broken environment (not an isolated bad pitch) is failing every bui
 below the threshold are tolerated; `drain/1` returns `{:ok, shipped_count}` with a FAILED bucket naming
 every skipped slug.
 
+## Publish — a Watched Node Publishes Its Own Commits
+
+The drain publishes every commit it lands (`publish_or_halt/4`, called at ALL THREE commit-landed ship
+sites — `handle_exit_zero`'s `committed? and gate_clear?` arm, and BOTH `handle_nonzero_exit` ship arms:
+child-already-shipped and drain-fallback), never relying on a human-started supervisor session (e.g.
+`claude-babysit`) to push on its behalf.
+
+**Preflight, once, before any spawn** (`:publish_preflight_fn`, default `default_publish_preflight_fn/1`):
+resolves the current branch's upstream (`@{u}`) and proves transport with `git ls-remote --exit-code
+<remote> refs/heads/<branch>`. No upstream, detached HEAD, or unreachable remote → `drain/1` refuses
+before any spawn, `{:error, reason}`, $0 spent.
+
+**Per landed commit** (`:git_publish_fn`, default `default_git_publish_fn/2`), called BEFORE the pitch
+file moves `ready/ → shipped/` so the sha the ship record stamps is always the sha that reached origin:
+
+1. `fetch` the upstream. Remote already an ancestor of HEAD → plain `push` → `{:ok, :unchanged}` (the
+   single-node steady state).
+2. Remote moved → `rebase <upstream>` → `push` → `{:ok, {:rewritten, new_head}}`. The rebase invalidates
+   the ship record `LoopQueue.record_ship/4` was about to stamp with the PRE-rebase sha, so
+   `publish_or_halt/4` re-stamps it with `new_head` before shipping (`LoopQueue.write_frontmatter!/4`
+   resolves `ready/` then falls back to `shipped/` — needed because some ship sites re-stamp a pitch
+   already moved).
+3. Conflict → `rebase --abort` → `{:error, reason}`. NEVER `--force`, on any path.
+
+**Halt, don't continue, on a publish failure.** `park_published_commit/3` parks the already-landed commit
+to a NAMED `recovery/<slug>/<ts>` branch via `git branch -f` (clean-tree-safe — unlike `park_failed_tree/2`,
+which parks a DIRTY tree via stash and is a no-op on a clean tree; a successful-but-unpublishable commit
+always leaves a clean tree). The pitch stays in `ready_dir`, and the drain returns `{:error, reason}`
+rather than spawning the next pitch — continuing would build on an unpublished base, and the next push
+would fail too, compounding the divergence silently. Halting bounds the loss at `ahead=1`.
+
+`claude-babysit`/`pi-babysit` no longer push — `harnesses/shared/prompt-bodies/babysit.txt` step 5 is now
+a verify-only step (probe HEAD not ahead of upstream), since the drain publishes on its own.
+
 ## Queue-Wide Spend Ceiling
 
 `CODEGEN_BUILD_QUEUE_BUDGET_USD` — separate from the loop's per-cycle `--max-budget-usd`. Checked before
@@ -107,4 +141,4 @@ a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain co
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node

@@ -48,7 +48,12 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       gate_mtime_fn: fn _cwd -> 0 end,
       terminal_marker_fn: fn _cwd -> :absent end,
       discover_session_log_fn: fn _cwd, _slug, _spawn_stamp -> nil end,
-      blocked_fn: fn -> %{} end
+      blocked_fn: fn -> %{} end,
+      # Hermetic no-op defaults: every existing test that doesn't explicitly
+      # exercise publish must never touch the network. A ship without an
+      # override "publishes" trivially; preflight always passes.
+      git_publish_fn: fn _cwd, _slug -> {:ok, :unchanged} end,
+      publish_preflight_fn: fn _cwd -> :ok end
     ]
 
     Keyword.merge(defaults, extra)
@@ -583,6 +588,123 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert_raise RuntimeError, ~r/solo in neither ready.*nor shipped/, fn ->
         LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end
+    end
+  end
+
+  # ── publish: git_publish_fn / publish_preflight_fn seams ────────────────
+
+  describe "drain/1 publish" do
+    test "exit-0 ship: unchanged publish moves pitch, stderr names published sha", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      git_publish_fn = fn _cwd, _slug -> {:ok, :unchanged} end
+
+      output =
+        capture_io(:stderr, fn ->
+          assert {:ok, 1} =
+                   LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+        end)
+
+      assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+      assert output =~ "shipped, published"
+    end
+
+    test "rewritten publish: ship record stamped with the post-rebase sha, not the original", ctx do
+      System.cmd("git", ["init", "-q", ctx.dir])
+      System.cmd("git", ["-C", ctx.dir, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", ctx.dir, "config", "user.name", "Test"])
+      System.cmd("git", ["-C", ctx.dir, "config", "commit.gpgsign", "false"])
+
+      write_pitch(ctx.ready_dir, "solo", "---\nstatus: ready\n---\n# Pitch: solo\n")
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      git_publish_fn = fn _cwd, _slug -> {:ok, {:rewritten, "newsha123"}} end
+
+      assert {:ok, 1} =
+               LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+
+      content = File.read!(Path.join(ctx.shipped_dir, "solo.md"))
+      assert content =~ "shipped_sha: newsha123"
+    end
+
+    test "conflict publish: halts, pitch stays in ready/, drain does not continue", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      git_publish_fn = fn _cwd, _slug -> {:error, "rebase conflict: boom"} end
+
+      assert {:error, reason} =
+               LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+
+      assert reason =~ "HALTED"
+      assert reason =~ "solo"
+      assert reason =~ "could not publish"
+      assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+      refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    end
+
+    test "preflight refusal: halts BEFORE any spawn — $0 spent", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+      spawn_calls = start_agent(0)
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl ->
+        Agent.update(spawn_calls, &(&1 + 1))
+        {:exit_code, 0}
+      end
+
+      publish_preflight_fn = fn _cwd -> {:error, "no upstream"} end
+
+      assert {:error, reason} =
+               LoopQueueDrain.drain(
+                 base_opts(ctx, spawn_fn: spawn_fn, publish_preflight_fn: publish_preflight_fn)
+               )
+
+      assert reason =~ "no upstream"
+      assert Agent.get(spawn_calls, & &1) == 0
+    end
+
+    test "both handle_nonzero_exit ship arms publish: child-already-shipped", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        File.rename!(
+          Path.join(ctx.ready_dir, "#{slug}.md"),
+          Path.join(ctx.shipped_dir, "#{slug}.md")
+        )
+
+        {:exit_code, 1}
+      end
+
+      publish_calls = start_agent(0)
+
+      git_publish_fn = fn _cwd, _slug ->
+        Agent.update(publish_calls, &(&1 + 1))
+        {:ok, :unchanged}
+      end
+
+      assert {:ok, 1} =
+               LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+
+      assert Agent.get(publish_calls, & &1) == 1
+    end
+
+    test "both handle_nonzero_exit ship arms publish: drain-fallback (still in ready/)", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+
+      publish_calls = start_agent(0)
+
+      git_publish_fn = fn _cwd, _slug ->
+        Agent.update(publish_calls, &(&1 + 1))
+        {:ok, :unchanged}
+      end
+
+      assert {:ok, 1} =
+               LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+
+      assert Agent.get(publish_calls, & &1) == 1
+      assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     end
   end
 

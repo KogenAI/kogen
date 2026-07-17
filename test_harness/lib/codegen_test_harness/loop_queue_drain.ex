@@ -289,6 +289,29 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       prints a wait message instead of burning `$0.00` on a doomed child
       (see moduledoc "Darwin idle-lock" note). Never consulted on
       non-Darwin or outside `:watch`.
+    * `:publish_preflight_fn` — `(cwd -> :ok | {:error, reason})`, default
+      resolves the current branch's upstream (`@{u}`) and proves transport
+      via `git ls-remote --exit-code <remote> refs/heads/<branch>`. Run ONCE,
+      unconditionally (not watch-only), before `run_loop` starts — a node
+      that cannot publish must refuse before spending a cent, not strand a
+      commit later. No upstream, detached HEAD, or unreachable remote ->
+      `drain/1` returns `{:error, reason}` with zero spawns.
+    * `:git_publish_fn` — `(cwd, slug -> {:ok, :unchanged} | {:ok,
+      {:rewritten, new_head}} | {:error, reason})`. Called once per landed
+      commit (all three ship sites — see `publish_or_halt/4`), BEFORE the
+      pitch file is moved to `shipped_dir`, so the sha the ship record
+      stamps is always the sha that actually reached origin. Default: fetch
+      the upstream; remote already an ancestor of HEAD -> plain `push` ->
+      `{:ok, :unchanged}` (the single-node steady state); remote moved ->
+      `rebase <upstream>` -> `push` -> `{:ok, {:rewritten, new_head}}`
+      (caller re-stamps the ship record with `new_head` via
+      `LoopQueue.record_ship/4` before shipping); rebase conflict ->
+      `rebase --abort` -> `{:error, reason}`. NEVER `--force`, on any path.
+      A publish failure HALTs the drain (see `publish_or_halt/4`) — the
+      landed commit is parked to a named `recovery/<slug>/<ts>` branch (via
+      `git branch -f`, clean-tree-safe — unlike `park_failed_tree/2`, which
+      only parks a DIRTY tree and is a no-op here), the pitch stays in
+      `ready_dir`, and the drain does not continue to the next slug.
   """
   @spec drain(drain_opts()) :: {:ok, non_neg_integer()} | {:error, String.t()}
   def drain(opts) do
@@ -310,8 +333,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     pid_alive_fn = Keyword.get(opts, :pid_alive_fn, &BuildLock.default_pid_alive?/1)
     orphan_scan_fn = Keyword.get(opts, :orphan_scan_fn, &default_build_orphan_scan/1)
+    publish_preflight_fn = Keyword.get(opts, :publish_preflight_fn, &default_publish_preflight_fn/1)
 
     with :ok <- refuse_if_build_orphan(cwd, orphan_scan_fn),
+         :ok <- publish_preflight_fn.(cwd),
          :ok <- BuildLock.acquire(lock_path, "queue", pid_alive_fn) do
       try do
         # Move 3 wiring: `default_spawn_fn/5` updates this SAME lock
@@ -379,6 +404,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           keychain_fn: Keyword.get(opts, :keychain_fn, &default_keychain_fn/0),
           discover_session_log_fn:
             Keyword.get(opts, :discover_session_log_fn, &default_discover_session_log/3),
+          git_publish_fn: Keyword.get(opts, :git_publish_fn, &default_git_publish_fn/2),
           timed_out_slugs: MapSet.new(),
           failed_slugs: MapSet.new(),
           parked_branches: %{},
@@ -1050,10 +1076,17 @@ defmodule CodegenTestHarness.LoopQueueDrain do
          "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
 
       committed? and gate_clear? ->
-        ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, head_after)
-        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
-        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
-        run_loop(state, shipped_count + 1, concluded_count + 1)
+        case publish_or_halt(state, slug, head_before, head_after) do
+          {:ok, published_sha} ->
+            ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, published_sha)
+            IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}")
+            state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
+            run_loop(state, shipped_count + 1, concluded_count + 1)
+
+          {:error, reason} ->
+            spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+            {:error, reason}
+        end
 
       true ->
         # False exit-0: no verified commit under a fresh clear gate. Treat as
@@ -1166,6 +1199,59 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       end)
   end
 
+  # Publishes the just-landed commit (fetch/rebase/push — never `--force`)
+  # BEFORE the pitch file is moved to `shipped_dir`, so the sha the ship
+  # record stamps is always the sha that actually reached origin. Returns
+  # `{:ok, state}` on success (the caller then ships normally with
+  # `after_sha`, or the rewritten sha on a rebase) or `{:error, reason}` on
+  # a publish failure — the landed commit is parked to a named
+  # `recovery/<slug>/<ts>` branch and the drain HALTS: continuing would spawn
+  # the NEXT pitch on an unpublished base, and its own push would fail too,
+  # compounding the divergence silently. Halting bounds the loss at
+  # `ahead=1`.
+  @spec publish_or_halt(map(), String.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  defp publish_or_halt(state, slug, _head_before, after_sha) do
+    case state.git_publish_fn.(state.cwd, slug) do
+      {:ok, :unchanged} ->
+        {:ok, after_sha}
+
+      {:ok, {:rewritten, new_head}} ->
+        LoopQueue.record_ship(state.cwd, slug, after_sha, new_head)
+        {:ok, new_head}
+
+      {:error, reason} ->
+        park_note =
+          case park_published_commit(state.cwd, slug, after_sha) do
+            {:ok, branch} -> "; work parked at #{branch}"
+            {:error, park_reason} -> "; parking to a recovery branch ALSO failed: #{park_reason}"
+          end
+
+        {:error,
+         "queue: HALTED — #{slug} committed #{after_sha} but could not publish: #{reason}" <>
+           park_note}
+    end
+  end
+
+  # Parks the already-landed commit to a named `recovery/<slug>/<ts>` branch
+  # via `git branch -f` — clean-tree-safe (unlike `park_failed_tree/2`,
+  # which parks a DIRTY tree via stash and is a no-op on a clean tree; a
+  # successful-but-unpublishable commit always leaves a clean tree). Never
+  # checks out the branch, never touches the current ref. Fail-loud: a
+  # branch-cut failure returns `{:error, reason}` (git's own stderr) rather
+  # than swallowing it — the commit is still safely on the current branch's
+  # history either way, but the operator must not lose the diagnostic.
+  @spec park_published_commit(String.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  defp park_published_commit(cwd, slug, sha) do
+    branch = "recovery/#{slug}/#{default_now_fn()}"
+
+    case System.cmd("git", ["-C", cwd, "branch", "-f", branch, sha], stderr_to_stdout: true) do
+      {_out, 0} -> {:ok, branch}
+      {out, _code} -> {:error, String.trim(out)}
+    end
+  end
+
   defp ship(cwd, ready_dir, shipped_dir, slug, before_sha, after_sha) do
     src = Path.join(ready_dir, "#{slug}.md")
     dst = Path.join(shipped_dir, "#{slug}.md")
@@ -1253,19 +1339,34 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           File.exists?(Path.join(state.shipped_dir, "#{slug}.md")) ->
         # committer-post-commit hiccup: agent already shipped the pitch
         # (moved ready/<slug>.md -> shipped/<slug>.md) before the non-zero
-        # exit. Count it shipped, do not call ship/3 again (src is gone).
-        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
-        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
-        run_loop(state, shipped_count + 1, concluded_count + 1)
+        # exit. Count it shipped, do not call ship/3 again (src is gone) —
+        # still publish the landed commit.
+        case publish_or_halt(state, slug, head_before, head_after) do
+          {:ok, published_sha} ->
+            IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}")
+            state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
+            run_loop(state, shipped_count + 1, concluded_count + 1)
+
+          {:error, reason} ->
+            spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+            {:error, reason}
+        end
 
       committed? and gate_clear? and File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
         # committer-post-commit hiccup: commit landed, gate is clear, but the
         # pitch file is still sitting in ready/ (ship step never ran). Finish
         # the ship ourselves rather than halting the whole queue.
-        ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, head_after)
-        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped")
-        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
-        run_loop(state, shipped_count + 1, concluded_count + 1)
+        case publish_or_halt(state, slug, head_before, head_after) do
+          {:ok, published_sha} ->
+            ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, published_sha)
+            IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}")
+            state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
+            run_loop(state, shipped_count + 1, concluded_count + 1)
+
+          {:error, reason} ->
+            spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+            {:error, reason}
+        end
 
       match?({:terminal, _reason, _owner}, state.terminal_marker_fn.(state.cwd)) ->
         # A DETERMINISTIC exhaustion (owner genuinely could not fix it, or a
@@ -2349,6 +2450,102 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       {_out, 0} -> true
       {_out, 1} -> false
       {_out, _code} -> true
+    end
+  end
+
+  # ── Real publish_preflight_fn: prove upstream + transport, once, before any spawn ──
+  #
+  # Resolves the current branch's upstream (`@{u}`) and proves transport with
+  # `git ls-remote --exit-code <remote> refs/heads/<branch>`. Fail-CLOSED: no
+  # upstream, detached HEAD, or an unreachable remote all refuse — a node
+  # that cannot publish must never start building (see moduledoc "watched
+  # node" invariant).
+  @doc false
+  @spec default_publish_preflight_fn(String.t()) :: :ok | {:error, String.t()}
+  def default_publish_preflight_fn(cwd) do
+    with {upstream_out, 0} <-
+           System.cmd(
+             "git",
+             ["-C", cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+             stderr_to_stdout: true
+           ),
+         upstream <- String.trim(upstream_out),
+         [remote, branch] <- String.split(upstream, "/", parts: 2),
+         {_out, 0} <-
+           System.cmd("git", ["-C", cwd, "ls-remote", "--exit-code", remote, "refs/heads/#{branch}"],
+             stderr_to_stdout: true
+           ) do
+      :ok
+    else
+      {out, _code} ->
+        {:error,
+         "cannot publish (#{String.trim(out)}); set an upstream " <>
+           "(git push -u origin <branch>) and re-run"}
+
+      _other ->
+        {:error, "cannot publish (no upstream resolved); set an upstream and re-run"}
+    end
+  end
+
+  # ── Real git_publish_fn: fetch, then fast-forward push or rebase+push ──────
+  #
+  # Steady state (single node, remote unchanged): fetch, remote already an
+  # ancestor of HEAD -> plain `push` -> `{:ok, :unchanged}`.
+  #
+  # Remote moved (another node landed work first): `rebase <upstream>` ->
+  # `push` -> `{:ok, {:rewritten, new_head}}` — caller re-stamps the ship
+  # record with the post-rebase sha before shipping.
+  #
+  # Conflict: `rebase --abort` -> `{:error, reason}`. NEVER `--force`, on any
+  # path.
+  @doc false
+  @spec default_git_publish_fn(String.t(), String.t()) ::
+          {:ok, :unchanged} | {:ok, {:rewritten, String.t()}} | {:error, String.t()}
+  def default_git_publish_fn(cwd, _slug) do
+    with {_out, 0} <- System.cmd("git", ["-C", cwd, "fetch"], stderr_to_stdout: true),
+         {upstream_out, 0} <-
+           System.cmd(
+             "git",
+             ["-C", cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+             stderr_to_stdout: true
+           ) do
+      upstream = String.trim(upstream_out)
+      publish_against_upstream(cwd, upstream)
+    else
+      {out, _code} -> {:error, "fetch/upstream resolution failed: #{String.trim(out)}"}
+    end
+  end
+
+  defp publish_against_upstream(cwd, upstream) do
+    {head_out, 0} = System.cmd("git", ["-C", cwd, "rev-parse", "HEAD"], stderr_to_stdout: true)
+    head = String.trim(head_out)
+
+    if default_git_ancestor_fn(cwd, upstream, head) do
+      case System.cmd("git", ["-C", cwd, "push"], stderr_to_stdout: true) do
+        {_out, 0} -> {:ok, :unchanged}
+        {out, _code} -> {:error, "push rejected: #{String.trim(out)}"}
+      end
+    else
+      rebase_and_push(cwd, upstream)
+    end
+  end
+
+  defp rebase_and_push(cwd, upstream) do
+    case System.cmd("git", ["-C", cwd, "rebase", upstream], stderr_to_stdout: true) do
+      {_out, 0} ->
+        {new_head_out, 0} =
+          System.cmd("git", ["-C", cwd, "rev-parse", "HEAD"], stderr_to_stdout: true)
+
+        new_head = String.trim(new_head_out)
+
+        case System.cmd("git", ["-C", cwd, "push"], stderr_to_stdout: true) do
+          {_out, 0} -> {:ok, {:rewritten, new_head}}
+          {out, _code} -> {:error, "push rejected after rebase: #{String.trim(out)}"}
+        end
+
+      {out, _code} ->
+        System.cmd("git", ["-C", cwd, "rebase", "--abort"], stderr_to_stdout: true)
+        {:error, "rebase conflict: #{String.trim(out)}"}
     end
   end
 

@@ -2,11 +2,11 @@ Babysit mode. Interactive drain supervisor — keeps the build+shape queue drain
 
 ## Tools
 
-- **Bash** — Unrestricted. Dispatch `codegen-build --queue` / `claude-shape`, ssh to the studio box under `--studio`, `git push` (never force), inspect `git rev-parse HEAD`, cycle/envelope state, and the shaping pipeline. No bash-guard hook restrictions in babysit mode. Every remote dispatch under `--studio` should be stamped "[STUDIO]" in your response text for audit. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the no-cat-pipe hook denies them and wastes a turn.
+- **Bash** — Unrestricted. Dispatch `codegen-build --queue` / `claude-shape`, ssh to the studio box under `--studio`, inspect `git rev-parse HEAD`, `git rev-list --count @{u}..HEAD` (publication verification), cycle/envelope state, and the shaping pipeline. The drain publishes commits itself — you verify, you do not `git push`. No bash-guard hook restrictions in babysit mode. Every remote dispatch under `--studio` should be stamped "[STUDIO]" in your response text for audit. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the no-cat-pipe hook denies them and wastes a turn.
 
 - **Read** — Read local files (cycle logs, pitch frontmatter, envelope state). Use the Read tool for files, Grep for content, Glob for paths.
 
-- **Edit / Write** — Edit or write local files when required by the supervised procedure (e.g. relocating a stuck pitch's frontmatter is NOT your job — that belongs to shape/dev; you mostly read and dispatch). Never hand-stage or hand-commit — committer owns staging; you verify and push after a land.
+- **Edit / Write** — Edit or write local files when required by the supervised procedure (e.g. relocating a stuck pitch's frontmatter is NOT your job — that belongs to shape/dev; you mostly read and dispatch). Never hand-stage, hand-commit, or hand-push — committer owns staging, the drain owns publication; you verify after a land.
 
 - **Glob** — Find local files by path pattern (pitch lifecycle dirs, cycle logs).
 

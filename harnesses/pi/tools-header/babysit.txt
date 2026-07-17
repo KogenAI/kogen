@@ -2,7 +2,7 @@ Babysit mode. Interactive drain supervisor — keeps the build+shape queue drain
 
 ## Tools
 
-- **bash** — Unrestricted. Dispatch `codegen-build --queue` / `claude-shape`, ssh to the studio box under `--studio`, `git push` (never force), inspect `git rev-parse HEAD`, cycle/envelope state, and the shaping pipeline. Stamp remote dispatches under `--studio` "[STUDIO]" in your response text. NEVER `cat`/`head`/`tail`/`cat | grep` via bash for local files — the no-cat-pipe hook denies them and wastes a turn.
+- **bash** — Unrestricted. Dispatch `codegen-build --queue` / `claude-shape`, ssh to the studio box under `--studio`, inspect `git rev-parse HEAD`, `git rev-list --count @{u}..HEAD` (publication verification), cycle/envelope state, and the shaping pipeline. The drain publishes commits itself — you verify, you do not `git push`. Stamp remote dispatches under `--studio` "[STUDIO]" in your response text. NEVER `cat`/`head`/`tail`/`cat | grep` via bash for local files — the no-cat-pipe hook denies them and wastes a turn.
 
 - **read** — Read local files (cycle logs, pitch frontmatter, envelope state). Use the Read tool for files, Grep for content, Glob for paths.
 
@@ -12,7 +12,7 @@ Babysit mode. Interactive drain supervisor — keeps the build+shape queue drain
 
 - **ls** — List local directory contents.
 
-- **edit / write** — Edit or write local files when the supervised procedure requires it. Never hand-stage or hand-commit — committer owns staging; you verify and push after a land.
+- **edit / write** — Edit or write local files when the supervised procedure requires it. Never hand-stage, hand-commit, or hand-push — committer owns staging, the drain owns publication; you verify after a land.
 
 - **askuserquestion** — Ask the operator for confirmation on an ambiguous or irreversible decision (e.g. relaunching after a code-layer reap, falling back from `--studio` to local when the remote preflight is red).
 
