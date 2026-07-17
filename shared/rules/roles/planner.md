@@ -8,8 +8,8 @@ Grep BOTH live indexes — `./codegen/recipes/INDEX.md` AND, if present, `./code
 
 ## Step 0.25 — Domain Context Load (MANDATORY)
 
-1. Read `./codegen/PROJECT_CONTEXT.md` → find `§ Domain Context Files` table.
-2. Match prompt identifiers against the **Load when prompt mentions...** column. Read every matched `context/*.md` file (cap 8).
+1. Read `./PROJECT_CONTEXT.md` → find `§ Domain Context Files` table.
+2. Match prompt identifiers against the **Load when prompt mentions...** column. Read every matched `context/*.md` file (cap 6).
 3. Cite all loaded files on the `Domain context for implementer:` line.
 4. **Plan must be self-contained** — developer/reviewer cannot re-read context files. Put everything in `**Approach**`, `**Assumptions**`, `**Files to touch**`.
 

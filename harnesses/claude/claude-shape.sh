@@ -267,7 +267,7 @@ if [[ ${#RESOLVED_ARGS[@]} -eq 1 ]] && [[ "${RESOLVED_ARGS[0]}" == *"codegen/pit
                 _id="${_id## }"
                 _id="${_id%% }"
                 [[ -z "$_id" ]] && continue
-                if grep -qiF "$_id" "$CLAUDE_PITCH_PATH" 2>/dev/null; then
+                if grep -qiwF "$_id" "$CLAUDE_PITCH_PATH" 2>/dev/null; then
                     _matched=1
                     break
                 fi

@@ -152,7 +152,7 @@ if [[ -n "$PI_PITCH_PATH" && -f "./PROJECT_CONTEXT.md" ]]; then
             _id="${_id## }"
             _id="${_id%% }"
             [[ -z "$_id" ]] && continue
-            if grep -qiF "$_id" "$PI_PITCH_PATH" 2>/dev/null; then
+            if grep -qiwF "$_id" "$PI_PITCH_PATH" 2>/dev/null; then
                 _matched=1
                 break
             fi

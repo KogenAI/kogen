@@ -25,6 +25,7 @@ ALL_COUNTERS: List[str] = [
     "hook_intervention",
     "user_correction",
     "delegation_churn",
+    "context_missed",
 ]
 
 # Repo-level counters run ONCE after the per-session loop (not per session).

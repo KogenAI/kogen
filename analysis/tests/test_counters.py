@@ -459,5 +459,60 @@ class TestRepoCounterWindowing(unittest.TestCase):
             self.assertEqual(len(gate_findings), 1)
 
 
+class TestContextMissed(unittest.TestCase):
+    def setUp(self) -> None:
+        from analysis.counters import context_missed
+
+        self.counter = context_missed
+        self.thrash = _sessions_from_fixture(
+            "context_missed_thrash.jsonl", _thrash_config()
+        )
+        self.clean = _sessions_from_fixture("session_clean.jsonl", _clean_config())
+
+    def test_fires_on_thrash(self) -> None:
+        findings = self.counter.run(self.thrash, _thrash_config())
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].pattern_key, "context/hooks.md")
+        self.assertEqual(findings[0].counter, "context_missed")
+
+    def test_silent_on_clean(self) -> None:
+        findings = self.counter.run(self.clean, _clean_config())
+        self.assertEqual(findings, [])
+
+    def test_anti_self_reference(self) -> None:
+        # A tool_result carrying the deny STRING but is_error=false (e.g. the
+        # hook's own source read back via Read) must NEVER be counted — only
+        # the real is_error=true deny in the fixture should fire.
+        from analysis.session_loader import Session, Turn, ToolResult
+
+        turns = [
+            Turn(
+                index=0,
+                kind="user",
+                timestamp="",
+                cwd="",
+                tool_results=[
+                    ToolResult(
+                        tool_use_id="x",
+                        is_error=False,
+                        content=(
+                            "1\tDeveloper cannot read context/hooks.md for "
+                            "orientation. Source line, not a real deny."
+                        ),
+                    )
+                ],
+            )
+        ]
+        session = Session("x", Path("/tmp/x.jsonl"), turns)
+        findings = self.counter.run(session, _thrash_config())
+        self.assertEqual(findings, [])
+
+    def test_normalizes_absolute_path_to_relative(self) -> None:
+        findings = self.counter.run(self.thrash, _thrash_config())
+        for f in findings:
+            self.assertFalse(f.pattern_key.startswith("/"))
+            self.assertTrue(f.pattern_key.startswith("context/"))
+
+
 if __name__ == "__main__":
     unittest.main()

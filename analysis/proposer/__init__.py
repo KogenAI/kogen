@@ -14,6 +14,7 @@ from typing import Dict
 COUNTER_CONFIDENCE_PRIOR: Dict[str, str] = {
     "forbidden_bash": "high",
     "user_correction": "high",
+    "context_missed": "high",
     "re_read": "medium",
     "delegation_churn": "medium",
     "hook_intervention": "medium",
@@ -31,6 +32,7 @@ COUNTER_FIX_TYPE: Dict[str, str] = {
     ),
     "user_correction": "rule clarification; target shared/rules/**",
     "re_read": "context structure/caching change; target context/*.md, PROJECT_CONTEXT.md",
+    "context_missed": "context structure change; target context/*.md, PROJECT_CONTEXT.md",
     "delegation_churn": "orchestration/routing prompt fix; target orchestrator prompt/role routing",
     "hook_intervention": (
         "guard-tuning or prompt fix; target shared/enforcement/registry.yaml "
