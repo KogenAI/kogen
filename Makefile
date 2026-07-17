@@ -602,10 +602,15 @@ doctor:
 	else \
 		echo "FAIL: node not on PATH (install via mise: mise install node)"; fails=$$((fails + 1)); \
 	fi; \
-	if command -v pi >/dev/null 2>&1; then \
-		echo "OK: pi on PATH"; \
+	if command -v pi >/dev/null 2>&1 && pi --version >/dev/null 2>&1; then \
+		echo "OK: pi on PATH and --version exits 0"; \
 	else \
-		echo "FAIL: pi not on PATH (npm install -g @earendil-works/pi-coding-agent)"; fails=$$((fails + 1)); \
+		echo "FAIL: pi on PATH and --version exits 0 (npm install -g @earendil-works/pi-coding-agent)"; fails=$$((fails + 1)); \
+	fi; \
+	if [ -f "$$HOME/.pi/agent/auth.json" ]; then \
+		echo "OK: ~/.pi/agent/auth.json exists"; \
+	else \
+		echo "FAIL: ~/.pi/agent/auth.json exists (authenticate pi: run 'pi' and sign in, or provision ~/.pi/agent/auth.json)"; fails=$$((fails + 1)); \
 	fi; \
 	if command -v git >/dev/null 2>&1; then \
 		echo "OK: git on PATH"; \
