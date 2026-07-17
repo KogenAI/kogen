@@ -27,7 +27,9 @@ See `context/launcher-hook-matrix.md` for a table of per-hook bypass and fail-op
 
 ## Developer Self-Gate Counter Behavior
 
-`developer-no-self-gate.sh` tracks developer CI invocations per session via counter file (`/tmp/<sentinel>-self-gate-${session_id}.count`). Each Bash invocation matching `make *`, `mix test`, `mix credo`, or `mix format` increments the counter. At limit (3), further attempts are denied — hand off to orchestrator. Plan CI invocations strategically; running `make test` or `make hook-parity` repeatedly burns the budget.
+`developer-no-self-gate.sh` tracks developer CI invocations per session via counter file (`/tmp/<sentinel>-self-gate-${session_id}.count`). Counted: `mix test`, `mix format`, `make ci`, `make test`. Bare `mix credo` (not combined with test/ci) is EXEMPT. Cap is MODE-DEPENDENT: legacy (non-loop) 3; under the Elixir loop (`CODEGEN_LOOP=1`) progress-bounded, hard ceiling 15. At the cap, further attempts are denied — hand off to orchestrator. Plan CI invocations strategically; running `make test` or `make hook-parity` repeatedly burns the budget.
+
+**Authoring rule — a denial states the rule it enforced.** A deny message that announces only a verdict ("hard ceiling reached") without naming the counted set, any exemption, or the ceiling that actually fired forces the agent to re-derive scope from source, and any wrong guess becomes a durably wrong `--learned` entry. Every hand-authored deny message MUST name: (1) what's counted, (2) what's exempt, (3) which ceiling fired. A parity test should derive the counted set from the matcher's own source (never a hardcoded list in the test) and assert each capped command is named in the message — see `developer-no-self-gate-message-parity_test.sh` for the pattern.
 
 ## Resolver Hoisting & Self-Describing Counter Pattern
 

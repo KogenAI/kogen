@@ -132,12 +132,12 @@ describe("developer-no-self-gate", () => {
     }
   });
 
-  it("blocks make ci-fast at count=3", async () => {
+  it("does not count make ci-fast (not a real Makefile target)", async () => {
     const sid = `sid5-${Date.now()}`;
     fs.writeFileSync(counterPath(sid), "2");
     try {
       const result = await runHook("make ci-fast", "developer-static", sid);
-      assert.ok((result as { block?: boolean }).block === true);
+      assert.ok((result as { block?: boolean } | undefined)?.block !== true);
     } finally {
       fs.rmSync(counterPath(sid), { force: true });
     }

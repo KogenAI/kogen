@@ -12,10 +12,14 @@
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.
 #
-# Counts CI/test invocations per session (legacy non-loop mode only). Once
-# the counter reaches 3, denies further attempts and instructs the dev to
-# stop and hand back — the loop's LoopGate (do_gate_loop/9 in
-# orchestration_loop.ex) owns the full gate run after the dev's turn.
+# Counts CI/test invocations per session. Ceiling is MODE-DEPENDENT: legacy
+# (non-loop) mode caps at a raw count of 3; under the Elixir loop
+# (CODEGEN_LOOP=1) the cap is progress-bounded (a gate re-run is allowed as
+# long as the working tree changed since the last run) with a hard ceiling
+# of 15 regardless of progress. Once a cap fires, denies further attempts
+# and instructs the dev to stop and hand back — the loop's LoopGate
+# (do_gate_loop/9 in orchestration_loop.ex) owns the full gate run after the
+# dev's turn.
 #
 # Tracked patterns (matched at the COMMAND-WORD position via
 # command_invokes(), never against the raw line — a mention of "mix test"
@@ -52,16 +56,16 @@ fi
 # Check if command matches a self-gate pattern — command-word position only,
 # so `grep -n "mix test" README.md` or `echo "run make ci first"` never enter
 # the counted path (they mention the phrase, they do not invoke it).
-if ! command_invokes "$COMMAND" '^mix$' '^(test|credo|format)\b' &&
-    ! command_invokes "$COMMAND" '^make$' '^(ci|test)\b'; then
+if ! command_invokes "$COMMAND" '^mix$' '^(test|credo|format)($|[[:space:]])' &&
+    ! command_invokes "$COMMAND" '^make$' '^(ci|test)($|[[:space:]])'; then
     exit 0
 fi
 
 # mix credo is cheap and required before handoff — bypass the cap entirely.
 # Only mix test / make ci / make test / mix format remain capped.
-if command_invokes "$COMMAND" '^mix$' '^credo\b' &&
-    ! command_invokes "$COMMAND" '^make$' '^(ci|test)\b' &&
-    ! command_invokes "$COMMAND" '^mix$' '^test\b'; then
+if command_invokes "$COMMAND" '^mix$' '^credo($|[[:space:]])' &&
+    ! command_invokes "$COMMAND" '^make$' '^(ci|test)($|[[:space:]])' &&
+    ! command_invokes "$COMMAND" '^mix$' '^test($|[[:space:]])'; then
     exit 0
 fi
 
@@ -110,7 +114,7 @@ if [ "${CODEGEN_LOOP:-}" = "1" ]; then
 
     if [ "$new_count" -ge 15 ]; then
         printf '%s\n%s\n%s\n' "$signature" "$new_count" "$resume_token" >"$sig_file"
-        deny "BLOCKED by developer-no-self-gate: hard ceiling (15 gate self-verify runs) reached this session — hand back to the loop rather than continuing to retry."
+        deny "BLOCKED by developer-no-self-gate: hard ceiling (15 gate self-verify runs) reached this session. Counted commands: mix test, mix format, make ci, make test (bare 'mix credo' alone is exempt). Counter is session-wide across ALL calls, not just re-runs after edits — hand back to the loop rather than continuing to retry."
         exit 0
     fi
 
@@ -129,7 +133,7 @@ if [ "${CODEGEN_LOOP:-}" = "1" ]; then
 
     # Signature unchanged → pure spin, nothing was fixed since the last run.
     printf '%s\n%s\n%s\n' "$signature" "$new_count" "$resume_token" >"$sig_file"
-    deny "BLOCKED by developer-no-self-gate: the gate command was re-run with NO change to the working tree since the last run — that cannot fix anything. Make an edit that addresses the failure, or hand back to the loop if you are stuck."
+    deny "BLOCKED by developer-no-self-gate: the gate command (mix test/format, make ci/test) was re-run with NO change to the working tree since the last run — that cannot fix anything. Make an edit that addresses the failure, or hand back to the loop if you are stuck."
     exit 0
 fi
 
@@ -152,7 +156,7 @@ printf '%s' "$count" >"$counter_file"
 debug_log developer-no-self-gate "session=$session_id count=$count cmd=$COMMAND"
 
 if [ "$count" -ge 3 ]; then
-    deny "BLOCKED by developer-no-self-gate: return control to orchestrator. You have run CI/test commands $count times in this session. Complete your implementation and stop — the loop's LoopGate runs the full gate after your turn."
+    deny "BLOCKED by developer-no-self-gate: return control to orchestrator. You have run mix test/format or make ci/test $count times in this session (bare 'mix credo' alone is exempt); the cap is session-wide, not per-edit. Complete your implementation and stop — the loop's LoopGate runs the full gate after your turn."
     exit 0
 fi
 

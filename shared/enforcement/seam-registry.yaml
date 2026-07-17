@@ -182,3 +182,10 @@ seams:
       requires extending enforcement_compiler.py to generate both twins from
       shared pattern dialects (out of scope for this build; see pitch
       "eliminate-at-source: extend compiler beyond kind:denial").
+
+  - id: self-gate-matcher-to-deny-message
+    declares: harnesses/claude/hooks/developer-no-self-gate.sh (command_invokes matcher + credo exemption branch), harnesses/pi/pi-extensions/enforcement/src/hooks/developer-no-self-gate.ts (commandInvokes matcher)
+    reflects: harnesses/claude/hooks/developer-no-self-gate.sh deny() texts, harnesses/pi/pi-extensions/enforcement/src/hooks/developer-no-self-gate.ts deny() texts
+    guard: harnesses/claude/hooks/developer-no-self-gate-message-parity_test.sh
+    guard_time: make-test
+    pattern: checked-mirror

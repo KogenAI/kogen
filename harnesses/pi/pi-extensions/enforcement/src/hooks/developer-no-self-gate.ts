@@ -51,8 +51,8 @@ export function register(pi: ExtensionAPI): void {
     // only, so `grep -n "mix test" README.md` or `echo "run make ci first"`
     // never enter the counted path (they mention the phrase, they do not
     // invoke it).
-    const isMixSelfGate = commandInvokes(command, /^mix$/, /^(test|credo|format)\b/);
-    const isMakeSelfGate = commandInvokes(command, /^make$/, /^(ci|ci-fast|test)\b/);
+    const isMixSelfGate = commandInvokes(command, /^mix$/, /^(test|credo|format)($|\s)/);
+    const isMakeSelfGate = commandInvokes(command, /^make$/, /^(ci|test)($|\s)/);
     if (!isMixSelfGate && !isMakeSelfGate) {
       return;
     }
@@ -115,7 +115,7 @@ export function register(pi: ExtensionAPI): void {
       if (newCount >= 15) {
         fs.writeFileSync(sigFile, `${signature}\n${newCount}\n${resumeToken}\n`);
         return deny(
-          "BLOCKED by developer-no-self-gate: hard ceiling (15 gate self-verify runs) reached this session — hand back to the loop rather than continuing to retry.",
+          "BLOCKED by developer-no-self-gate: hard ceiling (15 gate self-verify runs) reached this session. Counted commands: mix test, mix credo, mix format, make ci, make test. Counter is session-wide across ALL calls, not just re-runs after edits — hand back to the loop rather than continuing to retry.",
         );
       }
 
@@ -135,7 +135,7 @@ export function register(pi: ExtensionAPI): void {
       // Signature unchanged → pure spin, nothing was fixed since last run.
       fs.writeFileSync(sigFile, `${signature}\n${newCount}\n${resumeToken}\n`);
       return deny(
-        "BLOCKED by developer-no-self-gate: the gate command was re-run with NO change to the working tree since the last run — that cannot fix anything. Make an edit that addresses the failure, or hand back to the loop if you are stuck.",
+        "BLOCKED by developer-no-self-gate: the gate command (mix test/credo/format, make ci/test) was re-run with NO change to the working tree since the last run — that cannot fix anything. Make an edit that addresses the failure, or hand back to the loop if you are stuck.",
       );
     }
 
@@ -159,7 +159,7 @@ export function register(pi: ExtensionAPI): void {
 
     if (count >= 3) {
       return deny(
-        `BLOCKED by developer-no-self-gate: return control to orchestrator. You have run CI/test commands ${count} times in this session. Complete your implementation and stop — the loop's LoopGate runs the full gate after your turn.`,
+        `BLOCKED by developer-no-self-gate: return control to orchestrator. You have run mix test/credo/format or make ci/test ${count} times in this session; the cap is session-wide, not per-edit. Complete your implementation and stop — the loop's LoopGate runs the full gate after your turn.`,
       );
     }
   });
