@@ -1953,6 +1953,91 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "run/1 — gate stale-build self-heal leg" do
+    test "a stale-_build verdict rebuilds once and re-runs the gate WITHOUT consuming a rework attempt",
+         %{calls_agent: calls_agent} do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      {:ok, heal_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(heal_calls_agent), do: Agent.stop(heal_calls_agent) end)
+
+      # Call 0: initial gate -> failed (classified :stale_build below).
+      # Call 1: heal-leg re-run -> CLEAR (rebuild fixed it).
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      gate_classify_fn = fn _cwd, _dev_role -> :stale_build end
+
+      heal_fn = fn _cwd ->
+        Agent.update(heal_calls_agent, &(&1 + 1))
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: gate_classify_fn,
+                 stale_build_heal_fn: heal_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      # heal_fn invoked exactly once (the _build nuke).
+      assert Agent.get(heal_calls_agent, & &1) == 1
+
+      # developer-static invoked exactly ONCE — the stale-build heal
+      # absorbed the failure without spending a rework attempt.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 1
+    end
+
+    test "a stale-_build verdict that persists after rebuild eventually exhausts to ordinary rework (no infinite heal loop)",
+         %{calls_agent: calls_agent} do
+      {:ok, heal_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(heal_calls_agent), do: Agent.stop(heal_calls_agent) end)
+
+      # Every gate call stays :failed even after the "rebuild" — this
+      # asserts termination (bounded by the rework budget), not a tight
+      # infinite heal loop. Each NEW gate-failure occurrence (post-rework
+      # retry) legitimately heals again — do_gate_loop_stale_build_heal
+      # itself never recurses into its own heal leg on ONE occurrence.
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+      gate_classify_fn = fn _cwd, _dev_role -> :stale_build end
+
+      heal_fn = fn _cwd ->
+        Agent.update(heal_calls_agent, &(&1 + 1))
+        :ok
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: gate_classify_fn,
+                 stale_build_heal_fn: heal_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn()
+               )
+
+      assert reason =~ "gate verdict=failed"
+      # heal_fn ran at least once and the loop still terminated (bounded by
+      # the rework budget) rather than spinning forever.
+      assert Agent.get(heal_calls_agent, & &1) >= 1
+    end
+  end
+
   describe "run/1 — terminal marker on deterministic gate exhaustion" do
     test "gate exhaustion writes codegen/gate-pending/terminal-state.json naming the owner", %{
       calls_agent: calls_agent

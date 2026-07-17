@@ -73,6 +73,34 @@ defmodule CodegenTestHarness.LoopGate do
     end
   end
 
+  # Load-failure phrasing distinct from a genuine undefined-function typo:
+  # `mix test` against a stale `_build` emits `** (UndefinedFunctionError)
+  # function Foo.bar/1 is undefined (module Foo is not available)` for
+  # EVERY call into an unloaded module — a typo'd call to a real,
+  # loaded module instead says "is undefined or private" with no
+  # "module ... is not available" clause. Matching only the
+  # module-unavailable clause, plus a >=2-distinct-module threshold below,
+  # keeps a single genuinely-deleted module routed to `:code` as before.
+  @stale_build_signature ~r/module ([A-Z][\w.]*) is not available/
+
+  @doc """
+  Detects a stale `_build` gate failure: the gate log names two or more
+  DISTINCT modules as "not available" — the whole app failed to load
+  against unrecompiled artifacts, not a single missing/renamed module.
+
+  A single unavailable module stays `false` here (routes to the ordinary
+  `:code` classification) — deleting/renaming one module is a plausible
+  real code defect, not a stale build.
+  """
+  @spec stale_build?(String.t()) :: boolean()
+  def stale_build?(text) when is_binary(text) do
+    @stale_build_signature
+    |> Regex.scan(text, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.uniq()
+    |> length() >= 2
+  end
+
   @doc """
   Generalizes `static_render_deps_preflight!/1`'s raise into a
   stack-agnostic infra-abort seam: raises `CodegenTestHarness.InfraAbort`

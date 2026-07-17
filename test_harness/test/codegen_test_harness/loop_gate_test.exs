@@ -660,6 +660,35 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "stale_build?/1" do
+    test "two distinct unavailable modules -> true (stale build)" do
+      text = """
+      ** (UndefinedFunctionError) function Foo.bar/1 is undefined (module Foo is not available)
+      ** (UndefinedFunctionError) function Baz.qux/2 is undefined (module Baz is not available)
+      """
+
+      assert LoopGate.stale_build?(text) == true
+    end
+
+    test "a single unavailable module -> false (plausible real deleted-module defect)" do
+      text = "** (UndefinedFunctionError) function Foo.bar/1 is undefined (module Foo is not available)"
+
+      assert LoopGate.stale_build?(text) == false
+    end
+
+    test "a genuine undefined-function typo (module present) -> false" do
+      text = "** (UndefinedFunctionError) function Foo.bar/1 is undefined or private"
+
+      assert LoopGate.stale_build?(text) == false
+    end
+
+    test "a Postgrex infra log -> false (stays :infra via classify_failure, not stolen)" do
+      text = "** (Postgrex.Error) ERROR 42P07 (duplicate_table) relation \"users\" already exists"
+
+      assert LoopGate.stale_build?(text) == false
+    end
+  end
+
   describe "infra_abort!/2" do
     test "raises CodegenTestHarness.InfraAbort naming the check and reason" do
       assert_raise CodegenTestHarness.InfraAbort, ~r/gate: poisoned DB state/, fn ->

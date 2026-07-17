@@ -2022,6 +2022,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                 "#{reason}"
             )
 
+          :stale_build ->
+            do_gate_loop_stale_build_heal(
+              dev_role,
+              rest,
+              harness,
+              ctx,
+              opts,
+              gate_fn,
+              gate_cmd,
+              max_retries,
+              attempt,
+              prev_signature
+            )
+
           {:owner, owner_role} ->
             do_gate_loop_flake_check(
               owner_role,
@@ -2097,6 +2111,99 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           ctx,
           opts,
           gate_fn,
+          max_retries,
+          attempt,
+          prev_signature
+        )
+    end
+  end
+
+  # Default `:stale_build_heal_fn` — nukes the candidate compiled-artifact
+  # roots under `cwd` (the codegen self-gate compiles into
+  # `test_harness/_build/claude_test`; a downstream app into
+  # `_build/test`). `File.rm_rf!/1` is a no-op where a root is absent, so
+  # nuking both unconditionally is safe and stack-agnostic. Compile-only:
+  # no `deps.get` — a stale build is stale artifacts, not missing deps; the
+  # gate re-run's own `mix compile` step rebuilds everything it needs.
+  @spec default_stale_build_heal_fn(String.t()) :: :ok
+  defp default_stale_build_heal_fn(cwd) do
+    File.rm_rf!(Path.join(cwd, "_build"))
+    File.rm_rf!(Path.join([cwd, "test_harness", "_build"]))
+    :ok
+  end
+
+  # A stale `_build` (compiled artifacts predating current source) makes
+  # `mix test` emit mass `** (UndefinedFunctionError) ... module Foo is
+  # not available` for every call into an unloaded module — classified
+  # `:stale_build` by `default_gate_classify_fn/2`. This is NOT a code
+  # defect (no edit can fix it) and NOT an infra fault (a rebuild clears
+  # it instantly) — routing it to developer rework wastes a cycle, and
+  # routing it to `:infra` would abort the whole queue (InfraAbort exit 3)
+  # on a box a `mix compile` would fix in seconds. See
+  # `a-stale-_build-must-not-halt-the-queue-as-a-false-infra-fault` pitch.
+  #
+  # Heals AT MOST ONCE per gate-failure occurrence: nukes `_build`, re-runs
+  # the SAME gate command directly (not via the full `do_gate_loop`
+  # recursion) WITHOUT consuming a rework attempt. Clear -> proceed via
+  # `do_gate_loop/9` fresh (mirrors the flake-check green path). Still
+  # `:failed` -> classify once more; ANY verdict (including a repeated
+  # `:stale_build`) routes to ordinary rework via `do_gate_loop_flake_check/10`
+  # so a rebuild that doesn't help is never re-healed in a loop.
+  defp do_gate_loop_stale_build_heal(
+         dev_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         gate_fn,
+         gate_cmd,
+         max_retries,
+         attempt,
+         prev_signature
+       ) do
+    heal_fn = Keyword.get(opts, :stale_build_heal_fn, &default_stale_build_heal_fn/1)
+
+    operator_note(
+      "gate #{inspect(gate_cmd)}: stale _build detected (module load failures) — " <>
+        "rebuilding and re-running (attempt not consumed)"
+    )
+
+    heal_fn.(ctx.cwd)
+
+    case gate_fn.(ctx.cwd, gate_opts(opts, dev_role)) do
+      {:clear, _cmd} ->
+        operator_note(
+          "gate #{inspect(gate_cmd)}: passed after stale-_build rebuild — re-running gate " <>
+            "(attempt not consumed)"
+        )
+
+        do_gate_loop(
+          dev_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          max_retries,
+          attempt,
+          prev_signature
+        )
+
+      {_verdict, _cmd} ->
+        # Rebuild did not clear it (or it re-classifies as :stale_build
+        # again) — treat as a genuine failure, route through the normal
+        # owner-resolution/flake-check/rework path exactly once, never
+        # re-entering the heal leg.
+        owner_role = resolve_gate_owner(ctx.cwd, dev_role)
+
+        do_gate_loop_flake_check(
+          owner_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          gate_cmd,
           max_retries,
           attempt,
           prev_signature
@@ -2290,7 +2397,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # a `:code` verdict to its OWNING role: a context-doc-shaped witness ->
   # `context-curator`, everything else -> `dev_role` (the cycle's own
   # developer — today's behavior, preserved for every unmapped check).
-  @spec default_gate_classify_fn(String.t(), String.t()) :: LoopGate.owner_class()
+  @spec default_gate_classify_fn(String.t(), String.t()) ::
+          LoopGate.owner_class() | :stale_build
   defp default_gate_classify_fn(cwd, dev_role) do
     log_path = Path.join([cwd, "codegen", "gate-pending", "gate-run.log"])
 
@@ -2300,12 +2408,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         {:error, _reason} -> ""
       end
 
-    case LoopGate.classify_failure(content) do
-      :infra ->
-        :infra
+    cond do
+      LoopGate.stale_build?(content) ->
+        :stale_build
 
-      :code ->
-        {:owner, resolve_gate_owner(cwd, dev_role)}
+      true ->
+        case LoopGate.classify_failure(content) do
+          :infra ->
+            :infra
+
+          :code ->
+            {:owner, resolve_gate_owner(cwd, dev_role)}
+        end
     end
   end
 
