@@ -46,12 +46,6 @@ defmodule CodegenTestHarness.Fixtures do
   @codegen_build_timeout_ms 5_400_000
   @parity_build_timeout_ms 1_800_000
 
-  @commit_contract_suffix """
-
-
-  IMPORTANT: After completing the work, you MUST commit ALL changes using `git add -A && git commit -m "<subject>"` before exiting. Do NOT use subagents — commit directly via bash. The test harness counts git commits to verify completion. The commit subject (first line) MUST be ≤72 characters. Use imperative mood (e.g., "Add", "Fix", "Update") with no trailing period.
-  """
-
   @doc """
   Creates an isolated, git-initialised temporary directory outside the OCG
   working tree, registers an `on_exit` cleanup hook, and returns the path.
@@ -444,7 +438,6 @@ defmodule CodegenTestHarness.Fixtures do
     harness_val = harness()
     stack = Keyword.get(opts, :stack, "phoenix")
     test_name = Keyword.get(opts, :test_name, "unnamed")
-    prompt_with_contract = prompt <> @commit_contract_suffix
 
     pre_integrate_and_commit!(cwd, stack)
 
@@ -457,7 +450,7 @@ defmodule CodegenTestHarness.Fixtures do
           "--harness=#{harness_val}",
           "--stack=#{stack}",
           "--cwd=#{cwd}",
-          prompt_with_contract
+          prompt
         ],
         [],
         @codegen_build_timeout_ms
@@ -492,7 +485,6 @@ defmodule CodegenTestHarness.Fixtures do
   def run_codegen_build_parity(cwd, harness, prompt, opts \\ []) do
     stack = Keyword.get(opts, :stack, "phoenix")
     timeout_ms = Keyword.get(opts, :timeout_ms, @parity_build_timeout_ms)
-    prompt_with_contract = prompt <> @commit_contract_suffix
 
     {output, exit_code} =
       run_with_timeout(
@@ -501,7 +493,7 @@ defmodule CodegenTestHarness.Fixtures do
           "--harness=#{harness}",
           "--stack=#{stack}",
           "--cwd=#{cwd}",
-          prompt_with_contract
+          prompt
         ],
         [],
         timeout_ms

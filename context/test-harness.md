@@ -227,16 +227,13 @@ A test fixture can encode the SAME false premise as the prod bug it should catch
 
 **Build path isolation**: Tests using `mix` with non-default `MIX_BUILD_PATH=_build/pi_test` (pi tests) require recompilation of fixture-modified files under BOTH the default and custom build paths. A stale `_build/pi_test` still serves old BEAM bytecode after fixture changes until that tree is recompiled. Solution: run `mix compile` after fixture code edits without the env var, then again with the env var set.
 
-**Arity + BEAM**: Functions defined with default args (e.g., `def f(opts \\ [])`) export both arity-0 and arity-1 in BEAM. A stale `.beam` under a non-default build path silently serves old signatures until recompilation.
-
-**Environment isolation**: `System.cmd/3` with `env: []` clears the entire process environment — stripping PATH, HOME, MIX_HOME, HEX_HOME. Safe only for git (reads repo-local config). Mix commands need ambient environment (`env: :inherit` or omit `:env` option).
-
-**Parallel build-path isolation**: concurrent suites (e.g. `-j2` `test-stacks-claude`/`test-stacks-pi`) need distinct `MIX_BUILD_PATH` to avoid BEAM artifact clobbering — parity test uses `_build/parity_test`, separate from `_build/claude_test`/`_build/pi_test`.
+**Arity + BEAM**: Default-arg functions export both arity-0 and arity-1 in BEAM; stale `.beam` under non-default `MIX_BUILD_PATH` silently serves old signatures until recompilation. **Environment isolation**: `env: []` clears entire process environment; safe only for git. Mix commands need `env: :inherit` or omit `:env`. **Parallel isolation**: concurrent suites need distinct `MIX_BUILD_PATH` to avoid BEAM clobbering (`_build/parity_test` vs `_build/claude_test` / `_build/pi_test`).
 
 Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks: → see `context/test-benchmarking.md`.
 
 ## Pitfalls
 
+- **Fixture prompt suffixes must not contradict assigned role** — appending `@commit_contract_suffix` or similar fixture-embedded "commit directly via bash" instructions conflicts with the loop's dedicated committer role. If obeyed → `loop_failed` on 2+ commits; if ignored → reviewer correctly reds for contradicting discipline. The loop's `assert_work_produced!` is the strongest guard. Always audit build prompts for role conflicts.
 - **Leaf test summary format is load-bearing** — `N passed, N failed` or `Results: N passed, N failed`. Preserve exact format per leaf; grep patterns require exact match.
 - **Round-trip tests fail loud on missing tools** — require claude, jq, yq, rg, node on PATH; fail explicitly if absent.
 - **`mix test` must be scoped** — bare `mix test` runs all tests; use file/tag filter (`--only phoenix`).
@@ -244,13 +241,13 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 - **Hook tests are bash** — do not run via `mix test`; use `run-tests.sh`.
 - **Gate-failure-path tests are `:slow`** — verdict != "clear" tests require real hooks; tag `:slow`, run only `make test-stacks`.
 - **`mix assets.deploy` silent no-op risk** — guard assertions with filesystem checks (assets/ dir + alias in mix.exs).
-- **Private helpers per-module only** — cannot share across modules in same file; promote to public support module or duplicate.
-- **`phx_new` 1.8.7+ no `--force`** — scaffold via `mix phx.new . --app <name> --live` (no --force flag).
-- **`run_with_timeout/4` return order** — returns `{output, exit_code}` (output-first); re-tuple explicitly if contract differs.
-- **`assert_assets_deploy!` needs `MIX_ENV=dev`** — tailwind config is dev-only; pass `env: [{"MIX_ENV", "dev"}]` in System.cmd call.
-- **`codegen-call` requires `--model`, `--effort`, `@<abs-path>`** — old API used exit 2; fixtures resolve from config.yaml, write temps, pass @/tmp/...
-- **`default_spawn_fn/5` timeout kills whole child tree** — `Port.open`+receive-loop, not `Task.shutdown(:brutal_kill)` (orphans grandchildren). Seams: `:__queue_drain_build_bin__`, `:__queue_drain_kill_fn__`.
-- **`bench_artifacts_test.exs` token list tracks screenshot.js changes** — update on Vite migration.
+- **`phx_new` 1.8.7+ no `--force`** — use `mix phx.new . --app <name> --live`.
+- **`run_with_timeout/4` return order** — `{output, exit_code}` (output-first).
+- **`assert_assets_deploy!` needs `MIX_ENV=dev`** — tailwind is dev-only.
+- **`codegen-call` requires `--model`, `--effort`, `@<abs-path>`** — resolve from config.yaml, write temps.
+- **Private helpers per-module only** — promote to public module to share.
+- **`default_spawn_fn/5` timeout kills child tree** — use `Port.open` loop, not `Task.shutdown`.
+- **`bench_artifacts_test.exs`** — update token list on screenshot.js changes.
 
 ## Trigger Keywords
 
