@@ -130,7 +130,8 @@ defmodule CodegenTestHarness.BenchMetrics do
     %{
       id: :cache_read_tokens_by_role,
       unit: "count",
-      source: "UsageParser.parse_per_role/3 per-subagent transcript sums",
+      source:
+        "UsageParser.parse_per_role/3 — Claude: per-subagent transcript sums; Pi: loop terminal per_role sub-map",
       aggregator: :sum,
       gap: "separate shape — %{role => %{...}}, not a flat scalar"
     }

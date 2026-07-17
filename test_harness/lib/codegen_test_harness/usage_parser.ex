@@ -21,11 +21,15 @@ defmodule CodegenTestHarness.UsageParser do
 
   ## Per-role attribution (`parse_per_role/3`)
 
-  Claude only — reads per-subagent transcript files from
+  Claude reads per-subagent transcript files from
   `~/.claude/projects/<proj>/<session_id>/subagents/agent-*.jsonl` and adds
   the main transcript as an `"orchestrator"` bucket.
 
-  Pi returns `%{}` — Pi has no `~/.claude` subagent transcripts.
+  Pi sources per-role usage from the SAME loop terminal result line consumed
+  by `parse/2`'s `:pi` clause — the Elixir orchestration loop's `"per_role"`
+  sub-map already carries cache/input/output tokens per role for both
+  harnesses. Pi returns `%{}` only when that loop line is absent (e.g. a raw
+  `pi --mode json` capture, not a loop-driven build).
   """
 
   @type parsed :: %{
@@ -140,6 +144,29 @@ defmodule CodegenTestHarness.UsageParser do
     }
   end
 
+  defp per_role_from_loop_result(%{} = result) when map_size(result) > 0 do
+    result
+    |> Map.get("per_role", %{})
+    |> Map.new(fn {role, entry} ->
+      {role,
+       %{
+         input_tokens: int_or_unknown_zero(entry, "input_tokens"),
+         output_tokens: int_or_unknown_zero(entry, "output_tokens"),
+         cache_read_tokens: int_or_unknown_zero(entry, "cache_read_tokens"),
+         cache_creation_tokens: int_or_unknown_zero(entry, "cache_creation_tokens")
+       }}
+    end)
+  end
+
+  defp per_role_from_loop_result(_), do: %{}
+
+  defp int_or_unknown_zero(map, key) do
+    case Map.get(map, key) do
+      n when is_integer(n) -> n
+      _ -> 0
+    end
+  end
+
   @type per_role_usage :: %{
           input_tokens: non_neg_integer(),
           output_tokens: non_neg_integer(),
@@ -150,20 +177,29 @@ defmodule CodegenTestHarness.UsageParser do
   @doc """
   Parses per-role token usage from Claude's per-subagent transcript files.
 
-  Returns `%{role => per_role_usage}` keyed by subagent `agentType` plus an
-  `"orchestrator"` bucket from the main transcript. Returns `%{}` on any
-  failure (no session_id, dir not found, Pi harness) — graceful, never raises.
+  For `:claude`, returns `%{role => per_role_usage}` keyed by subagent
+  `agentType` plus an `"orchestrator"` bucket from the main transcript.
+  Returns `%{}` on any failure (no session_id, dir not found) — graceful,
+  never raises.
+
+  For `:pi`, returns `%{role => per_role_usage}` sourced from the loop's
+  terminal `"per_role"` sub-map (same source `parse/2`'s `:pi` clause reads
+  for top-level metrics). Returns `%{}` when the loop line is absent.
 
   `opts[:projects_root]` overrides the default `~/.claude/projects` base
-  (used for hermetic tests).
-
-  Pi returns `%{}` — Pi has no `~/.claude` subagent transcripts.
+  (used for hermetic tests). Unused by the `:pi` clause.
   """
   @spec parse_per_role(String.t(), :claude | :pi, keyword()) :: %{
           optional(String.t()) => per_role_usage()
         }
   def parse_per_role(output, harness, opts \\ [])
-  def parse_per_role(_output, :pi, _opts), do: %{}
+
+  def parse_per_role(output, :pi, _opts) do
+    output
+    |> decode_lines()
+    |> extract_loop_result()
+    |> per_role_from_loop_result()
+  end
 
   def parse_per_role(output, :claude, opts) do
     projects_root = Keyword.get(opts, :projects_root, Path.expand("~/.claude/projects"))

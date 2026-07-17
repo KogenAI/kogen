@@ -307,8 +307,53 @@ defmodule CodegenTestHarness.BenchTest do
       Jason.encode!(%{"type" => "system", "subtype" => "init", "session_id" => sid}) <> "\n"
     end
 
-    test "Pi always returns empty map" do
-      assert UsageParser.parse_per_role("anything", :pi, []) == %{}
+    test "Pi maps loop terminal line per_role into per_role_usage shape" do
+      output =
+        Jason.encode!(%{
+          "type" => "result",
+          "engine" => "elixir_loop",
+          "subtype" => "success",
+          "per_role" => %{
+            "planner-phoenix" => %{
+              "input_tokens" => 100,
+              "output_tokens" => 20,
+              "cache_read_tokens" => 5000,
+              "cache_creation_tokens" => 300,
+              "cost_usd" => 0.05,
+              "num_turns" => 3,
+              "calls" => 1
+            },
+            "developer-phoenix-backend" => %{
+              "input_tokens" => 200,
+              "output_tokens" => 40,
+              "cache_read_tokens" => 9000,
+              "cache_creation_tokens" => 600,
+              "cost_usd" => 0.10,
+              "num_turns" => 6,
+              "calls" => 1
+            }
+          }
+        }) <> "\n"
+
+      assert UsageParser.parse_per_role(output, :pi, []) == %{
+               "planner-phoenix" => %{
+                 input_tokens: 100,
+                 output_tokens: 20,
+                 cache_read_tokens: 5000,
+                 cache_creation_tokens: 300
+               },
+               "developer-phoenix-backend" => %{
+                 input_tokens: 200,
+                 output_tokens: 40,
+                 cache_read_tokens: 9000,
+                 cache_creation_tokens: 600
+               }
+             }
+    end
+
+    test "Pi returns empty map when output has no loop terminal line" do
+      output = ~s({"type":"agent_end","messages":[]}\n)
+      assert UsageParser.parse_per_role(output, :pi, []) == %{}
     end
 
     test "returns empty map when output has no session_id" do
