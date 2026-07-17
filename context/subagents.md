@@ -100,9 +100,9 @@ Shape mode gates pitch readiness by scanning for three deletion-safety blocker c
 
 Shape mode emits blockers with quoted context and remediation options before advancing to readiness-check verdict.
 
-## Session-Log Header Requirements for Stack-Variant Templates
+## Session-Log Role Naming for Stack-Variant Templates
 
-When a developer subagent template is stack-prefixed (e.g., `planner-phoenix`, `planner-static`, `developer-static`), it writes its session-log section via `codegen-log section --body @-`, which derives `## <agent_type>-<stack> Section` (e.g., `## planner-phoenix Section`) from `AGENT_TYPE`/`CLAUDE_ROLE`. `codegen-log` is the sole writer — no raw Edit path exists, so there is no bypass/no-bypass distinction to track per stack variant.
+When a developer subagent template is stack-prefixed (e.g., `planner-phoenix`, `planner-static`, `developer-static`), it writes its cycle-log event via `codegen-log section <agent_type> --body @-` (positional role, taken literally from `AGENT_TYPE`/`CLAUDE_ROLE`, e.g. `planner-phoenix`) — a `{"ev":"role","role":"planner-phoenix",...}` JSONL event, NOT a markdown `## <role> Section` header (the log has no headers at all; see `shared/rules/_core/session-log.md`). `codegen-log` is the sole writer — no raw Edit path exists, so there is no bypass/no-bypass distinction to track per stack variant.
 
 ## Subagent Template Include Placement & Edit Uniqueness
 

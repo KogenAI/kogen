@@ -1,0 +1,60 @@
+# Size Governance — Byte Caps, Line Caps, Budget Gates
+
+The reflexive owner: size governance itself is a domain, and its absence as a stated domain was
+directly causal to `context/`'s size-partition-wearing-domain-partition failure (see
+`context/curator-routing.md`'s Ownership Test for the fix). This file states the constraints; it does
+not itself decide whether the cap mechanism is the right shape long-term — that is a separate,
+deliberately-deferred question (per-domain budget vs. per-file, summary+detail two-tier read, etc.).
+
+## `context/*.md` Byte Cap — 40,960 Bytes, Per-File, Hard Gate
+
+`curator-context-size-gate.sh` denies ANY role's Edit/Write/MultiEdit to `context/<file>.md` when the
+PROJECTED post-write byte size exceeds 40,960 B — computed as `on_disk - old_bytes + new_bytes` for an
+Edit, or the literal content size for a Write. Role-agnostic (fires for any role, not just curator).
+Fixed in the writer's OWN turn — a denied write must be resolved before the cycle continues; it cannot
+be deferred to commit time.
+
+**This cap knows nothing about domain size.** A domain can legitimately exceed 40,960 bytes (hooks:
+~122,805 B measured; tests: ~117,656 B measured) — when it does, the cap is a per-FILE constraint, not a
+per-DOMAIN constraint, and the correct response is a named-seam file SET, never a forced merge or a
+misattributed "overflow" file. See `shared/rules/roles/context-curator.md` § Cap Deny Is Not a Split
+Trigger for the full decision procedure.
+
+## STYLE_GUIDE Line Caps (`codegen/rules/**`, advisory, NOT byte-cap-enforced)
+
+`_core`/shared rule files: <50 lines. `roles`/`stacks` rule files: <150 lines. Several files already
+exceed these as pre-existing scar tissue — the caps are advisory targets for new content, not a
+retroactive gate.
+
+## `prompt-size-budget` Gate (hard, freezes current size as ceiling)
+
+Component of `make test`. `templates/generator/prompt_size_budget.py --check` measures every
+`shared/rules/{_core,roles,stacks}/**/*.md` line count AND every rendered agent system prompt's byte
+size (rendered fresh from repo source — no dependency on `~/.claude` or a prior `make install`), fails
+when either exceeds its committed ceiling in `templates/generator/prompt-budgets.txt`. Unlike
+STYLE_GUIDE's advisory targets, this gate freezes CURRENT measured size as a hard ceiling — it does not
+retroactively fail on pre-existing debt, only on further growth past the committed baseline.
+
+`prompt-budgets.txt` is operator-owned: `prompt-budget-writer-only` denies every agent write path to it
+(Edit/Write/MultiEdit, `--write` flag, Bash write-vocab) — for every role, including orchestrator. A red
+verdict means shrink the file or evict its lowest-value content and name what was evicted — never raise
+the cap. Routes to context-curator's `retire`/compact action (`shared/rules/roles/context-curator.md`
+§ Retire / Compact Action).
+
+## Curator Retire/Compact Action
+
+The one place the curator's normal no-re-sectioning ban is lifted — scoped to the named over-budget
+file. Every retirement names what it evicts in its own `--learned` text (superseded/duplicate/stale —
+never silent). A promotion pushing a file over budget MUST evict or compress an equal amount in the same
+pass, or skip the write and note the conflict.
+
+## Open Question (Deliberately Deferred, Not This File's Job to Resolve)
+
+Whether a per-file byte cap is the right mechanism for a corpus with domains larger than any single
+file's cap is a genuinely different bet — its own mechanism, its own failure modes. This file makes the
+tension STATABLE (a file-set member the curator cannot give a nameable seam is recorded here as
+evidence), it does not resolve it.
+
+## Trigger Keywords
+
+40960 byte cap, context file cap, curator-context-size-gate, prompt-size-budget, prompt_size_budget.py, prompt-budgets.txt, STYLE_GUIDE line cap, size governance, retire compact action, cap deny not split trigger, per-domain budget

@@ -15,7 +15,7 @@ codegen/                          ← repo root
 ├── uninstall.sh                  ← manifest-driven harness uninstaller
 ├── update_ai_tools.sh            ← post-install tool updater
 ├── config.sh                     ← shared env/path config (sourced by all scripts)
-├── resource_manager.sh           ← installed-artifact tracker
+├── resource_manager.sh           ← port allocator (see context/port-allocation.md)
 ├── utils.sh                      ← shared bash utilities (OCG_CMD)
 ├── bash_completion.sh            ← shell tab-completion for ocg commands
 ├── Makefile                      ← build surface (install, test, format, doctor…)
@@ -62,15 +62,15 @@ codegen/                          ← repo root
 
 ## Lifecycle & Support Scripts
 
-| File                  | Purpose                                                                                                       | Trigger                        |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `install.sh`          | Reads `manifest.yaml`, runs install steps (generate agents, register hooks, write settings.json, symlink)     | `make install` / `ocg install` |
-| `uninstall.sh`        | Removes artifacts from manifest `uninstall_steps`; uses `resource_manager.sh` to avoid removing unowned files | `make uninstall`               |
-| `update_ai_tools.sh`  | Updates Claude CLI binary and AI tool deps                                                                    | `make update` / `ocg update`   |
-| `config.sh`           | Defines `CODEGEN_DIR`, `SHARED_DIR`, harness paths, model defaults; sourced by every script                   | All scripts (sourced)          |
-| `resource_manager.sh` | Tracks installed-by-ocg vs pre-existing files; prevents orphaned artifacts on uninstall                       | `install.sh`, `uninstall.sh`   |
-| `utils.sh`            | `OCG_CMD`. Note: `content_stable_cp` lives in `install.sh`, not here.                                         | Harness launchers, scaffold    |
-| `bash_completion.sh`  | Tab-completion for `ocg` subcommands; installed into shell profile                                            | Shell (bash/zsh via profile)   |
+| File                  | Purpose                                                                                                                                                                                                                                                          | Trigger                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `install.sh`          | Reads `manifest.yaml` fields (paths, dirs); hardcodes its own install phases directly (generate agents, register hooks, write settings.json, symlink) — the manifest's `install_steps:` field is declared but read by nothing                                    | `make install` / `ocg install`     |
+| `uninstall.sh`        | Removes installed artifacts; hardcodes its own removal phases directly — does NOT read manifest `uninstall_steps:` or source `resource_manager.sh` (that script is the port allocator, see `context/port-allocation.md`, unrelated to install-artifact tracking) | `make uninstall`                   |
+| `update_ai_tools.sh`  | Updates Claude CLI binary and AI tool deps                                                                                                                                                                                                                       | `make update` / `ocg update`       |
+| `config.sh`           | Defines `CODEGEN_DIR`, `SHARED_DIR`, harness paths, model defaults; sourced by every script                                                                                                                                                                      | All scripts (sourced)              |
+| `resource_manager.sh` | Port allocator — NOT an install-artifact tracker; unrelated to `install.sh`/`uninstall.sh`. Full domain: `context/port-allocation.md`                                                                                                                            | (see `context/port-allocation.md`) |
+| `utils.sh`            | `OCG_CMD`. Note: `content_stable_cp` lives in `install.sh`, not here.                                                                                                                                                                                            | Harness launchers, scaffold        |
+| `bash_completion.sh`  | Tab-completion for `ocg` subcommands; installed into shell profile                                                                                                                                                                                               | Shell (bash/zsh via profile)       |
 
 ---
 

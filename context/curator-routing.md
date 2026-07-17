@@ -2,11 +2,13 @@
 
 Project-specific path mapping for the context-curator role. Defines where `[local]` and `[shared]` learnings land in this repository.
 
+**This map is NOT exhaustive.** Before routing, apply the Ownership Test in `shared/rules/roles/context-curator.md` first: does the learning's SUBJECT have a row below whose file OWNS that subject (not merely a neighbour)? No matching row → create `context/<domain>.md` + its `PROJECT_CONTEXT.md` row in the same turn, and add a row here. A missing row is a finding to fix, not a signal to force-fit into the closest existing entry.
+
 ## Local Context Routing
 
 All `[local]` blocks (project-specific knowledge about codegen's structure, modes, hooks, manifests, subagents) route to `context/*.md` files:
 
-- **Architecture & structure** → `context/repo-structure.md`
+- **Architecture & structure, dir→owning-file map** → `context/repo-structure.md`
 - **Harness modes, dispatch, launchers** → `context/harnesses.md`
 - **Build pipeline, install flow, schema** → `context/core.md`
 - **Enforcement compiler, registry schema, pattern dialects** → `context/enforcement-compiler.md`
@@ -17,7 +19,6 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Bash-generic pitfalls, gotchas, sed/jq/heredoc patterns, RED-then-GREEN test techniques** → `context/bash-patterns.md`
 - **ExUnit/fixture/seam/flake test-harness pitfalls** → `context/test-harness-pitfalls.md`
 - **Domain-specific pitfalls** → route to the matching domain file's own `## Pitfalls` section (e.g., hook gotchas → `context/hooks.md`, scaffold gotchas → `context/scaffold.md`, core/generator gotchas → `context/core.md`)
-- **Token tuning, model config, roles** → `context/claude-token-tuning.md`
 - **Recipes, workloads** → `context/recipes.md`
 - **Scaffold behavior, output, symlinks** → `context/scaffold.md`
 - **Scaffold mutations, guard tests, credo cleanup** → `context/scaffold-mutations.md`
@@ -25,15 +26,28 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Rules distribution, rule influence** → `context/rules-core.md`, `context/rules-roles.md`, `context/rules-stacks.md`
 - **Subagent DSL, template mechanics, influence stack** → `context/subagent-influence-stack.md`
 - **Test coverage, test inventory** → `context/test-coverage.md`
-- **Token mechanics (caching, prefix, lookback)** → `context/claude-token-mechanics.md`
-- **Pitch writing conventions** → `context/pitch-writing-guide.md`
+- **Token mechanics + per-role tuning (caching, prefix, lookback, cost per role)** → `context/claude-token-mechanics.md`
+- **Pitch frontmatter schema, lifecycle, dirs, ship mechanics** → `context/pitch-lifecycle.md`
+- **Pitch writing/authoring conventions (prose discipline)** → `context/pitch-writing-guide.md`
 - **Benchmarking prohibitions, BENCH mode, artifacts, viewer** → `context/test-benchmarking.md`
 - **Deployment locations, path derivation, server topology** → `context/deployment-topology.md`
-- **Document/usage-rules generation patterns** → `context/codegen-document-patterns.md`
+- **Document/usage-rules generation patterns, usage_rules corpus, INDEX.md** → `context/usage-rules-corpus.md`
 - **Launcher ↔ hook wiring matrix** → `context/launcher-hook-matrix.md`
+- **Fail-closed enforcement, anti-wedge exceptions, INCONCLUSIVE classification** → `context/fail-closed-posture.md`
+- **Pi hook test fixture techniques** → `context/pi-hook-test-techniques.md`
 - **Shape-mode discipline, pitch shaping** → `context/shaper-discipline.md`
 - **ExUnit stack test suite, test inventory** → `context/test-harness.md`
 - **Test monitoring, watch loops** → `context/test-monitoring.md`
+- **The Elixir orchestration loop engine, build lock, infra abort, signal handler, budget cap, fallback rungs, warm-resume** → `context/loop.md`
+- **Multi-pitch queue drain, drain process model, ship/skip/halt taxonomy, logging GC, circuit breaker, queue-wide spend ceiling** → `context/loop-queue-drain.md`
+- **Cycle log (`codegen-log`, `ev` kinds, substance filter, `.active`), gate-pending artifacts, gate verdict truth table** → `context/cycle-record.md`
+- **Claude/Pi call envelope, builder asymmetries, transient-error taxonomy** → `context/call-contract.md`
+- **Role→model/effort/tools config, escalation ladder, fallback rungs** → `context/role-config.md`
+- **Turn-waste analysis, `codegen-analyze`, `codegen-propose`, counters** → `context/turn-waste-analysis.md`
+- **Port allocation, `resource_manager.sh`, `~/.ocg/resources.json`** → `context/port-allocation.md`
+- **Slash commands (dual-source, dual-install)** → `context/slash-commands.md`
+- **Downstream AGENTS.md/CLAUDE.md rendering, `shared/apps/`** → `context/downstream-docs.md`
+- **Context-file byte cap, rule-file line caps, `prompt_size_budget.py`, size governance itself** → `context/size-governance.md`
 
 Add new `context/*.md` files and **register them in `PROJECT_CONTEXT.md`** Domain Context Files table to maintain context-index-parity.
 
@@ -53,7 +67,7 @@ Route in this order (matches the baked curator role rule's decision tree):
 - **Rule file organization, rules distribution/composition** → `context/rules-core.md`
 - **Stack-specific patterns** (Phoenix, static-site) → `codegen/rules/stacks/<stack>/`
 - **Role patterns** → `codegen/rules/roles/`
-- **Token mechanics, caching, prompt tuning** → `context/claude-token-mechanics.md` (project-local; no cross-project `_core` file exists for this topic)
+- **Token mechanics, caching, prompt tuning** → `context/claude-token-mechanics.md` (project-local; no cross-project `_core` file exists for this topic; this is the SAME file as the local-routing row above — token learnings never split across two files)
 
 Always use `codegen/rules/**` (symlink path) — never `shared/rules/**` directly. The guard `context-curator-guard.sh` denies raw `shared/rules/` paths. `make install` propagates edits to all downstream consumers.
 
@@ -83,4 +97,4 @@ Example: "discovered that the Phoenix loop gate behavior differs from static-sit
 
 ## Trigger Keywords
 
-curator routing, context-curator targets, where learnings go, [local] vs [shared], retrospective routing, shared vs local learning, hook-layering routing
+curator routing, context-curator targets, where learnings go, [local] vs [shared], retrospective routing, shared vs local learning, hook-layering routing, ownership test, no owner create file, cap deny is not a split trigger

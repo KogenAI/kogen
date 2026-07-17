@@ -59,35 +59,28 @@ Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-
 
 **Cap awareness:** before appending to a `codegen/rules/**` file, check its size against the STYLE_GUIDE per-tier cap (`_core`/shared < 50 lines, `roles`/`stacks` < 150 lines). Over cap → state the rule tighter, relocate the verbose example to `context/*.md`, or compress a stale section — never omit the load-bearing fact. The guard warns on stderr when a projected write would exceed the cap; record the over-cap event via your own `--learned` text so a follow-up session compresses.
 
-**Context-file byte cap:** `context/*.md` files have a 40,960-byte cap. This is a HARD Edit-time gate — `curator-context-size-gate.sh` denies an Edit/Write/MultiEdit to `context/*.md` in the writer's own turn if the projected post-write size exceeds 40,960 B (role-agnostic: it fires for ANY role, since any role may legitimately edit `context/*.md`, not just you). A denied write means you MUST fix it before finishing this cycle, not defer it. On a deny, choose one of:
+**Context-file byte cap:** `context/*.md` files have a 40,960-byte cap. HARD Edit-time gate — `curator-context-size-gate.sh` denies an Edit/Write/MultiEdit exceeding it (role-agnostic). Fix before finishing this cycle, not defer.
 
-1. Compress a stale or redundant bullet in the same file.
-2. Relocate a verbose example to another context file.
-3. Split to a new context file and add the matching `PROJECT_CONTEXT.md` § Domain Context Files row (index-parity, checked post-your-turn by `run_curator_doc_check`).
+**Cap deny is not a split trigger.** A deny means "find the sub-domain SEAM", not "move overflow elsewhere." Order: (1) compress a stale/redundant bullet in the same file; (2) relocate a verbose example to the file that already OWNS that subject (per Ownership Test below — never a bare neighbour); (3) split ONLY if remaining content names a real sub-domain seam (different process model/contract/lifecycle — not "the rest of what didn't fit"), stating the seam in both domain lines + adding the `PROJECT_CONTEXT.md` row. A split justified only by "the host was full" is the defect, not the fix.
 
-Never omit the load-bearing fact.
+## Ownership Test (Runs BEFORE Stale-Line Preference)
+
+Before routing ANY learning: does the SUBJECT have an **owning** file — stated domain IS that subject — or only a nearest neighbour (mentions it, or hosts it by directory adjacency)? Owner exists → proceed to Stale-Line Preference, scoped to that owner. No owner → create `context/<domain>.md` + its `PROJECT_CONTEXT.md` row in the SAME turn, naming the subject as the file's domain (not "overflow of `<host>.md`"). Never force-fit into a neighbour — that is how a corpus decays into a size partition. Runs on the SUBJECT, not host byte size (byte pressure → see Cap Deny above).
 
 ## Stale-Line Preference
 
-Before any edit:
+Once an owner is established: (1) Read target file. (2) Find the closest existing line/section. (3) Prefer surgical replace of a stale/incomplete line over appending. (4) Append only when the topic is genuinely absent from the owner. Never duplicate.
 
-1. Read target file.
-2. Find the closest existing line or section covering the topic.
-3. **Prefer surgical replace** of a demonstrably stale or incomplete line over appending a new bullet.
-4. Append only when the topic is genuinely absent.
-
-Never duplicate. If the file already says it, skip.
-
-**Content-anchor edits over line-number anchors**: When targeting doc fixes, match by exact content string, NOT line numbers. Line numbers drift across edits; content anchors are durable. Example: if a pitch cites `billing.md:<line>` (a pitch-supplied line number) but the actual false claim is at a different line, grep the content to find the truth-source. This is especially critical for docs covering multi-file sibling claims (e.g., phantom-table references spanning both the billing doc AND the `stripe_events.ex` moduledoc) — sweep for ALL instances of the false claim by content, not just pitch-named line numbers.
+**Content-anchor edits over line-number anchors**: match by exact content string, NOT line numbers — they drift across edits. A pitch-cited line number may be stale; grep the content to find the truth-source. Sweep ALL instances of a false claim by content across sibling docs, not just the pitch-named one.
 
 ## Constraints
 
 - Input = `ev:learned` events only. Never propose edits based on diff, source code, or test output.
 - No edits to topics unless a role declared them in an `ev:learned` event's text.
 - No `ev:learned` events with real content this cycle → write own section body, make no file edits.
-- Durability filter: persist a learning ONLY if a future session would look it up — a durable domain fact, gotcha, convention, or contract. DROP transient diff-specific trivia (e.g. "unused var — remove on refactor"). Default to drop when a learning is trivia; "(or zero)" edits are the norm, not the exception.
-- Extend-vs-split: append the learning to the existing file whose domain covers it, per the `context/curator-routing.md` topic→file map. Start a NEW `context/*.md` file ONLY when (a) no existing file's domain fits, OR (b) the host file is at its byte cap AND the content is a distinct sub-domain — and in that case add the matching `PROJECT_CONTEXT.md` § Domain Context Files row (index-parity).
-- No WHOLESALE file rewrites or re-sectioning (this safety ban stays). Minimal targeted changes — one block → one edit (or zero). BUT when appending, surgical compression/dedup of the topic being edited is REQUIRED in the same pass: merge duplicate bullets, tighten verbose prose on the same topic, so net byte growth is bounded.
+- Durability filter: persist a learning ONLY if a future session would look it up. DROP transient diff-specific trivia. Default to drop when trivial; "(or zero)" edits are the norm.
+- Extend-vs-split: apply the Ownership Test above first, per `context/curator-routing.md`'s topic→file map (not exhaustive — a missing row is a finding, not a stop condition).
+- No WHOLESALE file rewrites or re-sectioning. Minimal targeted changes — one block → one edit (or zero). When appending, surgical compression/dedup of the topic being edited is REQUIRED in the same pass.
 - One file read per file per session, EXCEPT during a `retire` action (below), which is explicitly exempted to allow re-reading the file across its compaction edits.
 
 ## Retire / Compact Action

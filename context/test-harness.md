@@ -58,7 +58,12 @@ test_harness/
 | `test_harness/test/stacks/modes/shape_test.exs`       | Asserts shape launcher produces/edits draft pitch with Shape Up sections                        | Shape (claude + pi)     |
 | `test_harness/test/harness_parity/pi_parity_test.exs` | Cross-harness parity: phoenix-minimal, static-minimal (claude vs pi). Tagged `:harness_parity`. | Parity (both harnesses) |
 
-## Orchestration Loop (`OrchestrationLoop`/`LoopGate`/`LoopQueue`/`LoopQueueDrain`)
+## Orchestration Loop Test Coverage (`OrchestrationLoop`/`LoopGate`/`LoopQueue`/`LoopQueueDrain`)
+
+**The engine's own contract (module map, decider map, budget cap, escalation, resume, signals) is owned
+by `context/loop.md` and `context/loop-queue-drain.md`; the gate verdict truth table and cycle-log
+schema by `context/cycle-record.md`.** This section documents ExUnit-suite-specific implementation
+detail (test seams, race conventions, fixture patterns) — not the loop's own domain contract.
 
 Deterministic Elixir replacement for the removed self-orchestrating harness session — `codegen-build` has no engine flag; `dispatch.sh` (both harnesses) always execs `mix codegen.loop`. Shared ExUnit helpers (`run_codegen_build/3`, `run_codegen_build_parity/4` in `fixtures.ex`) call `codegen-build` with `--harness`/`--stack`/`--cwd` only.
 
@@ -88,9 +93,8 @@ Deterministic Elixir replacement for the removed self-orchestrating harness sess
 - **Gate content binding** — `base_sha` pins HEAD only, not content. `LoopGate` also stamps `graded_tree_sha` (git tree object, temp-index refreshed; else `HEAD^{tree}`). `ensure_gate_graded_this_tree!/5` re-compares stamped vs. current tree before commit; mismatch re-gates (bounded `:max_final_gate_cycles`, default 1). `assert_commit_matches_gate!/1` re-checks post-commit. `""` either side → skip. Tests: `loop_gate_test.exs`/`orchestration_loop_test.exs`.
 - **Turn-0 orientation-doc preflight** (`preflight_orientation_docs!/2`) — after `preflight_roles!/3`. Shells index-parity + factcheck (codegen sentinel). Inherited violation → `InfraAbort` (exit 3, pitch stays `ready/`), not a paid cycle dying at `run_curator_doc_check`. Tests: describe "turn-0 orientation-doc preflight".
 - **Repair loops (`repair_allowed?/4`), floor-then-progress-bounded**: `:max_curator_doc_cycles`/`:max_env_var_cycles` are a floor; beyond it, a rework is granted only if a prior violation resolved, capped by `@repair_progress_ceiling` (15). Tests: `orchestration_loop_test.exs`.
-- **Deterministic failure handling**: pitch stays `ready/`, tree stashed to `queue-fail/<slug>/<ts>` branch (fail-open, no invisible stash). Timeout stash restored before retry; fail stash never auto-restored. Circuit breaker `:max_consecutive_fails` (default 3) HALTs on threshold. Tests: `loop_queue_drain_test.exs`.
+- **Deterministic failure handling** (full contract → `context/loop-queue-drain.md`): Tests: `loop_queue_drain_test.exs`.
 - State advancement (GATED→REVIEWED→CURATED→COMMITTED) shells `cycle-state.sh` via `advance_cycle_state_step/3`.
-- **Cutover complete**: in-harness self-orchestration + legacy shell queue drainer DELETED — `LoopQueueDrain` is the sole `--queue` engine. `codegen-build` has no engine flag; the Elixir loop is unconditional for single-pitch and `--queue` builds.
 - **`--watch`** (`--queue --watch`): empty `ready/` sleeps (`CODEGEN_BUILD_QUEUE_POLL_SECS`, default 60) + re-scans instead of returning; other exits unchanged. Quiescence gate (`CODEGEN_BUILD_QUEUE_QUIESCE_SECS`, default 30, via `:mtime_fn`) excludes a mid-`scp` pitch from `ordered_fn`/`blocked_fn` BEFORE they run (`LoopQueue.*` `exclude` param). Darwin: `:keychain_fn` pre-spawn check (fail-closed) + `caffeinate -dimsu` guard the Keychain-sleep failure. Tests: `loop_queue_drain_test.exs` "`:watch`" describes.
 - **Pitch-path resolution contract** — `dispatch.sh` runs `cd "$LOOP_DIR"` (`$LOOP_DIR` = `<repo>/test_harness/`) before execing `mix codegen.loop`. Any mix task resolving a relative file path (pitch arg, draft slug) MUST join it against the explicit `--cwd` flag (the real project root), never `File.cwd!()`. Pattern: `Path.expand(relative_path, cwd)`. Applies to any future mix task accepting a file-path arg.
 - **`build_prompt/2` testability & reviewer file set** — Prompt-assembly point in `OrchestrationLoop.build_prompt(role, ctx)`. `def`+`@doc false` for direct ExUnit calls. Reviewer branch renders loop-derived `## Files Modified` list (`invoke_reviewer/4` → `default_review_file_set_fn/1`, mirrors `default_rework_brief_fn/1`'s git idiom); content via `git diff HEAD -- <path>`. Empty set in real git tree → loop refuses reviewer invoke. Gate-clear drops `:last_failure_reason` — no stale leak into reviewer prompt.

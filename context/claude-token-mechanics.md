@@ -128,9 +128,52 @@ cache_hit_ratio =
 
 Healthy: 0.85–0.95 on warm builds, 0.4–0.6 on cold first turns. Project-specific drop threshold (Example: the consuming app defines a ≥10pp 7-day drop threshold in its LLM telemetry docs).
 
-## 10. Fleet Implications
+## 10. Per-Role Token Economics (merged from the former `claude-token-tuning.md`)
 
-Per-role token economics (Planner/Developer/BuildWorker, subagent isolation) → `claude-token-tuning.md`.
+### Subagent isolation
+
+Confirmed by official docs: `Task` spawn does **not** inherit the orchestrator's `CLAUDE.md` or
+`@`-imports. Each subagent gets exactly its `~/.claude/agents/<role>.md` + tool schemas + the
+delegation prompt ("Their work doesn't bloat your context"). `memory_tokens=0` in `/context` output for
+a subagent is correct, not a measurement artifact.
+
+### Planner (1–3 turns, or 80+ turns on heavy-Read sessions)
+
+Low turn count → cache write/read ratio near 1.0. Each turn loads large Read payloads into the suffix;
+next turn those reads are cached at 0.1×. **Less sensitive** to system prompt bloat; **more sensitive**
+to total prompt size approaching the 200k window. Heavy-Read planners (60+ Reads → 88 turns) shift into
+developer economics. (Example: an observed planner session ran 88 turns, 5.3M cumulative cache reads,
+95.7k peak single-turn context — the same worked example as § 4 above, told from the tuning angle.)
+
+### Developer (8–30 turns, edit-test-edit)
+
+Cache reads dominate. Hit ratio should be 0.85+. A 30k-token system prompt at 0.1× over 30 turns = ~900k
+cache reads. If caching breaks (invalidation, lookback miss), those 30 turns re-bill the prefix at 1.0×
+— roughly 9× more expensive. **Most sensitive** to system prompt size and to anything that invalidates
+the prefix mid-session.
+
+### BuildWorker (Haiku, medium effort)
+
+**Cache is the budget.** Anything that touches the stable prefix mid-build (tool definitions, system
+prompt, agent JSON, settings JSON, any consumer-injected system-prompt file) is effectively a deploy
+event: measure before/after via your platform's agent-measurement script and verify
+`total_cache_hit_ratio` in the project's daily stats table the next day.
+
+### Investigation Modes Are Pinned By Design
+
+`shape` and `experiment` are pinned to opus/high because they drive architectural decisions and complex
+multi-file analysis — the cost premium is justified. `debug` = sonnet/medium is also intentional
+(diagnostic, not creative). Cost sweeps **MUST NOT** propose downgrading these roles — see
+`context/role-config.md` for the full role→model table.
+
+### Why Shared-Prefix Rule Extraction Is A False Economy
+
+Baked role prompts (subagent system prompts) are cached at 0.1× per spawn after the first write.
+Same-workspace sessions share the cache entry — the large static prefix pays the write tax once and is
+re-read cheaply for every subsequent spawn in that workspace. Therefore, "move `_core` rules to a shared
+prefix to save tokens" is a false economy: the tokens are already cached at 0.1× and the architectural
+cost (split rendering, cross-harness coordination, new install logic) is not recovered. This approach
+was evaluated and rejected; recorded here so no future cost sweep re-raises it.
 
 ## 11. Quick Diagnostics
 
@@ -151,4 +194,4 @@ Resident token cost per agent role at spawn — project provides a measurement s
 
 ## Trigger Keywords
 
-token mechanics, context window, prompt caching, billing, Read cost, auto-compact, /context load, transcript JSONL, resident token cost, cache hit rate, token budget thresholds
+token mechanics, context window, prompt caching, billing, Read cost, auto-compact, /context load, transcript JSONL, resident token cost, cache hit rate, token budget thresholds, token tuning, budget optimization, cost per role, Opus vs Haiku, Read discipline vs Bash grep, split rendering cost, cross-harness coordination cost, rejected optimization, subagent isolation, memory_tokens

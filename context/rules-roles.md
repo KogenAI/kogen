@@ -89,10 +89,10 @@ For interactive/resumable-session builds (the surviving fallback path when the E
 
 Pattern: For every subagent spawn (after first log creation), the outer session:
 
-1. **Bash**: `codegen-log section --role <agent_type> --body @-` with empty stdin to open `## <agent_type> Section` header (literal name from agent's YAML `name:`) — never a raw Edit/Write.
+1. **Bash**: `codegen-log section <agent_type> --body @-` (positional role, empty stdin) to write the role's `{"ev":"role",...}` JSONL event (literal role name from agent's YAML `name:`) — never a raw Edit/Write. The log has no markdown headers; see `shared/rules/_core/session-log.md`.
 2. **Agent()** call immediately after in same turn—no intervening chat
 
-**Stack-prefixed planner variant header stub**: When the outer session spawns a stack-prefixed planner variant (e.g., `planner-phoenix`), `codegen-log section --role planner-phoenix` opens a literal `## planner-phoenix Section` header — not a bare `## planner Section`. `codegen-log`'s `section_header_for_agent` derives the stack-prefixed header from the `--role` value for any `planner-*`/`developer-*`/`reviewer-*` role; the bare-`planner` case only applies when the role literal is exactly `planner`.
+**Stack-prefixed planner variant role naming**: When the outer session spawns a stack-prefixed planner variant (e.g., `planner-phoenix`), `codegen-log section planner-phoenix` writes an event with `"role":"planner-phoenix"` — the exact literal passed, never collapsed to a bare `"planner"`. No header-derivation logic exists; the role field is written verbatim from the CLI argument for any role name.
 
 Enforcement:
 
