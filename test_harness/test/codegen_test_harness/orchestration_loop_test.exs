@@ -4848,6 +4848,239 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "committed HEAD attribution (the-commit-is-a-typed-event-not-prose)" do
+    setup do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "committed_head_test_#{:erlang.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
+
+      File.write!(Path.join(dir, "README.md"), "init\n")
+      {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
+
+      {:ok, dir: dir}
+    end
+
+    # (a) The legitimate path: committer moves HEAD -> a {"ev":"committed"}
+    # (captured via :log_committed_fn) with role="committer" is recorded and
+    # the cycle proceeds to :ok. No raise — this is the only role permitted
+    # to move HEAD.
+    test "committer moving HEAD records a committed event (role=committer) and proceeds", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      {:ok, committed_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(committed_agent), do: Agent.stop(committed_agent) end)
+
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          File.write!(Path.join(dir, "feature.txt"), "done\n")
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      log_committed_fn = fn role, sha, subject, _cycle_log, _opts ->
+        Agent.update(committed_agent, fn calls -> calls ++ [{role, sha, subject}] end)
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: fn _state,
+                                            _step_log,
+                                            _session_id,
+                                            _verdict,
+                                            _project_dir,
+                                            _slug ->
+                   :ok
+                 end,
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+                 log_committed_fn: log_committed_fn
+               )
+
+      recorded = Agent.get(committed_agent, & &1)
+      assert length(recorded) == 1
+      assert [{"committer", sha, subject}] = recorded
+      assert is_binary(sha) and sha != ""
+      assert subject == "impl"
+    end
+
+    # (b) The bypass path: a non-committer role (context-curator) moves HEAD
+    # during its own invocation — reproduces the shape of the three known
+    # bypass incidents (a-guards-allowlist-cannot-be-spelled-in-the-payload).
+    # The loop must raise loud, naming the bypassing role, BEFORE the cycle
+    # can proceed to ship.
+    test "non-committer role moving HEAD raises, naming the bypassing role", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "context-curator" do
+          File.write!(Path.join(dir, "bypass.txt"), "bypass commit\n")
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "oops: bypass"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert_raise RuntimeError, ~r/HEAD moved during context-curator/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: fn _state,
+                                     _step_log,
+                                     _session_id,
+                                     _verdict,
+                                     _project_dir,
+                                     _slug ->
+            :ok
+          end,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+        )
+      end
+    end
+
+    # (c) Non-git cwd -> sampling disabled (cycle_base_head/1's own fail-open
+    # posture for synthetic test cwds). No raise, no committed event.
+    test "non-git cwd disables HEAD sampling — no raise, no committed event", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, committed_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(committed_agent), do: Agent.stop(committed_agent) end)
+
+      log_committed_fn = fn role, sha, subject, _cycle_log, _opts ->
+        Agent.update(committed_agent, fn calls -> calls ++ [{role, sha, subject}] end)
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 log_committed_fn: log_committed_fn
+               )
+
+      assert Agent.get(committed_agent, & &1) == []
+    end
+
+    # (c-bis) A retried non-committer whose HEAD is unchanged across the
+    # retry records zero committed events — sampling is per-invocation
+    # (pre vs post of THAT call), so an unchanged HEAD never fires.
+    test "retried non-committer with unchanged HEAD records zero committed events", %{
+      dir: dir
+    } do
+      {:ok, calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(calls_agent), do: Agent.stop(calls_agent) end)
+
+      {:ok, committed_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(committed_agent), do: Agent.stop(committed_agent) end)
+
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        seen = Agent.get_and_update(calls_agent, fn calls -> {calls, calls ++ [role]} end)
+        attempt_count = Enum.count(seen, &(&1 == role))
+
+        cond do
+          role == "developer-static" and attempt_count == 0 ->
+            # First attempt fails (no HEAD move) -> retried once.
+            {:error, "transient failure, please retry"}
+
+          role == "committer" ->
+            File.write!(Path.join(dir, "feature.txt"), "done\n")
+            {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+            {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+            {:ok, %{"status" => "success", "value" => "did committer"}}
+
+          role == "reviewer-static" ->
+            {:ok, %{"status" => "success", "value" => "REVIEW_VERDICT: APPROVED"}}
+
+          true ->
+            {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      log_committed_fn = fn role, sha, subject, _cycle_log, _opts ->
+        Agent.update(committed_agent, fn calls -> calls ++ [{role, sha, subject}] end)
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: fn _state,
+                                            _step_log,
+                                            _session_id,
+                                            _verdict,
+                                            _project_dir,
+                                            _slug ->
+                   :ok
+                 end,
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+                 log_committed_fn: log_committed_fn
+               )
+
+      recorded = Agent.get(committed_agent, & &1)
+      assert [{"committer", _sha, "impl"}] = recorded
+    end
+  end
+
   describe "no ship on a gate that didn't grade this tree (pre-commit re-gate)" do
     setup do
       dir =

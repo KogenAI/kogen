@@ -251,6 +251,8 @@ SHOW_FULL=""
 EXIT_STATUS=""
 EXIT_SIGNAL=""
 EXIT_STDERR_TAIL=""
+COMMIT_SHA=""
+COMMIT_SUBJECT=""
 
 # EVENT_SCHEMA_JQ — the single source of truth for every event kind
 # codegen-log emits. One jq `def` returning {kind: {required: [...],
@@ -274,7 +276,8 @@ def event_schema:
     plan_gate:       {required: ["role","command","mode","timeout"], optional: []},
     files_to_touch:  {required: ["role","files"],                    optional: []},
     files_modified:  {required: ["role","files"],                    optional: []},
-    exit:            {required: ["status","signal","stderr_tail"],   optional: []}
+    exit:            {required: ["status","signal","stderr_tail"],   optional: []},
+    committed:       {required: ["role","sha","subject"],            optional: []}
   };
 '
 
@@ -297,6 +300,7 @@ usage() {
     printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
     printf '  codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]\n' >&2
+    printf '  codegen-log committed --role <role> --sha <sha> --subject "<text>" [--slug <slug>]\n' >&2
     printf '  codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]\n' >&2
     printf '  codegen-log --version\n' >&2
     printf '  codegen-log --kinds\n' >&2
@@ -331,7 +335,7 @@ done
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    init | section | append | relocate | verdict | exit | show)
+    init | section | append | relocate | verdict | exit | show | committed)
         if [[ -n "$SUBCOMMAND" ]]; then
             printf 'codegen-log: only one subcommand is allowed\n' >&2
             usage
@@ -507,6 +511,22 @@ while [[ $# -gt 0 ]]; do
         ;;
     --stderr-tail)
         EXIT_STDERR_TAIL="$2"
+        shift 2
+        ;;
+    --sha=*)
+        COMMIT_SHA="${1#--sha=}"
+        shift
+        ;;
+    --sha)
+        COMMIT_SHA="$2"
+        shift 2
+        ;;
+    --subject=*)
+        COMMIT_SUBJECT="${1#--subject=}"
+        shift
+        ;;
+    --subject)
+        COMMIT_SUBJECT="$2"
         shift 2
         ;;
     --format=*)
@@ -1494,6 +1514,32 @@ exit)
         line="$(jq -c -n --argjson status "$EXIT_STATUS" --arg tail "${EXIT_STDERR_TAIL:-}" \
             '{ev: "exit", status: $status, signal: null, stderr_tail: $tail}')"
     fi
+    append_event_line "$log_file" "$line"
+    printf '%s\n' "$log_file"
+    ;;
+committed)
+    if [[ -z "$ROLE_OVERRIDE" ]]; then
+        printf 'codegen-log committed: --role is required\n' >&2
+        usage
+    fi
+    if [[ -z "$COMMIT_SHA" ]]; then
+        printf 'codegen-log committed: --sha is required\n' >&2
+        usage
+    fi
+    if [[ -z "$COMMIT_SUBJECT" ]]; then
+        printf 'codegen-log committed: --subject is required\n' >&2
+        usage
+    fi
+    log_file="$(resolve_log_file)"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        printf 'codegen-log committed: no cycle log found (set CODEGEN_LOG_PATH or create one first)\n' >&2
+        exit 2
+    fi
+    line="$(jq -c -n \
+        --arg role "$ROLE_OVERRIDE" \
+        --arg sha "$COMMIT_SHA" \
+        --arg subject "$COMMIT_SUBJECT" \
+        '{ev: "committed", role: $role, sha: $sha, subject: $subject}')"
     append_event_line "$log_file" "$line"
     printf '%s\n' "$log_file"
     ;;

@@ -107,6 +107,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     via `codegen-log append <role> --died <kind>`; fail-loud-non-blocking
     (nil cycle_log or a failed write → no-op / loud stderr, never raises,
     never changes the `{:ok, _}`/`{:error, _}` this function returns).
+  - `:log_committed_fn` — test seam: `(role, sha, subject, cycle_log, opts -> :ok)`,
+    defaults to `default_log_committed/5`. Called from `invoke_with_retry/4`
+    whenever a role's invocation moves `cwd`'s git HEAD (sampled before and
+    after via `cycle_base_head/1`): writes a `{"ev":"committed"}` event via
+    `codegen-log committed --role <role> --sha <sha> --subject <subject>`.
+    The loop asserts on its OWN pre/post HEAD samples (never on this event,
+    which a bypassing role could forge) and raises when `role != "committer"`
+    — see § Enforcement in `shared/rules/_core/session-log.md`.
   - `:gate_preflight_fn` — test seam: `(cwd -> resolved)` — resolves the app
     gate at turn 0 before any role runs; defaults to `LoopGate.decide_gate/1`
   - `:preflight_probe_fn` — test seam: `(cwd -> raw_output)` — resolves the
@@ -2623,7 +2631,115 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # returned here.
   defp invoke_with_retry(role, harness, ctx, opts) do
     invoke_fn = Keyword.get(opts, :invoke_fn, &invoke_role/4)
-    do_invoke_attempt(role, harness, ctx, opts, invoke_fn, 1)
+    # HEAD is sampled around the ENTIRE retry sequence (one sample pair per
+    # invoke_with_retry/4 call, not per do_invoke_attempt/5 attempt) — see
+    # record_and_assert_head_move!/5 below for the attribution + guard.
+    pre_head = cycle_base_head(ctx.cwd)
+
+    case do_invoke_attempt(role, harness, ctx, opts, invoke_fn, 1) do
+      {:ok, _result} = ok ->
+        post_head = cycle_base_head(ctx.cwd)
+        record_and_assert_head_move!(role, ctx.cwd, pre_head, post_head, opts)
+        ok
+
+      other ->
+        other
+    end
+  end
+
+  # HEAD moved during this role's invocation (pre_head != post_head, both
+  # non-nil — a real git tree). Records a `{"ev":"committed"}` event (loop-
+  # authored, never role-authored) and asserts on the loop's OWN pre/post
+  # samples — never on the recorded event itself, which a bypassing role
+  # could forge via the codegen-log CLI. `role != "committer"` moving HEAD
+  # is a guard bypass (see the three known incidents this reproduces as
+  # fixtures) — raise loud, naming the role and the sha, so the cycle fails
+  # rather than silently shipping an unattributed commit.
+  #
+  # nil sampling (non-git cwd, or unborn branch) short-circuits: nothing to
+  # attribute, nothing to assert — mirrors cycle_base_head/1's own fail-open
+  # posture for synthetic test cwds.
+  @spec record_and_assert_head_move!(
+          String.t(),
+          String.t(),
+          String.t() | nil,
+          String.t() | nil,
+          run_opts()
+        ) :: :ok
+  defp record_and_assert_head_move!(_role, _cwd, nil, _post_head, _opts), do: :ok
+  defp record_and_assert_head_move!(_role, _cwd, _pre_head, nil, _opts), do: :ok
+
+  defp record_and_assert_head_move!(role, cwd, pre_head, post_head, opts)
+       when pre_head != post_head do
+    subject = git_commit_subject(cwd, post_head)
+    log_committed(role, post_head, subject, opts)
+
+    unless role == "committer" do
+      raise "OrchestrationLoop: HEAD moved during #{role} (#{post_head}); only the committer writes history"
+    end
+
+    :ok
+  end
+
+  defp record_and_assert_head_move!(_role, _cwd, _pre_head, _post_head, _opts), do: :ok
+
+  # `git log -1 --format=%s` for the commit subject at `sha`, in `cwd`. Empty
+  # on any failure (never raises) — the subject is descriptive detail on the
+  # committed event, not load-bearing for the assertion above.
+  @spec git_commit_subject(String.t(), String.t()) :: String.t()
+  defp git_commit_subject(cwd, sha) do
+    case System.cmd("git", ["log", "-1", "--format=%s", sha], cd: cwd, stderr_to_stdout: true) do
+      {out, 0} -> String.trim(out)
+      _ -> ""
+    end
+  end
+
+  # Writes a `{"ev":"committed",...}` event into THIS cycle's log (via
+  # codegen-log committed --role <role> --sha <sha> --subject <subject>) —
+  # see :log_committed_fn for the test seam and default_log_committed/5 for
+  # the real writer.
+  @spec log_committed(String.t(), String.t(), String.t(), run_opts()) :: :ok
+  defp log_committed(role, sha, subject, opts) do
+    log_committed_fn = Keyword.get(opts, :log_committed_fn, &default_log_committed/5)
+    log_committed_fn.(role, sha, subject, Process.get(@log_path_key), opts)
+  end
+
+  # Default :log_committed_fn — shells `codegen-log committed --role <role>
+  # --sha <sha> --subject <subject>` via CODEGEN_LOG_PATH. nil cycle_log (no
+  # log initialized, e.g. most unit tests) -> silent no-op. A non-zero
+  # codegen-log exit is fail-loud-non-blocking: prints to stderr, never
+  # raises — this is an observability write, and the loop's own assertion
+  # above (on its OWN samples) never depends on this write succeeding.
+  @spec default_log_committed(String.t(), String.t(), String.t(), String.t() | nil, run_opts()) ::
+          :ok
+  defp default_log_committed(_role, _sha, _subject, nil, _opts), do: :ok
+
+  defp default_log_committed(role, sha, subject, cycle_log, _opts) do
+    unless File.exists?(@codegen_log_bin) do
+      IO.puts(
+        :stderr,
+        "OrchestrationLoop: codegen-log not found at #{@codegen_log_bin} — committed not logged"
+      )
+
+      :ok
+    else
+      {output, exit_code} =
+        System.cmd(
+          @codegen_log_bin,
+          ["committed", "--role", role, "--sha", sha, "--subject", subject],
+          stderr_to_stdout: true,
+          env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", cycle_log}]
+        )
+
+      if exit_code != 0 do
+        IO.puts(
+          :stderr,
+          "OrchestrationLoop: codegen-log committed failed (#{exit_code}): #{output}"
+        )
+      end
+
+      :ok
+    end
   end
 
   # One attempt. On failure the reason is classified against the shared

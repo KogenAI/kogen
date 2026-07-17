@@ -408,6 +408,55 @@ assert "first verdict event's result still present after second call" "1" "$(jq_
 assert "second verdict event derives verdict=failed" "1" "$(jq_count "$verdict_log" 'select(.ev=="gate" and .verdict=="failed")')"
 assert "second verdict event's detail present" "0" "$([ "$(jq -r 'select(.ev=="gate" and .verdict=="failed")|.detail' "$verdict_log")" = "Log: /tmp/bar.log" ] && printf 0 || printf 1)"
 
+# Test 13b: `--kinds` enumerates 12 kinds, including the new "committed" kind.
+kinds_out="$(env -u CODEGEN_LOG_PATH "$CODEGEN/codegen-log" --kinds)"
+assert "--kinds prints 12 kinds" "12" "$(printf '%s\n' "$kinds_out" | grep -c .)"
+assert "--kinds includes committed" "0" "$(printf '%s\n' "$kinds_out" | grep -qxF 'committed' && printf 0 || printf 1)"
+
+# Test 13c: `committed` is the loop-authored, non-agent writer of the
+# "committed" event — role/sha/subject required; APPENDS (never replaces).
+unset CODEGEN_LOG_PATH
+unset AGENT_TYPE
+committed_log="$PROJECT/codegen/logging/20260105_000001_committed-subcommand_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"committed-subcommand",path:"",stamp:{}}' >"$committed_log"
+
+committed_out1="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
+        committed --role committer --sha abc1234 --subject "fix: thing" --slug committed-subcommand
+)"
+committed_path1="$(printf '%s' "$committed_out1" | tail -n 1)"
+assert "committed wrote to the committed-subcommand log" "0" "$([ "$committed_path1" = "$committed_log" ] && printf 0 || printf 1)"
+assert "committed emits exactly one committed event" "1" "$(jq_count "$committed_log" 'select(.ev=="committed")')"
+assert "committed carries role=committer" "0" "$([ "$(jq -r 'select(.ev=="committed")|.role' "$committed_log")" = "committer" ] && printf 0 || printf 1)"
+assert "committed carries sha" "0" "$([ "$(jq -r 'select(.ev=="committed")|.sha' "$committed_log")" = "abc1234" ] && printf 0 || printf 1)"
+assert "committed carries subject" "0" "$([ "$(jq -r 'select(.ev=="committed")|.subject' "$committed_log")" = "fix: thing" ] && printf 0 || printf 1)"
+
+committed_out2="$(
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
+        committed --role context-curator --sha def5678 --subject "oops: bypass" --slug committed-subcommand
+)"
+committed_path2="$(printf '%s' "$committed_out2" | tail -n 1)"
+assert "second committed call wrote to the same log" "0" "$([ "$committed_path2" = "$committed_log" ] && printf 0 || printf 1)"
+assert "second committed call APPENDS a new committed event (does not replace)" "2" "$(jq_count "$committed_log" 'select(.ev=="committed")')"
+assert "first committed event's sha still present after second call" "1" "$(jq_count "$committed_log" 'select(.ev=="committed" and .sha=="abc1234")')"
+assert "second committed event carries the bypassing role" "0" "$([ "$(jq -r 'select(.ev=="committed" and .sha=="def5678")|.role' "$committed_log")" = "context-curator" ] && printf 0 || printf 1)"
+
+# Test 13d: `committed` requires --role/--sha/--subject — missing any exits 2.
+missing_role_rc=0
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
+    committed --sha abc --subject foo --slug committed-subcommand >/dev/null 2>&1 || missing_role_rc=$?
+assert "committed without --role exits 2" "2" "$missing_role_rc"
+
+missing_sha_rc=0
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
+    committed --role committer --subject foo --slug committed-subcommand >/dev/null 2>&1 || missing_sha_rc=$?
+assert "committed without --sha exits 2" "2" "$missing_sha_rc"
+
+missing_subject_rc=0
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
+    committed --role committer --sha abc --slug committed-subcommand >/dev/null 2>&1 || missing_subject_rc=$?
+assert "committed without --subject exits 2" "2" "$missing_subject_rc"
+
 # Test 14: root resolution from CODEGEN_DIR / OCG_CODEGEN_DIR when the
 # copy has NO sibling `codegen/` dir (the ~/.local/bin install shape).
 # NOWHERE_DIR has no `codegen` subdir alongside the copied binary, so the
