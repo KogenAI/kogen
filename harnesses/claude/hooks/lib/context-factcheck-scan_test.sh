@@ -351,5 +351,78 @@ case "$out" in
 esac
 rm -rf "$T28"
 
+# --- Test 29: gitignored + absent path (machine-local escape) → skipped, exit 0 ---
+# Locks the fix: a doc naming a path that is gitignored-by-design and absent
+# on this box (e.g. drain-nodes.yaml before `codegen-drain init`) must not
+# be treated as drift.
+T29=$(new_repo)
+printf '/codegen/\n' >"$T29/.gitignore"
+git -C "$T29" add .gitignore >/dev/null 2>&1
+git -C "$T29" -c user.email=t@t -c user.name=t commit -q -m init >/dev/null 2>&1
+printf 'See `codegen/drain-nodes.yaml` for topology.\n' >"$T29/CLAUDE.md"
+out=$(bash "$SCAN" "$T29")
+rc=$?
+assert_exit "gitignored + absent path → exit 0" "0" "$rc"
+assert_eq "gitignored + absent path → empty stdout" "" "$out"
+rm -rf "$T29"
+
+# --- Test 30: untracked, NOT ignored, absent path → still a violation (drift preserved) ---
+T30=$(new_repo)
+printf 'See `codegen/not-ignored.yaml` for topology.\n' >"$T30/CLAUDE.md"
+out=$(bash "$SCAN" "$T30")
+rc=$?
+assert_exit "not-ignored absent path → exit 1" "1" "$rc"
+case "$out" in
+*"codegen/not-ignored.yaml"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: not-ignored absent path → message should reference path\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+rm -rf "$T30"
+
+# --- Test 31: force-added TRACKED path matching an ignore rule, then deleted
+# from disk → still a violation (the skip cannot mask real drift on a
+# tracked file; `git check-ignore` is index-aware and never reports a
+# tracked path as ignored) ---
+T31=$(new_repo)
+printf '/secret/\n' >"$T31/.gitignore"
+mkdir -p "$T31/secret"
+printf 'x\n' >"$T31/secret/forced.md"
+git -C "$T31" add -f .gitignore secret/forced.md >/dev/null 2>&1
+git -C "$T31" -c user.email=t@t -c user.name=t commit -q -m init >/dev/null 2>&1
+rm -f "$T31/secret/forced.md"
+printf 'See `secret/forced.md` for details.\n' >"$T31/CLAUDE.md"
+out=$(bash "$SCAN" "$T31")
+rc=$?
+assert_exit "tracked-then-deleted path matching ignore rule → exit 1" "1" "$rc"
+case "$out" in
+*"secret/forced.md"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: tracked-then-deleted path → message should reference path\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+rm -rf "$T31"
+
+# --- Test 32: claim beyond an EXISTING symlink whose target is missing
+# (rc=128 from git check-ignore) → still a violation (fail-closed) ---
+T32=$(new_repo)
+mkdir -p "$T32/shared/rules" "$T32/codegen"
+printf 'x\n' >"$T32/shared/rules/present.md"
+ln -s ../shared/rules "$T32/codegen/rules"
+printf 'See `codegen/rules/missing.md` for details.\n' >"$T32/CLAUDE.md"
+out=$(bash "$SCAN" "$T32")
+rc=$?
+assert_exit "claim beyond existing symlink, missing target → exit 1" "1" "$rc"
+case "$out" in
+*"codegen/rules/missing.md"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: symlink-beyond claim → message should reference path\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+rm -rf "$T32"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

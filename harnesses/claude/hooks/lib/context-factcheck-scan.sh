@@ -37,7 +37,13 @@
 #   literals (containing at least one slash, matching known extensions).
 #   If the path does not exist under repo_root → try Elixir source roots
 #   (lib/, test/) for .ex/.exs literals (module→file convention) → still
-#   missing → violation.
+#   missing → check `git check-ignore -q` on the claim path: rc==0 means the
+#   path is gitignored-by-design (machine-local, expected absent on a box
+#   that hasn't provisioned it, e.g. `codegen/drain-nodes.yaml`) → skip, not
+#   a violation. Any other rc (not ignored, or beyond an existing symlink
+#   whose target is missing) → violation, same as today. `check-ignore` is
+#   index-aware — a tracked path is never reported as ignored, even if it
+#   was force-added past a matching ignore rule and later deleted on disk.
 #
 # Claim class 2 — count anchors:
 #   Match lines of the form: <!-- count: CMD -->NNN
@@ -63,6 +69,8 @@
 #   - repo_root not a git repo or repo without a PROJECT_CONTEXT.md variant
 #   - Docs absent from the working tree (deleted/never existed — nothing to scan)
 #   - Named-path claims without a slash (bare basenames, out of grammar)
+#   - Named-path claim resolves to a path `git check-ignore -q` reports as
+#     ignored (gitignored-by-design, machine-local, expected absent)
 #   - Probe infra faults (fail-open for infrastructure errors only)
 
 set -uo pipefail
@@ -191,8 +199,20 @@ while IFS= read -r doc_path; do
                     ;;
                 esac
                 if [ "$resolved" -eq 0 ]; then
-                    msg="context-factcheck-scan: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path, remove the claim, or — if it names a path inside a provisioned/downstream app rather than this repo — write it with a placeholder segment (e.g. \`<app>/context/core.md\`)."
-                    violations="${violations}${violations:+$nl}${msg}"
+                    # Machine-local escape: a path gitignored-by-design (e.g.
+                    # `codegen/drain-nodes.yaml`) is legitimately absent on a
+                    # box that hasn't provisioned it — it will never be at
+                    # HEAD, so a disk-existence check is checking machine
+                    # state, not repo state. `git check-ignore -q` rc==0 means
+                    # "ignored" → skip. Any other rc (1 = not ignored → real
+                    # drift; 128 = beyond an existing symlink whose target is
+                    # missing → real drift) leaves the violation standing.
+                    if git -C "$repo_root" check-ignore -q "$claim_path" 2>/dev/null; then
+                        :
+                    else
+                        msg="context-factcheck-scan: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path, remove the claim, or — if it names a path inside a provisioned/downstream app rather than this repo — write it with a placeholder segment (e.g. \`<app>/context/core.md\`)."
+                        violations="${violations}${violations:+$nl}${msg}"
+                    fi
                 fi
             fi
         done <<PATHS
