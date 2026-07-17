@@ -9,7 +9,14 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execSync } from "node:child_process";
-import { deny, parseAgentType, debugLog, stripQuoted, stripGitGlobalOpts } from "../lib/hook-helpers";
+import {
+  deny,
+  parseAgentType,
+  debugLog,
+  stripQuoted,
+  stripGitGlobalOpts,
+  expandCommandIndirection,
+} from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "pre-commit-guard",
@@ -43,8 +50,12 @@ export function register(pi: ExtensionAPI): void {
     // denied. See stripQuoted() in hook-helpers.ts. Also normalize
     // interposed git global options (git -C <dir> commit, git
     // --git-dir=<x> add, …) so they cannot evade the verb match below —
-    // see stripGitGlobalOpts() in hook-helpers.ts.
-    const scan = stripGitGlobalOpts(stripQuoted(command));
+    // see stripGitGlobalOpts() in hook-helpers.ts. Then
+    // expandCommandIndirection() appends the body of any
+    // bash/sh/zsh/source-referenced script on its own line (additive) so a
+    // destructive verb hidden in a script written in a PRIOR Bash call is
+    // scanned too — see hook-helpers.ts for the additive-only contract.
+    const scan = expandCommandIndirection(stripGitGlobalOpts(stripQuoted(command)));
 
     if (/\bgit\s+add\b/.test(scan)) {
       return deny(

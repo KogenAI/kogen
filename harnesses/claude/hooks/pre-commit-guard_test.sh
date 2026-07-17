@@ -503,6 +503,30 @@ run_test_env "ops mode git -C <dir> commit without unlock denied (global-opt eva
 FIXTURE_C_STATUS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x status"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git -C <dir> status still allowed for non-committer (read-only unaffected)" "0" "$FIXTURE_C_STATUS"
 
+# ── indirection expansion: bash <file> body-scan (a-guard-on-a-verb) ────────
+INDIRECTION_TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$FAKE_GIT_DIR" "$INDIRECTION_TMPDIR"' EXIT
+
+# Test 54: bash <file with git reset --hard> for non-committer — MUST DENY
+# (the door stays shut: the base string "bash /tmp/x.sh" carries no
+# forbidden verb; only the referenced file's BODY does.)
+printf 'git reset --hard HEAD~1\n' >"$INDIRECTION_TMPDIR/danger.sh"
+FIXTURE_INDIRECT_RESET_HARD="{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash $INDIRECTION_TMPDIR/danger.sh\"},\"agent_type\":\"developer-phoenix-backend\",\"agent_id\":\"a\"}"
+run_test "bash <file with git reset --hard body> denied for non-committer (indirection)" "2" "$FIXTURE_INDIRECT_RESET_HARD"
+
+# Test 55: bash <file with benign body> for non-committer — MUST ALLOW (no false new deny)
+printf 'echo hello world\n' >"$INDIRECTION_TMPDIR/benign.sh"
+FIXTURE_INDIRECT_BENIGN="{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash $INDIRECTION_TMPDIR/benign.sh\"},\"agent_type\":\"developer-phoenix-backend\",\"agent_id\":\"a\"}"
+run_test "bash <file with benign body> allowed for non-committer (no regression)" "0" "$FIXTURE_INDIRECT_BENIGN"
+
+# Test 56: bash "$dynamic" (unresolvable path) — MUST ALLOW (unresolvable -> base string-match only)
+FIXTURE_INDIRECT_DYNAMIC='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"bash \"$dynamic\""},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "bash \"\$dynamic\" (unresolvable) allowed for non-committer (no regression)" "0" "$FIXTURE_INDIRECT_DYNAMIC"
+
+# Test 57: committer STILL allowed for bash <file with git reset --hard body> (actor gate unaffected)
+FIXTURE_INDIRECT_COMMITTER="{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash $INDIRECTION_TMPDIR/danger.sh\"},\"agent_type\":\"committer\",\"agent_id\":\"a\"}"
+run_test "bash <file with git reset --hard body> still allowed for committer (actor gate unaffected)" "0" "$FIXTURE_INDIRECT_COMMITTER"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

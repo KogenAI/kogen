@@ -837,6 +837,83 @@ command_invokes() {
     return 1
 }
 
+# expand_command_indirection <command_string> — echoes <command_string>
+# UNCHANGED, plus (on a following line, per resolved segment) the body of
+# any argv-referenced script a `bash`/`sh`/`zsh`/`source`/`.` segment
+# invokes — closing the blind spot where a destructive verb is written to a
+# file in one Bash call and run via `bash /tmp/x.sh` in a later call: the
+# COMMAND-source guards only ever grep `$COMMAND` itself, so a verb sitting
+# inside the referenced file's body was invisible to them.
+#
+# Additive-only, by construction: the returned string always STARTS WITH the
+# original <command_string> — every existing pattern that matched before
+# still matches. A resolved file's body is appended on its OWN newline (never
+# concatenated onto the same line) so line-anchored patterns (e.g.
+# `commit([[:space:];&|]|$)`) treat the appended text as a separate line and
+# are never falsely satisfied by the seam between command and body.
+#
+# Resolution, per shell-chain segment (via split_command_segments):
+#   - command word (command_word_of_segment) must be exactly one of
+#     bash | sh | zsh | source | .
+#   - the segment's first argv token (segment_argv_of) that does not start
+#     with '-' and contains no '<' or '>' (ruling out flags, process
+#     substitution, and redirects) is the candidate path
+#   - the candidate is resolved AS-IS (CWD-relative or absolute) and must be
+#     a READABLE REGULAR FILE ([ -f ] && [ -r ]) — anything else (missing
+#     file, directory, unresolved $var, device) is left unresolved
+#
+# Recursion depth is 1: a resolved body that itself runs `bash other.sh` is
+# NOT chased into a second file. This bounds both the read cost and any
+# cycle risk while covering the measured incident (write-then-run in two
+# SEPARATE Bash calls, so the file exists on disk at hook time).
+#
+# Fails OPEN to "unresolved" (never fails closed, never errors): any
+# segment that cannot be parsed, whose command word isn't an interpreter, or
+# whose candidate path doesn't resolve to a readable regular file is simply
+# skipped — the base command text is still returned untouched, so the
+# caller's existing string-match behavior is preserved exactly.
+expand_command_indirection() {
+    local command_string="$1"
+    local out="$command_string"
+
+    local segments
+    if ! segments=$(split_command_segments "$command_string"); then
+        # unbalanced quote — nothing to safely resolve; return unchanged.
+        printf '%s' "$out"
+        return 0
+    fi
+
+    local seg word argv tok candidate
+    while IFS= read -r seg; do
+        [ -z "${seg// /}" ] && continue
+
+        word=$(command_word_of_segment "$seg")
+        case "$word" in
+        bash | sh | zsh | source | .) ;;
+        *) continue ;;
+        esac
+
+        argv=$(segment_argv_of "$seg")
+        candidate=""
+        for tok in $argv; do
+            case "$tok" in
+            -* | *'<'* | *'>'*) continue ;;
+            *)
+                candidate="$tok"
+                break
+                ;;
+            esac
+        done
+
+        [ -z "$candidate" ] && continue
+        [ -f "$candidate" ] && [ -r "$candidate" ] || continue
+
+        out="$out"$'\n'"$(cat "$candidate" 2>/dev/null || true)"
+    done <<<"$segments"
+
+    printf '%s' "$out"
+}
+
 # read_gate_verdicts <project_dir> — pretty-print the durable gate-verdict
 # history under <project_dir>/codegen/logging/gate-verdicts.jsonl.
 # Aggregates verdict × count (clear/failed/inconclusive). Newest-first by ts.

@@ -262,6 +262,64 @@ class TestRenderIgnoreQuoted(unittest.TestCase):
         )
 
 
+class TestResolveIndirectionOptIn(unittest.TestCase):
+    """_render_bash / _render_ts — resolve_indirection opt-in on the
+    COMMAND+deny SINGLE branch. Default-off MUST render byte-identical
+    subject literals to the pre-existing template (byte-parity regression
+    guard, mirrors TestRenderIgnoreQuoted); opt-in wraps the match subject
+    in expand_command_indirection/expandCommandIndirection so a destructive
+    verb hidden in a bash/sh/zsh/source-referenced script body is scanned
+    too (see the "a guard on a verb is a guard on spelling" pitch).
+    """
+
+    def test_bash_without_resolve_indirection_uses_bare_command(self):
+        bash = ec._render_bash(_ENTRY_COMMAND_DENY)
+        self.assertIn('printf \'%s\' "$COMMAND" | grep -qE', bash)
+        self.assertNotIn("expand_command_indirection", bash)
+
+    def test_bash_with_resolve_indirection_wraps_subject(self):
+        entry = dict(_ENTRY_COMMAND_DENY, resolve_indirection=True)
+        bash = ec._render_bash(entry)
+        self.assertIn(
+            'printf \'%s\' "$(expand_command_indirection "$COMMAND")" | grep -qE',
+            bash,
+        )
+
+    def test_bash_with_both_ignore_quoted_and_resolve_indirection_composes(self):
+        entry = dict(_ENTRY_COMMAND_DENY, ignore_quoted=True, resolve_indirection=True)
+        bash = ec._render_bash(entry)
+        self.assertIn(
+            'printf \'%s\' "$(expand_command_indirection "$(strip_quoted "$COMMAND")")" | grep -qE',
+            bash,
+        )
+
+    def test_ts_without_resolve_indirection_uses_bare_command(self):
+        ts = ec._render_ts(_ENTRY_COMMAND_DENY)
+        self.assertIn(".test(command)", ts)
+        self.assertNotIn("expandCommandIndirection", ts)
+
+    def test_ts_with_resolve_indirection_wraps_subject(self):
+        entry = dict(_ENTRY_COMMAND_DENY, resolve_indirection=True)
+        ts = ec._render_ts(entry)
+        self.assertIn(".test(expandCommandIndirection(command))", ts)
+        # Import line must pull in the new helper alongside the existing ones.
+        self.assertIn(
+            "import { deny, debugLog, isCodegenLogWrite, expandCommandIndirection }",
+            ts,
+        )
+
+    def test_ts_with_both_ignore_quoted_and_resolve_indirection_composes(self):
+        entry = dict(_ENTRY_COMMAND_DENY, ignore_quoted=True, resolve_indirection=True)
+        ts = ec._render_ts(entry)
+        self.assertIn(
+            ".test(expandCommandIndirection(stripQuoted(command)))", ts
+        )
+        self.assertIn(
+            "import { deny, debugLog, isCodegenLogWrite, stripQuoted, expandCommandIndirection }",
+            ts,
+        )
+
+
 class TestValidateHarnesses(unittest.TestCase):
     """_validate_harnesses — token-set guard (seam b)."""
 

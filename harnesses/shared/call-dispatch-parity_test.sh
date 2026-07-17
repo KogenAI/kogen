@@ -127,9 +127,23 @@ extract_envelope_keys() {
         sort -u
 }
 
+# Both files emit MULTIPLE `result: {`/`usage: {` blocks — early-exit error
+# envelopes (watchdog timeout, non-zero exit, no agent_end event) have a
+# smaller `usage` shape than the FINAL success/failure envelope, and
+# `result:`/`usage:` appear BEFORE `harness: "` within each envelope's own
+# `jq -n` object literal, so the `harness: "`-anchored filter
+# extract_envelope_keys() uses cannot scope these the same way. The FINAL
+# envelope is always the LAST `result: {`/`usage: {` block in the file
+# (early-exit envelopes are emitted first, each followed by its own `exit`);
+# select the LAST matching line number and extract from there so these
+# helpers never pick up an early-exit block's narrower shape and report a
+# phantom mismatch.
 extract_result_keys() {
     local file="$1"
-    awk '/result: \{/,/^\s+\},?$/' "$file" |
+    local start_line
+    start_line=$(grep -n 'result: {' "$file" | tail -1 | cut -d: -f1)
+    tail -n "+${start_line}" "$file" |
+        awk '/result: \{/,/^\s+\},?$/' |
         grep -oE '^\s+[a-z_]+:' |
         sed 's/[: ]//g' |
         sort -u
@@ -137,7 +151,10 @@ extract_result_keys() {
 
 extract_usage_keys() {
     local file="$1"
-    awk '/usage: \{/,/^\s+\},?$/' "$file" |
+    local start_line
+    start_line=$(grep -n 'usage: {' "$file" | tail -1 | cut -d: -f1)
+    tail -n "+${start_line}" "$file" |
+        awk '/usage: \{/,/^\s+\},?$/' |
         grep -oE '^\s+[a-z_]+:' |
         sed 's/[: ]//g' |
         sort -u

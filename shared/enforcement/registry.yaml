@@ -98,6 +98,7 @@
   role: "*"
   harnesses: all
   ignore_quoted: true
+  resolve_indirection: true
 
 - id: no-python-json
   generated: true

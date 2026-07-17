@@ -439,6 +439,90 @@ export function commandInvokes(
   return false;
 }
 
+/**
+ * expandCommandIndirection() — Returns `command` UNCHANGED, plus (on a
+ * following line, per resolved segment) the body of any argv-referenced
+ * script a `bash`/`sh`/`zsh`/`source`/`.` segment invokes — closing the
+ * blind spot where a destructive verb is written to a file in one Bash call
+ * and run via `bash /tmp/x.sh` in a later call: the COMMAND-source guards
+ * only ever test the raw command string itself, so a verb sitting inside the
+ * referenced file's body was invisible to them.
+ *
+ * Additive-only, by construction: the returned string always STARTS WITH the
+ * original `command` — every existing pattern that matched before still
+ * matches. A resolved file's body is appended on its OWN newline (never
+ * concatenated onto the same line) so line-anchored patterns are never
+ * falsely satisfied by the seam between command and body.
+ *
+ * Resolution, per shell-chain segment (via splitCommandSegments):
+ *   - command word (commandWordOfSegment) must be exactly one of
+ *     bash | sh | zsh | source | .
+ *   - the segment's first argv token (segmentArgvOf) that does not start
+ *     with '-' and contains no '<' or '>' (ruling out flags, process
+ *     substitution, and redirects) is the candidate path
+ *   - the candidate is resolved AS-IS (cwd-relative or absolute) and must be
+ *     a readable regular file — anything else (missing file, directory,
+ *     unresolved $var, device) is left unresolved
+ *
+ * Recursion depth is 1: a resolved body that itself runs `bash other.sh` is
+ * NOT chased into a second file.
+ *
+ * Fails OPEN to "unresolved" (never fails closed, never throws): any
+ * segment that cannot be parsed, whose command word isn't an interpreter, or
+ * whose candidate path doesn't resolve to a readable regular file is simply
+ * skipped — the base command text is still returned untouched.
+ * Mirrors expand_command_indirection in hooks-lib.sh.
+ */
+export function expandCommandIndirection(command: string): string {
+  const segments = splitCommandSegments(command);
+  if (segments === null) {
+    // unbalanced quote — nothing to safely resolve; return unchanged.
+    return command;
+  }
+
+  let out = command;
+
+  for (const seg of segments) {
+    if (seg.trim() === "") continue;
+
+    const word = commandWordOfSegment(seg);
+    if (
+      word !== "bash" &&
+      word !== "sh" &&
+      word !== "zsh" &&
+      word !== "source" &&
+      word !== "."
+    ) {
+      continue;
+    }
+
+    const argv = segmentArgvOf(seg);
+    const tokens = argv.split(/\s+/).filter((t) => t.length > 0);
+    let candidate = "";
+    for (const tok of tokens) {
+      if (tok.startsWith("-") || tok.includes("<") || tok.includes(">"))
+        continue;
+      candidate = tok;
+      break;
+    }
+
+    if (!candidate) continue;
+
+    try {
+      const stat = fs.statSync(candidate);
+      if (!stat.isFile()) continue;
+      fs.accessSync(candidate, fs.constants.R_OK);
+      const body = fs.readFileSync(candidate, "utf8");
+      out = out + "\n" + body;
+    } catch {
+      // unresolved (missing, not a file, unreadable) — skip, fail open.
+      continue;
+    }
+  }
+
+  return out;
+}
+
 /** Unused ctx parameter helper — avoids lint warnings in hook modules that don't use ctx. */
 export function voidCtx(_ctx: ExtensionContext): void {
   // intentionally unused

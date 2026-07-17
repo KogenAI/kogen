@@ -666,6 +666,63 @@ assert_eq "command_invokes: unbalanced quote -> fail closed (matches)" "0" "$r"
 if command_invokes "psql \$DATABASE_URL -c 'truncate table users;'" '^psql$' '\b(TRUNCATE|DROP[[:space:]]+TABLE|DELETE[[:space:]]+FROM)\b' ci; then r=0; else r=1; fi
 assert_eq "command_invokes: lowercase truncate matches with ci flag" "0" "$r"
 
+# ── expand_command_indirection — resolves an argv-referenced script body ───
+EXPAND_TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$EXPAND_TMPDIR"' EXIT
+
+printf 'git reset --hard HEAD~1\n' >"$EXPAND_TMPDIR/danger.sh"
+result=$(expand_command_indirection "bash $EXPAND_TMPDIR/danger.sh")
+expected="bash $EXPAND_TMPDIR/danger.sh
+git reset --hard HEAD~1"
+assert_eq "expand_command_indirection: bash <file> appends readable file body" "$expected" "$result"
+
+# Additive: original command text is always the prefix of the output.
+case "$result" in
+"bash $EXPAND_TMPDIR/danger.sh"*) r=0 ;;
+*) r=1 ;;
+esac
+assert_eq "expand_command_indirection: output starts with original command (additive)" "0" "$r"
+
+# Unresolvable candidate ($var) -> command returned unchanged.
+result=$(expand_command_indirection 'bash "$dynamic"')
+assert_eq "expand_command_indirection: unresolved \$var path -> unchanged" 'bash "$dynamic"' "$result"
+
+# Missing file -> unchanged.
+result=$(expand_command_indirection "bash $EXPAND_TMPDIR/does-not-exist.sh")
+assert_eq "expand_command_indirection: missing file -> unchanged" "bash $EXPAND_TMPDIR/does-not-exist.sh" "$result"
+
+# Non-interpreter command word -> unchanged (no read attempted).
+result=$(expand_command_indirection "ls $EXPAND_TMPDIR/danger.sh")
+assert_eq "expand_command_indirection: non-interpreter word -> unchanged" "ls $EXPAND_TMPDIR/danger.sh" "$result"
+
+# source / . forms also resolve (not just bash/sh/zsh).
+result=$(expand_command_indirection "source $EXPAND_TMPDIR/danger.sh")
+expected="source $EXPAND_TMPDIR/danger.sh
+git reset --hard HEAD~1"
+assert_eq "expand_command_indirection: source <file> appends readable file body" "$expected" "$result"
+
+result=$(expand_command_indirection ". $EXPAND_TMPDIR/danger.sh")
+expected=". $EXPAND_TMPDIR/danger.sh
+git reset --hard HEAD~1"
+assert_eq "expand_command_indirection: . <file> (dot-source) appends readable file body" "$expected" "$result"
+
+# A word merely STARTING with '.' (e.g. '..', '.foo') must NOT be treated as
+# the dot-source builtin — exact-match only.
+result=$(expand_command_indirection ".. $EXPAND_TMPDIR/danger.sh")
+assert_eq "expand_command_indirection: '..' is not dot-source -> unchanged" ".. $EXPAND_TMPDIR/danger.sh" "$result"
+
+# Depth cap: a resolved body that itself invokes bash on another file is
+# NOT chased a second level deep — only the first file's literal body text
+# (containing the nested bash invocation as plain text) is appended.
+printf 'bash %s/inner.sh\n' "$EXPAND_TMPDIR" >"$EXPAND_TMPDIR/outer.sh"
+printf 'git push --force origin main\n' >"$EXPAND_TMPDIR/inner.sh"
+result=$(expand_command_indirection "bash $EXPAND_TMPDIR/outer.sh")
+case "$result" in
+*"git push --force"*) r=0 ;;
+*) r=1 ;;
+esac
+assert_eq "expand_command_indirection: depth-1 cap -> inner.sh body NOT chased" "1" "$r"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

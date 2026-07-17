@@ -375,6 +375,69 @@ describe("pre-commit-guard", () => {
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
+
+  // ── indirection expansion: bash <file> body-scan (a-guard-on-a-verb) ────
+  // A guard on a verb is a guard on spelling: `bash /tmp/x.sh` carries no
+  // forbidden verb in the command STRING itself; only the referenced file's
+  // BODY does. expandCommandIndirection() closes this for the two
+  // hand-authored guards.
+
+  it("denies bash <file with git reset --hard body> for non-committer (indirection)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pre-commit-guard-indirect-"));
+    tmpRepos.push(tmpDir);
+    const scriptPath = path.join(tmpDir, "danger.sh");
+    fs.writeFileSync(scriptPath, "git reset --hard HEAD~1\n");
+    const result = await runHook(
+      "bash",
+      `bash ${scriptPath}`,
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("allows bash <file with benign body> for non-committer (no regression)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pre-commit-guard-indirect-"));
+    tmpRepos.push(tmpDir);
+    const scriptPath = path.join(tmpDir, "benign.sh");
+    fs.writeFileSync(scriptPath, "echo hello world\n");
+    const result = await runHook(
+      "bash",
+      `bash ${scriptPath}`,
+      "developer-phoenix-backend",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it('allows bash "$dynamic" (unresolvable path) for non-committer (no regression)', async () => {
+    const result = await runHook(
+      "bash",
+      'bash "$dynamic"',
+      "developer-phoenix-backend",
+    );
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("denies source <file with git reset --hard body> for non-committer (indirection, source form)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pre-commit-guard-indirect-"));
+    tmpRepos.push(tmpDir);
+    const scriptPath = path.join(tmpDir, "danger.sh");
+    fs.writeFileSync(scriptPath, "git reset --hard HEAD~1\n");
+    const result = await runHook(
+      "bash",
+      `source ${scriptPath}`,
+      "developer-phoenix-backend",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("still allows bash <file with git reset --hard body> for committer (actor gate unaffected)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pre-commit-guard-indirect-"));
+    tmpRepos.push(tmpDir);
+    const scriptPath = path.join(tmpDir, "danger.sh");
+    fs.writeFileSync(scriptPath, "git reset --hard HEAD~1\n");
+    const result = await runHook("bash", `bash ${scriptPath}`, "committer");
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
 });
 
 describe("stripGitGlobalOpts", () => {

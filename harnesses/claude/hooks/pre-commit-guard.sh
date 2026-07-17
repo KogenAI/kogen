@@ -56,7 +56,12 @@ if [ "$_role" = "ops" ] || [ "$_role" = "babysit" ]; then
     # argument is not a real local invocation; strip before matching.
     # Also normalize interposed git global options (git -C <dir> commit)
     # so they cannot evade the verb match — see strip_git_global_opts().
-    _ops_cmd_unquoted=$(strip_git_global_opts "$(strip_quoted "$COMMAND")")
+    # Then expand_command_indirection() appends the body of any
+    # bash/sh/zsh/source-referenced script ON ITS OWN LINE (additive; see
+    # hooks-lib.sh) so a destructive verb written to a file in a PRIOR Bash
+    # call and run via `bash /tmp/x.sh` here is scanned too, not just the
+    # bare `bash /tmp/x.sh` invocation text.
+    _ops_cmd_unquoted=$(expand_command_indirection "$(strip_git_global_opts "$(strip_quoted "$COMMAND")")")
     _ops_is_destructive=0
     if printf '%s' "$_ops_cmd_unquoted" | grep -qE '\bgit[[:space:]]+(add|rm|mv|stash|commit|rebase|cherry-pick|revert|merge|restore|checkout|switch)\b|\bgit[[:space:]]+reset\b.*--(hard|merge|keep)\b|\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
         _ops_is_destructive=1
@@ -97,8 +102,11 @@ fi
 # matches and is still denied. See strip_quoted() in hooks-lib.sh. Also
 # normalize interposed git global options (git -C <dir> commit, git
 # --git-dir=<x> add, …) so they cannot evade the verb match below — see
-# strip_git_global_opts() in hooks-lib.sh.
-_cmd_unquoted=$(strip_git_global_opts "$(strip_quoted "$COMMAND")")
+# strip_git_global_opts() in hooks-lib.sh. Then expand_command_indirection()
+# appends the body of any bash/sh/zsh/source-referenced script (additive,
+# own line) so a destructive verb hidden in a script written in a PRIOR Bash
+# call is scanned too — see hooks-lib.sh for the additive-only contract.
+_cmd_unquoted=$(expand_command_indirection "$(strip_git_global_opts "$(strip_quoted "$COMMAND")")")
 
 # State-modifying git subcommands. Notably NOT blocked: status, diff,
 # log, show, blame, ls-files — these are routinely used for inspection by

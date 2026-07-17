@@ -548,6 +548,8 @@ def _render_bash(entry):
         match_subject = (
             '$(strip_quoted "$COMMAND")' if entry.get("ignore_quoted", False) else "$COMMAND"
         )
+        if entry.get("resolve_indirection", False):
+            match_subject = f'$(expand_command_indirection "{match_subject}")'
         return _BASH_TEMPLATE_SINGLE.format(
             id=eid,
             description=description,
@@ -928,8 +930,12 @@ def _render_ts(entry):
         role = entry.get("role", "*")
         agent_type_guard = _ts_agent_guard(role)
         ignore_quoted = entry.get("ignore_quoted", False)
+        resolve_indirection = entry.get("resolve_indirection", False)
         match_subject = "stripQuoted(command)" if ignore_quoted else "command"
         ts_extra_import = ", stripQuoted" if ignore_quoted else ""
+        if resolve_indirection:
+            match_subject = f"expandCommandIndirection({match_subject})"
+            ts_extra_import = ts_extra_import + ", expandCommandIndirection"
         return _TS_TEMPLATE_SINGLE.format(
             id=eid,
             description=description,
