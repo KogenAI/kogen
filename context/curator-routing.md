@@ -67,7 +67,7 @@ Always use `codegen/rules/**` (symlink path) — never `shared/rules/**` directl
 
 ## Retirement / Compaction
 
-`make prompt-size-budget` (component of `make test`) fails when a `codegen/rules/**` file (rendered agent prompt or raw rule file) exceeds its committed ceiling in `templates/generator/prompt-budgets.txt`. A red verdict here routes to the curator's `retire`/compact action (`shared/rules/roles/context-curator.md` § Retire / Compact Action) — the one place the curator's normal no-re-sectioning ban is lifted, scoped to the named over-budget file. Raising the ceiling instead of compacting is legal but must be a deliberate `--write` + committed diff, never a silent bump to unblock a build.
+`make prompt-size-budget` (component of `make test`) fails when a `codegen/rules/**` file (rendered agent prompt or raw rule file) exceeds its committed ceiling in `templates/generator/prompt-budgets.txt`. A red verdict here routes to the curator's `retire`/compact action (`shared/rules/roles/context-curator.md` § Retire / Compact Action) — the one place the curator's normal no-re-sectioning ban is lifted, scoped to the named over-budget file. The ceiling is operator-owned — `prompt-budget-writer-only` denies every agent write path to `prompt-budgets.txt`. Curator MUST evict or compress an equal amount in the same pass, or skip the write and note the conflict; never delete a load-bearing fact to hit budget.
 
 ## Ambiguous Cases
 

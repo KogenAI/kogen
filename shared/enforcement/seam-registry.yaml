@@ -169,7 +169,7 @@ seams:
     pattern: set-parity
 
   - id: enforcement-registration-hook-behavior-twins
-    declares: shared/enforcement/registry.yaml (kind:registration entries, 47 of 49)
+    declares: shared/enforcement/registry.yaml (kind:registration entries, 48 of 50)
     reflects: harnesses/claude/hooks/*.sh bodies vs harnesses/pi/pi-extensions/enforcement/src/hooks/*.ts bodies (hand-written twin BEHAVIOR, not just header/existence)
     guard: GAP
     guard_time: make-test

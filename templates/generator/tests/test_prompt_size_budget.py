@@ -109,5 +109,20 @@ class MainCheckModeTest(unittest.TestCase):
         self.assertEqual(failures, [])
 
 
+class RemedyMessageTest(unittest.TestCase):
+    def test_remedy_message_never_names_write_flag(self):
+        # Regression guard: the FAILED-path remedy message must never point an
+        # agent at --write. prompt-budgets.txt is operator-owned; every agent
+        # write path (Edit/Write/MultiEdit, --write, Bash write-vocab) is
+        # denied by the prompt-budget-writer-only hook. A reintroduced
+        # "--write" token here would silently restore the raise-the-cap
+        # escape hatch this gate exists to close.
+        self.assertNotIn("--write", psb.REMEDY_MESSAGE)
+
+    def test_remedy_message_names_shrink_or_evict(self):
+        self.assertIn("Shrink", psb.REMEDY_MESSAGE)
+        self.assertIn("evict", psb.REMEDY_MESSAGE)
+
+
 if __name__ == "__main__":
     unittest.main()

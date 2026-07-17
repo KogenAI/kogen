@@ -51,6 +51,7 @@ import { register as registerPhoenixFrontendDeveloperGuard } from "./hooks/phoen
 import { register as registerPitchFormatValidator } from "./hooks/pitch-format-validator";
 import { register as registerPlannerGuard } from "./hooks/planner-guard";
 import { register as registerPreCommitGuard } from "./hooks/pre-commit-guard";
+import { register as registerPromptBudgetWriterOnly } from "./hooks/prompt-budget-writer-only";
 import { register as registerReviewerBashAllowlist } from "./hooks/reviewer-bash-allowlist";
 import { register as registerReviewerGuard } from "./hooks/reviewer-guard";
 import { register as registerReviewerGuardSessionLogWrite } from "./hooks/reviewer-guard-session-log-write";
@@ -103,6 +104,7 @@ export default function (pi: ExtensionAPI): void {
   registerPitchFormatValidator(pi);
   registerPlannerGuard(pi);
   registerPreCommitGuard(pi);
+  registerPromptBudgetWriterOnly(pi);
   registerReviewerBashAllowlist(pi);
   registerReviewerGuard(pi);
   registerReviewerGuardSessionLogWrite(pi);
