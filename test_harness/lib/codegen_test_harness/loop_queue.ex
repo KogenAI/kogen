@@ -602,29 +602,27 @@ defmodule CodegenTestHarness.LoopQueue do
   @doc """
   Records a pitch's retire as durable evidence, at the one moment a
   retirer holds both shas — never re-derived after the fact (see
-  `codegen/pitches/ready/a-shipped-pitch-proves-what-shipped-it.md`).
+  `codegen/pitches/shipped/a-shipped-pitch-proves-what-shipped-it.md`).
 
-  Writes TWO things, in this order:
+  Writes ONE thing: `shipped_sha:`/`shipped_range:` frontmatter fields
+  inserted (or replaced, on a re-ship) into `pitch_path`. Answers "what
+  shipped this pitch?" at the point of contact — opening the file. This
+  is the ONLY record; there is no second medium to keep in sync.
 
-    1. A `refs/notes/pitches` git note on `after_sha`, body
-       `"pitch: <slug>\\nrange: <before_sha>..<after_sha>"`. Answers
-       "which pitch is this commit?" — the ONLY medium that can, since
-       `codegen/` is gitignored and never reaches origin.
-    2. `shipped_sha:`/`shipped_range:` frontmatter fields inserted (or
-       replaced, on a re-ship) into `pitch_path`. Answers "what shipped
-       this pitch?" at the point of contact — opening the file.
+  Stamped BEFORE the caller's subsequent `ready/ -> shipped/` mv,
+  deliberately: `pitch_path` (a `ready/` pitch) is `@`-mentioned into
+  the NEXT build's prompt (`claude-build.sh:80,93`) — an opaque
+  whole-artifact read. A stamp that lands on a pitch still sitting in
+  `ready/` (because the mv that follows then fails) would read as
+  "already shipped" to the next planner — manufacturing the exact false
+  already-done class this function exists to prevent. This window is
+  narrow (a `File.rename!` immediately after `mkdir_p!` succeeds, in the
+  same directory) and pre-existing; it is not enlarged by having one
+  write instead of two — see
+  `codegen/pitches/draft/the-ship-record-lives-only-in-the-pitch.md`
+  for the removal rationale.
 
-  Note BEFORE frontmatter, deliberately: `pitch_path` (a `ready/` pitch)
-  is `@`-mentioned into the NEXT build's prompt (`claude-build.sh:80,93`)
-  — an opaque whole-artifact read. A frontmatter write that lands but
-  whose note write then fails would strand a `shipped_sha:` stamp on a
-  pitch still sitting in `ready/`, and the next planner would read that
-  stamp as "already shipped" — manufacturing the exact false
-  already-done class this function exists to prevent. A stranded NOTE
-  on a real commit is inert by comparison: it truthfully describes a
-  cycle that ran, and a re-ship's `add -f` overwrites it cleanly.
-
-  Fails LOUD when git is present and either write fails: raises, naming
+  Fails LOUD when git is present and the write fails: raises, naming
   `slug`, `after_sha`, and the underlying error — a retire that cannot
   be recorded must never ship silently unrecorded, which is the exact
   defect this function exists to close.
@@ -644,7 +642,6 @@ defmodule CodegenTestHarness.LoopQueue do
   def record_ship(cwd, slug, before_sha, after_sha) do
     case System.cmd("git", ["-C", cwd, "rev-parse", "--show-toplevel"], stderr_to_stdout: true) do
       {_out, 0} ->
-        write_note!(cwd, slug, before_sha, after_sha)
         write_frontmatter!(cwd, slug, before_sha, after_sha)
         :ok
 
@@ -652,23 +649,6 @@ defmodule CodegenTestHarness.LoopQueue do
       # verify_commit_landed/2's and assert_clean_tree!/1's own posture.
       {_out, _nonzero} ->
         :ok
-    end
-  end
-
-  defp write_note!(cwd, slug, before_sha, after_sha) do
-    note = "pitch: #{slug}\nrange: #{before_sha}..#{after_sha}"
-
-    case System.cmd(
-           "git",
-           ["-C", cwd, "notes", "--ref=pitches", "add", "-f", "-m", note, after_sha],
-           stderr_to_stdout: true
-         ) do
-      {_out, 0} ->
-        :ok
-
-      {out, nonzero} ->
-        raise "LoopQueue.record_ship: failed to write ship note for #{slug} on #{after_sha} " <>
-                "(exit #{nonzero}): #{out}"
     end
   end
 

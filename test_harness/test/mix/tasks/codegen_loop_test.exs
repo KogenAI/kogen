@@ -171,12 +171,6 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       shipped_content = File.read!(shipped_path)
       assert shipped_content =~ "shipped_sha: #{after_sha}"
       assert shipped_content =~ "shipped_range: #{before_sha}..#{after_sha}"
-
-      {note, 0} =
-        System.cmd("git", ["-C", ctx.tmp, "notes", "--ref=pitches", "show", after_sha])
-
-      assert note =~ "pitch: foo"
-      assert note =~ "range: #{before_sha}..#{after_sha}"
     end
 
     test "nil after_sha (non-git / unborn cwd): ships without recording, no raise", ctx do

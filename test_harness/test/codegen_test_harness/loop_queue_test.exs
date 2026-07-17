@@ -634,7 +634,7 @@ defmodule CodegenTestHarness.LoopQueueTest do
       {:ok, ready_dir: ready_dir, commit!: commit!}
     end
 
-    test "writes a git note and inserts frontmatter fields on a block-carrying pitch", %{
+    test "inserts frontmatter fields on a block-carrying pitch", %{
       dir: dir,
       ready_dir: ready_dir,
       commit!: commit!
@@ -653,10 +653,6 @@ defmodule CodegenTestHarness.LoopQueueTest do
       # Original frontmatter key survives the upsert.
       assert content =~ "status: ready"
       assert content =~ "# Pitch: foo"
-
-      {note, 0} = System.cmd("git", ["-C", dir, "notes", "--ref=pitches", "show", after_sha])
-      assert note =~ "pitch: foo"
-      assert note =~ "range: #{before_sha}..#{after_sha}"
     end
 
     test "mints a frontmatter block when the pitch has none", %{

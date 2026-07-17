@@ -367,10 +367,10 @@ defmodule Mix.Tasks.Codegen.Loop do
 
       true ->
         assert_clean_tree!(cwd)
-        # Note-first, then frontmatter, then the mv — see
-        # LoopQueue.record_ship/4 moduledoc for why this order is
-        # load-bearing (a stranded shipped_sha: on a still-ready/ pitch is
-        # read by the NEXT build's prompt as "already shipped").
+        # Frontmatter, then the mv — see LoopQueue.record_ship/4
+        # moduledoc for why this order is load-bearing (a stranded
+        # shipped_sha: on a still-ready/ pitch is read by the NEXT
+        # build's prompt as "already shipped").
         LoopQueue.record_ship(cwd, slug, before_sha, after_sha)
         File.mkdir_p!(Path.dirname(dst))
         File.rename!(src, dst)

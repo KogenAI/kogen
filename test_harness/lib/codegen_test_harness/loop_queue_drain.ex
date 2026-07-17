@@ -1117,11 +1117,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     cond do
       # agent did not ship (non-compliant) -> drain ships as fallback.
-      # Note-first, then frontmatter, then the mv — same ordering as
-      # Mix.Tasks.Codegen.Loop's solo path (LoopQueue.record_ship/4
-      # moduledoc), for the same reason: a stranded shipped_sha: on a
-      # still-ready/ pitch would be read by the NEXT build's prompt as
-      # "already shipped".
+      # Frontmatter, then the mv — same ordering as Mix.Tasks.Codegen.Loop's
+      # solo path (LoopQueue.record_ship/4 moduledoc), for the same reason:
+      # a stranded shipped_sha: on a still-ready/ pitch would be read by
+      # the NEXT build's prompt as "already shipped".
       File.exists?(src) ->
         LoopQueue.record_ship(cwd, slug, before_sha, after_sha)
         File.rename!(src, dst)
