@@ -177,7 +177,14 @@ if [ "$index_path" = "PROJECT_CONTEXT.md" ] && [ -f "$repo_root/harnesses/claude
             # (d) in-file Trigger Keywords set == index "Load when prompt
             # mentions..." cell (col-4) set — byte-exact after normalization.
             file_kw=$(awk '/^## Trigger Keywords$/{getline; while ($0 ~ /^[[:space:]]*$/) getline; print; exit}' "$f" | norm)
-            idx_kw=$(grep -F "\`context/$base\`" "$repo_root/$index_path" | awk -F'|' '{print $4}' | norm)
+            # Only TABLE ROWS carry the col-4 keyword cell. A prose
+            # cross-reference elsewhere in the index (e.g. "See
+            # `context/deployment-topology.md`." in a bullet) also matches the
+            # backticked path, and parsing that line as a row appends garbage —
+            # producing a permanent false "keyword drift" that no edit to
+            # either document can clear. Anchor to lines that actually start a
+            # markdown table row.
+            idx_kw=$(grep -F "\`context/$base\`" "$repo_root/$index_path" | grep '^[[:space:]]*|' | awk -F'|' '{print $4}' | norm)
             if [ "$file_kw" != "$idx_kw" ]; then
                 violations="${violations}${violations:+$nl}context-index-parity-scan: context/$base keyword drift between file Trigger Keywords and $index_path Domain Context Files row."
             fi

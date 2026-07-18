@@ -121,7 +121,7 @@ Committer stages **ALL cycle output** in a single `git add -A` commit per cycle.
 
 ## Trigger Keywords
 
-orchestrator rules, planner rules, developer rules, reviewer rules, committer rules, context-curator rules, never-implement, full-cycle, delegation, INCONCLUSIVE table, needs buy-in, planner has no questions, measurement probe, scoping guard, claim kind
+orchestrator rules, planner rules, developer rules, reviewer rules, committer rules, context-curator rules, never-implement, full-cycle, delegation, INCONCLUSIVE table, needs buy-in, planner has no questions, measurement probe, scoping guard, claim kind, state-machine exit code, case-clause order, exit-code regression test, reviewer case-source read
 
 ## Pitfalls
 
