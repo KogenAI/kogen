@@ -303,6 +303,75 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
     assert decoded["unrouted"] == ["c"]
     refute "c" in List.flatten(decoded["lanes"])
   end
+
+  test "--check with a subsumed pair that declares split_subject: exits normally", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\nsplit_subject: starts the loop; wakes the fleet\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--check"]) end)
+
+    assert out =~ "COLLISIONS"
+  end
+
+  test "--check absent: SUBSUMED never triggers noise on the report path (regression)", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}"]) end)
+
+    refute out =~ "subsumed"
+    refute out =~ "split_subject"
+  end
+
+  test "--lanes=N with a subsumed pair: normal lane/global-hot output, never SUBSUMED prose (regression)",
+       ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=2"]) end)
+
+    assert out =~ "GLOBAL-HOT"
+    refute out =~ "subsumed"
+  end
+
+  test "--json --lanes=N with a subsumed pair: decoded keys unchanged (regression)", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=2", "--json"]) end)
+
+    decoded = Jason.decode!(String.trim(out))
+
+    assert Map.keys(decoded) |> Enum.sort() == ["global_hot", "lanes", "unrouted"]
+  end
 end
 
 # Mix.shell/1 mutates process-global state. Tests that swap in
@@ -406,5 +475,54 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeShellTest do
     assert exit_val == {:shutdown, 2}
     assert_receive {:mix_shell, :error, [msg]}
     assert msg =~ "--json requires --lanes"
+  end
+
+  test "--check with a subsumed pair and no split_subject: exits 2 naming both slugs", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\n---\n# b\n"
+    )
+
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--check"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "a"
+    assert msg =~ "b"
+    assert msg =~ "split_subject"
+  end
+
+  test "--check with UNROUTED and a subsumed pair reports UNROUTED first", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    File.write!(Path.join(ctx.ready_dir, "c.md"), "---\nstatus: SHAPED\n---\n# c\n")
+
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\n---\n# b\n"
+    )
+
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--check"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "unrouted"
+    refute msg =~ "split_subject"
   end
 end

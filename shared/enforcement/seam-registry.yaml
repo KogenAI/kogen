@@ -210,3 +210,10 @@ seams:
     guard: pitch-scope-parity
     guard_time: make-test
     pattern: set-parity
+
+  - id: ready-pitch-split-subject-declared
+    declares: "codegen/pitches/ready/*.md split_subject: frontmatter (a subsumed-scope sibling pair proves it is two bets, not one)"
+    reflects: mix codegen.pitches.scope --check SUBSUMED exit code
+    guard: pitch-scope-parity
+    guard_time: make-test
+    pattern: set-parity

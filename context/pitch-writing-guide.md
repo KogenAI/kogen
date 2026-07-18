@@ -8,7 +8,7 @@ Atomic unit of work. One problem, one solution sketch, one appetite. Written by 
 
 ## Frontmatter (machine-readable metadata)
 
-A pitch opens with a YAML frontmatter block (`---`-delimited) BEFORE the `## Problem` heading, carrying typed machine fields: `status:` (SKELETON | SHAPING | SHAPED), `appetite:` (small | big), `blocks_on:` (a flow-list of dependency slugs, e.g. `blocks_on: [dep-one]`, or `blocks_on: []`), `scope:` (a flow-list of repo-relative paths this pitch will edit — inline or multiline; absent = unrouted, never guessed at), `shipped_sha:` (the short commit hash that shipped this pitch, written by the retire machinery at ship time), `shipped_range:` (the `<before>..<after>` range of that commit, written at ship time), and `summary:` (a YAML block-scalar `>` holding the 1–3 sentence what/effect/user-impact summary, persisted at SHAPED). The body below the closing `---` stays free markdown (Problem/Scope/Solution sketch/etc.) — the frontmatter is metadata only, never re-parsed as structure.
+A pitch opens with a YAML frontmatter block (`---`-delimited) BEFORE the `## Problem` heading, carrying typed machine fields: `status:` (SKELETON | SHAPING | SHAPED), `appetite:` (small | big), `blocks_on:` (a flow-list of dependency slugs, e.g. `blocks_on: [dep-one]`, or `blocks_on: []`), `scope:` (a flow-list of repo-relative paths this pitch will edit — inline or multiline; absent = unrouted, never guessed at), `split_subject:` (a two-clause string, `"<clause A>; <clause B>"` or `"<clause A> and <clause B>"`, recording the one-clause test's verdict when a split pitch's `scope:` is a subset of a sibling's — see § Split subject requirement below), `shipped_sha:` (the short commit hash that shipped this pitch, written by the retire machinery at ship time), `shipped_range:` (the `<before>..<after>` range of that commit, written at ship time), and `summary:` (a YAML block-scalar `>` holding the 1–3 sentence what/effect/user-impact summary, persisted at SHAPED). The body below the closing `---` stays free markdown (Problem/Scope/Solution sketch/etc.) — the frontmatter is metadata only, never re-parsed as structure.
 
 **Dual-read**: pre-existing pitches with no frontmatter block fall back to the legacy prose conventions — a `> Status:` blockquote for status, `Blocks-on:`/`## Dependencies` prose lines for dependencies. Both `LoopQueue.parse_edges/2` (build-queue topo-sort) and the pitch-format-validators (`.sh`/`.ts`) read frontmatter first, falling back to prose when absent. New pitches should emit frontmatter.
 
@@ -40,6 +40,12 @@ Launchers like `shape` also auto-edit pitches via this same resolved path. If a 
 
 **Mandatory: every pitch promoted to `ready/` MUST carry a `scope:` frontmatter field.** The field is a YAML flow-list of repo-relative paths this pitch will edit (e.g. `scope: [test_harness/lib/loop_queue.ex, shared/rules/_core/]`). Write it inline when short, or multiline (key alone on one line, then `[`/items/`]` on following lines) when the list is longer. The deterministic gate is `make test` via `mix codegen.pitches.scope --check --dir=ready` (the `pitch-scope-parity` Makefile leg) — it fails loud when a `ready/` pitch has no `scope:` field or the value is unparseable, naming the offending slug; `/ready` itself surfaces readiness in prose but does not enforce this field. The gate is the authoritative check — no pitch is placed to a build without a declared scope. The `mix codegen.pitches.scope` reader (see § System Components, below) uses this field to partition parallel work and detect conflicts between pitches.
 
+## Split subject requirement
+
+**A split pitch must prove it is two bets, not one.** When the shaper splits a pitch into siblings, it runs the one-clause test (spine rule H, outcome (e)) BEFORE writing any file: name the ONE PURPOSE both proposed siblings would serve as a single why-led imperative subject (≤50 chars). One clause names both → do not split, keep one pitch. Naming both genuinely needs two clauses → the split proceeds, and each surviving sibling records the verdict in its own frontmatter: `split_subject: <clause A>; <clause B>` (or `<clause A> and <clause B>`).
+
+The gate is mechanical, not prose-trusting: `mix codegen.pitches.scope --check` (the `pitch-scope-parity` Makefile leg) additionally fails when one `ready/` pitch's `scope:` is a subset of (or equal to) another's and NEITHER declares `split_subject:` — the mechanical shadow of an unproven split. A pitch with a genuinely narrow scope that happens to sit inside another's clears the check by recording its two-clause subject; that recording IS the work the rule asks for. A `scope: []` pitch is excluded from this check entirely (vacuous subset of everything).
+
 ## Slug conventions
 
 - Lowercase, hyphens only: `fix-session-log-ordering.md`
@@ -54,6 +60,8 @@ Launchers like `shape` also auto-edit pitches via this same resolved path. If a 
 - **DISJOINT** — pitches with `scope:` fields that touch no shared paths with any other scoped pitch in the batch. Safe to run in parallel without conflicts.
 - **UNROUTED** — pitches with no `scope:` field (or no frontmatter block at all). Cannot be partitioned; a human must route these manually or investigate whether they have a real scope.
 
+With `--check`, also fails on **SUBSUMED** pairs — a pitch whose `scope:` is a subset of (or equal to) a sibling's, with neither declaring `split_subject:` — the recorded proof that a split pitch is a genuinely separate bet.
+
 Run before a multi-pitch drain (`--queue`) to detect which pitches can safely run in parallel on separate machines.
 
 ## Cross-reference
@@ -64,4 +72,4 @@ Run before a multi-pitch drain (`--queue`) to detect which pitches can safely ru
 
 ## Trigger Keywords
 
-pitch, proposal, async communication, why-focused, rule rationale, launcher review, pitch path resolution, codegen/pitches, repo-relative path, abs-in-cwd path, authoring spine, output contract
+pitch, proposal, async communication, why-focused, rule rationale, launcher review, pitch path resolution, codegen/pitches, repo-relative path, abs-in-cwd path, authoring spine, output contract, split_subject, one-clause test, SUBSUMED, scope subset

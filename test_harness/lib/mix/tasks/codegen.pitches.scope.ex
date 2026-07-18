@@ -42,13 +42,27 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     parses. Mirrors the existing `codegen-drain status --json` shape
     convention.
   - `--check` — optional boolean flag. Absent: behavior/output/exit
-    code are byte-identical to today. Present: if `scope_report/1`
-    reports any UNROUTED pitch, prints the offending slug(s) to stderr
-    and `exit({:shutdown, 2})` BEFORE any of the normal report sections
-    are printed. A `scope: []` pitch (explicit empty list) is DISJOINT,
-    not UNROUTED, and passes. This is the `make test` /
-    `pitch-scope-parity` gate leg: every pitch promoted to `ready/`
-    must declare a `scope:` field.
+    code are byte-identical to today. Present: runs two independent
+    failure-class checks, in order, before any of the normal report
+    sections are printed:
+
+    1. UNROUTED — if `scope_report/1` reports any UNROUTED pitch,
+       prints the offending slug(s) to stderr and `exit({:shutdown,
+       2})`. A `scope: []` pitch (explicit empty list) is DISJOINT, not
+       UNROUTED, and passes.
+    2. SUBSUMED — if `LoopQueue.subsumed_report/1` reports any pair
+       whose `scope:` is a subset of (or equal to) another's with
+       neither declaring `split_subject:`, prints the offending pair(s)
+       to stderr and `exit({:shutdown, 2})` — see
+       `codegen/pitches/ready/a-split-pitch-must-be-two-real-bets.md`.
+       A pitch clears this check by recording `split_subject: <clause
+       A>; <clause B>` in its own frontmatter (either sibling
+       declaring it clears the pair).
+
+    This is the `make test` / `pitch-scope-parity` gate leg: every
+    pitch promoted to `ready/` must declare a `scope:` field, and a
+    pitch whose scope is subsumed by another's must prove it is a
+    genuinely separate bet.
 
   ## Output
 
@@ -77,10 +91,12 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     fewer lanes and says so)
   - non-zero — a pitch's `scope:` value is present but not a parseable
     `[...]` flow-list (`LoopQueue.parse_scope/2` raises loud rather than
-    silently returning an empty/wrong partition), `--dir` names an
+    silently returning an empty/wrong partition), a pitch's
+    `split_subject:` value is present but not two-clause shaped
+    (`LoopQueue.parse_split_subject/2` raises loud), `--dir` names an
     unrecognized value, `--lanes` is not a positive integer, `--json`
     is given without `--lanes`, or `--check` is given and the scanned
-    dir has at least one UNROUTED pitch
+    dir has at least one UNROUTED pitch or SUBSUMED pair
   """
 
   use Mix.Task
@@ -135,7 +151,9 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
 
     {disjoint, collisions, unrouted} = LoopQueue.scope_report(pitches_dir)
 
-    if Keyword.get(opts, :check, false) and unrouted != [] do
+    check? = Keyword.get(opts, :check, false)
+
+    if check? and unrouted != [] do
       Mix.shell().error(
         "codegen.pitches.scope --check: #{length(unrouted)} unrouted " <>
           "#{pitch_noun(length(unrouted))} in #{pitches_dir} (missing scope: field): " <>
@@ -143,6 +161,22 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
       )
 
       exit({:shutdown, 2})
+    end
+
+    if check? do
+      subsumed = LoopQueue.subsumed_report(pitches_dir)
+
+      if subsumed != [] do
+        Mix.shell().error(
+          "codegen.pitches.scope --check: #{length(subsumed)} subsumed " <>
+            "#{pitch_noun(length(subsumed))} pair#{plural(length(subsumed))} — " <>
+            Enum.map_join(subsumed, "; ", fn {subsumed_slug, superset_slug} ->
+              "#{subsumed_slug} scope ⊆ #{superset_slug} scope, neither declares split_subject:"
+            end)
+        )
+
+        exit({:shutdown, 2})
+      end
     end
 
     if json? do

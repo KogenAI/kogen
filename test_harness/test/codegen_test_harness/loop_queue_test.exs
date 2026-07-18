@@ -915,4 +915,113 @@ defmodule CodegenTestHarness.LoopQueueTest do
       assert Map.get(blocked, "dependent") == "dep"
     end
   end
+
+  describe "parse_split_subject/2" do
+    test "returns {:ok, nil} when the key is absent", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# c\n")
+
+      assert LoopQueue.parse_split_subject("c", path) == {:ok, nil}
+    end
+
+    test "returns {:ok, subject} for a well-formed semicolon-separated value", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nsplit_subject: starts the loop; wakes the fleet\n---\n# c\n"
+      )
+
+      assert LoopQueue.parse_split_subject("c", path) == {:ok, "starts the loop; wakes the fleet"}
+    end
+
+    test "accepts the \" and \" clause separator", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nsplit_subject: starts the loop and wakes the fleet\n---\n# c\n"
+      )
+
+      assert LoopQueue.parse_split_subject("c", path) ==
+               {:ok, "starts the loop and wakes the fleet"}
+    end
+
+    test "raises naming the slug when the value is present but single-clause", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nsplit_subject: yes\n---\n# c\n")
+
+      assert_raise RuntimeError, ~r/c has a split_subject: value that is not two clauses/, fn ->
+        LoopQueue.parse_split_subject("c", path)
+      end
+    end
+  end
+
+  describe "subsumed_report/1" do
+    test "returns [] when no scope set is a subset of another", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n")
+
+      assert LoopQueue.subsumed_report(dir) == []
+    end
+
+    test "reports the pair when A's scope is a strict subset of B's and neither declares split_subject:",
+         %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n")
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\n---\n# b\n"
+      )
+
+      assert LoopQueue.subsumed_report(dir) == [{"a", "b"}]
+    end
+
+    test "reports the pair when scope sets are identical", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# b\n")
+
+      assert LoopQueue.subsumed_report(dir) == [{"a", "b"}]
+    end
+
+    test "returns [] when the subsumed pitch declares split_subject:", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/a.ex]\nsplit_subject: starts the loop; wakes the fleet\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\n---\n# b\n"
+      )
+
+      assert LoopQueue.subsumed_report(dir) == []
+    end
+
+    test "returns [] when the superset pitch declares split_subject:", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n")
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/a.ex, lib/b.ex]\nsplit_subject: starts the loop; wakes the fleet\n---\n# b\n"
+      )
+
+      assert LoopQueue.subsumed_report(dir) == []
+    end
+
+    test "ignores scope: [] pitches entirely (no false-positive storm)", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: []\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n")
+      File.write!(Path.join(dir, "c.md"), "---\nstatus: SHAPED\nscope: [lib/c.ex]\n---\n# c\n")
+
+      assert LoopQueue.subsumed_report(dir) == []
+    end
+
+    test "ignores unrouted (no scope: key) pitches", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n")
+
+      assert LoopQueue.subsumed_report(dir) == []
+    end
+  end
 end

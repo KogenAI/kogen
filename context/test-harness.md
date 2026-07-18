@@ -1,6 +1,6 @@
 # Test Harness Domain — ExUnit Test Suite for Stacks
 
-The test harness is an Elixir/ExUnit project in `test_harness/` validating scaffold output and stack behaviour end-to-end. Tests scaffold a fresh app, run generated code through real assertions, record a passing baseline in `last_green.json`. `record-green.sh` stamps the last known-good commit SHA for regression detection.
+The test harness is an Elixir/ExUnit project in `test_harness/` validating scaffold output end-to-end. Tests scaffold a fresh app, run generated code through real assertions, record a passing baseline in `last_green.json`. `record-green.sh` stamps the last known-good commit SHA for regression detection.
 
 Tests live under `test_harness/test/stacks/` organized by stack (phoenix, static) and mode. The library code in `test_harness/lib/codegen_test_harness/` provides shared helpers.
 
@@ -23,7 +23,7 @@ Tests live under `test_harness/test/stacks/` organized by stack (phoenix, static
 | `test_harness/lib/codegen_test_harness/loop_queue_drain.ex`   | Multi-pitch drain — `LoopQueue`'s live caller. See "Orchestration Loop" § below. Tests: `loop_queue_drain_test.exs`. |
 | `test_harness/lib/mix/tasks/codegen.loop.ex`                  | `mix codegen.loop --harness=<claude_code\|pi> --stack=<phoenix\|static> --cwd=<dir> <pitch>` — entrypoint `dispatch.sh`'s build path execs.                                             |
 | `test_harness/lib/mix/tasks/codegen.loop.queue.ex`            | `mix codegen.loop.queue --harness=<claude\|pi> --stack=<S> --cwd=<dir>` — wraps `LoopQueueDrain.drain/1`; invoked by `--queue` launcher flags. |
-| `test_harness/lib/mix/tasks/codegen.pitches.scope.ex`         | `mix codegen.pitches.scope [--dir=ready\|draft\|shipped] [--cwd=<dir>] [--lanes=N] [--check]`. Report default; `--check` gates `make test` (pitch-scope-parity), exits non-zero on UNROUTED. Tests: `codegen_pitches_scope_test.exs`. |
+| `test_harness/lib/mix/tasks/codegen.pitches.scope.ex`         | `mix codegen.pitches.scope [--dir=ready\|draft\|shipped] [--cwd=<dir>] [--lanes=N] [--check]`. Report default. `--check` gates `make test` (pitch-scope-parity), non-zero on UNROUTED/SUBSUMED. Tests: `codegen_pitches_scope_test.exs`. |
 | `test_harness/record-green.sh`                                | Records current commit SHA + timestamp to `last_green.json`; accepts `--auto-commit` flag for scoped fail-soft commit                                                                   |
 | `test_harness/last_green.json`                                | Baseline: last commit SHA where full test suite passed                                                                                                                                  |
 | `test_harness/test/harness_parity/pi_parity_test.exs`         | Cross-harness build parity tests (claude vs pi); tagged `@moduletag :harness_parity`                                                                                                    |

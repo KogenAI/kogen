@@ -158,6 +158,59 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
+  @doc """
+  Parses the `split_subject:` frontmatter field out of the pitch file at
+  `pitch_path` — the shaper's recorded verdict that a sibling pair
+  produced by a split are genuinely two bets, not one, expressed as a
+  two-clause subject string (`"<clause A>; <clause B>"` or
+  `"<clause A> and <clause B>"`).
+
+  Reuses the same `extract_frontmatter_key/2` reader as `parse_scope/2`
+  and `parse_edges/2` — no new frontmatter grammar.
+
+  Returns:
+
+    - `{:ok, nil}` — no `split_subject:` key, or no frontmatter block at
+      all. The default: absent means no split is being claimed, and
+      that is always a valid state.
+    - `{:ok, subject}` — `split_subject:` present and contains at least
+      one of the two accepted clause separators (`;` or ` and `).
+    - raises — `split_subject:` present but not two-clause shaped (e.g.
+      a bare scalar with neither separator). A field that LOOKS like a
+      recorded verdict but names only one clause defeats the whole
+      point of recording it — a loud raise naming the slug is safer
+      than silently accepting it.
+  """
+  @spec parse_split_subject(slug(), String.t()) :: {:ok, String.t() | nil}
+  def parse_split_subject(slug, pitch_path) do
+    if File.exists?(pitch_path) do
+      content = File.read!(pitch_path)
+
+      case frontmatter_block(content) do
+        nil ->
+          {:ok, nil}
+
+        block ->
+          case extract_frontmatter_key(block, "split_subject:") do
+            "" ->
+              {:ok, nil}
+
+            raw ->
+              trimmed = String.trim(raw)
+
+              if String.contains?(trimmed, ";") or String.contains?(trimmed, " and ") do
+                {:ok, trimmed}
+              else
+                raise "LoopQueue.parse_split_subject: #{slug} has a split_subject: value " <>
+                        "that is not two clauses (needs \";\" or \" and \"): #{inspect(raw)}"
+              end
+          end
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
   # Like parse_flow_list/1 but distinguishes "not a flow-list at all"
   # (:error, for parse_scope/2's loud raise) from "flow-list, possibly
   # empty" ({:ok, list}). parse_flow_list/1 keeps its own [] collapse
@@ -231,6 +284,83 @@ defmodule CodegenTestHarness.LoopQueue do
     disjoint = Enum.reject(scoped_slugs, &MapSet.member?(collided_slugs, &1))
 
     {disjoint, collisions, unrouted}
+  end
+
+  @doc """
+  Scans the `.md` slugs under `pitches_dir` and returns the list of
+  `{subsumed_slug, superset_slug}` pairs where `subsumed_slug`'s
+  `scope:` is a subset of (or equal to) `superset_slug`'s `scope:`, and
+  NEITHER pitch declares `split_subject:` — the mechanical shadow of
+  "this split was never proven to be two bets" (see
+  `codegen/pitches/ready/a-split-pitch-must-be-two-real-bets.md`).
+
+  A pitch with `scope: []` (present, explicitly empty) is EXCLUDED from
+  this check entirely — `[] ⊆ X` is vacuously true for every scoped X,
+  so including empty-scope pitches would flag every one of them against
+  every other scoped pitch in the batch. Unrouted pitches (no `scope:`
+  key at all) are excluded too; that is `scope_report/1`'s concern.
+
+  When two pitches have IDENTICAL non-empty scope sets, that is still
+  reported — subsumption in both directions collapses to a single pair
+  (lexicographically-lower slug first), never emitted twice.
+
+  Either sibling declaring `split_subject:` clears the pair — the
+  escape hatch is "prove it is two bets", not "only the smaller one may
+  speak up".
+
+  Pure/deterministic — no LLM, no network.
+  """
+  @spec subsumed_report(String.t()) :: [{slug(), slug()}]
+  def subsumed_report(pitches_dir) do
+    slugs =
+      pitches_dir
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.map(&Path.basename(&1, ".md"))
+      |> Enum.sort()
+
+    scoped =
+      Enum.reduce(slugs, %{}, fn slug, acc ->
+        case parse_scope(slug, Path.join(pitches_dir, "#{slug}.md")) do
+          {:ok, nil} -> acc
+          {:ok, []} -> acc
+          {:ok, paths} -> Map.put(acc, slug, MapSet.new(paths))
+        end
+      end)
+
+    scoped_slugs = scoped |> Map.keys() |> Enum.sort()
+
+    split_subjects =
+      Enum.reduce(scoped_slugs, %{}, fn slug, acc ->
+        case parse_split_subject(slug, Path.join(pitches_dir, "#{slug}.md")) do
+          {:ok, nil} -> acc
+          {:ok, subject} -> Map.put(acc, slug, subject)
+        end
+      end)
+
+    for {slug_a, i} <- Enum.with_index(scoped_slugs),
+        slug_b <- Enum.drop(scoped_slugs, i + 1),
+        not Map.has_key?(split_subjects, slug_a),
+        not Map.has_key?(split_subjects, slug_b),
+        pair = subsumed_pair(slug_a, scoped[slug_a], slug_b, scoped[slug_b]),
+        pair != nil do
+      pair
+    end
+  end
+
+  # Determines subsumption direction between two scope sets, returning
+  # {subsumed_slug, superset_slug} (subsumed listed first) or nil when
+  # neither is a subset of the other. Equal sets report {a, b} in the
+  # slugs' sorted order (a < b, guaranteed by subsumed_report/1's
+  # Enum.with_index/Enum.drop pairing), never emitted twice.
+  @spec subsumed_pair(slug(), MapSet.t(), slug(), MapSet.t()) :: {slug(), slug()} | nil
+  defp subsumed_pair(slug_a, set_a, slug_b, set_b) do
+    cond do
+      MapSet.equal?(set_a, set_b) -> {slug_a, slug_b}
+      MapSet.subset?(set_a, set_b) -> {slug_a, slug_b}
+      MapSet.subset?(set_b, set_a) -> {slug_b, slug_a}
+      true -> nil
+    end
   end
 
   defp shared_paths(paths_a, paths_b) do
