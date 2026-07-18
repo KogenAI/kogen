@@ -1752,8 +1752,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         :ok
 
       last ->
-        case Map.get(last, "result") do
-          result when is_binary(result) and result != "" -> IO.puts(:stderr, result)
+        case failure_summary(last) do
+          summary when summary != "" -> IO.puts(:stderr, summary)
           _ -> :ok
         end
 
@@ -1788,6 +1788,40 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
       {:error, _reason} ->
         nil
+    end
+  end
+
+  # Human-readable failure evidence for a result record. Prefers the loop's
+  # own `result` prose when present (the loop-committed/loop-failed happy
+  # path). Falls back to the envelope's `terminal_reason` + `subtype` — the
+  # ONLY fields a `loop_failed`/`error` envelope carries when the loop never
+  # wrote a `result` key at all (see `codegen.loop.ex`'s result-line writer,
+  # which always emits `terminal_reason`/`subtype` but only sometimes emits
+  # `result`). Returns `""` only when the envelope carries neither — a
+  # genuinely evidence-less record (e.g. a killed child's last partial line).
+  # Shared by `emit_failure_diagnostics/4` (operator stderr) and
+  # `default_draft_fn/4` (auto-drafter prompt) so both surfaces agree.
+  @spec failure_summary(map()) :: String.t()
+  defp failure_summary(record) do
+    result = Map.get(record, "result")
+    reason = Map.get(record, "terminal_reason")
+    subtype = Map.get(record, "subtype")
+
+    cond do
+      is_binary(result) and result != "" ->
+        result
+
+      is_binary(reason) and reason != "" and is_binary(subtype) and subtype != "" ->
+        "terminal: #{reason} (#{subtype})"
+
+      is_binary(reason) and reason != "" ->
+        "terminal: #{reason}"
+
+      is_binary(subtype) and subtype != "" ->
+        "subtype: #{subtype}"
+
+      true ->
+        ""
     end
   end
 
@@ -2715,8 +2749,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     if File.exists?(call_bin) do
       result_text =
         case last_result_record(jsonl) do
-          %{"result" => result} when is_binary(result) -> result
-          _ -> ""
+          nil -> ""
+          record -> failure_summary(record)
         end
 
       skeletons = skeleton_drafts(cwd)

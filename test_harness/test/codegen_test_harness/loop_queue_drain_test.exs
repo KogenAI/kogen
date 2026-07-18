@@ -419,6 +419,34 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
   end
 
+  test "1h3: failure diagnostics fall back to terminal_reason/subtype when result is absent",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      File.write!(
+        jsonl,
+        ~s({"type":"result","subtype":"error","terminal_reason":"loop_failed","session_id":"sess-x"}\n)
+      )
+
+      {:exit_code, 1}
+    end
+
+    transient_fn = fn _jsonl -> false end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                 )
+      end)
+
+    assert output =~ "terminal: loop_failed (error)"
+    assert output =~ "session_id: sess-x"
+    assert output =~ ~r/\[1\/1\] solo \.\.\. FAILED/
+  end
+
   test "1h2: a terminal-marked nonzero exit parks + skips — NEVER retried, even though transient_fn is true",
        ctx do
     write_pitch(ctx.ready_dir, "solo")
@@ -1307,6 +1335,50 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert args_line =~ "skel-one"
     refute args_line =~ "shaped-one"
     assert File.exists?(Path.join(draft_dir, "captured.md"))
+  end
+
+  test "D6b: default_draft_fn/4 prompt falls back to terminal_reason when result is absent, but prefers result when present",
+       ctx do
+    script = Path.join(ctx.dir, "fake_codegen_call_terminal.sh")
+
+    File.write!(script, """
+    #!/usr/bin/env bash
+    echo "$@" > "#{ctx.dir}/call_args.txt"
+    echo '{"result":{"status":"success","value":{"action":"new","slug":"captured2","body":"x"}}}'
+    exit 0
+    """)
+
+    File.chmod!(script, 0o755)
+    Process.put(:__queue_drain_call_bin__, script)
+    on_exit(fn -> Process.delete(:__queue_drain_call_bin__) end)
+
+    # Leg A: envelope with NO `result` key — falls back to terminal_reason/subtype.
+    jsonl_terminal = Path.join(ctx.dir, "terminal.jsonl")
+
+    File.write!(
+      jsonl_terminal,
+      ~s({"type":"result","subtype":"error","terminal_reason":"loop_failed"}\n)
+    )
+
+    assert {:ok, _path} =
+             LoopQueueDrain.default_draft_fn(ctx.dir, "solo", jsonl_terminal, "clear")
+
+    args_a = File.read!(Path.join(ctx.dir, "call_args.txt"))
+    assert args_a =~ "terminal: loop_failed (error)"
+
+    # Leg B: envelope WITH a `result` string — preferred over terminal_reason.
+    jsonl_result = Path.join(ctx.dir, "result.jsonl")
+
+    File.write!(
+      jsonl_result,
+      ~s({"type":"result","result":"boom","terminal_reason":"loop_failed"}\n)
+    )
+
+    assert {:ok, _path} = LoopQueueDrain.default_draft_fn(ctx.dir, "solo", jsonl_result, "clear")
+
+    args_b = File.read!(Path.join(ctx.dir, "call_args.txt"))
+    assert args_b =~ "boom"
+    refute args_b =~ "terminal: loop_failed"
   end
 
   test "D7: merge rejects an unlisted target_slug — on-disk drafts unchanged", ctx do
