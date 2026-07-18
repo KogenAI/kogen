@@ -141,16 +141,20 @@ START_TS_MS="$(_ts_ms)"
 #   (2) idle cap: TMP_OUT has not grown for CODEGEN_CALL_IDLE_CAP_SECS (default
 #       900s) — a genuine mid-stream stall with no result to salvage.
 #   (3) dead-stream cap: no output growth for CODEGEN_CALL_STREAM_IDLE_SECS
-#       (default 60s) AND no live tool subprocess (pgrep -P empty) — detects a
+#       (default 300s) AND no live tool subprocess (pgrep -P empty) — detects a
 #       dead socket fast without false-killing a role legitimately silent for
-#       minutes while a bash tool (e.g. make test) runs.
+#       minutes while a bash tool (e.g. make test) runs. 300s (not 60s) because
+#       a large cached context (e.g. planner-phoenix at ~10M cache_read_tokens)
+#       routinely exceeds 60s of server-side first-token latency with no tool
+#       subprocess running — a slow turn is not a dead stream. The 900s
+#       IDLE_CAP_SECS remains the genuine-stall backstop either way.
 # One-shot platform codegen-call (no CODEGEN_LOOP) runs the exec verbatim,
 # uncapped — byte-identical to pre-watchdog behavior.
 WATCHDOG_KILLED=""
 if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     RESULT_GRACE_SECS="${CODEGEN_CALL_RESULT_GRACE_SECS:-30}"
     IDLE_CAP_SECS="${CODEGEN_CALL_IDLE_CAP_SECS:-900}"
-    STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-60}"
+    STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-300}"
 
     set +e
     env \

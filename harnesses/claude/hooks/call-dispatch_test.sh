@@ -1224,9 +1224,9 @@ else
     fail=$((fail + 1))
 fi
 
-# (cc) default: CODEGEN_CALL_STREAM_IDLE_SECS unset → defaults to 60.
+# (cc) default: CODEGEN_CALL_STREAM_IDLE_SECS unset → defaults to 300.
 assert_file_contains "$DISPATCH_SCRIPT" \
-    'STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-60}"'
+    'STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-300}"'
 
 # ── Tool-trace metrics envelope block (real probed stream-json fixtures) ─────
 FIXTURE_TOOL_TRACE="$HOOKS_DIR/fixtures/tool_trace.jsonl"

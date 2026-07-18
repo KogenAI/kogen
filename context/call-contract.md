@@ -59,12 +59,14 @@ consulted, distinct from the deterministic-failure breaker path. See `context/lo
 Outage Pause.
 
 Both call-dispatch legs (`harnesses/claude/call-dispatch.sh`, `harnesses/pi/call-dispatch.sh`) also carry
-a THIRD watchdog trigger, `CODEGEN_CALL_STREAM_IDLE_SECS` (default 60s), alongside the pre-existing
+a THIRD watchdog trigger, `CODEGEN_CALL_STREAM_IDLE_SECS` (default 300s), alongside the pre-existing
 900s `CODEGEN_CALL_IDLE_CAP_SECS` backstop: it fires only when BOTH no output growth AND no live tool
 subprocess (`pgrep -P $CHILD_PID` empty) hold for the window — the child-presence guard is what makes a
 short cap safe against a role legitimately silent for minutes while a `make test`/`mix test` bash tool
-runs. Both legs read this var identically; `harnesses/shared/call-dispatch-parity_test.sh` enforces the
-cross-leg read-set stays in sync.
+runs. The default was raised from 60s to 300s after observed false kills of planner-phoenix (~10M
+cache_read_tokens) whose server-side first-token latency legitimately exceeds 60s with no tool
+subprocess running — a slow turn is not a dead stream. Both legs read this var identically;
+`harnesses/shared/call-dispatch-parity_test.sh` enforces the cross-leg read-set stays in sync.
 
 ## Consumers
 

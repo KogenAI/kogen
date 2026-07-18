@@ -338,11 +338,11 @@ else
     fail=$((fail + 1))
 fi
 
-# (cc) default: CODEGEN_CALL_STREAM_IDLE_SECS unset → defaults to 60.
-if grep -q 'STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-60}"' "$DISPATCH"; then
+# (cc) default: CODEGEN_CALL_STREAM_IDLE_SECS unset → defaults to 300.
+if grep -q 'STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-300}"' "$DISPATCH"; then
     pass=$((pass + 1))
 else
-    printf 'FAIL: (cc) default STREAM_IDLE_SECS=60 not found in %s\n' "$DISPATCH"
+    printf 'FAIL: (cc) default STREAM_IDLE_SECS=300 not found in %s\n' "$DISPATCH"
     fail=$((fail + 1))
 fi
 
