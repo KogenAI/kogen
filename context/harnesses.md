@@ -198,6 +198,10 @@ The build path's cutover from a self-orchestrating harness session to the determ
 
 Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via compiled modules. Extensions are versioned with the harness and provide task-specific logic (dispatch, hook bindings, snippet handling). Extensions are invoked via flags, not indirectly by launcher env — see `harnesses/pi/<mode>.sh` for extension invocation signatures.
 
+## Pi Provider Selection
+
+None of the 7 pi launcher sites (`call-dispatch.sh`, `pi-shape.sh` ×2, `pi-debug.sh`, `pi-ops.sh`, `pi-babysit.sh`, `pi-experiment.sh`) pass `--provider` — pi infers the provider from the `<provider>/` prefix on the already-resolved `--model` value (`config.yaml`'s per-role model, e.g. `openai-codex/gpt-5.4`). Full contract + rationale: `context/role-config.md` § Pi Provider Selection.
+
 ## Headless Investigative Mode
 
 The Claude investigative/supervisory launchers (`claude-shape`, `claude-ops`, `claude-debug`, `claude-babysit`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array. **Important distinction**: investigative launchers deliberately restrict `--setting-sources` to `project` (no user-scope agents/hooks) because they export `CLAUDE_ROLE` and gate the Agent tool to project subagents only. Build dispatch (`codegen-build --non-interactive`) uses `user,project,local` to load the full agent set + user-level gating hooks.

@@ -130,7 +130,6 @@ ARGS=(
     --mode json
     --no-context-files
     --system-prompt "$SYSTEM_PROMPT"
-    --provider openai-codex
     --model "$MODEL"
     --thinking "$EFFORT"
 )

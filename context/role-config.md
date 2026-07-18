@@ -56,6 +56,17 @@ migrating other roles to Pi — every other role's harness stays whatever the bu
 Cross-provider fallback rungs (an Anthropic model on a Pi/openai-codex role or vice versa) are
 explicitly OUT OF SCOPE for the current `fallback:` mechanism — tracked separately, not yet built.
 
+## Pi Provider Selection — Inferred from Model Prefix, Never `--provider`
+
+Pi ships ~34 providers and resolves the provider FROM the `<provider>/` prefix on `--model` — no
+`--provider` flag is needed or passed by any launcher. All 7 pi launcher sites
+(`call-dispatch.sh`, `pi-shape.sh` ×2, `pi-debug.sh`, `pi-ops.sh`, `pi-babysit.sh`,
+`pi-experiment.sh`) pass only the already-prefixed `--model "$ROLE_MODEL"` / `--model "$MODEL"`.
+Every pi model currently in `config.yaml` is `openai-codex/`-prefixed, so today's routing is
+unchanged; a role bound to a different `<provider>/<model>` (once that provider is authenticated)
+routes correctly with zero launcher edits. NEVER re-add a hardcoded `--provider <name>` flag — it
+would defeat per-role cross-provider routing that the model prefix alone already provides.
+
 ## `escalate_model` Ladder Values (sample)
 
 `developer-phoenix-backend` claude: primary `sonnet/medium` → escalate `opus/high` on final attempt.

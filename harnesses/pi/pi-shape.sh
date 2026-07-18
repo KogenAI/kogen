@@ -88,7 +88,6 @@ $DRAFT_TEXT"
 
     exec pi \
         "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
-        --provider openai-codex \
         --model "$ROLE_MODEL" \
         --thinking "$ROLE_EFFORT" \
         --tools read,grep,find,ls,edit,write,bash \
@@ -272,7 +271,6 @@ fi
 
 exec pi \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
-    --provider openai-codex \
     --model "$ROLE_MODEL" \
     --thinking "$ROLE_EFFORT" \
     --tools read,grep,find,ls,edit,write,bash \

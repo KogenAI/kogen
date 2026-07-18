@@ -142,7 +142,7 @@ harness:
   reviewer-static:
     claude: { model: sonnet, effort: medium }
     pi: { model: openai-codex/gpt-5.4, effort: medium }
-  # Pi uses the openai-codex model namespace; Pi requires openai-codex/ prefix per pi CLI syntax.
+  # Pi infers the provider from the <provider>/ model prefix; no --provider flag is passed by the launchers.
   committer:
     claude: { model: haiku, effort: low }
     pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
