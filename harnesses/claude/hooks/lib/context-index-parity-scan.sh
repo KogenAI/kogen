@@ -186,7 +186,11 @@ if [ "$index_path" = "PROJECT_CONTEXT.md" ] && [ -f "$repo_root/harnesses/claude
             # markdown table row.
             idx_kw=$(grep -F "\`context/$base\`" "$repo_root/$index_path" | grep '^[[:space:]]*|' | awk -F'|' '{print $4}' | norm)
             if [ "$file_kw" != "$idx_kw" ]; then
-                violations="${violations}${violations:+$nl}context-index-parity-scan: context/$base keyword drift between file Trigger Keywords and $index_path Domain Context Files row."
+                file_only=$(comm -23 <(printf '%s\n' "$file_kw") <(printf '%s\n' "$idx_kw") | grep -v '^$' | paste -sd, - || true)
+                idx_only=$(comm -13 <(printf '%s\n' "$file_kw") <(printf '%s\n' "$idx_kw") | grep -v '^$' | paste -sd, - || true)
+                [ -z "$file_only" ] && file_only="(none)"
+                [ -z "$idx_only" ] && idx_only="(none)"
+                violations="${violations}${violations:+$nl}context-index-parity-scan: context/$base keyword drift between file Trigger Keywords and $index_path Domain Context Files row. in file only: $file_only; in index only: $idx_only"
             fi
         done < <(find "$ctx_dir" -maxdepth 1 -name '*.md' -type f)
 

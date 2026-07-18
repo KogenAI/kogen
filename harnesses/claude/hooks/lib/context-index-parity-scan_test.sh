@@ -22,6 +22,8 @@
 #      orphan → exit 0 (full-tree pass must not fire outside codegen self-build)
 #  16: root layout WITH codegen sentinel, pre-existing orphan → exit 1
 #      (boundary confirmed: full-tree pass still fires for codegen self-build)
+#  17: root layout, keywords match exactly → exit 0, no drift message
+#  18: root layout, file kw superset of index kw → exit 1, empty-side sentinel
 
 set -euo pipefail
 
@@ -79,6 +81,40 @@ run_test() {
         printf 'FAIL: %s — expected exit %s, got %s\n  out: %s\n' "$desc" "$expected_rc" "$rc" "$out"
         fail=$((fail + 1))
     fi
+}
+
+# run_test_msg <desc> <dir> <expect_present|expect_absent> <needle> — asserts
+# the scan's stdout does/does not contain a substring (message-content check,
+# distinct from run_test's exit-code-only assertion).
+run_test_msg() {
+    local desc="$1"
+    local dir="$2"
+    local mode="$3"
+    local needle="$4"
+
+    local out
+    out=$(bash "$SCAN" "$dir" 2>/dev/null) || true
+
+    case "$mode" in
+        expect_present)
+            if printf '%s' "$out" | grep -qF "$needle"; then
+                [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+                pass=$((pass + 1))
+            else
+                printf 'FAIL: %s — expected output to contain %q\n  out: %s\n' "$desc" "$needle" "$out"
+                fail=$((fail + 1))
+            fi
+            ;;
+        expect_absent)
+            if printf '%s' "$out" | grep -qF "$needle"; then
+                printf 'FAIL: %s — expected output to NOT contain %q\n  out: %s\n' "$desc" "$needle" "$out"
+                fail=$((fail + 1))
+            else
+                [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+                pass=$((pass + 1))
+            fi
+            ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------
@@ -197,11 +233,40 @@ run_test "root layout, pre-existing file missing Trigger Keywords → exit 1" "1
 # ---------------------------------------------------------------------------
 dir11=$(init_fixture 11)
 add_codegen_sentinel "$dir11"
-printf '# doc\n\n`context/x.md` | always | never | foo, bar\n' >"$dir11/PROJECT_CONTEXT.md"
+printf '# doc\n\n| `context/x.md` | Desc | foo, bar | never |\n' >"$dir11/PROJECT_CONTEXT.md"
 printf '# X\n\n## Trigger Keywords\n\nfoo, baz\n' >"$dir11/context/x.md"
 commit_all "$dir11" init
 
 run_test "root layout, keyword drift → exit 1" "1" "$dir11"
+run_test_msg "root layout, keyword drift message names file-only token" "$dir11" expect_present "in file only: baz"
+run_test_msg "root layout, keyword drift message names index-only token" "$dir11" expect_present "in index only: bar"
+
+# ---------------------------------------------------------------------------
+# Test 17: root layout, keywords match exactly → exit 0, no drift message
+# ---------------------------------------------------------------------------
+dir17=$(init_fixture 17)
+add_codegen_sentinel "$dir17"
+printf '# doc\n\n| `context/x.md` | Desc | foo, bar | never |\n' >"$dir17/PROJECT_CONTEXT.md"
+printf '# X\n\n## Trigger Keywords\n\nfoo, bar\n' >"$dir17/context/x.md"
+commit_all "$dir17" init
+
+run_test "root layout, matching keywords → exit 0" "0" "$dir17"
+run_test_msg "root layout, matching keywords → no drift message" "$dir17" expect_absent "keyword drift"
+
+# ---------------------------------------------------------------------------
+# Test 18: root layout, file keywords are a strict superset of index keywords
+# → drift message's index-only side renders the empty sentinel, not a bare
+# trailing separator.
+# ---------------------------------------------------------------------------
+dir18=$(init_fixture 18)
+add_codegen_sentinel "$dir18"
+printf '# doc\n\n| `context/x.md` | Desc | foo | never |\n' >"$dir18/PROJECT_CONTEXT.md"
+printf '# X\n\n## Trigger Keywords\n\nfoo, bar\n' >"$dir18/context/x.md"
+commit_all "$dir18" init
+
+run_test "root layout, file superset of index → exit 1" "1" "$dir18"
+run_test_msg "root layout, file superset → file-only names extra token" "$dir18" expect_present "in file only: bar"
+run_test_msg "root layout, file superset → index-only renders empty sentinel" "$dir18" expect_present "in index only: (none)"
 
 # ---------------------------------------------------------------------------
 # Test 12: root layout, non-.md clutter in context/ → exit 1

@@ -90,7 +90,13 @@ is_builtin_skill() {
 
 found_any=0
 while IFS= read -r line; do
-    while [[ "$line" =~ (^|[^A-Za-z0-9_/])/([a-z][a-z0-9_-]*) ]]; do
+    # Anchor to a TERMINAL /<name> token: preceded by non-slash/alnum, and
+    # NOT followed by another path segment. Without the lookahead exclusion,
+    # a backticked file path on the same line (e.g.
+    # `harnesses/claude/commands/babysit.md`) matches every intermediate
+    # segment (/claude, /commands) as if it were its own slash-command
+    # mention — a false positive unrelated to the actual cadence payload.
+    while [[ "$line" =~ (^|[^A-Za-z0-9_/])/([a-z][a-z0-9_-]*)([^A-Za-z0-9_/]|$) ]]; do
         cmd_name="${BASH_REMATCH[2]}"
         found_any=1
         if is_builtin_skill "$cmd_name"; then
@@ -98,7 +104,12 @@ while IFS= read -r line; do
         else
             assert_command_resolves "cadence-payload token /$cmd_name (from prompt body scan) resolves" "$cmd_name"
         fi
-        line="${line#*"${BASH_REMATCH[0]}"}"
+        # Consume through the matched /<name> token itself (group 1 prefix +
+        # leading "/" + name), leaving the trailing separator char in place
+        # for the NEXT iteration's lookbehind — advances the cursor without
+        # re-matching the same token (which caused an infinite loop when the
+        # full match, including the trailing separator, was stripped).
+        line="${line#*"${BASH_REMATCH[1]}/${cmd_name}"}"
     done
 done < <(grep -riE "cadence.*payload|payload.*cadence" "$PROMPT_BODIES_DIR"/*.txt 2>/dev/null || true)
 

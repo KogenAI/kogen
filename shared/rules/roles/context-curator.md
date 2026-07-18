@@ -78,7 +78,7 @@ Once an owner is established: (1) Read target file. (2) Find the closest existin
 - Input = `ev:learned` events only. Never propose edits based on diff, source code, or test output.
 - No edits to topics unless a role declared them in an `ev:learned` event's text.
 - No `ev:learned` events with real content this cycle → write own section body, make no file edits.
-- Durability filter: persist a learning ONLY if a future session would look it up. DROP transient diff-specific trivia. Default to drop when trivial; "(or zero)" edits are the norm.
+- Durability filter: persist a learning ONLY if a future session would look it up. DROP transient trivia; default to drop when trivial. If NONE get routed, MUST record the drop via `codegen-log append context-curator --learned "<what/why>"` before finishing — silent drop fails `curator-consumption-scan`.
 - Extend-vs-split: apply the Ownership Test above first, per `context/curator-routing.md`'s topic→file map (not exhaustive — a missing row is a finding, not a stop condition).
 - No WHOLESALE file rewrites or re-sectioning. Minimal targeted changes — one block → one edit (or zero). When appending, surgical compression/dedup of the topic being edited is REQUIRED in the same pass.
 - One file read per file per session, EXCEPT during a `retire` action (below), which is explicitly exempted to allow re-reading the file across its compaction edits.

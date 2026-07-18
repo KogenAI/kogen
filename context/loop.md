@@ -156,8 +156,11 @@ joined into one violations message via `combine_curator_doc_results/2` folded tw
 3. **Consumption check** (`curator-consumption-scan.sh <cwd> <cycle_log>`) — asserts that when this
    cycle captured upstream `{"ev":"learned"}` events (planner/developer/reviewer), the curator either
    routed at least one into a durable doc (working-tree diff or untracked file matching
-   `^(context/[^/]+\.md|shared/rules/.*\.md)$`) or recorded each drop as its own `{"ev":"learned"}`
-   event. **Path-filter trap**: curator edits are conventionally spelled `codegen/rules/**` in docs/rules,
+   `^(context/[^/]+\.md|shared/rules/.*\.md)$`) or recorded the drop as its own `{"ev":"learned"}`
+   event. The curator rule (`shared/rules/roles/context-curator.md` § Constraints) now MANDATES this
+   recorded drop whenever nothing gets routed — a silent drop is a rule violation, not the accepted norm
+   — so the scan is satisfiable on the curator's first turn instead of a rework round-trip.
+   **Path-filter trap**: curator edits are conventionally spelled `codegen/rules/**` in docs/rules,
    but `codegen/rules` is a symlink into `shared/rules/` and `/codegen/` is gitignored — `git` NEVER
    reports a path spelled `codegen/rules/**` (`git check-ignore` on that spelling errors "pathspec is
    beyond a symbolic link"). Any path filter consumed against `git diff`/`ls-files` output MUST use the
