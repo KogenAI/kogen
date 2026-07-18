@@ -43,7 +43,7 @@ Hook registration: **Two pipelines** (`enforcement_compiler.py` for `kind: denia
 | `harnesses/claude/hooks/committer-write-allowlist.sh` | PreToolUse — committer Write/Edit allowlist: only canonical session logs (GENERATED) |
 | `harnesses/claude/hooks/committer-no-trailer-guard.sh` | PreToolUse — blocks commit trailers (Co-authored-by, etc.) |
 | `harnesses/claude/hooks/committer-single-commit-per-cycle.sh` | PreToolUse — denies second non-amend git commit per build cycle (escape hatch: COMMITTER_ALLOW_MULTI=1) |
-| `harnesses/claude/hooks/committer-gate-verdict-clear.sh` | PreToolUse — denies `git commit` from the committer agent unless `codegen/gate-pending/gate-result.json` exists and its `.verdict` field is `clear`; enforces the committer's mandatory verdict-read rule structurally |
+| `harnesses/claude/hooks/committer-gate-verdict-clear.sh` | PreToolUse — denies `git commit` from the committer agent unless `codegen/gate-pending/gate-result.json` exists and its `.verdict` field is `clear`. `project_dir` anchors via git-toplevel (fallback: raw payload dir); denies name both resolved+raw dirs |
 | `harnesses/claude/hooks/committer-no-head-move-reset.sh` | PreToolUse — denies a HEAD-moving `git reset` (targeted commit-ish, or `--soft`/`--hard`/`--keep`/`--merge`) from committer; allows bare `git reset`, `git reset HEAD`, `git reset -- <path>` (escape hatch: COMMITTER_ALLOW_MULTI=1) |
 | `harnesses/claude/hooks/committer-single-line-guard.sh` | PreToolUse — enforces single-line commit subject |
 | `harnesses/claude/hooks/committer-subject-length.sh` | PreToolUse — enforces commit subject line length limit |

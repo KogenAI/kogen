@@ -14,6 +14,8 @@
 #                                  CODEGEN_HOOKS_DEBUG or per-slug overrides are set
 #   hooks_realpath <path>        — pure-bash equivalent of `python3 os.path.realpath`,
 #                                  handling non-existent paths via parent-walk fallback
+#   hooks_repo_root <dir>        — git toplevel of <dir>, or <dir> unchanged when not
+#                                  inside a git repo. Never fails.
 #   session_log_from_transcript  — return the last codegen/logging/*.jsonl path written by
 #                                  this session, from $TRANSCRIPT_PATH. Empty if none.
 #   pitch_from_transcript        — return the last codegen/pitches/*.md path written by
@@ -318,6 +320,23 @@ repo_relative() {
     "${cwd_prefix}"*) printf '%s\n' "${canonical#"$cwd_prefix"}" ;;
     *) printf '%s\n' "$canonical" ;;
     esac
+}
+
+# hooks_repo_root <dir> — print the git toplevel of <dir>, or <dir> unchanged
+# when it is not inside a git repository. Never fails.
+#
+# Why: a commit gate must read the gate-result of the repo the commit lands
+# in. The loop writes gate-result.json at the repo root; the hook payload's
+# cwd may be a subdir. Anchoring to the toplevel makes the two agree.
+hooks_repo_root() {
+    local dir="$1"
+    local toplevel
+    toplevel=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || toplevel=""
+    if [ -n "$toplevel" ]; then
+        printf '%s\n' "$toplevel"
+    else
+        printf '%s\n' "$dir"
+    fi
 }
 
 # session_log_from_transcript — return the last codegen/logging/*.jsonl path

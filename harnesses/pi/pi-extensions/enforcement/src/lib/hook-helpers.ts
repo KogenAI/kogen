@@ -155,6 +155,29 @@ export function repoRelative(filePath: string): string {
 }
 
 /**
+ * repoRoot() — the git toplevel of dir, or dir unchanged when it is not
+ * inside a git repository. Never throws. Mirrors hooks-lib.sh's
+ * hooks_repo_root.
+ *
+ * Why: a commit gate must read the gate-result of the repo the commit
+ * lands in. The loop writes gate-result.json at the repo root; the hook
+ * payload's cwd may be a subdir. Anchoring to the toplevel makes the two
+ * agree.
+ */
+export function repoRoot(dir: string): string {
+  try {
+    const out = execFileSync(
+      "git",
+      ["-C", dir, "rev-parse", "--show-toplevel"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    return out || dir;
+  } catch {
+    return dir;
+  }
+}
+
+/**
  * stripHeredocBodies() — Returns `command` with BOTH the BODY and the
  * closing delimiter LINE of every `<<DELIM` / `<<'DELIM'` / `<<"DELIM"` /
  * `<<-DELIM` heredoc removed — only the `<<...DELIM` OPENER line is kept.

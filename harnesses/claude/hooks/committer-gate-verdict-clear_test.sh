@@ -17,6 +17,12 @@
 #  13. cd <dir> && git commit form, verdict=clear → allow
 #  14. git commit-graph (word-boundary; not a real commit) → allow
 #  15. deny message names the actual verdict value
+#  16. payload cwd is a subdir of a git repo holding a clear gate-result at
+#      the root → allow (git-toplevel anchor recovers the root)
+#  17. outside any repo, gate-result absent → deny naming both resolved and
+#      raw dirs
+#  18. anchored git repo, genuinely absent gate-result → deny naming the
+#      repo root
 
 set -euo pipefail
 
@@ -170,6 +176,45 @@ if printf '%s' "$stdout_15" | grep -q "'failed'"; then
     pass=$((pass + 1))
 else
     printf 'FAIL: deny message does not name actual verdict — stdout: %s\n' "$stdout_15"
+    fail=$((fail + 1))
+fi
+
+# --- Test 16: payload cwd is a subdir of a git repo with clear gate-result
+#     at the root → allow (anchor recovers the root) ---
+TMP_REPO=$(mktemp -d)
+trap 'rm -rf "$TMP_REPO"' EXIT
+git -C "$TMP_REPO" init -q
+mkdir -p "$TMP_REPO/codegen/gate-pending" "$TMP_REPO/sub/dir"
+printf '{"verdict":"clear"}\n' >"$TMP_REPO/codegen/gate-pending/gate-result.json"
+run_test "subdir cwd, clear gate-result at repo root → allow" "0" \
+    "$(commit_fixture "committer" "$TMP_REPO/sub/dir")" \
+    "CLAUDE_PROJECT_DIR=$TMP_REPO/sub/dir"
+
+# --- Test 17: outside any repo, gate-result absent → deny naming both dirs ---
+TMP_NOREPO=$(mktemp -d)
+trap 'rm -rf "$TMP_NOREPO"' EXIT
+stdout_17=$(printf '%s' "$(commit_fixture "committer" "$TMP_NOREPO")" |
+    env "CLAUDE_PROJECT_DIR=$TMP_NOREPO" bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_17" | grep -q "is missing at $TMP_NOREPO (resolved from $TMP_NOREPO)"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: deny names resolved+raw dirs (outside repo)\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: deny does not name resolved+raw dirs — stdout: %s\n' "$stdout_17"
+    fail=$((fail + 1))
+fi
+
+# --- Test 18: anchored git repo, genuinely absent gate-result → deny naming repo root ---
+TMP_REPO_ABSENT=$(mktemp -d)
+trap 'rm -rf "$TMP_REPO_ABSENT"' EXIT
+git -C "$TMP_REPO_ABSENT" init -q
+mkdir -p "$TMP_REPO_ABSENT/sub"
+stdout_18=$(printf '%s' "$(commit_fixture "committer" "$TMP_REPO_ABSENT/sub")" |
+    env "CLAUDE_PROJECT_DIR=$TMP_REPO_ABSENT/sub" bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_18" | grep -q "is missing at $TMP_REPO_ABSENT (resolved from $TMP_REPO_ABSENT/sub)"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: deny names anchored repo root\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: deny does not name anchored repo root — stdout: %s\n' "$stdout_18"
     fail=$((fail + 1))
 fi
 

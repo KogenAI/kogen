@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { execFileSync } from "node:child_process";
 
 function makeToolCallEvent(toolName: string, command: string) {
   return { toolName, toolCallId: "test-id", input: { command } };
@@ -152,5 +153,43 @@ describe("committer-gate-verdict-clear", { concurrency: 1 }, () => {
       CLAUDE_PROJECT_DIR: tmpDir,
     });
     assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("allows when payload cwd is a subdir of a git repo with clear gate-result at the root", async () => {
+    execFileSync("git", ["init", "-q"], { cwd: tmpDir });
+    writeGateResult(tmpDir, JSON.stringify({ verdict: "clear" }));
+    const subDir = path.join(tmpDir, "sub", "dir");
+    fs.mkdirSync(subDir, { recursive: true });
+    const result = await runHook("git commit -m test", "committer", {
+      CLAUDE_PROJECT_DIR: subDir,
+    });
+    assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("denies with a message naming both resolved and raw dirs outside any repo", async () => {
+    const result = await runHook("git commit -m test", "committer", {
+      CLAUDE_PROJECT_DIR: tmpDir,
+    });
+    assert.ok((result as { block?: boolean }).block === true);
+    const reason = (result as { reason?: string }).reason ?? "";
+    assert.ok(
+      reason.includes(`is missing at ${tmpDir} (resolved from ${tmpDir})`),
+      `reason did not name resolved+raw dirs: ${reason}`,
+    );
+  });
+
+  it("denies naming the anchored repo root when gate-result is genuinely absent", async () => {
+    execFileSync("git", ["init", "-q"], { cwd: tmpDir });
+    const subDir = path.join(tmpDir, "sub");
+    fs.mkdirSync(subDir, { recursive: true });
+    const result = await runHook("git commit -m test", "committer", {
+      CLAUDE_PROJECT_DIR: subDir,
+    });
+    assert.ok((result as { block?: boolean }).block === true);
+    const reason = (result as { reason?: string }).reason ?? "";
+    assert.ok(
+      reason.includes(`is missing at ${tmpDir} (resolved from ${subDir})`),
+      `reason did not name anchored repo root: ${reason}`,
+    );
   });
 });

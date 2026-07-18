@@ -33,6 +33,12 @@
 #
 # Verdict-only: no freshness/base_sha check here (that belongs to a sibling
 # concern, not duplicated in this hook).
+#
+# project_dir anchors to the commit's target repo root via git-toplevel
+# (hooks_repo_root), falling back to the raw payload dir when it is not
+# inside a git repo. This prevents a false "is missing" deny when the
+# payload cwd is a subdir of the repo the loop wrote gate-result.json to.
+# Denies name both the resolved and raw dirs for diagnosability.
 
 set -u
 
@@ -60,18 +66,19 @@ if ! printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+commit([[:space:];&|]|$
     exit 0
 fi
 
-project_dir="${CLAUDE_PROJECT_DIR:-${CWD:-$PWD}}"
+raw_dir="${CLAUDE_PROJECT_DIR:-${CWD:-$PWD}}"
+project_dir="$(hooks_repo_root "$raw_dir")"
 
 result_file="$project_dir/codegen/gate-pending/gate-result.json"
 if [ ! -f "$result_file" ]; then
-    deny "BLOCKED by committer-gate-verdict-clear: codegen/gate-pending/gate-result.json is missing. The gate verdict cannot be confirmed. Do not commit until a gate run has produced a clear verdict."
+    deny "BLOCKED by committer-gate-verdict-clear: codegen/gate-pending/gate-result.json is missing at $project_dir (resolved from $raw_dir). The gate verdict cannot be confirmed. Do not commit until a gate run has produced a clear verdict."
     exit 0
 fi
 
 verdict="$(gate_result_verdict "$project_dir")"
 
 if [ "$verdict" != "clear" ]; then
-    deny "BLOCKED by committer-gate-verdict-clear: gate-result.json verdict is '${verdict:-absent}' (need 'clear'). Do not commit — the build has not reached a clear gate verdict."
+    deny "BLOCKED by committer-gate-verdict-clear: gate-result.json at $project_dir (resolved from $raw_dir) verdict is '${verdict:-absent}' (need 'clear'). Do not commit — the build has not reached a clear gate verdict."
     exit 0
 fi
 
