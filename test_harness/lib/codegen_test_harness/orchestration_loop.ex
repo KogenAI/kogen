@@ -3229,6 +3229,16 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   def invoke_role(role, build_harness, ctx, opts) do
     resolve_fn = Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)
 
+    # No-role-is-enforced-outside-its-own-turn (planner instance): a planner
+    # is FORCED by role-retrospective-before-stop to end its turn on the
+    # mandated `codegen-log --learned` tool call — sometimes with no
+    # trailing assistant text, which call-dispatch classifies as
+    # status:"failed" even though the planner's real deliverable (the typed
+    # {"ev":"plan",...} event) already landed. Same seam
+    # resolve_planner_plan!/2 uses one step later — reused here, not
+    # redefined, so both reads agree on what "plan present" means.
+    planner_plan_fn = Keyword.get(opts, :planner_plan_fn, &default_planner_plan/1)
+
     # Per-role harness override (config.yaml `.harness.<role>.harness`).
     # Resolved ONCE here and used for every downstream lookup this
     # invocation makes (model/effort resolution, the codegen-call --harness
@@ -3308,8 +3318,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           {:error, reason} -> {:error, reason}
         end
 
-      %{"result" => %{"status" => "failed", "reason" => reason}} ->
-        {:error, reason || "role #{role} failed with no reason given"}
+      %{"result" => %{"status" => "failed"} = result} ->
+        plan = planner_plan_fn.(Process.get(@log_path_key))
+
+        if planner_role?(role) and is_binary(plan) and String.trim(plan) != "" do
+          case check_budget(opts) do
+            :ok -> {:ok, Map.put(result, "session_id", envelope["session_id"])}
+            {:error, reason} -> {:error, reason}
+          end
+        else
+          {:error, result["reason"] || "role #{role} failed with no reason given"}
+        end
 
       other ->
         raise "OrchestrationLoop: unexpected codegen-call envelope for role #{role}: #{inspect(other)}"

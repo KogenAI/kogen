@@ -1243,6 +1243,73 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
     end
 
+    # No-role-is-enforced-outside-its-own-turn (planner instance): a planner
+    # forced to end its turn on the mandated codegen-log --learned tool call
+    # (envelope status:"failed") is still SUCCESS when a valid typed
+    # {"ev":"plan",...} event landed — the deliverable is durable, only the
+    # turn shape looked like a failure.
+    test "planner role + non-empty plan present -> status=failed envelope is promoted to {:ok, result}" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{
+          "session_id" => "sess-123",
+          "result" => %{"status" => "failed", "reason" => "tool_use final turn", "value" => nil}
+        }
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+      planner_plan_fn = fn _log_file -> "## Plan\n\n**Approach**: do the thing." end
+
+      assert {:ok, result} =
+               OrchestrationLoop.invoke_role(
+                 "planner-phoenix",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn,
+                 planner_plan_fn: planner_plan_fn
+               )
+
+      assert result["session_id"] == "sess-123"
+    end
+
+    test "planner role + blank/absent plan -> status=failed envelope still maps to {:error, reason} (loud)" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{"result" => %{"status" => "failed", "reason" => "boom", "value" => nil}}
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+      planner_plan_fn = fn _log_file -> "" end
+
+      assert {:error, "boom"} =
+               OrchestrationLoop.invoke_role(
+                 "planner-phoenix",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn,
+                 planner_plan_fn: planner_plan_fn
+               )
+    end
+
+    test "non-planner role + plan-present stub -> override does NOT apply, status=failed still maps to {:error, reason}" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{"result" => %{"status" => "failed", "reason" => "boom", "value" => nil}}
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+      planner_plan_fn = fn _log_file -> "## Plan\n\n**Approach**: do the thing." end
+
+      assert {:error, "boom"} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn,
+                 planner_plan_fn: planner_plan_fn
+               )
+    end
+
     test "codegen-call unexpected envelope shape raises (crash loud)" do
       codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
         %{"unexpected" => "shape"}

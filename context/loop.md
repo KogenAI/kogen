@@ -50,6 +50,20 @@ behavior. Present + `telemetry.cost_usd >= cap` → `{:error, "spend cap reached
 before next role. This is the PER-CYCLE cap — distinct from the queue drain's queue-wide
 `CODEGEN_BUILD_QUEUE_BUDGET_USD` (see the loop-queue-drain owner file).
 
+## Envelope Classifier — Planner-Plan-Present Override
+
+`invoke_role/4`'s `case envelope do` classifier normally maps `status:"failed"` straight to
+`{:error, reason}`. One override sits before that: a PLANNER role (`planner_role?/1`) whose cycle log
+already carries a valid, non-blank typed `{"ev":"plan",...}` event (read via the SAME
+`:planner_plan_fn` seam `resolve_planner_plan!/2` uses one step later, default
+`LoopGate.planner_plan/1`) is promoted to `{:ok, result}` even though the envelope said `"failed"`.
+Rationale: `role-retrospective-before-stop` forces every role, including the planner, to end its final
+turn on a mandated `codegen-log --learned` tool call — sometimes with no trailing assistant text, which
+call-dispatch classifies as `status:"failed"`. The planner's real deliverable (the plan) is a durable
+typed event, not the chat turn, so a tool-final turn must not fail a cycle that already has a valid
+plan. A plan-less planner (blank/absent `{"ev":"plan"}`) still fails loud — the override is gated on
+BOTH `planner_role?(role)` AND a non-empty plan string; no other role is affected.
+
 ## Model Escalation Ladder
 
 `maybe_escalate_model/5` fires ONLY on the FINAL gate-retry attempt (not every retry) for a dev role,
