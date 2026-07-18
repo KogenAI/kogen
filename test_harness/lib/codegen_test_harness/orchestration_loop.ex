@@ -152,6 +152,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   - `:tree_signature_fn` — test seam: `(cwd -> signature)`, defaults to
     `tree_signature/1` (a content-hash of the tracked+untracked working
     tree). Drives the progress bound on developer gate re-runs.
+  - `:live_build_root_fn` — test seam: `(-> build_root_path)`, defaults to
+    `default_live_build_root_fn/0` (the RUNNING orchestrator process's own
+    `_build`, resolved from its current working directory). The
+    `:stale_build_heal_fn` never `rm_rf`s a candidate root that resolves to
+    this path — nuking the live orchestrator's own build root guarantees the
+    next gate entry finds a half-recompiled `_build` and re-triggers the
+    same stale signature.
   - `:curator_doc_check_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
     defaults to a closure over `default_curator_doc_scan/2` (see
     `run_curator_doc_scan/2`). Runs THREE checks after the
@@ -2033,7 +2040,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             )
 
           :stale_build ->
-            do_gate_loop_stale_build_heal(
+            do_gate_loop_stale_build_flake_check(
               dev_role,
               rest,
               harness,
@@ -2128,17 +2135,102 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  # Default `:stale_build_heal_fn` — nukes the candidate compiled-artifact
-  # roots under `cwd` (the codegen self-gate compiles into
-  # `test_harness/_build/claude_test`; a downstream app into
-  # `_build/test`). `File.rm_rf!/1` is a no-op where a root is absent, so
-  # nuking both unconditionally is safe and stack-agnostic. Compile-only:
-  # no `deps.get` — a stale build is stale artifacts, not missing deps; the
+  # A :stale_build verdict that PASSES a standalone re-run is a concurrency
+  # load flake (mass `UndefinedFunctionError` from racing the running
+  # orchestrator's own `_build` access), not a genuinely stale committed
+  # build — a genuinely stale build cannot coexist with an orchestrator
+  # process that already booted from it. Mirrors
+  # `do_gate_loop_flake_check/10`'s shape exactly: green standalone -> no
+  # nuke, re-enter `do_gate_loop/9` fresh (attempt not consumed). Red
+  # standalone -> proceed to the destructive heal, which is now reserved for
+  # a genuinely stale (non-live) build root. See
+  # `a-gate-flake-under-concurrency-is-not-a-stale-build` pitch.
+  defp do_gate_loop_stale_build_flake_check(
+         dev_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         gate_fn,
+         gate_cmd,
+         max_retries,
+         attempt,
+         prev_signature
+       ) do
+    flake_check_fn = Keyword.get(opts, :flake_check_fn, gate_fn)
+
+    case flake_check_fn.(ctx.cwd, gate_opts(opts)) do
+      {:clear, ^gate_cmd} ->
+        operator_note(
+          "gate #{inspect(gate_cmd)}: stale-_build verdict passed standalone — " <>
+            "treating as load flake, re-running gate (attempt not consumed)"
+        )
+
+        do_gate_loop(
+          dev_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          max_retries,
+          attempt,
+          prev_signature
+        )
+
+      {_verdict, _cmd} ->
+        do_gate_loop_stale_build_heal(
+          dev_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          gate_cmd,
+          max_retries,
+          attempt,
+          prev_signature
+        )
+    end
+  end
+
+  # Resolves the `:live_build_root_fn` test seam — the build root the
+  # RUNNING orchestrator process itself executes from. Defaults to the
+  # process's own `_build` under its current working directory (on a
+  # codegen self-build, that cwd IS `test_harness/` — see
+  # `harnesses/claude/dispatch.sh`'s `LOOP_DIR="$CODEGEN_DIR/test_harness"`
+  # + `cd "$1"`). The heal must never `rm_rf` this path.
+  @spec default_live_build_root_fn() :: String.t()
+  defp default_live_build_root_fn do
+    Path.join(Path.expand(File.cwd!()), "_build")
+  end
+
+  # Default `:stale_build_heal_fn` — nukes candidate compiled-artifact roots
+  # under `cwd` (a downstream app's own `_build`, and its
+  # `test_harness/_build` if present), EXCEPT any candidate that resolves to
+  # the LIVE orchestrator's own build root (`:live_build_root_fn`) — nuking
+  # that out from under the running process guarantees the next gate entry
+  # finds a half-recompiled `_build`, re-triggers the same stale signature,
+  # and the heal chases its own tail. `File.rm_rf!/1` is a no-op where a
+  # root is absent, so skipping the live root and nuking the rest
+  # unconditionally is safe and stack-agnostic. Compile-only: no
+  # `deps.get` — a stale build is stale artifacts, not missing deps; the
   # gate re-run's own `mix compile` step rebuilds everything it needs.
-  @spec default_stale_build_heal_fn(String.t()) :: :ok
-  defp default_stale_build_heal_fn(cwd) do
-    File.rm_rf!(Path.join(cwd, "_build"))
-    File.rm_rf!(Path.join([cwd, "test_harness", "_build"]))
+  @spec default_stale_build_heal_fn(String.t(), (-> String.t())) :: :ok
+  defp default_stale_build_heal_fn(cwd, live_root_fn) do
+    live_root = live_root_fn.()
+
+    for candidate <- [Path.join(cwd, "_build"), Path.join([cwd, "test_harness", "_build"])] do
+      if Path.expand(candidate) == Path.expand(live_root) do
+        operator_note(
+          "gate: skipping stale-_build heal for #{candidate} — it is the LIVE " <>
+            "orchestrator build root; nuking it would corrupt the running process"
+        )
+      else
+        File.rm_rf!(candidate)
+      end
+    end
+
     :ok
   end
 
@@ -2171,14 +2263,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          attempt,
          prev_signature
        ) do
-    heal_fn = Keyword.get(opts, :stale_build_heal_fn, &default_stale_build_heal_fn/1)
+    live_root_fn = Keyword.get(opts, :live_build_root_fn, &default_live_build_root_fn/0)
+    heal_fn = Keyword.get(opts, :stale_build_heal_fn, &default_stale_build_heal_fn/2)
 
     operator_note(
       "gate #{inspect(gate_cmd)}: stale _build detected (module load failures) — " <>
         "rebuilding and re-running (attempt not consumed)"
     )
 
-    heal_fn.(ctx.cwd)
+    heal_fn.(ctx.cwd, live_root_fn)
 
     case gate_fn.(ctx.cwd, gate_opts(opts, dev_role)) do
       {:clear, _cmd} ->

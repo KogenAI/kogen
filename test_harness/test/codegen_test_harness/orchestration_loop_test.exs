@@ -2038,7 +2038,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       gate_classify_fn = fn _cwd, _dev_role -> :stale_build end
 
-      heal_fn = fn _cwd ->
+      # The stale-build verdict is flake-checked (standalone re-run) BEFORE
+      # any heal — here the standalone check still fails, so it proceeds to
+      # the genuine-stale heal path (proving that leg still works).
+      flake_check_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      heal_fn = fn _cwd, _live_root_fn ->
         Agent.update(heal_calls_agent, &(&1 + 1))
         :ok
       end
@@ -2052,6 +2057,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_classify_fn: gate_classify_fn,
+                 flake_check_fn: flake_check_fn,
                  stale_build_heal_fn: heal_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -2078,8 +2084,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # itself never recurses into its own heal leg on ONE occurrence.
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
       gate_classify_fn = fn _cwd, _dev_role -> :stale_build end
+      flake_check_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
-      heal_fn = fn _cwd ->
+      heal_fn = fn _cwd, _live_root_fn ->
         Agent.update(heal_calls_agent, &(&1 + 1))
         :ok
       end
@@ -2093,6 +2100,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_classify_fn: gate_classify_fn,
+                 flake_check_fn: flake_check_fn,
                  stale_build_heal_fn: heal_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn()
@@ -2102,6 +2110,162 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # heal_fn ran at least once and the loop still terminated (bounded by
       # the rework budget) rather than spinning forever.
       assert Agent.get(heal_calls_agent, & &1) >= 1
+    end
+
+    test "a stale-_build verdict that passes standalone is absorbed as a load flake WITHOUT nuking _build",
+         %{calls_agent: calls_agent} do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      {:ok, heal_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(heal_calls_agent), do: Agent.stop(heal_calls_agent) end)
+
+      # Call 0: initial gate -> failed (classified :stale_build below).
+      # Call 1: re-entered do_gate_loop/9 after the flake-check absorbed it
+      # -> CLEAR (it was a load flake all along, not a stale build).
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      gate_classify_fn = fn _cwd, _dev_role -> :stale_build end
+
+      # Standalone re-run is GREEN -> load flake, not a genuine stale build.
+      flake_check_fn = fn _cwd, _opts -> {:clear, "make test"} end
+
+      heal_fn = fn _cwd, _live_root_fn ->
+        Agent.update(heal_calls_agent, &(&1 + 1))
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: gate_classify_fn,
+                 flake_check_fn: flake_check_fn,
+                 stale_build_heal_fn: heal_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      # The core invariant: the destructive heal was NEVER invoked.
+      assert Agent.get(heal_calls_agent, & &1) == 0
+
+      # developer-static invoked exactly ONCE — the flake was absorbed
+      # without spending a rework attempt.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 1
+    end
+  end
+
+  describe "run/1 — stale-build heal never nukes the live orchestrator build root" do
+    test "the real default heal fn skips the candidate matching the injected live build root",
+         %{calls_agent: calls_agent} do
+      tmp_cwd =
+        Path.join(
+          System.tmp_dir!(),
+          "loop-stale-heal-live-root-#{System.unique_integer([:positive])}"
+        )
+
+      downstream_build = Path.join(tmp_cwd, "_build")
+      live_build = Path.join([tmp_cwd, "test_harness", "_build"])
+
+      File.mkdir_p!(downstream_build)
+      File.mkdir_p!(live_build)
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      # Simulate: the running orchestrator's own build root IS
+      # test_harness/_build (as on a codegen self-build).
+      live_root_fn = fn -> live_build end
+
+      # Standalone flake-check fails (genuinely stale, not a load flake) so
+      # the real heal fn actually runs; then the gate clears post-heal.
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      gate_classify_fn = fn _cwd, _dev_role -> :stale_build end
+      flake_check_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp_cwd,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: gate_classify_fn,
+                 flake_check_fn: flake_check_fn,
+                 live_build_root_fn: live_root_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      refute File.dir?(downstream_build)
+      assert File.dir?(live_build)
+    end
+
+    test "with no :live_build_root_fn override, the default resolves against the process's own cwd",
+         %{calls_agent: calls_agent} do
+      tmp_cwd =
+        Path.join(
+          System.tmp_dir!(),
+          "loop-stale-heal-default-live-root-#{System.unique_integer([:positive])}"
+        )
+
+      # The DEFAULT live-root resolution is `Path.expand(File.cwd!())` joined
+      # with "_build" — since this test process's cwd is `test_harness/`
+      # (mix test's own working directory), that default does NOT match
+      # either candidate under `tmp_cwd`, so both are nuked. This exercises
+      # `default_live_build_root_fn/0` itself (never overridden), proving the
+      # default is safe when the tmp_cwd under test is unrelated to the
+      # actual running process.
+      downstream_build = Path.join(tmp_cwd, "_build")
+      nested_build = Path.join([tmp_cwd, "test_harness", "_build"])
+
+      File.mkdir_p!(downstream_build)
+      File.mkdir_p!(nested_build)
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      gate_classify_fn = fn _cwd, _dev_role -> :stale_build end
+      flake_check_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp_cwd,
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: gate_classify_fn,
+                 flake_check_fn: flake_check_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      refute File.dir?(downstream_build)
+      refute File.dir?(nested_build)
     end
   end
 
