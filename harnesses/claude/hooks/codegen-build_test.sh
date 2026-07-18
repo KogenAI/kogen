@@ -31,6 +31,7 @@
 #  (u) usage<->parse parity: every parsed flag appears in the usage string
 #      and vice versa
 #  (snap) public flag surface snapshot: parsed flags == committed fixture
+#  (d) dead-export absence: CODEGEN_BUILD_MODEL/EFFORT never exported
 
 set -euo pipefail
 
@@ -212,7 +213,6 @@ actual_ec=0
 TARGET_ARGS_FILE="$ARGS_A" \
     PATH="$BIN_A:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_A/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_A" \
     "hello prompt" 2>/dev/null ||
     actual_ec=$?
@@ -253,7 +253,6 @@ actual_ec=0
 TARGET_ARGS_FILE="$ARGS_B" \
     PATH="$BIN_B:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_B/codegen-build" --harness=pi --stack=phoenix --cwd="$MARKER_B" \
     "pi prompt" 2>/dev/null ||
     actual_ec=$?
@@ -337,7 +336,6 @@ printf '{"verdict":"clear"}\n' >"$MARKER_F/codegen/gate-pending/gate-result.json
 
 ACTUAL_F_OUT=$(PATH="$BIN_F:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_F/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_F" \
     "fixture prompt" 2>/dev/null ||
     true)
@@ -369,7 +367,6 @@ make_stub "$CB_K/harnesses/claude/dispatch.sh" "$(gate_ok_body)"
 STDERR_K="$BASE_TMP/stderr_k.txt"
 actual_ec=0
 OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_K/codegen-build" --harness=claude --stack=phoenix \
     --cwd="$MARKER_CWD" "k prompt" 2>"$STDERR_K" >/dev/null || actual_ec=$?
 
@@ -612,7 +609,6 @@ actual_ec=0
 OUT_PA1=$(TARGET_ARGS_FILE="$ARGS_PA1" \
     PATH="$BIN_PA1:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_PA1/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_PA1" \
     --print-argv "pa1 prompt" 2>/dev/null) || actual_ec=$?
 
@@ -645,7 +641,6 @@ actual_ec=0
 OUT_PA2=$(TARGET_ARGS_FILE="$ARGS_PA2" \
     PATH="$BIN_PA2:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_PA2/codegen-build" --harness=pi --stack=phoenix \
     --print-argv "pa2 prompt" 2>/dev/null) || actual_ec=$?
 
@@ -679,7 +674,6 @@ mkdir -p "$MARKER_PA3"
 actual_ec=0
 PATH="$BIN_PA3:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_PA3/codegen-build" --harness=claude --stack=static --cwd="$MARKER_PA3" \
     --print-argv "pa3 prompt" >/dev/null 2>/dev/null || actual_ec=$?
 
@@ -713,7 +707,6 @@ mkdir -p "$MARKER_B1"
 actual_ec=0
 OUT_B1=$(PATH="$BIN_B1:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_B1/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_B1" \
     --max-budget-usd=20 --print-argv "b1 prompt" 2>/dev/null) || actual_ec=$?
 
@@ -734,7 +727,6 @@ make_codegen_log_stub "$BIN_B1PI"
 actual_ec=0
 OUT_B1PI=$(PATH="$BIN_B1PI:$PATH" \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    CODEGEN_BUILD_MODEL="" CODEGEN_BUILD_EFFORT="" \
     "$CB_B1PI/codegen-build" --harness=pi --stack=phoenix \
     --max-budget-usd=7.50 --print-argv "b1pi prompt" 2>/dev/null) || actual_ec=$?
 
@@ -832,6 +824,14 @@ while IFS= read -r flag; do
     fi
 done <<<"$CB_FIXTURE_FLAGS"
 check "(snap) no fixture flag missing from parser" "0" "$CB_SNAP_REMOVED"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (d): dead-export absence — CODEGEN_BUILD_MODEL/EFFORT are advisory-only
+# and must never be exported. --model/--effort stay parsed (see (u)/(snap))
+# but must not leak into a CODEGEN_BUILD_* env var nothing reads.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_DEAD_EXPORTS=$(grep -cE 'export CODEGEN_BUILD_(MODEL|EFFORT)=' "$CODEGEN_BUILD" || true)
+check "(d) CODEGEN_BUILD_MODEL/EFFORT never exported" "0" "$CB_DEAD_EXPORTS"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

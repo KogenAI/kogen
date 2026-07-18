@@ -13,8 +13,16 @@
 #                             when undetectable or ambiguous (both markers
 #                             present) -- never silent-defaults.
 #   --cwd=<dir>               working directory (default: $PWD)
-#   --model=<m>               model override
-#   --effort=<e>              effort override
+#   --model=<m>               advisory only -- NOT consumed by the loop.
+#                             Per-role models resolve from
+#                             templates/generator/config.yaml via
+#                             RoleResolver; this flag is accepted (for
+#                             caller compatibility) but has no effect.
+#                             Use --fallback-model for a live override.
+#   --effort=<e>              advisory only -- NOT consumed by the loop.
+#                             Same as --model above: accepted, has no
+#                             effect. Per-role effort resolves from
+#                             templates/generator/config.yaml.
 #   --max-budget-usd=<n>      abort the cycle between role invocations once
 #                             accumulated spend reaches <n> USD (in-flight
 #                             role always completes); threaded via
@@ -233,8 +241,6 @@ fi
 export CODEGEN_BUILD_HARNESS="$HARNESS"
 export CODEGEN_BUILD_STACK="$STACK"
 export CODEGEN_BUILD_CWD="$CWD"
-export CODEGEN_BUILD_MODEL="${MODEL:-}"
-export CODEGEN_BUILD_EFFORT="${EFFORT:-}"
 export CODEGEN_BUILD_FALLBACK_MODEL="${FALLBACK_MODEL:-}"
 export CODEGEN_BUILD_MAX_BUDGET_USD="${MAX_BUDGET_USD:-}"
 export CODEGEN_BUILD_PRINT_ARGV="${PRINT_ARGV:-}"
