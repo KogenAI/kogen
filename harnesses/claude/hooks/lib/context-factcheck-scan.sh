@@ -37,7 +37,14 @@
 #   literals (containing at least one slash, matching known extensions).
 #   If the path does not exist under repo_root → try Elixir source roots
 #   (lib/, test/) for .ex/.exs literals (module→file convention) → still
-#   missing → check `git check-ignore -q` on the claim path: rc==0 means the
+#   missing → check whether the first path segment is SCREAMING_SNAKE
+#   (`^[A-Z][A-Z0-9_]+$`): every tracked top-level dir in this repo is
+#   lowercase, so an all-caps first segment names an env var, not a repo
+#   directory (e.g. `PLATFORM_ROOT/PLATFORM_INFO.md`) — the literal is
+#   composed at runtime and legitimately absent on disk → skip, not a
+#   violation. Only reached on a miss — an all-caps path that DOES exist
+#   still validates via the existence check above → still missing → check
+#   `git check-ignore -q` on the claim path: rc==0 means the
 #   path is gitignored-by-design (machine-local, expected absent on a box
 #   that hasn't provisioned it, e.g. `codegen/drain-nodes.yaml`) → skip, not
 #   a violation. Any other rc (not ignored, or beyond an existing symlink
@@ -71,6 +78,8 @@
 #   - Named-path claims without a slash (bare basenames, out of grammar)
 #   - Named-path claim resolves to a path `git check-ignore -q` reports as
 #     ignored (gitignored-by-design, machine-local, expected absent)
+#   - Named-path claim's first segment is SCREAMING_SNAKE (env-var runtime
+#     path, not a repo directory) and the claim is otherwise unresolved
 #   - Probe infra faults (fail-open for infrastructure errors only)
 
 set -uo pipefail
@@ -199,6 +208,17 @@ while IFS= read -r doc_path; do
                     ;;
                 esac
                 if [ "$resolved" -eq 0 ]; then
+                    claim_first_seg="${claim_path%%/*}"
+                    if printf '%s' "$claim_first_seg" | grep -qE '^[A-Z][A-Z0-9_]+$'; then
+                        # Env-var runtime path escape: an all-caps first
+                        # segment (e.g. `PLATFORM_ROOT/PLATFORM_INFO.md`)
+                        # names an env var, not a repo directory — every
+                        # tracked top-level dir in this repo is lowercase, so
+                        # the literal is composed at runtime and is
+                        # legitimately absent on disk. Only reached on a MISS
+                        # — an all-caps path that DOES exist still validates
+                        # via the existence check above.
+                        :
                     # Machine-local escape: a path gitignored-by-design (e.g.
                     # `codegen/drain-nodes.yaml`) is legitimately absent on a
                     # box that hasn't provisioned it — it will never be at
@@ -207,7 +227,7 @@ while IFS= read -r doc_path; do
                     # "ignored" → skip. Any other rc (1 = not ignored → real
                     # drift; 128 = beyond an existing symlink whose target is
                     # missing → real drift) leaves the violation standing.
-                    if git -C "$repo_root" check-ignore -q "$claim_path" 2>/dev/null; then
+                    elif git -C "$repo_root" check-ignore -q "$claim_path" 2>/dev/null; then
                         :
                     else
                         msg="context-factcheck-scan: ${doc_path}:${linenum} references \`${claim_path}\` which does not exist. Fix the path, remove the claim, or — if it names a path inside a provisioned/downstream app rather than this repo — write it with a placeholder segment (e.g. \`<app>/context/core.md\`)."

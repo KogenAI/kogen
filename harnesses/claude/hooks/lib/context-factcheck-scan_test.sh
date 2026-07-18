@@ -424,5 +424,49 @@ case "$out" in
 esac
 rm -rf "$T32"
 
+# --- Test 33: env-var runtime path (SCREAMING_SNAKE first segment), absent
+# on disk → exit 0 (skipped, not a violation) ---
+T33=$(new_repo)
+printf 'See `PLATFORM_ROOT/PLATFORM_INFO.md` for details.\n' >"$T33/CLAUDE.md"
+out=$(bash "$SCAN" "$T33")
+rc=$?
+assert_exit "env-var runtime path → exit 0" "0" "$rc"
+assert_eq "env-var runtime path → empty stdout" "" "$out"
+rm -rf "$T33"
+
+# --- Test 34: control — lowercase-first absent path is NOT masked by the
+# env-var escape → still a violation ---
+T34=$(new_repo)
+printf 'See `harnesses/nope-does-not-exist.sh` for details.\n' >"$T34/CLAUDE.md"
+out=$(bash "$SCAN" "$T34")
+rc=$?
+assert_exit "lowercase-first absent path → exit 1" "1" "$rc"
+case "$out" in
+*"harnesses/nope-does-not-exist.sh"*) pass=$((pass + 1)) ;;
+*)
+    printf 'FAIL: lowercase-first absent path → message should reference path\n  actual: %s\n' "$out"
+    fail=$((fail + 1))
+    ;;
+esac
+rm -rf "$T34"
+
+# --- Test 35: control — an all-caps first segment that DOES exist still
+# validates normally (existing path → exit 0); a MISSING all-caps path is
+# what triggers the escape (also exit 0, but via the carve-out) ---
+T35=$(new_repo)
+mkdir -p "$T35/REALCAPS"
+printf 'x\n' >"$T35/REALCAPS/thing.md"
+printf 'See `REALCAPS/thing.md` for details.\n' >"$T35/CLAUDE.md"
+out=$(bash "$SCAN" "$T35")
+rc=$?
+assert_exit "existing all-caps path → exit 0" "0" "$rc"
+assert_eq "existing all-caps path → empty stdout" "" "$out"
+printf 'See `REALCAPS/absent.md` for details.\n' >"$T35/CLAUDE.md"
+out=$(bash "$SCAN" "$T35")
+rc=$?
+assert_exit "missing all-caps path → exit 0 (carve-out)" "0" "$rc"
+assert_eq "missing all-caps path → empty stdout" "" "$out"
+rm -rf "$T35"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
