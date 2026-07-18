@@ -222,15 +222,16 @@ a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain co
 
 **Failure evidence fallback — `failure_summary/1`**: the child's LAST `{"type":"result"}` envelope does
 NOT always carry a `result` key — `mix codegen.loop`'s result-line writer always emits `terminal_reason`
-+ `subtype` (`loop_failed`/`error` on failure, `loop_committed`/`success` on success) but only sometimes
-emits a human `result` string. Both failure-evidence readers — `emit_failure_diagnostics/4` (operator
-stderr) and `default_draft_fn/4` (the `result_text` fed into the draft prompt) — share one extractor,
-`failure_summary/1`: prefers a non-empty `result`, falls back to `"terminal: <reason> (<subtype>)"` when
-`result` is absent, and only returns `""` when the envelope carries neither. Without this fallback a
-`loop_failed` exhaustion with a `clear` gate verdict (the pre-commit re-gate case: gate passed, a later
-tree edit invalidated it) surfaced as "gate: clear, result: (empty)" to both the operator and the
-auto-drafter — undiagnosable. `gate_verdict_fn`'s own read is untouched; this only adds the missing
-reason beside it.
+
+- `subtype` (`loop_failed`/`error` on failure, `loop_committed`/`success` on success) but only sometimes
+  emits a human `result` string. Both failure-evidence readers — `emit_failure_diagnostics/4` (operator
+  stderr) and `default_draft_fn/4` (the `result_text` fed into the draft prompt) — share one extractor,
+  `failure_summary/1`: prefers a non-empty `result`, falls back to `"terminal: <reason> (<subtype>)"` when
+  `result` is absent, and only returns `""` when the envelope carries neither. Without this fallback a
+  `loop_failed` exhaustion with a `clear` gate verdict (the pre-commit re-gate case: gate passed, a later
+  tree edit invalidated it) surfaced as "gate: clear, result: (empty)" to both the operator and the
+  auto-drafter — undiagnosable. `gate_verdict_fn`'s own read is untouched; this only adds the missing
+  reason beside it.
 
 ## Boot-Time Decode-Dep Force-Load — `:load_deps_fn`
 
@@ -256,4 +257,4 @@ any spawn — zero spend, remediation named (`mix deps.get && mix compile`). See
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale _build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty

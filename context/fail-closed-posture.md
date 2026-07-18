@@ -28,12 +28,14 @@ This is not a contradiction of the fail-closed ruling — it is a deliberate, na
 
 ## Two-Signal pre-commit-guard Pattern
 
-Destructive git bypass requires BOTH signals present:
+**This gate applies to `ops` ONLY.** Destructive git bypass for `ops` requires BOTH signals present:
 
 - `CLAUDE_ROLE=ops` (or `PI_ROLE=ops`)
 - **AND** `CODEGEN_OPS_GIT_UNLOCK=1` (harness-only toggle)
 
 Neither alone unlocks commit/reset/push. Both together unlock. Documented in hook header comment. New env var is harness-internal, NOT added to `.env.sample` per operator-toggle convention (controls harness, not app runtime).
+
+**`babysit` has a SEPARATE, narrower posture — no unlock var, no two-signal gate.** It is allowed exactly the tree-restoring verbs (`git checkout -- <path>`, `git restore`, `git reset --hard|--merge|--keep`) needed to clear a wedge it found and verified dead, unconditionally — `CODEGEN_OPS_GIT_UNLOCK` has no effect on the babysit branch and is never required or read there. Every other destructive verb (`add`, `rm`, `mv`, `stash`, `commit`, `rebase`, `cherry-pick`, `revert`, `merge`, `switch`, `clean` without `-n`/`--dry-run`, force-push) remains denied for babysit, same as any non-committer role — history is never babysit's; committer owns it. This is a narrow, honest exemption granted because babysit's whole purpose is clearing a tree it orphaned by stopping a wedged drain, not a relaxation of the two-signal ruling — `ops`'s gate is untouched by this exemption's existence.
 
 ## Test Comment Drift Detection
 

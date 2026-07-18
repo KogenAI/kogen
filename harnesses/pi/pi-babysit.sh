@@ -45,10 +45,15 @@ while IFS= read -r _cf; do
     ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}"$'\n\n'"$(cat "$CODEGEN_DIR/$_cf")"
 done <<<"$ROLE_CONTEXT_FILES"
 
+# Strip --studio from positionals before it can leak into the initial-prompt
+# default below — pre-process flags before the resolver loop.
 STUDIO=0
+INITIAL_PROMPT_ARGS=()
 for _a in "$@"; do
     if [[ "$_a" == "--studio" ]]; then
         STUDIO=1
+    else
+        INITIAL_PROMPT_ARGS+=("$_a")
     fi
 done
 
@@ -79,6 +84,16 @@ if [[ -n "${PI_NON_INTERACTIVE:-}" ]]; then
     NON_INTERACTIVE_FLAGS+=(-p --mode text --no-session)
 fi
 
+# Initial prompt: fires pass one immediately instead of opening to an empty
+# input box (pi has no /loop-equivalent slash-command surface, so this is
+# always literal procedure text — an operator-supplied positional argument
+# REPLACES this default rather than appending to it).
+if [[ ${#INITIAL_PROMPT_ARGS[@]} -gt 0 ]]; then
+    RESOLVED_ARGS=("${INITIAL_PROMPT_ARGS[@]+"${INITIAL_PROMPT_ARGS[@]}"}")
+else
+    RESOLVED_ARGS=("Run one full pass of the standing supervision procedure now, then report the per-node verdict rows.")
+fi
+
 exec pi \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
@@ -88,4 +103,5 @@ exec pi \
     --extension "$EXTENSIONS_DIR/askuserquestion" \
     --extension "$EXTENSIONS_DIR/subagents" \
     --extension "$EXTENSIONS_DIR/web-utils" \
-    --system-prompt "$ROLE_SYSTEM_PROMPT"
+    --system-prompt "$ROLE_SYSTEM_PROMPT" \
+    "${RESOLVED_ARGS[@]+"${RESOLVED_ARGS[@]}"}"

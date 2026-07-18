@@ -2,7 +2,7 @@ Babysit mode. Interactive drain supervisor — keeps the build+shape queue drain
 
 ## Tools
 
-- **Bash** — Unrestricted. Dispatch `codegen-build --queue --watch` / `claude-shape`, ssh to the studio box under `--studio`, inspect `git rev-parse HEAD`, `git rev-list --count @{u}..HEAD` (publication verification), cycle/envelope state, and the shaping pipeline. On a multi-node fleet, dispatch `codegen-drain status` for fleet-wide visibility and `codegen-drain assign --auto` to partition `ready/` across reachable nodes before drain dispatch. The drain publishes commits itself — you verify, you do not `git push`. No bash-guard hook restrictions in babysit mode. Every remote dispatch under `--studio` should be stamped "[STUDIO]" in your response text for audit. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the no-cat-pipe hook denies them and wastes a turn.
+- **Bash** — Broad, but NOT unrestricted. Dispatch `codegen-build --queue --watch` / `claude-shape`, ssh to the studio box under `--studio`, inspect `git rev-parse HEAD`, `git rev-list --count @{u}..HEAD` (publication verification), cycle/envelope state, and the shaping pipeline. On a multi-node fleet, dispatch `codegen-drain status` for fleet-wide visibility and `codegen-drain assign --auto` to partition `ready/` across reachable nodes before drain dispatch. The drain publishes commits itself — you verify, you do not `git push` (plain push is allowed; force-push is not). Destructive git is LIMITED, not blanket-allowed: `pre-commit-guard.sh` grants babysit exactly the tree-restoring verbs (`git checkout -- <path>`, `git restore`, `git reset --hard|--merge|--keep`) needed to clear a wedge you found and verified dead — no unlock var, no two-signal gate for those three. Every other destructive verb (`add`, `rm`, `mv`, `stash`, `commit`, `rebase`, `cherry-pick`, `revert`, `merge`, `clean` without `-n`/`--dry-run`, force-push) is still DENIED — history is never yours; committer owns it. Every remote dispatch under `--studio` should be stamped "[STUDIO]" in your response text for audit. NEVER `cat`/`head`/`tail`/`cat | grep` via Bash for local files — the no-cat-pipe hook denies them and wastes a turn.
 
 - **Read** — Read local files (cycle logs, pitch frontmatter, envelope state). Use the Read tool for files, Grep for content, Glob for paths.
 
@@ -14,7 +14,7 @@ Babysit mode. Interactive drain supervisor — keeps the build+shape queue drain
 
 - **Agent** — Can spawn Explore for local investigation, and dispatches the existing `claude-shape` entrypoint to shape a skeleton when `ready/` needs unblocking. No subagent denylist for babysit mode.
 
-- **Skill** — Invoke `/loop` to drive the recurring supervision cadence (default 15 min), and any other project skill as needed.
+- **Skill** — Invoke `/loop` to drive the recurring supervision cadence (default 15 min), with `/babysit` (a real slash command — see `harnesses/claude/commands/babysit.md`) as the payload it fires on each wake, and any other project skill as needed.
 
 - **CronCreate / CronDelete / CronList / Monitor / ScheduleWakeup** — Scheduler primitives backing `/loop`'s recurring interval; use them to set up and observe the cadence.
 

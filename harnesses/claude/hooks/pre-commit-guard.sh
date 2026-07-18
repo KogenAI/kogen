@@ -18,18 +18,27 @@
 # is "") is also blocked — per CLAUDE.md only the committer may touch
 # history.
 #
-# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) and babysit mode (CLAUDE_ROLE=babysit
-# / PI_ROLE=babysit) scope the gate to destructive git verbs ONLY — non-git
-# Bash, read-only git (status/diff/log/show), and a plain `git push` pass
-# straight through for interactive ops on live boxes (babysit itself no
-# longer pushes — the queue drain publishes every commit it lands via its own
-# System.cmd git calls, which are not agent tool_use invocations and are
-# therefore never inspected by this hook; see LoopQueueDrain's publish_or_halt/4).
-# Destructive git ALSO requires CODEGEN_OPS_GIT_UNLOCK=1 — a
-# two-signal gate. Role alone no longer unlocks destructive git under the
-# fail-closed-everywhere ruling; the operator must explicitly confirm intent
-# via a second, harness-only toggle (NOT an app runtime var — do not add to
+# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) scopes the gate to destructive git
+# verbs ONLY — non-git Bash, read-only git (status/diff/log/show), and a
+# plain `git push` pass straight through for interactive ops on live boxes.
+# Destructive git ALSO requires CODEGEN_OPS_GIT_UNLOCK=1 — a two-signal gate.
+# Role alone no longer unlocks destructive git under the fail-closed-everywhere
+# ruling; the operator must explicitly confirm intent via a second,
+# harness-only toggle (NOT an app runtime var — do not add to
 # .env.sample/.env.prod.sample).
+#
+# Babysit mode (CLAUDE_ROLE=babysit / PI_ROLE=babysit) has a SEPARATE, NARROWER
+# posture — no unlock var, no two-signal gate. It is allowed exactly the
+# tree-restoring verbs (checkout/restore/reset --hard|--merge|--keep) needed
+# to clear a wedge it found and verified dead, and denied every
+# history-mutating verb (commit/rebase/cherry-pick/revert/merge/stash),
+# `git clean` (without -n/--dry-run — the pitch queue is gitignored, a clean
+# deletes queued work), and force-push — same as every other non-committer
+# role. This is a narrow, honest exemption, not a blanket bypass: babysit
+# never gets CODEGEN_OPS_GIT_UNLOCK and never touches history. The queue
+# drain publishes every commit it lands via its own System.cmd git calls,
+# which are not agent tool_use invocations and are therefore never inspected
+# by this hook; see LoopQueueDrain's publish_or_halt/4.
 set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
@@ -43,14 +52,13 @@ if [ "$TOOL_NAME" != "Bash" ]; then
     exit 0
 fi
 
-# ops/babysit mode: scope the gate to destructive git verbs only. Non-git Bash
+# ops mode: scope the gate to destructive git verbs only. Non-git Bash
 # and read-only git (status/diff/log/show/blame/ls-files) — and a plain `git
 # push` — pass straight through; the gate must NOT return a verdict for all
 # Bash before checking whether the command is even a destructive git
-# invocation. babysit needs this same posture: it plain-pushes after every
-# verified ship but never force-pushes or mutates history.
+# invocation.
 _role=$(resolve_role)
-if [ "$_role" = "ops" ] || [ "$_role" = "babysit" ]; then
+if [ "$_role" = "ops" ]; then
     # Fail-closed subject transform (see strip_quoted() in hooks-lib.sh):
     # a destructive git verb inside a quoted remote payload or string
     # argument is not a real local invocation; strip before matching.
@@ -77,6 +85,20 @@ if [ "$_role" = "ops" ] || [ "$_role" = "babysit" ]; then
         exit 0
     fi
     exit 0
+fi
+
+# babysit mode: narrow, no-unlock-var exemption for exactly the
+# tree-restoring verbs (checkout/restore/reset --hard|--merge|--keep) needed
+# to clear a wedge it verified dead. Everything else (history-mutating
+# verbs, clean, force-push) falls through to the same denies every other
+# role gets below — babysit is NOT special-cased past this block.
+if [ "$_role" = "babysit" ]; then
+    _bs_cmd_unquoted=$(expand_command_indirection "$(strip_git_global_opts "$(strip_quoted "$(strip_heredoc_bodies "$COMMAND")")")")
+    if printf '%s' "$_bs_cmd_unquoted" | grep -qE '\bgit[[:space:]]+(checkout|restore)\b|\bgit[[:space:]]+reset\b.*--(hard|merge|keep)\b'; then
+        exit 0
+    fi
+    # Not a tree-restoring verb — fall through to the standard per-verb
+    # denies below (git add/commit/rebase/clean/etc. all remain forbidden).
 fi
 
 # Committer is the sole allowed writer of history.

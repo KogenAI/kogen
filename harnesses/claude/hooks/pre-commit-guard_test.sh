@@ -550,6 +550,99 @@ run_test "chained codegen-log && git commit denied (real commit in the chain)" "
 FIXTURE_HEREDOC_LOG_BODY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section developer --slug foo <<'"'"'EOF'"'"'\nVerified git commit -m done\nEOF"},"agent_type":"reviewer-phoenix","agent_id":"a"}'
 run_test "heredoc-fed codegen-log body with 'git commit' prose allowed" "0" "$FIXTURE_HEREDOC_LOG_BODY"
 
+# ── babysit mode: narrow tree-restoring exemption, no unlock var ───────────
+# babysit gets its OWN posture, split out from ops — a no-unlock-var
+# allow-list of exactly checkout/restore/reset --hard|--merge|--keep, and
+# every other destructive verb (including clean) still denied, same as any
+# non-committer role. Zero coverage existed for babysit before this pitch.
+
+# Test 61: babysit + git checkout -- <path> — MUST ALLOW (no unlock needed)
+FIXTURE_BABYSIT_CHECKOUT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git checkout -- foo.ex"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git checkout -- <path> allowed (no unlock needed)" "0" "$FIXTURE_BABYSIT_CHECKOUT" "CLAUDE_ROLE=babysit"
+
+# Test 62: babysit + git restore <path> — MUST ALLOW
+FIXTURE_BABYSIT_RESTORE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore foo.ex"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git restore allowed (no unlock needed)" "0" "$FIXTURE_BABYSIT_RESTORE" "CLAUDE_ROLE=babysit"
+
+# Test 63: babysit + git reset --hard — MUST ALLOW
+FIXTURE_BABYSIT_RESET_HARD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD~1"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git reset --hard allowed (no unlock needed)" "0" "$FIXTURE_BABYSIT_RESET_HARD" "CLAUDE_ROLE=babysit"
+
+# Test 63b: babysit + git reset --merge — MUST ALLOW
+FIXTURE_BABYSIT_RESET_MERGE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --merge HEAD~1"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git reset --merge allowed (no unlock needed)" "0" "$FIXTURE_BABYSIT_RESET_MERGE" "CLAUDE_ROLE=babysit"
+
+# Test 63c: babysit + git reset --keep — MUST ALLOW
+FIXTURE_BABYSIT_RESET_KEEP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --keep HEAD~1"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git reset --keep allowed (no unlock needed)" "0" "$FIXTURE_BABYSIT_RESET_KEEP" "CLAUDE_ROLE=babysit"
+
+# Test 64: babysit + git status — MUST ALLOW (read-only Bash unaffected)
+FIXTURE_BABYSIT_STATUS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git status allowed" "0" "$FIXTURE_BABYSIT_STATUS" "CLAUDE_ROLE=babysit"
+
+# Test 65: babysit + non-git Bash — MUST ALLOW
+FIXTURE_BABYSIT_PS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ps -eo pid,ppid,etime,comm"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit non-git Bash allowed" "0" "$FIXTURE_BABYSIT_PS" "CLAUDE_ROLE=babysit"
+
+# Test 66: babysit + git clean -fd — MUST DENY (the pitch queue is
+# gitignored; a clean deletes queued work; NOT in the allow-list)
+FIXTURE_BABYSIT_CLEAN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean -fd"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git clean -fd denied (not in allow-list)" "2" "$FIXTURE_BABYSIT_CLEAN" "CLAUDE_ROLE=babysit"
+
+# Test 66b: babysit + git clean -n (dry-run) — MUST ALLOW (carve-out honored,
+# same as every other role's clean carve-out)
+FIXTURE_BABYSIT_CLEAN_DRYRUN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean -n"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git clean -n allowed (dry-run carve-out)" "0" "$FIXTURE_BABYSIT_CLEAN_DRYRUN" "CLAUDE_ROLE=babysit"
+
+# Test 67: babysit + git add — MUST DENY (committer owns staging)
+FIXTURE_BABYSIT_ADD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git add denied" "2" "$FIXTURE_BABYSIT_ADD" "CLAUDE_ROLE=babysit"
+
+# Test 68: babysit + git commit — MUST DENY (committer owns history)
+FIXTURE_BABYSIT_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"x\""},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git commit denied" "2" "$FIXTURE_BABYSIT_COMMIT" "CLAUDE_ROLE=babysit"
+
+# Test 69: babysit + git rebase — MUST DENY
+FIXTURE_BABYSIT_REBASE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git rebase -i HEAD~3"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git rebase denied" "2" "$FIXTURE_BABYSIT_REBASE" "CLAUDE_ROLE=babysit"
+
+# Test 70: babysit + git cherry-pick — MUST DENY
+FIXTURE_BABYSIT_CHERRY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git cherry-pick abc123"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git cherry-pick denied" "2" "$FIXTURE_BABYSIT_CHERRY" "CLAUDE_ROLE=babysit"
+
+# Test 71: babysit + git revert — MUST DENY
+FIXTURE_BABYSIT_REVERT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git revert HEAD"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git revert denied" "2" "$FIXTURE_BABYSIT_REVERT" "CLAUDE_ROLE=babysit"
+
+# Test 72: babysit + git merge — MUST DENY
+FIXTURE_BABYSIT_MERGE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git merge other-branch"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git merge denied" "2" "$FIXTURE_BABYSIT_MERGE" "CLAUDE_ROLE=babysit"
+
+# Test 73: babysit + git stash — MUST DENY (owned by no-git-stash.sh, role `*`
+# with no exemption; babysit is not exempted there either)
+FIXTURE_BABYSIT_STASH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git stash denied (pre-commit-guard passthrough; no-git-stash.sh owns it)" "0" "$FIXTURE_BABYSIT_STASH" "CLAUDE_ROLE=babysit"
+
+# Test 74: babysit + git push --force — MUST DENY
+FIXTURE_BABYSIT_PUSH_FORCE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git push --force denied" "2" "$FIXTURE_BABYSIT_PUSH_FORCE" "CLAUDE_ROLE=babysit"
+
+# Test 75: babysit + plain git push — MUST ALLOW (unchanged from today;
+# babysit still verifies published state)
+FIXTURE_BABYSIT_PUSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push origin main"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit plain git push allowed" "0" "$FIXTURE_BABYSIT_PUSH" "CLAUDE_ROLE=babysit"
+
+# Test 76: babysit + git switch — MUST DENY (not in the tree-restoring
+# allow-list — only checkout/restore/reset are exempted, not switch)
+FIXTURE_BABYSIT_SWITCH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git switch main"},"agent_type":"","agent_id":"a"}'
+run_test_env "babysit git switch denied (not in tree-restoring allow-list)" "2" "$FIXTURE_BABYSIT_SWITCH" "CLAUDE_ROLE=babysit"
+
+# Test 77 (regression — highest-severity risk in the plan): ops role WITHOUT
+# CODEGEN_OPS_GIT_UNLOCK is STILL denied on git reset --hard after the
+# babysit split — the exemption must not leak into ops's two-signal gate.
+FIXTURE_OPS_NOLEAK_RESET='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD~1"},"agent_type":"","agent_id":"a"}'
+run_test_env "ops role alone (no unlock) still denied on reset --hard after babysit split" "2" "$FIXTURE_OPS_NOLEAK_RESET" "CLAUDE_ROLE=ops"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

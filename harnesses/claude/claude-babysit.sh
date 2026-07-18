@@ -17,11 +17,17 @@ else
 fi
 export CODEGEN_DIR
 
-# Parse --studio BEFORE load_role so downstream context assembly can branch on it.
+# Parse --studio BEFORE load_role so downstream context assembly can branch
+# on it, and strip it from the positional args so it never leaks into the
+# initial-prompt default below (pre-process flags before the resolver loop —
+# same discipline as claude-shape's basename resolver).
 STUDIO=0
+INITIAL_PROMPT_ARGS=()
 for _a in "$@"; do
     if [[ "$_a" == "--studio" ]]; then
         STUDIO=1
+    else
+        INITIAL_PROMPT_ARGS+=("$_a")
     fi
 done
 
@@ -70,6 +76,18 @@ while IFS= read -r _cf; do
 done <<<"$ROLE_CONTEXT_FILES"
 CONTEXT_FLAGS+=(--append-system-prompt "${BABYSIT_STARTUP_MSG}")
 
+# Initial prompt: fires pass one immediately instead of opening to an empty
+# input box. Literal procedure text — NOT "/babysit" — because the headless
+# branch above sets --disable-slash-commands, making a slash payload inert
+# there; literal text works identically on both branches. An operator-
+# supplied positional argument REPLACES this default rather than appending
+# to it (mirrors claude-shape's RESOLVED_ARGS convention).
+if [[ ${#INITIAL_PROMPT_ARGS[@]} -gt 0 ]]; then
+    RESOLVED_ARGS=("${INITIAL_PROMPT_ARGS[@]+"${INITIAL_PROMPT_ARGS[@]}"}")
+else
+    RESOLVED_ARGS=("Run one full pass of the standing supervision procedure now, then report the per-node verdict rows.")
+fi
+
 exec claude \
     "${SETTINGS_FLAGS[@]+"${SETTINGS_FLAGS[@]}"}" \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
@@ -78,4 +96,5 @@ exec claude \
     --dangerously-skip-permissions \
     "${TOOL_FLAGS[@]+"${TOOL_FLAGS[@]}"}" \
     --system-prompt "$ROLE_SYSTEM_PROMPT" \
-    "${CONTEXT_FLAGS[@]+"${CONTEXT_FLAGS[@]}"}"
+    "${CONTEXT_FLAGS[@]+"${CONTEXT_FLAGS[@]}"}" \
+    "${RESOLVED_ARGS[@]+"${RESOLVED_ARGS[@]}"}"
