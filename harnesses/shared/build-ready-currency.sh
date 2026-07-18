@@ -15,11 +15,17 @@ _BUILD_READY_SOURCE_SET="shared/rules shared/subagents harnesses/claude/manifest
 # Prints a stable hash over the CURRENT WORKING-TREE bytes of the source set
 # (not the committed HEAD tree — an edited-but-uncommitted source must count
 # as stale). Uses only `git` (already a hard doctor dependency) — no sha256sum
-# / shasum binary, which differs macOS vs Linux.
+# / shasum binary, which differs macOS vs Linux. See build_ready_content_hash
+# for the deleted-but-unstaged-path exclusion this relies on.
 build_ready_content_hash() {
+    # Excludes deleted-but-unstaged paths from the hash — git ls-files lists
+    # the index (tracked set), which still includes a file removed from disk
+    # but not yet `git add`ed for the deletion; hash-object would otherwise
+    # error trying to read a path that no longer exists.
     local codegen_dir="$1"
-    git -C "$codegen_dir" ls-files -- $_BUILD_READY_SOURCE_SET |
-        sort |
+    comm -23 \
+        <(git -C "$codegen_dir" ls-files -- $_BUILD_READY_SOURCE_SET | sort) \
+        <(git -C "$codegen_dir" ls-files --deleted -- $_BUILD_READY_SOURCE_SET | sort) |
         git -C "$codegen_dir" hash-object --stdin-paths |
         git hash-object --stdin
 }

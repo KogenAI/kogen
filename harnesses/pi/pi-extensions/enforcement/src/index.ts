@@ -33,7 +33,6 @@ import { register as registerCuratorBeforeCommitter } from "./hooks/curator-befo
 import { register as registerCuratorContextSizeGate } from "./hooks/curator-context-size-gate";
 import { register as registerDevNoCi } from "./hooks/dev-no-ci";
 import { register as registerDeveloperNoSelfGate } from "./hooks/developer-no-self-gate";
-import { register as registerDeveloperNoSelfGateReset } from "./hooks/developer-no-self-gate-reset";
 import { register as registerDeveloperStaticNoBuildOutputProbe } from "./hooks/developer-static-no-build-output-probe";
 import { register as registerDeveloperStaticNoManualBuild } from "./hooks/developer-static-no-manual-build";
 import { register as registerLlmPendingSweep } from "./hooks/llm-pending-sweep";
@@ -86,7 +85,6 @@ export default function (pi: ExtensionAPI): void {
   registerCuratorContextSizeGate(pi);
   registerDevNoCi(pi);
   registerDeveloperNoSelfGate(pi);
-  registerDeveloperNoSelfGateReset(pi);
   registerDeveloperStaticNoBuildOutputProbe(pi);
   registerDeveloperStaticNoManualBuild(pi);
   registerLlmPendingSweep(pi);

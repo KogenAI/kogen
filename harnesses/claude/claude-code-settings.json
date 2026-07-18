@@ -222,17 +222,6 @@
         ]
       }
     ],
-    "SubagentStop": [
-      {
-        "matcher": "developer-phoenix-backend|developer-phoenix-frontend|developer-static",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/developer-no-self-gate-reset.sh"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|Bash|NotebookEdit",

@@ -21,7 +21,7 @@ TDD → targeted tests for files you touched (`mix test path/to/specific_test.ex
 
 Before handing off, run `mix credo --strict` scoped to your changed files. Read every violation in the output. Fix ALL of them — do not skip "minor" items. Re-run until clean. You may run `mix credo --strict` as many times as needed; it is not counted against the gate cap. Only hand off when `mix credo --strict` on your changed files exits clean.
 
-Never rely on the SubagentStop gate to surface residual violations. One residual violation = one full round-trip wasted.
+Never rely on the loop's post-turn gate to surface residual violations. One residual violation = one full round-trip wasted.
 
 ## Stuck-loop escalation
 

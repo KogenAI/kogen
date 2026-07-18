@@ -22,7 +22,7 @@ Screenshot capture for static-stack benchmark runs requires:
 **Two separate subsystems with different failure modes**:
 
 1. **Benchmark screenshots** — `BenchArtifacts.capture_screenshot/4` (ExUnit test phase). Missing Playwright is **non-fatal**: logs warning and returns `:ok`. JSONL bench records always written.
-2. **Static-site render gate** — `static-site-build-check.sh` (SubagentStop hook). **Fail-closed**: Chromium absent on a static-capable box blocks the developer subagent. The gate requires Chromium; benchmarks tolerate its absence.
+2. **Static-site render gate** — owned by the loop's `LoopGate.run_gate/2` post-turn (render-check.js), not by any hook. **Fail-closed**: Chromium absent on a static-capable box blocks the gate. The gate requires Chromium; benchmarks tolerate its absence.
 
 ## Benchmarking mode (BENCH=1)
 
