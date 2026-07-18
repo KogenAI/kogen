@@ -63,7 +63,7 @@ completions:
 # manifest_regenerate_prompts() cats tools_header + each prompt_body entry → system_prompt_file.
 modes:
   debug:
-    model: openai-codex/gpt-5.4 # from config.yaml harness.debug.pi
+    model: openai-codex/gpt-5.6-terra # from config.yaml harness.debug.pi
     effort: medium
     tools: read,grep,find,ls # debug: no edit/write/bash mutations
     extensions:
@@ -76,7 +76,7 @@ modes:
       - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   shape:
-    model: openai-codex/gpt-5.5 # from config.yaml roles.shape (pi variant)
+    model: openai-codex/gpt-5.6-sol # from config.yaml roles.shape (pi variant)
     effort: high
     tools: read,grep,find,ls,edit,write,bash
     extensions:
@@ -93,7 +93,7 @@ modes:
       - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   experiment:
-    model: openai-codex/gpt-5.5 # from config.yaml harness.experiment.pi
+    model: openai-codex/gpt-5.6-sol # from config.yaml harness.experiment.pi
     effort: high
     tools: read,grep,find,ls,edit,write,bash
     extensions:
@@ -108,7 +108,7 @@ modes:
       - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   ops:
-    model: openai-codex/gpt-5.5 # from config.yaml harness.ops.pi
+    model: openai-codex/gpt-5.6-terra # from config.yaml harness.ops.pi
     effort: high
     tools: read,grep,find,ls,edit,write,bash
     extensions:
@@ -123,8 +123,8 @@ modes:
       - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   babysit:
-    model: openai-codex/gpt-5.5 # from config.yaml harness.babysit.pi
-    effort: high
+    model: openai-codex/gpt-5.6-terra # from config.yaml harness.babysit.pi
+    effort: medium
     tools: read,grep,find,ls,edit,write,bash
     extensions:
       - askuserquestion

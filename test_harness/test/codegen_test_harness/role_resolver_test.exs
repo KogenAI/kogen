@@ -14,7 +14,7 @@ defmodule CodegenTestHarness.RoleResolverTest do
     test "pi: reads pi-specific model/effort" do
       {model, effort} = RoleResolver.resolve_role("developer-phoenix-backend", "pi")
 
-      assert model == "openai-codex/gpt-5.4"
+      assert model == "openai-codex/gpt-5.6-terra"
       assert effort == "medium"
     end
 
@@ -47,7 +47,7 @@ defmodule CodegenTestHarness.RoleResolverTest do
 
     test "pi: reads pi-specific escalation tier" do
       assert RoleResolver.resolve_escalation("developer-phoenix-backend", "pi") ==
-               {"openai-codex/gpt-5.5", "high"}
+               {"openai-codex/gpt-5.6-sol", "high"}
     end
 
     test "claude_code canonical harness name normalizes to claude" do
@@ -89,7 +89,7 @@ defmodule CodegenTestHarness.RoleResolverTest do
 
     test "pi: reads pi-specific rung 0" do
       assert RoleResolver.resolve_fallback("developer-phoenix-backend", "pi", 0) ==
-               {"openai-codex/gpt-5.5", "medium"}
+               {"openai-codex/gpt-5.6-sol", "medium"}
     end
 
     test "claude_code canonical harness name normalizes to claude" do

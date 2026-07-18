@@ -47,10 +47,10 @@ common:
 harness:
   planner-phoenix:
     claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.6-sol, effort: high }
   planner-static:
     claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.6-sol, effort: high }
   # `fallback:` is an ordered same-provider rung list walked on a
   # switch_model classification (LoopQueue.switch_model_reason?/1) — a
   # role's primary model reporting "unavailable"/"disabled"/"not found".
@@ -71,11 +71,11 @@ harness:
       }
     pi:
       {
-        model: openai-codex/gpt-5.4,
+        model: openai-codex/gpt-5.6-terra,
         effort: medium,
-        escalate_model: openai-codex/gpt-5.5,
+        escalate_model: openai-codex/gpt-5.6-sol,
         escalate_effort: high,
-        fallback: [{ model: openai-codex/gpt-5.5, effort: medium }],
+        fallback: [{ model: openai-codex/gpt-5.6-sol, effort: medium }],
       }
   developer-phoenix-frontend:
     claude:
@@ -88,20 +88,20 @@ harness:
       }
     pi:
       {
-        model: openai-codex/gpt-5.4,
+        model: openai-codex/gpt-5.6-terra,
         effort: medium,
-        escalate_model: openai-codex/gpt-5.5,
+        escalate_model: openai-codex/gpt-5.6-sol,
         escalate_effort: high,
-        fallback: [{ model: openai-codex/gpt-5.5, effort: medium }],
+        fallback: [{ model: openai-codex/gpt-5.6-sol, effort: medium }],
       }
-  # Pi rungs pinned to the gpt-5.6 generation (see `pi --list-models`).
-  # Tier map, from pi's own catalog cost table ($/Mtok in/out):
-  #   luna  1/6    (haiku tier)
-  #   terra 2.5/15 (sonnet tier)  ← identical price to the retired gpt-5.4,
-  #                                 but 372K ctx vs 272K. Strict upgrade.
-  #   sol   5/30   (opus tier)    ← identical price to gpt-5.5, newer gen.
-  # effort raised medium→high to match the claude rung: developer-static owns
-  # the whole static build, and its claude twin has always run effort: high.
+  # Pi rungs pinned to the gpt-5.6 generation (see `pi --list-models`), used
+  # as the repo-wide Anthropic→ChatGPT tier map for every role below:
+  #   haiku  -> luna  (1/6 $/Mtok in/out)
+  #   sonnet -> terra (2.5/15 $/Mtok in/out, 372K ctx)
+  #   opus   -> sol   (5/30 $/Mtok in/out, 372K ctx)
+  # Effort is mirrored from each role's claude twin, not derived from the old
+  # pi model id. Full tier-map table + rationale: context/role-config.md
+  # § Anthropic → ChatGPT Tier Map.
   developer-static:
     # PER-ROLE HARNESS OVERRIDE — this role runs on pi (ChatGPT) even inside an
     # otherwise-claude build. RoleResolver.resolve_harness/2 reads
@@ -138,40 +138,40 @@ harness:
       }
   reviewer-phoenix:
     claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.4, effort: medium }
+    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
   reviewer-static:
     claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.4, effort: medium }
+    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
   # Pi infers the provider from the <provider>/ model prefix; no --provider flag is passed by the launchers.
   committer:
     claude: { model: haiku, effort: low }
-    pi: { model: openai-codex/gpt-5.4-mini, effort: medium }
+    pi: { model: openai-codex/gpt-5.6-luna, effort: low }
   context-curator:
     claude: { model: haiku, effort: low }
-    pi: { model: openai-codex/gpt-5.4-mini, effort: low }
+    pi: { model: openai-codex/gpt-5.6-luna, effort: low }
   app_build:
     claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.4, effort: medium }
+    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
   inspector:
     claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.4, effort: medium }
+    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
   # debug = pi-debug launcher config; read by pi-debug.sh via yq .harness.debug.pi.model
   # Distinct from harness.inspector (read-only inspector role).
   debug:
     claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.4, effort: medium }
+    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
   shape:
     claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.6-sol, effort: high }
   experiment:
     claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.6-sol, effort: high }
   ops:
     claude: { model: sonnet, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
+    pi: { model: openai-codex/gpt-5.6-terra, effort: high }
   babysit:
-    claude: { model: sonnet, effort: high }
-    pi: { model: openai-codex/gpt-5.5, effort: high }
+    claude: { model: sonnet, effort: medium }
+    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
 
 roles:
   usage-rules:
@@ -300,7 +300,7 @@ roles:
 
   babysit:
     model: sonnet
-    effort: high
+    effort: medium
     output_format: text
     tools:
       - Agent

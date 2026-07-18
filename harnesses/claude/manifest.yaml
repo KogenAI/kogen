@@ -158,8 +158,8 @@ modes:
       - shared/prompt-fragments/_forbidden-bash-brief.txt
 
   babysit:
-    model: opus
-    effort: high
+    model: sonnet
+    effort: medium
     output_format: text
     tools:
       [

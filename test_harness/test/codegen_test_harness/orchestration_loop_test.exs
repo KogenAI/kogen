@@ -1113,7 +1113,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       resolve_fallback_fn = fn "developer-static", harness, 0 ->
         Agent.update(harness_seen_agent, fn seen -> seen ++ [harness] end)
-        {"openai-codex/gpt-5.4", "medium"}
+        {"openai-codex/gpt-5.6-terra", "medium"}
       end
 
       invoke_fn = fn role, _harness, ctx, _opts ->
@@ -1343,7 +1343,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       resolve_fn = fn _role, harness ->
         Agent.update(harness_seen_by_resolve_fn, fn _ -> harness end)
-        {"openai-codex/gpt-5.4", "medium"}
+        {"openai-codex/gpt-5.6-terra", "medium"}
       end
 
       codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
@@ -3028,7 +3028,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       resolve_escalation_fn = fn "developer-static", harness ->
         Agent.update(harness_seen_agent, fn seen -> seen ++ [harness] end)
-        {"openai-codex/gpt-5.4", "high"}
+        {"openai-codex/gpt-5.6-terra", "high"}
       end
 
       assert {:error, _reason} =

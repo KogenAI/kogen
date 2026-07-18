@@ -210,7 +210,7 @@ Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via c
 
 ## Pi Provider Selection
 
-None of the 7 pi launcher sites (`call-dispatch.sh`, `pi-shape.sh` ×2, `pi-debug.sh`, `pi-ops.sh`, `pi-babysit.sh`, `pi-experiment.sh`) pass `--provider` — pi infers the provider from the `<provider>/` prefix on the already-resolved `--model` value (`config.yaml`'s per-role model, e.g. `openai-codex/gpt-5.4`). Full contract + rationale: `context/role-config.md` § Pi Provider Selection.
+None of the 7 pi launcher sites (`call-dispatch.sh`, `pi-shape.sh` ×2, `pi-debug.sh`, `pi-ops.sh`, `pi-babysit.sh`, `pi-experiment.sh`) pass `--provider` — pi infers the provider from the `<provider>/` prefix on the already-resolved `--model` value (`config.yaml`'s per-role model, e.g. `openai-codex/gpt-5.6-terra`). Full contract + rationale: `context/role-config.md` § Pi Provider Selection.
 
 ## Headless Investigative Mode
 

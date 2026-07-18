@@ -28,14 +28,31 @@ consumer:
 `shape` and `experiment` are pinned opus/high by design — they drive architectural decisions and
 complex multi-file analysis. `debug` = sonnet/medium is also intentional (diagnostic, not creative). A
 cost-tuning proposal MUST NOT suggest downgrading these — out of scope, reject without further analysis.
+`babysit` runs claude sonnet/medium and pi terra/medium — the operator-selected tier for long-running
+supervised sessions, distinct from the opus/high tier used by planning/shaping roles.
+
+## Anthropic → ChatGPT Tier Map (Pi Model IDs)
+
+Every Pi role in `config.yaml` mirrors its Claude twin's tier through this repo-wide map onto the
+`gpt-5.6` generation (see `pi --list-models`):
+
+| Anthropic tier | Pi model                     | Cost ($/Mtok in/out) | Context |
+| -------------- | ---------------------------- | -------------------- | ------- |
+| haiku          | `openai-codex/gpt-5.6-luna`  | 1/6                  | 372K    |
+| sonnet         | `openai-codex/gpt-5.6-terra` | 2.5/15               | 372K    |
+| opus           | `openai-codex/gpt-5.6-sol`   | 5/30                 | 372K    |
+
+Effort is always mirrored from the role's claude twin — never derived from the previous Pi model ID.
+Every Pi `model`/`escalate_model`/`fallback[].model` value in `config.yaml` is one of these three IDs.
 
 ## Per-Role Harness Override — `developer-static` Runs on Pi
 
 `developer-static` carries a `harness: pi` key under `.harness.developer-static` in `config.yaml` —
 `RoleResolver.resolve_harness/2` reads it and `OrchestrationLoop.invoke_role/4` applies it PER ROLE, so
 `codegen-build --harness=claude --stack=static` still dispatches THIS role through Pi
-(`openai-codex/gpt-5.6-terra`, effort high; escalate/fallback `openai-codex/gpt-5.6-sol`, effort high)
-while `planner-static` / `reviewer-static` / `committer` stay on Claude. Escalation and fallback also
+(`openai-codex/gpt-5.6-terra`, effort high; escalate/fallback `openai-codex/gpt-5.6-sol`, effort high —
+the same tier map above, mirroring its claude twin's sonnet/high and opus/high rungs) while
+`planner-static` / `reviewer-static` / `committer` stay on Claude. Escalation and fallback also
 resolve on the overridden harness — a Pi role never falls back to a Claude model. Measured ~3.4x
 cheaper than the Claude/sonnet twin for this role at equal call count (bench `20260717_064438`); the
 Claude `pi:` block above stays as the twin config for reference/reversion (comment out `harness: pi`
