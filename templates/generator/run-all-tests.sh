@@ -23,20 +23,26 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=fal
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$SCRIPT_DIR"
 
+tmp_prebuild=$(mktemp)
 subagents_ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/subagents"
 if [ -f "$subagents_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$subagents_ext_dir/package.json"; then
-    (cd "$subagents_ext_dir" && mise exec -- npm run build) || {
+    (cd "$subagents_ext_dir" && mise exec -- npm run build) >>"$tmp_prebuild" 2>&1 || {
+        cat "$tmp_prebuild"
         echo "subagents pre-build failed"
+        rm -f "$tmp_prebuild"
         exit 1
     }
 fi
 enforcement_ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/enforcement"
 if [ -f "$enforcement_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$enforcement_ext_dir/package.json"; then
-    (cd "$enforcement_ext_dir" && mise exec -- npm run build) || {
+    (cd "$enforcement_ext_dir" && mise exec -- npm run build) >>"$tmp_prebuild" 2>&1 || {
+        cat "$tmp_prebuild"
         echo "enforcement pre-build failed"
+        rm -f "$tmp_prebuild"
         exit 1
     }
 fi
+rm -f "$tmp_prebuild"
 tmp_hooks=$(mktemp)
 tmp_scaffold=$(mktemp)
 tmp_install=$(mktemp)
@@ -175,8 +181,9 @@ for i in "${!pids[@]}"; do
     if ! wait "${pids[$i]}"; then
         fail=1
         failed_labels+=("${labels[$i]}")
+        printf '===== %s =====\n' "${labels[$i]}"
+        cat "${tmps[$i]}"
     fi
-    cat "${tmps[$i]}"
 done
 if [ "$fail" -eq 0 ]; then
     echo "ALL CLEAR ✅ make test"
