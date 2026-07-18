@@ -45,10 +45,23 @@ if [ -z "${MISE_DATA_DIR:-}" ]; then
     fi
 fi
 
+# Reuse the real Playwright browser cache instead of re-downloading ~200MB of Chromium
+# into the throwaway HOME. A fresh box with no cache falls through to the normal download.
+if [ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]; then
+    if [ -d "$HOME/Library/Caches/ms-playwright" ]; then
+        export PLAYWRIGHT_BROWSERS_PATH="$HOME/Library/Caches/ms-playwright" # macOS
+    elif [ -d "$HOME/.cache/ms-playwright" ]; then
+        export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" # Linux
+    fi
+fi
+
 export HOME="$tmp_home"
 export SHELL="/bin/bash"
 # Redirect completion dirs to tmp_home so install.sh stays fully hermetic
 export ZSH_COMPLETION_DIRS="$tmp_home/.zsh/completions"
+# Isolate generator output so a concurrently-running sibling install test cannot collide
+# on the shared repo-tracked templates/generated/ dir.
+export OCG_GENERATED_DIR="$tmp_home/generated"
 
 # Run install (single-harness skips the interactive prompt path)
 if ! "$CODEGEN_DIR/install.sh" --harness=claude </dev/null >"$tmp_home/install.log" 2>&1; then

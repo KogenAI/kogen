@@ -87,6 +87,11 @@ content_stable_cp() {
 }
 
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# GENERATED_ROOT: overridable via OCG_GENERATED_DIR so concurrent installs (e.g. hermetic
+# round-trip tests) can isolate their generator output instead of colliding on the shared
+# repo-tracked path. Default is byte-identical to the pre-override behavior.
+GENERATED_ROOT="${OCG_GENERATED_DIR:-$CODEGEN_DIR/templates/generated}"
+export OCG_GENERATED_DIR="$GENERATED_ROOT"
 INSTALL_DIR="$HOME/.local/bin"
 SYMLINK_NAME="ocg"
 CODEGEN_LOG_NAME="codegen-log"
@@ -196,7 +201,7 @@ echo "🚀 Generating AI agent templates..."
 # the repo root; these symlinks make $CODEGEN_DIR/codegen/<x> -> $CODEGEN_DIR/shared/<x>.
 mkdir -p "$CODEGEN_DIR/codegen"
 for _link in rules recipes usage_rules subagents; do
-    ln -sfn "$CODEGEN_DIR/shared/$_link" "$CODEGEN_DIR/codegen/$_link"
+    ln -sfn "$CODEGEN_DIR/shared/$_link" "$CODEGEN_DIR/codegen/$_link" 2>/dev/null || true
     if [ ! -e "$CODEGEN_DIR/codegen/$_link" ]; then
         echo "❌ platform symlink unresolved: codegen/$_link -> shared/$_link"
         exit 1
@@ -304,7 +309,7 @@ done
 # Clean up generated templates after installation
 cleanup_generated_templates() {
     echo "   🧹 Cleaning up generated templates..."
-    rm -rf "$CODEGEN_DIR/templates/generated/"
+    rm -rf "$GENERATED_ROOT/"
     echo "   ✅ Generated templates cleaned up"
 }
 
@@ -339,8 +344,8 @@ for _harness in "${HARNESSES[@]}"; do
         mkdir -p "$CLAUDE_COMMANDS_DIR"
 
         # Install settings
-        if [ -f "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" ]; then
-            content_stable_cp "$CODEGEN_DIR/templates/generated/claude-code/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
+        if [ -f "$GENERATED_ROOT/claude-code/claude-code-settings.json" ]; then
+            content_stable_cp "$GENERATED_ROOT/claude-code/claude-code-settings.json" "$CLAUDE_SETTINGS_FILE"
             echo "   ✅ Claude Code settings installed at: $CLAUDE_SETTINGS_FILE"
         fi
 
@@ -406,8 +411,8 @@ for _harness in "${HARNESSES[@]}"; do
         fi
 
         # Install generated commands (from .j2 templates rendered by generate.sh).
-        if [ -d "$CODEGEN_DIR/templates/generated/claude-code/commands" ]; then
-            for cmd_file in "$CODEGEN_DIR/templates/generated/claude-code/commands"/*.md; do
+        if [ -d "$GENERATED_ROOT/claude-code/commands" ]; then
+            for cmd_file in "$GENERATED_ROOT/claude-code/commands"/*.md; do
                 if [ -f "$cmd_file" ]; then
                     cmd_name=$(basename "$cmd_file")
                     content_stable_cp "$cmd_file" "$CLAUDE_COMMANDS_DIR/$cmd_name"
@@ -449,8 +454,8 @@ for _harness in "${HARNESSES[@]}"; do
             rm -f $CLAUDE_AGENTS_DIR/.installed-by-ocg.*
         fi
 
-        if [ -d "$CODEGEN_DIR/templates/generated/claude-code/agents" ]; then
-            for agent_file in "$CODEGEN_DIR/templates/generated/claude-code/agents"/*.md; do
+        if [ -d "$GENERATED_ROOT/claude-code/agents" ]; then
+            for agent_file in "$GENERATED_ROOT/claude-code/agents"/*.md; do
                 if [ -f "$agent_file" ]; then
                     agent_name=$(basename "$agent_file")
                     content_stable_cp "$agent_file" "$CLAUDE_AGENTS_DIR/$agent_name"
@@ -610,8 +615,8 @@ for _harness in "${HARNESSES[@]}"; do
 
         echo "   🤖 Installing Pi agents..."
         CURRENT_PI_AGENTS=()
-        if [ -d "$CODEGEN_DIR/templates/generated/pi/agent" ]; then
-            for agent_file in "$CODEGEN_DIR/templates/generated/pi/agent"/*.md; do
+        if [ -d "$GENERATED_ROOT/pi/agent" ]; then
+            for agent_file in "$GENERATED_ROOT/pi/agent"/*.md; do
                 if [ -f "$agent_file" ]; then
                     agent_name=$(basename "$agent_file")
                     content_stable_cp "$agent_file" "$HOME/.pi/agent/agents/$agent_name"
@@ -663,7 +668,7 @@ for _harness in "${HARNESSES[@]}"; do
 
         # Install pi prompts — full generated set with mkdir + prune
         PROMPTS_DST="$HOME/.pi/agent/prompts"
-        PROMPTS_SRC="$CODEGEN_DIR/templates/generated/pi/prompts"
+        PROMPTS_SRC="$GENERATED_ROOT/pi/prompts"
         mkdir -p "$PROMPTS_DST"
         CURRENT_PI_PROMPTS=()
         if [ -d "$PROMPTS_SRC" ]; then

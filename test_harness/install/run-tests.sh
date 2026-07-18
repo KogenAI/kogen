@@ -17,10 +17,27 @@ if [ "${#files[@]}" -eq 0 ]; then
     exit 1
 fi
 
+out_dir="$(mktemp -d -t install-run-tests-XXXXXX)"
+trap 'rm -rf "$out_dir"' EXIT
+
+pids=()
+names=()
 for t in "${files[@]}"; do
     name="$(basename "$t")"
-    out="$(bash "$t" 2>&1)"
-    rc=$?
+    (bash "$t" >"$out_dir/$name.out" 2>&1) &
+    pids+=("$!")
+    names+=("$name")
+done
+
+for i in "${!pids[@]}"; do
+    pid="${pids[$i]}"
+    name="${names[$i]}"
+    if wait "$pid"; then
+        rc=0
+    else
+        rc=$?
+    fi
+    out="$(cat "$out_dir/$name.out")"
     summary="$(echo "$out" | grep -E '^[0-9]+ passed, [0-9]+ failed$' | tail -1)"
     if [ -n "$summary" ]; then
         if [ "$rc" -ne 0 ]; then

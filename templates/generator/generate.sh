@@ -19,6 +19,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATES_DIR="$(dirname "$SCRIPT_DIR")"
 CODEGEN_DIR="$(dirname "$TEMPLATES_DIR")"
 export CODEGEN_DIR
+# GENERATED_ROOT: overridable via OCG_GENERATED_DIR so concurrent installs (e.g. hermetic
+# round-trip tests) can isolate their generator output instead of colliding on the shared
+# repo-tracked path. Default is byte-identical to the pre-override behavior.
+GENERATED_ROOT="${OCG_GENERATED_DIR:-$TEMPLATES_DIR/generated}"
 
 # Source manifest helpers.
 # shellcheck source=templates/generator/manifest-lib.sh
@@ -68,7 +72,7 @@ _generate_claude() {
     _ensure_pyyaml
     _log_info "Generating templates for claude..."
 
-    local output_dir="$TEMPLATES_DIR/generated/claude-code"
+    local output_dir="$GENERATED_ROOT/claude-code"
 
     if [ -z "${OUTPUT_DIR:-}" ]; then
         mkdir -p "$output_dir/commands" "$output_dir/agents"
@@ -126,8 +130,8 @@ _generate_claude() {
 _generate_pi() {
     _ensure_pyyaml
 
-    local output_agents_dir="$TEMPLATES_DIR/generated/pi/agent"
-    local output_prompts_dir="$TEMPLATES_DIR/generated/pi/prompts"
+    local output_agents_dir="$GENERATED_ROOT/pi/agent"
+    local output_prompts_dir="$GENERATED_ROOT/pi/prompts"
 
     mkdir -p "$output_agents_dir"
     mkdir -p "$output_prompts_dir"
@@ -178,7 +182,7 @@ _generate_pi() {
     echo ""
     echo "✅ Pi generation complete!"
     echo "   Agents: $output_agents_dir"
-    echo "   Prompts: $TEMPLATES_DIR/generated/pi/prompts"
+    echo "   Prompts: $GENERATED_ROOT/pi/prompts"
 }
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

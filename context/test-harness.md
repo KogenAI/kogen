@@ -158,6 +158,10 @@ Two new test files in `test_harness/test/codegen_test_harness/` run under `make 
 
 For full make-target index including install/uninstall/CI targets, see `context/development.md`.
 
+### Install Arm — Concurrency + Isolation
+
+`test_harness/install/run-tests.sh` backgrounds each `*_test.sh`, per-file output, prints only on failure — hermetic (own `tmp_home`), safe in parallel (~72s serial/cold → ~13-26s). Round-trip tests export before `HOME` swap: `PLAYWRIGHT_BROWSERS_PATH` (real cache, avoids re-download; unset falls through) and `OCG_GENERATED_DIR` (unique per test — `install.sh`/`generate.sh` resolve `GENERATED_ROOT="${OCG_GENERATED_DIR:-<default>}"`, exported to child; prevents `rm -rf` collision). Shared symlink loop un-isolated — race-tolerant (`ln -sfn ... || true`).
+
 ## Integration Points
 
 - **scaffold**: tests exercise `shared/scaffold/<stack>/scaffold.sh` output — scaffold changes require test updates; see `context/scaffold.md`
@@ -191,11 +195,11 @@ Hermetic bash test files (e.g., `prompt-content-parity_test.sh`) using sequentia
 
 ### Fixture Invalidation on Hook Logic Changes
 
-When a hook's conditional logic widens (e.g., exact-match → `startsWith`), fixtures relying on the literal condition falling through to an `else` branch become INVALID post-widen — must be **converted**, not kept as-is. Example: a fixture relied on old exact-match falling through; after widening, its header was never found and the hook silently skipped. **Critical**: when narrowing/widening hook logic, grep paired test file(s) for fixtures the change may invalidate; convert before landing.
+Widening a hook's conditional (e.g., exact-match → `startsWith`) can make fixtures relying on the old fallthrough to `else` INVALID — must be converted, not kept as-is. **Critical**: grep paired test file(s) for fixtures the change may invalidate; convert before landing.
 
 ### Test Mock Anti-Pattern: Encoding the Prod Bug
 
-A test fixture can encode the SAME false premise as the prod bug it should catch — suite stays green through regressions. Example: a mock returned post-commit HEAD where the real gate only ever writes pre-commit HEAD. **Fix**: re-model the fixture correctly + add producer/consumer reconciliation tests running the REAL producer against the REAL consumer's predicate.
+A fixture can encode the SAME false premise as the prod bug it should catch (suite stays green through regressions). Fix: re-model the fixture correctly + add producer/consumer reconciliation tests running the REAL producer against the REAL consumer's predicate.
 
 ### Fixture and Build Patterns
 
@@ -203,7 +207,7 @@ A test fixture can encode the SAME false premise as the prod bug it should catch
 - `last_green.json` is checked in — diff against it to spot regressions before merging
 - Run a single test file: `mix test test/stacks/phoenix_test.exs` from `test_harness/`
 - Async: most stack tests are synchronous (file system I/O)
-- **ExUnit concurrency**: `max_cases` (default `System.schedulers_online() * 2`) governs how many test _modules_ run in parallel. Tests within a single module always run serially, regardless of `async: true`. To maximize concurrency, split fat modules into multiple `defmodule` blocks per file (each becomes an independent async unit). `test_harness/test/test_helper.exs` omits `:max_cases` override — the default is sufficient. Partition infrastructure (`--partitions 4`) was dropped in commit 9b09dc8 after splitting `test_harness/test/stacks/static/iteration_test.exs`, `test_harness/test/stacks/static/seed_test.exs`, `test_harness/test/stacks/static/scaffold_test.exs` into 14 modules; single `mix test` per harness now scales naturally.
+- **ExUnit concurrency**: `max_cases` (default `System.schedulers_online() * 2`) governs how many test _modules_ run in parallel; tests within one module run serially regardless of `async: true`. Split fat modules into multiple `defmodule` blocks per file for concurrency. `test_helper.exs` omits `:max_cases` override. Partition infra (`--partitions 4`) was dropped after splitting the static stack tests into 14 modules; single `mix test` per harness scales naturally.
 
 ## Deterministic Scaffold Testing vs. LLM-Driven Build Testing
 
