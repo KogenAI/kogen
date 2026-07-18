@@ -1572,7 +1572,10 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end)
 
       draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
-      assert CodegenTestHarness.LoopQueue.parse_edges("solo", draft_path) == [{"solo", "some-dep"}]
+
+      assert CodegenTestHarness.LoopQueue.parse_edges("solo", draft_path) == [
+               {"solo", "some-dep"}
+             ]
     end
 
     test "no-trailing-newline pitch body demotes without corrupting the history section", ctx do
@@ -2947,6 +2950,47 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # dir path), so it degrades to [] rather than falsely refusing.
       random_cwd = "/tmp/never-a-real-cwd-#{:erlang.unique_integer([:positive])}"
       assert LoopQueueDrain.default_build_orphan_scan(random_cwd) == []
+    end
+  end
+
+  # ── Boot-time :jason force-load (ensure_decode_deps) ─────────────────────
+  # Guards against a lazily-loaded :jason getting unloaded from under the
+  # parent drain by a child's concurrent `_build` recompile — see the
+  # `:load_deps_fn` moduledoc entry.
+
+  describe "drain/1 boot preflight — ensure_decode_deps" do
+    test "happy path: default load_deps_fn does not perturb a normal drain", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      opts = shipped_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
+
+      assert {:ok, 1} = LoopQueueDrain.drain(opts)
+    end
+
+    test "refuses BEFORE any spawn when load_deps_fn cannot load :jason", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      test_pid = self()
+
+      spawn_fn = fn _s, _h, _st, _c, _j ->
+        send(test_pid, :spawned)
+        {:exit_code, 0}
+      end
+
+      opts =
+        base_opts(ctx, spawn_fn: spawn_fn)
+        |> Keyword.put(:load_deps_fn, fn Jason -> {:error, :nofile} end)
+
+      assert {:error, reason} = LoopQueueDrain.drain(opts)
+      assert reason =~ "jason"
+      assert reason =~ "mix deps.get"
+
+      # The refusal must land before any child is spawned — no money spent.
+      refute_received :spawned
+
+      # The lock must NEVER have been written — the boot check refuses
+      # before BuildLock.acquire (and before the orphan scan) run.
+      refute File.exists?(ctx.lock_path)
     end
   end
 

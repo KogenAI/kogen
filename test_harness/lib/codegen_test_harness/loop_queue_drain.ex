@@ -385,6 +385,20 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       `git branch -f`, clean-tree-safe — unlike `park_failed_tree/2`, which
       only parks a DIRTY tree and is a no-op here), the pitch stays in
       `ready_dir`, and the drain does not continue to the next slug.
+    * `:load_deps_fn` — `(module -> {:module, module} | {:error, term()})`,
+      default `&Code.ensure_loaded/1`. Called ONCE at the very top of
+      `drain/1`, before the orphan scan, publish preflight, or lock
+      acquisition — force-loads `:jason` into the running VM so it is
+      RESIDENT before any child spawns. Without this, `:jason` loads lazily
+      on the first `Jason.decode` call on a failure/verification path; a
+      concurrent child `make test` recompiling the SHARED `_build` can churn
+      `:jason`'s beam on disk in that lazy-load window, and the parent's
+      decode then raises `UndefinedFunctionError` mid-drain, after paid
+      spawns. A resident module survives on-disk beam churn (probed:
+      loading, then deleting the beam file, then decoding still succeeds) —
+      so this force-load is a complete fix, not a narrowed race window.
+      Load failure -> `drain/1` returns `{:error, reason}` naming the
+      remediation (`mix deps.get && mix compile`), zero spawns.
   """
   @spec drain(drain_opts()) :: {:ok, non_neg_integer()} | {:error, String.t()}
   def drain(opts) do
@@ -414,7 +428,10 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     publish_preflight_fn =
       Keyword.get(opts, :publish_preflight_fn, &default_publish_preflight_fn/1)
 
-    with :ok <- refuse_if_build_orphan(cwd, orphan_scan_fn),
+    load_deps_fn = Keyword.get(opts, :load_deps_fn, &Code.ensure_loaded/1)
+
+    with :ok <- ensure_decode_deps(load_deps_fn),
+         :ok <- refuse_if_build_orphan(cwd, orphan_scan_fn),
          :ok <- publish_preflight_fn.(cwd),
          :ok <- BuildLock.acquire(lock_path, "queue", pid_alive_fn) do
       try do
@@ -524,6 +541,24 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     else
       {:error, reason} ->
         {:error, "queue: #{reason}"}
+    end
+  end
+
+  # Force-loads :jason into the running VM before any child spawn — see the
+  # `:load_deps_fn` moduledoc entry for the full race this closes. A resident
+  # module survives a concurrent child's `_build` recompile churning the beam
+  # on disk; an unloadable dep aborts loud, before a cent is spent.
+  @spec ensure_decode_deps((module() -> {:module, module()} | {:error, term()})) ::
+          :ok | {:error, String.t()}
+  defp ensure_decode_deps(load_deps_fn) do
+    case load_deps_fn.(Jason) do
+      {:module, Jason} ->
+        :ok
+
+      {:error, reason} ->
+        {:error,
+         "drain runtime cannot load :jason (#{inspect(reason)}) — stale _build? run " <>
+           "`mix deps.get && mix compile` in test_harness before draining"}
     end
   end
 

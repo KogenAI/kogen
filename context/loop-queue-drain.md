@@ -220,6 +220,28 @@ a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain co
 `park_failed_tree/2`'s own fail-open contract; the draft is an observation, not a required value.
 `spend_report/3` reports `state.drafted_count` in its end-of-run line.
 
+## Boot-Time Decode-Dep Force-Load — `:load_deps_fn`
+
+`mix codegen.loop.queue` starts no application (`mix.exs` `def application do [] end`) and nothing in
+`lib/` eager-loads a dep — `:jason` loads lazily, on the drain's FIRST `Jason.decode` call. The drain
+shells one child per pitch via `codegen-build`, sharing the SAME `_build` the parent runs in. A child's
+`make test` mid-flight stale-`_build` auto-heal (see `e267faba`) recompiles that shared `_build`, which
+can churn `:jason`'s beam on disk in the parent's lazy-load window. If the parent's first decode call
+lands on a failure/verification path AFTER that churn, `Jason.decode` raises `UndefinedFunctionError` —
+not a `Jason.DecodeError` (the decode call already tolerates malformed JSON via the tuple form and
+filters non-matching lines; the module being UNLOADED is a different failure mode entirely) — and the
+raise is uncaught, taking down the entire drain (`drain/1`) over one child's cost-accounting line.
+
+Fix: `drain/1` force-loads `:jason` via `:load_deps_fn` (default `&Code.ensure_loaded/1`) as the FIRST
+`with` clause — before the orphan scan, publish preflight, or lock acquisition, and before any child
+spawns. A loaded module is RESIDENT in the VM and survives its on-disk beam being replaced by a
+concurrent recompile (probed: load, delete the beam file, decode still succeeds) — so one boot-time load
+immunizes every downstream `Jason.decode` call the drain makes (5 sites: spend accounting, call output,
+gate verdict, gate base-sha, terminal marker — the last three are on the ship-verification path, so an
+unloaded `:jason` doesn't just mis-count cost, it blinds the drain to whether a pitch actually shipped).
+A genuinely unloadable dep (corrupt/partial `_build`) aborts the drain LOUD, `{:error, reason}`, BEFORE
+any spawn — zero spend, remediation named (`mix deps.get && mix compile`). See `ensure_decode_deps/1`.
+
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale _build queue crash
