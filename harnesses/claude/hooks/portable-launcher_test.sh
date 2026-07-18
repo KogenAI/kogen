@@ -207,9 +207,11 @@ roles:
     system_prompt: "stub"
     tools: []
 YAML
-# Also need the harnesses/claude directory for load-role.sh source path
-mkdir -p "$FAKE_OCG/harnesses/claude"
+# Also need the harnesses/claude directory for load-role.sh source path, and
+# harnesses/shared for mode-context.sh (load-role.sh sources it)
+mkdir -p "$FAKE_OCG/harnesses/claude" "$FAKE_OCG/harnesses/shared"
 cp "$CODEGEN_ROOT/harnesses/claude/load-role.sh" "$FAKE_OCG/harnesses/claude/load-role.sh"
+cp "$CODEGEN_ROOT/harnesses/shared/mode-context.sh" "$FAKE_OCG/harnesses/shared/mode-context.sh"
 
 CAPTURE_T5="$BASE_TMP/t5_captured_codegen_dir.txt"
 BIN_T5="$BASE_TMP/t5_bin"

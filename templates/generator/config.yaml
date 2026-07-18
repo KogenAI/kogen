@@ -218,6 +218,10 @@ roles:
       - Write
     system_prompt_file: harnesses/claude/claude-debug-system-prompt.txt
     append_project_context: false
+    context_files:
+      - PROJECT_CONTEXT.md
+      - context/deployment-topology.md
+      - context/launcher-hook-matrix.md
 
   shape:
     model: opus
@@ -238,6 +242,10 @@ roles:
       - Write
     system_prompt_file: harnesses/claude/claude-shape-system-prompt.txt
     append_project_context: true
+    # [] = this mode resolves context dynamically from PROJECT_CONTEXT.md § Always
+    # Load (Tier-0) + pitch-keyword Tier-1 (cap 6) in its launcher. Named
+    # exemption in mode-context-parity_test.sh.
+    context_files: []
 
   experiment:
     model: opus
@@ -257,6 +265,10 @@ roles:
       - Write
     system_prompt_file: harnesses/claude/claude-experiment-system-prompt.txt
     append_project_context: true
+    # [] = this mode resolves context dynamically from PROJECT_CONTEXT.md § Always
+    # Load (Tier-0) + pitch-keyword Tier-1 (cap 6) in its launcher. Named
+    # exemption in mode-context-parity_test.sh.
+    context_files: []
 
   ops:
     model: opus
@@ -281,6 +293,10 @@ roles:
       - Write
     system_prompt_file: harnesses/claude/claude-ops-system-prompt.txt
     append_project_context: false
+    context_files:
+      - PROJECT_CONTEXT.md
+      - context/deployment-topology.md
+      - context/port-allocation.md
 
   babysit:
     model: sonnet
@@ -305,6 +321,11 @@ roles:
       - Write
     system_prompt_file: harnesses/claude/claude-babysit-system-prompt.txt
     append_project_context: false
+    context_files:
+      - PROJECT_CONTEXT.md
+      - context/deployment-topology.md
+      - context/loop-queue-drain.md
+      - context/pitch-lifecycle.md
 
   housekeeper:
     model: haiku

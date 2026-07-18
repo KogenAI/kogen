@@ -63,9 +63,12 @@ else
     SETTINGS_FLAGS=(--settings '{"env":{"CLAUDE_AFK_TIMEOUT_MS":"86400000"}}')
 fi
 
-CONTEXT_FLAGS=(
-    --append-system-prompt "${BABYSIT_STARTUP_MSG}"
-)
+CONTEXT_FLAGS=()
+while IFS= read -r _cf; do
+    [ -n "$_cf" ] || continue
+    CONTEXT_FLAGS+=(--append-system-prompt "$(cat "$CODEGEN_DIR/$_cf")")
+done <<<"$ROLE_CONTEXT_FILES"
+CONTEXT_FLAGS+=(--append-system-prompt "${BABYSIT_STARTUP_MSG}")
 
 exec claude \
     "${SETTINGS_FLAGS[@]+"${SETTINGS_FLAGS[@]}"}" \

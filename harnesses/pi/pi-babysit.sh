@@ -38,6 +38,13 @@ cfg="${CODEGEN_DIR}/templates/generator/config.yaml"
 ROLE_MODEL=$(yq -r ".harness.babysit.pi.model" "$cfg")
 ROLE_EFFORT=$(yq -r ".harness.babysit.pi.effort" "$cfg")
 
+source "$CODEGEN_DIR/harnesses/shared/mode-context.sh"
+resolve_mode_context babysit
+while IFS= read -r _cf; do
+    [ -n "$_cf" ] || continue
+    ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}"$'\n\n'"$(cat "$CODEGEN_DIR/$_cf")"
+done <<<"$ROLE_CONTEXT_FILES"
+
 STUDIO=0
 for _a in "$@"; do
     if [[ "$_a" == "--studio" ]]; then

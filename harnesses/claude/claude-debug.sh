@@ -54,6 +54,13 @@ else
     SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","CLAUDE_AFK_TIMEOUT_MS":"86400000"}}'
 fi
 
+CONTEXT_FLAGS=()
+while IFS= read -r _cf; do
+    [ -n "$_cf" ] || continue
+    CONTEXT_FLAGS+=(--append-system-prompt "$(cat "$CODEGEN_DIR/$_cf")")
+done <<<"$ROLE_CONTEXT_FILES"
+CONTEXT_FLAGS+=(--append-system-prompt "${DEBUG_STARTUP_MSG}")
+
 exec claude \
     --settings "$SETTINGS_JSON" \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
@@ -62,5 +69,5 @@ exec claude \
     --dangerously-skip-permissions \
     "${TOOL_FLAGS[@]+"${TOOL_FLAGS[@]}"}" \
     --system-prompt "$ROLE_SYSTEM_PROMPT" \
-    --append-system-prompt "${DEBUG_STARTUP_MSG}" \
+    "${CONTEXT_FLAGS[@]+"${CONTEXT_FLAGS[@]}"}" \
     "$@"

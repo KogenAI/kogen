@@ -40,6 +40,13 @@ cfg="${CODEGEN_DIR}/templates/generator/config.yaml"
 ROLE_MODEL=$(yq -r ".harness.ops.pi.model" "$cfg")
 ROLE_EFFORT=$(yq -r ".harness.ops.pi.effort" "$cfg")
 
+source "$CODEGEN_DIR/harnesses/shared/mode-context.sh"
+resolve_mode_context ops
+while IFS= read -r _cf; do
+    [ -n "$_cf" ] || continue
+    ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}"$'\n\n'"$(cat "$CODEGEN_DIR/$_cf")"
+done <<<"$ROLE_CONTEXT_FILES"
+
 source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
 
 # Propagate Pi non-interactive flag to shared helper

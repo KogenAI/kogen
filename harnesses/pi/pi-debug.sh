@@ -37,6 +37,13 @@ cfg="${CODEGEN_DIR}/templates/generator/config.yaml"
 ROLE_MODEL=$(yq -r ".harness.debug.pi.model" "$cfg")
 ROLE_EFFORT=$(yq -r ".harness.debug.pi.effort" "$cfg")
 
+source "$CODEGEN_DIR/harnesses/shared/mode-context.sh"
+resolve_mode_context debug
+while IFS= read -r _cf; do
+    [ -n "$_cf" ] || continue
+    ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}"$'\n\n'"$(cat "$CODEGEN_DIR/$_cf")"
+done <<<"$ROLE_CONTEXT_FILES"
+
 DEBUG_CONTEXT="Host: $(hostname 2>/dev/null || echo unknown), Login user: $(id -un 2>/dev/null || echo unknown), Working dir: ${PWD}"
 
 # Append DEBUG_CONTEXT to system prompt (mirrors pi-ops.sh OPS_CONTEXT pattern;

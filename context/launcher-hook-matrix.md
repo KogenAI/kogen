@@ -4,6 +4,8 @@ Orchestrator-level hooks fire when `AGENT_TYPE` is empty (outer session). Three 
 
 `pre-commit-guard.sh` is universal — it fires for all roles (not just orchestrator) — but is included here because it also gates the orchestrator level and carries an `ops` bypass.
 
+Each mode's LOADED CONTEXT SET (what `context/*.md`/`PROJECT_CONTEXT.md` files it appends to its system prompt at launch) is a separate concern from the hook bypass profile below — declared in `config.yaml` `roles.<mode>.context_files`, see `context/harnesses.md` § Mode → Declared Context.
+
 ## Bypass Matrix
 
 | Hook                              | `build` (default)                                                      | `debug` / `shape`                                                              | `ops`                                                                           | `experiment`                                                                                | `babysit`                                                                                                      |

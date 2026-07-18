@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -u
 
+# shellcheck source=harnesses/shared/mode-context.sh
+source "${CODEGEN_DIR:?CODEGEN_DIR not set}/harnesses/shared/mode-context.sh"
+
 # load_role <role> — loads role config from config.yaml into env vars
 # Sets: ROLE_MODEL, ROLE_EFFORT, ROLE_DISALLOWED, ROLE_ALLOWED, ROLE_SYSTEM_PROMPT,
-#       ROLE_OUTPUT_FORMAT, ROLE_APPEND_PROJECT_CONTEXT, ROLE_TEMPLATE
+#       ROLE_OUTPUT_FORMAT, ROLE_APPEND_PROJECT_CONTEXT, ROLE_TEMPLATE,
+#       ROLE_CONTEXT_FILES
 load_role() {
     local role="$1"
     local cfg="${CODEGEN_DIR:?CODEGEN_DIR not set}/templates/generator/config.yaml"
@@ -36,4 +40,6 @@ load_role() {
     else
         ROLE_SYSTEM_PROMPT=$(yq -r ".roles.$role.system_prompt" "$cfg")
     fi
+
+    resolve_mode_context "$role"
 }

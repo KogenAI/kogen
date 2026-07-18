@@ -53,9 +53,12 @@ fi
 
 OPS_STARTUP_MSG=$'## OPS STARTUP CONTEXT\n'"${OPS_CONTEXT}"$'\n\nConfirm before proceeding.'
 
-CONTEXT_FLAGS=(
-    --append-system-prompt "${OPS_STARTUP_MSG}"
-)
+CONTEXT_FLAGS=()
+while IFS= read -r _cf; do
+    [ -n "$_cf" ] || continue
+    CONTEXT_FLAGS+=(--append-system-prompt "$(cat "$CODEGEN_DIR/$_cf")")
+done <<<"$ROLE_CONTEXT_FILES"
+CONTEXT_FLAGS+=(--append-system-prompt "${OPS_STARTUP_MSG}")
 
 exec claude \
     "${SETTINGS_FLAGS[@]+"${SETTINGS_FLAGS[@]}"}" \

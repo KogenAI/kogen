@@ -190,9 +190,19 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 
 **Loop-child exit record**: `dispatch.sh` job-controls the spawn (`set -m`, non-exec, so it can trap+forward SIGTERM to the child's process group — see `build_signal_handler.ex`) and tees the child's stderr to a bounded (~8 KB) temp file from inside the inner wrapper (no longer a bare `exec` — the wrapper now runs the loop, tees stderr, and propagates `$?` explicitly so the tee completes before exit). After `wait`ing (captured via `wait "$child_pid" || exit_code=$?`, never a bare `wait` — under `set -e` a bare `wait` returning non-zero would abort the script before the status is ever used), it writes ONE `{"ev":"exit","status":<n>,"signal":<n-or-null>,"stderr_tail":<text>}` event via `codegen-log exit`, pinned to whichever log `.active` names IF `.active` changed during the spawn (the loop inited its own log this run); otherwise it prints one stderr note and writes nothing — the loop died before ever creating a log for this run, and that absence is itself the diagnostic. Fail-loud-non-blocking: a `codegen-log exit` failure never changes the propagated `exit_code`.
 
-## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT: Orthogonal Concerns in Harness Design (Historical)
+## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT (Historical)
 
-The build path's cutover from a self-orchestrating harness session to the deterministic Elixir orchestration loop is COMPLETE — `dispatch.sh` unconditionally execs `mix codegen.loop`, there is no legacy engine, no resumable/non-interactive build flags, and no build-mode system prompt. This section previously documented the transitional coexistence period; retained only as a note that when refactoring ANY orchestration mechanism in the future, separate EXEC-MECHANICS (how agents run: session persistence, re-attach, launch order) from SYSTEM-PROMPT-CONTENT (what the prompt tells the agent to do) as two distinct layers before deleting either.
+Build path cutover to the Elixir loop is COMPLETE — `dispatch.sh` unconditionally execs `mix codegen.loop`; no legacy engine, no resumable/non-interactive build flags, no build-mode prompt. Future orchestration refactors: separate EXEC-MECHANICS (session persistence, re-attach, launch order) from SYSTEM-PROMPT-CONTENT (what the prompt tells the agent) before deleting either.
+
+## Mode → Declared Context
+
+babysit/ops/debug/shape/experiment each declare loaded context in ONE place: `config.yaml` `roles.<mode>.context_files` (repo-relative paths). babysit: PROJECT_CONTEXT.md, deployment-topology.md, loop-queue-drain.md, pitch-lifecycle.md. ops: PROJECT_CONTEXT.md, deployment-topology.md, port-allocation.md. debug: PROJECT_CONTEXT.md, deployment-topology.md, launcher-hook-matrix.md. shape/experiment: `[]` — named exemption, resolves dynamically (Tier-0 Always-Load + Tier-1 keyword, cap 6) in-launcher.
+
+`mode-context.sh` (`resolve_mode_context <mode>`) is sole reader; resolves paths against `$CODEGEN_DIR` (not cwd), exports `ROLE_CONTEXT_FILES`. `load-role.sh` calls it in `load_role()`; the 3 pi launchers (no `load_role`) call it directly. Missing declared path → hard `exit 1` naming mode+path.
+
+Claude loops `ROLE_CONTEXT_FILES` into `--append-system-prompt` flags + startup string; Pi (no such flag) concatenates onto `ROLE_SYSTEM_PROMPT` before its startup concat.
+
+Guard: `mode-context-parity_test.sh` (auto-discovered via `harness-parity`'s `harnesses/shared/*_test.sh` glob).
 
 ## Pi Extensions
 
@@ -206,31 +216,9 @@ None of the 7 pi launcher sites (`call-dispatch.sh`, `pi-shape.sh` ×2, `pi-debu
 
 The Claude investigative/supervisory launchers (`claude-shape`, `claude-ops`, `claude-debug`, `claude-babysit`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array. **Important distinction**: investigative launchers deliberately restrict `--setting-sources` to `project` (no user-scope agents/hooks) because they export `CLAUDE_ROLE` and gate the Agent tool to project subagents only. Build dispatch (`codegen-build --non-interactive`) uses `user,project,local` to load the full agent set + user-level gating hooks.
 
-**`CLAUDE_NONINTERACTIVE` branch signal**: The same condition `[[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]` that gates `NON_INTERACTIVE_FLAGS` array building also gates interactive-vs-headless `--settings` JSON/array construction in shape/debug/experiment/ops launchers. When the condition is true (headless), `SETTINGS_JSON` or `SETTINGS_FLAGS` use the unchanged object (no AFK-timeout key); when false (interactive, env empty or unset), the object adds `CLAUDE_AFK_TIMEOUT_MS`. This co-location ensures the two branches stay synchronized and prevents accidental 24h hangs on headless builds.
+**`CLAUDE_NONINTERACTIVE` branch signal**: same condition `[[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]` also gates interactive-vs-headless `--settings` construction in shape/debug/experiment/ops launchers — headless omits `CLAUDE_AFK_TIMEOUT_MS`, interactive adds it. Co-located to stay synced and prevent accidental 24h hangs on headless builds.
 
-Investigative launcher flags (`project` scope):
-
-```
---print
---verbose
---output-format stream-json
---setting-sources project
---strict-mcp-config
---no-session-persistence
---disable-slash-commands
-```
-
-Build dispatch flags (`user,project,local` scope):
-
-```
---print
---verbose
---output-format stream-json
---setting-sources user,project,local
---strict-mcp-config
---no-session-persistence
---disable-slash-commands
-```
+Shared flags: `--print --verbose --output-format stream-json --strict-mcp-config --no-session-persistence --disable-slash-commands`. Only `--setting-sources` differs: investigative launchers use `project`; build dispatch uses `user,project,local`.
 
 These flags are spliced as the **first positional** after `exec claude` (before `--model`). The env var name `CLAUDE_NONINTERACTIVE` intentionally diverges from `PI_NON_INTERACTIVE` (Pi) — these are investigative-mode (debug/ops) toggles, unrelated to the build path (which has no non-interactive flag at all).
 
@@ -333,4 +321,4 @@ The goal is truthful hooks that accurately reflect capability limits, not featur
 
 ## Trigger Keywords
 
-claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, claude-babysit, pi-babysit, babysit mode, drain supervisor, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence, runtime porting, reduced fidelity, transcript access, event blocking asymmetry
+claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, claude-babysit, pi-babysit, babysit mode, drain supervisor, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence, runtime porting, reduced fidelity, transcript access, event blocking asymmetry, context_files, mode-context, ROLE_CONTEXT_FILES, resolve_mode_context, mode declared context
