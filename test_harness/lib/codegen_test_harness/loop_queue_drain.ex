@@ -70,6 +70,27 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   a FAILED bucket (parallel to the SKIPPED unmet-dep bucket) naming every
   skipped slug.
 
+  A pitch that fails DETERMINISTICALLY (never a transient/outage/timeout —
+  see `record_build_failure/2`, called from the same three arms that call
+  `park_failed_tree/2`) durably increments a `build_failures:` frontmatter
+  counter on the pitch file itself — this survives a `--watch` restart
+  (the file persists on disk) unlike `:failed_slugs`, which resets to an
+  empty set every fresh `drain/1` call. On the failure that brings the
+  counter to `:max_pitch_fails` (default 2, env
+  `CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS`), the pitch is DEMOTED rather than
+  left in `ready_dir`: moved to `draft/<slug>.md` with `status: SHAPING`,
+  `demoted_from: ready`, `demote_reason: deterministic-build-failure-x<N>`,
+  and an appended `## Build failure history` row — the exact template a
+  human wrote by hand for
+  `codegen/pitches/shipped/the-guard-parses-quotes-worse-than-the-shell-it-guards.md`.
+  The demotion message names every pitch this strands as an unmet-dep skip
+  (`LoopQueue.dependents_of/2`) so the cascade is never silent. A demotion
+  is layered ON TOP of the existing `:failed_slugs`/`:consecutive_fails`
+  accounting, changing neither — the breaker remains a pure box-health
+  backstop. A demote I/O failure is fail-open (loud stderr, pitch stays in
+  `ready_dir` — today's behavior, no regression); see
+  `context/loop-queue-drain.md` § Auto-Demotion for the full contract.
+
   A THIRD, distinct child outcome exists alongside "shipped" and
   "deterministic failure": an INFRA ABORT (`mix codegen.loop` exiting with
   its dedicated code for `CodegenTestHarness.InfraAbort` — a fault no
@@ -132,6 +153,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @default_max_retries 3
   @default_retry_delays [30, 120, 300]
   @default_max_consecutive_fails 3
+  @default_max_pitch_fails 2
   # Ceiling on total outage-pause duration (secs) before the drain gives up
   # and HALTs with a distinct "provider outage" reason — see
   # `run_outage_pause/6` and `outage_pause_from_env/0`.
@@ -432,6 +454,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           pitch_budget_secs: Keyword.get(opts, :pitch_budget_secs, pitch_budget_from_env()),
           max_consecutive_fails:
             Keyword.get(opts, :max_consecutive_fails, max_consecutive_fails_from_env()),
+          max_pitch_fails: Keyword.get(opts, :max_pitch_fails, max_pitch_fails_from_env()),
           queue_budget_usd: Keyword.get(opts, :queue_budget_usd, queue_budget_from_env()),
           spend_usd: 0.0,
           spawn_fn: Keyword.get(opts, :spawn_fn, &default_spawn_fn/5),
@@ -1180,6 +1203,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
         parked_branch = park_failed_tree(state, slug)
         state = draft_failure(state, slug, jsonl, gate_verdict)
+        record_build_failure(state, slug)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
         parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
@@ -1295,6 +1319,70 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         IO.puts(:stderr, "queue: draft skipped for #{slug} — #{inspect(reason)}")
         state
     end
+  end
+
+  # Resolves the pitch's CURRENT physical path — ready_dir first (the
+  # normal shape: `restore_claim/2` already put it back before the child
+  # exited), then building_dir (a crashed child that never restored its
+  # claim — see moduledoc "A crashed build strands its slug in
+  # `building_dir` indefinitely"). Mirrors `LoopQueue.write_frontmatter!/4`'s
+  # own ready-then-building probe (a demotion never targets shipped_dir —
+  # a pitch that reached shipped/ was never a failure).
+  @spec resolve_pitch_path(map(), String.t()) :: String.t()
+  defp resolve_pitch_path(state, slug) do
+    ready_path = Path.join(state.ready_dir, "#{slug}.md")
+    building_path = Path.join(state.building_dir, "#{slug}.md")
+    if File.exists?(ready_path), do: ready_path, else: building_path
+  end
+
+  @spec draft_dir(map()) :: String.t()
+  defp draft_dir(state), do: Path.join([state.cwd, "codegen", "pitches", "draft"])
+
+  # Increments (or demotes) the durable per-pitch `build_failures:`
+  # frontmatter counter. Called ONLY from the three DETERMINISTIC failure
+  # arms (never transient/outage/timeout) — see moduledoc "A pitch that
+  # fails DETERMINISTICALLY". Fail-open on any I/O error: a demote/count
+  # failure must never abort the drain, only warn loud and leave the pitch
+  # where it already is (today's behavior, no regression).
+  @spec record_build_failure(map(), String.t()) :: :ok
+  defp record_build_failure(state, slug) do
+    pitch_path = resolve_pitch_path(state, slug)
+    count = LoopQueue.parse_build_failures(slug, pitch_path) + 1
+
+    if count >= state.max_pitch_fails do
+      demote_pitch(state, slug, pitch_path, count)
+    else
+      LoopQueue.write_build_failures!(pitch_path, count)
+      :ok
+    end
+  rescue
+    e ->
+      IO.puts(:stderr, "queue: build-failure counter update skipped for #{slug} — #{inspect(e)}")
+      :ok
+  end
+
+  @spec demote_pitch(map(), String.t(), String.t(), non_neg_integer()) :: :ok
+  defp demote_pitch(state, slug, pitch_path, count) do
+    draft_path = Path.join(draft_dir(state), "#{slug}.md")
+    when_str = state.now_fn.() |> to_string()
+
+    history_row =
+      "| queue drain | #{when_str} | n/a | deterministic failure ##{count} — see build log above |"
+
+    LoopQueue.write_demotion!(pitch_path, draft_path, count, history_row, "Build failure history")
+
+    dependents = LoopQueue.dependents_of(state.ready_dir, slug)
+
+    cascade_note =
+      if dependents == [], do: "", else: " (blocked: #{Enum.join(dependents, ", ")})"
+
+    IO.puts(
+      :stderr,
+      "queue: DEMOTED #{slug} after #{count} deterministic failures -> draft/#{slug}.md" <>
+        cascade_note
+    )
+
+    :ok
   end
 
   @spec put_parked_branch(%{String.t() => String.t()}, String.t(), String.t() | nil) ::
@@ -1524,6 +1612,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         )
 
         parked_branch = park_failed_tree(state, slug)
+        record_build_failure(state, slug)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
         parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
@@ -1579,6 +1668,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
         parked_branch = park_failed_tree(state, slug)
         state = draft_failure(state, slug, jsonl, gate_verdict)
+        record_build_failure(state, slug)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
         parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
@@ -1910,6 +2000,15 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     case System.get_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") do
       nil -> @default_max_consecutive_fails
       str -> parse_pos_int(str, @default_max_consecutive_fails)
+    end
+  end
+
+  @doc "Resolves `CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS`, default #{@default_max_pitch_fails}."
+  @spec max_pitch_fails_from_env() :: pos_integer()
+  def max_pitch_fails_from_env do
+    case System.get_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS") do
+      nil -> @default_max_pitch_fails
+      str -> parse_pos_int(str, @default_max_pitch_fails)
     end
   end
 

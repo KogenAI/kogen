@@ -111,6 +111,49 @@ arm and the general catch-all deterministic arm) — an outage pause (§ Outage 
 placed BEFORE both, so neither site is ever reached on a provider-classified transient failure; the
 breaker counts deterministic failures only.
 
+## Auto-Demotion After Repeated Deterministic Failure
+
+A pitch that fails DETERMINISTICALLY twice — never a transient/outage/timeout, which never reach this
+path — is demoted from `ready/` back to `draft/`, so a guaranteed-failing pitch stops re-burning money on
+every drain restart. `record_build_failure/2` is called from the SAME three arms that call
+`park_failed_tree/2` (the false-exit-0 catch-all in `handle_exit_zero/8`, the terminal-marker arm in
+`handle_nonzero_exit/8`, and its general `true ->` catch-all) — never from the outage-pause or
+retry-eligible arms above them in the same `cond`.
+
+**Durable counter, not `:failed_slugs`.** The count is a `build_failures:` YAML frontmatter field written
+directly onto the pitch file — durable across a `--watch` restart (the file persists on disk), unlike
+`:failed_slugs` (an in-memory `MapSet` that resets to empty on every fresh `drain/1` call). This is the
+gap a deterministically-failing pitch exploited: a watcher restart rebuilt it fresh, at full price, every
+time.
+
+**Threshold = 2, env `CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS`.** On the failure that brings the counter to
+`:max_pitch_fails` (default 2), `LoopQueue.write_demotion!/5` moves the pitch to `draft/<slug>.md` with
+`status: SHAPING`, `demoted_from: ready`, `demote_reason: deterministic-build-failure-x<N>`, and an
+appended `## Build failure history` table row — byte-for-byte the hand-written template a human authored
+for `the-guard-parses-quotes-worse-than-the-shell-it-guards` before this feature existed. Below the
+threshold, only the counter increments (`LoopQueue.write_build_failures!/2`); the pitch stays in `ready/`.
+
+**Path resolution mirrors `write_frontmatter!/4`.** `resolve_pitch_path/2` probes `ready_dir` first (the
+normal shape — a failed cycle already restored its claim via `restore_claim/2`), then `building_dir` (a
+crashed child that never restored its claim, stranding the slug there — see § Ship Verification). A
+demotion never targets `shipped_dir` — a pitch that reached `shipped/` was never a failure.
+
+**Cascade is named, not silent.** `LoopQueue.dependents_of/2` scans `ready_dir` for every pitch whose
+`blocks_on:` edges name the just-demoted slug, and the demotion stderr line lists them
+(`queue: DEMOTED <slug> after 2 deterministic failures -> draft/<slug>.md (blocked: <dependents>)`) — the
+existing `blocked_by_unmet_dep`/SKIPPED-bucket machinery already strands them as unmet-dep skips with no
+code change; this only names the cascade so the operator sees it.
+
+**Fail-open on I/O error.** `record_build_failure/2` rescues any read/write/rename failure (e.g. the pitch
+file already moved out of both `ready_dir` and `building_dir` by a stubbed/pathological spawn) — a demote
+failure prints a loud stderr line and leaves the pitch wherever it already is; it never aborts the drain.
+This mirrors `park_failed_tree/2`'s and `draft_failure/4`'s existing fail-open posture for the same class
+of observation/bookkeeping side effect.
+
+**Layered on top of, not instead of, the circuit breaker.** A demotion changes neither `:failed_slugs` nor
+`:consecutive_fails` — the breaker (§ Circuit Breaker) remains a pure box-health backstop; a systemically
+broken environment still HALTs the whole drain even when every individual pitch is auto-demoting cleanly.
+
 ## Publish — a Watched Node Publishes Its Own Commits
 
 The drain publishes every commit it lands (`publish_or_halt/4`, called at ALL THREE commit-landed ship
@@ -179,4 +222,4 @@ a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain co
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft

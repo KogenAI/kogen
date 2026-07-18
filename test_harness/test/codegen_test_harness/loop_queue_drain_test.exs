@@ -1338,6 +1338,261 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert File.read!(shaped_path) == shaped_body
   end
 
+  # ── Auto-demotion after repeated deterministic failure ──────────────────
+
+  describe "auto-demotion after repeated deterministic failure" do
+    test "first deterministic failure increments build_failures, pitch stays in ready/", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                 )
+      end)
+
+      ready_path = Path.join(ctx.ready_dir, "solo.md")
+      assert File.exists?(ready_path)
+      assert File.read!(ready_path) =~ "build_failures: 1"
+    end
+
+    test "second deterministic failure demotes to draft/ with full history", ctx do
+      write_pitch(
+        ctx.ready_dir,
+        "solo",
+        "---\nbuild_failures: 1\nblocks_on: []\n---\n\n# Pitch: solo\n"
+      )
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+
+      output =
+        capture_io(:stderr, fn ->
+          assert {:ok, 0} =
+                   LoopQueueDrain.drain(
+                     base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                   )
+        end)
+
+      ready_path = Path.join(ctx.ready_dir, "solo.md")
+      draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
+
+      refute File.exists?(ready_path)
+      assert File.exists?(draft_path)
+
+      body = File.read!(draft_path)
+      assert body =~ "build_failures: 2"
+      assert body =~ "demoted_from: ready"
+      assert body =~ "demote_reason: deterministic-build-failure-x2"
+      assert body =~ "status: SHAPING"
+      assert body =~ "## Build failure history"
+
+      assert output =~ "queue: DEMOTED solo after 2 deterministic failures"
+    end
+
+    test "transient failure does not increment build_failures", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      # Sustained transient outage (probe never recovers) HALTs quickly under
+      # a small outage_pause_secs — the point here is only that the HALT
+      # path never increments build_failures, not the eventual outcome.
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> true end
+      probe_fn = fn _state -> :down end
+
+      capture_io(:stderr, fn ->
+        assert {:error, reason} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     probe_fn: probe_fn,
+                     outage_pause_secs: 1
+                   )
+                 )
+
+        assert reason =~ "provider outage"
+      end)
+
+      ready_path = Path.join(ctx.ready_dir, "solo.md")
+      assert File.exists?(ready_path)
+      refute File.read!(ready_path) =~ "build_failures:"
+    end
+
+    test "false-exit-0 arm increments build_failures", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     git_head_fn: fn _cwd -> nil end
+                   )
+                 )
+      end)
+
+      ready_path = Path.join(ctx.ready_dir, "solo.md")
+      assert File.exists?(ready_path)
+      assert File.read!(ready_path) =~ "build_failures: 1"
+    end
+
+    test "terminal-marker arm increments build_failures", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> true end
+
+      terminal_marker_fn = fn _cwd ->
+        {:terminal, "gate verdict=failed", "developer-phoenix-backend"}
+      end
+
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     terminal_marker_fn: terminal_marker_fn
+                   )
+                 )
+      end)
+
+      ready_path = Path.join(ctx.ready_dir, "solo.md")
+      assert File.exists?(ready_path)
+      assert File.read!(ready_path) =~ "build_failures: 1"
+    end
+
+    test "a pitch stranded in building/ only (crashed child, never restored to ready/) resolves via resolve_pitch_path's ready-then-building probe",
+         ctx do
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+
+      # NOT written to ready_dir — simulates a crashed child that never ran
+      # restore_claim/2, leaving the slug stranded in building_dir only (see
+      # moduledoc "A crashed build strands its slug in `building_dir`
+      # indefinitely"). The drain never spawns this slug (it isn't in
+      # ready_dir to be selected) — this exercises resolve_pitch_path/2 and
+      # write_demotion!/5 DIRECTLY against the building/-only shape via the
+      # module's own public LoopQueue helpers, since the drain itself has no
+      # way to re-select an already-claimed slug.
+      building_path = Path.join(building_dir, "solo.md")
+
+      File.write!(
+        building_path,
+        "---\nbuild_failures: 1\nblocks_on: []\n---\n\n# Pitch: solo\n"
+      )
+
+      draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
+
+      CodegenTestHarness.LoopQueue.write_demotion!(
+        building_path,
+        draft_path,
+        2,
+        "| queue drain | 123 | n/a | deterministic failure #2 |",
+        "Build failure history"
+      )
+
+      refute File.exists?(building_path)
+      assert File.exists?(draft_path)
+      assert File.read!(draft_path) =~ "build_failures: 2"
+    end
+
+    test "demotion names stranded dependents in the cascade message", ctx do
+      write_pitch(
+        ctx.ready_dir,
+        "a",
+        "---\nbuild_failures: 1\nblocks_on: []\n---\n\n# Pitch: a\n"
+      )
+
+      write_pitch(ctx.ready_dir, "b", "---\nblocks_on: [a]\n---\n\n# Pitch: b\n")
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        if slug == "a", do: {:exit_code, 1}, else: {:exit_code, 0}
+      end
+
+      transient_fn = fn _jsonl -> false end
+
+      output =
+        capture_io(:stderr, fn ->
+          LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        end)
+
+      assert output =~ "queue: DEMOTED a after 2 deterministic failures"
+      assert output =~ "blocked: b"
+    end
+
+    test "env override raises the threshold (custom :max_pitch_fails)", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     max_pitch_fails: 5
+                   )
+                 )
+      end)
+
+      ready_path = Path.join(ctx.ready_dir, "solo.md")
+      assert File.exists?(ready_path)
+      assert File.read!(ready_path) =~ "build_failures: 1"
+    end
+
+    test "demoted pitch's frontmatter still parses via LoopQueue.parse_edges/2", ctx do
+      # "some-dep" must already be SATISFIED (present in shipped_dir) —
+      # reblock_for_exclude/3 always recomputes blocked_by_unmet_dep for
+      # real (its `map_size(exclude) == 0` guard never actually matches a
+      # MapSet, a pre-existing quirk unrelated to this pitch), so an
+      # edge to a genuinely-unmet dep would land "solo" in the SKIPPED
+      # (unmet dep) bucket instead of ever being spawned/failed/demoted.
+      write_pitch(ctx.shipped_dir, "some-dep")
+
+      write_pitch(
+        ctx.ready_dir,
+        "solo",
+        "---\nbuild_failures: 1\nblocks_on: [some-dep]\n---\n\n# Pitch: solo\n"
+      )
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+      end)
+
+      draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
+      assert CodegenTestHarness.LoopQueue.parse_edges("solo", draft_path) == [{"solo", "some-dep"}]
+    end
+
+    test "no-trailing-newline pitch body demotes without corrupting the history section", ctx do
+      body = "---\nbuild_failures: 1\nblocks_on: []\n---\n\n# Pitch: solo (no trailing newline)"
+      write_pitch(ctx.ready_dir, "solo", body)
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+      end)
+
+      draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
+      draft_body = File.read!(draft_path)
+
+      assert draft_body =~ "# Pitch: solo (no trailing newline)\n\n## Build failure history"
+    end
+  end
+
   # ── 6r. Committer-post-commit-hiccup recovery ───────────────────────────
 
   test "6r1: committed + gate-clear + already-in-shipped counts shipped, no re-ship", ctx do
@@ -3348,6 +3603,31 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
       System.put_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS", "x")
       on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS") end)
       assert LoopQueueDrain.max_consecutive_fails_from_env() == 3
+    end
+  end
+
+  describe "max_pitch_fails_from_env/0" do
+    test "unset -> 2" do
+      System.delete_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS")
+      assert LoopQueueDrain.max_pitch_fails_from_env() == 2
+    end
+
+    test "\"3\" -> 3" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS", "3")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS") end)
+      assert LoopQueueDrain.max_pitch_fails_from_env() == 3
+    end
+
+    test "\"0\" -> 2 (sentinel)" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS", "0")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS") end)
+      assert LoopQueueDrain.max_pitch_fails_from_env() == 2
+    end
+
+    test "\"x\" (non-numeric) -> 2" do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS", "x")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS") end)
+      assert LoopQueueDrain.max_pitch_fails_from_env() == 2
     end
   end
 

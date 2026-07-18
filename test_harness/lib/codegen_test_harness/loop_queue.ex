@@ -707,6 +707,31 @@ defmodule CodegenTestHarness.LoopQueue do
   end
 
   @doc """
+  Returns every `.md` slug under `ready_dir` whose `blocks_on:` edges name
+  `dep_slug` (i.e. every pitch that would be stranded as an unmet-dep skip
+  if `dep_slug` were removed from `ready_dir` right now). Used by
+  `LoopQueueDrain`'s auto-demotion path to name the cascade a demotion just
+  caused, alongside the count already reported by `blocked_by_unmet_dep/3`.
+
+  Sorted for deterministic output. `[]` when `dep_slug` has no dependents
+  in `ready_dir`, or `ready_dir` does not exist.
+  """
+  @spec dependents_of(String.t(), slug()) :: [slug()]
+  def dependents_of(ready_dir, dep_slug) do
+    ready_dir
+    |> Path.join("*.md")
+    |> Path.wildcard()
+    |> Enum.map(&Path.basename(&1, ".md"))
+    |> Enum.reject(&(&1 == dep_slug))
+    |> Enum.filter(fn slug ->
+      slug
+      |> parse_edges(Path.join(ready_dir, "#{slug}.md"))
+      |> Enum.any?(fn {_slug, dep} -> dep == dep_slug end)
+    end)
+    |> Enum.sort()
+  end
+
+  @doc """
   Kahn's-algorithm topological sort of `slugs` given `edges` (`{slug, dep}`
   pairs meaning `slug` is blocked by `dep`; `dep` must be emitted first).
 
@@ -913,6 +938,162 @@ defmodule CodegenTestHarness.LoopQueue do
         ["---", rest] = String.split(content, "\n", parts: 2)
         [^block, after_block] = String.split(rest, "\n---", parts: 2)
         "---\n#{new_block}\n---" <> after_block
+    end
+  end
+
+  @doc """
+  Reads the `build_failures:` frontmatter counter from the pitch file at
+  `pitch_path`, returning 0 when the key, the frontmatter block, or the
+  file itself is absent — or when the value is not a bare non-negative
+  integer. This is the documented "no failures recorded yet" sentinel, not
+  an error: a pitch's very first deterministic failure legitimately has no
+  prior counter to read.
+  """
+  @spec parse_build_failures(slug(), String.t()) :: non_neg_integer()
+  def parse_build_failures(_slug, pitch_path) do
+    if File.exists?(pitch_path) do
+      content = File.read!(pitch_path)
+
+      case frontmatter_block(content) do
+        nil ->
+          0
+
+        block ->
+          case extract_frontmatter_key(block, "build_failures:") do
+            "" ->
+              0
+
+            raw ->
+              case Integer.parse(String.trim(raw)) do
+                {n, ""} when n >= 0 -> n
+                _ -> 0
+              end
+          end
+      end
+    else
+      0
+    end
+  end
+
+  @doc """
+  Upserts `build_failures: <count>` into `pitch_path`'s frontmatter block
+  (minting one if absent, via the same reconstruction grammar
+  `upsert_ship_frontmatter/3` uses) — the increment-only write, used when a
+  deterministic failure has NOT yet reached the demotion threshold.
+
+  Raises on a read failure (mirrors `write_frontmatter!/4` — the pitch file
+  disappearing between the caller's existence check and this write is a
+  genuine anomaly, not a documented sentinel).
+  """
+  @spec write_build_failures!(String.t(), non_neg_integer()) :: :ok
+  def write_build_failures!(pitch_path, count) do
+    case File.read(pitch_path) do
+      {:ok, content} ->
+        updated = upsert_frontmatter_lines(content, ["build_failures: #{count}"])
+        File.write!(pitch_path, updated)
+        :ok
+
+      {:error, reason} ->
+        raise "LoopQueue.write_build_failures!: failed to read #{pitch_path}: #{inspect(reason)}"
+    end
+  end
+
+  @doc """
+  Demotes the pitch at `pitch_path` (currently `ready/<slug>.md` or a
+  `building/<slug>.md` stranded-by-crash shape) to `draft_path` —
+  `ready/`/`building/ -> draft/`, the mirror image of `record_ship/4`'s
+  `ready|building -> shipped` direction, for the FAILURE side of the
+  lifecycle. Byte-for-byte the hand-written template in
+  `codegen/pitches/shipped/the-guard-parses-quotes-worse-than-the-shell-it-guards.md`
+  (frontmatter: `build_failures:`, `demoted_from: ready`, `demote_reason:
+  deterministic-build-failure-x<N>`, `status: SHAPING`; body: an appended
+  `## Build failure history` section, one row per demoting run).
+
+  `history_row` is a single already-formatted markdown table row (`| ... |
+  ... |`) for THIS run — the caller assembles it (run label, cost, terminal
+  reason) since only the caller knows those. A pitch demoted more than once
+  in its lifetime (re-queued after reshaping, fails again) accumulates one
+  row per demotion; this function never truncates or replaces prior rows.
+
+  Raises on a read failure (mirrors `write_frontmatter!/4`) or on a
+  `File.rename!/2` failure (mirrors `record_ship/4`'s `ship/6`
+  counterpart) — a demotion that can't actually move the file must not be
+  reported as having happened.
+  """
+  @spec write_demotion!(String.t(), String.t(), non_neg_integer(), String.t(), String.t()) :: :ok
+  def write_demotion!(pitch_path, draft_path, count, history_row, header) do
+    case File.read(pitch_path) do
+      {:ok, content} ->
+        updated =
+          content
+          |> upsert_frontmatter_lines([
+            "build_failures: #{count}",
+            "demoted_from: ready",
+            "demote_reason: deterministic-build-failure-x#{count}",
+            "status: SHAPING"
+          ])
+          |> append_history_row(header, history_row)
+
+        File.write!(pitch_path, updated)
+        File.mkdir_p!(Path.dirname(draft_path))
+        File.rename!(pitch_path, draft_path)
+        :ok
+
+      {:error, reason} ->
+        raise "LoopQueue.write_demotion!: failed to read #{pitch_path}: #{inspect(reason)}"
+    end
+  end
+
+  # Shared frontmatter upsert grammar — reused by write_build_failures!/2 and
+  # write_demotion!/5 so the increment-only write and the full-demotion write
+  # can never disagree on how `key: value` lines are inserted or replaced.
+  # `new_lines` entries are `"key: value"` strings; a line already present
+  # (matched by its `key:` prefix) is replaced in place, else appended.
+  @spec upsert_frontmatter_lines(String.t(), [String.t()]) :: String.t()
+  defp upsert_frontmatter_lines(content, new_lines) do
+    keys = Enum.map(new_lines, &(&1 |> String.split(":", parts: 2) |> hd() |> Kernel.<>(":")))
+
+    case frontmatter_block(content) do
+      nil ->
+        block = Enum.join(new_lines, "\n")
+        "---\n#{block}\n---\n#{content}"
+
+      block ->
+        new_block =
+          block
+          |> String.split("\n")
+          |> Enum.reject(fn line ->
+            trimmed = String.trim(line)
+            Enum.any?(keys, &String.starts_with?(trimmed, &1))
+          end)
+          |> Kernel.++(new_lines)
+          |> Enum.join("\n")
+
+        # Reconstruct via the SAME split grammar frontmatter_block/1 uses —
+        # see upsert_ship_frontmatter/3's identical comment.
+        ["---", rest] = String.split(content, "\n", parts: 2)
+        [^block, after_block] = String.split(rest, "\n---", parts: 2)
+        "---\n#{new_block}\n---" <> after_block
+    end
+  end
+
+  # Appends a `## <header>` section (minting the header the first time, else
+  # appending one more table row under the EXISTING header) to the pitch
+  # BODY (after the frontmatter block). Normalizes a missing trailing
+  # newline before appending so the new section never runs onto the same
+  # line as the file's last byte.
+  @spec append_history_row(String.t(), String.t(), String.t()) :: String.t()
+  defp append_history_row(content, header, row) do
+    normalized = String.trim_trailing(content) <> "\n"
+
+    if String.contains?(normalized, "## #{header}") do
+      normalized <> row <> "\n"
+    else
+      normalized <>
+        "\n## #{header}\n\n" <>
+        "| run | when | cost | terminal reason |\n" <>
+        "|---|---|---|---|\n" <>
+        row <> "\n"
     end
   end
 end
