@@ -15,7 +15,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, debugLog } from "../lib/hook-helpers";
+import { deny, debugLog, isCodegenLogWrite } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "session-log-writer-only",
@@ -54,8 +54,13 @@ export function register(pi: ExtensionAPI): void {
         (event.input as { command?: string }).command ?? "";
       debugLog("session-log-writer-only", `cmd=${command}`);
 
-      // Allow any command that invokes codegen-log — the sole legitimate writer.
-      if (/(^|[\s/])codegen-log\b/.test(command)) return;
+      // Allow any command that invokes codegen-log — the sole legitimate
+      // writer. isCodegenLogWrite() is INVOCATION-anchored, not
+      // spelling-anchored: it strips heredoc bodies first, then requires
+      // every shell-chain segment to resolve to codegen-log (or a safe
+      // stdin producer feeding it) — a command that merely SPELLS
+      // codegen-log while running something else is correctly NOT exempt.
+      if (isCodegenLogWrite(command)) return;
 
       // Deny raw writes into codegen/logging/*.jsonl that don't go through codegen-log.
       if (

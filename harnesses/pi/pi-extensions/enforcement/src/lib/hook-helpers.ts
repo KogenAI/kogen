@@ -155,14 +155,197 @@ export function repoRelative(filePath: string): string {
 }
 
 /**
- * isCodegenLogWrite() — True when the bash command invokes the codegen-log
- * CLI (the SOLE legitimate session-log writer). A codegen-log heredoc body
- * can legitimately contain any gated phrase; command-scanning guards must
- * treat such a call as a log WRITE, never the gated action it narrates.
- * Mirrors session-log-writer-only.ts.
+ * stripHeredocBodies() — Returns `command` with BOTH the BODY and the
+ * closing delimiter LINE of every `<<DELIM` / `<<'DELIM'` / `<<"DELIM"` /
+ * `<<-DELIM` heredoc removed — only the `<<...DELIM` OPENER line is kept.
+ * Dropping the terminator line too (not just the body) keeps the opener as
+ * ONE clean shell-chain segment for splitCommandSegments() — a bare
+ * `EOF`/terminator line left behind would otherwise parse as its OWN
+ * newline-separated segment and fail command-word resolution for a
+ * perfectly legitimate heredoc invocation. Fail-closed subject transform,
+ * same contract as stripQuoted(): a codegen-log heredoc BODY is arbitrary
+ * role-authored prose that may legitimately contain any gated phrase — that
+ * prose must never feed a command-scanning guard's verb match. Imperfect
+ * stripping (an unterminated heredoc, an unrecognized delimiter form) can
+ * only RETAIN a false positive, never introduce a false negative. Mirrors
+ * strip_heredoc_bodies in hooks-lib.sh.
+ */
+export function stripHeredocBodies(command: string): string {
+  const lines = command.split("\n");
+  const out: string[] = [];
+  let delim: string | null = null;
+  let tabSuppressed = false;
+  let inBody = false;
+
+  const openerRe =
+    /<<(-)?(?:'([A-Za-z_][A-Za-z0-9_]*)'|"([A-Za-z_][A-Za-z0-9_]*)"|([A-Za-z_][A-Za-z0-9_]*))/;
+
+  for (const line of lines) {
+    if (inBody) {
+      const strippedLine = tabSuppressed ? line.replace(/^\t+/, "") : line;
+      if (strippedLine === delim) {
+        inBody = false;
+      }
+      continue;
+    }
+    out.push(line);
+    const m = openerRe.exec(line);
+    if (m) {
+      delim = m[2] ?? m[3] ?? m[4] ?? null;
+      tabSuppressed = Boolean(m[1]);
+      if (delim) {
+        inBody = true;
+      }
+    }
+  }
+
+  return out.join("\n");
+}
+
+/**
+ * splitCommandGroups() — Splits `command` into HARD-BOUNDARY groups,
+ * splitting ONLY on UNQUOTED &&, ||, ;, & and newline — deliberately NOT on
+ * `|` (pipe), which splitCommandSegments() also splits on. A "group" is
+ * therefore a full pipe-chain (`producer | consumer`), kept intact as one
+ * array element. This is the containment primitive for isCodegenLogWrite()'s
+ * invocation check below: a real invocation is exactly one pipe-chain whose
+ * LAST stage is codegen-log; &&/;/& chaining a genuine codegen-log call to
+ * something else is a DIFFERENT, separately-executed command and must never
+ * be folded into the same exemption. Returns `null` on an unbalanced quote,
+ * same contract as splitCommandSegments(). Mirrors split_command_groups in
+ * hooks-lib.sh.
+ */
+export function splitCommandGroups(command: string): string[] | null {
+  const groups: string[] = [];
+  let seg = "";
+  let inSingle = false;
+  let inDouble = false;
+  let i = 0;
+  const len = command.length;
+
+  while (i < len) {
+    const ch = command[i];
+    if (inSingle) {
+      seg += ch;
+      if (ch === "'") inSingle = false;
+      i += 1;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === "\\") {
+        seg += command.slice(i, i + 2);
+        i += 2;
+        continue;
+      }
+      seg += ch;
+      if (ch === '"') inDouble = false;
+      i += 1;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      seg += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      seg += ch;
+      i += 1;
+      continue;
+    }
+    const next2 = command.slice(i, i + 2);
+    if (next2 === "&&" || next2 === "||") {
+      groups.push(seg);
+      seg = "";
+      i += 2;
+      continue;
+    }
+    if (ch === ";" || ch === "&" || ch === "\n") {
+      groups.push(seg);
+      seg = "";
+      i += 1;
+      continue;
+    }
+    seg += ch;
+    i += 1;
+  }
+
+  if (inSingle || inDouble) {
+    return null;
+  }
+
+  groups.push(seg);
+  return groups;
+}
+
+/**
+ * isCodegenLogWrite() — True when the bash command actually INVOKES the
+ * codegen-log CLI, never merely SPELLS the token somewhere inside it (a
+ * heredoc/quoted body, or a chained command that mentions it in passing).
+ * This is the SOLE legitimate session-log writer, and a codegen-log
+ * heredoc/piped body can legitimately contain any gated phrase —
+ * command-scanning guards must treat a real invocation as a log WRITE,
+ * never the gated action its body narrates. Strips heredoc bodies first
+ * (their content is DATA, not further commands) via stripHeredocBodies(),
+ * then requires the ENTIRE command to be exactly ONE hard-boundary group
+ * (splitCommandGroups — splits on &&/||/;/& but NOT |, so a real pipe-chain
+ * stays one group): a command chained via &&/;/& to anything else (even a
+ * real codegen-log call) is NEVER exempt, because that chain genuinely runs
+ * a second, separate command. Within that single group, splits on `|`
+ * (splitCommandSegments) and requires the LAST pipe stage to resolve
+ * (commandWordOfSegment) to `codegen-log` (or a path ending in
+ * /codegen-log), with every EARLIER stage resolving to a known
+ * stdin-producer (printf, echo, cat — the real usage shape
+ * `printf '%s' "$body" | codegen-log section ...`). So
+ * `codegen-log append x && git commit -m y` is correctly NOT exempt (two
+ * groups), `echo hi > log.jsonl && codegen-log init` is correctly NOT
+ * exempt (two groups, even though one stage superficially resolves to
+ * codegen-log), while `printf ... | codegen-log ...` and a bare heredoc-fed
+ * `codegen-log section ... <<'EOF' ... EOF` (a single group, one stage)
+ * both remain exempt. Fails CLOSED (returns false) on an unparseable
+ * command (unbalanced quote), a blank command, more than one hard-boundary
+ * group, or a pipe-chain whose last stage isn't codegen-log or whose
+ * earlier stages aren't producers. Mirrors is_codegen_log_write in
+ * hooks-lib.sh.
  */
 export function isCodegenLogWrite(command: string): boolean {
-  return /(^|[\s/])codegen-log\b/.test(command);
+  const stripped = stripHeredocBodies(command);
+  const groups = splitCommandGroups(stripped);
+  if (groups === null) {
+    return false;
+  }
+
+  const nonBlankGroups = groups.filter((g) => g.trim() !== "");
+  if (nonBlankGroups.length !== 1) {
+    return false;
+  }
+
+  const stages = splitCommandSegments(nonBlankGroups[0]);
+  if (stages === null) {
+    return false;
+  }
+
+  const nonBlankStages = stages.filter((s) => s.trim() !== "");
+  if (nonBlankStages.length < 1) {
+    return false;
+  }
+
+  const lastIdx = nonBlankStages.length - 1;
+  for (let idx = 0; idx < nonBlankStages.length; idx++) {
+    const word = commandWordOfSegment(nonBlankStages[idx]);
+    if (idx === lastIdx) {
+      if (word !== "codegen-log" && !word.endsWith("/codegen-log")) {
+        return false;
+      }
+    } else {
+      if (word !== "printf" && word !== "echo" && word !== "cat") {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /**

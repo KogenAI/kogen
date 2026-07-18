@@ -7,7 +7,13 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deny, parseAgentType, debugLog } from "../lib/hook-helpers";
+import {
+  deny,
+  parseAgentType,
+  debugLog,
+  isCodegenLogWrite,
+  stripHeredocBodies,
+} from "../lib/hook-helpers";
 
 export const HANDLER_META = {
   name: "planner-guard",
@@ -57,32 +63,42 @@ export function register(pi: ExtensionAPI): void {
         (event.input as { command?: string }).command ?? "";
 
       // codegen-log carve-out (mirrors session-log-writer-only.ts): the plan
-      // body is written via a piped `codegen-log section --body @-` call, so
-      // the piped body is arbitrary plan prose that may legitimately contain
-      // gate tokens, git verbs, redirect chars, or ../ traversal sequences.
-      // Exit-allow BEFORE the broad scans below so codegen-log invocations
-      // are never denied by prose in their own piped body. The body is DATA
-      // to codegen-log, never executed.
-      if (/(^|[\s/])codegen-log\b/.test(command)) {
+      // body is written via a piped or heredoc-fed `codegen-log section
+      // --body @-` call, so the body is arbitrary plan prose that may
+      // legitimately contain gate tokens, git verbs, redirect chars, or
+      // ../ traversal sequences. isCodegenLogWrite() is INVOCATION-anchored,
+      // not spelling-anchored — a command that merely SPELLS codegen-log
+      // while running something else is correctly NOT exempt. Exit-allow
+      // BEFORE the broad scans below so a real codegen-log invocation is
+      // never denied by prose in its own body. The body is DATA to
+      // codegen-log, never executed.
+      if (isCodegenLogWrite(command)) {
         return;
       }
 
+      // Fail-closed subject transform ahead of every raw-command scan
+      // below: stripHeredocBodies() removes heredoc BODIES (arbitrary plan
+      // prose, never shell content — see the carve-out above) so a gated
+      // token sitting only inside a legitimate heredoc body never trips
+      // these scans.
+      const plannerCmd = stripHeredocBodies(command);
+
       // Path traversal
-      if (/\.\.\//.test(command)) {
+      if (/\.\.\//.test(plannerCmd)) {
         return deny(
           `BLOCKED by planner-guard: relative path traversal (..) forbidden — use absolute paths only`,
         );
       }
 
       // mix test
-      if (/\bmix\s+test\b/.test(command)) {
+      if (/\bmix\s+test\b/.test(plannerCmd)) {
         return deny(
           `BLOCKED by planner-guard: mix test is forbidden for planner`,
         );
       }
 
       // mix ecto state-modifying
-      if (/\bmix\s+ecto\.(migrate|reset|drop)\b/.test(command)) {
+      if (/\bmix\s+ecto\.(migrate|reset|drop)\b/.test(plannerCmd)) {
         return deny(
           `BLOCKED by planner-guard: mix ecto.migrate/reset/drop is forbidden for planner`,
         );
@@ -91,7 +107,7 @@ export function register(pi: ExtensionAPI): void {
       // make ci/llm variants
       if (
         /\bmake\s+(ci|ci-fast|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b/.test(
-          command,
+          plannerCmd,
         )
       ) {
         return deny(
@@ -102,7 +118,7 @@ export function register(pi: ExtensionAPI): void {
       // git state modification
       if (
         /\bgit\s+(add|commit|rm|mv|stash|reset|checkout\s+\S+|branch\s+(-[dDmcC]|[^-]))\b/.test(
-          command,
+          plannerCmd,
         )
       ) {
         return deny(
@@ -111,7 +127,7 @@ export function register(pi: ExtensionAPI): void {
       }
 
       // mv — both src and dst must be under /tmp/ or codegen/logging/
-      const mvMatch = command.match(/\bmv\s+(\S+)\s+(\S+)/);
+      const mvMatch = plannerCmd.match(/\bmv\s+(\S+)\s+(\S+)/);
       if (mvMatch) {
         const src = mvMatch[1];
         const dst = mvMatch[2];
@@ -127,7 +143,7 @@ export function register(pi: ExtensionAPI): void {
 
       // Shell redirect outside /tmp/ or codegen/logging/
       // Strip stderr tokens first
-      const redirectCheck = command
+      const redirectCheck = plannerCmd
         .replace(/2>&1/g, "")
         .replace(/2>\/dev\/null/g, "");
       if (/>\s*[^/\s]|>\s*\//.test(redirectCheck)) {

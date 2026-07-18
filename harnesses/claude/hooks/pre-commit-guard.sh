@@ -54,6 +54,8 @@ if [ "$_role" = "ops" ] || [ "$_role" = "babysit" ]; then
     # Fail-closed subject transform (see strip_quoted() in hooks-lib.sh):
     # a destructive git verb inside a quoted remote payload or string
     # argument is not a real local invocation; strip before matching.
+    # strip_heredoc_bodies() first, so a codegen-log heredoc BODY (arbitrary
+    # role-authored prose) is never scanned as if it were shell content.
     # Also normalize interposed git global options (git -C <dir> commit)
     # so they cannot evade the verb match — see strip_git_global_opts().
     # Then expand_command_indirection() appends the body of any
@@ -61,7 +63,7 @@ if [ "$_role" = "ops" ] || [ "$_role" = "babysit" ]; then
     # hooks-lib.sh) so a destructive verb written to a file in a PRIOR Bash
     # call and run via `bash /tmp/x.sh` here is scanned too, not just the
     # bare `bash /tmp/x.sh` invocation text.
-    _ops_cmd_unquoted=$(expand_command_indirection "$(strip_git_global_opts "$(strip_quoted "$COMMAND")")")
+    _ops_cmd_unquoted=$(expand_command_indirection "$(strip_git_global_opts "$(strip_quoted "$(strip_heredoc_bodies "$COMMAND")")")")
     _ops_is_destructive=0
     if printf '%s' "$_ops_cmd_unquoted" | grep -qE '\bgit[[:space:]]+(add|rm|mv|stash|commit|rebase|cherry-pick|revert|merge|restore|checkout|switch)\b|\bgit[[:space:]]+reset\b.*--(hard|merge|keep)\b|\bgit[[:space:]]+push\b.*(--force(-with-lease)?|[[:space:]]-f([[:space:]]|$))'; then
         _ops_is_destructive=1
@@ -84,29 +86,39 @@ fi
 
 # codegen-log carve-out (mirrors session-log-writer-only.sh): every role's
 # session-log section body is written via
-# `printf '%s' "$body" | codegen-log section --body @-`, so the piped body is
-# arbitrary role-authored prose that may legitimately contain git verb tokens
-# (e.g. describing a commit or a git operation the role observed). Exit-allow
-# BEFORE the git-verb scans below so codegen-log invocations are never denied
-# by prose in their own piped body. The body is DATA to codegen-log, never
-# executed — codegen-log only writes logs. Bare history-mutating git commands
-# (not routed through codegen-log) remain denied below.
-if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]/])codegen-log\b'; then
+# `printf '%s' "$body" | codegen-log section --body @-` or a heredoc-fed
+# `codegen-log section ... <<'EOF' ... EOF`, so the body is arbitrary
+# role-authored prose that may legitimately contain git verb tokens (e.g.
+# describing a commit or a git operation the role observed). is_codegen_log_write
+# (hooks-lib.sh) is INVOCATION-anchored, not spelling-anchored: it strips
+# heredoc bodies, then requires every shell-chain segment to resolve to
+# codegen-log (or a safe stdin producer feeding it) — so a command that
+# merely SPELLS codegen-log while running something else (e.g. a real `git
+# commit` whose message happens to mention it) is correctly NOT exempt, and
+# a chained `codegen-log append x && git commit -m y` is correctly NOT
+# exempt either. Exit-allow BEFORE the git-verb scans below so a real
+# codegen-log invocation is never denied by prose in its own body. The body
+# is DATA to codegen-log, never executed — codegen-log only writes logs.
+# Bare history-mutating git commands (not routed through codegen-log) remain
+# denied below.
+if is_codegen_log_write; then
     exit 0
 fi
 
-# Fail-closed subject transform: strip single/double-quoted spans so a
-# forbidden git verb sitting inside a quoted remote-exec payload (ssh host
-# "git stash") or a quoted string argument (grep -n 'git stash' file.sh) does
-# not trigger this guard. A real, unquoted, local git-verb invocation still
-# matches and is still denied. See strip_quoted() in hooks-lib.sh. Also
-# normalize interposed git global options (git -C <dir> commit, git
-# --git-dir=<x> add, …) so they cannot evade the verb match below — see
-# strip_git_global_opts() in hooks-lib.sh. Then expand_command_indirection()
-# appends the body of any bash/sh/zsh/source-referenced script (additive,
-# own line) so a destructive verb hidden in a script written in a PRIOR Bash
-# call is scanned too — see hooks-lib.sh for the additive-only contract.
-_cmd_unquoted=$(expand_command_indirection "$(strip_git_global_opts "$(strip_quoted "$COMMAND")")")
+# Fail-closed subject transform: strip_heredoc_bodies() first (a
+# codegen-log heredoc BODY is not shell content — see above), then strip
+# single/double-quoted spans so a forbidden git verb sitting inside a quoted
+# remote-exec payload (ssh host "git stash") or a quoted string argument
+# (grep -n 'git stash' file.sh) does not trigger this guard. A real,
+# unquoted, local git-verb invocation still matches and is still denied. See
+# strip_quoted() in hooks-lib.sh. Also normalize interposed git global
+# options (git -C <dir> commit, git --git-dir=<x> add, …) so they cannot
+# evade the verb match below — see strip_git_global_opts() in hooks-lib.sh.
+# Then expand_command_indirection() appends the body of any
+# bash/sh/zsh/source-referenced script (additive, own line) so a destructive
+# verb hidden in a script written in a PRIOR Bash call is scanned too — see
+# hooks-lib.sh for the additive-only contract.
+_cmd_unquoted=$(expand_command_indirection "$(strip_git_global_opts "$(strip_quoted "$(strip_heredoc_bodies "$COMMAND")")")")
 
 # State-modifying git subcommands. Notably NOT blocked: status, diff,
 # log, show, blame, ls-files — these are routinely used for inspection by

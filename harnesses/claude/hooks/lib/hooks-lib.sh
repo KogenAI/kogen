@@ -462,13 +462,214 @@ is_outer_session() {
     [ -z "${AGENT_TYPE:-}" ]
 }
 
-# is_codegen_log_write — true when $COMMAND invokes the codegen-log CLI (the
-# SOLE legitimate session-log writer). A codegen-log heredoc body can
-# legitimately contain any gated phrase; command-scanning guards must treat
-# such a call as a log WRITE, never the gated action it narrates. Mirrors the
-# bypass in session-log-writer-only.sh.
+# strip_heredoc_bodies <command_string> — echoes $1 with BOTH the BODY and
+# the closing delimiter LINE of every `<<DELIM` / `<<'DELIM'` / `<<"DELIM"` /
+# `<<-DELIM` heredoc removed — only the `<<...DELIM` OPENER line is kept.
+# Dropping the terminator line too (not just the body) keeps the opener as
+# ONE clean shell-chain segment for split_command_segments — a bare
+# `EOF`/terminator line left behind would otherwise parse as its OWN
+# newline-separated segment and fail command-word resolution for a
+# perfectly legitimate heredoc invocation. Fail-closed subject transform,
+# same contract as strip_quoted(): a codegen-log heredoc BODY is arbitrary
+# role-authored prose that may legitimately contain any gated phrase (a git
+# verb, a gate token, ../ traversal) — that prose must never feed a
+# command-scanning guard's verb match. Imperfect stripping (an unterminated
+# heredoc, a delimiter this walk fails to recognize) can only RETAIN a false
+# positive (body left in, still scanned, invocation still correctly
+# classified since the codegen-log token on the opener line survives),
+# never introduce a false negative. Pure-bash line walk — no external
+# interpreter dep, mirrors strip_git_global_opts()'s own contract.
+strip_heredoc_bodies() {
+    local cmd="$1"
+    local out="" line delim quoted_delim=0 in_body=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ "$in_body" = 1 ]; then
+            # Closing line matches the delimiter exactly (heredoc terminator
+            # rules: optional leading tabs only for <<-, otherwise exact).
+            # Drop this line too — it carries no command content, and
+            # leaving it behind would fragment the opener into a stray
+            # trailing shell-chain segment.
+            local stripped_line="$line"
+            if [ "$quoted_delim" = 2 ]; then
+                stripped_line="${line#"${line%%[!	]*}"}"
+            fi
+            if [ "$stripped_line" = "$delim" ]; then
+                in_body=0
+            fi
+            continue
+        fi
+        out+="$line"$'\n'
+        if [[ "$line" =~ \<\<(-)?\'([A-Za-z_][A-Za-z0-9_]*)\' ]]; then
+            delim="${BASH_REMATCH[2]}"
+            quoted_delim=$([ -n "${BASH_REMATCH[1]}" ] && echo 2 || echo 1)
+            in_body=1
+        elif [[ "$line" =~ \<\<(-)?\"([A-Za-z_][A-Za-z0-9_]*)\" ]]; then
+            delim="${BASH_REMATCH[2]}"
+            quoted_delim=$([ -n "${BASH_REMATCH[1]}" ] && echo 2 || echo 1)
+            in_body=1
+        elif [[ "$line" =~ \<\<(-)?([A-Za-z_][A-Za-z0-9_]*) ]]; then
+            delim="${BASH_REMATCH[2]}"
+            quoted_delim=$([ -n "${BASH_REMATCH[1]}" ] && echo 2 || echo 1)
+            in_body=1
+        fi
+    done <<<"$cmd"
+    # Unterminated heredoc (in_body still 1 at EOF): fail closed by RETAINING
+    # everything already accumulated in $out — never drop unscanned text.
+    printf '%s' "${out%$'\n'}"
+}
+
+# split_command_groups <command_string> — echoes one HARD-BOUNDARY group per
+# line, splitting ONLY on UNQUOTED && || ; & and newline — deliberately NOT
+# on `|` (pipe), which split_command_segments() also splits on. A "group" is
+# therefore a full pipe-chain (`producer | consumer`), kept intact as ONE
+# line. This is the containment primitive for is_codegen_log_write()'s
+# invocation check below: a real invocation is exactly one pipe-chain whose
+# LAST stage is codegen-log; `&&`/`;`/`&` chaining a genuine codegen-log
+# call to something else is a DIFFERENT, separately-executed command and
+# must never be folded into the same exemption. Returns 1 (fail-closed) on
+# an unbalanced quote, same contract as split_command_segments().
+split_command_groups() {
+    local cmd="$1"
+    local -i i=0
+    local -i len=${#cmd}
+    local in_sq=0 in_dq=0
+    local seg=""
+    local ch next2
+
+    while ((i < len)); do
+        ch="${cmd:i:1}"
+        if [ "$in_sq" = 1 ]; then
+            seg+="$ch"
+            [ "$ch" = "'" ] && in_sq=0
+            i=$((i + 1))
+            continue
+        fi
+        if [ "$in_dq" = 1 ]; then
+            if [ "$ch" = '\' ]; then
+                seg+="${cmd:i:2}"
+                i=$((i + 2))
+                continue
+            fi
+            seg+="$ch"
+            [ "$ch" = '"' ] && in_dq=0
+            i=$((i + 1))
+            continue
+        fi
+        case "$ch" in
+        "'")
+            in_sq=1
+            seg+="$ch"
+            i=$((i + 1))
+            continue
+            ;;
+        '"')
+            in_dq=1
+            seg+="$ch"
+            i=$((i + 1))
+            continue
+            ;;
+        esac
+        next2="${cmd:i:2}"
+        if [ "$next2" = "&&" ] || [ "$next2" = "||" ]; then
+            printf '%s\n' "$seg"
+            seg=""
+            i=$((i + 2))
+            continue
+        fi
+        if [ "$ch" = ";" ] || [ "$ch" = "&" ] || [ "$ch" = $'\n' ]; then
+            printf '%s\n' "$seg"
+            seg=""
+            i=$((i + 1))
+            continue
+        fi
+        seg+="$ch"
+        i=$((i + 1))
+    done
+
+    if [ "$in_sq" = 1 ] || [ "$in_dq" = 1 ]; then
+        return 1
+    fi
+
+    printf '%s\n' "$seg"
+    return 0
+}
+
+# is_codegen_log_write — true when $COMMAND actually INVOKES the codegen-log
+# CLI, never merely SPELLS the token somewhere inside it (a heredoc/quoted
+# body, or a chained command that mentions it in passing). This is the SOLE
+# legitimate session-log writer, and a codegen-log heredoc/piped body can
+# legitimately contain any gated phrase — command-scanning guards must treat
+# a real invocation as a log WRITE, never the gated action its body
+# narrates. Strips heredoc bodies first (their content is DATA, not further
+# commands) via strip_heredoc_bodies(), then requires the ENTIRE command to
+# be exactly ONE hard-boundary group (split_command_groups — splits on
+# &&/||/;/& but NOT |, so a real pipe-chain stays one group): a command
+# chained via &&/;/& to anything else (even a real codegen-log call) is
+# NEVER exempt, because that chain genuinely runs a second, separate
+# command. Within that single group, splits on `|` (split_command_segments)
+# and requires the LAST pipe stage to resolve (command_word_of_segment) to
+# `codegen-log` (or a path ending in /codegen-log), with every EARLIER stage
+# resolving to a known stdin-producer (printf, echo, cat — the real usage
+# shape `printf '%s' "$body" | codegen-log section ...`). So `codegen-log
+# append x && git commit -m y` is correctly NOT exempt (two groups), `echo
+# hi > log.jsonl && codegen-log init` is correctly NOT exempt (two groups,
+# even though one stage superficially resolves to codegen-log), while
+# `printf ... | codegen-log ...` and a bare heredoc-fed `codegen-log section
+# ... <<'EOF' ... EOF` (a single group, one stage) both remain exempt. Fails
+# CLOSED (returns false) on an unparseable command (unbalanced quote), a
+# blank command, more than one hard-boundary group, or a pipe-chain whose
+# last stage isn't codegen-log or whose earlier stages aren't producers.
 is_codegen_log_write() {
-    printf '%s' "${COMMAND:-}" | grep -qE '(^|[[:space:]/])codegen-log\b'
+    local cmd stripped groups group
+    cmd="${COMMAND:-}"
+    stripped=$(strip_heredoc_bodies "$cmd")
+
+    if ! groups=$(split_command_groups "$stripped"); then
+        return 1
+    fi
+
+    local -a nonblank_groups=()
+    while IFS= read -r group; do
+        [ -z "${group// /}" ] && continue
+        nonblank_groups+=("$group")
+    done <<<"$groups"
+
+    # Exactly one hard-boundary group — a real codegen-log invocation is
+    # never chained via &&/;/& to anything else.
+    [ "${#nonblank_groups[@]}" = 1 ] || return 1
+
+    local stages stage word
+    if ! stages=$(split_command_segments "${nonblank_groups[0]}"); then
+        return 1
+    fi
+
+    local -a stage_list=()
+    while IFS= read -r stage; do
+        [ -z "${stage// /}" ] && continue
+        stage_list+=("$stage")
+    done <<<"$stages"
+
+    [ "${#stage_list[@]}" -ge 1 ] || return 1
+
+    local -i last_idx=$((${#stage_list[@]} - 1))
+    local -i idx=0
+    for stage in "${stage_list[@]}"; do
+        word=$(command_word_of_segment "$stage")
+        if [ "$idx" = "$last_idx" ]; then
+            case "$word" in
+            codegen-log | */codegen-log) ;;
+            *) return 1 ;;
+            esac
+        else
+            case "$word" in
+            printf | echo | cat) ;;
+            *) return 1 ;;
+            esac
+        fi
+        idx=$((idx + 1))
+    done
+
+    return 0
 }
 
 # strip_quoted <command_string> — echoes $1 with single- and double-quoted

@@ -37,7 +37,12 @@ Edit | Write | MultiEdit)
     ;;
 Bash)
     # Allow any command that invokes codegen-log — the sole legitimate writer.
-    if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]/])codegen-log\b'; then
+    # is_codegen_log_write (hooks-lib.sh) is INVOCATION-anchored, not
+    # spelling-anchored: it strips heredoc bodies first, then requires every
+    # shell-chain segment to resolve to codegen-log (or a safe stdin producer
+    # feeding it) — a command that merely SPELLS codegen-log while running
+    # something else is correctly NOT exempt.
+    if is_codegen_log_write; then
         exit 0
     fi
     # Deny any command that writes into codegen/logging/* without codegen-log:

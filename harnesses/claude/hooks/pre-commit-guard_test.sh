@@ -527,6 +527,29 @@ run_test "bash \"\$dynamic\" (unresolvable) allowed for non-committer (no regres
 FIXTURE_INDIRECT_COMMITTER="{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash $INDIRECTION_TMPDIR/danger.sh\"},\"agent_type\":\"committer\",\"agent_id\":\"a\"}"
 run_test "bash <file with git reset --hard body> still allowed for committer (actor gate unaffected)" "0" "$FIXTURE_INDIRECT_COMMITTER"
 
+# ── the missing 2x2 cell (this pitch's core fix) ────────────────────────────
+# A real git commit/add whose MESSAGE merely SPELLS "codegen-log" must NOT be
+# exempt — the carve-out is invocation-anchored (is_codegen_log_write), not
+# spelling-anchored. This is the live bypass reproduced against real commits
+# 0bebbdf3 / 88f03acb / fc46df36 (see the pitch). Tests 23/24 above stay
+# unchanged and must remain green.
+
+# Test 58: real git commit whose message spells "codegen-log" — MUST DENY
+FIXTURE_SPELLING_ONLY_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A && git commit -m \"mentions codegen-log here\""},"agent_type":"context-curator","agent_id":"a"}'
+run_test "real git commit spelling codegen-log in message denied (not exempt)" "2" "$FIXTURE_SPELLING_ONLY_COMMIT"
+
+# Test 59: chained codegen-log THEN a real git commit — MUST DENY (the
+# command genuinely commits; a correctly-anchored carve-out must not exempt
+# the whole chain just because one segment is a real codegen-log call).
+FIXTURE_CHAINED_LOG_THEN_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log append developer --slug foo && git commit -m x"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+run_test "chained codegen-log && git commit denied (real commit in the chain)" "2" "$FIXTURE_CHAINED_LOG_THEN_COMMIT"
+
+# Test 60: heredoc-fed codegen-log body containing "git commit" prose —
+# MUST ALLOW (259/2019 real invocations use this shape; strip_heredoc_bodies
+# must not regress it).
+FIXTURE_HEREDOC_LOG_BODY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section developer --slug foo <<'"'"'EOF'"'"'\nVerified git commit -m done\nEOF"},"agent_type":"reviewer-phoenix","agent_id":"a"}'
+run_test "heredoc-fed codegen-log body with 'git commit' prose allowed" "0" "$FIXTURE_HEREDOC_LOG_BODY"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

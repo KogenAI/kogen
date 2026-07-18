@@ -793,6 +793,69 @@ assert_eq "command_word_of_segment/segment_argv_of: literal *.txt, not glob-expa
     "grep|foo *.txt" "$cwd_glob_result"
 rm -rf "$cwd_glob_dir"
 
+# ── strip_heredoc_bodies — heredoc BODY is DATA, never further commands ────
+# All four heredoc syntaxes: <<DELIM, <<'DELIM', <<"DELIM", <<-DELIM
+# (tab-suppressed). Only the body+terminator lines are dropped; opener kept.
+
+result=$(strip_heredoc_bodies "$(printf 'codegen-log section developer --slug foo <<EOF\nbody with git commit\nEOF')")
+assert_eq "strip_heredoc_bodies: bare EOF -> opener kept, body+terminator dropped" \
+    "codegen-log section developer --slug foo <<EOF" "$result"
+
+result=$(strip_heredoc_bodies "$(printf "codegen-log section developer --slug foo <<'EOF'\nbody with git commit\nEOF")")
+assert_eq "strip_heredoc_bodies: quoted 'EOF' -> opener kept, body+terminator dropped" \
+    "codegen-log section developer --slug foo <<'EOF'" "$result"
+
+result=$(strip_heredoc_bodies "$(printf 'codegen-log section developer --slug foo <<"EOF"\nbody with git commit\nEOF')")
+assert_eq 'strip_heredoc_bodies: double-quoted "EOF" -> opener kept, body+terminator dropped' \
+    'codegen-log section developer --slug foo <<"EOF"' "$result"
+
+result=$(strip_heredoc_bodies "$(printf 'codegen-log section developer --slug foo <<-EOF\n\tbody with git commit\nEOF')")
+assert_eq "strip_heredoc_bodies: tab-suppressed <<-EOF -> opener kept, body+terminator dropped" \
+    "codegen-log section developer --slug foo <<-EOF" "$result"
+
+# No heredoc present -> passthrough unchanged.
+assert_eq "strip_heredoc_bodies: no heredoc -> unchanged" \
+    "git commit -m foo" "$(strip_heredoc_bodies "git commit -m foo")"
+
+# ── is_codegen_log_write — INVOCATION-anchored, not spelling-anchored ──────
+# The pitch's core fix: a command must actually INVOKE codegen-log, never
+# merely SPELL the token somewhere inside it.
+
+COMMAND='printf %s "$body" | codegen-log section developer --slug foo'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: piped body -> true (real invocation)" "0" "$r"
+
+COMMAND='codegen-log section developer --slug foo'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: leading token -> true" "0" "$r"
+
+COMMAND='./codegen-log section developer --slug foo'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: path-prefixed -> true" "0" "$r"
+
+COMMAND=$(printf 'codegen-log section developer --slug foo <<EOF\nbody mentioning git commit\nEOF')
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: heredoc-fed body -> true" "0" "$r"
+
+# The missing 2x2 cell: a real git commit whose MESSAGE happens to spell
+# codegen-log must NOT be exempt (this is the live bypass the pitch fixes).
+COMMAND='git add -A && git commit -m "mentions codegen-log here"'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: spelling-only in commit message -> false (DENY)" "1" "$r"
+
+COMMAND='git commit -m foo'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: bare git commit, no token -> false" "1" "$r"
+
+# Chained attack: a real codegen-log call followed by a real commit. Every
+# segment must resolve to codegen-log (or a safe producer) — this one has a
+# git segment, so it must NOT be exempt.
+COMMAND='codegen-log append developer --slug foo && git commit -m x'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: chained codegen-log && git commit -> false (DENY)" "1" "$r"
+
+unset COMMAND
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

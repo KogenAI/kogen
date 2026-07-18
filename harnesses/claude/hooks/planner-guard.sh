@@ -85,30 +85,40 @@ fi
 if [ "$TOOL_NAME" = "Bash" ]; then
 
     # codegen-log carve-out (mirrors session-log-writer-only.sh): the plan body
-    # is written via `printf '%s' "$body" | codegen-log section --body @-`, so
-    # the piped body is arbitrary plan prose that may legitimately contain gate
-    # tokens, git verbs, redirect chars, or ../ traversal sequences. Exit-allow
-    # BEFORE the broad scans below so codegen-log invocations are never denied
-    # by prose in their own piped body. The body is DATA to codegen-log, never
-    # executed — codegen-log only writes logs.
-    if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]/])codegen-log\b'; then
+    # is written via `printf '%s' "$body" | codegen-log section --body @-` or a
+    # heredoc-fed `codegen-log section ... <<'EOF' ... EOF`, so the body is
+    # arbitrary plan prose that may legitimately contain gate tokens, git
+    # verbs, redirect chars, or ../ traversal sequences. is_codegen_log_write
+    # (hooks-lib.sh) is INVOCATION-anchored, not spelling-anchored — a command
+    # that merely SPELLS codegen-log while running something else is correctly
+    # NOT exempt. Exit-allow BEFORE the broad scans below so a real
+    # codegen-log invocation is never denied by prose in its own body. The
+    # body is DATA to codegen-log, never executed — codegen-log only writes
+    # logs.
+    if is_codegen_log_write; then
         exit 0
     fi
 
+    # Fail-closed subject transform ahead of every raw-$COMMAND scan below:
+    # strip_heredoc_bodies() removes heredoc BODIES (arbitrary plan prose,
+    # never shell content — see the carve-out above) so a gated token sitting
+    # only inside a legitimate heredoc body never trips these scans.
+    _planner_cmd=$(strip_heredoc_bodies "$COMMAND")
+
     # Deny any command containing relative path traversal (../).
-    if printf '%s' "$COMMAND" | grep -qE '\.\./'; then
+    if printf '%s' "$_planner_cmd" | grep -qE '\.\./'; then
         deny "BLOCKED by planner-guard: relative path traversal (..) forbidden — use absolute paths only"
         exit 0
     fi
 
     # mix test — planner doesn't run tests
-    if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+test\b'; then
+    if printf '%s' "$_planner_cmd" | grep -qE '\bmix[[:space:]]+test\b'; then
         deny "BLOCKED by planner-guard: mix test is forbidden for planner (run gates after implementation, not during planning)"
         exit 0
     fi
 
     # mix ecto state-modifying commands
-    if printf '%s' "$COMMAND" | grep -qE '\bmix[[:space:]]+ecto\.(migrate|reset|drop)\b'; then
+    if printf '%s' "$_planner_cmd" | grep -qE '\bmix[[:space:]]+ecto\.(migrate|reset|drop)\b'; then
         deny "BLOCKED by planner-guard: mix ecto.migrate/reset/drop is forbidden for planner (state-modifying)"
         exit 0
     fi
@@ -124,33 +134,33 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     # verification/gate commands. Planner's job is investigation and planning,
     # never triggering CI or VE gates. Gates run via dev-gate.sh SubagentStop
     # hook after developer completes — planner must not short-circuit that flow.
-    if printf '%s' "$COMMAND" | grep -qE '\bmake[[:space:]]+(ci|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
+    if printf '%s' "$_planner_cmd" | grep -qE '\bmake[[:space:]]+(ci|llm|llm-phoenix|llm-phoenix-seed|llm-summary|llm-retry|llm-kill)\b'; then
         deny "BLOCKED by planner-guard: make ci/llm/llm-phoenix/llm-phoenix-seed is forbidden for planner (verification gates run via dev-gate.sh hook on developer's SubagentStop; llm-phoenix-seed mutates state)"
         exit 0
     fi
 
     # git state-modification commands
-    if printf '%s' "$COMMAND" | grep -qE '\bgit[[:space:]]+(add|commit|rm|mv|stash|reset|checkout[[:space:]]+[^[:space:]]+|branch[[:space:]]+(-[dD]|-m|-c|[^-]))\b'; then
+    if printf '%s' "$_planner_cmd" | grep -qE '\bgit[[:space:]]+(add|commit|rm|mv|stash|reset|checkout[[:space:]]+[^[:space:]]+|branch[[:space:]]+(-[dD]|-m|-c|[^-]))\b'; then
         deny "BLOCKED by planner-guard: git state modification is forbidden for planner (committer owns git)"
         exit 0
     fi
 
     # rm / rmdir / mv on paths outside /tmp/ — prevent accidental file deletion
-    if printf '%s' "$COMMAND" | grep -qE '\b(rm|rmdir)[[:space:]]+(-[rfRF]+[[:space:]]+)?[^/]'; then
+    if printf '%s' "$_planner_cmd" | grep -qE '\b(rm|rmdir)[[:space:]]+(-[rfRF]+[[:space:]]+)?[^/]'; then
         # Allow if target is relative path under /tmp/ — but can't tell at guard time,
         # so block all rm/rmdir that don't start with /tmp/ in the path argument
-        if ! printf '%s' "$COMMAND" | grep -qE '\b(rm|rmdir)[[:space:]]+(-[rfRF]+[[:space:]]+)?/tmp/'; then
+        if ! printf '%s' "$_planner_cmd" | grep -qE '\b(rm|rmdir)[[:space:]]+(-[rfRF]+[[:space:]]+)?/tmp/'; then
             deny "BLOCKED by planner-guard: rm/rmdir outside /tmp/ is forbidden for planner"
             exit 0
         fi
     fi
 
-    if printf '%s' "$COMMAND" | grep -qE '\bmv[[:space:]]+'; then
+    if printf '%s' "$_planner_cmd" | grep -qE '\bmv[[:space:]]+'; then
         # Both source AND destination must be under /tmp/ or codegen/logging/.
         # Use printf '%s\n' to ensure sed sees a newline-terminated string (required for
         # macOS sed to process the final line correctly without an explicit $ anchor).
-        src=$(printf '%s\n' "$COMMAND" | sed -nE 's/^mv[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
-        dst=$(printf '%s\n' "$COMMAND" | sed -nE 's/^mv[[:space:]]+[^[:space:]]+[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
+        src=$(printf '%s\n' "$_planner_cmd" | sed -nE 's/^mv[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
+        dst=$(printf '%s\n' "$_planner_cmd" | sed -nE 's/^mv[[:space:]]+[^[:space:]]+[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
         for mv_arg in "$src" "$dst"; do
             case "$mv_arg" in
             /tmp/* | codegen/logging/*) ;;
@@ -165,7 +175,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     # Redirect to file outside /tmp/ or codegen/logging/ — prevent writes via shell.
     # Strip stderr-redirect tokens (2>&1, 2>/dev/null) before inspection so they
     # don't get caught by the bare-redirect check.
-    redirect_check=$(printf '%s' "$COMMAND" | sed -e 's/2>&1//g' -e 's|2>/dev/null||g')
+    redirect_check=$(printf '%s' "$_planner_cmd" | sed -e 's/2>&1//g' -e 's|2>/dev/null||g')
     if printf '%s' "$redirect_check" | grep -qE '>[[:space:]]*[^/[:space:]]|>[[:space:]]*/'; then
         # Check if the redirect target is to codegen/logging/ or /tmp/
         if ! printf '%s' "$redirect_check" | grep -qE '>[[:space:]]*(codegen/logging/|/tmp/)'; then

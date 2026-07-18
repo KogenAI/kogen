@@ -97,6 +97,18 @@ run_test "debug role bypass on Write to log — ALLOW" "0" "$(make_write_fixture
 run_test "shape role bypass on Bash redirect into log — ALLOW" "0" "$(make_bash_fixture "echo hi > codegen/logging/20260101_120000_test_cycle.jsonl")" "CLAUDE_ROLE=shape"
 run_test "ops role bypass on MultiEdit to log — ALLOW" "0" "$(make_multiedit_fixture "$LOG_PATH")" "CLAUDE_ROLE=ops"
 
+# ── the missing 2x2 cell (this pitch's core fix) ────────────────────────────
+# A chained command that mentions codegen-log while ALSO performing a raw
+# write into the log path must NOT be exempt — the carve-out is
+# invocation-anchored (is_codegen_log_write), not spelling-anchored.
+run_test "chained codegen-log mention + raw redirect into log — DENY (not exempt)" "2" \
+    "$(make_bash_fixture "codegen-log init --slug demo && echo hi > codegen/logging/20260101_120000_test_cycle.jsonl")"
+
+# Heredoc-fed codegen-log body mentioning a raw-write pattern — still ALLOW
+# (real usage shape; strip_heredoc_bodies must not regress it).
+run_test "Bash heredoc-fed codegen-log body — ALLOW" "0" \
+    "$(make_bash_fixture "$(printf 'codegen-log section --role reviewer-phoenix --slug demo <<EOF\nmentions sed -i codegen/logging/x.jsonl in prose\nEOF')")"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"

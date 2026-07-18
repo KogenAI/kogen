@@ -15,7 +15,9 @@ import {
   debugLog,
   stripQuoted,
   stripGitGlobalOpts,
+  stripHeredocBodies,
   expandCommandIndirection,
+  isCodegenLogWrite,
 } from "../lib/hook-helpers";
 
 export const HANDLER_META = {
@@ -35,27 +37,37 @@ export function register(pi: ExtensionAPI): void {
     debugLog("pre-commit-guard", `agent=${agentType} cmd=${command}`);
 
     // codegen-log carve-out (mirrors session-log-writer-only.ts): every
-    // role's session-log section body is piped into codegen-log, so the
-    // piped body is arbitrary role-authored prose that may legitimately
-    // contain git verb tokens. Exit-allow BEFORE the git-verb scans below so
-    // codegen-log invocations are never denied by prose in their own piped
-    // body. Bare history-mutating git commands remain denied below.
-    if (/(^|[\s/])codegen-log\b/.test(command)) return;
+    // role's session-log section body is piped or heredoc-fed into
+    // codegen-log, so the body is arbitrary role-authored prose that may
+    // legitimately contain git verb tokens. isCodegenLogWrite() is
+    // INVOCATION-anchored, not spelling-anchored: it strips heredoc bodies,
+    // then requires every shell-chain segment to resolve to codegen-log (or
+    // a safe stdin producer feeding it) — a command that merely SPELLS
+    // codegen-log while running something else (e.g. a real `git commit`
+    // whose message mentions it, or a chained
+    // `codegen-log append x && git commit -m y`) is correctly NOT exempt.
+    // Exit-allow BEFORE the git-verb scans below so a real codegen-log
+    // invocation is never denied by prose in its own body. Bare
+    // history-mutating git commands remain denied below.
+    if (isCodegenLogWrite(command)) return;
 
-    // Fail-closed subject transform: strip single/double-quoted spans so a
-    // forbidden git verb sitting inside a quoted remote-exec payload
-    // (ssh host "git stash") or a quoted string argument
-    // (grep -n 'git stash' file.sh) does not trigger this guard. A real,
-    // unquoted, local git-verb invocation still matches and is still
-    // denied. See stripQuoted() in hook-helpers.ts. Also normalize
-    // interposed git global options (git -C <dir> commit, git
-    // --git-dir=<x> add, …) so they cannot evade the verb match below —
+    // Fail-closed subject transform: stripHeredocBodies() first (a
+    // codegen-log heredoc BODY is not shell content — see above), then
+    // strip single/double-quoted spans so a forbidden git verb sitting
+    // inside a quoted remote-exec payload (ssh host "git stash") or a
+    // quoted string argument (grep -n 'git stash' file.sh) does not trigger
+    // this guard. A real, unquoted, local git-verb invocation still
+    // matches and is still denied. See stripQuoted() in hook-helpers.ts.
+    // Also normalize interposed git global options (git -C <dir> commit,
+    // git --git-dir=<x> add, …) so they cannot evade the verb match below —
     // see stripGitGlobalOpts() in hook-helpers.ts. Then
     // expandCommandIndirection() appends the body of any
     // bash/sh/zsh/source-referenced script on its own line (additive) so a
     // destructive verb hidden in a script written in a PRIOR Bash call is
     // scanned too — see hook-helpers.ts for the additive-only contract.
-    const scan = expandCommandIndirection(stripGitGlobalOpts(stripQuoted(command)));
+    const scan = expandCommandIndirection(
+      stripGitGlobalOpts(stripQuoted(stripHeredocBodies(command))),
+    );
 
     if (/\bgit\s+add\b/.test(scan)) {
       return deny(

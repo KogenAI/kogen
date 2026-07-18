@@ -156,6 +156,27 @@ run_test "planner-static codegen-log body with ../ traversal prose allows (carve
 FIXTURE_BARE_GATE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"planner-phoenix","agent_id":"abc"}'
 run_test "planner-phoenix bare make ci (no codegen-log) still blocks" "2" "$FIXTURE_BARE_GATE"
 
+# ── the missing 2x2 cell (this pitch's core fix) ────────────────────────────
+# A real gated command whose ARGUMENT merely SPELLS "codegen-log" must NOT be
+# exempt — the carve-out is invocation-anchored (is_codegen_log_write), not
+# spelling-anchored.
+
+# Test 27: real state-modifying git command whose commit message spells
+# "codegen-log" — MUST BLOCK (not exempt).
+FIXTURE_SPELLING_ONLY_GIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"mentions codegen-log here\""},"agent_type":"planner-phoenix","agent_id":"abc"}'
+run_test "planner git commit spelling codegen-log in message still blocks (not exempt)" "2" "$FIXTURE_SPELLING_ONLY_GIT"
+
+# Test 28: chained codegen-log THEN a real gated command — MUST BLOCK (the
+# command genuinely runs make ci; a correctly-anchored carve-out must not
+# exempt the whole chain just because one segment is a real codegen-log call).
+FIXTURE_CHAINED_LOG_THEN_GATE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log append planner-phoenix --slug foo && make ci"},"agent_type":"planner-phoenix","agent_id":"abc"}'
+run_test "planner chained codegen-log && make ci still blocks (real gate in the chain)" "2" "$FIXTURE_CHAINED_LOG_THEN_GATE"
+
+# Test 29: heredoc-fed codegen-log body containing a gate token — MUST
+# ALLOW (real usage shape; strip_heredoc_bodies must not regress it).
+FIXTURE_HEREDOC_LOG_BODY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log section planner-phoenix --slug foo <<'"'"'EOF'"'"'\nGate: make ci passed after fix\nEOF"},"agent_type":"planner-phoenix","agent_id":"abc"}'
+run_test "planner heredoc-fed codegen-log body with 'make ci' prose allows" "0" "$FIXTURE_HEREDOC_LOG_BODY"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
