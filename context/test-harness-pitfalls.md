@@ -45,11 +45,20 @@ When running `make test` (which includes TypeScript Pi extensions in parallel), 
 - **Capturing return value + stderr with `capture_io`** — `capture_io(:stderr, fn -> result end)` swallows the block's return. Recovery: `send(self(), {:result, <call>})` inside, then `receive do {:result, r} -> r end` outside to recover both output AND value.
 - **Direct function calls bypass seam overrides** — Tests calling a function directly invoke the real default even if caller overrode the seam. Fix: expose poll limit as public parameter with production-safe default, so direct tests can override. Arity-N seam still works (Elixir auto-generates lower-arity clause).
 
+## Exit-Code Assertions When State Constants Change
+
+When a module adds a new exit-code constant (e.g., `@dirty_tree_exit_code 4`), pre-existing tests that asserted on the OLD behavior (e.g., `assert_raise` when a dirty tree always raised) become incorrect after the change moves the behavior to a loud non-fatal exit. These tests do NOT use the new constant in their setup — they were written against the old behavior — so a raw test run after the constant is added will see the tests fail RED even though the implementation is correct.
+
+**Pattern**: Search the test file(s) for any pre-existing assertions on the OLD behavior using keywords like `assert_raise`, `catch_exit`, or literal exit codes (e.g., `catch_exit({:shutdown, 1})`). When a constant changes the exit behavior, update the matching test assertion to catch the NEW exit code. Example: a test that asserted `assert_raise ExceptionType` when dirty-tree-after-retire raised will need to become `catch_exit({:shutdown, @dirty_tree_exit_code})` after the exit constant is introduced and the raise is replaced by a loud exit.
+
+Check for pre-existing assertions by RUNNING the full test file (not just the new tests), then examining failures: red tests are the indicator. A test hitting the changed code path will fail with "expected ExceptionType but got exit" or similar — update it to catch the new exit code.
+
 ## Trigger Keywords
 
-test harness pitfall, exunit fixture, seam override, flake triage, ecto timestamp, port env charlist, npm extension race, role resolver ripple, seam threading, build path isolation, mix build path, arity beam stale, capture_io return value
+test harness pitfall, exunit fixture, seam override, flake triage, ecto timestamp, port env charlist, npm extension race, role resolver ripple, seam threading, build path isolation, mix build path, arity beam stale, capture_io return value, exit-code assertion, state-machine exit constant, test refactoring state change
 
 ## Update When Changing
 
 - `test_harness/` fixtures, seam signatures, flake-prone tests
 - New ExUnit gotchas that would otherwise overflow `context/test-harness.md`'s byte cap
+- Exit-code constants and state-transition changes

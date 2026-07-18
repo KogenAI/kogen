@@ -81,6 +81,15 @@ Inventory lives at `codegen/drain-nodes.yaml` (gitignored — machine-local topo
 
 **Why the transfer never uses `scp -p`.** The `--watch` engine's quiescence gate (`quiescence_exclude/1` in `loop_queue_drain.ex`) treats a file as "still arriving" when `mtime > cutoff` — i.e. a recent mtime is what excludes a file from being selected mid-transfer. `scp -p` preserves the SOURCE mtime on the destination, which would make a freshly-arrived file read as "already old" and thus immediately eligible for build selection while bytes might still be incomplete on a slower path. `codegen-drain` never passes `-p` to `scp`; the final landing step is always a same-filesystem `mv`, which (per the engine's own moduledoc) is "already-quiescent the instant it lands" regardless of the mtime it carries.
 
+**`codegen-drain status` also reports a `building=` column** — the count of `.md` files under
+`codegen/pitches/building/` on that node (a claimed, in-flight pitch — see `context/loop.md` §
+Possession by Rename and `context/pitch-lifecycle.md`). Local nodes `find` the directory directly;
+remote nodes append the count as the LAST line of the same composed ssh probe `status` already sends
+(`sed -n '4p'`, appended after the pre-existing count/incoming/watcher lines at `1p`/`2p`/`3p` so their
+offsets are unchanged). `--json` output carries the same value as `building_count`. `cmd_assign` is
+untouched — fleet moves stay `ready/`-only; a claimed pitch is mid-cycle, not something to hand between
+nodes.
+
 **`codegen-drain status`'s `watcher=` column reads the lock file, never argv.** Earlier versions resolved `watcher=yes/no` via `pgrep -f "mix codegen.loop.*--cwd=$repo"` — an argv-scanning liveness probe that matches ANY process whose commandline happens to quote the search pattern, not only a real watcher. Verified live: a solo `mix codegen.loop --cwd=<repo>` build (`dispatch.sh`'s one-shot leg) matched it, AND three unrelated `claude` agent sessions matched it (their system prompt text quotes the pattern), AND the `grep` invocation used to audit the bug matched itself. A probe that can match the process asking the question is not a liveness probe. `codegen-drain`'s `watcher_probe_cmd/1` instead reads `codegen/gate-pending/queue.lock` — the single-flight lock `CodegenTestHarness.BuildLock` already writes before any drain OR solo build runs (see `context/loop.md`) — and reports `watcher=yes` iff the recorded `<label>` is exactly `"queue"` and the recorded pid is alive (`kill -0`). A `"solo"`-labeled lock, a dead pid, an absent lock, or a malformed lock all correctly resolve to `watcher=no`. The local and remote (`ssh`) legs of `cmd_status` share one predicate string (`watcher_probe_cmd/1`), so there is exactly one place this logic can drift. A `watcher=no` verdict prints its own remediation (`claude-build --queue --watch`), following the `make build-ready` precedent of a red verdict naming its own fix.
 
 **`.incoming/` is a queue-invisible staging directory.** Every consumer of `codegen/pitches/ready/` globs that directory by name explicitly (`find "$READY_DIR" -maxdepth 1 -name "*.md"` in `claude-build.sh`); none glob all subdirectories of `codegen/pitches/`. A sibling `.incoming/` directory is therefore invisible to the build queue by construction, not by a filter added for this purpose.
@@ -96,7 +105,7 @@ Inventory lives at `codegen/drain-nodes.yaml` (gitignored — machine-local topo
 
 ## Trigger Keywords
 
-deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source, codegen root, where does codegen run, three-repo ordering, context codegen platform, worktree cwd ephemeral, codegen-drain, drain-nodes.yaml, possession, fleet, multi-node, ssh lands as root, run_as, .incoming, quiescence gate, scp -p, watcher column, watcher probe, pgrep self-match, argv scanning, queue.lock, liveness probe, watcher=yes watcher=no, assign --auto, lane to node, auto-partition, --json partition, codegen.pitches.scope --json, reachable_nodes, CODEGEN_DRAIN_SCOPE_CMD
+deployment, server, prod, staging, dashboard box, Hetzner, CODEGEN_DIR, OCG_CODEGEN_DIR, hardcode, BASH_SOURCE, multi-location, install target vs source, codegen root, where does codegen run, three-repo ordering, context codegen platform, worktree cwd ephemeral, codegen-drain, drain-nodes.yaml, possession, fleet, multi-node, ssh lands as root, run_as, .incoming, quiescence gate, scp -p, watcher column, watcher probe, pgrep self-match, argv scanning, queue.lock, liveness probe, watcher=yes watcher=no, assign --auto, lane to node, auto-partition, --json partition, codegen.pitches.scope --json, reachable_nodes, CODEGEN_DRAIN_SCOPE_CMD, building column, building_count, claimed pitch, in-flight count
 
 ---
 

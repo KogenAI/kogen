@@ -6,10 +6,11 @@ defmodule Mix.Tasks.Codegen.LoopTest do
   setup do
     tmp = Path.join(System.tmp_dir!(), "codegen_loop_test_#{:erlang.unique_integer([:positive])}")
     ready_dir = Path.join([tmp, "codegen", "pitches", "ready"])
+    building_dir = Path.join([tmp, "codegen", "pitches", "building"])
     File.mkdir_p!(ready_dir)
     on_exit(fn -> File.rm_rf!(tmp) end)
 
-    {:ok, tmp: tmp, ready_dir: ready_dir}
+    {:ok, tmp: tmp, ready_dir: ready_dir, building_dir: building_dir}
   end
 
   test "1: @-prefixed relative path resolves against cwd", ctx do
@@ -104,7 +105,12 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert File.ls!(ctx.ready_dir) == []
     end
 
-    test "dirty working tree: raises and does not move the pitch", ctx do
+    test "dirty working tree: retire is UNCONDITIONAL (pitch still ships), exits @dirty_tree_exit_code",
+         ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
       System.cmd("git", ["init", "-q", ctx.tmp])
       System.cmd("git", ["-C", ctx.tmp, "config", "user.email", "test@example.com"])
       System.cmd("git", ["-C", ctx.tmp, "config", "user.name", "Test"])
@@ -120,12 +126,19 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       abs = Path.join(ctx.ready_dir, "foo.md")
       File.write!(abs, "# Pitch: foo\n")
 
-      assert_raise RuntimeError, ~r/working tree not clean/, fn ->
-        Loop.maybe_ship_pitch({:file, abs}, ctx.tmp)
-      end
+      # Deliverable 1's core proof: the retire is NOT hostage to a clean
+      # tree — the pitch leaves ready/ and lands in shipped/ FIRST, then the
+      # dirty-tree signal fires as a loud distinct exit, never a raise that
+      # would strand the pitch back in ready/.
+      assert catch_exit(Loop.maybe_ship_pitch({:file, abs}, ctx.tmp)) == {:shutdown, 4}
 
+      refute File.exists?(abs)
       shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
-      refute File.exists?(shipped_path)
+      assert File.exists?(shipped_path)
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "COMMITTED and RETIRED"
+      assert msg =~ "stray.txt"
     end
 
     test "non-ready-dir file: no move, file stays at original path", ctx do
@@ -143,6 +156,16 @@ defmodule Mix.Tasks.Codegen.LoopTest do
 
     test "with before/after shas: records a git note and stamps frontmatter before the move",
          ctx do
+      # The ready/ -> shipped/ mv itself creates an untracked shipped/ dir,
+      # so the tree is dirty at ship time — the retire still runs
+      # unconditionally (record_ship + mv), then the dirty-tree signal
+      # fires as exit @dirty_tree_exit_code. See the "dirty working tree"
+      # test above for the dedicated ordering proof; this test's focus is
+      # the frontmatter stamp, which happens BEFORE the exit either way.
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
       System.cmd("git", ["init", "-q", ctx.tmp])
       System.cmd("git", ["-C", ctx.tmp, "config", "user.email", "test@example.com"])
       System.cmd("git", ["-C", ctx.tmp, "config", "user.name", "Test"])
@@ -162,7 +185,8 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       {after_sha, 0} = System.cmd("git", ["-C", ctx.tmp, "rev-parse", "HEAD"])
       after_sha = String.trim(after_sha)
 
-      assert Loop.maybe_ship_pitch({:file, abs}, ctx.tmp, before_sha, after_sha) == :ok
+      assert catch_exit(Loop.maybe_ship_pitch({:file, abs}, ctx.tmp, before_sha, after_sha)) ==
+               {:shutdown, 4}
 
       shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
       refute File.exists?(abs)
@@ -181,6 +205,98 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert Loop.maybe_ship_pitch({:file, abs}, ctx.tmp, nil, nil) == :ok
 
       shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
+      assert File.read!(shipped_path) == body
+    end
+  end
+
+  describe "claim_pitch!/2 — possession by rename" do
+    test "moves ready/<slug>.md to building/<slug>.md and returns the new path", ctx do
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, "# Pitch: foo\n")
+
+      assert Loop.claim_pitch!({:file, abs}, ctx.tmp) ==
+               {:file, Path.join([ctx.tmp, "codegen", "pitches", "building", "foo.md"])}
+
+      refute File.exists?(abs)
+      assert File.exists?(Path.join([ctx.tmp, "codegen", "pitches", "building", "foo.md"]))
+    end
+
+    test "a second claim on the same slug refuses (ENOENT — already claimed)", ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, "# Pitch: foo\n")
+
+      assert {:file, _building_abs} = Loop.claim_pitch!({:file, abs}, ctx.tmp)
+
+      # second claim: source is already gone from ready/ (the same abs path
+      # is passed, mirroring a second builder racing on the same slug)
+      assert catch_exit(Loop.claim_pitch!({:file, abs}, ctx.tmp)) == {:shutdown, 2}
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "already claimed"
+      assert msg =~ "foo"
+    end
+
+    test "literal source passes through unchanged, nothing claimed", ctx do
+      assert Loop.claim_pitch!(:literal, ctx.tmp) == :literal
+    end
+
+    test "a file outside ready/ passes through unchanged", ctx do
+      elsewhere = Path.join(ctx.tmp, "elsewhere")
+      File.mkdir_p!(elsewhere)
+      abs = Path.join(elsewhere, "foo.md")
+      File.write!(abs, "# Pitch: foo\n")
+
+      assert Loop.claim_pitch!({:file, abs}, ctx.tmp) == {:file, abs}
+      assert File.exists?(abs)
+    end
+  end
+
+  describe "restore_claim/2 — diff-failure restores building/ back to ready/" do
+    test "moves building/<slug>.md back to ready/<slug>.md", ctx do
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, "# Pitch: foo\n")
+
+      {:file, building_abs} = Loop.claim_pitch!({:file, abs}, ctx.tmp)
+
+      assert Loop.restore_claim({:file, building_abs}, ctx.tmp) == :ok
+
+      refute File.exists?(building_abs)
+      assert File.exists?(abs)
+      assert File.read!(abs) == "# Pitch: foo\n"
+    end
+
+    test "literal source: no-op", ctx do
+      assert Loop.restore_claim(:literal, ctx.tmp) == :ok
+    end
+
+    test "a file not in building/: no-op, no crash", ctx do
+      elsewhere = Path.join(ctx.tmp, "elsewhere")
+      File.mkdir_p!(elsewhere)
+      abs = Path.join(elsewhere, "foo.md")
+      File.write!(abs, "# Pitch: foo\n")
+
+      assert Loop.restore_claim({:file, abs}, ctx.tmp) == :ok
+      assert File.exists?(abs)
+    end
+  end
+
+  describe "maybe_ship_pitch/4 — building/ source (the normal claimed path)" do
+    test "ships a pitch whose source is building/<slug>.md into shipped/", ctx do
+      building_dir = Path.join([ctx.tmp, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+      abs = Path.join(building_dir, "foo.md")
+      body = "# Pitch: foo\n"
+      File.write!(abs, body)
+
+      assert Loop.maybe_ship_pitch({:file, abs}, ctx.tmp) == :ok
+
+      refute File.exists?(abs)
+      shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
+      assert File.exists?(shipped_path)
       assert File.read!(shipped_path) == body
     end
   end

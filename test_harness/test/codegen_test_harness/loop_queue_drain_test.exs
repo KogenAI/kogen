@@ -622,14 +622,17 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       output =
         capture_io(:stderr, fn ->
           assert {:ok, 1} =
-                   LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+                   LoopQueueDrain.drain(
+                     shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
+                   )
         end)
 
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
       assert output =~ "shipped, published"
     end
 
-    test "rewritten publish: ship record stamped with the post-rebase sha, not the original", ctx do
+    test "rewritten publish: ship record stamped with the post-rebase sha, not the original",
+         ctx do
       System.cmd("git", ["init", "-q", ctx.dir])
       System.cmd("git", ["-C", ctx.dir, "config", "user.email", "test@example.com"])
       System.cmd("git", ["-C", ctx.dir, "config", "user.name", "Test"])
@@ -641,7 +644,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       git_publish_fn = fn _cwd, _slug -> {:ok, {:rewritten, "newsha123"}} end
 
       assert {:ok, 1} =
-               LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+               LoopQueueDrain.drain(
+                 shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
+               )
 
       content = File.read!(Path.join(ctx.shipped_dir, "solo.md"))
       assert content =~ "shipped_sha: newsha123"
@@ -654,7 +659,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       git_publish_fn = fn _cwd, _slug -> {:error, "rebase conflict: boom"} end
 
       assert {:error, reason} =
-               LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+               LoopQueueDrain.drain(
+                 shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
+               )
 
       assert reason =~ "HALTED"
       assert reason =~ "solo"
@@ -703,7 +710,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       assert {:ok, 1} =
-               LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+               LoopQueueDrain.drain(
+                 shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
+               )
 
       assert Agent.get(publish_calls, & &1) == 1
     end
@@ -720,7 +729,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       assert {:ok, 1} =
-               LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
+               LoopQueueDrain.drain(
+                 shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
+               )
 
       assert Agent.get(publish_calls, & &1) == 1
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
@@ -2838,7 +2849,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     # Only the first pitch ever spawns — the drain halts before "b".
     assert Agent.get(calls, & &1) == ["a"]
-    assert output =~ "queue: 1 shipped, 0 failed, 0 drafted, unknown (unaccountable child spend) total"
+
+    assert output =~
+             "queue: 1 shipped, 0 failed, 0 drafted, unknown (unaccountable child spend) total"
   end
 
   test "(f2) sibling control: same unaccountable jsonl, NO ceiling -> drain completes normally",
@@ -2856,7 +2869,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
-    assert output =~ "queue: 2 shipped, 0 failed, 0 drafted, unknown (unaccountable child spend) total"
+    assert output =~
+             "queue: 2 shipped, 0 failed, 0 drafted, unknown (unaccountable child spend) total"
   end
 
   # ── --watch: terminal-condition continuation, quiescence gate, keychain ──
@@ -3055,6 +3069,92 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    end
+  end
+
+  # ── exit @dirty_tree_exit_code (4): committed AND retired, dirty tree ──────
+  # The child already ran record_ship + moved the pitch out of ready/building
+  # into shipped/ UNCONDITIONALLY before exiting — this is a SHIP, never a
+  # failure. See Mix.Tasks.Codegen.Loop's @dirty_tree_exit_code and
+  # codegen/pitches/shipped/a-landed-pitch-cannot-be-handed-out-again.md.
+  describe "exit 4 (dirty-tree-after-retire) — shipped-with-warning, never requeued" do
+    test "shipped_count increments, slug NOT in failed_slugs, warning on stderr, drain continues",
+         ctx do
+      # Selection reads ready_dir BEFORE the (simulated) child runs — the
+      # slug must still be there at selection time. The mock spawn_fn
+      # itself performs the child's unconditional retire (record_ship +
+      # ready/ -> shipped/ mv), mirroring what the REAL `mix codegen.loop`
+      # child does before exiting @dirty_tree_exit_code.
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        File.rename!(
+          Path.join(ctx.ready_dir, "#{slug}.md"),
+          Path.join(ctx.shipped_dir, "#{slug}.md")
+        )
+
+        {:exit_code, 4}
+      end
+
+      output =
+        capture_io(:stderr, fn ->
+          assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+        end)
+
+      assert output =~ "solo"
+      assert output =~ "COMMITTED and RETIRED"
+      refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+      assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    end
+
+    test "ship/6 finds the pitch in building/ (child committed but never shipped it itself)",
+         ctx do
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+      write_pitch(ctx.ready_dir, "solo")
+
+      # Simulate claim_pitch!/2's rename (ready/ -> building/) happening
+      # INSIDE the child, at spawn time — the child committed+retired via
+      # exit 4 WITHOUT itself moving building/ -> shipped/ (an edge the
+      # drain's own ship/6 fallback must cover).
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        File.rename!(
+          Path.join(ctx.ready_dir, "#{slug}.md"),
+          Path.join(building_dir, "#{slug}.md")
+        )
+
+        {:exit_code, 4}
+      end
+
+      capture_io(:stderr, fn ->
+        assert {:ok, 1} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, building_dir: building_dir)
+                 )
+      end)
+
+      refute File.exists?(Path.join(building_dir, "solo.md"))
+      assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    end
+
+    test "regression: exit 5 (an unrelated nonzero) still routes to handle_nonzero_exit, not the exit-4 arm",
+         ctx do
+      write_pitch(ctx.ready_dir, "solo")
+      transient_fn = fn _jsonl -> false end
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 5} end
+
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                 )
+      end)
+
+      # exit 5 is a deterministic failure — the pitch stays in ready/, never
+      # shipped, never removed.
+      assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+      refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     end
   end
 end

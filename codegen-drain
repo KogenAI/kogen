@@ -442,7 +442,7 @@ cmd_status() {
         repo="$(node_field "$node" repo)"
         run_as="$(node_field "$node" run_as)"
 
-        local count="0" reachable="1" watcher="no" incoming="0"
+        local count="0" reachable="1" watcher="no" incoming="0" building="0"
 
         if [[ -z "$host" ]]; then
             if [[ -d "$repo/codegen/pitches/ready" ]]; then
@@ -451,32 +451,37 @@ cmd_status() {
             if [[ -d "$repo/codegen/pitches/.incoming" ]]; then
                 incoming="$(find "$repo/codegen/pitches/.incoming" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')"
             fi
+            if [[ -d "$repo/codegen/pitches/building" ]]; then
+                building="$(find "$repo/codegen/pitches/building" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')"
+            fi
             watcher="$(bash -c "$(watcher_probe_cmd "$repo")" 2>/dev/null || echo no)"
         else
             local remote_out
-            remote_out="$(remote_run "$host" "$run_as" "find '$repo/codegen/pitches/ready' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; find '$repo/codegen/pitches/.incoming' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; $(watcher_probe_cmd "$repo")" 2>/dev/null || true)"
+            remote_out="$(remote_run "$host" "$run_as" "find '$repo/codegen/pitches/ready' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; find '$repo/codegen/pitches/.incoming' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; $(watcher_probe_cmd "$repo"); find '$repo/codegen/pitches/building' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l" 2>/dev/null || true)"
             if [[ -z "$remote_out" ]]; then
                 reachable="0"
             else
                 count="$(printf '%s\n' "$remote_out" | sed -n '1p' | tr -d '[:space:]')"
                 incoming="$(printf '%s\n' "$remote_out" | sed -n '2p' | tr -d '[:space:]')"
                 watcher="$(printf '%s\n' "$remote_out" | sed -n '3p' | tr -d '[:space:]')"
+                building="$(printf '%s\n' "$remote_out" | sed -n '4p' | tr -d '[:space:]')"
                 [[ -z "$count" ]] && count="0"
                 [[ -z "$incoming" ]] && incoming="0"
                 [[ -z "$watcher" ]] && watcher="no"
+                [[ -z "$building" ]] && building="0"
             fi
         fi
 
         if [[ -n "$json" ]]; then
             [[ $first -eq 1 ]] || printf ','
             first=0
-            printf '{"node":"%s","reachable":%s,"ready_count":%s,"incoming_count":%s,"watcher":"%s"}' \
-                "$node" "$([[ "$reachable" == "1" ]] && echo true || echo false)" "$count" "$incoming" "$watcher"
+            printf '{"node":"%s","reachable":%s,"ready_count":%s,"incoming_count":%s,"watcher":"%s","building_count":%s}' \
+                "$node" "$([[ "$reachable" == "1" ]] && echo true || echo false)" "$count" "$incoming" "$watcher" "$building"
         else
             if [[ "$reachable" == "0" ]]; then
                 printf '%-12s unreachable\n' "$node"
             else
-                printf '%-12s ready=%-4s incoming=%-4s watcher=%s\n' "$node" "$count" "$incoming" "$watcher"
+                printf '%-12s ready=%-4s incoming=%-4s watcher=%-4s building=%s\n' "$node" "$count" "$incoming" "$watcher" "$building"
                 if [[ "$watcher" == "no" ]]; then
                     printf '             not supervised — start with: claude-build --queue --watch\n'
                 fi

@@ -141,6 +141,14 @@ orchestrator rules, planner rules, developer rules, reviewer rules, committer ru
 - **[local] Stuck-loop guard counts ALL developer spawns per step** — `developer-no-self-gate.sh` cap (3 calls/session legacy; progress-bounded up to a hard ceiling of 15 under the Elixir loop) spans whole step including interleaves. Passing gap-fix round can still trip spin-guard on spawn count. De-escalate via planner freshness check rather than re-run gate.
 - **Orchestrator file enumeration is tool-gated, not directory-gated** — Claude read-discipline blocks Read|Bash; Glob is safe.
 
+## Reviewing State-Machine / Exit-Code Changes
+
+When a pitch adds a new state-machine exit code constant (e.g., `@dirty_tree_exit_code 4`) and a new `case result do` arm to handle it, the reviewer MUST verify the arm's placement RELATIVE to pre-existing catch-all arms. A new arm placed AFTER a generic `{:exit_code, _n}` catch-all will NEVER fire — the catch-all silently swallows it. Reading the actual `case` clause source-code order (not just the pitch prose naming the new arm) is mandatory, not optional.
+
+**Mechanical check**: (1) Read the source diff and locate the `case result do` dispatch that contains the new arm. (2) Confirm the new arm's clause comes BEFORE any pre-existing `_n -> wildcard_handler` catch-all arm (or other overly-broad conditions). (3) Require a regression test proving the catch-all STILL fires for an unrelated code (e.g., exit code 5 still routes to the old handler, not the new one). The regression test is the cheapest way to rule out a silent swallow.
+
+**Common pitfall**: The pitch prose says "add exit-4 arm before the catch-all" but the actual diff shows the arm placed after. Reviewing prose alone misses the defect. Cheapest remedy: require the developer to provide the direct file/line-number span from the diff, not just a description.
+
 ## Planning Rule/Flag Changes — Mandatory Audit Pattern
 
 When a pitch modifies rules, enforcement registry entries, or hook dispatch flags, the plan MUST include an **Interaction Audit** table that cross-checks three dimensions:

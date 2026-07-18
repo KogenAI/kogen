@@ -35,6 +35,23 @@ failure — same skip-and-continue path as a genuine nonzero exit.
 non-zero AFTER HEAD already moved, with a fresh clear gate verdict, still counts as shipped rather than
 halting the whole queue.
 
+## Exit 4 — Committed AND Retired, Dirty Tree (Ship-With-Warning)
+
+A FOURTH distinct child outcome, alongside shipped / deterministic-failure / infra-abort:
+`mix codegen.loop`'s `@dirty_tree_exit_code` (4). The child already ran `record_ship` and moved the
+pitch out of `ready/`/`building/` into `shipped/` UNCONDITIONALLY before exiting — see `context/loop.md`
+§ Possession by Rename. This is a SHIP, never a failure: `handle_exit_dirty_retired/8` accumulates
+spend, publishes the commit (`publish_or_halt/4`), calls `ship/6` as a defensive fallback (idempotent —
+a no-op if the child already shipped it; covers the rare shape where the child committed but crashed
+between the mv and the exit, leaving the pitch stuck in `building/`), counts the pitch shipped, resets
+`consecutive_fails` to 0, and NEVER adds the slug to `failed_slugs` or requeues it. Dispatched via a
+dedicated `{:exit_code, @dirty_tree_exit_code}` arm placed BEFORE the generic `{:exit_code, _n}`
+catch-all in `do_run_slug/4` — same precedence pattern as the existing `@infra_abort_exit_code` arm.
+
+`ship/6` probes `building/` as a second source (alongside `ready/`) — REQUIRED, not cosmetic: every
+SELECTED pitch is claimed into `building/` for the duration of its cycle (`context/loop.md`), so without
+the probe, every claimed pitch's fallback ship raises `"in neither ready/, building/, nor shipped/"`.
+
 ## Timeout vs Transient-Retry vs Outage-Pause — Three Separate Paths
 
 - **Watchdog timeout** (`:pitch_budget_secs`, default 7200s, env `CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS`)
@@ -162,4 +179,4 @@ a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain co
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning

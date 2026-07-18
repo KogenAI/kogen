@@ -9,7 +9,12 @@ defmodule Mix.Tasks.Codegen.Loop do
   and exits:
 
   - `0` — cycle reached COMMITTED with a clear gate
-  - non-zero, reason on stderr — any failure (crash loud; no silent success)
+  - `4` — COMMITTED and RETIRED (the pitch's work landed and left ready/ or
+    building/ for shipped/, unconditionally), but the working tree was
+    dirty at ship time — a ship-with-warning, not a failure. See
+    `@dirty_tree_exit_code` and `warn_dirty_after_retire/1`.
+  - non-zero, reason on stderr — any other failure (crash loud; no silent
+    success)
 
   ## Flags
 
@@ -45,6 +50,17 @@ defmodule Mix.Tasks.Codegen.Loop do
   # "this pitch's diff didn't pass" — both would otherwise be an
   # indistinguishable non-zero exit.
   @infra_abort_exit_code 3
+
+  # Distinct exit code for "the pitch's work landed AND was retired, but
+  # the working tree was dirty at ship time" (see `warn_dirty_after_retire/1`).
+  # This is NOT a failure — the commit landed, the pitch left ready/ and is
+  # in shipped/ — but it is not a silent success either, since something
+  # (stray render artifacts, a leftover edit) is sitting uncommitted. Distinct
+  # from `1` (deterministic cycle failure, pitch NOT retired) so
+  # `LoopQueueDrain` can count this as a ship-with-warning rather than
+  # requeue a pitch whose work is already on develop (see
+  # codegen/pitches/shipped/a-landed-pitch-cannot-be-handed-out-again.md).
+  @dirty_tree_exit_code 4
 
   @impl Mix.Task
   def run(argv) do
@@ -98,6 +114,11 @@ defmodule Mix.Tasks.Codegen.Loop do
     pitch = resolve_pitch(pitch_arg, cwd)
     source = resolve_pitch_source(pitch_arg, cwd)
 
+    # Possession by rename: a pitch selected from ready/ is claimed into
+    # building/ for the duration of this cycle — a second builder racing on
+    # the same slug hits ENOENT (physics, not policy). See claim_pitch!/2.
+    source = claim_pitch!(source, cwd)
+
     slug =
       case source do
         {:file, abs} -> Path.basename(abs, ".md")
@@ -137,13 +158,83 @@ defmodule Mix.Tasks.Codegen.Loop do
             maybe_ship_pitch(source, cwd, before_sha(head_before), after_sha)
 
           {:error, reason} ->
+            restore_claim(source, cwd)
             Mix.shell().error("codegen.loop: FAILED — #{reason}")
             exit({:shutdown, 1})
         end
 
       {:error, reason} ->
+        restore_claim(source, cwd)
         Mix.shell().error("codegen.loop: FAILED — #{reason}")
         exit({:shutdown, 1})
+    end
+  end
+
+  # Claims a `ready/<slug>.md` pitch by an atomic same-filesystem rename into
+  # `building/<slug>.md`, BEFORE the loop runs — the moment of possession.
+  # A `File.rename/2` race loser gets `{:error, :enoent}` (the source is
+  # already gone) and refuses loud rather than silently proceeding to build
+  # a pitch someone else is already building. Any other rename error
+  # propagates uncaught (a genuine anomaly, never swallowed).
+  #
+  # Deliberately NOT called from `run_loop_catching_infra_abort/1`'s rescue
+  # arm — an infra abort must leave the pitch in `building/`, mirroring
+  # `LoopQueueDrain.handle_infra_abort/4`'s existing "pitch remains
+  # untouched" posture (the box is broken; nothing about the pitch was
+  # wrong).
+  @doc false
+  @spec claim_pitch!({:file, String.t()} | :literal, String.t()) ::
+          {:file, String.t()} | :literal
+  def claim_pitch!(:literal, _cwd), do: :literal
+
+  def claim_pitch!({:file, abs}, cwd) do
+    ready_dir = Path.join([cwd, "codegen", "pitches", "ready"])
+    building_dir = Path.join([cwd, "codegen", "pitches", "building"])
+    name = Path.basename(abs)
+    src_in_ready = Path.join(ready_dir, name)
+
+    if Path.expand(abs) == Path.expand(src_in_ready) do
+      File.mkdir_p!(building_dir)
+      dst = Path.join(building_dir, name)
+
+      case File.rename(src_in_ready, dst) do
+        :ok ->
+          {:file, dst}
+
+        {:error, :enoent} ->
+          slug = Path.basename(abs, ".md")
+          Mix.shell().error("codegen.loop: pitch already claimed (building/) — #{slug}")
+          exit({:shutdown, 2})
+
+        {:error, reason} ->
+          raise "codegen.loop: claim_pitch! failed to rename #{src_in_ready} -> #{dst}: " <>
+                  "#{inspect(reason)}"
+      end
+    else
+      {:file, abs}
+    end
+  end
+
+  # Restores a claimed pitch from building/ back to ready/ on a diff-failure
+  # exit — the pitch's work did NOT land, so it must remain dispatchable to
+  # the next builder. A no-op for a source that was never claimed (:literal,
+  # or a file outside building/).
+  @doc false
+  @spec restore_claim({:file, String.t()} | :literal, String.t()) :: :ok
+  def restore_claim(:literal, _cwd), do: :ok
+
+  def restore_claim({:file, abs}, cwd) do
+    building_dir = Path.join([cwd, "codegen", "pitches", "building"])
+    ready_dir = Path.join([cwd, "codegen", "pitches", "ready"])
+    name = Path.basename(abs)
+    src_in_building = Path.join(building_dir, name)
+
+    if Path.expand(abs) == Path.expand(src_in_building) and File.exists?(src_in_building) do
+      File.mkdir_p!(ready_dir)
+      File.rename!(src_in_building, Path.join(ready_dir, name))
+      :ok
+    else
+      :ok
     end
   end
 
@@ -280,15 +371,28 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   def maybe_ship_pitch({:file, abs}, cwd, before_sha, after_sha) do
     ready_dir = Path.join([cwd, "codegen", "pitches", "ready"])
+    building_dir = Path.join([cwd, "codegen", "pitches", "building"])
     name = Path.basename(abs)
     src_in_ready = Path.join(ready_dir, name)
+    src_in_building = Path.join(building_dir, name)
 
-    if Path.expand(abs) == Path.expand(src_in_ready) do
+    # A claimed pitch's source is building/<name> (the normal path, post
+    # claim_pitch!); a still-ready/<name> source is the legacy/no-claim
+    # shape (e.g. a test driving maybe_ship_pitch/4 directly). Either is a
+    # valid ship source.
+    src =
+      cond do
+        Path.expand(abs) == Path.expand(src_in_building) -> src_in_building
+        Path.expand(abs) == Path.expand(src_in_ready) -> src_in_ready
+        true -> nil
+      end
+
+    if src do
       shipped_dir = Path.join([cwd, "codegen", "pitches", "shipped"])
       slug = Path.basename(abs, ".md")
 
       ship_ready_pitch(
-        src_in_ready,
+        src,
         Path.join(shipped_dir, name),
         cwd,
         slug,
@@ -369,13 +473,23 @@ defmodule Mix.Tasks.Codegen.Loop do
     end
   end
 
+  # Retire follows git truth: on a VERIFIED landing (the caller already
+  # proved HEAD advanced + ancestor-extended via verify_commit_landed/2),
+  # the pitch leaves ready/or building/ UNCONDITIONALLY — record_ship +
+  # rename run FIRST. The clean-tree check runs SECOND, as a loud non-fatal
+  # signal (exit @dirty_tree_exit_code) rather than a gate that could strand
+  # already-landed work back in a dispatchable directory. See
+  # codegen/pitches/shipped/a-landed-pitch-cannot-be-handed-out-again.md —
+  # a pitch whose work landed must never be handed to a builder again, and
+  # blocking the retire on tree cleanliness never protected those dirty
+  # files anyway (they stay dirty either way); it only decided whether the
+  # landed pitch remains dispatchable.
   defp ship_ready_pitch(src, dst, cwd, slug, before_sha, after_sha) do
     cond do
       not File.exists?(src) and File.exists?(dst) ->
         :ok
 
       true ->
-        assert_clean_tree!(cwd)
         # Frontmatter, then the mv — see LoopQueue.record_ship/4
         # moduledoc for why this order is load-bearing (a stranded
         # shipped_sha: on a still-ready/ pitch is read by the NEXT
@@ -383,18 +497,29 @@ defmodule Mix.Tasks.Codegen.Loop do
         LoopQueue.record_ship(cwd, slug, before_sha, after_sha)
         File.mkdir_p!(Path.dirname(dst))
         File.rename!(src, dst)
+        warn_dirty_after_retire(cwd)
         :ok
     end
   end
 
-  defp assert_clean_tree!(cwd) do
+  # Loud, non-fatal-to-the-ship signal: the pitch already left ready/
+  # (unconditionally, above) — a dirty tree here can no longer strand it.
+  # Prints the dirty status and exits @dirty_tree_exit_code so the drain
+  # (LoopQueueDrain) can classify this as shipped-with-warning rather than
+  # a failed pitch to requeue. Fails open (returns normally, no exit) on a
+  # non-git cwd — mirrors the removed assert_clean_tree!/1's own posture.
+  defp warn_dirty_after_retire(cwd) do
     case System.cmd("git", ["-C", cwd, "rev-parse", "--show-toplevel"], stderr_to_stdout: true) do
       {_out, 0} ->
         {status, _} =
           System.cmd("git", ["-C", cwd, "status", "--porcelain"], stderr_to_stdout: true)
 
         if String.trim(status) != "" do
-          raise "codegen.loop: refusing to ship — working tree not clean:\n#{status}"
+          Mix.shell().error(
+            "codegen.loop: COMMITTED and RETIRED — working tree not clean:\n#{status}"
+          )
+
+          exit({:shutdown, @dirty_tree_exit_code})
         end
 
         :ok

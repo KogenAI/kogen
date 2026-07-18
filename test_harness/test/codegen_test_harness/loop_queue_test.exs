@@ -848,5 +848,71 @@ defmodule CodegenTestHarness.LoopQueueTest do
       assert content =~ "shipped_sha: #{after_sha}"
       refute content =~ "shipped_sha: oldsha"
     end
+
+    test "stamps a pitch living in building/ (claimed, mid-cycle) — the three-path fallback",
+         %{dir: dir, commit!: commit!} do
+      before_sha = commit!.("a.txt", "initial")
+
+      building_dir = Path.join([dir, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+      pitch_path = Path.join(building_dir, "claimed.md")
+      File.write!(pitch_path, "---\nstatus: ready\n---\n# Pitch: claimed\n")
+      after_sha = commit!.("b.txt", "second")
+
+      assert LoopQueue.record_ship(dir, "claimed", before_sha, after_sha) == :ok
+
+      content = File.read!(pitch_path)
+      assert content =~ "shipped_sha: #{after_sha}"
+      assert content =~ "shipped_range: #{before_sha}..#{after_sha}"
+    end
+  end
+
+  describe "ordered_slugs/1 — building/ is invisible to selection" do
+    test "a slug that exists only in building/ is never returned" do
+      dir =
+        Path.join(System.tmp_dir!(), "loop_queue_building_#{:erlang.unique_integer([:positive])}")
+
+      ready_dir = Path.join(dir, "ready")
+      building_dir = Path.join(dir, "building")
+      File.mkdir_p!(ready_dir)
+      File.mkdir_p!(building_dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      File.write!(Path.join(ready_dir, "a.md"), "# a\n")
+      File.write!(Path.join(building_dir, "claimed.md"), "# claimed\n")
+
+      assert LoopQueue.ordered_slugs(ready_dir) == ["a"]
+    end
+  end
+
+  describe "blocked_by_unmet_dep/2 — an in-flight (building/) dep still blocks its dependent" do
+    test "a dependent whose dep is neither ready/ nor shipped/ (in building/) stays blocked" do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "loop_queue_blocked_building_#{:erlang.unique_integer([:positive])}"
+        )
+
+      ready_dir = Path.join(dir, "ready")
+      shipped_dir = Path.join(dir, "shipped")
+      building_dir = Path.join(dir, "building")
+      File.mkdir_p!(ready_dir)
+      File.mkdir_p!(shipped_dir)
+      File.mkdir_p!(building_dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      # dependent sits in ready/, its dep is claimed (mid-cycle, in
+      # building/) — neither ready/ nor shipped/ sees it, so the edge is
+      # unmet and the dependent stays blocked.
+      File.write!(
+        Path.join(ready_dir, "dependent.md"),
+        "---\nblocks_on: [dep]\n---\n# dependent\n"
+      )
+
+      File.write!(Path.join(building_dir, "dep.md"), "# dep (in flight)\n")
+
+      blocked = LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir)
+      assert Map.get(blocked, "dependent") == "dep"
+    end
   end
 end

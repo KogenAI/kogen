@@ -852,14 +852,22 @@ defmodule CodegenTestHarness.LoopQueue do
 
   defp write_frontmatter!(cwd, slug, before_sha, after_sha) do
     ready_path = Path.join([cwd, "codegen", "pitches", "ready", "#{slug}.md"])
+    building_path = Path.join([cwd, "codegen", "pitches", "building", "#{slug}.md"])
     shipped_path = Path.join([cwd, "codegen", "pitches", "shipped", "#{slug}.md"])
 
     # A re-stamp (e.g. the queue drain's post-rebase re-stamp of an already
     # published sha) targets a pitch that has ALREADY been moved out of
-    # ready/ — try ready/ first (the normal, pre-move ship path), then fall
-    # back to shipped/ before raising. Neither existing is the genuine
-    # anomaly this raise exists to catch.
-    pitch_path = if File.exists?(ready_path), do: ready_path, else: shipped_path
+    # ready/ — try ready/ first (the normal, pre-claim ship path), then
+    # building/ (a claimed pitch mid-cycle — the normal ship path under
+    # possession-by-rename), then fall back to shipped/ before raising.
+    # None of the three existing is the genuine anomaly this raise exists
+    # to catch.
+    pitch_path =
+      cond do
+        File.exists?(ready_path) -> ready_path
+        File.exists?(building_path) -> building_path
+        true -> shipped_path
+      end
 
     case File.read(pitch_path) do
       {:ok, content} ->

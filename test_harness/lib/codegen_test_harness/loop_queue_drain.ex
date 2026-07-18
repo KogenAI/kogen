@@ -83,6 +83,31 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   untouched in `ready_dir` — nothing about THAT pitch's diff was wrong. See
   `handle_infra_abort/4`.
 
+  A FOURTH, distinct child outcome: `mix codegen.loop`'s dedicated exit code
+  for "committed AND retired, but the working tree was dirty at ship time"
+  (`@dirty_tree_exit_code`, 4). The child already ran `record_ship` and
+  moved the pitch out of `ready_dir`/`building_dir` into `shipped_dir`
+  UNCONDITIONALLY before exiting — this is a SHIP, not a failure. See
+  `handle_exit_dirty_retired/8`: it counts the pitch shipped, publishes the
+  commit, resets the consecutive-failure streak, and NEVER adds the slug to
+  `failed_slugs` or requeues it. See
+  `codegen/pitches/shipped/a-landed-pitch-cannot-be-handed-out-again.md`.
+
+  Every SELECTED pitch is CLAIMED for the duration of its cycle: `mix
+  codegen.loop` atomically renames `ready/<slug>.md` to
+  `building/<slug>.md` before running (`Mix.Tasks.Codegen.Loop.claim_pitch!/2`)
+  — a pitch is therefore physically in `ready_dir` only while UNSELECTED
+  (unmet dep, not yet reached) or after a diff-failure restore; a pitch
+  mid-cycle lives in `building_dir`. `ship/6` probes `building_dir` as a
+  fallback ship source (a claimed pitch the child committed but never
+  shipped itself) — this is REQUIRED, not cosmetic: without it every
+  claimed pitch's fallback ship raises "in neither ready/, building/, nor
+  shipped/". A crashed build strands its slug in `building_dir`
+  indefinitely — deliberately never auto-reconciled (surfacing beats
+  silently requeuing exactly the class of decision this claim exists to
+  prevent); `codegen-drain status` surfaces the count, the operator
+  decides.
+
   `:watch` (see `drain/1` doc) changes ONLY the terminal "`ready/` is
   empty" condition — every other exit (Ctrl-C, spend ceiling, the
   consecutive-fail breaker, an orphan/infra abort) is unchanged. A watched
@@ -136,6 +161,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # (see `Mix.Tasks.Codegen.Loop` `@infra_abort_exit_code`) — a fault no
   # developer edit could fix.
   @infra_abort_exit_code 3
+
+  # `mix codegen.loop`'s distinct exit code for "committed AND retired, but
+  # the working tree was dirty at ship time" (see `Mix.Tasks.Codegen.Loop`
+  # `@dirty_tree_exit_code`) — a ship-with-warning, never a failed pitch to
+  # requeue: the pitch's work already left ready/building/ for shipped/.
+  @dirty_tree_exit_code 4
 
   @codegen_build_bin Path.expand("../../../codegen-build", __DIR__)
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
@@ -341,6 +372,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     ready_dir = Keyword.get(opts, :ready_dir, Path.join([cwd, "codegen", "pitches", "ready"]))
 
+    building_dir =
+      Keyword.get(opts, :building_dir, Path.join([cwd, "codegen", "pitches", "building"]))
+
     shipped_dir =
       Keyword.get(opts, :shipped_dir, Path.join([cwd, "codegen", "pitches", "shipped"]))
 
@@ -348,12 +382,15 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       Keyword.get(opts, :lock_path, Path.join([cwd, "codegen", "gate-pending", "queue.lock"]))
 
     File.mkdir_p!(ready_dir)
+    File.mkdir_p!(building_dir)
     File.mkdir_p!(shipped_dir)
     File.mkdir_p!(Path.dirname(lock_path))
 
     pid_alive_fn = Keyword.get(opts, :pid_alive_fn, &BuildLock.default_pid_alive?/1)
     orphan_scan_fn = Keyword.get(opts, :orphan_scan_fn, &default_build_orphan_scan/1)
-    publish_preflight_fn = Keyword.get(opts, :publish_preflight_fn, &default_publish_preflight_fn/1)
+
+    publish_preflight_fn =
+      Keyword.get(opts, :publish_preflight_fn, &default_publish_preflight_fn/1)
 
     with :ok <- refuse_if_build_orphan(cwd, orphan_scan_fn),
          :ok <- publish_preflight_fn.(cwd),
@@ -387,6 +424,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           stack: stack,
           cwd: cwd,
           ready_dir: ready_dir,
+          building_dir: building_dir,
           shipped_dir: shipped_dir,
           lock_path: lock_path,
           max_retries: Keyword.get(opts, :max_retries, max_retries_from_env()),
@@ -406,8 +444,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           ordered_fn: Keyword.get(opts, :ordered_fn, &LoopQueue.ordered_slugs/1),
           transient_fn: Keyword.get(opts, :transient_fn, &LoopQueue.transient?/1),
           probe_fn: Keyword.get(opts, :probe_fn, &default_probe_fn/1),
-          outage_pause_secs:
-            Keyword.get(opts, :outage_pause_secs, outage_pause_from_env()),
+          outage_pause_secs: Keyword.get(opts, :outage_pause_secs, outage_pause_from_env()),
           blocked_fn:
             Keyword.get(opts, :blocked_fn, fn ->
               LoopQueue.blocked_by_unmet_dep(ready_dir, shipped_dir)
@@ -1010,6 +1047,18 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       {:exit_code, @infra_abort_exit_code} ->
         handle_infra_abort(jsonl, idx, state.total, slug)
 
+      {:exit_code, @dirty_tree_exit_code} ->
+        handle_exit_dirty_retired(
+          state,
+          slug,
+          jsonl,
+          head_before,
+          shipped_count,
+          concluded_count,
+          idx,
+          ts
+        )
+
       {:exit_code, _n} ->
         handle_nonzero_exit(
           state,
@@ -1102,7 +1151,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         case publish_or_halt(state, slug, head_before, head_after) do
           {:ok, published_sha} ->
             ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, published_sha)
-            IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}")
+
+            IO.puts(
+              :stderr,
+              "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}"
+            )
+
             state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
             run_loop(state, shipped_count + 1, concluded_count + 1)
 
@@ -1150,6 +1204,49 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
           run_loop(state, shipped_count, concluded_count + 1)
         end
+    end
+  end
+
+  # exit @dirty_tree_exit_code: the child already committed AND already
+  # retired the pitch UNCONDITIONALLY (record_ship + ready|building/ ->
+  # shipped/ mv both ran before the child exited) — but this is defensive:
+  # ship/6 (below) is still called as a fallback for the rare shape where
+  # the child committed but a crash/kill landed BETWEEN the mv and the
+  # exit, leaving the pitch claimed in building/ rather than in shipped/.
+  # ship/6 is idempotent (a genuine already-shipped pitch is a no-op via
+  # its own File.exists?(dst) arm), so calling it here never double-ships.
+  # This is a ship-with-warning, never a failure: count it shipped, do NOT
+  # add to failed_slugs, do NOT requeue. Modeled on handle_exit_zero/8's
+  # committed?+gate_clear? success arm.
+  defp handle_exit_dirty_retired(
+         state,
+         slug,
+         jsonl,
+         head_before,
+         shipped_count,
+         concluded_count,
+         idx,
+         _ts
+       ) do
+    state = accumulate_spend(state, jsonl)
+    known_base? = head_before != nil and head_before != ""
+    head_after = if known_base?, do: state.git_head_fn.(state.cwd), else: nil
+
+    IO.puts(
+      :stderr,
+      "[#{idx}/#{state.total}] #{slug} ... COMMITTED and RETIRED (working tree left dirty — see build log #{jsonl})"
+    )
+
+    case publish_or_halt(state, slug, head_before, head_after) do
+      {:ok, published_sha} ->
+        ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, published_sha)
+        IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... published #{published_sha}")
+        state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
+        run_loop(state, shipped_count + 1, concluded_count + 1)
+
+      {:error, reason} ->
+        spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+        {:error, reason}
     end
   end
 
@@ -1276,7 +1373,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   defp ship(cwd, ready_dir, shipped_dir, slug, before_sha, after_sha) do
-    src = Path.join(ready_dir, "#{slug}.md")
+    building_dir = Path.join(Path.dirname(ready_dir), "building")
+    src_ready = Path.join(ready_dir, "#{slug}.md")
+    src_building = Path.join(building_dir, "#{slug}.md")
     dst = Path.join(shipped_dir, "#{slug}.md")
 
     cond do
@@ -1285,9 +1384,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       # solo path (LoopQueue.record_ship/4 moduledoc), for the same reason:
       # a stranded shipped_sha: on a still-ready/ pitch would be read by
       # the NEXT build's prompt as "already shipped".
-      File.exists?(src) ->
+      File.exists?(src_ready) ->
         LoopQueue.record_ship(cwd, slug, before_sha, after_sha)
-        File.rename!(src, dst)
+        File.rename!(src_ready, dst)
+
+      # pitch is claimed (building/) but the child never shipped it itself
+      # (e.g. it exited non-zero after committing) -> drain ships from
+      # building/ as fallback. Same frontmatter-then-mv ordering.
+      File.exists?(src_building) ->
+        LoopQueue.record_ship(cwd, slug, before_sha, after_sha)
+        File.rename!(src_building, dst)
 
       # agent already shipped (normal exit-0 path) -> no-op. The child's
       # own solo-path ship_ready_pitch/6 already recorded this ship.
@@ -1296,7 +1402,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
       # genuine anomaly: pitch in neither dir -> fail loud, name the slug
       true ->
-        raise "LoopQueueDrain.ship: #{slug} in neither ready/ nor shipped/"
+        raise "LoopQueueDrain.ship: #{slug} in neither ready/, building/, nor shipped/"
     end
 
     :ok
@@ -1366,7 +1472,11 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         # still publish the landed commit.
         case publish_or_halt(state, slug, head_before, head_after) do
           {:ok, published_sha} ->
-            IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}")
+            IO.puts(
+              :stderr,
+              "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}"
+            )
+
             state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
             run_loop(state, shipped_count + 1, concluded_count + 1)
 
@@ -1382,7 +1492,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         case publish_or_halt(state, slug, head_before, head_after) do
           {:ok, published_sha} ->
             ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, published_sha)
-            IO.puts(:stderr, "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}")
+
+            IO.puts(
+              :stderr,
+              "[#{idx}/#{state.total}] #{slug} ... shipped, published #{published_sha}"
+            )
+
             state = %{state | retry_count: 0, last_slug: nil, consecutive_fails: 0}
             run_loop(state, shipped_count + 1, concluded_count + 1)
 
@@ -2631,7 +2746,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
          upstream <- String.trim(upstream_out),
          [remote, branch] <- String.split(upstream, "/", parts: 2),
          {_out, 0} <-
-           System.cmd("git", ["-C", cwd, "ls-remote", "--exit-code", remote, "refs/heads/#{branch}"],
+           System.cmd(
+             "git",
+             ["-C", cwd, "ls-remote", "--exit-code", remote, "refs/heads/#{branch}"],
              stderr_to_stdout: true
            ) do
       :ok
