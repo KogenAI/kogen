@@ -5341,6 +5341,60 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert dev_calls == 2
     end
 
+    test "tree changed since gate, re-gate FAILS on a curator-owned witness → reworks context-curator, not the developer",
+         %{
+           calls_agent: calls_agent,
+           dir: dir
+         } do
+      File.write!(Path.join(dir, "feature.txt"), "done\n")
+
+      match_calls = :counters.new(1, [])
+      regate_calls = :counters.new(1, [])
+
+      match_fn = fn _cwd ->
+        :counters.add(match_calls, 1, 1)
+        :counters.get(match_calls, 1) > 1
+      end
+
+      # First re-gate call (the pre-commit rework path) fails; every
+      # subsequent call is clear — same shape as the developer-rework case
+      # above, but this failure is routed through `:gate_owner_fn` as a
+      # curator-owned witness (e.g. a `context/*.md` doc drift), so the
+      # rework must land on `context-curator`, never the developer.
+      gate_fn = fn _cwd, _opts ->
+        :counters.add(regate_calls, 1, 1)
+        n = :counters.get(regate_calls, 1)
+        if n == 2, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      gate_owner_fn = fn _cwd, _dev_role -> "context-curator" end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 gate_fn: gate_fn,
+                 gate_tree_match_fn: match_fn,
+                 gate_owner_fn: gate_owner_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_final_gate_cycles: 1,
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+               )
+
+      # context-curator was invoked twice: once in the normal sequence, once
+      # more as the owner-routed pre-commit rework. The developer was NOT
+      # re-invoked for this failure — it stays at its normal-sequence count
+      # of one, never the guaranteed-exhaust dead end this fix prevents.
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "context-curator")) == 2
+      assert Enum.count(calls, &(&1 == "developer-static")) == 1
+    end
+
     test "tree changed since gate, re-gate fails every time → exhausts and errors, never commits",
          %{
            calls_agent: calls_agent,

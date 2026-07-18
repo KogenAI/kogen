@@ -877,16 +877,23 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   # Re-gates the CURRENT tree (the same `:gate_fn` contract `do_gate_loop/9`
   # uses) before the committer runs. Clear → proceed to the committer
-  # (restamped `gate-result.json` now matches). Non-clear → re-invoke the
-  # SAME developer role with the gate failure folded into context (mirrors
-  # `do_gate_loop/9`'s rework shape), then recurse into
-  # `ensure_gate_graded_this_tree!/5` for another match check + gate cycle.
-  # No developer role in this cycle's artifacts (should not happen in
-  # practice — a developer always runs before the committer in both role
-  # sequences) → treat as exhausted rather than crash on a nil dev_role.
+  # (restamped `gate-result.json` now matches). Non-clear → resolve the
+  # OWNER of the failure via `resolve_gate_owner/2` (the same owner-routing
+  # `do_gate_loop/9`'s owner arm already uses — a `context/*.md` /
+  # `PROJECT_CONTEXT.md` witness routes to `context-curator`, everything
+  # else keeps routing to the cycle's developer), fold the gate failure
+  # into context (mirrors `do_gate_loop/9`'s rework shape), then recurse
+  # into `ensure_gate_graded_this_tree!/5` for another match check + gate
+  # cycle. No developer role in this cycle's artifacts (should not happen
+  # in practice — a developer always runs before the committer in both
+  # role sequences) → treat as exhausted rather than crash on a nil
+  # dev_role; owner resolution never runs without a dev_role to fall back
+  # to.
   defp rework_final_gate(ctx, rest, harness, opts, cycle) do
     gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
     max_cycles = Keyword.get(opts, :max_final_gate_cycles, 1)
+    # gate_owner_fn defaults to resolve_gate_owner/2 (see below) — kept as
+    # a seam so tests can inject a curator-owned witness deterministically.
 
     case gate_fn.(ctx.cwd, gate_opts(opts, ctx)) do
       {:clear, _gate_cmd} ->
@@ -900,6 +907,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
            "pre-commit re-gate failed and no developer role is present in this cycle's " <>
              "artifacts to route rework to (loop_failed, never a false loop_committed)."}
         else
+          owner_fn = Keyword.get(opts, :gate_owner_fn, &resolve_gate_owner/2)
+          rework_role = owner_fn.(ctx.cwd, dev_role)
+
           reason = gate_failure_reason(ctx.cwd)
           brief = capture_rework_brief(ctx.cwd, opts)
 
@@ -913,12 +923,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             ctx
             |> put_in([:artifacts, :last_failure_reason], reason)
             |> put_in([:artifacts, :rework_brief], brief)
-            |> maybe_escalate_model(dev_role, harness, opts, final_attempt?)
+            |> maybe_escalate_model(rework_role, harness, opts, final_attempt?)
 
-          with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
+          with {:ok, result} <- invoke_with_retry(rework_role, harness, retry_ctx, opts) do
             ctx =
               retry_ctx
-              |> put_in([:artifacts, dev_role], result)
+              |> put_in([:artifacts, rework_role], result)
               |> update_in([:artifacts], &Map.delete(&1, :escalated_model))
 
             run_format_step(ctx.cwd, opts)
