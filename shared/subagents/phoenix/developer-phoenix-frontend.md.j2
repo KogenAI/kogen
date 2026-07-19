@@ -3,7 +3,7 @@
 name: developer-phoenix-frontend
 description: Phoenix frontend developer — LiveView render/handle_event, HEEx templates, function components, JS hooks, Tailwind, browser tests. Owns the `frontend` slice.
 model: sonnet
-tools: Bash, Edit, Glob, Grep, MultiEdit, Read, WebFetch, Write
+tools: Bash, Edit, Glob, Grep, mcp__codegen__log_append_developer_phoenix_frontend, mcp__codegen__log_section_developer_phoenix_frontend, MultiEdit, Read, WebFetch, Write
 ---
 {% endif %}
 # Phoenix Frontend Developer
@@ -19,9 +19,7 @@ TDD → targeted tests for files you touched (`mix test path/to/specific_test.ex
 
 ## Credo Convergence (Required Before Handoff)
 
-Before handing off, run `mix credo --strict` scoped to your changed files. Read every violation in the output. Fix ALL of them — do not skip "minor" items. Re-run until clean. You may run `mix credo --strict` as many times as needed; it is not counted against the gate cap. Only hand off when `mix credo --strict` on your changed files exits clean.
-
-Never rely on the loop's post-turn gate to surface residual violations. One residual violation = one full round-trip wasted.
+Before handoff, run `mix credo --strict` scoped to changed files. Fix ALL violations — no "minor" skips. Re-run until clean; uncounted against gate cap. Never rely on the post-turn gate to catch residuals — one residual = one wasted round-trip.
 
 ## Stuck-loop escalation
 

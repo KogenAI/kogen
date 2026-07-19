@@ -36,6 +36,30 @@ tools:
       WebFetch: fetch_webpage
       WebSearch: web_search
       Write: write
+      # mcp__codegen__* -> bare pi.registerTool name (strip the MCP prefix).
+      # Pi has no MCP config; harnesses/pi/pi-extensions/enforcement's
+      # codegen-tools.ts registers the identical tool set under these bare
+      # names, so this mapping is genuine parity, not a shim.
+      mcp__codegen__gate_status: gate_status
+      mcp__codegen__log_read: log_read
+      mcp__codegen__log_section_planner_phoenix: log_section_planner_phoenix
+      mcp__codegen__log_append_planner_phoenix: log_append_planner_phoenix
+      mcp__codegen__log_section_planner_static: log_section_planner_static
+      mcp__codegen__log_append_planner_static: log_append_planner_static
+      mcp__codegen__log_section_developer_phoenix_backend: log_section_developer_phoenix_backend
+      mcp__codegen__log_append_developer_phoenix_backend: log_append_developer_phoenix_backend
+      mcp__codegen__log_section_developer_phoenix_frontend: log_section_developer_phoenix_frontend
+      mcp__codegen__log_append_developer_phoenix_frontend: log_append_developer_phoenix_frontend
+      mcp__codegen__log_section_developer_static: log_section_developer_static
+      mcp__codegen__log_append_developer_static: log_append_developer_static
+      mcp__codegen__log_section_reviewer_phoenix: log_section_reviewer_phoenix
+      mcp__codegen__log_append_reviewer_phoenix: log_append_reviewer_phoenix
+      mcp__codegen__log_section_reviewer_static: log_section_reviewer_static
+      mcp__codegen__log_append_reviewer_static: log_append_reviewer_static
+      mcp__codegen__log_section_committer: log_section_committer
+      mcp__codegen__log_append_committer: log_append_committer
+      mcp__codegen__log_section_context_curator: log_section_context_curator
+      mcp__codegen__log_append_context_curator: log_append_context_curator
 
 # Common variables available to all templates
 common:

@@ -3,7 +3,7 @@
 name: developer-phoenix-backend
 description: Phoenix backend developer — Ecto schemas, migrations, changesets, seeds, contexts, business logic, controllers, Oban workers, mailers, backend tests. Owns the `backend` slice (includes data layer).
 model: sonnet
-tools: Bash, Edit, Glob, Grep, MultiEdit, Read, WebFetch, Write
+tools: Bash, Edit, Glob, Grep, mcp__codegen__log_append_developer_phoenix_backend, mcp__codegen__log_section_developer_phoenix_backend, MultiEdit, Read, WebFetch, Write
 ---
 {% endif %}
 # Phoenix Backend Developer
@@ -16,9 +16,7 @@ TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollbac
 
 ## Credo Convergence (Required Before Handoff)
 
-Before handing off, run `mix credo --strict` scoped to your changed files. Read every violation in the output. Fix ALL of them — do not skip "minor" items. Re-run until clean. You may run `mix credo --strict` as many times as needed; it is not counted against the gate cap. Only hand off when `mix credo --strict` on your changed files exits clean.
-
-Never rely on the loop's post-turn gate to surface residual violations. One residual violation = one full round-trip wasted.
+Before handoff, run `mix credo --strict` scoped to changed files. Fix ALL violations — no "minor" skips. Re-run until clean; uncounted against gate cap. Never rely on the post-turn gate to catch residuals — one residual = one wasted round-trip.
 
 ## Stuck-loop escalation
 

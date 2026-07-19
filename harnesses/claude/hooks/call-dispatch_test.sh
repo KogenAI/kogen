@@ -318,6 +318,40 @@ assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" 'SETTING_SOURCES="project
 # Test 4: claude-code-settings.json has installed-settings copy
 assert_file_contains "$HARNESSES_DIR/claude-code-settings.json" '"MAX_THINKING_TOKENS": "0"'
 
+# ── MCP wiring: --mcp-config added, --strict-mcp-config retained ────────────
+# strict-mcp-config walls out tidewave/chrome/anything else; --mcp-config
+# names ONLY the codegen server (when its dist/ has been built).
+assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" "--strict-mcp-config"
+assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" "--mcp-config"
+assert_file_contains "$HARNESSES_DIR/call-dispatch.sh" "MCP_SERVER_DIST"
+
+# Functional: --print-argv omits --mcp-config when the server isn't built
+# (OCG_CODEGEN_DIR points at an empty scratch dir, so mcp-server/dist/index.js
+# does not exist there — the dispatcher must not fail, just omit the flag).
+MCP_SCRATCH_DIR="$(mktemp -d)"
+mkdir -p "$MCP_SCRATCH_DIR/harnesses/claude"
+MCP_ARGV_NO_SERVER="$(
+    CODEGEN_CALL_MODEL="test-model" CODEGEN_CALL_EFFORT="low" \
+        CODEGEN_CALL_PROMPT="hi" CODEGEN_CALL_SYSTEM_PROMPT="sp" \
+        CODEGEN_CALL_PRINT_ARGV="1" OCG_CODEGEN_DIR="$MCP_SCRATCH_DIR" \
+        bash "$DISPATCH_SCRIPT" 2>&1
+)"
+if printf '%s' "$MCP_ARGV_NO_SERVER" | grep -q -- "--mcp-config"; then
+    printf 'FAIL: --print-argv includes --mcp-config when mcp-server/dist is absent\n'
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: --print-argv omits --mcp-config when mcp-server/dist is absent\n'
+    pass=$((pass + 1))
+fi
+if printf '%s' "$MCP_ARGV_NO_SERVER" | grep -q -- "--strict-mcp-config"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: --print-argv retains --strict-mcp-config regardless of server build state\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: --print-argv missing --strict-mcp-config\n'
+    fail=$((fail + 1))
+fi
+rm -rf "$MCP_SCRATCH_DIR"
+
 # Test 5: claude-debug.sh (thinking-ON launcher) has --settings overlay with MAX_THINKING_TOKENS
 assert_file_contains "$HARNESSES_DIR/claude-debug.sh" "--settings"
 assert_file_contains "$HARNESSES_DIR/claude-debug.sh" "MAX_THINKING_TOKENS"

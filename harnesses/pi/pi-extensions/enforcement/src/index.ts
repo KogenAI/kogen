@@ -12,6 +12,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { register as registerCodegenTools } from "./codegen-tools";
 
 // BEGIN-GENERATED-ENFORCEMENT-BLOCK
 import { register as registerBuildAgentAppConfinement } from "./hooks/build-agent-app-confinement";
@@ -65,6 +66,7 @@ import { register as registerUsageRulesGrepGuard } from "./hooks/usage-rules-gre
 // END-GENERATED-ENFORCEMENT-BLOCK
 
 export default function (pi: ExtensionAPI): void {
+  registerCodegenTools(pi);
   // BEGIN-GENERATED-ENFORCEMENT-BLOCK
   registerBuildAgentAppConfinement(pi);
   registerBuildQueueContinuity(pi);

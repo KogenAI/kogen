@@ -1,0 +1,24 @@
+{
+  "name": "@codegen/mcp-server",
+  "version": "0.1.0",
+  "description": "Stdio MCP server exposing role-baked codegen-log cycle-log writers and gate/log readers",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "engines": {
+    "node": "24.14.0",
+    "npm": "11.9.0"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p .",
+    "test": "npm run build && node --test dist/__tests__/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25 || ^4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.0.0"
+  }
+}

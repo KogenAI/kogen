@@ -25,7 +25,7 @@ System prompt assembly: `tools-header/<mode>.txt` + entries in `prompt_body[]` (
 
 **Pi re-attach flag**: `pi --session <path|id>` (full or partial UUID or file path). Pi has `--session-id <id>` which CREATES a new session if the id doesn't exist — wrong for re-attach (would silently start fresh on stale id). Always use `--session "$id"` for re-attach semantics (fails on stale id, correct error path). Dispatch MUST emit `--session "$id"` only when id is non-empty.
 
-**One-shot launcher boundary**: `claude-ops.sh`, `claude-shape.sh`, `claude-debug.sh`, `call-dispatch.sh` are single-invocation launchers with UNCONDITIONAL `--no-session-persistence` (Claude) or `--no-session` (Pi). `codegen-build`/`dispatch.sh` (the build path) has no resumable/resume-id flags at all — it always execs the deterministic Elixir orchestration loop.
+**One-shot launcher boundary**: `claude-ops.sh`, `claude-shape.sh`, `claude-debug.sh`, `call-dispatch.sh` are single-invocation (Claude sessions persist by default now, no opt-out flag; Pi keeps `--no-session`). `codegen-build`/`dispatch.sh` has no resume flags — always execs the Elixir loop.
 
 **`call-dispatch.sh` optional transcript capture**: both harness `call-dispatch.sh` scripts honor an optional `CODEGEN_CALL_TRANSCRIPT_PATH` env var — when set, the captured stream-json is copied there on the EXIT trap before the temp file is deleted (fail-loud-non-blocking: a copy failure prints to stderr but never changes the exit code); unset = current behavior (no copy). Consumed by the Elixir orchestration loop for durable per-role transcripts; see `context/test-harness.md` § Orchestration Loop.
 

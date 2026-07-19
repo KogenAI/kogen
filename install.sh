@@ -484,6 +484,24 @@ for _harness in "${HARNESSES[@]}"; do
 
         printf '%s\n' "${CURRENT_AGENTS[@]+"${CURRENT_AGENTS[@]}"}" >"$AGENTS_MANIFEST"
 
+        # Build the codegen MCP server in place (no copy — call-dispatch.sh
+        # resolves harnesses/claude/mcp-server/dist/index.js from CODEGEN_DIR
+        # at dispatch time, so building here is sufficient; dispatch omits
+        # --mcp-config entirely when dist/index.js is absent, so a build
+        # failure here degrades gracefully rather than breaking `claude` calls).
+        echo ""
+        echo "🚀 Building codegen MCP server..."
+        MCP_SERVER_DIR="$CODEGEN_DIR/harnesses/claude/mcp-server"
+        if [ -f "$MCP_SERVER_DIR/package.json" ]; then
+            _mcp_build_failed=0
+            (cd "$MCP_SERVER_DIR" && npm install --prefer-offline && npm run build) || _mcp_build_failed=1
+            if [ "$_mcp_build_failed" -eq 1 ]; then
+                echo "   ⚠️  codegen MCP server build failed — mcp__codegen__* tools will be unavailable this install (call-dispatch.sh omits --mcp-config when dist/ is absent)" >&2
+            else
+                echo "   ✅ codegen MCP server built at: $MCP_SERVER_DIR/dist/index.js"
+            fi
+        fi
+
         # Install required dependencies (claude-specific)
         echo ""
         echo "🚀 Installing required dependencies..."

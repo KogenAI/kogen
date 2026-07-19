@@ -12,6 +12,12 @@
 
 set -euo pipefail
 
+# Derive repo root from this script's own location (repo root differs per
+# machine — Linux servers vs operator Macs; see context/deployment-topology.md).
+# OCG_CODEGEN_DIR overrides for edge cases, never the default path.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CODEGEN_DIR="${OCG_CODEGEN_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
+
 # ── Millisecond timestamp helper ──────────────────────────────────────────────
 # date +%s%N works on Linux and on macOS with coreutils. Fall back to perl.
 _ts_ms() {
@@ -60,6 +66,20 @@ _capture_transcript() {
 # (e.g. consuming-platform --system-prompt calls) stay project-only (thinking-off scope).
 if [[ -n "$AGENT" ]]; then SETTING_SOURCES="user,project"; else SETTING_SOURCES="project"; fi
 
+# ── MCP config: codegen server only (--strict-mcp-config walls out anything else) ──
+# The server binary is built at install time (harnesses/claude/manifest.yaml
+# install_mcp_server step); this dispatcher generates a resolved config
+# naming the ACTUAL absolute dist path for this machine's repo location —
+# codegen-mcp.json in the repo ships a placeholder, never a baked-in path.
+MCP_SERVER_DIST="$CODEGEN_DIR/harnesses/claude/mcp-server/dist/index.js"
+MCP_CONFIG_RESOLVED=""
+if [[ -f "$MCP_SERVER_DIST" ]]; then
+    MCP_CONFIG_RESOLVED="$(mktemp -t codegen-mcp-config.XXXXXX.json)"
+    trap 'rm -f "$MCP_CONFIG_RESOLVED"' EXIT
+    sed "s#__CODEGEN_MCP_SERVER_DIST__#$(dirname "$MCP_SERVER_DIST")#" \
+        "$CODEGEN_DIR/harnesses/claude/mcp-server/codegen-mcp.json" >"$MCP_CONFIG_RESOLVED"
+fi
+
 # ── Build claude argv ─────────────────────────────────────────────────────────
 COMMON_FLAGS=(
     --dangerously-skip-permissions
@@ -72,6 +92,9 @@ COMMON_FLAGS=(
     --model "$MODEL"
     --effort "$EFFORT"
 )
+if [[ -n "$MCP_CONFIG_RESOLVED" ]]; then
+    COMMON_FLAGS+=(--mcp-config "$MCP_CONFIG_RESOLVED")
+fi
 
 # --agent: named-agent identity (native, replaces --append-system-prompt)
 if [[ -n "$AGENT" ]]; then
@@ -126,7 +149,7 @@ fi
 
 # ── Capture claude output ─────────────────────────────────────────────────────
 TMP_OUT="$(mktemp -t codegen-call-claude.XXXXXX.jsonl)"
-trap '_capture_transcript; rm -f "$TMP_OUT"' EXIT
+trap '_capture_transcript; rm -f "$TMP_OUT" "$MCP_CONFIG_RESOLVED"' EXIT
 
 START_TS_MS="$(_ts_ms)"
 

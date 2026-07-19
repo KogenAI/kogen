@@ -175,6 +175,27 @@ tmps+=("$tmp_npm")
 pids+=($!)
 labels+=(subagents-integration)
 tmps+=("$tmp_subagents")
+tmp_mcp_server=$(mktemp)
+{
+    mcp_dir="$SCRIPT_DIR/harnesses/claude/mcp-server"
+    if [ -f "$mcp_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$mcp_dir/package.json"; then
+        if [ -n "$VERBOSE" ]; then
+            echo "▶ Test: mcp-server"
+            (cd "$mcp_dir" && mise exec -- npm test) || exit 1
+        else
+            out=$(cd "$mcp_dir" && mise exec -- npm test 2>&1)
+            rc=$?
+            if [ $rc -ne 0 ]; then
+                echo "▶ Test: mcp-server — FAILED"
+                printf '%s\n' "$out"
+                exit 1
+            fi
+        fi
+    fi
+} >"$tmp_mcp_server" 2>&1 &
+pids+=($!)
+labels+=(mcp-server)
+tmps+=("$tmp_mcp_server")
 fail=0
 failed_labels=()
 for i in "${!pids[@]}"; do
@@ -189,7 +210,7 @@ if [ "$fail" -eq 0 ]; then
     echo "ALL CLEAR ✅ make test"
 else
     bash_fails=$(cat "$tmp_hooks" "$tmp_scaffold" "$tmp_install" 2>/dev/null | grep -oE 'FAIL: [^ —]+' | sed 's/FAIL: //' | tr '\n' ',' | sed 's/,$//' || true)
-    npm_fails=$(cat "$tmp_npm" "$tmp_subagents" 2>/dev/null | grep -oE '▶ Test: [^ —]+' | sed 's/▶ Test: //' | tr '\n' ',' | sed 's/,$//' || true)
+    npm_fails=$(cat "$tmp_npm" "$tmp_subagents" "$tmp_mcp_server" 2>/dev/null | grep -oE '▶ Test: [^ —]+' | sed 's/▶ Test: //' | tr '\n' ',' | sed 's/,$//' || true)
     all_fails="$bash_fails"
     [ -n "$npm_fails" ] && [ -n "$all_fails" ] && all_fails="$all_fails,$npm_fails" || all_fails="$all_fails$npm_fails"
     joined=$(printf '%s, ' "${failed_labels[@]}")
@@ -200,7 +221,7 @@ else
         echo "FAILED ❌ make test — $joined"
     fi
 fi
-rm -f "$tmp_hooks" "$tmp_scaffold" "$tmp_install" "$tmp_npm" "$tmp_subagents" \
+rm -f "$tmp_hooks" "$tmp_scaffold" "$tmp_install" "$tmp_npm" "$tmp_subagents" "$tmp_mcp_server" \
     "$tmp_hook_parity" "$tmp_hook_header_parity" "$tmp_harness_parity" "$tmp_test_generator" \
     "$tmp_enforce_registry_parity" "$tmp_enforce_hook_rationale" "$tmp_test_hermetic" \
     "$tmp_prompt_content_parity" "$tmp_tools_header_no_dup" "$tmp_rule_render_freshness" \

@@ -3,12 +3,12 @@
 name: developer-static
 description: Static (Vite) site dev — vanilla by default, adds a framework only when the plan calls for it
 model: sonnet
-tools: Bash, Edit, Glob, Grep, MultiEdit, Read, WebFetch, Write
+tools: Bash, Edit, Glob, Grep, mcp__codegen__log_append_developer_static, mcp__codegen__log_section_developer_static, MultiEdit, Read, WebFetch, Write
 ---
 {% endif %}
 # Static Site Developer
 
-Owns ALL source: Vite config, JS, CSS, assets. Vanilla Vite by default; adds React/Vue/Svelte only when the plan calls for it.
+Owns ALL source: Vite config, JS, CSS, assets. Vanilla Vite by default; adds React/Vue/Svelte only when plan calls for it.
 
 {% include 'subagents/_static_developer_common.md.j2' %}
 {% include 'rules/stacks/static/vite.md' %}
@@ -16,18 +16,18 @@ Owns ALL source: Vite config, JS, CSS, assets. Vanilla Vite by default; adds Rea
 
 Domain context + usage rules: planner names files in delegation prompt.
 
-Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call `codegen-log section developer-static --slug <slug>` (pipe body via stdin — full CLI contract in session-log rules § Ownership) to write your section body at canonical rank, AND `codegen-log append developer-static --files-modified @- --slug <slug>` (pipe a JSON array of the same relative paths from `## Files Modified`) — this typed event is what grants the reviewer's Read on any `context/*.md` you touched (`<slug>` = the build slug the orchestrator passed you in this task). Done: source updated, log appended.
+Read `## Plan` → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call `codegen-log section developer-static --slug <slug>` (stdin body — full CLI contract in session-log rules § Ownership) to write your section at canonical rank, AND `codegen-log append developer-static --files-modified @- --slug <slug>` (JSON array of the same relative paths from `## Files Modified`) — this typed event grants the reviewer's Read on any `context/*.md` you touched (`<slug>` = build slug from orchestrator). Done: source updated, log appended.
 
 ## Stuck-loop escalation
 
-Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
+Same approach failed twice OR same test fails 3+ times → escalate BEFORE next retry. ONE escalation per loop.
 
-Run this Bash row (keep `STUCK-ESCALATION:` prefix verbatim):
+Run this Bash row (keep `STUCK-ESCALATION:` prefix):
 
 ```bash
 claude --agent planner-static --print --output-format text "STUCK-ESCALATION: <problem> + <what I tried> + <current failure>. One recommendation."
 ```
 
-Log the Bash invocation in your `## <role> Section` **Commands executed** table per standard session-log discipline. Read the planner's stdout, apply the one recommendation, continue. Do not escalate again in the same loop.
+Log the Bash invocation in your `## <role> Section` **Commands executed** table per standard session-log discipline. Read the planner's stdout, apply the recommendation, continue. Do not escalate again this loop.
 
 {% include 'rules/stacks/static/developer-pre-done.md' %}

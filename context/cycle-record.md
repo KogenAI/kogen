@@ -8,6 +8,28 @@ Full `codegen-log` CLI contract (subcommands, resolution precedence, substance f
 owned by `shared/rules/_core/session-log.md` — this file does not re-teach the CLI, it documents the
 artifacts and the verdict table that session-log.md references but doesn't itself own.
 
+## MCP Tool Façade (`harnesses/claude/mcp-server/`)
+
+Agents SHOULD prefer the `mcp__codegen__*` MCP tool over hand-composed `codegen-log` bash when granted
+it — the CLI stays fully working for scripts/hooks/humans and every other caller in this file. The
+server is a thin stdio façade: each tool handler execs `codegen-log` via array-argv `execFileSync` with
+the body on stdin (never a shell string), so it writes/reads the exact same JSONL log and
+`gate-result.json` this file documents — no new artifact, no new schema.
+
+**Role-baking**: writer tools are GENERATED per concrete role (`log_section_<role>`/`log_append_<role>`,
+e.g. `mcp__codegen__log_section_developer_phoenix_backend`) — role is hardcoded server-side, never a
+caller argument. This closes the `unsupported role`/`no role (AGENT_TYPE unset)` failure class that
+hand-composed bash could hit: a role can only call the tool it was granted, and that grant IS its role.
+Role-less readers: `gate_status` (verdict/exit/witness from `gate-result.json`) and `log_read` (view:
+`manifest`|`retro`|`full` — planner's typed events, `ev:learned` only, or every event).
+
+**Grant site**: each of the 9 concrete roles' `shared/subagents/**/*.md.j2` `tools:` frontmatter line —
+verified the actual offered-tool gate under `--agent` (`--allowedTools`/`--tools` alone does NOT expose
+an MCP tool there). Dispatch wiring: `call-dispatch.sh` (Claude) adds `--mcp-config <resolved config>`
+beside the existing `--strict-mcp-config`, generated on the fly per-machine and omitted when
+`mcp-server/dist/index.js` hasn't been built — see `context/harnesses.md` for the dispatch-side detail.
+`dispatch.sh` (execs `mix codegen.loop`) carries no MCP wiring; it has no `claude` argv to edit.
+
 ## `ev` Event Kinds (12, not 6 — corrects a stale prior count)
 
 `init`, `role`, `learned`, `no_learning`, `died`, `gate`, `plan`, `plan_gate`, `files_to_touch`,

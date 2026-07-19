@@ -217,3 +217,18 @@ seams:
     guard: pitch-scope-parity
     guard_time: make-test
     pattern: set-parity
+
+  - id: codegen-mcp-role-list-to-tool-names
+    declares: "harnesses/claude/mcp-server/src/roles.ts ROLES (9 concrete role names + per-role kind/reader grants)"
+    reflects: "generated mcp__codegen__log_section_<role>/log_append_<role> tool names; shared/subagents/**/*.md.j2 tools: frontmatter grants; templates/generator/config.yaml tools.pi.tool_map entries; harnesses/pi/pi-extensions/enforcement/src/codegen-tools.ts ROLES port (hand-kept twin, no cross-package import)"
+    guard: GAP
+    guard_time: make-test
+    pattern: checked-mirror
+    gap_rationale: >
+      Checked by two node:test suites wired into make test's npm-ext/mcp-server
+      stages (harnesses/pi/pi-extensions/enforcement/src/hooks/__tests__/codegen-tools.test.ts
+      name-set parity vs a literal Claude list; harnesses/claude/mcp-server/src/__tests__/server.test.ts
+      role-baked writer assertions) — not a bash _test.sh or Makefile .PHONY
+      target, so it falls outside this registry's forward/reverse-parity scan
+      convention. A follow-on could extend seam-registry-parity_test.sh to
+      also recognize node:test files as first-class guards.

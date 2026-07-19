@@ -1,8 +1,8 @@
 # Context Curator
 
-Reads `{"ev":"learned",...}` events from the active step log — `jq -r 'select(.ev=="learned")|"\(.role): \(.text)"' <log>` — one typed event per role per learning, never markdown scraped out of a role's `.body`. Routes learnings to the right `codegen/rules/**` files (symlink to `shared/rules/`). Makes surgical edits. Does NOT read the diff — input is `ev:learned` events only.
+Reads `{"ev":"learned",...}` events from the active step log — `jq -r 'select(.ev=="learned")|"\(.role): \(.text)"' <log>` — one typed event per role per learning, never markdown scraped out of a role's `.body`. Routes learnings to the right `codegen/rules/**` files (symlink to `shared/rules/`). Makes surgical edits. Does NOT read diff — input is `ev:learned` events only.
 
-Runs once per step, post-final-reviewer, before committer. Accumulates `ev:learned` events across dev, reviewer, and any retry loops in that cycle.
+Runs once per step, post-final-reviewer, before committer. Accumulates `ev:learned` events across dev, reviewer, retry loops in that cycle.
 
 ## Routing
 
@@ -20,7 +20,7 @@ Curator MAY ONLY edit:
 - `context/**` — project domain context files (`[local]` targets only)
 - `codegen/rules/**` — shared discipline rules via symlink to `<codegen-repo>/shared/rules`; used by all curators (codegen-on-codegen and downstream)
 - `codegen/logging/**` — session logs (codegen-on-codegen only)
-- `PROJECT_CONTEXT.md` § Domain Context Files rows — curator maintains index↔context parity directly, in its own turn, via the native Edit tool. The broader file (key paths, gate commands, everything outside § Domain Context Files) stays developer/orchestrator territory; curator's surgical-edit discipline (input = retrospective blocks only, no wholesale rewrites) bounds actual edits to the row(s) affected by the context file it just changed.
+- `PROJECT_CONTEXT.md` § Domain Context Files rows — curator maintains index↔context parity directly, in its own turn, via the native Edit tool. The broader file (key paths, gate commands, everything else) stays developer/orchestrator territory; curator's surgical-edit discipline bounds actual edits to the row(s) affected by the context file it just changed.
 
 ❌ `lib/`, `priv/`, `assets/`, `test/`, config files, migrations — those are dev territory.
 
@@ -38,7 +38,7 @@ Curator MAY ONLY edit:
 | Downstream app (Phoenix, static) | Writable — `context/*.md` sticks on commit | ALLOWED via symlink path `codegen/rules/**` — guard matches raw symlink path                                                                               |
 | Codegen-on-codegen               | Writable                                   | Writable via `codegen/rules/**` symlink — edits are inert until `make install` re-bakes prompts; defer to framework-focused sessions, not routine curation |
 
-Never edit `shared/rules/**` directly — always use `codegen/rules/**` (the symlink path). The guard denies direct `shared/rules/` paths.
+Never edit `shared/rules/**` directly — use `codegen/rules/**` (the symlink path). The guard denies direct `shared/rules/` paths.
 
 **Decision tree for routing `[shared]` learnings:**
 
@@ -93,7 +93,7 @@ Post-reviewer, if this cycle introduced a new twin/mirror/generated-pair/index (
 
 ## Curator Self-Retrospective
 
-Curator is NOT gated by `role-retrospective-before-stop` (context-curator and committer are exempt), but MAY record its own `--learned` text when something worth recording surfaced during curation. Most cycles → no self-learning needed.
+Curator is NOT gated by `role-retrospective-before-stop` (context-curator and committer exempt), but MAY record its own `--learned` text when something worth recording surfaced during curation. Most cycles → no self-learning needed.
 
 Worth recording: discovered a context file has grown past 150 lines, routing was ambiguous, same topic appeared `[local]` and `[shared]` across multiple learnings.
 

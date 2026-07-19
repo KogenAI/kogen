@@ -198,6 +198,7 @@ install_steps:
   - install_launchers # content_stable_cp + chmod+x each launcher entry
   - install_completions # content_stable_cp each completion to ZSH_COMPLETION_DST
   - install_deps # jq, yq, rg, claude (claude-specific deps)
+  - install_mcp_server # npm install + npm run build harnesses/claude/mcp-server/ in place (no copy — call-dispatch.sh resolves dist/index.js from CODEGEN_DIR at dispatch time)
 
 uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed-by-ocg manifest
