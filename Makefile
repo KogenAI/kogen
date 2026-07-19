@@ -371,6 +371,60 @@ test-stacks-pi-compile:
 	cd "$(SCRIPT_DIR)/test_harness" && \
 		MIX_BUILD_PATH=_build/pi_test mix compile
 
+# bench-preflight: spend-free bench-path validity gate. Runs ONLY offline,
+# zero-model checks — never invoke mix codegen.loop, bare codegen-build (no
+# --print-argv), make bench, or BENCH=1 in this recipe. The "no model turn"
+# property is structural: every command below either reads Mix task metadata,
+# dry-run-validates codegen-build flags (exits before exec, never mutates the
+# target cwd), or reads git status. This is the zero-cost predictor for the
+# turn-0 aborts a paid `make bench` would otherwise discover after spending:
+# an unresolvable bench Mix task name, an invalid codegen-build flag for any
+# harness×stack pair make bench drives, or a dirty tree.
+.PHONY: bench-preflight
+bench-preflight:
+	@set +e; \
+	fails=0; \
+	echo "🚦 Running bench-preflight (spend-free, no LLM)..."; \
+	echo ""; \
+	echo "--- (a) bench Mix task name resolution ---"; \
+	for t in codegen.bench.check_regression codegen.bench.view codegen.bench.list; do \
+		if (cd "$(SCRIPT_DIR)/test_harness" && MIX_BUILD_PATH=_build/claude_test mix help "$$t" >/dev/null 2>&1); then \
+			echo "OK: mix help $$t resolves"; \
+		else \
+			echo "FAIL: mix task $$t does not resolve (mix help $$t)"; fails=$$((fails + 1)); \
+		fi; \
+	done; \
+	echo ""; \
+	echo "--- (b) codegen-build --print-argv flag validation ---"; \
+	_tmp=$$(mktemp -d); \
+	for h in claude pi; do \
+		for s in phoenix static; do \
+			if "$(SCRIPT_DIR)/codegen-build" --print-argv --harness=$$h --stack=$$s --cwd="$$_tmp" >/dev/null 2>&1; then \
+				echo "OK: codegen-build --print-argv --harness=$$h --stack=$$s"; \
+			else \
+				echo "FAIL: codegen-build --print-argv rejected --harness=$$h --stack=$$s"; fails=$$((fails + 1)); \
+			fi; \
+		done; \
+	done; \
+	rm -rf "$$_tmp"; \
+	echo ""; \
+	echo "--- (c) clean tree ---"; \
+	dirty=$$(git -C "$(SCRIPT_DIR)" status --porcelain); \
+	if [ -z "$$dirty" ]; then \
+		echo "OK: working tree clean"; \
+	else \
+		echo "FAIL: working tree dirty — bench aborts at turn 0"; \
+		echo "$$dirty"; fails=$$((fails + 1)); \
+	fi; \
+	echo ""; \
+	if [ $$fails -eq 0 ]; then \
+		echo "✅ bench-preflight: bench path is runnable"; \
+		exit 0; \
+	else \
+		echo "❌ bench-preflight: $$fails check(s) failed"; \
+		exit 1; \
+	fi
+
 # bench: full benchmarking run + markdown summary.
 # Requires REASON. Creates codegen/benchmarks/<UTC-ts>/, runs both harness
 # stack suites under that dir (real LLM, slow, costs tokens), then writes
@@ -386,6 +440,7 @@ test-stacks-pi-compile:
 # to a hard failure once you trust the baseline enough to gate on it.
 .PHONY: bench
 bench:
+	@$(MAKE) --no-print-directory bench-preflight
 	@if [ -z "$(REASON)" ]; then \
 		echo "❌ REASON is required. Usage: make bench REASON=\"your reason\""; \
 		exit 1; \
@@ -694,6 +749,7 @@ help:
 	@echo "  make test-coverage  Coverage report per language → coverage/<lang>/"
 	@echo "  make test-stacks    Run ExUnit stack scaffold tests (claude+pi parallel, real LLM, slow)"
 	@echo "  make bench REASON=  Run benchmark stacks + write summary.md (real LLM, slow)"
+	@echo "  make bench-preflight  Spend-free bench-path validity check (no LLM)"
 	@echo "  make test-all       Full pre-deploy gate: test + test-stacks + record-green"
 	@echo "  make record-green   Write test_harness/last_green.json with current sha + versions"
 	@echo "  make hook-parity    Verify hook registrations match claude-code-settings.json"

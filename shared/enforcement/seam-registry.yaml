@@ -199,7 +199,7 @@ seams:
 
   - id: makefile-bench-task-invocations
     declares: test_harness/lib/mix/tasks/codegen.bench.*.ex (Mix.Tasks module names -> derived CLI task names)
-    reflects: Makefile (bench target `mix codegen.bench.*` invocations)
+    reflects: Makefile (bench target `mix codegen.bench.*` invocations; bench-preflight target `mix help codegen.bench.*` name-resolution checks)
     guard: test-hermetic
     guard_time: make-test
     pattern: checked-mirror

@@ -4,6 +4,8 @@
 
 Agents MUST NEVER invoke `make test-stacks BENCH=1` or any benchmark-capture variant (`BENCH=1 REASON=...`). These commands burn real LLM token budget and run only at human-operator discretion. `make test-stacks` without `BENCH=1` stays agent-callable for the default pass/fail sweep.
 
+`make bench-preflight` is spend-free and agent-callable — it runs only `mix help` (Mix task name resolution), `codegen-build --print-argv` (flag validation, exits before exec), and `git status --porcelain` (clean-tree check); no command in its recipe can reach a model. `make bench` runs it automatically as its first step (fail-closed on red, before `bench-prepare.sh`), so agents editing the bench path may also run it standalone to validate wiring before a paid run.
+
 ## Benchmark Viewer (Mix Tasks) — Quick Reference
 
 Run from `test_harness/`:
@@ -101,4 +103,4 @@ Runs automatically at the end of `make bench` (after `summarize.js` writes `summ
 
 ## Trigger Keywords
 
-BENCH=1, REASON, benchmark capture, screenshot, bench artifacts, mix codegen.bench, summarize.js, JSONL harness_summary, last_green.json coexistence, playwright, agent prohibition, make bench, make test-stacks BENCH, human-operator discretion, benchmark-coverage, makefile-targets, bench-prereqs
+BENCH=1, REASON, benchmark capture, screenshot, bench artifacts, mix codegen.bench, summarize.js, JSONL harness_summary, last_green.json coexistence, playwright, agent prohibition, make bench, make test-stacks BENCH, human-operator discretion, benchmark-coverage, makefile-targets, bench-prereqs, bench-preflight, spend-free gate, zero-model check
