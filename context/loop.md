@@ -121,7 +121,11 @@ reads this literal to resolve its `watcher=` column — `"queue"` + a live pid m
 under queue supervision, `"solo"` means one pitch is building unsupervised. Changing either literal, or
 the lock line's field order, silently breaks that consumer (fails closed to `watcher=no`, never a
 crash) — guarded by `test_harness/test/codegen_test_harness/build_lock_test.exs` and registered in
-`shared/enforcement/seam-registry.yaml` (`build-lock-format-to-codegen-drain-status`).
+`shared/enforcement/seam-registry.yaml` (`build-lock-format-to-codegen-drain-status`). `codegen-drain
+status`'s computed `health=` verdict (`context/deployment-topology.md`) derives from this SAME
+`watcher=` signal plus live process state — `watcher=yes` (a `"queue"`-labeled live lock) contributes to
+a `working` verdict; it never substitutes for a real health check, since a live watcher with an
+orphaned or wedged role process still resolves to `wedged`.
 
 ## Signal Handling
 

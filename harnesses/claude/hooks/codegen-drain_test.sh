@@ -385,6 +385,142 @@ check "(ac) distinct-file collision still refuses" "1" "$ec"
 assert_contains "(ac) names refusing / ambiguous" "$out" "refusing"
 check "(ac) local copy is KEPT on refusal (no data loss)" "1" "$([[ -f "$TEST_PITCH_AC" ]] && echo 1 || echo 0)"
 
+# ── health-verdict cases: a stub `ps` on PATH makes process state hermetic
+# — the real box's own live claude/beam.smp processes must never leak into
+# these assertions. make_stub_ps <rows...> writes a fake `ps` binary into a
+# fresh dir and prints that dir (caller prepends it to PATH).
+make_stub_ps() {
+    local dir
+    dir="$(mktemp -d)"
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'printf "PID PPID ELAPSED COMMAND\\n"\n'
+        local row
+        for row in "$@"; do
+            printf 'printf "%s\\n"\n' "$row"
+        done
+    } >"$dir/ps"
+    chmod +x "$dir/ps"
+    printf '%s' "$dir"
+}
+
+# ── (ad) status: no lock, no role process → health=idle ───────────────────
+WS_AD="$(make_ws ad)"
+setup_fixture "$WS_AD"
+STUB_AD="$(make_stub_ps)"
+ec=0
+out="$(PATH="$STUB_AD:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AD/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(ad) status exits 0" "0" "$ec"
+assert_contains "(ad) nodeA shows health=idle" "$out" "health=idle"
+rm -rf "$STUB_AD"
+
+# ── (ae) --json carries health/head/dirty/builds keys ─────────────────────
+WS_AE="$(make_ws ae)"
+setup_fixture "$WS_AE"
+STUB_AE="$(make_stub_ps)"
+ec=0
+out="$(PATH="$STUB_AE:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AE/drain-nodes.yaml" "$DRAIN" status --json 2>&1)" || ec=$?
+check "(ae) status --json exits 0" "0" "$ec"
+assert_contains "(ae) json has health key" "$out" '"health"'
+assert_contains "(ae) json has head key" "$out" '"head"'
+assert_contains "(ae) json has dirty key" "$out" '"dirty"'
+assert_contains "(ae) json has builds key" "$out" '"builds"'
+rm -rf "$STUB_AE"
+
+# ── (af) additive-parity guard: all 6 pre-existing keys still present ─────
+WS_AF="$(make_ws af)"
+setup_fixture "$WS_AF"
+STUB_AF="$(make_stub_ps)"
+ec=0
+out="$(PATH="$STUB_AF:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AF/drain-nodes.yaml" "$DRAIN" status --json 2>&1)" || ec=$?
+check "(af) status --json exits 0" "0" "$ec"
+assert_contains "(af) json has node key" "$out" '"node"'
+assert_contains "(af) json has reachable key" "$out" '"reachable"'
+assert_contains "(af) json has ready_count key" "$out" '"ready_count"'
+assert_contains "(af) json has incoming_count key" "$out" '"incoming_count"'
+assert_contains "(af) json has watcher key" "$out" '"watcher"'
+assert_contains "(af) json has building_count key" "$out" '"building_count"'
+rm -rf "$STUB_AF"
+
+# ── (ag) no lock, no role process → health=idle (explicit fixture form) ───
+WS_AG="$(make_ws ag)"
+setup_fixture "$WS_AG"
+STUB_AG="$(make_stub_ps)"
+ec=0
+out="$(PATH="$STUB_AG:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AG/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(ag) status exits 0" "0" "$ec"
+assert_contains "(ag) nodeA health=idle with no lock/process" "$out" "health=idle"
+rm -rf "$STUB_AG"
+
+# ── (ah) live queue lock + healthy-age stub process → health=working ──────
+WS_AH="$(make_ws ah)"
+setup_fixture "$WS_AH"
+mkdir -p "$WS_AH/nodeA/codegen/gate-pending"
+printf '%s queue tree=%s\n' "$$" "$$" >"$WS_AH/nodeA/codegen/gate-pending/queue.lock"
+STUB_AH="$(make_stub_ps "88001 2000 60 claude")"
+ec=0
+out="$(PATH="$STUB_AH:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AH/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(ah) status exits 0" "0" "$ec"
+assert_contains "(ah) nodeA health=working" "$out" "health=working"
+rm -rf "$STUB_AH"
+
+# ── (ai) role process with ppid=1 (orphan) → health=wedged ────────────────
+WS_AI="$(make_ws ai)"
+setup_fixture "$WS_AI"
+STUB_AI="$(make_stub_ps "88002 1 60 claude")"
+ec=0
+out="$(PATH="$STUB_AI:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AI/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(ai) status exits 0" "0" "$ec"
+assert_contains "(ai) nodeA health=wedged for orphaned process" "$out" "health=wedged"
+assert_contains "(ai) build line marks ORPHANED" "$out" "ORPHANED"
+rm -rf "$STUB_AI"
+
+# ── (aj) role process over CODEGEN_DRAIN_ROLE_MAX_ETIME_SECS → wedged ─────
+WS_AJ="$(make_ws aj)"
+setup_fixture "$WS_AJ"
+STUB_AJ="$(make_stub_ps "88003 2000 120 claude")"
+ec=0
+out="$(PATH="$STUB_AJ:$PATH" CODEGEN_DRAIN_ROLE_MAX_ETIME_SECS=60 CODEGEN_DRAIN_INVENTORY="$WS_AJ/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(aj) status exits 0" "0" "$ec"
+assert_contains "(aj) nodeA health=wedged when over etime threshold" "$out" "health=wedged"
+rm -rf "$STUB_AJ"
+
+# ── (ak) probe failure on a reachable node → health=unknown, never idle ───
+WS_AK="$(make_ws ak)"
+setup_fixture "$WS_AK"
+STUB_AK_DIR="$(mktemp -d)"
+cat >"$STUB_AK_DIR/ps" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$STUB_AK_DIR/ps"
+cat >"$STUB_AK_DIR/git" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$STUB_AK_DIR/git"
+cat >"$STUB_AK_DIR/stat" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$STUB_AK_DIR/stat"
+cat >"$STUB_AK_DIR/ls" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$STUB_AK_DIR/ls"
+ec=0
+out="$(PATH="$STUB_AK_DIR:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AK/drain-nodes.yaml" "$DRAIN" status 2>&1)" || ec=$?
+check "(ak) status exits 0" "0" "$ec"
+assert_contains "(ak) nodeA health=unknown on probe failure" "$out" "health=unknown"
+if [[ "$out" == *"health=idle"* ]]; then
+    printf 'FAIL: (ak) probe failure must never render as health=idle\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
+rm -rf "$STUB_AK_DIR"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

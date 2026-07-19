@@ -63,6 +63,15 @@ set -euo pipefail
 
 CWD="$PWD"
 
+# Health thresholds — genuinely-optional tuning knobs (defaults ARE the
+# intended values), overridable per-box via env for a slow node.
+# Seconds a role process (claude / beam.smp) may run before it is considered
+# wedged rather than a legitimately long turn.
+CODEGEN_DRAIN_ROLE_MAX_ETIME_SECS="${CODEGEN_DRAIN_ROLE_MAX_ETIME_SECS:-3600}"
+# Seconds since the newest cycle log's mtime before that log is considered
+# stale (no forward progress) rather than actively being written.
+CODEGEN_DRAIN_LOG_STALE_SECS="${CODEGEN_DRAIN_LOG_STALE_SECS:-900}"
+
 usage() {
     printf 'Usage:\n' >&2
     printf '  codegen-drain assign --slug=<slug> --node=<node> [--cwd=<dir>]\n' >&2
@@ -147,6 +156,89 @@ watcher_probe_cmd() {
     local repo="$1"
     printf 'lockf=%q; if [ -f "$lockf" ]; then read -r wpid wlabel _rest <"$lockf" 2>/dev/null; if [ "$wlabel" = "queue" ] && kill -0 "$wpid" 2>/dev/null; then echo yes; else echo no; fi; else echo no; fi' \
         "$repo/codegen/gate-pending/queue.lock"
+}
+
+# box_probe_cmd <repo> — emits a self-contained shell snippet (string) that
+# reports git state (head/behind/ahead/dirty), the newest cycle log's mtime
+# + slug, and every live role process (claude / beam.smp) with pid/ppid/
+# elapsed. One predicate, textually shared by both the local (`bash -c`) and
+# remote (`ssh`) legs of cmd_status, so the two can never drift — same
+# discipline as watcher_probe_cmd/1.
+#
+# Output is a fixed 7-line-plus header block:
+#   line 1: "PROBE_OK" or "PROBE_FAIL" — whether `ps` itself is usable on
+#           this box. PROBE_FAIL is the caller's explicit signal to render
+#           health=unknown rather than guessing idle from empty process data.
+#   line 2: head (short sha, or empty if not a git repo)
+#   line 3: behind (integer, or "null" if no upstream)
+#   line 4: ahead  (integer, or "null" if no upstream)
+#   line 5: dirty  (integer count of `git status --porcelain` lines)
+#   line 6: "<mtime_epoch_or_0> <slug_or_empty>" for the newest cycle log
+#   line 7+: one line per live role process: "<pid> <ppid> <etime_secs>"
+#            (comm omitted — caller already knows it matched claude|beam.smp)
+#
+# Never pipes ps output into grep (that pattern is denied by test case (t),
+# which closes the self-match class the watcher probe was fixed for) —
+# filters with `awk` instead. Tries `ps -eo pid,ppid,etimes,comm` (raw seconds,
+# Linux) first; falls back to `ps -eo pid,ppid,etime,comm` (HH:MM:SS /
+# DD-HH:MM:SS, BSD/macOS) parsed by an awk time-to-seconds helper.
+box_probe_cmd() {
+    local repo="$1"
+    printf '%s\n' \
+        "cd $(printf '%q' "$repo") 2>/dev/null || true;" \
+        'if ps -eo pid,ppid,etimes,comm >/dev/null 2>&1 || ps -eo pid,ppid,etime,comm >/dev/null 2>&1; then echo PROBE_OK; else echo PROBE_FAIL; fi;' \
+        'if [ -d .git ] || git rev-parse --git-dir >/dev/null 2>&1; then' \
+        '  git rev-parse --short HEAD 2>/dev/null || echo "";' \
+        '  git rev-list --count @{u}..HEAD 2>/dev/null || echo null;' \
+        '  git rev-list --count HEAD..@{u} 2>/dev/null || echo null;' \
+        '  printf "%s\\n" "$(git status --porcelain 2>/dev/null | wc -l | tr -d "[:space:]")";' \
+        'else' \
+        '  echo ""; echo null; echo null; echo 0;' \
+        'fi;' \
+        "newest=\$(ls -t codegen/logging/*_cycle.jsonl 2>/dev/null | head -n1 || true);" \
+        'if [ -n "$newest" ]; then' \
+        '  mt=$(stat -c "%Y" "$newest" 2>/dev/null || stat -f "%m" "$newest" 2>/dev/null || echo 0);' \
+        '  slug=$(basename "$newest" | sed -E "s/^[0-9]{8}_[0-9]{6}_//; s/_cycle\\.jsonl\$//");' \
+        '  printf "%s %s\n" "$mt" "$slug";' \
+        'else' \
+        '  printf "0 \n";' \
+        'fi;' \
+        'raw=$(ps -eo pid,ppid,etimes,comm 2>/dev/null || true);' \
+        'if [ -n "$raw" ]; then' \
+        '  printf "%s\n" "$raw" | awk '"'"'NR>1 && ($4=="claude" || $4=="beam.smp") {print $1, $2, $3}'"'"';' \
+        'else' \
+        '  raw=$(ps -eo pid,ppid,etime,comm 2>/dev/null || true);' \
+        '  printf "%s\n" "$raw" | awk '"'"'NR>1 && ($4=="claude" || $4=="beam.smp") {' \
+        '    t=$3; d=0;' \
+        '    if (split(t, dparts, "-") == 2) { d=dparts[1]; t=dparts[2]; }' \
+        '    n=split(t, hparts, ":");' \
+        '    if (n==3) secs=hparts[1]*3600+hparts[2]*60+hparts[3];' \
+        '    else if (n==2) secs=hparts[1]*60+hparts[2];' \
+        '    else secs=hparts[1];' \
+        '    secs+=d*86400;' \
+        '    print $1, $2, secs;' \
+        '  }'"'"';' \
+        'fi'
+}
+
+# classify_health <watcher> <role_lines_count> <max_ppid1_or_stale> — pure,
+# no I/O. Precedence: unreachable (caller-handled before this is invoked) ->
+# unknown (probe failure, caller-handled) -> wedged (any orphan or over-age
+# or stale-log role process) -> working (watcher live + at least one healthy
+# role process, or watcher live with none yet) -> idle (no watcher, no role
+# process). Returns the verdict string on stdout.
+classify_health() {
+    local watcher="$1" has_wedged="$2" build_count="$3"
+
+    if [[ "$has_wedged" == "1" ]]; then
+        echo "wedged"
+        return 0
+    fi
+    if [[ "$watcher" == "yes" ]] || [[ "$build_count" -gt 0 ]]; then
+        echo "working"
+        return 0
+    fi
+    echo "idle"
 }
 
 # remote_run <host> <run_as> <shell-command>
@@ -422,6 +514,16 @@ cmd_assign_auto() {
     printf 'assign --auto: placed %s pitch(es) across %s reachable node(s)\n' "$placed" "$lane_count"
 }
 
+# json_escape <string> — minimal escaping for embedding a plain string value
+# in a JSON string literal (backslash + double-quote only; slugs/reasons here
+# never carry control chars in practice, but escape defensively).
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    printf '%s' "$s"
+}
+
 cmd_status() {
     local json=""
     while [[ $# -gt 0 ]]; do
@@ -453,6 +555,10 @@ cmd_status() {
         run_as="$(node_field "$node" run_as)"
 
         local count="0" reachable="1" watcher="no" incoming="0" building="0"
+        local box_head="" box_behind="null" box_ahead="null" box_dirty="0"
+        local box_log_mtime="0" box_log_slug="" box_reason=""
+        local -a box_builds=() # each element: "pid ppid etime_secs"
+        local box_probe_ok="1" box_out=""
 
         if [[ -z "$host" ]]; then
             if [[ -d "$repo/codegen/pitches/ready" ]]; then
@@ -465,6 +571,12 @@ cmd_status() {
                 building="$(find "$repo/codegen/pitches/building" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')"
             fi
             watcher="$(bash -c "$(watcher_probe_cmd "$repo")" 2>/dev/null || echo no)"
+
+            box_out="$(bash -c "$(box_probe_cmd "$repo")" 2>/dev/null || true)"
+            if [[ -z "$box_out" ]]; then
+                box_probe_ok="0"
+                box_reason="box probe produced no output"
+            fi
         else
             local remote_out
             remote_out="$(remote_run "$host" "$run_as" "find '$repo/codegen/pitches/ready' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; find '$repo/codegen/pitches/.incoming' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l; $(watcher_probe_cmd "$repo"); find '$repo/codegen/pitches/building' -maxdepth 1 -name '*.md' 2>/dev/null | wc -l" 2>/dev/null || true)"
@@ -479,19 +591,105 @@ cmd_status() {
                 [[ -z "$incoming" ]] && incoming="0"
                 [[ -z "$watcher" ]] && watcher="no"
                 [[ -z "$building" ]] && building="0"
+
+                box_out="$(remote_run "$host" "$run_as" "$(box_probe_cmd "$repo")" 2>/dev/null || true)"
+                if [[ -z "$box_out" ]]; then
+                    box_probe_ok="0"
+                    box_reason="box probe produced no output"
+                fi
             fi
+        fi
+
+        if [[ "$reachable" == "1" && -n "$box_out" ]]; then
+            local probe_status
+            probe_status="$(printf '%s\n' "$box_out" | sed -n '1p' | tr -d '[:space:]')"
+            if [[ "$probe_status" != "PROBE_OK" ]]; then
+                box_probe_ok="0"
+                box_reason="ps unusable on this box — cannot enumerate role processes"
+            fi
+
+            box_head="$(printf '%s\n' "$box_out" | sed -n '2p')"
+            box_behind="$(printf '%s\n' "$box_out" | sed -n '3p' | tr -d '[:space:]')"
+            box_ahead="$(printf '%s\n' "$box_out" | sed -n '4p' | tr -d '[:space:]')"
+            box_dirty="$(printf '%s\n' "$box_out" | sed -n '5p' | tr -d '[:space:]')"
+            local log_line
+            log_line="$(printf '%s\n' "$box_out" | sed -n '6p')"
+            box_log_mtime="${log_line%% *}"
+            box_log_slug="${log_line#* }"
+            [[ "$box_log_slug" == "$log_line" ]] && box_log_slug=""
+            [[ -z "$box_behind" ]] && box_behind="null"
+            [[ -z "$box_ahead" ]] && box_ahead="null"
+            [[ -z "$box_dirty" ]] && box_dirty="0"
+            [[ -z "$box_log_mtime" ]] && box_log_mtime="0"
+
+            local proc_line
+            while IFS= read -r proc_line; do
+                [[ -n "$proc_line" ]] && box_builds+=("$proc_line")
+            done < <(printf '%s\n' "$box_out" | sed -n '7,$p')
+        fi
+
+        # ── Compute health from the collected fields ────────────────────
+        local health="unknown"
+        if [[ "$reachable" == "0" ]]; then
+            health="unreachable"
+        elif [[ "$box_probe_ok" == "0" ]]; then
+            health="unknown"
+        else
+            local now has_wedged="0"
+            now="$(date +%s)"
+            local log_stale="0"
+            if [[ "$box_log_mtime" != "0" ]]; then
+                local age=$((now - box_log_mtime))
+                [[ "$age" -gt "$CODEGEN_DRAIN_LOG_STALE_SECS" ]] && log_stale="1"
+            fi
+            local b pid ppid etime_secs
+            for b in "${box_builds[@]+"${box_builds[@]}"}"; do
+                read -r pid ppid etime_secs <<<"$b"
+                if [[ "$ppid" == "1" ]]; then
+                    has_wedged="1"
+                elif [[ "$etime_secs" -gt "$CODEGEN_DRAIN_ROLE_MAX_ETIME_SECS" ]]; then
+                    has_wedged="1"
+                elif [[ "$log_stale" == "1" ]]; then
+                    has_wedged="1"
+                fi
+            done
+            health="$(classify_health "$watcher" "$has_wedged" "${#box_builds[@]}")"
         fi
 
         if [[ -n "$json" ]]; then
             [[ $first -eq 1 ]] || printf ','
             first=0
-            printf '{"node":"%s","reachable":%s,"ready_count":%s,"incoming_count":%s,"watcher":"%s","building_count":%s}' \
-                "$node" "$([[ "$reachable" == "1" ]] && echo true || echo false)" "$count" "$incoming" "$watcher" "$building"
+            local builds_json="" b pid ppid etime_secs sep=""
+            for b in "${box_builds[@]+"${box_builds[@]}"}"; do
+                read -r pid ppid etime_secs <<<"$b"
+                local orphaned="false"
+                [[ "$ppid" == "1" ]] && orphaned="true"
+                builds_json+="${sep}{\"pid\":${pid},\"ppid\":${ppid},\"etime_secs\":${etime_secs},\"orphaned\":${orphaned},\"slug\":\"$(json_escape "$box_log_slug")\",\"slug_confidence\":\"$([[ "${#box_builds[@]}" -eq 1 ]] && echo high || echo low)\"}"
+                sep=","
+            done
+            local head_json="null"
+            [[ -n "$box_head" ]] && head_json="\"$(json_escape "$box_head")\""
+            local reason_json="\"$(json_escape "$box_reason")\""
+            printf '{"node":"%s","reachable":%s,"ready_count":%s,"incoming_count":%s,"watcher":"%s","building_count":%s,"health":"%s","reason":%s,"head":%s,"behind":%s,"ahead":%s,"dirty":%s,"builds":[%s]}' \
+                "$node" "$([[ "$reachable" == "1" ]] && echo true || echo false)" "$count" "$incoming" "$watcher" "$building" \
+                "$health" "$reason_json" "$head_json" "$box_behind" "$box_ahead" "$box_dirty" "$builds_json"
         else
             if [[ "$reachable" == "0" ]]; then
                 printf '%-12s unreachable\n' "$node"
             else
-                printf '%-12s ready=%-4s incoming=%-4s watcher=%-4s building=%s\n' "$node" "$count" "$incoming" "$watcher" "$building"
+                printf '%-12s ready=%-4s incoming=%-4s watcher=%-4s building=%-4s health=%s\n' "$node" "$count" "$incoming" "$watcher" "$building" "$health"
+                if [[ "$health" == "unknown" && -n "$box_reason" ]]; then
+                    printf '             health unknown — %s\n' "$box_reason"
+                fi
+                if [[ "${#box_builds[@]}" -gt 0 ]]; then
+                    local b pid ppid etime_secs
+                    for b in "${box_builds[@]}"; do
+                        read -r pid ppid etime_secs <<<"$b"
+                        local marker=""
+                        [[ "$ppid" == "1" ]] && marker=" ORPHANED"
+                        printf '             build pid=%s ppid=%s elapsed=%ss slug=%s%s\n' "$pid" "$ppid" "$etime_secs" "${box_log_slug:-unknown}" "$marker"
+                    done
+                fi
                 if [[ "$watcher" == "no" ]]; then
                     printf '             not supervised — start with: claude-build --queue --watch\n'
                 fi
