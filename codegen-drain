@@ -219,7 +219,8 @@ cmd_assign() {
 # cmd_assign_one <slug> <node> — the single-slug transfer (checksum-verified
 # ack-before-delete on remote nodes; same-fs mv on local-fs nodes). Callers
 # (cmd_assign's --slug/--node leg, and cmd_assign_auto's per-lane loop) must
-# have already run require_yq/require_inventory.
+# have already run require_yq/require_inventory. Placing a pitch onto the
+# node it already occupies is a no-op (exit 0), never a possession refusal.
 cmd_assign_one() {
     local slug="$1" node="$2"
 
@@ -249,6 +250,15 @@ cmd_assign_one() {
     if [[ -z "$host" ]]; then
         local dest_dir="$repo/codegen/pitches/ready"
         local dest="$dest_dir/${slug}.md"
+        # Already at its assigned node: source and destination are the same
+        # on-disk file (-ef compares inode+device, so a symlinked --cwd still
+        # matches). Placing a pitch where it already lives is a no-op, never a
+        # possession conflict — the resurrection guard below must see only
+        # genuinely distinct files.
+        if [[ "$local_path" -ef "$dest" ]]; then
+            printf 'already at %s (no-op)\n' "$node"
+            return 0
+        fi
         if [[ -f "$dest" ]]; then
             printf 'codegen-drain: %s already exists at node %q — refusing (possession ambiguous)\n' "$dest" "$node" >&2
             exit 1

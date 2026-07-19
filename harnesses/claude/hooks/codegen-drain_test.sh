@@ -358,6 +358,33 @@ out="$(CODEGEN_DRAIN_INVENTORY="$WS_AA/drain-nodes.yaml" "$DRAIN" assign --auto 
 check "(aa) --auto with --slug exits 2 (mutually exclusive)" "2" "$ec"
 assert_contains "(aa) names mutually exclusive" "$out" "mutually exclusive"
 
+# ── (ab) assign: same-node placement is a no-op (source == dest) ──────────
+WS_AB="$(make_ws ab)"
+setup_fixture "$WS_AB"
+TEST_SLUG_AB="codegen-drain-test-fixture-ab-$$"
+TEST_PITCH_AB="$WS_AB/nodeA/codegen/pitches/ready/${TEST_SLUG_AB}.md"
+printf '# test fixture pitch\n' >"$TEST_PITCH_AB"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AB/drain-nodes.yaml" "$DRAIN" assign --slug="$TEST_SLUG_AB" --node=nodeA --cwd="$WS_AB/nodeA" 2>&1)" || ec=$?
+check "(ab) same-node assign exits 0 (no-op, not a refusal)" "0" "$ec"
+assert_contains "(ab) prints already at" "$out" "already at"
+assert_contains "(ab) prints no-op" "$out" "no-op"
+check "(ab) pitch still exists at its original path" "1" "$([[ -f "$TEST_PITCH_AB" ]] && echo 1 || echo 0)"
+check "(ab) pitch content unchanged" "1" "$([[ "$(cat "$TEST_PITCH_AB")" == "# test fixture pitch" ]] && echo 1 || echo 0)"
+
+# ── (ac) assign: genuine distinct-file collision still refuses ────────────
+WS_AC="$(make_ws ac)"
+setup_fixture "$WS_AC"
+TEST_SLUG_AC="codegen-drain-test-fixture-ac-$$"
+TEST_PITCH_AC="$WS_AC/nodeA/codegen/pitches/ready/${TEST_SLUG_AC}.md"
+printf '# already-there pitch\n' >"$WS_AC/nodeB/codegen/pitches/ready/${TEST_SLUG_AC}.md"
+printf '# test fixture pitch\n' >"$TEST_PITCH_AC"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AC/drain-nodes.yaml" "$DRAIN" assign --slug="$TEST_SLUG_AC" --node=nodeB --cwd="$WS_AC/nodeA" 2>&1)" || ec=$?
+check "(ac) distinct-file collision still refuses" "1" "$ec"
+assert_contains "(ac) names refusing / ambiguous" "$out" "refusing"
+check "(ac) local copy is KEPT on refusal (no data loss)" "1" "$([[ -f "$TEST_PITCH_AC" ]] && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
