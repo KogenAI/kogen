@@ -85,6 +85,13 @@ run_test "git commit-graph allowed (word-boundary fix)" "0" "$FIXTURE_COMMIT_GRA
 FIXTURE_COMMIT_TREE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit-tree abc123 -m msg"},"agent_type":"committer","agent_id":"abc"}'
 run_test "git commit-tree allowed (word-boundary fix)" "0" "$FIXTURE_COMMIT_TREE"
 
+# (this pitch) crossed cell — a REAL >50-byte commit message that also
+# mentions "codegen-log" inside it. Not routed through codegen-log (command
+# word is git) — the subject-length check still applies. MUST BLOCK.
+MSG_51_WITH_TOKEN="ran codegen-log section developer with a really long message"
+FIXTURE_TOKEN_LONG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"'"$MSG_51_WITH_TOKEN"'\""},"agent_type":"committer","agent_id":"abc"}'
+run_test "real long subject mentioning codegen-log still BLOCKED (crossed cell)" "2" "$FIXTURE_TOKEN_LONG"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

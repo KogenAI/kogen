@@ -278,6 +278,19 @@ describe("pre-commit-guard", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
+  // Test 24b (this pitch): the crossed cell — codegen-log TOKEN present AND
+  // a REAL, chained git commit. isCodegenLogWrite requires exactly ONE
+  // hard-boundary group, so a real codegen-log call && a real commit is
+  // correctly NOT exempt — MUST DENY.
+  it("blocks non-committer codegen-log token present + chained real commit (crossed cell)", async () => {
+    const result = await runHook(
+      "bash",
+      "codegen-log append developer --slug foo && git commit -m x",
+      "reviewer-phoenix",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
   // ── quote-strip fail-closed regression (this pitch) ──────────────────────
   it("allows ssh remote git-stash payload (quoted) for non-committer", async () => {
     const result = await runHook(

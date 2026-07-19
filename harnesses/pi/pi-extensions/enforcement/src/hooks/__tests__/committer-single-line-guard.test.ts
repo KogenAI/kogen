@@ -101,4 +101,14 @@ describe("committer-single-line-guard", () => {
     const result = await runHook('git commit -m "Add feature\\ndetails"');
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  // (this pitch) crossed cell — a real multi-line -m message mentioning
+  // codegen-log. Not routed through codegen-log (command word is git) —
+  // MUST BLOCK.
+  it("still blocks real multi-line -m mentioning codegen-log (crossed cell)", async () => {
+    const result = await runHook(
+      'git commit -m "ran codegen-log\\nsecond line"',
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

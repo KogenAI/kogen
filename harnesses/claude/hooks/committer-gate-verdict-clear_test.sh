@@ -101,6 +101,18 @@ run_test "git status → allow (not a commit)" "0" \
 run_test "codegen-log write narrating git commit → allow" "0" \
     "$(log_write_fixture)"
 
+# --- Test 4b (this pitch): codegen-log TOKEN spelled inside a REAL commit
+#     message (not routed through codegen-log — is_codegen_log_write
+#     requires the command word itself to resolve to codegen-log) → the
+#     verdict check still applies. With a failed verdict, MUST DENY. ---
+TMP_TOKEN_SPELLED=$(mktemp -d)
+trap 'rm -rf "$TMP_TOKEN_SPELLED"' EXIT
+mkdir -p "$TMP_TOKEN_SPELLED/codegen/gate-pending"
+printf '{"verdict":"failed"}\n' >"$TMP_TOKEN_SPELLED/codegen/gate-pending/gate-result.json"
+run_test "codegen-log token spelled in real commit message, verdict=failed → deny (crossed cell)" "2" \
+    "$(commit_fixture "committer" "$TMP_TOKEN_SPELLED" "git commit -m 'ran codegen-log section developer'")" \
+    "CLAUDE_PROJECT_DIR=$TMP_TOKEN_SPELLED"
+
 # --- Test 5: gate-result.json absent → deny ---
 TMP_ABSENT=$(mktemp -d)
 trap 'rm -rf "$TMP_ABSENT"' EXIT

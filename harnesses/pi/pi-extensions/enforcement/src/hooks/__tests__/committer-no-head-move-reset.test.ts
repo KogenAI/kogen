@@ -134,6 +134,14 @@ describe("committer-no-head-move-reset", { concurrency: 1 }, () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  it("14b. denies real git reset to a ref spelling codegen-log (crossed cell)", async () => {
+    const result = await runHook(
+      "git reset --hard codegen-log-checkpoint",
+      "committer",
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
   it("15. allows git reset -q (leftover flag survives a leftover -q token)", async () => {
     const result = await runHook("git reset -q", "committer");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);

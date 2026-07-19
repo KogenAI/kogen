@@ -231,6 +231,24 @@ describe("committer-no-revert-prior-commit", { concurrency: 1 }, () => {
       });
       assert.ok((result as { block?: boolean }).block === true);
     });
+
+    // (this pitch) crossed cell — the token spelled inside a REAL commit
+    // message (not routed through codegen-log) while backward-roll content
+    // is staged. MUST still deny.
+    it("denies real backward-roll commit with codegen-log spelled in message (crossed cell)", async () => {
+      fs.writeFileSync(path.join(tmpDir, "file.txt"), "original content");
+      gitCmd(tmpDir, ["add", "file.txt"]);
+
+      const result = await runHook(
+        "git commit -m 'ran codegen-log section developer'",
+        "committer",
+        {
+          CODEGEN_CYCLE_BASE_SHA: baseSha,
+          CLAUDE_PROJECT_DIR: tmpDir,
+        },
+      );
+      assert.ok((result as { block?: boolean }).block === true);
+    });
   });
 
   describe("earlier-role commit (cycle-stable base)", () => {

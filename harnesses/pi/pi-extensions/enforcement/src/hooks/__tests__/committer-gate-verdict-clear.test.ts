@@ -100,6 +100,20 @@ describe("committer-gate-verdict-clear", { concurrency: 1 }, () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
+  // Test 4b (this pitch): crossed cell — the codegen-log token spelled
+  // inside a REAL commit message (not routed through codegen-log; command
+  // word is git). With a failed verdict, the verdict check still applies —
+  // MUST DENY.
+  it("denies with codegen-log token spelled in real commit message, verdict=failed (crossed cell)", async () => {
+    writeGateResult(tmpDir, JSON.stringify({ verdict: "failed" }));
+    const result = await runHook(
+      "git commit -m 'ran codegen-log section developer'",
+      "committer",
+      { CLAUDE_PROJECT_DIR: tmpDir },
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
   it("denies when gate-result.json is absent", async () => {
     const result = await runHook("git commit -m test", "committer", {
       CLAUDE_PROJECT_DIR: tmpDir,

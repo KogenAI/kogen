@@ -95,6 +95,12 @@ run_test "Bash unrelated read (cat other file) — ALLOW" "0" "$(make_bash_fixtu
 # ── codegen-log narrating the gated phrase in its body — ALLOW ──
 run_test "codegen-log section narrating --write in body — ALLOW" "0" "$(make_bash_fixture "printf '%s' 'fixed prompt_size_budget.py --write remedy' | codegen-log section developer-phoenix-backend --slug foo")"
 
+# ── the crossed cell (this pitch): a real codegen-log invocation CHAINED to
+# a real write into the budget file must NOT be exempt — is_codegen_log_write
+# requires exactly ONE hard-boundary group. MUST DENY. ──
+run_test "chained codegen-log call && real redirect into budget file — DENY (crossed cell)" "2" \
+    "$(make_bash_fixture "codegen-log init --slug foo && echo 'x 200' > templates/generator/prompt-budgets.txt")"
+
 # ── BYPASS debug/shape/ops ──
 run_test "debug role bypass on Write to budget file — ALLOW" "0" "$(make_write_fixture "$BUDGET_PATH")" "CLAUDE_ROLE=debug"
 run_test "shape role bypass on Bash redirect into budget file — ALLOW" "0" "$(make_bash_fixture "echo hi > templates/generator/prompt-budgets.txt")" "CLAUDE_ROLE=shape"

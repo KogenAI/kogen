@@ -68,6 +68,29 @@ Example (`call-dispatch_test.sh`): fn wraps `grep -qF -- "$search_string" "$file
 
 **Coverage minimum**: every guard ≥14 cases, DENY+ALLOW — silent failures (grep partial, null crash, missing `//`) caught by tests not review. **Optional-pipeline** (both FORBID bare skip): (a) guaranteed dep (node/prettier/yq) — assert presence, fail loud on absence; (b) genuinely-optional (e.g. app omits `assets.deploy`) — check fs+config preconditions, assert ABSENCE-path fallback/no-op, not bare skip. **Hermeticity**: role-reading guards tested via `env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD"`. **Markdown headings** in LLM output: case-insensitive `~r/##\s+heading/i` (capitalisation varies).
 
+## Carve-Out Twin Rule — An ALLOW Fixture Requires a DENY Twin Crossing Its Axis
+
+`pre-commit-guard`'s codegen-log carve-out had Test 23 (heredoc body mentions "git commit" →
+ALLOW) + Test 24 (bare `git commit`, no token → DENY) — both always green, neither crossed "token
+present" with "gated action is REAL". That crossed cell (token present + a real, chained `git
+commit`) was the actual bypass: a spelling-anchored check, not an invocation-anchored one.
+
+|                       | token present            | token absent  |
+| --------------------- | ------------------------- | ------------- |
+| **real gated action** | ← untested cell (the bug) | negative twin |
+| **carve-out use**     | positive twin             | n/a           |
+
+**Rule**: an ALLOW fixture on a carve-out REQUIRES a paired DENY twin crossing that axis — same
+fixture, token still present, gated action made real. Comment what frame the pair excludes (e.g.
+"not routed through codegen-log — command word is git"). Applies to helper predicates
+(`is_codegen_log_write`) and role-scoped hooks alike — for the latter the crossed cell is a
+wrong-role call with the gated condition present, still allowed (the hook's job).
+
+No mechanical gate — a scanner can only assert a twin EXISTS, not that it tests the right cell.
+Enforced by review + a one-time severity-ranked sweep (severe: history/gate/log-integrity hooks;
+ergonomics-tier covered transitively by the helper's matrix in `hooks-lib_test.sh`). Runs both
+directions: an over-narrow carve-out (denying a legitimate use) is the same missing cell, opposite corner.
+
 ## Hook Coverage Verification — Emoji Verdict Lines as Ground Truth
 
 Count emoji lines as ground truth for verdict coverage, not branch count. Grep the hook for all lines containing `ALL CLEAR ✅`, `FAILED ❌`, or `INCONCLUSIVE ⚠️` — each is a verdict-emission point. Verify each emoji line is accompanied by the matching gate action (e.g., `_stamp_gated clear` before `append_ve_section "ALL CLEAR ✅"`). The emoji strings are the observable contract the reviewer can verify independently.
@@ -206,13 +229,11 @@ Codegen registers `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SubagentSt
 
 Multiple hooks on the same event → **first-deny-wins**: pipe the same input through each hook in registration order; composed verdict = `deny` if ANY hook denies, else `allow`.
 
-**Pattern** (from `mode-matrix_test.sh`): (1) parse `settings.json` via jq to enumerate registered hooks dynamically; (2) strip `$HOME/.claude/hooks/` prefix to locate repo-source hooks; (3) build test payload via `jq -n`; (4) invoke each hook as real subprocess with controlled env; (5) assert expectations with `assert_eq`.
-
-Use mktemp dirs per test; absolute paths in JSONL Write entries. Do NOT mock hook internals — real subprocess invocation catches cross-hook interaction bugs.
+**Pattern** (from `mode-matrix_test.sh`): parse `settings.json` via jq to enumerate registered hooks dynamically; strip `$HOME/.claude/hooks/` prefix to locate repo-source hooks; build test payload via `jq -n`; invoke each hook as real subprocess with controlled env; assert with `assert_eq`. Use mktemp dirs per test; absolute paths in JSONL Write entries. Do NOT mock hook internals — real subprocess invocation catches cross-hook interaction bugs.
 
 **One hook = one concern.** Universal hooks (no-cat-pipe, pre-commit) fire every role; role-specific (debug-bash-safety, planner-guard) gate role boundaries only. ❌ mix universal+role checks in one file ✅ separate files/registrations.
 
-**Measurement vs enforcement**: two hooks coexist on same event/matcher without ordering deps IF upstream MEASURES (appends verdict, never blocks) and downstream ENFORCES (reads measurement, blocks at threshold) — e.g. `static-site-build-check.sh` measures; downstream reader enforces. Distinct per-blocker counter files (`/tmp/claude-<hook>-${SESSION_ID}.count`) avoid clobbering. Under the Elixir loop, gate measurement+retry-cap are both owned by `LoopGate.run_gate`/`OrchestrationLoop.invoke_with_retry`, not cooperating hooks.
+**Measurement vs enforcement**: two hooks coexist on same event/matcher without ordering deps IF upstream MEASURES (appends verdict, never blocks) and downstream ENFORCES (reads measurement, blocks at threshold) — e.g. `static-site-build-check.sh` measures; downstream reader enforces. Distinct per-blocker counter files avoid clobbering. Under the Elixir loop, gate measurement+retry-cap are both owned by `LoopGate.run_gate`/`OrchestrationLoop.invoke_with_retry`, not cooperating hooks.
 
 ## Hooks-Lib Patterns
 
@@ -354,12 +375,7 @@ Both harnesses use the same hook file naming, same test patterns (`*_test.sh` / 
 
 ## Coordinating Regex Patterns Across Multiple Files
 
-When a guard pattern (e.g., session-log filename schema) is encoded in 9 places — 4 hand-authored hook bodies, 2 registry `match:` fields (which generate 3 `.sh`/`.ts` files), and 1 schema doc — **all occurrences must widen together or gates contradict mid-cycle**. Rule: `shared/rules/_core/session-log.md` is the canonical schema document ("hooks and guards match against this"). When widening a character class (e.g., session-log slug from `[a-z0-9-]` to `[a-z0-9_-]`):
-
-1. **Always grep the full pattern** across `harnesses/`, `shared/enforcement/registry.yaml`, and `shared/rules/_core/` to catch hand-authored + registry-driven + documented siblings (not just the "files to change" list from the pitch).
-2. **Edit the schema doc first** — it is the authority. Leaving it stale makes the doc lie to future readers.
-3. **Edit all 9 occurrences** — registry edits → `make install` → generated files refresh → `make test` sees all in sync.
-4. **Test both allow and deny** — new fixtures (e.g., underscore-slug allow) AND existing deny fixtures (to confirm structure anchors preserved).
+When a guard pattern (e.g., session-log filename schema) is encoded in many places — hand-authored hook bodies, registry `match:` fields (generate `.sh`/`.ts` files), and a schema doc — **all occurrences must widen together or gates contradict mid-cycle**. `shared/rules/_core/session-log.md` is canonical ("hooks and guards match against this"). When widening a character class: (1) grep the FULL pattern across `harnesses/`, `shared/enforcement/registry.yaml`, `shared/rules/_core/` — not just the pitch's "files to change" list; (2) edit the schema doc FIRST (it's the authority, stale = lies to future readers); (3) edit every occurrence — registry edits → `make install` → generated files refresh → `make test` confirms sync; (4) test both allow (new fixture) AND deny (existing fixture, confirms anchors preserved).
 
 Applies to any widely-encoded schema (e.g., session-log slug class in 9 places: hand-authored+registry-driven+doc siblings). Post-edit grep confirms zero old-class hits.
 
@@ -411,27 +427,19 @@ Hooks with two independent conditions (`case` + `[[ ]]`) must widen together. Mi
 
 Write fake binary to temp dir, prepend PATH. Stub records args to marker file; tests assert invocation. Clean via trap.
 
-## Bypass Green-From-Birth Detection (Test Coverage Strategies for Hook Widening)
+## Bypass Green-From-Birth Detection
 
 ALLOW test passes under both old (skip) and new (process-then-allow) paths — green-from-birth trap. Pair ALLOW with BLOCK (same path, missing input). BLOCK fails under old, passes under new → proves bypass widened.
 
 ## Doc-Root vs Resolution-Root Split — RED-Proof Test Idiom
 
-Hook mirroring a PROJECTED doc into a temp dir (e.g. `context-factcheck-edit-gate.sh`) must NOT pass that mirror as scan-lib `repo_root` — empty mirror falsely denies every valid path claim. Split via env var (`FACTCHECK_DOC_ROOT`): doc body reads from mirror; `repo_root` arg stays real tree. Unset → both default to `repo_root`. RED-proof pair: real path + real `repo_root` → ALLOW; path nowhere → DENY. ALLOW alone can't tell "resolves" from "fails open."
+A hook mirroring a PROJECTED doc into a temp dir (e.g. `context-factcheck-edit-gate.sh`) must NOT pass that mirror as scan-lib `repo_root` — empty mirror falsely denies every valid path claim. Split via env var (`FACTCHECK_DOC_ROOT`): doc body reads mirror; `repo_root` stays real tree; unset → both default to `repo_root`. RED-proof pair: real path + real root → ALLOW; path nowhere → DENY (ALLOW alone can't tell "resolves" from "fails open").
 
 ## Three-Class Fetch-Pointer Guard Architecture
 
-The `rule-self-ref-no-fetch_test.sh` guard detects three error classes for fetch-pointer references (`[nav-word] \`path/to/rule.md\`` in subagent templates):
+`rule-self-ref-no-fetch_test.sh` detects three classes for fetch pointers (`[nav-word] \`path/to/rule.md\`` in subagent templates): (a) **self-ref** — target co-inlined in the SAME template, redundant; (b) **dangling** — target doesn't exist under `shared/rules/`; (c) **unloadable** — target exists but isn't co-inlined in that template (unreachable at runtime). `check_template`/`run_fixture_check` stay in sync: file exists (passes b) → check `included_basenames[]`; absent → flag (c).
 
-1. **Self-ref (class a)** — fetch pointer target is co-inlined in SAME template; redundant include.
-2. **Dangling (class b)** — fetch pointer target does NOT exist under `shared/rules/`.
-3. **Unloadable (class c)** — fetch pointer target EXISTS under `shared/rules/` but is NOT co-inlined in that template (unreachable at runtime).
-
-**Guard logic**: Both `check_template` and `run_fixture_check` must stay in sync — when a candidate file exists (passes class b check), test whether it is in the `included_basenames[]` array. If NOT found, flag class (c) failure. Header comment documents all three classes; verbose PASS message updates to "no self-ref, dangling, or unloadable fetch pointers".
-
-**Test authoring**: When guard logic tightens to catch a new class, existing test expectations may flip. Test F4 (existing non-co-inlined ref) was PASS under class (a)+(b); becomes FAIL under class (a)+(b)+(c). Invert assertion from `eq 0` (no failures) to `gt 0` (failures detected). Add a positive companion test (F7) for a non-nav-word delegation reference to confirm the guard does NOT flag references that lack a nav-word prefix (navigation-word greedy-match is not triggered).
-
-**Nav-word anchoring pitfall**: The nav-word set (see/read/per/check/via/apply/from/at/in/→) triggers fetch-pointer detection when they precede a backtick reference. Removing a nav-word from prose before a backtick reference prevents false-positive class (c) flags. Example: `Check \`rule.md\`` flags rule.md; `If \`rule.md\` detected` does not (no nav-word before the backtick).
+Nav-word set (see/read/per/check/via/apply/from/at/in/→) must precede the backtick to trigger detection — `Check \`rule.md\`` flags it, `If \`rule.md\` detected` does not.
 
 ## Block-the-Stop Pattern — Enforce at the Only Moment the Role Is Warm
 
@@ -454,7 +462,6 @@ HOOK-MANIFEST edits require BOTH `.sh` AND `registry.yaml` to update:
 **Threading new fields (e.g., `timeout`)**: Register in `registry.yaml` → `render_header()` emits to header (when set) → `parse_manifest()` reads (conditional) → `build_hook_entry()` adds to JSON (conditional only). Prevents spurious keys in siblings, keeps parity green.
 
 `kind: registration` hooks preserve hand-authored bodies. `kind: denial` (`generated: true`) hooks have ENTIRE `.sh` regenerated at `make install` — do not hand-edit.
-```
 
 ## Trigger Keywords
 

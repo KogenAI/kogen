@@ -77,6 +77,12 @@ run_test "codegen-log write narrating bare git commit ALLOWED" "0" \
 run_test "bare git commit still BLOCKED unchanged" "2" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
+# 11 (this pitch): crossed cell — a REAL bare git commit (--file form) whose
+# file path happens to spell "codegen-log". Not routed through codegen-log
+# (command word is git) — the trailer check still applies. MUST BLOCK.
+run_test "real git commit --file path spelling codegen-log still BLOCKED (crossed cell)" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit --file /tmp/codegen-log-msg.txt\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

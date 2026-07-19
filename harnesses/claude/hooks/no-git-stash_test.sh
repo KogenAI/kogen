@@ -95,6 +95,12 @@ run_test "git stash mentioned in quoted grep arg allowed" "0" \
 run_test "real unquoted git stash still denied (fail-closed sanity)" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash push -m wip"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 
+# Test 13 (this pitch): crossed cell — a REAL git stash whose -m message
+# spells "codegen-log" (not routed through codegen-log — command word is
+# git). MUST still deny.
+run_test "real git stash with codegen-log spelled in -m still denied (crossed cell)" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git stash push -m \"before running codegen-log\""},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

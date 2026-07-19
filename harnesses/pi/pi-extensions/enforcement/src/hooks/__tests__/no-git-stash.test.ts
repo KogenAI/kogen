@@ -102,4 +102,15 @@ describe("no-git-stash", () => {
     const result = await runHook("bash", "git stash push -m wip");
     assert.ok((result as { block: boolean }).block === true);
   });
+
+  // (this pitch) crossed cell — a real git stash whose -m message spells
+  // codegen-log. Not routed through codegen-log (command word is git) —
+  // MUST still block.
+  it("still blocks real git stash with codegen-log spelled in -m (crossed cell)", async () => {
+    const result = await runHook(
+      "bash",
+      'git stash push -m "before running codegen-log"',
+    );
+    assert.ok((result as { block: boolean }).block === true);
+  });
 });

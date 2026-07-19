@@ -181,6 +181,19 @@ run_test "real backward-roll commit still denied unchanged" "2" \
     "$(commit_fixture "committer" "$TMP")" \
     "CODEGEN_CYCLE_BASE_SHA=$BASE_SHA" "CLAUDE_PROJECT_DIR=$TMP"
 
+# --- Test 9b (this pitch): crossed cell — the token spelled inside a REAL
+# commit message (not routed through codegen-log) while the backward-roll
+# content is still staged. MUST still deny. ---
+commit_fixture_with_token() {
+    local agent_type="${1:-committer}"
+    local cwd="${2:-}"
+    jq -n --arg at "$agent_type" --arg cwd "$cwd" \
+        '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"ran codegen-log section developer\""},"agent_type":$at,"agent_id":"abc","cwd":$cwd}'
+}
+run_test "real backward-roll commit with codegen-log spelled in message → deny (crossed cell)" "2" \
+    "$(commit_fixture_with_token "committer" "$TMP")" \
+    "CODEGEN_CYCLE_BASE_SHA=$BASE_SHA" "CLAUDE_PROJECT_DIR=$TMP"
+
 # --- Test 10: base-SHA-driven enumeration sees an EARLIER role's commit ---
 # A fresh repo where "base" is captured at cycle start (before any role ran).
 # An EARLIER role then made a commit (e.g. via an evaded pre-commit-guard

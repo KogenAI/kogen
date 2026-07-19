@@ -233,6 +233,20 @@ describe("committer-single-commit-per-cycle", { concurrency: 1 }, () => {
       });
       assert.ok((result as { block?: boolean }).block === true);
     });
+
+    // (this pitch) crossed cell — the token spelled inside a REAL second
+    // commit's message (not routed through codegen-log). MUST still deny.
+    it("denies real second commit with codegen-log spelled in message (crossed cell)", async () => {
+      const result = await runHook(
+        "git commit -m 'ran codegen-log section developer'",
+        "committer",
+        {
+          CODEGEN_CYCLE_BASE_SHA: baseSha,
+          CLAUDE_PROJECT_DIR: tmpDir,
+        },
+      );
+      assert.ok((result as { block?: boolean }).block === true);
+    });
   });
 
   describe("earlier-role commit (cycle-stable base)", () => {

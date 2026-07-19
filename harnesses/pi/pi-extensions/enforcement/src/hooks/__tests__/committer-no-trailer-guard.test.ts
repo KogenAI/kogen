@@ -93,4 +93,11 @@ describe("committer-no-trailer-guard", () => {
     const result = await runHook("git commit");
     assert.ok((result as { block?: boolean }).block === true);
   });
+
+  // (this pitch) crossed cell — a real --file path spelling codegen-log.
+  // Not routed through codegen-log (command word is git) — MUST BLOCK.
+  it("still blocks real git commit --file path spelling codegen-log (crossed cell)", async () => {
+    const result = await runHook("git commit --file /tmp/codegen-log-msg.txt");
+    assert.ok((result as { block?: boolean }).block === true);
+  });
 });

@@ -406,6 +406,13 @@ run_test "non-committer codegen-log body with 'git commit' prose allowed (carve-
 FIXTURE_BARE_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"x\""},"agent_type":"reviewer-phoenix","agent_id":"a"}'
 run_test "non-committer bare git commit (no codegen-log) still denied" "2" "$FIXTURE_BARE_COMMIT"
 
+# Test 24b (this pitch): the crossed cell Test 23/24 never covered — the
+# codegen-log TOKEN present in the same command AND a REAL, chained git
+# commit. is_codegen_log_write requires exactly ONE hard-boundary group, so
+# a real codegen-log call && a real commit is correctly NOT exempt — MUST DENY.
+FIXTURE_LOG_TOKEN_REAL_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"codegen-log append developer --slug foo && git commit -m x"},"agent_type":"reviewer-phoenix","agent_id":"a"}'
+run_test "non-committer codegen-log token present + chained real commit still denied (crossed cell)" "2" "$FIXTURE_LOG_TOKEN_REAL_COMMIT"
+
 # ── quote-strip fail-closed regression (this pitch) ─────────────────────────
 # The guard must block only a REAL, LOCAL git-verb invocation. A git verb
 # sitting inside a quoted remote-exec payload or a quoted string argument to

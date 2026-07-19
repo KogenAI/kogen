@@ -77,6 +77,12 @@ run_test "codegen-log write narrating literal-backslash-n commit ALLOWED" "0" \
 run_test "-m with literal backslash-n still BLOCKED unchanged" "2" \
     "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"Add feature\\\\ndetails\\\"\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
 
+# 11 (this pitch): crossed cell — a REAL multi-line -m message that also
+# happens to mention "codegen-log" inside it. Not routed through codegen-log
+# (command word is git) — the single-line check still applies. MUST BLOCK.
+run_test "real multi-line -m mentioning codegen-log still BLOCKED (crossed cell)" "2" \
+    "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m \\\"ran codegen-log\\\\nsecond line\\\"\"},\"agent_type\":\"$COMMITTER\",\"agent_id\":\"abc\"}"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 
