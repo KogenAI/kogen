@@ -262,11 +262,19 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       `slug`. No matching stash -> `:ok` (no-op). A pop conflict fails loud
       with `{:error, reason}`, HALTing the whole drain — git retains the
       stash on a conflicting pop, so the error names a recoverable ref.
-    * `:draft_fn` — `(cwd, slug, jsonl, gate_verdict -> {:ok, String.t()} |
+    * `:draft_fn` — `(cwd, slug, jsonl, failure_block -> {:ok, String.t()} |
       {:error, reason})`, called ONLY from the two terminal-FAILED arms
       (exit-0-without-verified-commit, and nonzero-with-retries-exhausted —
       never from a HALT arm), immediately AFTER `park_failed_tree/2` so the
-      tree is already parked/clean before any draft write. Drafts a
+      tree is already parked/clean before any draft write. The 4th arg is a
+      composed failure block (`Failure cause: <atom> — <str>\nGate verdict:
+      <display>\n`, see `classify_drain_failure/1` +
+      `format_failure_block/3`) derived PURELY from the caller's
+      already-computed booleans — never a second `:gate_verdict_fn` call.
+      Naming the true cause (`:ship_not_verified` / `:transient_exhausted` /
+      `:gate_failed`) prevents a retry-exhausted, false-exit-0, or
+      transient-exhausted cycle from stamping a bare, unqualified `clear`
+      verdict that reads as "nothing was wrong here". Drafts a
       `status: SKELETON` pitch into `<cwd>/codegen/pitches/draft/` via a
       headless `codegen-call` against `harnesses/claude/document-system-prompt.md`.
       A merge target is fenced to an existing `status: SKELETON` draft ONLY —
@@ -1237,7 +1245,19 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
 
         parked_branch = park_failed_tree(state, slug)
-        state = draft_failure(state, slug, jsonl, gate_verdict)
+
+        retry_count_for = if state.last_slug == slug, do: state.retry_count, else: 0
+
+        cause =
+          classify_drain_failure(%{
+            transient?: state.transient_fn.(jsonl),
+            gate_clear?: gate_clear?,
+            committed?: committed?,
+            gate_verdict: gate_verdict,
+            retry_count: retry_count_for
+          })
+
+        state = draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?})
         record_build_failure(state, slug)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
@@ -1333,20 +1353,119 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
+  # Classifies a terminal-FAILED cycle's TRUE cause from the booleans the
+  # calling arm already computed — never re-reads a seam. A retry-exhausted
+  # or false-exit-0 record must never present as a bare, unqualified `clear`
+  # verdict with no explanation (the "drain retired a clean, committed cycle
+  # as FAILED" defect this classification exists to prevent). Clause order is
+  # significant: transient-first, because a child that produced no result
+  # record has no trustworthy ship signal at all — attributing that to
+  # `:ship_not_verified` would misdirect an operator at ship detection
+  # instead of the killed/crashed child. The third clause is a total
+  # catch-all (never a silent `nil`/defensive sink) — every terminal-FAILED
+  # cycle gets a named cause.
+  @spec classify_drain_failure(%{
+          transient?: boolean(),
+          gate_clear?: boolean(),
+          committed?: boolean(),
+          gate_verdict: String.t(),
+          retry_count: non_neg_integer()
+        }) :: {atom(), String.t()}
+  defp classify_drain_failure(%{transient?: true, retry_count: n}) do
+    {:transient_exhausted,
+     "retried #{n}× — child produced no result record (killed/crashed mid-flight)"}
+  end
+
+  defp classify_drain_failure(%{gate_clear?: true, committed?: false}) do
+    {:ship_not_verified,
+     "gate fresh-clear but HEAD did not advance to a descendant of head_before " <>
+       "(ship not verified — another supervisor may have shipped it first)"}
+  end
+
+  defp classify_drain_failure(%{gate_verdict: v}) do
+    {:gate_failed, "gate verdict=#{inspect(v)}"}
+  end
+
+  # Composes the two-line failure block stamped into the draft prompt:
+  # `Failure cause: <atom> — <str>` then `Gate verdict: <display>`. A
+  # terminal-FAILED cycle NEVER stamps a bare, unqualified `clear` — that is
+  # the exact defect this pitch exists to fix, for EVERY cause atom that can
+  # co-occur with a raw "clear" verdict: genuinely stale (an EARLIER cycle's
+  # leftover "clear" — `not gate_clear?` because `gate_fresh?/3` rejected it),
+  # fresh-for-this-cycle but the ship itself never verified
+  # (`gate_clear? and not committed?` — `:ship_not_verified`), or
+  # fresh-for-this-cycle but the child crashed/was killed with no result
+  # record (`transient?` checked first in `classify_drain_failure/1` —
+  # `:transient_exhausted`, which can still read a fresh "clear" left by a
+  # PRIOR successful gate run in the same working tree). Each qualifies with
+  # its own parenthetical so an operator reading the drafted skeleton never
+  # mistakes any of the three for a clean run.
+  @spec format_failure_block({atom(), String.t()}, String.t(), boolean()) :: String.t()
+  defp format_failure_block({cause_atom, cause_str}, gate_verdict, gate_clear?) do
+    display =
+      cond do
+        gate_verdict != "clear" ->
+          gate_verdict
+
+        not gate_clear? ->
+          "clear (STALE — not fresh for this cycle)"
+
+        cause_atom == :ship_not_verified ->
+          "clear (ship not verified — HEAD did not advance)"
+
+        cause_atom == :transient_exhausted ->
+          "clear (transient — child produced no result record this cycle)"
+
+        true ->
+          gate_verdict
+      end
+
+    "Failure cause: #{cause_atom} — #{cause_str}\n" <>
+      "Gate verdict: #{display}\n"
+  end
+
   # Calls `:draft_fn` for this terminal-FAILED slug, run immediately AFTER
   # `park_failed_tree/2` so the tree is already parked/clean before any draft
   # write (see moduledoc `:draft_fn` doc — sequencing moots whether a stash
   # `-u` push could otherwise sweep an ignored draft file). Fail-open: the
   # draft is an observation, not a required value — a `codegen-call` error
   # must never abort the drain, only skip the count increment and warn loud.
-  # `gate_verdict` is threaded in from the CALLER's already-computed
-  # `state.gate_verdict_fn.(state.cwd)` read (both FAILED arms already read
-  # it for `gate_clear?`) rather than re-reading here — a second read would
-  # be an extra `:gate_verdict_fn` call per failure, rippling into every
-  # test that counts that seam's call sequence.
-  @spec draft_failure(map(), String.t(), String.t(), String.t()) :: map()
-  defp draft_failure(state, slug, jsonl, gate_verdict) do
-    case state.draft_fn.(state.cwd, slug, jsonl, gate_verdict) do
+  #
+  # `classification` is a `{cause_tuple, gate_verdict, gate_clear?}` built by
+  # the CALLER from its already-computed booleans (both FAILED arms already
+  # read `gate_verdict`/`gate_clear?` for their own `cond` — no second
+  # `:gate_verdict_fn` call is introduced here). Composed into a single
+  # failure-block STRING before reaching `:draft_fn` — the seam itself keeps
+  # its original 4-arity `(cwd, slug, jsonl, gate_verdict)` shape; the 4th arg
+  # is now that composed block rather than a bare verdict.
+  #
+  # Emits a loud operator WARN when the classified cause is
+  # `:ship_not_verified`/`:transient_exhausted` while the RAW on-disk verdict
+  # still reads `clear` — the buried-contradiction case this pitch exists to
+  # surface, printed immediately rather than only discoverable by reading the
+  # drafted skeleton later.
+  @spec draft_failure(map(), String.t(), String.t(), {{atom(), String.t()}, String.t(), boolean()}) ::
+          map()
+  defp draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?}) do
+    {cause_atom, _cause_str} = cause
+
+    if cause_atom in [:ship_not_verified, :transient_exhausted] and gate_verdict == "clear" do
+      qualifier =
+        case cause_atom do
+          :ship_not_verified -> "ship not verified — HEAD did not advance"
+          :transient_exhausted -> "transient — child produced no result record this cycle"
+        end
+
+      IO.puts(
+        :stderr,
+        "queue: WARN — #{slug} classified #{cause_atom} but raw gate verdict on disk reads " <>
+          "\"clear\" (#{qualifier})"
+      )
+    end
+
+    failure_block = format_failure_block(cause, gate_verdict, gate_clear?)
+
+    case state.draft_fn.(state.cwd, slug, jsonl, failure_block) do
       {:ok, _path} ->
         %{state | drafted_count: state.drafted_count + 1}
 
@@ -1702,7 +1821,19 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
 
         parked_branch = park_failed_tree(state, slug)
-        state = draft_failure(state, slug, jsonl, gate_verdict)
+
+        retry_count_for = if state.last_slug == slug, do: state.retry_count, else: 0
+
+        cause =
+          classify_drain_failure(%{
+            transient?: state.transient_fn.(jsonl),
+            gate_clear?: gate_clear?,
+            committed?: committed?,
+            gate_verdict: gate_verdict,
+            retry_count: retry_count_for
+          })
+
+        state = draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?})
         record_build_failure(state, slug)
 
         failed_slugs = MapSet.put(state.failed_slugs, slug)
@@ -2743,7 +2874,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @doc false
   @spec default_draft_fn(String.t(), String.t(), String.t(), String.t()) ::
           {:ok, String.t()} | {:error, term()}
-  def default_draft_fn(cwd, slug, jsonl, gate_verdict) do
+  def default_draft_fn(cwd, slug, jsonl, failure_block) do
     call_bin = Process.get(:__queue_drain_call_bin__, @codegen_call_bin)
 
     if File.exists?(call_bin) do
@@ -2754,7 +2885,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         end
 
       skeletons = skeleton_drafts(cwd)
-      prompt = build_draft_prompt(slug, gate_verdict, result_text, skeletons)
+      prompt = build_draft_prompt(slug, failure_block, result_text, skeletons)
 
       args = [
         "--harness=claude_code",
@@ -2804,9 +2935,17 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
+  # `failure_block` is a pre-composed multi-line string (see
+  # `format_failure_block/3`) carrying BOTH the classified `Failure cause:`
+  # line and the `Gate verdict:` line (with a STALE marker when the raw
+  # verdict on disk reads `clear` but wasn't fresh for this cycle) — the
+  # 4th arg every terminal-FAILED `draft_fn` call now threads. `default_draft_fn/4`
+  # is also exercised directly by tests with a bare verdict string (no
+  # `Failure cause:` prefix) — both shapes render fine here since this fn
+  # only interpolates the string, never parses it.
   @spec build_draft_prompt(String.t(), String.t(), String.t(), [{String.t(), String.t()}]) ::
           String.t()
-  defp build_draft_prompt(slug, gate_verdict, result_text, skeletons) do
+  defp build_draft_prompt(slug, failure_block, result_text, skeletons) do
     skeleton_section =
       case skeletons do
         [] ->
@@ -2818,8 +2957,15 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             Enum.map_join(list, "\n\n", fn {slug, body} -> "### #{slug}\n\n#{body}" end)
       end
 
+    failure_line =
+      if String.starts_with?(failure_block, "Failure cause:") do
+        failure_block
+      else
+        "Gate verdict: #{failure_block}\n"
+      end
+
     "Failing pitch slug: #{slug}\n" <>
-      "Gate verdict: #{gate_verdict}\n" <>
+      failure_line <>
       "Failing cycle result text:\n#{result_text}\n\n" <>
       skeleton_section
   end

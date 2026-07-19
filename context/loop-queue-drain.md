@@ -203,22 +203,63 @@ the drain).
 
 On the two TERMINAL FAILED arms only (exit-0-without-verified-commit, and nonzero-with-retries-exhausted
 — never a HALT arm: infra abort or orphaned base), the drain calls `:draft_fn` right after
-`park_failed_tree/2` (tree already parked/clean — sequencing moots any stash-sweep question). The gate
-verdict passed to `draft_fn` is the SAME `gate_verdict_fn.(cwd)` value each arm already read for its own
-`gate_clear?` check — `draft_failure/4` never re-reads it, so drafting adds zero extra `:gate_verdict_fn`
-calls (load-bearing for tests that count that seam's call sequence, e.g. the consecutive-fail-streak
-tests). Default
+`park_failed_tree/2` (tree already parked/clean — sequencing moots any stash-sweep question). The 4th
+`:draft_fn` arg is a COMPOSED failure block, never a bare gate verdict — see § Failure Classification
+below. Building it never re-reads `:gate_verdict_fn`; both arms already read it for their own
+`gate_clear?` check, and `classify_drain_failure/1` + `format_failure_block/3` consume that same
+already-computed value (load-bearing for tests that count that seam's call sequence, e.g. the
+consecutive-fail-streak tests). Default
 `default_draft_fn/4` shells a headless `codegen-call --harness=claude_code --model=opus --effort=high
 --system-prompt @harnesses/claude/document-system-prompt.md --json-schema
 @harnesses/claude/document.schema.json`, mirroring `codegen-propose`'s precedent. Input: the failing
-slug, the gate verdict, the failing cycle's last result text, and the FULL BODY of every existing
-`status: SKELETON` draft under `<cwd>/codegen/pitches/draft/` (`skeleton_drafts/1` — SHAPING/SHAPED
-drafts are never read or merge targets). Response `{action: "new"|"merge", slug, target_slug, body}`:
-`new` writes `<slug>.md`; `merge` overwrites `target_slug` ONLY when that slug was among the supplied
-skeletons (`apply_draft_decision/3` — never a blind overwrite of an unlisted/in-flight draft). Fail-open:
-a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain continues — mirrors
-`park_failed_tree/2`'s own fail-open contract; the draft is an observation, not a required value.
-`spend_report/3` reports `state.drafted_count` in its end-of-run line.
+slug, the composed failure block, the failing cycle's last result text, and the FULL BODY of every
+existing `status: SKELETON` draft under `<cwd>/codegen/pitches/draft/` (`skeleton_drafts/1` —
+SHAPING/SHAPED drafts are never read or merge targets). Response `{action: "new"|"merge", slug,
+target_slug, body}`: `new` writes `<slug>.md`; `merge` overwrites `target_slug` ONLY when that slug was
+among the supplied skeletons (`apply_draft_decision/3` — never a blind overwrite of an unlisted/in-flight
+draft). Fail-open: a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain
+continues — mirrors `park_failed_tree/2`'s own fail-open contract; the draft is an observation, not a
+required value. `spend_report/3` reports `state.drafted_count` in its end-of-run line.
+
+**Failure Classification — `classify_drain_failure/1` + `format_failure_block/3`**: a retry-exhausted or
+false-exit-0 skeleton must never present as a bare, unqualified `Gate verdict: clear` — that reads to any
+operator as "nothing was wrong here" and buries the real cause (observed instance:
+`the-guard-parses-quotes-worse-than-the-shell-it-guards`, drain-drafted as FAILED on a cycle that was
+actually clear and committed). Both terminal-FAILED arms build a small map of already-computed booleans
+(`transient?`, `gate_clear?`, `committed?`, `gate_verdict`, `retry_count`) and classify PURELY from
+those — zero new seam reads. Clause order is significant, transient-first:
+
+1. `transient?: true` → `:transient_exhausted` — "retried N× — child produced no result record
+   (killed/crashed mid-flight)". Checked FIRST: a child with no result record has no trustworthy ship
+   signal at all; attributing that to ship-detection instead would misdirect the operator.
+2. `gate_clear?: true, committed?: false` → `:ship_not_verified` — "gate fresh-clear but HEAD did not
+   advance to a descendant of head_before (ship not verified — another supervisor may have shipped it
+   first)". This is a distinct concept from (1): a REAL result record exists and the gate genuinely
+   passed THIS cycle, but the ship itself was never verified (e.g. a concurrent drain shipped the same
+   slug first — see `a-landed-pitch-cannot-be-handed-out-again`).
+3. Catch-all → `:gate_failed` — "gate verdict=<v>" (never a silent `nil`/defensive sink; every
+   terminal-FAILED cycle gets a named cause).
+
+`format_failure_block/3` composes `Failure cause: <atom> — <str>\nGate verdict: <display>\n`. `display`
+qualifies a raw `"clear"` verdict THREE ways: `"clear (STALE — not fresh for this cycle)"` when
+`gate_fresh?/3` rejected it (a genuinely stale record from an EARLIER cycle), `"clear (ship not
+verified — HEAD did not advance)"` when the verdict IS fresh for this cycle but the cause is
+`:ship_not_verified`, or `"clear (transient — child produced no result record this cycle)"` when the
+cause is `:transient_exhausted` — `transient?` is checked FIRST in `classify_drain_failure/1`, so a
+fresh-clear gate left over from a prior successful run in the same working tree can still co-occur with
+a crashed/killed child on THIS cycle. All three qualifiers apply regardless of which cause fired — a
+drafted block's raw-`"clear"` verdict is NEVER rendered unqualified for ANY cause atom.
+`draft_failure/4` also emits a loud `queue: WARN — <slug> classified <atom> but raw gate verdict on disk
+reads "clear" (<matching qualifier text>)` stderr line when the cause is
+`:ship_not_verified`/`:transient_exhausted` while the raw on-disk verdict still reads `clear` — the
+qualifier in the WARN matches the cause atom (never a hardcoded "stale" for a fresh-but-unverified or
+fresh-but-transient cause) — the buried-contradiction case surfaced immediately, not only discoverable
+by reading the drafted skeleton later. The `:draft_fn` seam signature is UNCHANGED
+(`(cwd, slug, jsonl, failure_block -> {:ok, path} | {:error, reason})`, still 4-arity) — only the STRING
+content of the 4th arg changed from a bare verdict to the composed block; `build_draft_prompt/4` renders
+whichever shape it receives (a composed block starting with `"Failure cause:"`, or — for direct
+`default_draft_fn/4` test callers passing a bare string — falls back to prefixing it with `"Gate
+verdict: "`).
 
 **Failure evidence fallback — `failure_summary/1`**: the child's LAST `{"type":"result"}` envelope does
 NOT always carry a `result` key — `mix codegen.loop`'s result-line writer always emits `terminal_reason`
@@ -257,4 +298,4 @@ any spawn — zero spend, remediation named (`mix deps.get && mix compile`). See
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block

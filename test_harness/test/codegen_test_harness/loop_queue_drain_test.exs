@@ -1141,8 +1141,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     calls = start_agent([])
 
-    draft_fn = fn cwd, slug, _jsonl, gate_verdict ->
-      Agent.update(calls, &(&1 ++ [{cwd, slug, gate_verdict}]))
+    draft_fn = fn cwd, slug, _jsonl, failure_block ->
+      Agent.update(calls, &(&1 ++ [{cwd, slug, failure_block}]))
       {:ok, Path.join(cwd, "codegen/pitches/draft/#{slug}.md")}
     end
 
@@ -1158,7 +1158,14 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
                  )
       end)
 
-    assert Agent.get(calls, & &1) == [{ctx.dir, "solo", ""}]
+    # Default fixture state (gate_verdict_fn -> "", git_head_fn -> nil, i.e.
+    # never committed) classifies as :gate_failed — the not-clear/not-a-crash
+    # catch-all — with the raw (empty) verdict preserved verbatim.
+    assert [{cwd, slug, failure_block}] = Agent.get(calls, & &1)
+    assert cwd == ctx.dir
+    assert slug == "solo"
+    assert failure_block =~ "Failure cause: gate_failed"
+    assert failure_block =~ "Gate verdict: \n"
     assert output =~ "queue: 0 shipped, 1 failed, 1 drafted,"
   end
 
@@ -1408,6 +1415,260 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert reason =~ "shaped-one"
 
     assert File.read!(shaped_path) == shaped_body
+  end
+
+  # ── D8-D11. classify_drain_failure — true-cause labeling ─────────────────
+  # Regression coverage for "the-guard-parses-quotes-worse-than-the-shell-it-
+  # guards": a retry-exhausted/false-exit-0 skeleton must never present as a
+  # bare, unqualified `clear` verdict — the drafted failure block must always
+  # name a true cause.
+
+  test "D8: exit-0, gate fresh-clear, HEAD never moved -> classifies ship_not_verified, stamps STALE marker, warns on stderr",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+    # HEAD never advances (before == after) -> known_base? true, head_moved?
+    # false -> committed? false, while the gate reads fresh-clear. Must NOT
+    # be a real transient (a killed/crashed child with no result record) --
+    # explicitly false, since exit-0 classification now reads transient_fn.
+    transient_fn = fn _jsonl -> false end
+    git_head_fn = fn _cwd -> "aaa" end
+    gate_verdict_fn = fn _cwd -> "clear" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
+    gate_mtime_fn = fn _cwd -> 1_700_000_000 end
+
+    calls = start_agent([])
+
+    draft_fn = fn _cwd, slug, _jsonl, failure_block ->
+      Agent.update(calls, &(&1 ++ [{slug, failure_block}]))
+      {:ok, "/dev/null"}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     git_head_fn: git_head_fn,
+                     gate_verdict_fn: gate_verdict_fn,
+                     gate_base_sha_fn: gate_base_sha_fn,
+                     gate_mtime_fn: gate_mtime_fn,
+                     draft_fn: draft_fn
+                   )
+                 )
+      end)
+
+    assert [{"solo", failure_block}] = Agent.get(calls, & &1)
+    assert failure_block =~ "Failure cause: ship_not_verified"
+    assert failure_block =~ "HEAD did not advance"
+    # The raw on-disk verdict IS "clear" -- the block must qualify it, never
+    # present an unqualified "Gate verdict: clear" that reads as clean.
+    refute failure_block =~ "Gate verdict: clear\n"
+    assert failure_block =~ "Gate verdict: clear (ship not verified — HEAD did not advance)"
+
+    assert output =~
+             "queue: WARN — solo classified ship_not_verified but raw gate verdict on disk reads \"clear\""
+  end
+
+  test "D9: exit-0-without-verified-commit, transient_fn true (child produced no result record) -> classifies transient_exhausted",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    # Exit-0 path: no verified commit (git_head_fn nil -> committed? false)
+    # AND the drafter's own transient probe reads true (a killed/crashed
+    # child left no result record) -- the exact condition the pitch names
+    # as the retry-exhaustion root cause. transient? is checked FIRST in
+    # classify_drain_failure/1, ahead of ship_not_verified.
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+    transient_fn = fn _jsonl -> true end
+
+    calls = start_agent([])
+
+    draft_fn = fn _cwd, slug, _jsonl, failure_block ->
+      Agent.update(calls, &(&1 ++ [{slug, failure_block}]))
+      {:ok, "/dev/null"}
+    end
+
+    capture_io(:stderr, fn ->
+      assert {:ok, 0} =
+               LoopQueueDrain.drain(
+                 base_opts(ctx,
+                   spawn_fn: spawn_fn,
+                   transient_fn: transient_fn,
+                   git_head_fn: fn _cwd -> nil end,
+                   draft_fn: draft_fn
+                 )
+               )
+    end)
+
+    assert [{"solo", failure_block}] = Agent.get(calls, & &1)
+    assert failure_block =~ "Failure cause: transient_exhausted"
+    assert failure_block =~ "retried 0×"
+  end
+
+  test "D9b: transient_fn true PAIRED with a genuinely fresh clear gate verdict -> block still qualifies, never bare unqualified clear",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    # The sibling gap to D8: transient? true (child produced no result
+    # record) co-occurring with a gate that IS fresh-clear for this cycle
+    # (fresh gate_base_sha_fn/gate_mtime_fn, matching git_head_fn — same
+    # freshness shape D8 uses for ship_not_verified). classify_drain_failure/1
+    # checks transient? FIRST, so this classifies transient_exhausted even
+    # though gate_clear? is true -- format_failure_block/3 must qualify the
+    # bare "clear" for THIS cause atom too, not only :ship_not_verified.
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+    transient_fn = fn _jsonl -> true end
+    git_head_fn = fn _cwd -> "aaa" end
+    gate_verdict_fn = fn _cwd -> "clear" end
+    gate_base_sha_fn = fn _cwd -> "aaa" end
+    gate_mtime_fn = fn _cwd -> 1_700_000_000 end
+
+    calls = start_agent([])
+
+    draft_fn = fn _cwd, slug, _jsonl, failure_block ->
+      Agent.update(calls, &(&1 ++ [{slug, failure_block}]))
+      {:ok, "/dev/null"}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     git_head_fn: git_head_fn,
+                     gate_verdict_fn: gate_verdict_fn,
+                     gate_base_sha_fn: gate_base_sha_fn,
+                     gate_mtime_fn: gate_mtime_fn,
+                     draft_fn: draft_fn
+                   )
+                 )
+      end)
+
+    assert [{"solo", failure_block}] = Agent.get(calls, & &1)
+    assert failure_block =~ "Failure cause: transient_exhausted"
+    # The invariant this fixture pins: an unqualified "Gate verdict: clear\n"
+    # must NEVER appear, regardless of which of the two causes produced it.
+    refute failure_block =~ "Gate verdict: clear\n"
+    assert failure_block =~ "Gate verdict: clear (transient — child produced no result record this cycle)"
+
+    assert output =~
+             "queue: WARN — solo classified transient_exhausted but raw gate verdict on disk reads \"clear\""
+  end
+
+  test "D10: genuine gate failed verdict, not committed -> classifies gate_failed, preserves verdict verbatim",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+    gate_verdict_fn = fn _cwd -> "failed" end
+
+    calls = start_agent([])
+
+    draft_fn = fn _cwd, slug, _jsonl, failure_block ->
+      Agent.update(calls, &(&1 ++ [{slug, failure_block}]))
+      {:ok, "/dev/null"}
+    end
+
+    capture_io(:stderr, fn ->
+      assert {:ok, 0} =
+               LoopQueueDrain.drain(
+                 base_opts(ctx,
+                   spawn_fn: spawn_fn,
+                   transient_fn: transient_fn,
+                   gate_verdict_fn: gate_verdict_fn,
+                   draft_fn: draft_fn
+                 )
+               )
+    end)
+
+    assert [{"solo", failure_block}] = Agent.get(calls, & &1)
+    assert failure_block =~ "Failure cause: gate_failed"
+    assert failure_block =~ "gate verdict=\"failed\""
+    assert failure_block =~ "Gate verdict: failed\n"
+  end
+
+  test "D11: invariant — no drafted failure block ever shows an unqualified clear verdict without naming a non-clear cause",
+       ctx do
+    fixtures = [
+      # {spawn_exit, transient?, gate_verdict, git_head_fn, extra_opts}
+      {0, false, "clear", fn _cwd -> "aaa" end,
+       [gate_base_sha_fn: fn _cwd -> "aaa" end, gate_mtime_fn: fn _cwd -> 1_700_000_000 end]},
+      # exit-0 (not nonzero): transient_fn=true at the NONZERO arm always
+      # routes through the outage-pause path first (never reaching the
+      # terminal-FAILED catch-all) -- the exit-0 arm has no such detour.
+      {0, true, "", fn _cwd -> nil end, []},
+      {1, false, "failed", fn _cwd -> nil end, []}
+    ]
+
+    # Each fixture drives its own isolated tmp dir via the existing setup
+    # contract (ready_dir/shipped_dir/lock_path) -- one drain per fixture.
+    for {exit_code, transient?, gate_verdict, git_head_fn, extra} <- fixtures do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "loop_queue_drain_d11_#{:erlang.unique_integer([:positive])}"
+        )
+
+      ready_dir = Path.join([dir, "codegen", "pitches", "ready"])
+      shipped_dir = Path.join([dir, "codegen", "pitches", "shipped"])
+      lock_path = Path.join([dir, "codegen", "pitches", "queue.lock"])
+      File.mkdir_p!(ready_dir)
+      File.mkdir_p!(shipped_dir)
+
+      write_pitch(ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, exit_code} end
+      transient_fn = fn _jsonl -> transient? end
+      gate_verdict_fn = fn _cwd -> gate_verdict end
+
+      calls = start_agent([])
+
+      draft_fn = fn _cwd, slug, _jsonl, failure_block ->
+        Agent.update(calls, &(&1 ++ [{slug, failure_block}]))
+        {:ok, "/dev/null"}
+      end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(
+            %{dir: dir, ready_dir: ready_dir, shipped_dir: shipped_dir, lock_path: lock_path},
+            Keyword.merge(
+              [
+                spawn_fn: spawn_fn,
+                transient_fn: transient_fn,
+                gate_verdict_fn: gate_verdict_fn,
+                git_head_fn: git_head_fn,
+                draft_fn: draft_fn
+              ],
+              extra
+            )
+          )
+        )
+      end)
+
+      assert [{"solo", failure_block}] = Agent.get(calls, & &1)
+      assert failure_block =~ "Failure cause:"
+
+      # The invariant: an unqualified "Gate verdict: clear\n" never appears
+      # on a drafted (i.e. terminal-FAILED) block -- a fresh clear +
+      # committed cycle ships rather than drafting, so any drafted block
+      # whose raw verdict reads "clear" must carry a qualifier: either
+      # genuinely STALE (an earlier cycle's leftover) or fresh-but the ship
+      # itself was never verified.
+      if gate_verdict == "clear" do
+        refute failure_block =~ "Gate verdict: clear\n"
+        assert failure_block =~ "STALE" or failure_block =~ "ship not verified"
+      end
+
+      File.rm_rf!(dir)
+    end
   end
 
   # ── Auto-demotion after repeated deterministic failure ──────────────────
