@@ -98,9 +98,9 @@ pitch_content=$(cat "$pitch")
 status_value=""
 status_source=""
 
-first_line=$(printf '%s\n' "$pitch_content" | head -n1)
+first_line=${pitch_content%%$'\n'*}
 if [ "$first_line" = "---" ]; then
-    frontmatter_block=$(printf '%s\n' "$pitch_content" | awk 'NR==1{next} /^---$/{exit} {print}')
+    frontmatter_block=$(awk 'NR==1{next} /^---$/{exit} {print}' "$pitch")
     fm_status_line=$(printf '%s\n' "$frontmatter_block" | grep -m1 '^status:' || true)
     if [ -n "$fm_status_line" ]; then
         status_value=$(printf '%s' "$fm_status_line" | sed 's/^status:[[:space:]]*//' | tr -d '[:space:]')

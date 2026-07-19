@@ -26,40 +26,24 @@ Caveat: no blind `/..` — derivation depends on the script's installed location
 
 ## Verdict String Routing through Case Arms
 
-When a helper function generates verdict strings and feeds a `case "$verdict"` block with an `INCONCLUSIVE:*` arm, adding new `INCONCLUSIVE:<reason>` strings requires **zero edits to the case block**. The existing `INCONCLUSIVE:*)` pattern arm absorbs all new substrings automatically (shell glob match).
-
-✅ Reclassify at the source (where verdict is generated).
-❌ Edit each downstream case consumer.
-
-Example: `run_phoenix_render_check` returns `INCONCLUSIVE:render-check-cmd-missing` or `INCONCLUSIVE:render-check-cmd-failed`. The Elixir loop's `LoopGate.decide_gate/2` already has an `INCONCLUSIVE:*` clause routing all INCONCLUSIVE variants correctly — no case edits needed when new reasons are added.
+New `INCONCLUSIVE:<reason>` strings need zero case-block edits — the existing `INCONCLUSIVE:*)` arm absorbs all substrings (glob match). Reclassify at the source, not each downstream consumer. Example: `LoopGate.decide_gate/2`'s `INCONCLUSIVE:*` clause already routes new `run_phoenix_render_check` reasons with no edit.
 
 ## Heredoc Inside Command Substitution — Quote Parsing
 
-When a heredoc is nested inside `$()` or backticks, the **outer shell still parses the heredoc body for quote tokens** to ensure balancing. This means constructs like `case` with single-quoted patterns inside a `$(...)` heredoc cause syntax errors in the outer shell:
-
-❌ `eval "$(grep '^export ' build.sh || cat <<'SCRIPT'
-	case "$_line" in
-	'')	_skip=true ;;  # outer shell sees unmatched single quote
-	esac
-SCRIPT
-)"`
-
-✅ Replace `case` with `[ -z "$_line" ]` test forms:
-
-```bash
-eval "$(grep '^export ' build.sh || cat <<'SCRIPT'
-	[ -z "$_line" ] && _skip=true
-SCRIPT
-)"`
-```
-
-Workaround: avoid single-quoted patterns in heredoc bodies when the heredoc is fed to `$()`. Test forms like `[ -z ]` and `[ "$var" != "..." ]` are quote-neutral and parse cleanly in nested heredocs.
+A heredoc nested inside `$()`/backticks still has its body quote-parsed by the OUTER shell for balancing — a `case` with single-quoted patterns inside a `$(...)` heredoc causes outer-shell syntax errors (`case "$_line" in '') ...`). Fix: avoid single-quoted patterns in nested heredoc bodies; use quote-neutral test forms instead — `[ -z "$_line" ] && _skip=true` in place of a `case`/`'')` pattern arm.
 
 ## POSIX Portable String-Prefix Check
 
-In a script with `set -euo pipefail`, checking if a variable starts with a specific prefix (e.g., `#` for comments) without triggering a subshell overhead:
-
 ❌ `echo "$_line" | grep -q '^#'` ← subshell overhead, fragile in pipefail
-✅ `[ "${_line#\#}" != "$_line" ]` ← parameter expansion, no subshell, portable POSIX
+✅ `[ "${_line#\#}" != "$_line" ]` ← parameter expansion, no subshell, portable POSIX across bash/sh/dash.
 
-The pattern `${_line#\#}` strips a leading `#` from `$_line`. If the result differs from the original, the line started with `#`. This works in bash, sh, dash, and all POSIX shells within `set -euo pipefail` without subshell side-effects or external commands.
+## pipefail + Early-Exit Consumer → 141 on a MATCH
+
+`pipefail` + early-exit consumer (`grep -q`, `head -n1`, `awk '…{exit}'`) on a still-writing producer → producer SIGPIPEs → 141 even on a real match; consumed status (`if`, `var=$(...)` under `-e`) reads match as miss.
+
+Discriminator: producer OUTPUT size, not input — fires only if output > pipe buffer (~64 KB). Small-output producer (`jq 'select(...)' huge.jsonl | grep -q .`) never opens the window.
+
+❌ `x=$(printf '%s\n' "$big" | head -n1)` → ✅ `x=${big%%$'\n'*}`
+❌ `x=$(printf '%s\n' "$big" | awk '/^---$/{exit}{print}')` → ✅ `x=$(awk '/^---$/{exit}{print}' "$file")` (reads file, no producer to kill)
+
+No pipe-free form → capture then test: `hit=$(producer); [ -n "$hit" ] && ...`. Don't mass-rewrite every `| grep -q` — only large-output/status-consumed sites; bounded/`|| true` sites are unaffected.

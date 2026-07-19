@@ -23,6 +23,8 @@
 #  19:  frontmatter status: BOGUS → block
 #  20:  frontmatter status: SHAPED + valid Questions block → allow (frontmatter inert to Q/A extraction)
 #  21:  frontmatter status: SHAPED + malformed Questions (zero Q headings) → block (Q/A validation still runs)
+#  22:  frontmatter status: SHAPED + >64 KB body → allow, no 141/SIGPIPE false-miss (regression)
+#  23:  frontmatter status: BOGUS + >64 KB body → block (status extraction still correct at size)
 
 set -u
 
@@ -261,6 +263,27 @@ Done.
 MD
 }
 
+# write_pitch_frontmatter_status_shaped_large <path>
+# Same frontmatter+status as write_pitch_frontmatter_status_shaped, but with
+# a >64 KB body appended after the frontmatter closing "---". Regression
+# fixture for the set -e + SIGPIPE false-141 bug: `head -n1`/`awk …exit` fed
+# via a pipe from a large in-memory variable can die with 141 mid-write,
+# which a bare `var=$(pipeline)` under `set -e` reads as extraction failure.
+write_pitch_frontmatter_status_shaped_large() {
+    local path="$1"
+    {
+        printf -- '---\n'
+        printf -- 'status: SHAPED\n'
+        printf -- 'blocks_on: []\n'
+        printf -- '---\n'
+        printf -- '# My Pitch\n\n## Problem\n\n'
+        # ~20k lines, well past the 64 KB pipe buffer.
+        for i in $(seq 1 20000); do
+            printf -- 'Body filler line %d for large-pitch SIGPIPE regression test.\n' "$i"
+        done
+    } >"$path"
+}
+
 # write_pitch_frontmatter_status_bogus <path>
 write_pitch_frontmatter_status_bogus() {
     local path="$1"
@@ -275,6 +298,22 @@ blocks_on: []
 
 Bad status.
 MD
+}
+
+# write_pitch_frontmatter_status_bogus_large <path>
+# BOGUS-status sibling of write_pitch_frontmatter_status_shaped_large.
+write_pitch_frontmatter_status_bogus_large() {
+    local path="$1"
+    {
+        printf -- '---\n'
+        printf -- 'status: INPROGRESS\n'
+        printf -- 'blocks_on: []\n'
+        printf -- '---\n'
+        printf -- '# My Pitch\n\n## Problem\n\n'
+        for i in $(seq 1 20000); do
+            printf -- 'Body filler line %d for large-pitch SIGPIPE regression test.\n' "$i"
+        done
+    } >"$path"
 }
 
 # write_pitch_frontmatter_status_shaped_valid_questions <path>
@@ -539,6 +578,30 @@ make_transcript_with_pitch_write "$T21_transcript" "$T21_pitch"
 out=$(run_hook "$T21_dir" false "$T21_transcript" "shape" "")
 assert_contains "frontmatter + malformed Questions → block" '"decision"' "$out"
 rm -rf "$T21_dir"
+
+# ── Test 22: frontmatter status: SHAPED + >64 KB body → allow, no 141/SIGPIPE
+# false-miss (regression for set -e + pipefail + early-exit consumer bug) ───
+T22_dir=$(mktemp -d)
+mkdir -p "$T22_dir/codegen/pitches/draft"
+T22_pitch="$T22_dir/codegen/pitches/draft/my-pitch.md"
+T22_transcript="$T22_dir/transcript.jsonl"
+write_pitch_frontmatter_status_shaped_large "$T22_pitch"
+make_transcript_with_pitch_write "$T22_transcript" "$T22_pitch"
+out=$(run_hook "$T22_dir" false "$T22_transcript" "shape" "")
+assert_not_contains "frontmatter + >64 KB body, SHAPED → allow (no 141 false-miss)" '"decision"' "$out"
+rm -rf "$T22_dir"
+
+# ── Test 23: frontmatter status: BOGUS + >64 KB body → block (status
+# extraction still correct at size) ──────────────────────────────────────────
+T23_dir=$(mktemp -d)
+mkdir -p "$T23_dir/codegen/pitches/draft"
+T23_pitch="$T23_dir/codegen/pitches/draft/my-pitch.md"
+T23_transcript="$T23_dir/transcript.jsonl"
+write_pitch_frontmatter_status_bogus_large "$T23_pitch"
+make_transcript_with_pitch_write "$T23_transcript" "$T23_pitch"
+out=$(run_hook "$T23_dir" false "$T23_transcript" "shape" "")
+assert_contains "frontmatter + >64 KB body, BOGUS → block" '"decision"' "$out"
+rm -rf "$T23_dir"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
