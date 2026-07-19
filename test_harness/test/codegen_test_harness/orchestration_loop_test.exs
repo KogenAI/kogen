@@ -6263,17 +6263,37 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       String.trim(out)
     end
 
-    # Common seam bundle every resume-checkpoint test needs: a real invoke_fn
-    # that records which roles were actually called, a permissive gate/orphan
-    # /preflight stack (never the object under test here), and a no-op
-    # advance_cycle_state_fn (writing the real cycle-state.json would
-    # overwrite the checkpoint this test set up).
+    # Writes a real, minimal JSONL cycle log fixture under dir/codegen/ (the
+    # same subtree the fixture's own .gitignore excludes — see the setup
+    # block's "codegen/\n" write above) and returns its path — mirrors
+    # fresh_cycle_log!/0's shape (a real init line on disk, not a bare path)
+    # so downstream reads through this cycle (e.g. curator-consumption-scan)
+    # find real content instead of a missing file, WITHOUT the fixture file
+    # itself showing up as an uncommitted tracked change (it would if placed
+    # directly under dir/, tripping verify_committed!'s clean-tree guard).
+    # Cleaned up by the describe block's on_exit File.rm_rf!(dir). Needed
+    # because default_log_init/3 shells the real codegen-log with CODEGEN_DIR
+    # pinned to the live repo root (correct for production — the loop runs
+    # from test_harness/ and needs it to locate codegen/), and codegen-log
+    # resolves CODEGEN_DIR before cwd — so without this stub every
+    # resume-checkpoint run silently writes a real cycle log into the LIVE
+    # codegen/logging/ dir instead of this test's sandbox (see
+    # context/test-harness-pitfalls.md).
+    defp resume_checkpoint_cycle_log!(dir) do
+      logging_dir = Path.join([dir, "codegen", "logging"])
+      File.mkdir_p!(logging_dir)
+      path = Path.join(logging_dir, "cycle.jsonl")
+      File.write!(path, Jason.encode!(%{"ev" => "init", "pitch" => "do the thing"}) <> "\n")
+      path
+    end
+
     defp resume_run_opts(dir, calls_agent, extra) do
       base = [
         harness: "claude_code",
         stack: "static",
         cwd: dir,
         pitch: "do the thing",
+        log_init_fn: log_init_fn_for(resume_checkpoint_cycle_log!(dir)),
         invoke_fn: fn role, _harness, _ctx, _opts ->
           Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
