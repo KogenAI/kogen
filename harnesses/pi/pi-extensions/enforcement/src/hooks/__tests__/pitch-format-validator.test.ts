@@ -337,6 +337,21 @@ describe("pitch-format-validator", { concurrency: false }, () => {
     );
   });
 
+  it("waives: resolution is unaffected by neighboring handoffs:/handoff_receipt: keys", async () => {
+    writeRegistryFixture();
+    writePitch(
+      "---\nstatus: SHAPED\nwaives: [prompt-budget-writer-only]\n" +
+        "handoffs: [d::my-pitch::other-pitch::lib/x.ex]\n" +
+        "handoff_receipt: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n" +
+        "---\n\nSome content.\n",
+    );
+    const stderr = await runHook("shape");
+    assert.ok(
+      !stderr.includes("waives:"),
+      "expected no waives warning",
+    );
+  });
+
   // Returns null (observe-only)
   it("never returns block result (observe-only)", async () => {
     writePitch("> Status: FOO\n");

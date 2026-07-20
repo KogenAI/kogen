@@ -235,6 +235,297 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
+  @type handoff_record :: %{
+          delta_id: String.t(),
+          source: slug(),
+          owner: slug(),
+          path: String.t()
+        }
+
+  @handoff_record_regex ~r/^([a-z0-9][a-z0-9-]*)::([a-z0-9][a-z0-9-]*)::([a-z0-9][a-z0-9-]*)::(.+)$/
+
+  @doc """
+  Parses the `handoffs:` frontmatter field out of the pitch file at
+  `pitch_path` — a flow-list of bilateral cross-pitch deferral records,
+  each shaped `<delta-id>::<source-slug>::<owner-slug>::<repo-relative-
+  path>` (see `codegen/pitches/draft/deferred-work-has-exactly-one-owner.md`).
+
+  Reuses the SAME frontmatter spine as `parse_scope/2`
+  (`frontmatter_block/1` -> `extract_frontmatter_key/2` ->
+  `parse_flow_list_strict/1`) — no new frontmatter grammar, only a new
+  per-item record grammar layered on top of the existing flow-list
+  parser.
+
+  Returns:
+
+    - `{:ok, nil}` — no `handoffs:` key, or no frontmatter block at all
+    - `{:ok, [%{delta_id:, source:, owner:, path:}, ...]}` — well-formed
+      flow-list, each item matching the record grammar (possibly `[]`)
+    - raises — `handoffs:` present but not a parseable `[...]` flow-list,
+      OR a well-formed flow-list containing at least one item that does
+      not match the record grammar (wrong token shape, `source ==
+      owner`, or a path containing `..`, a leading/trailing slash, a
+      backslash, an ASCII control character, a comma, a square bracket,
+      or the reserved `::` delimiter). A confidently-wrong partial
+      parse is worse than a loud crash naming the slug and the bad
+      token.
+  """
+  @spec parse_handoffs(slug(), String.t()) :: {:ok, [handoff_record()] | nil}
+  def parse_handoffs(slug, pitch_path) do
+    if File.exists?(pitch_path) do
+      content = File.read!(pitch_path)
+
+      case frontmatter_block(content) do
+        nil ->
+          {:ok, nil}
+
+        block ->
+          case extract_frontmatter_key(block, "handoffs:") do
+            "" ->
+              {:ok, nil}
+
+            raw ->
+              case parse_flow_list_strict(raw) do
+                {:ok, tokens} ->
+                  {:ok, Enum.map(tokens, &parse_handoff_token!(slug, &1))}
+
+                :error ->
+                  raise "LoopQueue.parse_handoffs: #{slug} has a handoffs: value that is " <>
+                          "not a parseable [...] flow-list: #{inspect(raw)}"
+              end
+          end
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
+  @spec parse_handoff_token!(slug(), String.t()) :: handoff_record()
+  defp parse_handoff_token!(slug, token) do
+    case Regex.run(@handoff_record_regex, token) do
+      [_, delta_id, source, owner, path] ->
+        cond do
+          source == owner ->
+            raise "LoopQueue.parse_handoffs: #{slug} has a handoffs: record with " <>
+                    "source == owner (#{inspect(source)}): #{inspect(token)}"
+
+          not valid_handoff_path?(path) ->
+            raise "LoopQueue.parse_handoffs: #{slug} has a handoffs: record with an " <>
+                    "invalid path: #{inspect(token)}"
+
+          true ->
+            %{delta_id: delta_id, source: source, owner: owner, path: path}
+        end
+
+      nil ->
+        raise "LoopQueue.parse_handoffs: #{slug} has a handoffs: record that does not " <>
+                "match <delta-id>::<source-slug>::<owner-slug>::<path>: #{inspect(token)}"
+    end
+  end
+
+  # path must be `/`-separated non-empty segments, no leading/trailing
+  # slash, no "." or ".." segment, no backslash, no ASCII control byte, no
+  # comma, no square bracket, no reserved "::" delimiter.
+  @spec valid_handoff_path?(String.t()) :: boolean()
+  defp valid_handoff_path?(path) do
+    path != "" and
+      not String.starts_with?(path, "/") and
+      not String.ends_with?(path, "/") and
+      not String.contains?(path, "\\") and
+      not String.contains?(path, "::") and
+      not String.contains?(path, ",") and
+      not String.contains?(path, "[") and
+      not String.contains?(path, "]") and
+      not Regex.match?(~r/[\x00-\x1f]/, path) and
+      path
+      |> String.split("/")
+      |> Enum.all?(fn segment -> segment != "" and segment != "." and segment != ".." end)
+  end
+
+  @doc """
+  Computes the portable `handoff_receipt:` digest for `slug`'s
+  `handoffs:` `records` — `"sha256:" <> 64 lowercase hex` over
+  `slug <> "\\n" <> Enum.join(bytewise_sorted_canonical_records, "\\n")
+  <> "\\n"`, UTF-8 bytes.
+
+  Sorting the canonical record strings before hashing means the digest
+  is independent of the AUTHOR'S ORDER in the flow-list — two pitches
+  whose records are byte-identical but were typed in a different order
+  still produce the same receipt. Canonical record form is the same
+  `<delta-id>::<source>::<owner>::<path>` token grammar `parse_handoffs/2`
+  reads back.
+  """
+  @spec handoff_receipt(slug(), [handoff_record()]) :: String.t()
+  def handoff_receipt(slug, records) do
+    canonical =
+      records
+      |> Enum.map(&canonical_handoff_token/1)
+      |> Enum.sort()
+
+    payload = slug <> "\n" <> Enum.join(canonical, "\n") <> "\n"
+    digest = :crypto.hash(:sha256, payload)
+    "sha256:" <> Base.encode16(digest, case: :lower)
+  end
+
+  @spec canonical_handoff_token(handoff_record()) :: String.t()
+  defp canonical_handoff_token(%{delta_id: d, source: s, owner: o, path: p}) do
+    "#{d}::#{s}::#{o}::#{p}"
+  end
+
+  @handoff_receipt_regex ~r/^sha256:[0-9a-f]{64}$/
+
+  @doc """
+  Reconciles a `slug`'s parsed `handoffs:` `records` against the
+  corresponding participant pitch files found under `pitches_dirs` (a
+  list of directories to search, e.g. `draft/`, `ready/`, `shipped/` —
+  see `codegen/pitches/draft/deferred-work-has-exactly-one-owner.md`).
+
+  For every record `{delta_id, source, owner, path}` naming `slug` as
+  EITHER `source` or `owner`, the counterpart participant must exist
+  under one of `pitches_dirs`, carry an IDENTICAL copy of the record in
+  its own `handoffs:` list, and (when `slug` is the `source`) the
+  `owner` pitch's `scope:` must contain `path`. One `delta_id` may
+  recur with different `path`s only when `source`/`owner` stay
+  identical across every recurrence — reusing a `delta_id` with a
+  different source or owner is a conflict.
+
+  Returns `:ok` when every record for `slug` reconciles cleanly (`slug`
+  may also have zero `handoffs:` — an empty pass), or
+  `{:error, reason}` naming the first problem found — never a partial
+  or best-effort pass. Uses a visited-set walk (`visited` param,
+  default `MapSet.new()`) so a graph cycle among counterpart pitches
+  terminates rather than looping.
+  """
+  @spec reconcile_handoffs(slug(), String.t(), [String.t()], MapSet.t()) ::
+          :ok | {:error, String.t()}
+  def reconcile_handoffs(slug, pitch_path, pitches_dirs, visited \\ MapSet.new()) do
+    if MapSet.member?(visited, slug) do
+      :ok
+    else
+      visited = MapSet.put(visited, slug)
+
+      with {:ok, records} <- parse_handoffs(slug, pitch_path) do
+        (records || [])
+        |> Enum.reduce_while(:ok, fn record, :ok ->
+          case reconcile_one_handoff(slug, record, pitches_dirs, visited) do
+            :ok -> {:cont, :ok}
+            {:error, _} = err -> {:halt, err}
+          end
+        end)
+      end
+    end
+  end
+
+  @spec reconcile_one_handoff(slug(), handoff_record(), [String.t()], MapSet.t()) ::
+          :ok | {:error, String.t()}
+  defp reconcile_one_handoff(slug, record, pitches_dirs, visited) do
+    counterpart_slug = if slug == record.source, do: record.owner, else: record.source
+
+    case find_pitch_file(counterpart_slug, pitches_dirs) do
+      nil ->
+        {:error,
+         "HANDOFF GAP #{record.delta_id}: participant #{inspect(counterpart_slug)} " <>
+           "(referenced by #{inspect(slug)}) not found under #{inspect(pitches_dirs)}"}
+
+      counterpart_path ->
+        with {:ok, counterpart_records} <- parse_handoffs(counterpart_slug, counterpart_path) do
+          if record in (counterpart_records || []) do
+            with :ok <- check_owner_scope(record, pitches_dirs) do
+              reconcile_handoffs(counterpart_slug, counterpart_path, pitches_dirs, visited)
+            end
+          else
+            {:error,
+             "HANDOFF GAP #{record.delta_id}: #{inspect(slug)} and " <>
+               "#{inspect(counterpart_slug)} do not carry an identical copy of the record"}
+          end
+        end
+    end
+  end
+
+  @spec check_owner_scope(handoff_record(), [String.t()]) :: :ok | {:error, String.t()}
+  defp check_owner_scope(%{owner: owner, path: path, delta_id: delta_id}, pitches_dirs) do
+    case find_pitch_file(owner, pitches_dirs) do
+      nil ->
+        {:error, "HANDOFF GAP #{delta_id}: owner #{inspect(owner)} not found"}
+
+      owner_path ->
+        case parse_scope(owner, owner_path) do
+          {:ok, owner_scope} when is_list(owner_scope) ->
+            if path in owner_scope do
+              :ok
+            else
+              {:error,
+               "HANDOFF GAP #{delta_id}: owner #{inspect(owner)} does not list " <>
+                 "#{inspect(path)} in its scope:"}
+            end
+
+          {:ok, nil} ->
+            {:error, "HANDOFF GAP #{delta_id}: owner #{inspect(owner)} has no scope: field"}
+        end
+    end
+  end
+
+  @spec find_pitch_file(slug(), [String.t()]) :: String.t() | nil
+  defp find_pitch_file(slug, pitches_dirs) do
+    Enum.find_value(pitches_dirs, fn dir ->
+      candidate = Path.join(dir, "#{slug}.md")
+      if File.exists?(candidate), do: candidate
+    end)
+  end
+
+  @doc """
+  Upserts `handoff_receipt: <receipt>` into the pitch file at
+  `draft_path`'s frontmatter block, via the SAME reconstruction grammar
+  `upsert_frontmatter_lines/2` already uses for `build_failures:` and
+  `demoted_from:` — no second frontmatter grammar.
+
+  Compare-and-swap: `expected_content` must equal the CURRENT bytes on
+  disk at `draft_path` at write time, or the write is refused with
+  `{:error, :stale}` and NOTHING is written — a source that changed
+  between the caller's precompute step and this call must never have
+  its update silently applied on top of newer, unseen bytes. Callers
+  precompute `expected_content` (the exact bytes they read and derived
+  `receipt` from), write via a same-directory temp file, then rename
+  atomically over `draft_path` only after re-reading and confirming
+  `draft_path` still holds `expected_content`.
+
+  Returns `:ok` on a successful atomic write, `{:error, :stale}` on a
+  detected race, or raises on a read failure (mirrors
+  `write_build_failures!/3` — the file disappearing between the
+  caller's existence check and this call is a genuine anomaly, not a
+  documented sentinel).
+  """
+  @spec write_handoff_receipt!(String.t(), String.t(), String.t()) :: :ok | {:error, :stale}
+  def write_handoff_receipt!(draft_path, expected_content, receipt) do
+    unless Regex.match?(@handoff_receipt_regex, receipt) do
+      raise "LoopQueue.write_handoff_receipt!: #{inspect(receipt)} is not a well-formed " <>
+              "sha256:<64 lowercase hex> receipt"
+    end
+
+    case File.read(draft_path) do
+      {:ok, ^expected_content} ->
+        updated = upsert_frontmatter_lines(expected_content, ["handoff_receipt: #{receipt}"])
+        tmp_path = "#{draft_path}.#{:erlang.unique_integer([:positive])}"
+        File.write!(tmp_path, updated)
+
+        case File.read(draft_path) do
+          {:ok, ^expected_content} ->
+            File.rename!(tmp_path, draft_path)
+            :ok
+
+          _ ->
+            File.rm(tmp_path)
+            {:error, :stale}
+        end
+
+      {:ok, _other} ->
+        {:error, :stale}
+
+      {:error, reason} ->
+        raise "LoopQueue.write_handoff_receipt!: failed to read #{draft_path}: #{inspect(reason)}"
+    end
+  end
+
   @doc """
   Scans the `.md` slugs under `pitches_dir` and returns
   `{disjoint, collisions, unrouted}`:

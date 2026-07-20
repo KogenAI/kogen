@@ -114,6 +114,9 @@ Deferrals touching auth, access control, secret handling, data deletion, or anyt
 
 This prevents the failure mode that shipped incomplete features with unaddressed security surface.
 
+**Bilateral-record obligation**: a concrete, path-bearing deferral also gets a `handoffs:` record in
+both pitches (never prose alone) — see `context/pitch-lifecycle.md` § Frontmatter Schema.
+
 ## Decompose-then-Split and Derive-Edges (Rules G, H)
 
 When a problem is too large for one pitch.
@@ -283,8 +286,8 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Pitfalls
 
-- **Pitch line numbers drift** — use exact anchor text, not line numbers. Example blocks carry routing targets too — bulk-repathing must cover them.
-- **Shape prompt two-layer architecture** — inline-probe (`_probing.txt`) checks claim-intro; readiness-check (`shape.txt`) scans completeness. Place rules by gate-phase. `/ready` inherits `_probing.txt` automatically.
+- **Pitch line numbers drift** — use exact anchor text. Example blocks carry routing targets too.
+- **Shape prompt two layers** — inline-probe (`_probing.txt`) checks claim-intro; readiness-check (`shape.txt`) scans completeness. `/ready` inherits `_probing.txt`.
 - **Read/Edit blocked for codegen/pitches/** — `subagent-read-discipline.sh` denies both; workaround: Bash `awk`/`grep` + Python string-replace. `grep -c "header text"` false-positives on prose mentions — use `grep -n "^## ..."` (anchored H2) for "exactly one section" checks. Delegation-prompt `## ` lines get indented to `##` to prevent rank-order corruption.
 
 ## Trigger Keywords

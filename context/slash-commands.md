@@ -23,6 +23,12 @@ Install (`install.sh` § `install_commands`, manifest step): copies `commands_so
 (`installed-by-ocg` manifest tracking). `harnesses/claude/manifest.yaml`: `commands_dir: ~/.claude/commands`,
 `commands_source: harnesses/claude/commands`.
 
+`ready.md.j2` runs a **handoff reconciliation step** immediately before its `mv draft/ -> ready/`: for a
+pitch carrying `handoffs:`, it shells `mix codegen.pitches.scope --check --dir=draft --slug=<slug>
+--stamp-handoff-receipt` — a HANDOFF GAP failure withholds the move; a clean run stamps
+`handoff_receipt:` into every draft participant. `document.md`'s promotion note routes concrete handoffs
+through `/ready` (not a raw manual `mv`) — see `context/pitch-lifecycle.md`.
+
 ## Pi — Prompts (Superset Asymmetry)
 
 Pi has no dedicated `commands/` source dir mirroring Claude's — its slash-command surface is
@@ -32,4 +38,4 @@ prompt surface as its own generation target, not a port of the Claude command li
 
 ## Trigger Keywords
 
-slash commands, /command, /document, /rule, /release-new-version, /poke-holes, /ready, /babysit, commands_source, commands_dir, install_commands, pi prompts, prompts_dir, prompts_source
+slash commands, /command, /document, /rule, /release-new-version, /poke-holes, /ready, /babysit, commands_source, commands_dir, install_commands, pi prompts, prompts_dir, prompts_source, handoff reconciliation, stamp-handoff-receipt, bilateral handoff record, handoff_receipt fleet transfer

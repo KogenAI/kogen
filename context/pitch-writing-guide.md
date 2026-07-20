@@ -44,6 +44,26 @@ Launchers like `shape` also auto-edit pitches via this same resolved path. If a 
 
 **Mandatory: every pitch promoted to `ready/` MUST carry a `scope:` frontmatter field.** The field is a YAML flow-list of repo-relative paths this pitch will edit (e.g. `scope: [test_harness/lib/loop_queue.ex, shared/rules/_core/]`). Write it inline when short, or multiline (key alone on one line, then `[`/items/`]` on following lines) when the list is longer. The deterministic gate is `make test` via `mix codegen.pitches.scope --check --dir=ready` (the `pitch-scope-parity` Makefile leg) — it fails loud when a `ready/` pitch has no `scope:` field or the value is unparseable, naming the offending slug; `/ready` itself surfaces readiness in prose but does not enforce this field. The gate is the authoritative check — no pitch is placed to a build without a declared scope. The `mix codegen.pitches.scope` reader (see § System Components, below) uses this field to partition parallel work and detect conflicts between pitches.
 
+## Handoff record requirement (concrete cross-pitch deferrals only)
+
+**A concrete, path-bearing cross-pitch deferral is recorded bilaterally, not just as a prose pointer.**
+When shaping defers real work to a sibling draft AND the deferred work names an affected repo-relative
+path in the CURRENT pitch, write the SAME `handoffs:` record into both pitches' frontmatter:
+
+```
+handoffs: [<delta-id>::<source-slug>::<owner-slug>::<repo-relative-path>]
+```
+
+`<delta-id>` and both slugs are lowercase kebab-case (`[a-z0-9][a-z0-9-]*`); `<source-slug>` and
+`<owner-slug>` must differ; the path uses `/`-separated non-empty segments with no leading/trailing
+slash, no `.`/`..` segment, no backslash, no comma, no square bracket, and no reserved `::` delimiter.
+The OWNER pitch's own `scope:` must also list `<repo-relative-path>` — ownership of a path is proven by
+scope, not merely claimed by the record. `handoff_receipt: sha256:<64 lowercase hex>` is NEVER
+author-written — `/ready` mints/refreshes it after both sides reconcile (see `context/pitch-lifecycle.md`
+§ Frontmatter Schema). A prose-only deferral (`Deferred [...] — see draft <slug>`) remains correct for
+genuinely broad/unshaped extractions with no concrete path yet — see
+`codegen/pitches/draft/deferred-work-has-exactly-one-owner.md` for the full contract.
+
 ## Split subject requirement
 
 **A split pitch must prove it is two bets, not one.** When the shaper splits a pitch into siblings, it runs the one-clause test (spine rule H, outcome (e)) BEFORE writing any file: name the ONE PURPOSE both proposed siblings would serve as a single why-led imperative subject (≤50 chars). One clause names both → do not split, keep one pitch. Naming both genuinely needs two clauses → the split proceeds, and each surviving sibling records the verdict in its own frontmatter: `split_subject: <clause A>; <clause B>` (or `<clause A> and <clause B>`).
@@ -66,14 +86,24 @@ The gate is mechanical, not prose-trusting: `mix codegen.pitches.scope --check` 
 
 With `--check`, also fails on **SUBSUMED** pairs — a pitch whose `scope:` is a subset of (or equal to) a sibling's, with neither declaring `split_subject:` — the recorded proof that a split pitch is a genuinely separate bet.
 
+With `--check --slug=<slug>`, additionally runs the **HANDOFF GAP** check for that one pitch's
+`handoffs:` records (missing counterpart, mismatched record copy, or an owner not listing the path in
+its own `scope:`); `--stamp-handoff-receipt` (requires `--check --slug`) mints/refreshes
+`handoff_receipt:` in every draft participant once reconciliation is clean. See
+`context/pitch-lifecycle.md` § Frontmatter Schema.
+
 Run before a multi-pitch drain (`--queue`) to detect which pitches can safely run in parallel on separate machines.
 
 ## Cross-reference
 
 `## Output Contract` in `shared/prompt-fragments/_authoring-spine.txt` (spliced into the shape system prompt per `harnesses/{claude,pi}/manifest.yaml` — concatenated after `harnesses/shared/prompt-bodies/shape.txt` and `_probing.txt`; NOT present in `tools-header/shape.txt`, which only lists tool access). Current text (verify against source before quoting further — spine content evolves independently of this doc):
 
+## Trigger Keywords
+
+pitch, proposal, async communication, why-focused, rule rationale, launcher review, pitch path resolution, codegen/pitches, repo-relative path, abs-in-cwd path, authoring spine, output contract, split_subject, one-clause test, SUBSUMED, scope subset, bilateral deferral record, handoff gap, handoff_receipt, handoffs, stamp-handoff-receipt
+
 > The pitch path is `codegen/pitches/draft/<slug>.md`, written as either a bare repo-relative path or the `<cwd>`-prefixed absolute form — the hook's `repo_relative()` normalizes both to the same repo-relative string before matching `^codegen/pitches/`. Verify the correct pitch path by checking where existing pitches are located in your repo (e.g., `ls codegen/pitches/` or check recent git log) — the exact on-disk location depends on your project layout. Write a correct form (relative or abs-in-cwd) on the FIRST attempt. If rejected with `BLOCKED by orchestrator-no-source-edit`, the `codegen/pitches/` prefix was missing or wrong, not merely the relative/absolute choice.
 
 ## Trigger Keywords
 
-pitch, proposal, async communication, why-focused, rule rationale, launcher review, pitch path resolution, codegen/pitches, repo-relative path, abs-in-cwd path, authoring spine, output contract, split_subject, one-clause test, SUBSUMED, scope subset
+pitch, proposal, async communication, why-focused, rule rationale, launcher review, pitch path resolution, codegen/pitches, repo-relative path, abs-in-cwd path, authoring spine, output contract, split_subject, one-clause test, SUBSUMED, scope subset, handoffs, handoff_receipt, HANDOFF GAP, bilateral deferral record, stamp-handoff-receipt

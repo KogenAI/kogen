@@ -906,6 +906,30 @@ defmodule CodegenTestHarness.LoopQueueTest do
       assert content =~ "# Pitch: foo"
     end
 
+    test "preserves neighboring handoffs:/handoff_receipt: keys byte-for-byte", %{
+      dir: dir,
+      ready_dir: ready_dir,
+      commit!: commit!
+    } do
+      before_sha = commit!.("a.txt", "initial")
+
+      pitch_path = Path.join(ready_dir, "foo.md")
+      receipt = "sha256:#{String.duplicate("a", 64)}"
+
+      File.write!(
+        pitch_path,
+        "---\nstatus: ready\nhandoffs: [d::foo::other::lib/x.ex]\nhandoff_receipt: #{receipt}\n---\n# Pitch: foo\n"
+      )
+
+      after_sha = commit!.("b.txt", "second")
+
+      assert LoopQueue.record_ship(dir, "foo", before_sha, after_sha) == :ok
+
+      content = File.read!(pitch_path)
+      assert content =~ "handoffs: [d::foo::other::lib/x.ex]"
+      assert content =~ "handoff_receipt: #{receipt}"
+    end
+
     test "mints a frontmatter block when the pitch has none", %{
       dir: dir,
       ready_dir: ready_dir,
@@ -1111,8 +1135,15 @@ defmodule CodegenTestHarness.LoopQueueTest do
     end
 
     test "reports the pair when scope sets are identical", %{dir: dir} do
-      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# a\n")
-      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# b\n")
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# b\n"
+      )
 
       assert LoopQueue.subsumed_report(dir) == [{"a", "b"}]
     end
@@ -1155,6 +1186,317 @@ defmodule CodegenTestHarness.LoopQueueTest do
       File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n")
 
       assert LoopQueue.subsumed_report(dir) == []
+    end
+  end
+
+  describe "parse_handoffs/2" do
+    test "returns {:ok, nil} for a missing file", %{dir: dir} do
+      assert LoopQueue.parse_handoffs("slug", Path.join(dir, "nope.md")) == {:ok, nil}
+    end
+
+    test "returns {:ok, nil} when no frontmatter block is present", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "# Just a task\n\nDo the thing.\n")
+
+      assert LoopQueue.parse_handoffs("c", path) == {:ok, nil}
+    end
+
+    test "returns {:ok, nil} when handoffs: key is absent", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\n---\n# Problem\n")
+
+      assert LoopQueue.parse_handoffs("c", path) == {:ok, nil}
+    end
+
+    test "handoffs: [] explicit empty list parses as {:ok, []}", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nhandoffs: []\n---\n# Problem\n")
+
+      assert LoopQueue.parse_handoffs("c", path) == {:ok, []}
+    end
+
+    test "parses a single well-formed record", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nhandoffs: [delta-1::source-a::owner-b::lib/x.ex]\n---\n# Problem\n"
+      )
+
+      assert LoopQueue.parse_handoffs("c", path) ==
+               {:ok,
+                [%{delta_id: "delta-1", source: "source-a", owner: "owner-b", path: "lib/x.ex"}]}
+    end
+
+    test "parses multiple records for one delta_id sharing source/owner", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(path, """
+      ---
+      status: SHAPED
+      handoffs:
+        [
+          delta-1::source-a::owner-b::lib/x.ex,
+          delta-1::source-a::owner-b::lib/y.ex,
+        ]
+      ---
+      # Problem
+      """)
+
+      assert LoopQueue.parse_handoffs("c", path) ==
+               {:ok,
+                [
+                  %{delta_id: "delta-1", source: "source-a", owner: "owner-b", path: "lib/x.ex"},
+                  %{delta_id: "delta-1", source: "source-a", owner: "owner-b", path: "lib/y.ex"}
+                ]}
+    end
+
+    test "raises loud on a malformed token (wrong shape)", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nhandoffs: [not-a-record]\n---\n# Problem\n")
+
+      assert_raise RuntimeError, ~r/c has a handoffs: record that does not match/, fn ->
+        LoopQueue.parse_handoffs("c", path)
+      end
+    end
+
+    test "raises loud when source == owner", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nhandoffs: [delta-1::same::same::lib/x.ex]\n---\n# Problem\n"
+      )
+
+      assert_raise RuntimeError, ~r/source == owner/, fn ->
+        LoopQueue.parse_handoffs("c", path)
+      end
+    end
+
+    test "raises loud on a path containing ..", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nhandoffs: [delta-1::a::b::../etc/passwd]\n---\n# Problem\n"
+      )
+
+      assert_raise RuntimeError, ~r/invalid path/, fn ->
+        LoopQueue.parse_handoffs("c", path)
+      end
+    end
+
+    test "raises loud on a path with the reserved :: delimiter", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nhandoffs: [delta-1::a::b::lib/x::y.ex]\n---\n# Problem\n"
+      )
+
+      assert_raise RuntimeError, fn ->
+        LoopQueue.parse_handoffs("c", path)
+      end
+    end
+
+    test "raises loud when handoffs: is present but not a parseable flow-list", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nhandoffs: not-a-list\n---\n# Problem\n")
+
+      assert_raise RuntimeError, ~r/c has a handoffs: value that is not a parseable/, fn ->
+        LoopQueue.parse_handoffs("c", path)
+      end
+    end
+  end
+
+  describe "handoff_receipt/2" do
+    test "is deterministic regardless of record order (sorts before hashing)" do
+      r1 = %{delta_id: "d", source: "a", owner: "b", path: "lib/x.ex"}
+      r2 = %{delta_id: "d", source: "a", owner: "b", path: "lib/y.ex"}
+
+      assert LoopQueue.handoff_receipt("a", [r1, r2]) ==
+               LoopQueue.handoff_receipt("a", [r2, r1])
+    end
+
+    test "matches the sha256:<64 lowercase hex> shape" do
+      r = %{delta_id: "d", source: "a", owner: "b", path: "lib/x.ex"}
+      receipt = LoopQueue.handoff_receipt("a", [r])
+
+      assert receipt =~ ~r/^sha256:[0-9a-f]{64}$/
+    end
+
+    test "a one-byte record change produces a different digest" do
+      r1 = %{delta_id: "d", source: "a", owner: "b", path: "lib/x.ex"}
+      r2 = %{delta_id: "d", source: "a", owner: "b", path: "lib/y.ex"}
+
+      refute LoopQueue.handoff_receipt("a", [r1]) == LoopQueue.handoff_receipt("a", [r2])
+    end
+
+    test "a changed slug produces a different digest" do
+      r = %{delta_id: "d", source: "a", owner: "b", path: "lib/x.ex"}
+
+      refute LoopQueue.handoff_receipt("a", [r]) == LoopQueue.handoff_receipt("b", [r])
+    end
+  end
+
+  describe "reconcile_handoffs/4" do
+    test "returns :ok when a pitch has zero handoffs:", %{dir: dir} do
+      path = Path.join(dir, "solo.md")
+      File.write!(path, "---\nstatus: SHAPED\n---\n# solo\n")
+
+      assert LoopQueue.reconcile_handoffs("solo", path, [dir]) == :ok
+    end
+
+    test "returns :ok for a matched bilateral pair with owner scope satisfied", %{dir: dir} do
+      record = "delta-1::source-a::owner-b::lib/x.ex"
+
+      File.write!(
+        Path.join(dir, "source-a.md"),
+        "---\nstatus: SHAPED\nhandoffs: [#{record}]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "owner-b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/x.ex]\nhandoffs: [#{record}]\n---\n# b\n"
+      )
+
+      assert LoopQueue.reconcile_handoffs("source-a", Path.join(dir, "source-a.md"), [dir]) ==
+               :ok
+    end
+
+    test "errors when the counterpart participant is missing", %{dir: dir} do
+      record = "delta-1::source-a::owner-b::lib/x.ex"
+
+      File.write!(
+        Path.join(dir, "source-a.md"),
+        "---\nstatus: SHAPED\nhandoffs: [#{record}]\n---\n# a\n"
+      )
+
+      assert {:error, msg} =
+               LoopQueue.reconcile_handoffs("source-a", Path.join(dir, "source-a.md"), [dir])
+
+      assert msg =~ "HANDOFF GAP delta-1"
+      assert msg =~ "owner-b"
+    end
+
+    test "errors when the counterpart's copy of the record does not match", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "source-a.md"),
+        "---\nstatus: SHAPED\nhandoffs: [delta-1::source-a::owner-b::lib/x.ex]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "owner-b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/x.ex]\nhandoffs: [delta-1::source-a::owner-b::lib/y.ex]\n---\n# b\n"
+      )
+
+      assert {:error, msg} =
+               LoopQueue.reconcile_handoffs("source-a", Path.join(dir, "source-a.md"), [dir])
+
+      assert msg =~ "HANDOFF GAP delta-1"
+      assert msg =~ "identical copy"
+    end
+
+    test "errors when the owner's scope: does not list the path", %{dir: dir} do
+      record = "delta-1::source-a::owner-b::lib/x.ex"
+
+      File.write!(
+        Path.join(dir, "source-a.md"),
+        "---\nstatus: SHAPED\nhandoffs: [#{record}]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "owner-b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/other.ex]\nhandoffs: [#{record}]\n---\n# b\n"
+      )
+
+      assert {:error, msg} =
+               LoopQueue.reconcile_handoffs("source-a", Path.join(dir, "source-a.md"), [dir])
+
+      assert msg =~ "HANDOFF GAP delta-1"
+      assert msg =~ "does not list"
+    end
+
+    test "terminates on a graph cycle via the visited set", %{dir: dir} do
+      # a -> b -> a: a lists a record with b as counterpart; b lists a
+      # record with a as counterpart. Different delta_ids so they are
+      # independent edges, not a duplicate-ID conflict.
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/b-owns.ex]\nhandoffs: [d1::b::a::lib/b-owns.ex, d2::a::b::lib/a-owns.ex]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/a-owns.ex]\nhandoffs: [d1::b::a::lib/b-owns.ex, d2::a::b::lib/a-owns.ex]\n---\n# b\n"
+      )
+
+      assert LoopQueue.reconcile_handoffs("a", Path.join(dir, "a.md"), [dir]) == :ok
+    end
+  end
+
+  describe "write_handoff_receipt!/3" do
+    test "mints handoff_receipt: into a pitch with no receipt", %{dir: dir} do
+      path = Path.join(dir, "a.md")
+      content = "---\nstatus: SHAPED\nhandoffs: [d::a::b::lib/x.ex]\n---\n# a\n"
+      File.write!(path, content)
+
+      receipt =
+        LoopQueue.handoff_receipt("a", [
+          %{delta_id: "d", source: "a", owner: "b", path: "lib/x.ex"}
+        ])
+
+      assert LoopQueue.write_handoff_receipt!(path, content, receipt) == :ok
+      assert File.read!(path) =~ "handoff_receipt: #{receipt}"
+    end
+
+    test "replaces a stale existing receipt in place", %{dir: dir} do
+      path = Path.join(dir, "a.md")
+
+      content =
+        "---\nstatus: SHAPED\nhandoffs: [d::a::b::lib/x.ex]\nhandoff_receipt: sha256:#{String.duplicate("0", 64)}\n---\n# a\n"
+
+      File.write!(path, content)
+
+      new_receipt =
+        LoopQueue.handoff_receipt("a", [
+          %{delta_id: "d", source: "a", owner: "b", path: "lib/x.ex"}
+        ])
+
+      assert LoopQueue.write_handoff_receipt!(path, content, new_receipt) == :ok
+
+      updated = File.read!(path)
+      assert updated =~ "handoff_receipt: #{new_receipt}"
+      refute updated =~ String.duplicate("0", 64)
+    end
+
+    test "a source-byte race between precompute and write aborts, leaving the original intact",
+         %{dir: dir} do
+      path = Path.join(dir, "a.md")
+      original = "---\nstatus: SHAPED\nhandoffs: [d::a::b::lib/x.ex]\n---\n# a\n"
+      File.write!(path, original)
+
+      # Model the race: caller precomputed `original` as expected_content, but
+      # the file was mutated on disk before the write call happens.
+      File.write!(path, "---\nstatus: SHAPED\nhandoffs: [d::a::b::lib/y.ex]\n---\n# a\n")
+
+      receipt =
+        LoopQueue.handoff_receipt("a", [
+          %{delta_id: "d", source: "a", owner: "b", path: "lib/x.ex"}
+        ])
+
+      assert LoopQueue.write_handoff_receipt!(path, original, receipt) == {:error, :stale}
+      refute File.read!(path) =~ "handoff_receipt:"
+    end
+
+    test "raises on a malformed receipt argument", %{dir: dir} do
+      path = Path.join(dir, "a.md")
+      content = "---\nstatus: SHAPED\n---\n# a\n"
+      File.write!(path, content)
+
+      assert_raise RuntimeError, ~r/not a well-formed sha256/, fn ->
+        LoopQueue.write_handoff_receipt!(path, content, "not-a-receipt")
+      end
     end
   end
 end

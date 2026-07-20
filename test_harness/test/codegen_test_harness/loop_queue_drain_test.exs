@@ -1555,7 +1555,9 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     # The invariant this fixture pins: an unqualified "Gate verdict: clear\n"
     # must NEVER appear, regardless of which of the two causes produced it.
     refute failure_block =~ "Gate verdict: clear\n"
-    assert failure_block =~ "Gate verdict: clear (transient — child produced no result record this cycle)"
+
+    assert failure_block =~
+             "Gate verdict: clear (transient — child produced no result record this cycle)"
 
     assert output =~
              "queue: WARN — solo classified transient_exhausted but raw gate verdict on disk reads \"clear\""
@@ -1948,6 +1950,45 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
   end
 
+  describe "handoffs:/handoff_receipt: byte preservation across lifecycle writers" do
+    test "write_build_failures!/3 preserves neighboring handoffs:/handoff_receipt: keys", ctx do
+      path = Path.join(ctx.ready_dir, "solo.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nhandoffs: [d::solo::other::lib/x.ex]\nhandoff_receipt: sha256:#{String.duplicate("a", 64)}\n---\n# solo\n"
+      )
+
+      CodegenTestHarness.LoopQueue.write_build_failures!(path, 1, "| 1 | fail |")
+
+      updated = File.read!(path)
+      assert updated =~ "handoffs: [d::solo::other::lib/x.ex]"
+      assert updated =~ "handoff_receipt: sha256:#{String.duplicate("a", 64)}"
+    end
+
+    test "write_demotion!/5 preserves neighboring handoffs:/handoff_receipt: keys", ctx do
+      ready_path = Path.join(ctx.ready_dir, "solo.md")
+      draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
+
+      File.write!(
+        ready_path,
+        "---\nstatus: SHAPED\nhandoffs: [d::solo::other::lib/x.ex]\nhandoff_receipt: sha256:#{String.duplicate("a", 64)}\n---\n# solo\n"
+      )
+
+      CodegenTestHarness.LoopQueue.write_demotion!(
+        ready_path,
+        draft_path,
+        2,
+        "| 2 | fail |",
+        "Build failure history"
+      )
+
+      updated = File.read!(draft_path)
+      assert updated =~ "handoffs: [d::solo::other::lib/x.ex]"
+      assert updated =~ "handoff_receipt: sha256:#{String.duplicate("a", 64)}"
+    end
+  end
+
   describe "build failure evidence rows" do
     test "false-0 arm's row carries drain/ship-verification owner", ctx do
       write_pitch(ctx.ready_dir, "solo")
@@ -1955,9 +1996,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
-          base_opts(ctx, spawn_fn: spawn_fn, git_head_fn: fn _cwd -> nil end)
-        )
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, git_head_fn: fn _cwd -> nil end))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -1995,9 +2034,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
-          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-        )
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2065,9 +2102,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # gate_mtime_fn stays at base_opts' default (0) — always stale.
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
-          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-        )
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2083,9 +2118,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
-          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-        )
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2106,9 +2139,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
-          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-        )
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2169,9 +2200,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
-          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-        )
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2202,9 +2231,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
-          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-        )
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2230,9 +2257,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
-          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-        )
+        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])

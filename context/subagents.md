@@ -92,11 +92,12 @@ These rules are baked into the shape system prompt at install time. Changes to `
 
 ## Deletion-Safety Blocker Classes (Shape)
 
-Shape mode gates pitch readiness by scanning for three deletion-safety blocker classes:
+Shape mode gates pitch readiness by scanning for four deletion-safety blocker classes:
 
 - **Un-investigated rabbit holes** — a Rabbit holes entry or deferred unknown with no probe transcript and no draft-pitch backing. Every deferral must be backed by a `codegen/pitches/draft/<slug>.md` file (Rule J: deferral-with-draft contract). Security/safety-relevant deferrals must additionally state the exposure assumption they rest on. Prose-only deferrals are blockers, not resolutions.
 - **Untraced edit surface / deletion claim** — a file named as an edit target or as deletable, with no provenance probe confirming its relevance.
 - **Dangling cross-reference** — every `## Related pitches` entry must reference a file on disk in `codegen/pitches/{draft,ready,shipped}/`; unresolved references block pitch advancement.
+- **Missing bilateral handoff record** — a concrete, path-bearing deferral (names an affected repo-relative path) whose sibling `handoffs:` record is absent from either pitch's frontmatter, or whose owner `scope:` omits the path — see `context/pitch-lifecycle.md` § Frontmatter Schema. A prose-only pointer alone no longer clears this class once a path is named.
 
 Shape mode emits blockers with quoted context and remediation options before advancing to readiness-check verdict.
 

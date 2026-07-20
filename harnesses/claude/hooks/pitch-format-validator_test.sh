@@ -318,6 +318,27 @@ Done.
 MD
 }
 
+# write_pitch_waives_valid_id_with_handoffs <path>
+# Same as write_pitch_waives_valid_id but with neighboring handoffs:/
+# handoff_receipt: keys — compatibility fixture proving the validator's
+# key-selective waives: reader ignores unrelated frontmatter keys.
+write_pitch_waives_valid_id_with_handoffs() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: SHAPED
+waives: [prompt-budget-writer-only]
+handoffs: [d::my-pitch::other-pitch::lib/x.ex]
+handoff_receipt: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+# My Pitch
+
+## Problem
+
+Done.
+MD
+}
+
 # write_pitch_frontmatter_status_shaped_large <path>
 # Same frontmatter+status as write_pitch_frontmatter_status_shaped, but with
 # a >64 KB body appended after the frontmatter closing "---". Regression
@@ -703,6 +724,18 @@ make_transcript_with_pitch_write "$T27_transcript" "$T27_pitch"
 out=$(run_hook "$T27_dir" false "$T27_transcript" "shape" "")
 assert_not_contains "no waives: line → allow" '"decision"' "$out"
 rm -rf "$T27_dir"
+
+# ── Test 28: waives: resolution is unaffected by neighboring handoffs:/
+# handoff_receipt: keys (compatibility fixture) ────────────────────────────
+T28_dir=$(mktemp -d)
+mkdir -p "$T28_dir/codegen/pitches/draft"
+T28_pitch="$T28_dir/codegen/pitches/draft/my-pitch.md"
+T28_transcript="$T28_dir/transcript.jsonl"
+write_pitch_waives_valid_id_with_handoffs "$T28_pitch"
+make_transcript_with_pitch_write "$T28_transcript" "$T28_pitch"
+out=$(run_hook "$T28_dir" false "$T28_transcript" "shape" "")
+assert_not_contains "waives: with neighboring handoffs: keys still allows" '"decision"' "$out"
+rm -rf "$T28_dir"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

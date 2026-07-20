@@ -392,6 +392,175 @@ defmodule Mix.Tasks.Codegen.LoopShellTest do
     end
   end
 
+  describe "claim_pitch!/2 — handoff_receipt: pre-spend backstop" do
+    alias CodegenTestHarness.LoopQueue
+
+    test "a pitch with no handoffs: claims normally", ctx do
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, "---\nstatus: SHAPED\nscope: []\n---\n# foo\n")
+
+      assert {:file, _building_abs} = Loop.claim_pitch!({:file, abs}, ctx.tmp)
+    end
+
+    test "a pitch with handoffs: [] (empty) claims normally", ctx do
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, "---\nstatus: SHAPED\nscope: []\nhandoffs: []\n---\n# foo\n")
+
+      assert {:file, _building_abs} = Loop.claim_pitch!({:file, abs}, ctx.tmp)
+    end
+
+    test "a pitch with a VALID handoff_receipt: claims normally, file leaves ready/", ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      slug = "foo"
+      abs = Path.join(ctx.ready_dir, "#{slug}.md")
+      record = %{delta_id: "d", source: slug, owner: "other", path: "lib/x.ex"}
+      receipt = LoopQueue.handoff_receipt(slug, [record])
+
+      File.write!(
+        abs,
+        "---\nstatus: SHAPED\nscope: []\nhandoffs: [d::foo::other::lib/x.ex]\nhandoff_receipt: #{receipt}\n---\n# foo\n"
+      )
+
+      assert {:file, building_abs} = Loop.claim_pitch!({:file, abs}, ctx.tmp)
+      refute File.exists?(abs)
+      assert File.exists?(building_abs)
+    end
+
+    test "a pitch with an ABSENT handoff_receipt: refuses, exit 2, file stays in ready/", ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      abs = Path.join(ctx.ready_dir, "foo.md")
+
+      File.write!(
+        abs,
+        "---\nstatus: SHAPED\nscope: []\nhandoffs: [d::foo::other::lib/x.ex]\n---\n# foo\n"
+      )
+
+      assert catch_exit(Loop.claim_pitch!({:file, abs}, ctx.tmp)) == {:shutdown, 2}
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "foo"
+      assert msg =~ "handoff_receipt"
+      assert File.exists?(abs)
+    end
+
+    test "a pitch with a STALE handoff_receipt: (records changed since stamp) refuses", ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      slug = "foo"
+      abs = Path.join(ctx.ready_dir, "#{slug}.md")
+
+      old_receipt =
+        LoopQueue.handoff_receipt(slug, [
+          %{delta_id: "d", source: slug, owner: "other", path: "lib/x.ex"}
+        ])
+
+      # Record on disk now names a DIFFERENT path than the one the receipt
+      # was computed over — the receipt is stale.
+      File.write!(
+        abs,
+        "---\nstatus: SHAPED\nscope: []\nhandoffs: [d::foo::other::lib/y.ex]\nhandoff_receipt: #{old_receipt}\n---\n# foo\n"
+      )
+
+      assert catch_exit(Loop.claim_pitch!({:file, abs}, ctx.tmp)) == {:shutdown, 2}
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "handoff_receipt"
+      assert File.exists?(abs)
+    end
+
+    test "a pitch with a MALFORMED handoff_receipt: refuses", ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      abs = Path.join(ctx.ready_dir, "foo.md")
+
+      File.write!(
+        abs,
+        "---\nstatus: SHAPED\nscope: []\nhandoffs: [d::foo::other::lib/x.ex]\nhandoff_receipt: not-a-receipt\n---\n# foo\n"
+      )
+
+      assert catch_exit(Loop.claim_pitch!({:file, abs}, ctx.tmp)) == {:shutdown, 2}
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "handoff_receipt"
+      assert File.exists?(abs)
+    end
+
+    test "a pitch with an ORPHAN receipt (receipt present, no handoffs:) is impossible to " <>
+           "misclaim — no handoffs: means the receipt is simply never checked",
+         ctx do
+      abs = Path.join(ctx.ready_dir, "foo.md")
+
+      File.write!(
+        abs,
+        "---\nstatus: SHAPED\nscope: []\nhandoff_receipt: sha256:#{String.duplicate("0", 64)}\n---\n# foo\n"
+      )
+
+      assert {:file, _building_abs} = Loop.claim_pitch!({:file, abs}, ctx.tmp)
+    end
+  end
+
+  describe "producer (stamp) -> consumer (claim) composition" do
+    alias CodegenTestHarness.LoopQueue
+    alias Mix.Tasks.Codegen.Pitches.Scope
+
+    test "a receipt stamped by the real Scope task reaches building/ via the real claim path",
+         ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      draft_dir = Path.join([ctx.tmp, "codegen", "pitches", "draft"])
+      File.mkdir_p!(draft_dir)
+
+      record = "d1::source-a::owner-b::lib/x.ex"
+      source_path = Path.join(draft_dir, "source-a.md")
+      owner_path = Path.join(draft_dir, "owner-b.md")
+
+      File.write!(
+        source_path,
+        "---\nstatus: SHAPING\nscope: []\nhandoffs: [#{record}]\n---\n# a\n"
+      )
+
+      File.write!(
+        owner_path,
+        "---\nstatus: SHAPING\nscope: [lib/x.ex]\nhandoffs: [#{record}]\n---\n# b\n"
+      )
+
+      ExUnit.CaptureIO.capture_io(fn ->
+        Scope.run([
+          "--cwd=#{ctx.tmp}",
+          "--check",
+          "--dir=draft",
+          "--slug=source-a",
+          "--stamp-handoff-receipt"
+        ])
+      end)
+
+      # Model producer -> consumer: promote source-a to ready/, remove the
+      # peer entirely (fleet transfer moves one pitch), then run the real
+      # claim path.
+      promoted_path = Path.join(ctx.ready_dir, "source-a.md")
+      File.rename!(source_path, promoted_path)
+      File.rm!(owner_path)
+
+      assert {:ok, [_]} = LoopQueue.parse_handoffs("source-a", promoted_path)
+
+      assert {:file, building_abs} = Loop.claim_pitch!({:file, promoted_path}, ctx.tmp)
+      refute File.exists?(promoted_path)
+      assert File.exists?(building_abs)
+    end
+  end
+
   describe "run_loop_catching_infra_abort/1 — the sole producer of exit code 3" do
     test "OrchestrationLoop.run raising InfraAbort exits {:shutdown, 3} naming the fault" do
       original_shell = Mix.shell()

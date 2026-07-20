@@ -747,6 +747,23 @@ out="$(CODEGEN_DRAIN_INVENTORY="$WS_AS/drain-nodes.yaml" CODEGEN_DRAIN_SCOPE_CMD
 check "(as) assign --auto still exits 0 for independent slugs" "0" "$ec"
 check "(as) p1 landed on nodeB" "1" "$([[ -f "$WS_AS/nodeB/codegen/pitches/ready/p1.md" ]] && echo 1 || echo 0)"
 check "(as) p2 landed on nodeC" "1" "$([[ -f "$WS_AS/nodeC/codegen/pitches/ready/p2.md" ]] && echo 1 || echo 0)"
+# ── (at) assign: handoffs:/handoff_receipt: frontmatter keys survive fleet
+# transfer byte-for-byte (assign moves the file bytes verbatim; it must
+# never rewrite frontmatter) ────────────────────────────────────────────────
+WS_AL="$(make_ws al)"
+setup_fixture "$WS_AL"
+TEST_SLUG_AL="codegen-drain-test-fixture-al-$$"
+TEST_PITCH_AL="$WS_AL/nodeA/codegen/pitches/ready/${TEST_SLUG_AL}.md"
+printf -- '---\nstatus: SHAPED\nhandoffs: [d::%s::owner-x::lib/x.ex]\nhandoff_receipt: sha256:%s\n---\n# test fixture pitch\n' \
+    "$TEST_SLUG_AL" "$(printf 'a%.0s' {1..64})" >"$TEST_PITCH_AL"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AL/drain-nodes.yaml" "$DRAIN" assign --slug="$TEST_SLUG_AL" --node=nodeB --cwd="$WS_AL/nodeA" 2>&1)" || ec=$?
+check "(at) handoff-carrying assign exits 0" "0" "$ec"
+DEST_PITCH_AL="$WS_AL/nodeB/codegen/pitches/ready/${TEST_SLUG_AL}.md"
+check "(at) destination bytes are IDENTICAL to source (frontmatter preserved)" "1" \
+    "$(cmp -s <(printf -- '---\nstatus: SHAPED\nhandoffs: [d::%s::owner-x::lib/x.ex]\nhandoff_receipt: sha256:%s\n---\n# test fixture pitch\n' "$TEST_SLUG_AL" "$(printf 'a%.0s' {1..64})") "$DEST_PITCH_AL" && echo 1 || echo 0)"
+assert_contains "(at) destination still carries handoffs: key" "$(cat "$DEST_PITCH_AL" 2>/dev/null || true)" "handoffs:"
+assert_contains "(at) destination still carries handoff_receipt: key" "$(cat "$DEST_PITCH_AL" 2>/dev/null || true)" "handoff_receipt:"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

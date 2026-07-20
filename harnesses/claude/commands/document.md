@@ -30,6 +30,6 @@ Write a short pitch skeleton capturing the essence of what was discussed — a s
 
 - Add Appetite or Solution sketch — not shaped yet.
 - Add Implementation plan or Step N sections.
-- Add `/split`-style promotion. Manual `mv codegen/pitches/draft/<slug>.md codegen/pitches/ready/<slug>.md` is the bet.
+- Add `/split`-style promotion. `/ready` owns promotion — it runs the readiness checks (and, for a pitch with concrete cross-pitch `handoffs:`, the handoff reconciliation/receipt-stamp check) before moving the file. A raw manual `mv codegen/pitches/draft/<slug>.md codegen/pitches/ready/<slug>.md` skips those checks and is not the promotion path.
 - Make code changes.
 - Ask for the path — generate the slug from the problem statement.

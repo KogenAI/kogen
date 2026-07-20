@@ -110,7 +110,7 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Fragment references in shared bodies** — `_authoring-spine.txt` references `~/.claude/settings.json` as a debugging target for enforcement-bug investigation. This is SHARED investigative discipline (correct in Pi assembled prompt). Distinction: `~/.claude/hooks/` / `orchestrator-no-source-edit.sh` are Claude-only (remove from Pi header); `~/.claude/settings.json` as inspection target is cross-harness (keep in shared).
 
-**Deferral-with-draft contract**: Every deferral MUST be backed by real `codegen/pitches/draft/<slug>.md`. Prose-only deferral = blocker. Security/safety deferrals must state exposure assumptions.
+**Deferral-with-draft contract**: Every deferral MUST be backed by real `codegen/pitches/draft/<slug>.md`. Prose-only deferral = blocker. Security/safety deferrals must state exposure assumptions. A CONCRETE, path-bearing deferral additionally gets a bilateral `handoffs:` record in both pitches (never prose alone) — see `context/pitch-lifecycle.md` § Frontmatter Schema.
 
 **Decompose-then-split rule** (Rule G): SPLIT multi-surface problems into independent pitches (eng-decomposition, not user choice). Only product forks reach user. Before writing, rule G runs the one-clause test (rule H outcome (e)) itself: one-purpose pieces collapse into one pitch, never split; a surviving split records `split_subject: A; B` per sibling — `mix codegen.pitches.scope --check` fails an unproven SUBSUMED pair.
 

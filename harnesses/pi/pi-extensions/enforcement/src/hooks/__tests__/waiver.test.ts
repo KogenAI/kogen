@@ -162,4 +162,16 @@ describe("isWaived", { concurrency: 1 }, () => {
     process.env["CODEGEN_WAIVED_GUARDS"] = "prompt-budget-writer-only";
     assert.equal(isWaived("prompt-budget-writer-only"), false);
   });
+
+  it("waives: resolution unaffected by neighboring handoffs:/handoff_receipt: keys", () => {
+    const repo = makeRepo();
+    writePitch(
+      repo,
+      "wtest7",
+      "waives: [prompt-budget-writer-only]\nhandoffs: [d::wtest7::other::lib/x.ex]\n" +
+        "handoff_receipt: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    process.env["CODEGEN_WAIVED_GUARDS"] = "prompt-budget-writer-only";
+    assert.equal(isWaived("prompt-budget-writer-only"), true);
+  });
 });

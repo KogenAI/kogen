@@ -479,6 +479,8 @@ end
 defmodule Mix.Tasks.Codegen.Pitches.ScopeShellTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureIO
+
   alias Mix.Tasks.Codegen.Pitches.Scope
 
   setup do
@@ -620,5 +622,197 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeShellTest do
     assert_receive {:mix_shell, :error, [msg]}
     assert msg =~ "unrouted"
     refute msg =~ "split_subject"
+  end
+
+  test "--stamp-handoff-receipt without --check --slug exits 2 naming the constraint", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--stamp-handoff-receipt"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "--stamp-handoff-receipt requires --check --slug"
+  end
+
+  test "--stamp-handoff-receipt with --check but no --slug exits 2 naming the constraint", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    exit_val =
+      catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--check", "--stamp-handoff-receipt"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "--stamp-handoff-receipt requires --check --slug"
+  end
+
+  test "--check --slug on a pitch with a missing counterpart exits 2 naming HANDOFF GAP", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    File.write!(
+      Path.join(ctx.ready_dir, "source-a.md"),
+      "---\nstatus: SHAPED\nscope: []\nhandoffs: [d1::source-a::owner-b::lib/x.ex]\n---\n# a\n"
+    )
+
+    exit_val =
+      catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--check", "--slug=source-a"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "HANDOFF GAP d1"
+    assert msg =~ "owner-b"
+  end
+
+  test "--check --slug with no matching pitch exits 2 naming the value", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--check", "--slug=nope"]))
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "nope"
+  end
+
+  test "--check --slug with a clean bilateral handoff passes with exit 0", ctx do
+    record = "d1::source-a::owner-b::lib/x.ex"
+
+    File.write!(
+      Path.join(ctx.ready_dir, "source-a.md"),
+      "---\nstatus: SHAPED\nscope: []\nhandoffs: [#{record}]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "owner-b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/x.ex]\nhandoffs: [#{record}]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--check", "--slug=source-a"]) end)
+
+    assert out =~ "COLLISIONS"
+  end
+
+  test "--stamp-handoff-receipt writes handoff_receipt: into draft participants only, " <>
+         "leaving the ready pitch's copy of the record intact and clearable after the " <>
+         "counterpart is removed to model fleet transfer",
+       ctx do
+    draft_dir = Path.join([ctx.tmp, "codegen", "pitches", "draft"])
+    File.mkdir_p!(draft_dir)
+
+    record = "d1::source-a::owner-b::lib/x.ex"
+
+    source_path = Path.join(draft_dir, "source-a.md")
+    owner_path = Path.join(draft_dir, "owner-b.md")
+
+    File.write!(
+      source_path,
+      "---\nstatus: SHAPING\nscope: []\nhandoffs: [#{record}]\n---\n# a\n"
+    )
+
+    File.write!(
+      owner_path,
+      "---\nstatus: SHAPING\nscope: [lib/x.ex]\nhandoffs: [#{record}]\n---\n# b\n"
+    )
+
+    capture_io(fn ->
+      Scope.run([
+        "--cwd=#{ctx.tmp}",
+        "--check",
+        "--dir=draft",
+        "--slug=source-a",
+        "--stamp-handoff-receipt"
+      ])
+    end)
+
+    source_content = File.read!(source_path)
+    owner_content = File.read!(owner_path)
+
+    assert source_content =~ ~r/handoff_receipt: sha256:[0-9a-f]{64}/
+    assert owner_content =~ ~r/handoff_receipt: sha256:[0-9a-f]{64}/
+
+    # Each participant's receipt is keyed by its OWN slug (see
+    # LoopQueue.handoff_receipt/2) — a different slug means a different
+    # digest even over the same record, so the two receipts are expected
+    # to differ, not match.
+    [_, source_receipt] = Regex.run(~r/handoff_receipt: (sha256:[0-9a-f]{64})/, source_content)
+    [_, owner_receipt] = Regex.run(~r/handoff_receipt: (sha256:[0-9a-f]{64})/, owner_content)
+    refute source_receipt == owner_receipt
+
+    # Model fleet transfer: the owner participant is moved to ready/ then
+    # its local draft copy is removed entirely (a ready pitch travels
+    # alone). The now-promoted ready pitch's own stamped receipt must
+    # still recompute and pass a focused check with the counterpart
+    # fleet-absent — per-run temp build path avoids clobbering a
+    # concurrent gate run's compiled beams.
+    ready_dir = Path.join([ctx.tmp, "codegen", "pitches", "ready"])
+    File.mkdir_p!(ready_dir)
+    promoted_owner_path = Path.join(ready_dir, "owner-b.md")
+    File.rename!(owner_path, promoted_owner_path)
+
+    out =
+      capture_io(fn ->
+        Scope.run(["--cwd=#{ctx.tmp}", "--check", "--dir=ready", "--slug=owner-b"])
+      end)
+
+    assert out =~ "COLLISIONS"
+  end
+
+  test "--stamp-handoff-receipt refuses when a local participant is in building/", ctx do
+    draft_dir = Path.join([ctx.tmp, "codegen", "pitches", "draft"])
+    ready_dir = Path.join([ctx.tmp, "codegen", "pitches", "ready"])
+    building_dir = Path.join([ctx.tmp, "codegen", "pitches", "building"])
+    File.mkdir_p!(draft_dir)
+    File.mkdir_p!(ready_dir)
+    File.mkdir_p!(building_dir)
+
+    record = "d1::source-a::owner-b::lib/x.ex"
+
+    File.write!(
+      Path.join(draft_dir, "source-a.md"),
+      "---\nstatus: SHAPING\nscope: []\nhandoffs: [#{record}]\n---\n# a\n"
+    )
+
+    # owner-b resolves for reconciliation via its ready/ copy (claim_pitch!/2
+    # has not yet renamed it away in this snapshot)...
+    File.write!(
+      Path.join(ready_dir, "owner-b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/x.ex]\nhandoffs: [#{record}]\n---\n# b\n"
+    )
+
+    # ...but a concurrent claim has ALSO landed a building/ copy — the
+    # possession-controlled state the stamp step must refuse to write
+    # around.
+    File.write!(
+      Path.join(building_dir, "owner-b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/x.ex]\nhandoffs: [#{record}]\n---\n# b\n"
+    )
+
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    exit_val =
+      catch_exit(
+        Scope.run([
+          "--cwd=#{ctx.tmp}",
+          "--check",
+          "--dir=draft",
+          "--slug=source-a",
+          "--stamp-handoff-receipt"
+        ])
+      )
+
+    assert exit_val == {:shutdown, 2}
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ "building/"
+    assert msg =~ "owner-b"
+
+    refute File.read!(Path.join(draft_dir, "source-a.md")) =~ "handoff_receipt:"
   end
 end

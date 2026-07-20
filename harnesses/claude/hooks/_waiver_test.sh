@@ -157,6 +157,13 @@ write_pitch "wtest6a" "waives: [prompt-budget-writer-only]"
 assert_false "2+ files in building/ -> deny" \
     env CODEGEN_WAIVED_GUARDS=prompt-budget-writer-only bash -c "cd '$TMP_ROOT' && $(declare -f _run_waived); _run_waived prompt-budget-writer-only"
 
+# ── (7) waives: resolution unaffected by neighboring handoffs:/
+# handoff_receipt: keys (compatibility fixture) ──
+clear_pitches
+write_pitch "wtest7" "$(printf 'waives: [prompt-budget-writer-only]\nhandoffs: [d::wtest7::other::lib/x.ex]\nhandoff_receipt: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
+assert_true "waives: with neighboring handoffs: keys still resolves -> waived" \
+    env CODEGEN_WAIVED_GUARDS=prompt-budget-writer-only bash -c "cd '$TMP_ROOT' && $(declare -f _run_waived); _run_waived prompt-budget-writer-only"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"

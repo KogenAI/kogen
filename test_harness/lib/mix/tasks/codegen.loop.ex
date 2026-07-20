@@ -194,6 +194,7 @@ defmodule Mix.Tasks.Codegen.Loop do
     src_in_ready = Path.join(ready_dir, name)
 
     if Path.expand(abs) == Path.expand(src_in_ready) do
+      verify_handoff_receipt_before_claim!(abs)
       File.mkdir_p!(building_dir)
       dst = Path.join(building_dir, name)
 
@@ -212,6 +213,54 @@ defmodule Mix.Tasks.Codegen.Loop do
       end
     else
       {:file, abs}
+    end
+  end
+
+  # Pre-spend receipt backstop — verifies a ready/<slug>.md pitch's own
+  # handoff_receipt: (if any) BEFORE the possession rename below, so an
+  # invalid/stale/orphan receipt is refused before any role invocation or
+  # model spend. A pitch with no handoffs: and no handoff_receipt: is a
+  # no-op pass (the common case — most pitches carry no cross-pitch
+  # deferral). A pitch with handoffs: but a missing/malformed/mismatched
+  # receipt refuses loud, naming the slug, and leaves the file untouched in
+  # ready/ (this runs strictly before File.rename below).
+  @spec verify_handoff_receipt_before_claim!(String.t()) :: :ok
+  defp verify_handoff_receipt_before_claim!(abs) do
+    slug = Path.basename(abs, ".md")
+
+    case LoopQueue.parse_handoffs(slug, abs) do
+      {:ok, nil} ->
+        :ok
+
+      {:ok, []} ->
+        :ok
+
+      {:ok, records} ->
+        content = File.read!(abs)
+        receipt = LoopQueue.frontmatter_block(content) |> extract_receipt()
+
+        expected = LoopQueue.handoff_receipt(slug, records)
+
+        if receipt == expected do
+          :ok
+        else
+          Mix.shell().error(
+            "codegen.loop: pitch #{inspect(slug)} has handoffs: but no valid " <>
+              "handoff_receipt: (absent, stale, or malformed) — refusing to claim"
+          )
+
+          exit({:shutdown, 2})
+        end
+    end
+  end
+
+  @spec extract_receipt(String.t() | nil) :: String.t() | nil
+  defp extract_receipt(nil), do: nil
+
+  defp extract_receipt(block) do
+    case Regex.run(~r/^handoff_receipt:\s*(\S+)\s*$/m, block) do
+      [_, value] -> value
+      nil -> nil
     end
   end
 

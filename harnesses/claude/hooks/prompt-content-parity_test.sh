@@ -409,6 +409,25 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL_PROBE_COMPLETENESS"
 
+# ── Handoff-record contract sentinel: Claude shape, Pi shape, and ready.md.j2
+# must all teach the SAME bilateral handoffs: obligation (see
+# codegen/pitches/draft/deferred-work-has-exactly-one-owner.md). This is the
+# one guard that would catch teaching-site drift if a future edit updates
+# one of the three without the others. ──────────────────────────────────────
+SENTINEL_HANDOFF="deferred-work-has-exactly-one-owner"
+assert_contains \
+    "handoff-record contract sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_HANDOFF"
+assert_contains \
+    "handoff-record contract sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_HANDOFF"
+assert_contains \
+    "handoff-record contract sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL_HANDOFF"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

@@ -107,6 +107,20 @@ seams:
     guard_time: make-test
     pattern: checked-mirror
 
+  - id: bilateral-handoff-record-parity
+    declares: >-
+      A concrete cross-pitch handoffs: record (source pitch's frontmatter);
+      the CodegenTestHarness.LoopQueue.reconcile_handoffs/4 record grammar
+      it must satisfy
+    reflects: >-
+      The owner pitch's identical handoffs: record + scope: entry;
+      mix codegen.pitches.scope --check --slug's HANDOFF GAP check;
+      Mix.Tasks.Codegen.Loop.claim_pitch!/2's pre-spend handoff_receipt:
+      verification; the /ready teaching step in ready.md.j2
+    guard: pitch-scope-parity
+    guard_time: make-test
+    pattern: set-parity
+
   - id: usage-rules-corpus-to-index
     declares: shared/usage_rules/*.md (per-lib-version files)
     reflects: shared/usage_rules/INDEX.md

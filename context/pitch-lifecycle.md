@@ -34,6 +34,18 @@ frontmatter) express the same dependency as prose: `Blocks-on: <slug>`. Both for
 parser — frontmatter is preferred when present, prose is the fallback. New pitches should use
 frontmatter; the prose form is a compatibility path, not the target format.
 
+**`handoffs:`/`handoff_receipt:`** — a concrete, path-bearing cross-pitch deferral is recorded
+bilaterally rather than as prose-only (`Deferred [...] — see draft <slug>`): both the source and the
+owner pitch carry the SAME `handoffs: [<delta-id>::<source-slug>::<owner-slug>::<path>, ...]` flow-list
+record (`LoopQueue.parse_handoffs/2`), and the owner's own `scope:` must list `<path>`. `handoff_receipt:
+sha256:<64 lowercase hex>` (`LoopQueue.handoff_receipt/2`) is a per-participant digest over its OWN slug
+plus its sorted canonical records — never author-written; `/ready` mints/refreshes it (via
+`LoopQueue.write_handoff_receipt!/3`, a compare-and-swap write onto DRAFT participants only) after
+`LoopQueue.reconcile_handoffs/4` confirms both sides agree and the owner's scope is satisfied. A pitch
+with no `handoffs:` key is entirely unaffected — this is additive, never required. See
+`codegen/pitches/draft/deferred-work-has-exactly-one-owner.md` for the full record grammar and
+`mix codegen.pitches.scope`'s `--slug`/`--stamp-handoff-receipt` flags.
+
 ## Validation — Dual-Implemented (Bash + TS)
 
 `pitch-format-validator.sh` (Claude) and `pitch-format-validator.ts` (Pi, TypeScript twin under
@@ -56,6 +68,15 @@ working-tree-cleanliness check — see `context/loop.md` § Possession by Rename
 (`LoopQueueDrain`) performs the same rename after its own ship-verification checks, and also probes
 `building/` as a ship source (see `context/loop-queue-drain.md`).
 
+**Pre-spend handoff receipt check** — `Mix.Tasks.Codegen.Loop.claim_pitch!/2` (the `ready/ ->
+building/` possession rename) verifies a ready pitch's own `handoff_receipt:` BEFORE the rename, when
+the pitch carries `handoffs:` — an absent, stale, or malformed receipt refuses (`exit({:shutdown, 2})`,
+file stays in `ready/`, zero role invocation, zero model spend). A pitch with no `handoffs:` is a no-op
+pass. This is the backstop that survives fleet transfer: `codegen-drain assign` moves exactly one ready
+pitch, so the counterpart participant may be absent on the destination node — the promoted pitch's own
+stamped receipt (proof it was reconciled before promotion) is what lets the claim proceed without a live
+counterpart.
+
 ## Pitch Design — Checking for Hardcoded Readers
 
 When a pitch adds a new lifecycle directory or queue-state transition, the solution sketch typically names a few writer functions (the paths that CREATE the directory or transition files into it). However, every reader that checks for the OLD directory must ALSO be updated — a hardcoded reader of the old path is a certain-blocking defect if missed. Example: a pitch that adds a `building/` claim directory names `maybe_ship_pitch/4` as the only `ready/`-matching site needing widening, but a grep of the codebase reveals two more readers already in flight: `LoopQueueDrain.ship/6` (raises `"in neither ready/ nor shipped/"` on the missing path) and `LoopQueue.write_frontmatter!/4` (attempts `File.read` on a not-yet-existing path). Both are CERTAIN-BLOCKING failures on every claimed pitch — both invisible from the pitch's own reference list.
@@ -64,4 +85,4 @@ When a pitch adds a new lifecycle directory or queue-state transition, the solut
 
 ## Trigger Keywords
 
-pitch lifecycle, pitch frontmatter, blocks_on, Blocks-on legacy, pitch-format-validator, draft ready building shipped archive studio transcripts, Kahn topological sort, ordered_slugs, ship mv, File.rename!, claim_pitch, possession, building directory, dirty_tree_exit_code, pitch design hardcoded readers, grep reader scope
+pitch lifecycle, pitch frontmatter, blocks_on, Blocks-on legacy, pitch-format-validator, draft ready building shipped archive studio transcripts, Kahn topological sort, ordered_slugs, ship mv, File.rename!, claim_pitch, possession, building directory, dirty_tree_exit_code, pitch design hardcoded readers, grep reader scope, handoffs, handoff_receipt, bilateral deferral record, cross-pitch ownership, reconcile_handoffs, write_handoff_receipt

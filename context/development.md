@@ -67,6 +67,11 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 
 Invariant: no long-lived process shares a build path with anything that recompiles it. The drain's per-pitch spawn (`LoopQueueDrain.default_spawn_fn/5`) explicitly clears `MIX_BUILD_PATH` in the `Port.open` env list (`{~c"MIX_BUILD_PATH", false}`) rather than relying on non-inheritance — `Port.open` env is ADDITIVE to the inherited environment, so an unset child would otherwise silently inherit the drain's own `_build/drain` and recompile it.
 
+**`pitch-scope-parity` (`make test` leg)** additionally fails on a HANDOFF GAP when `mix
+codegen.pitches.scope --check --slug=<slug>` is run against a pitch carrying `handoffs:` — a missing
+counterpart, a mismatched record copy, or an owner not listing the path in its own `scope:`. See
+`context/pitch-lifecycle.md` § Frontmatter Schema.
+
 ## Environment Configuration
 
 | Variable             | Purpose                      | Notes                                                                                                                                                                                                                                                                      |
