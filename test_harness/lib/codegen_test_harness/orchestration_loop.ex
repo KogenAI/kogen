@@ -1929,6 +1929,89 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  # CODEGEN_WAIVED_GUARDS: set only for a developer role invocation, to the
+  # csv of `waives:` declared by the in-flight codegen/pitches/building/<slug>.md.
+  # A guard is relaxed only where a promoted pitch declared that relaxation —
+  # scoped to one pitch, one role, one invocation. Absent for every other
+  # role (reviewer, curator, committer never write budgets and never see it).
+  @spec waived_guards_env(String.t() | nil) :: [{String.t(), String.t()}]
+  defp waived_guards_env(role) when is_binary(role) do
+    if String.starts_with?(role, "developer") do
+      case read_building_waives() do
+        "" -> []
+        csv -> [{"CODEGEN_WAIVED_GUARDS", csv}]
+      end
+    else
+      []
+    end
+  end
+
+  defp waived_guards_env(_role), do: []
+
+  # read_building_waives — csv of hook ids from the single in-flight
+  # codegen/pitches/building/<slug>.md's `waives:` frontmatter list. Returns
+  # "" (never a masked default) on any of: zero or 2+ files in building/, no
+  # frontmatter block, no `waives:` line, or an unparseable value — the
+  # fail-safe answer is "grant nothing", which waived_guards_env/1 above
+  # turns into "omit the env var entirely" (guard enforces).
+  @spec read_building_waives() :: String.t()
+  defp read_building_waives do
+    building_dir = Path.join(@codegen_dir, "codegen/pitches/building")
+
+    case File.ls(building_dir) do
+      {:ok, entries} ->
+        case Enum.filter(entries, &String.ends_with?(&1, ".md")) do
+          [only] -> parse_waives_frontmatter(Path.join(building_dir, only))
+          _ -> ""
+        end
+
+      {:error, _reason} ->
+        ""
+    end
+  end
+
+  @spec parse_waives_frontmatter(String.t()) :: String.t()
+  defp parse_waives_frontmatter(pitch_path) do
+    case File.read(pitch_path) do
+      {:ok, content} ->
+        content
+        |> String.split("\n")
+        |> extract_waives_line()
+        |> case do
+          nil -> ""
+          line -> normalize_waives_line(line)
+        end
+
+      {:error, _reason} ->
+        ""
+    end
+  end
+
+  # extract_waives_line — walks the leading `---`/`---` frontmatter block
+  # ONLY (never the pitch body prose, which may mention "waives:" in
+  # narrative text) and returns the first line starting with "waives:".
+  @spec extract_waives_line([String.t()]) :: String.t() | nil
+  defp extract_waives_line(["---" | rest]) do
+    Enum.reduce_while(rest, nil, fn
+      "---", _acc -> {:halt, nil}
+      "waives:" <> _ = line, _acc -> {:halt, line}
+      _line, acc -> {:cont, acc}
+    end)
+  end
+
+  defp extract_waives_line(_lines), do: nil
+
+  @spec normalize_waives_line(String.t()) :: String.t()
+  defp normalize_waives_line(line) do
+    line
+    |> String.replace_prefix("waives:", "")
+    |> String.replace(["[", "]"], "")
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join(",")
+  end
+
   # Orientation-doc filter shared by the diff-scope computation below —
   # mirrors the doc grammar in context-factcheck-scan.sh / context-factcheck-guard.sh.
   @orientation_doc_re ~r{^(CLAUDE\.md|AGENTS\.md|PROJECT_CONTEXT\.md|codegen/PROJECT_CONTEXT\.md|context/[^/]+\.md)$}
@@ -3913,6 +3996,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           do: [{"CODEGEN_RESUME_ATTEMPT", resume_session_id}],
           else: []
         ) ++
+        waived_guards_env(agent) ++
         log_path_env()
 
     {stdout, stderr, exit_code} = run_call_split(@codegen_call_bin, args, env, cwd)

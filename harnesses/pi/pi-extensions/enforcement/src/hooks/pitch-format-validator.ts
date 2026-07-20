@@ -19,6 +19,9 @@
  *       the next ### or ## heading
  *   (c) BOTH ## Questions AND ## Answers present → every "### Q<n>: " binding
  *       line under ## Answers MUST have a matching Q<n> in ## Questions.
+ *   (d) YAML frontmatter `waives:` flow-list present → every id MUST resolve
+ *       to a shared/enforcement/registry.yaml entry AND that entry MUST
+ *       carry `waivable: true`.
  *
  * Skip when:
  *   - role is not shape, refactor, or ops
@@ -28,7 +31,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { debugLog } from "../lib/hook-helpers";
+import { debugLog, repoRoot } from "../lib/hook-helpers";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -93,6 +96,37 @@ function extractSection(content: string, heading: string): string {
     }
   }
   return result.join("\n");
+}
+
+/** True iff shared/enforcement/registry.yaml marks hookId waivable: true. */
+function registryAllowsWaiver(projectDir: string, hookId: string): boolean {
+  const root = repoRoot(projectDir);
+  const reg = path.join(root, "shared/enforcement/registry.yaml");
+  if (!fs.existsSync(reg)) return false;
+  let text: string;
+  try {
+    text = fs.readFileSync(reg, "utf8");
+  } catch {
+    return false;
+  }
+  const lines = text.split("\n");
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^id:\s+\S+/.test(trimmed)) {
+      const [, id] = trimmed.split(/\s+/, 2);
+      inBlock = id === hookId;
+      continue;
+    }
+    if (inBlock && trimmed === "") {
+      inBlock = false;
+      continue;
+    }
+    if (inBlock && /^waivable:\s*true\s*$/.test(trimmed)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function register(pi: ExtensionAPI): void {
@@ -164,6 +198,28 @@ export function register(pi: ExtensionAPI): void {
         process.stderr.write(
           `[pi-enforcement:pitch-format-validator] WARNING: invalid ${statusSource} value "${statusValue}" in ${pitchPath}. Allowed values: SKELETON, SHAPING, SHAPED. Re-emit the status field with one of those values.\n`,
         );
+      }
+    }
+
+    // ── Validation (d): waives: frontmatter — every id must be a registry
+    // entry with waivable: true. Runs BEFORE the (b)/(c) Questions
+    // early-return, so a SHAPED pitch with no ## Questions block still gets
+    // this check. ────────────────────────────────────────────────────────
+    if (fmBlock !== null) {
+      const waivesMatch = fmBlock.match(/^waives:\s*(.+)$/m);
+      if (waivesMatch) {
+        const ids = waivesMatch[1]
+          .replace(/[[\]]/g, "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        for (const wid of ids) {
+          if (!registryAllowsWaiver(projectDir, wid)) {
+            process.stderr.write(
+              `[pi-enforcement:pitch-format-validator] WARNING: \`waives:\` in ${pitchPath} names \`${wid}\`, which is not a registry entry with \`waivable: true\`. Only guards that opt in via \`waivable: true\` in shared/enforcement/registry.yaml may be waived. Remove the entry or fix the id.\n`,
+            );
+          }
+        }
       }
     }
 

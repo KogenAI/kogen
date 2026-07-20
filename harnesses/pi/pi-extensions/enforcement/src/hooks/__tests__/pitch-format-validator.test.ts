@@ -262,6 +262,81 @@ describe("pitch-format-validator", { concurrency: false }, () => {
     assert.ok(stderr.includes("pitch-format-validator"), "expected warning");
   });
 
+  // (d) waives: frontmatter registry validation
+  function writeRegistryFixture(): void {
+    fs.mkdirSync(path.join(tmpDir, "shared", "enforcement"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(tmpDir, "shared", "enforcement", "registry.yaml"),
+      [
+        "- kind: registration",
+        "  id: prompt-budget-writer-only",
+        "  event: PreToolUse",
+        '  tool_guard: "Bash|Edit|Write|MultiEdit"',
+        "  surface: user_global",
+        "  signal: AGENT_TYPE",
+        '  role: "*"',
+        "  harnesses: all",
+        "  waivable: true",
+        "  rationale: fixture entry",
+        "",
+        "- kind: registration",
+        "  id: session-log-writer-only",
+        "  event: PreToolUse",
+        '  tool_guard: "Bash|Edit|Write|MultiEdit"',
+        "  surface: user_global",
+        "  signal: AGENT_TYPE",
+        '  role: "*"',
+        "  harnesses: all",
+        "",
+      ].join("\n"),
+    );
+  }
+
+  it("warns on waives: naming an unknown registry id", async () => {
+    writeRegistryFixture();
+    writePitch(
+      "---\nstatus: SHAPED\nwaives: [no-such-hook]\n---\n\nSome content.\n",
+    );
+    const stderr = await runHook("shape");
+    assert.ok(stderr.includes("no-such-hook"), "expected waives warning");
+  });
+
+  it("warns on waives: naming a real id without waivable: true", async () => {
+    writeRegistryFixture();
+    writePitch(
+      "---\nstatus: SHAPED\nwaives: [session-log-writer-only]\n---\n\nSome content.\n",
+    );
+    const stderr = await runHook("shape");
+    assert.ok(
+      stderr.includes("session-log-writer-only"),
+      "expected waives warning",
+    );
+  });
+
+  it("does not warn on waives: naming a real waivable: true id", async () => {
+    writeRegistryFixture();
+    writePitch(
+      "---\nstatus: SHAPED\nwaives: [prompt-budget-writer-only]\n---\n\nSome content.\n",
+    );
+    const stderr = await runHook("shape");
+    assert.ok(
+      !stderr.includes("waives:"),
+      "expected no waives warning",
+    );
+  });
+
+  it("does not warn when no waives: line is present", async () => {
+    writeRegistryFixture();
+    writePitch("---\nstatus: SHAPED\n---\n\nSome content.\n");
+    const stderr = await runHook("shape");
+    assert.ok(
+      !stderr.includes("waives:"),
+      "expected no waives warning",
+    );
+  });
+
   // Returns null (observe-only)
   it("never returns block result (observe-only)", async () => {
     writePitch("> Status: FOO\n");

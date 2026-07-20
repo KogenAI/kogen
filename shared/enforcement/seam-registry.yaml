@@ -246,3 +246,9 @@ seams:
     guard: templates/generator/run-all-tests_test.sh
     guard_time: make-test
     pattern: set-parity
+  - id: registry-waivable-to-waiver-helpers
+    declares: "shared/enforcement/registry.yaml (waivable: true entries — currently prompt-budget-writer-only only)"
+    reflects: "harnesses/claude/hooks/_waiver.sh + harnesses/pi/pi-extensions/enforcement/src/hooks/_waiver.ts (both scan registry.yaml at grant-check time, not compile time — no generated artifact to diff); harnesses/claude/hooks/pitch-format-validator.sh + .ts (validation (d): a promoted pitch's waives: frontmatter must name a waivable: true id)"
+    guard: harnesses/claude/hooks/_waiver_test.sh
+    guard_time: make-test
+    pattern: checked-mirror

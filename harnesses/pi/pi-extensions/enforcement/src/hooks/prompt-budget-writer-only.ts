@@ -18,6 +18,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { deny, debugLog, isCodegenLogWrite } from "../lib/hook-helpers";
+import { isWaived } from "./_waiver";
 
 export const HANDLER_META = {
   name: "prompt-budget-writer-only",
@@ -50,6 +51,7 @@ export function register(pi: ExtensionAPI): void {
       debugLog("prompt-budget-writer-only", `tool=${event.toolName} file=${filePath}`);
 
       if (BUDGET_PATH_RE.test(filePath)) {
+        if (isWaived("prompt-budget-writer-only")) return;
         return deny(DENY_MSG);
       }
       return;
@@ -68,6 +70,7 @@ export function register(pi: ExtensionAPI): void {
 
       // Deny the --write flag itself, wherever invoked.
       if (/prompt_size_budget\.py.*--write/.test(command)) {
+        if (isWaived("prompt-budget-writer-only")) return;
         return deny(DENY_MSG);
       }
 
@@ -76,6 +79,7 @@ export function register(pi: ExtensionAPI): void {
         BUDGET_PATH_ANYWHERE_RE.test(command) &&
         BASH_WRITE_INTO_BUDGET_RE.test(command)
       ) {
+        if (isWaived("prompt-budget-writer-only")) return;
         return deny(DENY_MSG);
       }
       return;

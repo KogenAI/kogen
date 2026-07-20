@@ -78,6 +78,7 @@ Every event object has an `"ev"` discriminator field:
 - `{"ev":"files_to_touch","role":<role>,"files":[<relpath>,...]}` — planner's typed files-to-touch list; written via `codegen-log append <role> --files-to-touch @-`
 - `{"ev":"files_modified","role":<role>,"files":[<relpath>,...]}` — developer's typed files-modified list; written via `codegen-log append <role> --files-modified @-`
 - `{"ev":"exit","status":<n>,"signal":<n-or-null>,"stderr_tail":<text-or-empty>}` — `dispatch.sh`'s record of the loop child process's raw wait status; NO `role` field. Written via `codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"]`. `{"ev":"committed","role":<role>,"sha":<sha>,"subject":<subject>}` — loop's per-role HEAD attribution, never role-authored.
+- `{"ev":"waiver","role":<role>,"hook":<hook-id>,"slug":<slug>}` — a `waivable: true` guard was relaxed for this invocation because the in-flight `building/<slug>.md` declared it in `waives:`. Written by `_waiver.sh`/`waiver.ts` at grant — never hand-called.
 
 These markers are first-class JSONL events, never re-parsed out of a role's free-form `body` prose.
 

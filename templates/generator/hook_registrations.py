@@ -399,6 +399,9 @@ def render_header(entry: dict) -> str:
     if timeout_val is not None:
         lines.append(f"# timeout: {timeout_val}")
 
+    if entry.get("waivable"):
+        lines.append("# waivable: true")
+
     rationale = entry.get("rationale")
     if rationale:
         rationale_lines = rationale.splitlines()

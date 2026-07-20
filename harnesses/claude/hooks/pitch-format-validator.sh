@@ -39,6 +39,12 @@
 #   (c) BOTH ## Questions AND ## Answers present → every "### Q<n>: " binding
 #       line under ## Answers MUST have a matching Q<n> in ## Questions.
 #       (Orphan ## Answers with no ## Questions is ALLOWED — resolved+deleted.)
+#   (d) YAML frontmatter `waives:` flow-list present → every id MUST resolve
+#       to a shared/enforcement/registry.yaml entry AND that entry MUST carry
+#       `waivable: true`. A guard is relaxed only where a promoted pitch
+#       declared it — an unknown or non-waivable id is caught here, at
+#       promotion, rather than wasting a paid build cycle. See
+#       harnesses/claude/hooks/_waiver.sh.
 
 set -euo pipefail
 
@@ -128,6 +134,37 @@ if [ -n "$status_value" ]; then
         exit 0
         ;;
     esac
+fi
+
+# ── Validation (d): waives: frontmatter — every id must be a registry entry
+# with waivable: true. Runs BEFORE the (b)/(c) Questions early-exit, so a
+# SHAPED pitch with no ## Questions block still gets this check. ──────────
+if [ "$first_line" = "---" ]; then
+    frontmatter_block=$(awk 'NR==1{next} /^---$/{exit} {print}' "$pitch")
+    waives_line=$(printf '%s\n' "$frontmatter_block" | grep -m1 '^waives:' || true)
+    if [ -n "$waives_line" ]; then
+        registry="$(dirname "$0")/../../../shared/enforcement/registry.yaml"
+        waives_ids=$(printf '%s' "$waives_line" |
+            sed -e 's/^waives:[[:space:]]*//' -e 's/[][]//g' -e 's/,/\n/g' |
+            tr -d ' ')
+        while IFS= read -r wid; do
+            [ -z "$wid" ] && continue
+            allowed=$(awk -v want="$wid" '
+                $1=="id:" && $2==want { inblock=1; next }
+                inblock && /^[[:space:]]*$/ { inblock=0 }
+                inblock && $1=="waivable:" && $2=="true" { found=1; exit }
+                END { exit(found ? 0 : 1) }
+            ' "$registry" 2>/dev/null && printf 1 || printf 0)
+            if [ "$allowed" != "1" ]; then
+                reason="pitch-format-validator: \`waives:\` in ${pitch} names \`${wid}\`, which is not a registry entry with \`waivable: true\`. Only guards that opt in via \`waivable: true\` in shared/enforcement/registry.yaml may be waived. Remove the entry or fix the id."
+                debug_log pitch-format-validator "BLOCK: waives references non-waivable/unknown id $wid"
+                block "$reason"
+                exit 0
+            fi
+        done <<EOF
+$(printf '%s\n' "$waives_ids")
+EOF
+    fi
 fi
 
 # ── Validation (b) + (c): ## Questions / ## Answers blocks ─────────────────

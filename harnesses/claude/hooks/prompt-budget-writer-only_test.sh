@@ -106,6 +106,84 @@ run_test "debug role bypass on Write to budget file — ALLOW" "0" "$(make_write
 run_test "shape role bypass on Bash redirect into budget file — ALLOW" "0" "$(make_bash_fixture "echo hi > templates/generator/prompt-budgets.txt")" "CLAUDE_ROLE=shape"
 run_test "ops role bypass on MultiEdit to budget file — ALLOW" "0" "$(make_multiedit_fixture "$BUDGET_PATH")" "CLAUDE_ROLE=ops"
 
+# ── waiver integration: isolated fake repo root, real _waiver.sh sourcing ──
+WAIVER_TMP_ROOT="$(mktemp -d)"
+WAIVER_TMP_ROOT="$(cd "$WAIVER_TMP_ROOT" && pwd -P)"
+mkdir -p "$WAIVER_TMP_ROOT/shared/enforcement" "$WAIVER_TMP_ROOT/codegen/pitches/building"
+cat >"$WAIVER_TMP_ROOT/shared/enforcement/registry.yaml" <<'EOF'
+- kind: registration
+  id: prompt-budget-writer-only
+  event: PreToolUse
+  tool_guard: "Bash|Edit|Write|MultiEdit"
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "*"
+  harnesses: all
+  waivable: true
+  rationale: fixture entry
+EOF
+WAIVER_STUB_BIN="$WAIVER_TMP_ROOT/stubbin"
+mkdir -p "$WAIVER_STUB_BIN"
+cat >"$WAIVER_STUB_BIN/codegen-log" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$WAIVER_STUB_BIN/codegen-log"
+
+run_waiver_test() {
+    local desc="$1" expected="$2" waives_frontmatter="$3" waived_env="$4" input="$5"
+
+    rm -rf "$WAIVER_TMP_ROOT/codegen/pitches/building"
+    mkdir -p "$WAIVER_TMP_ROOT/codegen/pitches/building"
+    if [ -n "$waives_frontmatter" ]; then
+        {
+            printf -- '---\n'
+            printf 'status: ready\n'
+            printf '%s\n' "$waives_frontmatter"
+            printf -- '---\n'
+            printf '# fixture\n'
+        } >"$WAIVER_TMP_ROOT/codegen/pitches/building/fixture.md"
+    fi
+
+    local stdout
+    stdout=$(
+        cd "$WAIVER_TMP_ROOT" &&
+            printf '%s' "$input" |
+            env -u CLAUDE_ROLE -u PI_ROLE -u GIT_DIR -u GIT_WORK_TREE \
+                CLAUDE_ROLE=developer-phoenix-backend \
+                CODEGEN_WAIVED_GUARDS="$waived_env" \
+                PATH="$WAIVER_STUB_BIN:$PATH" \
+                bash "$GUARD" 2>/dev/null || true
+    )
+
+    local outcome
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        outcome="2"
+    else
+        outcome="0"
+    fi
+
+    if [ "$outcome" = "$expected" ]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' \
+            "$desc" "$expected" "$outcome" "$stdout"
+        fail=$((fail + 1))
+    fi
+}
+
+WAIVER_WRITE_FIXTURE="$(make_write_fixture "$BUDGET_PATH")"
+
+run_waiver_test "waiver granted (env+frontmatter both name id) — ALLOW" "0" \
+    "waives: [prompt-budget-writer-only]" "prompt-budget-writer-only" "$WAIVER_WRITE_FIXTURE"
+run_waiver_test "waiver env set but pitch frontmatter omits it — DENY" "2" \
+    "" "prompt-budget-writer-only" "$WAIVER_WRITE_FIXTURE"
+run_waiver_test "waiver frontmatter set but env unset — DENY" "2" \
+    "waives: [prompt-budget-writer-only]" "" "$WAIVER_WRITE_FIXTURE"
+
+rm -rf "$WAIVER_TMP_ROOT"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"

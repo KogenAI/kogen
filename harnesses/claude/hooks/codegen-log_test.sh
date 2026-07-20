@@ -403,10 +403,11 @@ assert "first verdict event's result still present after second call" "1" "$(jq_
 assert "second verdict event derives verdict=failed" "1" "$(jq_count "$verdict_log" 'select(.ev=="gate" and .verdict=="failed")')"
 assert "second verdict event's detail present" "0" "$([ "$(jq -r 'select(.ev=="gate" and .verdict=="failed")|.detail' "$verdict_log")" = "Log: /tmp/bar.log" ] && printf 0 || printf 1)"
 
-# Test 13b: `--kinds` enumerates 12 kinds, including the new "committed" kind.
+# Test 13b: `--kinds` enumerates 13 kinds, including "committed" and "waiver".
 kinds_out="$(env -u CODEGEN_LOG_PATH "$CODEGEN/codegen-log" --kinds)"
-assert "--kinds prints 12 kinds" "12" "$(printf '%s\n' "$kinds_out" | grep -c .)"
+assert "--kinds prints 13 kinds" "13" "$(printf '%s\n' "$kinds_out" | grep -c .)"
 assert "--kinds includes committed" "0" "$(printf '%s\n' "$kinds_out" | grep -qxF 'committed' && printf 0 || printf 1)"
+assert "--kinds includes waiver" "0" "$(printf '%s\n' "$kinds_out" | grep -qxF 'waiver' && printf 0 || printf 1)"
 
 # Test 13c: `committed` is the loop-authored, non-agent writer of the
 # "committed" event — role/sha/subject required; APPENDS (never replaces).

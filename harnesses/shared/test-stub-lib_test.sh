@@ -41,8 +41,8 @@ trap 'rm -rf "$TMPDIR_T"' EXIT
 # --- T1: two make_stub calls produce the SAME inode (one shared trampoline) ---
 make_stub "$TMPDIR_T/stub_a" 'echo body-a' >/dev/null
 make_stub "$TMPDIR_T/stub_b" 'echo body-b' >/dev/null
-INODE_A=$(stat -f '%i' "$TMPDIR_T/stub_a" 2>/dev/null || stat -c '%i' "$TMPDIR_T/stub_a")
-INODE_B=$(stat -f '%i' "$TMPDIR_T/stub_b" 2>/dev/null || stat -c '%i' "$TMPDIR_T/stub_b")
+INODE_A=$(stat -c '%i' "$TMPDIR_T/stub_a" 2>/dev/null || stat -f '%i' "$TMPDIR_T/stub_a")
+INODE_B=$(stat -c '%i' "$TMPDIR_T/stub_b" 2>/dev/null || stat -f '%i' "$TMPDIR_T/stub_b")
 assert_eq "T1: two stubs share the same trampoline inode" "$INODE_A" "$INODE_B"
 
 # --- T2: .body resolves via dirname "$0" when invoked relative, via PATH, absolute-from-/ ---
@@ -99,7 +99,7 @@ link_stub_path "$TMPDIR_T/heredoc_bin/stub_d"
 OUT_D=$("$TMPDIR_T/heredoc_bin/stub_d")
 assert_eq "T4b: link_stub_path stub runs its heredoc-written body" "body-d" "$OUT_D"
 
-INODE_D=$(stat -f '%i' "$TMPDIR_T/heredoc_bin/stub_d" 2>/dev/null || stat -c '%i' "$TMPDIR_T/heredoc_bin/stub_d")
+INODE_D=$(stat -c '%i' "$TMPDIR_T/heredoc_bin/stub_d" 2>/dev/null || stat -f '%i' "$TMPDIR_T/heredoc_bin/stub_d")
 assert_eq "T4b: link_stub_path shares the same trampoline inode as make_stub" "$INODE_A" "$INODE_D"
 
 # --- T4c: link_or_copy aliasing a trampoline stub requires copying the .body too ---

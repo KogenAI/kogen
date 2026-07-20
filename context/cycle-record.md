@@ -30,10 +30,14 @@ beside the existing `--strict-mcp-config`, generated on the fly per-machine and 
 `mcp-server/dist/index.js` hasn't been built — see `context/harnesses.md` for the dispatch-side detail.
 `dispatch.sh` (execs `mix codegen.loop`) carries no MCP wiring; it has no `claude` argv to edit.
 
-## `ev` Event Kinds (12, not 6 — corrects a stale prior count)
+## `ev` Event Kinds (13, not 6 — corrects a stale prior count)
 
 `init`, `role`, `learned`, `no_learning`, `died`, `gate`, `plan`, `plan_gate`, `files_to_touch`,
-`files_modified`, `exit`, `committed`. Verified via `codegen-log --kinds`.
+`files_modified`, `exit`, `committed`, `waiver`. Verified via `codegen-log --kinds`. `waiver`
+(`role`, `hook`, `slug`) is written by `harnesses/claude/hooks/_waiver.sh` (+ `.ts` twin) at the
+moment a `waivable: true` registry entry is granted a waiver for a promoted pitch's `waives:`
+declaration — see `shared/rules/_core/session-log.md` § A guard is waived only where a pitch
+declared it.
 
 ## `codegen/gate-pending/` Artifacts
 

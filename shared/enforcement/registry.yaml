@@ -514,7 +514,8 @@
   signal: AGENT_TYPE
   role: "*"
   harnesses: all
-  rationale: templates/generator/prompt-budgets.txt has exactly one legitimate writer — an operator running `prompt_size_budget.py --write` in a terminal. Raw Edit/Write/MultiEdit on the file, the --write flag itself, and Bash write-vocab (redirect/tee/sed -i/mv/cp) into the path are all denied for every agent role, including the orchestrator. A capped file that overflows must shrink or evict — the cap is not the writer's to move.
+  waivable: true
+  rationale: templates/generator/prompt-budgets.txt has exactly one legitimate writer — an operator running `prompt_size_budget.py --write` in a terminal. Raw Edit/Write/MultiEdit on the file, the --write flag itself, and Bash write-vocab (redirect/tee/sed -i/mv/cp) into the path are all denied for every agent role, including the orchestrator. A capped file that overflows must shrink or evict — the cap is not the writer's to move. This is the ONLY registry entry with waivable set — a promoted pitch may relax it for exactly one developer-role invocation via a `waives` frontmatter list; see harnesses/claude/hooks/_waiver.sh.
 
 - kind: registration
   id: reviewer-guard

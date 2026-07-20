@@ -14,6 +14,7 @@
 #   codegen-log append <role> --plan-gate @<json-file-or-@-> [--slug <slug>]
 #   codegen-log append <role> --files-to-touch @<json-file-or-@-> [--slug <slug>]
 #   codegen-log append <role> --files-modified @<json-file-or-@-> [--slug <slug>]
+#   codegen-log append <role> --waiver <hook-id> --waiver-slug <slug> [--slug <slug>]
 #   codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]
 #   codegen-log relocate --new-slug <slug> [--slug <slug>]
 #   codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]
@@ -119,6 +120,12 @@
 #   exit            — status, signal (n|null), stderr_tail. dispatch.sh's
 #                      record of the loop CHILD PROCESS's raw wait status —
 #                      no "role" field, a process exit has no role.
+#   waiver          — role, hook, slug. Written by harnesses/claude/hooks/
+#                      _waiver.sh (+ Pi waiver.ts twin) at the moment a
+#                      registry-opted-in guard is granted a waiver for a
+#                      promoted pitch's declared `waives:` list — see
+#                      session-log.md § A guard is waived only where a pitch
+#                      declared it.
 #
 # Substance filter (--learned / --no-learning / section+append role BODY):
 # codegen-log is the SOLE writer of the cycle log, so it is the one place
@@ -220,6 +227,10 @@
 #   --files-modified @<file-or-@-> -> {"ev":"files_modified",...} (append only).
 #                                     Same shape as --files-to-touch. Developer's
 #                                     typed files-modified list.
+#   --waiver <hook-id> --waiver-slug <slug> -> {"ev":"waiver",...} (append
+#                                     only). Both required together. Written
+#                                     by _waiver.sh/waiver.ts at grant time —
+#                                     never hand-called by a role.
 #
 # Target-log resolution (section/append), in precedence order:
 #   1. CODEGEN_LOG_PATH env var, if set.
@@ -283,6 +294,8 @@ PLAN_SOURCE=""
 PLAN_GATE_SOURCE=""
 FILES_TO_TOUCH_SOURCE=""
 FILES_MODIFIED_SOURCE=""
+WAIVER_HOOK=""
+WAIVER_SLUG=""
 NEW_SLUG=""
 GATE_CMD=""
 GATE_MODE=""
@@ -299,7 +312,7 @@ CORPUS_VERB=""
 
 # EVENT_SCHEMA_JQ — the single source of truth for every event kind
 # codegen-log emits. One jq `def` returning {kind: {required: [...],
-# optional: [...]}} for all 10 kinds this binary actually writes (see the
+# optional: [...]}} for all 13 kinds this binary actually writes (see the
 # emit sites feeding append_event_line/init's own write, below). "ev" itself
 # is implicit — every kind requires it — so it is not listed per-kind.
 # known_kinds (show_build_model) and `--kinds` both derive from this table;
@@ -320,7 +333,8 @@ def event_schema:
     files_to_touch:  {required: ["role","files"],                    optional: []},
     files_modified:  {required: ["role","files"],                    optional: []},
     exit:            {required: ["status","signal","stderr_tail"],   optional: []},
-    committed:       {required: ["role","sha","subject"],            optional: []}
+    committed:       {required: ["role","sha","subject"],            optional: []},
+    waiver:          {required: ["role","hook","slug"],              optional: []}
   };
 '
 
@@ -340,6 +354,7 @@ usage() {
     printf '  codegen-log append <role> --plan-gate @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --files-to-touch @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --files-modified @<file-or-@-> [--slug <slug>]\n' >&2
+    printf '  codegen-log append <role> --waiver <hook-id> --waiver-slug <slug> [--slug <slug>]\n' >&2
     printf '  codegen-log verdict --gate <cmd> --mode <mode> --result "<text>" [--detail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log relocate --new-slug <slug> [--slug <slug>]\n' >&2
     printf '  codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]\n' >&2
@@ -492,6 +507,22 @@ while [[ $# -gt 0 ]]; do
         ;;
     --files-modified)
         FILES_MODIFIED_SOURCE="$2"
+        shift 2
+        ;;
+    --waiver=*)
+        WAIVER_HOOK="${1#--waiver=}"
+        shift
+        ;;
+    --waiver)
+        WAIVER_HOOK="$2"
+        shift 2
+        ;;
+    --waiver-slug=*)
+        WAIVER_SLUG="${1#--waiver-slug=}"
+        shift
+        ;;
+    --waiver-slug)
+        WAIVER_SLUG="$2"
         shift 2
         ;;
     --new-slug=*)
@@ -648,15 +679,20 @@ MARKER_FLAG_COUNT=0
 [[ -n "$PLAN_GATE_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$FILES_TO_TOUCH_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$FILES_MODIFIED_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
+[[ -n "$WAIVER_HOOK" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 if [[ "$MARKER_FLAG_COUNT" -gt 1 ]]; then
-    printf 'codegen-log: --learned, --no-learning, --died, --verdict, --plan, --plan-gate, --files-to-touch, and --files-modified are mutually exclusive\n' >&2
+    printf 'codegen-log: --learned, --no-learning, --died, --verdict, --plan, --plan-gate, --files-to-touch, --files-modified, and --waiver are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" || -n "$PLAN_SOURCE" || -n "$PLAN_GATE_SOURCE" || -n "$FILES_TO_TOUCH_SOURCE" || -n "$FILES_MODIFIED_SOURCE" ]]; then
+if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" || -n "$PLAN_SOURCE" || -n "$PLAN_GATE_SOURCE" || -n "$FILES_TO_TOUCH_SOURCE" || -n "$FILES_MODIFIED_SOURCE" || -n "$WAIVER_HOOK" ]]; then
     if [[ "$SUBCOMMAND" != "append" ]]; then
-        printf 'codegen-log: --died/--verdict/--no-learning/--plan/--plan-gate/--files-to-touch/--files-modified are only valid with the append subcommand\n' >&2
+        printf 'codegen-log: --died/--verdict/--no-learning/--plan/--plan-gate/--files-to-touch/--files-modified/--waiver are only valid with the append subcommand\n' >&2
         exit 2
     fi
+fi
+if [[ -n "$WAIVER_HOOK" && -z "$WAIVER_SLUG" ]]; then
+    printf 'codegen-log: --waiver requires --waiver-slug\n' >&2
+    exit 2
 fi
 if [[ -n "$LEARNED_TEXT" ]]; then
     if [[ "$SUBCOMMAND" != "append" && "$SUBCOMMAND" != "section" ]]; then
@@ -1621,6 +1657,14 @@ append)
             exit 2
         fi
         line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --argjson files "$fm_json" '{ev: "files_modified", role: $role, files: $files}')"
+        append_event_line "$log_file" "$line"
+        printf '%s\n' "$log_file"
+        exit 0
+    fi
+
+    if [[ -n "$WAIVER_HOOK" ]]; then
+        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg hook "$WAIVER_HOOK" --arg slug "$WAIVER_SLUG" \
+            '{ev: "waiver", role: $role, hook: $hook, slug: $slug}')"
         append_event_line "$log_file" "$line"
         printf '%s\n' "$log_file"
         exit 0

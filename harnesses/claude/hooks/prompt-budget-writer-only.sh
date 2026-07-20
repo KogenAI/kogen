@@ -8,7 +8,8 @@
 # signal: AGENT_TYPE
 # role: *
 # harnesses: all
-# rationale: templates/generator/prompt-budgets.txt has exactly one legitimate writer — an operator running `prompt_size_budget.py --write` in a terminal. Raw Edit/Write/MultiEdit on the file, the --write flag itself, and Bash write-vocab (redirect/tee/sed -i/mv/cp) into the path are all denied for every agent role, including the orchestrator. A capped file that overflows must shrink or evict — the cap is not the writer's to move.
+# waivable: true
+# rationale: templates/generator/prompt-budgets.txt has exactly one legitimate writer — an operator running `prompt_size_budget.py --write` in a terminal. Raw Edit/Write/MultiEdit on the file, the --write flag itself, and Bash write-vocab (redirect/tee/sed -i/mv/cp) into the path are all denied for every agent role, including the orchestrator. A capped file that overflows must shrink or evict — the cap is not the writer's to move. This is the ONLY registry entry with waivable set — a promoted pitch may relax it for exactly one developer-role invocation via a `waives` frontmatter list; see harnesses/claude/hooks/_waiver.sh.
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.
@@ -19,6 +20,7 @@ set -u
 
 source "$(dirname "$0")/lib/hooks-lib.sh"
 source "$(dirname "$0")/_role.sh"
+source "$(dirname "$0")/_waiver.sh"
 parse_input
 
 debug_log prompt-budget-writer-only "tool=$TOOL_NAME file=${FILE_PATH:-} cmd=${COMMAND:-}"
@@ -34,6 +36,7 @@ deny_msg="BLOCKED by prompt-budget-writer-only: this file is operator-owned — 
 case "$TOOL_NAME" in
 Edit | Write | MultiEdit)
     if printf '%s' "$FILE_PATH" | grep -qE "$BUDGET_PATH_RE"; then
+        waived? prompt-budget-writer-only && exit 0
         deny "$deny_msg"
         exit 0
     fi
@@ -49,6 +52,7 @@ Bash)
     fi
     # Deny the --write flag itself, wherever invoked.
     if printf '%s' "$COMMAND" | grep -qE 'prompt_size_budget\.py.*--write'; then
+        waived? prompt-budget-writer-only && exit 0
         deny "$deny_msg"
         exit 0
     fi
@@ -56,6 +60,7 @@ Bash)
     # targeting the budget file directly.
     if printf '%s' "$COMMAND" | grep -qE 'templates/generator/prompt-budgets\.txt'; then
         if printf '%s' "$COMMAND" | grep -qE '(>{1,2}[[:space:]]*[^[:space:]]*templates/generator/prompt-budgets\.txt|\|[[:space:]]*tee\b.*templates/generator/prompt-budgets\.txt|\bsed\b[^|]*-i[^|]*templates/generator/prompt-budgets\.txt|\b(mv|cp)\b[^|]*templates/generator/prompt-budgets\.txt)'; then
+            waived? prompt-budget-writer-only && exit 0
             deny "$deny_msg"
             exit 0
         fi
