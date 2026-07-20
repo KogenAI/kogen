@@ -471,6 +471,55 @@ defmodule CodegenTestHarness.BenchTest do
     end
   end
 
+  # ── UsageParser — parse_dispatches/1 ─────────────────────────────────────────
+
+  describe "UsageParser.parse_dispatches/1" do
+    test "reads per-role ordered dispatch list from the loop terminal line" do
+      output =
+        Jason.encode!(%{
+          "type" => "result",
+          "engine" => "elixir_loop",
+          "subtype" => "success",
+          "per_role" => %{
+            "developer-static" => %{
+              "cost_usd" => 0.2,
+              "calls" => 2,
+              "dispatches" => [
+                %{"harness" => "pi", "model" => "openai-codex/gpt-5.6-terra", "effort" => "high"},
+                %{"harness" => "pi", "model" => "openai-codex/gpt-5.6-terra", "effort" => "high"}
+              ]
+            }
+          }
+        }) <> "\n"
+
+      assert UsageParser.parse_dispatches(output) == %{
+               "developer-static" => [
+                 %{harness: "pi", model: "openai-codex/gpt-5.6-terra", effort: "high"},
+                 %{harness: "pi", model: "openai-codex/gpt-5.6-terra", effort: "high"}
+               ]
+             }
+    end
+
+    test "a per_role entry with no dispatches key parses as an empty list (pre-existing caller compatibility)" do
+      output =
+        Jason.encode!(%{
+          "type" => "result",
+          "engine" => "elixir_loop",
+          "subtype" => "success",
+          "per_role" => %{
+            "committer" => %{"cost_usd" => 0.01, "calls" => 1}
+          }
+        }) <> "\n"
+
+      assert UsageParser.parse_dispatches(output) == %{"committer" => []}
+    end
+
+    test "returns empty map when output has no loop terminal line" do
+      output = ~s({"type":"agent_end","messages":[]}\n)
+      assert UsageParser.parse_dispatches(output) == %{}
+    end
+  end
+
   # ── BenchManifest ─────────────────────────────────────────────────────────────
 
   describe "BenchManifest" do

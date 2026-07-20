@@ -174,6 +174,55 @@ defmodule CodegenTestHarness.UsageParser do
           cache_creation_tokens: non_neg_integer()
         }
 
+  @type dispatch :: %{
+          harness: String.t() | nil,
+          model: String.t() | nil,
+          effort: String.t() | nil
+        }
+
+  @doc """
+  Parses per-role, per-invocation dispatch provenance (the ACTUAL requested
+  harness/model/effort tuple for every codegen-call the loop made) from raw
+  `codegen-build` stdout — the loop's own terminal `{"type":"result",
+  "engine":"elixir_loop",...}` line, same source `parse_per_role/3`'s `:pi`
+  clause reads for token counts. Harness-agnostic: this is loop-internal
+  bookkeeping, not per-harness envelope shape, so there is no `:claude`
+  clause — call this regardless of which harness ran the build.
+
+  Returns `%{role => [dispatch(), ...]}`, one entry per invocation IN CALL
+  ORDER (gate retries and rework re-invocations of the same role each add
+  their own entry). Returns `%{}` when the loop terminal line is absent
+  (e.g. a raw non-loop-driven capture).
+  """
+  @spec parse_dispatches(String.t()) :: %{optional(String.t()) => [dispatch()]}
+  def parse_dispatches(output) do
+    output
+    |> decode_lines()
+    |> extract_loop_result()
+    |> dispatches_from_loop_result()
+  end
+
+  defp dispatches_from_loop_result(%{} = result) when map_size(result) > 0 do
+    result
+    |> Map.get("per_role", %{})
+    |> Map.new(fn {role, entry} ->
+      raw = Map.get(entry, "dispatches", [])
+
+      normalized =
+        Enum.map(raw, fn d ->
+          %{
+            harness: Map.get(d, "harness"),
+            model: Map.get(d, "model"),
+            effort: Map.get(d, "effort")
+          }
+        end)
+
+      {role, normalized}
+    end)
+  end
+
+  defp dispatches_from_loop_result(_), do: %{}
+
   @doc """
   Parses per-role token usage from Claude's per-subagent transcript files.
 

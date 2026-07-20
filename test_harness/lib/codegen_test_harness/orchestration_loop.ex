@@ -2662,12 +2662,26 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   defp maybe_escalate_model(ctx, _dev_role, _harness, _opts, false), do: ctx
 
   defp maybe_escalate_model(ctx, dev_role, build_harness, opts, true) do
-    escalate_fn = Keyword.get(opts, :resolve_escalation_fn, &RoleResolver.resolve_escalation/2)
-
     resolve_harness_fn =
       Keyword.get(opts, :resolve_harness_fn, &RoleResolver.resolve_harness/2)
 
     harness = resolve_harness_fn.(dev_role, build_harness)
+
+    # A role-model-sweep campaign arm holds this role's binding fixed for the
+    # whole invocation — escalating on the final gate-retry attempt would
+    # silently measure a DIFFERENT (stronger) tier than the one the campaign
+    # requested, corrupting the arm's evidence. Suppress: the role stays
+    # pinned and, if it never gates green, the arm reports INCONCLUSIVE
+    # rather than a quietly-substituted binding.
+    if resolve_fixed_binding(dev_role, harness, opts) != :none do
+      ctx
+    else
+      do_maybe_escalate_model(ctx, dev_role, harness, opts)
+    end
+  end
+
+  defp do_maybe_escalate_model(ctx, dev_role, harness, opts) do
+    escalate_fn = Keyword.get(opts, :resolve_escalation_fn, &RoleResolver.resolve_escalation/2)
 
     case escalate_fn.(dev_role, harness) do
       {model, effort} ->
@@ -3237,34 +3251,46 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     rung = get_in(ctx, [:artifacts, :fallback_rung]) || 0
     rungs_tried = get_in(ctx, [:artifacts, :fallback_rungs_tried]) || []
 
-    if rung >= @max_fallback_rungs do
-      log_died(role, "aborted", reason, opts)
-      {:error, fallback_exhausted_reason(role, reason, rungs_tried)}
-    else
-      case resolve_fallback_rung(role, harness, rung, opts, resolve_fallback_fn) do
-        {model, effort} ->
-          log_died(role, "interrupted", reason, opts)
+    # Same suppression as `maybe_escalate_model/5`: a fixed campaign binding
+    # must never be silently swapped for a fallback rung — the arm would end
+    # up measuring an unrequested model. Report INCONCLUSIVE (via the normal
+    # exhausted-fallback error path) instead of walking the chain.
+    cond do
+      resolve_fixed_binding(role, harness, opts) != :none ->
+        log_died(role, "aborted", reason, opts)
 
-          operator_note(
-            "role #{role}: switching model — #{reason} — trying fallback rung #{rung}: #{model}/#{effort}"
-          )
+        {:error,
+         "role-model-sweep: #{role} binding fixed — #{reason} — fallback suppressed for campaign arm"}
 
-          retry_ctx =
-            ctx
-            |> put_in([:artifacts, :last_failure_reason], reason)
-            |> put_in([:artifacts, :escalated_model], {model, effort})
-            |> put_in([:artifacts, :fallback_rung], rung + 1)
-            |> put_in([:artifacts, :fallback_rungs_tried], rungs_tried ++ [{model, reason}])
-            # Switching models forfeits warm resume — the other model never
-            # saw the prior session; always start the next attempt cold.
-            |> Map.update!(:artifacts, &Map.delete(&1, :resume_session_id))
+      rung >= @max_fallback_rungs ->
+        log_died(role, "aborted", reason, opts)
+        {:error, fallback_exhausted_reason(role, reason, rungs_tried)}
 
-          do_invoke_attempt(role, harness, retry_ctx, opts, invoke_fn, attempt + 1)
+      true ->
+        case resolve_fallback_rung(role, harness, rung, opts, resolve_fallback_fn) do
+          {model, effort} ->
+            log_died(role, "interrupted", reason, opts)
 
-        :none ->
-          log_died(role, "aborted", reason, opts)
-          {:error, fallback_exhausted_reason(role, reason, rungs_tried)}
-      end
+            operator_note(
+              "role #{role}: switching model — #{reason} — trying fallback rung #{rung}: #{model}/#{effort}"
+            )
+
+            retry_ctx =
+              ctx
+              |> put_in([:artifacts, :last_failure_reason], reason)
+              |> put_in([:artifacts, :escalated_model], {model, effort})
+              |> put_in([:artifacts, :fallback_rung], rung + 1)
+              |> put_in([:artifacts, :fallback_rungs_tried], rungs_tried ++ [{model, reason}])
+              # Switching models forfeits warm resume — the other model never
+              # saw the prior session; always start the next attempt cold.
+              |> Map.update!(:artifacts, &Map.delete(&1, :resume_session_id))
+
+            do_invoke_attempt(role, harness, retry_ctx, opts, invoke_fn, attempt + 1)
+
+          :none ->
+            log_died(role, "aborted", reason, opts)
+            {:error, fallback_exhausted_reason(role, reason, rungs_tried)}
+        end
     end
   end
 
@@ -3584,9 +3610,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       end)
 
     {model, effort} =
-      case get_in(ctx, [:artifacts, :escalated_model]) do
-        {escalated_model, escalated_effort} -> {escalated_model, escalated_effort}
-        _ -> resolve_fn.(role, harness)
+      case resolve_fixed_binding(role, harness, opts) do
+        {fixed_model, fixed_effort} ->
+          {fixed_model, fixed_effort}
+
+        :none ->
+          case get_in(ctx, [:artifacts, :escalated_model]) do
+            {escalated_model, escalated_effort} -> {escalated_model, escalated_effort}
+            _ -> resolve_fn.(role, harness)
+          end
       end
 
     prompt =
@@ -3601,7 +3633,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # .md, not by RoleResolver.
     envelope = codegen_call_fn.(harness, model, effort, nil, nil, prompt)
 
-    accumulate_telemetry(role, envelope)
+    accumulate_telemetry(role, envelope, %{harness: harness, model: model, effort: effort})
     write_cycle_summary(cycle_id, ctx.cwd, role, seq, transcript, envelope)
 
     case envelope do
@@ -4156,7 +4188,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   def get_telemetry, do: Process.get(@telemetry_key, zero_telemetry())
 
   @doc false
-  def accumulate_telemetry(role, %{"usage" => usage} = envelope) when is_map(usage) do
+  @spec accumulate_telemetry(String.t(), map()) :: :ok
+  def accumulate_telemetry(role, envelope), do: accumulate_telemetry(role, envelope, %{})
+
+  # `dispatch` carries the {harness, model, effort} tuple this specific
+  # invocation actually requested — populated by `invoke_role/4` from the
+  # SAME resolved values used to build the `codegen_call_fn.(...)` call, so
+  # it can never drift from what was truly dispatched. Empty map (the /2
+  # delegate above, and any other pre-existing caller) means "unknown",
+  # never a fabricated tuple — `emit_loop_telemetry/1` reads it as an
+  # optional field per role_entry.
+  @doc false
+  @spec accumulate_telemetry(String.t(), map(), map()) :: :ok
+  def accumulate_telemetry(role, %{"usage" => usage} = envelope, dispatch)
+      when is_map(usage) and is_map(dispatch) do
     acc = get_telemetry()
 
     role_entry = %{
@@ -4181,7 +4226,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       # call — see call-dispatch.sh's METRICS="null" guard. Reading it as
       # nil-when-absent here preserves that "unknown, not zero" contract;
       # never default to %{}.
-      metrics: Map.get(envelope, "metrics")
+      metrics: Map.get(envelope, "metrics"),
+      dispatch: %{
+        harness: Map.get(dispatch, :harness),
+        model: Map.get(dispatch, :model),
+        effort: Map.get(dispatch, :effort)
+      }
     }
 
     updated = %{
@@ -4199,7 +4249,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     :ok
   end
 
-  def accumulate_telemetry(_role, _envelope), do: :ok
+  def accumulate_telemetry(_role, _envelope, _dispatch), do: :ok
 
   # Appends one JSONL line to <cwd>/codegen/logging/<cycle_id>/cycle-summary.jsonl
   # per role invocation — a durable per-cycle turn-summary alongside the raw
@@ -4282,4 +4332,156 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp t_opt_int(_), do: nil
+
+  # ── Fixed campaign binding (RoleModelSweep) ─────────────────────────────
+  # A `RoleModelSweep` campaign arm pins ONE role's harness/model/effort for
+  # the whole build by writing `role-model-binding.json` into
+  # `BENCH_RUN_DIR` before spawning this loop as a child process. Read once
+  # per process (cached in the process dictionary — a mid-run edit is NOT
+  # honored, matching the campaign's own "pin at spawn" contract) and
+  # validated eagerly: a PRESENT-but-invalid file raises before the first
+  # role runs (fail loud, never a silently-ignored malformed directive).
+  # Absent file (BENCH_RUN_DIR unset, or the file doesn't exist there) ->
+  # `:none` for every role — ordinary benchmark/build behavior, byte-for-byte
+  # unchanged from before this feature existed.
+  @fixed_binding_key :role_model_sweep_binding
+
+  defp resolve_fixed_binding(role, harness, opts) do
+    case load_fixed_binding(opts) do
+      %{"role" => ^role, "harness" => bound_harness, "model" => model, "effort" => effort} ->
+        if normalize_harness_for_binding(bound_harness) == normalize_harness_for_binding(harness) do
+          {model, effort}
+        else
+          :none
+        end
+
+      _ ->
+        :none
+    end
+  end
+
+  defp normalize_harness_for_binding("claude"), do: "claude_code"
+  defp normalize_harness_for_binding(other), do: other
+
+  defp load_fixed_binding(opts) do
+    case Process.get(@fixed_binding_key, :unset) do
+      :unset ->
+        binding = read_and_validate_fixed_binding(opts)
+        Process.put(@fixed_binding_key, binding)
+        binding
+
+      cached ->
+        cached
+    end
+  end
+
+  defp read_and_validate_fixed_binding(opts) do
+    run_dir = System.get_env("BENCH_RUN_DIR")
+
+    if is_nil(run_dir) or String.trim(run_dir) == "" do
+      nil
+    else
+      path = Path.join(run_dir, "role-model-binding.json")
+
+      if File.exists?(path) do
+        path
+        |> File.read!()
+        |> Jason.decode!()
+        |> validate_fixed_binding!(path, opts)
+      else
+        nil
+      end
+    end
+  end
+
+  @fixed_binding_required_keys ~w(schema_version campaign_id arm role stack harness model effort source_sha fixed)
+
+  defp validate_fixed_binding!(binding, path, opts)
+
+  defp validate_fixed_binding!(%{} = binding, path, opts) do
+    missing = Enum.reject(@fixed_binding_required_keys, &Map.has_key?(binding, &1))
+
+    unless missing == [] do
+      raise "OrchestrationLoop: #{path} missing required key(s): #{inspect(missing)}"
+    end
+
+    unless binding["fixed"] == true do
+      raise "OrchestrationLoop: #{path} \"fixed\" must be true, got: #{inspect(binding["fixed"])}"
+    end
+
+    unless is_binary(binding["role"]) and binding["role"] != "" do
+      raise "OrchestrationLoop: #{path} \"role\" must be a non-empty string"
+    end
+
+    unless is_binary(binding["harness"]) and binding["harness"] in ["claude", "claude_code", "pi"] do
+      raise "OrchestrationLoop: #{path} \"harness\" must be one of claude/claude_code/pi, got: #{inspect(binding["harness"])}"
+    end
+
+    unless is_binary(binding["model"]) and binding["model"] != "" do
+      raise "OrchestrationLoop: #{path} \"model\" must be a non-empty string"
+    end
+
+    unless is_binary(binding["effort"]) and binding["effort"] in ["low", "medium", "high"] do
+      raise "OrchestrationLoop: #{path} \"effort\" must be one of low/medium/high, got: #{inspect(binding["effort"])}"
+    end
+
+    unless is_binary(binding["source_sha"]) and binding["source_sha"] != "" do
+      raise "OrchestrationLoop: #{path} \"source_sha\" must be a non-empty string"
+    end
+
+    validate_fixed_binding_source_sha!(binding, path, opts)
+
+    binding
+  end
+
+  defp validate_fixed_binding!(other, path, _opts) do
+    raise "OrchestrationLoop: #{path} must decode to a JSON object, got: #{inspect(other)}"
+  end
+
+  # Guards against a campaign arm silently measuring a DIFFERENT codegen
+  # source revision than the one it was pinned against — the pitch's own
+  # requirement is that a dirty codegen worktree or a moved HEAD stops the
+  # campaign as INCONCLUSIVE, never lets the loop proceed against a fixed
+  # binding whose provenance no longer matches. `RoleModelSweep.preflight!/1`
+  # only checks this ONCE, in the long-lived runner process, at campaign
+  # start; this repeats the check on every child-process read of the binding
+  # file so a mid-campaign edit/rebase to the codegen root (or a dirty tree
+  # produced between repetitions) is caught here too, not just at t=0.
+  #
+  # `git_head_fn`/`git_dirty_fn` are test seams (opts, defaulting to real
+  # `git` calls against `@codegen_dir`) so this stays hermetically testable
+  # without a live git dependency.
+  defp validate_fixed_binding_source_sha!(binding, path, opts) do
+    git_head_fn = Keyword.get(opts, :git_head_fn, &default_git_head/0)
+    git_dirty_fn = Keyword.get(opts, :git_dirty_fn, &default_git_dirty?/0)
+
+    current_sha = git_head_fn.()
+
+    unless binding["source_sha"] == current_sha do
+      raise "OrchestrationLoop: #{path} \"source_sha\" (#{inspect(binding["source_sha"])}) " <>
+              "does not match current codegen HEAD (#{inspect(current_sha)}) — " <>
+              "campaign arm — fallback suppressed; source drift makes this arm INCONCLUSIVE"
+    end
+
+    if git_dirty_fn.() do
+      raise "OrchestrationLoop: #{path} codegen root worktree is dirty at binding-read time — " <>
+              "campaign arm — fallback suppressed; dirty tree makes this arm INCONCLUSIVE"
+    end
+
+    :ok
+  end
+
+  defp default_git_head do
+    case System.cmd("git", ["rev-parse", "HEAD"], cd: @codegen_dir, stderr_to_stdout: true) do
+      {out, 0} -> String.trim(out)
+      {out, status} -> raise "OrchestrationLoop: git rev-parse HEAD failed (#{status}): #{out}"
+    end
+  end
+
+  defp default_git_dirty? do
+    case System.cmd("git", ["status", "--porcelain"], cd: @codegen_dir, stderr_to_stdout: true) do
+      {out, 0} -> String.trim(out) != ""
+      {out, status} -> raise "OrchestrationLoop: git status --porcelain failed (#{status}): #{out}"
+    end
+  end
 end

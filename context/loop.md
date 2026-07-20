@@ -108,6 +108,33 @@ via `RoleResolver.resolve_escalation/2` (test-seam override: `opts[:resolve_esca
 `{model, effort}` at `ctx.artifacts.escalated_model` for the retry's `codegen-call` invocation. See the
 role-config owner file for the ladder's actual rung values.
 
+## Fixed Campaign Binding (RoleModelSweep) — Overrides Escalation and Fallback
+
+`OrchestrationLoop.resolve_fixed_binding/2` (private) reads `<BENCH_RUN_DIR>/role-model-binding.json`
+once per process (cached in the process dictionary) when a `CodegenTestHarness.RoleModelSweep`
+campaign has pinned this ONE role's harness/model/effort for the whole build — see
+`context/test-benchmarking.md` § Role-Model-Binding Campaigns for the full campaign contract.
+Present-but-invalid raises before the first role runs; absent (no `BENCH_RUN_DIR`, or no file
+there) is `:none` for every role — ordinary build behavior, byte-for-byte unchanged.
+
+A matching fixed binding wins over BOTH override mechanisms above for the target role only:
+
+- `invoke_role/4`'s primary resolution uses the fixed tuple verbatim in place of `resolve_fn.(role, harness)`.
+- `maybe_escalate_model/5` short-circuits to `ctx` unchanged (escalation suppressed) — a stuck pinned
+  role never silently jumps to a stronger tier on the final gate-retry attempt.
+- `handle_switch_model_failure/7` returns `{:error, "... binding fixed ... fallback suppressed for
+  campaign arm"}` instead of walking the `fallback:` chain — a pinned role whose model is unavailable
+  reports the arm `INCONCLUSIVE` rather than silently measuring a different model.
+
+Every non-target role, and every role when no binding file is present, is unaffected — this is
+additive suppression scoped to one `{role, harness}` pair per campaign arm, never a global toggle.
+
+`accumulate_telemetry/3`'s third argument carries the ACTUAL resolved `{harness, model, effort}` for
+each invocation (whichever of the three sources above supplied it) into an additive `dispatch` field
+per `per_role` entry — `emit_loop_telemetry/1` projects these as an ordered `dispatches` list;
+`UsageParser.parse_dispatches/1` reads it back from raw `codegen-build` stdout. This is how a campaign
+proves a role's binding was truly honored end-to-end, not just requested.
+
 ## Build Lock
 
 `BuildLock.acquire(lock_path, "solo", pid_alive_fn)` — mutex preventing two concurrent solo builds in
@@ -227,4 +254,4 @@ section for how a marked nonzero exit routes to park+skip+breaker instead of `re
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, gate failure owner, flake check, load flake
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed

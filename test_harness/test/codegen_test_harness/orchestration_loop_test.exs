@@ -1105,6 +1105,64 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert reason =~ "model X is currently unavailable"
     end
 
+    test "role-model-sweep fixed binding suppresses the fallback chain — reports an error naming the campaign arm, never a swapped model" do
+      run_dir = Path.join(System.tmp_dir!(), "rms_fallback_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(run_dir)
+      on_exit(fn -> File.rm_rf!(run_dir) end)
+
+      binding = %{
+        "schema_version" => 1,
+        "campaign_id" => "camp-1",
+        "arm" => "baseline",
+        "role" => "developer-static",
+        "stack" => "static",
+        "harness" => "claude_code",
+        "model" => "sonnet",
+        "effort" => "medium",
+        "source_sha" => "deadbeef",
+        "fixed" => true
+      }
+
+      File.write!(Path.join(run_dir, "role-model-binding.json"), Jason.encode!(binding))
+      System.put_env("BENCH_RUN_DIR", run_dir)
+      Process.delete(:role_model_sweep_binding)
+
+      on_exit(fn ->
+        System.delete_env("BENCH_RUN_DIR")
+        Process.delete(:role_model_sweep_binding)
+      end)
+
+      resolve_fallback_fn = fn _role, _harness, 0 -> {"opus", "medium"} end
+
+      invoke_fn = fn _role, _harness, _ctx, _opts ->
+        {:error, "model X is currently unavailable"}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 # Pins harness resolution to match the binding file's
+                 # "harness" ("claude_code") independent of config.yaml's
+                 # live per-role override (developer-static currently
+                 # forces "pi") — this test asserts the SUPPRESSION
+                 # contract, not config.yaml's current routing.
+                 resolve_harness_fn: fn _role, build_harness -> build_harness end,
+                 resolve_fallback_fn: resolve_fallback_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      assert reason =~ "binding fixed"
+      assert reason =~ "fallback suppressed for campaign arm"
+    end
+
     test "switch_model fallback resolution uses the per-role resolve_harness_fn override, not the build harness" do
       {:ok, harness_seen_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(harness_seen_agent), do: Agent.stop(harness_seen_agent) end)
@@ -1512,6 +1570,246 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  resolve_fn: resolve_fn,
                  codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr -> cost_envelope(999.0) end
                )
+    end
+  end
+
+  describe "invoke_role/4 — role-model-sweep fixed binding (BENCH_RUN_DIR/role-model-binding.json)" do
+    setup do
+      Process.delete(:role_model_sweep_binding)
+      Process.delete(:loop_telemetry)
+      System.delete_env("BENCH_RUN_DIR")
+
+      on_exit(fn ->
+        Process.delete(:role_model_sweep_binding)
+        Process.delete(:loop_telemetry)
+        System.delete_env("BENCH_RUN_DIR")
+      end)
+
+      run_dir = Path.join(System.tmp_dir!(), "rms_bind_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(run_dir)
+      on_exit(fn -> File.rm_rf!(run_dir) end)
+      %{run_dir: run_dir}
+    end
+
+    defp write_binding!(run_dir, overrides) do
+      base = %{
+        "schema_version" => 1,
+        "campaign_id" => "camp-1",
+        "arm" => "candidate-a",
+        "role" => "developer-static",
+        "stack" => "static",
+        "harness" => "pi",
+        "model" => "openai-codex/gpt-5.6-terra",
+        "effort" => "high",
+        "source_sha" => "deadbeef",
+        "fixed" => true
+      }
+
+      File.write!(
+        Path.join(run_dir, "role-model-binding.json"),
+        Jason.encode!(Map.merge(base, overrides))
+      )
+    end
+
+    test "target role: fixed binding wins over resolve_fn, verbatim", %{run_dir: run_dir} do
+      write_binding!(run_dir, %{})
+      System.put_env("BENCH_RUN_DIR", run_dir)
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
+        Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
+        %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+      end
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "pi",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      assert Agent.get(seen_agent, & &1) == [{"pi", "openai-codex/gpt-5.6-terra", "high"}]
+    end
+
+    test "non-target role: binding present for a DIFFERENT role -> resolve_fn used unchanged", %{
+      run_dir: run_dir
+    } do
+      write_binding!(run_dir, %{})
+      System.put_env("BENCH_RUN_DIR", run_dir)
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
+        Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
+        %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+      end
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "reviewer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      assert Agent.get(seen_agent, & &1) == [{"claude_code", "sonnet", "medium"}]
+    end
+
+    test "absent BENCH_RUN_DIR -> resolve_fn used unchanged (ordinary build behavior)" do
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
+        Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
+        %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+      end
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 # Pins harness resolution independent of config.yaml's live
+                 # per-role override (developer-static currently forces
+                 # "pi") — this test asserts the fixed-binding ABSENCE
+                 # contract, not config.yaml's current routing.
+                 resolve_harness_fn: fn _role, build_harness -> build_harness end,
+                 codegen_call_fn: codegen_call_fn
+               )
+
+      assert Agent.get(seen_agent, & &1) == [{"claude_code", "sonnet", "medium"}]
+    end
+
+    test "BENCH_RUN_DIR set but file absent -> resolve_fn used unchanged" do
+      run_dir = Path.join(System.tmp_dir!(), "rms_bind_absent_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(run_dir)
+      on_exit(fn -> File.rm_rf!(run_dir) end)
+      System.put_env("BENCH_RUN_DIR", run_dir)
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:ok, %{"value" => "did-it"}} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
+                   %{
+                     "result" => %{"status" => "success", "value" => "did-it"},
+                     "usage" => %{"cost_usd" => 0.1}
+                   }
+                 end
+               )
+    end
+
+    test "present but invalid binding (missing required key) raises before the role runs", %{
+      run_dir: run_dir
+    } do
+      File.write!(
+        Path.join(run_dir, "role-model-binding.json"),
+        Jason.encode!(%{"role" => "developer-static"})
+      )
+
+      System.put_env("BENCH_RUN_DIR", run_dir)
+
+      assert_raise RuntimeError, ~r/missing required key/, fn ->
+        OrchestrationLoop.invoke_role(
+          "developer-static",
+          "claude_code",
+          %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+          resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+          codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
+            %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+          end
+        )
+      end
+    end
+
+    test "binding source_sha does not match current codegen HEAD -> raises before the role runs (INCONCLUSIVE drift)",
+         %{run_dir: run_dir} do
+      write_binding!(run_dir, %{"source_sha" => "deadbeef"})
+      System.put_env("BENCH_RUN_DIR", run_dir)
+
+      assert_raise RuntimeError, ~r/source drift makes this arm INCONCLUSIVE/, fn ->
+        OrchestrationLoop.invoke_role(
+          "developer-static",
+          "pi",
+          %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+          resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+          codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
+            %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+          end,
+          # Loop's own current HEAD reads as a DIFFERENT sha than the
+          # binding's pinned "deadbeef" -> drift, not a live git call.
+          git_head_fn: fn -> "cafef00d" end,
+          git_dirty_fn: fn -> false end
+        )
+      end
+    end
+
+    test "codegen root worktree is dirty at binding-read time -> raises before the role runs (INCONCLUSIVE dirty tree)",
+         %{run_dir: run_dir} do
+      write_binding!(run_dir, %{"source_sha" => "deadbeef"})
+      System.put_env("BENCH_RUN_DIR", run_dir)
+
+      assert_raise RuntimeError, ~r/dirty tree makes this arm INCONCLUSIVE/, fn ->
+        OrchestrationLoop.invoke_role(
+          "developer-static",
+          "pi",
+          %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+          resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+          codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
+            %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+          end,
+          # SHA matches (no drift) but the tree is reported dirty -> still
+          # a loud INCONCLUSIVE rejection, never a silent proceed.
+          git_head_fn: fn -> "deadbeef" end,
+          git_dirty_fn: fn -> true end
+        )
+      end
+    end
+
+    test "invocation records the requested dispatch tuple into telemetry per_role entry", %{
+      run_dir: run_dir
+    } do
+      write_binding!(run_dir, %{})
+      System.put_env("BENCH_RUN_DIR", run_dir)
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "pi",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
+                   %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+                 end,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      [entry] = OrchestrationLoop.get_telemetry().per_role["developer-static"]
+
+      assert entry.dispatch == %{
+               harness: "pi",
+               model: "openai-codex/gpt-5.6-terra",
+               effort: "high"
+             }
     end
   end
 
@@ -3010,6 +3308,78 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # initial call (no escalation, not a rework retry) + one rework retry
       # (the final allowed attempt -> escalated).
       assert Agent.get(seen_ctx_agent, & &1) == [nil, {"opus", "high"}]
+    end
+
+    test "role-model-sweep fixed binding suppresses give-up-boundary escalation — ctx.escalated_model stays nil on the final retry",
+         %{calls_agent: calls_agent} do
+      run_dir = Path.join(System.tmp_dir!(), "rms_escalate_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(run_dir)
+      on_exit(fn -> File.rm_rf!(run_dir) end)
+
+      binding = %{
+        "schema_version" => 1,
+        "campaign_id" => "camp-1",
+        "arm" => "baseline",
+        "role" => "developer-static",
+        "stack" => "static",
+        "harness" => "claude_code",
+        "model" => "sonnet",
+        "effort" => "medium",
+        "source_sha" => "deadbeef",
+        "fixed" => true
+      }
+
+      File.write!(Path.join(run_dir, "role-model-binding.json"), Jason.encode!(binding))
+      System.put_env("BENCH_RUN_DIR", run_dir)
+      Process.delete(:role_model_sweep_binding)
+
+      on_exit(fn ->
+        System.delete_env("BENCH_RUN_DIR")
+        Process.delete(:role_model_sweep_binding)
+      end)
+
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          escalated = get_in(ctx, [:artifacts, :escalated_model])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [escalated] end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      resolve_escalation_fn = fn "developer-static", _harness -> {"opus", "high"} end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 # Pins harness resolution to match the binding file's
+                 # "harness" ("claude_code") independent of config.yaml's
+                 # live per-role override (developer-static currently
+                 # forces "pi") — this test asserts the SUPPRESSION
+                 # contract, not config.yaml's current routing.
+                 resolve_harness_fn: fn _role, build_harness -> build_harness end,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 resolve_escalation_fn: resolve_escalation_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      # Fixed binding present for developer-static -> escalation suppressed
+      # on every attempt, including the final one.
+      assert Agent.get(seen_ctx_agent, & &1) == [nil, nil]
     end
 
     test "count-bound path: escalation resolution uses the per-role resolve_harness_fn override, not the build harness",

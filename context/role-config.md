@@ -87,6 +87,14 @@ migrating other roles to Pi — every other role's harness stays whatever the bu
 Cross-provider fallback rungs (an Anthropic model on a Pi/openai-codex role or vice versa) are
 explicitly OUT OF SCOPE for the current `fallback:` mechanism — tracked separately, not yet built.
 
+**Both mechanisms are suppressed under a `RoleModelSweep` campaign's fixed binding** (see
+`context/loop.md` § Fixed Campaign Binding and `context/test-benchmarking.md` § Role-Model-Binding
+Campaigns) — a campaign arm pins one role's harness/model/effort for the whole build so a stuck
+pinned role reports its arm `INCONCLUSIVE` rather than silently escalating or walking the fallback
+chain to a DIFFERENT binding than the one under test. This suppression is scoped to the one
+`{role, harness}` pair the active campaign names; every other role's escalation/fallback behaves
+exactly as described above, unaffected.
+
 ## Pi Provider Selection — Inferred from Model Prefix, Never `--provider`
 
 Pi ships ~34 providers and resolves the provider FROM the `<provider>/` prefix on `--model` — no
@@ -114,4 +122,4 @@ role's grant.
 
 ## Trigger Keywords
 
-config.yaml, role model mapping, escalate_model, escalate_effort, fallback rung, switch_model_reason, cross-provider fallback, tool_map, RoleResolver, per-role effort, harness block, load-role.sh, thinking_tokens, ROLE_THINKING_TOKENS, MAX_THINKING_TOKENS
+config.yaml, role model mapping, escalate_model, escalate_effort, fallback rung, switch_model_reason, cross-provider fallback, tool_map, RoleResolver, per-role effort, harness block, load-role.sh, thinking_tokens, ROLE_THINKING_TOKENS, MAX_THINKING_TOKENS, role-model-sweep, fixed binding suppression, campaign arm

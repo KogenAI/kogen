@@ -2,6 +2,29 @@
 
 Node helpers for benchmark artifact capture.
 
+## Role-Model-Binding Campaigns
+
+`mix codegen.bench.role_model_sweep` (run from `test_harness/`) is a
+SEPARATE campaign from `make bench` above — it holds ONE build role's
+harness/model/effort fixed across a generated baseline arm and one or more
+operator-supplied candidate arms, on ONE live-build workload file, across
+repeated repetitions, and writes objective (pass-rate / cost / duration)
+comparison evidence to `codegen/benchmarks/<ts>-role-model-<role>/`. See
+`CodegenTestHarness.RoleModelSweep` moduledoc for the full campaign-matrix
+contract and `mix help codegen.bench.role_model_sweep` for CLI usage.
+
+```sh
+cd test_harness
+mix codegen.bench.role_model_sweep --matrix ../campaign.yaml --reason "developer-static candidates" --validate-only
+mix codegen.bench.role_model_sweep --matrix ../campaign.yaml --reason "developer-static candidates"
+```
+
+`--validate-only` runs every no-spend preflight check and prints the
+resolved baseline + planned schedule; it never spawns a child build. Agents
+may run this form; the paid form (without `--validate-only`) is
+operator-only. The task NEVER edits `templates/generator/config.yaml` or
+selects a "winner" — it produces evidence for manual operator review.
+
 ## Summary
 
 `summarize.js` reads every `runs/<harness>/<stack>/*.jsonl` file, finds the `harness_summary` line in each, aggregates cost / tokens / duration / turns / pass-rate and screenshot counts, then writes `<BENCH_RUN_DIR>/summary.md`.

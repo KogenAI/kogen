@@ -101,6 +101,58 @@ Runs automatically at the end of `make bench` (after `summarize.js` writes `summ
 
 **Path note**: `@baseline_path` in the mix task is a compile-time-resolved path anchored to the module's own `__DIR__` (`test_harness/lib/mix/tasks/`) — it always resolves to the real, committed `test_harness/perf_baseline.json`, never test-injectable. Hermetic tests exercise the task against that real file with fixture JSONL run dirs; see `test_harness/test/mix/tasks/codegen_bench_check_regression_test.exs`.
 
+## Role-Model-Binding Campaigns — `mix codegen.bench.role_model_sweep`
+
+A SEPARATE campaign from `make bench` above. `CodegenTestHarness.RoleModelSweep` +
+`Mix.Tasks.Codegen.Bench.RoleModelSweep` hold ONE build role's harness/model/effort
+FIXED across a generated baseline arm (the role's CURRENT effective binding, resolved
+via `RoleResolver.resolve_harness/2` → `resolve_role/2` — never hand-authored) and one
+or more operator-supplied candidate arms, run the SAME live-build workload file
+repeatedly (min 3 repetitions), and write objective pass-rate/cost/duration comparison
+evidence to `codegen/benchmarks/<ts>-role-model-<role>/evidence.{json,md}`.
+
+**Binding transport**: for each scheduled arm × repetition, the runner writes
+`<repetition_run_dir>/role-model-binding.json` — `OrchestrationLoop.resolve_fixed_binding/2`
+reads it from `BENCH_RUN_DIR` (same channel `Fixtures` already reads for screenshot/JSONL
+capture) and pins the target role's binding for that ONE child `mix test` invocation only.
+A present-but-invalid binding file raises BEFORE the first role runs; absent file (no
+`BENCH_RUN_DIR`, or no file there) is ordinary unchanged build behavior for every role.
+Pinning suppresses BOTH give-up-boundary escalation (`maybe_escalate_model/5`) and the
+`switch_model` fallback chain (`handle_switch_model_failure/7`) for the target role —
+a stuck pinned role reports its arm `INCONCLUSIVE` rather than silently measuring a
+DIFFERENT (stronger or fallback) tier than the one the campaign requested.
+
+**Dispatch provenance**: `OrchestrationLoop.accumulate_telemetry/3` carries the ACTUAL
+requested `{harness, model, effort}` for every invocation into an additive `dispatches`
+list on the terminal `per_role.<role>` telemetry entry (`emit_loop_telemetry/1`); every
+pre-existing key stays byte-identical. `UsageParser.parse_dispatches/1` reads this list
+from raw `codegen-build` stdout (the loop's own terminal `{"type":"result","engine":
+"elixir_loop",...}` line — harness-agnostic, unlike `parse_per_role/3`'s Claude-vs-Pi
+split) so a repetition's classification can assert the role's dispatched tuple actually
+MATCHES the arm's requested tuple before counting it complete.
+
+**Verdict**: `VIABLE` (pass rate no worse than baseline; median cost/duration within
+matrix `tolerances`), `REJECTED` (complete evidence, one threshold worse), or
+`INCONCLUSIVE` (provider/model unavailable, crash without summary, source SHA drift,
+mixed/missing dispatch identity, incomplete repetitions). Baseline itself must complete
+every repetition green before any candidate counts; a baseline abort stops the campaign.
+
+**KEEP-ADVISORY**: the module/task NEVER edits `templates/generator/config.yaml` and
+NEVER selects a "winner" — `evidence.md` links every artifact and states manual review
+is required before a human operator separately shapes a binding change.
+
+```sh
+cd test_harness
+mix codegen.bench.role_model_sweep --matrix ../campaign.yaml --reason "developer-static candidates" --validate-only
+mix codegen.bench.role_model_sweep --matrix ../campaign.yaml --reason "developer-static candidates"
+```
+
+`--validate-only` runs every no-spend preflight check (matrix validation, clean root
+worktree, `yq`/tool resolution, baseline resolution) and prints the resolved baseline +
+cyclic arm/repetition schedule, then exits BEFORE any child `mix test` spawns — agents
+may run this form. The paid form (without `--validate-only`) joins the same agent
+prohibition as `BENCH=1` above — operator-only.
+
 ## Trigger Keywords
 
-BENCH=1, REASON, benchmark capture, screenshot, bench artifacts, mix codegen.bench, summarize.js, JSONL harness_summary, last_green.json coexistence, playwright, agent prohibition, make bench, make test-stacks BENCH, human-operator discretion, benchmark-coverage, makefile-targets, bench-prereqs, bench-preflight, spend-free gate, zero-model check
+BENCH=1, REASON, benchmark capture, screenshot, bench artifacts, mix codegen.bench, summarize.js, JSONL harness_summary, last_green.json coexistence, playwright, agent prohibition, make bench, make test-stacks BENCH, human-operator discretion, benchmark-coverage, makefile-targets, bench-prereqs, bench-preflight, spend-free gate, zero-model check, role-model-sweep, role-model-binding, candidate model, binding campaign, fixed binding, dispatch provenance, campaign matrix, role_model_sweep

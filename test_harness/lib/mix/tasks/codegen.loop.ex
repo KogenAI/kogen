@@ -288,7 +288,15 @@ defmodule Mix.Tasks.Codegen.Loop do
             end
           )
 
-        {role, Map.put(summed, :calls, length(entries))}
+        # Additive: each entry's `dispatch` (harness/model/effort actually
+        # requested for that invocation — see
+        # `OrchestrationLoop.accumulate_telemetry/3`) is projected here as an
+        # ORDERED list, one per call, in the order they were made. Every
+        # existing key above (cost_usd, tokens, calls, ...) is untouched —
+        # this is a new key on the same map, never a replacement.
+        dispatches = Enum.map(entries, & &1.dispatch)
+
+        {role, summed |> Map.put(:calls, length(entries)) |> Map.put(:dispatches, dispatches)}
       end)
 
     line =
