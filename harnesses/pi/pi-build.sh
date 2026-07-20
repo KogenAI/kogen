@@ -51,6 +51,11 @@ if [[ "$_has_queue_flag" -eq 1 ]]; then
         exit 2
     fi
     cd "$CODEGEN_DIR/test_harness"
+    # Own build root: the drain is long-lived and must never share a Mix
+    # build path with a child it spawns via codegen.loop — a child
+    # recompiling engine source would otherwise yank beams out from under
+    # the drain's own lazily-loaded modules (UndefinedFunctionError).
+    export MIX_BUILD_PATH=_build/drain
     _QUEUE_ARGS=(mix codegen.loop.queue --harness=pi --stack="${STACK:-phoenix}" --cwd="$_QUEUE_CWD")
     if [[ "$_has_watch_flag" -eq 1 ]]; then
         _QUEUE_ARGS+=(--watch)

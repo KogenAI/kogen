@@ -2358,7 +2358,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       # queue.lock file — see acquire above); this per-pitch codegen-build
       # child's OrchestrationLoop.run/1 must NOT re-acquire it, or every
       # queued pitch would immediately refuse against its own parent's lock.
-      {~c"CODEGEN_BUILD_LOCK_HELD", ~c"1"}
+      {~c"CODEGEN_BUILD_LOCK_HELD", ~c"1"},
+      # Port.open env is ADDITIVE to the inherited environment — without an
+      # explicit clear, this child would inherit the drain's own
+      # MIX_BUILD_PATH=_build/drain (set by claude-build.sh/pi-build.sh's
+      # --queue leg) and recompile the drain's own beams out from under it.
+      # `false` removes the variable entirely so dispatch.sh's own
+      # MIX_BUILD_PATH=_build/loop assignment governs instead.
+      {~c"MIX_BUILD_PATH", false}
     ]
 
     budget_secs = pitch_budget_from_env()

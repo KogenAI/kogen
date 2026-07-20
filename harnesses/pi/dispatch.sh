@@ -102,6 +102,7 @@ env \
     -u OPENAI_API_KEY \
     -u ANTHROPIC_API_KEY \
     -u CURSOR_API_KEY \
+    MIX_BUILD_PATH=_build/loop \
     bash -c 'cd "$1" && _loop_argv=(mix codegen.loop --harness=pi "--stack=$2" "--cwd=$3")
         if [[ -n "$5" ]]; then _loop_argv+=("--fallback-model=$5"); fi
         if [[ -n "$6" ]]; then _loop_argv+=("--max-budget-usd=$6"); fi

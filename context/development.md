@@ -54,6 +54,19 @@ One-liner per target — for test target semantics see `context/test-harness.md`
 
 **`prompt-size-budget` gate**: `make test` includes a `prompt-size-budget` target that runs `templates/generator/prompt_size_budget.py --check` — measures every `shared/rules/{_core,roles,stacks}/**/*.md` file's line count AND every `shared/subagents/{shared,phoenix,static}/*.md.j2` rendered agent prompt's byte size (rendered fresh from repo source, same invocation shape as `generate.sh`'s claude subagent loop — no dependency on `~/.claude` or a prior `make install`), and fails when either exceeds its committed ceiling in `templates/generator/prompt-budgets.txt`. Unlike the STYLE_GUIDE.md targets (`_core` <50 lines, `roles`/`stacks` <150 lines, advisory only), this gate freezes CURRENT measured size as a hard ceiling — several files already exceed the STYLE_GUIDE target as pre-existing scar tissue, so the gate does not retroactively fail on that debt; it fails only on further growth past the committed baseline. `prompt-budgets.txt` is operator-owned: the `prompt-budget-writer-only` hook denies every agent write path to it (Edit/Write/MultiEdit, the `--write` flag, Bash write-vocab), for every role including the orchestrator. A red verdict means shrink the file or evict its lowest-value content and name what was evicted — never raise the cap. A red verdict routes to the context-curator's `retire`/compact action (`shared/rules/roles/context-curator.md` § Retire / Compact Action).
 
+**Mix build-path assignment**: every long-lived or child-spawning Mix invocation in this repo gets its own `MIX_BUILD_PATH` so a self-build recompiling engine source (`test_harness/lib/`) can never yank beams out from under a still-running parent — Elixir loads modules lazily, so two processes sharing one `_build/*` root is a live `UndefinedFunctionError` hazard, not a theoretical one.
+
+| Process                                                   | Build path                | Set by                                                        |
+| ----------------------------------------------------------- | -------------------------- | --------------------------------------------------------------- |
+| drain, long-lived (`claude-build.sh --queue` / pi twin)      | `_build/drain`             | `claude-build.sh`/`pi-build.sh` `--queue` leg (`export`)         |
+| per-pitch loop child (`dispatch.sh` both twins)              | `_build/loop`              | `dispatch.sh`'s `env \` wrapper around `mix codegen.loop`        |
+| dev-gate (`make test`, `make test-stacks`)                   | `_build/claude_test` etc.   | Makefile targets directly                                      |
+| harness/parity/pi tests                                     | own dedicated paths        | Makefile targets directly                                      |
+| `mix codegen.pitches.scope` (`codegen-drain assign`)          | `_build/pitch_scope_parity` | `codegen-drain` (matches the `pitch-scope-parity` Makefile target) |
+| ad-hoc `mix compile` / `iex -S mix`                          | `_build/dev`                | unset — Mix default                                             |
+
+Invariant: no long-lived process shares a build path with anything that recompiles it. The drain's per-pitch spawn (`LoopQueueDrain.default_spawn_fn/5`) explicitly clears `MIX_BUILD_PATH` in the `Port.open` env list (`{~c"MIX_BUILD_PATH", false}`) rather than relying on non-inheritance — `Port.open` env is ADDITIVE to the inherited environment, so an unset child would otherwise silently inherit the drain's own `_build/drain` and recompile it.
+
 ## Environment Configuration
 
 | Variable             | Purpose                      | Notes                                                                                                                                                                                                                                                                      |

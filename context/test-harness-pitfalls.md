@@ -24,6 +24,7 @@ proof patterns, PATH-stub, `git show HEAD` pre-fix fixtures) live in
 - **Parallel build-path isolation**: When running multiple independent test suites concurrently (e.g., `-j2` for `test-stacks-claude` and `test-stacks-pi`), each test harness must use a distinct `MIX_BUILD_PATH` to avoid BEAM artifact clobbering. Example: parity test uses `MIX_BUILD_PATH=_build/parity_test`, separate from the default `_build/claude_test` and `_build/pi_test` used by the per-harness stack suites.
 - **Build path isolation**: Tests using `mix` with non-default `MIX_BUILD_PATH=_build/pi_test` (pi tests) require recompilation of fixture-modified files under BOTH the default and custom build paths. A stale `_build/pi_test` still serves old BEAM bytecode after fixture changes until that tree is recompiled. Solution: run `mix compile` after fixture code edits without the env var, then again with the env var set.
 - **Arity + BEAM**: Functions defined with default args (e.g., `def f(opts \\ [])`) export both arity-0 and arity-1 in BEAM. A stale `.beam` under a non-default build path silently serves old signatures until recompilation.
+- **Engine build isolation (self-build vs live parent)**: the drain (`mix codegen.loop.queue`) and every per-pitch loop child (`mix codegen.loop`) recompile `test_harness/lib/` on demand. Before per-purpose `MIX_BUILD_PATH` assignment, both shared the default `_build/dev` — a self-build editing engine source recompiled the shared root WHILE a still-running parent process was lazily loading beams from it, surfacing as `UndefinedFunctionError` naming modules the diff never touched (phantom failures unrelated to the actual change). Fix: drain=`_build/drain`, per-pitch loop child=`_build/loop` (see `context/development.md` § Mix build-path assignment for the full table). The spawn boundary (`LoopQueueDrain.default_spawn_fn/5`) must actively CLEAR `MIX_BUILD_PATH` in its `Port.open` env list (`{~c"MIX_BUILD_PATH", false}`) rather than rely on non-inheritance — `Port.open`'s env is ADDITIVE to the inherited environment, so an unset child silently inherits the parent's build path and recompiles it.
 
 ## Flake Triage & Race Pitfalls
 
@@ -57,7 +58,7 @@ Check for pre-existing assertions by RUNNING the full test file (not just the ne
 
 ## Trigger Keywords
 
-test harness pitfall, exunit fixture, seam override, flake triage, ecto timestamp, port env charlist, npm extension race, role resolver ripple, seam threading, build path isolation, mix build path, arity beam stale, capture_io return value, exit-code assertion, state-machine exit constant, test refactoring state change
+test harness pitfall, exunit fixture, seam override, flake triage, ecto timestamp, port env charlist, npm extension race, role resolver ripple, seam threading, build path isolation, mix build path, arity beam stale, capture_io return value, exit-code assertion, state-machine exit constant, test refactoring state change, engine build isolation, spawn env clear, UndefinedFunctionError phantom
 
 ## Update When Changing
 

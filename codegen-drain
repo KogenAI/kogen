@@ -49,7 +49,7 @@
 #   CODEGEN_DRAIN_SCOPE_CMD   override for the `mix codegen.pitches.scope`
 #                              invocation `assign --auto` shells out to
 #                              (default: `cd "$CWD/test_harness" &&
-#                              MIX_BUILD_PATH=_build/claude_test mix
+#                              MIX_BUILD_PATH=_build/pitch_scope_parity mix
 #                              codegen.pitches.scope --dir=ready --cwd="$CWD"
 #                              --lanes=<N> --json`). Hermetic hook tests set
 #                              this to a stub emitting canned JSON so no real
@@ -472,7 +472,7 @@ cmd_assign_auto() {
             exit 1
         }
     else
-        json_out="$(cd "$CWD/test_harness" && MIX_BUILD_PATH=_build/claude_test mix codegen.pitches.scope --dir=ready --cwd="$CWD" --lanes="$lane_count" --json)" || {
+        json_out="$(cd "$CWD/test_harness" && MIX_BUILD_PATH=_build/pitch_scope_parity mix codegen.pitches.scope --dir=ready --cwd="$CWD" --lanes="$lane_count" --json)" || {
             printf 'codegen-drain assign --auto: mix codegen.pitches.scope failed\n' >&2
             exit 1
         }

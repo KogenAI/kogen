@@ -93,12 +93,14 @@ make_ws() {
 }
 
 # make_mix_stub_dir <name> — PATH dir with a `mix` stub echoing argv to
-# $dir/mix_capture.txt.
+# $dir/mix_capture.txt AND recording MIX_BUILD_PATH to $dir/mix_env.txt —
+# the isolation invariant (drain=_build/drain, per-pitch loop=_build/loop)
+# is otherwise unguarded (the argv-only stub proves nothing about env).
 make_mix_stub_dir() {
     local name="$1"
     local dir="$BASE_TMP/$name"
     mkdir -p "$dir"
-    make_stub "$dir/mix" 'printf '"'"'%s\n'"'"' "$@" > "'"$dir"'/mix_capture.txt"'
+    make_stub "$dir/mix" 'printf '"'"'%s\n'"'"' "$@" > "'"$dir"'/mix_capture.txt"; printf '"'"'MIX_BUILD_PATH=%s\n'"'"' "${MIX_BUILD_PATH:-unset}" > "'"$dir"'/mix_env.txt"'
     echo "$dir"
 }
 
@@ -134,6 +136,10 @@ for entry in "${LAUNCHERS[@]}"; do
         assert_contains "(1:$HARNESS) --harness=$HARNESS passed" "$MIX1C" "--harness=$HARNESS"
         assert_contains "(1:$HARNESS) --stack=phoenix default" "$MIX1C" "--stack=phoenix"
         assert_contains "(1:$HARNESS) --cwd passed" "$MIX1C" "--cwd=$OUT1"
+    fi
+    if [[ -f "$MIXDIR1/mix_env.txt" ]]; then
+        assert_contains "(1:$HARNESS) --queue sets MIX_BUILD_PATH=_build/drain" \
+            "$(cat "$MIXDIR1/mix_env.txt")" "MIX_BUILD_PATH=_build/drain"
     fi
 
     # ── Case 2: CODEGEN_DIR installed-flat — copy launcher, harnesses/ dir present ──
@@ -204,6 +210,10 @@ for entry in "${LAUNCHERS[@]}"; do
         assert_contains "(5:$HARNESS) codegen.loop.queue invoked" "$MIX5C" "codegen.loop.queue"
         assert_contains "(5:$HARNESS) --harness=$HARNESS passed" "$MIX5C" "--harness=$HARNESS"
         assert_contains "(5:$HARNESS) --stack=phoenix default" "$MIX5C" "--stack=phoenix"
+    fi
+    if [[ -f "$MIXDIR5/mix_env.txt" ]]; then
+        assert_contains "(5:$HARNESS) --queue sets MIX_BUILD_PATH=_build/drain" \
+            "$(cat "$MIXDIR5/mix_env.txt")" "MIX_BUILD_PATH=_build/drain"
     fi
 
     # ── Case 7: --queue foo (slug arg) → exit 1 usage error ──
