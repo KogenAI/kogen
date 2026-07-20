@@ -30,6 +30,8 @@ scaffold.sh, eex_render, mutations, AGENTS.md.j2, PROJECT_CONTEXT.md.j2, ocg set
 | `shared/apps/PROJECT_CONTEXT-static-template.md`  | Format reference for static site PROJECT_CONTEXT.md                            |
 | `codegen-scaffold`                                | Top-level launcher — selects stack, delegates to scaffold.sh                   |
 
+Both `PROJECT_CONTEXT-*-template.md` files carry a `## Required Platforms` section (`required_platforms: []` plus a fill-in instruction), placed between `## Overview` and `## Domain Context Files` — the project owner must declare the OS IDs the project actually supports before pitches touching platform-sensitive premises can ship (see `context/shaper-discipline.md` § Completeness Contract for Required-Platform Coverage Pitches). `scaffold_test.sh` asserts the rendered `PROJECT_CONTEXT.md` carries `required_platforms:` for both stacks.
+
 ## Key Paths
 
 ```

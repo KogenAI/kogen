@@ -295,6 +295,20 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL16"
 
+SENTINEL_PLATFORM="REQUIRED-PLATFORM COVERAGE:"
+assert_contains \
+    "required-platform-coverage sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_PLATFORM"
+assert_contains \
+    "required-platform-coverage sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_PLATFORM"
+assert_contains \
+    "required-platform-coverage sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL_PLATFORM"
+
 SENTINEL_DEADCODE="Dead-code retention / soft-deprecation"
 assert_contains \
     "dead-code-retention sentinel in claude-shape-system-prompt.txt" \

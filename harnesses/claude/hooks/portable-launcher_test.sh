@@ -527,6 +527,78 @@ else
     fail=$((fail + 1))
 fi
 
+# ── Test 21: Required Platforms section composes with Always Load / Domain ────
+# Fixture places a new "## Required Platforms" H2 BETWEEN "## Overview" and
+# "## Domain Context Files" — the boundary the pitch commits to. Proves the
+# whole-file append still forwards the field AND both parser-owned sections
+# (Always Load / Domain table) still produce unchanged output, across all four
+# PROJECT_CONTEXT-reading launchers (claude-shape, pi-shape, claude-experiment,
+# pi-experiment).
+T21="$BASE_TMP/t21_required_platforms"
+mkdir -p "$T21/context" "$T21/codegen/pitches/draft"
+cat >"$T21/PROJECT_CONTEXT.md" <<'EOF'
+## Overview
+
+- **What**: fixture project.
+
+## Required Platforms
+
+required_platforms: [darwin, linux]
+
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/harnesses.md` | Harness specifics | claude-shape, dispatch.sh, launcher | harnesses/ |
+| `context/hooks.md` | Hook system | PreToolUse, SubagentStop, hook test | harnesses/*/hooks/ |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T21/context/repo-structure.md"
+printf 'HARNESSES_CONTENT' >"$T21/context/harnesses.md"
+printf 'HOOKS_CONTENT' >"$T21/context/hooks.md"
+printf '## Problem\nNeed to fix dispatch.sh routing logic.\n' >"$T21/codegen/pitches/draft/t21-pitch.md"
+
+run_t21_launcher() {
+    local launcher_src="$1" launcher_name="$2" stub_bin="$3" extra_args="$4"
+    local dst="$T21/$launcher_name"
+    local capture="$BASE_TMP/t21_${launcher_name}_args.txt"
+    local bindir="$BASE_TMP/t21_${launcher_name}_bin"
+    mkdir -p "$bindir"
+    make_stub "$bindir/$stub_bin" "printf '%s\n' \"\$@\" > '$capture'"
+    if command -v yq >/dev/null 2>&1; then
+        ln -s "$(command -v yq)" "$bindir/yq"
+    fi
+    cp "$launcher_src" "$dst"
+    ln -sf "$CODEGEN_ROOT/harnesses" "$T21/harnesses"
+    (cd "$T21" && PATH="$bindir:$PATH" HOME="/tmp/nonexistent_xyz" bash "$launcher_name" $extra_args 2>/dev/null) || true
+    [ -f "$capture" ] && cat "$capture" || true
+}
+
+captured21_claude_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "claude-shape.sh" "claude" "t21-pitch")
+assert_contains "(21) claude-shape: required_platforms reaches args" "required_platforms: [darwin, linux]" "$captured21_claude_shape"
+assert_contains "(21) claude-shape: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_claude_shape"
+assert_contains "(21) claude-shape: matched Domain-table file still forwarded" "HARNESSES_CONTENT" "$captured21_claude_shape"
+assert_not_contains "(21) claude-shape: unmatched Domain-table file not forwarded" "HOOKS_CONTENT" "$captured21_claude_shape"
+
+captured21_pi_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh" "pi-shape.sh" "pi" "t21-pitch")
+assert_contains "(21) pi-shape: required_platforms reaches args" "required_platforms: [darwin, linux]" "$captured21_pi_shape"
+assert_contains "(21) pi-shape: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_pi_shape"
+assert_contains "(21) pi-shape: matched Domain-table file still forwarded" "HARNESSES_CONTENT" "$captured21_pi_shape"
+assert_not_contains "(21) pi-shape: unmatched Domain-table file not forwarded" "HOOKS_CONTENT" "$captured21_pi_shape"
+
+captured21_claude_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-experiment.sh" "claude-experiment.sh" "claude" "")
+assert_contains "(21) claude-experiment: required_platforms reaches args (Tier-0)" "required_platforms: [darwin, linux]" "$captured21_claude_experiment"
+assert_contains "(21) claude-experiment: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_claude_experiment"
+
+captured21_pi_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-experiment.sh" "pi-experiment.sh" "pi" "")
+assert_contains "(21) pi-experiment: required_platforms reaches args (Tier-0)" "required_platforms: [darwin, linux]" "$captured21_pi_experiment"
+assert_contains "(21) pi-experiment: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_pi_experiment"
+
 # ── Results ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

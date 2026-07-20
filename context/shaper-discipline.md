@@ -66,7 +66,7 @@ Removing or changing an operator-typed/seen surface — a CLI flag, subcommand, 
 
 **Resolution**: BLOCKED from SHAPED/ready unless (a) the surface is guaranteed re-wired to the new implementation and enumerated in the external-contract section, OR (b) an `AskUserQuestion` keep-vs-remove fork is resolved by the operator. The shaper may NEVER auto-decide the removal as "internal wiring the new code replaces."
 
-**Coverage**: this rule is enforced at three points — the shape-mode readiness-check scan list (`harnesses/shared/prompt-bodies/shape.txt`, self-contained since shape.txt is baked without `_authoring-spine.txt`), the inline claim-introduction probe (`shared/prompt-fragments/_probing.txt`), and the `/ready` promotion gate (`harnesses/claude/commands/ready.md.j2`). All three carry the byte-identical sentinel title `User-facing surface removal/change without operator sign-off`, asserted by `harnesses/claude/hooks/prompt-content-parity_test.sh`.
+**Coverage**: enforced in `shape.txt` (readiness scan, self-contained without `_authoring-spine.txt`), `_probing.txt` (inline probe), and `ready.md.j2` (promotion gate) — all three carry the sentinel `User-facing surface removal/change without operator sign-off`, asserted by `prompt-content-parity_test.sh`.
 
 ## Answered-Question Memory
 
@@ -202,10 +202,7 @@ When a pitch **adds or strengthens a full-surface deny** that closes an existing
 
 **Distinct from `User-facing surface removal/change`**: that blocker concerns OPERATOR-typed/seen surfaces and requires operator sign-off; this concerns INTERNAL automated actors and their tool-grant reachability, resolved mechanically without asking. Missing per-actor enumeration → blocker.
 
-**Producer/verifier layout**:
-
-- Producers: `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker) + `shared/prompt-fragments/_probing.txt` (inline probe bullet).
-- Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`CAPABILITY-REMOVAL REACHABILITY:`) asserting both baked shape prompts and `/ready` carry the rule.
+**Producer/verifier**: `shape.txt` (blocker) + `_probing.txt` (probe) + `ready.md.j2` (gate) + `prompt-content-parity_test.sh` sentinel (`CAPABILITY-REMOVAL REACHABILITY:`).
 
 **Motivating incident**: `session-log-uniform-across-surfaces` reached SHAPED with an 11-row ledger proving `codegen-log` works, but never checked every role denied `Edit`/`Write`/`MultiEdit` on `codegen/logging/*.md` could reach it — `reviewer-phoenix` lacked `Bash` and was locked out (patched in `aa6ea00`).
 
@@ -250,10 +247,7 @@ Any one of the three missing → blocker.
 
 **Resolution template**: AUTO-RESOLVE (mechanical, never `AskUserQuestion`) — run the mining now: jq-extract `tool_use` Bash commands + `is_error: true` results from `~/.claude/projects/<cwd-slashes-as-dashes>/*.jsonl`, grep `codegen/logging/*_cycle.jsonl`, list `codegen/pitches/{shipped,archive,ready,draft}/` hits — embed all three transcripts in `## References`, then let the evidence inform the decision. Usage history is entirely in-repo; there is no product fork to ask about.
 
-**Producer/verifier layout**:
-
-- Producers: `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker) + `shared/prompt-fragments/_probing.txt` (inline probe bullet).
-- Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`Empirical-usage-grounding`) asserting both baked shape prompts and `/ready` carry the rule.
+**Producer/verifier**: `shape.txt` (blocker) + `_probing.txt` (probe) + `ready.md.j2` (gate) + `prompt-content-parity_test.sh` sentinel (`Empirical-usage-grounding`).
 
 **Distinct from "Unverified empirical claims" / convention-claim verification mode**: that blocker checks whether a _claim_ is source-ENCODED (doc citation + confirming grep of the authoritative source); this blocker checks whether a _design decision_ is _usage-GROUNDED_ (mined from real invocation/failure history). Additive, not redundant — both may apply to the same pitch.
 
@@ -270,6 +264,10 @@ Any one of the three missing → blocker.
 **Resolution**: AUTO-RESOLVE — run the enumeration now; fix any breaking opaque reader (strip/guard/migrate) same change or carve to a tracked draft (Rule J). Ask only if a migration fork.
 
 **Producer/verifier**: `_authoring-spine.txt` + `shape.txt` (blocker+template) + `_probing.txt` (probe) + `ready.md.j2` (gate) + `prompt-content-parity_test.sh` sentinel (`Format/syntax-change consumer completeness`). Incident: pitch-frontmatter `---` broke the loop's opaque `File.read!` whole-pitch reader; fixed by `650941e8` (`strip_frontmatter/1`).
+
+## Completeness Contract for Required-Platform Coverage Pitches
+
+**Invariant**: `PROJECT_CONTEXT.md` § Required Platforms (`required_platforms: [...]`) is the sole support-set source, never host/fleet. **Detection**: perf/filesystem/process/shell/OS-tool claim. **Carve-out**: missing/empty/placeholder declaration blocks (name field), never auto-filled. **Sub-rule**: one matrix row per platform; `N/A` needs a genuine absent-facility reason. **Resolution**: AUTO-RESOLVE matrix; ask only on unexercisable premise. **Producer/verifier**: `shape.txt` + `_probing.txt` + `ready.md.j2` + sentinel `REQUIRED-PLATFORM COVERAGE:`. A one-box gate is never cross-platform evidence.
 
 ## Probe-Completeness — Recursive Ledger to the Leaves
 
@@ -291,7 +289,7 @@ This is a SEPARATE pitch and change, not folded into shape-mode tightening. The 
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rule G, Rule H, Rule I, Rule J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim, empirical-usage-grounding, usage-mining, transcript mining, error taxonomy, prior-pitch corpus, patch-sedimentation, format/syntax-change consumer completeness, opaque reader, whole-artifact reader, reader enumeration, probe-completeness, recursive ledger, second-order claim, sub-surface, leaves
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rules A–J, shape mode discipline, prompt durability, section-name anchors, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, keep-vs-remove fork, contract-declaration-site completeness, declaration-site sweep, cross-cutting contract, declares-teaches bound, capability-removal reachability, deny blast radius, stranded actor, tool-grant reachability, incomplete replacement, replacement completeness, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, absorbs claim, empirical-usage-grounding, usage-mining, transcript mining, error taxonomy, prior-pitch corpus, patch-sedimentation, format/syntax-change consumer completeness, opaque reader, whole-artifact reader, reader enumeration, probe-completeness, recursive ledger, second-order claim, sub-surface, leaves
 
 ## See Also
 

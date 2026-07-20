@@ -7,6 +7,14 @@
 - **Location**: `[app root]`
 - **Stack**: [Vite (vanilla or framework) + Tailwind v4]
 
+## Required Platforms
+
+```yaml
+required_platforms: []
+```
+
+Fill in the platforms this project must run on (unique lowercase OS IDs, e.g. `darwin`, `linux`) — this list must be non-empty before pitches touching platform-sensitive premises can ship.
+
 ## Domain Context Files
 
 Detailed context is split by domain. **Load this index always. Load every row whose trigger matches the user's prompt — files are intentionally small, loading 2-3 is cheap. Cost of a wrong-area read is one row; cost of a missing read is a stale plan. Hard cap: 5 rows — exceeding means the prompt is too broad, ask user to scope.**

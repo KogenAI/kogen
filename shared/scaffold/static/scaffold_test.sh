@@ -350,6 +350,7 @@ mkdir -p "$PROJECT_CONTEXT_CWD"
 assert_file_exists "integrate writes PROJECT_CONTEXT.md" "$PROJECT_CONTEXT_CWD/PROJECT_CONTEXT.md"
 PC_CONTENT="$(cat "$PROJECT_CONTEXT_CWD/PROJECT_CONTEXT.md")"
 assert_contains "PROJECT_CONTEXT.md has location [app root]" "$PC_CONTENT" "[app root]"
+assert_contains "static PROJECT_CONTEXT.md declares required_platforms" "$PC_CONTENT" "required_platforms:"
 
 # (u2) Integrate seeds context/core.md + context/development.md for static stack —
 # the PROJECT_CONTEXT index promises both exist ("always present")
@@ -362,6 +363,8 @@ PC_PHOENIX_CTX_CWD="$BASE_TMP/project_context_phoenix_ctx_test"
 mkdir -p "$PC_PHOENIX_CTX_CWD"
 "$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$PC_PHOENIX_CTX_CWD" --slug=test-pc-phoenix-ctx
 assert_file_exists "phoenix integrate seeds context/development.md" "$PC_PHOENIX_CTX_CWD/context/development.md"
+PHOENIX_PC_CONTENT="$(cat "$PC_PHOENIX_CTX_CWD/PROJECT_CONTEXT.md")"
+assert_contains "phoenix PROJECT_CONTEXT.md declares required_platforms" "$PHOENIX_PC_CONTENT" "required_platforms:"
 if [[ -f "$PC_PHOENIX_CTX_CWD/context/core.md" ]]; then
     printf 'FAIL: phoenix integrate must not seed context/core.md (index never promises it)\n'
     fail=$((fail + 1))
