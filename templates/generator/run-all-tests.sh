@@ -17,6 +17,14 @@
 #
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm)
 # run concurrently via & + wait to reduce wall time.
+#
+# One-owner execution: five harnesses/claude/hooks/*_test.sh files are ALSO
+# invoked directly by harness-parity/prompt-content-parity/tools-header-no-dup
+# below. HOOK_DEDUP_EXCLUDE lists those exact repo-relative paths and is
+# passed as HOOK_TEST_EXCLUDE to the hooks arm ONLY (never exported), so each
+# discovered hook test runs exactly once per `make test`. Standalone
+# `bash harnesses/claude/hooks/run-tests.sh` and `make test-coverage-shell`
+# are untouched and still run the full population.
 set -e
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false
 
@@ -64,7 +72,12 @@ tmp_pitch_scope_parity=$(mktemp)
 pids=()
 labels=()
 tmps=()
-{ ./harnesses/claude/hooks/run-tests.sh; } >"$tmp_hooks" 2>&1 &
+HOOK_DEDUP_EXCLUDE="harnesses/claude/hooks/codegen-build_test.sh
+harnesses/claude/hooks/codegen-call_test.sh
+harnesses/claude/hooks/codegen-propose_test.sh
+harnesses/claude/hooks/prompt-content-parity_test.sh
+harnesses/claude/hooks/tools-header-no-dup_test.sh"
+{ HOOK_TEST_EXCLUDE="$HOOK_DEDUP_EXCLUDE" ./harnesses/claude/hooks/run-tests.sh; } >"$tmp_hooks" 2>&1 &
 pids+=($!)
 labels+=(hooks)
 tmps+=("$tmp_hooks")

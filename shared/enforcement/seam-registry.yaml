@@ -239,3 +239,10 @@ seams:
     guard: harnesses/claude/hooks/codegen-log-corpus_test.sh
     guard_time: make-test
     pattern: set-parity
+
+  - id: hook-test-ownership-to-runner-exclusion
+    declares: Makefile direct hook-test callers (harness-parity, prompt-content-parity, tools-header-no-dup)
+    reflects: templates/generator/run-all-tests.sh HOOK_DEDUP_EXCLUDE -> HOOK_TEST_EXCLUDE consumed by harnesses/claude/hooks/run-tests.sh
+    guard: templates/generator/run-all-tests_test.sh
+    guard_time: make-test
+    pattern: set-parity

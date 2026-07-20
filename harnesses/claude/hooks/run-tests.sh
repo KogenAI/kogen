@@ -4,6 +4,15 @@
 # Each test script is hermetic (own tmp dirs, no shared global state), so xargs
 # -P parallelism is safe. Job count caps at 8 to avoid thrashing on smaller
 # machines.
+#
+# Ownership: standalone invocation (no HOOK_TEST_EXCLUDE) always runs the FULL
+# discovered population — used by direct diagnostic calls (`bash run-tests.sh`)
+# and by `make test-coverage-shell`, which instruments every hook file.
+# The aggregate `make test` runner (templates/generator/run-all-tests.sh) sets
+# HOOK_TEST_EXCLUDE to a newline-delimited list of exact repo-relative paths
+# (rooted at harnesses/claude/hooks/) already owned by a direct Makefile
+# caller (harness-parity, prompt-content-parity, tools-header-no-dup), so each
+# discovered test executes exactly once per `make test` run instead of twice.
 
 set -u
 
@@ -108,8 +117,25 @@ fi
 # the REAL installed codegen-build instead of the test stub.
 unset CODEGEN_BUILD_START_TS OCG_CODEGEN_DIR
 
+# Exact-path exclusion filter, folded into the discovery stage so the
+# find|xargs pipeline stays two-stage (PIPESTATUS[1] below still indexes
+# xargs). Normalizes each discovered file to "harnesses/claude/hooks/<name>"
+# (never a relpath against $PWD — see bash-discipline § symlink portability)
+# and drops any exact match against HOOK_TEST_EXCLUDE. Unset/empty ->
+# no-op, byte-for-byte today's full-discovery behavior.
+_discover_hook_tests() {
+    local f rel
+    while IFS= read -r -d '' f; do
+        rel="harnesses/claude/hooks/$(basename "$f")"
+        if [ -n "${HOOK_TEST_EXCLUDE:-}" ] && printf '%s\n' "$HOOK_TEST_EXCLUDE" | grep -qxF "$rel"; then
+            continue
+        fi
+        printf '%s\0' "$f"
+    done < <(find "$HOOKS_DIR" -name '*_test.sh' -type f -print0)
+}
+
 set +e
-find "$HOOKS_DIR" -name '*_test.sh' -type f -print0 |
+_discover_hook_tests |
     xargs -0 -n1 -P"$JOBS" -I{} bash -c 'run_one "$@"' _ {}
 _xargs_rc=${PIPESTATUS[1]}
 set -e

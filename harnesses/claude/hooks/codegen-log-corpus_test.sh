@@ -175,8 +175,8 @@ assert "sync materializes both canonical logs" "2" "$(find "$SYNCWORK/codegen/lo
 assert "sync does NOT materialize the hostile evil.txt entry" "0" "$([ -f "$SYNCWORK/codegen/logging/evil.txt" ] && echo 1 || echo 0)"
 
 # ── Test 8: sync stamps mtime from the filename, not "now" ─────────────────
-mtime_epoch="$(stat -c '%Y' "$SYNCWORK/codegen/logging/20260715_230435_close-the-learning-loop_cycle.jsonl" 2>/dev/null \
-    || stat -f '%m' "$SYNCWORK/codegen/logging/20260715_230435_close-the-learning-loop_cycle.jsonl" 2>/dev/null)"
+mtime_epoch="$(stat -c '%Y' "$SYNCWORK/codegen/logging/20260715_230435_close-the-learning-loop_cycle.jsonl" 2>/dev/null ||
+    stat -f '%m' "$SYNCWORK/codegen/logging/20260715_230435_close-the-learning-loop_cycle.jsonl" 2>/dev/null)"
 expected_epoch="$(date -d '2026-07-15 23:04:35' +%s 2>/dev/null || date -j -f '%Y-%m-%d %H:%M:%S' '2026-07-15 23:04:35' +%s 2>/dev/null)"
 assert "synced log's mtime matches its filename stamp, not now" "$expected_epoch" "$mtime_epoch"
 

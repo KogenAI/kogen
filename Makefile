@@ -215,6 +215,11 @@ ci: test
 # Job count caps at 8 to avoid thrashing on smaller machines.
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
+# One-owner execution: five hook tests owned by harness-parity/prompt-content-parity/
+# tools-header-no-dup are excluded from the backgrounded hooks-arm run (see
+# run-all-tests.sh HOOK_DEDUP_EXCLUDE) so each discovered hook test runs exactly
+# once per `make test`. Standalone `bash harnesses/claude/hooks/run-tests.sh`
+# still runs the full population.
 .PHONY: test
 test:
 	@bash "$(SCRIPT_DIR)/templates/generator/run-all-tests.sh"

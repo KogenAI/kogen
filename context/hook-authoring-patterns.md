@@ -29,7 +29,7 @@ See `context/launcher-hook-matrix.md` for a table of per-hook bypass and fail-op
 
 `developer-no-self-gate.sh` tracks developer CI invocations per session via counter file (`/tmp/<sentinel>-self-gate-${session_id}.count`). Counted: `mix test`, `mix format`, `make ci`, `make test`. Bare `mix credo` (not combined with test/ci) is EXEMPT. Cap is MODE-DEPENDENT: legacy (non-loop) 3; under the Elixir loop (`CODEGEN_LOOP=1`) progress-bounded, hard ceiling 15. At the cap, further attempts are denied — hand off to orchestrator. Plan CI invocations strategically; running `make test` or `make hook-parity` repeatedly burns the budget.
 
-**Authoring rule — a denial states the rule it enforced.** A deny message that announces only a verdict ("hard ceiling reached") without naming the counted set, any exemption, or the ceiling that actually fired forces the agent to re-derive scope from source, and any wrong guess becomes a durably wrong `--learned` entry. Every hand-authored deny message MUST name: (1) what's counted, (2) what's exempt, (3) which ceiling fired. A parity test should derive the counted set from the matcher's own source (never a hardcoded list in the test) and assert each capped command is named in the message — see `developer-no-self-gate-message-parity_test.sh` for the pattern.
+**Authoring rule — a denial states the rule it enforced.** A bare-verdict deny ("hard ceiling reached") with no counted set/exemption/ceiling forces re-derivation from source → wrong guesses become durably wrong `--learned` entries. Every deny message MUST name: (1) what's counted, (2) what's exempt, (3) which ceiling fired. Parity test derives the counted set from matcher source (never hardcoded) — see `developer-no-self-gate-message-parity_test.sh`.
 
 ## Resolver Hoisting & Self-Describing Counter Pattern
 
@@ -54,7 +54,7 @@ Example: `curator-format.sh` (runs `make format` on markdown edits by context-cu
 
 ## Hook Test Authoring Patterns
 
-New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` — they run automatically as part of `make test`'s `hooks` stage. When a hook test is also registered as a named Makefile target (e.g., `prompt-content-parity`), the test runs **twice** per `make test` cycle (auto-discovery + explicit prerequisite) — idempotent, not a defect.
+New bash hook tests (`*_test.sh`) are auto-discovered by `run-tests.sh` — zero wiring, runs automatically in `make test`'s `hooks` stage. If a test is ALSO a named direct Makefile target (e.g. `prompt-content-parity`), it must have exactly ONE owner: add its path to `HOOK_DEDUP_EXCLUDE` in `run-all-tests.sh` (threads to `HOOK_TEST_EXCLUDE`, dropping it from auto-discovery that run). `run-all-tests_test.sh` asserts the set-equality and fails on drift. Standalone `run-tests.sh` (var unset) still runs the full population.
 
 ### Test Helper Functions — Assertion Patterns & BSD Compatibility
 
