@@ -174,6 +174,29 @@ else
     SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","CLAUDE_AFK_TIMEOUT_MS":"86400000"}}'
 fi
 
+# Idle monitor: interactive-only, advisory. Snapshot existing transcript
+# basenames in this session's project dir, then fork a detached liveness
+# monitor BEFORE exec — $$ survives exec and becomes the REPL's PID. Every
+# step fail-open (|| true): under set -euo pipefail a missing project dir
+# must never abort the launcher. See harnesses/shared/shape-idle-monitor.sh.
+if [[ -z "${CLAUDE_NONINTERACTIVE:-}" ]]; then
+    _shape_watch_pid=$$
+    _proj_slug="${PWD//\//-}"
+    _proj_dir="$HOME/.claude/projects/$_proj_slug"
+    _snap="$(mktemp 2>/dev/null)" || _snap=""
+    if [[ -n "$_snap" && -d "$_proj_dir" ]]; then
+        (
+            for _f in "$_proj_dir"/*.jsonl; do
+                [[ -e "$_f" ]] || continue
+                basename "$_f"
+            done >"$_snap"
+        ) || true
+    fi
+    if [[ -n "$_snap" ]]; then
+        bash "$CODEGEN_DIR/harnesses/shared/shape-idle-monitor.sh" "$_shape_watch_pid" "$_proj_dir" "$_snap" >/dev/null 2>&1 &
+    fi
+fi
+
 # Cold-start: no args → open conversation directly, model asks "What problem are you trying to solve?"
 if [[ $# -eq 0 ]]; then
     exec claude \

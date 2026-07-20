@@ -161,13 +161,15 @@ Claude Code supports a `--settings` JSON flag that provides a command-line scope
 
 **Use case — thinking tokens**: Shape/debug override via `--settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}'` in `claude-shape.sh`/`claude-debug.sh`. Changes need `make install`. Build scripts needing custom budgets use `--settings`, not `env` or config.yaml overrides.
 
-**Use case — AFK timeout**: Interactive-only launchers (shape/debug/experiment/ops) gate `CLAUDE_AFK_TIMEOUT_MS=86400000` on `[[ -z "${CLAUDE_NONINTERACTIVE:-}" ]]` to keep AskUserQuestion dialogs open 24h instead of auto-continuing at 60s. Each launcher computes `SETTINGS_JSON` or `SETTINGS_FLAGS` after the NON_INTERACTIVE_FLAGS block: interactive branch adds the AFK key; headless branch omits it or uses the unchanged object. `--settings` merges key-by-key with `~/.claude/settings.json` (probe #3 in async validation). Headless/build paths keep the 60s Claude Code default — setting must NOT appear in global `~/.claude/settings.json` (no-go constraint: unattended AskUserQuestion would hang 24h).
+**Use case — AFK timeout**: Interactive-only launchers (shape/debug/experiment/ops) gate `CLAUDE_AFK_TIMEOUT_MS=86400000` on `[[ -z "${CLAUDE_NONINTERACTIVE:-}" ]]` to keep AskUserQuestion dialogs open 24h vs auto-continuing at 60s. Interactive branch adds the AFK key to `SETTINGS_JSON`; headless omits it. `--settings` merges key-by-key with `~/.claude/settings.json`. Headless/build paths keep the 60s default — must NOT appear in global settings (unattended AskUserQuestion would hang 24h).
+
+**Use case — idle-session monitor**: same branch also forks `harnesses/shared/shape-idle-monitor.sh` pre-`exec` (`$$` survives `exec` → REPL PID). Binds to its transcript via set-diff vs a pre-exec snapshot; ambiguous (0/≥2 new `*.jsonl`) → fail-silent forever. Polls ~30s: dead PID → self-exit; frozen past `CODEGEN_SHAPE_IDLE_WARN_SECS` (default 600s) + last entry ≠ `assistant` → one bell+banner on REPL tty, re-arms on progress. Warn-only; `CODEGEN_SHAPE_IDLE_KILL=1` opts into SIGTERM. Fail-open/silent on any error. Headless: none of this.
 
 ## Session Log Protocol
 
-The loop creates the cycle log via `codegen-log init --slug <slug> --stamp <ts>` BEFORE delegating to any subagent (planner, developer, reviewer, etc.) — passing its own already-minted `stamp` (the same one naming the run's `cycle_id`/transcript dir), so the log stem equals `cycle_id` and a retry of the same slug mints its own log rather than adopting a predecessor's. The log is append-only JSONL, not markdown — there are no `## <agent_type> Section` headers to pre-create and no header-boundary scan. Each role writes its own body via `codegen-log section <role> --slug <slug>` (piping the body via stdin), appending a `{"ev":"role","role":<role>,"body":<prose>}` event.
+The loop creates the cycle log via `codegen-log init --slug <slug> --stamp <ts>` BEFORE delegating to any subagent — passing its own already-minted `stamp` (naming the run's `cycle_id`/transcript dir), so the log stem equals `cycle_id` and a retry of the same slug mints its own log. Append-only JSONL, not markdown — no header-boundary scan. Each role writes via `codegen-log section <role> --slug <slug>` (stdin body), appending `{"ev":"role","role":<role>,"body":<prose>}`. Full contract: `shared/rules/_core/session-log.md`.
 
-Retrospective capture works the same way: `role-retrospective-before-stop.sh` (Claude: blocking `Stop` hook; Pi: observe-only `session_shutdown` twin) asserts the stopping role's log carries both a non-empty `ev:role` body and a non-trivial `ev:learned` event for that role — via the reader selectors in `shared/rules/_core/session-log.md` § Event Schema — not by scanning for markdown section boundaries. `context-curator` and `committer` are not gated by this hook. See `shared/rules/_core/session-log.md` § Ownership and § Enforcement for the full CLI contract.
+Retrospective capture: `role-retrospective-before-stop.sh` (Claude: blocking `Stop`; Pi: observe-only `session_shutdown` twin) asserts the stopping role's log carries a non-empty `ev:role` body plus `ev:learned`/`ev:no_learning` — via reader selectors, not markdown scanning. `context-curator`/`committer` not gated. Full CLI contract: `shared/rules/_core/session-log.md` § Ownership/Enforcement.
 
 ## Worktree Isolation (Native `--worktree`)
 
@@ -192,7 +194,7 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 
 ## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT (Historical)
 
-Build path cutover to the Elixir loop is COMPLETE — `dispatch.sh` unconditionally execs `mix codegen.loop`; no legacy engine, no resumable/non-interactive build flags, no build-mode prompt. Future orchestration refactors: separate EXEC-MECHANICS (session persistence, re-attach, launch order) from SYSTEM-PROMPT-CONTENT (what the prompt tells the agent) before deleting either.
+Cutover COMPLETE (no legacy engine — see above). Future refactors: separate EXEC-MECHANICS (session persistence, re-attach, launch order) from SYSTEM-PROMPT-CONTENT (what the prompt tells the agent) before deleting either.
 
 ## Mode → Declared Context
 
@@ -216,7 +218,7 @@ None of the 7 pi launcher sites (`call-dispatch.sh`, `pi-shape.sh` ×2, `pi-debu
 
 The Claude investigative/supervisory launchers (`claude-shape`, `claude-ops`, `claude-debug`, `claude-babysit`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array. **Important distinction**: investigative launchers deliberately restrict `--setting-sources` to `project` (no user-scope agents/hooks) because they export `CLAUDE_ROLE` and gate the Agent tool to project subagents only. Build dispatch (`codegen-build --non-interactive`) uses `user,project,local` to load the full agent set + user-level gating hooks.
 
-**`CLAUDE_NONINTERACTIVE` branch signal**: same condition `[[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]` also gates interactive-vs-headless `--settings` construction in shape/debug/experiment/ops launchers — headless omits `CLAUDE_AFK_TIMEOUT_MS`, interactive adds it. Co-located to stay synced and prevent accidental 24h hangs on headless builds.
+**`CLAUDE_NONINTERACTIVE` branch signal**: same condition `[[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]` also gates interactive-vs-headless `--settings` construction in shape/debug/experiment/ops launchers — headless omits `CLAUDE_AFK_TIMEOUT_MS`, interactive adds it — and, in `claude-shape.sh` only, whether the idle-session monitor forks at all. Co-located to stay synced and prevent accidental 24h hangs / stray monitors on headless builds.
 
 Shared flags: `--print --verbose --output-format stream-json --strict-mcp-config --no-session-persistence --disable-slash-commands`. Only `--setting-sources` differs: investigative launchers use `project`; build dispatch uses `user,project,local`.
 
