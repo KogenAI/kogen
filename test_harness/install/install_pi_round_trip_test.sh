@@ -67,6 +67,13 @@ export ZSH_COMPLETION_DIRS="$tmp_home/.zsh/completions"
 # Isolate generator output so a concurrently-running sibling install test cannot collide
 # on the shared repo-tracked templates/generated/ dir.
 export OCG_GENERATED_DIR="$tmp_home/generated"
+# Isolate rendered app-doc output so this test never writes tracked
+# shared/apps/*.md bytes in the real repo checkout.
+export OCG_RENDERED_APPS_DIR="$tmp_home/rendered-apps"
+
+# Snapshot tracked shared/apps/ bytes before install so we can assert install
+# never mutates the tracked checkout while rendering into the isolated dir.
+apps_diff_before="$(cd "$CODEGEN_DIR" && git diff --binary --full-index HEAD -- shared/apps)"
 
 # Run install for pi harness only
 if ! "$CODEGEN_DIR/install.sh" --harness=pi </dev/null >"$tmp_home/install.log" 2>&1; then
@@ -74,6 +81,16 @@ if ! "$CODEGEN_DIR/install.sh" --harness=pi </dev/null >"$tmp_home/install.log" 
     fail_lines+=("FAIL: install.sh --harness=pi exited non-zero")
     cat "$tmp_home/install.log" >&2
 fi
+
+apps_diff_after="$(cd "$CODEGEN_DIR" && git diff --binary --full-index HEAD -- shared/apps)"
+assert "install.sh does not mutate tracked shared/apps/ bytes" \
+    '[ "$apps_diff_before" = "$apps_diff_after" ]'
+
+# Assert rendered app docs land in the isolated output dir, not tracked shared/apps/
+assert "AGENTS-phoenix.md rendered to isolated dir" '[ -f "$tmp_home/rendered-apps/AGENTS-phoenix.md" ]'
+assert "AGENTS-static.md rendered to isolated dir" '[ -f "$tmp_home/rendered-apps/AGENTS-static.md" ]'
+assert "CLAUDE-phoenix.md rendered to isolated dir" '[ -f "$tmp_home/rendered-apps/CLAUDE-phoenix.md" ]'
+assert "CLAUDE-static.md rendered to isolated dir" '[ -f "$tmp_home/rendered-apps/CLAUDE-static.md" ]'
 
 # Assert artifacts present
 assert ".ocg/config.json exists" '[ -f "$tmp_home/.ocg/config.json" ]'

@@ -1,5 +1,7 @@
 defmodule Mix.Tasks.Codegen.LoopTest do
-  use ExUnit.Case, async: true
+  # async: false — this module mutates process-global Mix.shell/1, which
+  # races against any other concurrently-running module doing the same.
+  use ExUnit.Case, async: false
 
   alias Mix.Tasks.Codegen.Loop
 

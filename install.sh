@@ -274,8 +274,19 @@ bash "$CODEGEN_DIR/templates/generator/generate.sh" "${HARNESSES[@]}"
 #   claude render → CLAUDE-{variant}.md  (@ auto-load imports; consumed by Claude Code)
 echo ""
 echo "🚀 Rendering user-app AGENTS templates (.j2 -> .md)..."
-APPS_DIR="$CODEGEN_DIR/shared/apps"
+# APPS_SRC_DIR: fixed — .j2 templates always live in the tracked repo source.
+# APPS_OUT_DIR: overridable via OCG_RENDERED_APPS_DIR so isolated processes
+# (e.g. hermetic round-trip tests) can render without writing tracked
+# shared/apps/*.md bytes. Default is byte-identical to the pre-override
+# behavior (mirrors the OCG_GENERATED_DIR convention above).
+APPS_SRC_DIR="$CODEGEN_DIR/shared/apps"
+APPS_OUT_DIR="${OCG_RENDERED_APPS_DIR:-$APPS_SRC_DIR}"
 PROCESS_TEMPLATE="$CODEGEN_DIR/templates/generator/process_template.py"
+
+if ! mkdir -p "$APPS_OUT_DIR"; then
+    echo "❌ Cannot create APPS_OUT_DIR: $APPS_OUT_DIR" >&2
+    exit 1
+fi
 
 render_to_md() {
     local src="$1"
@@ -293,17 +304,18 @@ render_to_md() {
             echo "   ✅ $(basename "$dst") already up to date"
         fi
     else
-        echo "   ⚠️  $src missing — skipping render"
+        echo "❌ Required app-doc template missing: $src" >&2
+        exit 1
     fi
 }
 
 for base in AGENTS-phoenix AGENTS-static; do
-    src="$APPS_DIR/$base.md.j2"
+    src="$APPS_SRC_DIR/$base.md.j2"
     # pi render → canonical AGENTS-{variant}.md
-    render_to_md "$src" pi "$APPS_DIR/$base.md"
+    render_to_md "$src" pi "$APPS_OUT_DIR/$base.md"
     # claude render → CLAUDE-{variant}.md  (strip "AGENTS-" prefix, add "CLAUDE-")
     variant="${base#AGENTS-}"
-    render_to_md "$src" claude "$APPS_DIR/CLAUDE-${variant}.md"
+    render_to_md "$src" claude "$APPS_OUT_DIR/CLAUDE-${variant}.md"
 done
 
 # Clean up generated templates after installation

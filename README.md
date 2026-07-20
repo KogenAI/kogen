@@ -28,11 +28,11 @@ Three Makefile targets, increasing cost:
 
 | Target             | What it runs                                                                     | Cost                      | When                   |
 | ------------------ | -------------------------------------------------------------------------------- | ------------------------- | ---------------------- |
-| `make test`        | bash hook unit tests + `codegen-build_test.sh` + pi npm tests                    | seconds                   | every commit           |
+| `make test`        | bash hook unit tests + `codegen-build_test.sh` + pi npm tests + hermetic ExUnit  | seconds                   | every commit           |
 | `make test-stacks` | ExUnit stack scaffold tests under `test_harness/` for both harnesses in parallel | minutes + real LLM tokens | before deploy          |
 | `make test-all`    | `test` → `test-stacks` → writes `test_harness/last_green.json`                   | same as test-stacks       | weekly pre-deploy gate |
 
-`make test` is bash-only and runs without Elixir installed. `make test-stacks` requires Elixir 1.15+.
+`make test` runs in two phases: a broad parallel fan-out (every independent parity/scaffold/install/npm check), followed by a serial isolation tail (hooks, hermetic ExUnit, rule-render-freshness) that runs one population at a time so load-sensitive checks give a reproducible verdict. A tracked-tree snapshot backstop asserts the suite never mutates tracked repo bytes. `make test-stacks` requires Elixir 1.15+.
 
 `test_harness/last_green.json` records the codegen sha + harness versions + timestamp of the last green `make test-all` run. It is committed in this repo and consumed by downstream pin tooling (e.g., `mix codegen.pin`).
 

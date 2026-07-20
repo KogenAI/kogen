@@ -178,7 +178,7 @@ templates/generator/hook_registrations.py  ← generates settings.json entries
 
 ## Test Suite Behavior — Combined make test vs Hermetic-Only
 
-`make test` runs multiple targets in sequence including `test-hermetic` (hermetic bash hook tests + hermetic ExUnit) and `npm-ext` (Node.js-based extension tests). A transient race in `npm-ext` can occasionally cause combined `make test` to exit 1 even when both sub-targets pass independently. **Authoritative signal for rule-file changes**: `make test-hermetic`. If `make test` fails but `make test-hermetic` passes, the failure is in `npm-ext` and unrelated to core rule/hook changes.
+`make test` runs `test-hermetic` (hermetic ExUnit) and `hooks` in a SERIAL tail after the broad parallel phase (incl. `npm-ext`) joins, removing the load flakiness that used to make combined `make test` occasionally exit 1 even when `test-hermetic` passed alone. **Authoritative signal for rule-file changes**: `make test-hermetic`. A red combined `make test` is now authoritative — do not re-run expecting a different answer on the same tree.
 
 **Static sentinel co-location tests**: bash tests asserting a sentinel on one specific line (e.g. same-line `SETTINGS_JSON=.*API_FORCE_IDLE_TIMEOUT`) break under variable-indirection refactors. Fix: assert co-location at the variable level (separate assignment-line + reference-line patterns), not literal same-line blob matching — robust to future indirection, still captures the load-bearing invariant.
 

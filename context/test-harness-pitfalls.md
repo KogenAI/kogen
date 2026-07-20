@@ -5,9 +5,9 @@ Elixir/ExUnit test gotchas for the codegen `test_harness/` suite that overflow
 proof patterns, PATH-stub, `git show HEAD` pre-fix fixtures) live in
 `context/bash-patterns.md`; this file is Elixir/fixture/seam/flake-specific.
 
-## npm Extension Parallel-Race Flake
+## npm Extension Parallel-Race — Fixed, Not Retried
 
-When running `make test` (which includes TypeScript Pi extensions in parallel), occasional transient race-condition failures may occur in the extension test suites. The failure does NOT indicate code defects — the same tests pass when run individually via `cd harnesses/pi/pi-extensions/extension-name && npm run build && npm test`. Remedy: re-run `make test`. This is a known environmental race, not a gate blocker. If a single extension test passes in isolation but fails under `make test`, verify the extension has no shared state leakage (file handles, global variables, console stream restores in `finally` blocks on both success and error paths).
+`make test`'s npm leaves (`npm-ext`, `subagents-integration`, `mcp-server`) used to capture status via a bare `out=$(...)`/`rc=$?` pair, which aborts the whole arm under `set -e` before `rc=$?` runs on the first bad leaf — silently skipping siblings. `run-all-tests.sh` now uses explicit `if ! out=$(...); then ...; fi` conditionals per leaf, so every leaf executes and every failure is collected. `hooks`/`test-hermetic`/`rule-render-freshness` also moved to a serial isolation tail after the broad parallel phase joins, removing the CPU-starvation source of load-dependent flakes. A red `make test` is now authoritative — do NOT re-run expecting a different answer on the same tree; a genuine per-extension shared-state leak (file handles, globals, `finally`-block stream restores) still needs fixing at the source.
 
 ## Fixtures & Seams
 
@@ -16,7 +16,7 @@ When running `make test` (which includes TypeScript Pi extensions in parallel), 
 - `File.cd!/2` + `async: true` → ParallelCompiler race. Fix: accept path args.
 - `@on_load` must return `:ok`. Wrap `:erlang.load_nif` in `case`.
 - Runtime config may overwrite test mocks. Fix: guard real config with `if config_env() != :test do … end` to isolate test setup.
-- `System.put_env` / `Application.put_env` → process-global mutation. Fix: define env-mutating tests in an `async: false` sibling `defmodule` in the same `.exs` file, with `on_exit` restore. Primary module (with other tests) stays `async: true`. Isolation: sibling modules in one file each run serially without blocking each other's async-true peers.
+- `System.put_env` / `Application.put_env` / `Mix.shell/1` → process-global mutation. Fix: define env-mutating tests in an `async: false` sibling `defmodule` in the same `.exs` file, with `on_exit` restore. Primary module (with other tests) stays `async: true`. Isolation: sibling modules in one file each run serially without blocking each other's async-true peers. `Mix.Tasks.Codegen.LoopTest` and `Mix.Tasks.Codegen.Bench.CheckRegressionTest` are whole modules `async: false` for this reason (they mutate `Mix.shell/1` throughout, not just in one describe block).
 - Private helpers per-module only — cannot share across modules in same file; promote to public support module or duplicate.
 - **Environment isolation**: `System.cmd/3` with `env: []` clears the entire process environment — stripping PATH, HOME, MIX_HOME, HEX_HOME. Safe only for git (reads repo-local config). Mix commands need ambient environment (`env: :inherit` or omit `:env` option).
 - **Parallel build-path isolation**: When running multiple independent test suites concurrently (e.g., `-j2` for `test-stacks-claude` and `test-stacks-pi`), each test harness must use a distinct `MIX_BUILD_PATH` to avoid BEAM artifact clobbering. Example: parity test uses `MIX_BUILD_PATH=_build/parity_test`, separate from the default `_build/claude_test` and `_build/pi_test` used by the per-harness stack suites.

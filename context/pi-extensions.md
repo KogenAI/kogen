@@ -185,7 +185,7 @@ Timer deps are injected via a `LoopDeps` interface (`{setInterval, clearInterval
 - **[shared] JS `\s` vs bash grep** — JS `\s` crosses newlines; bash grep per-line. Use `[ \t]` for same-line-only whitespace parity.
 - **Pi enforcement tests run against compiled dist, not source** — Pi extension tests for enforcement hooks must run against compiled `dist/*.test.js`, NOT `.ts` source files directly. Pattern: `npm run build && npm test`. Running `node --test src/...ts` fails with `ERR_MODULE_NOT_FOUND` even after build.
 - **Stale compiled dist/ test artifacts survive src deletion** — Fix: `rm -rf dist &&` as first step of build script.
-- **Makefile npm-ext race** — Parallel `make test`: both `subagents-integration` + npm-ext loop target `subagents/dist/`. Fix: serialize build BEFORE pids fan-out.
+- **Makefile npm-ext race** — Parallel `make test`: both `subagents-integration` + npm-ext loop target `subagents/dist/`. Fix: serialize build BEFORE pids fan-out. Each npm leaf (`npm-ext`, `subagents-integration`, `mcp-server`) captures its own status via an explicit `if ! out=$(...); then ...; fi` conditional rather than a bare `out=$(...)`/`rc=$?` pair — the latter aborts the whole arm under `set -e` before `rc=$?` runs, silently skipping sibling leaves in the same loop.
 - **Pi guard scope** — Use `projectDir` (repo tested), not `codegenDir` (checker location); codegenDir checks skip every run.
 - **Pi test `git commit` + global `commit.gpgsign=true`** — Parallel npm-ext tests MUST call `git config commit.gpgsign false` per tmpDir setup to isolate from global config.
 

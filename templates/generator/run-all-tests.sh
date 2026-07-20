@@ -2,34 +2,55 @@
 # run-all-tests.sh — the `make test` orchestrator, extracted from the
 # Makefile `test:` recipe for reviewability/testability.
 #
-# Runs every PreToolUse/SubagentStop/Stop hook unit-test script in parallel,
-# plus every gate check, in ONE pass — not fail-fast. All 11 former prereq
-# checks (hook-parity, hook-header-parity, harness-parity, test-generator,
-# enforce-registry-parity, enforce-hook-rationale, test-hermetic,
-# prompt-content-parity, tools-header-no-dup, rule-render-freshness,
-# usage-rules-index-parity, prompt-size-budget, pitch-scope-parity) run as backgrounded `make` stages alongside the
-# existing hooks/scaffold/install/npm stages, so a single `make test` surfaces
-# every independent failure at once instead of stopping at the first failing
-# prereq.
+# Two-phase execution for a reproducible verdict under parallelism:
 #
-# Each *_test.sh is hermetic — own tmp dirs, no shared state — so parallel is
-# safe. Job count caps at 8 to avoid thrashing on smaller machines.
+#   Phase 1 (broad, parallel): every independent parity/scaffold/install/npm
+#   check + gate runs concurrently via & + wait, as before. Each *_test.sh is
+#   hermetic — own tmp dirs, no shared state — so parallel is safe. Job count
+#   is implicitly capped by the number of backgrounded stages (small; nested
+#   runners cap their own internal fan-out at 8).
 #
-# Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm)
-# run concurrently via & + wait to reduce wall time.
+#   Phase 2 (serial isolation tail): hooks, test-hermetic, and
+#   rule-render-freshness run ONE AT A TIME, after phase 1 fully joins.
+#   These three are load-sensitive (hook test timing assumptions,
+#   BEAM/ExUnit scheduler contention, prettier formatting under CPU
+#   starvation) and previously produced load-dependent flakes when run
+#   alongside 15+ other concurrent populations. Each tail population still
+#   runs even if an earlier tail population failed — no fail-fast — so a
+#   single `make test` still surfaces every independent failure.
 #
 # One-owner execution: five harnesses/claude/hooks/*_test.sh files are ALSO
 # invoked directly by harness-parity/prompt-content-parity/tools-header-no-dup
-# below. HOOK_DEDUP_EXCLUDE lists those exact repo-relative paths and is
-# passed as HOOK_TEST_EXCLUDE to the hooks arm ONLY (never exported), so each
-# discovered hook test runs exactly once per `make test`. Standalone
-# `bash harnesses/claude/hooks/run-tests.sh` and `make test-coverage-shell`
-# are untouched and still run the full population.
+# in phase 1. HOOK_DEDUP_EXCLUDE lists those exact repo-relative paths and is
+# passed as HOOK_TEST_EXCLUDE to the hooks tail population ONLY (never
+# exported), so each discovered hook test runs exactly once per `make test`.
+# Standalone `bash harnesses/claude/hooks/run-tests.sh` and
+# `make test-coverage-shell` are untouched and still run the full population.
+#
+# Tracked-tree isolation backstop: a `git diff --binary --full-index HEAD --`
+# snapshot is taken before phase 1 starts and after phase 2 joins. Any
+# changed tracked byte, executable bit, symlink target, deletion, or
+# restoration (relative to whatever the tree already looked like at entry)
+# is a loud `tracked-tree-isolation` failure — a test suite must never mutate
+# the source checkout it is validating. A pre-existing dirty tree at entry is
+# allowed to stay exactly as dirty; only a suite-caused CHANGE to that state
+# fails.
 set -e
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$SCRIPT_DIR"
+
+# Tracked-tree isolation backstop: snapshot entry state. A failed snapshot
+# command is itself a loud failure (never falls back to an empty snapshot,
+# which would silently disable the backstop).
+tmp_tree_before=$(mktemp)
+if ! git diff --binary --full-index HEAD -- >"$tmp_tree_before" 2>&1; then
+    echo "tracked-tree-isolation: FAILED to capture entry snapshot"
+    cat "$tmp_tree_before"
+    rm -f "$tmp_tree_before"
+    exit 1
+fi
 
 tmp_prebuild=$(mktemp)
 subagents_ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/subagents"
@@ -51,7 +72,8 @@ if [ -f "$enforcement_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' 
     }
 fi
 rm -f "$tmp_prebuild"
-tmp_hooks=$(mktemp)
+
+# ── Phase 1: broad parallel fan-out ─────────────────────────────────────────
 tmp_scaffold=$(mktemp)
 tmp_install=$(mktemp)
 tmp_npm=$(mktemp)
@@ -62,10 +84,8 @@ tmp_harness_parity=$(mktemp)
 tmp_test_generator=$(mktemp)
 tmp_enforce_registry_parity=$(mktemp)
 tmp_enforce_hook_rationale=$(mktemp)
-tmp_test_hermetic=$(mktemp)
 tmp_prompt_content_parity=$(mktemp)
 tmp_tools_header_no_dup=$(mktemp)
-tmp_rule_render_freshness=$(mktemp)
 tmp_usage_rules_index_parity=$(mktemp)
 tmp_prompt_size_budget=$(mktemp)
 tmp_pitch_scope_parity=$(mktemp)
@@ -77,10 +97,6 @@ harnesses/claude/hooks/codegen-call_test.sh
 harnesses/claude/hooks/codegen-propose_test.sh
 harnesses/claude/hooks/prompt-content-parity_test.sh
 harnesses/claude/hooks/tools-header-no-dup_test.sh"
-{ HOOK_TEST_EXCLUDE="$HOOK_DEDUP_EXCLUDE" ./harnesses/claude/hooks/run-tests.sh; } >"$tmp_hooks" 2>&1 &
-pids+=($!)
-labels+=(hooks)
-tmps+=("$tmp_hooks")
 { ./shared/scaffold/phoenix/run-tests.sh; } >"$tmp_scaffold" 2>&1 &
 pids+=($!)
 labels+=(scaffold-phoenix)
@@ -113,10 +129,6 @@ tmps+=("$tmp_enforce_registry_parity")
 pids+=($!)
 labels+=(enforce-hook-rationale)
 tmps+=("$tmp_enforce_hook_rationale")
-{ make --no-print-directory test-hermetic; } >"$tmp_test_hermetic" 2>&1 &
-pids+=($!)
-labels+=(test-hermetic)
-tmps+=("$tmp_test_hermetic")
 { make --no-print-directory prompt-content-parity; } >"$tmp_prompt_content_parity" 2>&1 &
 pids+=($!)
 labels+=(prompt-content-parity)
@@ -125,10 +137,6 @@ tmps+=("$tmp_prompt_content_parity")
 pids+=($!)
 labels+=(tools-header-no-dup)
 tmps+=("$tmp_tools_header_no_dup")
-{ make --no-print-directory rule-render-freshness; } >"$tmp_rule_render_freshness" 2>&1 &
-pids+=($!)
-labels+=(rule-render-freshness)
-tmps+=("$tmp_rule_render_freshness")
 { make --no-print-directory usage-rules-index-parity; } >"$tmp_usage_rules_index_parity" 2>&1 &
 pids+=($!)
 labels+=(usage-rules-index-parity)
@@ -147,15 +155,17 @@ tmps+=("$tmp_pitch_scope_parity")
         ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/$ext"
         if [ -f "$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$ext_dir/package.json"; then
             if [ "$ext" != "subagents" ] && [ "$ext" != "enforcement" ] && grep -q '"build"[[:space:]]*:' "$ext_dir/package.json"; then
-                (cd "$ext_dir" && mise exec -- npm run build) || fail=1
+                if ! (cd "$ext_dir" && mise exec -- npm run build); then
+                    fail=1
+                fi
             fi
             if [ -n "$VERBOSE" ]; then
                 echo "▶ Test: $ext"
-                (cd "$ext_dir" && mise exec -- npm test) || fail=1
+                if ! (cd "$ext_dir" && mise exec -- npm test); then
+                    fail=1
+                fi
             else
-                out=$(cd "$ext_dir" && mise exec -- npm test 2>&1)
-                rc=$?
-                if [ $rc -ne 0 ]; then
+                if ! out=$(cd "$ext_dir" && mise exec -- npm test 2>&1); then
                     echo "▶ Test: $ext — FAILED"
                     printf '%s\n' "$out"
                     fail=1
@@ -170,20 +180,22 @@ labels+=(npm-ext)
 tmps+=("$tmp_npm")
 {
     ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/subagents"
+    fail=0
     if [ -d "$ext_dir/test/integration" ] && [ -n "$(ls "$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then
         if [ -n "$VERBOSE" ]; then
             echo "▶ Test:integration: subagents"
-            (cd "$ext_dir" && mise exec -- npm run test:integration) || exit 1
+            if ! (cd "$ext_dir" && mise exec -- npm run test:integration); then
+                fail=1
+            fi
         else
-            out=$(cd "$ext_dir" && mise exec -- npm run test:integration 2>&1)
-            rc=$?
-            if [ $rc -ne 0 ]; then
+            if ! out=$(cd "$ext_dir" && mise exec -- npm run test:integration 2>&1); then
                 echo "▶ Test:integration: subagents — FAILED"
                 printf '%s\n' "$out"
-                exit 1
+                fail=1
             fi
         fi
     fi
+    exit "$fail"
 } >"$tmp_subagents" 2>&1 &
 pids+=($!)
 labels+=(subagents-integration)
@@ -191,20 +203,22 @@ tmps+=("$tmp_subagents")
 tmp_mcp_server=$(mktemp)
 {
     mcp_dir="$SCRIPT_DIR/harnesses/claude/mcp-server"
+    fail=0
     if [ -f "$mcp_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$mcp_dir/package.json"; then
         if [ -n "$VERBOSE" ]; then
             echo "▶ Test: mcp-server"
-            (cd "$mcp_dir" && mise exec -- npm test) || exit 1
+            if ! (cd "$mcp_dir" && mise exec -- npm test); then
+                fail=1
+            fi
         else
-            out=$(cd "$mcp_dir" && mise exec -- npm test 2>&1)
-            rc=$?
-            if [ $rc -ne 0 ]; then
+            if ! out=$(cd "$mcp_dir" && mise exec -- npm test 2>&1); then
                 echo "▶ Test: mcp-server — FAILED"
                 printf '%s\n' "$out"
-                exit 1
+                fail=1
             fi
         fi
     fi
+    exit "$fail"
 } >"$tmp_mcp_server" 2>&1 &
 pids+=($!)
 labels+=(mcp-server)
@@ -219,6 +233,57 @@ for i in "${!pids[@]}"; do
         cat "${tmps[$i]}"
     fi
 done
+
+# ── Phase 2: serial isolation tail ──────────────────────────────────────────
+# Load-sensitive populations run ONE AT A TIME, after phase 1 fully joins.
+# Each still runs even if an earlier tail population (or phase 1) failed.
+tmp_hooks=$(mktemp)
+if ! { HOOK_TEST_EXCLUDE="$HOOK_DEDUP_EXCLUDE" ./harnesses/claude/hooks/run-tests.sh; } >"$tmp_hooks" 2>&1; then
+    fail=1
+    failed_labels+=(hooks)
+    printf '===== %s =====\n' hooks
+    cat "$tmp_hooks"
+fi
+labels+=(hooks)
+tmps+=("$tmp_hooks")
+
+tmp_test_hermetic=$(mktemp)
+if ! { make --no-print-directory test-hermetic; } >"$tmp_test_hermetic" 2>&1; then
+    fail=1
+    failed_labels+=(test-hermetic)
+    printf '===== %s =====\n' test-hermetic
+    cat "$tmp_test_hermetic"
+fi
+labels+=(test-hermetic)
+tmps+=("$tmp_test_hermetic")
+
+tmp_rule_render_freshness=$(mktemp)
+if ! { make --no-print-directory rule-render-freshness; } >"$tmp_rule_render_freshness" 2>&1; then
+    fail=1
+    failed_labels+=(rule-render-freshness)
+    printf '===== %s =====\n' rule-render-freshness
+    cat "$tmp_rule_render_freshness"
+fi
+labels+=(rule-render-freshness)
+tmps+=("$tmp_rule_render_freshness")
+
+# ── Tracked-tree isolation backstop: compare exit snapshot to entry ────────
+tmp_tree_after=$(mktemp)
+if ! git diff --binary --full-index HEAD -- >"$tmp_tree_after" 2>&1; then
+    fail=1
+    failed_labels+=(tracked-tree-isolation)
+    printf '===== %s =====\n' tracked-tree-isolation
+    echo "tracked-tree-isolation: FAILED to capture exit snapshot"
+    cat "$tmp_tree_after"
+elif ! cmp -s "$tmp_tree_before" "$tmp_tree_after"; then
+    fail=1
+    failed_labels+=(tracked-tree-isolation)
+    printf '===== %s =====\n' tracked-tree-isolation
+    echo "tracked-tree-isolation: the suite mutated tracked files. diff of snapshots (before vs after):"
+    diff -u "$tmp_tree_before" "$tmp_tree_after" || true
+fi
+rm -f "$tmp_tree_before" "$tmp_tree_after"
+
 if [ "$fail" -eq 0 ]; then
     echo "ALL CLEAR ✅ make test"
 else

@@ -108,7 +108,7 @@ race conventions, fixture patterns) — not the loop's own domain contract.
 | `make test-stacks-claude`    | Runs ExUnit suite for Claude harness only (`mix test --only slow`)                                                          |
 | `make test-stacks-pi`        | Runs ExUnit suite for Pi harness only (`mix test --only slow`)                                                              |
 | `make test-hermetic`         | Fast, deterministic ExUnit only (`mix test --exclude slow`); no LLM                                                         |
-| `make test`                  | Bash hook tests + hermetic ExUnit (`test-hermetic`) — no LLM                                                                |
+| `make test`                  | Parallel checks, then serial tail: hooks, `test-hermetic`, rule-render-freshness — no LLM                                    |
 | `make record-green`          | Stamps `last_green.json` with current commit SHA after clean `test-stacks`                                                  |
 | `make test-harness-parity`   | Runs cross-harness parity suite (`--only harness_parity`, distinct `_build/parity_test`); runs once as `test-stacks` prereq |
 | `make check-green-staleness` | Diagnostic: exits 1 if `last_green.json` is >7 days old; standalone, not a `test`/`test-stacks` prereq                      |
@@ -160,7 +160,7 @@ For full make-target index including install/uninstall/CI targets, see `context/
 
 ### Install Arm — Concurrency + Isolation
 
-`test_harness/install/run-tests.sh` backgrounds each `*_test.sh`, per-file output, prints only on failure — hermetic (own `tmp_home`), safe in parallel (~72s serial/cold → ~13-26s). Round-trip tests export before `HOME` swap: `PLAYWRIGHT_BROWSERS_PATH` (real cache, avoids re-download; unset falls through) and `OCG_GENERATED_DIR` (unique per test — `install.sh`/`generate.sh` resolve `GENERATED_ROOT="${OCG_GENERATED_DIR:-<default>}"`, exported to child; prevents `rm -rf` collision). Shared symlink loop un-isolated — race-tolerant (`ln -sfn ... || true`).
+`test_harness/install/run-tests.sh` backgrounds each `*_test.sh`, per-file output, prints only on failure — hermetic (own `tmp_home`), safe in parallel (~72s serial/cold → ~13-26s). Round-trip tests export before `HOME` swap: `PLAYWRIGHT_BROWSERS_PATH` (real cache, avoids re-download; unset falls through), `OCG_GENERATED_DIR` (unique per test, prevents `rm -rf` collision), and `OCG_RENDERED_APPS_DIR` (same convention — isolates rendered `shared/apps/*.md`; missing `.j2` source now raises loudly, not warn-skip). Shared symlink loop un-isolated — race-tolerant (`ln -sfn ... || true`).
 
 ## Integration Points
 

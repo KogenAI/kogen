@@ -79,7 +79,7 @@ codegen/                          ← repo root
 | Target                    | Purpose                                                                                                                                                                                |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `make install`            | Full install cycle: hook-parity → generate pi-extension → render settings → install.sh                                                                                                 |
-| `make test`               | Bash hook unit tests (`run-tests.sh`) + pi-extension npm tests; fast, no LLM calls                                                                                                     |
+| `make test`               | Two-phase: parallel parity/scaffold/npm checks, then serial tail (hooks, hermetic ExUnit, rule-render-freshness); tracked-tree backstop; fast, no LLM calls                            |
 | `make test-stacks`        | ExUnit scaffold tests both harnesses; slow, real LLM calls; pre-deploy gate                                                                                                            |
 | `make test-all`           | `test` + `test-stacks` + `record-green`                                                                                                                                                |
 | `make hook-parity`        | Verify `claude-code-settings.json` hook entries match hook source dir                                                                                                                  |

@@ -502,11 +502,10 @@ harness-path-check:
 # path — producing a false STALE verdict against committed content that used the (correct)
 # escaped form. Forcing an empty ignore-path keeps prettier's output identical regardless of
 # where the tmp copy lives.
-# One retry-on-STALE is applied before failing: under heavy CPU-starved concurrency (e.g. all
-# `make test` arms running at once on a small core count), prettier's own formatting pass has
-# been observed to intermittently skip the underscore-escape it applies every other run,
-# producing a transient false-STALE. A genuine stale render (committed doc out of sync with its
-# .j2 source) reproduces identically on the retry, so the retry never masks a real defect.
+# rule-render-freshness now runs alone in run-all-tests.sh's serial isolation
+# tail (after the broad parallel fan-out fully joins), so the CPU-starved
+# concurrency that motivated a retry-on-STALE no longer occurs. A first-pass
+# mismatch is authoritative.
 .PHONY: rule-render-freshness
 rule-render-freshness:
 	@echo "--- rule-render-freshness: checking committed apps docs match fresh render ---"; \
@@ -522,19 +521,10 @@ rule-render-freshness:
 	fail=0; \
 	for f in CLAUDE-phoenix CLAUDE-static AGENTS-phoenix AGENTS-static; do \
 		if ! diff -q "$$tmp/shared/apps/$$f.md" "shared/apps/$$f.md" >/dev/null 2>&1; then \
+			echo "rule-render-freshness: STALE — shared/apps/$$f.md does not match a fresh render. A rule or template changed without re-render. Run 'make install' and commit the regenerated shared/apps/*.md."; \
 			fail=1; \
 		fi; \
 	done; \
-	if [ "$$fail" = "1" ]; then \
-		node node_modules/prettier/bin/prettier.cjs -w --log-level error --ignore-path /dev/null "$$tmp/shared"; \
-		fail=0; \
-		for f in CLAUDE-phoenix CLAUDE-static AGENTS-phoenix AGENTS-static; do \
-			if ! diff -q "$$tmp/shared/apps/$$f.md" "shared/apps/$$f.md" >/dev/null 2>&1; then \
-				echo "rule-render-freshness: STALE — shared/apps/$$f.md does not match a fresh render. A rule or template changed without re-render. Run 'make install' and commit the regenerated shared/apps/*.md."; \
-				fail=1; \
-			fi; \
-		done; \
-	fi; \
 	if [ "$$fail" = "0" ]; then echo "rule-render-freshness: OK — all apps docs match fresh render"; fi; \
 	exit "$$fail"
 

@@ -17,11 +17,20 @@ committing the regenerated `.md` files alongside the `.j2` change.
 
 ## `rule-render-freshness` Gate — Checks Exactly These 4, Nothing Else
 
-Component of `make test`. Renders both `.j2` sources fresh (both `pi` and `claude` params) into a tmp
-dir, runs the SAME prettier pass the real render uses, diffs against committed content. A STALE verdict
-names which of the 4 files drifted. This gate does NOT check `shared/apps/PROJECT_CONTEXT-*-template.md`
-or `shared/apps/context-*.md` — those are separate scaffold assets copied as-is by `codegen-scaffold`,
-not rendered by `process_template.py`, and are outside this gate's scope.
+Component of `make test`, running alone in `run-all-tests.sh`'s serial isolation tail. Renders both `.j2`
+sources fresh (both `pi` and `claude` params) into a tmp dir, runs the SAME prettier pass the real render
+uses, diffs against committed content. A STALE verdict names which of the 4 files drifted; a first-pass
+mismatch is authoritative — no retry (the retry existed only to compensate for CPU-starved concurrency
+that no longer occurs now that this gate runs in isolation). This gate does NOT check
+`shared/apps/PROJECT_CONTEXT-*-template.md` or `shared/apps/context-*.md` — those are separate scaffold
+assets copied as-is by `codegen-scaffold`, not rendered by `process_template.py`, and are outside this
+gate's scope.
+
+`install.sh`'s normal render step writes to `APPS_OUT_DIR`, which defaults to the same tracked
+`shared/apps/` path (`APPS_SRC_DIR`) unless overridden via `OCG_RENDERED_APPS_DIR` — an isolated-process
+knob (used only by hermetic install round-trip tests) that redirects rendered OUTPUT without changing
+where `.j2` SOURCES are read from. Normal `make install` is unaffected; a missing `.j2` source is now a
+fatal install error rather than a warn-and-skip.
 
 ## Downstream Repos' `CLAUDE.md`/`AGENTS.md` Are Committed Symlinks
 

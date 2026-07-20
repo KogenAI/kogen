@@ -182,5 +182,196 @@ else
     _assert_true "run-tests.sh's discovery pipeline pipes directly into xargs (2-stage)" 1
 fi
 
+# ── Case 9: phase membership — tail labels are NOT declared in phase 1 ───────
+# Phase 1 is everything between the "Phase 1" marker and the "Phase 2" marker;
+# phase 2 is everything after the "Phase 2" marker. Each of the three tail
+# labels must appear as a `labels+=(...)` ONLY in the phase-2 region.
+phase1_block=$(awk '/# ── Phase 1:/{p=1} /# ── Phase 2:/{p=0} p' "$RUN_ALL")
+phase2_block=$(awk '/# ── Phase 2:/{p=1} p' "$RUN_ALL")
+for tail_label in hooks test-hermetic rule-render-freshness; do
+    if printf '%s\n' "$phase1_block" | grep -qE "labels\+=\(${tail_label}\)"; then
+        fail=$((fail + 1))
+        echo "FAIL: phase membership — '$tail_label' unexpectedly declared in phase 1"
+    else
+        pass=$((pass + 1))
+    fi
+    if printf '%s\n' "$phase2_block" | grep -qE "labels\+=\(${tail_label}\)"; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        echo "FAIL: phase membership — '$tail_label' not declared in phase 2"
+    fi
+done
+
+# ── Case 10: tail continuation — an early tail failure does not skip later ───
+# tail populations. Reproduce the exact if/fail/labels pattern run-all-tests.sh
+# uses for its three tail populations, with the first population stubbed to
+# fail, and assert all three still execute (each appends to a marker file).
+TAIL_MARKER="$TMP/tail-marker"
+: >"$TAIL_MARKER"
+(
+    fail=0
+    failed_labels=()
+    # population A: fails
+    if ! false; then
+        fail=1
+        failed_labels+=(pop-a)
+    fi
+    echo "pop-a-ran" >>"$TAIL_MARKER"
+    # population B: still runs after A failed
+    if ! true; then
+        fail=1
+        failed_labels+=(pop-b)
+    fi
+    echo "pop-b-ran" >>"$TAIL_MARKER"
+    # population C: still runs after A failed
+    if ! true; then
+        fail=1
+        failed_labels+=(pop-c)
+    fi
+    echo "pop-c-ran" >>"$TAIL_MARKER"
+    exit "$fail"
+) || true
+tail_ran=$(cat "$TAIL_MARKER")
+expected_tail_ran=$'pop-a-ran\npop-b-ran\npop-c-ran'
+_assert_eq "tail continuation: all three populations ran despite early failure" "$expected_tail_ran" "$tail_ran"
+
+# ── Case 11: npm leaf continuation — one failing leaf still lets siblings run
+# Reproduce the exact npm-ext loop shape (explicit conditional capturing rc,
+# not a bare `out=$(...)` that would abort under set -e) with one leaf stubbed
+# to fail, and assert every leaf in the loop still executes.
+NPM_MARKER="$TMP/npm-marker"
+: >"$NPM_MARKER"
+(
+    set -e
+    fail=0
+    for ext in leaf-fail leaf-ok-1 leaf-ok-2; do
+        echo "$ext-visited" >>"$NPM_MARKER"
+        if [ "$ext" = "leaf-fail" ]; then
+            if ! out=$(false 2>&1); then
+                fail=1
+            fi
+        else
+            if ! out=$(true 2>&1); then
+                fail=1
+            fi
+        fi
+    done
+    exit "$fail"
+) || true
+npm_visited=$(cat "$NPM_MARKER")
+expected_npm_visited=$'leaf-fail-visited\nleaf-ok-1-visited\nleaf-ok-2-visited'
+_assert_eq "npm leaf continuation: every leaf visited despite one failing" "$expected_npm_visited" "$npm_visited"
+
+# ── Case 12: all-failure collection — multiple simultaneous failures all
+# appear in failed_labels, mirroring run-all-tests.sh's wait-loop accumulator.
+(
+    fail=0
+    failed_labels=()
+    for entry in "a:1" "b:0" "c:1" "d:0"; do
+        label="${entry%%:*}"
+        rc="${entry##*:}"
+        if [ "$rc" != "0" ]; then
+            fail=1
+            failed_labels+=("$label")
+        fi
+    done
+    printf '%s\n' "${failed_labels[@]}" >"$TMP/all-failure-labels"
+    exit "$fail"
+) || true
+all_failure_labels=$(cat "$TMP/all-failure-labels" | tr '\n' ',' | sed 's/,$//')
+_assert_eq "all-failure collection: both failing labels captured" "a,c" "$all_failure_labels"
+
+# ── Case 13: snapshot-command failure → tracked-tree-isolation, never green ──
+# Reproduce run-all-tests.sh's entry-snapshot guard: a git command run against
+# a nonexistent cwd must exit non-zero and never produce a false-empty snapshot.
+if git -C "$TMP/definitely-missing-dir-$$" diff --binary --full-index HEAD -- >"$TMP/snapshot-fail-out" 2>&1; then
+    fail=$((fail + 1))
+    echo "FAIL: snapshot-command failure — git unexpectedly succeeded against a missing dir"
+else
+    pass=$((pass + 1))
+fi
+
+# ── Case 14: tracked-tree fixtures — clean / pre-dirty / mutated variants ────
+# Build a throwaway git repo (never the real codegen checkout) and exercise
+# the exact snapshot-compare idiom run-all-tests.sh uses:
+#   git diff --binary --full-index HEAD -- (before) vs (after), cmp -s.
+FIXTURE_REPO="$TMP/tracked-tree-fixture"
+mkdir -p "$FIXTURE_REPO"
+(
+    cd "$FIXTURE_REPO"
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    printf 'hello\n' >tracked.txt
+    printf '#!/bin/sh\necho hi\n' >exec.sh
+    chmod +x exec.sh
+    ln -s tracked.txt link.txt
+    git add -A
+    git commit -q -m "initial"
+)
+
+_snapshot() { (cd "$FIXTURE_REPO" && git diff --binary --full-index HEAD --); }
+
+# 14a: clean tree — before == after → pass
+before=$(_snapshot)
+after=$(_snapshot)
+_assert_eq "tracked-tree fixture: clean tree snapshots match" "$before" "$after"
+
+# 14b: pre-existing dirty tree, UNCHANGED across the window — before == after → pass
+(cd "$FIXTURE_REPO" && printf 'pre-existing-dirty\n' >>tracked.txt)
+before_dirty=$(_snapshot)
+after_dirty=$(_snapshot)
+_assert_eq "tracked-tree fixture: pre-existing dirty tree unchanged across window matches" "$before_dirty" "$after_dirty"
+(cd "$FIXTURE_REPO" && git checkout -q -- tracked.txt)
+
+# 14c: binary content mutation — before != after → fail (detected)
+before_binary=$(_snapshot)
+printf '\x00\x01binary-mutation\x02\x00' >"$FIXTURE_REPO/tracked.txt"
+after_binary=$(_snapshot)
+if [ "$before_binary" != "$after_binary" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: tracked-tree fixture: binary content mutation not detected"
+fi
+(cd "$FIXTURE_REPO" && git checkout -q -- tracked.txt)
+
+# 14d: executable-mode flip — before != after → fail (detected)
+before_mode=$(_snapshot)
+chmod -x "$FIXTURE_REPO/exec.sh"
+after_mode=$(_snapshot)
+if [ "$before_mode" != "$after_mode" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: tracked-tree fixture: executable-mode flip not detected"
+fi
+(cd "$FIXTURE_REPO" && chmod +x exec.sh)
+
+# 14e: symlink retarget — before != after → fail (detected)
+before_symlink=$(_snapshot)
+(cd "$FIXTURE_REPO" && rm -f link.txt && ln -s exec.sh link.txt)
+after_symlink=$(_snapshot)
+if [ "$before_symlink" != "$after_symlink" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: tracked-tree fixture: symlink retarget not detected"
+fi
+(cd "$FIXTURE_REPO" && git checkout -q -- link.txt)
+
+# 14f: deletion — before != after → fail (detected)
+before_delete=$(_snapshot)
+rm -f "$FIXTURE_REPO/tracked.txt"
+after_delete=$(_snapshot)
+if [ "$before_delete" != "$after_delete" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: tracked-tree fixture: deletion not detected"
+fi
+(cd "$FIXTURE_REPO" && git checkout -q -- tracked.txt)
+
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
