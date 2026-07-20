@@ -232,12 +232,12 @@ jq -c -n '{ev:"init",pitch:"marker-flags",path:"",stamp:{}}' >"$marker_log"
 jq -c -n '{ev:"role",role:"developer-phoenix-backend",body:"body"}' >>"$marker_log"
 
 learned_out="$(
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --learned "- nothing notable"
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --learned "[local] - nothing notable"
 )"
 learned_path="$(printf '%s' "$learned_out" | tail -n 1)"
 assert "--learned wrote to the marker-flags log" "0" "$([ "$learned_path" = "$marker_log" ] && printf 0 || printf 1)"
 assert "--learned emits exactly one learned event" "1" "$(jq_count "$marker_log" 'select(.ev=="learned" and .role=="developer-phoenix-backend")')"
-assert "--learned emits the supplied text" "0" "$([ "$(jq -r 'select(.ev=="learned")|.text' "$marker_log")" = "- nothing notable" ] && printf 0 || printf 1)"
+assert "--learned emits the supplied text" "0" "$([ "$(jq -r 'select(.ev=="learned")|.text' "$marker_log")" = "[local] - nothing notable" ] && printf 0 || printf 1)"
 
 died_out="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --died interrupted --cause "timeout"
@@ -626,7 +626,7 @@ unset AGENT_TYPE
 section_learned_log="$PROJECT/codegen/logging/20260109_000000_section-learned_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"section-learned",path:"",stamp:{}}' >"$section_learned_log"
 section_learned_out="$(
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug section-learned --learned "learned something genuinely useful this step" <<'EOF'
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug section-learned --learned "[local] learned something genuinely useful this step" <<'EOF'
 did the work this step
 EOF
 )"
@@ -635,7 +635,7 @@ assert "section --learned wrote to the section-learned log" "0" "$([ "$section_l
 assert "section --learned emits exactly one role event" "1" "$(jq_count "$section_learned_log" 'select(.ev=="role" and .role=="developer-phoenix-backend")')"
 assert "section --learned emits exactly one learned event" "1" "$(jq_count "$section_learned_log" 'select(.ev=="learned" and .role=="developer-phoenix-backend")')"
 assert "section --learned role body landed" "0" "$(jq -r --arg r developer-phoenix-backend 'select(.ev=="role" and .role==$r)|.body' "$section_learned_log" | grep -qF 'did the work this step' && printf 0 || printf 1)"
-assert "section --learned learned text matches" "0" "$([ "$(jq -r 'select(.ev=="learned")|.text' "$section_learned_log")" = "learned something genuinely useful this step" ] && printf 0 || printf 1)"
+assert "section --learned learned text matches" "0" "$([ "$(jq -r 'select(.ev=="learned")|.text' "$section_learned_log")" = "[local] learned something genuinely useful this step" ] && printf 0 || printf 1)"
 
 section_no_learned_log="$PROJECT/codegen/logging/20260109_000001_section-no-learned_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"section-no-learned",path:"",stamp:{}}' >"$section_no_learned_log"
@@ -673,7 +673,7 @@ unset AGENT_TYPE
 show_log="$PROJECT/codegen/logging/20260111_000000_show-render_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"show-render",path:"",stamp:{}}' >"$show_log"
 (
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-render --learned "learned something real this step" <<'EOF' >/dev/null
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-render --learned "[local] learned something real this step" <<'EOF' >/dev/null
 did the work
 EOF
 )
@@ -691,7 +691,7 @@ assert "html render contains a table tag" "0" "$(printf '%s' "$html_show" | grep
 show_escape_log="$PROJECT/codegen/logging/20260111_000100_show-html-escape_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"show-html-escape",path:"",stamp:{}}' >"$show_escape_log"
 (
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-html-escape --learned "text with < and & escaped in html output" <<'EOF' >/dev/null
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-html-escape --learned "[local] text with < and & escaped in html output" <<'EOF' >/dev/null
 body with <script>&amp;
 EOF
 )
@@ -700,7 +700,7 @@ assert "html --full escapes body content" "0" "$(printf '%s' "$html_escape_show"
 
 role_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-render --role developer-phoenix-backend)"
 assert "--role drill-down shows the body" "0" "$(printf '%s' "$role_show" | grep -qF 'did the work' && printf 0 || printf 1)"
-assert "--role drill-down shows learned text" "0" "$(printf '%s' "$role_show" | grep -qF 'learned something real this step' && printf 0 || printf 1)"
+assert "--role drill-down shows learned text" "0" "$(printf '%s' "$role_show" | grep -qF '[local] learned something real this step' && printf 0 || printf 1)"
 
 full_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-render --full)"
 assert "--full shows role section marker" "0" "$(printf '%s' "$full_show" | grep -qF '=== developer-phoenix-backend ===' && printf 0 || printf 1)"
@@ -724,7 +724,7 @@ assert "no-learned/no_learning anomaly fires for committer" "0" "$(printf '%s' "
 clean_log="$PROJECT/codegen/logging/20260111_000300_show-clean_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"show-clean",path:"",stamp:{}}' >"$clean_log"
 (
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-clean --learned "clean cycle, real learning text here" <<'EOF' >/dev/null
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-clean --learned "[local] clean cycle, real learning text here" <<'EOF' >/dev/null
 clean work
 EOF
 )
@@ -738,7 +738,7 @@ unset AGENT_TYPE
 nosum_log="$PROJECT/codegen/logging/20260111_000400_show-no-summary_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"show-no-summary",path:"",stamp:{}}' >"$nosum_log"
 (
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-no-summary --learned "no summary sibling exists for this cycle" <<'EOF' >/dev/null
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-no-summary --learned "[local] no summary sibling exists for this cycle" <<'EOF' >/dev/null
 solo body
 EOF
 )
@@ -790,7 +790,7 @@ unset AGENT_TYPE
 rolespine_log="$PROJECT/codegen/logging/20260111_000600_show-role-spine-anomaly_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"show-role-spine-anomaly",path:"",stamp:{}}' >"$rolespine_log"
 (
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-role-spine-anomaly --learned "role-spine fallback fixture, real learning text" <<'EOF' >/dev/null
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug show-role-spine-anomaly --learned "[local] role-spine fallback fixture, real learning text" <<'EOF' >/dev/null
 clean work
 EOF
 )
@@ -849,13 +849,13 @@ unset CODEGEN_LOG_PATH
 unset AGENT_TYPE
 show_run1="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug retried-show-slug --stamp 20260401_010000)"
 (
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR CODEGEN_LOG_PATH="$show_run1" "$CODEGEN/codegen-log" section developer-phoenix-backend --learned "first attempt learning, real content here" <<'EOF' >/dev/null
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR CODEGEN_LOG_PATH="$show_run1" "$CODEGEN/codegen-log" section developer-phoenix-backend --learned "[local] first attempt learning, real content here" <<'EOF' >/dev/null
 first attempt work
 EOF
 )
 show_run2="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" init --slug retried-show-slug --stamp 20260401_020000)"
 (
-    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR CODEGEN_LOG_PATH="$show_run2" "$CODEGEN/codegen-log" section developer-phoenix-backend --learned "second attempt learning, real content here" <<'EOF' >/dev/null
+    cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR CODEGEN_LOG_PATH="$show_run2" "$CODEGEN/codegen-log" section developer-phoenix-backend --learned "[local] second attempt learning, real content here" <<'EOF' >/dev/null
 second attempt work
 EOF
 )
@@ -956,6 +956,46 @@ nosub_stderr="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR 
 assert "no-subcommand invocation exits 2" "2" "${nosub_rc:-0}"
 assert "no-subcommand invocation names the problem before Usage:" "0" "$(printf '%s' "$nosub_stderr" | grep -qF 'no subcommand given' && printf 0 || printf 1)"
 assert "no-subcommand Usage: block shows the taught positional-stdin form" "0" "$(printf '%s' "$nosub_stderr" | grep -qF 'codegen-log section <role>' && printf 0 || printf 1)"
+
+# Test 37: routing tag required on --learned: [local]/[shared] accepted
+# verbatim (not stripped); untagged text refused (exit 2, writes nothing —
+# atomic on `section` too); leading whitespace tolerated; --no-learning
+# stays exempt.
+unset CODEGEN_LOG_PATH
+tag_log="$PROJECT/codegen/logging/20260103_000000_routing-tag_cycle.jsonl"
+jq -c -n '{ev:"init",pitch:"routing-tag",path:"",stamp:{}}' >"$tag_log"
+
+tag_local_out="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug routing-tag --learned "[local] real learning text here")"
+tag_local_path="$(printf '%s' "$tag_local_out" | tail -n 1)"
+assert "[local]-tagged --learned wrote to the routing-tag log" "0" "$([ "$tag_local_path" = "$tag_log" ] && printf 0 || printf 1)"
+assert "[local]-tagged --learned emits exactly one learned event" "1" "$(jq_count "$tag_log" 'select(.ev=="learned")')"
+assert "[local] tag preserved verbatim in .text" "0" "$([ "$(jq -r 'select(.ev=="learned")|.text' "$tag_log")" = "[local] real learning text here" ] && printf 0 || printf 1)"
+
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug routing-tag --learned "[shared] cross-project idiom here" >/dev/null
+assert "[shared]-tagged --learned emits a second learned event" "2" "$(jq_count "$tag_log" 'select(.ev=="learned")')"
+
+set +e
+tag_untagged_stderr="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug routing-tag --learned "untagged real learning text" 2>&1 1>/dev/null)"
+tag_untagged_rc=$?
+set -e
+assert "untagged --learned on append exits 2" "2" "$tag_untagged_rc"
+assert "untagged refusal names [local]" "0" "$(printf '%s' "$tag_untagged_stderr" | grep -qF '[local]' && printf 0 || printf 1)"
+assert "untagged refusal names [shared]" "0" "$(printf '%s' "$tag_untagged_stderr" | grep -qF '[shared]' && printf 0 || printf 1)"
+assert "untagged --learned on append wrote zero NEW learned events" "2" "$(jq_count "$tag_log" 'select(.ev=="learned")')"
+
+set +e
+tag_section_rc=0
+(cd "$PROJECT" && printf 'did real work\n' | env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" section developer-phoenix-backend --slug routing-tag --body @- --learned "untagged text") >/dev/null 2>&1
+tag_section_rc=$?
+set -e
+assert "untagged --learned on section exits 2" "2" "$tag_section_rc"
+assert "untagged --learned on section wrote zero role events (atomic)" "0" "$(jq_count "$tag_log" 'select(.ev=="role")')"
+
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug routing-tag --learned "  [local] leading whitespace trimmed before tag check" >/dev/null
+assert "leading-whitespace-then-tag --learned accepted" "3" "$(jq_count "$tag_log" 'select(.ev=="learned")')"
+
+cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug routing-tag --no-learning "untagged no-learning text is fine, no tag required" >/dev/null
+assert "--no-learning exempt from tag requirement" "1" "$(jq_count "$tag_log" 'select(.ev=="no_learning")')"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

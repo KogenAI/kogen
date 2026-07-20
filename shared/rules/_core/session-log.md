@@ -122,7 +122,7 @@ printf '%s' "$body" | codegen-log section developer-phoenix-backend \
   --slug <slug>
 ```
 
-Tags inside `--learned` text: `[local]` = project-specific. `[shared]` = framework idioms, cross-cutting patterns.
+`--learned` requires leading tag, else exit 2: `[local]` = project. `[shared]` = framework. `--no-learning` exempt.
 
 ## Gate Verdict Authority
 

@@ -11,8 +11,6 @@ Each block is tagged `[local]` or `[shared]`:
 - `[local]` — project-specific knowledge (module names, file paths, schemas, business logic, conventions) → `context/**`
 - `[shared]` — framework/language idioms, cross-cutting patterns, style, quirks → `codegen/rules/**`
 
-When tag is missing or ambiguous: default to `[local]` unless the observation clearly applies to any project using the same framework.
-
 ## Write Surface
 
 Curator MAY ONLY edit:

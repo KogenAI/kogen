@@ -135,7 +135,7 @@ export function register(pi: ExtensionAPI): void {
 
     if (!workBody) {
       process.stderr.write(
-        `[pi-enforcement:role-retrospective-before-stop] WARNING: ${agentType} stopped without recording its work this step. Run: printf '%s' "$body" | codegen-log section ${agentType} --learned "<what you learned>" --slug <slug>\n`,
+        `[pi-enforcement:role-retrospective-before-stop] WARNING: ${agentType} stopped without recording its work this step. Run: printf '%s' "$body" | codegen-log section ${agentType} --learned "[local] <what you learned>" --slug <slug>\n`,
       );
     } else {
       process.stderr.write(

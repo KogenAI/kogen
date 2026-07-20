@@ -98,7 +98,7 @@ count=$((count + 1))
 printf '%s' "$count" >"$counter_file"
 
 if [ -z "$work_body" ]; then
-    reason="You have not recorded your work this step. Run: printf '%s' \"\$body\" | codegen-log section ${AGENT_TYPE} --learned \"<what you learned>\" --slug <slug> — then stop. (attempt ${count}/3)"
+    reason="You have not recorded your work this step. Run: printf '%s' \"\$body\" | codegen-log section ${AGENT_TYPE} --learned \"[local] <what you learned>\" --slug <slug> — then stop. (attempt ${count}/3)"
 else
     reason="You have not recorded what you learned this step. Record one specific thing this turn taught you — a fact a future session would look up. If this turn genuinely produced nothing to learn, say so: codegen-log append ${AGENT_TYPE} --no-learning \"<what the turn did instead>\" --slug <slug>. (attempt ${count}/3)"
 fi

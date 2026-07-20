@@ -107,6 +107,14 @@
 # the turn did instead (e.g. "refused: handoff named no files, reviewed
 # zero code"), not restate the absence of a learning.
 #
+# Routing tag (--learned ONLY, not --no-learning): the text MUST start with
+# a leading "[local]" or "[shared]" tag (case-sensitive) — [local] = this
+# project (paths, modules, conventions), [shared] = any project on this
+# stack (idioms, patterns). Missing tag -> exit 2, writes nothing. This is
+# a well-formedness check distinct from the substance filter above; both
+# must pass. --no-learning is exempt — it routes nowhere, since the
+# curator reads ev:learned only.
+#
 # init: create a new codegen/logging/<ts>_<slug>_cycle.jsonl containing only
 #       the initial "init" event line. Binds by RUN IDENTITY (the <ts>
 #       stamp), never by slug alone: a slug's log path is composed directly
@@ -687,6 +695,28 @@ is_placeholder_text() {
     return 1
 }
 
+# has_routing_tag — the routing-tag well-formedness check for --learned text
+# ONLY (never --no-learning, which routes nowhere — the curator reads
+# ev:learned exclusively). Returns 0 (true) when the trimmed text begins
+# with a leading "[local]" or "[shared]" tag, case-sensitive. This is a
+# well-formedness check, distinct from is_placeholder_text's substance
+# check: a tagged whole-text placeholder still fails the substance filter,
+# and an untagged real learning still fails this one. No length logic of
+# any kind — tag presence only.
+has_routing_tag() {
+    local text="$1"
+    local trimmed
+    trimmed="$(printf '%s' "$text" | sed -e 's/^[[:space:]]*//')"
+
+    case "$trimmed" in
+    '[local]'* | '[shared]'*)
+        return 0
+        ;;
+    esac
+
+    return 1
+}
+
 repo_root() {
     printf '%s' "$LOG_ROOT"
 }
@@ -1226,6 +1256,10 @@ section)
         printf 'codegen-log section: this text describes the check, not the work — record what this turn taught you, or use --no-learning "<what the turn did instead>"\n' >&2
         exit 2
     fi
+    if [[ -n "$LEARNED_TEXT" ]] && ! has_routing_tag "$LEARNED_TEXT"; then
+        printf 'codegen-log section: --learned text must start with [local] or [shared] — [local] = this project (paths, modules, conventions), [shared] = any project on this stack (idioms, patterns). Prepend one.\n' >&2
+        exit 2
+    fi
 
     log_file="$(resolve_log_file)"
     if [[ -z "$log_file" || ! -f "$log_file" ]]; then
@@ -1259,6 +1293,10 @@ append)
     if [[ -n "$LEARNED_TEXT" ]]; then
         if is_placeholder_text "$LEARNED_TEXT"; then
             printf 'codegen-log append: this text describes the check, not the work — record what this turn taught you, or use --no-learning "<what the turn did instead>"\n' >&2
+            exit 2
+        fi
+        if ! has_routing_tag "$LEARNED_TEXT"; then
+            printf 'codegen-log append: --learned text must start with [local] or [shared] — [local] = this project (paths, modules, conventions), [shared] = any project on this stack (idioms, patterns). Prepend one.\n' >&2
             exit 2
         fi
         line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg text "$LEARNED_TEXT" '{ev: "learned", role: $role, text: $text}')"

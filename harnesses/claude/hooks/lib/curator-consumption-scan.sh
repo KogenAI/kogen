@@ -109,5 +109,5 @@ if [ "$routed" -eq 1 ]; then
     exit 0
 fi
 
-printf 'curator-consumption-scan: this cycle captured %s learning(s) via ev:learned, routed 0 into context/**.md or shared/rules/**.md, and recorded 0 dropped-learning entries. Either route at least one learning into a durable doc, or record each dropped learning with its reason via: codegen-log append context-curator --learned "<what was dropped and why>" --slug <slug>\n' "$captured"
+printf 'curator-consumption-scan: this cycle captured %s learning(s) via ev:learned, routed 0 into context/**.md or shared/rules/**.md, and recorded 0 dropped-learning entries. Either route at least one learning into a durable doc, or record each dropped learning with its reason via: codegen-log append context-curator --learned "[local] <what was dropped and why>" --slug <slug>\n' "$captured"
 exit 1

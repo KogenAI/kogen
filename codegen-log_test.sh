@@ -288,9 +288,9 @@ printf 'body\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- >/dev/null
 env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_R" \
-    "$CODEGEN_LOG" append --role developer-phoenix-backend --learned "- nothing notable" >/dev/null
+    "$CODEGEN_LOG" append --role developer-phoenix-backend --learned "[local] - nothing notable" >/dev/null
 check "(r) --learned emits exactly one learned event" "1" "$(jq_count "$LOG_R" 'select(.ev=="learned" and .role=="developer-phoenix-backend")')"
-check "(r) --learned emits the supplied text" "- nothing notable" "$(jq -r 'select(.ev=="learned")|.text' "$LOG_R")"
+check "(r) --learned emits the supplied text" "[local] - nothing notable" "$(jq -r 'select(.ev=="learned")|.text' "$LOG_R")"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # (s) append --died interrupted/aborted emits structured died events.
@@ -453,11 +453,11 @@ WS_BB="$(new_workspace)"
 LOG_BB="$(init_log "$WS_BB" test-section-learned)"
 printf 'did the work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_BB" \
-    "$CODEGEN_LOG" section committer --learned "learned something useful this step" >/dev/null
+    "$CODEGEN_LOG" section committer --learned "[local] learned something useful this step" >/dev/null
 check "(bb) section --learned emits exactly one role event" "1" "$(jq_count "$LOG_BB" 'select(.ev=="role" and .role=="committer")')"
 check "(bb) section --learned emits exactly one learned event" "1" "$(jq_count "$LOG_BB" 'select(.ev=="learned" and .role=="committer")')"
 check "(bb) role event body is the piped stdin" "did the work" "$(jq -r 'select(.ev=="role")|.body' "$LOG_BB")"
-check "(bb) learned event text matches --learned" "learned something useful this step" "$(jq -r 'select(.ev=="learned")|.text' "$LOG_BB")"
+check "(bb) learned event text matches --learned" "[local] learned something useful this step" "$(jq -r 'select(.ev=="learned")|.text' "$LOG_BB")"
 
 WS_BB2="$(new_workspace)"
 LOG_BB2="$(init_log "$WS_BB2" test-section-no-learned)"
@@ -509,7 +509,7 @@ check "(dd) placeholder body refusal wrote zero events" "0" "$(jq_count "$LOG_DD
 set +e
 ERR_DD2=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_DD" \
-    "$CODEGEN_LOG" append --role developer-phoenix-backend --learned "placeholder learning text that is at least forty characters long for testing" 2>&1)
+    "$CODEGEN_LOG" append --role developer-phoenix-backend --learned "[local] placeholder learning text that is at least forty characters long for testing" 2>&1)
 RC_DD2=$?
 set -e
 check "(dd) compliance-echo --learned text exits 2" "2" "$RC_DD2"
@@ -518,7 +518,7 @@ assert_contains "(dd) compliance-echo refusal names the check" "$ERR_DD2" "descr
 printf 'a real body\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_DD" \
     "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- \
-    --learned "placeholder-project-context-fix landed cleanly; the slug survives the filter" >/dev/null
+    --learned "[local] placeholder-project-context-fix landed cleanly; the slug survives the filter" >/dev/null
 check "(dd) genuine slug-shaped text survives the filter" "1" "$(jq_count "$LOG_DD" 'select(.ev=="learned")')"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -560,7 +560,7 @@ WS_FF="$(new_workspace)"
 LOG_FF="$(init_log "$WS_FF" test-show-render)"
 printf 'did the work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
-    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "learned something real this step" >/dev/null
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "[local] learned something real this step" >/dev/null
 
 TABLE_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
@@ -583,7 +583,7 @@ WS_FF2="$(new_workspace)"
 LOG_FF2="$(init_log "$WS_FF2" test-show-html-escape)"
 printf 'body with <script>&amp;\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF2" \
-    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "text with < and & escaped in html output" >/dev/null
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "[local] text with < and & escaped in html output" >/dev/null
 HTML_ESCAPE_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF2" \
     "$CODEGEN_LOG" show --slug test-show-html-escape --format html --full)
@@ -593,7 +593,7 @@ ROLE_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
     "$CODEGEN_LOG" show --slug test-show-render --role developer-phoenix-backend)
 assert_contains "(ff) --role drill-down shows the body" "$ROLE_FF" "did the work"
-assert_contains "(ff) --role drill-down shows the learned text" "$ROLE_FF" "learned something real this step"
+assert_contains "(ff) --role drill-down shows the learned text" "$ROLE_FF" "[local] learned something real this step"
 
 FULL_FF=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_FF" \
@@ -621,7 +621,7 @@ WS_GG2="$(new_workspace)"
 LOG_GG2="$(init_log "$WS_GG2" test-show-clean)"
 printf 'clean work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_GG2" \
-    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "clean cycle, real learning text here" >/dev/null
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "[local] clean cycle, real learning text here" >/dev/null
 CLEAN_GG=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_GG2" \
     "$CODEGEN_LOG" show --slug test-show-clean)
@@ -634,7 +634,7 @@ WS_HH="$(new_workspace)"
 LOG_HH="$(init_log "$WS_HH" test-show-no-summary)"
 printf 'solo body\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_HH" \
-    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "no summary sibling exists for this cycle" >/dev/null
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "[local] no summary sibling exists for this cycle" >/dev/null
 OUT_HH=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_HH" \
     "$CODEGEN_LOG" show --slug test-show-no-summary 2>/tmp/show_hh_stderr.txt)
@@ -698,7 +698,7 @@ WS_JJ="$(new_workspace)"
 LOG_JJ="$(init_log "$WS_JJ" test-show-role-spine-anomaly)"
 printf 'clean work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_JJ" \
-    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "role-spine fallback fixture, real learning text" >/dev/null
+    "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "[local] role-spine fallback fixture, real learning text" >/dev/null
 env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_JJ" \
     "$CODEGEN_LOG" append --role committer --died interrupted --cause "session dropped before writing anything" >/dev/null
@@ -839,6 +839,55 @@ ERR_UU2=$(printf 'plan text' | env -u AGENT_TYPE -u CLAUDE_ROLE \
 RC_UU2=$?
 set -e
 check "(uu) --plan on section (not append) exits 2" "2" "$RC_UU2"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (vv) routing tag required on --learned: [local]/[shared] accepted verbatim
+# (tag preserved in .text, not stripped); untagged text refused (exit 2,
+# writes nothing — proves atomicity on `section` too: no role event lands
+# either when the --learned tag check fails); leading whitespace tolerated;
+# --no-learning stays exempt (no tag required).
+WS_VV="$(new_workspace)"
+LOG_VV="$(init_log "$WS_VV" test-routing-tag)"
+env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_VV" \
+    "$CODEGEN_LOG" append developer-phoenix-backend --learned "[local] real learning text here" >/dev/null
+check "(vv) [local]-tagged --learned emits exactly one learned event" "1" "$(jq_count "$LOG_VV" 'select(.ev=="learned")')"
+check "(vv) [local] tag preserved verbatim in .text" "[local] real learning text here" "$(jq -r 'select(.ev=="learned")|.text' "$LOG_VV")"
+
+env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_VV" \
+    "$CODEGEN_LOG" append developer-phoenix-backend --learned "[shared] cross-project idiom here" >/dev/null
+check "(vv) [shared]-tagged --learned emits exactly two learned events total" "2" "$(jq_count "$LOG_VV" 'select(.ev=="learned")')"
+
+set +e
+ERR_VV1=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_VV" \
+    "$CODEGEN_LOG" append developer-phoenix-backend --learned "untagged real learning text" 2>&1)
+RC_VV1=$?
+set -e
+check "(vv) untagged --learned on append exits 2" "2" "$RC_VV1"
+assert_contains "(vv) untagged refusal names both tags" "$ERR_VV1" "[local]"
+assert_contains "(vv) untagged refusal names both tags" "$ERR_VV1" "[shared]"
+check "(vv) untagged --learned on append writes zero NEW learned events" "2" "$(jq_count "$LOG_VV" 'select(.ev=="learned")')"
+
+set +e
+ERR_VV2=$(printf 'did real work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_VV" \
+    "$CODEGEN_LOG" section developer-phoenix-backend --body @- --learned "untagged text" --slug test-routing-tag 2>&1)
+RC_VV2=$?
+set -e
+check "(vv) untagged --learned on section exits 2" "2" "$RC_VV2"
+check "(vv) untagged --learned on section wrote zero role events (atomic — even the body did not land)" "0" "$(jq_count "$LOG_VV" 'select(.ev=="role")')"
+
+env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_VV" \
+    "$CODEGEN_LOG" append developer-phoenix-backend --learned "  [local] leading whitespace trimmed before tag check" >/dev/null
+check "(vv) leading-whitespace-then-tag --learned accepted" "3" "$(jq_count "$LOG_VV" 'select(.ev=="learned")')"
+
+env -u AGENT_TYPE -u CLAUDE_ROLE \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_VV" \
+    "$CODEGEN_LOG" append developer-phoenix-backend --no-learning "untagged no-learning text is fine, no tag required" >/dev/null
+check "(vv) --no-learning exempt from tag requirement" "1" "$(jq_count "$LOG_VV" 'select(.ev=="no_learning")')"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
