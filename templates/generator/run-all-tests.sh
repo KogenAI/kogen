@@ -35,6 +35,18 @@
 # the source checkout it is validating. A pre-existing dirty tree at entry is
 # allowed to stay exactly as dirty; only a suite-caused CHANGE to that state
 # fails.
+#
+# The same backstop also snapshots `git status --porcelain --untracked-files=all`
+# (entry vs exit) to catch a suite LEAKING a brand-new untracked path into the
+# repo — e.g. a test helper that creates a symlink/file under the checkout
+# and never cleans it up. This is the case the tracked-byte diff above is
+# blind to: a new path is invisible to `git diff` until something later
+# stages it. Deliberately WITHOUT `--ignored` — gitignored paths (codegen/,
+# coverage/, tmp/, node_modules/) legitimately churn every run (cycle logs,
+# coverage output, build artifacts) and must never fail this check. Only a
+# suite-caused DELTA in the untracked set fails; a pre-existing untracked
+# file that persists unchanged across the window is tolerated, same
+# contract as the tracked-byte snapshot above.
 set -e
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false
 
@@ -49,6 +61,14 @@ if ! git diff --binary --full-index HEAD -- >"$tmp_tree_before" 2>&1; then
     echo "tracked-tree-isolation: FAILED to capture entry snapshot"
     cat "$tmp_tree_before"
     rm -f "$tmp_tree_before"
+    exit 1
+fi
+
+tmp_untracked_before=$(mktemp)
+if ! git status --porcelain --untracked-files=all -- >"$tmp_untracked_before" 2>&1; then
+    echo "tracked-tree-isolation: FAILED to capture untracked entry snapshot"
+    cat "$tmp_untracked_before"
+    rm -f "$tmp_tree_before" "$tmp_untracked_before"
     exit 1
 fi
 
@@ -283,6 +303,27 @@ elif ! cmp -s "$tmp_tree_before" "$tmp_tree_after"; then
     diff -u "$tmp_tree_before" "$tmp_tree_after" || true
 fi
 rm -f "$tmp_tree_before" "$tmp_tree_after"
+
+tmp_untracked_after=$(mktemp)
+if ! git status --porcelain --untracked-files=all -- >"$tmp_untracked_after" 2>&1; then
+    fail=1
+    failed_labels+=(tracked-tree-isolation)
+    printf '===== %s =====\n' tracked-tree-isolation
+    echo "tracked-tree-isolation: FAILED to capture untracked exit snapshot"
+    cat "$tmp_untracked_after"
+else
+    tmp_untracked_new=$(mktemp)
+    comm -13 <(sort "$tmp_untracked_before") <(sort "$tmp_untracked_after") >"$tmp_untracked_new" || true
+    if [ -s "$tmp_untracked_new" ]; then
+        fail=1
+        failed_labels+=(tracked-tree-isolation)
+        printf '===== %s =====\n' tracked-tree-isolation
+        echo "tracked-tree-isolation: the suite leaked new untracked path(s) into the repo:"
+        cat "$tmp_untracked_new"
+    fi
+    rm -f "$tmp_untracked_new"
+fi
+rm -f "$tmp_untracked_before" "$tmp_untracked_after"
 
 if [ "$fail" -eq 0 ]; then
     echo "ALL CLEAR ✅ make test"

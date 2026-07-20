@@ -373,5 +373,38 @@ else
 fi
 (cd "$FIXTURE_REPO" && git checkout -q -- tracked.txt)
 
+# ── Case 15: untracked-path leak backstop — comm -13 idiom ───────────────────
+# Reproduce run-all-tests.sh's untracked-set snapshot-compare:
+#   git status --porcelain --untracked-files=all (before) vs (after),
+#   comm -13 <(sort before) <(sort after) — non-empty output = leak detected.
+_untracked_snapshot() { (cd "$FIXTURE_REPO" && git status --porcelain --untracked-files=all --); }
+
+# 15a: new untracked path created during the window → detected
+before_untracked=$(_untracked_snapshot)
+printf 'leaked\n' >"$FIXTURE_REPO/leaked-artifact.txt"
+after_untracked=$(_untracked_snapshot)
+new_untracked=$(comm -13 <(printf '%s\n' "$before_untracked" | sort) <(printf '%s\n' "$after_untracked" | sort))
+if [ -n "$new_untracked" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: untracked-path fixture: new leaked path not detected"
+fi
+_assert_contains "untracked-path fixture: leaked path named in diff" "leaked-artifact.txt" "$new_untracked"
+rm -f "$FIXTURE_REPO/leaked-artifact.txt"
+
+# 15b: pre-existing untracked file, UNCHANGED across the window → tolerated
+printf 'pre-existing-scratch\n' >"$FIXTURE_REPO/pre-existing-scratch.txt"
+before_persist=$(_untracked_snapshot)
+after_persist=$(_untracked_snapshot)
+new_persist=$(comm -13 <(printf '%s\n' "$before_persist" | sort) <(printf '%s\n' "$after_persist" | sort))
+if [ -z "$new_persist" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: untracked-path fixture: pre-existing unchanged untracked file wrongly flagged"
+fi
+rm -f "$FIXTURE_REPO/pre-existing-scratch.txt"
+
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

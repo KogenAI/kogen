@@ -574,7 +574,12 @@ run_t21_launcher() {
         ln -s "$(command -v yq)" "$bindir/yq"
     fi
     cp "$launcher_src" "$dst"
-    ln -sf "$CODEGEN_ROOT/harnesses" "$T21/harnesses"
+    # -n: treat an existing symlink-to-dir as a file to replace, not a dir to
+    # descend into. Without -n, the second call across repeated invocations
+    # (T21 is used for 4 separate launchers) resolves the existing symlink
+    # and creates the new link INSIDE the target, producing a tracked
+    # harnesses/harnesses artifact in the real repo. See t21-pitch fix.
+    ln -sfn "$CODEGEN_ROOT/harnesses" "$T21/harnesses"
     (cd "$T21" && PATH="$bindir:$PATH" HOME="/tmp/nonexistent_xyz" bash "$launcher_name" $extra_args 2>/dev/null) || true
     [ -f "$capture" ] && cat "$capture" || true
 }
@@ -598,6 +603,18 @@ assert_contains "(21) claude-experiment: Always Load file still forwarded" "REPO
 captured21_pi_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-experiment.sh" "pi-experiment.sh" "pi" "")
 assert_contains "(21) pi-experiment: required_platforms reaches args (Tier-0)" "required_platforms: [darwin, linux]" "$captured21_pi_experiment"
 assert_contains "(21) pi-experiment: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_pi_experiment"
+
+# (22) run_t21_launcher creates the T21/harnesses symlink on every call
+# (4 calls above, same T21 dir). Assert repeated ln -sfn calls never nest a
+# harnesses/harnesses symlink inside the target — regression for the leak
+# fixed by switching -sf to -sfn.
+if [ -e "$T21/harnesses/harnesses" ]; then
+    printf 'FAIL: %s\n' "(22) repeated run_t21_launcher calls must not nest harnesses/harnesses"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(22) repeated run_t21_launcher calls must not nest harnesses/harnesses"
+    pass=$((pass + 1))
+fi
 
 # ── Results ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
