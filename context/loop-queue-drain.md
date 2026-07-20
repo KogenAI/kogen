@@ -1,6 +1,6 @@
 # Multi-Pitch Queue Drain — `LoopQueueDrain`
 
-`CodegenTestHarness.LoopQueueDrain` (`loop_queue_drain.ex`, 2,237 LOC). Drains `codegen/pitches/ready/`
+`CodegenTestHarness.LoopQueueDrain` (`loop_queue_drain.ex`). Drains `codegen/pitches/ready/`
 in dependency order, spawning one fresh `codegen-build` child process per pitch — distinct from
 `context/loop.md`'s single-cycle engine: this is the multi-pitch orchestrator ON TOP of it. Invoked via
 `claude-build.sh --queue` / `pi-build.sh --queue`, which both exec `mix codegen.loop.queue`.
@@ -115,10 +115,19 @@ breaker counts deterministic failures only.
 
 A pitch that fails DETERMINISTICALLY twice — never a transient/outage/timeout, which never reach this
 path — is demoted from `ready/` back to `draft/`, so a guaranteed-failing pitch stops re-burning money on
-every drain restart. `record_build_failure/2` is called from the SAME three arms that call
+every drain restart. `record_build_failure/4` is called from the SAME three arms that call
 `park_failed_tree/2` (the false-exit-0 catch-all in `handle_exit_zero/8`, the terminal-marker arm in
 `handle_nonzero_exit/8`, and its general `true ->` catch-all) — never from the outage-pause or
 retry-eligible arms above them in the same `cond`.
+
+**Every counted deterministic failure writes a durable evidence row — not only the demoting one.**
+`record_build_failure/4` resolves the pitch path, computes the count, builds a
+`build_failure_evidence/5` map from values the calling arm already has bound (classified cause,
+owner/phase attribution, a gate witness ONLY when fresh, cost, recovery branch, and the repo-relative
+`_build.log` path), formats it into one `## Build failure history` table row via
+`format_failure_row/1`, and persists it — on failure #1 via `LoopQueue.write_build_failures!/3`, on the
+THRESHOLD failure via `LoopQueue.write_demotion!/5`. `CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS` controls only
+WHEN the pitch moves to `draft/`; it does not gate whether a row is written.
 
 **Durable counter, not `:failed_slugs`.** The count is a `build_failures:` YAML frontmatter field written
 directly onto the pitch file — durable across a `--watch` restart (the file persists on disk), unlike
@@ -131,7 +140,8 @@ time.
 `status: SHAPING`, `demoted_from: ready`, `demote_reason: deterministic-build-failure-x<N>`, and an
 appended `## Build failure history` table row — byte-for-byte the hand-written template a human authored
 for `the-guard-parses-quotes-worse-than-the-shell-it-guards` before this feature existed. Below the
-threshold, only the counter increments (`LoopQueue.write_build_failures!/2`); the pitch stays in `ready/`.
+threshold, the counter increments AND the same durable evidence row is appended
+(`LoopQueue.write_build_failures!/3`); the pitch stays in `ready/`.
 
 **Path resolution mirrors `write_frontmatter!/4`.** `resolve_pitch_path/2` probes `ready_dir` first (the
 normal shape — a failed cycle already restored its claim via `restore_claim/2`), then `building_dir` (a
@@ -144,11 +154,15 @@ demotion never targets `shipped_dir` — a pitch that reached `shipped/` was nev
 existing `blocked_by_unmet_dep`/SKIPPED-bucket machinery already strands them as unmet-dep skips with no
 code change; this only names the cascade so the operator sees it.
 
-**Fail-open on I/O error.** `record_build_failure/2` rescues any read/write/rename failure (e.g. the pitch
-file already moved out of both `ready_dir` and `building_dir` by a stubbed/pathological spawn) — a demote
-failure prints a loud stderr line and leaves the pitch wherever it already is; it never aborts the drain.
-This mirrors `park_failed_tree/2`'s and `draft_failure/4`'s existing fail-open posture for the same class
-of observation/bookkeeping side effect.
+**Fail-CLOSED on a genuine I/O error; a distinct WARN-and-continue for an absent pitch file.**
+`record_build_failure/4` rescues any read/write/rename failure against a pitch file that IS present and
+returns `{:error, "queue: HALTED — could not persist failure evidence for <slug>: <reason>"}` — every
+call site halts the drain on this result BEFORE breaker accounting or another spawn. Required evidence
+must never silently vanish. The ONE exception is a pitch file genuinely ABSENT from both `ready_dir` and
+`building_dir` (an out-of-band actor, typically the child's own committer, already moved it to
+`shipped/` before this classification ran) — there is no pitch left to record evidence INTO, so this
+warns loud and continues rather than halting. Contrast `draft_failure/4` (the advisory skeleton
+drafter), which stays fail-open: it creates optional follow-up work, not the required durable record.
 
 **Layered on top of, not instead of, the circuit breaker.** A demotion changes neither `:failed_slugs` nor
 `:consecutive_fails` — the breaker (§ Circuit Breaker) remains a pure box-health backstop; a systemically
@@ -298,4 +312,4 @@ any spawn — zero spend, remediation named (`mix deps.get && mix compile`). See
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block

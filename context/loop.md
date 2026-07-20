@@ -10,16 +10,16 @@ crashes loud on unexpected state.
 disclaims the loop and forwards elsewhere) and `context/test-harness.md` (wrong domain — that file
 owns the ExUnit stack SUITE, not the engine under test).
 
-## Module Map (7,900 LOC total across the engine family)
+## Module Map
 
-| Module                                                              | LOC   | Owns                                                                               |
-| ------------------------------------------------------------------- | ----- | ---------------------------------------------------------------------------------- |
-| `CodegenTestHarness.OrchestrationLoop` (`orchestration_loop.ex`)    | 3,346 | the cycle driver — `run/1`, role sequencing, retry, resume, budget cap, escalation |
-| `CodegenTestHarness.LoopGate` (`loop_gate.ex`)                      | 1,068 | gate execution + verdict classification (deterministic)                            |
-| `CodegenTestHarness.LoopQueue` (`loop_queue.ex`)                    | 902   | single-pitch queue state machine                                                   |
-| `CodegenTestHarness.BuildLock` (`build_lock.ex`)                    | 187   | solo-run mutex, PID-liveness check                                                 |
-| `CodegenTestHarness.BuildSignalHandler` (`build_signal_handler.ex`) | 160   | SIGINT/SIGTERM → halt 130                                                          |
-| `CodegenTestHarness.LoopQueueDrain` (`loop_queue_drain.ex`)         | 2,237 | multi-pitch drain — separate domain, own owner file                                |
+| Module                                                              | Owns                                                                               |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `CodegenTestHarness.OrchestrationLoop` (`orchestration_loop.ex`)    | the cycle driver — `run/1`, role sequencing, retry, resume, budget cap, escalation |
+| `CodegenTestHarness.LoopGate` (`loop_gate.ex`)                      | gate execution + verdict classification (deterministic)                            |
+| `CodegenTestHarness.LoopQueue` (`loop_queue.ex`)                    | single-pitch queue state machine                                                   |
+| `CodegenTestHarness.BuildLock` (`build_lock.ex`)                    | solo-run mutex, PID-liveness check                                                 |
+| `CodegenTestHarness.BuildSignalHandler` (`build_signal_handler.ex`) | SIGINT/SIGTERM → halt 130                                                          |
+| `CodegenTestHarness.LoopQueueDrain` (`loop_queue_drain.ex`)         | multi-pitch drain — separate domain, own owner file                                |
 
 ## The Decider Map — What Is LLM vs Deterministic (swept, exactly 4 LLM stages of 42)
 

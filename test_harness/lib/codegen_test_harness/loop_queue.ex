@@ -1108,18 +1108,26 @@ defmodule CodegenTestHarness.LoopQueue do
   @doc """
   Upserts `build_failures: <count>` into `pitch_path`'s frontmatter block
   (minting one if absent, via the same reconstruction grammar
-  `upsert_ship_frontmatter/3` uses) — the increment-only write, used when a
-  deterministic failure has NOT yet reached the demotion threshold.
+  `upsert_ship_frontmatter/3` uses) AND appends `history_row` under the
+  `## Build failure history` section (minting the section the first time) —
+  ONE file rewrite covering both the counter and the durable evidence row.
+  Every counted deterministic failure gets a row from failure #1 onward,
+  not only at demotion (`write_demotion!/5` appends the row for the
+  THRESHOLD failure that also moves the pitch to `draft/`).
 
   Raises on a read failure (mirrors `write_frontmatter!/4` — the pitch file
   disappearing between the caller's existence check and this write is a
   genuine anomaly, not a documented sentinel).
   """
-  @spec write_build_failures!(String.t(), non_neg_integer()) :: :ok
-  def write_build_failures!(pitch_path, count) do
+  @spec write_build_failures!(String.t(), non_neg_integer(), String.t()) :: :ok
+  def write_build_failures!(pitch_path, count, history_row) do
     case File.read(pitch_path) do
       {:ok, content} ->
-        updated = upsert_frontmatter_lines(content, ["build_failures: #{count}"])
+        updated =
+          content
+          |> upsert_frontmatter_lines(["build_failures: #{count}"])
+          |> append_history_row("Build failure history", history_row)
+
         File.write!(pitch_path, updated)
         :ok
 
@@ -1141,9 +1149,13 @@ defmodule CodegenTestHarness.LoopQueue do
 
   `history_row` is a single already-formatted markdown table row (`| ... |
   ... |`) for THIS run — the caller assembles it (run label, cost, terminal
-  reason) since only the caller knows those. A pitch demoted more than once
-  in its lifetime (re-queued after reshaping, fails again) accumulates one
-  row per demotion; this function never truncates or replaces prior rows.
+  reason) since only the caller knows those. Rows accumulate from the
+  pitch's FIRST counted deterministic failure onward (see
+  `write_build_failures!/3`) — demotion is simply the threshold failure's
+  row landing in the same section right before the `ready/ -> draft/` move.
+  A pitch demoted more than once in its lifetime (re-queued after
+  reshaping, fails again) accumulates one row per demotion; this function
+  never truncates or replaces prior rows.
 
   Raises on a read failure (mirrors `write_frontmatter!/4`) or on a
   `File.rename!/2` failure (mirrors `record_ship/4`'s `ship/6`
@@ -1207,23 +1219,78 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
-  # Appends a `## <header>` section (minting the header the first time, else
-  # appending one more table row under the EXISTING header) to the pitch
-  # BODY (after the frontmatter block). Normalizes a missing trailing
-  # newline before appending so the new section never runs onto the same
+  # Mints a `## <header>` section (first failure) or inserts one more table
+  # row INSIDE the EXISTING section (subsequent failures) in the pitch BODY
+  # (after the frontmatter block). Insertion lands after the section's last
+  # existing table row and BEFORE the next `## ` heading — EOF only when no
+  # `## ` heading follows the history section. A blind EOF-append (the prior
+  # behavior) put later rows AFTER unrelated sections such as `## Problem`,
+  # breaking the table it claimed to extend. Normalizes a missing trailing
+  # newline before appending so a minted section never runs onto the same
   # line as the file's last byte.
   @spec append_history_row(String.t(), String.t(), String.t()) :: String.t()
   defp append_history_row(content, header, row) do
     normalized = String.trim_trailing(content) <> "\n"
+    marker = "## #{header}"
 
-    if String.contains?(normalized, "## #{header}") do
-      normalized <> row <> "\n"
+    if String.contains?(normalized, marker) do
+      [before, after_marker] = String.split(normalized, marker, parts: 2)
+
+      case String.split(after_marker, "\n## ", parts: 2) do
+        [section_only] ->
+          # History section is the LAST section in the file — EOF append.
+          before <> marker <> String.trim_trailing(section_only) <> "\n" <> row <> "\n"
+
+        [section, rest] ->
+          # Another `## ` heading follows — insert before it, inside the
+          # history section.
+          before <>
+            marker <> String.trim_trailing(section) <> "\n" <> row <> "\n\n## " <> rest
+      end
     else
       normalized <>
-        "\n## #{header}\n\n" <>
+        "\n" <>
+        marker <>
+        "\n\n" <>
         "| run | when | cost | terminal reason |\n" <>
         "|---|---|---|---|\n" <>
         row <> "\n"
+    end
+  end
+
+  @failure_summary_limit 500
+
+  @doc """
+  Escapes `cell` for safe embedding as ONE markdown table cell: replaces
+  CR/LF with a single space (a raw newline inside a `| ... |` row would
+  split it across lines and corrupt the table), escapes a literal `|` as
+  `\\|` (an unescaped pipe would be read as a column boundary), and trims
+  surrounding whitespace. Called by `LoopQueueDrain` when assembling a
+  `## Build failure history` row from free-form terminal reasons / model
+  prose — this module owns pitch-file grammar, so the escaping rule lives
+  here rather than being duplicated at the call site.
+  """
+  @spec escape_history_cell(String.t()) :: String.t()
+  def escape_history_cell(cell) do
+    cell
+    |> String.replace(["\r\n", "\r", "\n"], " ")
+    |> String.replace("|", "\\|")
+    |> String.trim()
+  end
+
+  @doc """
+  Truncates `text` to at most 500 Unicode codepoints, appending
+  `… [truncated; raw=<raw_path>]` when truncation actually occurred — so an
+  unbounded model-produced summary can never grow a pitch file without
+  bound, while still naming where the FULL evidence remains on disk.
+  Returns `text` unchanged when it already fits.
+  """
+  @spec truncate_summary(String.t(), String.t()) :: String.t()
+  def truncate_summary(text, raw_path) do
+    if String.length(text) > @failure_summary_limit do
+      String.slice(text, 0, @failure_summary_limit) <> "… [truncated; raw=#{raw_path}]"
+    else
+      text
     end
   end
 end

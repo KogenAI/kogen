@@ -1689,14 +1689,26 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       ready_path = Path.join(ctx.ready_dir, "solo.md")
       assert File.exists?(ready_path)
-      assert File.read!(ready_path) =~ "build_failures: 1"
+      body = File.read!(ready_path)
+      assert body =~ "build_failures: 1"
+      # A durable evidence row is written on the FIRST counted deterministic
+      # failure too — not only at demotion.
+      assert body =~ "## Build failure history"
+      assert body =~ "| queue drain |"
+      assert body =~ "cause=gate_failed"
     end
 
     test "second deterministic failure demotes to draft/ with full history", ctx do
+      # Seed a FIRST row too (as write_build_failures!/3 would have left it)
+      # so this test asserts BOTH rows survive demotion in order, not just
+      # the counter.
       write_pitch(
         ctx.ready_dir,
         "solo",
-        "---\nbuild_failures: 1\nblocks_on: []\n---\n\n# Pitch: solo\n"
+        "---\nbuild_failures: 1\nblocks_on: []\n---\n\n# Pitch: solo\n\n" <>
+          "## Build failure history\n\n| run | when | cost | terminal reason |\n" <>
+          "|---|---|---|---|\n" <>
+          "| queue drain | 2023-11-14T00:00:00Z | unaccountable | cause=gate_failed; owner=drain/gate; detail=first failure; recovery=none (tree clean); raw=codegen/logging/first.log |\n"
       )
 
       spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
@@ -1722,6 +1734,13 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert body =~ "demote_reason: deterministic-build-failure-x2"
       assert body =~ "status: SHAPING"
       assert body =~ "## Build failure history"
+
+      # Both rows present, in chronological order (first row seeded above,
+      # second row appended by this run).
+      rows = body |> String.split("\n") |> Enum.filter(&String.starts_with?(&1, "| queue drain"))
+      assert length(rows) == 2
+      assert Enum.at(rows, 0) =~ "first failure"
+      refute Enum.at(rows, 1) =~ "first failure"
 
       assert output =~ "queue: DEMOTED solo after 2 deterministic failures"
     end
@@ -1926,6 +1945,351 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       draft_body = File.read!(draft_path)
 
       assert draft_body =~ "# Pitch: solo (no trailing newline)\n\n## Build failure history"
+    end
+  end
+
+  describe "build failure evidence rows" do
+    test "false-0 arm's row carries drain/ship-verification owner", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx, spawn_fn: spawn_fn, git_head_fn: fn _cwd -> nil end)
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      assert body =~ "owner=drain/ship-verification"
+    end
+
+    test "terminal-marker arm's row carries the terminal marker's own owner", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> true end
+
+      terminal_marker_fn = fn _cwd ->
+        {:terminal, "gate verdict=failed", "developer-phoenix-backend"}
+      end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx,
+            spawn_fn: spawn_fn,
+            transient_fn: transient_fn,
+            terminal_marker_fn: terminal_marker_fn
+          )
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      assert body =~ "owner=developer-phoenix-backend"
+    end
+
+    test "general catch-all arm's row carries drain/gate owner", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      assert body =~ "owner=drain/gate"
+    end
+
+    test "fresh gate record includes the witness in the row", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      gate_pending_dir = Path.join([ctx.dir, "codegen", "gate-pending"])
+      File.mkdir_p!(gate_pending_dir)
+
+      File.write!(
+        Path.join(gate_pending_dir, "gate-result.json"),
+        ~s({"verdict":"failed","witness":"test/x_test.exs:42 — expected true"})
+      )
+
+      # HEAD never moves ("aaa" both before/after) — committed? stays false
+      # even though the gate record is fresh-"clear", landing in the
+      # general catch-all (gate_clear? true, committed? false ==
+      # :ship_not_verified) rather than a ship branch.
+      git_head_fn = fn _cwd -> "aaa" end
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+      gate_verdict_fn = fn _cwd -> "clear" end
+      gate_base_sha_fn = fn _cwd -> "aaa" end
+      gate_mtime_fn = fn _cwd -> 1_700_000_000 end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx,
+            spawn_fn: spawn_fn,
+            transient_fn: transient_fn,
+            git_head_fn: git_head_fn,
+            gate_verdict_fn: gate_verdict_fn,
+            gate_base_sha_fn: gate_base_sha_fn,
+            gate_mtime_fn: gate_mtime_fn
+          )
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      assert body =~ "witness=test/x_test.exs:42 — expected true"
+    end
+
+    test "stale gate record omits the witness, uses classified cause + terminal summary instead",
+         ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      gate_pending_dir = Path.join([ctx.dir, "codegen", "gate-pending"])
+      File.mkdir_p!(gate_pending_dir)
+
+      File.write!(
+        Path.join(gate_pending_dir, "gate-result.json"),
+        ~s({"verdict":"failed","witness":"test/x_test.exs:42 — expected true"})
+      )
+
+      spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+        File.write!(jsonl, ~s({"type":"result","result":"boom"}\n))
+        {:exit_code, 1}
+      end
+
+      transient_fn = fn _jsonl -> false end
+      # gate_mtime_fn stays at base_opts' default (0) — always stale.
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      refute body =~ "witness=test/x_test.exs:42"
+      assert body =~ "detail=gate verdict="
+      assert body =~ "boom"
+    end
+
+    test "nil cost reads unaccountable, never 0 or n/a", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      row = body |> String.split("\n") |> Enum.find(&String.starts_with?(&1, "| queue drain"))
+      assert row =~ "| unaccountable |"
+      refute row =~ "| 0 |"
+      refute row =~ "| n/a |"
+    end
+
+    test "accountable cost is recorded in the cost cell", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+        File.write!(jsonl, ~s({"type":"result","total_cost_usd":1.5}\n))
+        {:exit_code, 1}
+      end
+
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      row = body |> String.split("\n") |> Enum.find(&String.starts_with?(&1, "| queue drain"))
+      assert row =~ "| 1.5 |"
+    end
+
+    test "clean tree (no parked branch) reads recovery=none (tree clean)", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+      git_stash_fn = fn _cwd, _slug, _reason -> {:ok, nil} end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx,
+            spawn_fn: spawn_fn,
+            transient_fn: transient_fn,
+            git_stash_fn: git_stash_fn
+          )
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      assert body =~ "recovery=none (tree clean)"
+    end
+
+    test "a parked branch is named in the recovery cell", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+      git_stash_fn = fn _cwd, slug, _reason -> {:ok, "queue-fail/#{slug}/123"} end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx,
+            spawn_fn: spawn_fn,
+            transient_fn: transient_fn,
+            git_stash_fn: git_stash_fn
+          )
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      assert body =~ "recovery=queue-fail/solo/123"
+    end
+
+    test "a terminal reason with a pipe and a newline still yields exactly four cells", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+        File.write!(jsonl, ~s({"type":"result","result":"line one | pipe\\nline two"}\n))
+        {:exit_code, 1}
+      end
+
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      row = body |> String.split("\n") |> Enum.find(&String.starts_with?(&1, "| queue drain"))
+      # The row is still exactly 4 STRUCTURAL columns: the embedded pipe is
+      # ESCAPED (`\|`, not a raw column-separating `|`), so a literal split
+      # on the raw `|` byte cannot be used to count columns (an escaped
+      # pipe still contains that byte). Assert structurally instead: the
+      # row starts/ends with the 4-column skeleton and the embedded pipe
+      # survived escaped, not as a 5th raw column boundary.
+      assert row =~ ~r/^\| queue drain \| [^|]+ \| [^|]+ \| .*\\\| pipe.*\|$/
+      assert row =~ "line one \\| pipe line two"
+      refute row =~ "line one | pipe"
+    end
+
+    # Oversized model prose must never grow the pitch file unbounded.
+    test "an oversized summary is truncated with a raw-path marker; cause/witness untruncated",
+         ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      long_result = String.duplicate("x", 600)
+
+      spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+        File.write!(jsonl, Jason.encode!(%{"type" => "result", "result" => long_result}) <> "\n")
+        {:exit_code, 1}
+      end
+
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+        )
+      end)
+
+      body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      row = body |> String.split("\n") |> Enum.find(&String.starts_with?(&1, "| queue drain"))
+      assert row =~ "… [truncated; raw="
+      assert row =~ "cause=gate_failed; owner=drain/gate"
+      refute row =~ String.duplicate("x", 600)
+    end
+
+    test "pitch whose history section is followed by ## Problem gets its new row inside the table",
+         ctx do
+      write_pitch(
+        ctx.ready_dir,
+        "solo",
+        "---\nbuild_failures: 1\nblocks_on: []\n---\n\n# Pitch: solo\n\n" <>
+          "## Build failure history\n\n| run | when | cost | terminal reason |\n" <>
+          "|---|---|---|---|\n" <>
+          "| queue drain | 2023-11-14T00:00:00Z | unaccountable | cause=gate_failed; owner=drain/gate; detail=first failure; recovery=none (tree clean); raw=codegen/logging/first.log |\n\n" <>
+          "## Problem\nbody text after history section\n"
+      )
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      transient_fn = fn _jsonl -> false end
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+        )
+      end)
+
+      draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
+      body = File.read!(draft_path)
+
+      rows = body |> String.split("\n") |> Enum.filter(&String.starts_with?(&1, "| queue drain"))
+      assert length(rows) == 2
+
+      problem_at = :binary.match(body, "## Problem") |> elem(0)
+      new_row_at = :binary.match(body, "cause=gate_failed; owner=drain/gate; detail=") |> elem(0)
+      first_row_at = :binary.match(body, "first failure") |> elem(0)
+
+      assert first_row_at < problem_at
+      assert new_row_at < problem_at
+      assert body =~ "body text after history section"
+    end
+
+    @tag :evidence_persistence_failure
+    test "persistence failure halts the drain and stops further spawns", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+      # "second" depends on "solo" — guarantees deterministic spawn order
+      # (solo first) regardless of directory listing order, and confirms
+      # the halt happens BEFORE any dependent pitch is ever considered.
+      write_pitch(ctx.ready_dir, "second", "---\nblocks_on: [solo]\n---\n\n# Pitch: second\n")
+
+      spawn_calls = start_agent([])
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        Agent.update(spawn_calls, fn calls -> calls ++ [slug] end)
+
+        if slug == "solo" do
+          # Force resolve_pitch_path/2 to find a path whose FILE EXISTS
+          # (so record_build_failure/3 attempts the write) but whose
+          # containing directory then gets removed mid-flight, making the
+          # actual File.write! fail with a real I/O error.
+          File.rm_rf!(Path.join(ctx.ready_dir, "solo.md"))
+          File.mkdir_p!(Path.join(ctx.ready_dir, "solo.md"))
+        end
+
+        {:exit_code, 1}
+      end
+
+      transient_fn = fn _jsonl -> false end
+
+      output =
+        capture_io(:stderr, fn ->
+          assert {:error, reason} =
+                   LoopQueueDrain.drain(
+                     base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
+                   )
+
+          assert reason =~
+                   "queue: HALTED — could not persist failure evidence for solo"
+        end)
+
+      _ = output
+      assert Agent.get(spawn_calls, & &1) == ["solo"]
     end
   end
 

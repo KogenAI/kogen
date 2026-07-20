@@ -146,7 +146,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   box configured with an idle-lock despite `caffeinate`.
   """
 
-  alias CodegenTestHarness.{BuildLock, LoopQueue}
+  alias CodegenTestHarness.{BuildLock, LoopGate, LoopQueue}
 
   @type drain_opts :: keyword()
 
@@ -1258,30 +1258,43 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           })
 
         state = draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?})
-        record_build_failure(state, slug)
 
-        failed_slugs = MapSet.put(state.failed_slugs, slug)
-        parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
-        consecutive_fails = state.consecutive_fails + 1
+        evidence_opts = [
+          cause: cause,
+          owner_phase: failure_owner_phase(:ship_not_verified),
+          gate_clear?: gate_clear?,
+          recovery: parked_branch
+        ]
 
-        if consecutive_fails >= state.max_consecutive_fails do
-          spend_report(state, shipped_count, MapSet.size(failed_slugs))
+        case record_build_failure(state, slug, jsonl, evidence_opts) do
+          {:error, reason} ->
+            spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+            {:error, reason}
 
-          {:error,
-           "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
-             "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
-             "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
-        else
-          state = %{
-            state
-            | failed_slugs: failed_slugs,
-              parked_branches: parked_branches,
-              consecutive_fails: consecutive_fails,
-              retry_count: 0,
-              last_slug: nil
-          }
+          :ok ->
+            failed_slugs = MapSet.put(state.failed_slugs, slug)
+            parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
+            consecutive_fails = state.consecutive_fails + 1
 
-          run_loop(state, shipped_count, concluded_count + 1)
+            if consecutive_fails >= state.max_consecutive_fails do
+              spend_report(state, shipped_count, MapSet.size(failed_slugs))
+
+              {:error,
+               "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
+                 "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
+                 "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
+            else
+              state = %{
+                state
+                | failed_slugs: failed_slugs,
+                  parked_branches: parked_branches,
+                  consecutive_fails: consecutive_fails,
+                  retry_count: 0,
+                  last_slug: nil
+              }
+
+              run_loop(state, shipped_count, concluded_count + 1)
+            end
         end
     end
   end
@@ -1431,6 +1444,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # draft is an observation, not a required value — a `codegen-call` error
   # must never abort the drain, only skip the count increment and warn loud.
   #
+  # Contrast with `record_build_failure/3` (below): that writer is the
+  # REQUIRED durable record (the pitch's own `## Build failure history`),
+  # so it is fail-CLOSED — an I/O error there halts the drain rather than
+  # silently discarding required evidence. This drafter only creates
+  # OPTIONAL follow-up work (a reshaped draft pitch), so failing open here
+  # is correct; the direct pitch writer is the fail-closed backstop.
+  #
   # `classification` is a `{cause_tuple, gate_verdict, gate_clear?}` built by
   # the CALLER from its already-computed booleans (both FAILED arms already
   # read `gate_verdict`/`gate_clear?` for their own `cond` — no second
@@ -1444,7 +1464,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # still reads `clear` — the buried-contradiction case this pitch exists to
   # surface, printed immediately rather than only discoverable by reading the
   # drafted skeleton later.
-  @spec draft_failure(map(), String.t(), String.t(), {{atom(), String.t()}, String.t(), boolean()}) ::
+  @spec draft_failure(
+          map(),
+          String.t(),
+          String.t(),
+          {{atom(), String.t()}, String.t(), boolean()}
+        ) ::
           map()
   defp draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?}) do
     {cause_atom, _cause_str} = cause
@@ -1492,36 +1517,160 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @spec draft_dir(map()) :: String.t()
   defp draft_dir(state), do: Path.join([state.cwd, "codegen", "pitches", "draft"])
 
-  # Increments (or demotes) the durable per-pitch `build_failures:`
-  # frontmatter counter. Called ONLY from the three DETERMINISTIC failure
-  # arms (never transient/outage/timeout) — see moduledoc "A pitch that
-  # fails DETERMINISTICALLY". Fail-open on any I/O error: a demote/count
-  # failure must never abort the drain, only warn loud and leave the pitch
-  # where it already is (today's behavior, no regression).
-  @spec record_build_failure(map(), String.t()) :: :ok
-  defp record_build_failure(state, slug) do
-    pitch_path = resolve_pitch_path(state, slug)
-    count = LoopQueue.parse_build_failures(slug, pitch_path) + 1
+  # Builds the durable failure-evidence map for ONE counted deterministic
+  # failure, from values the calling arm already has bound — never
+  # re-probes a seam. The witness (LoopGate.failing_check/1) is included
+  # ONLY when the arm's own freshness check (`gate_clear?`) says this
+  # cycle's gate record is fresh — a stale gate's witness belongs to a
+  # PRIOR cycle and would misdirect. `owner_phase` is the pre-resolved
+  # attribution string (see `failure_owner_phase/1`). `recovery` is the
+  # parked branch name, or `nil` for a clean tree (nothing to recover).
+  @spec build_failure_evidence(map(), String.t(), String.t(), non_neg_integer(), keyword()) ::
+          map()
+  defp build_failure_evidence(state, slug, jsonl, count, opts) do
+    cause = Keyword.fetch!(opts, :cause)
+    owner_phase = Keyword.fetch!(opts, :owner_phase)
+    gate_clear? = Keyword.fetch!(opts, :gate_clear?)
+    recovery = Keyword.fetch!(opts, :recovery)
 
-    if count >= state.max_pitch_fails do
-      demote_pitch(state, slug, pitch_path, count)
+    witness = if gate_clear?, do: LoopGate.failing_check(state.cwd), else: ""
+    {cause_atom, cause_str} = cause
+
+    summary =
+      case last_result_record(jsonl) do
+        nil -> ""
+        record -> failure_summary(record)
+      end
+
+    raw = Path.relative_to(jsonl, state.cwd)
+
+    %{
+      count: count,
+      at: state.now_fn.(),
+      cause_atom: cause_atom,
+      cause_str: cause_str,
+      owner_phase: owner_phase,
+      witness: witness,
+      summary: summary,
+      cost: child_cost_usd(jsonl),
+      recovery: recovery,
+      raw: raw,
+      slug: slug
+    }
+  end
+
+  # Maps the arm-local disposition to the accountable owner/phase cell.
+  # `:ship_not_verified` is a false-exit-0 with no real commit — that is
+  # the drain's own ship-verification step's finding, never a role's.
+  # `{:terminal, owner}` carries the terminal marker's OWN role verbatim
+  # (a role genuinely exhausted its retries). Everything else routes
+  # through the drain's general gate-failure catch-all.
+  @spec failure_owner_phase({atom(), String.t() | nil} | atom()) :: String.t()
+  defp failure_owner_phase(:ship_not_verified), do: "drain/ship-verification"
+  defp failure_owner_phase({:terminal, owner}), do: owner || "unknown"
+  defp failure_owner_phase(_), do: "drain/gate"
+
+  # Renders one four-column `## Build failure history` row from the
+  # evidence map `build_failure_evidence/4` built. Every cell is escaped
+  # via `LoopQueue.escape_history_cell/1` — a terminal reason or model
+  # summary may legitimately contain `|` or embedded newlines, and an
+  # unescaped one would corrupt the table. Cost reads the literal
+  # `unaccountable` (never `0`, never `n/a`) when the child produced no
+  # accountable spend record.
+  @spec format_failure_row(map()) :: String.t()
+  defp format_failure_row(evidence) do
+    when_str = evidence.at |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    cost_str =
+      case evidence.cost do
+        n when is_number(n) -> Float.to_string(n)
+        nil -> "unaccountable"
+      end
+
+    recovery_str =
+      case evidence.recovery do
+        nil -> "none (tree clean)"
+        branch -> branch
+      end
+
+    cause_segment =
+      if evidence.witness != "" do
+        "witness=#{evidence.witness}"
+      else
+        summary =
+          if evidence.summary == "" do
+            evidence.cause_str
+          else
+            "#{evidence.cause_str} — #{evidence.summary}"
+          end
+
+        "detail=#{LoopQueue.truncate_summary(summary, evidence.raw)}"
+      end
+
+    reason_cell =
+      "cause=#{evidence.cause_atom}; owner=#{evidence.owner_phase}; #{cause_segment}; " <>
+        "recovery=#{recovery_str}; raw=#{evidence.raw}"
+
+    "| queue drain | #{when_str} | #{cost_str} | #{LoopQueue.escape_history_cell(reason_cell)} |"
+  end
+
+  # Persists the durable evidence for ONE counted deterministic failure —
+  # a row under `## Build failure history` on EVERY counted failure (not
+  # only at demotion), plus the `build_failures:` counter, plus (at the
+  # threshold) the `ready|building/ -> draft/` demotion. Called ONLY from
+  # the three DETERMINISTIC failure arms (never transient/outage/timeout)
+  # — see moduledoc "A pitch that fails DETERMINISTICALLY". `opts` is the
+  # same keyword list `build_failure_evidence/5` consumes (`:cause`,
+  # `:owner_phase`, `:gate_clear?`, `:recovery`) — the count is resolved
+  # HERE (not by the caller) so a resolution failure (e.g. a directory
+  # sitting where the pitch file should be) is caught by the SAME
+  # fail-closed boundary as the write itself, rather than raising
+  # uncaught before this function is even entered.
+  #
+  # Fail-CLOSED on any I/O error: required evidence cannot be allowed to
+  # silently vanish. Returns `{:error, reason}` naming the exact failure
+  # and slug; every call site halts the drain on this result BEFORE
+  # breaker accounting or another spawn — never fails open.
+  @spec record_build_failure(map(), String.t(), String.t(), keyword()) ::
+          :ok | {:error, String.t()}
+  defp record_build_failure(state, slug, jsonl, opts) do
+    pitch_path = resolve_pitch_path(state, slug)
+
+    if File.exists?(pitch_path) do
+      count = LoopQueue.parse_build_failures(slug, pitch_path) + 1
+      evidence = build_failure_evidence(state, slug, jsonl, count, opts)
+      row = format_failure_row(evidence)
+
+      if count >= state.max_pitch_fails do
+        demote_pitch(state, slug, pitch_path, count, row)
+      else
+        LoopQueue.write_build_failures!(pitch_path, count, row)
+        :ok
+      end
     else
-      LoopQueue.write_build_failures!(pitch_path, count)
+      # The pitch file is genuinely absent from BOTH ready/ and building/ —
+      # an out-of-band actor (e.g. the child's own committer) already moved
+      # it elsewhere (typically shipped/) before this classification ran.
+      # There is no pitch left to record evidence INTO; this is a distinct
+      # case from a write/rename I/O error against a file that IS present,
+      # so it warns loud and continues rather than halting the drain.
+      IO.puts(
+        :stderr,
+        "queue: WARN — #{slug} has no pitch file at #{pitch_path} to record failure evidence " <>
+          "into (already moved out of ready/building/ by an out-of-band actor) — skipping"
+      )
+
       :ok
     end
   rescue
     e ->
-      IO.puts(:stderr, "queue: build-failure counter update skipped for #{slug} — #{inspect(e)}")
-      :ok
+      {:error, "queue: HALTED — could not persist failure evidence for #{slug}: #{inspect(e)}"}
   end
 
-  @spec demote_pitch(map(), String.t(), String.t(), non_neg_integer()) :: :ok
-  defp demote_pitch(state, slug, pitch_path, count) do
+  @spec demote_pitch(map(), String.t(), String.t(), non_neg_integer(), String.t()) ::
+          :ok | {:error, String.t()}
+  defp demote_pitch(state, slug, pitch_path, count, history_row) do
     draft_path = Path.join(draft_dir(state), "#{slug}.md")
-    when_str = state.now_fn.() |> to_string()
-
-    history_row =
-      "| queue drain | #{when_str} | n/a | deterministic failure ##{count} — see build log above |"
 
     LoopQueue.write_demotion!(pitch_path, draft_path, count, history_row, "Build failure history")
 
@@ -1537,6 +1686,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     )
 
     :ok
+  rescue
+    e ->
+      {:error, "queue: HALTED — could not persist failure evidence for #{slug}: #{inspect(e)}"}
   end
 
   @spec put_parked_branch(%{String.t() => String.t()}, String.t(), String.t() | nil) ::
@@ -1766,30 +1918,43 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         )
 
         parked_branch = park_failed_tree(state, slug)
-        record_build_failure(state, slug)
 
-        failed_slugs = MapSet.put(state.failed_slugs, slug)
-        parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
-        consecutive_fails = state.consecutive_fails + 1
+        evidence_opts = [
+          cause: {:terminal, "#{terminal_owner || "unknown"} exhausted — #{terminal_reason}"},
+          owner_phase: failure_owner_phase({:terminal, terminal_owner}),
+          gate_clear?: gate_clear?,
+          recovery: parked_branch
+        ]
 
-        if consecutive_fails >= state.max_consecutive_fails do
-          spend_report(state, shipped_count, MapSet.size(failed_slugs))
+        case record_build_failure(state, slug, jsonl, evidence_opts) do
+          {:error, reason} ->
+            spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+            {:error, reason}
 
-          {:error,
-           "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
-             "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
-             "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
-        else
-          state = %{
-            state
-            | failed_slugs: failed_slugs,
-              parked_branches: parked_branches,
-              consecutive_fails: consecutive_fails,
-              retry_count: 0,
-              last_slug: nil
-          }
+          :ok ->
+            failed_slugs = MapSet.put(state.failed_slugs, slug)
+            parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
+            consecutive_fails = state.consecutive_fails + 1
 
-          run_loop(state, shipped_count, concluded_count + 1)
+            if consecutive_fails >= state.max_consecutive_fails do
+              spend_report(state, shipped_count, MapSet.size(failed_slugs))
+
+              {:error,
+               "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
+                 "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
+                 "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
+            else
+              state = %{
+                state
+                | failed_slugs: failed_slugs,
+                  parked_branches: parked_branches,
+                  consecutive_fails: consecutive_fails,
+                  retry_count: 0,
+                  last_slug: nil
+              }
+
+              run_loop(state, shipped_count, concluded_count + 1)
+            end
         end
 
       state.transient_fn.(jsonl) and not (gate_clear? and not committed?) ->
@@ -1834,30 +1999,43 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           })
 
         state = draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?})
-        record_build_failure(state, slug)
 
-        failed_slugs = MapSet.put(state.failed_slugs, slug)
-        parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
-        consecutive_fails = state.consecutive_fails + 1
+        evidence_opts = [
+          cause: cause,
+          owner_phase: failure_owner_phase(:gate_failed),
+          gate_clear?: gate_clear?,
+          recovery: parked_branch
+        ]
 
-        if consecutive_fails >= state.max_consecutive_fails do
-          spend_report(state, shipped_count, MapSet.size(failed_slugs))
+        case record_build_failure(state, slug, jsonl, evidence_opts) do
+          {:error, reason} ->
+            spend_report(state, shipped_count, MapSet.size(state.failed_slugs))
+            {:error, reason}
 
-          {:error,
-           "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
-             "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
-             "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
-        else
-          state = %{
-            state
-            | failed_slugs: failed_slugs,
-              parked_branches: parked_branches,
-              consecutive_fails: consecutive_fails,
-              retry_count: 0,
-              last_slug: nil
-          }
+          :ok ->
+            failed_slugs = MapSet.put(state.failed_slugs, slug)
+            parked_branches = put_parked_branch(state.parked_branches, slug, parked_branch)
+            consecutive_fails = state.consecutive_fails + 1
 
-          run_loop(state, shipped_count, concluded_count + 1)
+            if consecutive_fails >= state.max_consecutive_fails do
+              spend_report(state, shipped_count, MapSet.size(failed_slugs))
+
+              {:error,
+               "queue: HALTED — #{consecutive_fails} consecutive deterministic failures " <>
+                 "(#{Enum.join(failed_slugs, ", ")}), environment likely broken — fix env, re-run; " <>
+                 "failed pitches remain in ready/, " <> parked_recovery_text(parked_branches)}
+            else
+              state = %{
+                state
+                | failed_slugs: failed_slugs,
+                  parked_branches: parked_branches,
+                  consecutive_fails: consecutive_fails,
+                  retry_count: 0,
+                  last_slug: nil
+              }
+
+              run_loop(state, shipped_count, concluded_count + 1)
+            end
         end
     end
   end
