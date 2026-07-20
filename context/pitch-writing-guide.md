@@ -36,6 +36,10 @@ The write-surface hook (`orchestrator-no-source-edit.sh`, used by `shape` and ot
 
 Launchers like `shape` also auto-edit pitches via this same resolved path. If a different path was used, the launcher can't find the file.
 
+## Probing must re-run — file measurements go stale
+
+**When a pitch includes byte-size claims, line-count claims, or tool-invocation outcomes (e.g. "the file is X bytes", "`prettier --check` passes"), re-probe those claims at plan time, not just at pitch-writing time.** Files grow between proposal and build, and a measured state can flip mid-cycle. The planner's probes are evidence about the past; re-running the two cheapest and most volatile checks (`wc -c`, `prettier --check`) on the target file at plan time will catch growth or tool-behavior shifts before the cycle. Recording both the old probe result (pitch preamble timestamp) and the new result (at plan time) in the planner's body, with an explicit note on divergence, makes re-probing visible to the downstream reviewer.
+
 ## Scope field requirement
 
 **Mandatory: every pitch promoted to `ready/` MUST carry a `scope:` frontmatter field.** The field is a YAML flow-list of repo-relative paths this pitch will edit (e.g. `scope: [test_harness/lib/loop_queue.ex, shared/rules/_core/]`). Write it inline when short, or multiline (key alone on one line, then `[`/items/`]` on following lines) when the list is longer. The deterministic gate is `make test` via `mix codegen.pitches.scope --check --dir=ready` (the `pitch-scope-parity` Makefile leg) — it fails loud when a `ready/` pitch has no `scope:` field or the value is unparseable, naming the offending slug; `/ready` itself surfaces readiness in prose but does not enforce this field. The gate is the authoritative check — no pitch is placed to a build without a declared scope. The `mix codegen.pitches.scope` reader (see § System Components, below) uses this field to partition parallel work and detect conflicts between pitches.

@@ -8,11 +8,13 @@ deliberately-deferred question (per-domain budget vs. per-file, summary+detail t
 
 ## `context/*.md` Byte Cap — 40,960 Bytes, Per-File, Hard Gate
 
-`curator-context-size-gate.sh` denies ANY role's Edit/Write/MultiEdit to `context/<file>.md` when the
-PROJECTED post-write byte size exceeds 40,960 B — computed as `on_disk - old_bytes + new_bytes` for an
-Edit, or the literal content size for a Write. Role-agnostic (fires for any role, not just curator).
-Fixed in the writer's OWN turn — a denied write must be resolved before the cycle continues; it cannot
-be deferred to commit time.
+`curator-context-size-gate.sh` denies ANY role's Edit/Write/MultiEdit to `context/<file>.md`,
+`PROJECT_CONTEXT.md`, or `codegen/PROJECT_CONTEXT.md` when the PROJECTED post-write byte size exceeds
+40,960 B — computed as `on_disk - old_bytes + new_bytes` for an Edit, or the literal content size for a
+Write. Role-agnostic (fires for any role, not just curator). Fixed in the writer's OWN turn — a denied
+write must be resolved before the cycle continues; it cannot be deferred to commit time. `CLAUDE.md`/
+`AGENTS.md` are deliberately NOT gated — in downstream repos those are rendered symlinks whose bytes are
+decided by a `.j2` template, not by the editing agent.
 
 **This cap knows nothing about domain size.** A domain can legitimately exceed 40,960 bytes (hooks:
 ~122,805 B measured; tests: ~117,656 B measured) — when it does, the cap is a per-FILE constraint, not a

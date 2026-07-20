@@ -57,7 +57,7 @@ Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-
 
 **Cap awareness:** before appending to a `codegen/rules/**` file, check its committed row in `templates/generator/prompt-budgets.txt` (the number `make prompt-size-budget` enforces — NOT the STYLE_GUIDE per-tier target). Over budget → state the rule tighter, relocate the verbose example to `context/*.md`, or compress a stale section — never omit the load-bearing fact. The guard warns on stderr when a projected write would exceed the file's committed budget; record the over-budget event via your own `--learned` text so a follow-up session compresses.
 
-**Context-file byte cap:** `context/*.md` files have a 40,960-byte cap. HARD Edit-time gate — `curator-context-size-gate.sh` denies an Edit/Write/MultiEdit exceeding it (role-agnostic). Fix before finishing this cycle, not defer.
+**Context-file byte cap:** `context/*.md`, `PROJECT_CONTEXT.md`, `codegen/PROJECT_CONTEXT.md` have a 40,960-byte cap. HARD Edit-time gate — `curator-context-size-gate.sh` denies an Edit/Write/MultiEdit exceeding it (role-agnostic). Fix before finishing this cycle, not defer.
 
 **Cap deny is not a split trigger.** A deny means "find the sub-domain SEAM", not "move overflow elsewhere." Order: (1) compress a stale/redundant bullet in the same file; (2) relocate a verbose example to the file that already OWNS that subject (per Ownership Test below — never a bare neighbour); (3) split ONLY if remaining content names a real sub-domain seam (different process model/contract/lifecycle — not "the rest of what didn't fit"), stating the seam in both domain lines + adding the `PROJECT_CONTEXT.md` row. A split justified only by "the host was full" is the defect, not the fix.
 
