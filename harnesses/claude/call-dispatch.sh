@@ -178,6 +178,7 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     RESULT_GRACE_SECS="${CODEGEN_CALL_RESULT_GRACE_SECS:-30}"
     IDLE_CAP_SECS="${CODEGEN_CALL_IDLE_CAP_SECS:-900}"
     STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-300}"
+    POLL_SECS="${CODEGEN_CALL_POLL_SECS:-5}"
 
     set +e
     env \
@@ -198,7 +199,7 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     LAST_GROWTH_TS=$(_ts_ms)
     RESULT_SEEN_TS=""
     while kill -0 "$CHILD_PID" 2>/dev/null; do
-        sleep 5
+        sleep "$POLL_SECS"
         CUR_SIZE="$(wc -c <"$TMP_OUT" 2>/dev/null || printf '0')"
         NOW_MS=$(_ts_ms)
         if [[ "$CUR_SIZE" != "$LAST_SIZE" ]]; then

@@ -68,6 +68,12 @@ cache_read_tokens) whose server-side first-token latency legitimately exceeds 60
 subprocess running — a slow turn is not a dead stream. Both legs read this var identically;
 `harnesses/shared/call-dispatch-parity_test.sh` enforces the cross-leg read-set stays in sync.
 
+Both legs also read `CODEGEN_CALL_POLL_SECS` (default 5s) as the watchdog loop's own sampling cadence —
+the `sleep` interval inside `while kill -0 "$CHILD_PID"` that governs how often all three triggers above
+are checked. Production is unaffected (default stays 5, unset in every real build); the three watchdog
+test files override it to `0.5` so killing test cases resolve in ~2s of poll latency instead of ~10s,
+without changing which trigger fires or the threshold it fires at.
+
 ## Consumers
 
 - `OrchestrationLoop` — reads `result.status`, `usage.cost_usd` (accumulated for the per-cycle budget

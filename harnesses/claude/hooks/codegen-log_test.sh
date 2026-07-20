@@ -22,19 +22,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_CODEGEN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 CODEGEN_LOG_SRC="$REAL_CODEGEN_ROOT/codegen-log"
 
+# shellcheck source=/dev/null
+source "$REAL_CODEGEN_ROOT/harnesses/shared/test-stub-lib.sh"
+
 pass=0
 fail=0
 
 TMP_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
-
-make_stub() {
-    local path="$1"
-    local body="$2"
-    printf '#!/usr/bin/env bash\n%s\n' "$body" >"$path"
-    chmod +x "$path"
-}
 
 assert() {
     local desc="$1" expected="$2" actual="$3"
@@ -61,8 +57,7 @@ CODEGEN="$TMP_DIR/codegen"
 mkdir -p "$PROJECT/codegen/logging"
 mkdir -p "$CODEGEN/codegen/rules"
 
-cp "$CODEGEN_LOG_SRC" "$CODEGEN/codegen-log"
-chmod +x "$CODEGEN/codegen-log"
+link_or_copy "$CODEGEN_LOG_SRC" "$CODEGEN/codegen-log"
 
 STUB_BIN="$TMP_DIR/bin"
 mkdir -p "$STUB_BIN"
@@ -463,8 +458,7 @@ assert "committed without --subject exits 2" "2" "$missing_subject_rc"
 # sibling-check fallback is forced to consult the env vars.
 NOWHERE_DIR="$TMP_DIR/nowhere"
 mkdir -p "$NOWHERE_DIR"
-cp "$CODEGEN_LOG_SRC" "$NOWHERE_DIR/codegen-log"
-chmod +x "$NOWHERE_DIR/codegen-log"
+link_or_copy "$CODEGEN_LOG_SRC" "$NOWHERE_DIR/codegen-log"
 
 # 14a: CODEGEN_DIR set (git-stubbed CODEGEN root) -> real hashes.
 unset CODEGEN_LOG_PATH

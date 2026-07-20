@@ -21,6 +21,9 @@ HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_ROOT="$(cd "$HOOKS_DIR/../../.." && pwd)"
 CODEGEN_PROPOSE="$CODEGEN_ROOT/codegen-propose"
 
+# shellcheck source=/dev/null
+source "$CODEGEN_ROOT/harnesses/shared/test-stub-lib.sh"
+
 pass=0
 fail=0
 
@@ -54,13 +57,6 @@ BASE_TMP="$(mktemp -d)"
 cleanup() { rm -rf "$BASE_TMP"; }
 trap cleanup EXIT
 
-make_stub() {
-    local path="$1"
-    local body="$2"
-    printf '#!/usr/bin/env bash\n%s\n' "$body" >"$path"
-    chmod +x "$path"
-}
-
 # Build an isolated codegen-propose root: copy the real launcher, plus
 # a fake harnesses/ dir (so path-derivation resolves) with the real
 # propose-system-prompt.md + proposal.schema.json (unmodified, read-only
@@ -70,8 +66,7 @@ make_cp_root() {
     local name="$1"
     local dir="$BASE_TMP/$name"
     mkdir -p "$dir/harnesses/claude"
-    cp "$CODEGEN_PROPOSE" "$dir/codegen-propose"
-    chmod +x "$dir/codegen-propose"
+    link_or_copy "$CODEGEN_PROPOSE" "$dir/codegen-propose"
     cp "$CODEGEN_ROOT/harnesses/claude/propose-system-prompt.md" "$dir/harnesses/claude/"
     cp "$CODEGEN_ROOT/harnesses/claude/proposal.schema.json" "$dir/harnesses/claude/"
     echo "$dir"

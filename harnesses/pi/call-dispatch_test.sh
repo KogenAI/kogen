@@ -17,6 +17,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 DISPATCH="$SCRIPT_DIR/call-dispatch.sh"
 
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/../shared/test-stub-lib.sh"
+
 pass=0
 fail=0
 
@@ -39,7 +42,7 @@ trap cleanup EXIT
 # ── Stub pi: emit $STUB_STDERR on stderr, then $FIXTURE_PATH on stdout ───────
 STUB_DIR="$BASE_TMP/stub_bin"
 mkdir -p "$STUB_DIR"
-cat >"$STUB_DIR/pi" <<'STUB_EOF'
+cat >"$STUB_DIR/pi.body" <<'STUB_EOF'
 #!/usr/bin/env bash
 # Stub pi: ignore all args. Emit optional stderr noise, then the JSONL fixture.
 if [[ -n "${STUB_STDERR:-}" ]]; then
@@ -48,7 +51,7 @@ fi
 cat "$FIXTURE_PATH"
 exit "${STUB_EXIT:-0}"
 STUB_EOF
-chmod +x "$STUB_DIR/pi"
+link_stub_path "$STUB_DIR/pi"
 export PATH="$STUB_DIR:$PATH"
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -235,18 +238,18 @@ mkdir -p "$PGREP_STUB_DIR"
 
 # (aa) Dead stream: no output growth AND no live tool subprocess (pgrep empty)
 # → killed after STREAM_IDLE_SECS with the "stream idle" reason.
-cat >"$PGREP_STUB_DIR/pi" <<'WDSTALLSTUB'
+cat >"$PGREP_STUB_DIR/pi.body" <<'WDSTALLSTUB'
 #!/usr/bin/env bash
 # Stub pi: no output, hang forever.
 sleep 3600
 WDSTALLSTUB
-chmod +x "$PGREP_STUB_DIR/pi"
-cat >"$PGREP_STUB_DIR/pgrep" <<'PGREPEMPTY'
+link_stub_path "$PGREP_STUB_DIR/pi"
+cat >"$PGREP_STUB_DIR/pgrep.body" <<'PGREPEMPTY'
 #!/usr/bin/env bash
 # Always report no children — simulates a dead socket with no tool running.
 exit 1
 PGREPEMPTY
-chmod +x "$PGREP_STUB_DIR/pgrep"
+link_stub_path "$PGREP_STUB_DIR/pgrep"
 
 WD_AA_EXIT=0
 WD_AA_START=$(date +%s)
@@ -257,6 +260,7 @@ WD_AA_START=$(date +%s)
     export CODEGEN_CALL_RESULT_GRACE_SECS=30
     export CODEGEN_CALL_IDLE_CAP_SECS=900
     export CODEGEN_CALL_STREAM_IDLE_SECS=2
+    export CODEGEN_CALL_POLL_SECS=0.5
     unset STUB_STDERR 2>/dev/null || true
     bash "$DISPATCH" 2>"$BASE_TMP/wd_aa_stderr.log"
 ) >"$BASE_TMP/wd_aa_envelope.json" || WD_AA_EXIT=$?
@@ -287,19 +291,21 @@ fi
 # (bb) Live-but-quiet: no output growth BUT a tool subprocess IS running
 # (pgrep -P non-empty) → the short dead-stream cap must NOT fire; only the
 # (much longer) idle backstop governs.
-cat >"$PGREP_STUB_DIR/pgrep" <<'PGREPREAL'
+_warm_replace "$PGREP_STUB_DIR/pgrep" "$(
+    cat <<'PGREPREAL'
 #!/usr/bin/env bash
 exec /usr/bin/pgrep "$@"
 PGREPREAL
-chmod +x "$PGREP_STUB_DIR/pgrep"
-cat >"$PGREP_STUB_DIR/pi" <<'WDLIVESTUB'
+)"
+_warm_replace "$PGREP_STUB_DIR/pi" "$(
+    cat <<'WDLIVESTUB'
 #!/usr/bin/env bash
 # Stub pi: spawn a long-lived child (simulates a bash tool subprocess still
 # running), emit no output itself, then hang.
 sleep 3600 &
 wait
 WDLIVESTUB
-chmod +x "$PGREP_STUB_DIR/pi"
+)"
 
 WD_BB_EXIT=0
 WD_BB_START=$(date +%s)
@@ -310,6 +316,7 @@ WD_BB_START=$(date +%s)
     export CODEGEN_CALL_RESULT_GRACE_SECS=30
     export CODEGEN_CALL_IDLE_CAP_SECS=3
     export CODEGEN_CALL_STREAM_IDLE_SECS=2
+    export CODEGEN_CALL_POLL_SECS=0.5
     unset STUB_STDERR 2>/dev/null || true
     bash "$DISPATCH" 2>"$BASE_TMP/wd_bb_stderr.log"
 ) >"$BASE_TMP/wd_bb_envelope.json" || WD_BB_EXIT=$?
@@ -343,6 +350,14 @@ if grep -q 'STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-300}"' "$DISPATCH
     pass=$((pass + 1))
 else
     printf 'FAIL: (cc) default STREAM_IDLE_SECS=300 not found in %s\n' "$DISPATCH"
+    fail=$((fail + 1))
+fi
+
+# (dd) default: CODEGEN_CALL_POLL_SECS unset → defaults to 5 (production cadence unchanged).
+if grep -q 'POLL_SECS="${CODEGEN_CALL_POLL_SECS:-5}"' "$DISPATCH"; then
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (dd) default POLL_SECS=5 not found in %s\n' "$DISPATCH"
     fail=$((fail + 1))
 fi
 

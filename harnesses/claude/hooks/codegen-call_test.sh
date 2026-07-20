@@ -32,6 +32,9 @@ CODEGEN_CALL="$CODEGEN_ROOT/codegen-call"
 REAL_CLAUDE_HARNESS="$CODEGEN_ROOT/harnesses/claude"
 REAL_PI_HARNESS="$CODEGEN_ROOT/harnesses/pi"
 
+# shellcheck source=/dev/null
+source "$CODEGEN_ROOT/harnesses/shared/test-stub-lib.sh"
+
 pass=0
 fail=0
 
@@ -97,21 +100,13 @@ BASE_TMP="$(mktemp -d)"
 cleanup() { rm -rf "$BASE_TMP"; }
 trap cleanup EXIT
 
-make_stub() {
-    local path="$1"
-    local body="$2"
-    printf '#!/usr/bin/env bash\n%s\n' "$body" >"$path"
-    chmod +x "$path"
-}
-
 # Helper: create an isolated codegen-call root with call-dispatch stubs
 # Strategy: copy codegen-call to a dir, create harnesses/ subdir with call-dispatch.sh
 make_cc_root() {
     local name="$1"
     local dir="$BASE_TMP/$name"
     mkdir -p "$dir"
-    cp "$CODEGEN_CALL" "$dir/codegen-call"
-    chmod +x "$dir/codegen-call"
+    link_or_copy "$CODEGEN_CALL" "$dir/codegen-call"
     echo "$dir"
 }
 
@@ -423,7 +418,7 @@ check "(q2) CODEGEN_CALL_SESSION_ID carries the minted id" "cold-session-456" "$
 # above has no --print-argv logic), mirrors test (t2)'s pattern.
 CC_Q2_ARGV="$(make_cc_root cc_q2_argv)"
 mkdir -p "$CC_Q2_ARGV/harnesses/claude"
-cp "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$CC_Q2_ARGV/harnesses/claude/call-dispatch.sh"
+link_or_copy "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$CC_Q2_ARGV/harnesses/claude/call-dispatch.sh"
 
 ARGV_Q2="$("$CC_Q2_ARGV/codegen-call" \
     --harness=claude_code --model=haiku --effort=low \
@@ -483,7 +478,7 @@ make_pi_binary_stub() {
     local argv_file="$2"
     local sp_file="$3"
     mkdir -p "$bindir"
-    cat >"$bindir/pi" <<STUB
+    cat >"$bindir/pi.body" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" > "$argv_file"
 prev=""
@@ -495,7 +490,7 @@ for a in "\$@"; do
 done
 printf '%s\n' '{"type":"agent_end","messages":[{"role":"assistant","content":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}'
 STUB
-    chmod +x "$bindir/pi"
+    link_stub_path "$bindir/pi"
 }
 
 setup_real_pi_dispatch() {
@@ -505,7 +500,7 @@ setup_real_pi_dispatch() {
     mkdir -p "$cc_root/templates/generated/pi/agent"
     printf '%s' "$agent_body" >"$cc_root/templates/generated/pi/agent/$role.md"
     mkdir -p "$cc_root/harnesses/pi"
-    cp "$REAL_PI_HARNESS/call-dispatch.sh" "$cc_root/harnesses/pi/call-dispatch.sh"
+    link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$cc_root/harnesses/pi/call-dispatch.sh"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -633,7 +628,7 @@ mkdir -p "$CC_S/templates/generated/pi/agent"
 
 # Copy the REAL pi dispatch so agent resolution actually runs
 mkdir -p "$CC_S/harnesses/pi"
-cp "$REAL_PI_HARNESS/call-dispatch.sh" "$CC_S/harnesses/pi/call-dispatch.sh"
+link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$CC_S/harnesses/pi/call-dispatch.sh"
 
 actual_exit=0
 STDERR_S="$("$CC_S/codegen-call" \
@@ -689,7 +684,8 @@ check "(r) --agents @nonexistent-path exits 2" "2" "$actual_exit"
 # Test (s2): --agents @<path> passed through to claude dispatch verbatim
 # ─────────────────────────────────────────────────────────────────────────────
 CC_S2="$(make_cc_root cc_s2)"
-cp "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$(mkdir -p "$CC_S2/harnesses/claude" && echo "$CC_S2/harnesses/claude")/call-dispatch.sh"
+mkdir -p "$CC_S2/harnesses/claude"
+link_or_copy "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$CC_S2/harnesses/claude/call-dispatch.sh"
 AGENTS_FILE_S2="$BASE_TMP/agents_s2.json"
 printf '{"probe-agent":{"description":"probe","prompt":"probe","tools":[]}}' >"$AGENTS_FILE_S2"
 
@@ -697,12 +693,12 @@ ARGV_LOG_S2="$BASE_TMP/argv_s2.log"
 : >"$ARGV_LOG_S2"
 STUB_BIN_S2="$BASE_TMP/stub_bin_s2"
 mkdir -p "$STUB_BIN_S2"
-cat >"$STUB_BIN_S2/claude" <<STUBEOF
+cat >"$STUB_BIN_S2/claude.body" <<STUBEOF
 #!/usr/bin/env bash
 for a in "\$@"; do printf '%s\n' "\$a" >>"$ARGV_LOG_S2"; done
 printf '{"type":"result","subtype":"success","result":"ok","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"total_cost_usd":0,"duration_ms":10,"num_turns":1}\n'
 STUBEOF
-chmod +x "$STUB_BIN_S2/claude"
+link_stub_path "$STUB_BIN_S2/claude"
 
 actual_exit=0
 PATH="$STUB_BIN_S2:$PATH" "$CC_S2/codegen-call" \
@@ -718,18 +714,18 @@ assert_contains "(s2) claude argv carries agents JSON content" "$(cat "$ARGV_LOG
 # ─────────────────────────────────────────────────────────────────────────────
 CC_T2="$(make_cc_root cc_t2)"
 mkdir -p "$CC_T2/harnesses/claude"
-cp "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$CC_T2/harnesses/claude/call-dispatch.sh"
+link_or_copy "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$CC_T2/harnesses/claude/call-dispatch.sh"
 
 NEVER_CALLED_MARKER="$BASE_TMP/never_called_t2"
 rm -f "$NEVER_CALLED_MARKER"
 STUB_BIN_T2="$BASE_TMP/stub_bin_t2"
 mkdir -p "$STUB_BIN_T2"
-cat >"$STUB_BIN_T2/claude" <<STUBEOF
+cat >"$STUB_BIN_T2/claude.body" <<STUBEOF
 #!/usr/bin/env bash
 touch "$NEVER_CALLED_MARKER"
 printf '{"type":"result","subtype":"success","result":"ok","usage":{},"total_cost_usd":0,"duration_ms":1,"num_turns":1}\n'
 STUBEOF
-chmod +x "$STUB_BIN_T2/claude"
+link_stub_path "$STUB_BIN_T2/claude"
 
 actual_exit=0
 OUT_T2="$(PATH="$STUB_BIN_T2:$PATH" "$CC_T2/codegen-call" \

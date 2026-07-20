@@ -20,6 +20,9 @@ HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISPATCH_SCRIPT="$(cd "$HOOKS_DIR/../../pi" && pwd)/call-dispatch.sh"
 FIXTURES_DIR="$HOOKS_DIR/fixtures"
 
+# shellcheck source=/dev/null
+source "$HOOKS_DIR/../../shared/test-stub-lib.sh"
+
 pass=0
 fail=0
 
@@ -78,13 +81,13 @@ trap cleanup EXIT
 # Create a PATH-override stub 'pi' that emits the fixture file and exits 0
 STUB_DIR="$BASE_TMP/stub_bin"
 mkdir -p "$STUB_DIR"
-cat >"$STUB_DIR/pi" <<'STUB_EOF'
+cat >"$STUB_DIR/pi.body" <<'STUB_EOF'
 #!/usr/bin/env bash
 # Stub pi: ignore all args, emit fixture JSONL to stdout, exit ${STUB_EXIT:-0}
 cat "$FIXTURE_PATH"
 exit "${STUB_EXIT:-0}"
 STUB_EOF
-chmod +x "$STUB_DIR/pi"
+link_stub_path "$STUB_DIR/pi"
 
 export PATH="$STUB_DIR:$PATH"
 
@@ -249,22 +252,22 @@ assert_jq \
 # Mirrors harnesses/claude/hooks/call-dispatch_test.sh's watchdog cases.
 WATCHDOG_STUB_DIR="$BASE_TMP/watchdog_stub_bin"
 mkdir -p "$WATCHDOG_STUB_DIR"
-cat >"$WATCHDOG_STUB_DIR/pi" <<'WDSTUB'
+cat >"$WATCHDOG_STUB_DIR/pi.body" <<'WDSTUB'
 #!/usr/bin/env bash
 # Stub pi: emit fixture (agent_end event present), then hang forever.
 cat "$FIXTURE_PATH"
 sleep 3600
 WDSTUB
-chmod +x "$WATCHDOG_STUB_DIR/pi"
+link_stub_path "$WATCHDOG_STUB_DIR/pi"
 
 WATCHDOG_STALL_STUB_DIR="$BASE_TMP/watchdog_stall_stub_bin"
 mkdir -p "$WATCHDOG_STALL_STUB_DIR"
-cat >"$WATCHDOG_STALL_STUB_DIR/pi" <<'WDSTALLSTUB'
+cat >"$WATCHDOG_STALL_STUB_DIR/pi.body" <<'WDSTALLSTUB'
 #!/usr/bin/env bash
 # Stub pi: no output, hang forever.
 sleep 3600
 WDSTALLSTUB
-chmod +x "$WATCHDOG_STALL_STUB_DIR/pi"
+link_stub_path "$WATCHDOG_STALL_STUB_DIR/pi"
 
 # (x) Hang-after-emit: agent_end event present, process never exits →
 # watchdog kills after RESULT_GRACE_SECS, salvages as success.
@@ -281,6 +284,7 @@ WD_X_START=$(date +%s)
     export CODEGEN_LOOP=1
     export CODEGEN_CALL_RESULT_GRACE_SECS=2
     export CODEGEN_CALL_IDLE_CAP_SECS=900
+    export CODEGEN_CALL_POLL_SECS=0.5
     bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_x_stderr.log"
 ) >"$BASE_TMP/wd_x_envelope.json" || WD_X_EXIT=$?
 WD_X_ELAPSED=$(($(date +%s) - WD_X_START))
@@ -330,6 +334,7 @@ WD_Y_EXIT=0
     export CODEGEN_LOOP=1
     export CODEGEN_CALL_RESULT_GRACE_SECS=30
     export CODEGEN_CALL_IDLE_CAP_SECS=2
+    export CODEGEN_CALL_POLL_SECS=0.5
     bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_y_stderr.log"
 ) >"$BASE_TMP/wd_y_envelope.json" || WD_Y_EXIT=$?
 

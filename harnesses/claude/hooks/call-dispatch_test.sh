@@ -12,6 +12,10 @@ set -euo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISPATCH_SCRIPT="$(cd "$HOOKS_DIR/.." && pwd)/call-dispatch.sh"
+
+# shellcheck source=/dev/null
+source "$HOOKS_DIR/../../shared/test-stub-lib.sh"
+
 FIXTURE="$HOOKS_DIR/fixtures/bouncer_classify_structured.jsonl"
 FIXTURE_QMARK="$HOOKS_DIR/fixtures/question_mark_reply.jsonl"
 FIXTURE_ERR="$HOOKS_DIR/fixtures/is_error.jsonl"
@@ -127,12 +131,12 @@ trap cleanup EXIT
 # Create a PATH-override stub 'claude' that emits the fixture and exits 0
 STUB_DIR="$BASE_TMP/stub_bin"
 mkdir -p "$STUB_DIR"
-cat >"$STUB_DIR/claude" <<'STUB_EOF'
+cat >"$STUB_DIR/claude.body" <<'STUB_EOF'
 #!/usr/bin/env bash
 # Stub claude: ignore all args, emit fixture to stdout, exit 0
 exec cat "$FIXTURE_PATH"
 STUB_EOF
-chmod +x "$STUB_DIR/claude"
+link_stub_path "$STUB_DIR/claude"
 
 # Export fixture path for the stub
 export FIXTURE_PATH="$FIXTURE"
@@ -480,14 +484,14 @@ assert_file_contains "$PI_DISPATCH" "CODEGEN_CALL_TRANSCRIPT_PATH"
 # ── Flag-assembly stub: logs argv, then emits fixture ────────────────────────
 ARGV_STUB_DIR="$BASE_TMP/argv_stub_bin"
 mkdir -p "$ARGV_STUB_DIR"
-cat >"$ARGV_STUB_DIR/claude" <<'ARGVSTUB'
+cat >"$ARGV_STUB_DIR/claude.body" <<'ARGVSTUB'
 #!/usr/bin/env bash
 # Log every arg on its own line, then emit the fixture (no exec — statements after must run)
 : >"$ARGV_LOG"
 for a in "$@"; do printf '%s\n' "$a" >>"$ARGV_LOG"; done
 cat "$FIXTURE_PATH"
 ARGVSTUB
-chmod +x "$ARGV_STUB_DIR/claude"
+link_stub_path "$ARGV_STUB_DIR/claude"
 
 # (g) AGENT set, no explicit tools → user,project scope; --agent present; --tools omitted
 (
@@ -611,12 +615,12 @@ PRINT_ARGV_MARKER="$BASE_TMP/print_argv_never_called"
 rm -f "$PRINT_ARGV_MARKER"
 NEVER_STUB_DIR="$BASE_TMP/never_stub_bin"
 mkdir -p "$NEVER_STUB_DIR"
-cat >"$NEVER_STUB_DIR/claude" <<NEVERSTUB
+cat >"$NEVER_STUB_DIR/claude.body" <<NEVERSTUB
 #!/usr/bin/env bash
 touch "$PRINT_ARGV_MARKER"
 cat "\$FIXTURE_PATH"
 NEVERSTUB
-chmod +x "$NEVER_STUB_DIR/claude"
+link_stub_path "$NEVER_STUB_DIR/claude"
 
 I4_EXIT=0
 I4_OUT_LOG="$BASE_TMP/argv_i4_stdout.log"
@@ -760,7 +764,7 @@ PI_DISPATCH_SCRIPT="$(cd "$HOOKS_DIR/../../pi" && pwd)/call-dispatch.sh"
 
 PI_STUB_DIR="$BASE_TMP/pi_stub_bin"
 mkdir -p "$PI_STUB_DIR"
-cat >"$PI_STUB_DIR/pi" <<'PISTUB'
+cat >"$PI_STUB_DIR/pi.body" <<'PISTUB'
 #!/usr/bin/env bash
 # Stub pi: log argv + AGENT_TYPE, emit fixture, exit 0
 : >"$PI_ARGV_LOG"
@@ -768,7 +772,7 @@ for a in "$@"; do printf '%s\n' "$a" >>"$PI_ARGV_LOG"; done
 printf '%s\n' "${AGENT_TYPE:-}" >"$PI_AGENT_TYPE_SEEN"
 cat "$PI_FIXTURE_PATH"
 PISTUB
-chmod +x "$PI_STUB_DIR/pi"
+link_stub_path "$PI_STUB_DIR/pi"
 
 PI_FIXTURE="$BASE_TMP/pi_agent_end.jsonl"
 cat >"$PI_FIXTURE" <<'PIFIX'
@@ -953,12 +957,12 @@ PI_PRINT_MARKER="$BASE_TMP/pi_print_argv_never_called"
 rm -f "$PI_PRINT_MARKER"
 PI_NEVER_STUB_DIR="$BASE_TMP/pi_never_stub_bin"
 mkdir -p "$PI_NEVER_STUB_DIR"
-cat >"$PI_NEVER_STUB_DIR/pi" <<PINEVERSTUB
+cat >"$PI_NEVER_STUB_DIR/pi.body" <<PINEVERSTUB
 #!/usr/bin/env bash
 touch "$PI_PRINT_MARKER"
 cat "\$PI_FIXTURE_PATH"
 PINEVERSTUB
-chmod +x "$PI_NEVER_STUB_DIR/pi"
+link_stub_path "$PI_NEVER_STUB_DIR/pi"
 
 PI_W_EXIT=0
 PI_W_OUT_LOG="$BASE_TMP/pi_argv_w_stdout.log"
@@ -999,23 +1003,23 @@ fi
 # stalled ESTABLISHED socket after the process has already produced output).
 WATCHDOG_STUB_DIR="$BASE_TMP/watchdog_stub_bin"
 mkdir -p "$WATCHDOG_STUB_DIR"
-cat >"$WATCHDOG_STUB_DIR/claude" <<'WDSTUB'
+cat >"$WATCHDOG_STUB_DIR/claude.body" <<'WDSTUB'
 #!/usr/bin/env bash
 # Stub claude: emit fixture (result event present), then hang forever.
 cat "$FIXTURE_PATH"
 sleep 3600
 WDSTUB
-chmod +x "$WATCHDOG_STUB_DIR/claude"
+link_stub_path "$WATCHDOG_STUB_DIR/claude"
 
 # Stub claude that hangs with NO output at all (mid-stream stall, nothing to salvage).
 WATCHDOG_STALL_STUB_DIR="$BASE_TMP/watchdog_stall_stub_bin"
 mkdir -p "$WATCHDOG_STALL_STUB_DIR"
-cat >"$WATCHDOG_STALL_STUB_DIR/claude" <<'WDSTALLSTUB'
+cat >"$WATCHDOG_STALL_STUB_DIR/claude.body" <<'WDSTALLSTUB'
 #!/usr/bin/env bash
 # Stub claude: no output, hang forever.
 sleep 3600
 WDSTALLSTUB
-chmod +x "$WATCHDOG_STALL_STUB_DIR/claude"
+link_stub_path "$WATCHDOG_STALL_STUB_DIR/claude"
 
 # (x) Hang-after-emit: result event present, process never exits → watchdog
 # kills after RESULT_GRACE_SECS, salvages the already-emitted result as success.
@@ -1032,6 +1036,7 @@ WD_X_START=$(date +%s)
     export CODEGEN_LOOP=1
     export CODEGEN_CALL_RESULT_GRACE_SECS=2
     export CODEGEN_CALL_IDLE_CAP_SECS=900
+    export CODEGEN_CALL_POLL_SECS=0.5
     unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
     unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
     unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
@@ -1079,6 +1084,7 @@ WD_Y_EXIT=0
     export CODEGEN_LOOP=1
     export CODEGEN_CALL_RESULT_GRACE_SECS=30
     export CODEGEN_CALL_IDLE_CAP_SECS=2
+    export CODEGEN_CALL_POLL_SECS=0.5
     unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
     unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
     unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
@@ -1154,13 +1160,14 @@ mkdir -p "$PGREP_STUB_DIR"
 
 # (aa) Dead stream: no output growth AND no live tool subprocess (pgrep empty)
 # → killed after STREAM_IDLE_SECS with the "stream idle" reason.
-cat >"$PGREP_STUB_DIR/pgrep" <<'PGREPEMPTY'
+cat >"$PGREP_STUB_DIR/pgrep.body" <<'PGREPEMPTY'
 #!/usr/bin/env bash
 # Always report no children — simulates a dead socket with no tool running.
 exit 1
 PGREPEMPTY
-chmod +x "$PGREP_STUB_DIR/pgrep"
-cp "$WATCHDOG_STALL_STUB_DIR/claude" "$PGREP_STUB_DIR/claude"
+link_stub_path "$PGREP_STUB_DIR/pgrep"
+link_or_copy "$WATCHDOG_STALL_STUB_DIR/claude" "$PGREP_STUB_DIR/claude"
+link_or_copy "$WATCHDOG_STALL_STUB_DIR/claude.body" "$PGREP_STUB_DIR/claude.body"
 
 WD_AA_EXIT=0
 WD_AA_START=$(date +%s)
@@ -1175,6 +1182,7 @@ WD_AA_START=$(date +%s)
     export CODEGEN_CALL_RESULT_GRACE_SECS=30
     export CODEGEN_CALL_IDLE_CAP_SECS=900
     export CODEGEN_CALL_STREAM_IDLE_SECS=2
+    export CODEGEN_CALL_POLL_SECS=0.5
     unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
     unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
     unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
@@ -1206,22 +1214,22 @@ fi
 # (pgrep -P non-empty) → the short dead-stream cap must NOT fire; only the
 # (much longer) 900s idle backstop governs. Simulate via a stub claude that
 # spawns a long-lived child (so pgrep -P sees it) and never itself emits output.
-cat >"$PGREP_STUB_DIR/pgrep_real" <<'PGREPREAL'
+cat >"$PGREP_STUB_DIR/pgrep_real.body" <<'PGREPREAL'
 #!/usr/bin/env bash
 exec /usr/bin/pgrep "$@"
 PGREPREAL
-chmod +x "$PGREP_STUB_DIR/pgrep_real"
-cat >"$PGREP_STUB_DIR/claude" <<'WDLIVESTUB'
+link_stub_path "$PGREP_STUB_DIR/pgrep_real"
+_warm_replace "$PGREP_STUB_DIR/claude" "$(
+    cat <<'WDLIVESTUB'
 #!/usr/bin/env bash
 # Stub claude: spawn a long-lived child (simulates a bash tool subprocess
 # still running), emit no output itself, then hang.
 sleep 3600 &
 wait
 WDLIVESTUB
-chmod +x "$PGREP_STUB_DIR/claude"
+)"
 # Use the REAL pgrep for this case (need it to actually see the spawned child).
-rm -f "$PGREP_STUB_DIR/pgrep"
-cp "$PGREP_STUB_DIR/pgrep_real" "$PGREP_STUB_DIR/pgrep"
+_warm_replace "$PGREP_STUB_DIR/pgrep" "$(cat "$PGREP_STUB_DIR/pgrep_real.body")"
 
 WD_BB_EXIT=0
 WD_BB_START=$(date +%s)
@@ -1236,6 +1244,7 @@ WD_BB_START=$(date +%s)
     export CODEGEN_CALL_RESULT_GRACE_SECS=30
     export CODEGEN_CALL_IDLE_CAP_SECS=3
     export CODEGEN_CALL_STREAM_IDLE_SECS=2
+    export CODEGEN_CALL_POLL_SECS=0.5
     unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
     unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
     unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
@@ -1261,6 +1270,10 @@ fi
 # (cc) default: CODEGEN_CALL_STREAM_IDLE_SECS unset → defaults to 300.
 assert_file_contains "$DISPATCH_SCRIPT" \
     'STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-300}"'
+
+# (dd) default: CODEGEN_CALL_POLL_SECS unset → defaults to 5 (production cadence unchanged).
+assert_file_contains "$DISPATCH_SCRIPT" \
+    'POLL_SECS="${CODEGEN_CALL_POLL_SECS:-5}"'
 
 # ── Tool-trace metrics envelope block (real probed stream-json fixtures) ─────
 FIXTURE_TOOL_TRACE="$HOOKS_DIR/fixtures/tool_trace.jsonl"
@@ -1366,11 +1379,11 @@ assert_jq "(r) back-compat: result.status still success" "$R_ENVELOPE" ".result.
 # (pi's event vocabulary cannot supply them — omission, not faking).
 PI_METRICS_STUB_DIR="$BASE_TMP/pi_metrics_stub_bin"
 mkdir -p "$PI_METRICS_STUB_DIR"
-cat >"$PI_METRICS_STUB_DIR/pi" <<'PIMETRICSSTUB'
+cat >"$PI_METRICS_STUB_DIR/pi.body" <<'PIMETRICSSTUB'
 #!/usr/bin/env bash
 cat "$PI_FIXTURE_PATH"
 PIMETRICSSTUB
-chmod +x "$PI_METRICS_STUB_DIR/pi"
+link_stub_path "$PI_METRICS_STUB_DIR/pi"
 
 (
     export PATH="$PI_METRICS_STUB_DIR:$PATH"

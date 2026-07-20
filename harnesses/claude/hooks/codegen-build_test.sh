@@ -41,6 +41,9 @@ CODEGEN_BUILD="$CODEGEN_ROOT/codegen-build"
 REAL_CLAUDE_HARNESS="$CODEGEN_ROOT/harnesses/claude"
 REAL_PI_HARNESS="$CODEGEN_ROOT/harnesses/pi"
 
+# shellcheck source=/dev/null
+source "$CODEGEN_ROOT/harnesses/shared/test-stub-lib.sh"
+
 pass=0
 fail=0
 
@@ -86,8 +89,7 @@ make_cb_root() {
     local name="$1"
     local dir="$BASE_TMP/$name"
     mkdir -p "$dir"
-    cp "$CODEGEN_BUILD" "$dir/codegen-build"
-    chmod +x "$dir/codegen-build"
+    link_or_copy "$CODEGEN_BUILD" "$dir/codegen-build"
     echo "$dir"
 }
 
@@ -95,7 +97,7 @@ make_claude_harness() {
     local cb_root="$1"
     local harness_dir="$cb_root/harnesses/claude"
     mkdir -p "$harness_dir"
-    cp "$REAL_CLAUDE_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
+    link_or_copy "$REAL_CLAUDE_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
     echo "$harness_dir"
 }
 
@@ -103,15 +105,8 @@ make_pi_harness() {
     local cb_root="$1"
     local harness_dir="$cb_root/harnesses/pi"
     mkdir -p "$harness_dir"
-    cp "$REAL_PI_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
+    link_or_copy "$REAL_PI_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
     echo "$harness_dir"
-}
-
-make_stub() {
-    local path="$1"
-    local body="$2"
-    printf '#!/usr/bin/env bash\n%s\n' "$body" >"$path"
-    chmod +x "$path"
 }
 
 # make_mix_stub <dir>
@@ -352,8 +347,7 @@ CB_K="$(make_cb_root cb_k)"
 make_claude_harness "$CB_K" >/dev/null
 # Copy real codegen-scaffold so SCAFFOLD_CMD is executable and the integrate
 # pre-step block actually runs (otherwise the guard is never reached).
-cp "$CODEGEN_ROOT/codegen-scaffold" "$CB_K/codegen-scaffold"
-chmod +x "$CB_K/codegen-scaffold"
+link_or_copy "$CODEGEN_ROOT/codegen-scaffold" "$CB_K/codegen-scaffold"
 
 # Marker-bearing $CWD distinct from cb_root (= $SCRIPT_DIR). Simulates running
 # the INSTALLED launcher against the codegen repo root.
@@ -661,8 +655,7 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 CB_PA3="$(make_cb_root cb_pa3)"
 make_claude_harness "$CB_PA3" >/dev/null
-cp "$CODEGEN_ROOT/codegen-scaffold" "$CB_PA3/codegen-scaffold"
-chmod +x "$CB_PA3/codegen-scaffold"
+link_or_copy "$CODEGEN_ROOT/codegen-scaffold" "$CB_PA3/codegen-scaffold"
 
 BIN_PA3="$BASE_TMP/bin_pa3"
 make_mix_stub "$BIN_PA3"
