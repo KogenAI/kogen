@@ -21,15 +21,29 @@ consumer:
 | committer                                                   | haiku  | low    |
 | context-curator                                             | haiku  | low    |
 | build (orchestrator)                                        | sonnet | medium |
-| inspector / debug / app_build                               | sonnet | medium |
-| shape / experiment                                          | opus   | high   |
-| ops                                                         | sonnet | high   |
+| inspector / app_build                                       | sonnet | medium |
+| debug / shape / experiment / ops                             | opus   | high   |
 
-`shape` and `experiment` are pinned opus/high by design — they drive architectural decisions and
-complex multi-file analysis. `debug` = sonnet/medium is also intentional (diagnostic, not creative). A
+`shape`, `experiment`, `debug`, and `ops` are all pinned opus/high by design — they drive
+architectural decisions, complex multi-file analysis, and production-server operations. A
 cost-tuning proposal MUST NOT suggest downgrading these — out of scope, reject without further analysis.
 `babysit` runs claude sonnet/medium and pi terra/medium — the operator-selected tier for long-running
-supervised sessions, distinct from the opus/high tier used by planning/shaping roles.
+supervised sessions, distinct from the opus/high tier used by planning/shaping/debug/ops roles.
+
+## Thinking Budget — `thinking_tokens` (Claude Launcher-Backed Modes Only)
+
+`debug`/`shape`/`experiment`/`ops`/`babysit` each declare a positive-integer
+`roles.<mode>.thinking_tokens` (currently `16000` for all five) in `config.yaml`. `load-role.sh`
+validates it (fail-loud on missing/non-integer/`<=0` — no default) and exports
+`ROLE_THINKING_TOKENS`; every launcher's `--settings` JSON overlay interpolates
+`MAX_THINKING_TOKENS` from that var, on BOTH the interactive and headless (`CLAUDE_NONINTERACTIVE`)
+branches — never a hard-coded literal. This overrides the installed global
+`MAX_THINKING_TOKENS=0` (`harnesses/claude/claude-code-settings.json`), which stays `0` for
+one-shot/build calls (`call-dispatch.sh`, `codegen-build`) — the ceiling is a per-mode investigation
+override, not a global default. It is a CEILING, not a floor: Claude may still emit zero thinking
+tokens on a simple prompt even with the overlay present. Pi has no equivalent setting — Pi launchers
+already pass `--thinking "$ROLE_EFFORT"` per exec site. Guarded by
+`harnesses/shared/mode-thinking-parity_test.sh`.
 
 ## Anthropic → ChatGPT Tier Map (Pi Model IDs)
 
@@ -100,4 +114,4 @@ role's grant.
 
 ## Trigger Keywords
 
-config.yaml, role model mapping, escalate_model, escalate_effort, fallback rung, switch_model_reason, cross-provider fallback, tool_map, RoleResolver, per-role effort, harness block, load-role.sh
+config.yaml, role model mapping, escalate_model, escalate_effort, fallback rung, switch_model_reason, cross-provider fallback, tool_map, RoleResolver, per-role effort, harness block, load-role.sh, thinking_tokens, ROLE_THINKING_TOKENS, MAX_THINKING_TOKENS

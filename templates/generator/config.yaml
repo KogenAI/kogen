@@ -225,6 +225,7 @@ roles:
   debug:
     model: opus
     effort: high
+    thinking_tokens: 16000
     output_format: text
     tools:
       - Agent
@@ -250,6 +251,7 @@ roles:
   shape:
     model: opus
     effort: high
+    thinking_tokens: 16000
     output_format: text
     tools:
       - Agent
@@ -274,6 +276,7 @@ roles:
   experiment:
     model: opus
     effort: high
+    thinking_tokens: 16000
     output_format: text
     tools:
       - Agent
@@ -297,6 +300,7 @@ roles:
   ops:
     model: opus
     effort: high
+    thinking_tokens: 16000
     output_format: text
     tools:
       - Agent
@@ -325,6 +329,7 @@ roles:
   babysit:
     model: sonnet
     effort: medium
+    thinking_tokens: 16000
     output_format: text
     tools:
       - Agent

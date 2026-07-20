@@ -54,7 +54,6 @@ fi
 
 # Non-interactive: pass all non-interactive flags. Interactive: omit (claude handles tty detection).
 NON_INTERACTIVE_FLAGS=()
-SETTINGS_FLAGS=()
 if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
     NON_INTERACTIVE_FLAGS+=(
         --print
@@ -65,8 +64,9 @@ if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
         --no-session-persistence
         --disable-slash-commands
     )
+    SETTINGS_JSON="{\"env\":{\"MAX_THINKING_TOKENS\":\"$ROLE_THINKING_TOKENS\"}}"
 else
-    SETTINGS_FLAGS=(--settings '{"env":{"CLAUDE_AFK_TIMEOUT_MS":"86400000"}}')
+    SETTINGS_JSON="{\"env\":{\"MAX_THINKING_TOKENS\":\"$ROLE_THINKING_TOKENS\",\"CLAUDE_AFK_TIMEOUT_MS\":\"86400000\"}}"
 fi
 
 CONTEXT_FLAGS=()
@@ -89,7 +89,7 @@ else
 fi
 
 exec claude \
-    "${SETTINGS_FLAGS[@]+"${SETTINGS_FLAGS[@]}"}" \
+    --settings "$SETTINGS_JSON" \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --effort "$ROLE_EFFORT" \

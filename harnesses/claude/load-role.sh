@@ -5,8 +5,8 @@ set -u
 source "${CODEGEN_DIR:?CODEGEN_DIR not set}/harnesses/shared/mode-context.sh"
 
 # load_role <role> — loads role config from config.yaml into env vars
-# Sets: ROLE_MODEL, ROLE_EFFORT, ROLE_DISALLOWED, ROLE_ALLOWED, ROLE_SYSTEM_PROMPT,
-#       ROLE_OUTPUT_FORMAT, ROLE_APPEND_PROJECT_CONTEXT, ROLE_TEMPLATE,
+# Sets: ROLE_MODEL, ROLE_EFFORT, ROLE_THINKING_TOKENS, ROLE_DISALLOWED, ROLE_ALLOWED,
+#       ROLE_SYSTEM_PROMPT, ROLE_OUTPUT_FORMAT, ROLE_APPEND_PROJECT_CONTEXT, ROLE_TEMPLATE,
 #       ROLE_CONTEXT_FILES
 load_role() {
     local role="$1"
@@ -27,6 +27,19 @@ load_role() {
         echo "ERROR: roles.$role.effort missing/empty in $cfg" >&2
         exit 1
     fi
+
+    local thinking_raw
+    thinking_raw=$(yq -r ".roles.$role.thinking_tokens // \"\"" "$cfg")
+    if [ -n "$thinking_raw" ] && [ "$thinking_raw" != "null" ]; then
+        if ! [[ "$thinking_raw" =~ ^[0-9]+$ ]] || [ "$thinking_raw" -le 0 ]; then
+            echo "ERROR: roles.$role.thinking_tokens missing/invalid in $cfg" >&2
+            exit 1
+        fi
+        ROLE_THINKING_TOKENS="$thinking_raw"
+    else
+        ROLE_THINKING_TOKENS=""
+    fi
+
     ROLE_DISALLOWED=$(yq -r "(.roles.$role.disallowed_tools // []) | join(\",\")" "$cfg")
     ROLE_ALLOWED=$(yq -r "(.roles.$role.allowed_tools // []) | join(\",\")" "$cfg")
     ROLE_TOOLS=$(yq -r "(.roles.$role.tools // []) | join(\",\")" "$cfg")

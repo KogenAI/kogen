@@ -59,8 +59,9 @@ completions:
   - _claude-shape
 
 # ─── Per-mode configuration ───────────────────────────────────────────────────
-# model/effort/tools are canonical in templates/generator/config.yaml roles.<mode>
-# (load-role.sh reads them). Listed here as documentation-of-record.
+# model/effort/tools/thinking_tokens are canonical in templates/generator/config.yaml
+# roles.<mode> (load-role.sh reads them, exports ROLE_THINKING_TOKENS). Listed
+# here as documentation-of-record.
 # system_prompt_file: path relative to CODEGEN_DIR.
 # prompt_body: ordered list of paths (relative to CODEGEN_DIR) concatenated after tools_header.
 #   Each entry must exist. Empty files are skipped (no separator added).

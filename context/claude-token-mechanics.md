@@ -161,10 +161,10 @@ event: measure before/after via your platform's agent-measurement script and ver
 
 ### Investigation Modes Are Pinned By Design
 
-`shape` and `experiment` are pinned to opus/high because they drive architectural decisions and complex
-multi-file analysis — the cost premium is justified. `debug` = sonnet/medium is also intentional
-(diagnostic, not creative). Cost sweeps **MUST NOT** propose downgrading these roles — see
-`context/role-config.md` for the full role→model table.
+`shape`, `experiment`, `debug`, and `ops` are all pinned to opus/high because they drive architectural
+decisions, complex multi-file analysis, and production-server operations — the cost premium is
+justified. Cost sweeps **MUST NOT** propose downgrading these roles — see `context/role-config.md`
+for the full role→model table and the `thinking_tokens` per-mode reasoning ceiling.
 
 ### Why Shared-Prefix Rule Extraction Is A False Economy
 

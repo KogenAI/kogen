@@ -356,22 +356,17 @@ else
 fi
 rm -rf "$MCP_SCRATCH_DIR"
 
-# Test 5: claude-debug.sh (thinking-ON launcher) has --settings overlay with MAX_THINKING_TOKENS
-assert_file_contains "$HARNESSES_DIR/claude-debug.sh" "--settings"
-assert_file_contains "$HARNESSES_DIR/claude-debug.sh" "MAX_THINKING_TOKENS"
-
-# Test 6: claude-shape.sh (thinking-ON launcher) has --settings overlay with MAX_THINKING_TOKENS
-assert_file_contains "$HARNESSES_DIR/claude-shape.sh" "--settings"
-assert_file_contains "$HARNESSES_DIR/claude-shape.sh" "MAX_THINKING_TOKENS"
-
-# Test 7: claude-ops.sh (thinking-OFF launcher, inherits user-scope =0) has NO MAX_THINKING_TOKENS
-assert_file_absent "$HARNESSES_DIR/claude-ops.sh" "MAX_THINKING_TOKENS"
+# Test 5-7: mode-thinking-parity_test.sh now owns per-mode MAX_THINKING_TOKENS
+# declaration/consumption policy (declared roles.<mode>.thinking_tokens, both
+# interactive+headless branches, no hard-coded positive literal). This file
+# keeps only the global-zero (call-dispatch.sh, installed settings) contract.
 
 # Test 8-11: interactive launchers carry CLAUDE_AFK_TIMEOUT_MS
 assert_file_contains "$HARNESSES_DIR/claude-shape.sh" "CLAUDE_AFK_TIMEOUT_MS"
 assert_file_contains "$HARNESSES_DIR/claude-debug.sh" "CLAUDE_AFK_TIMEOUT_MS"
 assert_file_contains "$HARNESSES_DIR/claude-experiment.sh" "CLAUDE_AFK_TIMEOUT_MS"
 assert_file_contains "$HARNESSES_DIR/claude-ops.sh" "CLAUDE_AFK_TIMEOUT_MS"
+assert_file_contains "$HARNESSES_DIR/claude-babysit.sh" "CLAUDE_AFK_TIMEOUT_MS"
 
 # Test 12: ops now passes --settings (AFK-only interactive overlay)
 assert_file_contains "$HARNESSES_DIR/claude-ops.sh" "--settings"

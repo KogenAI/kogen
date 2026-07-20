@@ -101,9 +101,9 @@ $DRAFT_TEXT"
             --no-session-persistence
             --disable-slash-commands
         )
-        SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000"}}'
+        SETTINGS_JSON="{\"env\":{\"MAX_THINKING_TOKENS\":\"$ROLE_THINKING_TOKENS\"}}"
     else
-        SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","CLAUDE_AFK_TIMEOUT_MS":"86400000"}}'
+        SETTINGS_JSON="{\"env\":{\"MAX_THINKING_TOKENS\":\"$ROLE_THINKING_TOKENS\",\"CLAUDE_AFK_TIMEOUT_MS\":\"86400000\"}}"
     fi
 
     exec claude \
@@ -169,9 +169,9 @@ if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
         --no-session-persistence
         --disable-slash-commands
     )
-    SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000"}}'
+    SETTINGS_JSON="{\"env\":{\"MAX_THINKING_TOKENS\":\"$ROLE_THINKING_TOKENS\"}}"
 else
-    SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","CLAUDE_AFK_TIMEOUT_MS":"86400000"}}'
+    SETTINGS_JSON="{\"env\":{\"MAX_THINKING_TOKENS\":\"$ROLE_THINKING_TOKENS\",\"CLAUDE_AFK_TIMEOUT_MS\":\"86400000\"}}"
 fi
 
 # Idle monitor: interactive-only, advisory. Snapshot existing transcript

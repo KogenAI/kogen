@@ -159,9 +159,9 @@ Claude Code supports a `--settings` JSON flag that provides a command-line scope
 
 **Key fact**: Claude reads settings from the JSON FILE, not process environment. `env -u MAX_THINKING_TOKENS` is inert — environment deletion does not affect the setting. Only a `--settings` overlay beats the user-scope file.
 
-**Use case — thinking tokens**: Shape/debug override via `--settings '{"env":{"MAX_THINKING_TOKENS":"16000"}}'` in `claude-shape.sh`/`claude-debug.sh`. Changes need `make install`. Build scripts needing custom budgets use `--settings`, not `env` or config.yaml overrides.
+**Use case — thinking tokens**: All 5 Claude modes (debug/shape/experiment/ops/babysit) declare `roles.<mode>.thinking_tokens` (16000) in `config.yaml`; `load-role.sh` fail-loud validates + exports `ROLE_THINKING_TOKENS`. Launchers build `--settings` with `MAX_THINKING_TOKENS` interpolated from that var — never a literal — on BOTH interactive/headless branches, overriding installed global `=0` (one-shot/build calls keep 0). Guard: `harnesses/shared/mode-thinking-parity_test.sh`. `make install` propagates config changes.
 
-**Use case — AFK timeout**: Interactive-only launchers (shape/debug/experiment/ops) gate `CLAUDE_AFK_TIMEOUT_MS=86400000` on `[[ -z "${CLAUDE_NONINTERACTIVE:-}" ]]` to keep AskUserQuestion dialogs open 24h vs auto-continuing at 60s. Interactive branch adds the AFK key to `SETTINGS_JSON`; headless omits it. `--settings` merges key-by-key with `~/.claude/settings.json`. Headless/build paths keep the 60s default — must NOT appear in global settings (unattended AskUserQuestion would hang 24h).
+**Use case — AFK timeout**: Interactive-only launchers (debug/shape/experiment/ops/babysit) gate `CLAUDE_AFK_TIMEOUT_MS=86400000` on `[[ -z "${CLAUDE_NONINTERACTIVE:-}" ]]` vs auto-continuing at 60s. Interactive adds the AFK key to `SETTINGS_JSON`; headless omits it. `--settings` merges key-by-key with `~/.claude/settings.json`. Headless/build keep the 60s default — must NOT appear in global settings.
 
 **Use case — idle-session monitor**: same branch also forks `harnesses/shared/shape-idle-monitor.sh` pre-`exec` (`$$` survives `exec` → REPL PID). Binds to its transcript via set-diff vs a pre-exec snapshot; ambiguous (0/≥2 new `*.jsonl`) → fail-silent forever. Polls ~30s: dead PID → self-exit; frozen past `CODEGEN_SHAPE_IDLE_WARN_SECS` (default 600s) + last entry ≠ `assistant` → one bell+banner on REPL tty, re-arms on progress. Warn-only; `CODEGEN_SHAPE_IDLE_KILL=1` opts into SIGTERM. Fail-open/silent on any error. Headless: none of this.
 
@@ -212,7 +212,7 @@ Pi launchers load TypeScript extensions from `harnesses/pi/pi-extensions/` via c
 
 ## Pi Provider Selection
 
-None of the 7 pi launcher sites (`call-dispatch.sh`, `pi-shape.sh` ×2, `pi-debug.sh`, `pi-ops.sh`, `pi-babysit.sh`, `pi-experiment.sh`) pass `--provider` — pi infers the provider from the `<provider>/` prefix on the already-resolved `--model` value (`config.yaml`'s per-role model, e.g. `openai-codex/gpt-5.6-terra`). Full contract + rationale: `context/role-config.md` § Pi Provider Selection.
+No pi launcher site passes `--provider` — inferred from `<provider>/` model prefix. Full contract: `context/role-config.md` § Pi Provider Selection.
 
 ## Headless Investigative Mode
 

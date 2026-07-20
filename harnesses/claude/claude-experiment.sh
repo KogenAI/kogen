@@ -109,9 +109,9 @@ if [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]]; then
         --no-session-persistence
         --disable-slash-commands
     )
-    SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","API_FORCE_IDLE_TIMEOUT":"1"}}'
+    SETTINGS_JSON="{\"env\":{\"MAX_THINKING_TOKENS\":\"$ROLE_THINKING_TOKENS\",\"API_FORCE_IDLE_TIMEOUT\":\"1\"}}"
 else
-    SETTINGS_JSON='{"env":{"MAX_THINKING_TOKENS":"16000","API_FORCE_IDLE_TIMEOUT":"1","CLAUDE_AFK_TIMEOUT_MS":"86400000"}}'
+    SETTINGS_JSON="{\"env\":{\"MAX_THINKING_TOKENS\":\"$ROLE_THINKING_TOKENS\",\"API_FORCE_IDLE_TIMEOUT\":\"1\",\"CLAUDE_AFK_TIMEOUT_MS\":\"86400000\"}}"
 fi
 
 # Parse --new BEFORE the draft-resolver loop. The resolver treats any

@@ -204,6 +204,7 @@ roles:
   shape:
     model: opus
     effort: high
+    thinking_tokens: 16000
     system_prompt: "stub"
     tools: []
 YAML

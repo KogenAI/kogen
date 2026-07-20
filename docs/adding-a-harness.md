@@ -108,6 +108,15 @@ and keep only divergent tool-wrapping lines in `tools_header`.
 via `load-role.sh`. Pi launchers read them via `yq` directly from config.yaml.
 Manifest lists them as documentation-of-record; config.yaml is authoritative at runtime.
 
+**thinking_tokens**: Claude launcher-backed modes (debug/shape/experiment/ops/babysit) each declare
+a positive-integer `roles.<mode>.thinking_tokens` in config.yaml. `load-role.sh` validates it
+(fail-loud on missing/non-integer/`<=0`) and exports `ROLE_THINKING_TOKENS`; every launcher builds
+its `--settings` JSON overlay's `MAX_THINKING_TOKENS` from that var on BOTH interactive and headless
+branches — never a hard-coded literal. This overrides the installed global `MAX_THINKING_TOKENS=0`
+(`harnesses/claude/claude-code-settings.json`), which stays 0 for one-shot/build calls
+(`call-dispatch.sh`). Pi has no equivalent setting — Pi launchers already pass
+`--thinking "$ROLE_EFFORT"` per exec site.
+
 ### `install_steps` / `uninstall_steps`
 
 Declarative record of what the install loop does. Not executed directly — `install.sh`
