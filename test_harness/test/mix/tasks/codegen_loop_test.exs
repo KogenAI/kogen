@@ -1,7 +1,5 @@
 defmodule Mix.Tasks.Codegen.LoopTest do
-  # async: false — this module mutates process-global Mix.shell/1, which
-  # races against any other concurrently-running module doing the same.
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Mix.Tasks.Codegen.Loop
 
@@ -35,18 +33,6 @@ defmodule Mix.Tasks.Codegen.LoopTest do
     File.write!(abs, body)
 
     assert Loop.resolve_pitch("@" <> abs, "/nonexistent/other/cwd") == body
-  end
-
-  test "4: not-found error message contains the resolved absolute path", ctx do
-    original_shell = Mix.shell()
-    Mix.shell(Mix.Shell.Process)
-
-    on_exit(fn -> Mix.shell(original_shell) end)
-
-    catch_exit(Loop.resolve_pitch("@codegen/pitches/ready/missing.md", ctx.tmp))
-
-    assert_receive {:mix_shell, :error, [msg]}
-    assert msg =~ Path.expand("codegen/pitches/ready/missing.md", ctx.tmp)
   end
 
   test "5: literal (non-file) prompt text passes through unchanged", ctx do
@@ -107,42 +93,6 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert File.ls!(ctx.ready_dir) == []
     end
 
-    test "dirty working tree: retire is UNCONDITIONAL (pitch still ships), exits @dirty_tree_exit_code",
-         ctx do
-      original_shell = Mix.shell()
-      Mix.shell(Mix.Shell.Process)
-      on_exit(fn -> Mix.shell(original_shell) end)
-
-      System.cmd("git", ["init", "-q", ctx.tmp])
-      System.cmd("git", ["-C", ctx.tmp, "config", "user.email", "test@example.com"])
-      System.cmd("git", ["-C", ctx.tmp, "config", "user.name", "Test"])
-      System.cmd("git", ["-C", ctx.tmp, "config", "commit.gpgsign", "false"])
-
-      gitkeep = Path.join(ctx.tmp, ".gitkeep")
-      File.write!(gitkeep, "")
-      System.cmd("git", ["-C", ctx.tmp, "add", "."])
-      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "initial"])
-
-      File.write!(Path.join(ctx.tmp, "stray.txt"), "uncommitted\n")
-
-      abs = Path.join(ctx.ready_dir, "foo.md")
-      File.write!(abs, "# Pitch: foo\n")
-
-      # Deliverable 1's core proof: the retire is NOT hostage to a clean
-      # tree — the pitch leaves ready/ and lands in shipped/ FIRST, then the
-      # dirty-tree signal fires as a loud distinct exit, never a raise that
-      # would strand the pitch back in ready/.
-      assert catch_exit(Loop.maybe_ship_pitch({:file, abs}, ctx.tmp)) == {:shutdown, 4}
-
-      refute File.exists?(abs)
-      shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
-      assert File.exists?(shipped_path)
-
-      assert_receive {:mix_shell, :error, [msg]}
-      assert msg =~ "COMMITTED and RETIRED"
-      assert msg =~ "stray.txt"
-    end
-
     test "non-ready-dir file: no move, file stays at original path", ctx do
       elsewhere_dir = Path.join(ctx.tmp, "elsewhere")
       File.mkdir_p!(elsewhere_dir)
@@ -154,49 +104,6 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert Loop.maybe_ship_pitch({:file, abs}, ctx.tmp) == :ok
       assert File.exists?(abs)
       refute File.exists?(shipped_dir)
-    end
-
-    test "with before/after shas: records a git note and stamps frontmatter before the move",
-         ctx do
-      # The ready/ -> shipped/ mv itself creates an untracked shipped/ dir,
-      # so the tree is dirty at ship time — the retire still runs
-      # unconditionally (record_ship + mv), then the dirty-tree signal
-      # fires as exit @dirty_tree_exit_code. See the "dirty working tree"
-      # test above for the dedicated ordering proof; this test's focus is
-      # the frontmatter stamp, which happens BEFORE the exit either way.
-      original_shell = Mix.shell()
-      Mix.shell(Mix.Shell.Process)
-      on_exit(fn -> Mix.shell(original_shell) end)
-
-      System.cmd("git", ["init", "-q", ctx.tmp])
-      System.cmd("git", ["-C", ctx.tmp, "config", "user.email", "test@example.com"])
-      System.cmd("git", ["-C", ctx.tmp, "config", "user.name", "Test"])
-      System.cmd("git", ["-C", ctx.tmp, "config", "commit.gpgsign", "false"])
-
-      File.write!(Path.join(ctx.tmp, "a.txt"), "content\n")
-      System.cmd("git", ["-C", ctx.tmp, "add", "."])
-      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "initial"])
-      {before_sha, 0} = System.cmd("git", ["-C", ctx.tmp, "rev-parse", "HEAD"])
-      before_sha = String.trim(before_sha)
-
-      body = "---\nstatus: ready\n---\n# Pitch: foo\n"
-      abs = Path.join(ctx.ready_dir, "foo.md")
-      File.write!(abs, body)
-      System.cmd("git", ["-C", ctx.tmp, "add", "."])
-      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "add pitch"])
-      {after_sha, 0} = System.cmd("git", ["-C", ctx.tmp, "rev-parse", "HEAD"])
-      after_sha = String.trim(after_sha)
-
-      assert catch_exit(Loop.maybe_ship_pitch({:file, abs}, ctx.tmp, before_sha, after_sha)) ==
-               {:shutdown, 4}
-
-      shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
-      refute File.exists?(abs)
-      assert File.exists?(shipped_path)
-
-      shipped_content = File.read!(shipped_path)
-      assert shipped_content =~ "shipped_sha: #{after_sha}"
-      assert shipped_content =~ "shipped_range: #{before_sha}..#{after_sha}"
     end
 
     test "nil after_sha (non-git / unborn cwd): ships without recording, no raise", ctx do
@@ -221,25 +128,6 @@ defmodule Mix.Tasks.Codegen.LoopTest do
 
       refute File.exists?(abs)
       assert File.exists?(Path.join([ctx.tmp, "codegen", "pitches", "building", "foo.md"]))
-    end
-
-    test "a second claim on the same slug refuses (ENOENT — already claimed)", ctx do
-      original_shell = Mix.shell()
-      Mix.shell(Mix.Shell.Process)
-      on_exit(fn -> Mix.shell(original_shell) end)
-
-      abs = Path.join(ctx.ready_dir, "foo.md")
-      File.write!(abs, "# Pitch: foo\n")
-
-      assert {:file, _building_abs} = Loop.claim_pitch!({:file, abs}, ctx.tmp)
-
-      # second claim: source is already gone from ready/ (the same abs path
-      # is passed, mirroring a second builder racing on the same slug)
-      assert catch_exit(Loop.claim_pitch!({:file, abs}, ctx.tmp)) == {:shutdown, 2}
-
-      assert_receive {:mix_shell, :error, [msg]}
-      assert msg =~ "already claimed"
-      assert msg =~ "foo"
     end
 
     test "literal source passes through unchanged, nothing claimed", ctx do
@@ -365,22 +253,6 @@ defmodule Mix.Tasks.Codegen.LoopTest do
   end
 
   describe "run_loop_catching_infra_abort/1 — the sole producer of exit code 3" do
-    test "OrchestrationLoop.run raising InfraAbort exits {:shutdown, 3} naming the fault" do
-      original_shell = Mix.shell()
-      Mix.shell(Mix.Shell.Process)
-      on_exit(fn -> Mix.shell(original_shell) end)
-
-      raising_run_fn = fn ->
-        raise CodegenTestHarness.InfraAbort, "gate: poisoned DB state no edit can fix"
-      end
-
-      assert catch_exit(Loop.run_loop_catching_infra_abort(raising_run_fn)) ==
-               {:shutdown, 3}
-
-      assert_receive {:mix_shell, :error, [msg]}
-      assert msg =~ "poisoned DB state no edit can fix"
-    end
-
     test "a normal :ok result passes through untouched (no exit, no rescue triggered)" do
       assert Loop.run_loop_catching_infra_abort(fn -> :ok end) == :ok
     end
@@ -394,6 +266,146 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert_raise RuntimeError, "unrelated crash", fn ->
         Loop.run_loop_catching_infra_abort(fn -> raise "unrelated crash" end)
       end
+    end
+  end
+end
+
+defmodule Mix.Tasks.Codegen.LoopShellTest do
+  # Mix.shell/1 changes process-global state; keep mailbox assertions serialized.
+  use ExUnit.Case, async: false
+
+  alias Mix.Tasks.Codegen.Loop
+
+  setup do
+    tmp =
+      Path.join(
+        System.tmp_dir!(),
+        "codegen_loop_shell_test_#{:erlang.unique_integer([:positive])}"
+      )
+
+    ready_dir = Path.join([tmp, "codegen", "pitches", "ready"])
+    building_dir = Path.join([tmp, "codegen", "pitches", "building"])
+    File.mkdir_p!(ready_dir)
+    on_exit(fn -> File.rm_rf!(tmp) end)
+
+    {:ok, tmp: tmp, ready_dir: ready_dir, building_dir: building_dir}
+  end
+
+  test "4: not-found error message contains the resolved absolute path", ctx do
+    original_shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(original_shell) end)
+
+    catch_exit(Loop.resolve_pitch("@codegen/pitches/ready/missing.md", ctx.tmp))
+
+    assert_receive {:mix_shell, :error, [msg]}
+    assert msg =~ Path.expand("codegen/pitches/ready/missing.md", ctx.tmp)
+  end
+
+  describe "maybe_ship_pitch/4" do
+    test "dirty working tree: retire is UNCONDITIONAL (pitch still ships), exits @dirty_tree_exit_code",
+         ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      System.cmd("git", ["init", "-q", ctx.tmp])
+      System.cmd("git", ["-C", ctx.tmp, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", ctx.tmp, "config", "user.name", "Test"])
+      System.cmd("git", ["-C", ctx.tmp, "config", "commit.gpgsign", "false"])
+
+      gitkeep = Path.join(ctx.tmp, ".gitkeep")
+      File.write!(gitkeep, "")
+      System.cmd("git", ["-C", ctx.tmp, "add", "."])
+      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "initial"])
+
+      File.write!(Path.join(ctx.tmp, "stray.txt"), "uncommitted\n")
+
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, "# Pitch: foo\n")
+
+      assert catch_exit(Loop.maybe_ship_pitch({:file, abs}, ctx.tmp)) == {:shutdown, 4}
+
+      refute File.exists?(abs)
+      shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
+      assert File.exists?(shipped_path)
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "COMMITTED and RETIRED"
+      assert msg =~ "stray.txt"
+    end
+
+    test "with before/after shas: records a git note and stamps frontmatter before the move",
+         ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      System.cmd("git", ["init", "-q", ctx.tmp])
+      System.cmd("git", ["-C", ctx.tmp, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", ctx.tmp, "config", "user.name", "Test"])
+      System.cmd("git", ["-C", ctx.tmp, "config", "commit.gpgsign", "false"])
+
+      File.write!(Path.join(ctx.tmp, "a.txt"), "content\n")
+      System.cmd("git", ["-C", ctx.tmp, "add", "."])
+      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "initial"])
+      {before_sha, 0} = System.cmd("git", ["-C", ctx.tmp, "rev-parse", "HEAD"])
+      before_sha = String.trim(before_sha)
+
+      body = "---\nstatus: ready\n---\n# Pitch: foo\n"
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, body)
+      System.cmd("git", ["-C", ctx.tmp, "add", "."])
+      System.cmd("git", ["-C", ctx.tmp, "commit", "-q", "-m", "add pitch"])
+      {after_sha, 0} = System.cmd("git", ["-C", ctx.tmp, "rev-parse", "HEAD"])
+      after_sha = String.trim(after_sha)
+
+      assert catch_exit(Loop.maybe_ship_pitch({:file, abs}, ctx.tmp, before_sha, after_sha)) ==
+               {:shutdown, 4}
+
+      shipped_path = Path.join([ctx.tmp, "codegen", "pitches", "shipped", "foo.md"])
+      refute File.exists?(abs)
+      assert File.exists?(shipped_path)
+
+      shipped_content = File.read!(shipped_path)
+      assert shipped_content =~ "shipped_sha: #{after_sha}"
+      assert shipped_content =~ "shipped_range: #{before_sha}..#{after_sha}"
+    end
+  end
+
+  describe "claim_pitch!/2 — possession by rename" do
+    test "a second claim on the same slug refuses (ENOENT — already claimed)", ctx do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      abs = Path.join(ctx.ready_dir, "foo.md")
+      File.write!(abs, "# Pitch: foo\n")
+
+      assert {:file, _building_abs} = Loop.claim_pitch!({:file, abs}, ctx.tmp)
+
+      assert catch_exit(Loop.claim_pitch!({:file, abs}, ctx.tmp)) == {:shutdown, 2}
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "already claimed"
+      assert msg =~ "foo"
+    end
+  end
+
+  describe "run_loop_catching_infra_abort/1 — the sole producer of exit code 3" do
+    test "OrchestrationLoop.run raising InfraAbort exits {:shutdown, 3} naming the fault" do
+      original_shell = Mix.shell()
+      Mix.shell(Mix.Shell.Process)
+      on_exit(fn -> Mix.shell(original_shell) end)
+
+      raising_run_fn = fn ->
+        raise CodegenTestHarness.InfraAbort, "gate: poisoned DB state no edit can fix"
+      end
+
+      assert catch_exit(Loop.run_loop_catching_infra_abort(raising_run_fn)) == {:shutdown, 3}
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "poisoned DB state no edit can fix"
     end
   end
 end
