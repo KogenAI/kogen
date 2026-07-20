@@ -37,13 +37,18 @@ TMP_ROOT="$(cd "$TMP_ROOT" && pwd -P)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 REPO="$TMP_ROOT/repo"
-mkdir -p "$REPO/shared/rules" "$REPO/shared/subagents" "$REPO/harnesses/claude/hooks" "$REPO/harnesses/pi" "$REPO/templates/generator"
+mkdir -p "$REPO/shared/rules" "$REPO/shared/subagents" "$REPO/harnesses/claude/hooks" "$REPO/harnesses/pi" "$REPO/harnesses/shared" "$REPO/templates/generator"
 echo "rule content" >"$REPO/shared/rules/one.md"
 echo "subagent content" >"$REPO/shared/subagents/one.md.j2"
 echo "manifest: claude" >"$REPO/harnesses/claude/manifest.yaml"
 echo "manifest: pi" >"$REPO/harnesses/pi/manifest.yaml"
 echo "hook content" >"$REPO/harnesses/claude/hooks/one.sh"
 echo "gen content" >"$REPO/templates/generator/gen.py"
+echo "claude-shape content" >"$REPO/harnesses/claude/claude-shape.sh"
+echo "claude-experiment content" >"$REPO/harnesses/claude/claude-experiment.sh"
+echo "pi-shape content" >"$REPO/harnesses/pi/pi-shape.sh"
+echo "pi-experiment content" >"$REPO/harnesses/pi/pi-experiment.sh"
+echo "selector content" >"$REPO/harnesses/shared/pitch-context-selector.sh"
 
 git -C "$REPO" init -q
 git -C "$REPO" config user.email "test@example.com"
@@ -86,6 +91,20 @@ if [ "$hash1" = "$hash2" ] && [ -n "$hash1" ]; then
 else
     check "(5) content hash deterministic across repeated runs" 0 1
 fi
+
+# --- Case 6: RED — same HEAD, dirty launcher (copied-into-install source) ---
+build_ready_write_stamp "$REPO" "$STAMP"
+echo "edited launcher without commit" >>"$REPO/harnesses/claude/claude-shape.sh"
+check_install_currency "$REPO" "$STAMP" >/dev/null 2>&1
+check "(6) same HEAD but edited claude-shape.sh — currency FAIL" 1 "$?"
+git -C "$REPO" checkout -q -- harnesses/claude/claude-shape.sh
+
+# --- Case 7: RED — same HEAD, dirty selector helper (live-sourced source) ---
+build_ready_write_stamp "$REPO" "$STAMP"
+echo "edited selector without commit" >>"$REPO/harnesses/shared/pitch-context-selector.sh"
+check_install_currency "$REPO" "$STAMP" >/dev/null 2>&1
+check "(7) same HEAD but edited pitch-context-selector.sh — currency FAIL" 1 "$?"
+git -C "$REPO" checkout -q -- harnesses/shared/pitch-context-selector.sh
 
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 

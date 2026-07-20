@@ -10,8 +10,9 @@
 # app_build have no launcher and no --append-system-prompt path, so they are
 # NOT part of this gate). shape and experiment are a NAMED EXEMPTION:
 # context_files: [] is legal for them (they resolve context dynamically from
-# PROJECT_CONTEXT.md § Always Load + pitch-keyword Tier-1 in their own
-# launcher bodies) — everyone else must declare a non-empty list.
+# PROJECT_CONTEXT.md § Always Load + citation-prioritized Tier-1, cap 6, via
+# harnesses/shared/pitch-context-selector.sh) — everyone else must declare a
+# non-empty list.
 #
 # Usage: bash mode-context-parity_test.sh
 # Exit 0 → all pass. Exit 1 → one or more failures.

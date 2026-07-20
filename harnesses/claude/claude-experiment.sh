@@ -15,6 +15,8 @@ else
 fi
 export CODEGEN_DIR
 
+source "$CODEGEN_DIR/harnesses/shared/pitch-context-selector.sh"
+
 # --done <slug>: tear down a finished experiment and exit before launch.
 if [[ "${1:-}" == "--done" ]]; then
     if [[ -z "${2:-}" ]]; then
@@ -193,57 +195,17 @@ fi
 if [[ ${#RESOLVED_PITCHES[@]} -eq 1 ]]; then
     _pitch_basename="$(basename "${RESOLVED_PITCHES[0]}" .md)"
     export CLAUDE_PITCH_PATH="$(cd "$PWD" && pwd)/codegen/pitches/draft/${_pitch_basename}.md"
-    # Tier 1: pitch-matched context files from § Domain Context Files table.
-    # Parse the index, grep each row's identifiers against the resolved pitch. Fail-open.
+    # Tier 1: citation-prioritized context files from the Domain Context
+    # Files table. See harnesses/shared/pitch-context-selector.sh for the
+    # priority contract. Bare assignment (not local/if) so a helper
+    # failure propagates through set -e.
     if [[ -f "$CLAUDE_PITCH_PATH" && -f "./PROJECT_CONTEXT.md" ]]; then
-        _tier1_count=0
-        _in_table=0
-        while IFS='|' read -r _pre _file _domain _ids _rest; do
-            # Detect table rows vs section headers
-            case "$_file" in
-            *"context/"*.md*)
-                [[ $_in_table -eq 0 ]] && _in_table=1
-                ;;
-            *"File"* | *"---"*)
-                continue
-                ;;
-            *)
-                continue
-                ;;
-            esac
-            # Strip backticks and whitespace from file path
-            _ctx_file="${_file//\`/}"
-            _ctx_file="${_ctx_file## }"
-            _ctx_file="${_ctx_file%% }"
-            # Extract just the basename
-            _ctx_bn="${_ctx_file##*/}"
-            # Skip if already Tier-0 loaded
-            case "$TIER0_LOADED" in
-            *" ${_ctx_bn}"*) continue ;;
-            esac
-            # Skip if file doesn't exist
-            [[ -f "./${_ctx_file}" ]] || continue
-            # Check if any identifier matches the pitch body (case-insensitive, fixed-string)
-            _matched=0
-            IFS=',' read -ra _id_arr <<<"$_ids"
-            for _id in "${_id_arr[@]+"${_id_arr[@]}"}"; do
-                _id="${_id## }"
-                _id="${_id%% }"
-                [[ -z "$_id" ]] && continue
-                if grep -qiwF "$_id" "$CLAUDE_PITCH_PATH" 2>/dev/null; then
-                    _matched=1
-                    break
-                fi
-            done
-            if [[ $_matched -eq 1 ]]; then
-                if [[ $_tier1_count -lt 6 ]]; then
-                    CONTEXT_FLAGS+=(--append-system-prompt "$(cat "./${_ctx_file}")")
-                    _tier1_count=$((_tier1_count + 1))
-                else
-                    printf 'claude-experiment: Tier-1 cap (6) reached; skipping context/%s\n' "$_ctx_bn" >&2
-                fi
-            fi
-        done <./PROJECT_CONTEXT.md
+        _selected=$(select_pitch_context "$CLAUDE_PITCH_PATH" \
+            "./PROJECT_CONTEXT.md" "." "$TIER0_LOADED" "claude-experiment" 6)
+        while IFS= read -r _ctx_file; do
+            [[ -n "$_ctx_file" ]] || continue
+            CONTEXT_FLAGS+=(--append-system-prompt "$(cat "./${_ctx_file}")")
+        done <<<"$_selected"
     fi
 fi
 

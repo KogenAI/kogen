@@ -7,9 +7,14 @@
 # installed harness. Keep this list textually identical wherever it appears —
 # it is defined ONCE here specifically to avoid drift between the writer and
 # the reader (see codegen/pitches/ready/... "build-ready" — Files to touch).
+#
+# The four claude-*/pi-* launcher entries are COPIED into the installed
+# harness by `make install`; the pitch-context-selector.sh entry is instead
+# SOURCED LIVE through the installed harness symlink at launcher runtime —
+# both sides must invalidate a same-HEAD stamp, so both are in this set.
 set -uo pipefail
 
-_BUILD_READY_SOURCE_SET="shared/rules shared/subagents harnesses/claude/manifest.yaml harnesses/pi/manifest.yaml harnesses/claude/hooks templates/generator"
+_BUILD_READY_SOURCE_SET="shared/rules shared/subagents harnesses/claude/manifest.yaml harnesses/pi/manifest.yaml harnesses/claude/hooks templates/generator harnesses/claude/claude-shape.sh harnesses/claude/claude-experiment.sh harnesses/pi/pi-shape.sh harnesses/pi/pi-experiment.sh harnesses/shared/pitch-context-selector.sh"
 
 # build_ready_content_hash <codegen_dir>
 # Prints a stable hash over the CURRENT WORKING-TREE bytes of the source set

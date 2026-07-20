@@ -269,7 +269,8 @@ roles:
     system_prompt_file: harnesses/claude/claude-shape-system-prompt.txt
     append_project_context: true
     # [] = this mode resolves context dynamically from PROJECT_CONTEXT.md § Always
-    # Load (Tier-0) + pitch-keyword Tier-1 (cap 6) in its launcher. Named
+    # Load (Tier-0) + citation-prioritized Tier-1 (cap 6) via
+    # harnesses/shared/pitch-context-selector.sh. Named
     # exemption in mode-context-parity_test.sh.
     context_files: []
 
@@ -293,7 +294,8 @@ roles:
     system_prompt_file: harnesses/claude/claude-experiment-system-prompt.txt
     append_project_context: true
     # [] = this mode resolves context dynamically from PROJECT_CONTEXT.md § Always
-    # Load (Tier-0) + pitch-keyword Tier-1 (cap 6) in its launcher. Named
+    # Load (Tier-0) + citation-prioritized Tier-1 (cap 6) via
+    # harnesses/shared/pitch-context-selector.sh. Named
     # exemption in mode-context-parity_test.sh.
     context_files: []
 

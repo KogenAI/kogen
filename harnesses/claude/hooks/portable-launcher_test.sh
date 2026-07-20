@@ -21,6 +21,17 @@
 #     launchers (claude-*.sh, pi-*.sh) must use the "${arr[@]+"${arr[@]}"}"
 #     empty-safe idiom. Includes a self-check on a synthetic fixture so a
 #     regression in the detection filter itself is caught.
+# 22. pitch-context-selector.sh citation priority: an explicitly-cited
+#     context/<name>.md row wins over an earlier keyword-only row.
+# 23. cited-only beats keyword-only: a row cited by exact path but not
+#     keyword-matched still outranks an earlier keyword-only row.
+# 24. no-citation pitch selects the same first-six keyword rows in table
+#     order as before the change (behavior-preservation).
+# 25. cap warning names only the lower-priority losing rows.
+# 26. missing selected file fails loud: non-zero exit, stderr names the
+#     file, stub CLI never invoked.
+# 27. all four production callers (claude-shape, claude-experiment,
+#     pi-shape, pi-experiment) route through the same selector.
 
 set -u
 
@@ -213,6 +224,7 @@ YAML
 mkdir -p "$FAKE_OCG/harnesses/claude" "$FAKE_OCG/harnesses/shared"
 cp "$CODEGEN_ROOT/harnesses/claude/load-role.sh" "$FAKE_OCG/harnesses/claude/load-role.sh"
 cp "$CODEGEN_ROOT/harnesses/shared/mode-context.sh" "$FAKE_OCG/harnesses/shared/mode-context.sh"
+cp "$CODEGEN_ROOT/harnesses/shared/pitch-context-selector.sh" "$FAKE_OCG/harnesses/shared/pitch-context-selector.sh"
 
 CAPTURE_T5="$BASE_TMP/t5_captured_codegen_dir.txt"
 BIN_T5="$BASE_TMP/t5_bin"
@@ -566,9 +578,12 @@ printf '## Problem\nNeed to fix dispatch.sh routing logic.\n' >"$T21/codegen/pit
 
 run_t21_launcher() {
     local launcher_src="$1" launcher_name="$2" stub_bin="$3" extra_args="$4"
-    local dst="$T21/$launcher_name"
-    local capture="$BASE_TMP/t21_${launcher_name}_args.txt"
-    local bindir="$BASE_TMP/t21_${launcher_name}_bin"
+    local target_dir="${5:-$T21}"
+    local dst="$target_dir/$launcher_name"
+    local run_tag
+    run_tag="$(basename "$target_dir")_${launcher_name}"
+    local capture="$BASE_TMP/${run_tag}_args.txt"
+    local bindir="$BASE_TMP/${run_tag}_bin"
     mkdir -p "$bindir"
     make_stub "$bindir/$stub_bin" "printf '%s\n' \"\$@\" > '$capture'"
     if command -v yq >/dev/null 2>&1; then
@@ -577,11 +592,11 @@ run_t21_launcher() {
     cp "$launcher_src" "$dst"
     # -n: treat an existing symlink-to-dir as a file to replace, not a dir to
     # descend into. Without -n, the second call across repeated invocations
-    # (T21 is used for 4 separate launchers) resolves the existing symlink
-    # and creates the new link INSIDE the target, producing a tracked
+    # (the same target dir serves 4 separate launchers) resolves the existing
+    # symlink and creates the new link INSIDE the target, producing a tracked
     # harnesses/harnesses artifact in the real repo. See t21-pitch fix.
-    ln -sfn "$CODEGEN_ROOT/harnesses" "$T21/harnesses"
-    (cd "$T21" && PATH="$bindir:$PATH" HOME="/tmp/nonexistent_xyz" bash "$launcher_name" $extra_args 2>/dev/null) || true
+    ln -sfn "$CODEGEN_ROOT/harnesses" "$target_dir/harnesses"
+    (cd "$target_dir" && PATH="$bindir:$PATH" HOME="/tmp/nonexistent_xyz" bash "$launcher_name" $extra_args 2>/dev/null) || true
     [ -f "$capture" ] && cat "$capture" || true
 }
 
@@ -605,17 +620,296 @@ captured21_pi_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-exper
 assert_contains "(21) pi-experiment: required_platforms reaches args (Tier-0)" "required_platforms: [darwin, linux]" "$captured21_pi_experiment"
 assert_contains "(21) pi-experiment: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_pi_experiment"
 
-# (22) run_t21_launcher creates the T21/harnesses symlink on every call
-# (4 calls above, same T21 dir). Assert repeated ln -sfn calls never nest a
-# harnesses/harnesses symlink inside the target — regression for the leak
-# fixed by switching -sf to -sfn.
-if [ -e "$T21/harnesses/harnesses" ]; then
-    printf 'FAIL: %s\n' "(22) repeated run_t21_launcher calls must not nest harnesses/harnesses"
+# ── Test 22: citation priority — explicit context/<name>.md citation wins ─────
+T22="$BASE_TMP/t22_citation_priority"
+mkdir -p "$T22/context" "$T22/codegen/pitches/draft"
+cat >"$T22/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/kw-a.md` | A | dispatch.sh | a/ |
+| `context/kw-b.md` | B | dispatch.sh | b/ |
+| `context/kw-c.md` | C | dispatch.sh | c/ |
+| `context/cited-d.md` | D | dispatch.sh | d/ |
+| `context/cited-e.md` | E | dispatch.sh | e/ |
+| `context/cited-f.md` | F | dispatch.sh | f/ |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T22/context/repo-structure.md"
+printf 'KWA_CONTENT' >"$T22/context/kw-a.md"
+printf 'KWB_CONTENT' >"$T22/context/kw-b.md"
+printf 'KWC_CONTENT' >"$T22/context/kw-c.md"
+printf 'CITEDD_CONTENT' >"$T22/context/cited-d.md"
+printf 'CITEDE_CONTENT' >"$T22/context/cited-e.md"
+printf 'CITEDF_CONTENT' >"$T22/context/cited-f.md"
+# All 6 rows keyword-match ("dispatch.sh"); rows d/e/f are ALSO explicitly
+# cited by exact repo-relative path. Cap is 6, but citation priority must
+# put d/e/f ahead of a/b/c, so at most 3 of a/b/c survive.
+cat >"$T22/codegen/pitches/draft/t22-pitch.md" <<'EOF'
+## Problem
+Need to fix dispatch.sh routing. See context/cited-d.md, context/cited-e.md,
+context/cited-f.md for full detail.
+EOF
+
+BIN22="$BASE_TMP/t22_bin"
+mkdir -p "$BIN22"
+CAPTURE22="$BASE_TMP/t22_args.txt"
+make_stub "$BIN22/claude" "printf '%s\n' \"\$@\" > '$CAPTURE22'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN22/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T22/claude-shape.sh"
+ln -sf "$CODEGEN_ROOT/harnesses" "$T22/harnesses"
+
+actual_exit=0
+(cd "$T22" && PATH="$BIN22:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh t22-pitch 2>/dev/null) || actual_exit=$?
+captured22=""
+[ -f "$CAPTURE22" ] && captured22=$(cat "$CAPTURE22")
+assert_contains "(22) citation priority: cited-d.md content in args" "CITEDD_CONTENT" "$captured22"
+assert_contains "(22) citation priority: cited-e.md content in args" "CITEDE_CONTENT" "$captured22"
+assert_contains "(22) citation priority: cited-f.md content in args" "CITEDF_CONTENT" "$captured22"
+
+# ── Test 23: cited-only beats keyword-only ─────────────────────────────────────
+T23="$BASE_TMP/t23_cited_only"
+mkdir -p "$T23/context" "$T23/codegen/pitches/draft"
+cat >"$T23/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/kw-only.md` | A | dispatch.sh | a/ |
+| `context/cited-only.md` | B | never-matches-token | b/ |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T23/context/repo-structure.md"
+printf 'KWONLY_CONTENT' >"$T23/context/kw-only.md"
+printf 'CITEDONLY_CONTENT' >"$T23/context/cited-only.md"
+# kw-only.md matches by keyword ("dispatch.sh"); cited-only.md has no
+# keyword match but IS explicitly cited by exact path. Both must load
+# (cap 6 not reached), but cited-only.md is tier 2 and kw-only.md is tier 3.
+printf '## Problem\nFix dispatch.sh. See context/cited-only.md.\n' >"$T23/codegen/pitches/draft/t23-pitch.md"
+
+BIN23="$BASE_TMP/t23_bin"
+mkdir -p "$BIN23"
+CAPTURE23="$BASE_TMP/t23_args.txt"
+make_stub "$BIN23/claude" "printf '%s\n' \"\$@\" > '$CAPTURE23'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN23/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T23/claude-shape.sh"
+ln -sf "$CODEGEN_ROOT/harnesses" "$T23/harnesses"
+
+actual_exit=0
+(cd "$T23" && PATH="$BIN23:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh t23-pitch 2>/dev/null) || actual_exit=$?
+captured23=""
+[ -f "$CAPTURE23" ] && captured23=$(cat "$CAPTURE23")
+assert_contains "(23) cited-only: cited-only.md content in args" "CITEDONLY_CONTENT" "$captured23"
+assert_contains "(23) cited-only: kw-only.md content still in args (cap not reached)" "KWONLY_CONTENT" "$captured23"
+# Order check: cited-only.md (tier 2) must appear BEFORE kw-only.md (tier 3)
+_t23_cited_pos=$(printf '%s' "$captured23" | grep -n "CITEDONLY_CONTENT" | head -1 | cut -d: -f1)
+_t23_kw_pos=$(printf '%s' "$captured23" | grep -n "KWONLY_CONTENT" | head -1 | cut -d: -f1)
+if [[ -n "$_t23_cited_pos" && -n "$_t23_kw_pos" && "$_t23_cited_pos" -lt "$_t23_kw_pos" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (23) cited-only.md ordered before kw-only.md\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (23) cited-only.md not ordered before kw-only.md (cited=%s kw=%s)\n' "$_t23_cited_pos" "$_t23_kw_pos"
+    fail=$((fail + 1))
+fi
+
+# ── Test 24: no-citation pitch — byte-identical to pre-change table order ─────
+T24="$BASE_TMP/t24_no_citation"
+mkdir -p "$T24/context" "$T24/codegen/pitches/draft"
+cat >"$T24/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/harnesses.md` | Harness specifics | claude-shape, dispatch.sh, launcher | harnesses/ |
+| `context/hooks.md` | Hook system | PreToolUse, SubagentStop, hook test | harnesses/*/hooks/ |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T24/context/repo-structure.md"
+printf 'HARNESSES_CONTENT' >"$T24/context/harnesses.md"
+printf 'HOOKS_CONTENT' >"$T24/context/hooks.md"
+# Pitch contains zero "context/" path strings — pure keyword match, same as Test 18.
+printf '## Problem\nNeed to fix dispatch.sh routing logic.\n' >"$T24/codegen/pitches/draft/t24-pitch.md"
+
+BIN24="$BASE_TMP/t24_bin"
+mkdir -p "$BIN24"
+CAPTURE24="$BASE_TMP/t24_args.txt"
+make_stub "$BIN24/claude" "printf '%s\n' \"\$@\" > '$CAPTURE24'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN24/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T24/claude-shape.sh"
+ln -sf "$CODEGEN_ROOT/harnesses" "$T24/harnesses"
+
+actual_exit=0
+(cd "$T24" && PATH="$BIN24:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh t24-pitch 2>/dev/null) || actual_exit=$?
+captured24=""
+[ -f "$CAPTURE24" ] && captured24=$(cat "$CAPTURE24")
+assert_contains "(24) no-citation: matched context file content in args" "HARNESSES_CONTENT" "$captured24"
+assert_not_contains "(24) no-citation: unmatched context file not in args" "HOOKS_CONTENT" "$captured24"
+
+# ── Test 25: cap warning names only lower-priority losing rows ────────────────
+T25="$BASE_TMP/t25_cap_warning"
+mkdir -p "$T25/context" "$T25/codegen/pitches/draft"
+cat >"$T25/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/r1.md` | A | dispatch.sh | a/ |
+| `context/r2.md` | B | dispatch.sh | b/ |
+| `context/r3.md` | C | dispatch.sh | c/ |
+| `context/r4.md` | D | dispatch.sh | d/ |
+| `context/r5.md` | E | dispatch.sh | e/ |
+| `context/r6.md` | F | dispatch.sh | f/ |
+| `context/r7.md` | G | dispatch.sh | g/ |
+| `context/r8.md` | H | dispatch.sh | h/ |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T25/context/repo-structure.md"
+for _n in 1 2 3 4 5 6 7 8; do printf 'R%sCONTENT' "$_n" >"$T25/context/r${_n}.md"; done
+printf '## Problem\nFix dispatch.sh.\n' >"$T25/codegen/pitches/draft/t25-pitch.md"
+
+BIN25="$BASE_TMP/t25_bin"
+mkdir -p "$BIN25"
+CAPTURE25="$BASE_TMP/t25_args.txt"
+STDERR25="$BASE_TMP/t25_stderr.txt"
+make_stub "$BIN25/claude" "printf '%s\n' \"\$@\" > '$CAPTURE25'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN25/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T25/claude-shape.sh"
+ln -sf "$CODEGEN_ROOT/harnesses" "$T25/harnesses"
+
+actual_exit=0
+(cd "$T25" && PATH="$BIN25:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh t25-pitch 2>"$STDERR25") || actual_exit=$?
+captured25=""
+[ -f "$CAPTURE25" ] && captured25=$(cat "$CAPTURE25")
+stderr25=""
+[ -f "$STDERR25" ] && stderr25=$(cat "$STDERR25")
+assert_contains "(25) cap warning: r7.md skip warning present" "Tier-1 cap (6) reached; skipping context/r7.md" "$stderr25"
+assert_contains "(25) cap warning: r8.md skip warning present" "Tier-1 cap (6) reached; skipping context/r8.md" "$stderr25"
+assert_not_contains "(25) cap warning: r1.md (selected) not in skip warnings" "skipping context/r1.md" "$stderr25"
+assert_contains "(25) cap warning: r1.md content selected" "R1CONTENT" "$captured25"
+
+# ── Test 26: missing selected file fails loud ──────────────────────────────────
+T26="$BASE_TMP/t26_missing_file"
+mkdir -p "$T26/context" "$T26/codegen/pitches/draft"
+cat >"$T26/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/missing-row.md` | A | dispatch.sh | a/ |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T26/context/repo-structure.md"
+# context/missing-row.md is deliberately NOT created on disk.
+printf '## Problem\nFix dispatch.sh.\n' >"$T26/codegen/pitches/draft/t26-pitch.md"
+
+BIN26="$BASE_TMP/t26_bin"
+mkdir -p "$BIN26"
+CAPTURE26="$BASE_TMP/t26_args.txt"
+STDERR26="$BASE_TMP/t26_stderr.txt"
+make_stub "$BIN26/claude" "printf '%s\n' \"\$@\" > '$CAPTURE26'"
+if command -v yq >/dev/null 2>&1; then
+    ln -s "$(command -v yq)" "$BIN26/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$T26/claude-shape.sh"
+ln -sf "$CODEGEN_ROOT/harnesses" "$T26/harnesses"
+
+actual_exit=0
+(cd "$T26" && PATH="$BIN26:$PATH" HOME="/tmp/nonexistent_xyz" bash claude-shape.sh t26-pitch 2>"$STDERR26") || actual_exit=$?
+stderr26=""
+[ -f "$STDERR26" ] && stderr26=$(cat "$STDERR26")
+assert_exit "(26) missing selected file: launcher exits non-zero" "1" "$actual_exit"
+assert_contains "(26) missing selected file: stderr names the missing file" "is indexed but missing" "$stderr26"
+if [ -f "$CAPTURE26" ]; then
+    printf 'FAIL: (26) missing selected file: stub CLI was invoked despite required-context failure\n'
     fail=$((fail + 1))
 else
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(22) repeated run_t21_launcher calls must not nest harnesses/harnesses"
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (26) missing selected file: stub CLI never invoked\n'
     pass=$((pass + 1))
 fi
+
+# ── Test 27: all four production callers route through the same selector ─────
+T27="$BASE_TMP/t27_all_callers"
+mkdir -p "$T27/context" "$T27/codegen/pitches/draft"
+cat >"$T27/PROJECT_CONTEXT.md" <<'EOF'
+## Domain Context Files
+
+| File | Domain | Load when prompt mentions... | Update when changing... |
+| --- | --- | --- | --- |
+| `context/kw-only27.md` | A | dispatch.sh | a/ |
+| `context/cited-only27.md` | B | never-matches-token | b/ |
+
+## Always Load
+
+- repo-structure.md
+
+## Next
+EOF
+printf 'REPO_STRUCTURE_CONTENT' >"$T27/context/repo-structure.md"
+printf 'KWONLY27_CONTENT' >"$T27/context/kw-only27.md"
+printf 'CITEDONLY27_CONTENT' >"$T27/context/cited-only27.md"
+printf '## Problem\nFix dispatch.sh. See context/cited-only27.md.\n' >"$T27/codegen/pitches/draft/t27-pitch.md"
+
+captured27_claude_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "claude-shape.sh" "claude" "t27-pitch" "$T27")
+assert_contains "(27) claude-shape: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_claude_shape"
+
+captured27_pi_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh" "pi-shape.sh" "pi" "t27-pitch" "$T27")
+assert_contains "(27) pi-shape: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_pi_shape"
+
+captured27_claude_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-experiment.sh" "claude-experiment.sh" "claude" "t27-pitch" "$T27")
+assert_contains "(27) claude-experiment: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_claude_experiment"
+
+captured27_pi_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-experiment.sh" "pi-experiment.sh" "pi" "t27-pitch" "$T27")
+assert_contains "(27) pi-experiment: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_pi_experiment"
+
+# (28) run_t21_launcher creates a <target>/harnesses symlink on EVERY call, and
+# the same target dir serves several launchers above. Assert repeated `ln -sfn`
+# calls never nest a harnesses/harnesses symlink inside the target — regression
+# for the tracked artifact that leaked into the repo when this was `ln -sf`.
+# Covers both the default T21 target and the explicit ones used by tests 22-27.
+for _t28_dir in "$T21" "$T22" "$T27"; do
+    [ -d "$_t28_dir" ] || continue
+    if [ -e "$_t28_dir/harnesses/harnesses" ]; then
+        printf 'FAIL: %s\n' "(28) repeated run_t21_launcher calls must not nest harnesses/harnesses in $_t28_dir"
+        fail=$((fail + 1))
+    else
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(28) no nested harnesses/harnesses in $_t28_dir"
+        pass=$((pass + 1))
+    fi
+done
 
 # ── Results ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"

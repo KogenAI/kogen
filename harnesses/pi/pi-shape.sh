@@ -28,6 +28,8 @@ else
 fi
 export CODEGEN_DIR
 
+source "$CODEGEN_DIR/harnesses/shared/pitch-context-selector.sh"
+
 # --draft <path> "text" — capture-append mode: swaps system prompt, skips
 # shaping/readiness loop, Tier-0/Tier-1 context loads, and pitch resolver.
 # Pre-scan and strip BEFORE anything else so --draft is never misread as a pitch arg.
@@ -213,49 +215,13 @@ else
 fi
 
 if [[ -n "$PI_PITCH_PATH" && -f "./PROJECT_CONTEXT.md" ]]; then
-    _tier1_count=0
-    _in_table=0
-    while IFS='|' read -r _pre _file _domain _ids _rest; do
-        case "$_file" in
-        *"context/"*.md*)
-            [[ $_in_table -eq 0 ]] && _in_table=1
-            ;;
-        *"File"* | *"---"*)
-            continue
-            ;;
-        *)
-            continue
-            ;;
-        esac
-        _ctx_file="${_file//\`/}"
-        _ctx_file="${_ctx_file## }"
-        _ctx_file="${_ctx_file%% }"
-        _ctx_bn="${_ctx_file##*/}"
-        case "$TIER0_LOADED" in
-        *" ${_ctx_bn}"*) continue ;;
-        esac
-        [[ -f "./${_ctx_file}" ]] || continue
-        _matched=0
-        IFS=',' read -ra _id_arr <<<"$_ids"
-        for _id in "${_id_arr[@]+"${_id_arr[@]}"}"; do
-            _id="${_id## }"
-            _id="${_id%% }"
-            [[ -z "$_id" ]] && continue
-            if grep -qiwF "$_id" "$PI_PITCH_PATH" 2>/dev/null; then
-                _matched=1
-                break
-            fi
-        done
-        if [[ $_matched -eq 1 ]]; then
-            if [[ $_tier1_count -lt 6 ]]; then
-                ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}
+    _selected=$(select_pitch_context "$PI_PITCH_PATH" \
+        "./PROJECT_CONTEXT.md" "." "$TIER0_LOADED" "pi-shape" 6)
+    while IFS= read -r _ctx_file; do
+        [[ -n "$_ctx_file" ]] || continue
+        ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}
 $(cat "./${_ctx_file}")"
-                _tier1_count=$((_tier1_count + 1))
-            else
-                printf 'pi-shape: Tier-1 cap (6) reached; skipping context/%s\n' "$_ctx_bn" >&2
-            fi
-        fi
-    done <./PROJECT_CONTEXT.md
+    done <<<"$_selected"
 fi
 
 cfg="${CODEGEN_DIR}/templates/generator/config.yaml"
