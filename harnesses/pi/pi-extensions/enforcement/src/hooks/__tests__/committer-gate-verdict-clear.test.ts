@@ -54,7 +54,13 @@ describe("committer-gate-verdict-clear", { concurrency: 1 }, () => {
     };
     delete process.env["AGENT_TYPE"];
     delete process.env["CLAUDE_PROJECT_DIR"];
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-gate-verdict-test-"));
+    // Canonicalize: `git rev-parse --show-toplevel` (used by the hook to
+    // anchor project_dir) resolves symlinks (macOS /var -> /private/var),
+    // so realpath up front here keeps tmpDir equal to what the hook/git
+    // will report, matching Bash committer-gate-verdict-clear_test.sh.
+    tmpDir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "pi-gate-verdict-test-")),
+    );
   });
 
   afterEach(() => {

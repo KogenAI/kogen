@@ -216,7 +216,12 @@ else
 fi
 
 # --- Test 18: anchored git repo, genuinely absent gate-result → deny naming repo root ---
+# Canonicalize: `git rev-parse --show-toplevel` resolves symlinks (macOS
+# /var -> /private/var), so the hook's project_dir is the resolved path.
+# Canonicalize TMP_REPO_ABSENT up front so the raw dir the test compares
+# against already matches what git/the hook will report.
 TMP_REPO_ABSENT=$(mktemp -d)
+TMP_REPO_ABSENT="$(cd "$TMP_REPO_ABSENT" && pwd -P)"
 trap 'rm -rf "$TMP_REPO_ABSENT"' EXIT
 git -C "$TMP_REPO_ABSENT" init -q
 mkdir -p "$TMP_REPO_ABSENT/sub"

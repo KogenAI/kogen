@@ -96,24 +96,24 @@ run_test_msg() {
     out=$(bash "$SCAN" "$dir" 2>/dev/null) || true
 
     case "$mode" in
-        expect_present)
-            if printf '%s' "$out" | grep -qF "$needle"; then
-                [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
-                pass=$((pass + 1))
-            else
-                printf 'FAIL: %s — expected output to contain %q\n  out: %s\n' "$desc" "$needle" "$out"
-                fail=$((fail + 1))
-            fi
-            ;;
-        expect_absent)
-            if printf '%s' "$out" | grep -qF "$needle"; then
-                printf 'FAIL: %s — expected output to NOT contain %q\n  out: %s\n' "$desc" "$needle" "$out"
-                fail=$((fail + 1))
-            else
-                [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
-                pass=$((pass + 1))
-            fi
-            ;;
+    expect_present)
+        if printf '%s' "$out" | grep -qF "$needle"; then
+            [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+            pass=$((pass + 1))
+        else
+            printf 'FAIL: %s — expected output to contain %q\n  out: %s\n' "$desc" "$needle" "$out"
+            fail=$((fail + 1))
+        fi
+        ;;
+    expect_absent)
+        if printf '%s' "$out" | grep -qF "$needle"; then
+            printf 'FAIL: %s — expected output to NOT contain %q\n  out: %s\n' "$desc" "$needle" "$out"
+            fail=$((fail + 1))
+        else
+            [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+            pass=$((pass + 1))
+        fi
+        ;;
     esac
 }
 

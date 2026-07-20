@@ -8,9 +8,9 @@
 import { execFileSync } from "node:child_process";
 
 export interface ExecResult {
-    ok: boolean;
-    stdout: string;
-    stderr: string;
+  ok: boolean;
+  stdout: string;
+  stderr: string;
 }
 
 /**
@@ -20,17 +20,21 @@ export interface ExecResult {
  * differs per machine (see context/deployment-topology.md).
  */
 export function runCodegenLog(args: string[], stdinBody?: string): ExecResult {
-    try {
-        const stdout = execFileSync("codegen-log", args, {
-            input: stdinBody ?? "",
-            encoding: "utf8",
-            stdio: ["pipe", "pipe", "pipe"],
-        });
-        return { ok: true, stdout, stderr: "" };
-    } catch (err: unknown) {
-        const e = err as { stdout?: Buffer | string; stderr?: Buffer | string; message?: string };
-        const stdout = e.stdout ? e.stdout.toString() : "";
-        const stderr = e.stderr ? e.stderr.toString() : e.message ?? String(err);
-        return { ok: false, stdout, stderr };
-    }
+  try {
+    const stdout = execFileSync("codegen-log", args, {
+      input: stdinBody ?? "",
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { ok: true, stdout, stderr: "" };
+  } catch (err: unknown) {
+    const e = err as {
+      stdout?: Buffer | string;
+      stderr?: Buffer | string;
+      message?: string;
+    };
+    const stdout = e.stdout ? e.stdout.toString() : "";
+    const stderr = e.stderr ? e.stderr.toString() : (e.message ?? String(err));
+    return { ok: false, stdout, stderr };
+  }
 }

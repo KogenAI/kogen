@@ -10,49 +10,65 @@
 // explicit — env-derivation removed" claim).
 
 export type MarkerKind =
-    | "learned"
-    | "no_learning"
-    | "died"
-    | "verdict"
-    | "plan"
-    | "plan_gate"
-    | "files_to_touch"
-    | "files_modified";
+  | "learned"
+  | "no_learning"
+  | "died"
+  | "verdict"
+  | "plan"
+  | "plan_gate"
+  | "files_to_touch"
+  | "files_modified";
 
 export interface RoleSpec {
-    /** codegen-log role string, exact match to the installed agent name. */
-    role: string;
-    /** Marker kinds this role is allowed to append beyond body/learned/no_learning/died. */
-    extraKinds: MarkerKind[];
-    /** Whether this role is granted the read-only gate_status/log_read tools. */
-    readers: boolean;
+  /** codegen-log role string, exact match to the installed agent name. */
+  role: string;
+  /** Marker kinds this role is allowed to append beyond body/learned/no_learning/died. */
+  extraKinds: MarkerKind[];
+  /** Whether this role is granted the read-only gate_status/log_read tools. */
+  readers: boolean;
 }
 
 // Every concrete role gets: body (via section), learned, no_learning, died —
 // those are universal (session-log.md:34-35). extraKinds adds the
 // role-specific typed markers. readers grants gate_status/log_read.
 export const ROLES: RoleSpec[] = [
-    { role: "planner-phoenix", extraKinds: ["plan", "plan_gate", "files_to_touch"], readers: false },
-    { role: "planner-static", extraKinds: ["plan", "plan_gate", "files_to_touch"], readers: false },
-    { role: "developer-phoenix-backend", extraKinds: ["files_modified"], readers: false },
-    { role: "developer-phoenix-frontend", extraKinds: ["files_modified"], readers: false },
-    { role: "developer-static", extraKinds: ["files_modified"], readers: false },
-    { role: "reviewer-phoenix", extraKinds: [], readers: true },
-    { role: "reviewer-static", extraKinds: [], readers: true },
-    { role: "context-curator", extraKinds: [], readers: true },
-    { role: "committer", extraKinds: [], readers: true },
+  {
+    role: "planner-phoenix",
+    extraKinds: ["plan", "plan_gate", "files_to_touch"],
+    readers: false,
+  },
+  {
+    role: "planner-static",
+    extraKinds: ["plan", "plan_gate", "files_to_touch"],
+    readers: false,
+  },
+  {
+    role: "developer-phoenix-backend",
+    extraKinds: ["files_modified"],
+    readers: false,
+  },
+  {
+    role: "developer-phoenix-frontend",
+    extraKinds: ["files_modified"],
+    readers: false,
+  },
+  { role: "developer-static", extraKinds: ["files_modified"], readers: false },
+  { role: "reviewer-phoenix", extraKinds: [], readers: true },
+  { role: "reviewer-static", extraKinds: [], readers: true },
+  { role: "context-curator", extraKinds: [], readers: true },
+  { role: "committer", extraKinds: [], readers: true },
 ];
 
 export function findRole(role: string): RoleSpec | undefined {
-    return ROLES.find((r) => r.role === role);
+  return ROLES.find((r) => r.role === role);
 }
 
 /** Tool name for a role's `section` writer (body + optional learned in one call). */
 export function sectionToolName(role: string): string {
-    return `log_section_${role.replace(/-/g, "_")}`;
+  return `log_section_${role.replace(/-/g, "_")}`;
 }
 
 /** Tool name for a role's `append` writer (marker events). */
 export function appendToolName(role: string): string {
-    return `log_append_${role.replace(/-/g, "_")}`;
+  return `log_append_${role.replace(/-/g, "_")}`;
 }

@@ -8,18 +8,20 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerAllTools } from "./tools";
 
 async function main() {
-    const server = new McpServer({
-        name: "codegen",
-        version: "0.1.0",
-    });
+  const server = new McpServer({
+    name: "codegen",
+    version: "0.1.0",
+  });
 
-    registerAllTools(server);
+  registerAllTools(server);
 
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
 }
 
 main().catch((err) => {
-    process.stderr.write(`codegen-mcp-server: fatal: ${err instanceof Error ? err.stack : String(err)}\n`);
-    process.exit(1);
+  process.stderr.write(
+    `codegen-mcp-server: fatal: ${err instanceof Error ? err.stack : String(err)}\n`,
+  );
+  process.exit(1);
 });

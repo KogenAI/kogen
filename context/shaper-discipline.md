@@ -188,7 +188,7 @@ When a pitch **establishes or strengthens a cross-cutting contract or invariant*
 - Producers: `shared/prompt-fragments/_authoring-spine.txt` (Phase-0 auto-cover rule) + `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker + option template).
 - Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`CONTRACT-DECLARATION-SITE COMPLETENESS:`) asserting the baked prompts and `/ready` all carry the rule.
 
-**Motivating incident**: the `session-log-uniform-across-surfaces` pitch reached READY status with `shared/apps/AGENTS-phoenix.md.j2` and `shared/apps/AGENTS-static.md.j2` `## Session Logging` sections left out of scope — both files declared the pre-strengthening session-log contract and were never updated, leaving downstream consumer docs teaching a stale rule.
+**Motivating incident**: `session-log-uniform-across-surfaces` reached READY with `shared/apps/AGENTS-phoenix.md.j2`/`AGENTS-static.md.j2` `## Session Logging` sections left out of scope — both declared the pre-strengthening contract and were never updated, leaving downstream docs teaching a stale rule.
 
 ## Completeness Contract for Dead-Code Retention Pitches
 
@@ -207,7 +207,7 @@ When a pitch **adds or strengthens a full-surface deny** that closes an existing
 - Producers: `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker) + `shared/prompt-fragments/_probing.txt` (inline probe bullet).
 - Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`CAPABILITY-REMOVAL REACHABILITY:`) asserting both baked shape prompts and `/ready` carry the rule.
 
-**Motivating incident**: the `session-log-uniform-across-surfaces` pitch reached SHAPED with an 11-row claim ledger that proved the `codegen-log` mechanism works but never checked that every role denied `Edit`/`Write`/`MultiEdit` on `codegen/logging/*.md` could reach `codegen-log` — `reviewer-phoenix` had no `Bash` grant and was structurally locked out at ship time (patched hours later in commit `aa6ea00`).
+**Motivating incident**: `session-log-uniform-across-surfaces` reached SHAPED with an 11-row ledger proving `codegen-log` works, but never checked every role denied `Edit`/`Write`/`MultiEdit` on `codegen/logging/*.md` could reach it — `reviewer-phoenix` lacked `Bash` and was locked out (patched in `aa6ea00`).
 
 ## Completeness Contract for Replacement Pitches
 
@@ -225,6 +225,8 @@ Any one of the three missing → blocker.
 
 **Dead-code sub-rule** (second mechanism, same class): every NEW module/function/script/launcher a pitch introduces MUST name a live production caller in the same pitch (non-test `grep -rn <symbol>` hit OR the explicit wiring move). A new symbol with no caller and no wiring move is born-dead — blocker.
 
+**Report-tool clause**: a NEW report/advisory/`--check`/`--report`/`--json`/verdict tool counts as code here, and a human operator is NOT a live production caller. Resolve to WIRE (name the automated consumer — `make test`/`install` leg, hook, loop, CI step) or KEEP-ADVISORY (justify the human consumer in the tool's own docs; `codegen-analyze`/`codegen-propose` are the exemplar carve-outs). Neither named → born-dead, same as an uncalled module.
+
 **Resolution template**: run the three probes now; raise ONE `AskUserQuestion` ONLY for the (c) PRESERVED drop-vs-keep fork; a born-dead X cannot self-clear by asking — build the caller in the same pitch or delete X.
 
 **Producer/verifier layout**:
@@ -232,7 +234,7 @@ Any one of the three missing → blocker.
 - Producers: `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker) + `shared/prompt-fragments/_probing.txt` (inline probe bullet).
 - Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`Incomplete replacement (dropped functionality / unwired new code)`) asserting both baked shape prompts and `/ready` carry the rule.
 
-**Motivating incident**: loop-core commit `ee88926` shipped `LoopQueue` born-dead (no live caller) while deleting `--queue` / `build-queue.sh`, backed by a false "translate then delete ✅" ledger row that was a proxy — it proved the old code was read/translated, never that the new code was called. Corrective commit `af87ad1` finally wired `LoopQueue` live.
+**Motivating incident**: commit `ee88926` shipped `LoopQueue` born-dead while deleting `--queue`/`build-queue.sh`, backed by a false "translate then delete ✅" ledger row — a proxy proving old code was read, never that new code was called. `af87ad1` corrected it.
 
 **Sibling-section pattern**: "Completeness Contract for X Pitches" sections share a six-part shape — invariant, detector, carve-out, sub-rule, resolution template, producer/verifier+incident. New contract sections should follow it.
 
