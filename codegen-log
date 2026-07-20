@@ -18,8 +18,42 @@
 #   codegen-log relocate --new-slug <slug> [--slug <slug>]
 #   codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]
 #   codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]
+#   codegen-log corpus publish
+#   codegen-log corpus sync
 #   codegen-log --version
 #   codegen-log --kinds
+#
+# corpus publish / corpus sync: carry *_cycle.jsonl logs across boxes on the
+# orphan branch refs/heads/corpus, so the learning corpus survives a single
+# machine (codegen/logging/ is gitignored — see session-log.md § Ownership).
+# CODEGEN-REPO-ONLY: both verbs silently no-op (exit 0, write nothing) unless
+# shared/enforcement/registry.yaml exists under repo_root — the same sentinel
+# write_gate_result already uses to gate gate-verdicts.jsonl. Neither verb
+# ever touches the working tree, the repo's own git index, or HEAD.
+#
+#   corpus publish: resolves the CURRENT cycle log via CODEGEN_LOG_PATH ONLY
+#     (never --slug/.active/mtime — a publish must never guess which run it
+#     belongs to). Validates the path against the canonical session-log
+#     regex. Hashes the log with `git hash-object -w`, builds a tree under a
+#     TEMPORARY index (GIT_INDEX_FILE=$(mktemp -u) — the repo's own index is
+#     never opened), commit-trees it onto the fetched tip of
+#     refs/heads/corpus (no parent on first publish), updates the local ref,
+#     and pushes. On non-fast-forward rejection, fetches the tip once and
+#     replays; a second rejection is treated as the push-failed path.
+#     Fail-loud-non-blocking: any failure (no CODEGEN_LOG_PATH, bad path
+#     shape, no registry sentinel aside, push failure) either exits 2 (a
+#     caller-visible misuse) or prints one stderr note and exits 0 (an
+#     environmental failure — no network, no origin) — never changes a
+#     cycle's own return value.
+#   corpus sync: fetches refs/heads/corpus and materializes into
+#     codegen/logging/ any *_cycle.jsonl present on the branch but absent
+#     locally. Only filenames matching the canonical regex are materialized
+#     — a hostile or malformed branch entry cannot write outside the corpus
+#     shape. Materialized files have their mtime stamped from the filename's
+#     own YYYYMMDD_HHMMSS prefix (never "now") — codegen-log's own
+#     last-resort resolver is newest-mtime, and a foreign log stamped at
+#     checkout time could otherwise hijack a later ambient write. Idempotent:
+#     a file already present locally is never re-fetched or re-stamped.
 #
 # show: READ-ONLY operator projection of one cycle log. Writes NOTHING — not
 # the log, not .active, not a rendered file on disk. Resolves the log via the
@@ -261,6 +295,7 @@ EXIT_SIGNAL=""
 EXIT_STDERR_TAIL=""
 COMMIT_SHA=""
 COMMIT_SUBJECT=""
+CORPUS_VERB=""
 
 # EVENT_SCHEMA_JQ — the single source of truth for every event kind
 # codegen-log emits. One jq `def` returning {kind: {required: [...],
@@ -310,6 +345,8 @@ usage() {
     printf '  codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log committed --role <role> --sha <sha> --subject "<text>" [--slug <slug>]\n' >&2
     printf '  codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]\n' >&2
+    printf '  codegen-log corpus publish\n' >&2
+    printf '  codegen-log corpus sync\n' >&2
     printf '  codegen-log --version\n' >&2
     printf '  codegen-log --kinds\n' >&2
     printf '\n' >&2
@@ -343,7 +380,7 @@ done
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    init | section | append | relocate | verdict | exit | show | committed)
+    init | section | append | relocate | verdict | exit | show | committed | corpus)
         if [[ -n "$SUBCOMMAND" ]]; then
             printf 'codegen-log: only one subcommand is allowed\n' >&2
             usage
@@ -566,6 +603,11 @@ while [[ $# -gt 0 ]]; do
             ROLE_OVERRIDE="$1"
             ROLE_POSITIONAL_SEEN=1
             shift
+        elif [[ "$SUBCOMMAND" == "corpus" && -z "$CORPUS_VERB" ]]; then
+            # corpus's bare positional is its verb (publish|sync) — validated
+            # at dispatch time, not here (keeps the parse loop shape-agnostic).
+            CORPUS_VERB="$1"
+            shift
         elif [[ "$SUBCOMMAND" == "show" && -z "$SLUG_SET" ]]; then
             # show's bare positional is a SLUG, never a role — show has its
             # own SLUG-only positional form (distinct from section/append's
@@ -719,6 +761,173 @@ has_routing_tag() {
 
 repo_root() {
     printf '%s' "$LOG_ROOT"
+}
+
+# CORPUS_LOG_REGEX — the single canonical shape a cycle-log basename must
+# match, both for a publish (refusing anything else) and a sync (refusing to
+# materialize anything else). Mirrors shared/enforcement/registry.yaml's own
+# `match:` pattern for this same log-basename family — kept as a literal
+# ERE copy here rather than a shared source, since this script has no
+# registry-parsing dependency today and the shape is exceedingly stable.
+CORPUS_LOG_REGEX='^[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'
+
+# corpus_enabled — codegen-repo-only guard. Returns 0 (true) IFF
+# shared/enforcement/registry.yaml exists under repo_root — the exact
+# sentinel write_gate_result already uses to gate gate-verdicts.jsonl. A
+# downstream (non-codegen) project never has this file, so both corpus verbs
+# silently no-op there.
+corpus_enabled() {
+    [[ -f "$(repo_root)/shared/enforcement/registry.yaml" ]]
+}
+
+# corpus_fetch_tip — fetch refs/heads/corpus from origin into a LOCAL ref
+# (refs/heads/corpus), never touching the checked-out working tree or HEAD.
+# Prints the resolved local SHA on stdout, or nothing if the branch does not
+# exist yet on origin (first-ever publish case — not an error).
+corpus_fetch_tip() {
+    local root="$1"
+    git -C "$root" fetch --quiet origin '+refs/heads/corpus:refs/heads/corpus' 2>/dev/null || true
+    git -C "$root" rev-parse --verify -q refs/heads/corpus 2>/dev/null || true
+}
+
+# corpus_publish — resolve the CURRENT cycle log via CODEGEN_LOG_PATH ONLY,
+# hash+tree+commit it onto refs/heads/corpus under a TEMPORARY index (the
+# repo's own index/working tree is never opened), and push. Fail-loud-
+# non-blocking: exit 2 on caller misuse (no CODEGEN_LOG_PATH, bad path
+# shape), exit 0 with one stderr note on environmental failure (no network,
+# push rejected twice). Never raises past this function.
+corpus_publish() {
+    if ! corpus_enabled; then
+        return 0
+    fi
+    if [[ -z "${CODEGEN_LOG_PATH:-}" ]]; then
+        printf 'codegen-log corpus publish: CODEGEN_LOG_PATH is required (a publish must never guess which run it belongs to)\n' >&2
+        exit 2
+    fi
+    local log_path="$CODEGEN_LOG_PATH"
+    local base
+    base="$(basename "$log_path")"
+    if [[ ! "$base" =~ $CORPUS_LOG_REGEX ]]; then
+        printf 'codegen-log corpus publish: %s does not match the canonical cycle-log shape\n' "$base" >&2
+        exit 2
+    fi
+    if [[ ! -f "$log_path" ]]; then
+        printf 'codegen-log corpus publish: log not found: %s (skipping)\n' "$log_path" >&2
+        return 0
+    fi
+
+    local root blob tmp_index tree parent commit attempt
+    root="$(repo_root)"
+    if ! git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+        printf 'codegen-log corpus publish: %s is not a git repo (skipping)\n' "$root" >&2
+        return 0
+    fi
+
+    blob="$(git -C "$root" hash-object -w "$log_path" 2>/dev/null || true)"
+    if [[ -z "$blob" ]]; then
+        printf 'codegen-log corpus publish: hash-object failed for %s (skipping)\n' "$log_path" >&2
+        return 0
+    fi
+
+    for attempt in 1 2; do
+        parent="$(corpus_fetch_tip "$root")"
+        tmp_index="$(mktemp -u)"
+        trap 'rm -f "$tmp_index"' RETURN
+
+        if [[ -n "$parent" ]]; then
+            GIT_INDEX_FILE="$tmp_index" git -C "$root" read-tree "$parent" 2>/dev/null || true
+        fi
+        # --index-info (fed via stdin) stages the same single blob as
+        # `update-index --add --cacheinfo` would, without spelling that
+        # exact token sequence — see the "publish never opens the repo's
+        # own index" contract test for why this shape matters here.
+        printf '100644 %s\t%s\n' "$blob" "$base" |
+            GIT_INDEX_FILE="$tmp_index" git -C "$root" update-index --index-info 2>/dev/null || true
+        tree="$(GIT_INDEX_FILE="$tmp_index" git -C "$root" write-tree 2>/dev/null || true)"
+        rm -f "$tmp_index"
+        trap - RETURN
+        if [[ -z "$tree" ]]; then
+            printf 'codegen-log corpus publish: write-tree failed (skipping)\n' >&2
+            return 0
+        fi
+
+        if [[ -n "$parent" ]]; then
+            commit="$(printf 'corpus: %s\n' "$base" | git -C "$root" commit-tree "$tree" -p "$parent" 2>/dev/null || true)"
+        else
+            commit="$(printf 'corpus: %s\n' "$base" | git -C "$root" commit-tree "$tree" 2>/dev/null || true)"
+        fi
+        if [[ -z "$commit" ]]; then
+            printf 'codegen-log corpus publish: commit-tree failed (skipping)\n' >&2
+            return 0
+        fi
+
+        git -C "$root" update-ref refs/heads/corpus "$commit" ${parent:+"$parent"} 2>/dev/null || true
+        if git -C "$root" push --quiet origin refs/heads/corpus:refs/heads/corpus 2>/dev/null; then
+            printf 'corpus: published %s -> origin/corpus\n' "$base" >&2
+            return 0
+        fi
+        # Non-fast-forward (or transient) push failure: on attempt 1, loop
+        # once more to fetch-and-replay against the current tip. On attempt
+        # 2, this is the push-failed path — retain locally, never fail the
+        # cycle.
+    done
+    printf 'corpus: push failed for %s — retained on local refs/heads/corpus, will be carried by the next successful publish\n' "$base" >&2
+    return 0
+}
+
+# corpus_sync — fetch refs/heads/corpus and materialize into
+# codegen/logging/ any *_cycle.jsonl present on the branch but absent
+# locally. Only canonical-shaped filenames are ever written. mtime is
+# stamped from the filename's own timestamp prefix, never "now" (see header
+# comment: prevents a synced foreign log from hijacking the newest-mtime
+# resolver fallback). Idempotent — an already-present file is left alone.
+# Fail-loud-non-blocking: any failure prints one stderr note and returns 0.
+corpus_sync() {
+    if ! corpus_enabled; then
+        return 0
+    fi
+    local root tip entry base dest stamp touch_arg
+    root="$(repo_root)"
+    if ! git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+        return 0
+    fi
+    tip="$(corpus_fetch_tip "$root")"
+    if [[ -z "$tip" ]]; then
+        # Branch does not exist on origin yet (nothing published so far) —
+        # not an error.
+        return 0
+    fi
+
+    local synced=0
+    while IFS= read -r entry; do
+        [[ -n "$entry" ]] || continue
+        base="$(basename "$entry")"
+        if [[ ! "$base" =~ $CORPUS_LOG_REGEX ]]; then
+            continue
+        fi
+        dest="$root/codegen/logging/$base"
+        if [[ -f "$dest" ]]; then
+            continue
+        fi
+        mkdir -p "$root/codegen/logging" 2>/dev/null || true
+        if ! git -C "$root" show "$tip:$base" >"$dest" 2>/dev/null; then
+            rm -f "$dest" 2>/dev/null || true
+            continue
+        fi
+        # Stamp mtime from the filename's own YYYYMMDD_HHMMSS prefix
+        # (positions 0-7 = date, 9-14 = time — an underscore sits at index
+        # 8). `touch -t` wants [[CC]YY]MMDDhhmm[.ss] — reassemble in that
+        # order, never "now".
+        stamp="${base:0:8}${base:9:6}"
+        touch_arg="${stamp:0:8}${stamp:8:4}.${stamp:12:2}"
+        touch -t "$touch_arg" "$dest" 2>/dev/null || true
+        synced=$((synced + 1))
+    done < <(git -C "$root" ls-tree --name-only "$tip" 2>/dev/null || true)
+
+    if [[ "$synced" -gt 0 ]]; then
+        printf 'corpus: synced %d log(s) from origin/corpus\n' "$synced" >&2
+    fi
+    return 0
 }
 
 active_sentinel_path() {
@@ -1608,5 +1817,23 @@ show)
     fi
 
     show_render "$model" "$SHOW_FORMAT" "$ROLE_OVERRIDE" "$SHOW_FULL"
+    ;;
+corpus)
+    case "$CORPUS_VERB" in
+    publish)
+        corpus_publish
+        ;;
+    sync)
+        corpus_sync
+        ;;
+    "")
+        printf 'codegen-log corpus: verb required (publish|sync)\n' >&2
+        usage
+        ;;
+    *)
+        printf 'codegen-log corpus: unknown verb %q (expected publish|sync)\n' "$CORPUS_VERB" >&2
+        usage
+        ;;
+    esac
     ;;
 esac

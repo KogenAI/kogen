@@ -38,6 +38,7 @@ Cycle logs live under `/codegen/` and are **gitignored** — in the codegen repo
 - **`codegen-log relocate --new-slug <slug> [--slug <slug>]`** renames the currently-resolved log in place and rewrites `.active` to the new path — used when a slug needs to change mid-cycle without losing log continuity.
 - **`codegen-log exit --status <n> [--signal <n>] [--stderr-tail "<text>"] [--slug <slug>]`** is the dedicated writer for the loop CHILD PROCESS's own raw wait status — written by `dispatch.sh` (both harness twins), from OUTSIDE any role (no role positional/flag; a process exit has no role). `--status` is the raw `wait` exit status (128+N = signal death, decodable via `--signal`); `--stderr-tail` carries the child's last ~8 KB of stderr when available (preserves a clean-exit raise's stacktrace even though nothing else durable does). Resolution mirrors `section`/`append` EXCEPT: when none of `CODEGEN_LOG_PATH`/`--slug`/`.active` resolve to an existing log, `exit` does NOT fail loud — it prints one stderr note and exits 0 without writing, because the loop may have died before it ever inited a log for this run, and that absence is itself the diagnostic (see `context/harnesses.md` § dispatch.sh). A failed `codegen-log exit` write is fail-loud-non-blocking — logged to stderr, never changes `dispatch.sh`'s own propagated exit code. **`codegen-log committed --role <role> --sha <sha> --subject "<text>" [--slug <slug>]`** — loop-authored HEAD attribution per role-step; asserts on OWN samples, fails loud when `role` != `"committer"`.
 - **`codegen-log show [<slug>] [--format table|md|html] [--role <role>] [--full] [--slug <slug>]`** is a READ-ONLY operator projection of one cycle log — it writes NOTHING, not the log, not `.active`, not a rendered file on disk; output goes to stdout only. It is an operator tool, not a cycle step — no role or subagent is taught to call it. Resolves the log via the SAME precedence as `section`/`append` (below), EXCEPT that a `--slug` matching more than one log (a retried slug) never refuses: `show` picks the NEWEST run by stamp and prints ONE stderr note naming the older log(s) — a bare positional argument is the slug (never a role — `show` has its own slug-only positional, distinct from `section`/`append`'s role positional). Builds a per-role spine, preferring (in order) the sibling `<log-dir>/<ts>_<slug>/cycle-summary.jsonl` (role/seq/num_turns/cost_usd/status/transcript), then the `ev:role` events themselves — each fallback prints one stderr note naming the spine used. `--format` (default `table`) also accepts `md` and `html` (html escapes every interpolated value via jq's `@html` filter); all three write to stdout only. `--role <role>` drills into that role's body/learning/transcript path; `--full` prints every role's body in `seq` order. Derives a fixed, deterministic anomaly list (a summary status other than `success`, any `ev:died`, an invoked role with zero `ev:role` body, a role with neither `ev:learned` nor `ev:no_learning`, a trailing gate verdict other than `clear`, any undeclared `ev` kind as `unknown event kind: <kind> (x<N>)`) — prints `no anomalies` explicitly when the list is empty, so a rogue write can never render as clean. Exits 2 (fail loud, no partial render) on: an unrecognized `--format` value, `--role` naming a role absent from the resolved log, or no cycle log found at all; a malformed (non-JSON) log line also exits non-zero rather than rendering an incomplete cycle as if it were complete.
+- **`codegen-log corpus publish`/`corpus sync`** carry `*_cycle.jsonl` across boxes on orphan branch `refs/heads/corpus`, so the corpus survives one machine (logs stay gitignored). Codegen-repo-only: no-op unless `shared/enforcement/registry.yaml` exists (same sentinel as `gate-verdicts.jsonl`). Never role-authored — loop calls both (`sync` pre-`init`, `publish` at cycle tail), fail-loud-non-blocking. `publish` resolves via `CODEGEN_LOG_PATH` ONLY, never opens the repo's git index (hash-object + temp index + commit-tree onto fetched tip), retries once on non-fast-forward. `sync` materializes canonical branch files absent locally, mtime from filename (never "now") so it can't win mtime-fallback below.
 - Subagents write body under their role via the writer — never emit or pre-seed placeholder events themselves.
 - A role with zero `role`/`learned` events is invalid: every required role must have written at least one event with real content before the next role may spawn or the build may ship.
 - **`--slug <slug>` is the recommended/default form** — pass it whenever the slug is known: the orchestrator always knows it after `codegen-log init --slug <slug>`, and MUST pass the same `<slug>` into every subagent's delegation prompt text so the subagent can pass it back to `codegen-log section`/`append`. This pins writes to the correct log in concurrent multi-slug builds. Omit `--slug` only when the slug genuinely isn't known at call time (manual/human CLI use).
@@ -49,18 +50,18 @@ Cycle logs live under `/codegen/` and are **gitignored** — in the codegen repo
 
 ## Death Stamps
 
-When a role's per-role invocation drops mid-response, the loop records it as a `{"ev":"died",...}` event on the dead role — written by the loop itself (`OrchestrationLoop.invoke_with_retry/4`), via `codegen-log append <role> --died <kind> --cause "<text>"` pinned to the cycle's own log through the same `CODEGEN_LOG_PATH` env var every role invocation carries:
+When a role's invocation drops mid-response, the loop records it via `codegen-log append <role> --died <kind> --cause "<text>"` (`OrchestrationLoop.invoke_with_retry/4`), pinned via `CODEGEN_LOG_PATH`:
 
-- `{"ev":"died","role":<role>,"kind":"interrupted","cause":<cause>}` — written on the FIRST invocation failure, before the loop's single retry runs. Written even when the retry recovers — `interrupted` records a drop-and-respawn, not only a fatal one.
-- `{"ev":"died","role":<role>,"kind":"aborted","cause":<cause>}` — written when the retry ALSO fails, immediately before the stage halts with `{:error, reason}`.
+- `interrupted` — written on the FIRST invocation failure, before the loop's single retry runs (even when the retry recovers).
+- `aborted` — written when the retry ALSO fails, immediately before the stage halts with `{:error, reason}`.
 
-There is no `resumed` kind — no writer ever emits one; a successful re-spawn simply appends the role's normal `role`/`learned` events after the `died` event, in call order. A failed `codegen-log append --died` write is fail-loud-non-blocking — logged to stderr, never changes the loop's retry/halt control flow.
+No `resumed` kind — a successful re-spawn just appends the role's normal `role`/`learned` events after `died`, in call order. A failed `--died` write is fail-loud-non-blocking.
 
 ## Enforcement
 
 **Enforced by** the `session-log-writer-only` hard-deny hook (Claude + Pi twins) — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
 
-**Also enforced by** `role-retrospective-before-stop` (Claude: blocking `Stop` hook; Pi: observe-only `session_shutdown` twin) — a planner/developer/reviewer trying to end its turn without BOTH a non-empty `ev:role` body AND EITHER an `ev:learned` OR an `ev:no_learning` event for its own role is pushed back into its own warm session (Claude) or warned on stderr (Pi, which cannot block). This hook checks PRESENCE only — substance is enforced upstream by `codegen-log` itself (§ Substance Filter), so the hook never re-judges content quality or publishes a passing criterion. Bounded at 3 attempts per session, then falls through with a loud stderr line — never fails the build. `context-curator` and `committer` are NOT gated by this hook.
+**Also enforced by** `role-retrospective-before-stop` (Claude: blocking `Stop` hook; Pi: observe-only twin) — a planner/developer/reviewer ending its turn without BOTH a non-empty `ev:role` body AND EITHER `ev:learned` OR `ev:no_learning` for its own role is pushed back (Claude) or warned on stderr (Pi). PRESENCE only — substance enforced upstream by `codegen-log` (§ Substance Filter). Bounded at 3 attempts, then falls through loud — never fails the build. `context-curator`/`committer` NOT gated.
 
 ## Event Schema
 
@@ -80,17 +81,15 @@ Every event object has an `"ev"` discriminator field:
 
 These markers are first-class JSONL events, never re-parsed out of a role's free-form `body` prose.
 
-**Reader jq canonical forms** (use these exact selectors so all consumers agree):
+**Reader jq canonical forms** (use these exact selectors):
 
-- role body present: `jq -e --arg r "<role>" 'select(.ev=="role" and .role==$r)' <file>`
-- concatenated role body text: `jq -r --arg r "<role>" 'select(.ev=="role" and .role==$r)|.body' <file>`
-- inconclusive gate present: `jq -e 'select(.ev=="gate" and .verdict=="inconclusive")' <file>`
-- clear gate present: `jq -e 'select(.ev=="gate" and .verdict=="clear")' <file>`
-- death marker present: `jq -e 'select(.ev=="died")' <file>`; by kind: `select(.ev=="died" and .kind=="interrupted")`
-- learned present for role: `jq -e --arg r "<role>" 'select(.ev=="learned" and .role==$r)' <file>`
-- slug from init: `jq -r 'select(.ev=="init")|.pitch' <file>`
-- planner's plan (last-wins): `jq -c 'select(.ev=="plan" and (.role|startswith("planner")))' <file> | tail -n 1`; gate selection: same, `.ev=="plan_gate"`
-- planner's files-to-touch: `jq -e --arg p "<relpath>" 'select(.ev=="files_to_touch" and (.role|startswith("planner"))) | .files[]? | select(.==$p)' <file>`; files-modified: same, developer role
+- role body: `jq -e --arg r "<role>" 'select(.ev=="role" and .role==$r)' <file>`; text: swap `-e` for `-r ...|.body`
+- gate: `jq -e 'select(.ev=="gate" and .verdict=="inconclusive"/"clear")' <file>`
+- died: `jq -e 'select(.ev=="died")' <file>`; by kind add `and .kind=="interrupted"`
+- learned: `jq -e --arg r "<role>" 'select(.ev=="learned" and .role==$r)' <file>`
+- slug: `jq -r 'select(.ev=="init")|.pitch' <file>`
+- plan (last-wins): `jq -c 'select(.ev=="plan" and (.role|startswith("planner")))' <file> | tail -n 1`; same for `.ev=="plan_gate"`
+- files-to-touch/modified: `jq -e --arg p "<relpath>" 'select(.ev=="files_to_touch" and (.role|startswith("planner"))) | .files[]? | select(.==$p)' <file>` (developer role for files_modified)
 
 All `jq -e` uses: exit 0 = at least one match, exit 1 = none. Wrap every `jq` in `2>/dev/null` on read paths (swallow malformed-line noise, fail-open) EXCEPT where a hard block requires certainty.
 
@@ -128,6 +127,4 @@ printf '%s' "$body" | codegen-log section developer-phoenix-backend \
 
 Gate hooks write `gate-result.json` with a `.verdict` field. Valid values: `"clear"`, `"failed"`, `"inconclusive"` only. **The `.verdict` JSON field is the authoritative gate result — never cosmetic log strings.** When a reviewer or the loop evaluates a gate's outcome, read `.verdict` from `gate-result.json`, not prose like "ALL CLEAR ✅" in the cycle log body. Log strings may reflect developer's intended state; JSON reflects the actual gate return code. Example: developer logs claim "ALL CLEAR ✅ on retry" but `gate-result.json` shows `.verdict: "failed"` — the JSON is authoritative and the gate truly failed.
 
-## Citations
-
-Cite `Module.function/arity` — never `file.ex:NN`. No module → section heading or unique nearby string.
+## Citations — Cite `Module.function/arity` — never `file.ex:NN`. No module → section heading or unique nearby string.

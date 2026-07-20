@@ -92,6 +92,42 @@ the codegen repo itself, not downstream apps) — appends `jq -c '.' "$result_fi
 fail-open (`|| true`, never blocks a gate on observability). This is a durable, append-only, codegen-only
 verdict history — distinct from the per-cycle `gate-result.json` which gets overwritten each attempt.
 
+## Corpus Branch
+
+`codegen/logging/*_cycle.jsonl` is gitignored (`.gitignore` `/codegen/` pattern) — the learning corpus
+(every `ev:learned` a cycle ever wrote) is otherwise per-box, invisible to a clone or a second machine.
+`refs/heads/corpus` is an orphan git branch carrying every cycle log verbatim, written by `codegen-log
+corpus publish` and read by `codegen-log corpus sync`.
+
+- **Codegen-only.** Both verbs no-op silently (exit 0, write/materialize nothing) unless
+  `shared/enforcement/registry.yaml` exists under repo root — the same sentinel `write_gate_result` uses
+  to gate `gate-verdicts.jsonl` above. A downstream Phoenix/static app never grows a corpus branch.
+- **`publish`** resolves the log via `CODEGEN_LOG_PATH` ONLY (never `--slug`/`.active`/mtime — a publish
+  must never guess which run it belongs to; exits 2 when unset). Validates the basename against the
+  canonical regex (`codegen/logging/[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$` — the same pattern
+  `registry.yaml` already carries). Never opens the repo's own git index or touches the working tree:
+  `git hash-object -w`, a tree built under a TEMPORARY `GIT_INDEX_FILE`, `commit-tree` onto the fetched
+  tip of `refs/heads/corpus` (no parent on first publish), `update-ref`, `push`. A non-fast-forward
+  push is retried once (fetch tip, replay); a second rejection retains the commit on the local branch
+  only and is logged, never raised — the next successful publish carries the backlog.
+- **`sync`** fetches `refs/heads/corpus` and materializes into `codegen/logging/` any canonical-shaped
+  file present on the branch but absent locally. A non-canonical branch entry (e.g. a hostile or
+  malformed push) is never materialized. Materialized files have their mtime stamped from the
+  filename's own `YYYYMMDD_HHMMSS` prefix, never "now" — codegen-log's own last-resort log resolver is
+  newest-mtime, and a foreign log stamped at checkout time could otherwise win that fallback and
+  receive a local write meant for a different run. Idempotent — an already-present file is left alone.
+- **Loop wiring.** `sync` runs immediately before `codegen-log init` (cycle start); `publish` runs at
+  the tail of the cycle, on the ok path, the error path, and a raise (an `after` block) — a cycle that
+  failed still contributes its learnings. `ev:exit` (dispatch.sh's own record of the child process's
+  wait status, written by the PARENT process after the loop has already exited) is therefore never
+  present in the published copy — it is a dispatch-level fact, not a learning.
+- **Fail-loud-non-blocking**, same posture as every other codegen-only observability write in this
+  file: any failure (no network, non-canonical path, push rejected twice) prints to stderr and returns
+  normally — never raises, never changes the cycle's own outcome or return value.
+- **Never role-authored.** Both verbs are invoked by the orchestration loop itself
+  (`default_corpus_sync/1` / `default_corpus_publish/1` in `orchestration_loop.ex`, seam-overridable via
+  `:corpus_sync_fn` / `:corpus_publish_fn` opts) — no subagent prompt names either verb.
+
 ## Enforcement Points (8)
 
 Cross-reference `shared/rules/_core/session-log.md` § Enforcement for the full list

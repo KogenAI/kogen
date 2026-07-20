@@ -232,3 +232,10 @@ seams:
       target, so it falls outside this registry's forward/reverse-parity scan
       convention. A follow-on could extend seam-registry-parity_test.sh to
       also recognize node:test files as first-class guards.
+
+  - id: cycle-log-to-corpus-branch
+    declares: codegen/logging/*_cycle.jsonl (local, gitignored; per-box until published)
+    reflects: refs/heads/corpus (orphan git branch on origin, written by codegen-log corpus publish, read by codegen-log corpus sync)
+    guard: harnesses/claude/hooks/codegen-log-corpus_test.sh
+    guard_time: make-test
+    pattern: set-parity

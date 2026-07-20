@@ -377,6 +377,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     Process.put(@transcript_seq_key, 0)
     Process.put(@cycle_id_key, Keyword.get(opts, :cycle_id))
 
+    # Corpus sync — carry any *_cycle.jsonl present on refs/heads/corpus but
+    # absent locally into codegen/logging/ BEFORE this cycle's own log is
+    # minted (see default_log_init below). Codegen-only (no-ops silently in
+    # every downstream project — corpus_enabled's own registry.yaml
+    # sentinel), fail-loud-non-blocking (stderr only, never raises, never
+    # changes the cycle's outcome). See codegen-log's own `corpus sync`
+    # header comment for the mechanism.
+    corpus_sync_fn = Keyword.get(opts, :corpus_sync_fn, &default_corpus_sync/1)
+
+    try do
+      corpus_sync_fn.(cwd)
+    rescue
+      e ->
+        IO.puts(:stderr, "OrchestrationLoop: corpus_sync_fn raised: #{Exception.message(e)}")
+    end
+
     # Cycle-log ownership: this loop is the SOLE creator of the cycle's own
     # session log. A nil slug (many unit tests pass none, cwd is often a
     # synthetic "/tmp/irrelevant") skips init cleanly — no raise, log-path
@@ -412,7 +428,30 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     preflight_roles!(roles, cwd, opts)
     preflight_orientation_docs!(cwd, opts)
 
-    run_roles(roles, harness, ctx, opts)
+    # Corpus publish — carry THIS cycle's own log onto refs/heads/corpus at
+    # the tail, on the ok path, the error path, AND a raise (the `after`
+    # block runs regardless), so a cycle that failed still contributes its
+    # learnings to the shared corpus. `ev:exit` (dispatch.sh's own record of
+    # the CHILD PROCESS's wait status) is written by the parent process
+    # AFTER this loop has already exited — it is a dispatch-level fact, not
+    # a learning, and is therefore never captured in the published copy by
+    # design. Fail-loud-non-blocking: publish never raises past this point
+    # and never changes the tail expression's own value.
+    try do
+      run_roles(roles, harness, ctx, opts)
+    after
+      corpus_publish_fn = Keyword.get(opts, :corpus_publish_fn, &default_corpus_publish/1)
+
+      try do
+        corpus_publish_fn.(cwd)
+      rescue
+        e ->
+          IO.puts(
+            :stderr,
+            "OrchestrationLoop: corpus_publish_fn raised: #{Exception.message(e)}"
+          )
+      end
+    end
   end
 
   # Start-time orphan surfacing: scans for live `mix codegen.loop` beams
@@ -1797,6 +1836,84 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
 
     String.trim(output)
+  end
+
+  # Corpus sync — carries any *_cycle.jsonl present on refs/heads/corpus but
+  # absent locally into codegen/logging/, BEFORE this cycle's own log is
+  # minted. Codegen-only (codegen-log's own corpus_enabled sentinel no-ops
+  # silently in every downstream project) and fail-loud-non-blocking: any
+  # non-zero exit or missing binary is logged to stderr and swallowed —
+  # never raises, never delays or blocks the cycle. See codegen-log's own
+  # `corpus sync` header comment for the mechanism.
+  @spec default_corpus_sync(String.t()) :: :ok
+  defp default_corpus_sync(cwd) do
+    if File.exists?(@codegen_log_bin) do
+      {output, exit_code} =
+        System.cmd(@codegen_log_bin, ["corpus", "sync"],
+          stderr_to_stdout: true,
+          env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", nil}],
+          cd: cwd
+        )
+
+      if exit_code != 0 do
+        IO.puts(
+          :stderr,
+          "OrchestrationLoop: codegen-log corpus sync failed (#{exit_code}): #{output}"
+        )
+      end
+    end
+
+    :ok
+  rescue
+    e ->
+      IO.puts(
+        :stderr,
+        "OrchestrationLoop: codegen-log corpus sync raised: #{Exception.message(e)}"
+      )
+
+      :ok
+  end
+
+  # Corpus publish — carries THIS cycle's own log (resolved via
+  # CODEGEN_LOG_PATH, codegen-log's highest-precedence resolver) onto
+  # refs/heads/corpus, at the cycle tail, on the ok path, the error path,
+  # and a raise (called from an `after` block in run_body_from/6). Skips
+  # cleanly when no log was ever minted (Process.get returns nil — e.g. a
+  # unit test with no :slug opt). Codegen-only and fail-loud-non-blocking,
+  # same posture as default_corpus_sync/1 above.
+  @spec default_corpus_publish(String.t()) :: :ok
+  defp default_corpus_publish(cwd) do
+    case Process.get(@log_path_key) do
+      nil ->
+        :ok
+
+      log_path ->
+        if File.exists?(@codegen_log_bin) do
+          {output, exit_code} =
+            System.cmd(@codegen_log_bin, ["corpus", "publish"],
+              stderr_to_stdout: true,
+              env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", log_path}],
+              cd: cwd
+            )
+
+          if exit_code != 0 do
+            IO.puts(
+              :stderr,
+              "OrchestrationLoop: codegen-log corpus publish failed (#{exit_code}): #{output}"
+            )
+          end
+        end
+
+        :ok
+    end
+  rescue
+    e ->
+      IO.puts(
+        :stderr,
+        "OrchestrationLoop: codegen-log corpus publish raised: #{Exception.message(e)}"
+      )
+
+      :ok
   end
 
   # Env-list fragment pinning a role's codegen-log writes to THIS cycle's

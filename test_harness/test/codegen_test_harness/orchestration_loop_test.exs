@@ -6183,6 +6183,160 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  # ── Corpus sync/publish (pitch "the learning corpus survives the clone")
+  # ────────────────────────────────────────────────────────────────────────
+  # codegen/logging/*_cycle.jsonl is gitignored — machine-local. corpus_sync
+  # runs BEFORE the cycle's own log is minted; corpus_publish runs at the
+  # tail, on the ok path, the error path, AND a raise. Both are
+  # fail-loud-non-blocking: a raising stub must never change run/1's own
+  # return value.
+  describe "run/1 — corpus sync/publish seams" do
+    test "corpus_sync_fn is called exactly once, before log_init_fn and before the first role invoke",
+         %{calls_agent: calls_agent} do
+      {:ok, order_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(order_agent), do: Agent.stop(order_agent) end)
+
+      log_path =
+        Path.join(System.tmp_dir!(), "corpus_sync_pin_#{System.unique_integer([:positive])}.jsonl")
+
+      File.write!(log_path, Jason.encode!(%{"ev" => "init", "pitch" => "x"}) <> "\n")
+      on_exit(fn -> File.rm(log_path) end)
+
+      corpus_sync_fn = fn cwd ->
+        assert cwd == "/tmp/irrelevant"
+        Agent.update(order_agent, fn calls -> calls ++ [:sync] end)
+      end
+
+      log_init_fn = fn _slug, _cwd, _stamp ->
+        Agent.update(order_agent, fn calls -> calls ++ [:init] end)
+        log_path
+      end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(order_agent, fn calls -> calls ++ [{:invoke, role}] end)
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        body = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did the thing"
+        append_role_body!(log_path, role, body)
+        {:ok, %{"status" => "success", "value" => body, "session_id" => "sid-#{role}"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 slug: "my-test-slug",
+                 stamp: "20260101_120000",
+                 corpus_sync_fn: corpus_sync_fn,
+                 corpus_publish_fn: fn _cwd -> :ok end,
+                 log_init_fn: log_init_fn,
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn()
+               )
+
+      [first | _] = Agent.get(order_agent, & &1)
+      assert first == :sync
+      assert :init in Agent.get(order_agent, & &1)
+    end
+
+    test "corpus_publish_fn is called at the cycle tail on the ok path",
+         %{calls_agent: calls_agent} do
+      {:ok, publish_calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(publish_calls_agent), do: Agent.stop(publish_calls_agent) end)
+
+      corpus_publish_fn = fn cwd ->
+        assert cwd == "/tmp/irrelevant"
+        # Called AFTER every role has already run (ok path).
+        assert Agent.get(calls_agent, & &1) == @static_sequence
+        Agent.update(publish_calls_agent, fn calls -> calls ++ [:published] end)
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 corpus_sync_fn: fn _cwd -> :ok end,
+                 corpus_publish_fn: corpus_publish_fn,
+                 invoke_fn: fn role, _harness, _ctx, _opts ->
+                   Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+                   value =
+                     if reviewer_role?(role),
+                       do: "REVIEW_VERDICT: APPROVED",
+                       else: "no block here"
+
+                   {:ok, %{"status" => "success", "value" => value, "session_id" => "sid"}}
+                 end,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn()
+               )
+
+      assert Agent.get(publish_calls_agent, & &1) == [:published]
+    end
+
+    test "corpus_publish_fn is called at the cycle tail on the error path too" do
+      corpus_publish_called = Agent.start_link(fn -> false end) |> elem(1)
+      on_exit(fn -> if Process.alive?(corpus_publish_called), do: Agent.stop(corpus_publish_called) end)
+
+      invoke_fn = fn _role, _harness, _ctx, _opts -> {:error, "deterministic failure"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 corpus_sync_fn: fn _cwd -> :ok end,
+                 corpus_publish_fn: fn _cwd ->
+                   Agent.update(corpus_publish_called, fn _ -> true end)
+                 end,
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn()
+               )
+
+      assert reason =~ "failed twice"
+      assert Agent.get(corpus_publish_called, & &1) == true
+    end
+
+    test "a raising corpus_publish_fn never changes run/1's own return value (fail-loud-non-blocking)" do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did the thing"
+        {:ok, %{"status" => "success", "value" => value, "session_id" => "sid"}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 corpus_sync_fn: fn _cwd -> :ok end,
+                 corpus_publish_fn: fn _cwd -> raise "corpus publish exploded" end,
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 curator_doc_check_fn: always_clean_curator_doc_fn(),
+                 env_var_scan_fn: always_clean_env_var_fn()
+               )
+    end
+  end
+
   # ── Resume-checkpoint (pitch "no whole-build restart when the loop dies
   # mid-cycle") ────────────────────────────────────────────────────────────
   # A prior cycle that died AFTER a clear gate but BEFORE the committer
