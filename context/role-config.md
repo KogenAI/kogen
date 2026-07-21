@@ -22,7 +22,7 @@ consumer:
 | context-curator                                             | haiku  | low    |
 | build (orchestrator)                                        | sonnet | medium |
 | inspector / app_build                                       | sonnet | medium |
-| debug / shape / experiment / ops                             | opus   | high   |
+| debug / shape / experiment / ops                            | opus   | high   |
 
 `shape`, `experiment`, `debug`, and `ops` are all pinned opus/high by design — they drive
 architectural decisions, complex multi-file analysis, and production-server operations. A

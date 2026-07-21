@@ -12,6 +12,55 @@
 
 set -euo pipefail
 
+# Execute immutable bytes. A Pi developer can edit the tracked dispatcher while
+# this invocation is still running; Bash otherwise resumes parsing mixed
+# old/new source after Pi exits.
+if [[ "${CODEGEN_PI_DISPATCH_SNAPSHOT_ACTIVE:-}" != "1" ]]; then
+    _dispatch_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+    _dispatch_snapshot_dir="$(mktemp -d "${TMPDIR:-/tmp}/codegen-pi-dispatch.XXXXXX")"
+    trap 'rm -rf "$_dispatch_snapshot_dir"' EXIT
+
+    if [[ ! -r "$_dispatch_source_dir/pi-jsonl-filter.cjs" ]]; then
+        printf 'codegen-call: Pi stream filter missing or unreadable: %s\n' \
+            "$_dispatch_source_dir/pi-jsonl-filter.cjs" >&2
+        exit 2
+    fi
+
+    if [[ ! -r "$_dispatch_source_dir/../claude/hooks/lib/schema-validate.js" ]]; then
+        printf 'codegen-call: schema validator missing or unreadable: %s\n' \
+            "$_dispatch_source_dir/../claude/hooks/lib/schema-validate.js" >&2
+        exit 2
+    fi
+
+    cp "$_dispatch_source_dir/call-dispatch.sh" \
+        "$_dispatch_snapshot_dir/call-dispatch.sh"
+    cp "$_dispatch_source_dir/pi-jsonl-filter.cjs" \
+        "$_dispatch_snapshot_dir/pi-jsonl-filter.cjs"
+    cp "$_dispatch_source_dir/../claude/hooks/lib/schema-validate.js" \
+        "$_dispatch_snapshot_dir/schema-validate.js"
+    chmod +x "$_dispatch_snapshot_dir/call-dispatch.sh"
+
+    export CODEGEN_PI_DISPATCH_SNAPSHOT_ACTIVE=1
+    export CODEGEN_PI_DISPATCH_SOURCE_DIR="$_dispatch_source_dir"
+    export CODEGEN_PI_DISPATCH_SNAPSHOT_DIR="$_dispatch_snapshot_dir"
+
+    exec /bin/bash "$_dispatch_snapshot_dir/call-dispatch.sh" "$@"
+fi
+
+_DISPATCH_SOURCE_DIR="${CODEGEN_PI_DISPATCH_SOURCE_DIR:?missing dispatcher source directory}"
+_DISPATCH_SNAPSHOT_DIR="${CODEGEN_PI_DISPATCH_SNAPSHOT_DIR:?missing dispatcher snapshot directory}"
+
+# Snapshot-only vars MUST NOT leak into Pi or nested codegen-call invocations.
+unset CODEGEN_PI_DISPATCH_SNAPSHOT_ACTIVE
+unset CODEGEN_PI_DISPATCH_SOURCE_DIR
+unset CODEGEN_PI_DISPATCH_SNAPSHOT_DIR
+
+_cleanup_dispatch_snapshot() {
+    [[ -z "${_DISPATCH_SNAPSHOT_DIR:-}" ]] || rm -rf "$_DISPATCH_SNAPSHOT_DIR"
+}
+
+trap '_cleanup_dispatch_snapshot' EXIT
+
 if ! command -v pi >/dev/null 2>&1; then
     printf 'codegen-call (pi): pi binary not found in PATH\n' >&2
     printf 'Install: npm install -g @earendil-works/pi-coding-agent\n' >&2
@@ -35,6 +84,7 @@ EFFORT="${CODEGEN_CALL_EFFORT:?CODEGEN_CALL_EFFORT not set}"
 PROMPT="${CODEGEN_CALL_PROMPT:?CODEGEN_CALL_PROMPT not set}"
 JSON_SCHEMA_CONTENT="${CODEGEN_CALL_JSON_SCHEMA:-}"
 EXTENSION_PATH="${CODEGEN_CALL_EXTENSION_PATH:-}"
+EXTENSION_PATHS="${CODEGEN_CALL_EXTENSION_PATHS:-}"
 RESUME="${CODEGEN_CALL_RESUME:-}"
 SESSION_ID_ARG="${CODEGEN_CALL_SESSION_ID:-}"
 PRINT_ARGV="${CODEGEN_CALL_PRINT_ARGV:-}"
@@ -70,7 +120,7 @@ AGENT_TOOLS=""
 _resolve_pi_agent() {
     local role="$1"
     local script_dir installed_dir generated_dir agent_file
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+    script_dir="$_DISPATCH_SOURCE_DIR"
     installed_dir="$HOME/.pi/agent/agents"
     generated_dir="$(cd "$script_dir/../.." && pwd -P)/templates/generated/pi/agent"
 
@@ -170,7 +220,17 @@ elif [[ -n "$AGENT_TOOLS" ]]; then
     ARGS+=(--tools "$AGENT_TOOLS")
 fi
 
-if [[ -n "$EXTENSION_PATH" ]]; then
+# Plural paths preserve caller order. Singular fallback keeps installed
+# pre-plural codegen-call compatible during staged upgrades.
+if [[ -n "$EXTENSION_PATHS" ]]; then
+    while IFS= read -r extension_path || [[ -n "$extension_path" ]]; do
+        [[ -n "$extension_path" ]] || {
+            printf 'codegen-call: invalid empty extension path in CODEGEN_CALL_EXTENSION_PATHS\n' >&2
+            exit 2
+        }
+        ARGS+=(--extension "$extension_path")
+    done <<<"$EXTENSION_PATHS"
+elif [[ -n "$EXTENSION_PATH" ]]; then
     ARGS+=(--extension "$EXTENSION_PATH")
 fi
 
@@ -193,11 +253,196 @@ EFFECTIVE_SESSION_ID="$RESUME"
 
 # ── Capture pi output ─────────────────────────────────────────────────────────
 TMP_OUT="$(mktemp -t codegen-call-pi.XXXXXX.jsonl)"
-trap '_capture_transcript; rm -f "$TMP_OUT"' EXIT
+TMP_DIR="$(mktemp -d -t codegen-call-pi.XXXXXX)"
+PI_PID_FILE="$TMP_DIR/pi.pid"
+PI_PROCESS_PID_FILE="$TMP_DIR/pi-process.pid"
+PI_STATUS="$TMP_DIR/pi.status"
+FILTER_ERR="$TMP_DIR/pi-filter.err"
+FILTER_STATUS="$TMP_DIR/pi-filter.status"
+FILTER_SCRIPT="$_DISPATCH_SNAPSHOT_DIR/pi-jsonl-filter.cjs"
+
+if [[ ! -r "$FILTER_SCRIPT" ]]; then
+    printf 'codegen-call: Pi stream filter missing or unreadable: %s\n' "$FILTER_SCRIPT" >&2
+    exit 2
+fi
+
+trap '_capture_transcript; rm -f "$TMP_OUT"; rm -rf "$TMP_DIR"; _cleanup_dispatch_snapshot' EXIT
 
 START_TS_MS="$(_ts_ms)"
 
+_start_stream() {
+    # Pi can leave grandchildren (notably shell tools) alive after its leader
+    # dies. Start it as a session/process-group leader so watchdog cleanup can
+    # close every inherited pipe FD before waiting for the filter.
+    perl -MPOSIX=setsid -e '
+        $pid_file = shift @ARGV;
+        setsid() or die "codegen-call: cannot create Pi process session: $!\n";
+        open my $fh, ">", $pid_file or die "codegen-call: cannot write Pi pid file: $!\n";
+        print {$fh} "$$\n";
+        close $fh or die "codegen-call: cannot close Pi pid file: $!\n";
+        exec @ARGV or die "codegen-call: cannot exec Pi supervisor: $!\n";
+    ' "$PI_PID_FILE" sh -c '
+        status_file="$1"
+        pi_pid_file="$2"
+        shift 2
+
+        "$@" &
+        pi_pid=$!
+        printf "%s\n" "$pi_pid" >"$pi_pid_file"
+
+        wait "$pi_pid"
+        code=$?
+        printf "%s\n" "$code" >"$status_file"
+        exit "$code"
+    ' sh "$PI_STATUS" "$PI_PROCESS_PID_FILE" env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u CURSOR_API_KEY \
+        pi "${ARGS[@]}" </dev/null 2>&1 | {
+        set +e
+        node "$FILTER_SCRIPT" >"$TMP_OUT" 2>"$FILTER_ERR"
+        filter_code=$?
+        printf "%s\n" "$filter_code" >"$FILTER_STATUS"
+        exit 0
+    } &
+    FILTER_PID=$!
+
+    while [[ ! -s "$PI_PID_FILE" ]] || [[ ! -s "$PI_PROCESS_PID_FILE" ]]; do
+        if ! kill -0 "$FILTER_PID" 2>/dev/null; then
+            printf 'codegen-call: Pi stream filter exited before process setup\n' >&2
+            _cleanup_live_stream
+            exit 1
+        fi
+        sleep 0.05
+    done
+    CHILD_PID="$(<"$PI_PID_FILE")"
+    PI_PROCESS_PID="$(<"$PI_PROCESS_PID_FILE")"
+}
+
+_terminate_stream() {
+    # CHILD_PID is session leader created by _start_stream. Negative PID
+    # signals its process group, preventing orphaned descendants retaining the
+    # pipe write end and wedging the filter's EOF drain.
+    kill -TERM -- "-$CHILD_PID" 2>/dev/null || true
+    sleep 2
+    kill -KILL -- "-$CHILD_PID" 2>/dev/null || true
+}
+
+_cleanup_live_stream() {
+    [[ "${STREAM_FINISHED:-}" == "1" ]] && return 0
+
+    # Filter startup can fail while the supervisor is still publishing its
+    # process-group PID. Give that bounded setup write a chance to land so the
+    # producer cannot escape cleanup.
+    if [[ -z "${CHILD_PID:-}" ]] && [[ -n "${PI_PID_FILE:-}" ]]; then
+        for _ in $(seq 1 20); do
+            [[ -s "$PI_PID_FILE" ]] && break
+            sleep 0.01
+        done
+        [[ -s "$PI_PID_FILE" ]] && CHILD_PID="$(<"$PI_PID_FILE")"
+    fi
+
+    if [[ -n "${CHILD_PID:-}" ]] && kill -0 "$CHILD_PID" 2>/dev/null; then
+        _terminate_stream
+    fi
+
+    if [[ -n "${FILTER_PID:-}" ]]; then
+        wait "$FILTER_PID" 2>/dev/null || true
+    fi
+
+    STREAM_FINISHED=1
+}
+
+# Backstop every post-start error path. Normal completion stamps
+# STREAM_FINISHED=1 before exit, making this a no-op.
+trap '_cleanup_live_stream; _capture_transcript; rm -f "$TMP_OUT"; rm -rf "$TMP_DIR"; _cleanup_dispatch_snapshot' EXIT
+
+_wait_stream() {
+    # `wait $FILTER_PID` can wait for the complete pipeline, not only its last
+    # process. A silent producer then holds EOF forever after filter exit. Poll
+    # owned status files first; filter completion before producer status means
+    # the producer must be terminated before pipeline wait/reap.
+    while [[ ! -s "$FILTER_STATUS" ]] && [[ ! -s "$PI_STATUS" ]] && kill -0 "$CHILD_PID" 2>/dev/null; do
+        sleep 0.05
+    done
+
+    FILTER_ENDED_EARLY=""
+    if [[ -s "$FILTER_STATUS" ]] && [[ ! -s "$PI_STATUS" ]] && kill -0 "$CHILD_PID" 2>/dev/null; then
+        FILTER_ENDED_EARLY=1
+        _terminate_stream
+    fi
+
+    # Pi can exit while a tool descendant retains stdout. Give the filter its
+    # normal short EOF grace, then terminate the owned process group so wait
+    # cannot wedge forever on the descendant's inherited FD.
+    if [[ -s "$PI_STATUS" ]] && [[ ! -s "$FILTER_STATUS" ]]; then
+        for _ in $(seq 1 20); do
+            [[ -s "$FILTER_STATUS" ]] && break
+            sleep 0.1
+        done
+
+        if [[ ! -s "$FILTER_STATUS" ]] && kill -0 -- "-$CHILD_PID" 2>/dev/null; then
+            _terminate_stream
+        fi
+    fi
+
+    set +e
+    wait "$FILTER_PID"
+    PIPE_EXIT_CODE=$?
+    set -e
+
+    if [[ ! -s "$FILTER_STATUS" ]]; then
+        printf 'codegen-call: Pi stream filter exited without a status (pipeline exit %s)\n' "$PIPE_EXIT_CODE" >&2
+        _cleanup_live_stream
+        exit 1
+    fi
+    FILTER_EXIT_CODE="$(<"$FILTER_STATUS")"
+    if [[ "$FILTER_EXIT_CODE" -ne 0 ]]; then
+        FILTER_DETAIL="$(<"$FILTER_ERR")"
+        printf 'codegen-call: Pi stream filter failed (exit %s): %s\n' "$FILTER_EXIT_CODE" "$FILTER_DETAIL" >&2
+        _cleanup_live_stream
+        exit 1
+    fi
+    if [[ -n "$FILTER_ENDED_EARLY" ]]; then
+        printf 'codegen-call: Pi stream filter exited before producer completion\n' >&2
+        _cleanup_live_stream
+        exit 1
+    fi
+
+    if [[ -s "$PI_STATUS" ]]; then
+        EXIT_CODE="$(<"$PI_STATUS")"
+    elif [[ -n "$WATCHDOG_KILLED" ]]; then
+        EXIT_CODE=143
+    else
+        printf 'codegen-call: Pi supervisor exited without a status\n' >&2
+        _cleanup_live_stream
+        exit 1
+    fi
+
+    STREAM_FINISHED=1
+}
+
 # ── Idle/stall watchdog (loop-invoked calls only, CODEGEN_LOOP=1) ────────────
+# The stream also preserves non-JSON diagnostics. Never identify lifecycle
+# events with a byte grep: stderr can quote a JSON-shaped event name.
+_has_terminal_agent_end() {
+    jq -e -R 'fromjson? | select(.type == "agent_end")' "$TMP_OUT" >/dev/null 2>&1
+}
+
+_post_result_threshold_compaction() {
+    jq -e -R -n '
+        reduce inputs as $line (
+            {terminal: false, post_result_compaction: false};
+            (try ($line | fromjson) catch null) as $event
+            | if $event.type == "agent_end" then
+                .terminal = true
+              elif .terminal and $event.type == "compaction_start" and $event.reason == "threshold" then
+                .post_result_compaction = true
+              else
+                .
+              end
+        )
+        | .post_result_compaction
+    ' "$TMP_OUT" >/dev/null 2>&1
+}
+
 # Mirrors harnesses/claude/call-dispatch.sh's watchdog: a dropped/stalled API
 # connection can leave pi emitting its full response then never exiting.
 # System.cmd in the Elixir loop has no timeout, so a hung pi wedges the whole
@@ -224,19 +469,19 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-300}"
     POLL_SECS="${CODEGEN_CALL_POLL_SECS:-5}"
 
-    set +e
-    env \
-        -u OPENAI_API_KEY \
-        -u ANTHROPIC_API_KEY \
-        -u CURSOR_API_KEY \
-        pi "${ARGS[@]}" </dev/null >"$TMP_OUT" 2>&1 &
-    CHILD_PID=$!
+    _start_stream
 
     LAST_SIZE=-1
     LAST_GROWTH_TS=$(_ts_ms)
     RESULT_SEEN_TS=""
     while kill -0 "$CHILD_PID" 2>/dev/null; do
         sleep "$POLL_SECS"
+        # Filter owns its status marker. If it exits while Pi has not reported
+        # completion, leave the watchdog loop immediately; _wait_stream kills
+        # the producer before waiting for pipeline EOF.
+        if [[ -s "$FILTER_STATUS" ]] && [[ ! -s "$PI_STATUS" ]]; then
+            break
+        fi
         CUR_SIZE="$(wc -c <"$TMP_OUT" 2>/dev/null || printf '0')"
         NOW_MS=$(_ts_ms)
         if [[ "$CUR_SIZE" != "$LAST_SIZE" ]]; then
@@ -245,10 +490,13 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         fi
 
         # Trigger (1): terminal agent_end event already present.
-        if [[ -z "$RESULT_SEEN_TS" ]]; then
-            if jq -c -R 'fromjson? | select(.type == "agent_end")' "$TMP_OUT" 2>/dev/null | grep -q .; then
-                RESULT_SEEN_TS="$NOW_MS"
-            fi
+        if [[ -z "$RESULT_SEEN_TS" ]] && _has_terminal_agent_end; then
+            RESULT_SEEN_TS="$NOW_MS"
+        fi
+        if [[ -n "$RESULT_SEEN_TS" ]] && _post_result_threshold_compaction; then
+            printf 'codegen-call: canceled post-result Pi compaction; terminal result salvaged\n' >&2
+            WATCHDOG_KILLED=1
+            break
         fi
         if [[ -n "$RESULT_SEEN_TS" ]] && (((NOW_MS - RESULT_SEEN_TS) / 1000 >= RESULT_GRACE_SECS)); then
             printf 'codegen-call: watchdog killing pi (pid %s) — agent_end already emitted, grace %ss elapsed\n' "$CHILD_PID" "$RESULT_GRACE_SECS" >&2
@@ -264,10 +512,10 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         fi
 
         # Trigger (3): dead-stream cap — no output growth for STREAM_IDLE_SECS
-        # AND no live tool subprocess (pgrep -P empty). A role legitimately
-        # emits no bytes for minutes while a bash tool (e.g. `make test`) runs
-        # — the child-presence guard is what makes this short cap safe.
-        if [[ -z "$(pgrep -P "$CHILD_PID" 2>/dev/null)" ]] && (((NOW_MS - LAST_GROWTH_TS) / 1000 >= STREAM_IDLE_SECS)); then
+        # AND no live tool subprocess. CHILD_PID is the shell supervisor, whose
+        # direct child is always Pi; inspect children of the actual Pi process
+        # instead so the guard distinguishes Pi itself from a running tool.
+        if [[ -z "$(pgrep -P "$PI_PROCESS_PID" 2>/dev/null)" ]] && (((NOW_MS - LAST_GROWTH_TS) / 1000 >= STREAM_IDLE_SECS)); then
             printf 'codegen-call: watchdog killing pi (pid %s) — stream idle %ss, no tool subprocess\n' "$CHILD_PID" "$STREAM_IDLE_SECS" >&2
             WATCHDOG_KILLED=1
             break
@@ -275,24 +523,13 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     done
 
     if [[ -n "$WATCHDOG_KILLED" ]]; then
-        kill -TERM "$CHILD_PID" 2>/dev/null || true
-        sleep 2
-        kill -KILL "$CHILD_PID" 2>/dev/null || true
-        pkill -9 -P "$CHILD_PID" 2>/dev/null || true
+        _terminate_stream
     fi
 
-    wait "$CHILD_PID"
-    EXIT_CODE=$?
-    set -e
+    _wait_stream
 else
-    set +e
-    env \
-        -u OPENAI_API_KEY \
-        -u ANTHROPIC_API_KEY \
-        -u CURSOR_API_KEY \
-        pi "${ARGS[@]}" </dev/null >"$TMP_OUT" 2>&1
-    EXIT_CODE=$?
-    set -e
+    _start_stream
+    _wait_stream
 fi
 
 END_TS_MS="$(_ts_ms)"
@@ -597,7 +834,7 @@ if [[ -n "$JSON_SCHEMA_CONTENT" ]] && [[ "$STATUS" == "success" ]] && [[ "$VALUE
     printf '%s' "$VALUE_JSON" >"$VALUE_TMP"
     VALIDATE_ERR=""
     VALIDATE_CODE=0
-    VALIDATE_ERR="$(node "$(dirname "${BASH_SOURCE[0]}")/../claude/hooks/lib/schema-validate.js" "$SCHEMA_TMP" "$VALUE_TMP" 2>&1)" || VALIDATE_CODE=$?
+    VALIDATE_ERR="$(node "$_DISPATCH_SOURCE_DIR/../claude/hooks/lib/schema-validate.js" "$SCHEMA_TMP" "$VALUE_TMP" 2>&1)" || VALIDATE_CODE=$?
     rm -f "$SCHEMA_TMP" "$VALUE_TMP"
     if [[ "$VALIDATE_CODE" -eq 1 ]]; then
         STATUS="failed"

@@ -123,7 +123,7 @@ A matching fixed binding wins over BOTH override mechanisms above for the target
 - `maybe_escalate_model/5` short-circuits to `ctx` unchanged (escalation suppressed) — a stuck pinned
   role never silently jumps to a stronger tier on the final gate-retry attempt.
 - `handle_switch_model_failure/7` returns `{:error, "... binding fixed ... fallback suppressed for
-  campaign arm"}` instead of walking the `fallback:` chain — a pinned role whose model is unavailable
+campaign arm"}` instead of walking the `fallback:` chain — a pinned role whose model is unavailable
   reports the arm `INCONCLUSIVE` rather than silently measuring a different model.
 
 Every non-target role, and every role when no binding file is present, is unaffected — this is

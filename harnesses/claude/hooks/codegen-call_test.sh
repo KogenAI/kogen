@@ -499,8 +499,11 @@ setup_real_pi_dispatch() {
     local agent_body="$3"
     mkdir -p "$cc_root/templates/generated/pi/agent"
     printf '%s' "$agent_body" >"$cc_root/templates/generated/pi/agent/$role.md"
-    mkdir -p "$cc_root/harnesses/pi"
+    mkdir -p "$cc_root/harnesses/pi" "$cc_root/harnesses/claude/hooks/lib"
     link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$cc_root/harnesses/pi/call-dispatch.sh"
+    link_or_copy "$REAL_PI_HARNESS/pi-jsonl-filter.cjs" "$cc_root/harnesses/pi/pi-jsonl-filter.cjs"
+    link_or_copy "$REAL_CLAUDE_HARNESS/hooks/lib/schema-validate.js" \
+        "$cc_root/harnesses/claude/hooks/lib/schema-validate.js"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -626,9 +629,12 @@ fi
 CC_S="$(make_cc_root cc_s)"
 mkdir -p "$CC_S/templates/generated/pi/agent"
 
-# Copy the REAL pi dispatch so agent resolution actually runs
-mkdir -p "$CC_S/harnesses/pi"
+# Copy real dispatcher dependencies so agent resolution runs before Pi startup.
+mkdir -p "$CC_S/harnesses/pi" "$CC_S/harnesses/claude/hooks/lib"
 link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$CC_S/harnesses/pi/call-dispatch.sh"
+link_or_copy "$REAL_PI_HARNESS/pi-jsonl-filter.cjs" "$CC_S/harnesses/pi/pi-jsonl-filter.cjs"
+link_or_copy "$REAL_CLAUDE_HARNESS/hooks/lib/schema-validate.js" \
+    "$CC_S/harnesses/claude/hooks/lib/schema-validate.js"
 
 actual_exit=0
 STDERR_S="$("$CC_S/codegen-call" \
@@ -847,6 +853,31 @@ CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
     "PING" >/dev/null 2>&1 || EXT_DIR_RC=$?
 check "(extdir) --extension accepts a package directory" "0" "$EXT_DIR_RC"
 
+EXT_DIR_SECOND="$(mktemp -d)"
+MULTI_EXTENSION_ARGV="$(CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
+    --harness=pi \
+    --model=openai-codex/gpt-5.6-terra \
+    --effort=low \
+    --system-prompt="@$SP_FIXTURE" \
+    --extension="@$EXT_DIR" \
+    --extension="@$EXT_DIR_SECOND" \
+    --print-argv \
+    "PING")"
+MULTI_EXTENSION_ORDER="$(printf '%s\n' "$MULTI_EXTENSION_ARGV" | awk '/^--extension$/{getline; print}')"
+check "(extdir-repeat) repeated extensions preserve order" "$EXT_DIR
+$EXT_DIR_SECOND" "$MULTI_EXTENSION_ORDER"
+
+EXT_NEWLINE_RC=0
+CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
+    --harness=pi \
+    --model=openai-codex/gpt-5.6-terra \
+    --effort=low \
+    --system-prompt="@$SP_FIXTURE" \
+    --extension=$'@bad\npath' \
+    --print-argv \
+    "PING" >/dev/null 2>&1 || EXT_NEWLINE_RC=$?
+check "(extdir-newline) extension rejects newline path" "2" "$EXT_NEWLINE_RC"
+
 EXT_MISSING_RC=0
 CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
     --harness=pi \
@@ -858,7 +889,7 @@ CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
     "PING" >/dev/null 2>&1 || EXT_MISSING_RC=$?
 check "(extdir2) --extension still rejects a nonexistent path" "2" "$EXT_MISSING_RC"
 
-rm -rf "$EXT_DIR"
+rm -rf "$EXT_DIR" "$EXT_DIR_SECOND"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

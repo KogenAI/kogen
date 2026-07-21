@@ -61,12 +61,21 @@ Outage Pause.
 Both call-dispatch legs (`harnesses/claude/call-dispatch.sh`, `harnesses/pi/call-dispatch.sh`) also carry
 a THIRD watchdog trigger, `CODEGEN_CALL_STREAM_IDLE_SECS` (default 300s), alongside the pre-existing
 900s `CODEGEN_CALL_IDLE_CAP_SECS` backstop: it fires only when BOTH no output growth AND no live tool
-subprocess (`pgrep -P $CHILD_PID` empty) hold for the window — the child-presence guard is what makes a
-short cap safe against a role legitimately silent for minutes while a `make test`/`mix test` bash tool
+subprocess hold for the window. Pi's producer runs below a process-group shell supervisor, so the Pi
+leg records the actual Pi PID separately and probes `pgrep -P $PI_PROCESS_PID`; probing supervisor
+children would always see Pi itself and permanently disable this trigger. The child-presence guard is
+what makes a short cap safe against a role legitimately silent while a `make test`/`mix test` tool
 runs. The default was raised from 60s to 300s after observed false kills of planner-phoenix (~10M
 cache_read_tokens) whose server-side first-token latency legitimately exceeds 60s with no tool
 subprocess running — a slow turn is not a dead stream. Both legs read this var identically;
 `harnesses/shared/call-dispatch-parity_test.sh` enforces the cross-leg read-set stays in sync.
+
+Pi's dispatcher snapshots its own script, JSONL filter, and schema-validator entry before launching Pi,
+so an in-role edit cannot make the active Bash invocation read mixed old/new bytes. Pi and the filter
+form one owned producer/consumer lifecycle: terminal salvage kills the entire Pi process group, while
+every filter startup/status/write/drain failure also terminates and reaps that group before returning
+non-zero. The filtered capture drops only parsed top-level `message_update` snapshots; terminal, tool,
+usage, lifecycle, and non-JSON diagnostic records remain available to envelope parsing/transcripts.
 
 Both legs also read `CODEGEN_CALL_POLL_SECS` (default 5s) as the watchdog loop's own sampling cadence —
 the `sleep` interval inside `while kill -0 "$CHILD_PID"` that governs how often all three triggers above

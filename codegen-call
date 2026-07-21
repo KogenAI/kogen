@@ -21,7 +21,7 @@
 #   --json-schema @<p>    OPTIONAL: @<abs-path> to JSON schema file
 #   --allowed-tools=<l>   OPTIONAL: comma-list of tools; empty string → no tools
 #   --settings @<p>       OPTIONAL: @<abs-path> to settings JSON (claude only)
-#   --extension @<p>      OPTIONAL: @<abs-path> to extension file (pi only)
+#   --extension @<p>      OPTIONAL, repeatable: @<file-or-directory> extension (pi only)
 #   --agents @<p>         OPTIONAL: claude only — inline agent-def JSON; identity
 #                         travels with the def. This script never opens,
 #                         parses, or names the agents the JSON carries — pure
@@ -68,7 +68,7 @@
 #     --allowed-tools            tool allowlist for this call, if the harness
 #                                supports scoping tools per invocation
 #     --settings @<path>        claude only — enforcement/hook bundle overlay
-#     --extension @<path>       pi only — extension bundle overlay
+#     --extension @<path>       pi only — ordered extension bundle overlays
 #     --agents @<path>          claude only — inline agent-def JSON; identity
 #                                travels with the def
 #   No agent name is hardcoded anywhere in this file or its dispatch targets.
@@ -101,7 +101,7 @@ JSON_SCHEMA_PATH=""
 ALLOWED_TOOLS=""
 ALLOWED_TOOLS_SET=""
 SETTINGS_PATH=""
-EXTENSION_PATH=""
+EXTENSION_PATHS=()
 AGENTS_PATH=""
 AGENT=""
 RESUME=""
@@ -179,11 +179,11 @@ while [[ $# -gt 0 ]]; do
         shift 2
         ;;
     --extension=*)
-        EXTENSION_PATH="${1#--extension=}"
+        EXTENSION_PATHS+=("${1#--extension=}")
         shift
         ;;
     --extension)
-        EXTENSION_PATH="$2"
+        EXTENSION_PATHS+=("$2")
         shift 2
         ;;
     --agents=*)
@@ -346,10 +346,23 @@ _read_at_path_or_dir() {
     printf '%s' "$path"
 }
 
-EXTENSION_ABS_PATH=""
-if [[ -n "$EXTENSION_PATH" ]]; then
-    EXTENSION_ABS_PATH="$(_read_at_path_or_dir "--extension" "$EXTENSION_PATH")"
+EXTENSION_ABS_PATHS=()
+for extension_path in "${EXTENSION_PATHS[@]+"${EXTENSION_PATHS[@]}"}"; do
+    if [[ -z "$extension_path" ]] || [[ "$extension_path" == *$'\n'* ]]; then
+        printf 'codegen-call: --extension must be non-empty and contain no newline\n' >&2
+        exit 2
+    fi
+    EXTENSION_ABS_PATHS+=("$(_read_at_path_or_dir "--extension" "$extension_path")")
+done
+
+# Newline-delimited internal form is safe because extension paths reject newlines.
+# Keep singular export for pre-plural downstream dispatchers during installation.
+EXTENSION_PATHS_VALUE=""
+if [[ "${#EXTENSION_ABS_PATHS[@]}" -gt 0 ]]; then
+    EXTENSION_PATHS_VALUE="$(printf '%s\n' "${EXTENSION_ABS_PATHS[@]}")"
+    EXTENSION_PATHS_VALUE="${EXTENSION_PATHS_VALUE%$'\n'}"
 fi
+EXTENSION_ABS_PATH="${EXTENSION_ABS_PATHS[0]:-}"
 
 # Resolve agents path (optional, claude only — pi ignores it)
 AGENTS_ABS_PATH=""
@@ -375,6 +388,7 @@ export CODEGEN_CALL_ALLOWED_TOOLS="${ALLOWED_TOOLS:-}"
 export CODEGEN_CALL_ALLOWED_TOOLS_SET="${ALLOWED_TOOLS_SET:-}"
 export CODEGEN_CALL_SETTINGS_PATH="$SETTINGS_ABS_PATH"
 export CODEGEN_CALL_EXTENSION_PATH="$EXTENSION_ABS_PATH"
+export CODEGEN_CALL_EXTENSION_PATHS="$EXTENSION_PATHS_VALUE"
 export CODEGEN_CALL_AGENTS_PATH="$AGENTS_ABS_PATH"
 export CODEGEN_CALL_AGENT="$AGENT"
 export CODEGEN_CALL_RESUME="$RESUME"

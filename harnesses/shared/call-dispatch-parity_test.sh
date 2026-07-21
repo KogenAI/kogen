@@ -44,9 +44,10 @@ PI_LEG="$CODEGEN_DIR/harnesses/pi/call-dispatch.sh"
 #                                     no pi equivalent)
 CLAUDE_ONLY_VARS=(CODEGEN_CALL_AGENTS_PATH CODEGEN_CALL_JSON_SCHEMA_PATH CODEGEN_CALL_SETTINGS_PATH)
 
-# CODEGEN_CALL_EXTENSION_PATH — pi-only (pi loads a TS extension by path;
-# claude has no equivalent concept).
-PI_ONLY_VARS=(CODEGEN_CALL_EXTENSION_PATH)
+# CODEGEN_CALL_EXTENSION_PATH(S) — pi-only (pi loads TS extensions by path;
+# claude has no equivalent concept). Singular remains staged-upgrade compatibility;
+# plural is the ordered runtime representation.
+PI_ONLY_VARS=(CODEGEN_CALL_EXTENSION_PATH CODEGEN_CALL_EXTENSION_PATHS)
 
 is_pi_only() {
     local v="$1"
