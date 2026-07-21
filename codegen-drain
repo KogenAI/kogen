@@ -15,14 +15,23 @@
 #   assign    Move a pitch from THIS box's ready/ into <node>'s ready/. Ack
 #             (checksum-verified same-fs mv on the far side) BEFORE deleting
 #             the local copy. Refuses (fail-closed) on any doubt.
-#             --auto: partitions THIS box's ready/ into N lanes (N =
-#             reachable node count) via `mix codegen.pitches.scope --json`,
-#             then calls the same single-slug transfer once per lane->node
-#             (lane i -> reachable-node i, inventory order). GLOBAL-HOT and
-#             UNROUTED slugs are printed by name and never placed — the
-#             partitioner's own contract, unchanged. A failing transfer
-#             stops --auto immediately (fail-closed); already-placed lanes
-#             stay placed, remaining lanes are NOT attempted.
+#             --auto: builds a fail-closed fleet dependency snapshot (every
+#             declared node must answer), then partitions THIS box's ready/
+#             into N lanes (N = reachable node count) via
+#             `mix codegen.pitches.scope --fleet-safe --json`, then calls
+#             the same single-slug transfer once per lane->node (lane i ->
+#             reachable-node i, inventory order). GLOBAL-HOT and UNROUTED
+#             slugs are printed by name and never placed — the
+#             partitioner's own contract, unchanged. DEPENDENCY-BOUND slugs
+#             (a blocks_on: edge to/from anything on the fleet, including a
+#             dep outside this batch) are ALSO printed by name and never
+#             placed — kept on the source node so the whole dependency
+#             chain builds locally. A single-slug `assign --slug --node`
+#             refuses (exit 1, named) when the target lacks a prerequisite
+#             the slug needs, or already holds a dependent that would be
+#             stranded. A failing transfer stops --auto immediately
+#             (fail-closed); already-placed lanes stay placed, remaining
+#             lanes are NOT attempted.
 #   status    ssh every configured node and print which pitches/build state
 #             each holds — restores the queue visibility single-copy costs.
 #   init      Interactively write codegen/drain-nodes.yaml (gitignored,
@@ -140,6 +149,43 @@ node_exists() {
     [[ -n "$hit" ]]
 }
 
+# inventory_nodes — prints every declared node name, one per line, in
+# inventory order. Single owner for the "every node in drain-nodes.yaml"
+# enumeration — snapshot, status, and reachable-node loops all call this
+# instead of re-running `yq -r '.nodes[].name'` inline, so there is exactly
+# one place this enumeration can drift or silently drop the final entry.
+# Validates non-empty, unique names and exact line-count parity against the
+# raw yq list; a malformed inventory (duplicate/blank name) is a loud abort,
+# never a silently-shortened fleet view.
+inventory_nodes() {
+    local raw
+    raw="$(yq -r '.nodes[].name' "$INVENTORY")"
+
+    local -a names=()
+    local n
+    while IFS= read -r n; do
+        names+=("$n")
+    done <<<"$raw"
+
+    local raw_count="${#names[@]}"
+    local n2
+    for n2 in "${names[@]}"; do
+        [[ -n "$n2" ]] || {
+            printf 'codegen-drain: inventory has a blank node name in %s\n' "$INVENTORY" >&2
+            exit 1
+        }
+    done
+
+    local uniq_count
+    uniq_count="$(printf '%s\n' "${names[@]}" | sort -u | wc -l | tr -d '[:space:]')"
+    if [[ "$uniq_count" != "$raw_count" ]]; then
+        printf 'codegen-drain: inventory has duplicate node names in %s\n' "$INVENTORY" >&2
+        exit 1
+    fi
+
+    printf '%s\n' "${names[@]}"
+}
+
 # watcher_probe_cmd <repo> — emits a self-contained shell snippet (string)
 # that resolves whether <repo> is under queue supervision, by reading the
 # single-flight lock BuildLock already writes at
@@ -253,6 +299,161 @@ remote_run() {
     fi
 }
 
+# fleet_probe_cmd <repo> — emits a self-contained shell snippet (string)
+# that enumerates the current lifecycle state of every ready/building/
+# shipped pitch in <repo>, using ONLY find/base64/shell builtins — no yq
+# dependency on the probed node (a remote node may not have mikefarah/yq
+# installed; the INITIATING node is the only place frontmatter is ever
+# parsed — see fleet_snapshot below). Output, one line per pitch:
+#   STATE <state> <slug>
+# and, for every READY pitch only, a second line carrying its full file
+# bytes base64-encoded on one line (so a slug's frontmatter can be parsed
+# back on the initiating node without a second round-trip):
+#   PITCHB64 <slug> <base64>
+# building/shipped pitches emit only the STATE line — their bytes are
+# never needed (fleet edges are read from READY pitches' blocks_on: only;
+# building/shipped existence is itself the edge-satisfaction signal).
+fleet_probe_cmd() {
+    local repo="$1"
+    printf '%s\n' \
+        "cd $(printf '%q' "$repo") 2>/dev/null || exit 1;" \
+        'for f in codegen/pitches/ready/*.md; do' \
+        '  [ -f "$f" ] || continue;' \
+        '  slug=$(basename "$f" .md);' \
+        '  printf "STATE ready %s\n" "$slug";' \
+        '  b64=$(base64 <"$f" | tr -d "\n");' \
+        '  printf "PITCHB64 %s %s\n" "$slug" "$b64";' \
+        'done;' \
+        'for f in codegen/pitches/building/*.md; do' \
+        '  [ -f "$f" ] || continue;' \
+        '  slug=$(basename "$f" .md);' \
+        '  printf "STATE building %s\n" "$slug";' \
+        'done;' \
+        'for f in codegen/pitches/shipped/*.md; do' \
+        '  [ -f "$f" ] || continue;' \
+        '  slug=$(basename "$f" .md);' \
+        '  printf "STATE shipped %s\n" "$slug";' \
+        'done;' \
+        'printf "PROBE_DONE\n";' \
+        'exit 0'
+}
+
+# fleet_snapshot — probes EVERY node in the inventory (local-fs and
+# remote/ssh alike), decodes and parses each node's ready-pitch
+# frontmatter LOCALLY (this node's own mikefarah yq — remote nodes need
+# no yq at all, they only ever emit base64 bytes), and writes 3 global
+# associative-array-shaped outputs via the SNAPSHOT_* globals below:
+#
+#   SNAPSHOT_STATE["<node>:<slug>"]  = "ready" | "building" | "shipped"
+#   SNAPSHOT_EDGES  (array)          = "<node> <ready-slug> <dep-slug>"
+#     one entry per blocks_on: edge found in any node's ready/ batch
+#
+# FAIL-CLOSED: any unreachable node, ssh/base64 transport failure, malformed
+# STATE line, or unparseable pitch frontmatter aborts (exit 1, named)
+# BEFORE returning — an incomplete fleet view can never prove co-location,
+# so assignment must never proceed on a partial snapshot. Bash 3.2 has no
+# associative arrays, so SNAPSHOT_STATE is emulated as a delimited-line
+# accumulator (SNAPSHOT_STATE_LINES) queried via snapshot_state_lookup.
+SNAPSHOT_STATE_LINES=""
+SNAPSHOT_EDGES=()
+
+snapshot_state_lookup() {
+    local key="$1"
+    printf '%s\n' "$SNAPSHOT_STATE_LINES" | awk -F'\t' -v k="$key" '$1 == k { print $2; found=1 } END { if (!found) exit 1 }'
+}
+
+fleet_snapshot() {
+    require_yq
+    require_inventory
+
+    SNAPSHOT_STATE_LINES=""
+    SNAPSHOT_EDGES=()
+
+    local -a nodes=()
+    local n
+    while IFS= read -r n; do
+        [[ -n "$n" ]] && nodes+=("$n")
+    done < <(inventory_nodes)
+
+    for n in "${nodes[@]}"; do
+        local host repo run_as probe_out
+        host="$(node_field "$n" host)"
+        repo="$(node_field "$n" repo)"
+        run_as="$(node_field "$n" run_as)"
+
+        [[ -n "$repo" ]] || {
+            printf 'codegen-drain: node %q has no repo path in inventory — cannot snapshot\n' "$n" >&2
+            exit 1
+        }
+
+        if [[ -z "$host" ]]; then
+            probe_out="$(bash -c "$(fleet_probe_cmd "$repo")" 2>/dev/null || true)"
+        else
+            probe_out="$(remote_run "$host" "$run_as" "$(fleet_probe_cmd "$repo")" 2>/dev/null || true)"
+        fi
+
+        if [[ "$probe_out" != *"PROBE_DONE"* ]]; then
+            printf 'codegen-drain: node %q unreachable or produced no fleet snapshot output — refusing (dependency safety requires the full fleet topology)\n' "$n" >&2
+            exit 1
+        fi
+
+        local line kind rest slug b64
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            case "$line" in
+            "PROBE_DONE")
+                continue
+                ;;
+            "STATE "*)
+                rest="${line#STATE }"
+                kind="${rest%% *}"
+                slug="${rest#* }"
+                case "$kind" in
+                ready | building | shipped) ;;
+                *)
+                    printf 'codegen-drain: node %q emitted malformed fleet state line: %q\n' "$n" "$line" >&2
+                    exit 1
+                    ;;
+                esac
+                [[ -n "$slug" ]] || {
+                    printf 'codegen-drain: node %q emitted a STATE line with an empty slug: %q\n' "$n" "$line" >&2
+                    exit 1
+                }
+                SNAPSHOT_STATE_LINES="${SNAPSHOT_STATE_LINES}${n}:${slug}	${kind}
+"
+                ;;
+            "PITCHB64 "*)
+                rest="${line#PITCHB64 }"
+                slug="${rest%% *}"
+                b64="${rest#* }"
+                [[ -n "$slug" && -n "$b64" ]] || {
+                    printf 'codegen-drain: node %q emitted a malformed PITCHB64 line for slug %q\n' "$n" "$slug" >&2
+                    exit 1
+                }
+
+                local deps dep decoded
+                if ! decoded="$(printf '%s' "$b64" | yq -r '@base64d' 2>&1)"; then
+                    printf 'codegen-drain: node %q emitted undecodable base64 pitch bytes for slug %q: %s\n' "$n" "$slug" "$decoded" >&2
+                    exit 1
+                fi
+                if ! deps="$(printf '%s' "$decoded" | yq --front-matter=extract -r '.blocks_on[]' 2>&1)"; then
+                    printf 'codegen-drain: node %q emitted unparseable pitch frontmatter for slug %q: %s\n' "$n" "$slug" "$deps" >&2
+                    exit 1
+                fi
+                while IFS= read -r dep; do
+                    [[ -n "$dep" ]] || continue
+                    SNAPSHOT_EDGES+=("$n $slug $dep")
+                done <<<"$deps"
+                ;;
+            *)
+                printf 'codegen-drain: node %q emitted unrecognized fleet snapshot output: %q\n' "$n" "$line" >&2
+                exit 1
+                ;;
+            esac
+        done <<<"$probe_out"
+    done
+}
+
 cmd_assign() {
     local slug="" node="" auto=""
     while [[ $# -gt 0 ]]; do
@@ -308,6 +509,72 @@ cmd_assign() {
     cmd_assign_one "$slug" "$node"
 }
 
+# dependency_preflight <slug> <target-node> — bidirectional fleet-dependency
+# check run before any REAL (non-no-op) cross-node transfer of <slug> to
+# <target-node>. Builds a full fleet_snapshot (fail-closed: aborts the
+# entire assignment before this function returns if any declared node is
+# unreachable), then checks:
+#
+#   OUTGOING — every blocks_on: dependency <slug> itself declares must
+#     already exist on <target-node> (ready, building, or shipped state
+#     all count as "on that node" per the local queue's own
+#     ready-union-shipped satisfaction contract; building only means the
+#     dependent will wait locally there, which is fine).
+#   INCOMING — every fleet-ready pitch (on ANY node) that names <slug> as
+#     ITS blocks_on: dependency must ALREADY reside on <target-node> too
+#     — moving <slug> away from a node holding one of its dependents
+#     would strand that dependent.
+#
+# Refuses (exit 1) naming the blocking edge, its current owner, and a
+# concrete remediation command on ANY violation. Never mutates anything —
+# read-only check.
+dependency_preflight() {
+    local slug="$1" target="$2"
+
+    fleet_snapshot
+
+    # OUTGOING: slug's own blocks_on: deps (read from the LOCAL copy still
+    # sitting in $CWD/codegen/pitches/ready/ — this box owns it right now).
+    local pitch_path="$CWD/codegen/pitches/ready/${slug}.md"
+    local content deps dep
+    content="$(cat "$pitch_path")"
+    if ! deps="$(printf '%s' "$content" | yq --front-matter=extract -r '.blocks_on[]' 2>&1)"; then
+        printf 'codegen-drain assign: unparseable pitch frontmatter for %s: %s\n' "$slug" "$deps" >&2
+        exit 1
+    fi
+
+    while IFS= read -r dep; do
+        [[ -n "$dep" ]] || continue
+        local dep_state
+        if ! dep_state="$(snapshot_state_lookup "${target}:${dep}")"; then
+            printf 'codegen-drain assign: %s requires %s\n' "$slug" "$dep" >&2
+            printf 'codegen-drain assign: target %s lacks that prerequisite\n' "$target" >&2
+            printf 'remediation: codegen-drain assign --slug=%s --node=<node holding %s>\n' "$dep" "$dep" >&2
+            exit 1
+        fi
+    done <<<"$deps"
+
+    # INCOMING: any fleet-ready pitch (any node) naming slug as ITS dep must
+    # already be on target too, else moving slug strands that dependent.
+    local edge
+    for edge in "${SNAPSHOT_EDGES[@]+"${SNAPSHOT_EDGES[@]}"}"; do
+        local edge_node edge_slug edge_dep
+        edge_node="$(printf '%s' "$edge" | awk '{print $1}')"
+        edge_slug="$(printf '%s' "$edge" | awk '{print $2}')"
+        edge_dep="$(printf '%s' "$edge" | awk '{print $3}')"
+
+        if [[ "$edge_dep" == "$slug" ]]; then
+            if ! snapshot_state_lookup "${target}:${edge_slug}" >/dev/null; then
+                printf 'codegen-drain assign: %s requires %s\n' "$edge_slug" "$slug" >&2
+                printf 'codegen-drain assign: moving %s to %s would strand %s (currently on %s)\n' \
+                    "$slug" "$target" "$edge_slug" "$edge_node" >&2
+                printf 'remediation: codegen-drain assign --slug=%s --node=%s\n' "$edge_slug" "$target" >&2
+                exit 1
+            fi
+        fi
+    done
+}
+
 # cmd_assign_one <slug> <node> — the single-slug transfer (checksum-verified
 # ack-before-delete on remote nodes; same-fs mv on local-fs nodes). Callers
 # (cmd_assign's --slug/--node leg, and cmd_assign_auto's per-lane loop) must
@@ -324,7 +591,7 @@ cmd_assign_one() {
 
     if ! node_exists "$node"; then
         printf 'codegen-drain: unknown node %q — valid nodes:\n' "$node" >&2
-        yq -r '.nodes[].name' "$INVENTORY" >&2
+        inventory_nodes >&2
         exit 2
     fi
 
@@ -351,6 +618,7 @@ cmd_assign_one() {
             printf 'already at %s (no-op)\n' "$node"
             return 0
         fi
+        dependency_preflight "$slug" "$node"
         if [[ -f "$dest" ]]; then
             printf 'codegen-drain: %s already exists at node %q — refusing (possession ambiguous)\n' "$dest" "$node" >&2
             exit 1
@@ -360,6 +628,8 @@ cmd_assign_one() {
         printf 'assigned %s -> %s (local copy moved)\n' "$slug" "$node"
         return 0
     fi
+
+    dependency_preflight "$slug" "$node"
 
     # Refuse if destination already holds it (resurrection guard).
     local existing
@@ -427,7 +697,7 @@ cmd_assign_one() {
 # (the caller is responsible for naming what was excluded, if it cares).
 reachable_nodes() {
     local names node host repo run_as probe_out
-    names="$(yq -r '.nodes[].name' "$INVENTORY")"
+    names="$(inventory_nodes)"
     while IFS= read -r node; do
         [[ -n "$node" ]] || continue
         host="$(node_field "$node" host)"
@@ -464,6 +734,25 @@ cmd_assign_auto() {
         exit 1
     fi
 
+    # Fleet-wide dependency snapshot: fail-closed on any unreachable node.
+    # externally_referenced = every dep-slug named by a blocks_on: edge on
+    # ANY fleet node (this box's own edges are naturally included too, but
+    # the fleet_partition/3 outgoing-edge check already covers those; this
+    # set specifically catches "some OTHER node's ready pitch needs X
+    # local", the case a purely-local partition can never see).
+    fleet_snapshot
+    local -a ext_ref_slugs=()
+    local edge
+    for edge in "${SNAPSHOT_EDGES[@]+"${SNAPSHOT_EDGES[@]}"}"; do
+        local edge_dep
+        edge_dep="$(printf '%s' "$edge" | awk '{print $3}')"
+        ext_ref_slugs+=("$edge_dep")
+    done
+    local externally_referenced=""
+    if [[ "${#ext_ref_slugs[@]}" -gt 0 ]]; then
+        externally_referenced="$(printf '%s\n' "${ext_ref_slugs[@]}" | sort -u | tr '\n' ',' | sed 's/,$//')"
+    fi
+
     local scope_cmd="${CODEGEN_DRAIN_SCOPE_CMD:-}"
     local json_out
     if [[ -n "$scope_cmd" ]]; then
@@ -472,7 +761,11 @@ cmd_assign_auto() {
             exit 1
         }
     else
-        json_out="$(cd "$CWD/test_harness" && MIX_BUILD_PATH=_build/pitch_scope_parity mix codegen.pitches.scope --dir=ready --cwd="$CWD" --lanes="$lane_count" --json)" || {
+        local -a scope_extra_args=(--fleet-safe)
+        if [[ -n "$externally_referenced" ]]; then
+            scope_extra_args+=(--externally-referenced="$externally_referenced")
+        fi
+        json_out="$(cd "$CWD/test_harness" && MIX_BUILD_PATH=_build/pitch_scope_parity mix codegen.pitches.scope --dir=ready --cwd="$CWD" --lanes="$lane_count" --json "${scope_extra_args[@]}")" || {
             printf 'codegen-drain assign --auto: mix codegen.pitches.scope failed\n' >&2
             exit 1
         }
@@ -483,15 +776,19 @@ cmd_assign_auto() {
         exit 1
     }
 
-    local global_hot unrouted
+    local global_hot unrouted dependency_bound
     global_hot="$(printf '%s' "$json_out" | yq -p=json -r '.global_hot[]' 2>/dev/null || true)"
     unrouted="$(printf '%s' "$json_out" | yq -p=json -r '.unrouted[]' 2>/dev/null || true)"
+    dependency_bound="$(printf '%s' "$json_out" | yq -p=json -r '.dependency_bound[]' 2>/dev/null || true)"
 
     if [[ -n "$global_hot" ]]; then
         printf 'GLOBAL-HOT (never placed — build alone): %s\n' "$(printf '%s' "$global_hot" | tr '\n' ' ')"
     fi
     if [[ -n "$unrouted" ]]; then
         printf 'UNROUTED (never placed — a human must place these): %s\n' "$(printf '%s' "$unrouted" | tr '\n' ' ')"
+    fi
+    if [[ -n "$dependency_bound" ]]; then
+        printf 'DEPENDENCY-BOUND (kept on source node — build chain locally): %s\n' "$(printf '%s' "$dependency_bound" | tr '\n' ' ')"
     fi
 
     local idx=0
@@ -543,7 +840,7 @@ cmd_status() {
     require_inventory
 
     local names
-    names="$(yq -r '.nodes[].name' "$INVENTORY")"
+    names="$(inventory_nodes)"
 
     [[ -n "$json" ]] && printf '['
     local first=1

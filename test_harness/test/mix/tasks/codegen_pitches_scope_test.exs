@@ -250,6 +250,102 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
     assert decoded["lanes"] |> List.flatten() |> Enum.sort() == ["a", "b"]
   end
 
+  test "regression: default --json without --fleet-safe stays byte-identical (exactly 3 keys)",
+       ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n"
+    )
+
+    out = capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=2", "--json"]) end)
+
+    decoded = Jason.decode!(String.trim(out))
+
+    assert Map.keys(decoded) |> Enum.sort() == ["global_hot", "lanes", "unrouted"]
+    refute Map.has_key?(decoded, "dependency_bound")
+  end
+
+  test "--fleet-safe --json --lanes=N emits a 4th dependency_bound key", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "b.md"),
+      "---\nstatus: SHAPED\nscope: [lib/b.ex]\nblocks_on: [external-dep]\n---\n# b\n"
+    )
+
+    out =
+      capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}", "--lanes=2", "--json", "--fleet-safe"]) end)
+
+    decoded = Jason.decode!(String.trim(out))
+
+    assert Map.keys(decoded) |> Enum.sort() == [
+             "dependency_bound",
+             "global_hot",
+             "lanes",
+             "unrouted"
+           ]
+
+    assert decoded["dependency_bound"] == ["b"]
+    refute "b" in List.flatten(decoded["lanes"])
+    assert "a" in List.flatten(decoded["lanes"])
+  end
+
+  test "--fleet-safe --externally-referenced holds the named slug's component back", ctx do
+    File.write!(
+      Path.join(ctx.ready_dir, "prereq.md"),
+      "---\nstatus: SHAPED\nscope: [lib/prereq.ex]\n---\n# prereq\n"
+    )
+
+    File.write!(
+      Path.join(ctx.ready_dir, "a.md"),
+      "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n"
+    )
+
+    out =
+      capture_io(fn ->
+        Scope.run([
+          "--cwd=#{ctx.tmp}",
+          "--lanes=1",
+          "--json",
+          "--fleet-safe",
+          "--externally-referenced=prereq"
+        ])
+      end)
+
+    decoded = Jason.decode!(String.trim(out))
+
+    assert decoded["dependency_bound"] == ["prereq"]
+    refute "prereq" in List.flatten(decoded["lanes"])
+    assert "a" in List.flatten(decoded["lanes"])
+  end
+
+  test "--fleet-safe without --lanes or --json exits 2, naming the constraint", ctx do
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--fleet-safe"]))
+    assert exit_val == {:shutdown, 2}
+  end
+
+  test "--fleet-safe with --lanes but without --json exits 2", ctx do
+    exit_val = catch_exit(Scope.run(["--cwd=#{ctx.tmp}", "--lanes=1", "--fleet-safe"]))
+    assert exit_val == {:shutdown, 2}
+  end
+
+  test "--externally-referenced without --fleet-safe exits 2", ctx do
+    exit_val =
+      catch_exit(
+        Scope.run(["--cwd=#{ctx.tmp}", "--lanes=1", "--json", "--externally-referenced=x"])
+      )
+
+    assert exit_val == {:shutdown, 2}
+  end
+
   test "--json --lanes=N emits no ANSI escapes and no LANE/COLLISIONS prose", ctx do
     File.write!(
       Path.join(ctx.ready_dir, "a.md"),

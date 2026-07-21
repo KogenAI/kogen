@@ -529,6 +529,139 @@ defmodule CodegenTestHarness.LoopQueueTest do
     end
   end
 
+  describe "fleet_partition/3" do
+    test "a pitch with an outgoing blocks_on: edge (even a dead one) is dependency_bound", %{
+      dir: dir
+    } do
+      File.write!(
+        Path.join(dir, "child.md"),
+        "---\nstatus: SHAPED\nscope: [lib/child.ex]\nblocks_on: [shipped-elsewhere]\n---\n# child\n"
+      )
+
+      {lanes, global_hot, unrouted, dependency_bound} =
+        LoopQueue.fleet_partition(dir, 1, MapSet.new())
+
+      assert dependency_bound == ["child"]
+      refute "child" in List.flatten(lanes)
+      assert global_hot == []
+      assert unrouted == []
+    end
+
+    test "a pitch named as another node's external dependency is dependency_bound", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "prereq.md"),
+        "---\nstatus: SHAPED\nscope: [lib/prereq.ex]\n---\n# prereq\n"
+      )
+
+      {lanes, global_hot, unrouted, dependency_bound} =
+        LoopQueue.fleet_partition(dir, 1, MapSet.new(["prereq"]))
+
+      assert dependency_bound == ["prereq"]
+      refute "prereq" in List.flatten(lanes)
+      assert global_hot == []
+      assert unrouted == []
+    end
+
+    test "a scope-collision peer of a dependency-bound pitch is also held back", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "child.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex]\nblocks_on: [external-dep]\n---\n# child\n"
+      )
+
+      File.write!(
+        Path.join(dir, "peer.md"),
+        "---\nstatus: SHAPED\nscope: [lib/shared.ex]\n---\n# peer\n"
+      )
+
+      # A third, unrelated scoped pitch keeps child/peer from tripping the
+      # separate GLOBAL-HOT classification (a slug colliding with EVERY
+      # other scoped slug) — this test isolates dependency-bound peer
+      # propagation, not global-hot.
+      File.write!(
+        Path.join(dir, "other.md"),
+        "---\nstatus: SHAPED\nscope: [lib/other.ex]\n---\n# other\n"
+      )
+
+      {lanes, global_hot, _unrouted, dependency_bound} =
+        LoopQueue.fleet_partition(dir, 1, MapSet.new())
+
+      assert global_hot == []
+      assert dependency_bound == ["child", "peer"]
+      refute "child" in List.flatten(lanes)
+      refute "peer" in List.flatten(lanes)
+      assert "other" in List.flatten(lanes)
+    end
+
+    test "a local blocks_on: pair (both scoped, in-batch) is dependency_bound too — INVERSE of partition/2",
+         %{dir: dir} do
+      File.write!(
+        Path.join(dir, "a.md"),
+        "---\nstatus: SHAPED\nscope: [lib/a.ex]\nblocks_on: [b]\n---\n# a\n"
+      )
+
+      File.write!(
+        Path.join(dir, "b.md"),
+        "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n"
+      )
+
+      # partition/2 co-locates this pair into one lane (see partition/2 test
+      # above: "a lane's slugs are topo-sorted by their blocks_on: edges").
+      # fleet_partition/3 instead holds the whole component back — moving
+      # either half across nodes could split the chain.
+      {lanes, global_hot, unrouted, dependency_bound} =
+        LoopQueue.fleet_partition(dir, 1, MapSet.new())
+
+      assert dependency_bound == ["a", "b"]
+      assert lanes == [[]]
+      assert global_hot == []
+      assert unrouted == []
+    end
+
+    test "independent pitches with zero fleet edges are laned normally", %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/a.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/b.ex]\n---\n# b\n")
+
+      {lanes, global_hot, unrouted, dependency_bound} =
+        LoopQueue.fleet_partition(dir, 2, MapSet.new())
+
+      assert lanes |> List.flatten() |> Enum.sort() == ["a", "b"]
+      assert global_hot == []
+      assert unrouted == []
+      assert dependency_bound == []
+    end
+
+    test "global_hot and unrouted classification is unchanged from partition/2", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "hot.md"),
+        "---\nstatus: SHAPED\nscope: [lib/x.ex, lib/y.ex]\n---\n# hot\n"
+      )
+
+      File.write!(Path.join(dir, "a.md"), "---\nstatus: SHAPED\nscope: [lib/x.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nstatus: SHAPED\nscope: [lib/y.ex]\n---\n# b\n")
+      File.write!(Path.join(dir, "u.md"), "---\nstatus: SHAPED\n---\n# u\n")
+
+      {lanes, global_hot, unrouted, dependency_bound} =
+        LoopQueue.fleet_partition(dir, 2, MapSet.new())
+
+      assert global_hot == ["hot"]
+      refute "hot" in List.flatten(lanes)
+      assert unrouted == ["u"]
+      assert dependency_bound == []
+    end
+
+    test "empty dir returns lane_count empty lanes, no global_hot/unrouted/dependency_bound", %{
+      dir: dir
+    } do
+      assert LoopQueue.fleet_partition(dir, 3, MapSet.new()) == {[[], [], []], [], [], []}
+    end
+
+    test "raises on a non-positive lane_count" do
+      assert_raise FunctionClauseError, fn ->
+        LoopQueue.fleet_partition("ready", 0, MapSet.new())
+      end
+    end
+  end
+
   describe "blocked_by_unmet_dep/2" do
     setup %{dir: dir} do
       ready_dir = Path.join(dir, "ready")

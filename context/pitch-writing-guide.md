@@ -12,7 +12,7 @@ A pitch opens with a YAML frontmatter block (`---`-delimited) BEFORE the `## Pro
 
 **Dual-read**: pre-existing pitches with no frontmatter block fall back to the legacy prose conventions — a `> Status:` blockquote for status, `Blocks-on:`/`## Dependencies` prose lines for dependencies. Both `LoopQueue.parse_edges/2` (build-queue topo-sort) and the pitch-format-validators (`.sh`/`.ts`) read frontmatter first, falling back to prose when absent. New pitches should emit frontmatter.
 
-**Ship recording**: when a pitch is retired (moved `ready/ → shipped/`), the retirer machinery writes `shipped_sha:` and `shipped_range:` into the pitch file immediately before the rename, and mirrors the sha + range as a git note on the landing commit (`refs/notes/pitches`). The frontmatter entry answers "what shipped this pitch?" at the point of contact (opening `shipped/<slug>.md`); the git note answers "which pitch is this commit?" via `git log --notes=pitches`. Both are written atomically by `LoopQueue.record_ship/4`.
+**Ship recording**: when a pitch is retired (moved `ready/ → shipped/`), the retirer machinery writes `shipped_sha:` and `shipped_range:` into the pitch file immediately before the rename — this is the SOLE ship record. There is no second medium: `LoopQueue.record_ship/4` writes ONLY this frontmatter stamp (verified against production source — zero git-note writers exist); a died-before-mv failure never strands an already-shipped stamp on a pitch still sitting in `ready/`, which the next build's `@`-mention would misread. The frontmatter entry answers "what shipped this pitch?" at the point of contact (opening `shipped/<slug>.md`). Fails open on non-git/nil sha.
 
 ## Where to write: relative or abs-in-cwd — both accepted
 

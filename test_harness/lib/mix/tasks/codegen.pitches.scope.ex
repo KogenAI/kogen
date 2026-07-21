@@ -41,6 +41,28 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     machine-readable leg a caller (e.g. `codegen-drain assign --auto`)
     parses. Mirrors the existing `codegen-drain status --json` shape
     convention.
+  - `--fleet-safe` — optional boolean flag. REQUIRES both `--lanes` and
+    `--json` (absent either → exit 2, naming the constraint). When
+    given, delegates to `LoopQueue.fleet_partition/3` instead of
+    `LoopQueue.partition/2` and emits a FOURTH JSON key,
+    `dependency_bound`, alongside the existing three:
+    `{"lanes":[[slug,...],...],"global_hot":[slug,...],"unrouted":[slug,...],"dependency_bound":[slug,...]}`.
+    A component is `dependency_bound` (held out of every lane) when it
+    has an outgoing `blocks_on:` edge (including to a dependency absent
+    from this batch — the crux difference from plain `--json`, which
+    silently ignores such a dead edge), is named in
+    `--externally-referenced`, or shares a `scope:` collision with
+    either. Without `--fleet-safe`, output is BYTE-IDENTICAL to the
+    pre-existing three-key `--json` shape — this flag is strictly
+    additive.
+  - `--externally-referenced` — optional comma-separated slug list.
+    Only valid alongside `--fleet-safe`. Names slugs that some
+    fleet-ready pitch, on ANY node, lists as its `blocks_on:`
+    dependency — i.e. slugs this batch must keep local because another
+    node's ready pitch depends on them. Malformed (e.g. embedded
+    whitespace-only entries are trimmed and dropped; there is no other
+    malformed shape) never raises; absent defaults to no external
+    references.
   - `--check` — optional boolean flag. Absent: behavior/output/exit
     code are byte-identical to today. Present: runs two independent
     failure-class checks, in order, before any of the normal report
@@ -110,7 +132,15 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
   def run(argv) do
     {opts, _positional, invalid} =
       OptionParser.parse(argv,
-        strict: [dir: :string, cwd: :string, lanes: :string, check: :boolean, json: :boolean]
+        strict: [
+          dir: :string,
+          cwd: :string,
+          lanes: :string,
+          check: :boolean,
+          json: :boolean,
+          fleet_safe: :boolean,
+          externally_referenced: :string
+        ]
       )
 
     if invalid != [] do
@@ -141,6 +171,25 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
 
       exit({:shutdown, 2})
     end
+
+    fleet_safe? = Keyword.get(opts, :fleet_safe, false)
+    externally_referenced_raw = Keyword.get(opts, :externally_referenced)
+
+    if fleet_safe? and (is_nil(lane_count) or not json?) do
+      Mix.shell().error("codegen.pitches.scope: --fleet-safe requires both --lanes and --json")
+
+      exit({:shutdown, 2})
+    end
+
+    if not fleet_safe? and not is_nil(externally_referenced_raw) do
+      Mix.shell().error(
+        "codegen.pitches.scope: --externally-referenced is only valid alongside --fleet-safe"
+      )
+
+      exit({:shutdown, 2})
+    end
+
+    externally_referenced = parse_externally_referenced(externally_referenced_raw)
 
     pitches_dir = Path.join([cwd, "codegen", "pitches", dir_name]) |> Path.expand()
 
@@ -179,17 +228,22 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
       end
     end
 
-    if json? do
-      emit_json(pitches_dir, lane_count)
-    else
-      print_collisions(collisions)
-      print_disjoint(disjoint)
+    cond do
+      json? and fleet_safe? ->
+        emit_fleet_json(pitches_dir, lane_count, externally_referenced)
 
-      if lane_count do
-        print_lanes(pitches_dir, lane_count)
-      else
-        print_unrouted(unrouted)
-      end
+      json? ->
+        emit_json(pitches_dir, lane_count)
+
+      true ->
+        print_collisions(collisions)
+        print_disjoint(disjoint)
+
+        if lane_count do
+          print_lanes(pitches_dir, lane_count)
+        else
+          print_unrouted(unrouted)
+        end
     end
   end
 
@@ -197,6 +251,30 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     {lanes, global_hot, unrouted} = LoopQueue.partition(pitches_dir, lane_count)
 
     IO.puts(Jason.encode!(%{lanes: lanes, global_hot: global_hot, unrouted: unrouted}))
+  end
+
+  defp emit_fleet_json(pitches_dir, lane_count, externally_referenced) do
+    {lanes, global_hot, unrouted, dependency_bound} =
+      LoopQueue.fleet_partition(pitches_dir, lane_count, externally_referenced)
+
+    IO.puts(
+      Jason.encode!(%{
+        lanes: lanes,
+        global_hot: global_hot,
+        unrouted: unrouted,
+        dependency_bound: dependency_bound
+      })
+    )
+  end
+
+  defp parse_externally_referenced(nil), do: MapSet.new()
+
+  defp parse_externally_referenced(raw) do
+    raw
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> MapSet.new()
   end
 
   defp parse_lane_count!(nil), do: nil

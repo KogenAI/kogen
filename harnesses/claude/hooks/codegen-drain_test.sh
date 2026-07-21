@@ -521,6 +521,233 @@ else
 fi
 rm -rf "$STUB_AK_DIR"
 
+# ── Fleet dependency preflight fixtures — local-fs multi-node (no ssh) ─────
+setup_dep_fixture() {
+    local ws="$1"
+    mkdir -p "$ws/nodeA/codegen/pitches/ready" "$ws/nodeA/codegen/pitches/building" "$ws/nodeA/codegen/pitches/shipped"
+    mkdir -p "$ws/nodeB/codegen/pitches/ready" "$ws/nodeB/codegen/pitches/building" "$ws/nodeB/codegen/pitches/shipped"
+    cat >"$ws/drain-nodes.yaml" <<YAML
+nodes:
+  - name: nodeA
+    repo: $ws/nodeA
+  - name: nodeB
+    repo: $ws/nodeB
+YAML
+}
+
+# ── (al) inventory_nodes / status --json: final declared node is present
+# (regression guard against a dropped-last-entry enumeration bug) ─────────
+WS_AL="$(make_ws al)"
+mkdir -p "$WS_AL/nodeA/codegen/pitches/ready" "$WS_AL/nodeB/codegen/pitches/ready" "$WS_AL/nodeC/codegen/pitches/ready"
+cat >"$WS_AL/drain-nodes.yaml" <<YAML
+nodes:
+  - name: nodeA
+    repo: $WS_AL/nodeA
+  - name: nodeB
+    repo: $WS_AL/nodeB
+  - name: nodeC
+    repo: $WS_AL/nodeC
+YAML
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AL/drain-nodes.yaml" "$DRAIN" status --json 2>&1)" || ec=$?
+check "(al) status --json exits 0" "0" "$ec"
+assert_contains "(al) json has nodeA row" "$out" '"node":"nodeA"'
+assert_contains "(al) json has nodeB row" "$out" '"node":"nodeB"'
+assert_contains "(al) json has nodeC row (final node not dropped)" "$out" '"node":"nodeC"'
+
+# ── (am) targeted assign refuses when target lacks a required prerequisite ─
+WS_AM="$(make_ws am)"
+setup_dep_fixture "$WS_AM"
+cat >"$WS_AM/nodeA/codegen/pitches/ready/dep.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/dep.ex]
+---
+# dep
+PITCH
+cat >"$WS_AM/nodeA/codegen/pitches/ready/child.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/child.ex]
+blocks_on: [dep]
+---
+# child
+PITCH
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AM/drain-nodes.yaml" "$DRAIN" assign --slug=child --node=nodeB --cwd="$WS_AM/nodeA" 2>&1)" || ec=$?
+check "(am) targeted assign refuses when target lacks prerequisite" "1" "$ec"
+assert_contains "(am) names the required dep" "$out" "child requires dep"
+assert_contains "(am) names remediation" "$out" "remediation:"
+check "(am) child NOT moved (stays on nodeA)" "1" "$([[ -f "$WS_AM/nodeA/codegen/pitches/ready/child.md" ]] && echo 1 || echo 0)"
+
+# ── (an) targeted assign succeeds when target already holds the prerequisite
+# in ready/ ──────────────────────────────────────────────────────────────
+WS_AN="$(make_ws an)"
+setup_dep_fixture "$WS_AN"
+cat >"$WS_AN/nodeB/codegen/pitches/ready/dep.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/dep.ex]
+---
+# dep
+PITCH
+cat >"$WS_AN/nodeA/codegen/pitches/ready/child.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/child.ex]
+blocks_on: [dep]
+---
+# child
+PITCH
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AN/drain-nodes.yaml" "$DRAIN" assign --slug=child --node=nodeB --cwd="$WS_AN/nodeA" 2>&1)" || ec=$?
+check "(an) targeted assign succeeds when target holds prerequisite" "0" "$ec"
+assert_contains "(an) prints assigned message" "$out" "assigned child -> nodeB"
+check "(an) child landed on nodeB" "1" "$([[ -f "$WS_AN/nodeB/codegen/pitches/ready/child.md" ]] && echo 1 || echo 0)"
+
+# ── (ao) targeted assign succeeds when target holds prerequisite via shipped/
+WS_AO="$(make_ws ao)"
+setup_dep_fixture "$WS_AO"
+cat >"$WS_AO/nodeB/codegen/pitches/shipped/dep.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/dep.ex]
+---
+# dep
+PITCH
+cat >"$WS_AO/nodeA/codegen/pitches/ready/child.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/child.ex]
+blocks_on: [dep]
+---
+# child
+PITCH
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AO/drain-nodes.yaml" "$DRAIN" assign --slug=child --node=nodeB --cwd="$WS_AO/nodeA" 2>&1)" || ec=$?
+check "(ao) targeted assign succeeds via shipped/ prerequisite" "0" "$ec"
+check "(ao) child landed on nodeB" "1" "$([[ -f "$WS_AO/nodeB/codegen/pitches/ready/child.md" ]] && echo 1 || echo 0)"
+
+# ── (ap) targeted assign refuses when moving would strand a dependent on
+# another node (incoming-edge check) ───────────────────────────────────────
+WS_AP="$(make_ws ap)"
+setup_dep_fixture "$WS_AP"
+cat >"$WS_AP/nodeA/codegen/pitches/ready/dep.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/dep.ex]
+---
+# dep
+PITCH
+cat >"$WS_AP/nodeA/codegen/pitches/ready/child.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/child.ex]
+blocks_on: [dep]
+---
+# child
+PITCH
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AP/drain-nodes.yaml" "$DRAIN" assign --slug=dep --node=nodeB --cwd="$WS_AP/nodeA" 2>&1)" || ec=$?
+check "(ap) targeted assign refuses — would strand dependent child" "1" "$ec"
+assert_contains "(ap) names child requires dep" "$out" "child requires dep"
+assert_contains "(ap) names stranding" "$out" "strand"
+check "(ap) dep NOT moved (stays on nodeA)" "1" "$([[ -f "$WS_AP/nodeA/codegen/pitches/ready/dep.md" ]] && echo 1 || echo 0)"
+
+# ── (aq) fleet snapshot fails closed when a declared node is unreachable ──
+WS_AQ="$(make_ws aq)"
+mkdir -p "$WS_AQ/nodeA/codegen/pitches/ready" "$WS_AQ/nodeA/codegen/pitches/building" "$WS_AQ/nodeA/codegen/pitches/shipped"
+cat >"$WS_AQ/drain-nodes.yaml" <<YAML
+nodes:
+  - name: nodeA
+    repo: $WS_AQ/nodeA
+  - name: nodeUnreachable
+    host: definitely-not-a-real-host.invalid
+    repo: /nonexistent
+YAML
+printf '# solo\n' >"$WS_AQ/nodeA/codegen/pitches/ready/solo.md"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AQ/drain-nodes.yaml" "$DRAIN" assign --slug=solo --node=nodeA --cwd="$WS_AQ/nodeA" 2>&1)" || ec=$?
+check "(aq) same-node no-op skips fleet snapshot (no unreachable-node abort)" "0" "$ec"
+
+# ── (aq2) a REAL cross-node targeted assign aborts (exit 1) when a THIRD
+# declared node is unreachable — drives dependency_preflight/fleet_snapshot
+# through an actual cross-node transfer attempt, distinct from (aq)'s
+# same-node no-op which never reaches fleet_snapshot at all ─────────────────
+WS_AQ2="$(make_ws aq2)"
+mkdir -p "$WS_AQ2/nodeA/codegen/pitches/ready" "$WS_AQ2/nodeA/codegen/pitches/building" "$WS_AQ2/nodeA/codegen/pitches/shipped"
+mkdir -p "$WS_AQ2/nodeB/codegen/pitches/ready" "$WS_AQ2/nodeB/codegen/pitches/building" "$WS_AQ2/nodeB/codegen/pitches/shipped"
+cat >"$WS_AQ2/drain-nodes.yaml" <<YAML
+nodes:
+  - name: nodeA
+    repo: $WS_AQ2/nodeA
+  - name: nodeB
+    repo: $WS_AQ2/nodeB
+  - name: nodeUnreachable
+    host: definitely-not-a-real-host.invalid
+    repo: /nonexistent
+YAML
+printf '# solo\n' >"$WS_AQ2/nodeA/codegen/pitches/ready/solo.md"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AQ2/drain-nodes.yaml" "$DRAIN" assign --slug=solo --node=nodeB --cwd="$WS_AQ2/nodeA" 2>&1)" || ec=$?
+check "(aq2) real cross-node assign aborts when a third node is unreachable" "1" "$ec"
+check "(aq2) solo NOT moved (stays on nodeA)" "1" "$([[ -f "$WS_AQ2/nodeA/codegen/pitches/ready/solo.md" ]] && echo 1 || echo 0)"
+
+# ── (aq3) malformed pitch frontmatter on a fleet node aborts assignment
+# (exit 1, named) instead of silently being treated as zero-dependencies ────
+WS_AQ3="$(make_ws aq3)"
+setup_dep_fixture "$WS_AQ3"
+cat >"$WS_AQ3/nodeA/codegen/pitches/ready/child.md" <<'PITCH'
+---
+  bad: [unclosed
+---
+# child
+PITCH
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AQ3/drain-nodes.yaml" "$DRAIN" assign --slug=child --node=nodeB --cwd="$WS_AQ3/nodeA" 2>&1)" || ec=$?
+check "(aq3) malformed frontmatter aborts assignment" "1" "$ec"
+assert_contains "(aq3) names unparseable frontmatter" "$out" "unparseable"
+check "(aq3) child NOT moved (stays on nodeA)" "1" "$([[ -f "$WS_AQ3/nodeA/codegen/pitches/ready/child.md" ]] && echo 1 || echo 0)"
+
+# ── (ar) --auto: DEPENDENCY-BOUND component kept on source node, never
+# placed, via 4-key --fleet-safe stub ──────────────────────────────────────
+WS_AR="$(make_ws ar)"
+setup_auto_fixture "$WS_AR"
+printf '# p1\n' >"$WS_AR/nodeA/codegen/pitches/ready/p1.md"
+cat >"$WS_AR/nodeA/codegen/pitches/ready/bound.md" <<'PITCH'
+---
+status: SHAPED
+scope: [lib/bound.ex]
+blocks_on: [external-dep]
+---
+# bound
+PITCH
+STUB_AR='printf %s '"'"'{"lanes":[["p1"],[]],"global_hot":[],"unrouted":[],"dependency_bound":["bound"]}'"'"''
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AR/drain-nodes.yaml" CODEGEN_DRAIN_SCOPE_CMD="$STUB_AR" "$DRAIN" assign --auto --cwd="$WS_AR/nodeA" 2>&1)" || ec=$?
+check "(ar) assign --auto exits 0 with dependency_bound present" "0" "$ec"
+assert_contains "(ar) DEPENDENCY-BOUND printed by name" "$out" "DEPENDENCY-BOUND"
+assert_contains "(ar) bound named in DEPENDENCY-BOUND line" "$out" "bound"
+check "(ar) bound NOT moved (stays on nodeA)" "1" "$([[ -f "$WS_AR/nodeA/codegen/pitches/ready/bound.md" ]] && echo 1 || echo 0)"
+assert_contains "(ar) p1 still assigned normally" "$out" "assigned p1 -> nodeB"
+check "(ar) p1 landed on nodeB" "1" "$([[ -f "$WS_AR/nodeB/codegen/pitches/ready/p1.md" ]] && echo 1 || echo 0)"
+
+# ── (as) --auto: normal independent assignment still works with the
+# fleet_snapshot preflight now running first (regression, real snapshot not
+# stubbed — both nodeB/nodeC are local-fs so the snapshot succeeds) ────────
+WS_AS="$(make_ws as)"
+setup_auto_fixture "$WS_AS"
+mkdir -p "$WS_AS/nodeB/codegen/pitches/building" "$WS_AS/nodeB/codegen/pitches/shipped"
+mkdir -p "$WS_AS/nodeC/codegen/pitches/building" "$WS_AS/nodeC/codegen/pitches/shipped"
+printf '# p1\n' >"$WS_AS/nodeA/codegen/pitches/ready/p1.md"
+printf '# p2\n' >"$WS_AS/nodeA/codegen/pitches/ready/p2.md"
+STUB_AS='printf %s '"'"'{"lanes":[["p1"],["p2"]],"global_hot":[],"unrouted":[],"dependency_bound":[]}'"'"''
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AS/drain-nodes.yaml" CODEGEN_DRAIN_SCOPE_CMD="$STUB_AS" "$DRAIN" assign --auto --cwd="$WS_AS/nodeA" 2>&1)" || ec=$?
+check "(as) assign --auto still exits 0 for independent slugs" "0" "$ec"
+check "(as) p1 landed on nodeB" "1" "$([[ -f "$WS_AS/nodeB/codegen/pitches/ready/p1.md" ]] && echo 1 || echo 0)"
+check "(as) p2 landed on nodeC" "1" "$([[ -f "$WS_AS/nodeC/codegen/pitches/ready/p2.md" ]] && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

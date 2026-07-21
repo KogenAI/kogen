@@ -501,6 +501,126 @@ defmodule CodegenTestHarness.LoopQueue do
     {lanes, global_hot, unrouted}
   end
 
+  @doc """
+  Fleet-safe sibling of `partition/2`. Identical scope-collision +
+  `blocks_on:` union-find graph construction, EXCEPT a component is
+  DEPENDENCY-BOUND — held back from every lane, returned separately as
+  `dependency_bound` — when it contains any pitch that is:
+
+    - the SOURCE of a `blocks_on:` edge, INCLUDING an edge whose
+      dependency is absent from this batch (a "dead" edge to
+      `partition/2`, which silently ignores it — here it is the
+      opposite: the crux inversion this function exists for. A
+      dependency pointing outside the batch may point at a pitch that
+      already shipped on a DIFFERENT fleet node; moving this pitch away
+      from its prerequisite's node would split the chain), or
+    - named in `externally_referenced` — slugs some fleet-ready pitch,
+      on ANY node (including this one), lists as ITS `blocks_on:`
+      dependency (i.e. this component is a prerequisite some other
+      ready pitch needs local), or
+    - a `scope:` collision peer of either of the above (moving that
+      peer alone would let two dependency-bound halves of one
+      collision component land on different nodes, re-introducing the
+      exact cross-node edit collision `partition/2`'s co-location
+      already prevents).
+
+  Only components with ZERO fleet dependency edges (in either
+  direction) are lane-eligible; their scope-size balancing across lanes
+  is otherwise identical to `partition/2`.
+
+  Returns `{lanes, global_hot, unrouted, dependency_bound}` — the first
+  three fields mean exactly what they mean in `partition/2`, computed
+  over the SAME scoped/global_hot/unrouted classification;
+  `dependency_bound` is the new fourth field, sorted slugs list (`[]`
+  when none).
+
+  Raises when `lane_count` is not a positive integer (same contract as
+  `partition/2`).
+  """
+  @spec fleet_partition(String.t(), pos_integer(), MapSet.t(slug())) ::
+          {lanes :: [[slug()]], global_hot :: [slug()], unrouted :: [slug()],
+           dependency_bound :: [slug()]}
+  def fleet_partition(pitches_dir, lane_count, externally_referenced)
+      when is_integer(lane_count) and lane_count > 0 do
+    slugs =
+      pitches_dir
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.map(&Path.basename(&1, ".md"))
+      |> Enum.sort()
+
+    scoped =
+      Enum.reduce(slugs, %{}, fn slug, acc ->
+        case parse_scope(slug, Path.join(pitches_dir, "#{slug}.md")) do
+          {:ok, nil} -> acc
+          {:ok, paths} -> Map.put(acc, slug, paths)
+        end
+      end)
+
+    unrouted = Enum.reject(slugs, &Map.has_key?(scoped, &1))
+    scoped_slugs = scoped |> Map.keys() |> Enum.sort()
+
+    blocks_edges =
+      scoped_slugs
+      |> Enum.flat_map(fn slug ->
+        parse_edges(slug, Path.join(pitches_dir, "#{slug}.md"))
+      end)
+
+    global_hot =
+      scoped_slugs
+      |> Enum.filter(&collides_with_every_other_slug?(&1, scoped_slugs, scoped))
+      |> Enum.sort()
+
+    placeable_slugs = scoped_slugs -- global_hot
+
+    # Fleet-bound seeds: outgoing edge sources (even to an absent/external
+    # dep) OR named as an external dependency by anything on the fleet.
+    fleet_bound_seeds =
+      placeable_slugs
+      |> Enum.filter(fn slug ->
+        has_outgoing_edge? = Enum.any?(blocks_edges, fn {s, _dep} -> s == slug end)
+        externally_referenced? = MapSet.member?(externally_referenced, slug)
+        has_outgoing_edge? or externally_referenced?
+      end)
+      |> MapSet.new()
+
+    scope_edges =
+      for {slug_a, i} <- Enum.with_index(placeable_slugs),
+          slug_b <- Enum.drop(placeable_slugs, i + 1),
+          shared_paths(scoped[slug_a], scoped[slug_b]) != [] do
+        {slug_a, slug_b}
+      end
+
+    placeable_blocks_edges =
+      Enum.filter(blocks_edges, fn {s, dep} -> s in placeable_slugs and dep in placeable_slugs end)
+
+    all_edges = scope_edges ++ Enum.map(placeable_blocks_edges, fn {s, dep} -> {s, dep} end)
+
+    components = connected_components(placeable_slugs, all_edges)
+
+    {bound_components, free_components} =
+      Enum.split_with(components, fn comp ->
+        Enum.any?(comp, &MapSet.member?(fleet_bound_seeds, &1))
+      end)
+
+    dependency_bound = bound_components |> List.flatten() |> Enum.sort()
+
+    lanes =
+      free_components
+      |> Enum.sort_by(fn comp -> -component_scope_size(comp, scoped) end)
+      |> assign_components_to_lanes(lane_count, scoped)
+      |> Enum.map(fn lane_slugs ->
+        lane_edges =
+          Enum.filter(placeable_blocks_edges, fn {s, dep} ->
+            s in lane_slugs and dep in lane_slugs
+          end)
+
+        topo_sort(Enum.sort(lane_slugs), lane_edges)
+      end)
+
+    {lanes, global_hot, unrouted, dependency_bound}
+  end
+
   defp component_scope_size(comp, scoped) do
     comp
     |> Enum.flat_map(&Map.get(scoped, &1, []))

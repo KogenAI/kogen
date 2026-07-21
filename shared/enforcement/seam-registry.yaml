@@ -252,3 +252,10 @@ seams:
     guard: harnesses/claude/hooks/_waiver_test.sh
     guard_time: make-test
     pattern: checked-mirror
+
+  - id: scope-task-fleet-safe-to-codegen-drain-assign
+    declares: "test_harness/lib/mix/tasks/codegen.pitches.scope.ex (--fleet-safe JSON dependency_bound key, delegating to LoopQueue.fleet_partition/3)"
+    reflects: "codegen-drain (cmd_assign_auto reads .dependency_bound[] from the --fleet-safe JSON leg; dependency_preflight reads a separately-built fleet_snapshot for targeted assign --slug --node)"
+    guard: test-hermetic
+    guard_time: make-test
+    pattern: checked-mirror
