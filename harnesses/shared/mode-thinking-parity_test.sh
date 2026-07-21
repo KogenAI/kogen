@@ -36,23 +36,35 @@ if ! command -v yq >/dev/null 2>&1; then
 fi
 
 # Modes are derived from the manifest's `modes:` map keys, not hardcoded.
-mapfile -t MODES < <(yq -r '.modes | keys | .[]' "$MANIFEST")
-if [ "${#MODES[@]}" -eq 0 ]; then
+# Keep this Bash 3.2-compatible: macOS Bash has neither mapfile nor associative arrays.
+MODES=$(yq -r '.modes | keys | .[]' "$MANIFEST")
+if [ -z "$MODES" ]; then
     printf 'FAIL: no modes found in %s\n' "$MANIFEST"
     printf '\nResults: 0 passed, 1 failed\n'
     exit 1
 fi
 
-declare -A LAUNCHER_FOR=(
-    [debug]="$CODEGEN_DIR/harnesses/claude/claude-debug.sh"
-    [shape]="$CODEGEN_DIR/harnesses/claude/claude-shape.sh"
-    [experiment]="$CODEGEN_DIR/harnesses/claude/claude-experiment.sh"
-    [ops]="$CODEGEN_DIR/harnesses/claude/claude-ops.sh"
-    [babysit]="$CODEGEN_DIR/harnesses/claude/claude-babysit.sh"
-)
+launcher_for() {
+    case "$1" in
+    debug) printf '%s' "$CODEGEN_DIR/harnesses/claude/claude-debug.sh" ;;
+    shape) printf '%s' "$CODEGEN_DIR/harnesses/claude/claude-shape.sh" ;;
+    experiment) printf '%s' "$CODEGEN_DIR/harnesses/claude/claude-experiment.sh" ;;
+    ops) printf '%s' "$CODEGEN_DIR/harnesses/claude/claude-ops.sh" ;;
+    babysit) printf '%s' "$CODEGEN_DIR/harnesses/claude/claude-babysit.sh" ;;
+    *) return 1 ;;
+    esac
+}
 
-for mode in "${MODES[@]}"; do
-    launcher="${LAUNCHER_FOR[$mode]:-}"
+expected_afk_for() {
+    case "$1" in
+    debug | experiment | ops | babysit) printf '1' ;;
+    shape) printf '2' ;;
+    *) return 1 ;;
+    esac
+}
+
+for mode in $MODES; do
+    launcher=$(launcher_for "$mode") || launcher=""
     if [ -z "$launcher" ]; then
         printf 'FAIL: no launcher mapped for manifest mode %q (add to LAUNCHER_FOR)\n' "$mode"
         fail=$((fail + 1))
@@ -116,21 +128,15 @@ done
 # assignments carry CLAUDE_AFK_TIMEOUT_MS than carry MAX_THINKING_TOKENS
 # (shape has 2 exec sites — cold-start + normal — so its interactive-only
 # count is 2, not 1; the other four modes have a single exec site each).
-declare -A EXPECT_AFK=(
-    [debug]=1
-    [shape]=2
-    [experiment]=1
-    [ops]=1
-    [babysit]=1
-)
 for mode in debug shape experiment ops babysit; do
-    launcher="${LAUNCHER_FOR[$mode]}"
+    launcher=$(launcher_for "$mode")
+    expected_afk=$(expected_afk_for "$mode")
     afk_cnt=$(grep -c 'CLAUDE_AFK_TIMEOUT_MS' "$launcher" || true)
-    check "(${mode}) CLAUDE_AFK_TIMEOUT_MS interactive-only occurrence count" "${EXPECT_AFK[$mode]}" "$afk_cnt"
+    check "(${mode}) CLAUDE_AFK_TIMEOUT_MS interactive-only occurrence count" "$expected_afk" "$afk_cnt"
 done
 
 # experiment keeps API_FORCE_IDLE_TIMEOUT on BOTH branches (regression guard).
-EXPERIMENT_LAUNCHER="${LAUNCHER_FOR[experiment]}"
+EXPERIMENT_LAUNCHER=$(launcher_for experiment)
 idle_cnt=$(grep -c 'API_FORCE_IDLE_TIMEOUT' "$EXPERIMENT_LAUNCHER" || true)
 check "(experiment) API_FORCE_IDLE_TIMEOUT present on both branches" "2" "$idle_cnt"
 
