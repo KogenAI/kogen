@@ -172,6 +172,45 @@ checkpoint after an external commit → full run, never a corrupt resume). Resum
 pitch/plan prompt with a continuation prompt (the resumed session already carries prior tool-call history
 in its transcript). An empty or foreign slug → full run, never resume.
 
+## Interrupted-Cycle Recovery
+
+`CodegenTestHarness.InterruptedCycleRecovery.reconcile/1` recovers a killed loop's sole
+`codegen/pitches/building/*.md` claim before the NEXT cycle spawns any role. Returns `{:ok, :none}`
+(nothing to recover), `{:ok, {:resume, slug}}` (a valid post-gate checkpoint — move that pitch back to
+`ready/` and require it resume before any other work), `{:ok, {:requeued, slug, recovery}}` (tree parked,
+pitch requeued clean), or `{:error, reason}` (ambiguous/malformed state — halts before spend). Zero or
+multiple `building/*.md` claims are refused unchanged.
+
+A `codegen/gate-pending/interrupted-recovery.json` journal drives an idempotent 4-stage state machine —
+`parking` → `parked` → `history_written` → `resume_pending` — bracketed by atomic same-dir
+temp-write+rename so a second crash mid-recovery resumes at the last completed stage rather than
+re-parking. **Transaction identity is mandatory**: the journal's `transaction_id` must match the label on
+the stashed entry or the subject of the parked commit — branch/stash EXISTENCE alone is never adopted as
+evidence. A `resume_pending` journal reuses the SAME checkpoint evaluator run-time uses,
+`OrchestrationLoop.resume_checkpoint/3` (`@doc false` public) — a stale/mismatched checkpoint still falls
+through to `:full` (non-resumable), never silently treated as clear.
+
+Non-resumable trees are preserved, not discarded: `InterruptedCycleRecovery.park_worktree/4` (`:strict`
+policy here; `LoopQueueDrain`'s pre-existing warning-policy `queue-fail/<slug>/<UTC>` parking is
+unchanged and separate) captures every tracked AND untracked byte onto
+`recovery/interrupted/<slug>/<UTC>` without moving the current branch's HEAD, restores a clean original
+checkout, appends a durable `LoopQueue.write_history_row!/3` row (reusing the shipped history inserter —
+`build_failures`/`handoffs`/`handoff_receipt` frontmatter keys untouched), then moves the pitch back to
+`ready/` for a clean retry.
+
+`OrchestrationLoop.with_startup_guard/2` wraps the existing solo `BuildLock` acquisition, dead-lock
+reclaim, and live-orphan refusal AROUND this recovery step — recovery never bypasses orphan detection,
+it runs after lock ownership is confirmed. The solo Mix task passes `build_lock_held: true` into the
+inner `run/1` so the lock is acquired once, not twice. Queue startup recovers at the equivalent point in
+its own `with`-chain — see `context/loop-queue-drain.md`.
+
+After a verified commit, `write_build_result!/3` atomically writes
+`codegen/gate-pending/build-result.json` (`invocation_id`, `slug`, `status: success`, `head`,
+`updated_at`) ONLY when `CODEGEN_BUILD_INVOCATION_ID` is set (the wrapper's mktemp'd single-flight
+sentinel) — absent the env var, it is a no-op, never a fabricated success record. `codegen-build` reads
+this file back and requires its `invocation_id`/`slug`/`head` to match the CURRENT dispatch plus a clear
+`gate-result.json` before exiting 0 — see `context/harnesses.md` § Orchestrated Build Mode.
+
 ## Curator-Doc Check (Three Legs)
 
 After the context-curator role, `run_curator_doc_check/6` shells `default_curator_doc_scan/2`
@@ -254,4 +293,4 @@ section for how a marked nonzero exit routes to park+skip+breaker instead of `re
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, transaction identity, CODEGEN_BUILD_INVOCATION_ID, recovery/interrupted branch, stranded building claim

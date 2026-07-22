@@ -40,6 +40,7 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   alias CodegenTestHarness.BuildSignalHandler
   alias CodegenTestHarness.InfraAbort
+  alias CodegenTestHarness.InterruptedCycleRecovery
   alias CodegenTestHarness.LoopQueue
   alias CodegenTestHarness.OrchestrationLoop
 
@@ -111,23 +112,88 @@ defmodule Mix.Tasks.Codegen.Loop do
         [] -> missing_flag!("<pitch>")
       end
 
+    requested_source = resolve_pitch_source(pitch_arg, cwd)
+    requested_slug = source_slug(requested_source)
+
+    result =
+      OrchestrationLoop.with_startup_guard(
+        [cwd: cwd, harness: harness, stack: stack],
+        fn ->
+          roles = OrchestrationLoop.role_sequence(stack)
+
+          route_reconcile_result(
+            InterruptedCycleRecovery.reconcile(cwd: cwd, roles: roles),
+            requested_slug,
+            fn ->
+              run_claimed_cycle(
+                requested_source,
+                pitch_arg,
+                cwd,
+                harness,
+                stack,
+                fallback_model,
+                max_budget_usd
+              )
+            end
+          )
+        end
+      )
+
+    case result do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Mix.shell().error("codegen.loop: FAILED — #{reason}")
+        exit({:shutdown, 1})
+    end
+  end
+
+  # Routes an `InterruptedCycleRecovery.reconcile/1` result to either the
+  # ordinary claim+run path (`run_fn.()`) or a before-spend refusal — pulled
+  # out of `run/1` as its own function so the decision (including the "no
+  # role is ever spawned on a conflicting resume" guarantee) is directly
+  # testable without exercising OptionParser/BuildSignalHandler/git plumbing.
+  # `requested_slug` is the CURRENT invocation's own target (nil for a
+  # literal, non-file prompt); `run_fn` is `run_claimed_cycle/7` bound to
+  # its own args by the caller.
+  @doc false
+  @spec route_reconcile_result(
+          {:ok, CodegenTestHarness.InterruptedCycleRecovery.recovery()} | {:error, String.t()},
+          String.t() | nil,
+          (-> :ok | {:error, String.t()})
+        ) :: :ok | {:error, String.t()}
+  def route_reconcile_result({:ok, :none}, _requested_slug, run_fn), do: run_fn.()
+
+  def route_reconcile_result({:ok, {:resume, slug}}, requested_slug, run_fn)
+      when requested_slug == slug do
+    run_fn.()
+  end
+
+  def route_reconcile_result({:ok, {:resume, slug}}, requested_slug, _run_fn) do
+    {:error, "interrupted pitch #{slug} must resume before #{requested_slug || "literal prompt"}"}
+  end
+
+  def route_reconcile_result({:ok, {:requeued, _slug, _recovery}}, _requested_slug, run_fn) do
+    run_fn.()
+  end
+
+  def route_reconcile_result({:error, reason}, _requested_slug, _run_fn), do: {:error, reason}
+
+  defp source_slug({:file, abs}), do: Path.basename(abs, ".md")
+  defp source_slug(:literal), do: nil
+
+  defp run_claimed_cycle(source, pitch_arg, cwd, harness, stack, fallback_model, max_budget_usd) do
     pitch = resolve_pitch(pitch_arg, cwd)
-    source = resolve_pitch_source(pitch_arg, cwd)
-
-    # Possession by rename: a pitch selected from ready/ is claimed into
-    # building/ for the duration of this cycle — a second builder racing on
-    # the same slug hits ENOENT (physics, not policy). See claim_pitch!/2.
     source = claim_pitch!(source, cwd)
+    slug = source_slug(source) || "adhoc"
 
-    slug =
-      case source do
-        {:file, abs} -> Path.basename(abs, ".md")
-        :literal -> "adhoc"
-      end
+    if source != :literal do
+      InterruptedCycleRecovery.complete_resume_claim!(cwd, slug)
+    end
 
     stamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
     cycle_id = "#{stamp}_#{slug}"
-
     head_before = git_head(cwd)
 
     result =
@@ -140,14 +206,12 @@ defmodule Mix.Tasks.Codegen.Loop do
           cycle_id: cycle_id,
           slug: slug,
           stamp: stamp,
+          build_lock_held: true,
           fallback_model_override: fallback_model,
           max_budget_usd: max_budget_usd
         )
       end)
 
-    # Emit aggregated per-cycle telemetry as a parseable stream-json result line
-    # (benchmark instrumentation) regardless of outcome — a failed cycle still
-    # spent tokens and its cost belongs in the A/B.
     emit_loop_telemetry(result)
 
     case result do
@@ -156,17 +220,16 @@ defmodule Mix.Tasks.Codegen.Loop do
           {:ok, after_sha} ->
             Mix.shell().info("codegen.loop: COMMITTED, gate clear")
             maybe_ship_pitch(source, cwd, before_sha(head_before), after_sha)
+            write_build_result!(cwd, slug, after_sha)
 
           {:error, reason} ->
             restore_claim(source, cwd)
-            Mix.shell().error("codegen.loop: FAILED — #{reason}")
-            exit({:shutdown, 1})
+            {:error, reason}
         end
 
       {:error, reason} ->
         restore_claim(source, cwd)
-        Mix.shell().error("codegen.loop: FAILED — #{reason}")
-        exit({:shutdown, 1})
+        {:error, reason}
     end
   end
 
@@ -304,6 +367,35 @@ defmodule Mix.Tasks.Codegen.Loop do
     e in InfraAbort ->
       Mix.shell().error("codegen.loop: #{e.message}")
       exit({:shutdown, @infra_abort_exit_code})
+  end
+
+  @doc false
+  @spec write_build_result!(String.t(), String.t(), String.t() | nil) :: :ok
+  def write_build_result!(cwd, slug, head) do
+    case System.get_env("CODEGEN_BUILD_INVOCATION_ID") do
+      invocation_id when is_binary(invocation_id) and invocation_id != "" ->
+        path = Path.join([cwd, "codegen", "gate-pending", "build-result.json"])
+        File.mkdir_p!(Path.dirname(path))
+
+        temporary =
+          Path.join(Path.dirname(path), ".build-result.#{System.unique_integer([:positive])}")
+
+        payload =
+          Jason.encode!(%{
+            "head" => head,
+            "invocation_id" => invocation_id,
+            "slug" => slug,
+            "status" => "success",
+            "updated_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+          })
+
+        File.write!(temporary, payload)
+        File.rename!(temporary, path)
+        :ok
+
+      _ ->
+        :ok
+    end
   end
 
   @doc false

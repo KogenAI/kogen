@@ -146,7 +146,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   box configured with an idle-lock despite `caffeinate`.
   """
 
-  alias CodegenTestHarness.{BuildLock, LoopGate, LoopQueue}
+  alias CodegenTestHarness.{BuildLock, InterruptedCycleRecovery, LoopGate, LoopQueue}
 
   @type drain_opts :: keyword()
 
@@ -440,8 +440,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     with :ok <- ensure_decode_deps(load_deps_fn),
          :ok <- refuse_if_build_orphan(cwd, orphan_scan_fn),
-         :ok <- publish_preflight_fn.(cwd),
-         :ok <- BuildLock.acquire(lock_path, "queue", pid_alive_fn) do
+         :ok <- BuildLock.acquire(lock_path, "queue", pid_alive_fn),
+         {:ok, recovery} <-
+           InterruptedCycleRecovery.reconcile(
+             reconcile_opts(opts, cwd, ready_dir, building_dir, stack)
+           ),
+         :ok <- publish_preflight_fn.(cwd) do
       try do
         # Move 3 wiring: `default_spawn_fn/5` updates this SAME lock
         # file's `tree=<os_pid>` token right after each per-pitch child
@@ -515,6 +519,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           git_publish_fn: Keyword.get(opts, :git_publish_fn, &default_git_publish_fn/2),
           timed_out_slugs: MapSet.new(),
           failed_slugs: MapSet.new(),
+          recovery: recovery,
           parked_branches: %{},
           consecutive_fails: 0,
           drafted_count: 0,
@@ -921,11 +926,56 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   defp human_bytes(bytes) when bytes >= 1024, do: "#{Float.round(bytes / 1024, 1)}K"
   defp human_bytes(bytes), do: "#{bytes}B"
 
+  # Builds the opts InterruptedCycleRecovery.reconcile/1 forwards, unchanged,
+  # into OrchestrationLoop.resume_checkpoint/3 for a resume_pending journal.
+  # `:cwd`/`:roles`/`:ready_dir`/`:building_dir` are always the drain's own
+  # resolved values; any resume-checkpoint TEST SEAM already present in the
+  # caller's `opts` (cycle_state_get_fn, cycle_state_slug_fn, read_verdict_fn,
+  # gate_result_base_sha_fn, gate_tree_match_fn, resume_head_*_fn, ...) rides
+  # along too — without this, a hermetic drain test can never satisfy a real
+  # checkpoint via stubs, since reconcile/resume_checkpoint would fall back to
+  # the real filesystem/git defaults instead of the test's fakes.
+  @resume_checkpoint_seam_keys ~w(
+    cycle_state_get_fn cycle_state_slug_fn read_verdict_fn gate_result_base_sha_fn
+    gate_tree_match_fn
+  )a
+  defp reconcile_opts(opts, cwd, ready_dir, building_dir, stack) do
+    seam_opts = Keyword.take(opts, @resume_checkpoint_seam_keys)
+
+    [
+      cwd: cwd,
+      ready_dir: ready_dir,
+      building_dir: building_dir,
+      roles: CodegenTestHarness.OrchestrationLoop.role_sequence(stack)
+    ] ++ seam_opts
+  end
+
   # ── Main loop ─────────────────────────────────────────────────────────────
 
+  defp prioritize_recovered_slug(slugs, nil), do: slugs
+
+  defp prioritize_recovered_slug(slugs, slug) do
+    if slug in slugs do
+      [slug | Enum.reject(slugs, &(&1 == slug))]
+    else
+      slugs
+    end
+  end
+
   defp run_loop(state, shipped_count, concluded_count) do
+    recovered_slug =
+      case state.recovery do
+        {:resume, slug} -> slug
+        _ -> nil
+      end
+
     exclude = quiescence_exclude(state)
-    ordered = state.ordered_fn.(state.ready_dir) |> Enum.reject(&MapSet.member?(exclude, &1))
+
+    ordered =
+      state.ordered_fn.(state.ready_dir)
+      |> Enum.reject(&MapSet.member?(exclude, &1))
+      |> prioritize_recovered_slug(recovered_slug)
+
     blocked = state.blocked_fn.() |> reblock_for_exclude(state, exclude)
 
     state = print_new_blocked(state, blocked)

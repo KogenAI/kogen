@@ -238,12 +238,23 @@ if [[ -z "$PRINT_ARGV" ]] && [[ -x "$SCAFFOLD_CMD" ]]; then
 fi
 
 # Export parsed values for dispatch.sh
+INVOCATION_FILE=""
+if [[ -z "$PRINT_ARGV" ]]; then
+    _pending_dir="$CWD/codegen/gate-pending"
+    mkdir -p "$_pending_dir"
+    INVOCATION_FILE="$(mktemp "$_pending_dir/codegen-invocation.$(date -u +%s).$$.XXXXXX")"
+    CODEGEN_BUILD_INVOCATION_ID="$(basename "$INVOCATION_FILE")"
+    rm -f "$_pending_dir/build-result.json"
+    trap 'rm -f "$INVOCATION_FILE"' EXIT
+fi
+
 export CODEGEN_BUILD_HARNESS="$HARNESS"
 export CODEGEN_BUILD_STACK="$STACK"
 export CODEGEN_BUILD_CWD="$CWD"
 export CODEGEN_BUILD_FALLBACK_MODEL="${FALLBACK_MODEL:-}"
 export CODEGEN_BUILD_MAX_BUDGET_USD="${MAX_BUDGET_USD:-}"
 export CODEGEN_BUILD_PRINT_ARGV="${PRINT_ARGV:-}"
+export CODEGEN_BUILD_INVOCATION_ID="${CODEGEN_BUILD_INVOCATION_ID:-}"
 export CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=0
 export CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0
 export CLAUDE_STREAM_IDLE_TIMEOUT_MS=0
@@ -255,10 +266,6 @@ if [[ ! -x "$DISPATCH" ]]; then
     exit 2
 fi
 
-if [[ -z "$PRINT_ARGV" ]] && [[ "$HARNESS" == "pi" ]]; then
-    rm -f "$CWD/codegen/gate-pending/gate-result.json" "$CWD/codegen/gate-pending/cycle-state.json"
-fi
-
 _dispatch_rc=0
 if [[ -n "$PROMPT" ]]; then
     "$DISPATCH" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}" "$PROMPT" || _dispatch_rc=$?
@@ -266,26 +273,38 @@ else
     "$DISPATCH" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}" || _dispatch_rc=$?
 fi
 
-# ── Post-step: both harnesses must present a structured gate result; a missing
-# gate-result.json after a successful dispatch is fail-closed. The loop is the
-# sole build engine and always gates, so this branch should never fire on a
-# healthy build — if it does, it is a real defect and must be loud, never
-# fabricated. Skipped under --print-argv: the dispatch leg exits 0 before
-# ever exec'ing the loop, so no gate-result.json is ever written by design —
-# this is not a defect under dry-run and must not flip the exit code. ──
+# ── Post-step: a successful wrapper run needs BOTH fresh loop-owned result
+# evidence and a clear authoritative gate verdict. ─────────────────────────────
 _gate_result="$CWD/codegen/gate-pending/gate-result.json"
+_build_result="$CWD/codegen/gate-pending/build-result.json"
+_expected_slug="adhoc"
+_expected_pitch_path="${PROMPT#@}"
+if [[ -f "$CWD/$_expected_pitch_path" ]]; then
+    _expected_slug="$(basename "$_expected_pitch_path" .md)"
+elif [[ -f "$_expected_pitch_path" ]]; then
+    _expected_slug="$(basename "$_expected_pitch_path" .md)"
+fi
+
 if [[ -z "$PRINT_ARGV" ]] && [[ "$_dispatch_rc" -eq 0 ]]; then
-    if [[ ! -f "$_gate_result" ]]; then
-        printf 'codegen-build: %s build missing gate-result.json after successful dispatch\n' "$HARNESS" >&2
+    if [[ ! -f "$_build_result" ]]; then
+        printf 'codegen-build: %s build missing build-result.json after successful dispatch\n' "$HARNESS" >&2
         _dispatch_rc=1
-    elif [[ "$HARNESS" == "pi" ]]; then
-        _pi_verdict=$(jq -r '.verdict // empty' "$_gate_result" 2>/dev/null || true)
-        if [[ "$_pi_verdict" != "clear" ]]; then
-            if [[ -z "$_pi_verdict" ]]; then
-                printf 'codegen-build: pi build gate verdict missing or unreadable\n' >&2
-            else
-                printf 'codegen-build: pi build gate verdict=%s (expected clear)\n' "$_pi_verdict" >&2
-            fi
+    else
+        _current_head="$(git -C "$CWD" rev-parse HEAD 2>/dev/null || printf '')"
+
+        if [[ -z "$_current_head" ]]; then
+            printf 'codegen-build: %s build cannot resolve current HEAD for result validation\n' "$HARNESS" >&2
+            _dispatch_rc=1
+        elif ! jq -e \
+            --arg invocation_id "$CODEGEN_BUILD_INVOCATION_ID" \
+            --arg expected_slug "$_expected_slug" \
+            --arg expected_head "$_current_head" \
+            '(.invocation_id == $invocation_id) and (.slug == $expected_slug) and (.status == "success") and (.head == $expected_head) and (.updated_at | type == "string" and length > 0)' \
+            "$_build_result" >/dev/null 2>&1; then
+            printf 'codegen-build: %s build result missing, malformed, stale, or mismatched\n' "$HARNESS" >&2
+            _dispatch_rc=1
+        elif [[ ! -f "$_gate_result" ]] || ! jq -e '.verdict == "clear"' "$_gate_result" >/dev/null 2>&1; then
+            printf 'codegen-build: %s build gate verdict missing, unreadable, or not clear\n' "$HARNESS" >&2
             _dispatch_rc=1
         fi
     fi

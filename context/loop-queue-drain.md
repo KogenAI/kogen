@@ -310,6 +310,27 @@ unloaded `:jason` doesn't just mis-count cost, it blinds the drain to whether a 
 A genuinely unloadable dep (corrupt/partial `_build`) aborts the drain LOUD, `{:error, reason}`, BEFORE
 any spawn — zero spend, remediation named (`mix deps.get && mix compile`). See `ensure_decode_deps/1`.
 
+## Interrupted-Cycle Recovery (Queue Startup)
+
+`drain/1`'s `with`-chain recovers a killed cycle's stranded `building/*.md` claim right after
+`ensure_decode_deps` + `refuse_if_build_orphan` + `BuildLock.acquire(lock_path, "queue", pid_alive_fn)`,
+and BEFORE `publish_preflight_fn`, logging GC, ready ordering, blocked-bucket reads, or any child spawn —
+`InterruptedCycleRecovery.reconcile/1` (`context/loop.md` § Interrupted-Cycle Recovery) is the shared
+engine; this is only its queue-specific call site. A `reconcile` error short-circuits the `with` before
+`publish_preflight_fn` ever runs — no network reachability probe, no spawn, on an ambiguous or malformed
+recovery state. `reconcile_opts/5` forwards resume-checkpoint test seams (`cycle_state_get_fn`,
+`cycle_state_slug_fn`, `read_verdict_fn`, `gate_result_base_sha_fn`, `gate_tree_match_fn`) already present
+in the caller's opts alongside the drain's own resolved `cwd`/`ready_dir`/`building_dir`/`roles` — without
+this, a hermetic drain test can never satisfy a real checkpoint via stubs.
+
+The resolved recovery result is carried in drain state as `state.recovery` — DISTINCT from the
+pre-existing per-pitch failure-evidence map's own `recovery` key (the parked-branch string written by
+`write_demotion`/`format_failure_row` on a deterministic-failure demotion); the two never collide,
+different maps, different lifecycles. `{:ok, {:resume, slug}}` feeds `prioritize_recovered_slug/2`, which
+reorders the ready-slug list so the resumed slug spawns FIRST regardless of mtime order — a no-op when
+the slug isn't in the ready list (e.g. its `ready/<slug>.md` claim vanished between recovery and
+ordering). `{:ok, :none}` or `{:ok, {:requeued, ...}}` leave ordinary ordering untouched.
+
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block, InterruptedCycleRecovery, queue startup recovery, prioritize_recovered_slug, state.recovery, reconcile_opts, stranded building claim

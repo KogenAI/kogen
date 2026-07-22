@@ -577,4 +577,109 @@ defmodule Mix.Tasks.Codegen.LoopShellTest do
       assert msg =~ "poisoned DB state no edit can fix"
     end
   end
+
+  describe "route_reconcile_result/3 — startup recovery routing" do
+    test "1: {:ok, :none} runs the ordinary claim+run path" do
+      {:ok, ref} = Agent.start_link(fn -> false end)
+      run_fn = fn -> Agent.update(ref, fn _ -> true end) end
+
+      assert Loop.route_reconcile_result({:ok, :none}, "requested", run_fn) == :ok
+      assert Agent.get(ref, & &1)
+    end
+
+    test "2: {:ok, {:resume, slug}} proceeds when requested pitch matches slug" do
+      {:ok, ref} = Agent.start_link(fn -> false end)
+      run_fn = fn -> Agent.update(ref, fn _ -> true end) end
+
+      assert Loop.route_reconcile_result({:ok, {:resume, "stranded"}}, "stranded", run_fn) == :ok
+      assert Agent.get(ref, & &1)
+    end
+
+    test "3: {:ok, {:resume, other}} refuses before spend and spawns no role" do
+      {:ok, ref} = Agent.start_link(fn -> false end)
+      run_fn = fn -> Agent.update(ref, fn _ -> true end) end
+
+      assert {:error, reason} =
+               Loop.route_reconcile_result({:ok, {:resume, "stranded"}}, "requested", run_fn)
+
+      assert reason =~ "interrupted pitch stranded must resume before requested"
+      refute Agent.get(ref, & &1)
+    end
+
+    test "3b: {:ok, {:resume, other}} with a literal (nil) requested slug also refuses" do
+      run_fn = fn -> flunk("run_fn must not be called") end
+
+      assert {:error, reason} =
+               Loop.route_reconcile_result({:ok, {:resume, "stranded"}}, nil, run_fn)
+
+      assert reason =~ "interrupted pitch stranded must resume before literal prompt"
+    end
+
+    test "4: {:ok, {:requeued, slug, recovery}} runs the ordinary claim+run path" do
+      {:ok, ref} = Agent.start_link(fn -> false end)
+      run_fn = fn -> Agent.update(ref, fn _ -> true end) end
+
+      assert Loop.route_reconcile_result(
+               {:ok, {:requeued, "stranded", :clean}},
+               "requested",
+               run_fn
+             ) == :ok
+
+      assert Agent.get(ref, & &1)
+    end
+
+    test "5: {:error, reason} halts before claim, spawning no role" do
+      run_fn = fn -> flunk("run_fn must not be called") end
+
+      assert Loop.route_reconcile_result({:error, "boom"}, "requested", run_fn) ==
+               {:error, "boom"}
+    end
+  end
+end
+
+# System.put_env/2 and System.delete_env/1 are process-global — this module
+# stays async: false and lives beside CodegenLoopTest (rather than inside it)
+# so its env mutation can never race that module's async: true tests.
+defmodule Mix.Tasks.Codegen.LoopBuildResultTest do
+  use ExUnit.Case, async: false
+
+  alias Mix.Tasks.Codegen.Loop
+
+  setup do
+    tmp =
+      Path.join(System.tmp_dir!(), "codegen_loop_build_result_#{:erlang.unique_integer([:positive])}")
+
+    File.mkdir_p!(tmp)
+    on_exit(fn -> File.rm_rf!(tmp) end)
+    {:ok, tmp: tmp}
+  end
+
+  describe "write_build_result!/3" do
+    test "with CODEGEN_BUILD_INVOCATION_ID set, writes all five fields", %{tmp: tmp} do
+      System.put_env("CODEGEN_BUILD_INVOCATION_ID", "codegen-loop-test-invocation")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_INVOCATION_ID") end)
+
+      result_path = Path.join([tmp, "codegen", "gate-pending", "build-result.json"])
+
+      assert Loop.write_build_result!(tmp, "stranded", "deadbeef") == :ok
+      assert File.exists?(result_path)
+
+      payload = result_path |> File.read!() |> Jason.decode!()
+
+      assert payload["invocation_id"] == "codegen-loop-test-invocation"
+      assert payload["slug"] == "stranded"
+      assert payload["status"] == "success"
+      assert payload["head"] == "deadbeef"
+      assert is_binary(payload["updated_at"]) and payload["updated_at"] != ""
+    end
+
+    test "with the var absent, writes nothing", %{tmp: tmp} do
+      System.delete_env("CODEGEN_BUILD_INVOCATION_ID")
+
+      result_path = Path.join([tmp, "codegen", "gate-pending", "build-result.json"])
+
+      assert Loop.write_build_result!(tmp, "stranded", "deadbeef") == :ok
+      refute File.exists?(result_path)
+    end
+  end
 end

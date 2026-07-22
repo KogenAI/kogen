@@ -3675,6 +3675,136 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
   end
 
+  # ── Startup recovery — InterruptedCycleRecovery wiring ───────────────────
+  # `drain/1`'s `with` chain runs recovery AFTER refuse_if_build_orphan +
+  # BuildLock.acquire and BEFORE publish_preflight_fn (see the drain/1
+  # moduledoc `with` clause order). No :reconcile_fn seam exists — these
+  # tests drive real on-disk building/ + journal state so
+  # InterruptedCycleRecovery.reconcile/1 (called for real, no stub) resolves
+  # to the same shapes route_reconcile_result/3 (codegen.loop.ex) branches
+  # on.
+
+  describe "drain/1 startup recovery — InterruptedCycleRecovery wiring" do
+    test "reconcile error short-circuits BEFORE publish_preflight_fn ever runs", ctx do
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+      # Two building/ claims at once is the multiple-claims refusal shape —
+      # InterruptedCycleRecovery.reconcile/1 returns {:error, _} without
+      # ever reaching publish_preflight_fn.
+      File.write!(Path.join(building_dir, "one.md"), "# Pitch: one\n")
+      File.write!(Path.join(building_dir, "two.md"), "# Pitch: two\n")
+
+      {:ok, preflight_called} = Agent.start_link(fn -> false end)
+
+      opts =
+        base_opts(ctx,
+          publish_preflight_fn: fn _cwd ->
+            Agent.update(preflight_called, fn _ -> true end)
+            :ok
+          end
+        )
+
+      assert {:error, reason} = LoopQueueDrain.drain(opts)
+      assert reason =~ "multiple building pitches"
+      refute Agent.get(preflight_called, & &1)
+    end
+
+    test "a resumable checkpoint runs the resumed slug first, before ordinary ready order", ctx do
+      write_pitch(ctx.ready_dir, "a")
+      write_pitch(ctx.ready_dir, "resumed")
+      write_pitch(ctx.ready_dir, "b")
+
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      journal_path = Path.join([ctx.dir, "codegen", "gate-pending", "interrupted-recovery.json"])
+      File.mkdir_p!(building_dir)
+      File.mkdir_p!(Path.dirname(journal_path))
+
+      File.write!(Path.join(building_dir, "resumed.md"), "# Pitch: resumed\n")
+
+      # resume_head_unmoved?/2 shells real `git rev-parse HEAD` against ctx.dir
+      # (no seam exists for it) — ctx.dir must be a real repo with a real HEAD
+      # so gate_result_base_sha_fn's stub can genuinely prefix-match it.
+      {_, 0} = System.cmd("git", ["init", "-q", ctx.dir])
+      System.cmd("git", ["-C", ctx.dir, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", ctx.dir, "config", "user.name", "Test"])
+      System.cmd("git", ["-C", ctx.dir, "config", "commit.gpgsign", "false"])
+      File.write!(Path.join(ctx.dir, "seed.txt"), "seed\n")
+      System.cmd("git", ["-C", ctx.dir, "add", "."])
+      System.cmd("git", ["-C", ctx.dir, "commit", "-q", "-m", "seed"])
+      {head, 0} = System.cmd("git", ["-C", ctx.dir, "rev-parse", "HEAD"])
+      head = String.trim(head)
+
+      File.write!(
+        journal_path,
+        Jason.encode!(%{
+          "branch" => "",
+          "original_ref" => "main",
+          "slug" => "resumed",
+          "stage" => "resume_pending",
+          "transaction_id" => "interrupted-recovery-drain-test",
+          "updated_at" => "2026-07-22T00:00:00Z"
+        })
+      )
+
+      spawned = start_agent([])
+
+      opts =
+        shipped_opts(ctx,
+          spawn_fn: fn slug, _h, _st, cwd_arg, jsonl_arg ->
+            Agent.update(spawned, fn s -> s ++ [{slug, cwd_arg, jsonl_arg}] end)
+            {:exit_code, 0}
+          end,
+          # Adversarial to mtime: reflect the REAL ready/ dir (so it shrinks as
+          # pitches ship, avoiding an infinite loop) but force "resumed" to
+          # the END of that real order. Without prioritize_recovered_slug/2
+          # actually firing, "resumed" would spawn LAST — only genuine
+          # prioritization moves it to the front, making the spawn-order
+          # assertion below meaningful rather than a mtime coincidence.
+          ordered_fn: fn ready_dir ->
+            real = CodegenTestHarness.LoopQueue.ordered_slugs(ready_dir)
+
+            case Enum.split_with(real, &(&1 == "resumed")) do
+              {[], rest} -> rest
+              {resumed, rest} -> rest ++ resumed
+            end
+          end,
+          # shipped_opts' git_head_fn returns synthetic ever-incrementing
+          # "head-N" strings — never real revs. The real default_git_ancestor_fn
+          # would shell `git merge-base --is-ancestor` against those and hang.
+          # Treat every "shipped" child as a non-orphaning fast-forward.
+          git_ancestor_fn: fn _cwd, _ancestor, _descendant -> true end
+        )
+        |> Keyword.merge(
+          cycle_state_get_fn: fn _ -> "GATED" end,
+          cycle_state_slug_fn: fn _ -> "resumed" end,
+          read_verdict_fn: fn _ -> :clear end,
+          gate_result_base_sha_fn: fn _ -> head end,
+          gate_tree_match_fn: fn _ -> true end
+        )
+
+      # `resumed.md` was moved back to ready/ by reconcile before the drain
+      # ever calls ordered_fn. ordered_fn above deliberately returns
+      # "resumed" LAST, so the only way it spawns first is if
+      # prioritize_recovered_slug/2 genuinely reordered it.
+      assert {:ok, _shipped} = LoopQueueDrain.drain(opts)
+      refute File.exists?(Path.join(building_dir, "resumed.md"))
+
+      spawn_order = Agent.get(spawned, & &1) |> Enum.map(fn {slug, _, _} -> slug end)
+      assert spawn_order == ["resumed", "a", "b"]
+    end
+
+    test "when the resumed slug is absent from the ready list, order is unchanged", ctx do
+      write_pitch(ctx.ready_dir, "a")
+      write_pitch(ctx.ready_dir, "b")
+
+      # No building/ claim and no journal at all -> reconcile resolves
+      # {:ok, :none}; ordinary ordering runs untouched.
+      opts = shipped_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
+
+      assert {:ok, 2} = LoopQueueDrain.drain(opts)
+    end
+  end
+
   # ── Boot-time :jason force-load (ensure_decode_deps) ─────────────────────
   # Guards against a lazily-loaded :jason getting unloaded from under the
   # parent drain by a child's concurrent `_build` recompile — see the

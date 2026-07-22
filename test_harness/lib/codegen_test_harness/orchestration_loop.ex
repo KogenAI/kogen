@@ -277,12 +277,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   progress signature is available), or an unexpected envelope shape (raised,
   not returned — crash loud).
   """
-  @spec run(run_opts()) :: :ok | {:error, String.t()}
-  def run(opts) do
+  @spec with_startup_guard(run_opts(), (-> :ok | {:error, String.t()})) ::
+          :ok | {:error, String.t()}
+  def with_startup_guard(opts, run_fn) do
     cwd = Keyword.fetch!(opts, :cwd)
 
-    if build_lock_bypassed?() do
-      run_body(opts)
+    if Keyword.get(opts, :build_lock_held, false) or build_lock_bypassed?() do
+      run_fn.()
     else
       lock_path = Keyword.get(opts, :lock_path, default_lock_path(cwd))
       pid_alive_fn = Keyword.get(opts, :pid_alive_fn, &BuildLock.default_pid_alive?/1)
@@ -291,7 +292,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         :ok ->
           try do
             case refuse_if_orphan(cwd, opts) do
-              :ok -> run_body(opts)
+              :ok -> run_fn.()
               {:error, reason} -> {:error, reason}
             end
           after
@@ -303,6 +304,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       end
     end
   end
+
+  @spec run(run_opts()) :: :ok | {:error, String.t()}
+  def run(opts), do: with_startup_guard(opts, fn -> run_body(opts) end)
 
   defp default_lock_path(cwd), do: Path.join([cwd, "codegen", "gate-pending", "queue.lock"])
 
@@ -1054,9 +1058,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   #     gate-result.json's base_sha) — rules out the rare "committer
   #     committed then died before advancing state to COMMITTED" edge;
   #   * the mapped resume role is actually present in `roles` for this stack.
+  @doc false
   @spec resume_checkpoint(String.t(), [String.t()], run_opts()) ::
           {:resume, String.t(), String.t()} | :full
-  defp resume_checkpoint(cwd, roles, opts) do
+  def resume_checkpoint(cwd, roles, opts) do
     state_fn = Keyword.get(opts, :cycle_state_get_fn, &default_cycle_state_get/1)
 
     with state when is_binary(state) and state != "" <- state_fn.(cwd),
@@ -2060,11 +2065,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  defp parse_review_verdict(%{"value" => v}) when is_binary(v) do
-    cond do
-      Regex.match?(~r/REVIEW_VERDICT:\s*CHANGES_REQUESTED/i, v) -> :changes_requested
-      Regex.match?(~r/REVIEW_VERDICT:\s*APPROVED/i, v) -> :approved
-      true -> :unknown
+  defp parse_review_verdict(%{"value" => value}) when is_binary(value) do
+    lines = String.split(value, "\n", trim: true)
+
+    case List.last(lines) do
+      "REVIEW_VERDICT: APPROVED" ->
+        if Enum.count(lines, &String.starts_with?(&1, "REVIEW_VERDICT:")) == 1,
+          do: :approved,
+          else: :unknown
+
+      "REVIEW_VERDICT: CHANGES_REQUESTED" ->
+        if Enum.count(lines, &String.starts_with?(&1, "REVIEW_VERDICT:")) == 1,
+          do: :changes_requested,
+          else: :unknown
+
+      _ ->
+        :unknown
     end
   end
 
@@ -3856,10 +3872,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           file_section <>
           verifier_notice <>
           "\n\nReview these changes against normal reviewer checks (quality, security, " <>
-          "silent-failure/Rule S, test coverage).\n\nEND your response with a line exactly " <>
-          "`REVIEW_VERDICT: APPROVED` if the change is acceptable, or " <>
-          "`REVIEW_VERDICT: CHANGES_REQUESTED` followed by a short, specific, actionable list " <>
-          "of required changes if not."
+          "silent-failure/Rule S, test coverage).\n\nEND your response with exactly one terminal line: " <>
+          "`REVIEW_VERDICT: APPROVED` when acceptable; otherwise put required changes before " <>
+          "the terminal line `REVIEW_VERDICT: CHANGES_REQUESTED`."
       else
         base
       end
@@ -4480,8 +4495,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   defp default_git_dirty? do
     case System.cmd("git", ["status", "--porcelain"], cd: @codegen_dir, stderr_to_stdout: true) do
-      {out, 0} -> String.trim(out) != ""
-      {out, status} -> raise "OrchestrationLoop: git status --porcelain failed (#{status}): #{out}"
+      {out, 0} ->
+        String.trim(out) != ""
+
+      {out, status} ->
+        raise "OrchestrationLoop: git status --porcelain failed (#{status}): #{out}"
     end
   end
 end

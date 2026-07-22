@@ -949,9 +949,10 @@ defmodule CodegenTestHarness.Fixtures do
   defp run_with_timeout(cmd, args, _opts, timeout_ms) do
     # Redirect stdin from /dev/null to prevent subprocess blocking on stdin read
     shell_cmd =
-      Enum.map_join([cmd | args], " ", fn arg ->
-        "'" <> String.replace(arg, "'", "'\\''") <> "'"
-      end)
+      "env -u CODEGEN_DIR -u OCG_CODEGEN_DIR " <>
+        Enum.map_join([cmd | args], " ", fn arg ->
+          "'" <> String.replace(arg, "'", "'\\''") <> "'"
+        end)
 
     port =
       Port.open(

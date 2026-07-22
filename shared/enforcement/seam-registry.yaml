@@ -107,6 +107,13 @@ seams:
     guard_time: make-test
     pattern: checked-mirror
 
+  - id: loop-build-result-to-wrapper-authority
+    declares: Mix.Tasks.Codegen.Loop.write_build_result!/3 (invocation-scoped success record)
+    reflects: codegen-build (current invocation ID, slug, HEAD, and clear gate validation)
+    guard: harnesses/claude/hooks/codegen-build_test.sh
+    guard_time: make-test
+    pattern: checked-mirror
+
   - id: bilateral-handoff-record-parity
     declares: >-
       A concrete cross-pitch handoffs: record (source pitch's frontmatter);

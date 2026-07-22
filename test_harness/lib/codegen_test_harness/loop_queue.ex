@@ -1547,6 +1547,14 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
+  @doc false
+  @spec write_history_row!(String.t(), String.t(), String.t()) :: :ok
+  def write_history_row!(pitch_path, header, row) do
+    content = File.read!(pitch_path)
+    File.write!(pitch_path, append_history_row(content, header, row))
+    :ok
+  end
+
   @doc """
   Demotes the pitch at `pitch_path` (currently `ready/<slug>.md` or a
   `building/<slug>.md` stranded-by-crash shape) to `draft_path` —

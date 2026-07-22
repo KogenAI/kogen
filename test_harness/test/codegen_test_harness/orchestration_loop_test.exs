@@ -476,7 +476,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
             do: "REVIEW_VERDICT: APPROVED",
             else: "did #{role}"
 
-        {:ok, %{"status" => "success", "value" => "chat recap with no plan in it — #{value}"}}
+        {:ok, %{"status" => "success", "value" => value}}
       end
 
       assert :ok ==
@@ -626,7 +626,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
             seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
 
             if seen <= 1,
-              do: "REVIEW_VERDICT: CHANGES_REQUESTED — fix the nav link",
+              do: "fix the nav link\nREVIEW_VERDICT: CHANGES_REQUESTED",
               else: "REVIEW_VERDICT: APPROVED"
           else
             "did #{role}"
@@ -763,7 +763,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
         value =
           if role == "reviewer-static",
-            do: "REVIEW_VERDICT: CHANGES_REQUESTED — still not right",
+            do: "still not right\nREVIEW_VERDICT: CHANGES_REQUESTED",
             else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
@@ -2966,7 +2966,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
           value =
             if seen <= 1,
-              do: "REVIEW_VERDICT: CHANGES_REQUESTED — fix it",
+              do: "fix it\nREVIEW_VERDICT: CHANGES_REQUESTED",
               else: "REVIEW_VERDICT: APPROVED"
 
           {:ok, %{"status" => "success", "value" => value}}
