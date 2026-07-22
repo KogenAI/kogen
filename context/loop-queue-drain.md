@@ -92,11 +92,15 @@ calls `:terminal_marker_fn` (default `default_terminal_marker_fn/1`, reads
 producer). A present marker (`{:terminal, reason, owner}`) routes straight to this same
 park+skip+breaker channel — printing `FAILED (deterministic: <owner> exhausted — <reason>) — parked, not
 retried` — and is NEVER retried, even when `LoopQueue.transient?/1` would otherwise classify the exit as
-retry-eligible. This is what makes a self-inflicted, deterministic exhaustion (a curator-doc or env-var
-check the owning role genuinely could not fix) stop costing a full `codegen-build` price on every retry
-instead of failing once. Absent or malformed marker (`:absent`) → falls through unchanged to
-`retry_eligible?/5` — fail-open is correct here: absence means no deterministic claim was made, exactly
-today's pre-marker behavior.
+retry-eligible. This is what makes a self-inflicted, deterministic exhaustion (a curator-doc, env-var, or
+turn-0 orientation-doc-repair check the owning role genuinely could not fix) stop costing a full
+`codegen-build` price on every retry instead of failing once. A turn-0 orientation-repair exhaustion
+(`turn0_repair_exhausted/3`, owner `"context-curator"`) writes this SAME marker, alongside the
+gate/curator-doc/env-var producers — no separate consumer path. Absent or malformed marker (`:absent`) →
+falls through unchanged to `retry_eligible?/5` — fail-open is correct here: absence means no deterministic
+claim was made, exactly today's pre-marker behavior. The marker WRITE ITSELF is now REQUIRED, not
+best-effort — a failed write raises `InfraAbort` at the producer rather than silently leaving a
+deterministic exhaustion unmarked (see the loop owner file's "Terminal Marker" section).
 
 ## Circuit Breaker
 

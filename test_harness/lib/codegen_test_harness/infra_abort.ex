@@ -2,8 +2,12 @@ defmodule CodegenTestHarness.InfraAbort do
   @moduledoc """
   Raised when a check fails for a reason **no developer edit could fix** —
   an environment or repo-state problem (poisoned DB state, unsatisfiable
-  scan, missing runtime dependency, inherited orientation-doc drift), not
-  a code defect.
+  scan, missing runtime dependency, inherited orientation-doc drift naming
+  a doc outside the curator's write surface), not a code defect. An
+  inherited orientation-doc violation whose EVERY line names a
+  curator-writable doc (`context/*.md`, `PROJECT_CONTEXT.md`) is instead
+  routed to a bounded `context-curator` repair loop — see
+  `OrchestrationLoop.run_orientation_preflight/4`.
 
   This is the generalized form of `LoopGate`'s pre-existing
   `static_render_deps_preflight!/1` raise (a missing render-check

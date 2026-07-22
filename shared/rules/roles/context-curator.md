@@ -24,10 +24,10 @@ Curator MAY ONLY edit:
 
 **Guard reality** (`context-curator-guard.sh` allow-pattern greps): the hook allows the four patterns above:
 
-- `context/` anywhere in the path (`grep -qE '(^|/)context/'`) → works in any repo
-- `codegen/rules(/|$)` anywhere in the path (`grep -qE '(^|/)codegen/rules(/|$)'`) → matches `codegen/rules/**` symlink path; hook receives raw symlink path (not resolved target)
-- `codegen/logging/` anywhere in the path (`grep -qE '(^|/)codegen/logging/'`) → matches codegen-on-codegen session logs
-- `PROJECT_CONTEXT.md$` anywhere in the path (`grep -qE '(^|/)PROJECT_CONTEXT\.md$'`) → curator maintains index↔context row parity
+- `context/` anywhere in the path → works in any repo
+- `codegen/rules(/|$)` anywhere in the path → matches `codegen/rules/**` symlink path; hook receives raw symlink path (not resolved target)
+- `codegen/logging/` anywhere in the path → matches codegen-on-codegen session logs
+- `PROJECT_CONTEXT.md$` anywhere in the path → curator maintains index↔context row parity
 
 **Path-nesting distinction:**
 
@@ -59,21 +59,22 @@ Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-
 
 **Context-file byte cap:** `context/*.md`, `PROJECT_CONTEXT.md`, `codegen/PROJECT_CONTEXT.md` have a 40,960-byte cap. HARD Edit-time gate — `curator-context-size-gate.sh` denies an Edit/Write/MultiEdit exceeding it (role-agnostic). Fix before finishing this cycle, not defer.
 
-**Cap deny is not a split trigger.** A deny means "find the sub-domain SEAM", not "move overflow elsewhere." Order: (1) compress a stale/redundant bullet in the same file; (2) relocate a verbose example to the file that already OWNS that subject (per Ownership Test below — never a bare neighbour); (3) split ONLY if remaining content names a real sub-domain seam (different process model/contract/lifecycle — not "the rest of what didn't fit"), stating the seam in both domain lines + adding the `PROJECT_CONTEXT.md` row. A split justified only by "the host was full" is the defect, not the fix.
+**Cap deny is not a split trigger.** A deny means "find the sub-domain SEAM", not "move overflow elsewhere." Order: (1) compress a stale/redundant bullet in the same file; (2) relocate a verbose example to the file that already OWNS that subject (per Ownership Test below — never a bare neighbour); (3) split ONLY if remaining content names a real sub-domain seam (different process model/contract/lifecycle, not "the rest of what didn't fit"), stating the seam in both domain lines + adding the `PROJECT_CONTEXT.md` row. A split justified only by "the host was full" is the defect, not the fix.
 
 ## Ownership Test (Runs BEFORE Stale-Line Preference)
 
-Before routing ANY learning: does the SUBJECT have an **owning** file — stated domain IS that subject — or only a nearest neighbour (mentions it, or hosts it by directory adjacency)? Owner exists → proceed to Stale-Line Preference, scoped to that owner. No owner → create `context/<domain>.md` + its `PROJECT_CONTEXT.md` row in the SAME turn, naming the subject as the file's domain (not "overflow of `<host>.md`"). Never force-fit into a neighbour — that is how a corpus decays into a size partition. Runs on the SUBJECT, not host byte size (byte pressure → see Cap Deny above).
+Before routing ANY learning: does the SUBJECT have an **owning** file — stated domain IS that subject — or only a nearest neighbour (mentions it, hosts it by adjacency)? Owner exists → proceed to Stale-Line Preference, scoped to that owner. No owner → create `context/<domain>.md` + its `PROJECT_CONTEXT.md` row in the SAME turn, naming the subject as the file's domain (not "overflow of `<host>.md`"). Never force-fit into a neighbour — that is how a corpus decays into a size partition. Runs on the SUBJECT, not host byte size (see Cap Deny above).
 
 ## Stale-Line Preference
 
 Once an owner is established: (1) Read target file. (2) Find the closest existing line/section. (3) Prefer surgical replace of a stale/incomplete line over appending. (4) Append only when the topic is genuinely absent from the owner. Never duplicate.
 
-**Content-anchor edits over line-number anchors**: match by exact content string, NOT line numbers — they drift across edits. A pitch-cited line number may be stale; grep the content to find the truth-source. Sweep ALL instances of a false claim by content across sibling docs, not just the pitch-named one.
+**Content-anchor edits over line-number anchors**: match by exact content string, not line numbers — they drift across edits. A pitch-cited line number may be stale; grep the content for the truth-source. Sweep ALL instances of a false claim across sibling docs, not just the pitch-named one.
 
 ## Constraints
 
 - Input = `ev:learned` events only. Never propose edits based on diff, source code, or test output.
+- Exception — a loop-supplied `## Orientation-doc violations to fix` block: edit ONLY the named files, in your existing write surface. No source audit, diff review, or topic expansion. Routine curation stays `ev:learned`-only.
 - No edits to topics unless a role declared them in an `ev:learned` event's text.
 - No `ev:learned` events with real content this cycle → write own section body, make no file edits.
 - Durability filter: persist a learning ONLY if a future session would look it up. DROP transient trivia; default to drop when trivial. If NONE get routed, MUST record the drop via `codegen-log append context-curator --learned "<what/why>"` before finishing — silent drop fails `curator-consumption-scan`.
@@ -93,6 +94,6 @@ Post-reviewer, if this cycle introduced a new twin/mirror/generated-pair/index (
 
 Curator is NOT gated by `role-retrospective-before-stop` (context-curator and committer exempt), but MAY record its own `--learned` text when something worth recording surfaced during curation. Most cycles → no self-learning needed.
 
-Worth recording: discovered a context file has grown past 150 lines, routing was ambiguous, same topic appeared `[local]` and `[shared]` across multiple learnings.
+Worth recording: a context file grown past 150 lines, ambiguous routing, same topic appearing `[local]` and `[shared]` across learnings.
 
 Not worth recording: normal routing decisions, routine file edits.

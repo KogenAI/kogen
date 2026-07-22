@@ -136,12 +136,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     pre-existing rot in its own orientation docs. `preflight_clean_tree!/1`
     already ran before this (turn-0 ordering), so any violation surfaced
     here is proven inherited, not caused by this cycle. `{:violations, v}`
-    raises `CodegenTestHarness.InfraAbort` via `LoopGate.infra_abort!/2`
-    (exit 3 under `mix codegen.loop` — halts a `--queue` drain with the
-    pitch left untouched in `ready/`, never parked as a rework-needed
-    defect) instead of proceeding into a paid cycle that would die later at
-    the curator step for the same reason. See pitch
-    `no-full-cycle-spend-on-inherited-orientation-doc-drift`.
+    is CLASSIFIED (`classify_orientation_violations/1`): when every line
+    names a curator-writable doc (`context/<basename>.md` or
+    `PROJECT_CONTEXT.md`), the loop lazily resolves `context-curator` and
+    runs a bounded repair loop (`run_orientation_repair/1`) BEFORE the
+    selected suffix — never advancing `CURATED`. Any other shape (a line
+    naming `AGENTS.md`/`CLAUDE.md`/another surface, an unparseable line, or
+    a MIXED writable/non-writable set) still raises
+    `CodegenTestHarness.InfraAbort` via `LoopGate.infra_abort!/2` (exit 3
+    under `mix codegen.loop` — halts a `--queue` drain with the pitch left
+    untouched in `ready/`) — never a partial repair. See pitch
+    `orientation-preflight-routes-to-curator`.
   - `:max_gate_retries` — developer re-runs allowed after a non-clear gate
     before giving up (default 1). This is a FALLBACK bound used only when
     the tree-progress signature is unavailable (non-git `:cwd`, e.g. mocked
@@ -430,7 +435,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     gate_command = preflight_gate!(cwd, opts)
     ctx = put_in(ctx, [:artifacts, :gate_command], gate_command)
     preflight_roles!(roles, cwd, opts)
-    preflight_orientation_docs!(cwd, opts)
+    ctx = run_orientation_preflight(cwd, ctx, harness, opts)
 
     # Corpus publish — carry THIS cycle's own log onto refs/heads/corpus at
     # the tail, on the ok path, the error path, AND a raise (the `after`
@@ -611,25 +616,155 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   # Turn-0 repo-wide orientation-doc preflight: the sibling of
   # run_curator_doc_check/6's per-curator-turn scan, moved earlier so a cycle
-  # refuses INHERITED drift at $0 instead of dying at the curator step after
+  # catches INHERITED drift at $0 instead of dying at the curator step after
   # planner+developer+gate+reviewer+curator have all been paid for. Runs
   # AFTER preflight_clean_tree!/1 (called earlier in run_body/1), so any
   # violation surfaced here is proven pre-existing at HEAD, not caused by
-  # this cycle's own edits — attribution is structural, not heuristic. See
-  # pitch `no-full-cycle-spend-on-inherited-orientation-doc-drift`.
-  defp preflight_orientation_docs!(cwd, opts) do
+  # this cycle's own edits — attribution is structural, not heuristic.
+  #
+  # `{:violations, v}` is CLASSIFIED, not unconditionally aborted:
+  # `classify_orientation_violations/1` partitions the complete line set.
+  # Every line naming a curator-writable doc (`context/<basename>.md` or
+  # `PROJECT_CONTEXT.md`) → lazily resolve `context-curator`
+  # (`preflight_roles!/3`, same fail-loud contract) and run a bounded repair
+  # loop via `run_orientation_repair/1` — the owner of this exact drift
+  # class already repairs it post-reviewer (`run_curator_doc_check/6`), so
+  # inherited drift gets the same treatment instead of a manual exit-3 halt.
+  # Any other shape — `AGENTS.md`/`CLAUDE.md`/another surface, an
+  # unparseable line, or a MIXED writable/non-writable set — still raises
+  # `InfraAbort` via the EXACT prior text, unconditionally: NEVER a partial
+  # repair. See pitch `orientation-preflight-routes-to-curator`.
+  @spec run_orientation_preflight(String.t(), map(), harness(), run_opts()) :: map()
+  defp run_orientation_preflight(cwd, ctx, harness, opts) do
     preflight_fn = Keyword.get(opts, :orientation_preflight_fn, &default_orientation_preflight/1)
 
     case preflight_fn.(cwd) do
       {:clean} ->
-        :ok
+        ctx
 
       {:violations, violations} ->
-        LoopGate.infra_abort!(
-          "orientation-doc-preflight",
-          "#{violations} — orientation docs were already drifted at HEAD; this build " <>
-            "introduced nothing. Fix the drift on develop, then re-run."
-        )
+        case classify_orientation_violations(violations) do
+          :repairable ->
+            IO.puts(
+              :stderr,
+              "codegen.loop: orientation-doc preflight found repairable drift — " <>
+                "invoking context-curator"
+            )
+
+            preflight_roles!(["context-curator"], cwd, opts)
+
+            case run_orientation_repair(%{
+                   phase: :turn0,
+                   scan_fn: fn -> preflight_fn.(cwd) end,
+                   curator_role: "context-curator",
+                   harness: harness,
+                   ctx: ctx,
+                   opts: opts,
+                   cycle: 0,
+                   prev_violations: nil,
+                   seed_violations: violations,
+                   on_clean: fn repaired_ctx, repair_ran? ->
+                     if repair_ran? do
+                       IO.puts(
+                         :stderr,
+                         "codegen.loop: orientation-doc preflight repaired — continuing"
+                       )
+                     end
+
+                     repaired_ctx
+                   end,
+                   on_failure: &turn0_repair_exhausted/3
+                 }) do
+              {:error, reason} ->
+                raise "OrchestrationLoop: #{reason}"
+
+              %{} = repaired_ctx ->
+                repaired_ctx
+            end
+
+          {:not_repairable, reason} ->
+            LoopGate.infra_abort!(
+              "orientation-doc-preflight",
+              "#{violations} — orientation docs were already drifted at HEAD; this build " <>
+                "introduced nothing. Fix the drift on develop, then re-run. " <>
+                "(#{reason})"
+            )
+        end
+    end
+  end
+
+  # A single scanner-authored (never manually maintained) map from the
+  # scanner's own `<name>: ` prefix to itself — used ONLY to strip the
+  # prefix before reading the doc-path token; an unrecognized prefix means
+  # the grammar changed under us and must be treated as ambiguous (fail
+  # closed), never guessed at.
+  @orientation_scanner_prefixes [
+    "context-index-parity-scan: ",
+    "context-factcheck-scan: "
+  ]
+
+  # Extracts the violation's target doc path from one scanner line. The doc
+  # path is ALWAYS the first whitespace-delimited token immediately after
+  # the scanner-name prefix — never a whole-line substring scan, which would
+  # misattribute a factcheck violation ABOUT `AGENTS.md` (whose message text
+  # can embed an unrelated `context/*.md` claim path) to a curator-writable
+  # doc. `:ambiguous` on an unknown prefix, an empty remainder, or a
+  # trailing `:<digits>` stripped down to nothing.
+  @spec orientation_violation_target(String.t()) :: {:ok, String.t()} | :ambiguous
+  defp orientation_violation_target(line) do
+    prefix = Enum.find(@orientation_scanner_prefixes, &String.starts_with?(line, &1))
+
+    case prefix do
+      nil ->
+        :ambiguous
+
+      _ ->
+        remainder = String.trim_leading(line, prefix)
+
+        case String.split(remainder, ~r/\s+/, parts: 2) do
+          [token | _] when token != "" ->
+            {:ok, Regex.replace(~r/:\d+\z/, token, "")}
+
+          _ ->
+            :ambiguous
+        end
+    end
+  end
+
+  # A curator-writable orientation doc: `PROJECT_CONTEXT.md` exactly, or a
+  # SINGLE-LEVEL `context/<basename>.md` (never nested — the scanner enum
+  # walks `context/` with `-maxdepth 1`, so a nested path is an unobserved
+  # shape and permitting it would silently widen the curator's authority).
+  @spec curator_writable_doc?(String.t()) :: boolean()
+  defp curator_writable_doc?(path) do
+    path == "PROJECT_CONTEXT.md" or Regex.match?(~r{\Acontext/[a-zA-Z0-9_-]+\.md\z}, path)
+  end
+
+  # Partitions the COMPLETE non-blank violation-line set. `:repairable` only
+  # when every single line names a curator-writable doc; the first
+  # non-writable or unparseable line short-circuits to `{:not_repairable,
+  # reason}` for the WHOLE set — a mixed set is never partially repaired.
+  @spec classify_orientation_violations(String.t()) ::
+          :repairable | {:not_repairable, String.t()}
+  defp classify_orientation_violations(text) do
+    case text |> String.split("\n", trim: true) |> Enum.map(&String.trim/1) do
+      [] ->
+        {:not_repairable, "blank violation payload"}
+
+      lines ->
+        Enum.reduce_while(lines, :repairable, fn line, :repairable ->
+          case orientation_violation_target(line) do
+            {:ok, path} ->
+              if curator_writable_doc?(path) do
+                {:cont, :repairable}
+              else
+                {:halt, {:not_repairable, "non-curator-writable target: #{line}"}}
+              end
+
+            :ambiguous ->
+              {:halt, {:not_repairable, "unparseable violation target: #{line}"}}
+          end
+        end)
     end
   end
 
@@ -682,19 +817,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       end
 
     combine_curator_doc_results(index_parity_result, factcheck_result)
-  end
-
-  # Names which legs the turn-0 preflight actually ran, for interpolation
-  # into the curator-doc exhaustion message (run_curator_doc_check_rework/9).
-  # index-parity always runs; factcheck's whole-tree leg only runs in the
-  # codegen repo itself (sentinel-gated) — the exhaustion message must not
-  # over-claim a leg that never executed downstream.
-  defp preflight_legs(cwd) do
-    if File.exists?(Path.join(cwd, "harnesses/claude/manifest.yaml")) do
-      "index-parity + factcheck"
-    else
-      "index-parity"
-    end
   end
 
   # Resolves the app gate at turn 0 via the :gate_preflight_fn seam (default
@@ -1532,11 +1654,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  # A curator edit CAN plausibly fix these doc violations — run the
-  # progress+ceiling-bounded rework logic (see `repair_allowed?/4`): the
-  # first rework (cycle < max_cycles, the guaranteed floor) is always
-  # granted; beyond the floor, only when the curator provably resolved at
-  # least one violation from the prior scan. See
+  # A curator edit CAN plausibly fix these doc violations — delegate to the
+  # SHARED repair engine (`run_orientation_repair/1`), also used by the
+  # turn-0 preflight (`run_orientation_preflight/4`). This phase's
+  # continuations preserve exact pre-extraction behavior: clean advances
+  # `CURATED` and continues into `rest`; exhaustion writes the terminal
+  # marker and returns the "cycle-created violations" formatter. See
   # `run_curator_doc_check/6`'s `:infra` branch above for the sibling that
   # never reaches here.
   defp run_curator_doc_check_rework(
@@ -1550,29 +1673,124 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          violations,
          prev_violations
        ) do
-    if repair_allowed?(cycle, max_cycles, prev_violations, violations) do
-      rework_ctx = put_in(ctx, [:artifacts, :curator_doc_violations], violations)
-
-      with {:ok, curator_result} <- invoke_with_retry(curator_role, harness, rework_ctx, opts) do
-        ctx = put_in(rework_ctx, [:artifacts, curator_role], curator_result)
-        run_format_step(ctx.cwd, opts)
-        run_curator_doc_check(curator_role, rest, harness, ctx, opts, cycle + 1, violations)
-      end
-    else
-      curator_doc_check_exhausted(ctx, cycle, violations)
-    end
+    run_orientation_repair(%{
+      phase: :post_curator,
+      scan_fn: fn -> run_curator_doc_scan(ctx.cwd, opts) end,
+      curator_role: curator_role,
+      harness: harness,
+      ctx: ctx,
+      opts: opts,
+      cycle: cycle,
+      prev_violations: prev_violations,
+      max_cycles: max_cycles,
+      seed_violations: violations,
+      on_clean: fn clean_ctx, _repair_ran? ->
+        advance_cycle_state_step("CURATED", clean_ctx, opts)
+        run_roles(rest, harness, clean_ctx, opts)
+      end,
+      on_failure: &curator_doc_check_exhausted/3
+    })
   end
 
   defp curator_doc_check_exhausted(ctx, cycle, violations) do
     write_terminal_marker(ctx.cwd, "context-curator doc check unresolved", "context-curator")
 
     {:error,
-     "Turn-0 preflight verified #{preflight_legs(ctx.cwd)} clean at HEAD #{ctx.base_head}; " <>
+     "Turn-0 preflight found no inherited orientation-doc drift at HEAD #{ctx.base_head}; " <>
        "the violations below arrived with this cycle's own edits.\n" <>
        "context-curator doc check unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
        "The committer cannot Read/Edit context/*.md (subagent-read-discipline denies it), " <>
        "so handing this violation onward would be an unfixable dead-end. Fix the orientation " <>
        "docs and re-run the cycle."}
+  end
+
+  # Turn-0 phase exhaustion formatter — sibling of `curator_doc_check_exhausted/3`
+  # above (post-curator phase). Distinguishes the two in the returned
+  # message: this violation was ALREADY present at HEAD (inherited), not
+  # introduced by this cycle's own edits.
+  defp turn0_repair_exhausted(ctx, cycle, violations) do
+    write_terminal_marker(ctx.cwd, "orientation-doc preflight unresolved", "context-curator")
+
+    {:error,
+     "inherited orientation-doc repair remained unresolved after #{cycle} cycle(s):\n" <>
+       "#{violations}\n" <>
+       "context-curator could not repair this drift, which was already present at HEAD " <>
+       "before this cycle started. Fix the orientation docs and re-run the cycle."}
+  end
+
+  # Shared repair engine serving BOTH the turn-0 preflight
+  # (`run_orientation_preflight/4`) and the post-curator per-cycle doc check
+  # (`run_curator_doc_check_rework/9`). Owns the floor/progress/ceiling
+  # bound (`repair_allowed?/4`), the `:curator_doc_violations` prompt
+  # artifact, the curator invocation, the post-turn format step, the
+  # caller-supplied rescan, and the terminal-marker-on-exhaustion path. The
+  # two phases differ ONLY in `:scan_fn` (which scan re-runs), `:on_clean`
+  # (turn-0 never advances `CURATED`; post-curator does), and `:on_failure`
+  # (phase-specific wording) — everything else is identical control flow.
+  #
+  # `opts[:max_cycles]` defaults to `Keyword.get(opts, :max_curator_doc_cycles, 1)`
+  # when absent — the turn-0 caller never threads `:max_cycles` explicitly,
+  # so it inherits the SAME floor the post-curator phase uses by default.
+  # `opts[:seed_violations]`, when present, is the ALREADY-KNOWN violation
+  # text for `cycle` (post-curator phase already has it from
+  # `run_curator_doc_check/6`'s scan); turn-0 omits it and the engine
+  # performs its own first scan via `scan_fn`.
+  @spec run_orientation_repair(map()) :: map() | {:error, String.t()}
+  defp run_orientation_repair(
+         %{
+           # `:phase` is intentionally unread here — both `:on_clean`/`:on_failure`
+           # continuations already carry phase-specific behavior/wording, so this
+           # engine has no separate branch on it. Kept in the map (never matched
+           # away) purely as a required, self-documenting field at each call site.
+           phase: _phase,
+           scan_fn: scan_fn,
+           curator_role: curator_role,
+           harness: harness,
+           ctx: ctx,
+           opts: opts,
+           cycle: cycle,
+           prev_violations: prev_violations,
+           on_clean: on_clean,
+           on_failure: on_failure
+         } = repair
+       ) do
+    max_cycles = Map.get(repair, :max_cycles, Keyword.get(opts, :max_curator_doc_cycles, 1))
+
+    violations =
+      case Map.get(repair, :seed_violations) do
+        nil ->
+          case scan_fn.() do
+            {:clean} -> nil
+            {:violations, v} -> v
+          end
+
+        seed ->
+          seed
+      end
+
+    case violations do
+      nil ->
+        on_clean.(ctx, cycle > 0)
+
+      violations ->
+        if repair_allowed?(cycle, max_cycles, prev_violations, violations) do
+          rework_ctx = put_in(ctx, [:artifacts, :curator_doc_violations], violations)
+
+          with {:ok, curator_result} <- invoke_with_retry(curator_role, harness, rework_ctx, opts) do
+            ctx = put_in(rework_ctx, [:artifacts, curator_role], curator_result)
+            run_format_step(ctx.cwd, opts)
+
+            next_repair =
+              repair
+              |> Map.merge(%{ctx: ctx, cycle: cycle + 1, prev_violations: violations})
+              |> Map.delete(:seed_violations)
+
+            run_orientation_repair(next_repair)
+          end
+        else
+          on_failure.(ctx, cycle, violations)
+        end
+    end
   end
 
   # Dispatches the `:curator_doc_check_fn` test seam; defaults to a closure
@@ -2622,16 +2840,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # `codegen-build` price — see the pitch "route an exhausted or
   # deterministic failure to its owner".
   #
-  # Blast-radius rule (deliberately, not exit 3 / InfraAbort): every caller
-  # of this function is PITCH-SPECIFIC (this cycle's own gate/doc/env
-  # exhaustion) — the NEXT pitch is unaffected, so the queue should drain
-  # on rather than HALT. Exit 3 / `InfraAbort` stays reserved for genuinely
-  # repo-wide faults (see `LoopGate.infra_abort!/2`), untouched by this
-  # function.
+  # Blast-radius rule (deliberately, not exit 3 / InfraAbort — but see the
+  # write-failure posture below, which IS exit 3): every caller of this
+  # function is PITCH-SPECIFIC (this cycle's own gate/doc/env exhaustion) —
+  # the NEXT pitch is unaffected on a SUCCESSFUL marker write, so the queue
+  # should drain on rather than HALT. Exit 3 / `InfraAbort` stays reserved
+  # for genuinely repo-wide faults (see `LoopGate.infra_abort!/2`) — normally
+  # untouched by this function, EXCEPT when the marker write itself fails.
   #
-  # Best-effort: a write failure here must never block the exhaustion
-  # `{:error, ...}` return it accompanies — fail-loud-non-blocking,
-  # mirroring `default_log_verdict/5`'s own observability-write contract.
+  # REQUIRED, not best-effort: `LoopQueueDrain` reads this marker BEFORE
+  # `retry_eligible?/5` to distinguish a deterministic exhaustion from a
+  # retryable transient. A silently-lost write leaves the accompanying
+  # `{:error, ...}` UNMARKED — the queue can then blind-retry a pitch that
+  # can never succeed, at full `codegen-build` price, instead of parking it
+  # under its named owner. A write failure here is therefore itself an
+  # infra fault: raise via `LoopGate.infra_abort!/2` rather than degrading
+  # to a stderr note.
   @spec write_terminal_marker(String.t(), String.t(), String.t() | nil) :: :ok
   defp write_terminal_marker(cwd, reason, owner) do
     dir = Path.join([cwd, "codegen", "gate-pending"])
@@ -2645,22 +2869,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           :ok ->
             :ok
 
-          {:error, reason} ->
-            IO.puts(
-              :stderr,
-              "OrchestrationLoop: terminal marker write failed: #{inspect(reason)}"
+          {:error, write_reason} ->
+            LoopGate.infra_abort!(
+              "terminal-marker-write",
+              "failed to write #{path}: #{inspect(write_reason)} — a deterministic " <>
+                "exhaustion (#{reason}) would be left unmarked, risking a blind queue retry."
             )
-
-            :ok
         end
 
-      {:error, reason} ->
-        IO.puts(
-          :stderr,
-          "OrchestrationLoop: terminal marker dir write failed: #{inspect(reason)}"
+      {:error, mkdir_reason} ->
+        LoopGate.infra_abort!(
+          "terminal-marker-write",
+          "failed to create #{dir}: #{inspect(mkdir_reason)} — a deterministic " <>
+            "exhaustion (#{reason}) would be left unmarked, risking a blind queue retry."
         )
-
-        :ok
     end
   end
 
@@ -3801,19 +4023,23 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base
       end
 
-    # On a factcheck re-work pass, thread the violation list to the curator.
-    # Reads the SAME key `run_curator_doc_check_rework/9` writes
-    # (`:curator_doc_violations`) — these were historically two different
-    # keys (write `:curator_doc_violations`, read `:factcheck_violations`),
-    # so the re-invoked curator was handed the raw pitch with NO violation
-    # list at all, asked to fix violations it was never shown.
+    # On an orientation-doc re-work pass (turn-0 OR post-curator — both
+    # phases of run_orientation_repair/1 write the SAME artifact key), thread
+    # the violation list to the curator. Reads the SAME key
+    # `run_orientation_repair/1` writes (`:curator_doc_violations`) — these
+    # were historically two different keys (write `:curator_doc_violations`,
+    # read `:factcheck_violations`), so the re-invoked curator was handed
+    # the raw pitch with NO violation list at all, asked to fix violations
+    # it was never shown. This is the ONE deterministic, non-`ev:learned`
+    # input block context-curator's role contract permits — see
+    # `shared/rules/roles/context-curator.md` § Constraints.
     fv = get_in(ctx, [:artifacts, :curator_doc_violations])
 
     base =
       if role == "context-curator" and is_binary(fv) and String.trim(fv) != "" do
         base <>
-          "\n\n## Factcheck violations to fix (re-work)\n\n" <>
-          fv <> "\n\nFix these in the working tree; do not introduce unrelated changes."
+          "\n\n## Orientation-doc violations to fix\n\n" <>
+          fv <> "\n\nEdit only the named orientation docs; do not introduce unrelated changes."
       else
         base
       end

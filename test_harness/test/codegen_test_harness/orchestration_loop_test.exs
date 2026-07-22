@@ -342,11 +342,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(calls_agent, & &1) == @static_sequence
     end
 
-    test "violations seam result → raises InfraAbort naming the check and remediation, before any role runs",
+    test "violations seam result naming a non-curator-writable doc → raises InfraAbort naming the check and remediation, before any role runs",
          %{calls_agent: calls_agent} do
+      # AGENTS.md is outside the curator's write surface — not repairable,
+      # so this still hits the unconditional InfraAbort path.
       violating_fn = fn _cwd ->
-        {:violations,
-         "context-index-parity-scan: context/new.md added but no index row mentions \"new\""}
+        {:violations, "context-factcheck-scan: AGENTS.md:1 references a doc that does not exist"}
       end
 
       assert_raise CodegenTestHarness.InfraAbort,
@@ -368,6 +369,42 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       # no role was ever invoked — the loop refused before spending a cent
       assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "violations seam result naming only curator-writable docs → repairs via context-curator instead of InfraAbort",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_agent} = Agent.start_link(fn -> :first end)
+      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+
+      scan_fn = fn _cwd ->
+        Agent.get_and_update(scan_agent, fn
+          :first ->
+            {{:violations,
+              "context-index-parity-scan: context/new.md added but no index row mentions \"new\""},
+             :second}
+
+          :second ->
+            {{:clean}, :second}
+        end)
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 orientation_preflight_fn: scan_fn
+               )
+
+      # context-curator repaired the inherited drift, BEFORE the normal suffix ran
+      assert Agent.get(calls_agent, & &1) ==
+               ["context-curator" | @static_sequence]
     end
 
     test "violations message names the remediation (drifted-at-HEAD, re-run after fixing)",
@@ -440,6 +477,486 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) == @static_sequence
+    end
+
+    test "MIXED set (one curator-writable line + one AGENTS.md line) → InfraAbort, NEVER a partial repair",
+         %{calls_agent: calls_agent} do
+      mixed_fn = fn _cwd ->
+        {:violations,
+         "context-index-parity-scan: context/loop.md keyword drift\n" <>
+           "context-factcheck-scan: AGENTS.md:1 references a doc that does not exist"}
+      end
+
+      assert_raise CodegenTestHarness.InfraAbort,
+                   ~r/orientation-doc-preflight/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                       orientation_preflight_fn: mixed_fn
+                     )
+                   end
+
+      # zero role invocations — the writable line in the mixed set is NEVER
+      # separated out and repaired on its own
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "violation naming CLAUDE.md → InfraAbort, zero role invocations",
+         %{calls_agent: calls_agent} do
+      violating_fn = fn _cwd ->
+        {:violations, "context-factcheck-scan: CLAUDE.md:3 references a doc that does not exist"}
+      end
+
+      assert_raise CodegenTestHarness.InfraAbort,
+                   ~r/orientation-doc-preflight/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                       orientation_preflight_fn: violating_fn
+                     )
+                   end
+
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "violation line with an unknown scanner prefix (unparseable target) → InfraAbort, zero role invocations",
+         %{calls_agent: calls_agent} do
+      # No recognized "<scanner-name>: " prefix at all — the grammar changed
+      # under us; must be treated as ambiguous (fail closed), never guessed.
+      violating_fn = fn _cwd -> {:violations, "some-unknown-tool: drift detected"} end
+
+      assert_raise CodegenTestHarness.InfraAbort,
+                   ~r/orientation-doc-preflight/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                       orientation_preflight_fn: violating_fn
+                     )
+                   end
+
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "repairable violation converges across 2 curator turns before resuming the normal suffix",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_agent, fn c -> {c, c + 1} end)
+
+        case n do
+          0 -> {:violations, "context-index-parity-scan: context/loop.md drift A"}
+          1 -> {:violations, "context-index-parity-scan: context/loop.md drift B"}
+          _ -> {:clean}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 orientation_preflight_fn: scan_fn
+               )
+
+      # 2 turn-0 repair invocations + 1 normal-suffix context-curator spawn
+      # (context-curator is always in @static_sequence) = 3 total.
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 3
+      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+    end
+
+    test "no progress (identical violation set every pass) → {:error, _} owned by context-curator, invoked exactly the guaranteed floor",
+         %{calls_agent: calls_agent} do
+      always_violates_fn = fn _cwd ->
+        {:violations, "context-index-parity-scan: context/loop.md drift"}
+      end
+
+      error =
+        assert_raise RuntimeError, fn ->
+          OrchestrationLoop.run(
+            harness: "claude_code",
+            stack: "static",
+            cwd: "/tmp/irrelevant",
+            pitch: "do the thing",
+            invoke_fn: always_ok_invoke_fn(calls_agent),
+            gate_fn: always_clear_gate_fn(),
+            gate_preflight_fn: no_op_gate_preflight_fn(),
+            preflight_probe_fn: all_present_preflight_probe_fn(),
+            advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+            orientation_preflight_fn: always_violates_fn,
+            max_curator_doc_cycles: 1
+          )
+        end
+
+      assert error.message =~ "context-curator"
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 1
+      refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "hard ceiling caps turn-0 repair even with continuous one-per-turn progress",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+
+      scan_fn = fn _cwd ->
+        n = Agent.get_and_update(scan_agent, fn c -> {c, c + 1} end)
+        remaining = for i <- (n + 1)..29, do: "context-index-parity-scan: context/v#{i}.md drift"
+
+        {:violations,
+         Enum.join(["context-index-parity-scan: context/v#{n}.md drift" | remaining], "\n")}
+      end
+
+      assert_raise RuntimeError, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          orientation_preflight_fn: scan_fn,
+          max_curator_doc_cycles: 1
+        )
+      end
+
+      curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
+      assert curator_calls == 15
+      refute "committer" in Agent.get(calls_agent, & &1)
+    end
+
+    test "turn-0 repair exhaustion writes codegen/gate-pending/terminal-state.json naming context-curator as owner",
+         %{calls_agent: calls_agent} do
+      tmp_cwd =
+        Path.join(
+          System.tmp_dir!(),
+          "loop-turn0-terminal-marker-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(tmp_cwd)
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      always_violates_fn = fn _cwd ->
+        {:violations, "context-index-parity-scan: context/loop.md drift"}
+      end
+
+      assert_raise RuntimeError, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: tmp_cwd,
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          orientation_preflight_fn: always_violates_fn,
+          max_curator_doc_cycles: 1
+        )
+      end
+
+      marker =
+        Path.join(tmp_cwd, "codegen/gate-pending/terminal-state.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert marker["terminal"] == true
+      assert marker["owner"] == "context-curator"
+      assert marker["reason"] =~ "orientation-doc preflight unresolved"
+    end
+
+    test "terminal marker write failure during turn-0 exhaustion raises InfraAbort instead of leaving the deterministic error unmarked",
+         %{calls_agent: calls_agent} do
+      # codegen/gate-pending exists as a FILE (not a dir), so File.mkdir_p
+      # for the marker path fails — proves the write-failure path raises
+      # loud rather than degrading to a silent stderr note.
+      tmp_cwd =
+        Path.join(
+          System.tmp_dir!(),
+          "loop-turn0-marker-write-fail-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(Path.join(tmp_cwd, "codegen"))
+      File.write!(Path.join([tmp_cwd, "codegen", "gate-pending"]), "not a directory")
+      on_exit(fn -> File.rm_rf!(tmp_cwd) end)
+
+      always_violates_fn = fn _cwd ->
+        {:violations, "context-index-parity-scan: context/loop.md drift"}
+      end
+
+      assert_raise CodegenTestHarness.InfraAbort,
+                   ~r/terminal-marker-write/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "static",
+                       cwd: tmp_cwd,
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                       orientation_preflight_fn: always_violates_fn,
+                       max_curator_doc_cycles: 1
+                     )
+                   end
+    end
+
+    test "unresolved context-curator agent + a repairable violation → raises naming the missing role, zero role invocations",
+         %{calls_agent: calls_agent} do
+      repairable_fn = fn _cwd ->
+        {:violations, "context-index-parity-scan: context/loop.md drift"}
+      end
+
+      # preflight_probe_fn's "Available agents:" list omits context-curator
+      # entirely — the lazy resolution in run_orientation_preflight/4 must
+      # still raise before any spend, even though the SELECTED suffix's own
+      # agents (all present here) resolve fine on their own probe.
+      missing_curator_probe_fn = fn _cwd ->
+        "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
+          "planner-phoenix, developer-phoenix-backend, developer-phoenix-frontend, " <>
+          "reviewer-phoenix, committer, developer-static, reviewer-static"
+      end
+
+      assert_raise RuntimeError, ~r/context-curator/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: missing_curator_probe_fn,
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          orientation_preflight_fn: repairable_fn
+        )
+      end
+
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "scanner returns an unrecognized seam value → raises, zero role invocations",
+         %{calls_agent: calls_agent} do
+      bogus_fn = fn _cwd -> :not_a_valid_seam_value end
+
+      assert_raise CaseClauseError, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+          orientation_preflight_fn: bogus_fn
+        )
+      end
+
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "turn-0 repair never advances CURATED itself — the only CURATED write comes from the real suffix's own post-curator check, after GATED",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_agent} = Agent.start_link(fn -> :first end)
+      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+
+      scan_fn = fn _cwd ->
+        Agent.get_and_update(scan_agent, fn
+          :first ->
+            {{:violations, "context-index-parity-scan: context/loop.md drift"}, :second}
+
+          :second ->
+            {{:clean}, :second}
+        end)
+      end
+
+      {:ok, states_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+
+      advance_fn = fn state, _step_log, _session_id, _verdict, _cwd, _slug ->
+        Agent.update(states_agent, &[state | &1])
+        :ok
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: advance_fn,
+                 orientation_preflight_fn: scan_fn
+               )
+
+      states_in_order = Agent.get(states_agent, & &1) |> Enum.reverse()
+
+      # Exactly ONE "CURATED" write in the whole run — the real suffix's own
+      # post-curator doc check (there are zero context-created violations
+      # here, so that check itself clears on its first pass and advances
+      # CURATED legitimately). If the turn-0 repair ALSO advanced CURATED,
+      # this would be 2.
+      assert Enum.count(states_in_order, &(&1 == "CURATED")) == 1
+
+      # The turn-0 repair (invoked before any suffix role — see the
+      # dedicated ordering test above) never itself calls
+      # advance_cycle_state_fn. The one CURATED entry is causally downstream
+      # of GATED (the suffix's own gate loop), not something the turn-0
+      # phase raced ahead to write before the suffix even started.
+      gated_index = Enum.find_index(states_in_order, &(&1 == "GATED"))
+      curated_index = Enum.find_index(states_in_order, &(&1 == "CURATED"))
+      assert gated_index < curated_index
+    end
+
+    test "repair-turn prompt to context-curator carries the Orientation-doc violations heading, the verbatim lines, and the edit-scope trailer",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_agent} = Agent.start_link(fn -> :first end)
+      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+
+      violation_text = "context-index-parity-scan: context/loop.md keyword drift"
+
+      scan_fn = fn _cwd ->
+        Agent.get_and_update(scan_agent, fn
+          :first -> {{:violations, violation_text}, :second}
+          :second -> {{:clean}, :second}
+        end)
+      end
+
+      {:ok, prompts_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(prompts_agent), do: Agent.stop(prompts_agent) end)
+
+      capturing_invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, &(&1 ++ [role]))
+
+        if role == "context-curator" do
+          Agent.update(
+            prompts_agent,
+            &[OrchestrationLoop.build_prompt(role, ctx) | &1]
+          )
+        end
+
+        value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: capturing_invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 orientation_preflight_fn: scan_fn
+               )
+
+      # The FIRST captured prompt is the repair-turn invocation (before the
+      # normal suffix even starts) — assert on that one specifically. A
+      # later, unrelated context-curator spawn from the normal suffix
+      # (@static_sequence always includes one) is out of scope for this
+      # assertion.
+      [first_prompt | _] = Enum.reverse(Agent.get(prompts_agent, & &1))
+      assert first_prompt =~ "## Orientation-doc violations to fix"
+      assert first_prompt =~ violation_text
+      assert first_prompt =~ "Edit only the named orientation docs"
+    end
+
+    test "operator output: 'found repairable drift' on entry, 'repaired — continuing' after clear; the latter ABSENT on a clean first pass",
+         %{calls_agent: calls_agent} do
+      {:ok, scan_agent} = Agent.start_link(fn -> :first end)
+      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+
+      scan_fn = fn _cwd ->
+        Agent.get_and_update(scan_agent, fn
+          :first -> {{:violations, "context-index-parity-scan: context/loop.md drift"}, :second}
+          :second -> {{:clean}, :second}
+        end)
+      end
+
+      repaired_output =
+        ExUnit.CaptureIO.capture_io(:stderr, fn ->
+          OrchestrationLoop.run(
+            harness: "claude_code",
+            stack: "static",
+            cwd: "/tmp/irrelevant",
+            pitch: "do the thing",
+            invoke_fn: always_ok_invoke_fn(calls_agent),
+            gate_fn: always_clear_gate_fn(),
+            gate_preflight_fn: no_op_gate_preflight_fn(),
+            preflight_probe_fn: all_present_preflight_probe_fn(),
+            advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+            orientation_preflight_fn: scan_fn
+          )
+        end)
+
+      assert repaired_output =~
+               "orientation-doc preflight found repairable drift — invoking context-curator"
+
+      assert repaired_output =~ "orientation-doc preflight repaired — continuing"
+
+      clean_output =
+        ExUnit.CaptureIO.capture_io(:stderr, fn ->
+          OrchestrationLoop.run(
+            harness: "claude_code",
+            stack: "static",
+            cwd: "/tmp/irrelevant",
+            pitch: "do the thing",
+            invoke_fn: always_ok_invoke_fn(calls_agent),
+            gate_fn: always_clear_gate_fn(),
+            gate_preflight_fn: no_op_gate_preflight_fn(),
+            preflight_probe_fn: all_present_preflight_probe_fn(),
+            advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+            orientation_preflight_fn: no_op_orientation_preflight_fn()
+          )
+        end)
+
+      refute clean_output =~ "orientation-doc preflight repaired — continuing"
     end
   end
 
@@ -3938,7 +4455,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       refute Enum.at(prompts, 0) =~ "the specific violation text"
       # Second pass (rework): the violation text from the FIRST scan must be present.
       assert Enum.at(prompts, 1) =~ "the specific violation text"
-      assert Enum.at(prompts, 1) =~ "## Factcheck violations to fix"
+      assert Enum.at(prompts, 1) =~ "## Orientation-doc violations to fix"
     end
 
     test "ADD-without-row index-parity violation once then clean re-invokes context-curator exactly once",
@@ -4007,8 +4524,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         )
 
       assert {:error, reason} = result
-      assert reason =~ "Turn-0 preflight verified"
-      assert reason =~ "clean at HEAD"
+      assert reason =~ "Turn-0 preflight found no inherited orientation-doc drift"
       assert reason =~ "the violations below arrived with this cycle's own edits"
       assert reason =~ "doc check unresolved"
       assert reason =~ "CLAUDE.md:1 bad path"

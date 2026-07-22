@@ -50,6 +50,19 @@ Catch: Discovered via red-green: assertion flip produced a red for a DIFFERENT r
 - **Internal loop path** (`is_allowed_path()` abs-path-token iteration in `build-worker-cwd-guard.sh`): empty token = legitimate skip of non-path match. Tolerated, documented.
 - **File-tool level** (inside Read/Write/Edit/MultiEdit case): Empty FILE_PATH on a file-bearing tool = anomaly → deny. Both needed distinguishing comments.
 
+## All-Or-Nothing Partition — Orientation-Doc Repair Routing
+
+`OrchestrationLoop.classify_orientation_violations/1` partitions a turn-0 orientation-doc violation set
+into `:repairable` (repair via `context-curator`) or `{:not_repairable, reason}` (`InfraAbort`) — but the
+partition is over the WHOLE line set, never per-line. A MIXED set (one line naming a curator-writable
+doc, one naming `AGENTS.md`) is `{:not_repairable, _}` in full: the first non-writable or unparseable line
+short-circuits the entire classification via `Enum.reduce_while/3`, so NO line is ever repaired while
+another in the same violation payload is refused. This is deliberate fail-closed posture, not an
+oversight: a partial repair would let the curator edit a doc it is entitled to while a sibling violation
+(possibly the SAME structural defect, spilling across an owned and an unowned doc) goes unaddressed and
+silently vanishes from the operator's view once the owned half is fixed. See `context/loop.md` § Turn-0
+Sibling and pitch `orientation-preflight-routes-to-curator`.
+
 ## Trigger Keywords
 
-INCONCLUSIVE classification, two-signal pre-commit-guard, anti-wedge fail-open survivor, test comment drift, confinement guard scope, fail-loud exemptions, static-site-build-check
+INCONCLUSIVE classification, two-signal pre-commit-guard, anti-wedge fail-open survivor, test comment drift, confinement guard scope, fail-loud exemptions, static-site-build-check, classify_orientation_violations, all-or-nothing partition, mixed violation set, orientation-doc repair routing

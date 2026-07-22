@@ -245,11 +245,29 @@ progress-bounded rework loop (`:max_curator_doc_cycles`, floor 1, ceiling 15 via
 edit). Budget exhaustion fails the cycle LOUD (`curator_doc_check_exhausted/3`) — the committer cannot
 Read/Edit `context/*.md`, so handing it a known-bad doc is an unfixable dead-end.
 
+### Turn-0 Sibling — Inherited Orientation-Doc Drift
+
+`OrchestrationLoop.run_orientation_preflight/4` runs the SAME index-parity + factcheck scan pair at turn
+0, before any role is invoked or paid for (see `:orientation_preflight_fn` moduledoc doc, and
+`default_orientation_preflight/1`). A `{:violations, v}` result is CLASSIFIED
+(`classify_orientation_violations/1`): when every line names a curator-writable doc
+(`context/<basename>.md` or `PROJECT_CONTEXT.md`), the loop lazily resolves `context-curator`
+(`preflight_roles!/3`) and runs a BOUNDED repair loop via the SHARED `run_orientation_repair/1` engine
+(the same floor/progress/ceiling bound, prompt artifact, and terminal-marker path this section's
+post-curator check uses) — never advancing `CURATED`. Any other shape — a line naming
+`AGENTS.md`/`CLAUDE.md`/another surface, an unparseable line, or a MIXED writable/non-writable set —
+still raises `InfraAbort` unconditionally: NEVER a partial repair. Repair failure (invocation error,
+no-progress, or ceiling exhaustion) writes the terminal marker with owner `"context-curator"` and returns
+a deterministic `{:error, _}`, never `InfraAbort`.
+
 ## Infra Abort
 
 `LoopGate.infra_abort!/2` raises `CodegenTestHarness.InfraAbort` — reserved for genuine infrastructure
 failures (not code/test failures), which the loop routes distinctly from a normal gate `:failed`
 verdict. See the cycle-record owner file's infra-vs-code classification section for the signature list.
+Inherited orientation-doc drift raises this ONLY when at least one violated doc is outside the curator's
+write surface, or the violation set is unparseable/mixed — see the Turn-0 Sibling paragraph above for the
+curator-writable-only repair path that replaced the prior unconditional abort.
 
 ## Timing/Metrics Telemetry (consume, don't produce)
 
@@ -277,14 +295,19 @@ diff), recording `null` when either timestamp is unparseable.
 `OrchestrationLoop.write_terminal_marker/3` writes `codegen/gate-pending/terminal-state.json`
 (`{terminal: true, reason, owner}`) whenever a rework loop's OWNING role genuinely exhausts its
 progress+ceiling bound — gate rework (`do_gate_loop_rework/9`), curator-doc check
-(`curator_doc_check_exhausted/3`), or env-var check (`run_env_var_step_rework/9`) — immediately
-alongside the `{:error, ...}` it already returns. This DOES NOT change the `{:error}`/exit-1 return
-value; it is a durable, additional signal distinguishing a DETERMINISTIC exhaustion ("this cycle cannot
-succeed however many times you run it") from a RECOVERABLE transient exit (a process death mid-cycle).
+(`curator_doc_check_exhausted/3`), env-var check (`run_env_var_step_rework/9`), or the turn-0 orientation
+repair (`turn0_repair_exhausted/3`) — immediately alongside the `{:error, ...}` it already returns. This
+DOES NOT change the `{:error}`/exit-1 return value; it is a durable, additional signal distinguishing a
+DETERMINISTIC exhaustion ("this cycle cannot succeed however many times you run it") from a RECOVERABLE
+transient exit (a process death mid-cycle).
 
-Deliberately NOT `InfraAbort`/exit 3: every marker-writing caller is PITCH-SPECIFIC (this cycle's own
-gate/doc/env exhaustion) — the next pitch in a drain is unaffected, so the queue should skip and continue
-rather than HALT. Exit 3 stays reserved for genuinely repo-wide infra faults (see Infra Abort above).
+Deliberately NOT `InfraAbort`/exit 3 on a SUCCESSFUL exhaustion write: every marker-writing caller is
+PITCH-SPECIFIC (this cycle's own gate/doc/env/orientation exhaustion) — the next pitch in a drain is
+unaffected, so the queue should skip and continue rather than HALT. Exit 3 stays reserved for genuinely
+repo-wide infra faults (see Infra Abort above). The marker WRITE ITSELF, however, is REQUIRED, not
+best-effort: a failed `mkdir`/`File.write` now raises `InfraAbort` (`"terminal-marker-write"`) rather than
+degrading to a stderr note — `LoopQueueDrain` reads this marker BEFORE `retry_eligible?/5`, so a silently
+lost write would leave a deterministic exhaustion unmarked and risk a blind full-price queue retry.
 
 The marker is unlinked at the start of every FULL (non-resumed) cycle — see `run_body/1`'s `:full`
 branch — so a stale marker from an earlier, already-concluded cycle never leaks into a fresh one.
@@ -293,4 +316,4 @@ section for how a marked nonzero exit routes to park+skip+breaker instead of `re
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, transaction identity, CODEGEN_BUILD_INVOCATION_ID, recovery/interrupted branch, stranded building claim
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, transaction identity, CODEGEN_BUILD_INVOCATION_ID, recovery/interrupted branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator
