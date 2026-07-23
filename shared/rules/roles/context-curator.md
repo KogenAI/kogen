@@ -18,7 +18,7 @@ Curator MAY ONLY edit:
 - `context/**` — project domain context files (`[local]` targets only)
 - `codegen/rules/**` — shared discipline rules via symlink to `<codegen-repo>/shared/rules`; used by all curators (codegen-on-codegen and downstream)
 - `codegen/logging/**` — session logs (codegen-on-codegen only)
-- `PROJECT_CONTEXT.md` § Domain Context Files rows — curator maintains index↔context parity directly, in its own turn, via the native Edit tool. The broader file (key paths, gate commands, everything else) stays developer/orchestrator territory; curator's surgical-edit discipline bounds actual edits to the row(s) affected by the context file it just changed.
+- `PROJECT_CONTEXT.md` § Domain Context Files rows — curator maintains index↔context parity directly, via the native Edit tool. The broader file stays developer/orchestrator territory; edits bound to the row(s) affected by the context file just changed.
 
 ❌ `lib/`, `priv/`, `assets/`, `test/`, config files, migrations — those are dev territory.
 
@@ -49,9 +49,11 @@ Never edit `shared/rules/**` directly — use `codegen/rules/**` (the symlink pa
 
 Cross-reference: full guard pattern mechanics → `context/hooks.md` § context-curator-guard Write Surface; curator write surface decision table → `context/rules-roles.md` § Curator Write Surface.
 
-**Adding or removing a `context/*.md` file requires a matching `PROJECT_CONTEXT.md` § Domain Context Files row that names the file's basename** — the in-loop `run_curator_doc_check` step (post-your-turn) re-invokes you if this parity is missing (the step enforces; this rule is the pointer).
+**Adding or removing a `context/*.md` file requires a matching `PROJECT_CONTEXT.md` § Domain Context Files row that names the file's basename** — a pre-existing violation may already be in this prompt (`## Orientation-doc violations to fix`); the in-loop scan re-invokes you if parity is still missing (the step enforces; this rule is the pointer).
 
-**Factcheck (named-path claims, count anchors, `_`→`*` corruption):** `context-factcheck-edit-gate.sh` denies an Edit/Write/MultiEdit to any orientation doc, in your own turn, when the PROJECTED post-write content fails the scan. Fix in-turn before finishing. `run_curator_doc_check` re-scans your touched docs post-turn as a backstop. **Named-path claims are checked against THIS repo** — a downstream-app path needs a placeholder segment, e.g. `` `<app>/context/core.md` ``; an env-var runtime path (SCREAMING_SNAKE first segment, e.g. `` `PLATFORM_ROOT/PLATFORM_INFO.md` ``) is auto-skipped, no placeholder needed.
+**Factcheck (named-path claims, count anchors, `_`→`*` corruption):** `context-factcheck-edit-gate.sh` denies an Edit/Write/MultiEdit to any orientation doc, in your own turn, when the PROJECTED post-write content fails the scan. Fix in-turn before finishing. **Named-path claims are checked against THIS repo** — a downstream-app path needs a placeholder segment, e.g. `` `<app>/context/core.md` ``; an env-var runtime path (SCREAMING_SNAKE first segment) is auto-skipped, no placeholder needed.
+
+**Self-check before Stop:** run `bash "$CODEGEN_DIR/harnesses/claude/hooks/lib/context-index-parity-scan.sh" "$PWD"`. Exit 0 → stop. Exit 1 → fix the named diff, rerun until 0. Other → report failure, never claim clean.
 
 ## Rule-File Cap Check
 

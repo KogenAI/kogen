@@ -888,33 +888,70 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp run_roles([role | rest], harness, ctx, opts) when role == "context-curator" do
+    # Curator-stage-entry pre-scan: run the SAME doc-integrity scan
+    # `run_curator_doc_check/6` runs post-turn, but BEFORE the first curator
+    # invocation, so a violation ALREADY present at curator-stage entry
+    # (developer/reviewer edits that happened earlier this cycle) reaches
+    # the FIRST curator prompt instead of costing a first empty call plus a
+    # second paid rework respawn. See pitch
+    # `a-deterministic-doc-check-costs-no-extra-turn`. `run_curator_doc_check/6`
+    # remains the authoritative POST-turn backstop below (unconditionally) —
+    # this pre-scan only changes WHEN a same-cycle violation first reaches a
+    # curator prompt, never what counts as a violation or how repair is
+    # bounded (`run_orientation_repair/1` is the single shared engine both
+    # legs use).
+    #
     # No-op-curator-spawn-when-nothing-was-learned: read the cycle's own
-    # log for the mechanical learning signal BEFORE invoking the curator at
-    # all — unlike the generic clause below, this one can skip the
-    # `invoke_with_retry` call entirely. `:learned` or `:absent` (fail-SAFE
-    # default — a missing/unreadable signal is never read as "skip") spawn
-    # the curator exactly as before. `:no_learning` (every role that ran
-    # this cycle honestly declared, on the record, that it learned nothing
-    # durable) skips the LLM spawn, but the doc-integrity scans and the
-    # CURATED state advance still run unconditionally — those are the only
-    # reason this step can't be deleted outright (see run_curator_doc_check/6),
-    # and a pre-existing doc violation still routes back into a real
-    # curator spawn via run_curator_doc_check's :violations branch.
+    # log for the mechanical learning signal. `:learned` or `:absent`
+    # (fail-SAFE default — a missing/unreadable signal is never read as
+    # "skip") always spawn the curator: clean pre-scan → one normal
+    # invocation; violating pre-scan → one invocation seeded with the
+    # violation text (via the shared repair engine, cycle 0). `:no_learning`
+    # (every role that ran this cycle honestly declared, on the record, that
+    # it learned nothing durable) skips the LLM spawn ONLY when the pre-scan
+    # is clean — a pre-existing doc violation still forces exactly one real
+    # curator spawn for rework, seeded the same way.
     signal_fn =
       Keyword.get(opts, :curator_learning_signal_fn, &LoopGate.curator_learning_signal/1)
 
     log_file = Process.get(@log_path_key)
+    signal = signal_fn.(log_file)
 
-    case signal_fn.(log_file) do
-      :no_learning ->
-        run_format_step(ctx.cwd, opts)
-        run_curator_doc_check(role, rest, harness, ctx, opts, 0)
+    case run_curator_doc_scan(ctx.cwd, opts) do
+      {:clean} ->
+        case signal do
+          :no_learning ->
+            run_format_step(ctx.cwd, opts)
+            run_curator_doc_check(role, rest, harness, ctx, opts, 0)
 
-      signal when signal in [:learned, :absent] ->
-        with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
-          ctx = put_in(ctx, [:artifacts, role], result)
-          run_format_step(ctx.cwd, opts)
-          run_curator_doc_check(role, rest, harness, ctx, opts, 0)
+          _learned_or_absent ->
+            with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
+              ctx = put_in(ctx, [:artifacts, role], result)
+              run_format_step(ctx.cwd, opts)
+              run_curator_doc_check(role, rest, harness, ctx, opts, 0)
+            end
+        end
+
+      {:violations, violations} ->
+        classify_fn = Keyword.get(opts, :text_classify_fn, &LoopGate.classify_failure/1)
+
+        if classify_fn.(violations) == :infra do
+          LoopGate.infra_abort!(
+            "curator-doc-check",
+            "unsatisfiable by any curator edit (classified :infra) — #{violations}"
+          )
+        else
+          run_curator_doc_check_rework(
+            role,
+            rest,
+            harness,
+            ctx,
+            opts,
+            0,
+            Keyword.get(opts, :max_curator_doc_cycles, 1),
+            violations,
+            nil
+          )
         end
     end
   end

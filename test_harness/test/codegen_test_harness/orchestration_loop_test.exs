@@ -4428,7 +4428,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(calls_agent, & &1) == @static_sequence
     end
 
-    test "violation once then clean re-invokes context-curator exactly once, then reaches committer",
+    test "violation once then clean invokes context-curator exactly once (pre-scan seeds the first prompt), then reaches committer",
          %{calls_agent: calls_agent} do
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
       on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
@@ -4452,19 +4452,23 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  curator_doc_check_fn: scan_fn
                )
 
+      # A violation present at curator-stage ENTRY reaches the FIRST curator
+      # call (pre-scan seeds it) — only ONE curator invocation is paid for,
+      # not two (first empty + second rework respawn).
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
-      assert curator_calls == 2
+      assert curator_calls == 1
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      # Pre-scan (finds violation) + post-invoke rescan (clean) = 2 scans.
       assert Agent.get(scan_calls_agent, & &1) == 2
     end
 
-    # Regression for bug 5 (write/read key mismatch): the re-invoked
-    # curator's PROMPT must actually carry the violation text scanned from
-    # the FIRST pass — historically the write landed under
-    # `:curator_doc_violations` while `build_prompt/2` read
-    # `:factcheck_violations`, so the re-invoked curator was handed the raw
-    # pitch with NO violation list at all.
-    test "the re-invoked curator's prompt carries the scanned violation text (write/read key parity)",
+    # Regression for bug 5 (write/read key mismatch): the curator's PROMPT
+    # must actually carry the violation text scanned at curator-stage entry
+    # — historically the write landed under `:curator_doc_violations` while
+    # `build_prompt/2` read `:factcheck_violations`, so the re-invoked
+    # curator was handed the raw pitch with NO violation list at all. Now
+    # the pre-scan seeds the violation into the FIRST (and only) call.
+    test "the curator's FIRST prompt carries the scanned violation text (write/read key parity)",
          %{calls_agent: calls_agent} do
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
       on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
@@ -4507,15 +4511,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       prompts = Agent.get(prompt_agent, & &1)
-      assert length(prompts) == 2
-      # First pass: no violation yet threaded (nothing scanned before this call).
-      refute Enum.at(prompts, 0) =~ "the specific violation text"
-      # Second pass (rework): the violation text from the FIRST scan must be present.
-      assert Enum.at(prompts, 1) =~ "the specific violation text"
-      assert Enum.at(prompts, 1) =~ "## Orientation-doc violations to fix"
+      assert length(prompts) == 1
+      # ONLY pass: the pre-scan violation text is threaded into this FIRST
+      # (and only) curator call.
+      assert Enum.at(prompts, 0) =~ "the specific violation text"
+      assert Enum.at(prompts, 0) =~ "## Orientation-doc violations to fix"
     end
 
-    test "ADD-without-row index-parity violation once then clean re-invokes context-curator exactly once",
+    test "ADD-without-row index-parity violation invokes context-curator exactly once (pre-scan seeds it), then reaches committer",
          %{calls_agent: calls_agent} do
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
       on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
@@ -4546,7 +4549,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
-      assert curator_calls == 2
+      assert curator_calls == 1
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
     end
 
@@ -4659,7 +4662,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert {:error, _reason} = result
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
-      assert curator_calls == 2
+      assert curator_calls == 1
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
@@ -4687,7 +4690,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert {:error, _reason} = result
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
-      assert curator_calls == 2
+      assert curator_calls == 1
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
@@ -4726,7 +4729,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
-      assert curator_calls == 4
+      assert curator_calls == 3
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
     end
 
@@ -4761,11 +4764,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert {:error, _reason} = result
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
-      assert curator_calls == 16
+      assert curator_calls == 15
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
-    test "curator-doc violation classified :infra aborts loud — NEVER re-invokes context-curator",
+    test "curator-doc violation classified :infra aborts loud — NEVER invokes context-curator",
          %{calls_agent: calls_agent} do
       always_violates_fn = fn _cwd ->
         {:violations, "** (Postgrex.Error) relation \"widgets\" already exists"}
@@ -4788,14 +4791,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                      )
                    end
 
-      # context-curator ran ONCE (the normal initial pass) — never a SECOND
-      # time as a doc-check rework re-invocation: no curator edit could
-      # satisfy an infra-classified violation, so the rework budget must
-      # never be spent on it.
-      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator")) == 1
+      # The pre-scan classifies the violation BEFORE any invocation — an
+      # infra-classified violation aborts loud with ZERO curator calls, not
+      # even the "normal initial pass": no curator edit could satisfy it, so
+      # no invocation (paid or otherwise) is ever spent on it.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator")) == 0
     end
 
-    test "full-tree index-coverage violation once then clean re-invokes context-curator exactly once",
+    test "full-tree index-coverage violation invokes context-curator exactly once (pre-scan seeds it), then reaches committer",
          %{calls_agent: calls_agent} do
       # Mirrors the ADD-without-row delta-pass test above, but the violation
       # string here is the one only the full-tree pass in
@@ -4831,7 +4834,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
-      assert curator_calls == 2
+      assert curator_calls == 1
       assert List.last(Agent.get(calls_agent, & &1)) == "committer"
     end
 

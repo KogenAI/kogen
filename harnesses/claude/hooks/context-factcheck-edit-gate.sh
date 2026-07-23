@@ -28,8 +28,8 @@
 # Allows (fail-open):
 #   - Non-Edit/Write/MultiEdit tools
 #   - FILE_PATH not an orientation doc
-#   - Unparseable tool_input (jq failures) — backstop is
-#     run_curator_doc_check (in-loop, post-curator, end-of-turn)
+#   - Unparseable tool_input (jq failures) — backstop is the in-loop
+#     curator-stage scan (pre-invoke seed AND run_curator_doc_check post-turn)
 #   - Scan reports clean
 
 set -u

@@ -360,9 +360,11 @@ run_integrate_stage() {
 
     # ── context/ docs (idempotent: write once) ────────────────────────────────
     # PROJECT_CONTEXT.md's index PROMISES these exist ("always present"). A dangling
-    # index row is a hard failure at the curator's context-index-parity-scan, AFTER
-    # the developer and reviewer have run. The agents own the content from the first
-    # build onward — these are only the stubs that make the index true on day zero.
+    # index row is a hard failure at the curator's context-index-parity-scan, run
+    # AFTER the developer and reviewer have run — both before the first curator
+    # invocation (seeding a same-cycle violation into that first prompt) and again
+    # post-turn as the backstop. The agents own the content from the first build
+    # onward — these are only the stubs that make the index true on day zero.
     mkdir -p "$target_dir/context"
     # Both stacks' indexes promise development.md; only static's promises core.md.
     # Seed exactly what the stack's own index row names — never more.

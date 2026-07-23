@@ -229,7 +229,18 @@ and the three scans below are loop-owned, and `ensure_gate_graded_this_tree!` st
 committer whenever curator edits change the tree. Turn-0 orientation repair does not receive this
 post-review claim; a resumed `REVIEWED` checkpoint does.
 
-After the context-curator role, `run_curator_doc_check/6` shells `default_curator_doc_scan/2`
+**Pre-scan at curator-stage entry (first-prompt seed) + post-turn backstop**: the `run_roles/4`
+`context-curator` clause runs the SAME scan (`run_curator_doc_scan/2`) BEFORE the first curator
+invocation, not only after it. A violation already present at curator-stage entry (from earlier
+developer/reviewer edits this cycle) is threaded straight into the FIRST curator prompt via the shared
+`run_orientation_repair/1` engine (same floor/progress/ceiling bound the post-turn leg uses) — one paid
+call instead of an empty first call plus a second rework respawn. `:infra`-classified violations abort
+loud (`LoopGate.infra_abort!/2`) before any invocation. `run_curator_doc_check/6` (below) remains the
+AUTHORITATIVE post-turn backstop, unconditionally, for drift the curator's OWN edits introduce this turn
+— the pre-scan only changes WHEN an already-present violation first reaches a curator prompt, never what
+counts as a violation or how repair is bounded. See pitch `a-deterministic-doc-check-costs-no-extra-turn`.
+
+`run_curator_doc_check/6` shells `default_curator_doc_scan/2`
 (dispatched via the `:curator_doc_check_fn` seam, still arity-1 for the 30+ existing test overrides —
 the default closure captures `gate_opts(opts)` itself, since this step runs upstream of
 `run_gate_once/2`'s own `gate_opts/1` call and has to resolve `:cycle_log` on its own). Three checks,

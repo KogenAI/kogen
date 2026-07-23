@@ -8,8 +8,10 @@
 # SubagentStop hook) so the same logic could run both there and as an in-loop
 # Elixir step. Now shared by TWO live callers: the PreToolUse
 # context-factcheck-edit-gate.sh (projected post-write content, writer's own
-# turn) and the in-loop Elixir OrchestrationLoop.run_curator_doc_check (working
-# tree, end-of-turn backstop for Bash writes the edit-gate never sees).
+# turn) and the in-loop Elixir curator-stage scan — run pre-invoke (seeding a
+# same-cycle violation into the curator's FIRST prompt) AND post-turn via
+# OrchestrationLoop.run_curator_doc_check (working tree, backstop for Bash
+# writes the edit-gate never sees).
 #
 # Usage: context-factcheck-scan.sh <repo_root> [doc_path...]
 #
