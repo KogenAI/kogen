@@ -143,7 +143,7 @@ if [ "$first_line" = "---" ]; then
     frontmatter_block=$(awk 'NR==1{next} /^---$/{exit} {print}' "$pitch")
     waives_line=$(printf '%s\n' "$frontmatter_block" | grep -m1 '^waives:' || true)
     if [ -n "$waives_line" ]; then
-        registry="$(dirname "$0")/../../../shared/enforcement/registry.yaml"
+        registry="${CODEGEN_DIR:-$(dirname "$0")/../../..}/shared/enforcement/registry.yaml"
         waives_ids=$(printf '%s' "$waives_line" |
             sed -e 's/^waives:[[:space:]]*//' -e 's/[][]//g' -e 's/,/\n/g' |
             tr -d ' ')

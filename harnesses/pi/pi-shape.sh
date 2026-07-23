@@ -11,7 +11,7 @@ set -euo pipefail
 
 if ! command -v pi >/dev/null 2>&1; then
     echo "ERROR: 'pi' binary not found in PATH." >&2
-    echo "Install: npm install -g @earendil-works/pi-coding-agent" >&2
+    echo "Install: run 'make install' in the codegen repo (pins the exact version from harnesses/pi/manifest.yaml)" >&2
     echo "See README.md § Prerequisites for details." >&2
     exit 127
 fi
@@ -235,7 +235,13 @@ if [[ -n "${PI_NON_INTERACTIVE:-}" ]]; then
     NON_INTERACTIVE_FLAGS+=(-p --mode text --no-session)
 fi
 
-exec pi \
+# Deterministic postflight after a clean Pi exit: validates every changed/
+# new pitch against the pitch-format grammar (status/Questions/Answers/
+# waives, plus SHAPED-only scope/summary/zero-open-Questions completeness).
+# Not `exec` — the wrapper must regain control after pi exits to run
+# postflight; it preserves pi's own exit code on a non-zero/aborted session.
+source "$CODEGEN_DIR/harnesses/shared/pitch-postflight.sh"
+run_pitch_postflight shape "$PWD" -- pi \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --thinking "$ROLE_EFFORT" \

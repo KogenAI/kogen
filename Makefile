@@ -666,10 +666,16 @@ doctor:
 	else \
 		echo "FAIL: node not on PATH (install via mise: mise install node)"; fails=$$((fails + 1)); \
 	fi; \
+	_pi_pinned_ver=$$(yq -r '.runtime.version' "$(SCRIPT_DIR)/harnesses/pi/manifest.yaml" 2>/dev/null); \
 	if command -v pi >/dev/null 2>&1 && pi --version >/dev/null 2>&1; then \
-		echo "OK: pi on PATH and --version exits 0"; \
+		_pi_installed_ver=$$(pi --version 2>/dev/null | tr -d '[:space:]'); \
+		if [ "$$_pi_installed_ver" = "$$_pi_pinned_ver" ]; then \
+			echo "OK: pi on PATH, version $$_pi_installed_ver matches pinned $$_pi_pinned_ver"; \
+		else \
+			echo "FAIL: pi version $$_pi_installed_ver != pinned $$_pi_pinned_ver (run: make install)"; fails=$$((fails + 1)); \
+		fi; \
 	else \
-		echo "FAIL: pi on PATH and --version exits 0 (npm install -g @earendil-works/pi-coding-agent)"; fails=$$((fails + 1)); \
+		echo "FAIL: pi on PATH and --version exits 0 (run: make install)"; fails=$$((fails + 1)); \
 	fi; \
 	if [ -f "$$HOME/.pi/agent/auth.json" ]; then \
 		echo "OK: ~/.pi/agent/auth.json exists"; \

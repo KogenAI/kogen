@@ -638,6 +638,36 @@ for _harness in "${HARNESSES[@]}"; do
         ;;
 
     pi)
+        # ── Pi-specific: pin the binary to manifest.yaml's runtime.package@version
+        # (single authority — see harnesses/pi/manifest.yaml § Runtime). Fails
+        # loud (no latest-version fallback) when the installed `pi --version`
+        # is missing or differs from the pinned version.
+        _pi_pkg=$(yq -r '.runtime.package' "$CODEGEN_DIR/harnesses/pi/manifest.yaml")
+        _pi_ver=$(yq -r '.runtime.version' "$CODEGEN_DIR/harnesses/pi/manifest.yaml")
+        echo "🔧 Installing Pi runtime: ${_pi_pkg}@${_pi_ver}..."
+        if command -v npm >/dev/null 2>&1; then
+            npm install -g "${_pi_pkg}@${_pi_ver}" || {
+                echo "❌ install.sh: npm install -g ${_pi_pkg}@${_pi_ver} failed" >&2
+                exit 1
+            }
+        else
+            echo "❌ install.sh: npm not found — cannot install ${_pi_pkg}@${_pi_ver}" >&2
+            exit 1
+        fi
+        _pi_installed_ver=""
+        if command -v pi >/dev/null 2>&1; then
+            _pi_installed_ver=$(pi --version 2>/dev/null | tr -d '[:space:]')
+        fi
+        if [ -z "$_pi_installed_ver" ]; then
+            echo "❌ install.sh: 'pi --version' failed after install — cannot verify ${_pi_pkg}@${_pi_ver}" >&2
+            exit 1
+        fi
+        if [ "$_pi_installed_ver" != "$_pi_ver" ]; then
+            echo "❌ install.sh: installed pi version '${_pi_installed_ver}' != pinned '${_pi_ver}' — check for a stale PATH entry shadowing the npm-global install" >&2
+            exit 1
+        fi
+        echo "   ✅ pi ${_pi_installed_ver} matches pinned version"
+
         # ── Pi-specific: agents ───────────────────────────────────────────────
         echo "🔧 Setting up Pi configuration..."
 

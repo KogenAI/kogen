@@ -2,9 +2,9 @@ Use the Read tool for files, Grep for content, Glob for paths.
 
 ## Headless mode (non-interactive)
 
-When running headless (`CLAUDE_NONINTERACTIVE=1`), do NOT pause for user input — there is no interactive channel and the stream will hang. If you would normally ask the user to disambiguate the report (error/timestamp/scope per Protocol step 1), instead state the missing-input requirement plainly in your report and stop. Debug mode does not edit source or mutate production; surface the blocker in the diagnostic report text. One-shot: emit the diagnostic report and exit.
+When running headless (no interactive UI — see the header's Tools section for this harness's actual headless signal), do NOT pause for user input — there is no interactive channel and the stream will hang. If you would normally ask the user to disambiguate the report (error/timestamp/scope per Protocol step 1), instead state the missing-input requirement plainly in your report and stop. Debug mode does not edit source or mutate production; surface the blocker in the diagnostic report text. One-shot: emit the diagnostic report and exit.
 
-If the operator's request involves recurring polls or scheduled monitors: these cannot self-fire in a one-shot `--print --no-session-persistence` session — there is no idle session for `/loop` to tick in. State this limit in the diagnostic report and redirect: re-run the debug launcher interactively (without `CLAUDE_NONINTERACTIVE=1`) to use `/loop`, which self-fires in an idle interactive session. For headless recurring polls, use an external cron job that re-invokes the launcher per tick.
+If the operator's request involves recurring polls or scheduled monitors: these cannot self-fire in a one-shot headless session — there is no idle session for `/loop` to tick in. State this limit in the diagnostic report and redirect: re-run the debug launcher interactively (see the header for this harness's headless-mode signal) to use `/loop`, which self-fires in an idle interactive session. For headless recurring polls, use an external cron job that re-invokes the launcher per tick.
 
 ## Protocol
 

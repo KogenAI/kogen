@@ -259,8 +259,8 @@
   surface: user_global
   signal: CLAUDE_ROLE_FAMILY
   role: "*"
-  harnesses: claude
-  rationale: CLAUDE_ROLE_FAMILY-keyed; Pi investigation sessions use load-gate not role flags
+  harnesses: all
+  rationale: CLAUDE_ROLE_FAMILY-keyed on Claude; Pi twin gates only the explicit PI_DEBUG_REMOTE=1 branch (pi-debug --server), since local Pi debug/shape already carry no Bash grant
 
 - kind: registration
   id: curator-before-committer
@@ -449,8 +449,8 @@
   surface: user_global
   signal: CLAUDE_ROLE_FAMILY
   role: "*"
-  harnesses: claude
-  rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard, Pi has no equivalent launcher concept
+  harnesses: all
+  rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard; Pi twin gates via PI_ROLE/resolveRole() for parity with the native worktree/pitch write boundary
 
 - kind: registration
   id: orchestrator-read-discipline
@@ -590,8 +590,8 @@
   surface: user_global
   signal: AGENT_TYPE
   role: "developer-*|reviewer-*|committer|context-curator"
-  harnesses: claude
-  rationale: Claude Code per-call Read inspector; Pi uses load-gate tool restriction
+  harnesses: all
+  rationale: Claude Code per-call Read inspector; Pi twin mirrors the same typed files_to_touch/files_modified event gate for full parity
 
 - kind: registration
   id: track-subagent-edits

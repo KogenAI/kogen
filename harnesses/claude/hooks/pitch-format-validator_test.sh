@@ -29,6 +29,9 @@
 #  25:  frontmatter waives: [session-log-writer-only] → block (real id, not waivable: true)
 #  26:  frontmatter waives: [prompt-budget-writer-only] → allow (real id, waivable: true)
 #  27:  frontmatter with no waives: line at all → allow (absent = none)
+#  28:  waives: resolution unaffected by neighboring handoffs:/handoff_receipt: keys
+#  29:  split-root: CODEGEN_DIR registry resolves waivable id → allow
+#  30:  split-root: CODEGEN_DIR registry, unknown id → block
 
 set -u
 
@@ -258,6 +261,24 @@ write_pitch_frontmatter_status_shaped() {
 ---
 status: SHAPED
 blocks_on: []
+---
+# My Pitch
+
+## Problem
+
+Done.
+MD
+}
+
+# write_pitch_waives_split_root_id <path>
+# frontmatter waives: names an id that only resolves via CODEGEN_DIR's
+# registry (split-root fixture) — cwd's own shared/enforcement/ is absent.
+write_pitch_waives_split_root_id() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: SHAPED
+waives: [test-waivable-hook]
 ---
 # My Pitch
 
@@ -736,6 +757,51 @@ make_transcript_with_pitch_write "$T28_transcript" "$T28_pitch"
 out=$(run_hook "$T28_dir" false "$T28_transcript" "shape" "")
 assert_not_contains "waives: with neighboring handoffs: keys still allows" '"decision"' "$out"
 rm -rf "$T28_dir"
+
+# ── Test 29: split-root registry resolution — cwd is a downstream project
+# root (no local shared/enforcement/), but CODEGEN_DIR points at a dir that
+# DOES have a registry with a waivable: true entry → the waiver resolves
+# (allow). Proves the registry lookup prefers CODEGEN_DIR over dirname "$0".
+T29_codegen_dir=$(mktemp -d)
+mkdir -p "$T29_codegen_dir/shared/enforcement"
+cat >"$T29_codegen_dir/shared/enforcement/registry.yaml" <<'YAML'
+- kind: registration
+  id: test-waivable-hook
+  event: PreToolUse
+  waivable: true
+YAML
+T29_dir=$(mktemp -d)
+mkdir -p "$T29_dir/codegen/pitches/draft"
+T29_pitch="$T29_dir/codegen/pitches/draft/my-pitch.md"
+T29_transcript="$T29_dir/transcript.jsonl"
+write_pitch_waives_split_root_id "$T29_pitch"
+make_transcript_with_pitch_write "$T29_transcript" "$T29_pitch"
+out=$(make_stop_json "$T29_dir" false "$T29_transcript" |
+    CODEGEN_DIR="$T29_codegen_dir" CLAUDE_ROLE=shape PI_ROLE="" bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "split-root: CODEGEN_DIR registry resolves waiver → allow" '"decision"' "$out"
+rm -rf "$T29_dir" "$T29_codegen_dir"
+
+# ── Test 30: split-root registry resolution — same CODEGEN_DIR fixture, but
+# an id that is NOT in that registry still blocks (proves the fix resolves
+# the registry, it does not disable the check). ────────────────────────────
+T30_codegen_dir=$(mktemp -d)
+mkdir -p "$T30_codegen_dir/shared/enforcement"
+cat >"$T30_codegen_dir/shared/enforcement/registry.yaml" <<'YAML'
+- kind: registration
+  id: test-waivable-hook
+  event: PreToolUse
+  waivable: true
+YAML
+T30_dir=$(mktemp -d)
+mkdir -p "$T30_dir/codegen/pitches/draft"
+T30_pitch="$T30_dir/codegen/pitches/draft/my-pitch.md"
+T30_transcript="$T30_dir/transcript.jsonl"
+write_pitch_waives_unknown_id "$T30_pitch"
+make_transcript_with_pitch_write "$T30_transcript" "$T30_pitch"
+out=$(make_stop_json "$T30_dir" false "$T30_transcript" |
+    CODEGEN_DIR="$T30_codegen_dir" CLAUDE_ROLE=shape PI_ROLE="" bash "$HOOK" 2>/dev/null || true)
+assert_contains "split-root: unknown id still blocks with CODEGEN_DIR registry" '"decision"' "$out"
+rm -rf "$T30_dir" "$T30_codegen_dir"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

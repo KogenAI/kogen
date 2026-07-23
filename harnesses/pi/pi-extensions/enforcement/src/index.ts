@@ -18,6 +18,7 @@ import { register as registerCodegenTools } from "./codegen-tools";
 import { register as registerBuildAgentAppConfinement } from "./hooks/build-agent-app-confinement";
 import { register as registerBuildQueueContinuity } from "./hooks/build-queue-continuity";
 import { register as registerBuildWorkerCwdGuard } from "./hooks/build-worker-cwd-guard";
+import { register as registerClaudeDebugBashGuard } from "./hooks/claude-debug-bash-guard";
 import { register as registerCleanTreeBeforeShip } from "./hooks/clean-tree-before-ship";
 import { register as registerCommitterBashAllowlist } from "./hooks/committer-bash-allowlist";
 import { register as registerCommitterGateVerdictClear } from "./hooks/committer-gate-verdict-clear";
@@ -45,6 +46,7 @@ import { register as registerNoPythonJson } from "./hooks/no-python-json";
 import { register as registerNoSilentFailure } from "./hooks/no-silent-failure";
 import { register as registerOperatorSubagentAllowlist } from "./hooks/operator-subagent-allowlist";
 import { register as registerOrchestratorNoCi } from "./hooks/orchestrator-no-ci";
+import { register as registerOrchestratorNoSourceEdit } from "./hooks/orchestrator-no-source-edit";
 import { register as registerOrchestratorReadDiscipline } from "./hooks/orchestrator-read-discipline";
 import { register as registerPhoenixBackendDeveloperGuard } from "./hooks/phoenix-backend-developer-guard";
 import { register as registerPhoenixFrontendDeveloperGuard } from "./hooks/phoenix-frontend-developer-guard";
@@ -61,6 +63,7 @@ import { register as registerShapeRemoteReadonly } from "./hooks/shape-remote-re
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
 import { register as registerStopResume } from "./hooks/stop-resume";
 import { register as registerStopVerifyPlannerGate } from "./hooks/stop-verify-planner-gate";
+import { register as registerSubagentReadDiscipline } from "./hooks/subagent-read-discipline";
 import { register as registerTrackSubagentEdits } from "./hooks/track-subagent-edits";
 import { register as registerTrackToolFailures } from "./hooks/track-tool-failures";
 import { register as registerUsageRulesGrepGuard } from "./hooks/usage-rules-grep-guard";
@@ -72,6 +75,7 @@ export default function (pi: ExtensionAPI): void {
   registerBuildAgentAppConfinement(pi);
   registerBuildQueueContinuity(pi);
   registerBuildWorkerCwdGuard(pi);
+  registerClaudeDebugBashGuard(pi);
   registerCleanTreeBeforeShip(pi);
   registerCommitterBashAllowlist(pi);
   registerCommitterGateVerdictClear(pi);
@@ -99,6 +103,7 @@ export default function (pi: ExtensionAPI): void {
   registerNoSilentFailure(pi);
   registerOperatorSubagentAllowlist(pi);
   registerOrchestratorNoCi(pi);
+  registerOrchestratorNoSourceEdit(pi);
   registerOrchestratorReadDiscipline(pi);
   registerPhoenixBackendDeveloperGuard(pi);
   registerPhoenixFrontendDeveloperGuard(pi);
@@ -115,6 +120,7 @@ export default function (pi: ExtensionAPI): void {
   registerStaticSiteExGuard(pi);
   registerStopResume(pi);
   registerStopVerifyPlannerGate(pi);
+  registerSubagentReadDiscipline(pi);
   registerTrackSubagentEdits(pi);
   registerTrackToolFailures(pi);
   registerUsageRulesGrepGuard(pi);

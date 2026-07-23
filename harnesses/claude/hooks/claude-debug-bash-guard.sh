@@ -8,8 +8,8 @@
 # surface: user_global
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
-# harnesses: claude_code
-# rationale: CLAUDE_ROLE_FAMILY-keyed; Pi investigation sessions use load-gate not role flags
+# harnesses: all
+# rationale: CLAUDE_ROLE_FAMILY-keyed on Claude; Pi twin gates only the explicit PI_DEBUG_REMOTE=1 branch (pi-debug --server), since local Pi debug/shape already carry no Bash grant
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.

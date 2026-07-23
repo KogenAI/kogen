@@ -10,7 +10,7 @@ set -euo pipefail
 
 if ! command -v pi >/dev/null 2>&1; then
     echo "ERROR: 'pi' binary not found in PATH." >&2
-    echo "Install: npm install -g @earendil-works/pi-coding-agent" >&2
+    echo "Install: run 'make install' in the codegen repo (pins the exact version from harnesses/pi/manifest.yaml)" >&2
     echo "See README.md § Prerequisites for details." >&2
     exit 127
 fi
@@ -60,7 +60,7 @@ done
 BABYSIT_STARTUP='## BABYSIT STARTUP CONTEXT'
 if [[ "$STUDIO" -eq 1 ]]; then
     export CODEGEN_BABYSIT_STUDIO=1
-    source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
+    source "$CODEGEN_DIR/harnesses/shared/ssh-target.sh"
 
     [[ -n "${PI_NON_INTERACTIVE:-}" ]] && export SSH_TARGET_NON_INTERACTIVE=1
 

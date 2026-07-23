@@ -40,7 +40,7 @@ A failed boot is a finding to fix, not an abort. Record the error in the pitch. 
 
 ## Headless mode (non-interactive)
 
-When running headless (no interactive UI — the session was launched with `CLAUDE_NONINTERACTIVE=1`), do NOT call `AskUserQuestion` expecting an answer: under stream-json the tool call blocks the stream waiting for a `tool_result` that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
+When running headless (no interactive UI — see the header's Tools section for this harness's actual headless signal), do NOT call the question tool expecting an answer: under a non-interactive stream the tool call blocks waiting for a response that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
 
 Format `## Questions` and `## Answers` using the EXACT grammar below (enforced by the pitch-format-validator Stop hook):
 

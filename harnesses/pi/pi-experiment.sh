@@ -11,7 +11,7 @@ set -euo pipefail
 
 if ! command -v pi >/dev/null 2>&1; then
     echo "ERROR: 'pi' binary not found in PATH." >&2
-    echo "Install: npm install -g @earendil-works/pi-coding-agent" >&2
+    echo "Install: run 'make install' in the codegen repo (pins the exact version from harnesses/pi/manifest.yaml)" >&2
     echo "See README.md § Prerequisites for details." >&2
     exit 127
 fi
@@ -36,8 +36,8 @@ if [[ "${1:-}" == "--done" ]]; then
         printf 'pi-experiment: --done requires a <slug>\n' >&2
         exit 2
     fi
-    source "$CODEGEN_DIR/harnesses/shared/experiment-prune.sh"
-    experiment_prune "$2"
+    source "$CODEGEN_DIR/harnesses/shared/worktree-lifecycle.sh"
+    worktree_destroy "$2"
     exit $?
 fi
 
@@ -146,7 +146,14 @@ if [[ -n "${PI_NON_INTERACTIVE:-}" ]]; then
     NON_INTERACTIVE_FLAGS+=(-p --mode text --no-session)
 fi
 
-exec pi \
+# Deterministic postflight after a clean Pi exit: validates every changed/
+# new pitch against the pitch-format grammar. Rooted at CODEGEN_PITCH_ROOT
+# (the durable main-checkout anchor), not $PWD — pitch writes land there
+# regardless of which worktree the session's implementation work occupies.
+# Not `exec` — the wrapper must regain control after pi exits to run
+# postflight; it preserves pi's own exit code on a non-zero/aborted session.
+source "$CODEGEN_DIR/harnesses/shared/pitch-postflight.sh"
+run_pitch_postflight experiment "$CODEGEN_PITCH_ROOT" -- pi \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --thinking "$ROLE_EFFORT" \

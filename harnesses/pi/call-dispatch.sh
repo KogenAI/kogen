@@ -63,7 +63,7 @@ trap '_cleanup_dispatch_snapshot' EXIT
 
 if ! command -v pi >/dev/null 2>&1; then
     printf 'codegen-call (pi): pi binary not found in PATH\n' >&2
-    printf 'Install: npm install -g @earendil-works/pi-coding-agent\n' >&2
+    printf 'Install: run '\''make install'\'' in the codegen repo (pins the exact version from harnesses/pi/manifest.yaml)\n' >&2
     exit 127
 fi
 

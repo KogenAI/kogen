@@ -9,12 +9,13 @@
 # the reader (see codegen/pitches/ready/... "build-ready" — Files to touch).
 #
 # The four claude-*/pi-* launcher entries are COPIED into the installed
-# harness by `make install`; the pitch-context-selector.sh entry is instead
-# SOURCED LIVE through the installed harness symlink at launcher runtime —
-# both sides must invalidate a same-HEAD stamp, so both are in this set.
+# harness by `make install`; the pitch-context-selector.sh, ssh-target.sh, and
+# worktree-lifecycle.sh entries are instead SOURCED LIVE through the installed
+# harness symlink at launcher runtime — all sides must invalidate a same-HEAD
+# stamp, so all are in this set.
 set -uo pipefail
 
-_BUILD_READY_SOURCE_SET="shared/rules shared/subagents harnesses/claude/manifest.yaml harnesses/pi/manifest.yaml harnesses/claude/hooks templates/generator harnesses/claude/claude-shape.sh harnesses/claude/claude-experiment.sh harnesses/pi/pi-shape.sh harnesses/pi/pi-experiment.sh harnesses/shared/pitch-context-selector.sh"
+_BUILD_READY_SOURCE_SET="shared/rules shared/subagents harnesses/claude/manifest.yaml harnesses/pi/manifest.yaml harnesses/claude/hooks templates/generator harnesses/claude/claude-shape.sh harnesses/claude/claude-experiment.sh harnesses/pi/pi-shape.sh harnesses/pi/pi-experiment.sh harnesses/pi/pi-ops.sh harnesses/pi/pi-debug.sh harnesses/shared/pitch-context-selector.sh harnesses/shared/ssh-target.sh harnesses/shared/worktree-lifecycle.sh harnesses/shared/pitch-postflight.sh harnesses/shared/pitch-postflight.cjs shared/enforcement/registry.yaml"
 
 # build_ready_content_hash <codegen_dir>
 # Prints a stable hash over the CURRENT WORKING-TREE bytes of the source set

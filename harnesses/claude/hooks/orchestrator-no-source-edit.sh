@@ -7,8 +7,8 @@
 # surface: user_global
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
-# harnesses: claude_code
-# rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard, Pi has no equivalent launcher concept
+# harnesses: all
+# rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard; Pi twin gates via PI_ROLE/resolveRole() for parity with the native worktree/pitch write boundary
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.

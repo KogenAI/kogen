@@ -4,6 +4,14 @@
 
 harness: pi
 
+# ─── Runtime (Pi package version — single authority) ───────────────────────────
+# install.sh installs this exact package@version; update_ai_tools.sh converges
+# to it (no latest-version fallback); `make doctor` reads it to validate the
+# installed binary's `pi --version`. Bump here, not at any reader site.
+runtime:
+  package: "@earendil-works/pi-coding-agent"
+  version: "0.81.1"
+
 # ─── Agent installation ───────────────────────────────────────────────────────
 agents_dir: ~/.pi/agent/agents
 # Agents are rendered from shared/subagents/{shared,phoenix,static}/*.md.j2

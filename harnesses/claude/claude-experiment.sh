@@ -23,8 +23,8 @@ if [[ "${1:-}" == "--done" ]]; then
         printf 'claude-experiment: --done requires a <slug>\n' >&2
         exit 2
     fi
-    source "$CODEGEN_DIR/harnesses/shared/experiment-prune.sh"
-    experiment_prune "$2"
+    source "$CODEGEN_DIR/harnesses/shared/worktree-lifecycle.sh"
+    worktree_destroy "$2"
     exit $?
 fi
 

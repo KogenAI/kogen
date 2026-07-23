@@ -19,7 +19,7 @@ it).
 
 - `harnesses/claude/hooks/worktree-create-phoenix.sh` — allocates a port when creating a worktree.
 - `harnesses/claude/hooks/worktree-remove-phoenix.sh` — releases the port on worktree teardown.
-- `harnesses/shared/experiment-prune.sh` — releases stale allocations during experiment cleanup.
+- `harnesses/shared/worktree-lifecycle.sh` (`worktree_destroy`) — releases stale allocations during experiment cleanup. Supersedes the old `experiment-prune.sh` (folded verbatim).
 
 `install.sh` and `uninstall.sh` do NOT source this script — zero references, confirmed by grep. Prior
 docs describing it as "tracks the installed-by-ocg manifest to avoid orphaned artifacts" were wrong;

@@ -352,6 +352,61 @@ describe("pitch-format-validator", { concurrency: false }, () => {
     );
   });
 
+  // (d.split-root) split-root registry resolution — cwd (tmpDir) is a
+  // downstream project root with NO local shared/enforcement/, but
+  // CODEGEN_DIR points at a separate dir that DOES have a registry with a
+  // waivable: true entry. Proves registryAllowsWaiver prefers CODEGEN_DIR
+  // over repoRoot(projectDir).
+  function writeSplitRootRegistryFixture(): string {
+    const codegenDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pitch-format-validator-codegen-"),
+    );
+    fs.mkdirSync(path.join(codegenDir, "shared", "enforcement"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(codegenDir, "shared", "enforcement", "registry.yaml"),
+      [
+        "- kind: registration",
+        "  id: test-waivable-hook",
+        "  event: PreToolUse",
+        "  waivable: true",
+        "",
+      ].join("\n"),
+    );
+    return codegenDir;
+  }
+
+  it("split-root: CODEGEN_DIR registry resolves waivable id → no warning", async () => {
+    const codegenDir = writeSplitRootRegistryFixture();
+    process.env["CODEGEN_DIR"] = codegenDir;
+    try {
+      writePitch(
+        "---\nstatus: SHAPED\nwaives: [test-waivable-hook]\n---\n\nSome content.\n",
+      );
+      const stderr = await runHook("shape");
+      assert.ok(!stderr.includes("waives:"), "expected no waives warning");
+    } finally {
+      delete process.env["CODEGEN_DIR"];
+      fs.rmSync(codegenDir, { recursive: true, force: true });
+    }
+  });
+
+  it("split-root: CODEGEN_DIR registry, unknown id → still warns", async () => {
+    const codegenDir = writeSplitRootRegistryFixture();
+    process.env["CODEGEN_DIR"] = codegenDir;
+    try {
+      writePitch(
+        "---\nstatus: SHAPED\nwaives: [no-such-hook]\n---\n\nSome content.\n",
+      );
+      const stderr = await runHook("shape");
+      assert.ok(stderr.includes("no-such-hook"), "expected waives warning");
+    } finally {
+      delete process.env["CODEGEN_DIR"];
+      fs.rmSync(codegenDir, { recursive: true, force: true });
+    }
+  });
+
   // Returns null (observe-only)
   it("never returns block result (observe-only)", async () => {
     writePitch("> Status: FOO\n");

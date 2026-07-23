@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# experiment-prune_test.sh — unit tests for experiment-prune.sh
+# worktree-lifecycle_test.sh — unit tests for worktree-lifecycle.sh
+# (folded from experiment-prune_test.sh; exercises worktree_destroy).
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELPER="$SCRIPT_DIR/experiment-prune.sh"
+HELPER="$SCRIPT_DIR/worktree-lifecycle.sh"
 
 pass=0
 fail=0
@@ -85,7 +86,7 @@ T1_OUT=$(
     cd "$T1_ROOT"
     PATH="$BIN_DIR:$PATH" \
         CODEGEN_DIR="$T1_CODEGEN_DIR" \
-        bash -c ". \"$HELPER\"; experiment_prune my-exp"
+        bash -c ". \"$HELPER\"; worktree_destroy my-exp"
 ) || T1_EXIT=$?
 
 assert_eq "T1: exit 0 on happy path" "0" "$T1_EXIT"
@@ -124,7 +125,7 @@ T2_OUT=$(
     cd "$T2_ROOT"
     PATH="$BIN_DIR:$PATH" \
         CODEGEN_DIR="$T2_CODEGEN_DIR" \
-        bash -c ". \"$HELPER\"; experiment_prune exp-my-exp" # note: pass with exp- prefix
+        bash -c ". \"$HELPER\"; worktree_destroy exp-my-exp" # note: pass with exp- prefix
 ) || T2_EXIT=$?
 
 assert_eq "T2: exit 0 (sanitized slug resolves correctly)" "0" "$T2_EXIT"
@@ -153,7 +154,7 @@ T3_STDERR=$(
     cd "$T3_ROOT"
     PATH="$BIN_DIR:$PATH" \
         CODEGEN_DIR="$T3_CODEGEN_DIR" \
-        bash -c ". \"$HELPER\"; experiment_prune ghost" 2>&1 >/dev/null
+        bash -c ". \"$HELPER\"; worktree_destroy ghost" 2>&1 >/dev/null
 ) || T3_EXIT=$?
 
 assert_eq "T3: exit 1 when not found" "1" "$T3_EXIT"
@@ -196,7 +197,7 @@ T4_OUT=$(
     cd "$T4_ROOT"
     PATH="$BIN_DIR:$PATH" \
         CODEGEN_DIR="$T4_CODEGEN_DIR" \
-        bash -c ". \"$HELPER\"; experiment_prune lingering"
+        bash -c ". \"$HELPER\"; worktree_destroy lingering"
 ) || T4_EXIT=$?
 
 assert_eq "T4: exit 0 when dir gone but branch lingers" "0" "$T4_EXIT"
@@ -236,7 +237,7 @@ T5_EXIT=0
     cd "$T5_ROOT"
     PATH="$BIN_DIR:$PATH" \
         CODEGEN_DIR="$T5_CODEGEN_DIR" \
-        bash -c ". \"$HELPER\"; experiment_prune retry-me" >/dev/null 2>&1
+        bash -c ". \"$HELPER\"; worktree_destroy retry-me" >/dev/null 2>&1
 ) || T5_EXIT=$?
 
 assert_eq "T5: exit 0 even when git worktree remove fails (fail-open)" "0" "$T5_EXIT"
@@ -260,7 +261,7 @@ T6_EXIT=0
     cd "$T6_ROOT"
     PATH="$BIN_DIR:$PATH" \
         CODEGEN_DIR="$T6_CODEGEN_DIR" \
-        bash -c ". \"$HELPER\"; experiment_prune port-slug" >/dev/null 2>&1
+        bash -c ". \"$HELPER\"; worktree_destroy port-slug" >/dev/null 2>&1
 ) || T6_EXIT=$?
 
 assert_eq "T6: exit 0" "0" "$T6_EXIT"
@@ -287,8 +288,8 @@ if [[ "\${1:-}" == "--done" ]]; then
         printf 'claude-experiment: --done requires a <slug>\n' >&2
         exit 2
     fi
-    source "\$CODEGEN_DIR/harnesses/shared/experiment-prune.sh"
-    experiment_prune "\$2"
+    source "\$CODEGEN_DIR/harnesses/shared/worktree-lifecycle.sh"
+    worktree_destroy "\$2"
     exit \$?
 fi
 printf 'launcher: no --done arg\n'
@@ -300,6 +301,18 @@ T7_EXIT=0
 bash "$T7_SCRIPT" --done 2>/dev/null || T7_EXIT=$?
 
 assert_eq "T7: --done with no slug exits 2" "2" "$T7_EXIT"
+
+# ── Test 8: worktree_create stub — exits 2, loud, not silent no-op ──────────
+T8_EXIT=0
+T8_STDERR=$(bash -c ". \"$HELPER\"; worktree_create" 2>&1 >/dev/null) || T8_EXIT=$?
+assert_eq "T8: worktree_create exits 2 (not wired until S5)" "2" "$T8_EXIT"
+assert_eq "T8: worktree_create stderr names S5" "worktree_create: not wired until S5 (pi-experiment --new)" "$T8_STDERR"
+
+# ── Test 9: worktree_reattach stub — exits 2, loud, not silent no-op ────────
+T9_EXIT=0
+T9_STDERR=$(bash -c ". \"$HELPER\"; worktree_reattach" 2>&1 >/dev/null) || T9_EXIT=$?
+assert_eq "T9: worktree_reattach exits 2 (not wired until S5)" "2" "$T9_EXIT"
+assert_eq "T9: worktree_reattach stderr names S5" "worktree_reattach: not wired until S5 (pi-experiment --new)" "$T9_STDERR"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"

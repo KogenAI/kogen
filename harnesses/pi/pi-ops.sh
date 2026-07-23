@@ -12,7 +12,7 @@ server="${1:?Usage: pi-ops <server>}"
 
 if ! command -v pi >/dev/null 2>&1; then
     echo "ERROR: 'pi' binary not found in PATH." >&2
-    echo "Install: npm install -g @earendil-works/pi-coding-agent" >&2
+    echo "Install: run 'make install' in the codegen repo (pins the exact version from harnesses/pi/manifest.yaml)" >&2
     echo "See README.md § Prerequisites for details." >&2
     exit 127
 fi
@@ -47,7 +47,7 @@ while IFS= read -r _cf; do
     ROLE_SYSTEM_PROMPT="${ROLE_SYSTEM_PROMPT}"$'\n\n'"$(cat "$CODEGEN_DIR/$_cf")"
 done <<<"$ROLE_CONTEXT_FILES"
 
-source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
+source "$CODEGEN_DIR/harnesses/shared/ssh-target.sh"
 
 # Propagate Pi non-interactive flag to shared helper
 [[ -n "${PI_NON_INTERACTIVE:-}" ]] && export SSH_TARGET_NON_INTERACTIVE=1
@@ -71,7 +71,13 @@ if [[ -n "${PI_NON_INTERACTIVE:-}" ]]; then
     NON_INTERACTIVE_FLAGS+=(-p --mode text --no-session)
 fi
 
-exec pi \
+# Deterministic postflight after a clean Pi exit: validates every changed/
+# new pitch (ops sessions have full write surface, including
+# codegen/pitches/) against the pitch-format grammar. Not `exec` — the
+# wrapper must regain control after pi exits to run postflight; it
+# preserves pi's own exit code on a non-zero/aborted session.
+source "$CODEGEN_DIR/harnesses/shared/pitch-postflight.sh"
+run_pitch_postflight ops "$PWD" -- pi \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --thinking "$ROLE_EFFORT" \

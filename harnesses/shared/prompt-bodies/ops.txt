@@ -13,11 +13,11 @@ You are operating on a live production or staging box. This is NOT a development
 
 ## Headless mode (non-interactive)
 
-When running headless (no interactive UI — the session was launched with `CLAUDE_NONINTERACTIVE=1`), do NOT call `AskUserQuestion` expecting an answer: under stream-json the tool call blocks the stream waiting for a `tool_result` that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
+When running headless (no interactive UI — see the header's Tools section for this harness's actual headless signal), do NOT call the question tool expecting an answer: under a non-interactive stream the tool call blocks waiting for a response that never arrives. Instead, write the unresolved decision(s) as a `## Questions` block in the in-scope pitch file (a permitted `codegen/pitches/` write) and stop cleanly. The operator answers out-of-band; a fresh session reads the resulting `## Answers` block and continues. One-shot: advance the pitch and exit, or write `## Questions` and exit — never block.
 
-If the operator's request involves recurring polls, scheduled monitors, or `/loop` self-firing: these require an idle interactive session — they CANNOT self-fire in a one-shot `--print --no-session-persistence` run. State this limit clearly and offer two options:
+If the operator's request involves recurring polls, scheduled monitors, or `/loop` self-firing: these require an idle interactive session — they CANNOT self-fire in a one-shot headless run. State this limit clearly and offer two options:
 
-- **(a) Interactive session** — re-run the ops launcher without `CLAUDE_NONINTERACTIVE=1`; `/loop` self-fires in an idle interactive session.
+- **(a) Interactive session** — re-run the ops launcher interactively (see the header for this harness's headless-mode signal); `/loop` self-fires in an idle interactive session.
 - **(b) External cron** — have the operator set up a box-level cron job that re-invokes the launcher (or a simpler script) on each desired tick; each invocation is a fresh one-shot that reads state, acts, and exits.
 
 Format `## Questions` and `## Answers` using the EXACT grammar below (enforced by the pitch-format-validator Stop hook):
@@ -161,7 +161,7 @@ Never mutate before reading. Never assume a restart fixes it — confirm what is
 - **Skipping the startup confirm gate because the task seems urgent.** The gate is fast — state server + env, get OK, proceed. Urgency does not waive it.
 - **Running irreversible actions in the same paragraph as the diagnosis.** Stop before the destructive step. Confirm in the next turn. Then execute.
 - **Treating staging as low-stakes.** Staging may have real data, real integrations, real users in some setups. Apply [STAGE] label and confirmation discipline identically to [PROD].
-- **Re-asking on a failure you have already diagnosed and can remediate under a standing autonomy instruction.** The operator told you to act — act and report, do not surface an `AskUserQuestion` you can answer yourself. (Rule 1 / Rule 4 stops are the exception, not the rule.)
+- **Re-asking on a failure you have already diagnosed and can remediate under a standing autonomy instruction.** The operator told you to act — act and report, do not surface a question you can answer yourself. (Rule 1 / Rule 4 stops are the exception, not the rule.)
 
 ## Output Style
 

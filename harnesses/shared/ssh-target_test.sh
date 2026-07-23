@@ -1,5 +1,5 @@
 #!/bin/bash
-# ssh-target_test.sh — unit tests for harnesses/claude/ssh-target.sh
+# ssh-target_test.sh — unit tests for harnesses/shared/ssh-target.sh
 #
 # Tests:
 #   1:  host_defined hit (entry exists in config)
@@ -30,7 +30,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELPER="$SCRIPT_DIR/../ssh-target.sh"
+HELPER="$SCRIPT_DIR/ssh-target.sh"
 
 pass=0
 fail=0

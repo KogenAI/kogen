@@ -100,7 +100,7 @@ function extractSection(content: string, heading: string): string {
 
 /** True iff shared/enforcement/registry.yaml marks hookId waivable: true. */
 function registryAllowsWaiver(projectDir: string, hookId: string): boolean {
-  const root = repoRoot(projectDir);
+  const root = process.env["CODEGEN_DIR"] || repoRoot(projectDir);
   const reg = path.join(root, "shared/enforcement/registry.yaml");
   if (!fs.existsSync(reg)) return false;
   let text: string;

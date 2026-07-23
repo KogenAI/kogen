@@ -149,7 +149,7 @@ For harness install contract details (agents_dir, hooks_dir, modes, launchers), 
 
 **Tool allowlist enforcement**: The `--tools` flag passed to `claude`/`pi` CLI is populated by `load-role.sh` parsing `roles.<role>.tools[]` from config.yaml. Harness launcher `.sh` scripts gate tool spawning via the `--tools` flag, not system-prompt text. Thus, a new tool added to `config.yaml` → immediately available in shape/ops/debug sessions. Build has no launcher-side mode; the loop resolves per-role tool allowlists itself.
 
-**`--agents` flag — size ceiling**: Passing the full custom-agent set to `claude` via the `--agents <json>` CLI flag does NOT work. A single argv string is capped at `MAX_ARG_STRLEN` (~128 KB on standard Linux, independent of the total `ARG_MAX` budget), and a complete `--agents` JSON blob overruns it — confirmed failed on a server. Therefore subagent _availability_ is gated by the `operator-subagent-allowlist.sh` PreToolUse hook, NOT by `--agents`. (Caching of agent files in the prompt prefix is a separate concern, covered in `context/claude-token-mechanics.md`; this note is about the launch-time argv limit.)
+**`--agents` flag — size ceiling**: Passing the full custom-agent set via `--agents <json>` does NOT work — a single argv string is capped at `MAX_ARG_STRLEN` (~128 KB on Linux), and a full `--agents` blob overruns it (confirmed failed on a server). Subagent _availability_ is gated by `operator-subagent-allowlist.sh` PreToolUse hook instead. (Agent-file prompt-prefix caching is separate — see `context/claude-token-mechanics.md`.)
 
 **Consequence**: Planner discovery of uncommitted config.yaml changes (in working tree, not yet staged) must be verified against the actual working tree file — not trusted from pitch state alone.
 
@@ -165,7 +165,7 @@ Claude Code supports a `--settings` JSON flag that provides a command-line scope
 
 **Use case — AFK timeout**: Interactive-only launchers (debug/shape/experiment/ops/babysit) gate `CLAUDE_AFK_TIMEOUT_MS=86400000` on `[[ -z "${CLAUDE_NONINTERACTIVE:-}" ]]` vs auto-continuing at 60s. Interactive adds the AFK key to `SETTINGS_JSON`; headless omits it. `--settings` merges key-by-key with `~/.claude/settings.json`. Headless/build keep the 60s default — must NOT appear in global settings.
 
-**Use case — idle-session monitor**: same branch also forks `harnesses/shared/shape-idle-monitor.sh` pre-`exec` (`$$` survives `exec` → REPL PID). Binds to its transcript via set-diff vs a pre-exec snapshot; ambiguous (0/≥2 new `*.jsonl`) → fail-silent forever. Polls ~30s: dead PID → self-exit; frozen past `CODEGEN_SHAPE_IDLE_WARN_SECS` (default 600s) + last entry ≠ `assistant` → one bell+banner on REPL tty, re-arms on progress. Warn-only; `CODEGEN_SHAPE_IDLE_KILL=1` opts into SIGTERM. Fail-open/silent on any error. Headless: none of this.
+**Use case — idle-session monitor**: same branch forks `harnesses/shared/shape-idle-monitor.sh` pre-`exec` (`$$` survives `exec` → REPL PID). Binds to transcript via set-diff vs pre-exec snapshot; ambiguous → fail-silent forever. Polls ~30s: dead PID → self-exit; frozen past `CODEGEN_SHAPE_IDLE_WARN_SECS` (default 600s) + last entry ≠ `assistant` → one bell+banner, re-arms on progress. Warn-only; `CODEGEN_SHAPE_IDLE_KILL=1` opts SIGTERM. Fail-open. Headless: none of this.
 
 ## Session Log Protocol
 
@@ -178,6 +178,8 @@ Retrospective capture: `role-retrospective-before-stop.sh` (Claude: blocking `St
 `claude --worktree <name>` / `-w` creates `.claude/worktrees/<name>/` on branch `worktree-<name>`. A `WorktreeCreate` hook fully replaces git logic (`.worktreeinclude` disabled). `worktree-create-phoenix.sh` seeds `deps` (symlink) + `_build` (copy, same-commit guard) + allocates a port via `resource_manager.sh`. `worktree-remove-phoenix.sh` releases the port (observe-only). Both events are in `PRESERVED_EVENTS` to survive `make install`.
 
 The create hook is idempotent: a re-run re-attaches an already-registered worktree (skips `git worktree add`, re-allocates a fresh port, rewrites `.env` PORT lines) and attaches an orphaned branch without `-b`. So `claude-experiment <slug>` resumes an existing experiment; pass `--new` to force a fresh worktree (tears down the old worktree + branch first).
+
+**Teardown**: `harnesses/shared/worktree-lifecycle.sh` (`worktree_destroy`) supersedes `experiment-prune.sh`. `worktree_create`/`_reattach` are S5 stubs — exit 2 loud, not silent.
 
 ## Integration Points
 
@@ -259,13 +261,11 @@ See `context/launcher-hook-matrix.md` for which orchestrator-level hooks gate ea
 
 ## Prompt-Hygiene Pattern: Spawn Ritual
 
-**Ordering problem**: Models treat multi-step instructions (Edit → Agent) as separable; regression cause is treating them as alternatives (pick one).
+Models decompose multi-step instructions (Edit → Agent) into pick-one alternatives. Fix: name the pair ("spawn ritual"), phrase as ONE atomic op where manual header-Edit + Agent() sequencing still applies (shape/ops/debug). Build path doesn't need this — the Elixir loop invokes each role directly. Reusable: name any strictly-ordered sequence (ritual/ceremony/protocol) as one conceptual op to block decomposition.
 
-**Solution**: Name the pair "spawn ritual" and phrase as ONE atomic operation in the prompt when a mode still needs manual header-Edit + Agent() sequencing (e.g., shape/ops/debug). The build path no longer needs this pattern at all — the Elixir orchestration loop invokes each role directly and writes each role's session-log section itself.
+## SSH Target Identity Persistence (`harnesses/shared/ssh-target.sh`)
 
-**Reusable pattern for similar regressions**: When a prompt should enforce a strictly-ordered multi-step sequence, give it a memorable name (ritual, ceremony, protocol) and describe it as ONE conceptual operation. The name prevents decomposition into pick-one choices.
-
-## SSH Target Identity Persistence (`ssh-target.sh`)
+**Location**: `harnesses/shared/ssh-target.sh` (shared, both harnesses source it). Test: `harnesses/shared/ssh-target_test.sh`. **Note**: In the `pi-full-parity` pitch, this helper is moved and its callers are rewired; check current HEAD for the authoritative path.
 
 **Two-identity model**: `ssh-target.sh` persists two user identities in `~/.ssh/config` alias blocks — (1) login user (`User <login>` line), (2) operate-as user (`# ops-operate-as: <user>` comment). Resolver exports `${PREFIX}_LOGIN_USER` and `${PREFIX}_OPERATE_AS` alongside `_SERVER`/`_ENV`.
 
@@ -322,7 +322,7 @@ Both shape launchers (`claude-shape.sh`, `pi-shape.sh`) accept a `--draft <path>
 - **Installed launchers have full `harnesses/` tree** — check `~/.local/bin/harnesses/` to verify dispatch.sh edits propagated
 - **`codegen-log section` + developer role** — sets `CLAUDE_ROLE` explicitly to avoid 3-strike gate collision; use Edit tool as workaround
 - **`ready.md.j2` is template** — generated by `generate.sh`; never install from source `.j2` directly
-- **`harnesses/shared/` scripts resolve via `$CODEGEN_DIR`** (not `$SCRIPT_DIR/../shared/`) — `source "$CODEGEN_DIR/harnesses/shared/<script>.sh"` works in-repo and installed (see `pitch-context-selector.sh`, `mode-context.sh`).
+- **`harnesses/shared/` scripts resolve via `$CODEGEN_DIR`** — `source "$CODEGEN_DIR/harnesses/shared/<script>.sh"` works in-repo and installed (see `pitch-context-selector.sh`, `ssh-target.sh`, `worktree-lifecycle.sh`, `mode-context.sh`).
 - **Launcher tree-climbing** — Check `OCG_CODEGEN_DIR`, then fallback.
 
 ## Runtime Porting — Reduced Fidelity Across Harnesses

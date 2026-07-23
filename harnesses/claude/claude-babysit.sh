@@ -38,7 +38,7 @@ BABYSIT_STARTUP_MSG=$'## BABYSIT STARTUP CONTEXT\n'
 
 if [[ "$STUDIO" -eq 1 ]]; then
     export CODEGEN_BABYSIT_STUDIO=1
-    source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
+    source "$CODEGEN_DIR/harnesses/shared/ssh-target.sh"
     resolve_ssh_target studio BABYSIT claude-babysit
     BABYSIT_STARTUP_MSG+="Target: STUDIO — ${BABYSIT_ALIAS} (${server_resolved}), Login user: ${BABYSIT_LOGIN_USER}, Operate-as: ${BABYSIT_OPERATE_AS}. Before your FIRST dispatch to this target, run the remote build-ready preflight and refuse to dispatch remotely if it is red."
 else

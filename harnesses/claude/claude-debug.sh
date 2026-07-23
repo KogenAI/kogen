@@ -23,7 +23,7 @@ load_role debug
 
 [[ -n "${CLAUDE_NONINTERACTIVE:-}" ]] && export SSH_TARGET_NON_INTERACTIVE=1
 
-source "$CODEGEN_DIR/harnesses/claude/ssh-target.sh"
+source "$CODEGEN_DIR/harnesses/shared/ssh-target.sh"
 resolve_ssh_target "$server" DEBUG claude-debug
 
 DEBUG_CONTEXT="Server: ${DEBUG_ALIAS} (${server_resolved}), Login user: ${DEBUG_LOGIN_USER}, Operate-as: ${DEBUG_OPERATE_AS}, Environment: ${ENV_LABEL}"

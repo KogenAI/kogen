@@ -27,25 +27,31 @@ else
 fi
 echo ""
 
-# Update pi — npm global package @earendil-works/pi-coding-agent
+# Update pi — converge to the version pinned in harnesses/pi/manifest.yaml
+# runtime.package/runtime.version (single authority; no latest-version
+# fallback). Missing/mismatched version after the attempt is a fail-loud
+# error, not a warn-and-skip.
 echo "🤖 Updating pi..."
 hash -r 2>/dev/null || true
+pi_pkg=$(yq -r '.runtime.package' "$CODEGEN_DIR/harnesses/pi/manifest.yaml")
+pi_ver=$(yq -r '.runtime.version' "$CODEGEN_DIR/harnesses/pi/manifest.yaml")
 if command -v pi >/dev/null 2>&1; then
-    current_pi=$(pi --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    latest_pi=$(curl -s --max-time 5 "https://registry.npmjs.org/@earendil-works/pi-coding-agent/latest" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null)
-    if [ -n "$latest_pi" ] && [ "$current_pi" = "$latest_pi" ]; then
-        echo "   ✅ pi already up to date ($current_pi)"
-    elif [ -n "$latest_pi" ]; then
-        echo "   ⬆️  Updating pi $current_pi → $latest_pi"
-        npm update -g @earendil-works/pi-coding-agent
-        echo "   ✅ pi updated"
-    else
-        echo "   ⚠️  Could not determine latest pi version — running update anyway"
-        npm update -g @earendil-works/pi-coding-agent
-        echo "   ✅ pi update attempted"
-    fi
+    current_pi=$(pi --version 2>/dev/null | tr -d '[:space:]')
 else
-    echo "   ⚠️  pi not installed, skipping"
+    current_pi=""
+fi
+if [ "$current_pi" = "$pi_ver" ]; then
+    echo "   ✅ pi already at pinned version ($pi_ver)"
+else
+    echo "   ⬆️  Converging pi ${current_pi:-<not installed>} → ${pi_ver}"
+    npm install -g "${pi_pkg}@${pi_ver}"
+    hash -r 2>/dev/null || true
+    new_pi=$(pi --version 2>/dev/null | tr -d '[:space:]')
+    if [ "$new_pi" != "$pi_ver" ]; then
+        echo "   ❌ pi version mismatch after update: got '${new_pi:-<none>}', pinned '${pi_ver}'" >&2
+        exit 1
+    fi
+    echo "   ✅ pi updated to ${pi_ver}"
 fi
 echo ""
 
