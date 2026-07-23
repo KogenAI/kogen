@@ -24,9 +24,10 @@ fi
 # is threaded via CODEGEN_BUILD_FALLBACK_MODEL (below) into an explicit
 # `--fallback-model=<m>` argv entry to `mix codegen.loop` below.
 # --max-budget-usd is threaded the same way via CODEGEN_BUILD_MAX_BUDGET_USD
-# into an explicit `--max-budget-usd=<n>` argv entry. Only the
-# last positional arg is read below, and only as PROMPT (only if any
-# positional args were given).
+# into an explicit `--max-budget-usd=<n>` argv entry. --effort is threaded
+# the same way via CODEGEN_BUILD_EFFORT into an explicit `--effort=<e>` argv
+# entry. Only the last positional arg is read below, and only as PROMPT
+# (only if any positional args were given).
 if [[ $# -gt 0 ]]; then
     PROMPT="${*: -1}"
 else
@@ -38,6 +39,7 @@ CWD="${CODEGEN_BUILD_CWD:-}"
 PRINT_ARGV="${CODEGEN_BUILD_PRINT_ARGV:-}"
 FALLBACK_MODEL="${CODEGEN_BUILD_FALLBACK_MODEL:-}"
 MAX_BUDGET_USD="${CODEGEN_BUILD_MAX_BUDGET_USD:-}"
+EFFORT="${CODEGEN_BUILD_EFFORT:-}"
 if [[ -n "$CWD" ]]; then
     cd "$CWD"
 fi
@@ -66,6 +68,9 @@ if [[ -n "$PRINT_ARGV" ]]; then
     fi
     if [[ -n "$MAX_BUDGET_USD" ]]; then
         _argv+=("--max-budget-usd=$MAX_BUDGET_USD")
+    fi
+    if [[ -n "$EFFORT" ]]; then
+        _argv+=("--effort=$EFFORT")
     fi
     _argv+=(-- "$PROMPT")
     printf '%s\n' "${_argv[@]}"
@@ -107,6 +112,7 @@ env \
     bash -c 'cd "$1" && _loop_argv=(mix codegen.loop --harness=pi "--stack=$2" "--cwd=$3")
         if [[ -n "$5" ]]; then _loop_argv+=("--fallback-model=$5"); fi
         if [[ -n "$6" ]]; then _loop_argv+=("--max-budget-usd=$6"); fi
+        if [[ -n "$8" ]]; then _loop_argv+=("--effort=$8"); fi
         _loop_argv+=(-- "$4")
         _stderr_fifo="$(mktemp "${TMPDIR:-/tmp}/codegen-stderr.XXXXXX")"
         rm -f "$_stderr_fifo"
@@ -118,7 +124,7 @@ env \
         _status=$?
         wait "$_tee_pid" || true
         exit "$_status"' \
-    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" </dev/null &
+    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" "$EFFORT" </dev/null &
 child_pid=$!
 
 forward_term() {

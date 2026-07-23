@@ -2325,8 +2325,140 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert entry.dispatch == %{
                harness: "pi",
                model: "openai-codex/gpt-5.6-terra",
-               effort: "high"
+               effort: "high",
+               source: :campaign,
+               native_effort: "--thinking high"
              }
+    end
+  end
+
+  describe "invoke_role/4 — opts[:effort_override] (--effort build-wide override)" do
+    setup do
+      Process.delete(:loop_telemetry)
+      on_exit(fn -> Process.delete(:loop_telemetry) end)
+      :ok
+    end
+
+    test "override present, no fixed binding -> replaces effort, model unchanged" do
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
+        Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
+        %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+      end
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 resolve_harness_fn: fn _role, build_harness -> build_harness end,
+                 codegen_call_fn: codegen_call_fn,
+                 effort_override: "off"
+               )
+
+      # Model rung unchanged ("sonnet"); effort replaced by the override.
+      assert Agent.get(seen_agent, & &1) == [{"claude_code", "sonnet", "off"}]
+
+      [entry] = OrchestrationLoop.get_telemetry().per_role["developer-static"]
+      assert entry.dispatch.source == :build_override
+      assert entry.dispatch.effort == "off"
+      assert entry.dispatch.native_effort == "settings.MAX_THINKING_TOKENS=0"
+    end
+
+    test "override present, pi harness -> native_effort names --thinking" do
+      resolve_fn = fn _role, _harness -> {"openai-codex/gpt-5.6-terra", "medium"} end
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "pi",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 resolve_harness_fn: fn _role, build_harness -> build_harness end,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
+                   %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+                 end,
+                 effort_override: "off"
+               )
+
+      [entry] = OrchestrationLoop.get_telemetry().per_role["developer-static"]
+      assert entry.dispatch.native_effort == "--thinking off"
+    end
+
+    test "fixed campaign binding wins over effort_override (override ignored for pinned role)" do
+      run_dir = Path.join(System.tmp_dir!(), "rms_eff_override_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(run_dir)
+      on_exit(fn -> File.rm_rf!(run_dir) end)
+      System.put_env("BENCH_RUN_DIR", run_dir)
+      on_exit(fn -> System.delete_env("BENCH_RUN_DIR") end)
+
+      File.write!(
+        Path.join(run_dir, "role-model-binding.json"),
+        Jason.encode!(%{
+          "schema_version" => 1,
+          "campaign_id" => "camp-1",
+          "arm" => "candidate-a",
+          "role" => "developer-static",
+          "stack" => "static",
+          "harness" => "pi",
+          "model" => "openai-codex/gpt-5.6-terra",
+          "effort" => "high",
+          "source_sha" => "deadbeef",
+          "fixed" => true
+        })
+      )
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+      {:ok, seen_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+
+      codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
+        Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
+        %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+      end
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "pi",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end,
+                 effort_override: "off"
+               )
+
+      # Fixed binding's own effort ("high") wins; override never applied.
+      assert Agent.get(seen_agent, & &1) == [{"pi", "openai-codex/gpt-5.6-terra", "high"}]
+
+      [entry] = OrchestrationLoop.get_telemetry().per_role["developer-static"]
+      assert entry.dispatch.source == :campaign
+      assert entry.dispatch.effort == "high"
+    end
+
+    test "absent override -> source is :role_config, unchanged behavior" do
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:ok, _} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 resolve_harness_fn: fn _role, build_harness -> build_harness end,
+                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
+                   %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+                 end
+               )
+
+      [entry] = OrchestrationLoop.get_telemetry().per_role["developer-static"]
+      assert entry.dispatch.source == :role_config
+      assert entry.dispatch.effort == "medium"
     end
   end
 

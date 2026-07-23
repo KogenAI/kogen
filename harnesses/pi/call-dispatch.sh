@@ -181,8 +181,21 @@ ARGS=(
     --no-context-files
     --system-prompt "$SYSTEM_PROMPT"
     --model "$MODEL"
-    --thinking "$EFFORT"
 )
+
+# Effort realization (canonical -> native): pi accepts every canonical value
+# (including "off") natively via --thinking. An unrecognized value fails
+# BEFORE pi ever starts -- never silently drop the control or substitute a
+# different value.
+case "$EFFORT" in
+off | low | medium | high | xhigh | max)
+    ARGS+=(--thinking "$EFFORT")
+    ;;
+*)
+    printf 'codegen-call (pi): unsupported effort realization: %s\n' "$EFFORT" >&2
+    exit 2
+    ;;
+esac
 
 # --session-id resumes/creates a specific persisted session (pi's closest
 # equivalent to claude's --resume). A loop-shaped agent call with no RESUME

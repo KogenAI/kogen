@@ -88,8 +88,10 @@ trap cleanup EXIT
 make_cb_root() {
     local name="$1"
     local dir="$BASE_TMP/$name"
-    mkdir -p "$dir"
+    mkdir -p "$dir/harnesses/shared"
     link_or_copy "$CODEGEN_BUILD" "$dir/codegen-build"
+    link_or_copy "$CODEGEN_ROOT/harnesses/shared/effort-canonical.sh" \
+        "$dir/harnesses/shared/effort-canonical.sh"
     echo "$dir"
 }
 
@@ -767,6 +769,54 @@ check "(b2-pi) --print-argv with --max-budget-usd exits 0 on pi leg" "0" "$actua
 assert_contains "(b2-pi) print-argv output contains --max-budget-usd=7.50" "$OUT_B1PI" "--max-budget-usd=7.50"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (eff1)/(eff2-pi): --effort=<v> threads through CODEGEN_BUILD_EFFORT ->
+# --print-argv output MUST contain --effort=<v>, on both the claude leg and
+# the pi leg. (eff-bad): an invalid --effort value exits 2 before any argv
+# is printed.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_EFF1="$(make_cb_root cb_eff1)"
+make_claude_harness "$CB_EFF1" >/dev/null
+
+BIN_EFF1="$BASE_TMP/bin_eff1"
+make_mix_stub "$BIN_EFF1"
+make_codegen_log_stub "$BIN_EFF1"
+
+MARKER_EFF1="$BASE_TMP/marker_eff1"
+mkdir -p "$MARKER_EFF1"
+
+actual_ec=0
+OUT_EFF1=$(PATH="$BIN_EFF1:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    "$CB_EFF1/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_EFF1" \
+    --effort=off --print-argv "eff1 prompt" 2>/dev/null) || actual_ec=$?
+
+check "(eff1) --print-argv with --effort=off exits 0" "0" "$actual_ec"
+assert_contains "(eff1) print-argv output contains --effort=off" "$OUT_EFF1" "--effort=off"
+
+CB_EFF2PI="$(make_cb_root cb_eff2pi)"
+make_pi_harness "$CB_EFF2PI" >/dev/null
+
+BIN_EFF2PI="$BASE_TMP/bin_eff2pi"
+make_mix_stub "$BIN_EFF2PI"
+make_codegen_log_stub "$BIN_EFF2PI"
+
+actual_ec=0
+OUT_EFF2PI=$(PATH="$BIN_EFF2PI:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    "$CB_EFF2PI/codegen-build" --harness=pi --stack=phoenix \
+    --effort=high --print-argv "eff2pi prompt" 2>/dev/null) || actual_ec=$?
+
+check "(eff2-pi) --print-argv with --effort=high exits 0 on pi leg" "0" "$actual_ec"
+assert_contains "(eff2-pi) print-argv output contains --effort=high" "$OUT_EFF2PI" "--effort=high"
+
+actual_ec=0
+PATH="$BIN_EFF1:$PATH" \
+    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
+    "$CB_EFF1/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_EFF1" \
+    --effort=bogus --print-argv "eff-bad prompt" >/dev/null 2>/dev/null || actual_ec=$?
+check "(eff-bad) invalid --effort exits 2" "2" "$actual_ec"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Test (b3) non-adoption: zero occurrences of --max-budget-usd across
 # Makefile, codegen-*, harnesses/**, .env* outside the parser (codegen-build
 # itself), the two dispatch.sh scripts, docs, and this test file. Codegen
@@ -859,12 +909,16 @@ done <<<"$CB_FIXTURE_FLAGS"
 check "(snap) no fixture flag missing from parser" "0" "$CB_SNAP_REMOVED"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (d): dead-export absence — CODEGEN_BUILD_MODEL/EFFORT are advisory-only
-# and must never be exported. --model/--effort stay parsed (see (u)/(snap))
-# but must not leak into a CODEGEN_BUILD_* env var nothing reads.
+# Test (d): dead-export absence — CODEGEN_BUILD_MODEL is advisory-only and
+# must never be exported. CODEGEN_BUILD_EFFORT is now a LIVE one-build
+# override and MUST be exported (see (b1)/(b2-pi)-style threading tests
+# below). --model/--effort stay parsed (see (u)/(snap)) but --model must not
+# leak into a CODEGEN_BUILD_* env var nothing reads.
 # ─────────────────────────────────────────────────────────────────────────────
-CB_DEAD_EXPORTS=$(grep -cE 'export CODEGEN_BUILD_(MODEL|EFFORT)=' "$CODEGEN_BUILD" || true)
-check "(d) CODEGEN_BUILD_MODEL/EFFORT never exported" "0" "$CB_DEAD_EXPORTS"
+CB_DEAD_MODEL_EXPORTS=$(grep -cE 'export CODEGEN_BUILD_MODEL=' "$CODEGEN_BUILD" || true)
+check "(d) CODEGEN_BUILD_MODEL never exported" "0" "$CB_DEAD_MODEL_EXPORTS"
+CB_LIVE_EFFORT_EXPORTS=$(grep -cE 'export CODEGEN_BUILD_EFFORT=' "$CODEGEN_BUILD" || true)
+check "(d) CODEGEN_BUILD_EFFORT IS exported (live override)" "1" "$CB_LIVE_EFFORT_EXPORTS"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

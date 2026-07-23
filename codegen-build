@@ -19,10 +19,15 @@
 #                             RoleResolver; this flag is accepted (for
 #                             caller compatibility) but has no effect.
 #                             Use --fallback-model for a live override.
-#   --effort=<e>              advisory only -- NOT consumed by the loop.
-#                             Same as --model above: accepted, has no
-#                             effect. Per-role effort resolves from
-#                             templates/generator/config.yaml.
+#   --effort=<e>              live one-build override: replaces every
+#                             non-fixed-campaign role's configured effort
+#                             for THIS build only (off|low|medium|high|
+#                             xhigh|max). Threaded via
+#                             CODEGEN_BUILD_EFFORT, not EXTRA_FLAGS --
+#                             never blind-passed to dispatch. Omitted: each
+#                             role's templates/generator/config.yaml
+#                             effort wins. Invalid value: exit 2 before
+#                             any dispatch.
 #   --max-budget-usd=<n>      abort the cycle between role invocations once
 #                             accumulated spend reaches <n> USD (in-flight
 #                             role always completes); threaded via
@@ -48,6 +53,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
+# Resolve the effort-canonical helper the same way codegen-call resolves its
+# own harnesses/ dir: direct/test invocations have harnesses/ alongside this
+# script; installed copies (~/.local/bin/) fall back to OCG_CODEGEN_DIR.
+_effort_canonical_dir="$SCRIPT_DIR"
+if [[ ! -f "$_effort_canonical_dir/harnesses/shared/effort-canonical.sh" ]] && [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
+    _effort_canonical_dir="$OCG_CODEGEN_DIR"
+fi
+# shellcheck source=harnesses/shared/effort-canonical.sh
+source "$_effort_canonical_dir/harnesses/shared/effort-canonical.sh"
 
 HARNESS=""
 STACK=""
@@ -195,6 +210,10 @@ if [[ "$STACK" != "phoenix" && "$STACK" != "static" ]]; then
     usage
 fi
 
+if [[ -n "$EFFORT" ]] && ! codegen_validate_effort "$EFFORT"; then
+    usage
+fi
+
 # ── Pre-step: staleness preflight (refuse builds wired at a behind schema) ──
 # Fail-closed: an app whose stamped scaffold schema version is BEHIND the
 # codegen repo's current version must be consciously re-integrated first.
@@ -252,6 +271,7 @@ export CODEGEN_BUILD_HARNESS="$HARNESS"
 export CODEGEN_BUILD_STACK="$STACK"
 export CODEGEN_BUILD_CWD="$CWD"
 export CODEGEN_BUILD_FALLBACK_MODEL="${FALLBACK_MODEL:-}"
+export CODEGEN_BUILD_EFFORT="${EFFORT:-}"
 export CODEGEN_BUILD_MAX_BUDGET_USD="${MAX_BUDGET_USD:-}"
 export CODEGEN_BUILD_PRINT_ARGV="${PRINT_ARGV:-}"
 export CODEGEN_BUILD_INVOCATION_ID="${CODEGEN_BUILD_INVOCATION_ID:-}"

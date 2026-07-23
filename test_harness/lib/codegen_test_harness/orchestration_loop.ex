@@ -3806,15 +3806,28 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         )
       end)
 
-    {model, effort} =
+    {{model, effort}, effort_source} =
       case resolve_fixed_binding(role, harness, opts) do
         {fixed_model, fixed_effort} ->
-          {fixed_model, fixed_effort}
+          {{fixed_model, fixed_effort}, :campaign}
 
         :none ->
-          case get_in(ctx, [:artifacts, :escalated_model]) do
-            {escalated_model, escalated_effort} -> {escalated_model, escalated_effort}
-            _ -> resolve_fn.(role, harness)
+          {base_model, base_effort, base_source} =
+            case get_in(ctx, [:artifacts, :escalated_model]) do
+              {escalated_model, escalated_effort} ->
+                {escalated_model, escalated_effort, :escalation}
+
+              _ ->
+                {rf_model, rf_effort} = resolve_fn.(role, harness)
+                {rf_model, rf_effort, :role_config}
+            end
+
+          case Keyword.get(opts, :effort_override) do
+            override when is_binary(override) and override != "" ->
+              {{base_model, override}, :build_override}
+
+            _ ->
+              {{base_model, base_effort}, base_source}
           end
       end
 
@@ -3830,7 +3843,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # .md, not by RoleResolver.
     envelope = codegen_call_fn.(harness, model, effort, nil, nil, prompt)
 
-    accumulate_telemetry(role, envelope, %{harness: harness, model: model, effort: effort})
+    accumulate_telemetry(role, envelope, %{
+      harness: harness,
+      model: model,
+      effort: effort,
+      source: effort_source,
+      native_effort: native_effort_realization(harness, effort)
+    })
     write_cycle_summary(cycle_id, ctx.cwd, role, seq, transcript, envelope)
 
     case envelope do
@@ -3856,6 +3875,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         raise "OrchestrationLoop: unexpected codegen-call envelope for role #{role}: #{inspect(other)}"
     end
   end
+
+  # Names the adapter-realized native control for a canonical effort value —
+  # telemetry-only description of what call-dispatch.sh actually emits, never
+  # itself passed as an argv/env value. Mirrors harnesses/{claude,pi}/
+  # call-dispatch.sh's effort-emission branches exactly: claude omits
+  # `--effort` for `"off"` (relying on the ambient `MAX_THINKING_TOKENS=0`
+  # already set by call-dispatch.sh) and passes `--effort <value>` otherwise;
+  # pi passes `--thinking <value>` for every canonical value, including
+  # `"off"`.
+  defp native_effort_realization("claude_code", "off"), do: "settings.MAX_THINKING_TOKENS=0"
+  defp native_effort_realization("claude_code", effort), do: "--effort #{effort}"
+  defp native_effort_realization("pi", effort), do: "--thinking #{effort}"
+  defp native_effort_realization(_harness, effort), do: "effort=#{effort}"
 
   # ── Per-cycle spend cap (`--max-budget-usd`, threaded via
   # `opts[:max_budget_usd]`) ──────────────────────────────────────────────
@@ -4419,13 +4451,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @spec accumulate_telemetry(String.t(), map()) :: :ok
   def accumulate_telemetry(role, envelope), do: accumulate_telemetry(role, envelope, %{})
 
-  # `dispatch` carries the {harness, model, effort} tuple this specific
-  # invocation actually requested — populated by `invoke_role/4` from the
-  # SAME resolved values used to build the `codegen_call_fn.(...)` call, so
-  # it can never drift from what was truly dispatched. Empty map (the /2
-  # delegate above, and any other pre-existing caller) means "unknown",
-  # never a fabricated tuple — `emit_loop_telemetry/1` reads it as an
-  # optional field per role_entry.
+  # `dispatch` carries the {harness, model, effort, source, native_effort}
+  # this specific invocation actually requested — populated by
+  # `invoke_role/4` from the SAME resolved values used to build the
+  # `codegen_call_fn.(...)` call, so it can never drift from what was truly
+  # dispatched. `source` names WHICH precedence rung supplied the effort
+  # (`:role_config` | `:build_override` | `:escalation` | `:campaign`);
+  # `native_effort` names the adapter-realized control (e.g.
+  # "settings.MAX_THINKING_TOKENS=0" for a claude `off`, "--thinking off" for
+  # a pi `off`, "--effort high" / "--thinking high" otherwise) — see
+  # `native_effort_realization/2`. Empty map (the /2 delegate above, and any
+  # other pre-existing caller) means "unknown", never a fabricated tuple —
+  # `emit_loop_telemetry/1` reads it as an optional field per role_entry.
   @doc false
   @spec accumulate_telemetry(String.t(), map(), map()) :: :ok
   def accumulate_telemetry(role, %{"usage" => usage} = envelope, dispatch)
@@ -4458,7 +4495,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       dispatch: %{
         harness: Map.get(dispatch, :harness),
         model: Map.get(dispatch, :model),
-        effort: Map.get(dispatch, :effort)
+        effort: Map.get(dispatch, :effort),
+        source: Map.get(dispatch, :source),
+        native_effort: Map.get(dispatch, :native_effort)
       }
     }
 

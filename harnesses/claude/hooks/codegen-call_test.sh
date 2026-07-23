@@ -105,8 +105,10 @@ trap cleanup EXIT
 make_cc_root() {
     local name="$1"
     local dir="$BASE_TMP/$name"
-    mkdir -p "$dir"
+    mkdir -p "$dir/harnesses/shared"
     link_or_copy "$CODEGEN_CALL" "$dir/codegen-call"
+    link_or_copy "$CODEGEN_ROOT/harnesses/shared/effort-canonical.sh" \
+        "$dir/harnesses/shared/effort-canonical.sh"
     echo "$dir"
 }
 
@@ -747,6 +749,86 @@ if [[ -f "$NEVER_CALLED_MARKER" ]]; then
 else
     pass=$((pass + 1))
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (eff-claude-off): canonical effort "off" on the claude leg -- the
+# native realization omits --effort entirely (relies on the ambient
+# MAX_THINKING_TOKENS=0 env already set for every claude invocation).
+# ─────────────────────────────────────────────────────────────────────────────
+CC_EFFC="$(make_cc_root cc_effc)"
+mkdir -p "$CC_EFFC/harnesses/claude"
+link_or_copy "$REAL_CLAUDE_HARNESS/call-dispatch.sh" "$CC_EFFC/harnesses/claude/call-dispatch.sh"
+
+actual_exit=0
+OUT_EFFC="$(PATH="$STUB_BIN_T2:$PATH" "$CC_EFFC/codegen-call" \
+    --harness=claude_code --model=haiku --effort=off \
+    --system-prompt "@$SP_FILE" --print-argv \
+    "off prompt" 2>/dev/null)" || actual_exit=$?
+
+check "(eff-claude-off) --print-argv with --effort=off exits 0" "0" "$actual_exit"
+if [[ "$OUT_EFFC" == *"--effort"* ]]; then
+    printf 'FAIL: (eff-claude-off) --print-argv output must NOT contain --effort\n'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (eff-claude-high): canonical effort "high" on the claude leg -- maps
+# directly to claude's native --effort flag.
+# ─────────────────────────────────────────────────────────────────────────────
+actual_exit=0
+OUT_EFFC_HIGH="$(PATH="$STUB_BIN_T2:$PATH" "$CC_EFFC/codegen-call" \
+    --harness=claude_code --model=haiku --effort=high \
+    --system-prompt "@$SP_FILE" --print-argv \
+    "high prompt" 2>/dev/null)" || actual_exit=$?
+
+check "(eff-claude-high) --print-argv with --effort=high exits 0" "0" "$actual_exit"
+assert_contains "(eff-claude-high) --print-argv output contains --effort" "$OUT_EFFC_HIGH" "--effort"
+assert_contains "(eff-claude-high) --print-argv output contains high" "$OUT_EFFC_HIGH" "high"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (eff-claude-bad): an unrecognized effort value exits 2 before claude
+# is ever invoked.
+# ─────────────────────────────────────────────────────────────────────────────
+actual_exit=0
+PATH="$STUB_BIN_T2:$PATH" "$CC_EFFC/codegen-call" \
+    --harness=claude_code --model=haiku --effort=minimal \
+    --system-prompt "@$SP_FILE" --print-argv \
+    "bad prompt" >/dev/null 2>/dev/null || actual_exit=$?
+check "(eff-claude-bad) unsupported effort exits 2 (claude leg)" "2" "$actual_exit"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (eff-pi-off): canonical effort "off" on the pi leg -- maps directly to
+# pi's native --thinking flag (pi accepts "off" natively, unlike claude).
+# ─────────────────────────────────────────────────────────────────────────────
+CC_EFFP="$(make_cc_root cc_effp)"
+mkdir -p "$CC_EFFP/harnesses/pi" "$CC_EFFP/harnesses/claude/hooks/lib"
+link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$CC_EFFP/harnesses/pi/call-dispatch.sh"
+link_or_copy "$REAL_PI_HARNESS/pi-jsonl-filter.cjs" "$CC_EFFP/harnesses/pi/pi-jsonl-filter.cjs"
+link_or_copy "$REAL_CLAUDE_HARNESS/hooks/lib/schema-validate.js" \
+    "$CC_EFFP/harnesses/claude/hooks/lib/schema-validate.js"
+
+actual_exit=0
+OUT_EFFP="$(PATH="$STUB_BIN_T2:$PATH" "$CC_EFFP/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=off \
+    --system-prompt "@$SP_FILE" --print-argv \
+    "off prompt" 2>/dev/null)" || actual_exit=$?
+
+check "(eff-pi-off) --print-argv with --effort=off exits 0 on pi leg" "0" "$actual_exit"
+assert_contains "(eff-pi-off) --print-argv output contains --thinking" "$OUT_EFFP" "--thinking"
+assert_contains "(eff-pi-off) --print-argv output contains off" "$OUT_EFFP" "off"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (eff-pi-bad): an unrecognized effort value exits 2 before pi is ever
+# invoked (pi leg).
+# ─────────────────────────────────────────────────────────────────────────────
+actual_exit=0
+PATH="$STUB_BIN_T2:$PATH" "$CC_EFFP/codegen-call" \
+    --harness=pi --model=gpt-5 --effort=bogus \
+    --system-prompt "@$SP_FILE" --print-argv \
+    "bad prompt" >/dev/null 2>/dev/null || actual_exit=$?
+check "(eff-pi-bad) unsupported effort exits 2 (pi leg)" "2" "$actual_exit"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (u): usage<->parse parity — every parsed --flag appears in usage string,

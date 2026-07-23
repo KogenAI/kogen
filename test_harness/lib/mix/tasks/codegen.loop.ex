@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   @shortdoc "Runs the deterministic orchestration loop for one pitch."
 
   @moduledoc """
-  `mix codegen.loop --harness=<claude_code|pi> --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] [--max-budget-usd=<n>] <pitch>`
+  `mix codegen.loop --harness=<claude_code|pi> --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] [--max-budget-usd=<n>] [--effort=<e>] <pitch>`
 
   Execs from the build-mode `dispatch.sh` path in place of a single
   self-orchestrating agent session. Runs `CodegenTestHarness.OrchestrationLoop.run/1`
@@ -32,6 +32,13 @@ defmodule Mix.Tasks.Codegen.Loop do
     its cost is already committed to the API). Threaded from `codegen-build
     --max-budget-usd=<n>` via `CODEGEN_BUILD_MAX_BUDGET_USD`. Absent → no cap,
     exactly today's behavior.
+  - `--effort` — optional, one of `off|low|medium|high|xhigh|max`. Replaces
+    every non-fixed-campaign role's configured effort for this run only (a
+    one-build override of `templates/generator/config.yaml`, threaded from
+    `codegen-build --effort=<e>` via `CODEGEN_BUILD_EFFORT`). Absent → every
+    role's effort is exactly what `config.yaml` declares, unchanged. A fixed
+    campaign binding (benchmark harness) still wins over this override for
+    its own pinned role.
   - `<pitch>` — required positional arg, the prompt/pitch text (or `@<path>`
     to read it from a file, matching `codegen-call`'s `@<path>` convention)
   """
@@ -72,7 +79,8 @@ defmodule Mix.Tasks.Codegen.Loop do
           stack: :string,
           cwd: :string,
           fallback_model: :string,
-          max_budget_usd: :float
+          max_budget_usd: :float,
+          effort: :string
         ]
       )
 
@@ -90,6 +98,9 @@ defmodule Mix.Tasks.Codegen.Loop do
     # Optional: absent -> nil -> OrchestrationLoop.run/1 enforces no spend
     # cap, exactly today's behavior.
     max_budget_usd = Keyword.get(opts, :max_budget_usd)
+    # Optional: absent -> nil -> OrchestrationLoop.run/1 applies no
+    # build-wide effort override, exactly today's behavior.
+    effort_override = Keyword.get(opts, :effort)
 
     # Move 2: install the SIGTERM handler for the solo path (SIGINT cannot
     # be caught at the BEAM level — see BuildSignalHandler moduledoc; the
@@ -132,7 +143,8 @@ defmodule Mix.Tasks.Codegen.Loop do
                 harness,
                 stack,
                 fallback_model,
-                max_budget_usd
+                max_budget_usd,
+                effort_override
               )
             end
           )
@@ -155,7 +167,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   # role is ever spawned on a conflicting resume" guarantee) is directly
   # testable without exercising OptionParser/BuildSignalHandler/git plumbing.
   # `requested_slug` is the CURRENT invocation's own target (nil for a
-  # literal, non-file prompt); `run_fn` is `run_claimed_cycle/7` bound to
+  # literal, non-file prompt); `run_fn` is `run_claimed_cycle/8` bound to
   # its own args by the caller.
   @doc false
   @spec route_reconcile_result(
@@ -183,7 +195,16 @@ defmodule Mix.Tasks.Codegen.Loop do
   defp source_slug({:file, abs}), do: Path.basename(abs, ".md")
   defp source_slug(:literal), do: nil
 
-  defp run_claimed_cycle(source, pitch_arg, cwd, harness, stack, fallback_model, max_budget_usd) do
+  defp run_claimed_cycle(
+         source,
+         pitch_arg,
+         cwd,
+         harness,
+         stack,
+         fallback_model,
+         max_budget_usd,
+         effort_override
+       ) do
     pitch = resolve_pitch(pitch_arg, cwd)
     source = claim_pitch!(source, cwd)
     slug = source_slug(source) || "adhoc"
@@ -208,7 +229,8 @@ defmodule Mix.Tasks.Codegen.Loop do
           stamp: stamp,
           build_lock_held: true,
           fallback_model_override: fallback_model,
-          max_budget_usd: max_budget_usd
+          max_budget_usd: max_budget_usd,
+          effort_override: effort_override
         )
       end)
 

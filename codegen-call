@@ -92,6 +92,17 @@ if [[ ! -d "$SCRIPT_DIR/harnesses" ]] && [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
     SCRIPT_DIR="$OCG_CODEGEN_DIR"
 fi
 
+# Effort-canonical helper resolution mirrors the SCRIPT_DIR logic above, but
+# checked at file granularity: a test root can carry a partial harnesses/
+# tree (e.g. only harnesses/claude/) without harnesses/shared/, which would
+# make the dir-level check above resolve to the wrong root.
+_effort_canonical_dir="$SCRIPT_DIR"
+if [[ ! -f "$_effort_canonical_dir/harnesses/shared/effort-canonical.sh" ]] && [[ -n "${OCG_CODEGEN_DIR:-}" ]]; then
+    _effort_canonical_dir="$OCG_CODEGEN_DIR"
+fi
+# shellcheck source=harnesses/shared/effort-canonical.sh
+source "$_effort_canonical_dir/harnesses/shared/effort-canonical.sh"
+
 SHOW_VERSION=""
 HARNESS=""
 MODEL=""
@@ -266,6 +277,10 @@ fi
 
 if [[ -z "$EFFORT" ]]; then
     printf 'codegen-call: --effort is required\n' >&2
+    usage
+fi
+
+if ! codegen_validate_effort "$EFFORT"; then
     usage
 fi
 

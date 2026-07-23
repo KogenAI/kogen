@@ -62,6 +62,8 @@ Three entry-point scripts at repo root — each serves a distinct invocation con
 
 Routing flow: `codegen-build` → `harnesses/<harness>/dispatch.sh` → reads `config.yaml` directly via `yq` (NOT via `load-role.sh`) → execs launcher with model/effort/tools flags. `load-role.sh` is used only by debug/shape/refactor/ops launchers, not build dispatch.
 
+**`codegen-build --effort=<e>`** is a LIVE one-build override (not advisory) — validated against the canonical enum in `harnesses/shared/effort-canonical.sh` (`off|low|medium|high|xhigh|max`, exit 2 on unknown), exported as `CODEGEN_BUILD_EFFORT`, threaded by both `dispatch.sh` twins into an explicit `--effort=<e>` argv entry to `mix codegen.loop`, and applied by `OrchestrationLoop.invoke_role/4` to every role's effort UNLESS a fixed campaign binding (benchmark harness) pins that role. `codegen-build --model=<m>` remains advisory/dead — only `--effort` and `--fallback-model` are live overrides. `codegen-call --effort=<e>` is validated the same way before being translated per-adapter: claude omits `--effort` entirely for `"off"` (relies on the ambient `MAX_THINKING_TOKENS=0` env already set) and passes `--effort <value>` otherwise; pi passes `--thinking <value>` for every canonical value including `"off"`. Full precedence + telemetry contract: `context/role-config.md` § Canonical Effort Vocabulary + Build-Wide Override.
+
 Enforcement compiler (registry schema, pattern dialects, renderer-neutral tokens, install workflow): → see `context/enforcement-compiler.md`.
 
 ## codegen-call Arg-Parsing + call-dispatch.sh Flag Threading

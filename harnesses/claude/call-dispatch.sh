@@ -121,8 +121,25 @@ COMMON_FLAGS=(
     --strict-mcp-config
     --disable-slash-commands
     --model "$MODEL"
-    --effort "$EFFORT"
 )
+
+# Effort realization (canonical -> native): claude has no valid "off" or
+# "minimal" --effort value (probed live: both warn and silently fall back to
+# claude's own default effort) -- "off" is realized instead via the ambient
+# MAX_THINKING_TOKENS=0 env var this script already sets on every invocation
+# below. Every other canonical value maps directly to claude's native
+# --effort flag. An unrecognized value fails BEFORE claude ever starts --
+# never silently drop the control or substitute a different value.
+case "$EFFORT" in
+off) ;; # realized via MAX_THINKING_TOKENS=0 env, no --effort flag
+low | medium | high | xhigh | max)
+    COMMON_FLAGS+=(--effort "$EFFORT")
+    ;;
+*)
+    printf 'codegen-call (claude): unsupported effort realization: %s\n' "$EFFORT" >&2
+    exit 2
+    ;;
+esac
 if [[ -n "$MCP_CONFIG_RESOLVED" ]]; then
     COMMON_FLAGS+=(--mcp-config "$MCP_CONFIG_RESOLVED")
 fi
