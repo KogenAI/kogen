@@ -16,6 +16,8 @@ Write a short pitch skeleton capturing the essence of what was discussed — a s
 
 **FORBIDDEN sections**: Appetite, Solution sketch, Rabbit holes, Implementation plan, Step N, Files Modified, Consolidation, Proposed changes, Why one commit.
 
+**Preserve existing `## Decisions`**: re-running `/document` on a draft that already carries a `## Decisions` table (from a prior shaping pass) MUST NOT drop or overwrite it — a SKELETON produced by re-capture never discards material rationale a later pass already recorded. Carry the section through unedited; shaping continues appending rows to it, never resets it.
+
 **ONE SKELETON = ONE PROBLEM**: one invariant per skeleton. Defense-in-depth — the same guarantee enforced by two mechanisms (e.g. a gate failing closed AND downstream roles refusing) — belongs in ONE skeleton's open questions, not in N sibling skeletons. Two mechanisms for one invariant is still one problem.
 
 **PROCESS:**

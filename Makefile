@@ -257,7 +257,7 @@ test-coverage-elixir:
 test-coverage-typescript:
 	@mkdir -p "$(SCRIPT_DIR)/coverage/typescript"
 	@fail=0; \
-	for ext in enforcement subagents askuserquestion web-utils; do \
+	for ext in enforcement subagents askuserquestion web-utils pitch-files; do \
 		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
 		if [ -f "$$ext_dir/package.json" ] && grep -q '"test:coverage"' "$$ext_dir/package.json"; then \
 			echo "▶ Coverage: $$ext"; \
@@ -293,7 +293,7 @@ test-coverage-summary:
 		pct=$$(jq -r '([.source_files[] | .coverage[] | select(. != null)] | length) as $$all | ([.source_files[] | .coverage[] | select(. != null and . > 0)] | length) as $$hit | if $$all > 0 then (($$hit * 100 / $$all) | floor | tostring) else "0" end' "$(SCRIPT_DIR)/coverage/elixir/excoveralls.json" 2>/dev/null || echo "—"); \
 		echo "Elixir:     $$pct%"; \
 	else echo "Elixir:     (no data)"; fi
-	@for ext in enforcement subagents askuserquestion web-utils; do \
+	@for ext in enforcement subagents askuserquestion web-utils pitch-files; do \
 		f="$(SCRIPT_DIR)/coverage/typescript/$$ext/coverage-summary.json"; \
 		if [ -f "$$f" ]; then \
 			pct=$$(jq -r '.total.lines.pct' "$$f" 2>/dev/null || echo "—"); \

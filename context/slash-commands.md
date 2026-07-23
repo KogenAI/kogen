@@ -36,6 +36,10 @@ Pi has no dedicated `commands/` source dir mirroring Claude's — its slash-comm
 `~/.pi/agent/prompts`. Pi's rendered prompt set is NOT a 1:1 mirror of Claude's 6 commands; treat Pi's
 prompt surface as its own generation target, not a port of the Claude command list.
 
+`generate.sh` copies `harnesses/claude/commands/document.md` byte-for-byte into the generated Pi
+prompts dir at `templates/generated/pi/prompts/document.md`. `generate_test.sh` asserts the
+generated copy is byte-identical to the Claude source.
+
 ## Trigger Keywords
 
 slash commands, /command, /document, /rule, /release-new-version, /poke-holes, /ready, /babysit, commands_source, commands_dir, install_commands, pi prompts, prompts_dir, prompts_source, handoff reconciliation, stamp-handoff-receipt, bilateral handoff record, handoff_receipt fleet transfer

@@ -136,6 +136,8 @@ Propose the slug; user can override. The file opens with a YAML frontmatter bloc
 7. **No-gos** — adjacent work the pitch deliberately leaves out.
 8. **References** — paths AND cited probe transcripts. Path entries are bare references to material read. Probe entries are references to executed verifications: a single line `$ <command>` followed by a fenced code block with 3–10 lines of verbatim output. Provenance probes (how an edit-target/deletable artifact is produced + whether it is live) and contract probes (promised path/value present at the promised location) are first-class `## References` entries, same `$ <command>` + fenced-output format as empirical-claim probes.
 
+**`## Decisions`** — every SHAPED pitch carries ONE `## Decisions` section: a table `ID | Decision | Why | Source | Consequence`, IDs unique ascending `D<number>`. Record every MATERIAL decision (one whose reversal would change behavior, scope, ordering, failure posture, UX, dependency shape, or edit surface) the SAME turn it is made — user choices, AUTO-DECIDE/`Assumed:` resolutions, selected-vs-rejected approaches, probe-contradiction corrections, scope cuts, split/join/dependency verdicts. `Source` is `User`, `Probe <ledger-row>`, or `Assumed`. This is the canonical rationale handoff — a builder reads `## Decisions` instead of re-deriving intent from chat or a discarded `## Questions`/`## Answers` exchange.
+
 FORBIDDEN sections: `Implementation plan`, `Step N`, `Commit message`, `Gate`, `Files Modified`, `Consolidation`, `Why one commit not N`, `Test coverage gaps`, `Proposed changes` (numbered), `Issues and root causes` (numbered), `What this fails closed if removed`.
 
 ## Rules

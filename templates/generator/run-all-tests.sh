@@ -171,7 +171,7 @@ labels+=(pitch-scope-parity)
 tmps+=("$tmp_pitch_scope_parity")
 {
     fail=0
-    for ext in enforcement askuserquestion subagents web-utils; do
+    for ext in enforcement askuserquestion subagents web-utils pitch-files; do
         ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/$ext"
         if [ -f "$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$ext_dir/package.json"; then
             if [ "$ext" != "subagents" ] && [ "$ext" != "enforcement" ] && grep -q '"build"[[:space:]]*:' "$ext_dir/package.json"; then

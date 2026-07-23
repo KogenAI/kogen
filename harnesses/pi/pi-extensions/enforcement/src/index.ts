@@ -57,6 +57,7 @@ import { register as registerReviewerGuard } from "./hooks/reviewer-guard";
 import { register as registerReviewerGuardSessionLogWrite } from "./hooks/reviewer-guard-session-log-write";
 import { register as registerRoleRetrospectiveBeforeStop } from "./hooks/role-retrospective-before-stop";
 import { register as registerSessionLogWriterOnly } from "./hooks/session-log-writer-only";
+import { register as registerShapeRemoteReadonly } from "./hooks/shape-remote-readonly";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
 import { register as registerStopResume } from "./hooks/stop-resume";
 import { register as registerStopVerifyPlannerGate } from "./hooks/stop-verify-planner-gate";
@@ -110,6 +111,7 @@ export default function (pi: ExtensionAPI): void {
   registerReviewerGuardSessionLogWrite(pi);
   registerRoleRetrospectiveBeforeStop(pi);
   registerSessionLogWriterOnly(pi);
+  registerShapeRemoteReadonly(pi);
   registerStaticSiteExGuard(pi);
   registerStopResume(pi);
   registerStopVerifyPlannerGate(pi);

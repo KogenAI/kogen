@@ -49,7 +49,7 @@ harnesses/claude/
 harnesses/pi/
   pi-build.sh, pi-debug.sh, pi-experiment.sh, pi-shape.sh, pi-ops.sh, pi-babysit.sh
   dispatch.sh
-  pi-prompts/
+  prompt-bodies/shape.txt (Pi-native; pi-prompts/ dir removed — dead dup of generated /document)
 harnesses/shared/prompt-bodies/
   debug.txt      ← Protocol + Allowed Queries + Forbidden + Refusal & Pivot (shared)
   experiment.txt ← single-agent, source-writable, worktree investigation (shared)
@@ -81,11 +81,11 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Mode assembly map:**
 
-| Mode  | tools-header contains (per-harness)                                                                                                        | prompt_body list (shared)                                                                                                                                      |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                       | [harnesses/shared/prompt-bodies/debug.txt] — no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                                                         |
-| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit; pi: askuserquestion/subagents/web-utils names) | [harnesses/shared/prompt-bodies/shape.txt, shared/prompt-fragments/_probing.txt, shared/prompt-fragments/_authoring-spine.txt] — mode-title + no-cat-pipe line |
-| ops   | `## Tools` + harness-specific per-tool bullets                                                                                             | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules                                              |
+| Mode  | tools-header contains (per-harness)                                                                                                                   | prompt_body list (shared)                                                                                                                                                                                                                         |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                                  | [harnesses/shared/prompt-bodies/debug.txt] — no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                                                                                                                                            |
+| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit; pi: askuserquestion/subagents/web-utils/pitch_move names) | claude: [harnesses/shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt]; pi: [**harnesses/pi/prompt-bodies/shape.txt** (Pi-native, NOT shared — duplicates blocker-scan prose, parity-tested), _probing.txt, _authoring-spine.txt] |
+| ops   | `## Tools` + harness-specific per-tool bullets                                                                                                        | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules                                                                                                                                 |
 
 **Placement checklist**:
 
@@ -196,7 +196,7 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 
 ## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT (Historical)
 
-Cutover complete (no legacy engine). Future refactors: separate EXEC-MECHANICS (session persistence, re-attach, launch order) from SYSTEM-PROMPT-CONTENT (prompt content) before deleting either.
+Cutover complete. Future refactors: separate EXEC-MECHANICS (session persistence, re-attach, launch order) from SYSTEM-PROMPT-CONTENT before deleting either.
 
 ## Mode → Declared Context
 

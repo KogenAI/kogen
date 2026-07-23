@@ -92,5 +92,6 @@ Before ending the session (context limit approaching, investigation concluded, o
 1. **`## Solution sketch`** — winning approach only; concrete moves (files to edit, commands to run, expected outcomes). No alternatives.
 2. **`## Rabbit holes`** — each dead end as "tried X — failed because Y". One line each. No prose.
 3. **`## References`** — evidence: probe transcripts, test output snippets, relevant file excerpts. Fenced blocks.
+4. **`## Decisions`** — BEFORE deleting notebook noise, extract every material decision the lab notebook narrative already made (winning-approach picks, rejected dead ends and why, scope cuts) into ONE `## Decisions` table (`ID | Decision | Why | Source | Consequence`, IDs ascending `D<number>`). This is the one step that must run BEFORE step 1's aggressive trim — the rationale living only in the narrative prose is exactly what step 1 discards; reconcile it into the table first or it is lost.
 
 The file is a growing lab notebook during the run and a clean buildable pitch at the end. Compact aggressively — a reviewer or build agent must be able to execute from the pitch alone.

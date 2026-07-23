@@ -273,3 +273,17 @@ seams:
     guard: test-hermetic
     guard_time: make-test
     pattern: checked-mirror
+
+  - id: document-md-to-generated-pi-prompt
+    declares: harnesses/claude/commands/document.md (sole document-prompt source)
+    reflects: templates/generated/pi/prompts/document.md (byte-for-byte copy via generate.sh _generate_pi)
+    guard: templates/generator/generate_test.sh
+    guard_time: make-test
+    pattern: generated
+
+  - id: shape-remote-readonly-vector-parity
+    declares: harnesses/claude/hooks/shape-remote-readonly_test.sh (closed remote-grammar allow/deny vectors)
+    reflects: harnesses/pi/pi-extensions/enforcement/src/hooks/__tests__/shape-remote-readonly.test.ts (same vector classes, ported per-case)
+    guard: harnesses/claude/hooks/shape-remote-readonly_test.sh
+    guard_time: make-test
+    pattern: checked-mirror

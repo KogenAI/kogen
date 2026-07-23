@@ -4,11 +4,23 @@ import { AskUserQuestionComponent } from "./component.ts";
 import { InputSchema, type Question, type Result } from "./schema.ts";
 import { validateUniqueness } from "./validate.ts";
 
-export default function (pi: ExtensionAPI) {
-  pi.registerTool({
-    name: "ask_user_question",
-    label: "Ask User",
-    description: `Ask the user 1–4 clarifying questions before proceeding.
+const SHAPE_DESCRIPTION = `Ask the user 1–4 clarifying questions before proceeding.
+Use this tool ONLY for a genuine product/UX fork or user-owned identity — a
+choice that changes what the product DOES for an end user or downstream
+developer, where the answer depends on intent the code cannot reveal.
+FORBIDDEN uses: tooling/library/model choice, file/directory placement,
+dependency edges, split-vs-join decisions, naming/registry/manifest
+mechanics, confirming an explicit reversible directive the user already
+gave, or any other implementation choice — auto-decide those from code and
+convention instead (record as \`Assumed: <x> = <value> — <reason>\`).
+Each question must have 2–4 options. Users can always select "Other" to type a free-text answer, so do not include an "Other" option yourself.
+Option labels should be concise (1–5 words).
+Set multiSelect: true when more than one option can validly apply at the same time.
+The header field is a short label (max 12 characters) used in the tab bar when showing multiple questions.
+If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label.
+Always use this tool instead of asking questions in plain text — it provides a structured, interactive UI.`;
+
+const DEFAULT_DESCRIPTION = `Ask the user 1–4 clarifying questions before proceeding.
 Use this tool to:
 1. Clarify ambiguous instructions
 2. Get the user's preference between valid approaches
@@ -19,7 +31,18 @@ Option labels should be concise (1–5 words).
 Set multiSelect: true when more than one option can validly apply at the same time.
 The header field is a short label (max 12 characters) used in the tab bar when showing multiple questions.
 If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label.
-Always use this tool instead of asking questions in plain text — it provides a structured, interactive UI.`,
+Always use this tool instead of asking questions in plain text — it provides a structured, interactive UI.`;
+
+function descriptionForRole(): string {
+  const role = process.env["CLAUDE_ROLE"] || process.env["PI_ROLE"] || "";
+  return role === "shape" ? SHAPE_DESCRIPTION : DEFAULT_DESCRIPTION;
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "ask_user_question",
+    label: "Ask User",
+    description: descriptionForRole(),
 
     parameters: InputSchema,
 

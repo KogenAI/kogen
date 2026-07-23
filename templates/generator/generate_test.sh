@@ -134,4 +134,37 @@ rc_d=$?
 _assert_exit "(d) no python3 on PATH exits 1" "1" "$rc_d"
 _assert_contains "(d) error contains 'Python3 is required'" "Python3 is required" "$output_d"
 
+# ── Case (e): generate.sh pi copies harnesses/claude/commands/document.md
+# byte-for-byte into pi/prompts/document.md — the single document-prompt
+# producer (Claude command source → generated Pi prompt), no separate
+# hand-maintained Pi source. OUTPUT_DIR does NOT redirect the pi prompts dir
+# (only GENERATED_ROOT/pi/prompts, itself overridable via OCG_GENERATED_DIR,
+# does) — use that override to keep this test hermetic. ────────────────────
+tmp_e=$(mktemp -d)
+trap 'rm -rf "$tmp_e"' EXIT
+
+output_e=$(OCG_GENERATED_DIR="$tmp_e" bash "$GENERATE_SH" pi 2>&1)
+rc_e=$?
+_assert_exit "(e) OCG_GENERATED_DIR generate.sh pi exits 0" "0" "$rc_e"
+
+generated_doc="$tmp_e/pi/prompts/document.md"
+source_doc="$SCRIPT_DIR/../../harnesses/claude/commands/document.md"
+if [ -f "$generated_doc" ] && [ -f "$source_doc" ] && cmp -s "$generated_doc" "$source_doc"; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: (e) generated pi/prompts/document.md is not byte-identical to harnesses/claude/commands/document.md"
+fi
+
+# ── Case (f): the dead tracked Pi-specific document prompt source path stays
+# absent — harnesses/pi/pi-prompts/document.md was hard-deleted (zero
+# production refs; the generated prompt above is the sole producer). ───────
+dead_path="$SCRIPT_DIR/../../harnesses/pi/pi-prompts/document.md"
+if [ ! -f "$dead_path" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: (f) dead harnesses/pi/pi-prompts/document.md still present on disk"
+fi
+
 echo "$pass passed, $fail failed"

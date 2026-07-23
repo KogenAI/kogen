@@ -2,20 +2,21 @@
 
 The pi-extensions domain covers the TypeScript npm packages that extend the Pi harness with custom tool implementations. Each extension is an independent npm package under `harnesses/pi/pi-extensions/<name>/` with its own `package.json`, `src/`, and compiled output. `generate-pi-extension.sh` scaffolds new extensions from a template in `templates/shared/pi-extensions/`.
 
-Current extensions: `askuserquestion` (interactive user prompts), `enforcement` (rule enforcement at runtime), `subagents` (agent delegation bridge), `web-utils` (HTTP/web helpers). Pi build mode now also loads `askuserquestion`, `subagents`, and `enforcement` by default; `codegen-build --harness=pi` treats the written gate result as the success gate.
+Current extensions: `askuserquestion` (interactive user prompts), `enforcement` (rule enforcement at runtime), `subagents` (agent delegation bridge), `web-utils` (HTTP/web helpers), `pitch-files` (confined no-clobber pitch identity move — `pitch_move` tool, shape mode only). Pi build mode now also loads `askuserquestion`, `subagents`, and `enforcement` by default; `codegen-build --harness=pi` treats the written gate result as the success gate.
 
 ## Components
 
-| File / Dir                                        | Purpose                                                        |
-| ------------------------------------------------- | -------------------------------------------------------------- |
-| `harnesses/pi/pi-extensions/askuserquestion/`     | Implements `AskUserQuestion` tool for Pi harness               |
-| `harnesses/pi/pi-extensions/askuserquestion/src/` | TypeScript source                                              |
-| `harnesses/pi/pi-extensions/enforcement/`         | Rule enforcement extension (blocks disallowed patterns)        |
-| `harnesses/pi/pi-extensions/subagents/`           | Subagent delegation bridge for Pi                              |
-| `harnesses/pi/pi-extensions/web-utils/`           | HTTP fetch, web search helpers                                 |
-| `harnesses/pi/pi-extensions/web-utils/src/`       | TypeScript source                                              |
-| `templates/generator/generate-pi-extension.sh`    | Scaffolds a new extension from template                        |
-| `templates/shared/pi-extensions/`                 | Extension scaffold template (package.json, tsconfig, src stub) |
+| File / Dir                                        | Purpose                                                                                                                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `harnesses/pi/pi-extensions/askuserquestion/`     | Implements `AskUserQuestion` tool for Pi harness                                                                                        |
+| `harnesses/pi/pi-extensions/askuserquestion/src/` | TypeScript source                                                                                                                       |
+| `harnesses/pi/pi-extensions/enforcement/`         | Rule enforcement extension (blocks disallowed patterns)                                                                                 |
+| `harnesses/pi/pi-extensions/subagents/`           | Subagent delegation bridge for Pi                                                                                                       |
+| `harnesses/pi/pi-extensions/web-utils/`           | HTTP fetch, web search helpers                                                                                                          |
+| `harnesses/pi/pi-extensions/web-utils/src/`       | TypeScript source                                                                                                                       |
+| `harnesses/pi/pi-extensions/pitch-files/`         | `pitch_move` tool — draft rename / draft→archive, no-clobber hard-link transaction, path confined to `codegen/pitches/{draft,archive}/` |
+| `templates/generator/generate-pi-extension.sh`    | Scaffolds a new extension from template                                                                                                 |
+| `templates/shared/pi-extensions/`                 | Extension scaffold template (package.json, tsconfig, src stub)                                                                          |
 
 ## Key Paths
 
@@ -29,6 +30,8 @@ harnesses/pi/pi-extensions/
     index.ts, package.json, src/
   web-utils/
     index.ts, package.json, src/
+  pitch-files/
+    index.ts, package.json, src/{index,paths,transaction}.ts, tests/
 templates/generator/generate-pi-extension.sh
 templates/shared/pi-extensions/
 ```

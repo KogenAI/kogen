@@ -55,6 +55,7 @@ Hook registration: **Two pipelines** (`enforcement_compiler.py` for `kind: denia
 | `harnesses/claude/hooks/usage-rules-grep-guard.sh` | PreToolUse — enforces grep usage rules (no bare grep on files) |
 | `harnesses/claude/hooks/llm-test-guard.sh` | PreToolUse — guards individual LLM test invocations |
 | `harnesses/claude/hooks/claude-debug-bash-guard.sh` | PreToolUse — bash guards in claude-debug mode |
+| `harnesses/claude/hooks/shape-remote-readonly.sh` (+ Pi `.ts` twin) | PreToolUse, shape role — closed read-only `ssh` grammar; denies BEFORE ssh runs on unclassified/mutating payload or bad host. Seam: `SHAPE_REMOTE_SSH_CONFIG`. |
 | `harnesses/claude/hooks/lib/hooks-lib.sh` | Shared bash library: `session_log_from_transcript`, `pitch_from_transcript`, `read_tool_failures`, `read_gate_verdicts`, `guard_breadcrumb` (best-effort JSONL append to `codegen/logging/.guard-diagnostics/<sid>.jsonl`; fires before deny/block in cycle-spawn guards), `is_codegen_log_write`, transcript JSONL parsing, path helpers. Build-scoped filesystem fallback for transcript lag (see `context/hook-authoring-patterns.md` § Transcript Lag). |
 | `harnesses/claude/hooks/lib/gate-select.sh` | Selects gate from: (1) planner `**Gate**:` JSONL block (Tier-1 win), or (2) per-app `.claude/gate-config.sh` `GATE_COMMAND` env var (Tier-2 fallback). Emits `gate=`, `mode=`, `timeout=` lines, or fail-loud `__GATE_UNRESOLVED__` sentinel. Shelled by both interactive-session fallback hooks AND loop's `LoopGate.decide_gate`. |
 | `harnesses/claude/hooks/_waiver.sh` (+ `.ts` twin) | Shared helper (not registered): `waived? <id>` true iff env `CODEGEN_WAIVED_GUARDS` (developer-only) + `building/<slug>.md`'s `waives:` frontmatter + registry `waivable: true` agree; else enforce. Records `ev:waiver`. Consumed by `prompt-budget-writer-only.sh` only; see `session-log.md` § A guard is waived only where a pitch declared it. |
@@ -123,7 +124,7 @@ All `jq -e` reads exit 0 = at least one match, exit 1 = none. Wrap in `2>/dev/nu
 
 `subagent-retrospective-guard.sh` (SubagentStop) and the loop's post-role warm-resume step were both dead/unwinnable and deleted (mismatched prompt/validator contract).
 
-Replaced by **`role-retrospective-before-stop`**, a `Stop`-event hook gating `planner-*|developer-*|reviewer-*` (curator/committer exempt). Claude twin BLOCKS: pushes the role back into its OWN warm session naming the exact `codegen-log` command. Pi twin is observe-only (stderr warn — `session_shutdown` cannot block). Checks per role: (1) non-empty `ev:role` body; (2) EITHER `ev:learned` OR `ev:no_learning`. Substance, not length, is enforced at the writer — `codegen-log` refuses placeholder/compliance-echo payloads (exit 2), never states a passing length. Bounded at 3 blocks/session, then falls through with a stderr line — never fails the build. `codegen-log section <role> --learned "<text>"` is the one-call path; `append <role> --no-learning "<text>"` is the legal empty-turn exit (session-log rules § Ownership).
+Replaced by **`role-retrospective-before-stop`**, a `Stop`-event hook gating `planner-*|developer-*|reviewer-*` (curator/committer exempt). Claude twin BLOCKS: pushes the role back into its OWN warm session naming the exact `codegen-log` command. Pi twin is observe-only (`session_shutdown` cannot block). Checks per role: non-empty `ev:role` body + EITHER `ev:learned` OR `ev:no_learning`. Substance enforced at the writer — `codegen-log` refuses placeholder/compliance-echo payloads (exit 2). Bounded at 3 blocks/session, then falls through — never fails the build. `section <role> --learned "<text>"` is the one-call path; `append <role> --no-learning "<text>"` is the legal empty-turn exit (session-log rules § Ownership).
 
 ### Slug Extraction Patterns
 
@@ -273,7 +274,7 @@ Specific arms BEFORE wildcards in shell `case` (first-match wins). `LoopGate.dec
 
 ## Bash Hook Test Debugging — Silent Crashes & Early Exits
 
-ALL blocking tests fail while non-blocking pass → suspect an early fatal crash (unbound var under `set -u`, syntax error), not logic errors — hook exits non-zero before `block()`, verdict JSON never emitted, looks like "allow". Diagnostic: `bash -x <hook>.sh 2>&1 | head -50` — find where execution stops; fix by hoisting assignment before first use or `${var:-}` guard.
+ALL blocking tests fail while non-blocking pass → suspect an early fatal crash (unbound var under `set -u`, syntax error) — hook exits non-zero before `block()`, verdict never emitted, looks like "allow". Diagnostic: `bash -x <hook>.sh 2>&1` — find where execution stops; fix by hoisting assignment or `${var:-}` guard.
 
 ## Trigger Keywords
 

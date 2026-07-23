@@ -78,16 +78,18 @@ modes:
   shape:
     model: openai-codex/gpt-5.6-sol # from config.yaml roles.shape (pi variant)
     effort: high
-    tools: read,grep,find,ls,edit,write,bash
+    tools: read,grep,find,ls,edit,write,bash,ask_user_question,pitch_move
     extensions:
       - askuserquestion
       - subagents
       - web-utils
+      - pitch-files
+      - enforcement
     system_prompt_file: harnesses/pi/pi-shape-system-prompt.txt
     tools_header: harnesses/pi/tools-header/shape.txt
     prompt_body:
       - shared/rules/_core/output-style.md
-      - harnesses/shared/prompt-bodies/shape.txt
+      - harnesses/pi/prompt-bodies/shape.txt
       - shared/prompt-fragments/_probing.txt
       - shared/prompt-fragments/_authoring-spine.txt
       - shared/prompt-fragments/_forbidden-bash-brief.txt

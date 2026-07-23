@@ -428,6 +428,32 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL_HANDOFF"
 
+# ── Decision-handoff completeness sentinel: Claude shape, Pi shape, and
+# ready.md.j2 must all teach the SAME `## Decisions` table contract. ─────────
+SENTINEL_DECISIONS="DECISION-HANDOFF COMPLETENESS"
+assert_contains \
+    "decision-handoff completeness sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_DECISIONS"
+assert_contains \
+    "decision-handoff completeness sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_DECISIONS"
+assert_contains \
+    "decision-handoff completeness sentinel in ready.md.j2" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL_DECISIONS"
+
+SENTINEL_DECISIONS_TABLE="ID | Decision | Why | Source | Consequence"
+assert_contains \
+    "Decisions table shape sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL_DECISIONS_TABLE"
+assert_contains \
+    "Decisions table shape sentinel in pi-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
+    "$SENTINEL_DECISIONS_TABLE"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

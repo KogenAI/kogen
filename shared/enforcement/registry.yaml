@@ -547,6 +547,16 @@
   rationale: codegen-log is the SOLE writer of cycle logs — raw Edit/Write/MultiEdit on codegen/logging/*.jsonl, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path, are denied. All log mutation must route through codegen-log init / section <role> (stdin or --body "<text>") / append <role>.
 
 - kind: registration
+  id: shape-remote-readonly
+  event: PreToolUse
+  tool_guard: Bash
+  surface: user_global
+  signal: CLAUDE_ROLE_FAMILY
+  role: shape
+  harnesses: all
+  rationale: "Active only in shape-mode Bash. Executes remote read-only probes against exact literal non-wildcard SSH-config aliases through a closed command/wrapper/operator grammar; denies before ssh invocation on any unclassified or mutating remote payload, malformed argv, or alias-resolution failure. Composes with claude-debug-bash-guard (which does not recursively classify quoted remote payloads) and orchestrator-no-source-edit (unaffected — this hook governs a different axis, remote command classification, not local write-scope)."
+
+- kind: registration
   id: static-site-ex-guard
   event: PreToolUse
   tool_guard: "Write|Edit"

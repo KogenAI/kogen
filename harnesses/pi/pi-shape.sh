@@ -239,10 +239,12 @@ exec pi \
     "${NON_INTERACTIVE_FLAGS[@]+"${NON_INTERACTIVE_FLAGS[@]}"}" \
     --model "$ROLE_MODEL" \
     --thinking "$ROLE_EFFORT" \
-    --tools read,grep,find,ls,edit,write,bash \
+    --tools read,grep,find,ls,edit,write,bash,ask_user_question,pitch_move \
     --no-extensions \
     --extension "$EXTENSIONS_DIR/askuserquestion" \
     --extension "$EXTENSIONS_DIR/subagents" \
     --extension "$EXTENSIONS_DIR/web-utils" \
+    --extension "$EXTENSIONS_DIR/pitch-files" \
+    --extension "$EXTENSIONS_DIR/enforcement" \
     --system-prompt "$ROLE_SYSTEM_PROMPT" \
     "${PI_PROMPT_ARGS[@]+"${PI_PROMPT_ARGS[@]}"}"

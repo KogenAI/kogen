@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Question, Result } from "../src/schema.ts";
 
 // Minimal mock of the ExtensionAPI surface used by the extension
@@ -123,5 +123,91 @@ describe("ask_user_question extension — hasUI=false (headless backstop)", () =
     );
 
     expect(result.details.answers).toEqual({});
+  });
+});
+
+describe("ask_user_question extension — role-aware description", () => {
+  const ORIGINAL_CLAUDE_ROLE = process.env["CLAUDE_ROLE"];
+  const ORIGINAL_PI_ROLE = process.env["PI_ROLE"];
+
+  afterEach(() => {
+    if (ORIGINAL_CLAUDE_ROLE === undefined) {
+      delete process.env["CLAUDE_ROLE"];
+    } else {
+      process.env["CLAUDE_ROLE"] = ORIGINAL_CLAUDE_ROLE;
+    }
+    if (ORIGINAL_PI_ROLE === undefined) {
+      delete process.env["PI_ROLE"];
+    } else {
+      process.env["PI_ROLE"] = ORIGINAL_PI_ROLE;
+    }
+  });
+
+  it("PI_ROLE=shape → description permits only product/UX forks, forbids tooling/placement", async () => {
+    delete process.env["CLAUDE_ROLE"];
+    process.env["PI_ROLE"] = "shape";
+    const pi = makePi();
+    await loadExtension(pi);
+
+    const tool = pi._getRegistered();
+    expect(tool).not.toBeNull();
+    const desc = (pi.registerTool.mock.calls[0][0] as { description: string })
+      .description;
+    expect(desc).toContain("genuine product/UX fork");
+    expect(desc).toContain("FORBIDDEN uses");
+    expect(desc).toContain("auto-decide");
+  });
+
+  it("CLAUDE_ROLE=shape → same shape description (Claude role signal also honored)", async () => {
+    delete process.env["PI_ROLE"];
+    process.env["CLAUDE_ROLE"] = "shape";
+    const pi = makePi();
+    await loadExtension(pi);
+
+    const desc = (pi.registerTool.mock.calls[0][0] as { description: string })
+      .description;
+    expect(desc).toContain("genuine product/UX fork");
+  });
+
+  it("PI_ROLE unset (non-shape mode) → default description, no shape-only restrictions", async () => {
+    delete process.env["CLAUDE_ROLE"];
+    delete process.env["PI_ROLE"];
+    const pi = makePi();
+    await loadExtension(pi);
+
+    const desc = (pi.registerTool.mock.calls[0][0] as { description: string })
+      .description;
+    expect(desc).not.toContain("genuine product/UX fork");
+    expect(desc).toContain("Make decisions on implementation choices");
+  });
+
+  it("PI_ROLE=debug (non-shape) → default description even when a role is set", async () => {
+    delete process.env["CLAUDE_ROLE"];
+    process.env["PI_ROLE"] = "debug";
+    const pi = makePi();
+    await loadExtension(pi);
+
+    const desc = (pi.registerTool.mock.calls[0][0] as { description: string })
+      .description;
+    expect(desc).not.toContain("genuine product/UX fork");
+  });
+
+  it("headless (hasUI:false) shape session still gets shape description on registration", async () => {
+    process.env["PI_ROLE"] = "shape";
+    const pi = makePi();
+    await loadExtension(pi);
+
+    const tool = pi._getRegistered();
+    const result = await tool!.execute(
+      "call-5",
+      { questions: [q("Fork?")] },
+      new AbortController().signal,
+      () => {},
+      { hasUI: false },
+    );
+    expect(result.details.cancelled).toBe(true);
+    const desc = (pi.registerTool.mock.calls[0][0] as { description: string })
+      .description;
+    expect(desc).toContain("genuine product/UX fork");
   });
 });
