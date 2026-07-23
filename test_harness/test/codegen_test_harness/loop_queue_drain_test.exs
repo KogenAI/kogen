@@ -3803,6 +3803,63 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       assert {:ok, 2} = LoopQueueDrain.drain(opts)
     end
+
+    test "forwards clean-checkpoint seam and dispatches the requeued full run", ctx do
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      journal_path = Path.join([ctx.dir, "codegen", "gate-pending", "interrupted-recovery.json"])
+      File.mkdir_p!(Path.dirname(journal_path))
+      write_pitch(ctx.ready_dir, "resumed")
+
+      {_, 0} = System.cmd("git", ["init", "-q", ctx.dir])
+      System.cmd("git", ["-C", ctx.dir, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", ctx.dir, "config", "user.name", "Test"])
+      File.write!(Path.join(ctx.dir, ".gitignore"), "codegen/\n")
+      File.write!(Path.join(ctx.dir, "seed.txt"), "seed\n")
+      System.cmd("git", ["-C", ctx.dir, "add", "."])
+      System.cmd("git", ["-C", ctx.dir, "commit", "-q", "-m", "seed"])
+      {head, 0} = System.cmd("git", ["-C", ctx.dir, "rev-parse", "HEAD"])
+      head = String.trim(head)
+
+      File.write!(
+        journal_path,
+        Jason.encode!(%{
+          "branch" => "",
+          "original_ref" => "master",
+          "slug" => "resumed",
+          "stage" => "resume_pending",
+          "transaction_id" => "interrupted-recovery-clean-drain-test",
+          "updated_at" => "2026-07-22T00:00:00Z"
+        })
+      )
+
+      {:ok, seam_calls} = Agent.start_link(fn -> 0 end)
+      {:ok, spawned} = Agent.start_link(fn -> [] end)
+
+      opts =
+        shipped_opts(ctx,
+          spawn_fn: fn slug, _h, _st, _cwd, _jsonl ->
+            Agent.update(spawned, &(&1 ++ [slug]))
+            {:exit_code, 0}
+          end
+        )
+        |> Keyword.merge(
+          cycle_state_get_fn: fn _ -> "GATED" end,
+          cycle_state_slug_fn: fn _ -> "resumed" end,
+          read_verdict_fn: fn _ -> :clear end,
+          gate_result_base_sha_fn: fn _ -> head end,
+          gate_tree_match_fn: fn _ -> true end,
+          resume_work_present_fn: fn _ ->
+            Agent.update(seam_calls, &(&1 + 1))
+            false
+          end
+        )
+
+      assert {:ok, 1} = LoopQueueDrain.drain(opts)
+      assert Agent.get(seam_calls, & &1) == 1
+      assert Agent.get(spawned, & &1) == ["resumed"]
+      refute File.exists?(journal_path)
+      refute File.exists?(Path.join(building_dir, "resumed.md"))
+    end
   end
 
   # ── Boot-time :jason force-load (ensure_decode_deps) ─────────────────────

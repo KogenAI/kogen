@@ -226,8 +226,15 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
         {:ok, {:resume, slug}}
 
       :full ->
-        {:error,
-         "interrupted recovery journal #{path} has stale or missing resume checkpoint for #{slug}"}
+        # The checkpoint was valid when recovery first moved the claim back
+        # to ready, but is no longer resumable (most importantly: its tree is
+        # now clean because the recovered bytes already landed). Leaving the
+        # resume_pending journal in place makes every later startup fail on
+        # the same stale decision. Retire the checkpoint transaction and
+        # return the claim to the ordinary full-run lane without touching
+        # HEAD; any already-landed descendant commit remains intact.
+        finish_requeue!(claim, ready_dir, cwd, path)
+        {:ok, {:requeued, slug, :clean}}
     end
   end
 
@@ -295,6 +302,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     ready_claim = Path.join(ready_dir, Path.basename(claim))
 
     cond do
+      claim == ready_claim and File.exists?(ready_claim) -> :ok
       File.exists?(ready_claim) and File.exists?(claim) -> File.rm!(claim)
       File.exists?(claim) -> move_to_ready!(claim, ready_dir)
       File.exists?(ready_claim) -> :ok

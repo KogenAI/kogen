@@ -79,6 +79,17 @@ assert_file_absent() {
     fi
 }
 
+assert_path_absent() {
+    local filepath="$1" desc="$2"
+    if [[ ! -e "$filepath" ]]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — unexpected path exists: %s\n' "$desc" "$filepath"
+        fail=$((fail + 1))
+    fi
+}
+
 assert_log_contains_line() {
     local logpath="$1"
     local needle="$2"
@@ -1011,8 +1022,9 @@ WATCHDOG_STALL_STUB_DIR="$BASE_TMP/watchdog_stall_stub_bin"
 mkdir -p "$WATCHDOG_STALL_STUB_DIR"
 cat >"$WATCHDOG_STALL_STUB_DIR/claude.body" <<'WDSTALLSTUB'
 #!/usr/bin/env bash
-# Stub claude: no output, hang forever.
-sleep 3600
+# Stub claude: no output, hang forever. Exec keeps the stub itself as the
+# group leader, matching the real Claude binary (no synthetic shell child).
+exec sleep 3600
 WDSTALLSTUB
 link_stub_path "$WATCHDOG_STALL_STUB_DIR/claude"
 
@@ -1149,7 +1161,7 @@ assert_log_absent_line "$BASE_TMP/wd_z_stderr.log" "watchdog killing claude" \
     "(z) loop-gate off: watchdog never engages"
 
 # ── Watchdog: dead-stream cap (Trigger 3, CODEGEN_CALL_STREAM_IDLE_SECS) ─────
-# Stub pgrep on PATH so child-presence is deterministic regardless of host OS.
+# Keep a PATH-isolated stub directory for the watchdog process fixtures.
 PGREP_STUB_DIR="$BASE_TMP/pgrep_stub_bin"
 mkdir -p "$PGREP_STUB_DIR"
 
@@ -1205,10 +1217,8 @@ else
     fail=$((fail + 1))
 fi
 
-# (bb) Live-but-quiet: no output growth BUT a tool subprocess IS running
-# (pgrep -P non-empty) → the short dead-stream cap must NOT fire; only the
-# (much longer) 900s idle backstop governs. Simulate via a stub claude that
-# spawns a long-lived child (so pgrep -P sees it) and never itself emits output.
+# (bb) Live-but-quiet: no output growth BUT a tool subprocess IS running → the
+# short dead-stream cap must NOT fire; only the longer idle backstop governs.
 cat >"$PGREP_STUB_DIR/pgrep_real.body" <<'PGREPREAL'
 #!/usr/bin/env bash
 exec /usr/bin/pgrep "$@"
@@ -1261,6 +1271,200 @@ else
     printf 'FAIL: (bb) live-but-quiet: killed too early (%ds) — short cap fired despite live subprocess\n' "$WD_BB_ELAPSED"
     fail=$((fail + 1))
 fi
+
+# (bb2) The direct tool parent can exit before its work. Leave only its
+# reparented grandchild in Claude's PGID; a direct-child probe misses it, while
+# the PGID-wide detector must keep suppressing the short stream-idle cap.
+ORPHAN_HELPER="$BASE_TMP/orphan_tool_helper.sh"
+cat >"$ORPHAN_HELPER" <<'ORPHANHELPER'
+#!/usr/bin/env bash
+sleep 3600 </dev/null >/dev/null 2>&1 &
+exit 0
+ORPHANHELPER
+chmod +x "$ORPHAN_HELPER"
+_warm_replace "$PGREP_STUB_DIR/claude" "$(
+    cat <<ORPHANSTUB
+#!/usr/bin/env bash
+"$ORPHAN_HELPER"
+exec sleep 3600
+ORPHANSTUB
+)"
+
+WD_BB2_START=$(date +%s)
+(
+    export PATH="$PGREP_STUB_DIR:$PATH"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5" CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message"
+    export CODEGEN_LOOP=1 CODEGEN_CALL_RESULT_GRACE_SECS=30
+    export CODEGEN_CALL_IDLE_CAP_SECS=3 CODEGEN_CALL_STREAM_IDLE_SECS=2 CODEGEN_CALL_POLL_SECS=0.5
+    unset CODEGEN_CALL_JSON_SCHEMA CODEGEN_CALL_JSON_SCHEMA_PATH CODEGEN_CALL_ALLOWED_TOOLS_SET \
+        CODEGEN_CALL_ALLOWED_TOOLS CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_bb2_stderr.log"
+) >"$BASE_TMP/wd_bb2_envelope.json" || true
+WD_BB2_ELAPSED=$(($(date +%s) - WD_BB2_START))
+
+assert_log_absent_line "$BASE_TMP/wd_bb2_stderr.log" "stream idle" \
+    "(bb2) reparented non-MCP grandchild in Claude PGID suppresses short cap"
+assert_file_contains "$BASE_TMP/wd_bb2_stderr.log" "idle 3s with no output growth"
+if [[ "$WD_BB2_ELAPSED" -ge 3 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (bb2) reparented grandchild governed by idle backstop (%ds)\n' "$WD_BB2_ELAPSED"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (bb2) reparented grandchild was killed by short cap (%ds)\n' "$WD_BB2_ELAPSED"
+    fail=$((fail + 1))
+fi
+
+# (bc) Claude MCP server child is always present, but it is not tool work.
+# A stalled role with only that child must still hit the short dead-stream cap.
+MCP_CHILD="$BASE_TMP/harnesses/claude/mcp-server/dist/index.js"
+mkdir -p "$(dirname "$MCP_CHILD")"
+cat >"$MCP_CHILD" <<'MCPCHILD'
+#!/usr/bin/env bash
+sleep 3600
+MCPCHILD
+chmod +x "$MCP_CHILD"
+_warm_replace "$PGREP_STUB_DIR/claude" "$(
+    cat <<WDMCPSTUB
+#!/usr/bin/env bash
+"$MCP_CHILD" &
+wait
+WDMCPSTUB
+)"
+
+WD_BC_EXIT=0
+WD_BC_START=$(date +%s)
+(
+    export PATH="$PGREP_STUB_DIR:$PATH"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message: Hello, how do I set up the platform?"
+    export CODEGEN_LOOP=1
+    export CODEGEN_CALL_RESULT_GRACE_SECS=30
+    export CODEGEN_CALL_IDLE_CAP_SECS=900
+    export CODEGEN_CALL_STREAM_IDLE_SECS=2
+    export CODEGEN_CALL_POLL_SECS=0.5
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_bc_stderr.log"
+) >"$BASE_TMP/wd_bc_envelope.json" || WD_BC_EXIT=$?
+WD_BC_ELAPSED=$(($(date +%s) - WD_BC_START))
+
+if [[ "$WD_BC_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (bc) mcp-only child: dispatch exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (bc) mcp-only child: dispatch exits 0 — got %d\n' "$WD_BC_EXIT"
+    fail=$((fail + 1))
+fi
+
+assert_file_contains "$BASE_TMP/wd_bc_stderr.log" "stream idle"
+
+if [[ "$WD_BC_ELAPSED" -lt 60 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (bc) mcp-only child: short cap still fires (%ds)\n' "$WD_BC_ELAPSED"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (bc) mcp-only child: took too long (%ds)\n' "$WD_BC_ELAPSED"
+    fail=$((fail + 1))
+fi
+
+# (bd) A successful Claude root may exit while a tool grandchild remains.
+# The dispatcher must not return and leave that process able to mutate later.
+TREE_STUB_DIR="$BASE_TMP/tree_stub_bin"
+mkdir -p "$TREE_STUB_DIR"
+cat >"$TREE_STUB_DIR/claude.body" <<'TREESTUB'
+#!/usr/bin/env bash
+(
+    (sleep 2; printf 'late mutation\n' >"$TREE_MUTATION_PATH") </dev/null >/dev/null 2>&1 &
+    wait
+) </dev/null >/dev/null 2>&1 &
+sleep 0.5
+cat "$FIXTURE_PATH"
+TREESTUB
+link_stub_path "$TREE_STUB_DIR/claude"
+
+(
+    export PATH="$TREE_STUB_DIR:$PATH" TREE_MUTATION_PATH="$BASE_TMP/post_return_mutation"
+    export CODEGEN_LOOP=1 CODEGEN_CALL_TERM_GRACE_SECS=0.1 CODEGEN_CALL_GUARD_POLL_SECS=0.05
+    export CODEGEN_CALL_RESULT_GRACE_SECS=30 CODEGEN_CALL_IDLE_CAP_SECS=30 CODEGEN_CALL_POLL_SECS=0.1
+    unset CODEGEN_CALL_JSON_SCHEMA CODEGEN_CALL_JSON_SCHEMA_PATH CODEGEN_CALL_ALLOWED_TOOLS_SET \
+        CODEGEN_CALL_ALLOWED_TOOLS CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" >/dev/null 2>"$BASE_TMP/tree_return_stderr.log"
+)
+sleep 3
+assert_path_absent "$BASE_TMP/post_return_mutation" \
+    "(bd) successful return cleans child and grandchild before late mutation"
+
+# (be) SIGKILL cannot run the dispatcher's traps. Its independent guardian
+# must still clean the recorded Claude tree after the owner disappears.
+(
+    export PATH="$TREE_STUB_DIR:$PATH" TREE_MUTATION_PATH="$BASE_TMP/post_kill_mutation"
+    export CODEGEN_LOOP=1 CODEGEN_CALL_TERM_GRACE_SECS=0.1 CODEGEN_CALL_GUARD_POLL_SECS=0.05
+    export CODEGEN_CALL_RESULT_GRACE_SECS=30 CODEGEN_CALL_IDLE_CAP_SECS=30 CODEGEN_CALL_POLL_SECS=0.1
+    unset CODEGEN_CALL_JSON_SCHEMA CODEGEN_CALL_JSON_SCHEMA_PATH CODEGEN_CALL_ALLOWED_TOOLS_SET \
+        CODEGEN_CALL_ALLOWED_TOOLS CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    exec bash "$DISPATCH_SCRIPT"
+) >/dev/null 2>"$BASE_TMP/tree_kill_stderr.log" &
+TREE_DISPATCH_PID=$!
+sleep 0.8
+kill -KILL "$TREE_DISPATCH_PID" 2>/dev/null || true
+wait "$TREE_DISPATCH_PID" 2>/dev/null || true
+sleep 3
+assert_path_absent "$BASE_TMP/post_kill_mutation" \
+    "(be) guardian cleans child and grandchild after dispatcher SIGKILL"
+
+# (bf) Real cycle teardown targets the dispatcher's process group. Launch the
+# dispatcher as a session leader, then kill that whole group; the guardian is
+# in a different session and must still prevent the delayed grandchild write.
+cat >"$TREE_STUB_DIR/claude.body" <<'TREEHANG'
+#!/usr/bin/env bash
+(
+    (sleep 2; printf 'late mutation\n' >"$TREE_MUTATION_PATH") </dev/null >/dev/null 2>&1 &
+    wait
+) </dev/null >/dev/null 2>&1 &
+sleep 3600
+TREEHANG
+TREE_DISPATCH_PID_FILE="$BASE_TMP/tree_dispatch.pgid"
+(
+    export PATH="$TREE_STUB_DIR:$PATH" TREE_MUTATION_PATH="$BASE_TMP/post_group_kill_mutation"
+    export CODEGEN_LOOP=1 CODEGEN_CALL_TERM_GRACE_SECS=0.1 CODEGEN_CALL_GUARD_POLL_SECS=0.05
+    export CODEGEN_CALL_IDLE_CAP_SECS=30 CODEGEN_CALL_POLL_SECS=0.1
+    perl -MPOSIX -e '
+        ($pidfile, @cmd) = @ARGV; $pid = fork(); exit 0 if $pid;
+        POSIX::setsid(); open(my $fh, ">", $pidfile); print $fh "$$\n"; close($fh); exec @cmd;
+    ' "$TREE_DISPATCH_PID_FILE" bash "$DISPATCH_SCRIPT"
+)
+sleep 0.8
+TREE_DISPATCH_PGID="$(cat "$TREE_DISPATCH_PID_FILE")"
+kill -KILL -- "-$TREE_DISPATCH_PGID" 2>/dev/null || true
+sleep 3
+assert_path_absent "$BASE_TMP/post_group_kill_mutation" \
+    "(bf) isolated guardian survives dispatcher PGID death and cleans descendants"
+
+# (bg) The BEAM owner PID is an independent lifecycle boundary. Killing it
+# must tear down Claude even while the dispatcher itself remains alive.
+sleep 3600 &
+FAKE_BEAM_OWNER=$!
+(
+    export PATH="$TREE_STUB_DIR:$PATH" TREE_MUTATION_PATH="$BASE_TMP/post_owner_kill_mutation"
+    export CODEGEN_LOOP=1 CODEGEN_CALL_OWNER_OS_PID="$FAKE_BEAM_OWNER"
+    export CODEGEN_CALL_TERM_GRACE_SECS=0.1 CODEGEN_CALL_GUARD_POLL_SECS=0.05
+    export CODEGEN_CALL_IDLE_CAP_SECS=30 CODEGEN_CALL_POLL_SECS=0.1
+    bash "$DISPATCH_SCRIPT" >/dev/null 2>"$BASE_TMP/tree_owner_stderr.log"
+) &
+OWNER_DISPATCH_PID=$!
+sleep 0.8
+kill -TERM "$FAKE_BEAM_OWNER" 2>/dev/null || true
+wait "$FAKE_BEAM_OWNER" 2>/dev/null || true
+wait "$OWNER_DISPATCH_PID" 2>/dev/null || true
+sleep 3
+assert_path_absent "$BASE_TMP/post_owner_kill_mutation" \
+    "(bg) BEAM owner death cleans Claude descendants before delayed mutation"
 
 # (cc) default: CODEGEN_CALL_STREAM_IDLE_SECS unset → defaults to 300.
 assert_file_contains "$DISPATCH_SCRIPT" \

@@ -266,6 +266,16 @@ if [[ ! -x "$DISPATCH" ]]; then
     exit 2
 fi
 
+_expected_slug="adhoc"
+_expected_pitch_path="${PROMPT#@}"
+if [[ -n "$PROMPT" ]]; then
+    if [[ -f "$CWD/$_expected_pitch_path" ]]; then
+        _expected_slug="$(basename "$_expected_pitch_path" .md)"
+    elif [[ -f "$_expected_pitch_path" ]]; then
+        _expected_slug="$(basename "$_expected_pitch_path" .md)"
+    fi
+fi
+
 _dispatch_rc=0
 if [[ -n "$PROMPT" ]]; then
     "$DISPATCH" "${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}" "$PROMPT" || _dispatch_rc=$?
@@ -277,13 +287,6 @@ fi
 # evidence and a clear authoritative gate verdict. ─────────────────────────────
 _gate_result="$CWD/codegen/gate-pending/gate-result.json"
 _build_result="$CWD/codegen/gate-pending/build-result.json"
-_expected_slug="adhoc"
-_expected_pitch_path="${PROMPT#@}"
-if [[ -f "$CWD/$_expected_pitch_path" ]]; then
-    _expected_slug="$(basename "$_expected_pitch_path" .md)"
-elif [[ -f "$_expected_pitch_path" ]]; then
-    _expected_slug="$(basename "$_expected_pitch_path" .md)"
-fi
 
 if [[ -z "$PRINT_ARGV" ]] && [[ "$_dispatch_rc" -eq 0 ]]; then
     if [[ ! -f "$_build_result" ]]; then

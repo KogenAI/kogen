@@ -428,5 +428,50 @@ if [[ -f "$PTY_OUT_FILE" ]]; then
     assert_contains "pty: loop stub actually ran" "$PTY_OUT" "pty-mix-ran"
 fi
 
+# ── Test 9: stderr capture must not corrupt loop stdout ─────────────────────
+FAKE_BIN_STREAMS="$TMP_ROOT/bin-streams"
+mkdir -p "$FAKE_BIN_STREAMS"
+cp "$FAKE_BIN/codegen-log" "$FAKE_BIN_STREAMS/codegen-log"
+cat >"$FAKE_BIN_STREAMS/mix" <<'STUB'
+#!/usr/bin/env bash
+printf 'stream-json-stdout\n'
+printf 'loop-stderr-line\n' >&2
+exit 7
+STUB
+chmod +x "$FAKE_BIN_STREAMS/mix"
+
+FAKE_CODEGEN_STREAMS="$TMP_ROOT/codegen-streams"
+mkdir -p "$FAKE_CODEGEN_STREAMS/test_harness"
+STREAMS_CWD="$TMP_ROOT/streams-cwd"
+mkdir -p "$STREAMS_CWD/codegen/logging"
+STREAMS_STDOUT="$TMP_ROOT/streams-stdout.txt"
+STREAMS_STDERR="$TMP_ROOT/streams-stderr.txt"
+rc=0
+env -i \
+    HOME="${HOME:-/tmp}" \
+    PATH="$FAKE_BIN_STREAMS:$PATH" \
+    OCG_CODEGEN_DIR="$FAKE_CODEGEN_STREAMS" \
+    CODEGEN_BUILD_STACK=phoenix \
+    CODEGEN_BUILD_CWD="$STREAMS_CWD" \
+    "$TEST1_HARNESS/dispatch.sh" "dummy-prompt" \
+    >"$STREAMS_STDOUT" 2>"$STREAMS_STDERR" || rc=$?
+assert_eq "stderr capture: loop status preserved" "7" "$rc"
+STREAMS_STDOUT_CONTENT="$(cat "$STREAMS_STDOUT")"
+STREAMS_STDERR_CONTENT="$(cat "$STREAMS_STDERR")"
+assert_contains "stderr capture: stdout remains byte-transparent" \
+    "$STREAMS_STDOUT_CONTENT" "stream-json-stdout"
+assert_contains "stderr capture: loop stderr is still emitted" \
+    "$STREAMS_STDERR_CONTENT" "loop-stderr-line"
+assert_not_contains "stderr capture: stdout is not mirrored to stderr" \
+    "$STREAMS_STDERR_CONTENT" "stream-json-stdout"
+
+DISPATCH_SOURCE="$(cat "$DISPATCH")"
+assert_not_contains "stderr capture avoids restricted /dev/fd process substitution" \
+    "$DISPATCH_SOURCE" '"${_loop_argv[@]}" 2> >(tee'
+assert_contains "stderr capture uses portable named FIFO" \
+    "$DISPATCH_SOURCE" 'mkfifo "$_stderr_fifo"'
+assert_contains "stderr capture preserves loop status explicitly" \
+    "$DISPATCH_SOURCE" 'exit "$_status"'
+
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

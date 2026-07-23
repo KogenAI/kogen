@@ -100,6 +100,11 @@ typed event, not the chat turn, so a tool-final turn must not fail a cycle that 
 plan. A plan-less planner (blank/absent `{"ev":"plan"}`) still fails loud — the override is gated on
 BOTH `planner_role?(role)` AND a non-empty plan string; no other role is affected.
 
+Every role transport receives `CODEGEN_CALL_OWNER_OS_PID=System.pid()` from
+`run_call_split/4`. Claude's independently-sessioned guardian treats that BEAM OS PID as a lifecycle
+owner: if BEAM dies while its shell dispatcher remains alive, the guardian terminates the entire
+owned Claude process group before orphaned tools can mutate the checkout.
+
 ## Model Escalation Ladder
 
 `maybe_escalate_model/5` fires ONLY on the FINAL gate-retry attempt (not every retry) for a dev role,
@@ -167,7 +172,8 @@ respectively via `resume_role_for_state/1`). A resume is honored ONLY when ALL o
 role is present in `roles` for this stack, **the checkpoint's stamped `slug` matches this cycle's
 `opts[:slug]` (identity guard — prevents pitch A's orphaned checkpoint from being resumed by pitch B)**,
 the gate verdict at checkpoint time reads as non-error (missing verdict is NOT silently treated as clear —
-an explicit check), and `resume_head_unmoved?/2` confirms HEAD hasn't moved since the checkpoint (stale
+an explicit check), the matched tree still has publishable working-tree changes (a clean tree restarts
+instead of entering reviewer/committer with no diff), and `resume_head_unmoved?/2` confirms HEAD hasn't moved since the checkpoint (stale
 checkpoint after an external commit → full run, never a corrupt resume). Resume replaces the full
 pitch/plan prompt with a continuation prompt (the resumed session already carries prior tool-call history
 in its transcript). An empty or foreign slug → full run, never resume.
@@ -187,8 +193,11 @@ temp-write+rename so a second crash mid-recovery resumes at the last completed s
 re-parking. **Transaction identity is mandatory**: the journal's `transaction_id` must match the label on
 the stashed entry or the subject of the parked commit — branch/stash EXISTENCE alone is never adopted as
 evidence. A `resume_pending` journal reuses the SAME checkpoint evaluator run-time uses,
-`OrchestrationLoop.resume_checkpoint/3` (`@doc false` public) — a stale/mismatched checkpoint still falls
-through to `:full` (non-resumable), never silently treated as clear.
+`OrchestrationLoop.resume_checkpoint/3` (`@doc false` public). A `:full` decision clears the checkpoint
+and journal and requeues the claim for an ordinary full run without moving HEAD, preserving any
+already-landed descendant commit instead of failing every later startup on stale `resume_pending` state.
+When the journal already points at `ready/<slug>`, cleanup recognizes source and destination identity and
+leaves that pitch file in place for the direct loop or queue to claim.
 
 Non-resumable trees are preserved, not discarded: `InterruptedCycleRecovery.park_worktree/4` (`:strict`
 policy here; `LoopQueueDrain`'s pre-existing warning-policy `queue-fail/<slug>/<UTC>` parking is
@@ -212,6 +221,13 @@ this file back and requires its `invocation_id`/`slug`/`head` to match the CURRE
 `gate-result.json` before exiting 0 — see `context/harnesses.md` § Orchestrated Build Mode.
 
 ## Curator-Doc Check (Three Legs)
+
+The post-review curator delegation carries an authoritative stage block: the loop gate already passed
+for the exact tree and the reviewer approved it; the curator consumes typed `ev:learned` events and
+MUST NOT run the full gate/test command. Targeted routing/factcheck checks remain allowed. Formatting
+and the three scans below are loop-owned, and `ensure_gate_graded_this_tree!` still re-gates before
+committer whenever curator edits change the tree. Turn-0 orientation repair does not receive this
+post-review claim; a resumed `REVIEWED` checkpoint does.
 
 After the context-curator role, `run_curator_doc_check/6` shells `default_curator_doc_scan/2`
 (dispatched via the `:curator_doc_check_fn` seam, still arity-1 for the 30+ existing test overrides —
@@ -316,4 +332,4 @@ section for how a marked nonzero exit routes to park+skip+breaker instead of `re
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, transaction identity, CODEGEN_BUILD_INVOCATION_ID, recovery/interrupted branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, transaction identity, CODEGEN_BUILD_INVOCATION_ID, recovery/interrupted branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership

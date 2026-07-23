@@ -283,7 +283,7 @@ Reversing (testing `! -r` before `! -e`) makes the absent-file branch unreachabl
 
 ### `split_command_segments` — Escaped Quotes & Glob-Safe Splitting
 
-Consumes `\"` inside a dq region as an escaped PAIR (no toggle) — not a quote-close; fixes phantom fail-closed denies on balanced strings (e.g. `grep -n "deny \"" file` mis-denied as "recursive rm"). Unbalanced quotes still fail closed. `command_word_of_segment`/`segment_argv_of` (bash-only) scope `set -f` around word-split so `*`/`?` never glob-expand against caller cwd.
+Consumes `\"` inside a dq region as an escaped PAIR (no toggle) — not a quote-close; fixes phantom fail-closed denies on balanced strings (e.g. `grep -n "deny \"" file` mis-denied as "recursive rm"). Unbalanced quotes still fail closed. `strip_git_global_opts`/`command_word_of_segment`/`segment_argv_of` (bash-only) scope `set -f` around word-split so `*`/`?` never glob-expand against caller cwd; each restores the caller's prior noglob state.
 
 ## Hook Output Protocol
 

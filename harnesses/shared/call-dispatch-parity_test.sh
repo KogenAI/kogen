@@ -5,16 +5,16 @@
 # The two legs are independent implementations of the same CODEGEN_CALL_*
 # contract (no shared lib). This test does NOT assert byte-identity — the
 # legs have known, documented asymmetries (claude's --resume/--session-id
-# precedence vs pi's --session-id-creates-or-resumes; claude's
-# CODEGEN_CALL_AGENTS_PATH is claude-only inline agent-def JSON). It asserts
+# precedence vs pi's --session-id-creates-or-resumes; Claude's inline-agent,
+# settings/schema-path, and guardian controls have no Pi twin; authoritative
+# exception arrays and rationale live below). It asserts
 # the parts that MUST stay identical: the CODEGEN_CALL_* env-var read set
-# (minus the documented claude-only exception) and the JSON envelope's
+# (minus the documented claude-only exception set) and the JSON envelope's
 # top-level key set (both `result` and `usage` sub-objects).
 #
 # Tests:
 #   Test 1 (live) — every CODEGEN_CALL_* var read by the claude leg is also
-#       read by the pi leg, except the documented claude-only exception
-#       (CODEGEN_CALL_AGENTS_PATH).
+#       read by the pi leg, except the documented claude-only exception set.
 #   Test 2 (live) — every CODEGEN_CALL_* var read by the pi leg is also read
 #       by the claude leg (reverse direction — catches a pi-only var nobody
 #       documented as an asymmetry).
@@ -42,7 +42,19 @@ PI_LEG="$CODEGEN_DIR/harnesses/pi/call-dispatch.sh"
 #                                     via CODEGEN_CALL_JSON_SCHEMA)
 #   CODEGEN_CALL_SETTINGS_PATH      — claude-only (claude --settings flag has
 #                                     no pi equivalent)
-CLAUDE_ONLY_VARS=(CODEGEN_CALL_AGENTS_PATH CODEGEN_CALL_JSON_SCHEMA_PATH CODEGEN_CALL_SETTINGS_PATH)
+#   CODEGEN_CALL_OWNER_OS_PID       — claude-only guardian watches the BEAM
+#                                     owner; Pi owns its producer group inside
+#                                     its existing stream supervisor
+#   CODEGEN_CALL_GUARD_POLL_SECS    — claude-only guardian test/timing knob
+#   CODEGEN_CALL_TERM_GRACE_SECS    — claude-only guardian TERM→KILL grace
+CLAUDE_ONLY_VARS=(
+    CODEGEN_CALL_AGENTS_PATH
+    CODEGEN_CALL_JSON_SCHEMA_PATH
+    CODEGEN_CALL_SETTINGS_PATH
+    CODEGEN_CALL_OWNER_OS_PID
+    CODEGEN_CALL_GUARD_POLL_SECS
+    CODEGEN_CALL_TERM_GRACE_SECS
+)
 
 # CODEGEN_CALL_EXTENSION_PATH(S) — pi-only (pi loads TS extensions by path;
 # claude has no equivalent concept). Singular remains staged-upgrade compatibility;

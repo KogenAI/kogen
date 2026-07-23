@@ -65,7 +65,9 @@ subprocess hold for the window. Pi's producer runs below a process-group shell s
 leg records the actual Pi PID separately and probes `pgrep -P $PI_PROCESS_PID`; probing supervisor
 children would always see Pi itself and permanently disable this trigger. The child-presence guard is
 what makes a short cap safe against a role legitimately silent while a `make test`/`mix test` tool
-runs. The default was raised from 60s to 300s after observed false kills of planner-phoenix (~10M
+runs. Claude ignores its always-on codegen MCP server child in this guard; that child is transport
+plumbing, not tool work, and otherwise permanently disables the stream-idle trigger. The default was
+raised from 60s to 300s after observed false kills of planner-phoenix (~10M
 cache_read_tokens) whose server-side first-token latency legitimately exceeds 60s with no tool
 subprocess running — a slow turn is not a dead stream. Both legs read this var identically;
 `harnesses/shared/call-dispatch-parity_test.sh` enforces the cross-leg read-set stays in sync.
@@ -82,6 +84,17 @@ the `sleep` interval inside `while kill -0 "$CHILD_PID"` that governs how often 
 are checked. Production is unaffected (default stays 5, unset in every real build); the three watchdog
 test files override it to `0.5` so killing test cases resolve in ~2s of poll latency instead of ~10s,
 without changing which trigger fires or the threshold it fires at.
+
+Claude loop calls run in a dedicated POSIX session/process group created by a tiny forked Perl
+supervisor (portable across Darwin/Linux; Perl is already the timestamp fallback). A separate,
+independently-sessioned guardian watches the dispatcher, supervisor, and the BEAM OS PID supplied by
+`run_call_split/4` as `CODEGEN_CALL_OWNER_OS_PID`. Dispatcher signal/exit traps, watchdog kills,
+normal return, and guardian detection of dispatcher/BEAM death all terminate the owned group with
+TERM then KILL. The guardian survives even whole-dispatcher-process-group termination. Live-tool
+detection scans every member of the owned Claude PGID; the configured MCP executable and its
+descendant plumbing are excluded by ancestry. `CODEGEN_CALL_OWNER_OS_PID`,
+`CODEGEN_CALL_GUARD_POLL_SECS`, and `CODEGEN_CALL_TERM_GRACE_SECS` are intentionally Claude-only:
+Pi owns its producer group inside its separate stream supervisor and does not use the Claude guardian.
 
 ## Consumers
 
@@ -156,4 +169,4 @@ from this list.
 
 ## Trigger Keywords
 
-call envelope, codegen-call contract, result.status, retry_meta, session_id null, harness asymmetry, transient error, LoopQueue.transient?, call-dispatch.sh, usage block, cache_read_input_tokens, metrics field, ajv schema validation
+call envelope, codegen-call contract, result.status, retry_meta, session_id null, harness asymmetry, transient error, LoopQueue.transient?, call-dispatch.sh, usage block, cache_read_input_tokens, metrics field, ajv schema validation, stream idle watchdog, MCP server child, process group, guardian, orphan cleanup

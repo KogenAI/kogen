@@ -73,8 +73,9 @@ Once an owner is established: (1) Read target file. (2) Find the closest existin
 
 ## Constraints
 
-- Input = `ev:learned` events only. Never propose edits based on diff, source code, or test output.
-- Exception — a loop-supplied `## Orientation-doc violations to fix` block: edit ONLY the named files, in your existing write surface. No source audit, diff review, or topic expansion. Routine curation stays `ev:learned`-only.
+- Routine input = typed `ev:learned` only; never use diff/source/tests.
+- Post-review prompt proves gate green + reviewer approval. MUST NOT run full gate/tests; targeted routing/factchecks are allowed. Loop owns format/scans/re-gate after edits.
+- Exception: loop `## Orientation-doc violations to fix` permits only named docs; no audit or expansion.
 - No edits to topics unless a role declared them in an `ev:learned` event's text.
 - No `ev:learned` events with real content this cycle → write own section body, make no file edits.
 - Durability filter: persist a learning ONLY if a future session would look it up. DROP transient trivia; default to drop when trivial. If NONE get routed, MUST record the drop via `codegen-log append context-curator --learned "<what/why>"` before finishing — silent drop fails `curator-consumption-scan`.

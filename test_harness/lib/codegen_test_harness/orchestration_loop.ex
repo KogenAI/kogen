@@ -343,7 +343,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     case resume_checkpoint(cwd, all_roles, opts) do
       {:resume, resume_role, state} ->
         roles = resume_suffix(all_roles, resume_role)
-        ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}, base_head: cycle_base_head(cwd)}
+
+        ctx = %{
+          cwd: cwd,
+          pitch: pitch,
+          artifacts: %{resume_state: state},
+          base_head: cycle_base_head(cwd)
+        }
+
         run_body_from(harness, cwd, roles, ctx, opts, {resume_role, state})
 
       :full ->
@@ -1176,6 +1183,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   #   * the last gate run's verdict is :clear;
   #   * the tree right now is byte-identical to what the gate graded
   #     (graded_tree_sha_now == gate_result_graded_tree_sha, both non-empty);
+  #   * the matched tree still contains publishable working-tree changes — a
+  #     clean checkpoint cannot be reviewed or committed and must restart;
   #   * HEAD has not moved since the gate ran (current HEAD starts with
   #     gate-result.json's base_sha) — rules out the rare "committer
   #     committed then died before advancing state to COMMITTED" edge;
@@ -1192,10 +1201,40 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          true <- resume_slug_match?(cwd, opts),
          :clear <- safe_read_verdict(cwd, opts),
          true <- gate_tree_match?(cwd, opts),
+         true <- resume_work_present?(cwd, opts),
          true <- resume_head_unmoved?(cwd, opts) do
       {:resume, resume_role, state}
     else
       _ -> :full
+    end
+  end
+
+  # A gate/tree match proves only that the checkpoint is internally
+  # consistent. It does not prove there is still work to publish: a gate can
+  # legitimately grade a clean tree (for example after another recovery
+  # already landed the intended bytes). Resuming that checkpoint at reviewer
+  # produces an empty review set; resuming at committer produces a no-op. Both
+  # are deterministic failures, so reject the resume before either role is
+  # invoked. Non-git test/synthetic cwd values retain the historical fail-open
+  # behavior; production cycles always run in a git work tree.
+  defp resume_work_present?(cwd, opts) do
+    work_present_fn =
+      Keyword.get(opts, :resume_work_present_fn, &default_resume_work_present?/1)
+
+    work_present_fn.(cwd)
+  end
+
+  defp default_resume_work_present?(cwd) do
+    if git_work_tree?(cwd) do
+      case System.cmd("git", ["status", "--porcelain", "--untracked-files=all"],
+             cd: cwd,
+             stderr_to_stdout: true
+           ) do
+        {output, 0} -> String.trim(output) != ""
+        _ -> false
+      end
+    else
+      true
     end
   end
 
@@ -4011,6 +4050,30 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base
       end
 
+    # A normal context-curator invocation happens only after the loop has
+    # graded this exact tree and a reviewer has approved it. Say that
+    # explicitly so the curator consumes the narrow typed-learning handoff
+    # instead of re-running the developer's full gate. Turn-0 orientation
+    # repair has neither a reviewer artifact nor a REVIEWED resume marker and
+    # therefore must not receive this stage claim.
+    reviewed? =
+      is_map(get_in(ctx, [:artifacts, "reviewer-phoenix"])) or
+        is_map(get_in(ctx, [:artifacts, "reviewer-static"])) or
+        get_in(ctx, [:artifacts, :resume_state]) == "REVIEWED"
+
+    base =
+      if role == "context-curator" and reviewed? do
+        base <>
+          "\n\n## Stage contract — post-review context curation\n\n" <>
+          "The loop gate already passed for this exact tree and the reviewer approved it. " <>
+          "Consume only the cycle log's typed `ev:learned` events and route durable learnings " <>
+          "within your curator write surface. MUST NOT run the full gate or test command. " <>
+          "Targeted curator routing and factcheck checks are allowed. The loop owns formatting " <>
+          "and curator scans, and will re-run the gate if your edits change the tree."
+      else
+        base
+      end
+
     # On a review re-work pass, thread the reviewer's feedback to the developer.
     fb = get_in(ctx, [:artifacts, :review_feedback])
 
@@ -4302,7 +4365,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         System.cmd(
           "sh",
           ["-c", ~s(exec "$@" 2>"$CG_ERR"), "sh", bin | args],
-          env: [{"CG_ERR", err_path} | env],
+          env: [
+            {"CG_ERR", err_path},
+            {"CODEGEN_CALL_OWNER_OS_PID", System.pid()}
+            | env
+          ],
           cd: cwd,
           stderr_to_stdout: false
         )

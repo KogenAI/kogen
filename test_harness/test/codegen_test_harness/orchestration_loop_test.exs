@@ -3228,6 +3228,63 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       refute content =~ "Gate — self-verify"
     end
+
+    test "post-review curator gets stage ownership while developer contract stays unchanged" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          "reviewer-static" => %{"value" => "REVIEW_VERDICT: APPROVED"},
+          gate_command: "make test"
+        }
+      }
+
+      curator = OrchestrationLoop.build_prompt("context-curator", ctx)
+      developer = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      assert curator =~ "Stage contract — post-review context curation"
+      assert curator =~ "loop gate already passed for this exact tree"
+      assert curator =~ "reviewer approved it"
+      assert curator =~ "typed `ev:learned` events"
+      assert curator =~ "MUST NOT run the full gate or test command"
+      assert curator =~ "Targeted curator routing and factcheck checks are allowed"
+      assert curator =~ "will re-run the gate if your edits change the tree"
+      refute curator =~ "Gate — self-verify"
+
+      assert developer =~ "Gate — self-verify"
+      refute developer =~ "Stage contract — post-review context curation"
+    end
+
+    test "curator orientation repair block is preserved and does not imply post-review state" do
+      violation = "context/loop.md: named path does not exist"
+
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{curator_doc_violations: violation, gate_command: "make test"}
+      }
+
+      content = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      assert content =~ "## Orientation-doc violations to fix"
+      assert content =~ violation
+      assert content =~ "Edit only the named orientation docs"
+      refute content =~ "Stage contract — post-review context curation"
+      refute content =~ "Gate — self-verify"
+    end
+
+    test "REVIEWED checkpoint curator receives the post-review stage contract" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{resume_state: "REVIEWED", gate_command: "make test"}
+      }
+
+      content = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      assert content =~ "Stage contract — post-review context curation"
+      refute content =~ "Gate — self-verify"
+    end
   end
 
   describe "build_prompt/2 — repair brief threading" do
@@ -7447,6 +7504,42 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) == ["committer"]
+    end
+
+    test "clean GATED checkpoint is not resumable at reviewer", %{
+      dir: dir,
+      base_head: base_head
+    } do
+      write_gate_result!(dir, "clear", "already-recovered-tree", base_head)
+      write_cycle_state!(dir, "GATED", "matching-slug")
+
+      assert :full ==
+               OrchestrationLoop.resume_checkpoint(dir, ["developer-static", "reviewer-static"],
+                 slug: "matching-slug",
+                 cycle_state_get_fn: fn _cwd -> "GATED" end,
+                 cycle_state_slug_fn: fn _cwd -> "matching-slug" end,
+                 read_verdict_fn: fn _cwd -> :clear end,
+                 gate_result_base_sha_fn: fn _cwd -> base_head end,
+                 gate_tree_match_fn: fn _cwd -> true end
+               )
+    end
+
+    test "clean CURATED checkpoint is not resumable at committer", %{
+      dir: dir,
+      base_head: base_head
+    } do
+      write_gate_result!(dir, "clear", "already-recovered-tree", base_head)
+      write_cycle_state!(dir, "CURATED", "matching-slug")
+
+      assert :full ==
+               OrchestrationLoop.resume_checkpoint(dir, ["context-curator", "committer"],
+                 slug: "matching-slug",
+                 cycle_state_get_fn: fn _cwd -> "CURATED" end,
+                 cycle_state_slug_fn: fn _cwd -> "matching-slug" end,
+                 read_verdict_fn: fn _cwd -> :clear end,
+                 gate_result_base_sha_fn: fn _cwd -> base_head end,
+                 gate_tree_match_fn: fn _cwd -> true end
+               )
     end
 
     # Regression for pitch "a failed cycle leaves no checkpoint the NEXT

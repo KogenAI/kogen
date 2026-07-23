@@ -45,6 +45,33 @@ make_ws() {
     printf '%s' "$ws"
 }
 
+# Fake ssh that behaves like a remote shell but deliberately attempts one
+# stdin read before executing the payload. Without `ssh -n`, that read steals
+# the next inventory row from callers iterating nodes on stdin. It also
+# unwraps the root-landing `su - <run_as> -c ...` form without requiring a
+# real service user in the hermetic fixture.
+make_stdin_reading_ssh() {
+    local dir
+    dir="$(mktemp -d)"
+    local stub="$dir/ssh"
+    printf '%s\n' \
+        '#!/usr/bin/env bash' \
+        'set -euo pipefail' \
+        'no_stdin=0' \
+        'if [[ "${1:-}" == "-n" ]]; then no_stdin=1; shift; fi' \
+        '[[ "$no_stdin" == "1" ]] || IFS= read -r _stolen || true' \
+        'if [[ "${1:-}" == "-o" ]]; then shift 2; fi' \
+        'host="${1:-}"; shift || true' \
+        'cmd="${1:-}"' \
+        'if [[ "$cmd" == su\ -*\ -c\ * ]]; then' \
+        '  quoted="${cmd#* -c }"' \
+        '  eval "cmd=$quoted"' \
+        'fi' \
+        'bash -c "$cmd"' >"$stub"
+    chmod +x "$stub"
+    printf '%s' "$dir"
+}
+
 # ── (a) no subcommand → usage, exit 2 ───────────────────────────────────────
 ec=0
 out="$("$DRAIN" 2>&1)" || ec=$?
@@ -554,6 +581,56 @@ check "(al) status --json exits 0" "0" "$ec"
 assert_contains "(al) json has nodeA row" "$out" '"node":"nodeA"'
 assert_contains "(al) json has nodeB row" "$out" '"node":"nodeB"'
 assert_contains "(al) json has nodeC row (final node not dropped)" "$out" '"node":"nodeC"'
+
+# ── (al2) remote status probe cannot consume the inventory iterator's stdin
+# The middle node's fake ssh deliberately reads stdin unless invoked with -n;
+# the final node must still be iterated and rendered. ──────────────────────
+WS_AL2="$(make_ws al2)"
+mkdir -p "$WS_AL2/nodeA/codegen/pitches/ready" "$WS_AL2/nodeB/codegen/pitches/ready" "$WS_AL2/nodeC/codegen/pitches/ready"
+mkdir -p "$WS_AL2/nodeA/codegen/pitches/building" "$WS_AL2/nodeB/codegen/pitches/building" "$WS_AL2/nodeC/codegen/pitches/building"
+cat >"$WS_AL2/drain-nodes.yaml" <<YAML
+nodes:
+  - name: nodeA
+    repo: $WS_AL2/nodeA
+  - name: nodeB
+    host: fake-middle
+    repo: $WS_AL2/nodeB
+  - name: nodeC
+    repo: $WS_AL2/nodeC
+YAML
+SSH_AL2="$(make_stdin_reading_ssh)"
+ec=0
+out="$(PATH="$SSH_AL2:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AL2/drain-nodes.yaml" "$DRAIN" status --json 2>&1)" || ec=$?
+check "(al2) status with stdin-reading middle remote exits 0" "0" "$ec"
+assert_contains "(al2) final node remains visible after middle remote" "$out" '"node":"nodeC"'
+rm -rf "$SSH_AL2"
+
+# ── (al3) run_as remote reachability cannot consume assign --auto stdin
+# The middle destination uses the su-wrapped branch; the final local node must
+# remain reachable and receive lane 2. Fleet snapshot remains real here. ───────
+WS_AL3="$(make_ws al3)"
+mkdir -p "$WS_AL3/nodeA/codegen/pitches/ready"
+for remote_node in nodeB nodeC; do
+    mkdir -p "$WS_AL3/$remote_node/codegen/pitches/ready" "$WS_AL3/$remote_node/codegen/pitches/building" "$WS_AL3/$remote_node/codegen/pitches/shipped"
+done
+cat >"$WS_AL3/drain-nodes.yaml" <<YAML
+nodes:
+  - name: nodeB
+    host: fake-middle
+    run_as: studio
+    repo: $WS_AL3/nodeB
+  - name: nodeC
+    repo: $WS_AL3/nodeC
+YAML
+printf '# final lane\n' >"$WS_AL3/nodeA/codegen/pitches/ready/final-lane.md"
+STUB_AL3='test "$CODEGEN_DRAIN_LANES" = 2 && printf %s '\''{"lanes":[[],["final-lane"]],"global_hot":[],"unrouted":[],"dependency_bound":[]}'\'''
+SSH_AL3="$(make_stdin_reading_ssh)"
+ec=0
+out="$(PATH="$SSH_AL3:$PATH" CODEGEN_DRAIN_INVENTORY="$WS_AL3/drain-nodes.yaml" CODEGEN_DRAIN_SCOPE_CMD="$STUB_AL3" "$DRAIN" assign --auto --cwd="$WS_AL3/nodeA" 2>&1)" || ec=$?
+check "(al3) assign --auto retains both reachable nodes" "0" "$ec"
+assert_contains "(al3) final node retains lane 2" "$out" "assigned final-lane -> nodeC"
+check "(al3) final lane lands on final node" "1" "$([[ -f "$WS_AL3/nodeC/codegen/pitches/ready/final-lane.md" ]] && echo 1 || echo 0)"
+rm -rf "$SSH_AL3"
 
 # ── (am) targeted assign refuses when target lacks a required prerequisite ─
 WS_AM="$(make_ws am)"

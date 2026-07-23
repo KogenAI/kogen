@@ -293,9 +293,9 @@ classify_health() {
 remote_run() {
     local host="$1" run_as="$2" cmd="$3"
     if [[ -n "$run_as" ]]; then
-        ssh -o ConnectTimeout=10 "$host" "su - $run_as -c $(printf '%q' "$cmd")"
+        ssh -n -o ConnectTimeout=10 "$host" "su - $run_as -c $(printf '%q' "$cmd")"
     else
-        ssh -o ConnectTimeout=10 "$host" "$cmd"
+        ssh -n -o ConnectTimeout=10 "$host" "$cmd"
     fi
 }
 

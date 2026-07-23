@@ -323,17 +323,19 @@ and BEFORE `publish_preflight_fn`, logging GC, ready ordering, blocked-bucket re
 engine; this is only its queue-specific call site. A `reconcile` error short-circuits the `with` before
 `publish_preflight_fn` ever runs — no network reachability probe, no spawn, on an ambiguous or malformed
 recovery state. `reconcile_opts/5` forwards resume-checkpoint test seams (`cycle_state_get_fn`,
-`cycle_state_slug_fn`, `read_verdict_fn`, `gate_result_base_sha_fn`, `gate_tree_match_fn`) already present
-in the caller's opts alongside the drain's own resolved `cwd`/`ready_dir`/`building_dir`/`roles` — without
-this, a hermetic drain test can never satisfy a real checkpoint via stubs.
+`cycle_state_slug_fn`, `read_verdict_fn`, `gate_result_base_sha_fn`, `gate_tree_match_fn`,
+`resume_work_present_fn`) already present in the caller's opts alongside the drain's own resolved
+`cwd`/`ready_dir`/`building_dir`/`roles` — without this, a hermetic drain test cannot select either the
+resume or clean-full-run recovery branch via stubs.
 
 The resolved recovery result is carried in drain state as `state.recovery` — DISTINCT from the
 pre-existing per-pitch failure-evidence map's own `recovery` key (the parked-branch string written by
 `write_demotion`/`format_failure_row` on a deterministic-failure demotion); the two never collide,
-different maps, different lifecycles. `{:ok, {:resume, slug}}` feeds `prioritize_recovered_slug/2`, which
-reorders the ready-slug list so the resumed slug spawns FIRST regardless of mtime order — a no-op when
-the slug isn't in the ready list (e.g. its `ready/<slug>.md` claim vanished between recovery and
-ordering). `{:ok, :none}` or `{:ok, {:requeued, ...}}` leave ordinary ordering untouched.
+different maps, different lifecycles. Both `{:ok, {:resume, slug}}` and
+`{:ok, {:requeued, slug, recovery}}` feed `prioritize_recovered_slug/2`, which reorders the ready-slug
+list so the recovered slug spawns FIRST regardless of mtime order — a no-op when the slug isn't in the
+ready list (e.g. its claim vanished between recovery and ordering). `{:ok, :none}` leaves ordinary
+ordering untouched.
 
 ## Trigger Keywords
 

@@ -132,7 +132,7 @@ make_codegen_log_stub() {
 # Stub writes invocation-scoped loop result and a clear authoritative gate verdict.
 # The wrapper validates its success proof against the dispatched cwd's HEAD.
 result_ok_body() {
-    printf 'pending="${CODEGEN_BUILD_CWD:-.}/codegen/gate-pending"\nmkdir -p "$pending"\ngit -C "${CODEGEN_BUILD_CWD:-.}" init -q\ngit -C "${CODEGEN_BUILD_CWD:-.}" config user.email test@example.com\ngit -C "${CODEGEN_BUILD_CWD:-.}" config user.name test\ngit -C "${CODEGEN_BUILD_CWD:-.}" commit --allow-empty -qm fixture\nhead=$(git -C "${CODEGEN_BUILD_CWD:-.}" rev-parse HEAD)\nprintf "{\\\"invocation_id\\\":\\\"%%s\\\",\\\"slug\\\":\\\"%%s\\\",\\\"status\\\":\\\"%%s\\\",\\\"head\\\":\\\"%%s\\\",\\\"updated_at\\\":\\\"fixture\\\"}\\n" "${RESULT_INVOCATION_ID:-$CODEGEN_BUILD_INVOCATION_ID}" "${RESULT_SLUG:-adhoc}" "${RESULT_STATUS:-success}" "${RESULT_HEAD:-$head}" > "$pending/build-result.json"\nprintf "{\\\"verdict\\\":\\\"%%s\\\"}\\n" "${RESULT_VERDICT:-clear}" > "$pending/gate-result.json"\nexit 0\n'
+    printf 'cwd="${CODEGEN_BUILD_CWD:-.}"\npending="$cwd/codegen/gate-pending"\nmkdir -p "$pending"\nif [[ -n "${SHIP_READY_SLUG:-}" ]]; then\n    mkdir -p "$cwd/codegen/pitches/shipped"\n    mv "$cwd/codegen/pitches/ready/${SHIP_READY_SLUG}.md" "$cwd/codegen/pitches/shipped/${SHIP_READY_SLUG}.md"\nfi\ngit -C "$cwd" init -q\ngit -C "$cwd" config user.email test@example.com\ngit -C "$cwd" config user.name test\ngit -C "$cwd" commit --allow-empty -qm fixture\nhead=$(git -C "$cwd" rev-parse HEAD)\nprintf "{\\\"invocation_id\\\":\\\"%%s\\\",\\\"slug\\\":\\\"%%s\\\",\\\"status\\\":\\\"%%s\\\",\\\"head\\\":\\\"%%s\\\",\\\"updated_at\\\":\\\"fixture\\\"}\\n" "${RESULT_INVOCATION_ID:-$CODEGEN_BUILD_INVOCATION_ID}" "${RESULT_SLUG:-adhoc}" "${RESULT_STATUS:-success}" "${RESULT_HEAD:-$head}" > "$pending/build-result.json"\nprintf "{\\\"verdict\\\":\\\"%%s\\\"}\\n" "${RESULT_VERDICT:-clear}" > "$pending/gate-result.json"\nexit 0\n'
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -569,6 +569,32 @@ for result_case in wrong_slug wrong_invocation wrong_head non_success non_clear;
         "@$MARKER_M2/codegen/pitches/ready/expected-slug.md" >/dev/null 2>&1 || actual_ec=$?
     check "(m2) ${result_case} result evidence fails closed" "1" "$actual_ec"
 done
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test (m3): wrapper binds expected slug before dispatch. A successful loop may
+# ship ready/<slug>.md to shipped/<slug>.md before writing build-result.json;
+# post-dispatch slug validation must still accept the original prompt slug.
+# ─────────────────────────────────────────────────────────────────────────────
+CB_M3="$(make_cb_root cb_m3)"
+mkdir -p "$CB_M3/harnesses/claude"
+make_stub "$CB_M3/harnesses/claude/dispatch.sh" "$(result_ok_body)"
+MARKER_M3="$BASE_TMP/marker_m3"
+mkdir -p "$MARKER_M3/codegen/pitches/ready"
+printf '%s\n' '---' 'status: SHAPED' '---' '# expected-slug' >"$MARKER_M3/codegen/pitches/ready/expected-slug.md"
+
+actual_ec=0
+RESULT_SLUG=expected-slug \
+    SHIP_READY_SLUG=expected-slug \
+    "$CB_M3/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_M3" \
+    "@$MARKER_M3/codegen/pitches/ready/expected-slug.md" >/dev/null 2>&1 || actual_ec=$?
+check "(m3) shipped ready pitch keeps prompt slug binding" "0" "$actual_ec"
+if [[ -f "$MARKER_M3/codegen/pitches/shipped/expected-slug.md" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (m3) dispatch stub shipped ready pitch\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (m3) dispatch stub did not ship ready pitch\n'
+    fail=$((fail + 1))
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (g): codegen-build must never write into $PWD when --cwd points

@@ -721,7 +721,14 @@ strip_quoted() {
 # through unchanged. Pure-bash token walk — no external interpreter dep.
 strip_git_global_opts() {
     local cmd="$1"
+    local _had_f
+    case $- in *f*) _had_f=1 ;; *) _had_f=0 ;; esac
+    # The command is data, not shell input. Disable pathname expansion around
+    # the intentional whitespace split so literal globs (for example
+    # codegen/logging/*.jsonl) stay one token regardless of caller cwd size.
+    set -f
     local -a words=($cmd)
+    [ "$_had_f" = 0 ] && set +f
     local -a out=()
     local -i n=${#words[@]}
     local -i i=0

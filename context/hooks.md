@@ -212,6 +212,8 @@ Command-scanning guards grepping raw `$COMMAND` over-fire on tokens inside quote
 
 Compiler `{match_subject}` placeholder + registry `ignore_quoted: true` (no-cat-pipe, no-git-stash) selects strip-wrapped subject vs bare literal (default, byte-identical). `pre-commit-guard` (hand-authored twin) computes unquoted residue post-carve-out for all git-verb sites.
 
+`strip_git_global_opts` treats its command string as data: its whitespace token walk scopes `set -f` and restores the caller's prior noglob state. Literal `*`/`?` arguments therefore cannot pathname-expand against a large caller cwd before `pre-commit-guard` reaches its verb checks.
+
 Excluded: `no-python-json` (stripping disables its intrinsically-quoted `-c "<json>"` form).
 
 **`expand_command_indirection`/`expandCommandIndirection`** (beside `command_invokes`): raw `$COMMAND` guards miss a verb hidden in a REFERENCED SCRIPT body (`bash /tmp/x.sh`, written in a prior call). Per segment, word ∈ `bash|sh|zsh|source|.` + first non-flag argv token resolving to a readable regular file → body appended on its own line. Additive-only (original always the prefix), depth-1, fails open. Applied unconditionally in `pre-commit-guard`; opt-in via `resolve_indirection: true` for compiled guards (composes with `ignore_quoted`) — currently `no-git-stash` only. `no-cat-pipe`/`no-python-json` opt out (false-positive risk).

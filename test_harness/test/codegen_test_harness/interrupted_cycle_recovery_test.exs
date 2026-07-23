@@ -2,6 +2,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.InterruptedCycleRecovery
+  alias Mix.Tasks.Codegen.Loop
 
   setup do
     cwd = Path.join(System.tmp_dir!(), "interrupted-recovery-#{System.unique_integer([:positive])}")
@@ -17,6 +18,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     init_repo!(cwd)
     File.write!(Path.join(cwd, "tracked.txt"), "base\n")
     commit!(cwd, "base")
+    File.write!(Path.join(cwd, "tracked.txt"), "recovered work\n")
     ready = ready_pitch(cwd, "stranded")
     File.mkdir_p!(Path.dirname(ready))
     File.write!(ready, "---\nstatus: SHAPED\n---\n# stranded\n")
@@ -79,6 +81,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     init_repo!(cwd)
     File.write!(Path.join(cwd, "tracked.txt"), "base\n")
     commit!(cwd, "base")
+    File.write!(Path.join(cwd, "tracked.txt"), "recovered work\n")
     claim = building_pitch!(cwd, "stranded")
     write_journal!(cwd, "stranded", "", "resume_pending")
 
@@ -101,20 +104,116 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     refute File.exists?(journal_path(cwd))
   end
 
-  test "halts stale resume pending claim before moving it to ready", %{cwd: cwd} do
+  test "stale resume pending checkpoint is cleared and requeued for a full run", %{cwd: cwd} do
     init_repo!(cwd)
     claim = building_pitch!(cwd, "stranded")
     write_journal!(cwd, "stranded", "", "resume_pending")
 
-    assert {:error, reason} =
+    assert {:ok, {:requeued, "stranded", :clean}} =
              InterruptedCycleRecovery.reconcile(
                cwd: cwd,
                roles: ["planner-phoenix"],
                cycle_state_get_fn: fn _ -> "" end
              )
 
-    assert reason =~ "stale or missing resume checkpoint"
-    assert File.exists?(claim)
+    refute File.exists?(claim)
+    assert File.exists?(ready_pitch(cwd, "stranded"))
+    refute File.exists?(journal_path(cwd))
+  end
+
+  test "clean ignored checkpoint and building claim requeue without a recovery loop", %{cwd: cwd} do
+    init_repo!(cwd)
+    File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+    File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+    commit!(cwd, "base")
+    claim = building_pitch!(cwd, "stranded")
+    write_journal!(cwd, "stranded", "", "resume_pending")
+    write_checkpoint!(cwd)
+
+    assert git_status!(cwd) == ""
+
+    assert {:ok, {:requeued, "stranded", :clean}} =
+             InterruptedCycleRecovery.reconcile(
+               cwd: cwd,
+               roles: ["reviewer-phoenix"],
+               cycle_state_get_fn: fn _ -> "GATED" end,
+               cycle_state_slug_fn: fn _ -> "stranded" end,
+               read_verdict_fn: fn _ -> :clear end,
+               gate_tree_match_fn: fn _ -> true end,
+               gate_result_base_sha_fn: fn _ -> git_head!(cwd) end
+             )
+
+    refute File.exists?(claim)
+    assert File.exists?(ready_pitch(cwd, "stranded"))
+    refute File.exists?(journal_path(cwd))
+    refute File.exists?(Path.join([cwd, "codegen", "gate-pending", "gate-result.json"]))
+    refute File.exists?(Path.join([cwd, "codegen", "gate-pending", "cycle-state.json"]))
+  end
+
+  test "already-landed descendant commit survives clean checkpoint requeue", %{cwd: cwd} do
+    init_repo!(cwd)
+    File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+    File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+    commit!(cwd, "base")
+    base_head = git_head!(cwd)
+    File.write!(Path.join(cwd, "tracked.txt"), "recovered and landed\n")
+    commit!(cwd, "land recovered work")
+    landed_head = git_head!(cwd)
+    building_pitch!(cwd, "stranded")
+    write_journal!(cwd, "stranded", "", "resume_pending")
+
+    assert {:ok, {:requeued, "stranded", :clean}} =
+             InterruptedCycleRecovery.reconcile(
+               cwd: cwd,
+               roles: ["reviewer-phoenix"],
+               cycle_state_get_fn: fn _ -> "GATED" end,
+               cycle_state_slug_fn: fn _ -> "stranded" end,
+               read_verdict_fn: fn _ -> :clear end,
+               gate_tree_match_fn: fn _ -> true end,
+               gate_result_base_sha_fn: fn _ -> base_head end
+             )
+
+    assert git_head!(cwd) == landed_head
+    assert git_status!(cwd) == ""
+    assert File.exists?(ready_pitch(cwd, "stranded"))
+    refute File.exists?(journal_path(cwd))
+  end
+
+  test "persisted ready claim survives clean requeue and remains claimable by the direct loop", %{
+    cwd: cwd
+  } do
+    init_repo!(cwd)
+    File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+    File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+    commit!(cwd, "base")
+    base_head = git_head!(cwd)
+    File.write!(Path.join(cwd, "tracked.txt"), "recovered and landed\n")
+    commit!(cwd, "land recovered work")
+    landed_head = git_head!(cwd)
+    ready = ready_pitch(cwd, "stranded")
+    File.mkdir_p!(Path.dirname(ready))
+    File.write!(ready, "---\nstatus: SHAPED\n---\n# stranded\n")
+    write_journal!(cwd, "stranded", "", "resume_pending")
+
+    recovery =
+      InterruptedCycleRecovery.reconcile(
+        cwd: cwd,
+        roles: ["reviewer-phoenix"],
+        cycle_state_get_fn: fn _ -> "GATED" end,
+        cycle_state_slug_fn: fn _ -> "stranded" end,
+        read_verdict_fn: fn _ -> :clear end,
+        gate_tree_match_fn: fn _ -> true end,
+        gate_result_base_sha_fn: fn _ -> base_head end
+      )
+
+    assert recovery == {:ok, {:requeued, "stranded", :clean}}
+    assert File.exists?(ready)
+    assert git_head!(cwd) == landed_head
+    assert git_status!(cwd) == ""
+    assert :ok = Loop.route_reconcile_result(recovery, "stranded", fn ->
+      assert File.exists?(ready)
+      :ok
+    end)
   end
 
   test "replays parked journal after crash without a second parking branch", %{cwd: cwd} do
@@ -197,6 +296,18 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
   defp ready_pitch(cwd, slug), do: Path.join([cwd, "codegen", "pitches", "ready", "#{slug}.md"])
 
   defp journal_path(cwd), do: Path.join([cwd, "codegen", "gate-pending", "interrupted-recovery.json"])
+
+  defp write_checkpoint!(cwd) do
+    pending = Path.join([cwd, "codegen", "gate-pending"])
+    File.mkdir_p!(pending)
+    File.write!(Path.join(pending, "gate-result.json"), "{}")
+    File.write!(Path.join(pending, "cycle-state.json"), "{}")
+  end
+
+  defp git_status!(cwd) do
+    {status, 0} = System.cmd("git", ["-C", cwd, "status", "--porcelain"])
+    String.trim(status)
+  end
 
   defp write_journal!(cwd, slug, branch, stage, transaction_id \\ "interrupted-recovery-test") do
     path = journal_path(cwd)

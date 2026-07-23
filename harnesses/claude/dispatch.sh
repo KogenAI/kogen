@@ -94,11 +94,12 @@ _active_sentinel="$CWD/codegen/logging/.active"
 _active_before=""
 [[ -f "$_active_sentinel" ]] && _active_before="$(cat "$_active_sentinel" 2>/dev/null || true)"
 
-# Bounded stderr capture: the child's stderr is teed to a temp file (last
-# 8 KB kept) from INSIDE the inner bash -c wrapper, so a clean exit's raise
-# stacktrace survives even though nothing else durable does. A SIGKILL of
-# the process group kills the tee too — the tail may be short there, which
-# costs nothing because the raw `status` (137) already IS the diagnosis.
+# Bounded stderr capture: the child's stderr is teed to a temp file from
+# INSIDE the inner bash -c wrapper, so a clean exit's raise stacktrace survives
+# even though nothing else durable does. Use a named FIFO rather than process
+# substitution: restricted runners can deny the `/dev/fd/*` open that
+# `2> >(tee ...)` requires before the loop even starts. Stdout stays
+# byte-transparent, and the loop's exit status is preserved explicitly.
 _stderr_tail_file="$(mktemp)"
 trap 'rm -f "$_stderr_tail_file"' EXIT
 
@@ -118,8 +119,16 @@ env \
         if [[ -n "$5" ]]; then _loop_argv+=("--fallback-model=$5"); fi
         if [[ -n "$6" ]]; then _loop_argv+=("--max-budget-usd=$6"); fi
         _loop_argv+=(-- "$4")
-        "${_loop_argv[@]}" 2> >(tee "$7" >&2)
-        exit "$?"' \
+        _stderr_fifo="$(mktemp "${TMPDIR:-/tmp}/codegen-stderr.XXXXXX")"
+        rm -f "$_stderr_fifo"
+        mkfifo "$_stderr_fifo"
+        trap '\''rm -f "$_stderr_fifo"'\'' EXIT
+        tee "$7" <"$_stderr_fifo" >&2 &
+        _tee_pid=$!
+        "${_loop_argv[@]}" 2>"$_stderr_fifo"
+        _status=$?
+        wait "$_tee_pid" || true
+        exit "$_status"' \
     _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" </dev/null &
 child_pid=$!
 

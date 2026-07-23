@@ -95,6 +95,10 @@ Example: "discovered that the Phoenix loop gate behavior differs from static-sit
 - `[local]` block → `context/hooks.md` (phoenix vs static differences)
 - `[shared]` block → `context/hook-authoring-patterns.md` (common hook design pattern)
 
+## Note: Edit-Transparent Parity Checks
+
+`context-index-parity-scan.sh` (component of `make test`) fires ONLY on `context/*.md` ADD or DELETE vs HEAD, not on content edits to existing files. Parity checks are file-operation-scoped, not content-scoped. No separate trigger-keyword↔PROJECT_CONTEXT.md row set-equality guard exists — keyword lists in both domain file and PROJECT_CONTEXT.md row can be updated in-place without triggering ADD/DELETE-level guards.
+
 ## Trigger Keywords
 
 curator routing, context-curator targets, where learnings go, [local] vs [shared], retrospective routing, shared vs local learning, hook-layering routing, ownership test, no owner create file, cap deny is not a split trigger

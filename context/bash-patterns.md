@@ -113,4 +113,4 @@ This keeps `dirname "$0"` resolutions working (via the symlink) without ever wri
 
 ## Trigger Keywords
 
-stateful stub, counter file, test isolation, RED-then-GREEN proof, bash test patterns, ambient env leakage, CLAUDE_ROLE, PI_ROLE, git show, dirname sourcing, PIPESTATUS, jq null safety, yq null safety, portable sed, macOS symlink, grep footguns, PATH stub, hook deletion full-vocabulary grep, run-tests.sh not a registered hook, zsh completion bash -n misparse
+stateful stub, counter file, test isolation, RED-then-GREEN proof, bash test patterns, ambient env leakage, CLAUDE_ROLE, PI_ROLE, git show, dirname sourcing, PIPESTATUS, jq null safety, yq null safety, portable sed, macOS symlink, grep footguns, PATH stub, pathname expansion, noglob, set -f, hook deletion full-vocabulary grep, run-tests.sh not a registered hook, zsh completion bash -n misparse

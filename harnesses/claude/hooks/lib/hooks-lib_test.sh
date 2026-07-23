@@ -611,6 +611,22 @@ assert_eq "strip_git_global_opts: -C without matching verb still preserves next 
     "git status" \
     "$(strip_git_global_opts "git -C /tmp/x status")"
 
+# Command strings are data: literal globs must not expand against the helper's
+# caller cwd. This also preserves the caller's pre-existing noglob state.
+glob_safe_dir="$(mktemp -d)"
+mkdir -p "$glob_safe_dir/codegen/logging"
+: >"$glob_safe_dir/codegen/logging/one.jsonl"
+: >"$glob_safe_dir/codegen/logging/two.jsonl"
+glob_safe_result="$(cd "$glob_safe_dir" && strip_git_global_opts "ls -t codegen/logging/*.jsonl | git -C /tmp/x status")"
+assert_eq "strip_git_global_opts: literal glob remains one unexpanded token" \
+    "ls -t codegen/logging/*.jsonl | git status" "$glob_safe_result"
+set -f
+strip_git_global_opts "git status" >/dev/null
+case $- in *f*) glob_safe_noglob="yes" ;; *) glob_safe_noglob="no" ;; esac
+set +f
+assert_eq "strip_git_global_opts: preserves caller noglob state" "yes" "$glob_safe_noglob"
+rm -rf "$glob_safe_dir"
+
 # ── command_word_of_segment — resolves the real command word ───────────────
 assert_eq "command_word_of_segment: plain command" "rm" \
     "$(command_word_of_segment "rm -rf /tmp/x")"

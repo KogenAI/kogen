@@ -29,6 +29,37 @@ _ts_ms() {
     fi
 }
 
+_has_live_tool_subprocess() {
+    local pid pgid cmd
+    while read -r pid pgid cmd; do
+        [[ "$pgid" == "$PROCESS_GROUP_PID" ]] || continue
+        [[ "$pid" == "$PROCESS_GROUP_PID" ]] && continue
+        _is_mcp_plumbing "$pid" && continue
+        return 0
+    done < <(ps -axo pid=,pgid=,command= 2>/dev/null || true)
+    return 1
+}
+
+_is_mcp_plumbing() {
+    local pid="$1" ppid cmd
+    while [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$pid" != "$PROCESS_GROUP_PID" ]] && [[ "$pid" != "0" ]]; do
+        cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        case "$cmd" in
+        *"$MCP_SERVER_DIST"* | *"/harnesses/claude/mcp-server/dist/index.js"*) return 0 ;;
+        esac
+        ppid="$(ps -p "$pid" -o ppid= 2>/dev/null | tr -d ' ' || true)"
+        pid="$ppid"
+    done
+    return 1
+}
+
+_terminate_process_tree() {
+    local root="$1"
+    kill -TERM -- "-$root" 2>/dev/null || true
+    sleep "${CODEGEN_CALL_TERM_GRACE_SECS:-2}"
+    kill -KILL -- "-$root" 2>/dev/null || true
+}
+
 # ── Read CODEGEN_CALL_* env vars ──────────────────────────────────────────────
 AGENT="${CODEGEN_CALL_AGENT:-}"
 RESUME="${CODEGEN_CALL_RESUME:-}"
@@ -164,7 +195,8 @@ START_TS_MS="$(_ts_ms)"
 #   (2) idle cap: TMP_OUT has not grown for CODEGEN_CALL_IDLE_CAP_SECS (default
 #       900s) — a genuine mid-stream stall with no result to salvage.
 #   (3) dead-stream cap: no output growth for CODEGEN_CALL_STREAM_IDLE_SECS
-#       (default 300s) AND no live tool subprocess (pgrep -P empty) — detects a
+#       (default 300s) AND no live non-MCP member anywhere in Claude's owned
+#       process group — detects a
 #       dead socket fast without false-killing a role legitimately silent for
 #       minutes while a bash tool (e.g. make test) runs. 300s (not 60s) because
 #       a large cached context (e.g. planner-phoenix at ~10M cache_read_tokens)
@@ -174,6 +206,22 @@ START_TS_MS="$(_ts_ms)"
 # One-shot platform codegen-call (no CODEGEN_LOOP) runs the exec verbatim,
 # uncapped — byte-identical to pre-watchdog behavior.
 WATCHDOG_KILLED=""
+CHILD_PID=""
+PROCESS_GROUP_PID=""
+GUARDIAN_PID=""
+_cleanup_call_tree() {
+    local exit_code=$?
+    trap - EXIT INT TERM HUP
+    if [[ -n "$PROCESS_GROUP_PID" ]]; then
+        _terminate_process_tree "$PROCESS_GROUP_PID"
+    fi
+    if [[ -n "$GUARDIAN_PID" ]]; then
+        kill -TERM -- "-$GUARDIAN_PID" 2>/dev/null || true
+    fi
+    _capture_transcript
+    rm -f "${TMP_OUT:-}" "${TMP_OUT:-}.pgid" "${TMP_OUT:-}.guardian" "${MCP_CONFIG_RESOLVED:-}"
+    exit "$exit_code"
+}
 if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     RESULT_GRACE_SECS="${CODEGEN_CALL_RESULT_GRACE_SECS:-30}"
     IDLE_CAP_SECS="${CODEGEN_CALL_IDLE_CAP_SECS:-900}"
@@ -192,8 +240,56 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         ENABLE_PROMPT_CACHING_1H=1 \
         MAX_THINKING_TOKENS=0 \
         MCP_CONNECTION_NONBLOCKING=true \
-        claude "${COMMON_FLAGS[@]}" -- "$PROMPT" </dev/null >"$TMP_OUT" 2>&1 &
+        perl -MPOSIX -e '
+            $pid_file = shift @ARGV;
+            $pid = fork(); defined $pid or die "fork: $!";
+            if ($pid == 0) {
+                POSIX::setsid() >= 0 or die "setsid: $!";
+                open(my $fh, ">", $pid_file) or die "pid file: $!";
+                print $fh "$$\n"; close($fh);
+                exec @ARGV or die "exec: $!";
+            }
+            waitpid($pid, 0); exit($? >> 8);
+        ' "$TMP_OUT.pgid" claude "${COMMON_FLAGS[@]}" -- "$PROMPT" </dev/null >"$TMP_OUT" 2>&1 &
     CHILD_PID=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [[ -s "$TMP_OUT.pgid" ]] && break
+        sleep 0.05
+    done
+    PROCESS_GROUP_PID="$(cat "$TMP_OUT.pgid" 2>/dev/null || true)"
+    if [[ ! "$PROCESS_GROUP_PID" =~ ^[0-9]+$ ]]; then
+        printf 'codegen-call: failed to establish owned claude process group\n' >&2
+        wait "$CHILD_PID" 2>/dev/null || true
+        exit 1
+    fi
+    OWNER_OS_PID="${CODEGEN_CALL_OWNER_OS_PID:-0}"
+    [[ "$OWNER_OS_PID" =~ ^[0-9]+$ ]] || OWNER_OS_PID=0
+    perl -MPOSIX -e '
+        ($pid_file, $dispatcher, $supervisor, $owner, $group, $poll, $grace) = @ARGV;
+        $pid = fork(); defined $pid or die "guardian fork: $!";
+        exit 0 if $pid;
+        POSIX::setsid() >= 0 or die "guardian setsid: $!";
+        open(my $fh, ">", $pid_file) or die "guardian pid file: $!";
+        print $fh "$$\n"; close($fh);
+        $SIG{TERM} = sub { exit 0 }; $SIG{INT} = sub { exit 0 }; $SIG{HUP} = sub { exit 0 };
+        while (kill(0, $dispatcher) && kill(0, $supervisor) && (!$owner || kill(0, $owner))) {
+            select(undef, undef, undef, $poll);
+        }
+        kill("TERM", -$group); select(undef, undef, undef, $grace); kill("KILL", -$group);
+    ' "$TMP_OUT.guardian" "$$" "$CHILD_PID" "$OWNER_OS_PID" "$PROCESS_GROUP_PID" \
+        "${CODEGEN_CALL_GUARD_POLL_SECS:-0.2}" "${CODEGEN_CALL_TERM_GRACE_SECS:-2}"
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [[ -s "$TMP_OUT.guardian" ]] && break
+        sleep 0.05
+    done
+    GUARDIAN_PID="$(cat "$TMP_OUT.guardian" 2>/dev/null || true)"
+    if [[ ! "$GUARDIAN_PID" =~ ^[0-9]+$ ]]; then
+        printf 'codegen-call: failed to establish isolated process guardian\n' >&2
+        _terminate_process_tree "$PROCESS_GROUP_PID"
+        wait "$CHILD_PID" 2>/dev/null || true
+        exit 1
+    fi
+    trap _cleanup_call_tree EXIT INT TERM HUP
 
     LAST_SIZE=-1
     LAST_GROWTH_TS=$(_ts_ms)
@@ -227,10 +323,10 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         fi
 
         # Trigger (3): dead-stream cap — no output growth for STREAM_IDLE_SECS
-        # AND no live tool subprocess (pgrep -P empty). A role legitimately
-        # emits no bytes for minutes while a bash tool (e.g. `make test`) runs
-        # — the child-presence guard is what makes this short cap safe.
-        if [[ -z "$(pgrep -P "$CHILD_PID" 2>/dev/null)" ]] && (((NOW_MS - LAST_GROWTH_TS) / 1000 >= STREAM_IDLE_SECS)); then
+        # AND no live tool subprocess. A role legitimately emits no bytes for
+        # minutes while a bash tool (e.g. `make test`) runs, but the Claude MCP
+        # server child is always present and is not tool work.
+        if ! _has_live_tool_subprocess && (((NOW_MS - LAST_GROWTH_TS) / 1000 >= STREAM_IDLE_SECS)); then
             printf 'codegen-call: watchdog killing claude (pid %s) — stream idle %ss, no tool subprocess\n' "$CHILD_PID" "$STREAM_IDLE_SECS" >&2
             WATCHDOG_KILLED=1
             break
@@ -238,14 +334,16 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     done
 
     if [[ -n "$WATCHDOG_KILLED" ]]; then
-        kill -TERM "$CHILD_PID" 2>/dev/null || true
-        sleep 2
-        kill -KILL "$CHILD_PID" 2>/dev/null || true
-        pkill -9 -P "$CHILD_PID" 2>/dev/null || true
+        _terminate_process_tree "$PROCESS_GROUP_PID"
     fi
 
     wait "$CHILD_PID"
     EXIT_CODE=$?
+    kill -TERM -- "-$GUARDIAN_PID" 2>/dev/null || true
+    GUARDIAN_PID=""
+    _terminate_process_tree "$PROCESS_GROUP_PID"
+    CHILD_PID=""
+    PROCESS_GROUP_PID=""
     set -e
 else
     set +e

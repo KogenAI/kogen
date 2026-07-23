@@ -14,6 +14,15 @@ defmodule CodegenTestHarness.CallContractTest do
   alias CodegenTestHarness.Fixtures
 
   @codegen_call Path.expand("../../../codegen-call", __DIR__)
+  @orchestration_loop Path.expand(
+                        "../../lib/codegen_test_harness/orchestration_loop.ex",
+                        __DIR__
+                      )
+
+  test "run_call_split binds dispatch lifetime to the BEAM OS pid" do
+    source = File.read!(@orchestration_loop)
+    assert source =~ "{\"CODEGEN_CALL_OWNER_OS_PID\", System.pid()}"
+  end
 
   describe "codegen-call --role removed contract" do
     test "usage text does not mention --role" do

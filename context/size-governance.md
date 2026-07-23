@@ -53,6 +53,10 @@ file. Every retirement names what it evicts in its own `--learned` text (superse
 never silent). A promotion pushing a file over budget MUST evict or compress an equal amount in the same
 pass, or skip the write and note the conflict.
 
+## Editor Pre-Check Discipline
+
+Before editing any `context/*.md` file, run `wc -c <file>` to confirm headroom. A file already over the 40,960-byte cap requires compressing or relocating unrelated content BEFORE the edit can proceed — add-only edits to an already-over-cap file fail at gate time with no escape. Workflow: (1) `wc -c` measure, (2) if over cap, identify an unrelated dense paragraph elsewhere in the same file to compress, (3) apply both edits in parallel, (4) re-measure to confirm under cap before proceeding. Headroom-less edits block the gate and force rework in-cycle; pre-flight discipline prevents cycle-blocking gate denials.
+
 ## Open Question (Deliberately Deferred, Not This File's Job to Resolve)
 
 Whether a per-file byte cap is the right mechanism for a corpus with domains larger than any single

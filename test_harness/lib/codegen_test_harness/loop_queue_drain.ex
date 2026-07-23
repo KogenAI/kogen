@@ -931,13 +931,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # `:cwd`/`:roles`/`:ready_dir`/`:building_dir` are always the drain's own
   # resolved values; any resume-checkpoint TEST SEAM already present in the
   # caller's `opts` (cycle_state_get_fn, cycle_state_slug_fn, read_verdict_fn,
-  # gate_result_base_sha_fn, gate_tree_match_fn, resume_head_*_fn, ...) rides
+  # gate_result_base_sha_fn, gate_tree_match_fn, resume_work_present_fn, ...)
+  # rides
   # along too — without this, a hermetic drain test can never satisfy a real
   # checkpoint via stubs, since reconcile/resume_checkpoint would fall back to
   # the real filesystem/git defaults instead of the test's fakes.
   @resume_checkpoint_seam_keys ~w(
     cycle_state_get_fn cycle_state_slug_fn read_verdict_fn gate_result_base_sha_fn
-    gate_tree_match_fn
+    gate_tree_match_fn resume_work_present_fn
   )a
   defp reconcile_opts(opts, cwd, ready_dir, building_dir, stack) do
     seam_opts = Keyword.take(opts, @resume_checkpoint_seam_keys)
@@ -966,6 +967,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     recovered_slug =
       case state.recovery do
         {:resume, slug} -> slug
+        {:requeued, slug, _recovery} -> slug
         _ -> nil
       end
 
