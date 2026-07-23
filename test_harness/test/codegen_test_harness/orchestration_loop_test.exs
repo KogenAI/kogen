@@ -1305,6 +1305,187 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "run/1 — reviewer verdict presentation-wrapper compatibility (#8)" do
+    for harness <- ["claude_code", "pi"], stack <- ["phoenix", "static"] do
+      @harness harness
+      @stack stack
+
+      test "#{harness}/#{stack}: strong APPROVED accepted, one reviewer call", %{
+        calls_agent: calls_agent
+      } do
+        harness = @harness
+        stack = @stack
+        reviewer_role = if stack == "phoenix", do: "reviewer-phoenix", else: "reviewer-static"
+
+        invoke_fn = fn role, _harness, _ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+          value =
+            if role == reviewer_role, do: "**REVIEW_VERDICT: APPROVED**", else: "did #{role}"
+
+          {:ok, %{"status" => "success", "value" => value}}
+        end
+
+        assert :ok ==
+                 OrchestrationLoop.run(
+                   harness: harness,
+                   stack: stack,
+                   cwd: "/tmp/irrelevant",
+                   pitch: "x",
+                   invoke_fn: invoke_fn,
+                   gate_fn: always_clear_gate_fn(),
+                   gate_preflight_fn: no_op_gate_preflight_fn(),
+                   preflight_probe_fn: all_present_preflight_probe_fn(),
+                   advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                   planner_plan_fn: stub_planner_plan_fn()
+                 )
+
+        calls = Agent.get(calls_agent, & &1)
+        assert Enum.count(calls, &(&1 == reviewer_role)) == 1
+        assert "committer" in calls
+      end
+    end
+
+    test "bare APPROVED regression: still accepted unchanged", %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        value = if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "x",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
+      assert "committer" in calls
+    end
+
+    test "strong CHANGES_REQUESTED re-invokes developer, completes on strong APPROVED",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+
+            if seen <= 1,
+              do: "**REVIEW_VERDICT: CHANGES_REQUESTED**",
+              else: "**REVIEW_VERDICT: APPROVED**"
+          else
+            "did #{role}"
+          end
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "developer-static")) == 2
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
+      assert "committer" in calls
+    end
+
+    test "budget-exhausted strong CHANGES_REQUESTED fails loud, carries original text, no committer",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static",
+            do: "**REVIEW_VERDICT: CHANGES_REQUESTED**",
+            else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_review_cycles: 0
+               )
+
+      assert reason =~ "review re-work budget"
+      assert reason =~ "**REVIEW_VERDICT: CHANGES_REQUESTED**"
+      refute reason =~ "no parseable REVIEW_VERDICT"
+      assert "committer" not in Agent.get(calls_agent, & &1)
+    end
+
+    for {name, verdict_text} <- [
+          {"strong-then-bare", "**REVIEW_VERDICT: CHANGES_REQUESTED**\nREVIEW_VERDICT: APPROVED"},
+          {"bare-then-strong", "REVIEW_VERDICT: CHANGES_REQUESTED\n**REVIEW_VERDICT: APPROVED**"},
+          {"bare-duplicate", "REVIEW_VERDICT: APPROVED\nREVIEW_VERDICT: APPROVED"},
+          {"bare-conflict", "REVIEW_VERDICT: CHANGES_REQUESTED\nREVIEW_VERDICT: APPROVED"},
+          {"malformed-suffix", "REVIEW_VERDICT: APPROVED extra"},
+          {"backtick-wrapper", "`REVIEW_VERDICT: APPROVED`"},
+          {"marker-nonterminal", "REVIEW_VERDICT: APPROVED\nmore prose"},
+          {"strong-marker-then-prose", "**REVIEW_VERDICT: APPROVED**\nthanks for reading"}
+        ] do
+      @verdict_text verdict_text
+
+      test "rejected: #{name}", %{calls_agent: calls_agent} do
+        verdict_text = @verdict_text
+
+        invoke_fn = fn role, _harness, _ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+          value = if role == "reviewer-static", do: verdict_text, else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
+        end
+
+        assert {:error, reason} =
+                 OrchestrationLoop.run(
+                   harness: "claude_code",
+                   stack: "static",
+                   cwd: "/tmp/irrelevant",
+                   pitch: "do the thing",
+                   invoke_fn: invoke_fn,
+                   gate_fn: always_clear_gate_fn(),
+                   gate_preflight_fn: no_op_gate_preflight_fn(),
+                   preflight_probe_fn: all_present_preflight_probe_fn(),
+                   advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 )
+
+        assert reason =~ "no parseable REVIEW_VERDICT"
+
+        calls = Agent.get(calls_agent, & &1)
+        assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
+        assert "committer" not in calls
+        assert "context-curator" not in calls
+      end
+    end
+  end
+
   describe "run/1 — role failure handling" do
     test "role fails once then succeeds on retry — cycle still completes", %{
       calls_agent: calls_agent
@@ -1623,7 +1804,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
 
     test "role-model-sweep fixed binding suppresses the fallback chain — reports an error naming the campaign arm, never a swapped model" do
-      run_dir = Path.join(System.tmp_dir!(), "rms_fallback_#{:erlang.unique_integer([:positive])}")
+      run_dir =
+        Path.join(System.tmp_dir!(), "rms_fallback_#{:erlang.unique_integer([:positive])}")
+
       File.mkdir_p!(run_dir)
       on_exit(fn -> File.rm_rf!(run_dir) end)
 
@@ -2212,7 +2395,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
 
     test "BENCH_RUN_DIR set but file absent -> resolve_fn used unchanged" do
-      run_dir = Path.join(System.tmp_dir!(), "rms_bind_absent_#{:erlang.unique_integer([:positive])}")
+      run_dir =
+        Path.join(System.tmp_dir!(), "rms_bind_absent_#{:erlang.unique_integer([:positive])}")
+
       File.mkdir_p!(run_dir)
       on_exit(fn -> File.rm_rf!(run_dir) end)
       System.put_env("BENCH_RUN_DIR", run_dir)
@@ -2251,7 +2436,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           %{cwd: "/tmp", pitch: "x", artifacts: %{}},
           resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
           codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
-            %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+            %{
+              "result" => %{"status" => "success", "value" => "x"},
+              "usage" => %{"cost_usd" => 0.1}
+            }
           end
         )
       end
@@ -2269,7 +2457,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           %{cwd: "/tmp", pitch: "x", artifacts: %{}},
           resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
           codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
-            %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+            %{
+              "result" => %{"status" => "success", "value" => "x"},
+              "usage" => %{"cost_usd" => 0.1}
+            }
           end,
           # Loop's own current HEAD reads as a DIFFERENT sha than the
           # binding's pinned "deadbeef" -> drift, not a live git call.
@@ -2291,7 +2482,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           %{cwd: "/tmp", pitch: "x", artifacts: %{}},
           resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
           codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
-            %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+            %{
+              "result" => %{"status" => "success", "value" => "x"},
+              "usage" => %{"cost_usd" => 0.1}
+            }
           end,
           # SHA matches (no drift) but the tree is reported dirty -> still
           # a loud INCONCLUSIVE rejection, never a silent proceed.
@@ -2314,7 +2508,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  %{cwd: "/tmp", pitch: "x", artifacts: %{}},
                  resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
                  codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
-                   %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+                   %{
+                     "result" => %{"status" => "success", "value" => "x"},
+                     "usage" => %{"cost_usd" => 0.1}
+                   }
                  end,
                  git_head_fn: fn -> "deadbeef" end,
                  git_dirty_fn: fn -> false end
@@ -2380,7 +2577,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  resolve_fn: resolve_fn,
                  resolve_harness_fn: fn _role, build_harness -> build_harness end,
                  codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
-                   %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+                   %{
+                     "result" => %{"status" => "success", "value" => "x"},
+                     "usage" => %{"cost_usd" => 0.1}
+                   }
                  end,
                  effort_override: "off"
                )
@@ -2390,7 +2590,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
 
     test "fixed campaign binding wins over effort_override (override ignored for pinned role)" do
-      run_dir = Path.join(System.tmp_dir!(), "rms_eff_override_#{:erlang.unique_integer([:positive])}")
+      run_dir =
+        Path.join(System.tmp_dir!(), "rms_eff_override_#{:erlang.unique_integer([:positive])}")
+
       File.mkdir_p!(run_dir)
       on_exit(fn -> File.rm_rf!(run_dir) end)
       System.put_env("BENCH_RUN_DIR", run_dir)
@@ -2452,7 +2654,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  resolve_fn: resolve_fn,
                  resolve_harness_fn: fn _role, build_harness -> build_harness end,
                  codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
-                   %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+                   %{
+                     "result" => %{"status" => "success", "value" => "x"},
+                     "usage" => %{"cost_usd" => 0.1}
+                   }
                  end
                )
 
@@ -4018,7 +4223,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     test "role-model-sweep fixed binding suppresses give-up-boundary escalation — ctx.escalated_model stays nil on the final retry",
          %{calls_agent: calls_agent} do
-      run_dir = Path.join(System.tmp_dir!(), "rms_escalate_#{:erlang.unique_integer([:positive])}")
+      run_dir =
+        Path.join(System.tmp_dir!(), "rms_escalate_#{:erlang.unique_integer([:positive])}")
+
       File.mkdir_p!(run_dir)
       on_exit(fn -> File.rm_rf!(run_dir) end)
 

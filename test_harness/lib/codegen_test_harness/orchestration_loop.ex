@@ -2242,26 +2242,38 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  # Uniqueness+terminality gate runs BEFORE classification, and uses
+  # `String.contains?/2` (not `starts_with?/2`) so a `**REVIEW_VERDICT: …**`
+  # line — which does NOT start with the literal `REVIEW_VERDICT:` but does
+  # contain it — is still counted. This closes the strong-then-bare hole:
+  # without it, a strong-emphasized rejection followed by a bare approval
+  # would sail through as a lone `starts_with?` match on the bare line,
+  # silently discarding the earlier verdict instead of flagging ambiguity.
+  #
+  # Exactly one marker-bearing line is required, AND it must be the final
+  # nonblank line (marker-then-prose is not terminal — `:unknown`).
   defp parse_review_verdict(%{"value" => value}) when is_binary(value) do
     lines = String.split(value, "\n", trim: true)
+    marker_lines = Enum.filter(lines, &String.contains?(&1, "REVIEW_VERDICT:"))
 
-    case List.last(lines) do
-      "REVIEW_VERDICT: APPROVED" ->
-        if Enum.count(lines, &String.starts_with?(&1, "REVIEW_VERDICT:")) == 1,
-          do: :approved,
-          else: :unknown
-
-      "REVIEW_VERDICT: CHANGES_REQUESTED" ->
-        if Enum.count(lines, &String.starts_with?(&1, "REVIEW_VERDICT:")) == 1,
-          do: :changes_requested,
-          else: :unknown
-
-      _ ->
-        :unknown
+    case {marker_lines, List.last(lines)} do
+      {[only], last} when only == last -> classify_verdict_line(only)
+      _ -> :unknown
     end
   end
 
   defp parse_review_verdict(_), do: :unknown
+
+  # Exactly four accepted exact byte forms: bare terminal verdict, or that
+  # same line wrapped once in a single outer `**…**` pair (the one observed
+  # presentation wrapper — probe measured 4 strong occurrences, 0 backtick).
+  # Backticks, underscores, headings, list/blockquote prefixes, code fences,
+  # suffix text, and nested/multiple emphasis all fall through to `:unknown`.
+  defp classify_verdict_line("REVIEW_VERDICT: APPROVED"), do: :approved
+  defp classify_verdict_line("**REVIEW_VERDICT: APPROVED**"), do: :approved
+  defp classify_verdict_line("REVIEW_VERDICT: CHANGES_REQUESTED"), do: :changes_requested
+  defp classify_verdict_line("**REVIEW_VERDICT: CHANGES_REQUESTED**"), do: :changes_requested
+  defp classify_verdict_line(_), do: :unknown
 
   defp dev_role_from_ctx(ctx) do
     (ctx[:artifacts] || %{})
@@ -3850,6 +3862,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       source: effort_source,
       native_effort: native_effort_realization(harness, effort)
     })
+
     write_cycle_summary(cycle_id, ctx.cwd, role, seq, transcript, envelope)
 
     case envelope do
