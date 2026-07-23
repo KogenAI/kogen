@@ -60,6 +60,12 @@ if [[ "$_has_queue_flag" -eq 1 ]]; then
     if [[ "$_has_watch_flag" -eq 1 ]]; then
         _QUEUE_ARGS+=(--watch)
     fi
+    # Job-controlled, non-exec spawn via the shared signal bridge: terminal
+    # Ctrl-C must become a group SIGTERM to the BEAM (reaped by
+    # BuildSignalHandler), not hit Erlang's uncatchable break handler
+    # directly — which an `exec` here would do, by replacing this shell.
+    # See harnesses/shared/loop-signal-bridge.sh.
+    source "$CODEGEN_DIR/harnesses/shared/loop-signal-bridge.sh"
     # Darwin-only: sleep is the sole re-lock trigger for the login Keychain
     # (no idle-lock by default) — a long --watch session left unattended
     # would otherwise let the box sleep and every subsequent spawn die at
@@ -68,10 +74,16 @@ if [[ "$_has_queue_flag" -eq 1 ]]; then
     # caffeinate prevents sleep; the drain's own pre-spawn :keychain_fn
     # check is the fail-closed backstop for a box with an idle-lock set
     # despite caffeinate. Linux has no caffeinate and no Keychain.
+    # Captured with `||`, never bare: under `set -e`, a bare
+    # `run_supervised_loop ...` returning non-zero would ABORT this script
+    # at that line — the following `exit "$_queue_rc"` would never run.
+    _queue_rc=0
     if [[ "$_has_watch_flag" -eq 1 && "$(uname -s)" == "Darwin" ]] && command -v caffeinate >/dev/null 2>&1; then
-        exec caffeinate -dimsu "${_QUEUE_ARGS[@]+"${_QUEUE_ARGS[@]}"}"
+        run_supervised_loop caffeinate -dimsu "${_QUEUE_ARGS[@]+"${_QUEUE_ARGS[@]}"}" || _queue_rc=$?
+        exit "$_queue_rc"
     fi
-    exec "${_QUEUE_ARGS[@]+"${_QUEUE_ARGS[@]}"}"
+    run_supervised_loop "${_QUEUE_ARGS[@]+"${_QUEUE_ARGS[@]}"}" || _queue_rc=$?
+    exit "$_queue_rc"
 fi
 
 # Normalise launch cwd to the nearest legal pitch root so the basename

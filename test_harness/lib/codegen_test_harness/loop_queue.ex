@@ -1375,8 +1375,9 @@ defmodule CodegenTestHarness.LoopQueue do
 
   Stamped BEFORE the caller's subsequent `ready/ -> shipped/` mv,
   deliberately: `pitch_path` (a `ready/` pitch) is `@`-mentioned into
-  the NEXT build's prompt (`claude-build.sh:80,93`) — an opaque
-  whole-artifact read. A stamp that lands on a pitch still sitting in
+  the NEXT build's prompt (`claude-build.sh`'s basename-resolver
+  `@`-mention lines) — an opaque whole-artifact read. A stamp that lands
+  on a pitch still sitting in
   `ready/` (because the mv that follows then fails) would read as
   "already shipped" to the next planner — manufacturing the exact false
   already-done class this function exists to prevent. This window is

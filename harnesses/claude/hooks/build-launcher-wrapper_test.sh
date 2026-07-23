@@ -83,12 +83,16 @@ make_stub() {
 }
 
 # make_ws <name> — a workspace dir with its own codegen-build stub (echoes
-# argv to $WS/cb_capture.txt) at $WS, used as OCG_CODEGEN_DIR.
+# argv to $WS/cb_capture.txt) at $WS, used as OCG_CODEGEN_DIR. Also carries a
+# real copy of loop-signal-bridge.sh under harnesses/shared/ — the --queue
+# leg sources it from $CODEGEN_DIR (== OCG_CODEGEN_DIR == $ws here) before
+# spawning the (stubbed) mix binary.
 make_ws() {
     local name="$1"
     local ws="$BASE_TMP/$name"
-    mkdir -p "$ws"
+    mkdir -p "$ws/harnesses/shared"
     make_stub "$ws/codegen-build" 'printf '"'"'%s\n'"'"' "$@" > "'"$ws"'/cb_capture.txt"'
+    cp "$CODEGEN_ROOT/harnesses/shared/loop-signal-bridge.sh" "$ws/harnesses/shared/loop-signal-bridge.sh"
     echo "$ws"
 }
 
@@ -144,9 +148,10 @@ for entry in "${LAUNCHERS[@]}"; do
 
     # ── Case 2: CODEGEN_DIR installed-flat — copy launcher, harnesses/ dir present ──
     FLAT_ROOT="$BASE_TMP/${HARNESS}_c2_flat"
-    mkdir -p "$FLAT_ROOT/harnesses" "$FLAT_ROOT/test_harness"
+    mkdir -p "$FLAT_ROOT/harnesses/shared" "$FLAT_ROOT/test_harness"
     cp "$LAUNCHER" "$FLAT_ROOT/launcher.sh"
     chmod +x "$FLAT_ROOT/launcher.sh"
+    cp "$CODEGEN_ROOT/harnesses/shared/loop-signal-bridge.sh" "$FLAT_ROOT/harnesses/shared/loop-signal-bridge.sh"
     MIXDIR2="$(make_mix_stub_dir "${HARNESS}_c2_mix")"
 
     ec=0
@@ -161,9 +166,10 @@ for entry in "${LAUNCHERS[@]}"; do
 
     # ── Case 3: CODEGEN_DIR in-repo fallback — copy launcher 2 dirs deep, no harnesses/ ──
     REPO_ROOT="$BASE_TMP/${HARNESS}_c3_repo"
-    mkdir -p "$REPO_ROOT/a/b" "$REPO_ROOT/test_harness"
+    mkdir -p "$REPO_ROOT/a/b" "$REPO_ROOT/test_harness" "$REPO_ROOT/harnesses/shared"
     cp "$LAUNCHER" "$REPO_ROOT/a/b/launcher.sh"
     chmod +x "$REPO_ROOT/a/b/launcher.sh"
+    cp "$CODEGEN_ROOT/harnesses/shared/loop-signal-bridge.sh" "$REPO_ROOT/harnesses/shared/loop-signal-bridge.sh"
     MIXDIR3="$(make_mix_stub_dir "${HARNESS}_c3_mix")"
 
     ec=0

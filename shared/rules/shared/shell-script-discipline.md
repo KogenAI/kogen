@@ -26,11 +26,11 @@ Caveat: no blind `/..` — derivation depends on the script's installed location
 
 ## Verdict String Routing through Case Arms
 
-New `INCONCLUSIVE:<reason>` strings need zero case-block edits — the existing `INCONCLUSIVE:*)` arm absorbs all substrings (glob match). Reclassify at the source, not each downstream consumer. Example: `LoopGate.decide_gate/2`'s `INCONCLUSIVE:*` clause already routes new `run_phoenix_render_check` reasons with no edit.
+New `INCONCLUSIVE:<reason>` strings need zero case-block edits — existing `INCONCLUSIVE:*)` arm glob-matches all substrings. Reclassify at the source, not each consumer.
 
 ## Heredoc Inside Command Substitution — Quote Parsing
 
-A heredoc nested inside `$()`/backticks still has its body quote-parsed by the OUTER shell for balancing — a `case` with single-quoted patterns inside a `$(...)` heredoc causes outer-shell syntax errors (`case "$_line" in '') ...`). Fix: avoid single-quoted patterns in nested heredoc bodies; use quote-neutral test forms instead — `[ -z "$_line" ] && _skip=true` in place of a `case`/`'')` pattern arm.
+A heredoc nested inside `$()`/backticks still has its body quote-parsed by the OUTER shell for balancing — a `case` with single-quoted patterns inside causes outer-shell syntax errors. Fix: avoid single-quoted patterns in nested heredoc bodies; use quote-neutral test forms — `[ -z "$_line" ] && _skip=true` in place of a `case`/`'')` pattern arm.
 
 ## POSIX Portable String-Prefix Check
 
@@ -39,11 +39,15 @@ A heredoc nested inside `$()`/backticks still has its body quote-parsed by the O
 
 ## pipefail + Early-Exit Consumer → 141 on a MATCH
 
-`pipefail` + early-exit consumer (`grep -q`, `head -n1`, `awk '…{exit}'`) on a still-writing producer → producer SIGPIPEs → 141 even on a real match; consumed status (`if`, `var=$(...)` under `-e`) reads match as miss.
+`pipefail` + early-exit consumer (`grep -q`, `head -n1`, `awk '…{exit}'`) on a still-writing producer → producer SIGPIPEs → 141 even on real match; consumed status reads match as miss.
 
-Discriminator: producer OUTPUT size, not input — fires only if output > pipe buffer (~64 KB). Small-output producer (`jq 'select(...)' huge.jsonl | grep -q .`) never opens the window.
+Discriminator: producer OUTPUT size — fires only if output > pipe buffer (~64 KB). Small-output producer never opens the window.
 
 ❌ `x=$(printf '%s\n' "$big" | head -n1)` → ✅ `x=${big%%$'\n'*}`
-❌ `x=$(printf '%s\n' "$big" | awk '/^---$/{exit}{print}')` → ✅ `x=$(awk '/^---$/{exit}{print}' "$file")` (reads file, no producer to kill)
+❌ `x=$(printf '%s\n' "$big" | awk '/^---$/{exit}{print}')` → ✅ `x=$(awk '/^---$/{exit}{print}' "$file")` (reads file)
 
-No pipe-free form → capture then test: `hit=$(producer); [ -n "$hit" ] && ...`. Don't mass-rewrite every `| grep -q` — only large-output/status-consumed sites; bounded/`|| true` sites are unaffected.
+No pipe-free form → capture then test: `hit=$(producer); [ -n "$hit" ] && ...`. Don't mass-rewrite every `| grep -q` — only large-output/status-consumed sites.
+
+## Trap State Is File-Scope, Never `local`
+
+Trap body runs independent context — `local` in caller is invisible to it. Flag mutated by trap + read by main loop → file-scope var above the fn.

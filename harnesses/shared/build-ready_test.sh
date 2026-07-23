@@ -49,6 +49,11 @@ echo "claude-experiment content" >"$REPO/harnesses/claude/claude-experiment.sh"
 echo "pi-shape content" >"$REPO/harnesses/pi/pi-shape.sh"
 echo "pi-experiment content" >"$REPO/harnesses/pi/pi-experiment.sh"
 echo "selector content" >"$REPO/harnesses/shared/pitch-context-selector.sh"
+echo "claude-build content" >"$REPO/harnesses/claude/claude-build.sh"
+echo "pi-build content" >"$REPO/harnesses/pi/pi-build.sh"
+echo "claude dispatch content" >"$REPO/harnesses/claude/dispatch.sh"
+echo "pi dispatch content" >"$REPO/harnesses/pi/dispatch.sh"
+echo "signal bridge content" >"$REPO/harnesses/shared/loop-signal-bridge.sh"
 
 git -C "$REPO" init -q
 git -C "$REPO" config user.email "test@example.com"
@@ -105,6 +110,41 @@ echo "edited selector without commit" >>"$REPO/harnesses/shared/pitch-context-se
 check_install_currency "$REPO" "$STAMP" >/dev/null 2>&1
 check "(7) same HEAD but edited pitch-context-selector.sh — currency FAIL" 1 "$?"
 git -C "$REPO" checkout -q -- harnesses/shared/pitch-context-selector.sh
+
+# --- Case 8: RED — same HEAD, dirty claude-build.sh (copied-into-install queue launcher) ---
+build_ready_write_stamp "$REPO" "$STAMP"
+echo "edited claude-build without commit" >>"$REPO/harnesses/claude/claude-build.sh"
+check_install_currency "$REPO" "$STAMP" >/dev/null 2>&1
+check "(8) same HEAD but edited claude-build.sh — currency FAIL" 1 "$?"
+git -C "$REPO" checkout -q -- harnesses/claude/claude-build.sh
+
+# --- Case 9: RED — same HEAD, dirty pi-build.sh (copied-into-install queue launcher) ---
+build_ready_write_stamp "$REPO" "$STAMP"
+echo "edited pi-build without commit" >>"$REPO/harnesses/pi/pi-build.sh"
+check_install_currency "$REPO" "$STAMP" >/dev/null 2>&1
+check "(9) same HEAD but edited pi-build.sh — currency FAIL" 1 "$?"
+git -C "$REPO" checkout -q -- harnesses/pi/pi-build.sh
+
+# --- Case 10: RED — same HEAD, dirty claude dispatch.sh (live-sourced source) ---
+build_ready_write_stamp "$REPO" "$STAMP"
+echo "edited claude dispatch without commit" >>"$REPO/harnesses/claude/dispatch.sh"
+check_install_currency "$REPO" "$STAMP" >/dev/null 2>&1
+check "(10) same HEAD but edited claude dispatch.sh — currency FAIL" 1 "$?"
+git -C "$REPO" checkout -q -- harnesses/claude/dispatch.sh
+
+# --- Case 11: RED — same HEAD, dirty pi dispatch.sh (live-sourced source) ---
+build_ready_write_stamp "$REPO" "$STAMP"
+echo "edited pi dispatch without commit" >>"$REPO/harnesses/pi/dispatch.sh"
+check_install_currency "$REPO" "$STAMP" >/dev/null 2>&1
+check "(11) same HEAD but edited pi dispatch.sh — currency FAIL" 1 "$?"
+git -C "$REPO" checkout -q -- harnesses/pi/dispatch.sh
+
+# --- Case 12: RED — same HEAD, dirty loop-signal-bridge.sh (live-sourced shared helper) ---
+build_ready_write_stamp "$REPO" "$STAMP"
+echo "edited signal bridge without commit" >>"$REPO/harnesses/shared/loop-signal-bridge.sh"
+check_install_currency "$REPO" "$STAMP" >/dev/null 2>&1
+check "(12) same HEAD but edited loop-signal-bridge.sh — currency FAIL" 1 "$?"
+git -C "$REPO" checkout -q -- harnesses/shared/loop-signal-bridge.sh
 
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 

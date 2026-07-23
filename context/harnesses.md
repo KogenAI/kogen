@@ -25,7 +25,7 @@ System prompt assembly: `tools-header/<mode>.txt` + entries in `prompt_body[]` (
 
 **Pi re-attach flag**: `pi --session <path|id>` (full or partial UUID or file path). Pi has `--session-id <id>` which CREATES a new session if the id doesn't exist — wrong for re-attach (would silently start fresh on stale id). Always use `--session "$id"` for re-attach semantics (fails on stale id, correct error path). Dispatch MUST emit `--session "$id"` only when id is non-empty.
 
-**One-shot launcher boundary**: `claude-ops.sh`, `claude-shape.sh`, `claude-debug.sh`, `call-dispatch.sh` are single-invocation (Claude sessions persist by default now, no opt-out flag; Pi keeps `--no-session`). `codegen-build`/`dispatch.sh` has no resume flags — always execs the Elixir loop.
+**One-shot launcher boundary**: `claude-ops.sh`, `claude-shape.sh`, `claude-debug.sh`, `call-dispatch.sh` are single-invocation (Claude sessions persist by default now, no opt-out flag; Pi keeps `--no-session`). `codegen-build`/`dispatch.sh` has no resume flags — always runs the Elixir loop (job-controlled, non-exec, via the shared `harnesses/shared/loop-signal-bridge.sh` helper; see § Orchestrated Build Mode).
 
 **`call-dispatch.sh` optional transcript capture**: both harness `call-dispatch.sh` scripts honor an optional `CODEGEN_CALL_TRANSCRIPT_PATH` env var — when set, the captured stream-json is copied there on the EXIT trap before the temp file is deleted (fail-loud-non-blocking: a copy failure prints to stderr but never changes the exit code); unset = current behavior (no copy). Consumed by the Elixir orchestration loop for durable per-role transcripts; see `context/test-harness.md` § Orchestration Loop.
 
@@ -145,7 +145,7 @@ For harness install contract details (agents_dir, hooks_dir, modes, launchers), 
 **Key distinction**: `load-role.sh` reads `config.yaml` at _runtime_, NOT at install time. This differs from system prompts, which are baked at `make install`:
 
 - **Shape/ops/debug modes**: Use `load-role.sh` to read `config.yaml` at launcher time. Changes to config.yaml take effect _immediately on next invocation_ — no `make install` required.
-- **Build**: has no launcher-side mode config at all — `dispatch.sh` always execs the Elixir loop, which resolves model/effort per-role itself.
+- **Build**: has no launcher-side mode config at all — `dispatch.sh` runs the Elixir loop, which resolves model/effort per-role itself.
 
 **Tool allowlist enforcement**: The `--tools` flag passed to `claude`/`pi` CLI is populated by `load-role.sh` parsing `roles.<role>.tools[]` from config.yaml. Harness launcher `.sh` scripts gate tool spawning via the `--tools` flag, not system-prompt text. Thus, a new tool added to `config.yaml` → immediately available in shape/ops/debug sessions. Build has no launcher-side mode; the loop resolves per-role tool allowlists itself.
 
@@ -190,11 +190,11 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 
 ## Orchestrated Build Mode (Pi-Specific)
 
-`pi-build.sh` / `codegen-build --harness=pi` always route the build to `harnesses/pi/dispatch.sh`, which unconditionally execs `mix codegen.loop --harness=pi`. No `build` manifest mode, no baked build system prompt, no build-time extension loading — the loop resolves each role's model/effort/tools itself via `codegen-call`.
+`pi-build.sh` / `codegen-build --harness=pi` always route the build to `harnesses/pi/dispatch.sh`. No `build` manifest mode, no baked build system prompt, no build-time extension loading — the loop resolves each role's model/effort/tools itself via `codegen-call`.
 
-`dispatch.sh` (both harnesses) unconditionally invokes `mix codegen.loop` — the sole build engine; no engine flag, no TTY auto-detection, no legacy fallback. A successful `codegen-build` run requires BOTH a fresh, loop-owned `build-result.json` (matching the mktemp'd `CODEGEN_BUILD_INVOCATION_ID` the wrapper exported, slug captured from the prompt path before dispatch can ship `ready/<slug>.md`, current HEAD, `status: success`) AND `gate-result.json.verdict == "clear"` — see `context/loop.md` § Interrupted-Cycle Recovery. Checkpoint evidence (`gate-result.json`, `cycle-state.json`) is never eagerly deleted pre-dispatch; only a stale `build-result.json` is cleared.
+`dispatch.sh` (both harnesses) always runs `mix codegen.loop` — the sole build engine; no engine flag, no TTY auto-detection, no legacy fallback. A successful `codegen-build` run requires BOTH a fresh, loop-owned `build-result.json` (matching the mktemp'd `CODEGEN_BUILD_INVOCATION_ID` the wrapper exported, slug captured from the prompt path before dispatch can ship `ready/<slug>.md`, current HEAD, `status: success`) AND `gate-result.json.verdict == "clear"` — see `context/loop.md` § Interrupted-Cycle Recovery. Checkpoint evidence (`gate-result.json`, `cycle-state.json`) is never eagerly deleted pre-dispatch; only a stale `build-result.json` is cleared.
 
-**Loop-child exit record**: `dispatch.sh` job-controls the spawn (`set -m`, non-exec, to trap+forward SIGTERM to the child's process group — see `build_signal_handler.ex`), tees child stderr to a bounded (~8 KB) temp file through a named FIFO (never `/dev/fd` process substitution), keeps loop stdout byte-transparent, preserves the loop's own status explicitly, and after `wait`ing (`wait "$child_pid" || exit_code=$?`, never bare — `set -e` would abort on a bare non-zero `wait`) writes ONE `{"ev":"exit","status":<n>,"signal":<n-or-null>,"stderr_tail":<text>}` event via `codegen-log exit`, pinned to whichever log `.active` names if it changed during the spawn; otherwise one stderr note, nothing written. Fail-loud-non-blocking: a `codegen-log exit` failure never changes the propagated `exit_code`.
+**Loop-child exit record**: `dispatch.sh` job-controls the spawn through the shared `harnesses/shared/loop-signal-bridge.sh` helper (`run_supervised_loop`; non-exec, `set -m` internally, traps INT/TERM and forwards a group SIGTERM to the child — see `build_signal_handler.ex`), tees child stderr to a bounded (~8 KB) temp file through a named FIFO (never `/dev/fd` process substitution), keeps loop stdout byte-transparent, preserves the loop's own status explicitly, and after the helper returns (`run_supervised_loop ... || exit_code=$?`, never bare — `set -e` would abort on a bare non-zero return) writes ONE `{"ev":"exit","status":<n>,"signal":<n-or-null>,"stderr_tail":<text>}` event via `codegen-log exit`, pinned to whichever log `.active` names if it changed during the spawn; otherwise one stderr note, nothing written. Fail-loud-non-blocking: a `codegen-log exit` failure never changes the propagated `exit_code`. The SAME helper supervises the `--queue` leg of both build launchers (`claude-build.sh`/`pi-build.sh`) — see `context/loop-queue-drain.md`.
 
 ## Opposite-Provider Advisor
 
@@ -202,10 +202,6 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 `{plan, confidence}`. Registered in both manifests' `launchers:`. Reach: loop's `maybe_advise/5` at
 give-up (`context/loop.md` § Opposite-Provider Advisor) + role-less `advise`/`mcp__codegen__advise`
 tool (Claude/Pi bake own `current`). Failure additive, never a gate.
-
-## EXEC-MECHANICS vs SYSTEM-PROMPT-CONTENT (Historical)
-
-Cutover complete. Future refactors: separate EXEC-MECHANICS (session persistence, re-attach, launch order) from SYSTEM-PROMPT-CONTENT before deleting either.
 
 ## Mode → Declared Context
 
@@ -233,9 +229,9 @@ The Claude investigative/supervisory launchers (`claude-shape`, `claude-ops`, `c
 
 Shared flags: `--print --verbose --output-format stream-json --strict-mcp-config --no-session-persistence --disable-slash-commands`. Only `--setting-sources` differs: investigative launchers use `project`; build dispatch uses `user,project,local`.
 
-These flags are spliced as the **first positional** after `exec claude` (before `--model`). The env var name `CLAUDE_NONINTERACTIVE` intentionally diverges from `PI_NON_INTERACTIVE` (Pi) — these are investigative-mode (debug/ops) toggles, unrelated to the build path (which has no non-interactive flag at all).
+These flags are spliced as the **first positional** after `exec claude` (before `--model`). `CLAUDE_NONINTERACTIVE` intentionally diverges from `PI_NON_INTERACTIVE` (Pi) — these are investigative-mode toggles, unrelated to the build path (no non-interactive flag at all).
 
-**One-shot semantics**: headless investigative sessions run once and exit. There is no resume. If the agent needs a user decision (e.g., a pitch blocker in shape mode), it writes a `## Questions` block in the in-scope pitch file (permitted `codegen/pitches/` write) and stops. The operator answers out-of-band via a `## Answers` block; a fresh session continues.
+**One-shot semantics**: headless investigative sessions run once and exit. If the agent needs a user decision, it writes a `## Questions` block in-scope and stops; the operator answers via `## Answers`; a fresh session continues.
 
 ### `/loop` Capability Matrix
 
@@ -250,10 +246,6 @@ These flags are spliced as the **first positional** after `exec claude` (before 
 ## Operator vs Batch Divergence Intentional
 
 Different exec modes (interactive vs CI, operator vs batch) → different output format, persistence, hardening flags. Don't unify these. Unify shared config only: model, tools, base prompt. ❌ Force single launcher path ✅ Two launchers, one config block.
-
-### Break-glass jumpstart boundary
-
-Future `{claude,pi}-jumpstart` (Codex later): operator-supervised incident mode, outside normal loop + role guards, repairs stale lifecycle state. Keeps data-preservation + destructive-action safety. Not implemented by this canary. Entry requires explicit operator incident judgment — never auto-selected by queue/drain automation.
 
 ## See Also
 
@@ -316,13 +308,13 @@ Both shape launchers (`claude-shape.sh`, `pi-shape.sh`) accept a `--draft <path>
 
 - **Never hand-edit `*-system-prompt.txt`** — generated by `manifest_regenerate_prompts()`; overwritten on `make install`
 - **Mode tools lists canonical in `config.yaml`** — manifest is documentation only
-- **Build dispatch is hermetic** — `dispatch.sh` (both harnesses) always execs `mix codegen.loop`; unsets API keys before exec; test: `dispatch_test.sh`
+- **Build dispatch is hermetic** — `dispatch.sh` (both harnesses) runs `mix codegen.loop` via the shared `loop-signal-bridge.sh` helper; unsets API keys; test: `dispatch_test.sh`
 - **`prompt_body` is ordered list** — missing entries → non-zero exit
 - **Fragment paths relative to `CODEGEN_DIR`** — process_template.py resolves under `$CODEGEN_DIR/shared/`
 - **Installed launchers have full `harnesses/` tree** — check `~/.local/bin/harnesses/` to verify dispatch.sh edits propagated
 - **`codegen-log section` + developer role** — sets `CLAUDE_ROLE` explicitly to avoid 3-strike gate collision; use Edit tool as workaround
 - **`ready.md.j2` is template** — generated by `generate.sh`; never install from source `.j2` directly
-- **`harnesses/shared/` scripts resolve via `$CODEGEN_DIR`** — `source "$CODEGEN_DIR/harnesses/shared/<script>.sh"` works in-repo and installed (see `pitch-context-selector.sh`, `ssh-target.sh`, `worktree-lifecycle.sh`, `mode-context.sh`).
+- **`harnesses/shared/` scripts resolve via `$CODEGEN_DIR`** — `source "$CODEGEN_DIR/harnesses/shared/<script>.sh"` works in-repo and installed (see `pitch-context-selector.sh`, `ssh-target.sh`, `worktree-lifecycle.sh`, `mode-context.sh`, `loop-signal-bridge.sh`).
 - **Launcher tree-climbing** — Check `OCG_CODEGEN_DIR`, then fallback.
 
 ## Runtime Porting — Reduced Fidelity Across Harnesses
@@ -336,4 +328,4 @@ The goal is truthful hooks that accurately reflect capability limits, not featur
 
 ## Trigger Keywords
 
-claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, claude-babysit, pi-babysit, babysit mode, drain supervisor, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence, runtime porting, reduced fidelity, transcript access, event blocking asymmetry, context_files, mode-context, ROLE_CONTEXT_FILES, resolve_mode_context, mode declared context, FIFO stderr capture, process substitution, stdout transparency, jumpstart, break-glass, incident recovery, explicit operator entry
+claude-build, claude-debug, claude-shape, pi-build, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, pi-ops, claude-babysit, pi-babysit, babysit mode, drain supervisor, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence, runtime porting, reduced fidelity, transcript access, event blocking asymmetry, context_files, mode-context, ROLE_CONTEXT_FILES, resolve_mode_context, mode declared context, FIFO stderr capture, process substitution, stdout transparency, loop-signal-bridge, run_supervised_loop, SIGINT SIGTERM group forward

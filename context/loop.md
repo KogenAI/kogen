@@ -190,6 +190,13 @@ orphaned or wedged role process still resolves to `wedged`.
 
 `BuildSignalHandler` traps SIGINT/SIGTERM during a run and halts with exit code 130 (standard
 128+SIGINT convention) rather than letting a partial cycle exit 0 or silently swallow the signal.
+SIGINT itself is uncatchable inside the BEAM on every OTP release — the shared bash helper
+`harnesses/shared/loop-signal-bridge.sh` (`run_supervised_loop`) owns the boundary one layer down:
+it job-controls the spawn (never `exec`s), traps INT/TERM in the bash parent, and forwards a group
+SIGTERM to the child — reaching this handler exactly as a direct SIGTERM would. All four bash
+callers that spawn the loop (both `dispatch.sh` twins, and the `--queue` leg of both build
+launchers) share this one helper — see `context/harnesses.md` § Orchestrated Build Mode and
+`context/loop-queue-drain.md`.
 
 ## Warm-Resume
 

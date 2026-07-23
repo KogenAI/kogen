@@ -67,7 +67,10 @@ cp "$DISPATCH" "$FAKE_HARNESS/dispatch.sh"
 chmod +x "$FAKE_HARNESS/dispatch.sh"
 
 FAKE_CODEGEN="$TMP_ROOT/codegen"
-mkdir -p "$FAKE_CODEGEN"
+mkdir -p "$FAKE_CODEGEN/harnesses/shared"
+# dispatch.sh sources loop-signal-bridge.sh from $CODEGEN_DIR/harnesses/shared/
+# — every fake OCG_CODEGEN_DIR root that reaches the spawn point needs it.
+cp "$SCRIPT_DIR/../../shared/loop-signal-bridge.sh" "$FAKE_CODEGEN/harnesses/shared/loop-signal-bridge.sh"
 
 # ── Test 1: no test_harness/ dir → exit 2 + "orchestration loop dir not found" ──
 rc=0
@@ -214,7 +217,8 @@ EXITREC_CWD="$TMP_ROOT/exitrec-cwd"
 mkdir -p "$EXITREC_CWD/codegen/logging"
 CODEGEN_LOG_ARGS_FILE="$TMP_ROOT/codegen-log-args.txt"
 FAKE_CODEGEN_EXITREC="$TMP_ROOT/codegen-exitrec"
-mkdir -p "$FAKE_CODEGEN_EXITREC/test_harness"
+mkdir -p "$FAKE_CODEGEN_EXITREC/test_harness" "$FAKE_CODEGEN_EXITREC/harnesses/shared"
+cp "$SCRIPT_DIR/../../shared/loop-signal-bridge.sh" "$FAKE_CODEGEN_EXITREC/harnesses/shared/loop-signal-bridge.sh"
 # The real codegen-log binary lives at $CODEGEN_DIR/codegen-log (derived from
 # OCG_CODEGEN_DIR here) — dispatch.sh resolves it by that path, NEVER $PATH.
 cat >"$FAKE_CODEGEN_EXITREC/codegen-log" <<'STUB'
@@ -316,7 +320,8 @@ STUB
 chmod +x "$FAKE_BIN_PTY/mix"
 
 FAKE_CODEGEN_PTY="$TMP_ROOT/codegen-pty"
-mkdir -p "$FAKE_CODEGEN_PTY/test_harness"
+mkdir -p "$FAKE_CODEGEN_PTY/test_harness" "$FAKE_CODEGEN_PTY/harnesses/shared"
+cp "$SCRIPT_DIR/../../shared/loop-signal-bridge.sh" "$FAKE_CODEGEN_PTY/harnesses/shared/loop-signal-bridge.sh"
 FAKE_HARNESS_PTY="$TMP_ROOT/harness-pty"
 mkdir -p "$FAKE_HARNESS_PTY"
 cp "$DISPATCH" "$FAKE_HARNESS_PTY/dispatch.sh"
@@ -417,7 +422,8 @@ STUB
 chmod +x "$FAKE_BIN_STREAMS/mix"
 
 FAKE_CODEGEN_STREAMS="$TMP_ROOT/codegen-streams"
-mkdir -p "$FAKE_CODEGEN_STREAMS/test_harness"
+mkdir -p "$FAKE_CODEGEN_STREAMS/test_harness" "$FAKE_CODEGEN_STREAMS/harnesses/shared"
+cp "$SCRIPT_DIR/../../shared/loop-signal-bridge.sh" "$FAKE_CODEGEN_STREAMS/harnesses/shared/loop-signal-bridge.sh"
 STREAMS_CWD="$TMP_ROOT/streams-cwd"
 mkdir -p "$STREAMS_CWD/codegen/logging"
 STREAMS_STDOUT="$TMP_ROOT/streams-stdout.txt"

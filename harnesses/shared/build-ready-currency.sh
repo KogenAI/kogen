@@ -15,7 +15,7 @@
 # stamp, so all are in this set.
 set -uo pipefail
 
-_BUILD_READY_SOURCE_SET="shared/rules shared/subagents harnesses/claude/manifest.yaml harnesses/pi/manifest.yaml harnesses/claude/hooks templates/generator harnesses/claude/claude-shape.sh harnesses/claude/claude-experiment.sh harnesses/pi/pi-shape.sh harnesses/pi/pi-experiment.sh harnesses/pi/pi-ops.sh harnesses/pi/pi-debug.sh harnesses/shared/pitch-context-selector.sh harnesses/shared/ssh-target.sh harnesses/shared/worktree-lifecycle.sh harnesses/shared/pitch-postflight.sh harnesses/shared/pitch-postflight.cjs shared/enforcement/registry.yaml"
+_BUILD_READY_SOURCE_SET="shared/rules shared/subagents harnesses/claude/manifest.yaml harnesses/pi/manifest.yaml harnesses/claude/hooks templates/generator harnesses/claude/claude-shape.sh harnesses/claude/claude-experiment.sh harnesses/pi/pi-shape.sh harnesses/pi/pi-experiment.sh harnesses/pi/pi-ops.sh harnesses/pi/pi-debug.sh harnesses/shared/pitch-context-selector.sh harnesses/shared/ssh-target.sh harnesses/shared/worktree-lifecycle.sh harnesses/shared/pitch-postflight.sh harnesses/shared/pitch-postflight.cjs shared/enforcement/registry.yaml harnesses/claude/claude-build.sh harnesses/pi/pi-build.sh harnesses/claude/dispatch.sh harnesses/pi/dispatch.sh harnesses/shared/loop-signal-bridge.sh"
 
 # build_ready_content_hash <codegen_dir>
 # Prints a stable hash over the CURRENT WORKING-TREE bytes of the source set

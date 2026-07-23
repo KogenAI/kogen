@@ -104,7 +104,8 @@ defmodule Mix.Tasks.Codegen.Loop do
 
     # Move 2: install the SIGTERM handler for the solo path (SIGINT cannot
     # be caught at the BEAM level — see BuildSignalHandler moduledoc; the
-    # bash dispatch layer forwards SIGINT as SIGTERM to this process group).
+    # shared harnesses/shared/loop-signal-bridge.sh helper, sourced by
+    # dispatch.sh, forwards SIGINT as a group SIGTERM to this process group).
     # Unlike the queue drain (which tracks a Port os_pid), this path's heavy
     # subprocess runs via synchronous `System.cmd/3` with no exposed os_pid
     # — the reap here targets THIS process's own OS descendant subtree

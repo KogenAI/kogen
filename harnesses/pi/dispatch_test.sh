@@ -237,9 +237,11 @@ fi
 # $CODEGEN_DIR/codegen-log (never $PATH), so the stub must live under the
 # fake OCG_CODEGEN_DIR root, not just FAKE_BIN.
 FAKE_CODEGEN_EXITREC="$TMP_ROOT/fake-codegen-exitrec"
-mkdir -p "$FAKE_CODEGEN_EXITREC/harnesses/pi" "$FAKE_CODEGEN_EXITREC/test_harness"
+mkdir -p "$FAKE_CODEGEN_EXITREC/harnesses/pi" "$FAKE_CODEGEN_EXITREC/harnesses/shared" "$FAKE_CODEGEN_EXITREC/test_harness"
 cp "$DISPATCH" "$FAKE_CODEGEN_EXITREC/harnesses/pi/dispatch.sh"
 chmod +x "$FAKE_CODEGEN_EXITREC/harnesses/pi/dispatch.sh"
+# dispatch.sh sources loop-signal-bridge.sh from $CODEGEN_DIR/harnesses/shared/
+cp "$CODEGEN_ROOT/harnesses/shared/loop-signal-bridge.sh" "$FAKE_CODEGEN_EXITREC/harnesses/shared/loop-signal-bridge.sh"
 
 EXITREC_CWD="$TMP_ROOT/exitrec-cwd"
 mkdir -p "$EXITREC_CWD/codegen/logging"
@@ -344,7 +346,8 @@ chmod +x "$FAKE_BIN_PTY/mix"
 
 TEST8_HARNESS="$TMP_ROOT/harness-pty/harnesses/pi"
 make_temp_dispatch "$TEST8_HARNESS"
-mkdir -p "$TMP_ROOT/harness-pty/test_harness"
+mkdir -p "$TMP_ROOT/harness-pty/test_harness" "$TMP_ROOT/harness-pty/harnesses/shared"
+cp "$CODEGEN_ROOT/harnesses/shared/loop-signal-bridge.sh" "$TMP_ROOT/harness-pty/harnesses/shared/loop-signal-bridge.sh"
 
 PTY_OUT_FILE="$TMP_ROOT/pty-out.txt"
 PTY_RC_FILE="$TMP_ROOT/pty-rc.txt"
@@ -441,7 +444,8 @@ STUB
 chmod +x "$FAKE_BIN_STREAMS/mix"
 
 FAKE_CODEGEN_STREAMS="$TMP_ROOT/codegen-streams"
-mkdir -p "$FAKE_CODEGEN_STREAMS/test_harness"
+mkdir -p "$FAKE_CODEGEN_STREAMS/test_harness" "$FAKE_CODEGEN_STREAMS/harnesses/shared"
+cp "$CODEGEN_ROOT/harnesses/shared/loop-signal-bridge.sh" "$FAKE_CODEGEN_STREAMS/harnesses/shared/loop-signal-bridge.sh"
 STREAMS_CWD="$TMP_ROOT/streams-cwd"
 mkdir -p "$STREAMS_CWD/codegen/logging"
 STREAMS_STDOUT="$TMP_ROOT/streams-stdout.txt"

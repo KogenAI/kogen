@@ -3,7 +3,11 @@
 `CodegenTestHarness.LoopQueueDrain` (`loop_queue_drain.ex`). Drains `codegen/pitches/ready/`
 in dependency order, spawning one fresh `codegen-build` child process per pitch — distinct from
 `context/loop.md`'s single-cycle engine: this is the multi-pitch orchestrator ON TOP of it. Invoked via
-`claude-build.sh --queue` / `pi-build.sh --queue`, which both exec `mix codegen.loop.queue`.
+`claude-build.sh --queue` / `pi-build.sh --queue`, which both run `mix codegen.loop.queue` through the
+shared `harnesses/shared/loop-signal-bridge.sh` helper (`run_supervised_loop`) rather than a direct
+`exec` — job-controlled, non-exec, so a terminal Ctrl-C becomes a group SIGTERM the BEAM's
+`BuildSignalHandler` can catch instead of hitting Erlang's uncatchable SIGINT handler directly. Same
+helper also supervises both `dispatch.sh` twins — see `context/harnesses.md` § Orchestrated Build Mode.
 
 ## Why This Is a Separate Domain From `loop.md`
 

@@ -19,12 +19,17 @@ defmodule CodegenTestHarness.BuildSignalHandler do
   BEAM-level hook for it, on this or any OTP release.
 
   Consequently SIGINT teardown is NOT this module's job: it is handled one
-  layer down, in the bash dispatch scripts (`harnesses/claude/dispatch.sh`,
-  `harnesses/pi/dispatch.sh`), which run the loop as a job-controlled child
-  (`set -m`) and `trap` INT to forward `SIGTERM` to the child's process
-  group — SIGTERM IS catchable here, so that forwarded signal reaches this
-  handler exactly the same way a direct SIGTERM would. This module handles
-  SIGTERM only; it does not attempt SIGINT.
+  layer down, by the shared bash helper `harnesses/shared/loop-signal-bridge.sh`
+  (`run_supervised_loop`), sourced by all FOUR bash callers that spawn this
+  BEAM as a job-controlled child — both `dispatch.sh` twins
+  (`harnesses/claude/dispatch.sh`, `harnesses/pi/dispatch.sh`) AND the
+  `--queue` leg of both build launchers (`claude-build.sh`/`pi-build.sh`).
+  The helper never `exec`s (so its bash parent survives to trap), traps
+  INT/TERM, and forwards a group `SIGTERM` to the child (`set -m` puts the
+  child in its own process group) — SIGTERM IS catchable here, so that
+  forwarded signal reaches this handler exactly the same way a direct
+  SIGTERM would. This module handles SIGTERM only; it does not attempt
+  SIGINT.
 
   Without this handler, `:os.set_signal(:sigterm, :handle)` defaults to
   `:default` for SIGTERM, which lets the BEAM terminate immediately without
@@ -73,8 +78,9 @@ defmodule CodegenTestHarness.BuildSignalHandler do
   Only `:sigterm` is registered with `:os.set_signal/2` — `:sigint` is
   excluded from Erlang's settable-signal set on every OTP release (see
   moduledoc); attempting `:os.set_signal(:sigint, :handle)` raises
-  `ArgumentError`. SIGINT teardown is handled by the bash dispatch layer
-  forwarding SIGTERM to this BEAM's process group (see moduledoc).
+  `ArgumentError`. SIGINT teardown is handled by the shared
+  `loop-signal-bridge.sh` helper forwarding a group SIGTERM to this BEAM's
+  process group (see moduledoc).
 
   Idempotent: installing while an instance of this handler is already
   registered on `:erl_signal_server` is a no-op (returns `:ok` either way).

@@ -77,15 +77,16 @@ if [[ -n "$PRINT_ARGV" ]]; then
     exit 0
 fi
 
-# Job-controlled, non-exec spawn: SIGINT is uncatchable inside the BEAM
-# (`:os.set_signal/2` excludes :sigint on every OTP release — see
-# test_harness/lib/codegen_test_harness/build_signal_handler.ex moduledoc),
-# so this shell must stay alive after spawning the loop, trap INT/TERM
-# itself, and forward SIGTERM (which IS catchable) to the child's process
-# group. `set -m` puts the child in its own process group with
-# child_pid == PGID, so `kill -TERM -$child_pid` reaches the loop AND every
-# descendant it spawns. Mirrors the shipped build-queue.sh trap pattern
-# (codegen/pitches/shipped/build-queue-process-supervision.md).
+# Job-controlled, non-exec spawn via the shared signal bridge: SIGINT is
+# uncatchable inside the BEAM (`:os.set_signal/2` excludes :sigint on every
+# OTP release — see test_harness/lib/codegen_test_harness/build_signal_handler.ex
+# moduledoc), so this shell must stay alive after spawning the loop, trap
+# INT/TERM itself, and forward SIGTERM (which IS catchable) to the child's
+# process group. harnesses/shared/loop-signal-bridge.sh (`run_supervised_loop`)
+# owns this INT->group-TERM->re-wait boundary for all four callers that spawn
+# the loop this way (both dispatch.sh twins + both build launchers' --queue
+# leg) — extracted from what used to be a duplicated `set -m`/`forward_term`/
+# `trap`/`wait` block here and in harnesses/claude/dispatch.sh.
 #
 # Snapshot .active BEFORE the spawn: the exit-record write (below) needs to
 # tell "the loop inited its own log for this run" apart from "the loop died
@@ -103,8 +104,14 @@ _active_before=""
 _stderr_tail_file="$(mktemp)"
 trap 'rm -f "$_stderr_tail_file"' EXIT
 
-set -m
-env \
+source "$CODEGEN_DIR/harnesses/shared/loop-signal-bridge.sh"
+# Captured with `||`, never a bare call: under `set -e`, a bare
+# `run_supervised_loop ...` returning non-zero would ABORT this script at
+# that line — exit_code=$? and everything after it would never run on
+# exactly the death classes this record exists to catch (same reasoning the
+# old direct `wait "$child_pid" || exit_code=$?` used).
+exit_code=0
+run_supervised_loop env \
     -u OPENAI_API_KEY \
     -u ANTHROPIC_API_KEY \
     -u CURSOR_API_KEY \
@@ -124,21 +131,7 @@ env \
         _status=$?
         wait "$_tee_pid" || true
         exit "$_status"' \
-    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" "$EFFORT" </dev/null &
-child_pid=$!
-
-forward_term() {
-    kill -0 "$child_pid" 2>/dev/null && kill -TERM -"$child_pid" 2>/dev/null
-}
-trap 'forward_term' INT TERM
-
-# The child's wait status must be captured with `||`, never a bare `wait`:
-# under `set -e`, a bare `wait "$child_pid"` returning non-zero ABORTS this
-# script at that line — exit_code=$? and everything after it would never
-# run on exactly the death classes this record exists to catch.
-exit_code=0
-wait "$child_pid" || exit_code=$?
-trap - INT TERM
+    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" "$EFFORT" || exit_code=$?
 
 # Decode signal deaths (128+N convention — see
 # test_harness/lib/codegen_test_harness/build_signal_handler.ex moduledoc,

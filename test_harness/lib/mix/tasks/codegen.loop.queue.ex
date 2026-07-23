@@ -89,8 +89,9 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
     # or spawns anything — a Ctrl-C landing before the first pitch even
     # starts must still be handled cleanly (no-op reap, clean exit). SIGINT
     # itself cannot be caught at the BEAM level (see BuildSignalHandler
-    # moduledoc); the bash dispatch layer traps INT and forwards SIGTERM to
-    # this process group so this handler still runs on Ctrl-C.
+    # moduledoc); the shared harnesses/shared/loop-signal-bridge.sh helper,
+    # sourced by this --queue leg's bash launcher, traps INT and forwards a
+    # group SIGTERM so this handler still runs on Ctrl-C.
     lock_path = Path.join([cwd, "codegen", "gate-pending", "queue.lock"])
     :ok = BuildSignalHandler.install(lock_path)
 
