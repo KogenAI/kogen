@@ -992,6 +992,23 @@ assert "leading-whitespace-then-tag --learned accepted" "3" "$(jq_count "$tag_lo
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug routing-tag --no-learning "untagged no-learning text is fine, no tag required" >/dev/null
 assert "--no-learning exempt from tag requirement" "1" "$(jq_count "$tag_log" 'select(.ev=="no_learning")')"
 
+# Test: `codegen-log corpus` is a REMOVED subcommand — cycle logs are
+# machine-local and MUST NEVER be carried through a git branch/ref/note/
+# stash (see session-log.md § Ownership). `corpus` now hits the ordinary
+# unexpected-argument path: exits 2, names the token, prints usage — and
+# usage no longer advertises publish/sync anywhere.
+set +e
+corpus_stderr="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" corpus 2>&1 1>/dev/null)"
+corpus_rc=$?
+set -e
+assert "codegen-log corpus exits 2 (unknown-token path)" "2" "$corpus_rc"
+assert "codegen-log corpus reports the token as unexpected" "0" "$(printf '%s' "$corpus_stderr" | grep -qF 'unexpected argument' && printf 0 || printf 1)"
+assert "codegen-log corpus stderr names the removed token" "0" "$(printf '%s' "$corpus_stderr" | grep -qF 'corpus' && printf 0 || printf 1)"
+
+usage_out="$(env -u CODEGEN_LOG_PATH "$CODEGEN/codegen-log" 2>&1 1>/dev/null || true)"
+assert "usage no longer advertises corpus publish" "0" "$(printf '%s' "$usage_out" | grep -qF 'corpus publish' && printf 1 || printf 0)"
+assert "usage no longer advertises corpus sync" "0" "$(printf '%s' "$usage_out" | grep -qF 'corpus sync' && printf 1 || printf 0)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

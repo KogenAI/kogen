@@ -185,7 +185,6 @@ codegen/                          ← repo root
 | `<app>/codegen/manifest.yaml` (downstream)        | `codegen-scaffold` (`run_integrate_stage`)   | ALWAYS-REWRITE (not write-once) on every `create`/`integrate`     | Every scaffold integrate run; `codegen-build` refuses when stamped version is behind |
 | `harnesses/claude/hooks/no-*.sh` (generated)      | `enforcement_compiler.py`                    | `make install` (compiler step)                                    | When `registry.yaml` changes                                                         |
 | `harnesses/pi/.../hooks/no-*.ts` (generated)      | `enforcement_compiler.py`                    | `make install` (compiler step)                                    | When `registry.yaml` changes                                                         |
-| `refs/heads/corpus` (orphan branch, origin)       | `codegen-log corpus publish`                 | Appended every cycle tail                                         | Codegen-only; see `context/cycle-record.md` § Corpus Branch                          |
 
 ---
 
@@ -219,6 +218,7 @@ codegen/                          ← repo root
 - [ ] **Rules are baked at install time** — subagents do not read rule files at runtime. Change a rule → `make install` to propagate.
 - [ ] **Domain context files (`context/*.md`) NOT mirrored to AGENTS/CLAUDE** — The root session-loop docs (`AGENTS.md` and `CLAUDE.md`) mirror only the codegen session-loop narrative and build rules, not individual domain context files. Edits to `context/harnesses.md`, `context/hooks.md`, etc., DO NOT propagate to AGENTS.md/CLAUDE.md via symlink or template include.
 - [ ] **Repo root differs per machine/OS** — Linux servers (`~/apps/codegen` on the dashboard box) vs operator Macs (`~/Areas/Optimum/codegen`). NOTHING hardcodes it; scripts derive `CODEGEN_DIR` from `BASH_SOURCE`. See `context/deployment-topology.md`.
+- [ ] **Cycle logs never enter git** — gitignored, machine-local, permanently; `codegen-log` has no publish/sync subcommand. Never rebuild an equivalent branch/ref/note/stash. See `context/cycle-record.md` § No Git-Tracked Logs.
 
 ---
 
