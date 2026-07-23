@@ -8,7 +8,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { runCodegenLog } from "./exec";
+import { runCodegenLog, runCodegenAdvise } from "./exec";
 import { readGateStatus, readLog, LogView } from "./readers";
 import {
   ROLES,
@@ -219,6 +219,36 @@ function registerReaders(server: McpServer) {
       } catch (err) {
         return errorResult(String(err instanceof Error ? err.message : err));
       }
+    },
+  );
+
+  // Current build harness is baked in server-side — the caller never picks
+  // it. codegen-advise itself flips to the OPPOSITE provider internally.
+  server.registerTool(
+    "advise",
+    {
+      title: "Ask the opposite provider for a recovery plan",
+      description:
+        "Call this when you are STUCK: repeated gate failures, going in circles, or a " +
+        "rework attempt that keeps failing the same way. Shells codegen-advise, which asks " +
+        "a DIFFERENT model on a DIFFERENT provider for a recovery plan. This is a full " +
+        "opposite-provider LLM call — expect it to take tens of seconds.",
+      inputSchema: {
+        context: z
+          .string()
+          .min(1)
+          .describe(
+            "Describe what is stuck: the gate failure, what you already tried, and the " +
+              "current failure. The more concrete, the better the plan.",
+          ),
+      },
+    },
+    async ({ context }) => {
+      const result = runCodegenAdvise("claude_code", context);
+      if (!result.ok) {
+        return errorResult(result.stderr || "codegen-advise failed");
+      }
+      return okResult(result.stdout);
     },
   );
 }

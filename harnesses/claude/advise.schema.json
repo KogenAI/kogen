@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "opposite-provider advisor recovery plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["plan", "confidence"],
+  "properties": {
+    "plan": { "type": "string" },
+    "confidence": { "type": "string" }
+  }
+}

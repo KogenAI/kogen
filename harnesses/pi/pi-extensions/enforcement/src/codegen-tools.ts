@@ -98,6 +98,29 @@ function runCodegenLog(args: string[], stdinBody?: string): ExecResult {
   }
 }
 
+// Sibling of runCodegenLog wrapping a different binary (codegen-advise) with
+// a different argv shape — bakes current=pi; the OPPOSITE provider is chosen
+// internally by codegen-advise itself, this extension never picks it.
+function runCodegenAdvise(context: string): ExecResult {
+  try {
+    const stdout = execFileSync("codegen-advise", ["--harness=pi"], {
+      input: context,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { ok: true, stdout, stderr: "" };
+  } catch (err: unknown) {
+    const e = err as {
+      stdout?: Buffer | string;
+      stderr?: Buffer | string;
+      message?: string;
+    };
+    const stdout = e.stdout ? e.stdout.toString() : "";
+    const stderr = e.stderr ? e.stderr.toString() : (e.message ?? String(err));
+    return { ok: false, stdout, stderr };
+  }
+}
+
 // ── readers.ts port ──────────────────────────────────────────────────────────
 
 interface GateStatus {
@@ -421,6 +444,31 @@ function registerReaders(pi: ExtensionAPI) {
       return okResult(JSON.stringify(result, null, 2));
     },
   });
+
+  const AdviseParams = Type.Object({
+    context: Type.String({
+      description:
+        "Describe what is stuck: the gate failure, what you already tried, and the " +
+        "current failure. The more concrete, the better the plan.",
+    }),
+  });
+
+  pi.registerTool({
+    name: "advise",
+    label: "Ask the opposite provider for a recovery plan",
+    description:
+      "Call this when you are STUCK: repeated gate failures, going in circles, or a " +
+      "rework attempt that keeps failing the same way. Shells codegen-advise, which asks " +
+      "a DIFFERENT model on a DIFFERENT provider for a recovery plan. This is a full " +
+      "opposite-provider LLM call — expect it to take tens of seconds.",
+    parameters: AdviseParams,
+    async execute(_toolCallId, params: Static<typeof AdviseParams>) {
+      const result = runCodegenAdvise(params.context);
+      if (!result.ok)
+        throw new Error(`codegen-advise failed: ${result.stderr}`);
+      return okResult(result.stdout);
+    },
+  });
 }
 
 /** Every bare tool name this module registers — for parity assertions. */
@@ -430,7 +478,7 @@ export const CODEGEN_TOOL_NAMES: string[] = (() => {
     names.push(sectionToolName(spec.role));
     names.push(appendToolName(spec.role));
   }
-  names.push("gate_status", "log_read");
+  names.push("gate_status", "log_read", "advise");
   return names.sort();
 })();
 

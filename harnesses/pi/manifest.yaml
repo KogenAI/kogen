@@ -29,6 +29,8 @@ launchers:
     src: codegen-document
   - name: codegen-analyze
     src: codegen-analyze
+  - name: codegen-advise
+    src: codegen-advise
   - name: pi-build
     src: harnesses/pi/pi-build.sh
   - name: pi-debug
@@ -151,5 +153,5 @@ install_steps:
 uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed manifest
   - remove_prompts # rm prompts_dir/document.md
-  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,pi-build,pi-debug,pi-experiment,pi-shape,pi-ops,pi-babysit}
+  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,codegen-advise,pi-build,pi-debug,pi-experiment,pi-shape,pi-ops,pi-babysit}
   - remove_completions # rm ZSH_COMPLETION_DST/{_pi-build,_pi-debug,_pi-experiment,_pi-shape,_pi-babysit}

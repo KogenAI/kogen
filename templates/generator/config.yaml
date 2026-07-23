@@ -42,6 +42,7 @@ tools:
       # names, so this mapping is genuine parity, not a shim.
       mcp__codegen__gate_status: gate_status
       mcp__codegen__log_read: log_read
+      mcp__codegen__advise: advise
       mcp__codegen__log_section_planner_phoenix: log_section_planner_phoenix
       mcp__codegen__log_append_planner_phoenix: log_append_planner_phoenix
       mcp__codegen__log_section_planner_static: log_section_planner_static

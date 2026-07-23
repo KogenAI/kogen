@@ -38,3 +38,33 @@ export function runCodegenLog(args: string[], stdinBody?: string): ExecResult {
     return { ok: false, stdout, stderr };
   }
 }
+
+/**
+ * Run codegen-advise for the CURRENT build harness, piping the stuck-context
+ * text on stdin (codegen-advise reads stdin when --context is omitted). The
+ * OPPOSITE provider is chosen internally by codegen-advise itself — this
+ * server never picks it. Sibling of runCodegenLog; a distinct helper (not a
+ * reuse) since it wraps a different binary with a different argv shape.
+ */
+export function runCodegenAdvise(
+  current: "claude_code" | "pi",
+  context: string,
+): ExecResult {
+  try {
+    const stdout = execFileSync("codegen-advise", [`--harness=${current}`], {
+      input: context,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { ok: true, stdout, stderr: "" };
+  } catch (err: unknown) {
+    const e = err as {
+      stdout?: Buffer | string;
+      stderr?: Buffer | string;
+      message?: string;
+    };
+    const stdout = e.stdout ? e.stdout.toString() : "";
+    const stderr = e.stderr ? e.stderr.toString() : (e.message ?? String(err));
+    return { ok: false, stdout, stderr };
+  }
+}

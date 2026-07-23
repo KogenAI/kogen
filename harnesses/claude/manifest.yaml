@@ -48,6 +48,8 @@ launchers:
     src: codegen-analyze
   - name: codegen-propose
     src: codegen-propose
+  - name: codegen-advise
+    src: codegen-advise
 
 # ─── Zsh completions ──────────────────────────────────────────────────────────
 completions:
@@ -205,5 +207,5 @@ uninstall_steps:
   - remove_agents # rm agents_dir/*.md from installed-by-ocg manifest
   - remove_commands # rm commands_dir/*.md from installed-by-ocg manifest
   - remove_hooks # rm hooks_dir/*.sh
-  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,codegen-propose,claude-build,claude-debug,claude-experiment,claude-shape,claude-ops,claude-babysit}
+  - remove_launchers # rm INSTALL_DIR/{codegen-build,codegen-call,codegen-scaffold,codegen-document,codegen-analyze,codegen-propose,codegen-advise,claude-build,claude-debug,claude-experiment,claude-shape,claude-ops,claude-babysit}
   - remove_completions # rm ZSH_COMPLETION_DST/{_claude-build,_claude-debug,_claude-experiment,_claude-shape,_claude-babysit}

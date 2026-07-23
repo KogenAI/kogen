@@ -54,6 +54,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
   @codegen_log_bin Path.expand("../../../codegen-log", __DIR__)
+  @codegen_advise_bin Path.expand("../../../codegen-advise", __DIR__)
   @codegen_dir Path.expand("../../..", __DIR__)
 
   @factcheck_scan_lib Path.expand(
@@ -1101,12 +1102,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             |> put_in([:artifacts, :last_failure_reason], reason)
             |> put_in([:artifacts, :rework_brief], brief)
             |> maybe_escalate_model(rework_role, harness, opts, final_attempt?)
+            |> maybe_advise(rework_role, harness, opts, final_attempt?)
 
           with {:ok, result} <- invoke_with_retry(rework_role, harness, retry_ctx, opts) do
             ctx =
               retry_ctx
               |> put_in([:artifacts, rework_role], result)
               |> update_in([:artifacts], &Map.delete(&1, :escalated_model))
+              |> update_in([:artifacts], &Map.delete(&1, :advisor_plan))
 
             run_format_step(ctx.cwd, opts)
             ensure_gate_graded_this_tree!(ctx, rest, harness, opts, cycle + 1)
@@ -2775,12 +2778,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         |> put_in([:artifacts, :last_failure_reason], reason)
         |> put_in([:artifacts, :rework_brief], brief)
         |> maybe_escalate_model(dev_role, harness, opts, final_attempt?)
+        |> maybe_advise(dev_role, harness, opts, final_attempt?)
 
       with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
         ctx =
           retry_ctx
           |> put_in([:artifacts, dev_role], result)
           |> update_in([:artifacts], &Map.delete(&1, :escalated_model))
+          |> update_in([:artifacts], &Map.delete(&1, :advisor_plan))
 
         run_format_step(ctx.cwd, opts)
 
@@ -2903,6 +2908,122 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       :none ->
         ctx
     end
+  end
+
+  # Calls the opposite-provider advisor (`codegen-advise`) exactly once, at
+  # the SAME give-up boundary `maybe_escalate_model/5` already fires at
+  # (`final_attempt?` true), and stashes the returned plan at
+  # `ctx.artifacts.advisor_plan` for `build_prompt/2` to render under
+  # `## Advisor`. Composes with escalation: the final attempt can carry BOTH
+  # a stronger same-provider model (`:escalated_model`) AND an
+  # opposite-provider recovery plan (`:advisor_plan`) — orthogonal artifact
+  # keys, both cleared by the caller after the attempt resolves.
+  #
+  # Suppressed under a fixed campaign binding (mirrors
+  # `maybe_escalate_model/5`'s `resolve_fixed_binding` guard) — a
+  # role-model-sweep arm measuring a fixed binding must not have its
+  # evidence perturbed by cross-provider advice either.
+  #
+  # A failed/unavailable advisor call is ADDITIVE-failure: ctx passes
+  # through unchanged. Advice is help, never a gate — see pitch "a stuck
+  # build asks the other provider" § Interaction Audit.
+  @spec maybe_advise(map(), String.t(), harness(), run_opts(), boolean()) :: map()
+  defp maybe_advise(ctx, dev_role, harness, opts, final_attempt?)
+
+  defp maybe_advise(ctx, _dev_role, _harness, _opts, false), do: ctx
+
+  defp maybe_advise(ctx, dev_role, build_harness, opts, true) do
+    resolve_harness_fn =
+      Keyword.get(opts, :resolve_harness_fn, &RoleResolver.resolve_harness/2)
+
+    harness = resolve_harness_fn.(dev_role, build_harness)
+
+    if resolve_fixed_binding(dev_role, harness, opts) != :none do
+      ctx
+    else
+      do_maybe_advise(ctx, harness, opts)
+    end
+  end
+
+  defp do_maybe_advise(ctx, harness, opts) do
+    advisor_fn = Keyword.get(opts, :advisor_fn, &default_advisor_fn/3)
+
+    reason = get_in(ctx, [:artifacts, :last_failure_reason]) || ""
+    brief = get_in(ctx, [:artifacts, :rework_brief]) || ""
+
+    context_text =
+      "Build harness: #{harness}\n\n## Gate failure reason\n\n#{reason}\n\n## Rework brief\n\n#{brief}"
+
+    case advisor_fn.(harness, context_text, opts) do
+      {:ok, plan} when is_binary(plan) and plan != "" ->
+        operator_note("advisor: opposite-provider plan captured at give-up boundary")
+        put_in(ctx, [:artifacts, :advisor_plan], plan)
+
+      _ ->
+        ctx
+    end
+  end
+
+  # Real `:advisor_fn` — shells `codegen-advise`, resolved relative to this
+  # repo's own root (mirrors how the loop shells other codegen-* binaries).
+  # `System.cmd/3` has no stdin-piping option, so the context is written to a
+  # temp file and passed as `--context @<path>` (the same `@`-path
+  # convention `codegen-call`/`codegen-advise` already use elsewhere).
+  # Returns `{:ok, plan_json}` on a clean advisor call, `:error` on ANY
+  # non-zero exit, unreadable stdout, or temp-file write failure — the
+  # caller (`do_maybe_advise/2`) treats `:error` as a no-op, never a crash:
+  # advice is additive.
+  #
+  # Unlike `default_rework_brief_fn/1` (shells `git`, free/local/hermetic)
+  # or `RoleResolver.resolve_escalation/2` (a pure `config.yaml` read, also
+  # free), this default shells a REAL opposite-provider LLM call — a
+  # genuinely costly, non-hermetic side effect. `mix test --exclude slow` is
+  # the hermetic gate and must never place a real LLM call; the ~40+
+  # pre-existing give-up-boundary tests in `orchestration_loop_test.exs`
+  # (added before this seam existed, several via the same escalation
+  # give-up boundary this mirrors) cannot all be feasibly and durably kept
+  # in sync with a NEW required mock, so this default fails closed
+  # (`:error`, i.e. no-op — advice is additive by design) in `Mix.env() ==
+  # :test`. Real builds (`mix codegen.loop`, MIX_ENV=prod/dev) are
+  # unaffected — this branch never fires there.
+  @spec default_advisor_fn(harness(), String.t(), run_opts()) :: {:ok, String.t()} | :error
+  def default_advisor_fn(harness, context_text, opts) do
+    if Mix.env() == :test do
+      :error
+    else
+      do_default_advisor_fn(harness, context_text, opts)
+    end
+  end
+
+  defp do_default_advisor_fn(harness, context_text, _opts) do
+    tmp_path =
+      Path.join(
+        System.tmp_dir!(),
+        "codegen-advise-context-#{System.unique_integer([:positive])}.txt"
+      )
+
+    try do
+      case File.write(tmp_path, context_text) do
+        :ok ->
+          case System.cmd(@codegen_advise_bin, ["--harness=#{harness}", "--context=@#{tmp_path}"],
+                 stderr_to_stdout: false
+               ) do
+            {out, 0} ->
+              trimmed = String.trim(out)
+              if trimmed == "", do: :error, else: {:ok, trimmed}
+
+            {_out, _status} ->
+              :error
+          end
+
+        {:error, _reason} ->
+          :error
+      end
+    after
+      File.rm(tmp_path)
+    end
+  rescue
+    _ -> :error
   end
 
   # A witness (or, absent that, the raw gate log) naming a path under
@@ -3991,6 +4112,26 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           "already in the diff. This is the uncommitted working tree — if something in it " <>
           "is not yours, it predates the cycle; leave it alone and fix only the fault named " <>
           "below, then re-verify.\n\n" <> brief
+      else
+        base
+      end
+
+    # On the FINAL rework attempt before give-up, thread the opposite-provider
+    # advisor's recovery plan (`ctx.artifacts.advisor_plan` — set by
+    # `maybe_advise/5`, the SAME give-up boundary `maybe_escalate_model/5`
+    # already fires at). A DIFFERENT model, from a DIFFERENT provider, looked
+    # at this same stuck build — see pitch "a stuck build asks the other
+    # provider".
+    advisor_plan = get_in(ctx, [:artifacts, :advisor_plan])
+
+    base =
+      if developer_role?(role) and is_binary(advisor_plan) and String.trim(advisor_plan) != "" do
+        base <>
+          "\n\n## Advisor — opposite-provider second opinion\n\n" <>
+          "A different model, from a different provider than the one that has been stuck " <>
+          "on this build, was given the gate failure and your uncommitted diff and asked for " <>
+          "a recovery plan. It may be wrong — read it, don't blindly follow it — but it is a " <>
+          "genuinely different angle than retrying the same approach again.\n\n" <> advisor_plan
       else
         base
       end

@@ -26,6 +26,7 @@ async function withTmpDir(fn: (dir: string) => void | Promise<void>) {
 // ROLES exactly. Deliberately NOT derived from CODEGEN_TOOL_NAMES itself,
 // so this assertion can actually fail if either side drifts.
 const EXPECTED_CLAUDE_TOOL_NAMES = [
+  "mcp__codegen__advise",
   "mcp__codegen__gate_status",
   "mcp__codegen__log_append_committer",
   "mcp__codegen__log_append_context_curator",
@@ -55,14 +56,14 @@ describe("codegen-tools — Claude/Pi tool-name-set parity", () => {
     assert.deepEqual(prefixed, EXPECTED_CLAUDE_TOOL_NAMES);
   });
 
-  it("registers exactly 20 tools (9 roles x 2 writers + 2 readers)", async () => {
+  it("registers exactly 21 tools (9 roles x 2 writers + 3 readers)", async () => {
     const { CODEGEN_TOOL_NAMES } = await import("../../codegen-tools");
-    assert.equal(CODEGEN_TOOL_NAMES.length, 20);
+    assert.equal(CODEGEN_TOOL_NAMES.length, 21);
   });
 });
 
 describe("codegen-tools — register() wires every tool via pi.registerTool", () => {
-  it("calls registerTool exactly 20 times with unique names", async () => {
+  it("calls registerTool exactly 21 times with unique names", async () => {
     const registered: string[] = [];
     const mockPi = {
       registerTool: (tool: { name: string }) => {
@@ -71,8 +72,8 @@ describe("codegen-tools — register() wires every tool via pi.registerTool", ()
     };
     const { register } = await import("../../codegen-tools");
     register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
-    assert.equal(registered.length, 20);
-    assert.equal(new Set(registered).size, 20);
+    assert.equal(registered.length, 21);
+    assert.equal(new Set(registered).size, 21);
   });
 
   it("a generated section tool's execute() calls codegen-log with --role baked in, never as a caller arg", async () => {

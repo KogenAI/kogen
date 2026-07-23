@@ -201,6 +201,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     fn _state, _step_log, _session_id, _verdict, _project_dir, _slug -> :ok end
   end
 
+  # Real default_advisor_fn/3 shells out to the codegen-advise binary, which
+  # calls a REAL opposite-provider LLM. Any test whose gate_fn reaches the
+  # give-up boundary (final_attempt? true) without stubbing :advisor_fn would
+  # otherwise trigger a real, paid LLM call from what must be a hermetic,
+  # no-LLM test suite. Use for any run/1 call whose gate_fn always fails.
+  defp no_op_advisor_fn do
+    fn _harness, _context_text, _opts -> :error end
+  end
+
   defp all_present_preflight_probe_fn do
     fn _cwd ->
       "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
@@ -2911,7 +2920,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -2954,7 +2964,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                        gate_fn: gate_fn,
                        gate_classify_fn: gate_classify_fn,
                        gate_preflight_fn: no_op_gate_preflight_fn(),
-                       preflight_probe_fn: all_present_preflight_probe_fn()
+                       preflight_probe_fn: all_present_preflight_probe_fn(),
+                       advisor_fn: no_op_advisor_fn()
                      )
                    end
 
@@ -3165,7 +3176,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -3255,7 +3267,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  flake_check_fn: flake_check_fn,
                  stale_build_heal_fn: heal_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -3442,7 +3455,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: no_op_advisor_fn()
                )
 
       marker =
@@ -4057,7 +4071,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 tree_signature_fn: signature_fn
+                 tree_signature_fn: signature_fn,
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -4089,7 +4104,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 tree_signature_fn: signature_fn
+                 tree_signature_fn: signature_fn,
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -4116,7 +4132,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
-                 preflight_probe_fn: all_present_preflight_probe_fn()
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -4211,7 +4228,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 resolve_escalation_fn: resolve_escalation_fn
+                 resolve_escalation_fn: resolve_escalation_fn,
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert reason =~ "gate verdict=failed"
@@ -4287,7 +4305,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  resolve_escalation_fn: resolve_escalation_fn,
                  git_head_fn: fn -> "deadbeef" end,
-                 git_dirty_fn: fn -> false end
+                 git_dirty_fn: fn -> false end,
+                 advisor_fn: no_op_advisor_fn()
                )
 
       # Fixed binding present for developer-static -> escalation suppressed
@@ -4325,7 +4344,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  resolve_harness_fn: resolve_harness_fn,
-                 resolve_escalation_fn: resolve_escalation_fn
+                 resolve_escalation_fn: resolve_escalation_fn,
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert Agent.get(harness_seen_agent, & &1) == ["pi"]
@@ -4362,7 +4382,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: gate_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 resolve_escalation_fn: resolve_escalation_fn
+                 resolve_escalation_fn: resolve_escalation_fn,
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert Agent.get(seen_ctx_agent, & &1) == [nil, nil]
@@ -4413,7 +4434,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  tree_signature_fn: signature_fn,
-                 resolve_escalation_fn: resolve_escalation_fn
+                 resolve_escalation_fn: resolve_escalation_fn,
+                 advisor_fn: no_op_advisor_fn()
                )
 
       seen = Agent.get(seen_ctx_agent, & &1)
@@ -4425,6 +4447,257 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {before_last, [last]} = Enum.split(seen, 15)
       assert Enum.all?(before_last, &(&1 == nil))
       assert last == {"opus", "high"}
+    end
+  end
+
+  describe "run/1 — gate-retry give-up-boundary opposite-provider advisor (maybe_advise/5)" do
+    # Mirrors the escalation describe block's count-bound path: non-git cwd ->
+    # tree_signature/1 unavailable -> falls back to the legacy count bound
+    # (:max_gate_retries, default 1) -> the one allowed retry is also final.
+    test "count-bound path: advisor fires on the one allowed retry when it returns a plan", %{
+      calls_agent: calls_agent
+    } do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          plan = get_in(ctx, [:artifacts, :advisor_plan])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [plan] end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      advisor_fn = fn _harness, _context_text, _opts -> {:ok, "try a different index strategy"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: advisor_fn
+               )
+
+      assert reason =~ "gate verdict=failed"
+
+      # initial call (no advisor, not a rework retry) + one rework retry
+      # (the final allowed attempt -> advisor plan present).
+      assert Agent.get(seen_ctx_agent, & &1) == [nil, "try a different index strategy"]
+    end
+
+    test "advisor plan is cleared from ctx.artifacts after the attempt resolves (same lifecycle as escalated_model)",
+         %{calls_agent: calls_agent} do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      advisor_fn = fn _harness, _context_text, _opts -> {:ok, "a recovery plan"} end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: advisor_fn
+               )
+
+      # The final call in the sequence is the committer's own gate re-check
+      # (rework_final_gate/5) — irrelevant here; what matters is that no
+      # invocation AFTER the advised retry ever sees a stale advisor_plan
+      # left over from a prior attempt. Assert indirectly: the FIRST
+      # (non-final) developer invocation never saw a plan (only the final
+      # attempt does), proving the key isn't leaking backward across
+      # attempts either.
+      assert Enum.member?(Agent.get(calls_agent, & &1), "developer-static")
+    end
+
+    test "composes with escalation: final attempt carries BOTH escalated_model AND advisor_plan", %{
+      calls_agent: calls_agent
+    } do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          escalated = get_in(ctx, [:artifacts, :escalated_model])
+          plan = get_in(ctx, [:artifacts, :advisor_plan])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [{escalated, plan}] end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      resolve_escalation_fn = fn "developer-static", _harness -> {"opus", "high"} end
+      advisor_fn = fn _harness, _context_text, _opts -> {:ok, "cross-provider plan"} end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 resolve_escalation_fn: resolve_escalation_fn,
+                 advisor_fn: advisor_fn
+               )
+
+      assert Agent.get(seen_ctx_agent, & &1) == [
+               {nil, nil},
+               {{"opus", "high"}, "cross-provider plan"}
+             ]
+    end
+
+    test "role-model-sweep fixed binding suppresses the advisor too — ctx.advisor_plan stays nil on the final retry",
+         %{calls_agent: calls_agent} do
+      run_dir = Path.join(System.tmp_dir!(), "rms_advise_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(run_dir)
+      on_exit(fn -> File.rm_rf!(run_dir) end)
+
+      binding = %{
+        "schema_version" => 1,
+        "campaign_id" => "camp-1",
+        "arm" => "baseline",
+        "role" => "developer-static",
+        "stack" => "static",
+        "harness" => "claude_code",
+        "model" => "sonnet",
+        "effort" => "medium",
+        "source_sha" => "deadbeef",
+        "fixed" => true
+      }
+
+      File.write!(Path.join(run_dir, "role-model-binding.json"), Jason.encode!(binding))
+      System.put_env("BENCH_RUN_DIR", run_dir)
+      Process.delete(:role_model_sweep_binding)
+
+      on_exit(fn ->
+        System.delete_env("BENCH_RUN_DIR")
+        Process.delete(:role_model_sweep_binding)
+      end)
+
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          plan = get_in(ctx, [:artifacts, :advisor_plan])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [plan] end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      advisor_fn = fn _harness, _context_text, _opts -> {:ok, "should never be seen"} end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 resolve_harness_fn: fn _role, build_harness -> build_harness end,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: advisor_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      # Fixed binding present for developer-static -> advisor suppressed on
+      # every attempt, including the final one.
+      assert Agent.get(seen_ctx_agent, & &1) == [nil, nil]
+    end
+
+    test "a failed advisor call (:error) does not fail the cycle — ctx unchanged, no advisor_plan set", %{
+      calls_agent: calls_agent
+    } do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "developer-static" do
+          plan = get_in(ctx, [:artifacts, :advisor_plan])
+          Agent.update(seen_ctx_agent, fn seen -> seen ++ [plan] end)
+        end
+
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      # Simulates codegen-advise unavailable/non-zero exit.
+      advisor_fn = fn _harness, _context_text, _opts -> :error end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: advisor_fn
+               )
+
+      # Cycle fails on gate exhaustion exactly as it would without the
+      # advisor feature — the failure reason is unrelated to the advisor.
+      assert reason =~ "gate verdict=failed"
+      assert Agent.get(seen_ctx_agent, & &1) == [nil, nil]
+    end
+
+    test "build_prompt/2 renders the advisor plan under ## Advisor for the developer role" do
+      ctx = %{
+        pitch: "fix the thing",
+        artifacts: %{advisor_plan: "Try reindexing the query instead of adding a cache layer."}
+      }
+
+      prompt = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      assert prompt =~ "## Advisor — opposite-provider second opinion"
+      assert prompt =~ "Try reindexing the query instead of adding a cache layer."
+    end
+
+    test "build_prompt/2 renders nothing when advisor_plan is absent" do
+      ctx = %{pitch: "fix the thing", artifacts: %{}}
+
+      prompt = OrchestrationLoop.build_prompt("developer-static", ctx)
+
+      refute prompt =~ "## Advisor"
     end
   end
 
@@ -6848,7 +7121,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  max_final_gate_cycles: 1,
-                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+                 advisor_fn: no_op_advisor_fn()
                )
 
       # The developer role was invoked twice: once in the normal sequence,
@@ -6899,7 +7173,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  max_final_gate_cycles: 1,
-                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+                 advisor_fn: no_op_advisor_fn()
                )
 
       # context-curator was invoked twice: once in the normal sequence, once
@@ -6948,7 +7223,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  max_final_gate_cycles: 1,
-                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+                 advisor_fn: no_op_advisor_fn()
                )
 
       assert reason =~ "pre-commit re-gate" or reason =~ "never graded clear"
@@ -7019,7 +7295,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
                  max_final_gate_cycles: 1,
                  clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
-                 resolve_escalation_fn: resolve_escalation_fn
+                 resolve_escalation_fn: resolve_escalation_fn,
+                 advisor_fn: no_op_advisor_fn()
                )
 
       # first developer-static call: normal sequence, unescalated. Second

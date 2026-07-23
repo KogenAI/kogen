@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# codegen-advise — black-box "problem in, plan out" advisor call, run on the
+# OPPOSITE provider from the CURRENT build harness.
+#
+# Usage:
+#   codegen-advise --harness=<claude_code|pi> --context @<abs-path>
+#   codegen-advise --harness=<claude_code|pi> <<< "problem text on stdin"
+#
+# --harness names the CURRENT build harness (the one that is stuck); this
+# script flips to the OPPOSITE provider via a FIXED internal mapping — this
+# is a deliberate operator decision (see pitch "a stuck build asks the other
+# provider" § No-gos): not configurable yet.
+#
+#   current build harness   | advisor runs on          | codegen-call argv
+#   -------------------------+---------------------------+----------------------------------------------
+#   claude_code              | OpenAI GPT-5.6 (sol) / pi | --harness=pi --model=openai-codex/gpt-5.6-sol
+#   pi                       | Anthropic Opus / claude   | --harness=claude_code --model=opus
+#
+# Both directions run at --effort=high.
+#
+# Output: the advisor's {plan, confidence} JSON (codegen-call envelope's
+# result.value) on stdout. Exit 0 on a successful call — even a
+# schema-invalid or LLM-failed call still emits SOMETHING on stdout via
+# codegen-call's own envelope contract, but this script treats a non-success
+# envelope status as a hard failure (exit 1) since the caller (loop or MCP
+# tool) needs a real plan, not a passthrough failure envelope.
+#
+# Exit codes:
+#   0   — advisor plan printed on stdout
+#   1   — codegen-call ran but returned a non-success envelope status, or
+#         its stdout was not parseable JSON
+#   2   — usage error: missing/unknown --harness, missing/empty --context
+#   127 — codegen-call binary not found
+#
+# This script never gates a build — a non-zero exit here is meant to be
+# treated as ADDITIVE-failure by every caller: the loop proceeds unchanged
+# when this fails; the MCP tool returns isError text but the dev's turn
+# continues.
+
+set -euo pipefail
+
+# Derive CODEGEN_DIR from this script's own location (works symlinked via PATH).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CODEGEN_DIR="$SCRIPT_DIR"
+
+CODEGEN_CALL="$CODEGEN_DIR/codegen-call"
+SYSTEM_PROMPT_FILE="$CODEGEN_DIR/harnesses/claude/advise-system-prompt.md"
+JSON_SCHEMA_FILE="$CODEGEN_DIR/harnesses/claude/advise.schema.json"
+
+HARNESS=""
+CONTEXT_PATH=""
+CONTEXT_FROM_STDIN=""
+
+usage() {
+    printf 'Usage: codegen-advise --harness=<claude_code|pi> (--context @<path> | via stdin)\n' >&2
+    exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --harness=*)
+        HARNESS="${1#--harness=}"
+        shift
+        ;;
+    --harness)
+        HARNESS="$2"
+        shift 2
+        ;;
+    --context=*)
+        CONTEXT_PATH="${1#--context=}"
+        shift
+        ;;
+    --context)
+        CONTEXT_PATH="$2"
+        shift 2
+        ;;
+    --*)
+        printf 'codegen-advise: unknown flag %q\n' "$1" >&2
+        usage
+        ;;
+    *)
+        printf 'codegen-advise: unexpected positional arg %q\n' "$1" >&2
+        usage
+        ;;
+    esac
+done
+
+if [[ -z "$HARNESS" ]]; then
+    printf 'codegen-advise: --harness is required\n' >&2
+    usage
+fi
+
+if [[ "$HARNESS" != "claude_code" && "$HARNESS" != "pi" ]]; then
+    printf 'codegen-advise: --harness must be "claude_code" or "pi", got %q\n' "$HARNESS" >&2
+    usage
+fi
+
+# Resolve the problem context: @<path> flag, or stdin when the flag is absent.
+CONTEXT_TEXT=""
+if [[ -n "$CONTEXT_PATH" ]]; then
+    if [[ "$CONTEXT_PATH" != @* ]]; then
+        printf 'codegen-advise: --context value must start with @ (got %q)\n' "$CONTEXT_PATH" >&2
+        usage
+    fi
+    _path="${CONTEXT_PATH#@}"
+    if [[ ! -f "$_path" ]]; then
+        printf 'codegen-advise: --context file not found: %s\n' "$_path" >&2
+        usage
+    fi
+    CONTEXT_TEXT="$(cat "$_path")"
+else
+    CONTEXT_TEXT="$(cat)"
+    CONTEXT_FROM_STDIN="1"
+fi
+
+if [[ -z "${CONTEXT_TEXT//[[:space:]]/}" ]]; then
+    if [[ -n "$CONTEXT_FROM_STDIN" ]]; then
+        printf 'codegen-advise: stdin context is empty\n' >&2
+    else
+        printf 'codegen-advise: --context file is empty\n' >&2
+    fi
+    usage
+fi
+
+# Fixed opposite-provider mapping — deliberately not configurable (see
+# header + pitch No-gos). Two rows only.
+case "$HARNESS" in
+claude_code)
+    ADVISOR_HARNESS="pi"
+    ADVISOR_MODEL="openai-codex/gpt-5.6-sol"
+    ;;
+pi)
+    ADVISOR_HARNESS="claude_code"
+    ADVISOR_MODEL="opus"
+    ;;
+esac
+ADVISOR_EFFORT="high"
+
+if [[ ! -x "$CODEGEN_CALL" ]]; then
+    printf 'codegen-advise: codegen-call not found or not executable: %s\n' "$CODEGEN_CALL" >&2
+    exit 127
+fi
+
+ENVELOPE="$("$CODEGEN_CALL" \
+    --harness="$ADVISOR_HARNESS" \
+    --model="$ADVISOR_MODEL" \
+    --effort="$ADVISOR_EFFORT" \
+    --system-prompt="@$SYSTEM_PROMPT_FILE" \
+    --json-schema="@$JSON_SCHEMA_FILE" \
+    -- "$CONTEXT_TEXT")"
+
+STATUS="$(printf '%s' "$ENVELOPE" | jq -r '.result.status // empty' 2>/dev/null || true)"
+
+if [[ -z "$STATUS" ]]; then
+    printf 'codegen-advise: codegen-call produced no parseable envelope\n' >&2
+    exit 1
+fi
+
+if [[ "$STATUS" != "success" ]]; then
+    REASON="$(printf '%s' "$ENVELOPE" | jq -r '.result.reason // "no reason given"' 2>/dev/null || echo "no reason given")"
+    printf 'codegen-advise: advisor call did not succeed (status=%s): %s\n' "$STATUS" "$REASON" >&2
+    exit 1
+fi
+
+VALUE="$(printf '%s' "$ENVELOPE" | jq -c '.result.value' 2>/dev/null || true)"
+
+if [[ -z "$VALUE" || "$VALUE" == "null" ]]; then
+    printf 'codegen-advise: advisor call succeeded but returned no structured value\n' >&2
+    exit 1
+fi
+
+printf '%s\n' "$VALUE"
