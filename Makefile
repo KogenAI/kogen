@@ -617,8 +617,7 @@ format:
 		mise install node; \
 		hash -r 2>/dev/null || true; \
 	fi
-	@shfmt -w -i 4 .
-	@npx prettier -w --log-level error .
+	@bash "$(SCRIPT_DIR)/harnesses/shared/repo-format.sh"
 	@echo "✅ All files formatted"
 
 doctor:

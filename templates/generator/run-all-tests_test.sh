@@ -512,18 +512,27 @@ else
     # Garbage (non-numeric) input must exit 1 with a named stderr message.
     rc_garbage=0
     out_garbage=$(bash -c "$validator_src"$'\n''_validate_positive_int_1_1024 "TAIL_OVERLAP_MIN_CORES" "abc"' 2>&1) || rc_garbage=$?
-    _assert_true "garbage TAIL_OVERLAP_MIN_CORES exits non-zero" "$([ "$rc_garbage" -ne 0 ]; echo $?)"
+    _assert_true "garbage TAIL_OVERLAP_MIN_CORES exits non-zero" "$(
+        [ "$rc_garbage" -ne 0 ]
+        echo $?
+    )"
     _assert_contains "garbage TAIL_OVERLAP_MIN_CORES names the problem" "TAIL_OVERLAP_MIN_CORES" "$out_garbage"
 
     # Empty input must exit 1.
     rc_empty=0
     bash -c "$validator_src"$'\n''_validate_positive_int_1_1024 "detected core count" ""' >/dev/null 2>&1 || rc_empty=$?
-    _assert_true "empty core-count probe exits non-zero" "$([ "$rc_empty" -ne 0 ]; echo $?)"
+    _assert_true "empty core-count probe exits non-zero" "$(
+        [ "$rc_empty" -ne 0 ]
+        echo $?
+    )"
 
     # Oversized (out-of-range) input must exit 1.
     rc_oversized=0
     bash -c "$validator_src"$'\n''_validate_positive_int_1_1024 "TAIL_OVERLAP_MIN_CORES" "99999"' >/dev/null 2>&1 || rc_oversized=$?
-    _assert_true "oversized TAIL_OVERLAP_MIN_CORES (99999) exits non-zero" "$([ "$rc_oversized" -ne 0 ]; echo $?)"
+    _assert_true "oversized TAIL_OVERLAP_MIN_CORES (99999) exits non-zero" "$(
+        [ "$rc_oversized" -ne 0 ]
+        echo $?
+    )"
 
     # A valid in-range value must NOT exit non-zero (no false-positive reject).
     rc_valid=0
@@ -733,7 +742,10 @@ _run_case18_branch() {
 
     local max_active
     max_active=$(awk 'BEGIN{m=0} $4 ~ /^[0-9]+$/ && $4>m {m=$4} END{print m}' "$order_log")
-    _assert_true "case18 [$branch_label]: hermetic active markers observed concurrent scheduler stress" "$([ "${max_active:-0}" -gt 0 ]; echo $?)"
+    _assert_true "case18 [$branch_label]: hermetic active markers observed concurrent scheduler stress" "$(
+        [ "${max_active:-0}" -gt 0 ]
+        echo $?
+    )"
 }
 
 _run_case18_branch "overlap" "1"

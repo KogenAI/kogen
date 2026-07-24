@@ -77,10 +77,10 @@ cd "$SCRIPT_DIR"
 _validate_positive_int_1_1024() {
     local name="$1" val="$2"
     case "$val" in
-        '' | *[!0-9]*)
-            printf 'run-all-tests: %s must be a positive integer, got %q\n' "$name" "$val" >&2
-            exit 1
-            ;;
+    '' | *[!0-9]*)
+        printf 'run-all-tests: %s must be a positive integer, got %q\n' "$name" "$val" >&2
+        exit 1
+        ;;
     esac
     if [ "$val" -lt 1 ] || [ "$val" -gt 1024 ]; then
         printf 'run-all-tests: %s must be in range 1..1024, got %q\n' "$name" "$val" >&2

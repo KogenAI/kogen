@@ -77,21 +77,21 @@ codegen/                          ← repo root
 
 ## Make Targets
 
-| Target                    | Purpose                                                                                                                                                                                |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make install`            | Full install cycle: hook-parity → generate pi-extension → render settings → install.sh                                                                                                 |
-| `make test`               | Two-phase: parallel parity/scaffold/npm checks, then serial tail (hooks, hermetic ExUnit, rule-render-freshness); tracked-tree backstop; fast, no LLM calls                            |
-| `make test-stacks`        | ExUnit scaffold tests both harnesses; slow, real LLM calls; pre-deploy gate                                                                                                            |
-| `make test-all`           | `test` + `test-stacks` + `record-green`                                                                                                                                                |
-| `make hook-parity`        | Verify `claude-code-settings.json` hook entries match hook source dir                                                                                                                  |
-| `make harness-path-check` | Grep baked agents (`~/.claude/agents`) for stale harness-relative paths; fails if found                                                                                                |
-| `make harness-parity`     | Verify `codegen-build` + `dispatch.sh` stubs are self-consistent                                                                                                                       |
-| `make format`             | Format shell scripts with `shfmt`, all other files with `prettier`                                                                                                                     |
-| `make doctor`             | Check required tools on PATH (claude, jq, rg, mise, pyyaml); exits non-zero on fail                                                                                                    |
-| `make build-ready`        | Preflight gate: doctor + installed-harness currency (vs `.ocg-install-stamp`) + `make test`; refuses (exit 2) on any red — for gating drain dispatch to a remote box before a paid run |
-| `make record-green`       | Write `test_harness/last_green.json` with current commit SHA + tool versions                                                                                                           |
-| `make uninstall`          | Remove installed claude harness artifacts (ocg-only guarded)                                                                                                                           |
-| `make update`             | Update AI agents (ocg-only guarded)                                                                                                                                                    |
+| Target                    | Purpose                                                                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make install`            | Full install cycle: hook-parity → generate pi-extension → render settings → install.sh                                                                                                   |
+| `make test`               | Two-phase: parallel parity/scaffold/npm checks, then serial tail (hooks, hermetic ExUnit, rule-render-freshness); tracked-tree backstop; fast, no LLM calls                              |
+| `make test-stacks`        | ExUnit scaffold tests both harnesses; slow, real LLM calls; pre-deploy gate                                                                                                              |
+| `make test-all`           | `test` + `test-stacks` + `record-green`                                                                                                                                                  |
+| `make hook-parity`        | Verify `claude-code-settings.json` hook entries match hook source dir                                                                                                                    |
+| `make harness-path-check` | Grep baked agents (`~/.claude/agents`) for stale harness-relative paths; fails if found                                                                                                  |
+| `make harness-parity`     | Verify `codegen-build` + `dispatch.sh` stubs are self-consistent                                                                                                                         |
+| `make format`             | Format git-intent files only (`git ls-files -co --exclude-standard`) via `harnesses/shared/repo-format.sh`; shell candidates go through `shfmt`, supported text formats through Prettier |
+| `make doctor`             | Check required tools on PATH (claude, jq, rg, mise, pyyaml); exits non-zero on fail                                                                                                      |
+| `make build-ready`        | Preflight gate: doctor + installed-harness currency (vs `.ocg-install-stamp`) + `make test`; refuses (exit 2) on any red — for gating drain dispatch to a remote box before a paid run   |
+| `make record-green`       | Write `test_harness/last_green.json` with current commit SHA + tool versions                                                                                                             |
+| `make uninstall`          | Remove installed claude harness artifacts (ocg-only guarded)                                                                                                                             |
+| `make update`             | Update AI agents (ocg-only guarded)                                                                                                                                                      |
 
 ---
 
