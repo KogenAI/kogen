@@ -575,6 +575,35 @@ dependency_preflight() {
     done
 }
 
+# refuse_if_recovery_bound <slug> — a ready pitch with a LOCAL recovery
+# dossier (codegen/gate-pending/recoveries/<slug>/*.json) owns machine-local
+# state that pitch-file transfer does not carry: the dossier JSON and its
+# immutable Git ref (see pitch "restarted builds resume owned work"). Moving
+# only the pitch markdown to another node would strand that state — the
+# recovered bytes become unreachable from the new node, and a later
+# same-slug selection there finds nothing to materialize. Fails closed on an
+# unreadable directory (never silently treats "can't tell" as "safe to
+# move"). The same-node no-op path (checked by callers BEFORE this) is
+# unaffected — this only refuses a genuine CROSS-node transfer.
+refuse_if_recovery_bound() {
+    local slug="$1"
+    local recoveries_dir="$CWD/codegen/gate-pending/recoveries/${slug}"
+
+    [[ -d "$recoveries_dir" ]] || return 0
+
+    local hit
+    hit="$(find "$recoveries_dir" -maxdepth 1 -name '*.json' -type f -print -quit 2>/dev/null)" || {
+        printf 'codegen-drain: recovery-bound %s: could not enumerate %s — refusing (fail-closed)\n' \
+            "$slug" "$recoveries_dir" >&2
+        exit 1
+    }
+
+    if [[ -n "$hit" ]]; then
+        printf 'codegen-drain: recovery-bound %s: dossier/ref transfer unsupported; keep on current node\n' "$slug" >&2
+        exit 1
+    fi
+}
+
 # cmd_assign_one <slug> <node> — the single-slug transfer (checksum-verified
 # ack-before-delete on remote nodes; same-fs mv on local-fs nodes). Callers
 # (cmd_assign's --slug/--node leg, and cmd_assign_auto's per-lane loop) must
@@ -618,6 +647,7 @@ cmd_assign_one() {
             printf 'already at %s (no-op)\n' "$node"
             return 0
         fi
+        refuse_if_recovery_bound "$slug"
         dependency_preflight "$slug" "$node"
         if [[ -f "$dest" ]]; then
             printf 'codegen-drain: %s already exists at node %q — refusing (possession ambiguous)\n' "$dest" "$node" >&2
@@ -629,6 +659,7 @@ cmd_assign_one() {
         return 0
     fi
 
+    refuse_if_recovery_bound "$slug"
     dependency_preflight "$slug" "$node"
 
     # Refuse if destination already holds it (resurrection guard).

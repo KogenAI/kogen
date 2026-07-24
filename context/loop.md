@@ -215,37 +215,37 @@ in its transcript). An empty or foreign slug → full run, never resume.
 ## Interrupted-Cycle Recovery
 
 `CodegenTestHarness.InterruptedCycleRecovery.reconcile/1` recovers a killed loop's sole
-`codegen/pitches/building/*.md` claim before the NEXT cycle spawns any role. Returns `{:ok, :none}`
-(nothing to recover), `{:ok, {:resume, slug}}` (a valid post-gate checkpoint — move that pitch back to
-`ready/` and require it resume before any other work), `{:ok, {:requeued, slug, recovery}}` (tree parked,
-pitch requeued clean), or `{:error, reason}` (ambiguous/malformed state — halts before spend). Zero or
-multiple `building/*.md` claims are refused unchanged.
+`codegen/pitches/building/*.md` claim before the NEXT cycle spawns any role — informational only, never a
+selection veto. Returns `{:ok, :none}` / `{:ok, {:resume, slug}}` / `{:ok, {:requeued, slug, recovery}}` /
+`{:error, reason}`; the legacy `interrupted-recovery.json` journal and its 4-stage machine
+(`parking`→`parked`→`history_written`→`resume_pending`, transaction-identity-checked) are unchanged for
+this narrow stranded-claim case.
 
-A `codegen/gate-pending/interrupted-recovery.json` journal drives an idempotent 4-stage state machine —
-`parking` → `parked` → `history_written` → `resume_pending` — bracketed by atomic same-dir
-temp-write+rename so a second crash mid-recovery resumes at the last completed stage rather than
-re-parking. **Transaction identity is mandatory**: the journal's `transaction_id` must match the label on
-the stashed entry or the subject of the parked commit — branch/stash EXISTENCE alone is never adopted as
-evidence. A `resume_pending` journal reuses the SAME checkpoint evaluator run-time uses,
-`OrchestrationLoop.resume_checkpoint/3` (`@doc false` public). A `:full` decision clears the checkpoint
-and journal and requeues the claim for an ordinary full run without moving HEAD, preserving any
-already-landed descendant commit instead of failing every later startup on stale `resume_pending` state.
-When the journal already points at `ready/<slug>`, cleanup recognizes source and destination identity and
-leaves that pitch file in place for the direct loop or queue to claim.
+**Per-transaction dossiers** (`codegen/gate-pending/recoveries/<slug>/<transaction-id>.json`, see pitch
+"restarted builds resume owned work") are the authority for CONTROLLED terminal failures (direct or
+queue) and same-slug resume. `park_failure/1` mints one dossier per failure (stages
+`parking`→`parked`→`history_written`→`ready`→`materialized`/`superseded`→`completed`); identity is the
+CLAIMED pitch's own basename + `scope:`, never branch name — a scope mismatch parks but tags
+`ownership: "mismatch"` (no auto-materialize). One active dossier per slug; a repeat failure chains a
+superseding transaction, never overwrites.
 
-Non-resumable trees are preserved, not discarded: `InterruptedCycleRecovery.park_worktree/4` (`:strict`
-policy here; `LoopQueueDrain`'s pre-existing warning-policy `queue-fail/<slug>/<UTC>` parking is
-unchanged and separate) captures every tracked AND untracked byte onto
-`recovery/interrupted/<slug>/<UTC>` without moving the current branch's HEAD, restores a clean original
-checkout, appends a durable `LoopQueue.write_history_row!/3` row (reusing the shipped history inserter —
-`build_failures`/`handoffs`/`handoff_receipt` frontmatter keys untouched), then moves the pitch back to
-`ready/` for a clean retry.
+`materialize/2` resolves the slug's active dossier (reselecting that slug IS adoption) and replays it via
+CHECKED `git diff --binary` + `apply --check`/`apply` — never checkout/reset/HEAD-move. `:exact` (HEAD ==
+source base, tree byte-identical) resumes at the earliest trustworthy role
+(`resume_role_for_recovery/3`: GATED→reviewer, REVIEWED→curator, CURATED→committer, else→developer);
+`:advanced`/`:operator` (moved HEAD / a same-scope dirty tree, parked onto a second
+`recovery/operator/<slug>/<ts>` ref first) reconcile at planner (phoenix) or developer (static); a
+conflict or out-of-scope edit refuses non-zero, ref/checkout untouched. `run/1`'s `:recovery_mode` opt
+bypasses `preflight_clean_tree!/1` ONLY for a materialized run. `complete_transaction!/2` retires the
+dossier after the ordinary post-committer commit/tree/gate verification — the recovery commit stays
+backup evidence, never a second publish.
 
-`OrchestrationLoop.with_startup_guard/2` wraps the existing solo `BuildLock` acquisition, dead-lock
-reclaim, and live-orphan refusal AROUND this recovery step — recovery never bypasses orphan detection,
-it runs after lock ownership is confirmed. The solo Mix task passes `build_lock_held: true` into the
-inner `run/1` so the lock is acquired once, not twice. Queue startup recovers at the equivalent point in
-its own `with`-chain — see `context/loop-queue-drain.md`.
+`codegen-drain assign` refuses (exit 1) a cross-node transfer of a slug with a local dossier — machine-
+local state, not part of pitch-file transfer; same-node placement stays a no-op.
+
+`OrchestrationLoop.with_startup_guard/2` wraps solo `BuildLock` acquisition/reclaim/orphan-refusal AROUND
+this step. The solo Mix task passes `build_lock_held: true` so the lock is acquired once. Queue startup
+recovers at the equivalent `with`-chain point — see `context/loop-queue-drain.md`.
 
 After a verified commit, `write_build_result!/3` atomically writes
 `codegen/gate-pending/build-result.json` (`invocation_id`, `slug`, `status: success`, `head`,
@@ -377,4 +377,4 @@ section for how a marked nonzero exit routes to park+skip+breaker instead of `re
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, transaction identity, CODEGEN_BUILD_INVOCATION_ID, recovery/interrupted branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, opposite-provider advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, recovery dossier, recoveries/<slug>/<txid>.json, schema_version, dossier stages, transaction identity, materialize, resume_role_for_recovery, recovery_mode, park_failure, recovery/interrupted branch, recovery/operator branch, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, opposite-provider advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`

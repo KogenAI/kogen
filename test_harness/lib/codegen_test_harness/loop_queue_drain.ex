@@ -441,7 +441,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     with :ok <- ensure_decode_deps(load_deps_fn),
          :ok <- refuse_if_build_orphan(cwd, orphan_scan_fn),
          :ok <- BuildLock.acquire(lock_path, "queue", pid_alive_fn),
-         {:ok, recovery} <-
+         # Startup reconciliation of a STRANDED `building/` claim (informational
+         # only — see pitch "restarted builds resume owned work"): parks/cleans
+         # whatever a crashed prior drain left behind so the checkout is clean
+         # before this run's own queue scan. The result is deliberately
+         # DISCARDED — no `state.recovery`/`prioritize_recovered_slug/2` ever
+         # forces the recovered slug ahead of ordinary `ordered_slugs`/dependency
+         # order; dormant recovery must never reorder selection.
+         {:ok, _recovery} <-
            InterruptedCycleRecovery.reconcile(
              reconcile_opts(opts, cwd, ready_dir, building_dir, stack)
            ),
@@ -519,7 +526,6 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           git_publish_fn: Keyword.get(opts, :git_publish_fn, &default_git_publish_fn/2),
           timed_out_slugs: MapSet.new(),
           failed_slugs: MapSet.new(),
-          recovery: recovery,
           parked_branches: %{},
           consecutive_fails: 0,
           drafted_count: 0,
@@ -953,30 +959,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   # ── Main loop ─────────────────────────────────────────────────────────────
 
-  defp prioritize_recovered_slug(slugs, nil), do: slugs
-
-  defp prioritize_recovered_slug(slugs, slug) do
-    if slug in slugs do
-      [slug | Enum.reject(slugs, &(&1 == slug))]
-    else
-      slugs
-    end
-  end
-
   defp run_loop(state, shipped_count, concluded_count) do
-    recovered_slug =
-      case state.recovery do
-        {:resume, slug} -> slug
-        {:requeued, slug, _recovery} -> slug
-        _ -> nil
-      end
-
     exclude = quiescence_exclude(state)
 
+    # Ordinary dependency/arrival order — NEVER reordered by a dormant
+    # recovery dossier (see pitch "restarted builds resume owned work": a
+    # recovered slug earns no priority; the operator's own selection, or
+    # ordinary queue order, decides what runs next).
     ordered =
       state.ordered_fn.(state.ready_dir)
       |> Enum.reject(&MapSet.member?(exclude, &1))
-      |> prioritize_recovered_slug(recovered_slug)
 
     blocked = state.blocked_fn.() |> reblock_for_exclude(state, exclude)
 
@@ -1407,14 +1399,51 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   # Calls the fail-reason git_stash_fn and normalizes its return into a
   # branch name (or nil — clean tree / stash-only fallback / genuine error,
-  # all fail-open, nothing to park).
+  # all fail-open, nothing to park). ALSO records a recovery dossier for the
+  # same terminal failure (namespace `"queue-fail"` — see pitch "restarted
+  # builds resume owned work") so a later same-slug selection can
+  # materialize the queue's own parked bytes exactly like a direct terminal
+  # failure. Dossier recording is best-effort and NEVER changes this
+  # function's own return value or the `git_stash_fn`-based branch it
+  # already reports — a dossier write failure is logged loud but the
+  # existing branch-parking contract (and every test exercising it) is
+  # unchanged.
   @spec park_failed_tree(map(), String.t()) :: String.t() | nil
   defp park_failed_tree(state, slug) do
+    # Dossier recording runs FIRST, on the still-dirty tree — `git_stash_fn`
+    # below (the real implementation) stashes+commits the dirty tree onto a
+    # branch and returns to a CLEAN checkout, so a dossier attempt made
+    # AFTER it would observe nothing left to park.
+    record_queue_park_dossier(state, slug)
+
     case state.git_stash_fn.(state.cwd, slug, "fail") do
       {:ok, branch} when is_binary(branch) -> branch
       {:ok, nil} -> nil
       :ok -> nil
       {:error, _reason} -> nil
+    end
+  end
+
+  defp record_queue_park_dossier(state, slug) do
+    pitch_path = Path.join(state.ready_dir, "#{slug}.md")
+
+    case InterruptedCycleRecovery.park_failure(
+           cwd: state.cwd,
+           pitch_path: pitch_path,
+           slug: slug,
+           namespace: "queue-fail",
+           cause: "queue terminal failure"
+         ) do
+      {:ok, _dossier} ->
+        :ok
+
+      {:error, reason} ->
+        IO.puts(
+          :stderr,
+          "queue: park_failure dossier for #{slug} failed (non-blocking): #{reason}"
+        )
+
+        :ok
     end
   end
 

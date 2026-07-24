@@ -26,6 +26,14 @@ never silently double-building. A pitch is in `building/` only for the duration 
 `building/` is gitignored, inheriting the existing `/codegen/` rule — machine-local queue state, never
 committed.
 
+**Archiving or skipping a pitch never deletes its recovery dossier or Git ref.** A pitch moved to
+`archive/` (or otherwise retired without shipping) may still own an active
+`codegen/gate-pending/recoveries/<slug>/*.json` dossier and a `recovery/interrupted/<slug>/*` branch from
+a prior failed cycle (see `context/loop.md` § Interrupted-Cycle Recovery) — pitch-file movement and
+dossier/ref cleanup are deliberately separate; no automatic cleanup runs on archive/skip. Cross-node
+fleet assignment refuses (does not silently drop) a slug with an active dossier — see
+`context/deployment-topology.md`.
+
 ## Frontmatter Schema + Legacy Dual-Read
 
 Current pitches carry YAML frontmatter, notably `blocks_on: [slug, ...]` for dependency ordering
@@ -85,4 +93,4 @@ When a pitch adds a new lifecycle directory or queue-state transition, the solut
 
 ## Trigger Keywords
 
-pitch lifecycle, pitch frontmatter, blocks_on, Blocks-on legacy, pitch-format-validator, draft ready building shipped archive studio transcripts, Kahn topological sort, ordered_slugs, ship mv, File.rename!, claim_pitch, possession, building directory, dirty_tree_exit_code, pitch design hardcoded readers, grep reader scope, handoffs, handoff_receipt, bilateral deferral record, cross-pitch ownership, reconcile_handoffs, write_handoff_receipt
+pitch lifecycle, pitch frontmatter, blocks_on, Blocks-on legacy, pitch-format-validator, draft ready building shipped archive studio transcripts, Kahn topological sort, ordered_slugs, ship mv, File.rename!, claim_pitch, possession, building directory, dirty_tree_exit_code, pitch design hardcoded readers, grep reader scope, handoffs, handoff_receipt, bilateral deferral record, cross-pitch ownership, reconcile_handoffs, write_handoff_receipt, archive preserves recovery dossier, recovery ref retention

@@ -162,35 +162,28 @@ defmodule Mix.Tasks.Codegen.Loop do
     end
   end
 
-  # Routes an `InterruptedCycleRecovery.reconcile/1` result to either the
-  # ordinary claim+run path (`run_fn.()`) or a before-spend refusal — pulled
-  # out of `run/1` as its own function so the decision (including the "no
-  # role is ever spawned on a conflicting resume" guarantee) is directly
-  # testable without exercising OptionParser/BuildSignalHandler/git plumbing.
-  # `requested_slug` is the CURRENT invocation's own target (nil for a
-  # literal, non-file prompt); `run_fn` is `run_claimed_cycle/8` bound to
-  # its own args by the caller.
+  # Routes an `InterruptedCycleRecovery.reconcile/1` result — pulled out of
+  # `run/1` as its own function so the decision is directly testable without
+  # exercising OptionParser/BuildSignalHandler/git plumbing.
+  #
+  # `reconcile/1` parks/cleans a STRANDED `building/` claim at startup (a
+  # DIFFERENT slug than this invocation's target, almost always): its
+  # result is now CLEANUP/INFORMATION ONLY, never a selection veto (see
+  # pitch "restarted builds resume owned work" — the historical
+  # `{:error, "interrupted pitch X must resume before Y"}` arm forced
+  # priority onto a recovered slug regardless of what the operator actually
+  # requested; dormant recovery must never reorder selection). Every
+  # `{:ok, _}` shape — including `{:resume, _}` for a DIFFERENT slug than
+  # requested — falls through to `run_fn.()` so the operator's own
+  # requested slug always proceeds. Only a genuine reconcile ERROR (a
+  # malformed/ambiguous journal, an unresolvable git state) still refuses.
   @doc false
   @spec route_reconcile_result(
           {:ok, CodegenTestHarness.InterruptedCycleRecovery.recovery()} | {:error, String.t()},
           String.t() | nil,
           (-> :ok | {:error, String.t()})
         ) :: :ok | {:error, String.t()}
-  def route_reconcile_result({:ok, :none}, _requested_slug, run_fn), do: run_fn.()
-
-  def route_reconcile_result({:ok, {:resume, slug}}, requested_slug, run_fn)
-      when requested_slug == slug do
-    run_fn.()
-  end
-
-  def route_reconcile_result({:ok, {:resume, slug}}, requested_slug, _run_fn) do
-    {:error, "interrupted pitch #{slug} must resume before #{requested_slug || "literal prompt"}"}
-  end
-
-  def route_reconcile_result({:ok, {:requeued, _slug, _recovery}}, _requested_slug, run_fn) do
-    run_fn.()
-  end
-
+  def route_reconcile_result({:ok, _recovery}, _requested_slug, run_fn), do: run_fn.()
   def route_reconcile_result({:error, reason}, _requested_slug, _run_fn), do: {:error, reason}
 
   defp source_slug({:file, abs}), do: Path.basename(abs, ".md")
@@ -214,6 +207,16 @@ defmodule Mix.Tasks.Codegen.Loop do
       InterruptedCycleRecovery.complete_resume_claim!(cwd, slug)
     end
 
+    # Same-slug materialization: selecting a slug that already carries an
+    # active recovery dossier IS the explicit adoption action (no new CLI
+    # flag — see pitch "restarted builds resume owned work"). A dossier for
+    # a DIFFERENT slug (or none at all) is untouched — recovery stays
+    # dormant, this cycle starts fresh. `recovery_mode`/`recovery_role`
+    # thread into `OrchestrationLoop.run/1` so the preflight-clean-tree
+    # guard is bypassed for the recovered dirty bytes and the cycle starts
+    # at the earliest role whose prior output remains trustworthy.
+    {recovery_mode, recovery_role} = materialize_recovery(source, cwd, slug, stack)
+
     stamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
     cycle_id = "#{stamp}_#{slug}"
     head_before = git_head(cwd)
@@ -231,7 +234,9 @@ defmodule Mix.Tasks.Codegen.Loop do
           build_lock_held: true,
           fallback_model_override: fallback_model,
           max_budget_usd: max_budget_usd,
-          effort_override: effort_override
+          effort_override: effort_override,
+          recovery_mode: recovery_mode,
+          recovery_role: recovery_role
         )
       end)
 
@@ -242,18 +247,89 @@ defmodule Mix.Tasks.Codegen.Loop do
         case verify_commit_landed(head_before, cwd) do
           {:ok, after_sha} ->
             Mix.shell().info("codegen.loop: COMMITTED, gate clear")
+            InterruptedCycleRecovery.complete_transaction!(cwd, slug)
             maybe_ship_pitch(source, cwd, before_sha(head_before), after_sha)
             write_build_result!(cwd, slug, after_sha)
 
           {:error, reason} ->
-            restore_claim(source, cwd)
+            park_and_restore_claim(source, pitch, cwd, slug, reason)
             {:error, reason}
         end
 
       {:error, reason} ->
-        restore_claim(source, cwd)
+        park_and_restore_claim(source, pitch, cwd, slug, reason)
         {:error, reason}
     end
+  end
+
+  # Resolves `slug`'s active recovery dossier (if any) and, when found,
+  # materializes it onto the current tree BEFORE the loop runs. Returns
+  # `{nil, nil}` (no recovery, byte-for-byte today's behavior) when there is
+  # no active dossier for this slug, or when the dossier belongs to a
+  # different slug/was never selected this invocation. A materialization
+  # `{:error, reason}` is fatal — the claimed pitch's own recovered bytes
+  # could not be safely restored, so the cycle must not proceed pretending
+  # nothing happened.
+  @doc false
+  @spec materialize_recovery({:file, String.t()} | :literal, String.t(), String.t(), String.t()) ::
+          {CodegenTestHarness.InterruptedCycleRecovery.disposition() | nil, String.t() | nil}
+  def materialize_recovery(:literal, _cwd, _slug, _stack), do: {nil, nil}
+
+  def materialize_recovery({:file, _abs}, cwd, slug, stack) do
+    case InterruptedCycleRecovery.materialize(cwd, slug) do
+      {:ok, :none} ->
+        {nil, nil}
+
+      {:ok, {disposition, dossier}} ->
+        roles = OrchestrationLoop.role_sequence(stack)
+
+        role =
+          OrchestrationLoop.resume_role_for_recovery(disposition, dossier["cycle_state"], roles)
+
+        Mix.shell().info("codegen.loop: recovered #{slug} (#{disposition}) — resuming at #{role}")
+        {disposition, role}
+
+      {:error, reason} ->
+        Mix.shell().error("codegen.loop: FAILED — #{reason}")
+        exit({:shutdown, 1})
+    end
+  end
+
+  # Parks whatever the cycle left dirty on a CONTROLLED direct failure —
+  # BEFORE restoring the claim. `restore_claim/2` always runs regardless of
+  # whether parking itself succeeded: a park failure is non-blocking
+  # observability on the pitch's own posture (see pitch "restarted builds
+  # resume owned work" defect #6) and must never strand the pitch outside
+  # `ready/`. A park failure is logged loud but does not change the
+  # cycle's own `{:error, reason}` outcome (already decided by the caller).
+  @doc false
+  @spec park_and_restore_claim(
+          {:file, String.t()} | :literal,
+          String.t(),
+          String.t(),
+          String.t(),
+          String.t()
+        ) :: :ok
+  def park_and_restore_claim(:literal, _pitch, cwd, _slug, _reason),
+    do: restore_claim(:literal, cwd)
+
+  def park_and_restore_claim({:file, abs} = source, _pitch, cwd, slug, reason) do
+    case InterruptedCycleRecovery.park_failure(
+           cwd: cwd,
+           pitch_path: abs,
+           slug: slug,
+           namespace: "recovery/interrupted",
+           cause: reason
+         ) do
+      {:ok, _dossier} ->
+        :ok
+
+      {:error, park_reason} ->
+        Mix.shell().error("codegen.loop: park_failure could not preserve #{slug}: #{park_reason}")
+        :ok
+    end
+
+    restore_claim(source, cwd)
   end
 
   # Claims a `ready/<slug>.md` pitch by an atomic same-filesystem rename into

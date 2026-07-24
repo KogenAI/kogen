@@ -842,6 +842,80 @@ check "(at) destination bytes are IDENTICAL to source (frontmatter preserved)" "
 assert_contains "(at) destination still carries handoffs: key" "$(cat "$DEST_PITCH_AL" 2>/dev/null || true)" "handoffs:"
 assert_contains "(at) destination still carries handoff_receipt: key" "$(cat "$DEST_PITCH_AL" 2>/dev/null || true)" "handoff_receipt:"
 
+# ── (au) assign: recovery-bound pitch refuses CROSS-node transfer ─────────
+# See pitch "restarted builds resume owned work": a local recovery dossier
+# under codegen/gate-pending/recoveries/<slug>/*.json owns machine-local
+# state (dossier JSON + immutable Git ref) that plain pitch-file transfer
+# does not carry — cross-node assign must refuse before moving anything.
+WS_AU="$(make_ws au)"
+setup_fixture "$WS_AU"
+TEST_SLUG_AU="codegen-drain-test-fixture-au-$$"
+TEST_PITCH_AU="$WS_AU/nodeA/codegen/pitches/ready/${TEST_SLUG_AU}.md"
+printf '# test fixture pitch\n' >"$TEST_PITCH_AU"
+mkdir -p "$WS_AU/nodeA/codegen/gate-pending/recoveries/${TEST_SLUG_AU}"
+printf '{"schema_version":1,"stage":"ready"}' >"$WS_AU/nodeA/codegen/gate-pending/recoveries/${TEST_SLUG_AU}/tx.json"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AU/drain-nodes.yaml" "$DRAIN" assign --slug="$TEST_SLUG_AU" --node=nodeB --cwd="$WS_AU/nodeA" 2>&1)" || ec=$?
+check "(au) recovery-bound targeted assign exits 1" "1" "$ec"
+assert_contains "(au) names recovery-bound" "$out" "recovery-bound"
+check "(au) local pitch NOT moved on refusal" "1" "$([[ -f "$TEST_PITCH_AU" ]] && echo 1 || echo 0)"
+check "(au) destination never received it" "1" "$([[ ! -f "$WS_AU/nodeB/codegen/pitches/ready/${TEST_SLUG_AU}.md" ]] && echo 1 || echo 0)"
+
+# ── (av) assign: recovery-bound pitch is STILL a no-op on the SAME node ────
+WS_AV="$(make_ws av)"
+setup_fixture "$WS_AV"
+TEST_SLUG_AV="codegen-drain-test-fixture-av-$$"
+TEST_PITCH_AV="$WS_AV/nodeA/codegen/pitches/ready/${TEST_SLUG_AV}.md"
+printf '# test fixture pitch\n' >"$TEST_PITCH_AV"
+mkdir -p "$WS_AV/nodeA/codegen/gate-pending/recoveries/${TEST_SLUG_AV}"
+printf '{"schema_version":1,"stage":"ready"}' >"$WS_AV/nodeA/codegen/gate-pending/recoveries/${TEST_SLUG_AV}/tx.json"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AV/drain-nodes.yaml" "$DRAIN" assign --slug="$TEST_SLUG_AV" --node=nodeA --cwd="$WS_AV/nodeA" 2>&1)" || ec=$?
+check "(av) recovery-bound same-node assign exits 0 (no-op)" "0" "$ec"
+assert_contains "(av) prints no-op message" "$out" "no-op"
+check "(av) local pitch untouched" "1" "$([[ -f "$TEST_PITCH_AV" ]] && echo 1 || echo 0)"
+
+# ── (aw) assign: malformed/unreadable recoveries dir fails closed ─────────
+WS_AW="$(make_ws aw)"
+setup_fixture "$WS_AW"
+TEST_SLUG_AW="codegen-drain-test-fixture-aw-$$"
+TEST_PITCH_AW="$WS_AW/nodeA/codegen/pitches/ready/${TEST_SLUG_AW}.md"
+printf '# test fixture pitch\n' >"$TEST_PITCH_AW"
+mkdir -p "$WS_AW/nodeA/codegen/gate-pending/recoveries/${TEST_SLUG_AW}"
+printf '{"schema_version":1,"stage":"ready"}' >"$WS_AW/nodeA/codegen/gate-pending/recoveries/${TEST_SLUG_AW}/tx.json"
+chmod 000 "$WS_AW/nodeA/codegen/gate-pending/recoveries/${TEST_SLUG_AW}"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AW/drain-nodes.yaml" "$DRAIN" assign --slug="$TEST_SLUG_AW" --node=nodeB --cwd="$WS_AW/nodeA" 2>&1)" || ec=$?
+chmod 755 "$WS_AW/nodeA/codegen/gate-pending/recoveries/${TEST_SLUG_AW}"
+check "(aw) unreadable recoveries dir fails closed, exits 1" "1" "$ec"
+assert_contains "(aw) names recovery-bound (fail-closed)" "$out" "recovery-bound"
+
+# ── (ax) assign: ordinary pitch (no dossier) is unaffected — happy path ────
+WS_AX="$(make_ws ax)"
+setup_fixture "$WS_AX"
+TEST_SLUG_AX="codegen-drain-test-fixture-ax-$$"
+TEST_PITCH_AX="$WS_AX/nodeA/codegen/pitches/ready/${TEST_SLUG_AX}.md"
+printf '# test fixture pitch\n' >"$TEST_PITCH_AX"
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AX/drain-nodes.yaml" "$DRAIN" assign --slug="$TEST_SLUG_AX" --node=nodeB --cwd="$WS_AX/nodeA" 2>&1)" || ec=$?
+check "(ax) ordinary pitch (no dossier) assigns normally, exits 0" "0" "$ec"
+check "(ax) destination now holds it" "1" "$([[ -f "$WS_AX/nodeB/codegen/pitches/ready/${TEST_SLUG_AX}.md" ]] && echo 1 || echo 0)"
+
+# ── (ay) assign --auto: skips the recovery-bound slug, still moves earlier
+# normal lanes ─────────────────────────────────────────────────────────────
+WS_AY="$(make_ws ay)"
+setup_auto_fixture "$WS_AY"
+printf '# p1\n' >"$WS_AY/nodeA/codegen/pitches/ready/p1.md"
+printf '# recovery-bound\n' >"$WS_AY/nodeA/codegen/pitches/ready/p2.md"
+mkdir -p "$WS_AY/nodeA/codegen/gate-pending/recoveries/p2"
+printf '{"schema_version":1,"stage":"ready"}' >"$WS_AY/nodeA/codegen/gate-pending/recoveries/p2/tx.json"
+STUB_AY='printf %s '"'"'{"lanes":[["p1"],["p2"]],"global_hot":[],"unrouted":[],"dependency_bound":[]}'"'"''
+ec=0
+out="$(CODEGEN_DRAIN_INVENTORY="$WS_AY/drain-nodes.yaml" CODEGEN_DRAIN_SCOPE_CMD="$STUB_AY" "$DRAIN" assign --auto --cwd="$WS_AY/nodeA" 2>&1)" || ec=$?
+check "(ay) p1 (ordinary lane) still landed on nodeB" "1" "$([[ -f "$WS_AY/nodeB/codegen/pitches/ready/p1.md" ]] && echo 1 || echo 0)"
+check "(ay) p2 (recovery-bound lane) stayed on nodeA" "1" "$([[ -f "$WS_AY/nodeA/codegen/pitches/ready/p2.md" ]] && echo 1 || echo 0)"
+check "(ay) p2 never reached nodeC" "1" "$([[ ! -f "$WS_AY/nodeC/codegen/pitches/ready/p2.md" ]] && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

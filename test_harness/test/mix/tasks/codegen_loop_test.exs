@@ -595,24 +595,24 @@ defmodule Mix.Tasks.Codegen.LoopShellTest do
       assert Agent.get(ref, & &1)
     end
 
-    test "3: {:ok, {:resume, other}} refuses before spend and spawns no role" do
+    test "3: {:ok, {:resume, other}} — a DIFFERENT stranded slug earns no veto, requested slug proceeds" do
+      # See pitch "restarted builds resume owned work": reconcile/1's result
+      # is cleanup/information only. A stranded slug's own resumability is
+      # not this invocation's concern — the operator's requested slug always
+      # proceeds, dormant recovery never reorders/blocks selection.
       {:ok, ref} = Agent.start_link(fn -> false end)
       run_fn = fn -> Agent.update(ref, fn _ -> true end) end
 
-      assert {:error, reason} =
-               Loop.route_reconcile_result({:ok, {:resume, "stranded"}}, "requested", run_fn)
-
-      assert reason =~ "interrupted pitch stranded must resume before requested"
-      refute Agent.get(ref, & &1)
+      assert Loop.route_reconcile_result({:ok, {:resume, "stranded"}}, "requested", run_fn) == :ok
+      assert Agent.get(ref, & &1)
     end
 
-    test "3b: {:ok, {:resume, other}} with a literal (nil) requested slug also refuses" do
-      run_fn = fn -> flunk("run_fn must not be called") end
+    test "3b: {:ok, {:resume, other}} with a literal (nil) requested slug also proceeds" do
+      {:ok, ref} = Agent.start_link(fn -> false end)
+      run_fn = fn -> Agent.update(ref, fn _ -> true end) end
 
-      assert {:error, reason} =
-               Loop.route_reconcile_result({:ok, {:resume, "stranded"}}, nil, run_fn)
-
-      assert reason =~ "interrupted pitch stranded must resume before literal prompt"
+      assert Loop.route_reconcile_result({:ok, {:resume, "stranded"}}, nil, run_fn) == :ok
+      assert Agent.get(ref, & &1)
     end
 
     test "4: {:ok, {:requeued, slug, recovery}} runs the ordinary claim+run path" do
@@ -635,6 +635,142 @@ defmodule Mix.Tasks.Codegen.LoopShellTest do
                {:error, "boom"}
     end
   end
+
+  describe "materialize_recovery/4 — same-slug adoption before claim" do
+    test "literal source: no-op, never touches recovery" do
+      assert Loop.materialize_recovery(:literal, "/irrelevant", "slug", "phoenix") == {nil, nil}
+    end
+
+    test "no active dossier: {nil, nil}, byte-for-byte today's behavior", %{tmp: tmp} do
+      assert Loop.materialize_recovery({:file, "/abs/probe.md"}, tmp, "probe", "phoenix") ==
+               {nil, nil}
+    end
+
+    test "an active dossier materializes and resolves the resume role (phoenix)", %{tmp: tmp} do
+      init_repo!(tmp)
+      File.write!(Path.join(tmp, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(tmp, "probe", "tracked.txt")
+      File.write!(Path.join(tmp, "tracked.txt"), "base\n")
+      commit!(tmp, "base")
+      File.write!(Path.join(tmp, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               CodegenTestHarness.InterruptedCycleRecovery.park_failure(
+                 cwd: tmp,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert {:exact, role} =
+               Loop.materialize_recovery({:file, pitch_path}, tmp, "probe", "phoenix")
+
+      # No cycle_state was recorded (park happened outside a graded cycle) —
+      # exact-base with no cycle_state resolves to the developer role, the
+      # recovered bytes' own already-done work, re-entered for a fresh pass.
+      assert role == "developer-phoenix-backend"
+      assert File.read!(Path.join(tmp, "tracked.txt")) == "changed\n"
+    end
+
+    test "a materialization error exits {:shutdown, 1} — never proceeds pretending nothing happened",
+         %{tmp: tmp} do
+      Mix.shell(Mix.Shell.Process)
+      init_repo!(tmp)
+      File.write!(Path.join(tmp, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(tmp, "probe", "tracked.txt")
+      File.write!(Path.join(tmp, "tracked.txt"), "base\n")
+      commit!(tmp, "base")
+      File.write!(Path.join(tmp, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               CodegenTestHarness.InterruptedCycleRecovery.park_failure(
+                 cwd: tmp,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      # Advance HEAD past the recovery's own source base with a CONFLICTING
+      # edit to the same file — apply must refuse.
+      File.write!(Path.join(tmp, "tracked.txt"), "conflict\n")
+      commit!(tmp, "conflict")
+
+      assert catch_exit(Loop.materialize_recovery({:file, pitch_path}, tmp, "probe", "phoenix")) ==
+               {:shutdown, 1}
+
+      assert_receive {:mix_shell, :error, [msg]}
+      assert msg =~ "FAILED"
+    end
+  end
+
+  describe "park_and_restore_claim/5 — defect #6: restore_claim always runs" do
+    test "literal source: restores nothing (no-op), never calls park_failure" do
+      assert Loop.park_and_restore_claim(:literal, "pitch", "/irrelevant", "slug", "boom") == :ok
+    end
+
+    test "a file source parks the dirty tree AND restores the claim to ready/", %{
+      tmp: tmp,
+      ready_dir: ready_dir,
+      building_dir: building_dir
+    } do
+      init_repo!(tmp)
+      File.mkdir_p!(building_dir)
+      File.write!(Path.join(tmp, ".gitignore"), "codegen/\n")
+      claimed = Path.join(building_dir, "probe.md")
+      File.write!(claimed, "---\nscope: [tracked.txt]\n---\n# probe\n")
+      File.write!(Path.join(tmp, "tracked.txt"), "base\n")
+      commit!(tmp, "base")
+      File.write!(Path.join(tmp, "tracked.txt"), "dirty from a failed cycle\n")
+
+      assert :ok = Loop.park_and_restore_claim({:file, claimed}, "pitch", tmp, "probe", "boom")
+
+      refute File.exists?(claimed)
+      assert File.exists?(Path.join(ready_dir, "probe.md"))
+      assert {"", 0} = System.cmd("git", ["-C", tmp, "status", "--porcelain"])
+
+      assert {:ok, dossier} =
+               CodegenTestHarness.InterruptedCycleRecovery.active_dossier(tmp, "probe")
+
+      assert dossier["stage"] == "ready"
+    end
+
+    test "restore_claim runs even when park_failure itself fails (non-blocking observability)",
+         %{tmp: tmp, ready_dir: ready_dir, building_dir: building_dir} do
+      # A NON-git cwd makes every park_failure git shell-out fail — the
+      # claim must still return to ready/ (pitch "restarted builds resume
+      # owned work" defect #6: park failure is non-blocking observability
+      # on the pitch's own posture and must never strand it outside ready/).
+      File.mkdir_p!(building_dir)
+      claimed = Path.join(building_dir, "probe.md")
+      File.write!(claimed, "---\nscope: [tracked.txt]\n---\n# probe\n")
+
+      assert :ok = Loop.park_and_restore_claim({:file, claimed}, "pitch", tmp, "probe", "boom")
+
+      refute File.exists?(claimed)
+      assert File.exists?(Path.join(ready_dir, "probe.md"))
+    end
+  end
+
+  defp seeded_pitch!(cwd, slug, scope) do
+    path = Path.join([cwd, "codegen", "pitches", "ready", "#{slug}.md"])
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, "---\nscope: [#{scope}]\n---\n# #{slug}\n")
+    path
+  end
+
+  defp init_repo!(cwd) do
+    File.mkdir_p!(cwd)
+    assert {_, 0} = System.cmd("git", ["-C", cwd, "init", "-q"])
+    assert {_, 0} = System.cmd("git", ["-C", cwd, "config", "user.email", "test@example.com"])
+    assert {_, 0} = System.cmd("git", ["-C", cwd, "config", "user.name", "test"])
+  end
+
+  defp commit!(cwd, subject) do
+    assert {_, 0} = System.cmd("git", ["-C", cwd, "add", "-A"])
+    assert {_, 0} = System.cmd("git", ["-C", cwd, "commit", "-qm", subject])
+  end
 end
 
 # System.put_env/2 and System.delete_env/1 are process-global — this module
@@ -647,7 +783,10 @@ defmodule Mix.Tasks.Codegen.LoopBuildResultTest do
 
   setup do
     tmp =
-      Path.join(System.tmp_dir!(), "codegen_loop_build_result_#{:erlang.unique_integer([:positive])}")
+      Path.join(
+        System.tmp_dir!(),
+        "codegen_loop_build_result_#{:erlang.unique_integer([:positive])}"
+      )
 
     File.mkdir_p!(tmp)
     on_exit(fn -> File.rm_rf!(tmp) end)

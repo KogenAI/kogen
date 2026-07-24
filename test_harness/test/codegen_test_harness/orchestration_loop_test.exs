@@ -4473,7 +4473,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         {:ok, %{"status" => "success", "value" => "did #{role}"}}
       end
 
-      advisor_fn = fn _harness, _context_text, _opts -> {:ok, "try a different index strategy"} end
+      advisor_fn = fn _harness, _context_text, _opts ->
+        {:ok, "try a different index strategy"}
+      end
 
       assert {:error, reason} =
                OrchestrationLoop.run(
@@ -4529,9 +4531,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Enum.member?(Agent.get(calls_agent, & &1), "developer-static")
     end
 
-    test "composes with escalation: final attempt carries BOTH escalated_model AND advisor_plan", %{
-      calls_agent: calls_agent
-    } do
+    test "composes with escalation: final attempt carries BOTH escalated_model AND advisor_plan",
+         %{
+           calls_agent: calls_agent
+         } do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
@@ -4639,9 +4642,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(seen_ctx_agent, & &1) == [nil, nil]
     end
 
-    test "a failed advisor call (:error) does not fail the cycle — ctx unchanged, no advisor_plan set", %{
-      calls_agent: calls_agent
-    } do
+    test "a failed advisor call (:error) does not fail the cycle — ctx unchanged, no advisor_plan set",
+         %{
+           calls_agent: calls_agent
+         } do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)

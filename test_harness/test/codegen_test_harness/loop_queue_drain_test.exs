@@ -3709,7 +3709,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       refute Agent.get(preflight_called, & &1)
     end
 
-    test "a resumable checkpoint runs the resumed slug first, before ordinary ready order", ctx do
+    test "a resumable checkpoint is reconciled but earns NO priority — ordinary order wins",
+         ctx do
       write_pitch(ctx.ready_dir, "a")
       write_pitch(ctx.ready_dir, "resumed")
       write_pitch(ctx.ready_dir, "b")
@@ -3754,20 +3755,12 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
             Agent.update(spawned, fn s -> s ++ [{slug, cwd_arg, jsonl_arg}] end)
             {:exit_code, 0}
           end,
-          # Adversarial to mtime: reflect the REAL ready/ dir (so it shrinks as
-          # pitches ship, avoiding an infinite loop) but force "resumed" to
-          # the END of that real order. Without prioritize_recovered_slug/2
-          # actually firing, "resumed" would spawn LAST — only genuine
-          # prioritization moves it to the front, making the spawn-order
-          # assertion below meaningful rather than a mtime coincidence.
-          ordered_fn: fn ready_dir ->
-            real = CodegenTestHarness.LoopQueue.ordered_slugs(ready_dir)
-
-            case Enum.split_with(real, &(&1 == "resumed")) do
-              {[], rest} -> rest
-              {resumed, rest} -> rest ++ resumed
-            end
-          end,
+          # Real ready/ order, unmodified — this is exactly the point: a
+          # reconciled/resumable checkpoint must NOT reorder it (see pitch
+          # "restarted builds resume owned work" — `state.recovery` and
+          # `prioritize_recovered_slug/2` are both removed; a dormant
+          # recovery earns no priority over ordinary arrival order).
+          ordered_fn: fn ready_dir -> CodegenTestHarness.LoopQueue.ordered_slugs(ready_dir) end,
           # shipped_opts' git_head_fn returns synthetic ever-incrementing
           # "head-N" strings — never real revs. The real default_git_ancestor_fn
           # would shell `git merge-base --is-ancestor` against those and hang.
@@ -3783,14 +3776,14 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         )
 
       # `resumed.md` was moved back to ready/ by reconcile before the drain
-      # ever calls ordered_fn. ordered_fn above deliberately returns
-      # "resumed" LAST, so the only way it spawns first is if
-      # prioritize_recovered_slug/2 genuinely reordered it.
+      # ever calls ordered_fn. Spawn order must equal PLAIN alphabetical
+      # ready/ order — "resumed" earns no priority from having been
+      # reconciled.
       assert {:ok, _shipped} = LoopQueueDrain.drain(opts)
       refute File.exists?(Path.join(building_dir, "resumed.md"))
 
       spawn_order = Agent.get(spawned, & &1) |> Enum.map(fn {slug, _, _} -> slug end)
-      assert spawn_order == ["resumed", "a", "b"]
+      assert spawn_order == ["a", "b", "resumed"]
     end
 
     test "when the resumed slug is absent from the ready list, order is unchanged", ctx do
@@ -3859,6 +3852,57 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert Agent.get(spawned, & &1) == ["resumed"]
       refute File.exists?(journal_path)
       refute File.exists?(Path.join(building_dir, "resumed.md"))
+    end
+  end
+
+  # ── Queue terminal failures share strict parking (dossier recording) ──────
+  # See pitch "restarted builds resume owned work": a queue terminal failure
+  # (the `true ->` catch-all arm) records a recovery dossier via
+  # `InterruptedCycleRecovery.park_failure/1` — namespace "queue-fail" — the
+  # SAME dossier authority a direct terminal failure uses, so a later
+  # same-slug selection can materialize the queue's own parked bytes.
+  # Recording is best-effort and NEVER changes the existing `git_stash_fn`
+  # branch-parking contract these tests otherwise stub away.
+
+  describe "park_failed_tree/2 — queue terminal failures record a recovery dossier" do
+    test "the general catch-all arm records a queue-fail dossier for the failed slug", ctx do
+      System.cmd("git", ["init", "-q"], cd: ctx.dir)
+      System.cmd("git", ["config", "user.email", "test@example.com"], cd: ctx.dir)
+      System.cmd("git", ["config", "user.name", "Test"], cd: ctx.dir)
+      File.write!(Path.join(ctx.dir, ".gitignore"), "codegen/\n")
+      File.write!(Path.join(ctx.dir, "tracked.txt"), "base\n")
+      System.cmd("git", ["add", "-A"], cd: ctx.dir)
+      System.cmd("git", ["commit", "-qm", "base"], cd: ctx.dir)
+
+      write_pitch(ctx.ready_dir, "solo", "---\nscope: [tracked.txt]\n---\n# Pitch: solo\n")
+
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl ->
+        File.write!(Path.join(ctx.dir, "tracked.txt"), "dirty from a deterministic failure\n")
+        {:exit_code, 1}
+      end
+
+      transient_fn = fn _jsonl -> false end
+
+      # Real git_stash_fn (not the hermetic no-op stub) — the dossier must
+      # be recorded BEFORE the stash push cleans the tree.
+      git_stash_fn = &LoopQueueDrain.default_git_stash_fn/3
+
+      capture_io(:stderr, fn ->
+        LoopQueueDrain.drain(
+          base_opts(ctx,
+            spawn_fn: spawn_fn,
+            transient_fn: transient_fn,
+            git_stash_fn: git_stash_fn
+          )
+        )
+      end)
+
+      assert {:ok, dossier} =
+               CodegenTestHarness.InterruptedCycleRecovery.active_dossier(ctx.dir, "solo")
+
+      assert dossier["namespace"] == "queue-fail"
+      assert dossier["stage"] == "ready"
+      assert {"", 0} = System.cmd("git", ["status", "--porcelain"], cd: ctx.dir)
     end
   end
 

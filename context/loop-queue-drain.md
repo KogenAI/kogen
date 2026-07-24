@@ -332,15 +332,21 @@ recovery state. `reconcile_opts/5` forwards resume-checkpoint test seams (`cycle
 `cwd`/`ready_dir`/`building_dir`/`roles` — without this, a hermetic drain test cannot select either the
 resume or clean-full-run recovery branch via stubs.
 
-The resolved recovery result is carried in drain state as `state.recovery` — DISTINCT from the
-pre-existing per-pitch failure-evidence map's own `recovery` key (the parked-branch string written by
-`write_demotion`/`format_failure_row` on a deterministic-failure demotion); the two never collide,
-different maps, different lifecycles. Both `{:ok, {:resume, slug}}` and
-`{:ok, {:requeued, slug, recovery}}` feed `prioritize_recovered_slug/2`, which reorders the ready-slug
-list so the recovered slug spawns FIRST regardless of mtime order — a no-op when the slug isn't in the
-ready list (e.g. its claim vanished between recovery and ordering). `{:ok, :none}` leaves ordinary
-ordering untouched.
+The resolved recovery result is DISCARDED after this reconciliation — no `state.recovery` field and no
+`prioritize_recovered_slug/2` exist (see pitch "restarted builds resume owned work": a recovered slug
+earns no priority over ordinary `ordered_fn`/dependency order; a dormant dossier must never reorder
+selection). This is DISTINCT from the pre-existing per-pitch failure-evidence map's own `recovery` key
+(the parked-branch string `write_demotion`/`format_failure_row` writes on a deterministic-failure
+demotion) — unrelated maps, unrelated lifecycles, never touched by this change.
+
+**Queue terminal failures share the same dossier authority** as a direct terminal failure
+(`context/loop.md` § Interrupted-Cycle Recovery): `park_failed_tree/2` (both the general catch-all arm
+and the terminal-marker arm) calls `InterruptedCycleRecovery.park_failure/1` — namespace `"queue-fail"` —
+BEFORE the existing `git_stash_fn`-based branch parking runs (dossier recording observes the still-dirty
+tree; the stash push that follows cleans it). Dossier recording is best-effort/non-blocking — a failure
+there never changes `park_failed_tree/2`'s own returned branch name or the pre-existing
+`queue-fail/<slug>/<UTC>` branch contract every existing test exercises.
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block, InterruptedCycleRecovery, queue startup recovery, prioritize_recovered_slug, state.recovery, reconcile_opts, stranded building claim
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block, queue startup recovery, stranded building claim, startup parks stranded claim, recovery dossier, queue-fail dossier, ordinary order precedence, recovery informational, park_failure

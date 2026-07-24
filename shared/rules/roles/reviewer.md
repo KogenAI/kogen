@@ -22,26 +22,26 @@ Hook-enforced — Read/Grep/Glob only, plus Edit on session log.
 
 ## Review Steps
 
-| #   | Check                                                                                                                                                                                                                                                      | Blocking?        |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| 1   | Change Analysis — Glob/Grep, exclude `*.log`/`_build/`/`cover/`/secrets                                                                                                                                                                                    | —                |
-| 2   | Plan fulfillment — diff delivers the `**Goal**:` line from active step log's `## Plan` block (see row 16 for per-deliverable manifest); `N/A — no ## Plan in the active step log (plan-less stack)` when no plan was received                              | yes (goal unmet) |
-| 3   | Test Coverage — every functional change + new public fn; Rule L (changed-branch test)                                                                                                                                                                      | yes              |
-| 4   | Skipped Tests (only if linter flags)                                                                                                                                                                                                                       | yes              |
-| 5   | Redundant Files — similar names, stubs <10 lines, unused fixtures                                                                                                                                                                                          | yes              |
-| 6   | Duplication — get/find/fetch, DB-first caching, duplicate validation                                                                                                                                                                                       | yes              |
-| 7   | Module Aliasing — long names aliased                                                                                                                                                                                                                       | —                |
-| 8   | Code Organization → stack file                                                                                                                                                                                                                             | —                |
-| 9   | Type/Spec Duplication → stack file                                                                                                                                                                                                                         | yes              |
-| 10  | Cleanliness — empty fns, debug prints, commented code                                                                                                                                                                                                      | —                |
-| 11  | Stack Patterns → stack file                                                                                                                                                                                                                                | —                |
-| 12  | Coverage — new source without tests                                                                                                                                                                                                                        | yes              |
-| 13  | Security — broad rescue, secrets, input sanitization                                                                                                                                                                                                       | yes              |
-| 14  | Deployment → stack file                                                                                                                                                                                                                                    | —                |
-| 15  | Translation Completeness → stack file                                                                                                                                                                                                                      | —                |
-| 16  | Manifest Completeness — if `## Plan` has `### Deliverable Manifest`, diff satisfies EVERY item                                                                                                                                                             | yes (item unmet) |
-| 17  | Silent-failure scan — Rule S below                                                                                                                                                                                                                         | yes              |
-| 18  | Existing-entity scan verdict — if `## Plan → Files to touch` names any `(NEW)` entity, `## Plan`'s `**Redundancy check**` field must read `CLEAR` for each; `N/A — no ## Plan in the active step log` when the reviewer received no plan (plan-less stack) | yes (DUPLICATE)  |
+| #   | Check                                                                                                                                                                                                  | Blocking?             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| 1   | Change Analysis — Glob/Grep, exclude `*.log`/`_build/`/`cover/`/secrets                                                                                                                                | —                     |
+| 2   | Plan fulfillment — diff delivers `**Goal**:` (row 16: manifest) AND mechanically covers EVERY `Files to touch` entry via dev's typed `files_modified`; any missing file = INCOMPLETE; `N/A` if no plan | yes (goal/file unmet) |
+| 3   | Test Coverage — every functional change + new public fn; Rule L (changed-branch test)                                                                                                                  | yes                   |
+| 4   | Skipped Tests (only if linter flags)                                                                                                                                                                   | yes                   |
+| 5   | Redundant Files — similar names, stubs <10 lines, unused fixtures                                                                                                                                      | yes                   |
+| 6   | Duplication — get/find/fetch, DB-first caching, duplicate validation                                                                                                                                   | yes                   |
+| 7   | Module Aliasing — long names aliased                                                                                                                                                                   | —                     |
+| 8   | Code Organization → stack file                                                                                                                                                                         | —                     |
+| 9   | Type/Spec Duplication → stack file                                                                                                                                                                     | yes                   |
+| 10  | Cleanliness — empty fns, debug prints, commented code                                                                                                                                                  | —                     |
+| 11  | Stack Patterns → stack file                                                                                                                                                                            | —                     |
+| 12  | Coverage — new source without tests                                                                                                                                                                    | yes                   |
+| 13  | Security — broad rescue, secrets, input sanitization                                                                                                                                                   | yes                   |
+| 14  | Deployment → stack file                                                                                                                                                                                | —                     |
+| 15  | Translation Completeness → stack file                                                                                                                                                                  | —                     |
+| 16  | Manifest Completeness — if `## Plan` has `### Deliverable Manifest`, diff satisfies EVERY item                                                                                                         | yes (item unmet)      |
+| 17  | Silent-failure scan — Rule S below                                                                                                                                                                     | yes                   |
+| 18  | Existing-entity scan verdict — if `Files to touch` names any `(NEW)` entity, `**Redundancy check**` must read `CLEAR` for each; `N/A` when no plan received (plan-less stack)                          | yes (DUPLICATE)       |
 
 ## Rule S — Silent-Failure Scan
 
@@ -118,20 +118,6 @@ NEVER emit `✅ QUALITY APPROVED` unless the gate verdict is `clear`. Read it fr
 
 Final line: `REVIEW_VERDICT: APPROVED` or `REVIEW_VERDICT: CHANGES_REQUESTED`.
 
-## AST-Grep
+## AST-Grep / Multi-Repo Audit / Blocking Severity
 
-10+ files same pattern OR 20+ occurrences OR formatting variation. Otherwise Edit.
-
-```bash
-which ast-grep || echo "not found — fall back to Edit"
-```
-
-Workflow: `grep|wc -l` → `--pattern` preview → rule yaml → `--dry-run` → `--update-all` → `git diff --stat`. Stack rule examples in stack files.
-
-## Multi-Repo Audit
-
-CR reads all affected repos. Verify: hook files exist, guard clauses present, @external_resource paths correct, config parity (shell vs Elixir model/effort match).
-
-## Blocking Severity
-
-Null-safety crashes (yq without //), parity violations (model/effort drift), boot verification gaps (missing hooks, wrong paths) = deployment blockers.
+AST-Grep: 10+ files same pattern OR 20+ occurrences OR formatting variation, else Edit. `which ast-grep || echo "not found — fall back to Edit"`. Workflow: `grep|wc -l` → `--pattern` preview → rule yaml → `--dry-run` → `--update-all` → `git diff --stat` (stack rule examples in stack files). Multi-repo: CR reads all affected repos — hook files exist, guard clauses present, `@external_resource` paths correct, config parity (shell vs Elixir model/effort match). Deployment blockers: null-safety crashes (yq without `//`), parity violations (model/effort drift), boot verification gaps (missing hooks, wrong paths).

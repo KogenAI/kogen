@@ -5,7 +5,9 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
   alias Mix.Tasks.Codegen.Loop
 
   setup do
-    cwd = Path.join(System.tmp_dir!(), "interrupted-recovery-#{System.unique_integer([:positive])}")
+    cwd =
+      Path.join(System.tmp_dir!(), "interrupted-recovery-#{System.unique_integer([:positive])}")
+
     on_exit(fn -> File.rm_rf!(cwd) end)
     %{cwd: cwd}
   end
@@ -39,7 +41,9 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
   test "halts when a recovery journal has no matching building or ready claim", %{cwd: cwd} do
     write_journal!(cwd, "stranded", "", "resume_pending")
 
-    assert {:error, reason} = InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+    assert {:error, reason} =
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+
     assert reason =~ "no ready claim"
   end
 
@@ -61,7 +65,9 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
       })
     )
 
-    assert {:error, reason} = InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+    assert {:error, reason} =
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+
     assert reason =~ "malformed journal fields"
     assert File.exists?(claim)
   end
@@ -72,7 +78,9 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     File.mkdir_p!(Path.dirname(journal))
     File.write!(journal, "not JSON")
 
-    assert {:error, reason} = InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+    assert {:error, reason} =
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+
     assert reason =~ "malformed JSON"
     assert File.exists?(claim)
   end
@@ -210,10 +218,12 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     assert File.exists?(ready)
     assert git_head!(cwd) == landed_head
     assert git_status!(cwd) == ""
-    assert :ok = Loop.route_reconcile_result(recovery, "stranded", fn ->
-      assert File.exists?(ready)
-      :ok
-    end)
+
+    assert :ok =
+             Loop.route_reconcile_result(recovery, "stranded", fn ->
+               assert File.exists?(ready)
+               :ok
+             end)
   end
 
   test "replays parked journal after crash without a second parking branch", %{cwd: cwd} do
@@ -232,7 +242,16 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     refute File.exists?(claim)
     assert File.exists?(ready_pitch(cwd, "stranded"))
     refute File.exists?(journal_path(cwd))
-    assert {_, 0} = System.cmd("git", ["-C", cwd, "show-ref", "--verify", "--quiet", "refs/heads/#{branch}"])
+
+    assert {_, 0} =
+             System.cmd("git", [
+               "-C",
+               cwd,
+               "show-ref",
+               "--verify",
+               "--quiet",
+               "refs/heads/#{branch}"
+             ])
   end
 
   test "adopts only a parking stash with matching transaction identity", %{cwd: cwd} do
@@ -258,7 +277,9 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     claim = building_pitch!(cwd, "stranded")
     write_journal!(cwd, "stranded", "", "parking", "expected-transaction")
 
-    assert {:error, reason} = InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+    assert {:error, reason} =
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+
     assert reason =~ "no matching stash or branch"
     assert File.exists?(claim)
   end
@@ -286,6 +307,338 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     assert {"preserve\n", 0} = System.cmd("git", ["-C", cwd, "show", "#{branch}:untracked.txt"])
   end
 
+  # ── Per-transaction recovery dossiers (park_failure/1, materialize/2) ──────
+  # See pitch "restarted builds resume owned work".
+
+  describe "park_failure/1 + materialize/2 — dossier subsystem" do
+    test "parks tracked + untracked bytes, records a ready dossier, clean checkout", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt, blob.bin")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+      File.write!(Path.join(cwd, "blob.bin"), <<0, 1, 255>>)
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier["stage"] == "ready"
+      assert dossier["ownership"] == "ok"
+      assert dossier["schema_version"] == 1
+      assert git_status!(cwd) == ""
+      assert {"base\n", 0} = System.cmd("git", ["-C", cwd, "show", "HEAD:tracked.txt"])
+    end
+
+    test "scope mismatch parks bytes but marks ownership mismatch — no auto-materialize", %{
+      cwd: cwd
+    } do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+
+      File.write!(Path.join(cwd, "unrelated.txt"), "out of scope\n")
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier["ownership"] == "mismatch"
+
+      assert {:error, reason} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert reason =~ "out of scope"
+    end
+
+    test "materialize/2: exact-base disposition replays byte-identical tree", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert {:ok, {:exact, _dossier}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert File.read!(Path.join(cwd, "tracked.txt")) == "changed\n"
+      assert git_status!(cwd) != ""
+    end
+
+    test "materialize/2: advanced-base disposition preserves intervening commits", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      File.write!(Path.join(cwd, "later.txt"), "later\n")
+      commit!(cwd, "later")
+
+      assert {:ok, {:advanced, _dossier}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert File.read!(Path.join(cwd, "tracked.txt")) == "changed\n"
+      assert File.exists?(Path.join(cwd, "later.txt"))
+    end
+
+    test "materialize/2: conflicting apply refuses non-zero, clean checkout, ref untouched", %{
+      cwd: cwd
+    } do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      File.write!(Path.join(cwd, "tracked.txt"), "conflict\n")
+      commit!(cwd, "conflict")
+      conflict_head = git_head!(cwd)
+
+      assert {:error, reason} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert reason =~ "apply refused"
+      assert git_head!(cwd) == conflict_head
+      assert git_status!(cwd) == ""
+    end
+
+    test "materialize/2: same-scope operator edit is parked on a second ref, then original applies",
+         %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt, other.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      File.write!(Path.join(cwd, "other.txt"), "operator edit\n")
+
+      assert {:ok, {:operator, dossier}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert File.read!(Path.join(cwd, "tracked.txt")) == "changed\n"
+      assert is_binary(dossier["operator_ref"])
+
+      assert {_, 0} =
+               System.cmd("git", [
+                 "-C",
+                 cwd,
+                 "show-ref",
+                 "--verify",
+                 "--quiet",
+                 "refs/heads/#{dossier["operator_ref"]}"
+               ])
+    end
+
+    test "materialize/2: out-of-scope operator edit refuses before spend, preserved on a branch",
+         %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      File.write!(Path.join(cwd, "unrelated.txt"), "operator out of scope\n")
+
+      assert {:error, reason} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert reason =~ "out-of-scope"
+      refute File.exists?(Path.join(cwd, "unrelated.txt"))
+    end
+
+    test "successor transaction: a second failure supersedes the predecessor dossier", %{
+      cwd: cwd
+    } do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "first failure\n")
+
+      assert {:ok, first} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "first"
+               )
+
+      File.write!(Path.join(cwd, "tracked.txt"), "second failure\n")
+
+      assert {:ok, second} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "second"
+               )
+
+      assert first["transaction_id"] != second["transaction_id"]
+      assert {:ok, active} = InterruptedCycleRecovery.active_dossier(cwd, "probe")
+      assert active["transaction_id"] == second["transaction_id"]
+
+      # The predecessor ref must never move — still resolvable, still
+      # carrying the FIRST failure's own recovered bytes.
+      assert {"first failure\n", 0} =
+               System.cmd("git", ["-C", cwd, "show", "#{first["recovery_commit"]}:tracked.txt"])
+    end
+
+    test "complete_transaction!/2 retires the active dossier idempotently", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert :ok = InterruptedCycleRecovery.complete_transaction!(cwd, "probe")
+      assert {:ok, nil} = InterruptedCycleRecovery.active_dossier(cwd, "probe")
+      # A second call on an already-completed dossier is a legal no-op.
+      assert :ok = InterruptedCycleRecovery.complete_transaction!(cwd, "probe")
+    end
+
+    test "complete_transaction!/2 with no active dossier is a no-op", %{cwd: cwd} do
+      assert :ok = InterruptedCycleRecovery.complete_transaction!(cwd, "never-failed")
+    end
+
+    test "park_failure/1 does not choke on a gitignored codegen/ dir (regression)", %{cwd: cwd} do
+      # Regression for defect #1: an explicit `.` pathspec on `git stash
+      # push` flips it into add-like semantics, which REFUSES on the
+      # repo's own gitignored codegen/ ("The following paths are ignored").
+      # park_failure/1 must use a bare, pathspec-free stash push.
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier["stage"] == "ready"
+      assert git_status!(cwd) == ""
+    end
+
+    test "park_failure/1 fail-closed: multiple active dossiers refuse rather than guessing", %{
+      cwd: cwd
+    } do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      # Hand-craft a second "active" dossier alongside the first — the same
+      # malformed state `refuse_if_active_dossier/2` must catch rather than
+      # silently superseding an ambiguous set.
+      dir = Path.join([cwd, "codegen", "gate-pending", "recoveries", "probe"])
+      rogue = Map.put(dossier, "transaction_id", "rogue-transaction")
+      File.write!(Path.join(dir, "rogue.json"), Jason.encode!(rogue))
+
+      File.write!(Path.join(cwd, "tracked.txt"), "third failure\n")
+
+      assert {:error, reason} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert reason =~ "multiple active recovery dossiers"
+    end
+  end
+
+  defp seeded_pitch!(cwd, slug, scope) do
+    path = Path.join([cwd, "codegen", "pitches", "ready", "#{slug}.md"])
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, "---\nscope: [#{scope}]\n---\n# #{slug}\n")
+    path
+  end
+
   defp building_pitch!(cwd, slug) do
     path = Path.join([cwd, "codegen", "pitches", "building", "#{slug}.md"])
     File.mkdir_p!(Path.dirname(path))
@@ -295,7 +648,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
 
   defp ready_pitch(cwd, slug), do: Path.join([cwd, "codegen", "pitches", "ready", "#{slug}.md"])
 
-  defp journal_path(cwd), do: Path.join([cwd, "codegen", "gate-pending", "interrupted-recovery.json"])
+  defp journal_path(cwd),
+    do: Path.join([cwd, "codegen", "gate-pending", "interrupted-recovery.json"])
 
   defp write_checkpoint!(cwd) do
     pending = Path.join([cwd, "codegen", "gate-pending"])
@@ -329,7 +683,10 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
   defp create_parked_branch!(cwd, branch, transaction_id) do
     original = default_branch!(cwd)
     assert {_, 0} = System.cmd("git", ["-C", cwd, "checkout", "-qb", branch])
-    assert {_, 0} = System.cmd("git", ["-C", cwd, "commit", "--allow-empty", "-qm", transaction_id])
+
+    assert {_, 0} =
+             System.cmd("git", ["-C", cwd, "commit", "--allow-empty", "-qm", transaction_id])
+
     assert {_, 0} = System.cmd("git", ["-C", cwd, "checkout", "-q", original])
   end
 

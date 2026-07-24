@@ -367,8 +367,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         # behavior in isolation; those are not the "foreign uncommitted
         # changes at true cycle start" this guard exists to catch, so they
         # opt out with a no-op here.
-        clean_tree_fn = Keyword.get(opts, :clean_tree_preflight_fn, &preflight_clean_tree!/1)
-        clean_tree_fn.(cwd)
+        #
+        # `:recovery_mode` (nil | :exact | :advanced | :operator) is the ONE
+        # other legitimate reason a cycle may start dirty: recovery
+        # materialization (`InterruptedCycleRecovery.materialize/2`) applies
+        # the recovered transaction's bytes dirty-and-unstaged onto the
+        # current tree BEFORE `OrchestrationLoop.run/1` is ever invoked, so
+        # this preflight must not fire for that dirtiness — it is sanctioned,
+        # transaction-owned recovered work, not a foreign uncommitted change.
+        # A nil recovery_mode (every non-recovery cycle) runs the guard
+        # byte-for-byte unchanged.
+        unless Keyword.get(opts, :recovery_mode) do
+          clean_tree_fn = Keyword.get(opts, :clean_tree_preflight_fn, &preflight_clean_tree!/1)
+          clean_tree_fn.(cwd)
+        end
 
         # A stale terminal-state.json from a PRIOR cycle must never leak
         # into this one — a fresh cycle start has produced no deterministic
@@ -1158,6 +1170,62 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp resolve_resume_role(role, roles), do: Enum.find(roles, &(&1 == role))
+
+  # Recovery-mode role selection: distinct from `resume_checkpoint/3` above
+  # (that one resumes an UNCHANGED gate-graded cycle-state checkpoint; this
+  # one resumes a MATERIALIZED recovery transaction, whose recovered bytes
+  # were just applied dirty-and-unstaged onto the current tree — see pitch
+  # "restarted builds resume owned work"). Maps a
+  # `InterruptedCycleRecovery.materialize/2` disposition to the role the
+  # resumed cycle must start from, resolved against the STACK-SPECIFIC
+  # `roles` list (mirrors `resolve_resume_role/2`'s reviewer-alias handling).
+  #
+  #   * `:exact` (current HEAD == recovered transaction's source base, tree
+  #     byte-identical to the recorded recovery tree) — the checkpoint
+  #     recorded at parking time is still trustworthy. `cycle_state` maps via
+  #     `resume_role_for_state/1` exactly like an ordinary in-process resume
+  #     (GATED->reviewer, REVIEWED->context-curator, CURATED->committer). A
+  #     failed/absent cycle_state (the pitch died before or during the
+  #     developer role, or the parked cycle never reached a gate) starts at
+  #     developer — the recovered bytes are the developer's own
+  #     already-done work, re-entered for a fresh gate/review pass rather
+  #     than rebuilt from a blank pitch.
+  #   * `:advanced` (HEAD has moved past the recorded source base) or
+  #     `:operator` (dirty same-scope operator edits alongside the recovered
+  #     transaction) — intervening history or a second version of the work
+  #     can stale the prior plan's assumptions. Always reconciles: the
+  #     planner role when the stack has one (phoenix), else the developer
+  #     role directly (plan-less static stack) — never resumes straight to
+  #     reviewer/committer on a base that moved.
+  @spec resume_role_for_recovery(:exact | :advanced | :operator, String.t() | nil, [String.t()]) ::
+          String.t()
+  def resume_role_for_recovery(:exact, cycle_state, roles) do
+    target = resume_role_for_state(cycle_state || "")
+
+    case target && resolve_resume_role(target, roles) do
+      nil -> resolve_developer_role(roles)
+      role -> role
+    end
+  end
+
+  def resume_role_for_recovery(mode, _cycle_state, roles) when mode in [:advanced, :operator] do
+    resolve_planner_role(roles) || resolve_developer_role(roles)
+  end
+
+  # The plan-having stack's planner role, when one is present in `roles`
+  # (phoenix); nil on a plan-less stack (static) — callers fall back to the
+  # developer role in that case, matching this pitch's "plan-less stack
+  # reconciles at developer" contract.
+  @spec resolve_planner_role([String.t()]) :: String.t() | nil
+  defp resolve_planner_role(roles), do: Enum.find(roles, &String.starts_with?(&1, "planner-"))
+
+  # The stack's developer role — always present in both role sequences
+  # (`developer-phoenix-backend` or `developer-static`).
+  @spec resolve_developer_role([String.t()]) :: String.t()
+  defp resolve_developer_role(roles) do
+    Enum.find(roles, &String.starts_with?(&1, "developer-")) ||
+      raise "OrchestrationLoop: no developer-* role in #{inspect(roles)}"
+  end
 
   # Determines whether `cwd` carries a valid resume checkpoint: a durable,
   # gate-clear, tree-matched record of a prior cycle that died AFTER the

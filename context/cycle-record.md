@@ -47,6 +47,11 @@ declared it.
 - `cycle-state.json` — durable checkpoint for warm-resume (`GATED`/`REVIEWED`/`CURATED`/`COMMITTED`).
   Schema: `{ "state": "GATED|REVIEWED|CURATED|COMMITTED", "step_log": "path/to/cycle.log", "session_id": "cycle_id", "verdict": "clear|failed|inconclusive|\"\"", "slug": "pitch-name", "updated_at": "ISO-8601" }`. Fields `step_log`, `session_id`, and `slug` may be empty strings. The `slug` field is stamped by the loop during cycle execution and read by the resume guard to verify the checkpoint belongs to THIS pitch and not a foreign one (see `context/loop.md` § Warm-Resume).
 - `.active` — sentinel pointing at the currently-resolved cycle log path (written by `codegen-log init`).
+- `recoveries/<slug>/<transaction-id>.json` — per-transaction recovery dossier (`schema_version: 1`,
+  stages `parking`→`parked`→`history_written`→`ready`→`materialized`/`superseded`→`completed`; see
+  `context/loop.md` § Interrupted-Cycle Recovery). Same gitignore/machine-local/never-transported contract
+  as every other `gate-pending/` artifact below — never git-tracked, never carried cross-box by
+  `codegen-drain assign` (which refuses a cross-node transfer of any slug with an active dossier).
 
 ## Gate Verdict Truth Table (`_derive_verdict`, fully deterministic)
 
@@ -128,4 +133,4 @@ Cross-reference `shared/rules/_core/session-log.md` § Enforcement for the full 
 
 ## Trigger Keywords
 
-codegen-log, cycle log, gate-pending, gate-result.json, cycle-state.json, write_gate_result, derive_verdict, verdict truth table, extract_witness, witness discipline, gate-verdicts.jsonl, graded_tree_sha, ev kinds, .active sentinel, no git-tracked logs, no cross-box log transport
+codegen-log, cycle log, gate-pending, gate-result.json, cycle-state.json, write_gate_result, derive_verdict, verdict truth table, extract_witness, witness discipline, gate-verdicts.jsonl, graded_tree_sha, ev kinds, .active sentinel, no git-tracked logs, no cross-box log transport, recovery dossier, dossier stages, machine-local gitignored ephemeral artifact, recoveries/<slug>/<txid>.json, schema_version, transaction identity
