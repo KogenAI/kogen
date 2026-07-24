@@ -82,7 +82,19 @@ session_id="${SESSION_ID:-unknown}"
 # backstops runaway loops regardless of continued progress.
 if [ "${CODEGEN_LOOP:-}" = "1" ]; then
     cwd="${CWD:-$PWD}"
-    signature=$(cd "$cwd" 2>/dev/null && git ls-files -oc --exclude-standard 2>/dev/null | sort | xargs shasum 2>/dev/null | shasum 2>/dev/null | cut -d' ' -f1)
+    # Hash actual CONTENT, not just the tracked/untracked path listing.
+    # `git ls-files -oc` alone lists paths only — editing an already-tracked
+    # file's contents leaves the path set unchanged, so a pure path-list hash
+    # falsely reports "no progress" after a real fixing edit. Combine the
+    # tracked-diff bytes (`git diff HEAD`, covers modified+staged content)
+    # with the untracked-file listing+content so both edit classes register.
+    signature=$(cd "$cwd" 2>/dev/null && {
+        git diff HEAD -- . 2>/dev/null
+        git ls-files -o --exclude-standard -z 2>/dev/null | sort -z | while IFS= read -r -d '' f; do
+            printf '%s\t' "$f"
+            cksum <"$f" 2>/dev/null
+        done
+    } | shasum 2>/dev/null | cut -d' ' -f1)
 
     sig_file="/tmp/codegen-self-gate-${session_id}.sig"
 

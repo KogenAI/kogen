@@ -20,7 +20,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   a FRESH `gate_clear?` (verdict `"clear"` AND its recorded `base_sha` is a
   prefix of `head_before` AND the gate record's mtime is at/after this
   attempt's spawn timestamp — never a stale verdict from an earlier cycle)
-  before shipping. The gate ALWAYS runs BEFORE the committer (loop role
+  AND `:born_dead_fn` returning `:ok` — the SAME fail-closed born-dead/
+  defer-marker completeness check `OrchestrationLoop.assert_work_produced!/2`
+  raises on for a solo build (see `CodegenTestHarness.BornDeadDetector`).
+  Both floors must move together: a solo build raises loop_failed on a
+  born-dead diff, but a DRAINED build's per-pitch child still returns exit
+  0/committed/gate-clear on its own process boundary — without this
+  independent check here, a drained build could bypass the solo raise
+  entirely. A born-dead finding here routes to the same false-0
+  park-and-continue path as an unverified commit — never a silent ship.
+  The gate ALWAYS runs BEFORE the committer (loop role
   order: planner -> developer -> gate -> reviewer -> curator -> committer),
   so the recorded `base_sha` can only ever prefix `head_before` — never the
   post-commit `head_after`. The mtime leg is what rejects a stale clear
@@ -146,7 +155,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   box configured with an idle-lock despite `caffeinate`.
   """
 
-  alias CodegenTestHarness.{BuildLock, InterruptedCycleRecovery, LoopGate, LoopQueue}
+  alias CodegenTestHarness.{
+    BornDeadDetector,
+    BuildLock,
+    InterruptedCycleRecovery,
+    LoopGate,
+    LoopQueue
+  }
 
   @type drain_opts :: keyword()
 
@@ -311,6 +326,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     * `:git_ancestor_fn` — `(cwd, ancestor, descendant -> boolean)`, default
       runs `git merge-base --is-ancestor`; used by the orphan-halt backstop
       to detect a HEAD-moving `git reset` that dropped the cycle base
+    * `:born_dead_fn` — `(cwd, base_sha -> :ok | {:error, reason})`, default
+      `&CodegenTestHarness.BornDeadDetector.check/2`. Called with `head_before`
+      as `base_sha` alongside `:gate_verdict_fn` on both the exit-0 and
+      nonzero-exit ship arms — a `{:error, _}` result is treated identically
+      to an unverified commit (routes to the false-0/failed park-and-continue
+      path), never a silent ship. See moduledoc for why both this seam and
+      `OrchestrationLoop.assert_work_produced!/2`'s raise must move together.
     * `:gate_verdict_fn` — `(cwd -> String.t())`, default reads
       `codegen/gate-pending/gate-result.json` `.verdict`; `""` when absent
     * `:gate_base_sha_fn` — `(cwd -> String.t())`, default reads
@@ -510,6 +532,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             end),
           git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
           git_ancestor_fn: Keyword.get(opts, :git_ancestor_fn, &default_git_ancestor_fn/3),
+          born_dead_fn: Keyword.get(opts, :born_dead_fn, &BornDeadDetector.check/2),
           gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
           gate_base_sha_fn: Keyword.get(opts, :gate_base_sha_fn, &default_gate_base_sha_fn/1),
           gate_mtime_fn: Keyword.get(opts, :gate_mtime_fn, &default_gate_mtime_fn/1),
@@ -1247,6 +1270,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
     gate_verdict = state.gate_verdict_fn.(state.cwd)
     gate_clear? = gate_verdict == "clear" and gate_fresh?(state, head_before, ts)
+    whole_pitch? = state.born_dead_fn.(state.cwd, head_before) == :ok
 
     cond do
       orphaned? ->
@@ -1257,7 +1281,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         {:error,
          "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
 
-      committed? and gate_clear? ->
+      committed? and gate_clear? and whole_pitch? ->
         case publish_or_halt(state, slug, head_before, head_after) do
           {:ok, published_sha} ->
             ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, published_sha)
@@ -1276,14 +1300,17 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         end
 
       true ->
-        # False exit-0: no verified commit under a fresh clear gate. Treat as
+        # False exit-0: no verified commit under a fresh clear gate, OR a
+        # verified commit that failed the born-dead/defer-marker completeness
+        # check (whole_pitch? == false) — either way, treat as
         # a deterministic failure — park whatever dirty tree is left on a
         # named `queue-fail/<slug>/<ts>` branch (never auto-restored), skip
         # and continue subject to the same consecutive-failure circuit
         # breaker.
         IO.puts(
           :stderr,
-          "[#{idx}/#{state.total}] #{slug} ... exit 0 but no verified commit under a fresh clear gate — treating as FAILED"
+          "[#{idx}/#{state.total}] #{slug} ... exit 0 but no verified commit under a fresh clear gate " <>
+            "(or a born-dead/deferred-work diff — whole_pitch?=#{whole_pitch?}) — treating as FAILED"
         )
 
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
@@ -1295,7 +1322,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         cause =
           classify_drain_failure(%{
             transient?: state.transient_fn.(jsonl),
-            gate_clear?: gate_clear?,
+            gate_clear?: gate_clear? and whole_pitch?,
             committed?: committed?,
             gate_verdict: gate_verdict,
             retry_count: retry_count_for
@@ -1926,6 +1953,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     # the same freshness predicate the exit-0 path uses.
     gate_verdict = state.gate_verdict_fn.(state.cwd)
     gate_clear? = gate_verdict == "clear" and gate_fresh?(state, head_before, ts)
+    whole_pitch? = state.born_dead_fn.(state.cwd, head_before) == :ok
 
     cond do
       orphaned? ->
@@ -1939,7 +1967,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         {:error,
          "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
 
-      committed? and gate_clear? and
+      committed? and gate_clear? and whole_pitch? and
           File.exists?(Path.join(state.shipped_dir, "#{slug}.md")) ->
         # committer-post-commit hiccup: agent already shipped the pitch
         # (moved ready/<slug>.md -> shipped/<slug>.md) before the non-zero
@@ -1960,7 +1988,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             {:error, reason}
         end
 
-      committed? and gate_clear? and File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
+      committed? and gate_clear? and whole_pitch? and
+          File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
         # committer-post-commit hiccup: commit landed, gate is clear, but the
         # pitch file is still sitting in ready/ (ship step never ran). Finish
         # the ship ourselves rather than halting the whole queue.

@@ -287,3 +287,10 @@ seams:
     guard: harnesses/claude/hooks/shape-remote-readonly_test.sh
     guard_time: make-test
     pattern: checked-mirror
+
+  - id: whole-pitch-build-invariant
+    declares: "shared/rules/roles/planner.md § Whole-Pitch Builds Only + Deliverable Manifest (MANDATORY), shared/rules/roles/reviewer.md § No Born-Dead / Deferred Work (Rule N) — the prose invariant that a build implements the WHOLE pitch, never a build-time slice or deferred/born-dead entity"
+    reflects: "test_harness/lib/codegen_test_harness/born_dead_detector.ex (BornDeadDetector.check/2), wired into OrchestrationLoop.assert_work_produced!/2 (solo floor, raises) and LoopQueueDrain's injectable :born_dead_fn seam (drain floor, routes to false-0 park-and-continue)"
+    guard: test-hermetic
+    guard_time: make-test
+    pattern: checked-mirror

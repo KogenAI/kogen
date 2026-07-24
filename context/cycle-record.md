@@ -93,6 +93,14 @@ frame over the raw definition line (definition line misleads on setup-raise and 
 a generic `file:line` grep for credo/dialyzer-style output. See `shared/rules/_core` § Witness
 Discipline for the cross-role contract this feeds.
 
+## Whole-Pitch Completeness — Pre-Commit Deterministic Floor
+
+Distinct from the gate: `CodegenTestHarness.BornDeadDetector.check/2` scans the cycle diff for defer
+markers and born-dead new entities (no live caller, no registration) BEFORE the commit is trusted.
+Wired into both `OrchestrationLoop.assert_work_produced!/2` (solo, raises) and `LoopQueueDrain`'s
+`:born_dead_fn` seam (drain, routes to false-0 park-and-continue) — see `context/loop.md` § Whole-
+Pitch Completeness Backstop for the full contract.
+
 ## `gate-verdicts.jsonl` — Producer Confirmed
 
 `codegen/logging/gate-verdicts.jsonl` (a prior open question — "no producer found") IS written: inside

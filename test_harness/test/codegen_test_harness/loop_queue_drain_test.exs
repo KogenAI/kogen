@@ -40,6 +40,13 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       now_fn: fn -> 1_700_000_000 end,
       pid_alive_fn: fn _pid -> false end,
       git_head_fn: fn _cwd -> nil end,
+      # Hermetic default: every pre-existing test uses a synthetic non-git
+      # cwd, where the REAL BornDeadDetector.check/2 would hit `git diff`
+      # failing non-zero and fail-closed — never the intended behavior for
+      # tests that don't exercise the born-dead completeness leg itself. See
+      # this file's dedicated "N: whole-pitch completeness" tests below for
+      # the cases that override this to `{:error, _}`.
+      born_dead_fn: fn _cwd, _base_sha -> :ok end,
       gate_verdict_fn: fn _cwd -> "" end,
       gate_base_sha_fn: fn _cwd -> "" end,
       # Stale by default (older than any real spawn `ts`) — never-fresh,
@@ -152,6 +159,74 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     refute File.exists?(Path.join(ctx.ready_dir, "b.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "a.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "b.md"))
+  end
+
+  # ── N. Whole-pitch completeness (born_dead_fn) ──────────────────────────
+  # Same fail-closed check `OrchestrationLoop.assert_work_produced!/2` raises
+  # on for a solo build — see BornDeadDetector moduledoc. Both floors (solo
+  # raise, drain seam) must move together so a drained build can't bypass
+  # the completeness check the solo build enforces. See also N3 below for
+  # the default-seam (unmocked) fail-closed proof.
+
+  test "N1: born_dead_fn returning {:error, _} on an otherwise-clear committed cycle refuses to ship",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    born_dead_fn = fn _cwd, _base_sha ->
+      {:error, "born-dead detector: new entity \"orphan_module.ex\" has no live caller"}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 LoopQueueDrain.drain(
+                   shipped_opts(ctx, spawn_fn: spawn_fn, born_dead_fn: born_dead_fn)
+                 )
+      end)
+
+    # Never shipped — the pitch stays in ready/ (draft_fn is stubbed as a
+    # no-op in this fixture; the real drain would move it to draft/). A
+    # single deterministic failure (below max_consecutive_fails) is drafted
+    # and the drain exits cleanly with zero shipped rather than HALTing.
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+    refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    assert output =~ "exit 0 but no verified commit under a fresh clear gate"
+    assert output =~ "whole_pitch?=false"
+  end
+
+  test "N2: born_dead_fn returning :ok on a fully clear committed cycle ships normally", ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+    born_dead_fn = fn _cwd, _base_sha -> :ok end
+
+    assert {:ok, 1} =
+             LoopQueueDrain.drain(
+               shipped_opts(ctx, spawn_fn: spawn_fn, born_dead_fn: born_dead_fn)
+             )
+
+    refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+    assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "N3: default born_dead_fn (unset opts) is the real BornDeadDetector — fails closed on an unparseable (non-git) tree rather than silently shipping",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    # Deliberately omit :born_dead_fn from shipped_opts's extras — proves the
+    # DEFAULT wiring is the real detector, not a permissive no-op. ctx.dir is
+    # not a real git repo, so `git diff` fails and the real detector reports
+    # {:error, _} — the drain must treat this exactly like any other
+    # unverified commit (refuse to ship), never silently pass through.
+    opts = shipped_opts(ctx, spawn_fn: spawn_fn) |> Keyword.delete(:born_dead_fn)
+
+    assert {:ok, 0} = LoopQueueDrain.drain(opts)
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+    refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
 
   test "1b: jsonl filename uses UTC YYYYMMDD_HHMMSS stamp, not raw epoch", ctx do

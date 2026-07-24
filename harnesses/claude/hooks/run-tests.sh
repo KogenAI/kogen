@@ -63,12 +63,20 @@ _live_cs_sid_before=$(cycle_state_session_id "$_live_root")
 
 # Whole-directory snapshot: filename\tsignature per line, sorted, for a stable
 # diff-able before/after comparison. Empty/absent dir → empty snapshot.
+#
+# Avoid `xargs -I{}` here: BSD xargs (macOS) allocates a small fixed
+# replacement buffer (-S, default 255 bytes) independent of ARG_MAX, and a
+# long absolute path (e.g. a nested .claude/worktrees/<slug>/... checkout)
+# can exceed it, failing with "command line cannot be assembled, too long"
+# even though the actual argument list is tiny. A plain read loop avoids the
+# replsize limit entirely and is portable across GNU/BSD.
 _gate_pending_snapshot() {
     local dir="$1"
+    local f
     if [ -d "$dir" ]; then
-        find "$dir" -maxdepth 1 -type f -print0 |
-            sort -z |
-            xargs -0 -I{} sh -c 'printf "%s\t%s\n" "{}" "$(cksum < "{}")"'
+        while IFS= read -r -d '' f; do
+            printf '%s\t%s\n' "$f" "$(cksum <"$f")"
+        done < <(find "$dir" -maxdepth 1 -type f -print0 | sort -z)
     fi
 }
 _gate_pending_before=$(_gate_pending_snapshot "$_live_gate_pending")

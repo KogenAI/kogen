@@ -5816,7 +5816,17 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       System.cmd("git", ["config", "user.name", "t"], cd: dir)
       System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
       File.write!(Path.join(dir, "PROJECT_CONTEXT.md"), "# PROJECT_CONTEXT.md\n")
-      System.cmd("git", ["add", "PROJECT_CONTEXT.md"], cd: dir)
+
+      # Pre-existing (pre-cycle-base) caller file: one test in this describe
+      # block adds a NEW `.ex` module this cycle (`widgetapp/billing.ex`)
+      # purely as factcheck bait content, unrelated to the born-dead detector.
+      # Committing a generic caller here — BEFORE any test captures its own
+      # base_head — means it is never itself a "new entity" the detector
+      # must re-check, and its content references the module name that test
+      # introduces so that module reads as wired, not born-dead.
+      File.mkdir_p!(Path.join(dir, "lib"))
+      File.write!(Path.join([dir, "lib", "caller.ex"]), "# uses Billing\n")
+      System.cmd("git", ["add", "PROJECT_CONTEXT.md", "lib/caller.ex"], cd: dir)
       System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
 
       on_exit(fn -> File.rm_rf!(dir) end)
@@ -6729,6 +6739,169 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert reason =~ "cycle produced no changes — nothing for the reviewer to review"
+    end
+
+    test "committer landing a born-dead new module (no caller, no registration) raises", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      # Simulate the developer's own work landing before the reviewer runs.
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          lib_dir = Path.join(dir, "lib")
+          File.mkdir_p!(lib_dir)
+
+          File.write!(
+            Path.join(lib_dir, "orphan_module.ex"),
+            "defmodule OrphanModule do\n  def run, do: :ok\nend\n"
+          )
+
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert_raise RuntimeError, ~r/born-dead detector: new entity.*orphan_module/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: fn _state,
+                                     _step_log,
+                                     _session_id,
+                                     _verdict,
+                                     _project_dir,
+                                     _slug ->
+            :ok
+          end,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+        )
+      end
+    end
+
+    test "committer landing a defer-marker (\"not yet wired\") raises", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          File.write!(
+            Path.join(dir, "note.md"),
+            "# Notes\n\nFuture migration (not yet wired) — will connect this later.\n"
+          )
+
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert_raise RuntimeError, ~r/born-dead detector: defer marker/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: fn _state,
+                                     _step_log,
+                                     _session_id,
+                                     _verdict,
+                                     _project_dir,
+                                     _slug ->
+            :ok
+          end,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+        )
+      end
+    end
+
+    test "committer landing a fully-wired new module (real caller) proceeds to :ok", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      # Pre-existing caller committed BEFORE the cycle base.
+      File.write!(Path.join(dir, "caller.ex"), "defmodule Caller do\n  def go, do: :ok\nend\n")
+      {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "pre-existing caller"], cd: dir)
+
+      # Simulate the developer's own work landing before the reviewer runs —
+      # a real cycle never reaches the reviewer with a clean tree (see
+      # invoke_reviewer/4's empty-set refusal).
+      File.write!(Path.join(dir, "wip.txt"), "wip\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "committer" do
+          lib_dir = Path.join(dir, "lib")
+          File.mkdir_p!(lib_dir)
+
+          File.write!(
+            Path.join(lib_dir, "helper_thing.ex"),
+            "defmodule HelperThing do\n  def run, do: :ok\nend\n"
+          )
+
+          File.write!(
+            Path.join(dir, "caller.ex"),
+            "defmodule Caller do\n  def go, do: HelperThing.run()\nend\n"
+          )
+
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+        end
+
+        value =
+          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: dir,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: fn _state,
+                                            _step_log,
+                                            _session_id,
+                                            _verdict,
+                                            _project_dir,
+                                            _slug ->
+                   :ok
+                 end,
+                 clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+               )
     end
   end
 

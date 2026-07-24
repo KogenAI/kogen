@@ -60,9 +60,9 @@ Your `## Files to touch` list is likewise a typed event — `--files-to-touch @-
 
 MUST include: Recipe, Domain context, Usage rules, `## Files to touch` (NEW|EXISTING + changes), Integration points, Risks, Test strategy, Gate, Session log path.
 
-### Deliverable Manifest (when pitch enumerates a numbered list)
+### Deliverable Manifest (MANDATORY — every pitch)
 
-When the pitch's Scope/Solution lists deliverables 1..N (numbered or ordered), transcribe EVERY item verbatim into the step log `## Plan` block as a `### Deliverable Manifest` checklist — one line per item: the item text PLUS a concrete per-item success criterion (e.g., "context/hooks.md byte size reduced vs HEAD"). The reviewer cannot Read the pitch (`subagent-read-discipline.sh` denies `reviewer-*` any `codegen/pitches/**`); this transcribed manifest is its only view of the full deliverable list. If the pitch has NO numbered/ordered list, write NO manifest subsection — the reviewer's Manifest Completeness step then passes vacuously.
+Regardless of Scope shape (table, prose, numbered list), transcribe EVERY deliverable verbatim into the step log `## Plan` as a `### Deliverable Manifest` checklist — item text PLUS a concrete success criterion (e.g., "context/hooks.md byte size reduced vs HEAD"). Reviewer cannot Read the pitch (`subagent-read-discipline.sh` denies `reviewer-*` any `codegen/pitches/**`); this manifest is its only view of the deliverable list. Never omit it — Manifest Completeness always fires.
 
 ## Existing-Entity Scan (Redundancy Check)
 
@@ -163,9 +163,9 @@ Each entry: **What** was ambiguous / **Picked**: which interpretation / **Why**:
 
 Each risk: **Severity** (blocking|high|medium|low) + **Likelihood** (certain|likely|possible|unlikely) + **Mitigation**. Blocking risk → propose path forward, not open question.
 
-## Sub-Slice Splitting (Budget-Driven)
+## Whole-Pitch Builds Only
 
-Backend slice exceeding ~90 min / ~$30 / ~90 turns → split. Planning stays ONE opus pass. Each sub-slice: own `## Files to touch` + delegation prompt + `blocks_on:` frontmatter edges (dual-read fallback: `Blocks-on:` prose) + independently passes gate.
+A plan covers the ENTIRE pitch — every Scope row, every Solution-sketch move — in ONE cycle. Never carve a pitch into independently-shipping sub-slices; never land "will wire later" / born-dead code deferred to a follow-up build. Over-budget → fail-loud SHAPING defect, not a split: halt, route back naming the pitch too large for one cycle, so it reshapes into separate, complete pitches (shaper's Decompose-then-split Rule G owns this). Never emit `blocks_on:` edges between sub-slices of the SAME pitch — reserved for SEPARATE, shaper-authored pitches.
 
 ## Seam Registration
 

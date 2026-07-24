@@ -238,6 +238,22 @@ assert_not_contains "loop-mode 2nd run after tree edit (progress) ALLOWED" '"per
 rm -f "$LOOP_TMPDIR/b.txt"
 rm -f "/tmp/codegen-self-gate-${SID12}.sig"
 
+# ── Test 12b: loop-mode, EDIT TO AN ALREADY-TRACKED FILE's CONTENT (not a new
+# untracked file) since last run → ALLOW. Regression for a bug where the
+# signature hashed only `git ls-files -oc` (the path LIST), so modifying an
+# existing tracked file's bytes left the path set — and thus the signature —
+# unchanged, falsely denying as a "pure spin" despite a real fixing edit.
+SID12B="sid12b-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID12B}.sig"
+out=$(make_loop_input "make test" "developer-phoenix-backend" "$SID12B" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode tracked-edit 1st run (baseline) ALLOWED" '"permissionDecision"' "$out"
+# Edit the CONTENT of the already-tracked a.txt (no new path introduced).
+printf 'hello world' >"$LOOP_TMPDIR/a.txt"
+out2=$(make_loop_input "make test" "developer-phoenix-backend" "$SID12B" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 2nd run after TRACKED-FILE content edit (progress) ALLOWED" '"permissionDecision"' "$out2"
+git -C "$LOOP_TMPDIR" checkout -q -- a.txt
+rm -f "/tmp/codegen-self-gate-${SID12B}.sig"
+
 # ── Test 13: loop-mode, tree UNCHANGED since last run → DENY (spin) ────────
 # RED-then-GREEN: this is the case the progress bound exists to catch — a
 # repeat gate run with zero tree change must be denied.

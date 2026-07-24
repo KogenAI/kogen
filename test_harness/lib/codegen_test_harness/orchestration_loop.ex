@@ -12,7 +12,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   silent continue, no shim.
   """
 
-  alias CodegenTestHarness.{BuildLock, LoopGate, LoopQueue, RoleResolver}
+  alias CodegenTestHarness.{BornDeadDetector, BuildLock, LoopGate, LoopQueue, RoleResolver}
 
   # Role-call retry budget. A deterministic failure gets one retry (the
   # historical "failed twice" contract). A failure whose reason matches the
@@ -1536,8 +1536,32 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     assert_base_not_orphaned!(cwd, base_head)
     assert_commit_matches_gate!(cwd)
+    assert_whole_pitch!(cwd, base_head)
 
     :ok
+  end
+
+  # Whole-pitch completeness backstop (fail-closed, pre-commit): a cycle
+  # diff that lands a defer-marker or a born-dead new entity (no live
+  # non-test caller, no registration) is a FAILED build regardless of the
+  # gate/commit shape being otherwise clean — see
+  # `CodegenTestHarness.BornDeadDetector` moduledoc for the full contract.
+  # This is the un-talk-around-able code guarantee behind "a build
+  # implements the WHOLE pitch" (planner.md § Whole-Pitch Builds Only,
+  # reviewer.md § No Born-Dead / Deferred Work); the drain twin
+  # (`LoopQueueDrain`'s `:born_dead_fn` seam) enforces the identical check
+  # on its own independent ship floor — both must move together or a
+  # drained build can bypass this raise.
+  defp assert_whole_pitch!(cwd, base_head) do
+    case BornDeadDetector.check(cwd, base_head) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        raise "OrchestrationLoop: #{reason}. A build implements the WHOLE pitch — " <>
+                "never a build-time slice, never deferred work. This is loop_failed, " <>
+                "never a false loop_committed."
+    end
   end
 
   # Ancestry backstop (orphaned-base guard): the count+diff check above is

@@ -77,6 +77,18 @@ cosmetic: without the probe, every claimed pitch's ship-time stamp or fallback s
 claimed (`building/`) pitch is invisible to selection, and a dependent whose dep is in-flight
 correctly stays blocked (in-flight ≠ shipped).
 
+## Whole-Pitch Completeness Backstop
+
+Pre-commit, fail-closed guarantee behind "a build implements the WHOLE pitch" — never a build-time
+slice, never deferred/born-dead code. `CodegenTestHarness.BornDeadDetector.check/2` greps the cycle
+diff for defer markers (`not yet wired`, `future migration`, etc.) and NEW top-level entities with
+zero live non-test caller AND zero registration (manifest `launchers:`, `escript: main_module`,
+`settings.json` hook — the escape valve). Wired into BOTH ship floors so a drained build can't bypass
+the solo raise: `OrchestrationLoop.assert_work_produced!/2` (solo, raises → loop_failed) and
+`LoopQueueDrain`'s injectable `:born_dead_fn` seam (drain, routes to false-0 park-and-continue). Runs
+PRE-commit — ship chokepoint unchanged, no new stranding path. Backs `planner.md` § Whole-Pitch
+Builds Only + `reviewer.md` § No Born-Dead / Deferred Work (Rule N).
+
 ## Per-Cycle Spend Cap
 
 `--max-budget-usd` (CLI) → `opts[:max_budget_usd]` → `OrchestrationLoop` private `check_budget/1`.
@@ -117,28 +129,16 @@ role-config owner file for the ladder's actual rung values.
 
 `maybe_advise/5` fires at the SAME give-up boundary as `maybe_escalate_model/5` (both
 `do_gate_loop_rework/9` and `rework_final_gate/5`, `final_attempt?` true), immediately after
-escalation. It shells `codegen-advise --harness=<current build harness>` (test-seam override:
-`opts[:advisor_fn]`, default `default_advisor_fn/3`) with the gate failure reason + rework brief
-as context. `codegen-advise` flips to the OPPOSITE provider via a FIXED internal mapping
-(`claude_code` → `pi`/`openai-codex/gpt-5.6-sol`; `pi` → `claude_code`/`opus`; not configurable —
-operator decision) and returns a `{plan, confidence}` JSON. On success, stashes the plan string at
-`ctx.artifacts.advisor_plan`; `build_prompt/2` renders it under `## Advisor` for the developer role
-being reworked. Composes with escalation: the final attempt can carry BOTH a stronger same-provider
-model (`:escalated_model`) AND a cross-provider recovery plan (`:advisor_plan`) — orthogonal artifact
-keys, both cleared (`Map.delete`) once the attempt resolves.
-
-Suppressed under a fixed campaign binding — mirrors `maybe_escalate_model/5`'s
-`resolve_fixed_binding` guard exactly, so a role-model-sweep arm's evidence is never perturbed by
-cross-provider advice either.
-
-A failed/unavailable advisor call is ADDITIVE-failure: `ctx` passes through unchanged, the cycle
-proceeds exactly as it would without this feature. Advice is help, never a gate.
-
-Reach paths: (1) this auto-wiring, unattended; (2) the `advise`/`mcp__codegen__advise` tool, granted
-to developer roles' `tools:` frontmatter, for a dev that recognizes it's stuck mid-turn and
-self-invokes — same `codegen-advise` binary, same fixed opposite-provider mapping, no `--harness` at
-the tool layer (each harness's tool surface bakes its own `current`: Claude MCP server bakes
-`claude_code`, Pi extension bakes `pi`).
+escalation. Shells `codegen-advise --harness=<current build harness>` (test-seam: `opts[:advisor_fn]`,
+default `default_advisor_fn/3`) with the gate failure reason + rework brief. `codegen-advise` flips to
+the OPPOSITE provider via a FIXED mapping (`claude_code` → `pi`/`openai-codex/gpt-5.6-sol`; `pi` →
+`claude_code`/`opus`; not configurable) and returns `{plan, confidence}` JSON, stashed at
+`ctx.artifacts.advisor_plan` and rendered under `## Advisor` for the reworked developer role. Composes
+with escalation (both `:escalated_model` and `:advisor_plan` can coexist; both cleared once resolved).
+Suppressed under a fixed campaign binding (mirrors `maybe_escalate_model/5`). Failed/unavailable call
+is ADDITIVE-failure — `ctx` passes through unchanged; advice is help, never a gate. Reach paths: (1)
+this auto-wiring; (2) the `advise`/`mcp__codegen__advise` tool on developer roles for self-invoke —
+same binary/mapping, harness-specific `current` baked at the tool layer.
 
 ## Fixed Campaign Binding (RoleModelSweep) — Overrides Escalation and Fallback
 
@@ -377,4 +377,4 @@ section for how a marked nonzero exit routes to park+skip+breaker instead of `re
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, recovery dossier, recoveries/<slug>/<txid>.json, schema_version, dossier stages, transaction identity, materialize, resume_role_for_recovery, recovery_mode, park_failure, recovery/interrupted branch, recovery/operator branch, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, opposite-provider advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, recovery dossier, recoveries/<slug>/<txid>.json, schema_version, dossier stages, transaction identity, materialize, resume_role_for_recovery, recovery_mode, park_failure, recovery/interrupted branch, recovery/operator branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, opposite-provider advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`, born-dead detector, borndeaddetector, defer-marker, sub-slice forbidden, whole-pitch builds, whole-pitch completeness backstop
