@@ -109,12 +109,12 @@ assert_eq "(5) already-exited child before any signal — normal race, returns c
 # ─────────────────────────────────────────────────────────────────────────
 
 run_pty_case() {
-    local desc="$1" wrapper_body="$2" out_file="$3" rc_file="$4" delay="${5:-1.5}"
+    local desc="$1" wrapper_body="$2" out_file="$3" rc_file="$4" delay="${5:-1.5}" ready_file="${6:-}"
     local wrapper="$TMP_ROOT/wrapper_$$_$RANDOM.sh"
     printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\n' "$wrapper_body" >"$wrapper"
     chmod +x "$wrapper"
 
-    python3 - "$wrapper" "$out_file" "$rc_file" "$delay" <<'PYEOF'
+    python3 - "$wrapper" "$out_file" "$rc_file" "$delay" "$ready_file" <<'PYEOF'
 import os
 import pty
 import select
@@ -122,7 +122,7 @@ import signal
 import sys
 import time
 
-wrapper, out_file, rc_file, delay = sys.argv[1:5]
+wrapper, out_file, rc_file, delay, ready_file = sys.argv[1:6]
 delay = float(delay)
 
 pid, master_fd = pty.fork()
@@ -130,7 +130,20 @@ if pid == 0:
     os.execvp("bash", ["bash", wrapper])
     os._exit(127)
 
-time.sleep(delay)
+if ready_file:
+    ready_deadline = time.time() + 15
+    while not os.path.exists(ready_file) and time.time() < ready_deadline:
+        time.sleep(0.05)
+    if not os.path.exists(ready_file):
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+        with open(out_file, "wb") as f:
+            f.write(b"child readiness timeout")
+        with open(rc_file, "w") as f:
+            f.write("TIMEOUT")
+        sys.exit(0)
+else:
+    time.sleep(delay)
 os.kill(pid, signal.SIGINT)
 
 deadline = time.time() + 15
@@ -190,9 +203,12 @@ PYEOF
 # Case 6: plain queue-style spawn — SIGINT -> group SIGTERM -> child's own
 # TERM trap fires -> wrapper returns child's exit(130) -> no residual child.
 CHILD6="$TMP_ROOT/child6.sh"
+READY6="$TMP_ROOT/child6-ready"
+export READY6
 cat >"$CHILD6" <<'EOF'
 #!/usr/bin/env bash
 trap 'echo "child got TERM"; exit 130' TERM
+: >"$READY6"
 sleep 30 &
 wait
 EOF
@@ -205,7 +221,7 @@ run_supervised_loop '$CHILD6'
 rc=\$?
 echo \"wrapper_rc=\$rc\"
 exit \"\$rc\"" \
-    "$OUT6" "$RC6"
+    "$OUT6" "$RC6" 1.5 "$READY6"
 OUT6C="$(cat "$OUT6" 2>/dev/null || true)"
 RC6C="$(cat "$RC6" 2>/dev/null || echo MISSING)"
 assert_contains "(6) child observed forwarded TERM" "$OUT6C" "child got TERM"
@@ -227,9 +243,12 @@ fi
 # (non-Darwin CI runners).
 if command -v caffeinate >/dev/null 2>&1; then
     CHILD7="$TMP_ROOT/child7.sh"
+    READY7="$TMP_ROOT/child7-ready"
+    export READY7
     cat >"$CHILD7" <<'EOF'
 #!/usr/bin/env bash
 trap 'echo "child got TERM"; exit 130' TERM
+: >"$READY7"
 sleep 30 &
 wait
 EOF
@@ -242,7 +261,7 @@ run_supervised_loop caffeinate -dimsu '$CHILD7'
 rc=\$?
 echo \"wrapper_rc=\$rc\"
 exit \"\$rc\"" \
-        "$OUT7" "$RC7"
+        "$OUT7" "$RC7" 1.5 "$READY7"
     OUT7C="$(cat "$OUT7" 2>/dev/null || true)"
     RC7C="$(cat "$RC7" 2>/dev/null || echo MISSING)"
     assert_contains "(7) child observed forwarded TERM (caffeinated)" "$OUT7C" "child got TERM"

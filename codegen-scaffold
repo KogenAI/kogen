@@ -474,21 +474,29 @@ do_create() {
         ;;
     esac
 
-    # ── Static: initialise git repo (phoenix: phx.new already ran git init) ────
-    if [[ "$STACK" == "static" ]]; then
-        if [[ ! -d "$TEMP_PARENT/$SLUG/.git" ]]; then
-            git -C "$TEMP_PARENT/$SLUG" init -q
-        fi
+    # ── Initialise git repo ──────────────────────────────────────────────────
+    # Phoenix may skip git init when phx.new runs under an existing parent repo.
+    # Ensure the temp app has its own repo before committing, or git add/commit
+    # will dirty the caller's repo with .scaffold.tmp paths.
+    local git_ceiling_dir
+    git_ceiling_dir="$(cd "$parent_dir" && pwd -P)"
+
+    if [[ ! -d "$TEMP_PARENT/$SLUG/.git" ]]; then
+        GIT_CEILING_DIRECTORIES="$git_ceiling_dir" git -C "$TEMP_PARENT/$SLUG" init -q
     fi
 
     # Run integrate stage against the temp app dir
     run_integrate_stage "$TEMP_PARENT/$SLUG" "$target_dir"
 
     # ── Initial commit (both stacks) ─────────────────────────────────────────
-    # Phoenix: git init was done by phx.new; Phase-8 commit removed from scaffold.sh.
-    # Static: git init done above. Both commit here so all integrate-stage files
+    # Both stacks commit here so all integrate-stage files
     # (PROJECT_CONTEXT.md, restart_server.sh, usage_rules_INDEX.md) are included.
-    (cd "$TEMP_PARENT/$SLUG" && git add -A && git commit -m "Initial commit") || {
+    (
+        cd "$TEMP_PARENT/$SLUG"
+        export GIT_CEILING_DIRECTORIES="$git_ceiling_dir"
+        git add -A
+        git commit -m "Initial commit"
+    ) || {
         printf 'codegen-scaffold: initial git commit failed\n' >&2
         exit 1
     }

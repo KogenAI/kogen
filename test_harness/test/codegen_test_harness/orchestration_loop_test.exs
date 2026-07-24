@@ -7598,6 +7598,33 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(calls_agent, & &1) == []
     end
 
+    test "tracked source dirt at cycle start is still rejected", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      File.write!(Path.join(dir, "README.md"), "source changed before cycle\n")
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      assert_raise RuntimeError, ~r/tree is NOT clean before the cycle/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn()
+        )
+      end
+
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
     test "clean tree at cycle start proceeds normally (no false positive)", %{
       calls_agent: calls_agent,
       dir: dir

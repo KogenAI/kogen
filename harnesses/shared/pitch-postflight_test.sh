@@ -45,6 +45,19 @@ assert_true() {
 # backgrounded `sleep`), so signal-forwarding tests must clean the full
 # tree, not just the direct wrapper PID, to avoid leaking `sleep 30`
 # processes across repeated test runs.
+#
+# Also kills the process GROUP of $1, not just the direct parent-child
+# links `pgrep -P` walks. `set -m` above puts each backgrounded wrapper in
+# its OWN process group (PGID == the wrapper's own PID, the job's process
+# group leader) — a descendant that reparents to init (a real race: an
+# intermediate PID exits before the recursive `pgrep -P` walk reaches it)
+# stays in that SAME process group even after reparenting, since PGID
+# membership is independent of the parent-child link. `kill -- -"$pid"`
+# (negative PID = process-group signal) reaches it where a link-following
+# walk alone would not. This replaces the prior global `pkill -f "sleep
+# 30"` sweep — the pitch's Mandatory Recovery Corrections forbid killing
+# processes this test file does not own; the group-kill is scoped to
+# exactly the fixture's own recorded wrapper PID, never board-wide.
 _pf_reap_tree() {
     local pid="$1"
     local kids
@@ -53,24 +66,8 @@ _pf_reap_tree() {
         _pf_reap_tree "$k"
     done
     kill -9 "$pid" 2>/dev/null || true
+    kill -9 -- "-$pid" 2>/dev/null || true
 }
-
-# Final safety net: reap-tree can miss ORPHANED descendants (reparented to
-# init once an intermediate PID has already exited before the recursive
-# walk reaches it — a real race in the signal-forwarding tests, not just a
-# theoretical one). Kill by matching the fixture script's own path prefix
-# (unique per mktemp -d root) instead of relying on live parent-child
-# links. Registered once, fires on any exit path of this test file.
-_pf_orphan_sweep() {
-    pkill -9 -f "sleeper_int\.sh" 2>/dev/null || true
-    pkill -9 -f "sleeper\.sh" 2>/dev/null || true
-    # sleeper.sh's own backgrounded `sleep 30` reparents to init once
-    # sleeper.sh itself has already exited/been killed — sweep those too.
-    # Scoped to exactly "sleep 30" (this file's only sleep duration) to
-    # avoid touching an unrelated `sleep` elsewhere on the box.
-    pkill -9 -f "^sleep 30$" 2>/dev/null || true
-}
-trap '_pf_orphan_sweep' EXIT
 
 new_fixture_root() {
     local root
@@ -184,29 +181,56 @@ rm -rf "$root"
 # ── Test 6: direct TERM to the wrapper forwards to the child (bounded probe) ─
 root=$(new_fixture_root)
 sleeper="$root/sleeper.sh"
+ready_file="$root/ready.txt"
 cat >"$sleeper" <<'EOF'
 #!/usr/bin/env bash
 trap 'echo "child got TERM"; kill %1 2>/dev/null; exit 143' TERM
+printf 'ready\n' >"$READY_FILE"
 sleep 30 &
 wait
 EOF
 chmod +x "$sleeper"
 out_file="$root/out.txt"
-bash -c "source '$HELPER'; run_pitch_postflight shape '$root' -- '$sleeper'" </dev/null >"$out_file" 2>&1 &
+READY_FILE="$ready_file" bash -c "source '$HELPER'; run_pitch_postflight shape '$root' -- '$sleeper'" </dev/null >"$out_file" 2>&1 &
 wpid=$!
-sleep 2
+for _i in {1..100}; do
+    [ -f "$ready_file" ] && break
+    sleep 0.1
+done
 kill -TERM "$wpid" 2>/dev/null
-sleep 2
-if kill -0 "$wpid" 2>/dev/null; then
-    _pf_reap_tree "$wpid"
-    assert_true "direct TERM: wrapper exits" 1
-else
-    assert_true "direct TERM: wrapper exits" 0
-fi
-case "$(cat "$out_file" 2>/dev/null)" in
-*"child got TERM"*) assert_true "direct TERM: forwarded to child" 0 ;;
-*) assert_true "direct TERM: forwarded to child" 1 ;;
-esac
+# Poll up to 10s (bounded) rather than a single fixed sleep — under
+# concurrent CPU contention (e.g. harness-parity's own -P4 fan-out, or
+# core-gated tail overlap running this file alongside 15+ other
+# populations) the wrapper+child process tree can take longer than a fixed
+# 2s window to actually schedule, run, and flush its output. Mirrors the
+# proven bounded-poll idiom already used by Test 7 (direct INT) below.
+_term_exited=1
+for _i in {1..100}; do
+    if ! kill -0 "$wpid" 2>/dev/null; then
+        _term_exited=0
+        break
+    fi
+    sleep 0.1
+done
+assert_true "direct TERM: wrapper exits" "$_term_exited"
+# Poll for the content marker too (bounded, same rationale) — the wrapper
+# still being alive does not mean the child's "child got TERM" echo was
+# never written; under heavy contention the wrapper's own reap of its
+# child can lag past the 10s window above. Do NOT force-kill the tree
+# before this check — a SIGKILL from _pf_reap_tree pre-empts the trap and
+# guarantees "forwarded to child" can never observe the marker. The tree
+# is reaped once, unconditionally, after both assertions are made.
+_term_forwarded=1
+for _i in {1..100}; do
+    case "$(cat "$out_file" 2>/dev/null)" in
+    *"child got TERM"*)
+        _term_forwarded=0
+        break
+        ;;
+    esac
+    sleep 0.1
+done
+assert_true "direct TERM: forwarded to child" "$_term_forwarded"
 _pf_reap_tree "$wpid"
 rm -rf "$root"
 
@@ -239,18 +263,18 @@ chmod +x "$sleeper"
 out_file="$root/out.txt"
 bash -c "source '$HELPER'; run_pitch_postflight shape '$root' -- '$sleeper'" </dev/null >"$out_file" 2>&1 &
 wpid=$!
-sleep 2
+sleep 0.2
 kill -INT "$wpid" 2>/dev/null
 # Poll up to 10s (bounded) rather than a single fixed sleep — nested
 # non-interactive bash signal delivery in a sandboxed test runner can be
 # slower than a real TTY's immediate line-discipline signal.
 _int_exited=1
-for _i in 1 2 3 4 5 6 7 8 9 10; do
+for _i in {1..100}; do
     if ! kill -0 "$wpid" 2>/dev/null; then
         _int_exited=0
         break
     fi
-    sleep 1
+    sleep 0.1
 done
 if [ "$_int_exited" -ne 0 ]; then
     _pf_reap_tree "$wpid"
@@ -283,6 +307,50 @@ node "$CJS" >/tmp/pf-missing-args.txt 2>&1
 rc=$?
 assert_eq "missing required args: exit 2" "2" "$rc"
 rm -f /tmp/pf-missing-args.txt
+
+# ── Test 10: owned cleanup does NOT touch an unrelated `sleep 30` ───────────
+# Regression for the mandatory recovery correction: _pf_reap_tree used to be
+# backstopped by a global `pkill -9 -f "^sleep 30$"` in _pf_orphan_sweep,
+# which killed ANY `sleep 30` process on the box — including one this test
+# file never spawned. Spawn a sentinel `sleep 30` BEFORE running a real
+# sleeper.sh fixture (same command pattern the fixture itself backgrounds),
+# run the fixture's full lifecycle including its own _pf_reap_tree call, then
+# assert the sentinel is STILL ALIVE — proving cleanup is scoped to the
+# fixture's own recorded wrapper PID (+ its process group), never board-wide.
+sleep 30 &
+sentinel_pid=$!
+root=$(new_fixture_root)
+sleeper="$root/sleeper.sh"
+ready_file="$root/ready.txt"
+cat >"$sleeper" <<'EOF'
+#!/usr/bin/env bash
+trap 'echo "child got TERM"; kill %1 2>/dev/null; exit 143' TERM
+printf 'ready\n' >"$READY_FILE"
+sleep 30 &
+wait
+EOF
+chmod +x "$sleeper"
+out_file="$root/out.txt"
+READY_FILE="$ready_file" bash -c "source '$HELPER'; run_pitch_postflight shape '$root' -- '$sleeper'" </dev/null >"$out_file" 2>&1 &
+wpid=$!
+for _i in {1..100}; do
+    [ -f "$ready_file" ] && break
+    sleep 0.1
+done
+kill -TERM "$wpid" 2>/dev/null
+for _i in {1..100}; do
+    kill -0 "$wpid" 2>/dev/null || break
+    sleep 0.1
+done
+_pf_reap_tree "$wpid"
+if kill -0 "$sentinel_pid" 2>/dev/null; then
+    assert_true "unrelated sleep 30 survives owned cleanup" 0
+else
+    assert_true "unrelated sleep 30 survives owned cleanup" 1
+fi
+kill -9 "$sentinel_pid" 2>/dev/null || true
+wait "$sentinel_pid" 2>/dev/null || true
+rm -rf "$root"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

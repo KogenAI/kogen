@@ -42,14 +42,13 @@ trap 'rm -rf "$_test_project_dir"' EXIT
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOBS="${JOBS:-8}"
 
-# Snapshot EVERY file under the live codegen/gate-pending/ dir BEFORE the run
-# so the backstop can detect any removal or mutation during the run — not
-# just cycle-state.json. codegen-build's pi-leg `rm -f` (run against a bare
-# --cwd-less invocation) previously deleted gate-result.json out from under a
-# live cycle without this suite ever noticing (a file that is already absent
-# before AND after silences a presence-only check). Snapshot the whole
-# directory's file list + per-file signature so a removal is caught even when
-# the removed file was never watched individually.
+# Snapshot durable files under live codegen/gate-pending/ BEFORE the run so
+# the backstop detects removal/mutation during the run — not just
+# cycle-state.json. Ephemeral codegen-invocation.* sentinels are intentionally
+# excluded: a concurrent live build may create/remove its own sentinel while
+# this suite runs, and the wrapper validates sentinel ownership separately.
+# Durable evidence such as gate-result.json, gate-run.log, and queue.lock
+# remains checked so codegen-build's old cwd-less cleanup leak stays covered.
 _cs_sig() { if [ -f "$1" ]; then cksum <"$1"; else printf 'absent'; fi; }
 _live_root="$(cd "$HOOKS_DIR/../../.." && pwd)"
 _live_gate_pending="$_live_root/codegen/gate-pending"
@@ -72,12 +71,18 @@ _live_cs_sid_before=$(cycle_state_session_id "$_live_root")
 # replsize limit entirely and is portable across GNU/BSD.
 _gate_pending_snapshot() {
     local dir="$1"
-    local f
+    local _gate_pending_path _gate_pending_paths_file
+    _gate_pending_paths_file=$(mktemp)
     if [ -d "$dir" ]; then
-        while IFS= read -r -d '' f; do
-            printf '%s\t%s\n' "$f" "$(cksum <"$f")"
-        done < <(find "$dir" -maxdepth 1 -type f -print0 | sort -z)
+        find "$dir" -maxdepth 1 -type f ! -name 'codegen-invocation.*' -print0 |
+            sort -z >"$_gate_pending_paths_file"
+        if [ -s "$_gate_pending_paths_file" ]; then
+            while IFS= read -r -d '' _gate_pending_path; do
+                printf "%s\t%s\n" "$_gate_pending_path" "$(cksum <"$_gate_pending_path")"
+            done <"$_gate_pending_paths_file"
+        fi
     fi
+    rm -f "$_gate_pending_paths_file"
 }
 _gate_pending_before=$(_gate_pending_snapshot "$_live_gate_pending")
 
@@ -143,9 +148,26 @@ _discover_hook_tests() {
 }
 
 set +e
-_discover_hook_tests |
-    xargs -0 -n1 -P"$JOBS" -I{} bash -c 'run_one "$@"' _ {}
-_xargs_rc=${PIPESTATUS[1]}
+# Guard empty discovery before piping to xargs: BSD/macOS xargs (unlike GNU's
+# -r/--no-run-if-empty, non-portable to BSD) runs the command ONCE on empty
+# stdin, invoking `run_one ""` against a nonexistent path. HOOK_TEST_EXCLUDE
+# can legitimately drop the discovered set to zero (e.g. a future exclude-all
+# invocation), so capture discovery to a NUL-delimited temp file first and
+# skip xargs entirely when it is empty, forcing _xargs_rc=0 explicitly
+# (matches xargs's own exit code on a population that ran and produced no
+# failures). A temp file (not a `$()` variable) is required here: bash
+# command substitution cannot hold embedded NUL bytes — captured NUL-joined
+# paths silently concatenate with no separator, corrupting every path after
+# the first.
+_hook_tests_file=$(mktemp)
+_discover_hook_tests >"$_hook_tests_file"
+if [ ! -s "$_hook_tests_file" ]; then
+    _xargs_rc=0
+else
+    xargs -0 -n1 -P"$JOBS" bash -c 'run_one "$0"' <"$_hook_tests_file"
+    _xargs_rc=$?
+fi
+rm -f "$_hook_tests_file"
 set -e
 
 # Backstop: fail loudly on ANY removal or mutation of a file that was present

@@ -145,30 +145,50 @@ enforce-hook-rationale:
 
 .PHONY: harness-parity
 harness-parity:
-	@fail=0; \
-	for t in \
-		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh" \
-		"$(SCRIPT_DIR)/harnesses/pi/dispatch_test.sh" \
-		"$(SCRIPT_DIR)/harnesses/pi/call-dispatch_test.sh" \
-		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh" \
-		"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-propose_test.sh" \
-		"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh" \
-		"$(SCRIPT_DIR)/codegen-log_test.sh"; do \
-		out=$$(bash "$$t" 2>&1); rc=$$?; \
-		if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
-		if [ $$rc -ne 0 ]; then \
-			[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
-			echo "harness-parity: FAIL — $$(basename "$$t")"; \
-			fail=1; \
-		fi; \
-	done; \
-	for st in "$(SCRIPT_DIR)/harnesses/shared/"*_test.sh; do \
-		[ -e "$$st" ] || continue; \
-		out=$$(bash "$$st" 2>&1); rc=$$?; \
-		if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
-		if [ $$rc -ne 0 ]; then \
-			[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
-			echo "harness-parity: FAIL — $$(basename "$$st")"; \
+	@t_out=$$(mktemp -d); \
+	t_in=$$(mktemp); \
+	trap 'rm -rf "$$t_out"; rm -f "$$t_in"' EXIT; \
+	{ \
+		printf '%s\0' \
+			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh" \
+			"$(SCRIPT_DIR)/harnesses/pi/dispatch_test.sh" \
+			"$(SCRIPT_DIR)/harnesses/pi/call-dispatch_test.sh" \
+			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh" \
+			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-propose_test.sh" \
+			"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh" \
+			"$(SCRIPT_DIR)/codegen-log_test.sh"; \
+		for st in "$(SCRIPT_DIR)/harnesses/shared/"*_test.sh; do \
+			[ -e "$$st" ] && printf '%s\0' "$$st"; \
+		done; \
+	} >"$$t_in"; \
+	if [ ! -s "$$t_in" ]; then \
+		xargs_rc=0; \
+	else \
+		xargs -0 -n1 -P8 bash -c ' \
+			t="$$0"; \
+			name=$$(basename "$$t"); \
+			out=$$(bash "$$t" 2>&1); rc=$$?; \
+			printf "%s\n" "$$out" >"'"$$t_out"'/$$name.out"; \
+			echo "$$rc" >"'"$$t_out"'/$$name.rc"; \
+		' <"$$t_in"; \
+		xargs_rc=$$?; \
+	fi; \
+	echo "$$xargs_rc" >"$$t_out/.xargs_rc"; \
+	rm -f "$$t_in"; \
+	fail=0; \
+	xargs_rc=$$(cat "$$t_out/.xargs_rc" 2>/dev/null || echo 0); \
+	if [ "$$xargs_rc" != "0" ]; then \
+		echo "harness-parity: FAIL — xargs infrastructure exited $$xargs_rc"; \
+		fail=1; \
+	fi; \
+	for rc_file in "$$t_out"/*.rc; do \
+		[ -e "$$rc_file" ] || continue; \
+		name=$${rc_file%.rc}; name=$$(basename "$$name"); \
+		rc=$$(cat "$$rc_file"); \
+		if [ -n "$$VERBOSE" ]; then cat "$$t_out/$$name.out"; fi; \
+		if [ "$$rc" != "0" ]; then \
+			[ -z "$$VERBOSE" ] && cat "$$t_out/$$name.out"; \
+			echo "harness-parity: FAIL — $$name"; \
 			fail=1; \
 		fi; \
 	done; \
@@ -229,7 +249,7 @@ test:
 .PHONY: test-hermetic
 test-hermetic:
 	@cd "$(SCRIPT_DIR)/test_harness" && \
-	out=$$(MIX_BUILD_PATH=_build/claude_test mix test --exclude slow 2>&1); rc=$$?; \
+	out=$$(MIX_BUILD_PATH=_build/claude_test mix test --exclude slow --max-cases $${EXUNIT_MAX_CASES:-24} 2>&1); rc=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$rc -eq 0 ]; then echo "ALL CLEAR ✅ make test-hermetic"; else echo "FAILED ❌ make test-hermetic"; fi; \
 	exit $$rc

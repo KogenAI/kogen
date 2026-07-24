@@ -106,46 +106,6 @@ defmodule CodegenTestHarness.Fixtures do
 
     File.write!(Path.join(path, "CLAUDE.md"), claude_md_base <> phoenix_scaffold_section)
 
-    {_init_out, 0} =
-      System.cmd("git", ["init"], cd: path, env: [], stderr_to_stdout: true)
-
-    {_, 0} =
-      System.cmd("git", ["config", "user.name", "harness"], cd: path, stderr_to_stdout: true)
-
-    {_, 0} =
-      System.cmd("git", ["config", "user.email", "harness@test"],
-        cd: path,
-        stderr_to_stdout: true
-      )
-
-    {_, 0} =
-      System.cmd("git", ["config", "commit.gpgsign", "false"], cd: path, stderr_to_stdout: true)
-
-    # Stage the fixture's own scaffolding (CLAUDE.md, .claude/, and — for the
-    # stack: branches below — the generated app tree) BEFORE the init commit.
-    #
-    # These files are written above, i.e. BEFORE `git init`, so an
-    # `--allow-empty` commit alone left every one of them untracked and the
-    # tree permanently dirty. OrchestrationLoop.run/1 gates each cycle on a
-    # clean tree ("a cycle must begin from a clean tree so no role inherits or
-    # commits foreign changes") and aborted before turn 0 — so EVERY stack test
-    # died in ~1s with `codegen-build failed (exit=1)` and zero model turns.
-    # The fixture's own scaffolding is precisely the "foreign changes" that
-    # gate means; committing it is what makes the tree clean, and it must land
-    # before the build so assert_git_committed!/1's commit-count delta still
-    # measures only what the BUILD committed.
-    {_add_out, 0} =
-      System.cmd("git", ["add", "-A"], cd: path, env: git_env(), stderr_to_stdout: true)
-
-    {_commit_out, 0} =
-      System.cmd(
-        "git",
-        ["commit", "--allow-empty", "-m", "init"],
-        cd: path,
-        env: git_env(),
-        stderr_to_stdout: true
-      )
-
     unless System.get_env("KEEP_TMP") == "1" do
       ExUnit.Callbacks.on_exit(fn -> rm_rf_resilient(path) end)
     else
@@ -167,9 +127,12 @@ defmodule CodegenTestHarness.Fixtures do
           File.cp_r!(agents_src, Path.join(phoenix_path, ".claude/agents"))
         end
 
+        commit_fixture_baseline!(phoenix_path, "chore: fixture phoenix baseline")
         phoenix_path
 
       _ ->
+        ensure_git_repo!(path)
+        commit_fixture_baseline!(path, "init")
         path
     end
   end
@@ -439,7 +402,7 @@ defmodule CodegenTestHarness.Fixtures do
     stack = Keyword.get(opts, :stack, "phoenix")
     test_name = Keyword.get(opts, :test_name, "unnamed")
 
-    pre_integrate_and_commit!(cwd, stack)
+    prepare_codegen_build_baseline!(cwd, stack)
 
     build_started_at = System.monotonic_time(:millisecond)
 
@@ -486,6 +449,8 @@ defmodule CodegenTestHarness.Fixtures do
     stack = Keyword.get(opts, :stack, "phoenix")
     timeout_ms = Keyword.get(opts, :timeout_ms, @parity_build_timeout_ms)
 
+    prepare_codegen_build_baseline!(cwd, stack)
+
     {output, exit_code} =
       run_with_timeout(
         codegen_build_path(),
@@ -524,7 +489,16 @@ defmodule CodegenTestHarness.Fixtures do
   # Commit-count safety: `change_request/4` snapshots commits_before AFTER the
   # first build, and integrate is idempotent, so this commit can never inflate
   # the {commits_before, commits_after} delta the iteration tests assert on.
-  defp pre_integrate_and_commit!(cwd, stack) do
+  @doc """
+  Runs the deterministic pre-cycle scaffold integration and commits its output.
+
+  The orchestration loop rejects any dirty tree before turn 0. `codegen-build`
+  also runs `codegen-scaffold integrate` as a pre-step, so tests that call the
+  loop through either normal or parity helpers must make that stage a committed
+  baseline before the loop starts.
+  """
+  @spec prepare_codegen_build_baseline!(String.t(), String.t()) :: :ok
+  def prepare_codegen_build_baseline!(cwd, stack) do
     if File.exists?(@codegen_scaffold) do
       System.cmd(@codegen_scaffold, ["integrate", "--stack=#{stack}", "--cwd=#{cwd}"],
         stderr_to_stdout: true
@@ -925,6 +899,47 @@ defmodule CodegenTestHarness.Fixtures do
       {"GIT_COMMITTER_NAME", "harness"},
       {"GIT_COMMITTER_EMAIL", "harness@test"}
     ]
+  end
+
+  defp commit_fixture_baseline!(path, message) do
+    ensure_git_repo!(path)
+
+    {_add_out, 0} =
+      System.cmd("git", ["add", "-A"], cd: path, env: git_env(), stderr_to_stdout: true)
+
+    {status, 0} =
+      System.cmd("git", ["status", "--porcelain"], cd: path, env: [], stderr_to_stdout: true)
+
+    if String.trim(status) != "" do
+      {_commit_out, 0} =
+        System.cmd("git", ["commit", "--allow-empty", "-m", message],
+          cd: path,
+          env: git_env(),
+          stderr_to_stdout: true
+        )
+    end
+
+    :ok
+  end
+
+  defp ensure_git_repo!(path) do
+    unless File.dir?(Path.join(path, ".git")) do
+      {_init_out, 0} = System.cmd("git", ["init"], cd: path, env: [], stderr_to_stdout: true)
+    end
+
+    {_, 0} =
+      System.cmd("git", ["config", "user.name", "harness"], cd: path, stderr_to_stdout: true)
+
+    {_, 0} =
+      System.cmd("git", ["config", "user.email", "harness@test"],
+        cd: path,
+        stderr_to_stdout: true
+      )
+
+    {_, 0} =
+      System.cmd("git", ["config", "commit.gpgsign", "false"], cd: path, stderr_to_stdout: true)
+
+    :ok
   end
 
   defp scaffold_phoenix_app!(parent_path) do

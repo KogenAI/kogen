@@ -13,6 +13,42 @@ defmodule CodegenTestHarness.FixturesTest do
 
   alias CodegenTestHarness.Fixtures
 
+  describe "isolated_tmp_dir/1 phoenix baseline" do
+    @tag :slow
+    @tag timeout: 300_000
+    test "returns a clean generated downstream app before the build cycle starts" do
+      cwd = Fixtures.isolated_tmp_dir(stack: :phoenix)
+
+      {status, 0} =
+        System.cmd("git", ["status", "--porcelain"],
+          cd: cwd,
+          env: [],
+          stderr_to_stdout: true
+        )
+
+      assert status == "",
+             "expected generated phoenix app to be clean before codegen-build, got:\n#{status}"
+    end
+  end
+
+  describe "prepare_codegen_build_baseline!/2" do
+    test "commits static integrate output before the build cycle starts" do
+      cwd = Fixtures.isolated_tmp_dir()
+
+      Fixtures.prepare_codegen_build_baseline!(cwd, "static")
+
+      {status, 0} =
+        System.cmd("git", ["status", "--porcelain"],
+          cd: cwd,
+          env: [],
+          stderr_to_stdout: true
+        )
+
+      assert status == "",
+             "expected static app baseline to be clean before codegen-build, got:\n#{status}"
+    end
+  end
+
   describe "rm_rf_resilient/1 happy path" do
     test "removes a directory tree that is not being contended" do
       path =

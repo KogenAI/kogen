@@ -239,7 +239,7 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
     pitches_dir = Path.join([cwd, "codegen", "pitches", dir_name]) |> Path.expand()
 
     unless File.dir?(pitches_dir) do
-      Mix.shell().info("no pitches in #{pitches_dir}")
+      IO.puts("no pitches in #{pitches_dir}")
       exit(:normal)
     end
 
@@ -494,7 +494,7 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
 
     print_lanes =
       if routable_count < lane_count do
-        Mix.shell().info(
+        IO.puts(
           "#{lane_count} lanes requested; only #{routable_count} routable " <>
             "#{pitch_noun(routable_count)} — printing #{routable_count}"
         )

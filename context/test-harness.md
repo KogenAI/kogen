@@ -109,8 +109,8 @@ race conventions, fixture patterns) — not the loop's own domain contract.
 | `make test-stacks`           | Runs full ExUnit suite across all stacks (`mix test --only slow`; real LLM)                                                 |
 | `make test-stacks-claude`    | Runs ExUnit suite for Claude harness only (`mix test --only slow`)                                                          |
 | `make test-stacks-pi`        | Runs ExUnit suite for Pi harness only (`mix test --only slow`)                                                              |
-| `make test-hermetic`         | Fast, deterministic ExUnit only (`mix test --exclude slow`); no LLM                                                         |
-| `make test`                  | Parallel checks, then serial tail: hooks, `test-hermetic`, rule-render-freshness — no LLM                                    |
+| `make test-hermetic`         | Deterministic ExUnit (`--exclude slow --max-cases ${EXUNIT_MAX_CASES:-24}`); no LLM                                          |
+| `make test`                  | Core-gated: high-core overlaps hooks/hermetic/render in phase 1; low-core keeps serial tail; no LLM                          |
 | `make record-green`          | Stamps `last_green.json` with current commit SHA after clean `test-stacks`                                                  |
 | `make test-harness-parity`   | Runs cross-harness parity suite (`--only harness_parity`, distinct `_build/parity_test`); runs once as `test-stacks` prereq |
 | `make check-green-staleness` | Diagnostic: exits 1 if `last_green.json` is >7 days old; standalone, not a `test`/`test-stacks` prereq                      |
@@ -209,7 +209,7 @@ A fixture can encode the SAME false premise as the prod bug it should catch (sui
 - `last_green.json` is checked in — diff against it to spot regressions before merging
 - Run a single test file: `mix test test/stacks/phoenix_test.exs` from `test_harness/`
 - Async: most stack tests are synchronous (file system I/O)
-- **ExUnit concurrency**: `max_cases` (default `System.schedulers_online() * 2`) governs how many test _modules_ run in parallel; tests within one module run serially regardless of `async: true`. Split fat modules into multiple `defmodule` blocks per file for concurrency. `test_helper.exs` omits `:max_cases` override. Partition infra (`--partitions 4`) was dropped after splitting the static stack tests into 14 modules; single `mix test` per harness scales naturally.
+- **ExUnit concurrency**: `max_cases` governs parallel test modules; tests within one module remain serial. `make test-hermetic` sets `${EXUNIT_MAX_CASES:-24}` because subprocess-heavy cases benefit beyond scheduler count. Split fat modules into `defmodule` siblings. Slow stack targets retain natural ExUnit scheduling.
 
 ## Deterministic Scaffold Testing vs. LLM-Driven Build Testing
 
@@ -224,10 +224,9 @@ A fixture can encode the SAME false premise as the prod bug it should catch (sui
 
 `Fixtures.isolated_tmp_dir/1` creates separate temp directories for each harness test, with stack-specific config:
 
-- `isolated_tmp_dir(stack: :phoenix)` — creates and pre-scaffolds a Phoenix app via `scaffold_phoenix_app!/1` before invoking harness
-- `scaffold_phoenix_app!/1` delegates to `codegen-scaffold create` (not raw `mix phx.new`) — base fixture carries `make ci` toolchain for the loop gate
-- Non-Phoenix stacks pass no `:stack` opt → directory is created empty (no scaffold pre-run)
-- Both phoenix and non-phoenix variants initialize git (`git init` + initial commit) — fixtures are suitable for driving hooks directly via `System.cmd` that read git state or write the gate-result JSON
+- `isolated_tmp_dir(stack: :phoenix)` creates via `codegen-scaffold create`; the generated app is its own clean committed repo even when the temp parent lies under this repo.
+- Non-Phoenix fixtures initialize and commit their own repo.
+- `prepare_codegen_build_baseline!/2` runs deterministic `codegen-scaffold integrate` and commits it before normal and parity `codegen-build` helpers enter the loop. The loop's clean-tree preflight therefore still rejects later source dirt without mistaking scaffold integration for foreign work.
 
 **Gate verdict parity**: Both phoenix and static stacks write the ephemeral gate-result JSON into `codegen/gate-pending/` via the `write_gate_result` shell fn (`gate-result.sh`), called from `LoopGate.run_gate/2` — the sole build engine (no separate interactive-session fallback path or caller exists). Test assertions mirroring the gate-result JSON schema are valid across stacks.
 

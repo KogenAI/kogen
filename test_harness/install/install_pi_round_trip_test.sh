@@ -29,7 +29,61 @@ done
 
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 tmp_home="$(mktemp -d -t ocg-install-XXXXXX)"
-trap 'rm -rf "$tmp_home"' EXIT
+
+# Real-ambient capture (read-only, BEFORE the fixture-owned prefix override
+# below): install.sh's pi leg runs a real `npm install -g` — without
+# redirecting npm_config_prefix, that global install writes into whatever
+# prefix the host ambiently has configured. A fabricated sentinel prefix
+# (an unrelated fresh mktemp dir the override never points at) proves
+# nothing — nothing would ever write there regardless of whether isolation
+# actually works. Capture the REAL ambient npm prefix, its bin dir, the
+# resolved `pi` binary path, and a listing+checksum of that bin dir instead,
+# so the post-round-trip assertion is evidence the ambient install was
+# genuinely untouched.
+ambient_prefix="$(npm config get prefix)"
+ambient_bin="$ambient_prefix/bin"
+ambient_pi="$(command -v pi || true)"
+_resolved_path() {
+    local p="$1"
+    if [ -n "$p" ] && [ -e "$p" ]; then
+        (cd "$(dirname "$p")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$p")")
+    fi
+}
+_ambient_snapshot() {
+    printf 'ambient_prefix=%s\n' "$ambient_prefix"
+    printf 'ambient_bin=%s\n' "$ambient_bin"
+    printf 'ambient_command_v_pi=%s\n' "${ambient_pi:-<none>}"
+    printf 'ambient_resolved_pi=%s\n' "$(_resolved_path "$ambient_pi")"
+    if [ -n "$ambient_pi" ] && [ -L "$ambient_pi" ]; then
+        printf 'ambient_pi_symlink_target=%s\n' "$(readlink "$ambient_pi" 2>/dev/null || true)"
+    else
+        printf 'ambient_pi_symlink_target=<not-symlink>\n'
+    fi
+    { [ -d "$ambient_bin" ] && find "$ambient_bin" -maxdepth 1 -name 'pi' -print 2>/dev/null | sort | sed 's/^/ambient_bin_pi_entry=/'; } || true
+    if [ -n "$ambient_pi" ] && [ -f "$ambient_pi" ]; then
+        printf 'ambient_pi_cksum=%s\n' "$(cksum <"$ambient_pi" 2>/dev/null || true)"
+        printf 'ambient_pi_bytes=%s\n' "$(wc -c <"$ambient_pi" 2>/dev/null | tr -d ' ' || true)"
+    else
+        printf 'ambient_pi_cksum=<none>\n'
+        printf 'ambient_pi_bytes=<none>\n'
+    fi
+}
+ambient_snapshot_before="$(_ambient_snapshot)"
+[ -n "$ambient_snapshot_before" ] || {
+    echo "FAIL: ambient npm/pi snapshot capture was empty" >&2
+    echo "0 passed, 1 failed"
+    exit 1
+}
+
+# Fixture-owned npm prefix: redirect the real `npm install -g` (install.sh's
+# pi leg) into a throwaway prefix instead of the host's ambient global prefix.
+# Prepend (never replace) PATH so real tooling (jq/yq/rg/node/mise) stays
+# resolvable — only `pi` itself resolves from the fixture prefix afterward.
+npm_prefix="$(mktemp -d -t ocg-npm-XXXXXX)"
+export npm_config_prefix="$npm_prefix"
+export PATH="$npm_prefix/bin:$PATH"
+
+trap 'rm -rf "$tmp_home" "$npm_prefix"' EXIT
 
 # Create completion dir + rc files
 mkdir -p "$tmp_home/.zsh/completions"
@@ -81,6 +135,26 @@ if ! "$CODEGEN_DIR/install.sh" --harness=pi </dev/null >"$tmp_home/install.log" 
     fail_lines+=("FAIL: install.sh --harness=pi exited non-zero")
     cat "$tmp_home/install.log" >&2
 fi
+roundtrip_command_v_pi="$(command -v pi || true)"
+roundtrip_resolved_pi="$(_resolved_path "$roundtrip_command_v_pi")"
+roundtrip_pi_result=""
+if [ -n "$roundtrip_command_v_pi" ]; then
+    roundtrip_pi_result="$(pi --help 2>&1 || true)"
+fi
+roundtrip_evidence="$tmp_home/pi-roundtrip-evidence.log"
+{
+    printf 'npm_config_prefix=%s\n' "$npm_config_prefix"
+    printf 'PATH=%s\n' "$PATH"
+    printf 'command_v_pi=%s\n' "${roundtrip_command_v_pi:-<none>}"
+    printf 'resolved_pi=%s\n' "${roundtrip_resolved_pi:-<none>}"
+    printf 'roundtrip_result_first_line=%s\n' "$(printf '%s\n' "$roundtrip_pi_result" | sed -n '1p')"
+    printf '%s\n' 'ambient_before:'
+    printf '%s\n' "$ambient_snapshot_before"
+} >"$roundtrip_evidence"
+assert "same-concurrent-aggregate pi evidence captured" '[ -s "$roundtrip_evidence" ]'
+assert "roundtrip pi resolves from fixture npm prefix" \
+    '[ -n "$roundtrip_command_v_pi" ] && [ "$roundtrip_command_v_pi" = "$npm_prefix/bin/pi" ]'
+assert "roundtrip pi command produced non-empty output" '[ -n "$roundtrip_pi_result" ]'
 
 apps_diff_after="$(cd "$CODEGEN_DIR" && git diff --binary --full-index HEAD -- shared/apps)"
 assert "install.sh does not mutate tracked shared/apps/ bytes" \
@@ -148,6 +222,21 @@ assert "pi agents .md files removed after uninstall" \
 # rc file cleanup
 assert "bash_completion.sh source removed from .bashrc" \
     '! grep -q "bash_completion.sh" "$tmp_home/.bashrc" 2>/dev/null'
+
+# Ambient npm prefix isolation: the round trip's global `npm install -g` must
+# land only in the fixture-owned npm_prefix, never in the REAL ambient
+# prefix captured before the override. Re-derive the same snapshot function
+# body (ambient_prefix/ambient_bin/ambient_pi are unchanged — only the
+# fixture-owned npm_config_prefix/PATH were exported, never the ambient
+# ones) and assert byte-for-byte equality with the pre-round-trip capture.
+ambient_snapshot_after="$(_ambient_snapshot)"
+assert "real ambient npm prefix pi state unchanged by round trip" \
+    '[ "$ambient_snapshot_before" = "$ambient_snapshot_after" ]'
+{
+    printf '%s\n' 'ambient_after:'
+    printf '%s\n' "$ambient_snapshot_after"
+    printf 'ambient_unchanged=%s\n' "$([ "$ambient_snapshot_before" = "$ambient_snapshot_after" ] && printf yes || printf no)"
+} >>"$roundtrip_evidence"
 
 # Footer
 echo "$passed passed, $failed failed"

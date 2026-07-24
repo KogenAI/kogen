@@ -52,6 +52,19 @@ _assert_contains() {
     fi
 }
 
+_assert_not_contains() {
+    local label="$1"
+    local needle="$2"
+    local haystack="$3"
+    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+        fail=$((fail + 1))
+        echo "FAIL: $label"
+        echo "  did not expect to find: $needle"
+    else
+        pass=$((pass + 1))
+    fi
+}
+
 _assert_true() {
     local label="$1"
     local cond="$2" # "0" for true, non-"0" for false
@@ -169,39 +182,84 @@ else
     pass=$((pass + 1))
 fi
 
-# ── Case 8: run-tests.sh still propagates the xargs pipeline stage status ────
-# Guards against a future edit shifting PIPESTATUS index away from xargs.
-if grep -n '_xargs_rc=\${PIPESTATUS\[1\]}' "$HOOK_RUNNER" >/dev/null 2>&1; then
-    _assert_true "run-tests.sh reads PIPESTATUS[1] for xargs exit status" 0
+# ── Case 8: run-tests.sh still propagates xargs's own exit status ───────────
+# Discovery is captured to a NUL-delimited temp file (not piped directly into
+# xargs) so an empty-discovery guard can run first — bash `$()` command
+# substitution cannot hold embedded NUL bytes, so the guard needs a real file
+# to test non-emptiness against. xargs is then fed via `<` redirect (not a
+# pipe), so its own $? is read directly — no PIPESTATUS indexing needed.
+if grep -qE '_xargs_rc=\$\?' "$HOOK_RUNNER"; then
+    _assert_true "run-tests.sh reads xargs's own exit status (\$?)" 0
 else
-    _assert_true "run-tests.sh reads PIPESTATUS[1] for xargs exit status" 1
+    _assert_true "run-tests.sh reads xargs's own exit status (\$?)" 1
 fi
-if grep -qE '^\s*xargs ' "$HOOK_RUNNER"; then
-    _assert_true "run-tests.sh's discovery pipeline pipes directly into xargs (2-stage)" 0
+if grep -qE '^\s*xargs .*<"\$_hook_tests_file"' "$HOOK_RUNNER"; then
+    _assert_true "run-tests.sh feeds xargs from the NUL-delimited discovery file" 0
 else
-    _assert_true "run-tests.sh's discovery pipeline pipes directly into xargs (2-stage)" 1
+    _assert_true "run-tests.sh feeds xargs from the NUL-delimited discovery file" 1
+fi
+if grep -qE '^\s*if \[ ! -s "\$_hook_tests_file" \]; then$' "$HOOK_RUNNER"; then
+    _assert_true "run-tests.sh guards empty discovery before invoking xargs" 0
+else
+    _assert_true "run-tests.sh guards empty discovery before invoking xargs" 1
 fi
 
-# ── Case 9: phase membership — tail labels are NOT declared in phase 1 ───────
-# Phase 1 is everything between the "Phase 1" marker and the "Phase 2" marker;
-# phase 2 is everything after the "Phase 2" marker. Each of the three tail
-# labels must appear as a `labels+=(...)` ONLY in the phase-2 region.
+# ── Case 8b: gate-pending snapshot is NUL-safe and empty-safe ───────────────
+# Snapshot discovery cannot pipe directly into xargs: BSD/macOS xargs invokes
+# the command once on empty stdin, producing bogus stderr and a fake $0. Keep
+# parity with the hook-test discovery runner: capture NUL paths to a temp file,
+# guard with -s, then loop one path → one hash.
+snapshot_body=$(sed -n '/^_gate_pending_snapshot()/,/^}/p' "$HOOK_RUNNER")
+_assert_not_contains "run-tests.sh gate-pending snapshot does not use xargs" "xargs" "$snapshot_body"
+_assert_contains "run-tests.sh gate-pending snapshot uses a NUL-delimited temp file" '_gate_pending_paths_file=$(mktemp)' "$snapshot_body"
+_assert_contains "run-tests.sh gate-pending snapshot guards empty discovery" 'if [ -s "$_gate_pending_paths_file" ]; then' "$snapshot_body"
+_assert_contains "run-tests.sh gate-pending snapshot hashes each NUL path in a loop" "read -r -d '' _gate_pending_path" "$snapshot_body"
+_assert_contains "run-tests.sh gate-pending snapshot ignores invocation sentinels" "! -name 'codegen-invocation.*'" "$snapshot_body"
+_assert_not_contains "run-tests.sh gate-pending snapshot still checks durable files" "! -name 'gate-result.json'" "$snapshot_body"
+
+# ── Case 9: phase membership — tail labels declared in exactly one branch ────
+# Phase 1 is everything between the "Phase 1" marker and the "Phase 2" marker
+# (this now INCLUDES the core-gated overlap block, which conditionally
+# backgrounds the 3 tail populations into phase 1's own pid/labels/tmps
+# arrays); phase 2 is everything after the "Phase 2" marker (the serial
+# fallback, gated on TAIL_OVERLAP != 1). Each of the three tail labels must
+# appear as a `labels+=(...)` in BOTH regions — once inside phase 1's
+# `if [ "$TAIL_OVERLAP" = "1" ]` overlap block, and once inside phase 2's
+# `if [ "$TAIL_OVERLAP" != "1" ]` serial block — since exactly one of the two
+# conditionals fires at runtime, never both, never neither.
 phase1_block=$(awk '/# ── Phase 1:/{p=1} /# ── Phase 2:/{p=0} p' "$RUN_ALL")
 phase2_block=$(awk '/# ── Phase 2:/{p=1} p' "$RUN_ALL")
 for tail_label in hooks test-hermetic rule-render-freshness; do
     if printf '%s\n' "$phase1_block" | grep -qE "labels\+=\(${tail_label}\)"; then
-        fail=$((fail + 1))
-        echo "FAIL: phase membership — '$tail_label' unexpectedly declared in phase 1"
-    else
         pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        echo "FAIL: phase membership — '$tail_label' not declared in phase 1's overlap block"
     fi
     if printf '%s\n' "$phase2_block" | grep -qE "labels\+=\(${tail_label}\)"; then
         pass=$((pass + 1))
     else
         fail=$((fail + 1))
-        echo "FAIL: phase membership — '$tail_label' not declared in phase 2"
+        echo "FAIL: phase membership — '$tail_label' not declared in phase 2's serial block"
     fi
 done
+
+# ── Case 9b: the phase-1 overlap declaration is actually gated on
+# TAIL_OVERLAP, and the phase-2 serial declaration is gated on its negation —
+# guards against the two blocks accidentally both running unconditionally
+# (which would double-run the 3 tail populations every time).
+if printf '%s\n' "$phase1_block" | grep -qE 'if \[ "\$TAIL_OVERLAP" = "1" \]; then'; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: phase 1 overlap block is not gated on TAIL_OVERLAP=1"
+fi
+if printf '%s\n' "$phase2_block" | grep -qE 'if \[ "\$TAIL_OVERLAP" != "1" \]; then'; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: phase 2 serial block is not gated on TAIL_OVERLAP != 1"
+fi
 
 # ── Case 10: tail continuation — an early tail failure does not skip later ───
 # tail populations. Reproduce the exact if/fail/labels pattern run-all-tests.sh
@@ -405,6 +463,281 @@ else
     echo "FAIL: untracked-path fixture: pre-existing unchanged untracked file wrongly flagged"
 fi
 rm -f "$FIXTURE_REPO/pre-existing-scratch.txt"
+
+# ── Case 16: overlap threshold validates fail-loud, never falls open ────────
+# Source-structure assertion (mirrors Case 13's snapshot-guard style): assert
+# BOTH TAIL_OVERLAP_MIN_CORES and the detected core count are range-validated
+# (1..1024, non-numeric rejected) BEFORE the `-ge` comparison is made, and
+# that a validation failure is an immediate `exit 1` — never a silent
+# fall-through to either branch. This is the exact defect the first build's
+# reviewer caught: an unchecked `[ "$cores" -ge "$MIN" ]` can error-to-false
+# on garbage input and silently pick the serial branch.
+if grep -qE '_validate_positive_int_1_1024' "$RUN_ALL"; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: run-all-tests.sh has no range-validation helper for the overlap threshold"
+fi
+if grep -qE '_validate_positive_int_1_1024 "TAIL_OVERLAP_MIN_CORES"' "$RUN_ALL"; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: TAIL_OVERLAP_MIN_CORES is not passed through the range-validation helper"
+fi
+if grep -qE '_validate_positive_int_1_1024 "detected core count"' "$RUN_ALL"; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: detected core count is not passed through the range-validation helper"
+fi
+# The validation calls must appear TEXTUALLY BEFORE the `-ge` branch decision.
+validate_line=$(grep -n '_validate_positive_int_1_1024 "detected core count"' "$RUN_ALL" | head -1 | cut -d: -f1)
+branch_line=$(grep -n 'if \[ "\$cores" -ge "\$TAIL_OVERLAP_MIN_CORES" \]; then' "$RUN_ALL" | head -1 | cut -d: -f1)
+if [ -n "$validate_line" ] && [ -n "$branch_line" ] && [ "$validate_line" -lt "$branch_line" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+    echo "FAIL: core-count validation does not run before the TAIL_OVERLAP branch decision"
+fi
+# Exercise the actual validation function in isolation (source only the
+# function body via a subshell — never invoke the full suite here).
+_extract_validator() {
+    awk '/^_validate_positive_int_1_1024\(\)/{p=1} p{print} p && /^}/{exit}' "$RUN_ALL"
+}
+validator_src=$(_extract_validator)
+if [ -z "$validator_src" ]; then
+    fail=$((fail + 1))
+    echo "FAIL: could not extract _validate_positive_int_1_1024 from run-all-tests.sh"
+else
+    # Garbage (non-numeric) input must exit 1 with a named stderr message.
+    rc_garbage=0
+    out_garbage=$(bash -c "$validator_src"$'\n''_validate_positive_int_1_1024 "TAIL_OVERLAP_MIN_CORES" "abc"' 2>&1) || rc_garbage=$?
+    _assert_true "garbage TAIL_OVERLAP_MIN_CORES exits non-zero" "$([ "$rc_garbage" -ne 0 ]; echo $?)"
+    _assert_contains "garbage TAIL_OVERLAP_MIN_CORES names the problem" "TAIL_OVERLAP_MIN_CORES" "$out_garbage"
+
+    # Empty input must exit 1.
+    rc_empty=0
+    bash -c "$validator_src"$'\n''_validate_positive_int_1_1024 "detected core count" ""' >/dev/null 2>&1 || rc_empty=$?
+    _assert_true "empty core-count probe exits non-zero" "$([ "$rc_empty" -ne 0 ]; echo $?)"
+
+    # Oversized (out-of-range) input must exit 1.
+    rc_oversized=0
+    bash -c "$validator_src"$'\n''_validate_positive_int_1_1024 "TAIL_OVERLAP_MIN_CORES" "99999"' >/dev/null 2>&1 || rc_oversized=$?
+    _assert_true "oversized TAIL_OVERLAP_MIN_CORES (99999) exits non-zero" "$([ "$rc_oversized" -ne 0 ]; echo $?)"
+
+    # A valid in-range value must NOT exit non-zero (no false-positive reject).
+    rc_valid=0
+    bash -c "$validator_src"$'\n''_validate_positive_int_1_1024 "TAIL_OVERLAP_MIN_CORES" "6"' >/dev/null 2>&1 || rc_valid=$?
+    _assert_true "valid TAIL_OVERLAP_MIN_CORES (6) does not exit non-zero" "$rc_valid"
+fi
+
+# ── Case 17: full-population harness-parity remains one P8 pool ─────────────
+harness_parity_recipe=$(awk '/^harness-parity:/{p=1;next} p{if ($0 !~ /^\t/){exit} print}' "$MAKEFILE")
+_assert_contains "harness-parity uses NUL-delimited xargs P8" "xargs -0 -n1 -P8" "$harness_parity_recipe"
+_assert_contains "harness-parity guards empty input before xargs" '[ ! -s "$$t_in" ]' "$harness_parity_recipe"
+_assert_contains "harness-parity propagates xargs infrastructure rc" "xargs_rc" "$harness_parity_recipe"
+_assert_not_contains "harness-parity has no serial-only partition" "HARNESS_PARITY_SERIAL_ONLY" "$(cat "$MAKEFILE")"
+_assert_not_contains "run-all-tests has no timing-sensitive barrier target" "harness-parity-timing-sensitive" "$(cat "$RUN_ALL")"
+
+declared_hardcoded=$(printf '%s\n' "$harness_parity_recipe" | grep -oE '"\$\(SCRIPT_DIR\)/[A-Za-z0-9_./-]+_test\.sh"' | tr -d '"' | xargs -n1 basename 2>/dev/null | sort -u)
+shared_glob_files=$(cd "$REPO_ROOT" && for f in harnesses/shared/*_test.sh; do [ -e "$f" ] && basename "$f"; done | sort -u)
+full_population=$(printf '%s\n%s\n' "$declared_hardcoded" "$shared_glob_files" | sed '/^$/d' | sort -u)
+full_raw_count=$(printf '%s\n%s\n' "$declared_hardcoded" "$shared_glob_files" | sed '/^$/d' | wc -l | tr -d ' ')
+full_unique_count=$(printf '%s\n' "$full_population" | wc -l | tr -d ' ')
+_assert_eq "harness-parity full population has no duplicate basename ownership" "$full_unique_count" "$full_raw_count"
+_assert_contains "harness-parity full population includes loop-signal-bridge_test.sh" "loop-signal-bridge_test.sh" "$full_population"
+_assert_contains "harness-parity full population includes pitch-postflight_test.sh" "pitch-postflight_test.sh" "$full_population"
+
+# ── Case 18: real scheduler executes full parity population exactly once ────
+_case18_build_fixture() {
+    local fixture="$1" order_log="$2"
+    local active_dir="$3" parity_full_file="$4"
+    mkdir -p "$fixture/templates/generator" "$fixture/bin" "$active_dir"
+    cp "$RUN_ALL" "$fixture/templates/generator/run-all-tests.sh"
+    chmod +x "$fixture/templates/generator/run-all-tests.sh"
+
+    # Stub the three ./<path>/run-tests.sh-style direct invocations
+    # run-all-tests.sh calls with a relative path (not through `make`). Each
+    # records the SAME label run-all-tests.sh itself uses for that stage
+    # (scaffold-phoenix / install / hooks) — not bare basename, since all
+    # three scripts are literally named run-tests.sh and basename alone would
+    # collide into one indistinguishable marker.
+    mkdir -p "$fixture/shared/scaffold/phoenix" "$fixture/test_harness/install" "$fixture/harnesses/claude/hooks"
+    # Portable parallel-array mapping (bash 3.2 on macOS has no associative
+    # arrays) — index-aligned rel path -> marker name.
+    _rel_paths=(shared/scaffold/phoenix/run-tests.sh test_harness/install/run-tests.sh harnesses/claude/hooks/run-tests.sh)
+    _rel_labels=(scaffold-phoenix install hooks)
+    for _i in "${!_rel_paths[@]}"; do
+        rel="${_rel_paths[$_i]}"
+        marker_name="${_rel_labels[$_i]}"
+        cat >"$fixture/$rel" <<EOF
+#!/usr/bin/env bash
+"$fixture/bin/_order_log_marker.sh" "$marker_name"
+exit 0
+EOF
+        chmod +x "$fixture/$rel"
+    done
+
+    # Shared order-log marker helper: mkdir-based spinlock (portable — no
+    # flock on macOS/BSD) so concurrent stub invocations never interleave a
+    # partial line into the shared order log. mkdir is atomic on POSIX
+    # filesystems. The order log lives OUTSIDE the fixture git repo entirely
+    # (a sibling path, never `git add`-ed) — placing it inside the repo would
+    # make the real script's own tracked-tree isolation backstop correctly
+    # flag every marker write as a suite-caused mutation, failing the run for
+    # a reason that has nothing to do with the scheduling behavior under test.
+    cat >"$fixture/bin/_order_log_marker.sh" <<EOF
+#!/usr/bin/env bash
+order_log="$order_log"
+active_dir="$active_dir"
+label="\$1"
+marker_pid="\$\$"
+own_active="\$active_dir/\$label.\$marker_pid"
+lockdir="\$order_log.lockdir"
+seq_file="\$order_log.seq"
+while ! mkdir "\$lockdir" 2>/dev/null; do
+    sleep 0.01
+done
+seq=0
+[ -f "\$seq_file" ] && seq=\$(sed -n '1p' "\$seq_file")
+seq=\$((seq + 1))
+printf '%s\n' "\$seq" >"\$seq_file"
+active_before=\$(find "\$active_dir" -maxdepth 1 -type f -print 2>/dev/null | wc -l | tr -d ' ')
+active_names=\$(find "\$active_dir" -maxdepth 1 -type f -exec basename {} \\; 2>/dev/null | sort | tr '\n' ',' | sed 's/,\$//')
+printf '%s %s %s %s %s\n' "\$seq" "\$label" "\$marker_pid" "\$active_before" "\${active_names:-none}" >>"\$order_log"
+printf '%s\n' "\$label" >"\$own_active"
+rmdir "\$lockdir"
+case "\$label" in
+    parity:*) ;;
+    *) sleep 0.2 ;;
+esac
+rm -f "\$own_active"
+EOF
+    chmod +x "$fixture/bin/_order_log_marker.sh"
+
+    # `make` recorder stub on PATH: records the target name and, for
+    # harness-parity, records every real parity basename owned by the single
+    # production P8 aggregate.
+    cat >"$fixture/bin/make" <<EOF
+#!/usr/bin/env bash
+target=""
+for a in "\$@"; do
+    case "\$a" in
+        --no-print-directory) ;;
+        *) target="\$a" ;;
+    esac
+done
+"$fixture/bin/_order_log_marker.sh" "\$target"
+case "\$target" in
+    harness-parity)
+        while IFS= read -r name; do
+            [ -n "\$name" ] || continue
+            "$fixture/bin/_order_log_marker.sh" "parity:\$name"
+        done <"$parity_full_file"
+        ;;
+esac
+exit 0
+EOF
+    chmod +x "$fixture/bin/make"
+
+    : >"$order_log"
+
+    # Throwaway git-init'd repo so the real git diff/status backstop calls in
+    # run-all-tests.sh succeed (never stubbed — exercises the real code
+    # path). The order log is NOT part of this tree (see above), so the
+    # fixture repo stays byte-identical across the run and the real
+    # tracked/untracked-tree isolation backstop legitimately passes.
+    (
+        cd "$fixture" &&
+            git init -q &&
+            git config user.email "case19@example.com" &&
+            git config user.name "case19" &&
+            git add -A &&
+            git commit -q -m "case19 fixture baseline"
+    ) >/dev/null 2>&1
+}
+
+_run_case18_branch() {
+    local branch_label="$1" tail_overlap_min_cores="$2"
+    local fixture="$TMP/case18-fixture-$branch_label"
+    local order_log="$TMP/case18-order-$branch_label.log"
+    local active_dir="$TMP/case18-active-$branch_label"
+    local parity_full_file="$TMP/case18-parity-full-$branch_label.txt"
+    rm -rf "$fixture"
+    mkdir -p "$fixture"
+
+    printf '%s\n' "$full_population" | sed '/^$/d' | sort >"$parity_full_file"
+
+    _case18_build_fixture "$fixture" "$order_log" "$active_dir" "$parity_full_file"
+
+    local run_out
+    run_out=$(cd "$fixture" && PATH="$fixture/bin:$PATH" TAIL_OVERLAP_MIN_CORES="$tail_overlap_min_cores" bash templates/generator/run-all-tests.sh 2>&1)
+    local run_rc=$?
+
+    _assert_true "case18 [$branch_label]: real run-all-tests.sh exits 0 against the hermetic fixture" "$run_rc"
+    _assert_contains "case18 [$branch_label]: real run-all-tests.sh reports ALL CLEAR" "ALL CLEAR" "$run_out"
+
+    # Expected population: every phase-1 label the real script backgrounds,
+    # plus the tail pool (hooks/test-hermetic/rule-render-freshness), which
+    # runs in phase 1 on overlap and after phase 1 on forced serial.
+    local expected_names=(scaffold-phoenix install hook-parity hook-header-parity harness-parity test-generator enforce-registry-parity enforce-hook-rationale prompt-content-parity tools-header-no-dup usage-rules-index-parity prompt-size-budget pitch-scope-parity hooks test-hermetic rule-render-freshness)
+
+    # Assertion 1: every expected name appears EXACTLY ONCE in the real
+    # script's own recorded order log (no dup, no omission) — derived from
+    # the real scheduler's actual calls, not a hand-modeled list.
+    local missing=0 dup=0
+    for name in "${expected_names[@]}"; do
+        local cnt
+        cnt=$(awk -v n="$name" '$2==n' "$order_log" | grep -c . || true)
+        if [ "$cnt" -eq 0 ]; then
+            missing=1
+            echo "  case18 [$branch_label]: expected population never recorded: $name"
+        elif [ "$cnt" -gt 1 ]; then
+            dup=1
+            echo "  case18 [$branch_label]: population recorded more than once: $name ($cnt times)"
+        fi
+    done
+    _assert_true "case18 [$branch_label]: every expected population recorded (no omission, from real scheduler)" "$missing"
+    _assert_true "case18 [$branch_label]: no expected population recorded more than once (no dup, from real scheduler)" "$dup"
+
+    # Assertion 1b: every REAL harness-parity basename (raw and unique) is
+    # owned exactly once by the real scheduler's public harness-parity target.
+    local parity_log_file="$TMP/case18-parity-log-$branch_label.txt"
+    awk '$2 ~ /^parity:/ { sub(/^parity:/, "", $2); print $2 }' "$order_log" | sort >"$parity_log_file"
+    local parity_raw_count parity_unique_count parity_expected_count
+    parity_raw_count=$(wc -l <"$parity_log_file" | tr -d ' ')
+    parity_unique_count=$(sort -u "$parity_log_file" | wc -l | tr -d ' ')
+    parity_expected_count=$(wc -l <"$parity_full_file" | tr -d ' ')
+    _assert_eq "case18 [$branch_label]: raw real parity basename count matches the full population" "$parity_expected_count" "$parity_raw_count"
+    _assert_eq "case18 [$branch_label]: unique real parity basename count matches the full population" "$parity_expected_count" "$parity_unique_count"
+    _assert_eq "case18 [$branch_label]: real parity basename set equals the full population" "$(cat "$parity_full_file")" "$(sort -u "$parity_log_file")"
+
+    local harness_ts
+    harness_ts=$(awk '$2=="harness-parity"{print $1}' "$order_log")
+    local tail_pool=(hooks test-hermetic rule-render-freshness)
+    local placement_bad=0
+    for name in "${tail_pool[@]}"; do
+        local name_ts
+        name_ts=$(awk -v n="$name" '$2==n{print $1}' "$order_log")
+        if [ -z "$name_ts" ] || [ -z "$harness_ts" ]; then
+            placement_bad=1
+            continue
+        fi
+        if [ "$branch_label" = "overlap" ]; then
+            [ "$name_ts" -gt 0 ] || placement_bad=1
+        else
+            [ "$name_ts" -gt "$harness_ts" ] || placement_bad=1
+        fi
+    done
+    _assert_true "case18 [$branch_label]: tail pool placement matches forced branch" "$placement_bad"
+
+    local max_active
+    max_active=$(awk 'BEGIN{m=0} $4 ~ /^[0-9]+$/ && $4>m {m=$4} END{print m}' "$order_log")
+    _assert_true "case18 [$branch_label]: hermetic active markers observed concurrent scheduler stress" "$([ "${max_active:-0}" -gt 0 ]; echo $?)"
+}
+
+_run_case18_branch "overlap" "1"
+_run_case18_branch "serial" "1024"
 
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
