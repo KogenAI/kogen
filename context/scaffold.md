@@ -84,7 +84,7 @@ The `--no-ecto` post-render strip (`scaffold.sh` lines 187-201) must NOT remove 
 
 ## Static Stack — Vite Scaffold
 
-**Vanilla Vite by default**: The static stack scaffold emits a minimal Vite project without any framework. Framework opt-in (React/Vue/Svelte) is added only when the planner explicitly calls for it (documented in `shared/recipes/static-vite-scaffold.md` as an add-on). Scaffold logic is deterministic: files written directly via `cat >` / `printf` (never `npm create vite` — interactive hang). Output must be prettier-clean (2-space JSON indent, LF line endings) to pass `npm run build && npx prettier --check .` in the downstream `make ci` gate.
+**Vanilla Vite by default**: The static stack scaffold emits a minimal Vite project without any framework. Framework opt-in (React/Vue/Svelte) is added only when the pitch explicitly calls for it (documented in `shared/recipes/static-vite-scaffold.md` as an add-on). Scaffold logic is deterministic: files written directly via `cat >` / `printf` (never `npm create vite` — interactive hang). Output must be prettier-clean (2-space JSON indent, LF line endings) to pass `npm run build && npx prettier --check .` in the downstream `make ci` gate.
 
 **Key files and config**:
 
@@ -132,7 +132,7 @@ When extending scaffold injection (e.g., adding new recipe lines to a Makefile t
 | Phase | Agent           | Role                                                                 |
 | ----- | --------------- | -------------------------------------------------------------------- |
 | 0     | Orchestrator    | Session start, context load                                          |
-| 1     | Planner         | Planning and slicing                                                 |
+| 1     | Loop            | Declares scope — writes `ev:files_to_touch` and the `## Declared Scope` block from the pitch's `scope:` frontmatter |
 | 2     | Developer       | Implementation                                                       |
 | 3     | Reviewer        | Code review and approval                                             |
 | 3.5   | Context-curator | Updates context files post-reviewer; provides backstop before commit |
@@ -152,6 +152,8 @@ When extending scaffold injection (e.g., adding new recipe lines to a Makefile t
 Both accept `--stack=<phoenix|static>` and `--cwd=<dir>`. `create` requires `--slug=<name>` and version pins; `integrate` auto-derives `--slug` from `--cwd` basename if not provided. Version pins (`--elixir-version`, `--node-version`, `--otp-version`) are stored in `codegen-scaffold` itself as single source of truth — not duplicated in mutation scripts.
 
 The `create` path uses **transactional temp-parent + trap**: all mutations run in a temp sibling dir; if any fails, cleanup is automatic; on success, move is atomic into final position. See `codegen/rules/_core/bash-discipline.md` § Transactional Multi-Step File Creation.
+
+**`.claude/gate-config.sh` is planted for BOTH stacks, by `run_integrate_stage`, write-once.** `gate-select.sh` has no stack-guessing fallback — an app with no `GATE_COMMAND` and no per-cycle gate selection resolves `__GATE_UNRESOLVED__` and the loop raises. `create` renders a richer per-stack config (dev port, app slug) from `shared/scaffold/<stack>/templates/.claude/gate-config.sh.eex` BEFORE the integrate stage runs, so the write-once guard leaves it alone; `integrate` has no template step at all, so the integrate-stage floor (`GATE_STACK=<stack>`, `GATE_COMMAND="make ci"`) is the only config an integrated app ever gets. The write was once wrapped in `[[ "$STACK" == "static" ]]` on the assumption that Phoenix always renders its own — true for `create`, false for `integrate`, so integrated Phoenix apps got nothing and died at the gate. Do not re-narrow it to one stack. Covered by `shared/scaffold/static/scaffold_test.sh` cases (f4) static and (ak)/(al)/(am) phoenix.
 
 ### Git Ownership & Rendering Order (codegen 0.6+)
 

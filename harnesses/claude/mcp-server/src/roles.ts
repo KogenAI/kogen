@@ -1,7 +1,7 @@
-// roles.ts — single source of truth for the 9 concrete cycle roles and their
+// roles.ts — single source of truth for the 7 concrete cycle roles and their
 // per-role codegen-log kind grants + reader grants. Mirrors what each role is
-// taught in shared/rules/_core/session-log.md:37 (planner authors plan/
-// plan_gate/files_to_touch; developer authors files_modified) and the
+// taught in shared/rules/_core/session-log.md:37 (the loop authors
+// files_to_touch; developer authors files_modified) and the
 // reviewer's sanctioned gate-result.json .verdict read (shared/rules/roles/reviewer.md).
 //
 // This is the ONE place role-baking is decided — src/tools.ts generates
@@ -14,8 +14,6 @@ export type MarkerKind =
   | "no_learning"
   | "died"
   | "verdict"
-  | "plan"
-  | "plan_gate"
   | "files_to_touch"
   | "files_modified";
 
@@ -32,16 +30,6 @@ export interface RoleSpec {
 // those are universal (session-log.md:34-35). extraKinds adds the
 // role-specific typed markers. readers grants gate_status/log_read.
 export const ROLES: RoleSpec[] = [
-  {
-    role: "planner-phoenix",
-    extraKinds: ["plan", "plan_gate", "files_to_touch"],
-    readers: false,
-  },
-  {
-    role: "planner-static",
-    extraKinds: ["plan", "plan_gate", "files_to_touch"],
-    readers: false,
-  },
   {
     role: "developer-phoenix-backend",
     extraKinds: ["files_modified"],

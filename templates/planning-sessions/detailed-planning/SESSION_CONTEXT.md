@@ -46,7 +46,7 @@ For Monorepo or Phoenix/Elixir:
 
 ```
 Read file: ./codegen/rules/stacks/phoenix/_core.md
-Read file: ./codegen/rules/stacks/phoenix/planner.md
+Read file: ./codegen/rules/stacks/phoenix/developer.md
 ```
 
 LiveView UI patterns live in `phoenix/_core.md`.
@@ -66,7 +66,7 @@ Before saying "ready for feature description":
 
 Example correct response:
 
-> "Loaded: `./codegen/rules/planning.md`, `./codegen/rules/planning/detailed.md`, `./codegen/rules/INDEX.md`, `./codegen/rules/stacks/phoenix/_core.md`, `./codegen/rules/stacks/phoenix/planner.md`
+> "Loaded: `./codegen/rules/planning.md`, `./codegen/rules/planning/detailed.md`, `./codegen/rules/INDEX.md`, `./codegen/rules/stacks/phoenix/_core.md`, `./codegen/rules/stacks/phoenix/developer.md`
 >
 > Project type: Phoenix/Elixir (lib/ and mix.exs at root)
 >

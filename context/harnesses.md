@@ -151,7 +151,7 @@ For harness install contract details (agents_dir, hooks_dir, modes, launchers), 
 
 **`--agents` flag — size ceiling**: Passing the full custom-agent set via `--agents <json>` does NOT work — a single argv string is capped at `MAX_ARG_STRLEN` (~128 KB on Linux), and a full `--agents` blob overruns it (confirmed failed on a server). Subagent _availability_ is gated by `operator-subagent-allowlist.sh` PreToolUse hook instead. (Agent-file prompt-prefix caching is separate — see `context/claude-token-mechanics.md`.)
 
-**Consequence**: Planner discovery of uncommitted config.yaml changes (in working tree, not yet staged) must be verified against the actual working tree file — not trusted from pitch state alone.
+**Consequence**: a claim about uncommitted config.yaml changes (in working tree, not yet staged) must be verified against the actual working tree file — not trusted from pitch state alone.
 
 ## Settings Overlay via `--settings` Flag
 
@@ -271,11 +271,7 @@ Models decompose multi-step instructions (Edit → Agent) into pick-one alternat
 
 ## Platform Repo Makefile Targets
 
-The platform (codegen) repo uses `make test` as the gate command, NOT `make ci` (no ci target). Downstream app repos (Phoenix/static) may differ — always verify the Makefile target exists before specifying gate commands in a `## Plan` gate-json block. The `gate_select_read_planner_json` hook reads gate commands ONLY from the `## Plan` section (awk exits on next `## ` header); gate-json in developer/reviewer sections is invisible to the gate hook.
-
-## Gate-JSON Section Visibility
-
-The gate-selection hook (`harnesses/claude/hooks/lib/gate-select.sh`) reads ```gate-json blocks from the `## Plan`section ONLY. A gate-json block appearing in any other section (e.g.,`## developer-phoenix-backend Section`) is not parsed and the gate command is never triggered. Always place gate-json inside `## Plan` above any sibling H2 headings (`## Slices`, etc.). If gate-json is moved or edited in a non-Plan section during development, the gate hook will fail to find it and fall back to prose-based `**Gate**:`fallback (less reliable). Verify gate-json is in`## Plan` before closing the planning phase.
+The platform (codegen) repo uses `make test` as the gate command, NOT `make ci` (no ci target). Downstream app repos (Phoenix/static) may differ — always verify the Makefile target exists before declaring it as `GATE_COMMAND`. The gate is a per-PROJECT operator declaration in `<project>/.claude/gate-config.sh`, read verbatim by `gate-select.sh`; no role's output can set or override it, and a missing/empty `GATE_COMMAND` yields the fail-loud `__GATE_UNRESOLVED__` sentinel rather than a guessed default.
 
 ## Launcher `.sh` Files: Runtime Scripts vs Baked Prompts
 

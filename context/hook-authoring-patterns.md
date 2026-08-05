@@ -231,7 +231,7 @@ Multiple hooks on the same event → **first-deny-wins**: pipe the same input th
 
 **Pattern** (from `mode-matrix_test.sh`): parse `settings.json` via jq to enumerate registered hooks dynamically; strip `$HOME/.claude/hooks/` prefix to locate repo-source hooks; build test payload via `jq -n`; invoke each hook as real subprocess with controlled env; assert with `assert_eq`. Use mktemp dirs per test; absolute paths in JSONL Write entries. Do NOT mock hook internals — real subprocess invocation catches cross-hook interaction bugs.
 
-**One hook = one concern.** Universal hooks (no-cat-pipe, pre-commit) fire every role; role-specific (debug-bash-safety, planner-guard) gate role boundaries only. ❌ mix universal+role checks in one file ✅ separate files/registrations.
+**One hook = one concern.** Universal hooks (no-cat-pipe, pre-commit) fire every role; role-specific (debug-bash-safety, reviewer-guard) gate role boundaries only. ❌ mix universal+role checks in one file ✅ separate files/registrations.
 
 **Measurement vs enforcement**: two hooks coexist on same event/matcher without ordering deps IF upstream MEASURES (appends verdict, never blocks) and downstream ENFORCES (reads measurement, blocks at threshold) — e.g. `static-site-build-check.sh` measures; downstream reader enforces. Distinct per-blocker counter files avoid clobbering. Under the Elixir loop, gate measurement+retry-cap are both owned by `LoopGate.run_gate`/`OrchestrationLoop.invoke_with_retry`, not cooperating hooks.
 
@@ -339,17 +339,15 @@ Orchestrator reads verdict before deciding next delegation.
 - **Path**: Always in `codegen/gate-pending/` subdirectory, not at `codegen/` root. Hooks that read gate result must use `$project_dir/codegen/gate-pending/gate-result.json`
 - Fields: `gate`, `mode`, `verdict` (clear|failed|inconclusive), `exit_code`, `execution_evidence`, `expected_segments`, `render_verdict`, `classification`, `started_at`, `ended_at`, `session_id`, `log`, `runner_found`
 
-**Gate JSON block format** (new — `gate-select.sh` parses gate-json fence in `## Plan`):
+**Gate declaration** (`<project>/.claude/gate-config.sh`, sourced by `gate-select.sh`):
 
-```gate-json
-{
-  "command": "make ci",
-  "mode": "short",
-  "timeout": 900
-}
+```sh
+GATE_COMMAND="make ci"   # REQUIRED — exact gate command for this app
+GATE_MODE="short"        # OPTIONAL — short|long; else derived by gate_mode_for
+GATE_TIMEOUT=900          # OPTIONAL — seconds; else derived by gate_timeout_for
 ```
 
-Gate-json block scoping: block is parsed ONLY when it immediately follows the `**Gate**:` line (up to one blank line); example/documentation blocks elsewhere in the plan body are ignored. This prevents format documentation from being misidentified as the authoritative gate spec. Prose `**Gate**: make ci` still accepted as fallback for backward compat.
+This is the ONE source. There is no per-cycle override and no stack-guessing default: a missing config file or empty `GATE_COMMAND` prints `__GATE_UNRESOLVED__:<reason>` and the caller must block or raise. A malformed `GATE_MODE`/`GATE_TIMEOUT` is also `__GATE_UNRESOLVED__` — never a silent fall-back to the heuristic, which would hide the typo. All three variables are pre-cleared before the config is sourced, so a stale caller env var cannot masquerade as a declaration.
 
 **Gate Scope — Codegen Output Only**: Gates validate the _generated harness and codegen artifacts_ (e.g., hook unit tests, scaffold output compilation in test_harness). Gates do NOT validate downstream project state, symlink health, or consumer setup. Downstream validation belongs in the consuming app's own CI — that is where `curator-guard` will catch stale symlinks and fail loudly. This one-way boundary keeps codegen focused on artifact generation and prevents coupling to consumer-specific paths or assumptions.
 
@@ -421,7 +419,7 @@ Missing (1) → operates on empty variable; (2) → stale `$resolved` from prior
 
 ## Hook Pattern Coverage — Sibling Condition Enforcement (Rule J)
 
-Hooks with two independent conditions (`case` + `[[ ]]`) must widen together. Mismatch = silent divergence. After widening one condition, widen the sibling. Test with a non-base family member (e.g., `planner-static` ALLOW + BLOCK) to prove both widened.
+Hooks with two independent conditions (`case` + `[[ ]]`) must widen together. Mismatch = silent divergence. After widening one condition, widen the sibling. Test with a non-base family member (e.g., `developer-phoenix-frontend` ALLOW + BLOCK, not just `developer-phoenix-backend`) to prove both widened.
 
 ## Testing External Binary Calls — PATH Stub Pattern
 

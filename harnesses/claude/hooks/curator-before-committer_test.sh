@@ -140,7 +140,7 @@ MD
 write_cycle_state_fixture "$T3" "REVIEWED" "$LOG3"
 make_transcript "$T3/transcript.jsonl" "$LOG3"
 
-for stype in "planner-phoenix" "developer-phoenix-backend" "reviewer-phoenix" "context-curator"; do
+for stype in "developer-phoenix-backend" "developer-static" "reviewer-phoenix" "context-curator"; do
     out_s=$(mk_agent_input "$stype" "$T3/transcript.jsonl" "$T3" | bash "$HOOK" 2>/dev/null || true)
     assert_allow "$stype allowed unconditionally (not committer)" "$out_s"
 done

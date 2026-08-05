@@ -38,7 +38,7 @@ Launchers like `shape` also auto-edit pitches via this same resolved path. If a 
 
 ## Probing must re-run — file measurements go stale
 
-**When a pitch includes byte-size claims, line-count claims, or tool-invocation outcomes (e.g. "the file is X bytes", "`prettier --check` passes"), re-probe those claims at plan time, not just at pitch-writing time.** Files grow between proposal and build, and a measured state can flip mid-cycle. The planner's probes are evidence about the past; re-running the two cheapest and most volatile checks (`wc -c`, `prettier --check`) on the target file at plan time will catch growth or tool-behavior shifts before the cycle. Recording both the old probe result (pitch preamble timestamp) and the new result (at plan time) in the planner's body, with an explicit note on divergence, makes re-probing visible to the downstream reviewer.
+**When a pitch includes byte-size claims, line-count claims, or tool-invocation outcomes (e.g. "the file is X bytes", "`prettier --check` passes"), re-probe those claims when the cycle starts, not just at pitch-writing time.** Files grow between proposal and build, and a measured state can flip mid-cycle. A probe embedded in the pitch is evidence about the past; the developer re-running the two cheapest and most volatile checks (`wc -c`, `prettier --check`) on the target file as its first action will catch growth or tool-behavior shifts before the work starts. Recording both the old probe result (pitch preamble timestamp) and the new result in the developer's session-log body, with an explicit note on divergence, makes re-probing visible to the downstream reviewer.
 
 ## Scope field requirement
 

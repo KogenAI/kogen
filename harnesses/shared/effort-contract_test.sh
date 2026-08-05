@@ -246,10 +246,6 @@ check "(5) codegen-call pi --effort=bogus exits 2" "2" "$ec"
 CONFIG_YAML="$CODEGEN_DIR/templates/generator/config.yaml"
 
 BUILD_ROLE_EFFORTS="$(yq '
-  .harness["planner-phoenix"].claude.effort,
-  .harness["planner-phoenix"].pi.effort,
-  .harness["planner-static"].claude.effort,
-  .harness["planner-static"].pi.effort,
   .harness["developer-phoenix-backend"].claude.effort,
   .harness["developer-phoenix-backend"].claude.escalate_effort,
   .harness["developer-phoenix-backend"].claude.fallback[0].effort,

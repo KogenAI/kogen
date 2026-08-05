@@ -1,6 +1,6 @@
 # Recipes Domain — Recipe Catalog
 
-Recipes are step-by-step implementation guides referenced from planner plans. They live in `shared/recipes/` and are `{% include %}`d into agent prompts at generate time — they are NOT loaded at runtime. Each recipe encodes a proven implementation pattern for a specific domain problem.
+Recipes are step-by-step implementation guides named by a pitch or included eagerly in a role template. They live in `shared/recipes/` and are `{% include %}`d into agent prompts at generate time — they are NOT loaded at runtime. Each recipe encodes a proven implementation pattern for a specific domain problem.
 
 ## Components
 
@@ -84,7 +84,7 @@ shared/recipes/
 
 ## Integration Points
 
-- **subagents**: planners and developers reference recipes by name in plans; `process_template.py` resolves includes at generate time
+- **subagents**: a pitch names the recipe and the developer reads it on demand, or the role template `{% include %}`s it eagerly; `process_template.py` resolves includes at generate time
 - **rules**: recipes complement rules — rules encode behavioral constraints; recipes encode proven implementation sequences
 - **scaffold**: scaffold templates reference recipes for standard patterns
 
@@ -99,5 +99,5 @@ recipe, recipe INDEX, static-vite-scaffold, phoenix-feature-test-setup, oban-job
 ## Pitfalls
 
 - **Recipes are templates, not installed artifacts** — they are `{% include %}`d at generate time via `process_template.py`; they do not exist as standalone files in deployed agents
-- **Recipe names must match exactly** — planner references recipe by filename (without `.md`); typos in recipe names cause silent include failures
+- **Recipe names must match exactly** — a recipe is referenced by filename (without `.md`); typos in recipe names cause silent include failures
 - **Recipes accumulate** — the catalog is large (~80+ files); load only the specific recipe relevant to the current task

@@ -16,11 +16,15 @@ shared corpus contains 90+ files covering many more libraries; only the deps lis
 dependencies of the platform today." Do NOT treat `INDEX.md` as an inventory of the whole
 `shared/usage_rules/` directory — it is a curated subset scoped to one consumer's direct deps.
 
-## Planner-Only Grep-Guard
+## Developer-Only Grep-Guard
 
-Only the planner role greps `shared/usage_rules/` for API surface during planning — developer/reviewer
-do not re-grep this corpus; the planner's delegation prompt is expected to carry any needed usage-rules
-citations forward.
+Only the developer role may grep/scan the corpus for API surface. `usage-rules-grep-guard.sh` (+ its Pi
+`.ts` twin) allows `developer-*` and denies every other agent with:
+
+> BLOCKED by usage-rules-grep-guard: only the developer may scan codegen/usage_rules/. Read codegen/usage_rules/INDEX.md, look up the deps you are touching, and Read at most 5 cited files.
+
+Every other role — reviewer, curator, committer, orchestrator — must go through
+`codegen/usage_rules/INDEX.md`, look up the deps it is touching, and Read at most 5 cited files.
 
 ## `codegen-document` Record Format
 
@@ -67,4 +71,4 @@ by the version-format regex.
 
 ## Trigger Keywords
 
-codegen-document, usage_rules corpus, INDEX.md, cache-scoped, naming bijection, record format, generate_usage_rule, extract_dependencies, git fork, hex fallback, pipe-delimited, backward-compatible, planner grep guard
+codegen-document, usage_rules corpus, INDEX.md, cache-scoped, naming bijection, record format, generate_usage_rule, extract_dependencies, git fork, hex fallback, pipe-delimited, backward-compatible

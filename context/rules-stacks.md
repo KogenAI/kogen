@@ -1,13 +1,12 @@
 # Rules Stacks Domain — Stack-Specific and Cross-Stack Rules
 
-Stack-specific rules (Phoenix vs static sites) plus cross-stack shared rules (git safety, hook layering, config discipline). These layer on top of core and role rules to give stack-appropriate guidance to planners and developers.
+Stack-specific rules (Phoenix vs static sites) plus cross-stack shared rules (git safety, hook layering, config discipline). These layer on top of core and role rules to give stack-appropriate guidance to developers and reviewers.
 
 ## Components
 
 | File / Dir                                        | Purpose                                                                                |
 | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `shared/rules/stacks/phoenix/_core.md`            | Phoenix stack fundamentals — Elixir/OTP patterns, LiveView basics                      |
-| `shared/rules/stacks/phoenix/planner.md`          | Phoenix planner guidance — slice definitions, backend/frontend split                   |
 | `shared/rules/stacks/phoenix/developer.md`        | Phoenix developer patterns — contexts, schemas, Oban, migrations                       |
 | `shared/rules/stacks/phoenix/testing.md`          | Phoenix/ExUnit testing patterns                                                        |
 | `shared/rules/stacks/phoenix/testing-liveview.md` | LiveView-specific test patterns                                                        |
@@ -22,7 +21,6 @@ Stack-specific rules (Phoenix vs static sites) plus cross-stack shared rules (gi
 shared/rules/stacks/
   phoenix/
     _core.md
-    planner.md
     developer.md
     testing.md
     testing-liveview.md
@@ -39,7 +37,7 @@ shared/rules/build-runtime/
 ## Integration Points
 
 - **subagents**: stack-specific `.md.j2` templates `{% include %}` the matching stack rules — `developer-phoenix-backend.md.j2` includes phoenix rules; `developer-static.md.j2` includes static rules
-- **hooks**: `gate-select.sh` picks the correct gate script (phoenix vs static) based on detected stack; parses ```gate-json block from `## Plan`— see`context/hooks.md`
+- **hooks**: `gate-select.sh` no longer guesses a gate from the stack — it reads `GATE_COMMAND`/`GATE_MODE`/`GATE_TIMEOUT` from `<project>/.claude/gate-config.sh` and fails loud (`__GATE_UNRESOLVED__`) when the app has not declared one — see `context/hooks.md`
 - **rules-core**: stack rules are additive; core discipline rules (`context/rules-core.md`) apply regardless of stack
 - **rules-roles**: stack rules extend role rules for stack-specific scenarios (role-level orchestrator rules were retired this cutover in favor of the deterministic `OrchestrationLoop`; see `context/test-harness.md`)
 

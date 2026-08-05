@@ -1,6 +1,7 @@
 defmodule Mix.Tasks.Codegen.LoopTest do
   use ExUnit.Case, async: true
 
+  alias CodegenTestHarness.InfraAbort
   alias Mix.Tasks.Codegen.Loop
 
   setup do
@@ -50,6 +51,80 @@ defmodule Mix.Tasks.Codegen.LoopTest do
     refute String.starts_with?(result, "---")
     assert result =~ "# Pitch: x"
     assert result =~ "Body text."
+  end
+
+  describe "resolve_pitch_scope!/2 — the pitch's own deliverable list" do
+    test "a pitch with a scope: flow-list returns the declared paths in order", ctx do
+      abs = Path.join(ctx.ready_dir, "scoped.md")
+
+      File.write!(
+        abs,
+        "---\nstatus: SHAPED\nscope: [lib/foo.ex, test/foo_test.exs]\n---\n# Pitch: scoped\n"
+      )
+
+      assert Loop.resolve_pitch_scope!({:file, abs}, "scoped") ==
+               ["lib/foo.ex", "test/foo_test.exs"]
+    end
+
+    test "a queued pitch with NO scope: field aborts the build (fail-closed, never vacuous)",
+         ctx do
+      abs = Path.join(ctx.ready_dir, "unscoped.md")
+      File.write!(abs, "---\nstatus: SHAPED\n---\n# Pitch: unscoped\n")
+
+      assert_raise InfraAbort, ~r/pitch-scope-preflight/, fn ->
+        Loop.resolve_pitch_scope!({:file, abs}, "unscoped")
+      end
+    end
+
+    test "the abort names the slug and how to fix it", ctx do
+      abs = Path.join(ctx.ready_dir, "unscoped.md")
+      File.write!(abs, "---\nstatus: SHAPED\n---\n# Pitch: unscoped\n")
+
+      err =
+        assert_raise InfraAbort, fn ->
+          Loop.resolve_pitch_scope!({:file, abs}, "unscoped")
+        end
+
+      assert Exception.message(err) =~ "unscoped"
+      assert Exception.message(err) =~ "scope:"
+    end
+
+    test "a queued pitch with NO frontmatter block at all also aborts", ctx do
+      abs = Path.join(ctx.ready_dir, "bare.md")
+      File.write!(abs, "# Pitch: bare\n\nJust prose.\n")
+
+      assert_raise InfraAbort, ~r/pitch-scope-preflight/, fn ->
+        Loop.resolve_pitch_scope!({:file, abs}, "bare")
+      end
+    end
+
+    test "a literal (non-file) pitch returns nil — no frontmatter contract to honour" do
+      assert Loop.resolve_pitch_scope!(:literal, "adhoc") == nil
+    end
+
+    test "a file OUTSIDE codegen/pitches with no scope stays permissive (nil, no abort)", ctx do
+      abs = Path.join(ctx.tmp, "loose-pitch.md")
+      File.write!(abs, "---\nstatus: SHAPED\n---\n# Pitch: loose\n")
+
+      assert Loop.resolve_pitch_scope!({:file, abs}, "loose-pitch") == nil
+    end
+
+    test "a file outside codegen/pitches that DOES declare a scope still returns it", ctx do
+      abs = Path.join(ctx.tmp, "loose-scoped.md")
+      File.write!(abs, "---\nscope: [lib/bar.ex]\n---\n# Pitch: loose\n")
+
+      assert Loop.resolve_pitch_scope!({:file, abs}, "loose-scoped") == ["lib/bar.ex"]
+    end
+
+    test "a building/ claim is still a codegen/pitches path — the abort applies there too", ctx do
+      File.mkdir_p!(ctx.building_dir)
+      abs = Path.join(ctx.building_dir, "claimed.md")
+      File.write!(abs, "---\nstatus: SHAPED\n---\n# Pitch: claimed\n")
+
+      assert_raise InfraAbort, ~r/pitch-scope-preflight/, fn ->
+        Loop.resolve_pitch_scope!({:file, abs}, "claimed")
+      end
+    end
   end
 
   describe "maybe_ship_pitch/4" do

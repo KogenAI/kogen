@@ -24,8 +24,6 @@ type MarkerKind =
   | "no_learning"
   | "died"
   | "verdict"
-  | "plan"
-  | "plan_gate"
   | "files_to_touch"
   | "files_modified";
 
@@ -36,16 +34,6 @@ interface RoleSpec {
 }
 
 const ROLES: RoleSpec[] = [
-  {
-    role: "planner-phoenix",
-    extraKinds: ["plan", "plan_gate", "files_to_touch"],
-    readers: false,
-  },
-  {
-    role: "planner-static",
-    extraKinds: ["plan", "plan_gate", "files_to_touch"],
-    readers: false,
-  },
   {
     role: "developer-phoenix-backend",
     extraKinds: ["files_modified"],
@@ -221,9 +209,7 @@ function readLog(
   let events = readEvents(logPath);
 
   if (view === "manifest") {
-    events = events.filter((e) =>
-      ["plan", "plan_gate", "files_to_touch"].includes(e.ev),
-    );
+    events = events.filter((e) => e.ev === "files_to_touch");
   } else if (view === "retro") {
     events = events.filter((e) => e.ev === "learned");
   }
@@ -242,8 +228,6 @@ const MARKER_FLAG: Record<MarkerKind, string> = {
   no_learning: "--no-learning",
   died: "--died",
   verdict: "--verdict",
-  plan: "--plan",
-  plan_gate: "--plan-gate",
   files_to_touch: "--files-to-touch",
   files_modified: "--files-modified",
 };
@@ -310,7 +294,7 @@ function registerAppendTool(pi: ExtensionAPI, spec: RoleSpec) {
     body: Type.Optional(
       Type.String({
         description:
-          "Raw text/JSON payload for plan/plan_gate/files_to_touch/files_modified (piped via stdin).",
+          "Raw text/JSON payload for files_to_touch/files_modified (piped via stdin).",
       }),
     ),
     died_kind: Type.Optional(
@@ -369,8 +353,6 @@ function registerAppendTool(pi: ExtensionAPI, spec: RoleSpec) {
             throw new Error('kind=verdict requires "verdict_value"');
           args.push("--verdict", verdict_value);
           break;
-        case "plan":
-        case "plan_gate":
         case "files_to_touch":
         case "files_modified":
           if (!body)
@@ -431,7 +413,7 @@ function registerReaders(pi: ExtensionAPI) {
     name: "log_read",
     label: "Read cycle log projection",
     description:
-      "Read the active cycle log filtered by view: manifest (planner's plan/plan_gate/files_to_touch), " +
+      "Read the active cycle log filtered by view: manifest (the loop's files_to_touch), " +
       "retro (ev:learned events), or full (every event).",
     parameters: LogReadParams,
     async execute(_toolCallId, params: Static<typeof LogReadParams>) {

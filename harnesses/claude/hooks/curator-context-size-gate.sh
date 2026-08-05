@@ -18,7 +18,7 @@
 #
 # Gates ANY role's write to context/*.md, PROJECT_CONTEXT.md, or
 # codegen/PROJECT_CONTEXT.md — any role may legitimately edit these docs
-# (e.g. developer, when planner marks one (EDIT)/(NEW)). This is the ONLY
+# (e.g. developer, when the pitch's scope: field lists one). This is the ONLY
 # size enforcement on these paths — there is no commit-time backstop.
 # Unparseable payloads fail open. MultiEdit sums all edits[] deltas rather
 # than failing open.

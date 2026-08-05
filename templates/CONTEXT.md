@@ -61,7 +61,6 @@
 
 **Active Subagents** (for current step):
 
-- **planner-phoenix**: [Not Started | In Progress | Complete | Blocked]
 - **developer-phoenix-backend**: [Not Started | In Progress | Complete | Blocked]
 - **developer-phoenix-frontend**: [Not Started | In Progress | Complete | Blocked]
 - **reviewer-phoenix**: [Not Started | In Progress | Complete | Blocked]
@@ -115,7 +114,6 @@ After ANY impl work → dev-gate.sh hook fires automatically; orchestrator reads
 ### Development Workflow
 
 1. **Orchestrate step impl** — delegate to specialized subagents:
-   - **planner-phoenix**: Writes plan + delegation prompts (Phase 0)
    - **developer-phoenix-backend**: Phoenix/Elixir backend code (contexts, Ecto, Oban, mailers, controllers, schemas, migrations)
    - **developer-phoenix-frontend**: LiveView, HEEx, JS hooks, Tailwind, browser tests
 

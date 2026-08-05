@@ -90,17 +90,17 @@ describe("role-retrospective-before-stop", { concurrency: false }, () => {
   }
 
   it("does not warn when work + learning are present", async () => {
-    appendRole("planner-phoenix", "Did the planning work.");
-    appendLearned("planner-phoenix", VALID_LEARNING);
-    const stderr = await runHook("planner-phoenix");
+    appendRole("developer-phoenix-backend", "Did the work.");
+    appendLearned("developer-phoenix-backend", VALID_LEARNING);
+    const stderr = await runHook("developer-phoenix-backend");
     assert.ok(!stderr.includes("WARNING"), "expected no warning");
   });
 
   it("warns when learning is absent", async () => {
-    appendRole("planner-phoenix", "Did the planning work.");
-    const stderr = await runHook("planner-phoenix");
+    appendRole("developer-phoenix-backend", "Did the work.");
+    const stderr = await runHook("developer-phoenix-backend");
     assert.ok(stderr.includes("role-retrospective-before-stop"), "expected warning");
-    assert.ok(stderr.includes("codegen-log append planner-phoenix --no-learning"));
+    assert.ok(stderr.includes("codegen-log append developer-phoenix-backend --no-learning"));
   });
 
   it("warns when no ev:role at all, names codegen-log section", async () => {
@@ -143,8 +143,8 @@ describe("role-retrospective-before-stop", { concurrency: false }, () => {
   });
 
   it("warning text never publishes a passing criterion (no char-count wording)", async () => {
-    appendRole("planner-phoenix", "Did the planning work.");
-    const stderr = await runHook("planner-phoenix");
+    appendRole("developer-phoenix-backend", "Did the work.");
+    const stderr = await runHook("developer-phoenix-backend");
     assert.ok(stderr.includes("role-retrospective-before-stop"), "expected warning");
     assert.ok(!stderr.includes("40 char"), "must not publish a char-count bar");
     assert.ok(!stderr.includes("forty"), "must not publish 'forty'");
@@ -171,14 +171,14 @@ describe("role-retrospective-before-stop", { concurrency: false }, () => {
       recursive: true,
       force: true,
     });
-    const stderr = await runHook("planner-phoenix");
+    const stderr = await runHook("developer-phoenix-backend");
     assert.ok(!stderr.includes("role-retrospective-before-stop"), "expected no warning");
   });
 
   it("warns when work body is whitespace-only", async () => {
-    appendRole("planner-phoenix", "   ");
-    appendLearned("planner-phoenix", VALID_LEARNING);
-    const stderr = await runHook("planner-phoenix");
+    appendRole("developer-phoenix-backend", "   ");
+    appendLearned("developer-phoenix-backend", VALID_LEARNING);
+    const stderr = await runHook("developer-phoenix-backend");
     assert.ok(stderr.includes("role-retrospective-before-stop"), "expected warning");
   });
 
@@ -190,7 +190,7 @@ describe("role-retrospective-before-stop", { concurrency: false }, () => {
   });
 
   it("never returns block result (observe-only)", async () => {
-    process.env["AGENT_TYPE"] = "planner-phoenix";
+    process.env["AGENT_TYPE"] = "developer-phoenix-backend";
 
     let capturedHandler: (event: unknown) => Promise<unknown>;
     const localMockPi = {

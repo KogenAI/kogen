@@ -13,10 +13,12 @@ Match discipline (probed, load-bearing):
     literal), regex literals in docs, and prior probe output — roughly
     two-thirds of raw hits are self-reference, not real denies.
   - Match only the stable prefix ("... cannot read <path> for orientation.").
-    The remediation sentence that follows has two historical wordings
-    (older: "planner's ## Files to touch ..."; current: "planner's
-    files_to_touch event"); anchoring on it would silently drop every
-    historical deny and defeat the retroactive benefit of mining this signal.
+    The remediation sentence that follows has had three wordings
+    (oldest: "planner's ## Files to touch ..."; then "planner's
+    files_to_touch event"; current: "the loop's files_to_touch event, which
+    the loop writes from the pitch's scope: field"); anchoring on it would
+    silently drop every historical deny and defeat the retroactive benefit
+    of mining this signal.
 """
 from __future__ import annotations
 

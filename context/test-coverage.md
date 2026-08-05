@@ -109,7 +109,7 @@ committer-subject-length, context-curator-guard, context-factcheck-edit-gate, de
 developer-no-self-gate, llm-pending-sweep, llm-suite-guard,
 llm-test-guard, no-cat-pipe, no-git-stash, no-python-json, operator-subagent-allowlist,
 orchestrator-no-ci, orchestrator-no-source-edit, orchestrator-read-discipline,
-phoenix-backend-developer-guard, phoenix-frontend-developer-guard, planner-guard, pre-commit-guard,
+phoenix-backend-developer-guard, phoenix-frontend-developer-guard, pre-commit-guard,
 reviewer-guard, session-log-writer-only, static-site-ex-guard,
 subagent-read-discipline, track-subagent-edits, track-tool-failures, usage-rules-grep-guard.
 

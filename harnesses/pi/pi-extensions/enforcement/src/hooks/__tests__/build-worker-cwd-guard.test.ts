@@ -72,7 +72,7 @@ describe("build-worker-cwd-guard", () => {
     const result = await runHook(
       "read",
       { file_path: "/etc/passwd" },
-      "planner",
+      "developer-phoenix-backend",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

@@ -1,5 +1,5 @@
 {"ev":"init","pitch":"interruptions-fixture","path":"","stamp":{"at":"2026-06-19T00:00:00Z"}}
-{"ev":"role","role":"planner-phoenix","body":"Some plan prose."}
+{"ev":"role","role":"reviewer-phoenix","body":"Some review prose."}
 {"ev":"died","role":"developer-phoenix-backend","kind":"interrupted","cause":"dropped (timeout); re-spawning (attempt 1/2)"}
 {"ev":"died","role":"developer-phoenix-backend","kind":"aborted","cause":"dropped twice; stage failed."}
 {"ev":"role","role":"developer-phoenix-backend","body":"### What I Learned This Step\n\n- not a thrash marker; must be ignored"}

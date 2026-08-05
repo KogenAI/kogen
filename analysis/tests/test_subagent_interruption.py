@@ -75,7 +75,7 @@ class TestSubagentInterruption(unittest.TestCase):
             log.write_text(
                 "not-json-at-all\n"
                 '{"ev":"died","role":"developer-phoenix-backend","kind":"interrupted"}\n'
-                '{"ev":"role","role":"planner-phoenix","body":"prose"}\n',
+                '{"ev":"role","role":"reviewer-phoenix","body":"prose"}\n',
                 encoding="utf-8",
             )
             findings = run_repo(_cfg(Path(tmp)))

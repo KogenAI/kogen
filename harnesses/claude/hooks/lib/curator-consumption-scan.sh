@@ -17,7 +17,7 @@
 # Definitions:
 #   "captured"  — count of {"ev":"learned"} events in <cycle_log> whose
 #                 .role is NOT context-curator (upstream roles only —
-#                 planner/developer/reviewer).
+#                 developer/reviewer).
 #   "routed"    — the working tree (uncommitted, vs HEAD) OR untracked-file
 #                 set contains at least one path matching
 #                 ^(context/[^/]+\.md|shared/rules/.*\.md)$

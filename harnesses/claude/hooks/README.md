@@ -23,13 +23,13 @@ Typical firing order for common roles:
 | `Edit`/`Write`/`MultiEdit` | `session-log-writer-only`, `track-subagent-edits`                                       |
 | `PostToolUse` (failure)    | `track-tool-failures`                                                                   |
 
-### Planner (`agent_type=planner`)
+### Reviewer (`agent_type=reviewer-phoenix` / `reviewer-static`)
 
-| Event               | Hooks that fire                                       |
-| ------------------- | ----------------------------------------------------- |
-| `Bash`              | `planner-guard`, `planner-load-discipline`            |
-| `Edit`              | `planner-guard` (only `codegen/logging/*.md` allowed) |
-| `Write`/`MultiEdit` | `planner-guard` (always denied)                       |
+| Event                      | Hooks that fire                                                     |
+| -------------------------- | --------------------------------------------------------------------- |
+| `Bash`                     | `reviewer-bash-allowlist` (default-deny), `session-log-writer-only` |
+| `Read`                     | `subagent-read-discipline`, `usage-rules-grep-guard`                |
+| `Edit`/`Write`/`MultiEdit` | `reviewer-guard` (Write/MultiEdit denied; Edit gated to session log) |
 
 ### Committer (`agent_type=committer`)
 
@@ -52,7 +52,7 @@ Typical firing order for common roles:
 | ------------ | --------------------- | ----------------------------------------- | --------- | --------------------------- |
 | Orchestrator | mkdir/log only        | codegen/logging/, codegen/pitches/, /tmp/ | read-only | no source edits             |
 | Developer    | any (no `make ci`)    | any                                       | read-only | no CI gates                 |
-| Planner      | read-only + /tmp/     | codegen/logging/ only                     | read-only | investigation only          |
+| Reviewer     | allowlist only        | codegen/logging/ only                     | read-only | review-only, no re-run gate |
 | Committer    | `git commit/add/push` | none                                      | write     | subject ≤50B                |
 | Debug        | none (read-only)      | none                                      | read-only | investigation, no mutations |
 
@@ -64,8 +64,8 @@ Typical firing order for common roles:
 
 - **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/pitches/`, and absolute `/tmp/`. `claude-debug` / `claude-shape` (`CLAUDE_ROLE=debug|shape`) writes scoped to `codegen/pitches/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
 - **`build-worker-cwd-guard`** — In user-app context (the platform apps_root), prevents orchestrator from reading/writing outside the user app directory.
-- **`planner-guard`** — Restricts planner to read-only bash, Edit on `codegen/logging/*.md` only, no `Write`/`MultiEdit`. Both src AND dest must be in allowed dirs for `mv`.
-- **`planner-load-discipline`** — Blocks planner from loading usage_rules files directly (recipes are loaded on demand via recipes/; rules are baked into subagents).
+- **`usage-rules-grep-guard`** — Only the developer may grep/scan `codegen/usage_rules/`. Every other agent must read `codegen/usage_rules/INDEX.md`, look up the deps it is touching, and Read at most 5 cited files.
+- **`subagent-read-discipline`** — Denies `codegen/pitches/**` and `PROJECT_CONTEXT.md` to `developer-*`/`reviewer-*`/`committer`; allows a `context/*.md` Read only when the path appears in the LOOP's typed `files_to_touch` event (for a developer) or the DEVELOPER's `files_modified` event (for a reviewer).
 - **`committer-subject-length`** — Blocks `git commit -m "subject"` where subject exceeds 50 bytes. Heredoc form denied (can't extract subject).
 - **`dev-no-ci`** — Blocks developers from running `make ci`, `make llm`, `make llm-phoenix`. Gate commands run via the loop's `LoopGate` (non-interactive builds) or a SubagentStop hook (interactive-session fallback).
 - **`claude-debug-bash-guard`** — In debug sessions (`CLAUDE_ROLE=debug`), blocks: recursive rm, DB migrations, git writes, mix deps.get, seeds, destructive SQL, curl mutations (POST/PUT/PATCH/DELETE), docker mutations, systemctl/launchctl mutations, kill/pkill, package installs.
@@ -88,7 +88,6 @@ Non-interactive builds are driven by the deterministic Elixir orchestration loop
 
 - `committer-subject-length` uses byte count (`wc -c`), not character count. Multi-byte UTF-8 subject lines may be over-blocked.
 - `debug-bash-safety-guard` `curl` mutation check matches flag order `curl -X DELETE`; a command using `curl --request DELETE` or with flags before `-X` may bypass. Acceptable risk for investigation-only mode.
-- `planner-guard` `mv` extraction uses `sed` anchored to start-of-command. A compound command like `true && mv /tmp/a /etc/passwd` may bypass the mv check (the `&&` makes `mv` not at position 0). Acceptable risk given planner's overall read-only intent.
 - No hook currently guards against `xargs rm` or `find -exec rm`.
 
 ---
@@ -106,7 +105,6 @@ Run individual:
 ```bash
 bash orchestrator-no-source-edit_test.sh
 bash claude-debug-bash-guard_test.sh
-bash planner-guard_test.sh
 bash committer-subject-length_test.sh
 bash session-log-writer-only_test.sh
 bash track-subagent-edits_test.sh

@@ -33,8 +33,6 @@ const EXPECTED_CLAUDE_TOOL_NAMES = [
   "mcp__codegen__log_append_developer_phoenix_backend",
   "mcp__codegen__log_append_developer_phoenix_frontend",
   "mcp__codegen__log_append_developer_static",
-  "mcp__codegen__log_append_planner_phoenix",
-  "mcp__codegen__log_append_planner_static",
   "mcp__codegen__log_append_reviewer_phoenix",
   "mcp__codegen__log_append_reviewer_static",
   "mcp__codegen__log_read",
@@ -43,8 +41,6 @@ const EXPECTED_CLAUDE_TOOL_NAMES = [
   "mcp__codegen__log_section_developer_phoenix_backend",
   "mcp__codegen__log_section_developer_phoenix_frontend",
   "mcp__codegen__log_section_developer_static",
-  "mcp__codegen__log_section_planner_phoenix",
-  "mcp__codegen__log_section_planner_static",
   "mcp__codegen__log_section_reviewer_phoenix",
   "mcp__codegen__log_section_reviewer_static",
 ].sort();
@@ -56,14 +52,14 @@ describe("codegen-tools — Claude/Pi tool-name-set parity", () => {
     assert.deepEqual(prefixed, EXPECTED_CLAUDE_TOOL_NAMES);
   });
 
-  it("registers exactly 21 tools (9 roles x 2 writers + 3 readers)", async () => {
+  it("registers exactly 17 tools (7 roles x 2 writers + 3 readers)", async () => {
     const { CODEGEN_TOOL_NAMES } = await import("../../codegen-tools");
-    assert.equal(CODEGEN_TOOL_NAMES.length, 21);
+    assert.equal(CODEGEN_TOOL_NAMES.length, 17);
   });
 });
 
 describe("codegen-tools — register() wires every tool via pi.registerTool", () => {
-  it("calls registerTool exactly 21 times with unique names", async () => {
+  it("calls registerTool exactly 17 times with unique names", async () => {
     const registered: string[] = [];
     const mockPi = {
       registerTool: (tool: { name: string }) => {
@@ -72,8 +68,8 @@ describe("codegen-tools — register() wires every tool via pi.registerTool", ()
     };
     const { register } = await import("../../codegen-tools");
     register(mockPi as unknown as import("@earendil-works/pi-coding-agent").ExtensionAPI);
-    assert.equal(registered.length, 21);
-    assert.equal(new Set(registered).size, 21);
+    assert.equal(registered.length, 17);
+    assert.equal(new Set(registered).size, 17);
   });
 
   it("a generated section tool's execute() calls codegen-log with --role baked in, never as a caller arg", async () => {
@@ -154,14 +150,13 @@ describe("codegen-tools — register() wires every tool via pi.registerTool", ()
     });
   });
 
-  it("log_read manifest view returns only plan/plan_gate/files_to_touch events", async () => {
+  it("log_read manifest view returns only the loop's files_to_touch events", async () => {
     await withTmpDir(async (dir) => {
       mkdirSync(join(dir, "codegen", "logging"), { recursive: true });
       const logPath = join(dir, "codegen", "logging", "20260719_000000_fixture-slug_cycle.jsonl");
       const lines = [
-        { ev: "role", role: "planner-phoenix", body: "did planning" },
-        { ev: "plan", role: "planner-phoenix", plan: "the plan text" },
-        { ev: "files_to_touch", role: "planner-phoenix", files: ["a.ex"] },
+        { ev: "role", role: "developer-phoenix-backend", body: "did the work" },
+        { ev: "files_to_touch", role: "loop", files: ["a.ex"] },
       ];
       writeFileSync(logPath, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
       writeFileSync(join(dir, "codegen", "logging", ".active"), logPath);
@@ -180,7 +175,9 @@ describe("codegen-tools — register() wires every tool via pi.registerTool", ()
 
         const result = await tools["log_read"].execute("call-1", { cwd: dir, view: "manifest" });
         const parsed = JSON.parse(result.content[0].text as string);
-        assert.equal(parsed.events.length, 2);
+        assert.equal(parsed.events.length, 1);
+        assert.equal(parsed.events[0].ev, "files_to_touch");
+        assert.equal(parsed.events[0].role, "loop");
       } finally {
         if (savedEnv !== undefined) process.env.CODEGEN_LOG_PATH = savedEnv;
       }

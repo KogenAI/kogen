@@ -50,7 +50,7 @@ if [[ -n "$CWD" ]]; then
 fi
 
 # The deterministic Elixir orchestration loop is the sole engine: it drives
-# the whole cycle (planner→developer→gate→reviewer→curator→committer) via
+# the whole cycle (developer→gate→reviewer→curator→committer) via
 # per-role codegen-call invocations.
 STACK="${CODEGEN_BUILD_STACK:-}"
 if [[ -z "$STACK" ]]; then

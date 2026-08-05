@@ -56,7 +56,7 @@ function isAllowedReadPath(filePath: string): boolean {
   if (/^codegen\/rules\/build-runtime\/[^/]+\.md$/.test(rel)) return true;
 
   // Allowlist 3: codegen/*.md (top-level design docs only — no subdirs)
-  // Exclude PROJECT_CONTEXT.md — planner reads it, orchestrator must not.
+  // Exclude PROJECT_CONTEXT.md — the orchestrator must not read it for orientation.
   const topLevelMatch = rel.match(/^codegen\/([^/]+\.md)$/);
   if (topLevelMatch) {
     const basename = topLevelMatch[1];
@@ -103,7 +103,7 @@ export function register(pi: ExtensionAPI): void {
         const verbMatch = command.match(/^\s*(find|grep|rg|ls|tree|cat)\b/);
         const verb = verbMatch ? verbMatch[1] : "exploration-verb";
         return deny(
-          `Orchestrator cannot investigate via Bash (\`${verb}\`). Delegate to the planner subagent (planner-phoenix / planner-static).\nExample: delegate to planner with 'Find X in lib/...' — planner reads/greps codebase, returns 100-token answer instead of flooding orchestrator context.`,
+          `Orchestrator cannot investigate via Bash (\`${verb}\`). For files you may read directly, use the Read tool; otherwise delegate to the developer.\nExample: delegate to the developer with 'Find X in lib/...' — the developer reads/greps codebase, returns 100-token answer instead of flooding orchestrator context.`,
         );
       }
       return; // allowed Bash (git/make/date/cp/etc.)
@@ -119,7 +119,7 @@ export function register(pi: ExtensionAPI): void {
       if (isAllowedReadPath(filePath)) return;
 
       return deny(
-        `Orchestrator cannot read ${filePath}. Delegate to the planner subagent (planner-phoenix / planner-static).\nExample: delegate to planner with 'Find X in lib/...' — planner reads codebase, returns 100-token answer instead of flooding orchestrator context.`,
+        `Orchestrator cannot read ${filePath}. Delegate to the developer subagent (developer-phoenix-backend / developer-static).\nExample: delegate to the developer with 'Find X in lib/...' — the developer reads codebase, returns 100-token answer instead of flooding orchestrator context.`,
       );
     }
   });

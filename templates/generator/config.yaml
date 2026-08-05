@@ -43,10 +43,6 @@ tools:
       mcp__codegen__gate_status: gate_status
       mcp__codegen__log_read: log_read
       mcp__codegen__advise: advise
-      mcp__codegen__log_section_planner_phoenix: log_section_planner_phoenix
-      mcp__codegen__log_append_planner_phoenix: log_append_planner_phoenix
-      mcp__codegen__log_section_planner_static: log_section_planner_static
-      mcp__codegen__log_append_planner_static: log_append_planner_static
       mcp__codegen__log_section_developer_phoenix_backend: log_section_developer_phoenix_backend
       mcp__codegen__log_append_developer_phoenix_backend: log_append_developer_phoenix_backend
       mcp__codegen__log_section_developer_phoenix_frontend: log_section_developer_phoenix_frontend
@@ -75,12 +71,6 @@ harness:
   # "off" the loop/adapters expect. Probed live: PyYAML and yq both parse
   # bare `effort: off` as `False`/`false`. Every other canonical effort value
   # (low/medium/high/xhigh/max) is a normal YAML scalar and needs no quoting.
-  planner-phoenix:
-    claude: { model: opus, effort: "off" }
-    pi: { model: openai-codex/gpt-5.6-sol, effort: "off" }
-  planner-static:
-    claude: { model: opus, effort: "off" }
-    pi: { model: openai-codex/gpt-5.6-sol, effort: "off" }
   # `fallback:` is an ordered same-provider rung list walked on a
   # switch_model classification (LoopQueue.switch_model_reason?/1) — a
   # role's primary model reporting "unavailable"/"disabled"/"not found".
@@ -138,7 +128,7 @@ harness:
     # `.harness.<role>.harness` and OrchestrationLoop.invoke_role/4 applies it
     # per role, so `codegen-build --harness=claude` → `mix codegen.loop
     # --harness=claude_code` still dispatches THIS role through pi, while
-    # planner-static / reviewer-static / committer stay on claude.
+    # reviewer-static / committer stay on claude.
     # Absent this key the role would inherit the build-wide harness.
     # Model/effort below are then read from the `pi:` block, not `claude:`.
     #

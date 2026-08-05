@@ -67,7 +67,7 @@ children would always see Pi itself and permanently disable this trigger. The ch
 what makes a short cap safe against a role legitimately silent while a `make test`/`mix test` tool
 runs. Claude ignores its always-on codegen MCP server child in this guard; that child is transport
 plumbing, not tool work, and otherwise permanently disables the stream-idle trigger. The default was
-raised from 60s to 300s after observed false kills of planner-phoenix (~10M
+raised from 60s to 300s after observed false kills of a heavy-Read role turn (~10M
 cache_read_tokens) whose server-side first-token latency legitimately exceeds 60s with no tool
 subprocess running — a slow turn is not a dead stream. Both legs read this var identically;
 `harnesses/shared/call-dispatch-parity_test.sh` enforces the cross-leg read-set stays in sync.

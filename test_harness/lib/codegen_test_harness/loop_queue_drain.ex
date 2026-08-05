@@ -30,7 +30,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   entirely. A born-dead finding here routes to the same false-0
   park-and-continue path as an unverified commit — never a silent ship.
   The gate ALWAYS runs BEFORE the committer (loop role
-  order: planner -> developer -> gate -> reviewer -> curator -> committer),
+  order: developer -> gate -> reviewer -> curator -> committer),
   so the recorded `base_sha` can only ever prefix `head_before` — never the
   post-commit `head_after`. The mtime leg is what rejects a stale clear
   verdict left on disk by an EARLIER cycle: `head_before` alone cannot
@@ -1224,7 +1224,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   # A gate record is trustworthy only if a real gate wrote it, THIS cycle,
   # against THIS cycle's base. The loop gates BEFORE the committer
-  # (orchestration_loop.ex role order: planner -> developer -> gate ->
+  # (orchestration_loop.ex role order: developer -> gate ->
   # reviewer -> curator -> committer), so the recorded short `base_sha` can
   # only ever prefix `head_before` — never the post-commit `head_after`. The
   # mtime leg (gate record written at/after this child's spawn `ts`) is what

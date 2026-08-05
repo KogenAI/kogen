@@ -414,7 +414,12 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     ancient_transcript_dir = Path.join(logging_dir, "20200101_000000_ancient-slug")
     File.mkdir_p!(aging_transcript_dir)
     File.mkdir_p!(ancient_transcript_dir)
-    File.write!(Path.join(aging_transcript_dir, "01-planner-phoenix.jsonl"), "planner turn\n")
+
+    File.write!(
+      Path.join(aging_transcript_dir, "01-developer-phoenix-backend.jsonl"),
+      "developer turn\n"
+    )
+
     File.write!(Path.join(ancient_transcript_dir, "01-developer.jsonl"), "developer turn\n")
 
     File.write!(old_cycle, ~s({"ev":"init"}\n))
@@ -441,8 +446,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     refute File.exists?(ancient_transcript_dir)
     assert File.dir?(aging_transcript_dir)
 
-    assert File.exists?(Path.join(aging_transcript_dir, "01-planner-phoenix.jsonl.gz"))
-    refute File.exists?(Path.join(aging_transcript_dir, "01-planner-phoenix.jsonl"))
+    assert File.exists?(Path.join(aging_transcript_dir, "01-developer-phoenix-backend.jsonl.gz"))
+    refute File.exists?(Path.join(aging_transcript_dir, "01-developer-phoenix-backend.jsonl"))
   end
 
   test "1g5: GC prints a per-class reclaimed-bytes summary line to stderr", ctx do

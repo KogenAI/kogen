@@ -17,7 +17,7 @@
 #   Built-in subagents {Plan, general-purpose, statusline-setup} denied always.
 #   Empty subagent_type denied defensively (fail-closed).
 #   Explore denied unless active role ∈ {debug, shape, ops, experiment, babysit}.
-#   Project subagents (planner-*, developer-*, reviewer-*, committer, etc.) allowed everywhere.
+#   Project subagents (developer-*, reviewer-*, committer, etc.) allowed everywhere.
 #
 # Registered on matcher "Agent" in claude-code-settings.json PreToolUse.
 #
@@ -47,13 +47,13 @@ debug_log operator-subagent-allowlist "role=${_role} subagent_type=$subagent_typ
 
 # Built-in subagent types — denied in all launcher modes.
 if [ "$subagent_type" = "Plan" ] || [ "$subagent_type" = "general-purpose" ] || [ "$subagent_type" = "statusline-setup" ]; then
-    deny "BLOCKED by operator-subagent-allowlist: built-in subagent $subagent_type is denied in all launcher modes. Valid project subagents in build mode: planner-phoenix / planner-static / etc., developer-*, reviewer-*, committer. Use planner-<stack> for planning, not the built-in Plan."
+    deny "BLOCKED by operator-subagent-allowlist: built-in subagent $subagent_type is denied in all launcher modes. Valid project subagents in build mode: developer-phoenix-backend / developer-static / etc., reviewer-*, committer. Use developer-<stack> to do the work, not the built-in Plan."
     exit 0
 fi
 
 # Empty subagent_type — deny defensively (fail-closed).
 if [ -z "$subagent_type" ]; then
-    deny "BLOCKED by operator-subagent-allowlist: subagent_type is empty — cannot determine safe subagent. Specify a named project subagent. Valid project subagents in build mode: planner-phoenix / planner-static / etc., developer-*, reviewer-*, committer. Use planner-<stack> for planning, not the built-in Plan."
+    deny "BLOCKED by operator-subagent-allowlist: subagent_type is empty — cannot determine safe subagent. Specify a named project subagent. Valid project subagents in build mode: developer-phoenix-backend / developer-static / etc., reviewer-*, committer. Use developer-<stack> to do the work, not the built-in Plan."
     exit 0
 fi
 
@@ -62,7 +62,7 @@ if [ "$subagent_type" = "Explore" ]; then
     if [ "$_role" = "debug" ] || [ "$_role" = "shape" ] || [ "$_role" = "ops" ] || [ "$_role" = "experiment" ] || [ "$_role" = "babysit" ]; then
         exit 0
     fi
-    deny "BLOCKED by operator-subagent-allowlist: Explore subagent is only available under claude-debug, claude-shape, claude-ops, claude-experiment, or claude-babysit launcher modes. Use planner-phoenix / planner-static / etc. instead for investigation within a standard orchestrator session."
+    deny "BLOCKED by operator-subagent-allowlist: Explore subagent is only available under claude-debug, claude-shape, claude-ops, claude-experiment, or claude-babysit launcher modes. Use developer-phoenix-backend / developer-static / etc. instead for investigation within a standard orchestrator session."
     exit 0
 fi
 
@@ -70,7 +70,7 @@ fi
 if [ "$_role" = "shape" ]; then
     case "$subagent_type" in
     developer-* | reviewer-* | committer)
-        deny "BLOCKED by operator-subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead. Available in shape mode: planner-phoenix / planner-static / etc. and Explore; developer-*/reviewer-*/committer are build-mode only."
+        deny "BLOCKED by operator-subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead. Available in shape mode: Explore; developer-*/reviewer-*/committer are build-mode only."
         exit 0
         ;;
     esac

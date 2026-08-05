@@ -1,6 +1,6 @@
 # AGENTS.md — Phoenix Apps
 
-Builds against this app run through the platform's deterministic Elixir orchestration loop (`mix codegen.loop`), which drives the full cycle — planner → developer → gate → reviewer → context-curator → committer — via separate per-role invocations. There is no self-orchestrating agent session for non-interactive builds; the loop is the sole build driver.
+Builds against this app run through the platform's deterministic Elixir orchestration loop (`mix codegen.loop`), which drives the full cycle — developer → gate → reviewer → context-curator → committer — via separate per-role invocations. There is no self-orchestrating agent session for non-interactive builds; the loop is the sole build driver.
 
 @codegen/rules/\_core/output-style.md
 
@@ -42,7 +42,7 @@ Backend runs before frontend by default.
 
 @codegen/rules/\_core/session-log.md
 
-Each build creates a new log file under `codegen/logging/`. The loop creates it via `codegen-log init --slug <slug>` before delegating to the planner.
+Each build creates a new log file under `codegen/logging/`. The loop creates it via `codegen-log init --slug <slug>` before delegating to the developer.
 
 All section writes go through codegen-log (`section <role>`, `append <role>` — see session-log rules § Ownership for the full CLI contract); raw Edit/Write on codegen/logging/\*.jsonl is denied.
 

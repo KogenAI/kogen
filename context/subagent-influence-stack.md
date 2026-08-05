@@ -8,10 +8,10 @@
 | --- | ---------------------- | -------------------------------- | ---------------------------------------------- | ----------------------------------------- |
 | 1   | Shared rules           | OCG shared rules dir             | Subagents (baked), orchestrator (live via `@`) | Every invocation                          |
 | 2   | Subagent system prompt | `~/.claude/agents/<role>.md`     | Subagent on spawn                              | Every subagent invocation                 |
-| 3   | Project context files  | `./context/*.md`                 | Planner on demand                              | When planner reads + passes excerpts      |
+| 3   | Project context files  | `./context/*.md`                 | Orchestrator + curator; a cycle role only per typed grant | When the loop's `files_to_touch` lists the path |
 | 4   | Runtime CLI flags      | Built by your platform's harness | Claude Code CLI                                | Per-invocation; append-only               |
 | 5   | Hooks                  | `~/.claude/hooks/*.sh`           | Claude Code runtime                            | On tool use / subagent stop / stop events |
-| 6   | Recipes                | `./codegen/recipes/`             | Planner on demand                              | When known pattern matches task           |
+| 6   | Recipes                | `./codegen/recipes/`             | Developer on demand                            | When known pattern matches task           |
 
 ## Layer 1 — Shared Rules (baked into system prompt)
 
@@ -31,7 +31,7 @@ To inspect what a subagent actually has: Read tool on `~/.claude/agents/<role>.m
 
 ## Layer 3 — Project Context Files
 
-Files: `./context/*.md`. NOT auto-loaded into subagent prompts. Planner reads on demand based on trigger keywords in `PROJECT_CONTEXT.md`, then passes relevant excerpts in delegation prompt. Audience = planner + orchestrator — dev subagents only see what planner forwards.
+Files: `./context/*.md`. NOT auto-loaded into subagent prompts. Audience = the interactive orchestrator (reads on demand based on trigger keywords in `PROJECT_CONTEXT.md`) and the context-curator (writes them post-reviewer). A cycle role never browses them: `subagent-read-discipline.sh` denies `PROJECT_CONTEXT.md` outright to `developer-*`/`reviewer-*`/`committer`, and allows a `context/*.md` Read ONLY when that exact path appears in a typed grant — the LOOP's `{"ev":"files_to_touch","role":"loop",...}` event for the developer, the DEVELOPER's `{"ev":"files_modified",...}` event for the reviewer. The loop derives `files_to_touch` from the pitch's `scope:` frontmatter field, so a context file reaches a developer only because the pitch declared it.
 
 ## Layer 4 — Runtime CLI Flags
 
@@ -62,7 +62,7 @@ Key enforcement hooks (Examples): `orchestrator-no-source-edit.sh` (write surfac
 
 ## Layer 6 — Recipes
 
-Files: `./codegen/recipes/`. Read ON DEMAND by planner when a known pattern matches. Not auto-loaded. Named in planner delegation prompt for dev to read on demand.
+Files: `./codegen/recipes/`. Read ON DEMAND by the developer when a known pattern matches. Not auto-loaded. Named by the pitch (or eagerly `{% include %}`d into the role template when the pattern applies to every invocation — see `context/subagents.md` § Eager-vs-Lazy Include Discipline).
 
 ---
 
@@ -71,8 +71,8 @@ Files: `./codegen/recipes/`. Read ON DEMAND by planner when a known pattern matc
 Work top-down when subagent does wrong thing:
 
 1. **Rule exists but subagent ignored it** → was `make install` run after editing? Check `~/.claude/agents/<role>.md` for the rule text.
-2. **Rule in wrong file** → check audience: orchestrator reads rules live via `@`; subagents only see baked content; planner reads context files.
-3. **Context file not read** → planner must explicitly load it; check delegation prompt for the context reference.
+2. **Rule in wrong file** → check audience: orchestrator reads rules live via `@`; subagents only see baked content; context files are read by the orchestrator and curator, never browsed by a cycle role.
+3. **Context file not read** → a developer can only Read it if the pitch's `scope:` named it, so the loop wrote it into `{"ev":"files_to_touch","role":"loop",...}`; check the pitch frontmatter and the cycle log's event, not the delegation prose.
 4. **CLI flag wrong** → inspect harness builder output; verify `--tools` appended after prompt positional; `--json-schema` must be inline JSON.
 5. **Hook not firing** → check `AGENT_TYPE` matcher in `settings.json`; check `is_outer_session()` guard; check `# HOOK-MANIFEST:` header declares correct signal.
 6. **Project-specific rule in shared file** → move to `./context/<topic>.md`; update `PROJECT_CONTEXT.md` trigger row.
@@ -91,11 +91,11 @@ Work top-down when subagent does wrong thing:
 
 ## Load Triggers (PROJECT_CONTEXT.md)
 
-`PROJECT_CONTEXT.md` maps trigger keywords → context files. Planner loads matching files on demand. Add a row there when adding a new `./context/*.md` file.
+`PROJECT_CONTEXT.md` maps trigger keywords → context files. The orchestrator loads matching files on demand; a pitch author names them in `scope:` so the loop can grant the developer the same Reads. Add a row there when adding a new `./context/*.md` file.
 
 Examples: trigger `"LLM"` → context/llm.md; trigger `"hooks"` → `context/hooks.md`; trigger `"provisioning"` → context/provisioning.md.
 
-Recipes: same on-demand model — planner reads recipe when task matches the pattern name. No trigger table needed; names are self-describing.
+Recipes: same on-demand model — the developer reads a recipe when the task matches the pattern name. No trigger table needed; names are self-describing.
 
 ## Trigger Keywords
 

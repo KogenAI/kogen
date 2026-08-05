@@ -222,11 +222,11 @@ describe("orchestrator-read-discipline", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows planner (AGENT_TYPE=planner) Bash grep", async () => {
+  it("allows developer (AGENT_TYPE=developer-phoenix-backend) Bash grep", async () => {
     const result = await runHook(
       "bash",
       { command: "grep -rn foo lib/" },
-      { AGENT_TYPE: "planner" },
+      { AGENT_TYPE: "developer-phoenix-backend" },
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
@@ -249,11 +249,11 @@ describe("orchestrator-read-discipline", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows subagent (AGENT_TYPE=planner) Read on lib/ file", async () => {
+  it("allows subagent (AGENT_TYPE=developer-phoenix-backend) Read on lib/ file", async () => {
     const result = await runHook(
       "read",
       { file_path: "lib/my_app/apps.ex" },
-      { AGENT_TYPE: "planner" },
+      { AGENT_TYPE: "developer-phoenix-backend" },
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });

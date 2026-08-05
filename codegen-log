@@ -10,8 +10,6 @@
 #   codegen-log append <role> --no-learning "<text>" [--slug <slug>]
 #   codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]
 #   codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]
-#   codegen-log append <role> --plan @<file-or-@-> [--slug <slug>]
-#   codegen-log append <role> --plan-gate @<json-file-or-@-> [--slug <slug>]
 #   codegen-log append <role> --files-to-touch @<json-file-or-@-> [--slug <slug>]
 #   codegen-log append <role> --files-modified @<json-file-or-@-> [--slug <slug>]
 #   codegen-log append <role> --waiver <hook-id> --waiver-slug <slug> [--slug <slug>]
@@ -81,12 +79,7 @@
 #   gate            — role, verdict (clear|failed|inconclusive); optionally
 #                      carries gate/mode/result/detail (the `verdict`
 #                      subcommand's richer shape) — both shapes are legal.
-#   plan            — role, plan (text). Planner's typed PLAN document — the
-#                      developer/reviewer's ## Plan is threaded from this
-#                      event, never re-parsed out of the role body prose.
-#   plan_gate       — role, command, mode (short|long), timeout. Planner's
-#                      typed gate SELECTION (not the verdict above).
-#   files_to_touch  — role, files[<relpath>,...]. Planner's typed list.
+#   files_to_touch  — role, files[<relpath>,...]. The loop's typed list.
 #   files_modified  — role, files[<relpath>,...]. Developer's typed list.
 #   exit            — status, signal (n|null), stderr_tail. dispatch.sh's
 #                      record of the loop CHILD PROCESS's raw wait status —
@@ -170,30 +163,9 @@
 #   --died interrupted [--cause]  -> {"ev":"died","kind":"interrupted",...} (append only)
 #   --died aborted                -> {"ev":"died","kind":"aborted",...} (append only)
 #   --verdict clear|failed|inconclusive -> {"ev":"gate","verdict":<v>,...} (append only)
-#   --plan @<file-or-@->          -> {"ev":"plan","plan":<text>,...} (append
-#                                     only). Value is RAW TEXT read from the
-#                                     given source (same @-file / @- stdin
-#                                     convention as --body — NOT JSON; a plan
-#                                     is a markdown document, not a struct).
-#                                     Empty/whitespace-only text exits 2 at
-#                                     write time. This is the planner's typed
-#                                     PLAN — the developer/reviewer's ## Plan
-#                                     is threaded from this event, never
-#                                     re-parsed out of the role body prose
-#                                     (see session-log.md § the body is
-#                                     opaque, never re-parsed as structure).
-#   --plan-gate @<file-or-@->     -> {"ev":"plan_gate",...} (append only). Value
-#                                     is a JSON OBJECT read from the given
-#                                     source (same @-file / @- stdin convention
-#                                     as --body), REQUIRED fields "command"
-#                                     (string), "mode" ("short"|"long"),
-#                                     "timeout" (integer). Malformed/missing
-#                                     fields exit 2 at write time — the typed
-#                                     writer validates shape so a bad selection
-#                                     can never reach the log.
 #   --files-to-touch @<file-or-@-> -> {"ev":"files_to_touch",...} (append only).
 #                                     Value is a JSON ARRAY of relative path
-#                                     strings, read the same way. Planner's
+#                                     strings, read the same way. The loop's
 #                                     typed files-to-touch list.
 #   --files-modified @<file-or-@-> -> {"ev":"files_modified",...} (append only).
 #                                     Same shape as --files-to-touch. Developer's
@@ -261,8 +233,6 @@ NO_LEARNING_TEXT=""
 DIED_KIND=""
 DIED_CAUSE=""
 VERDICT_KIND=""
-PLAN_SOURCE=""
-PLAN_GATE_SOURCE=""
 FILES_TO_TOUCH_SOURCE=""
 FILES_MODIFIED_SOURCE=""
 WAIVER_HOOK=""
@@ -298,8 +268,6 @@ def event_schema:
     no_learning:     {required: ["role","text"],                     optional: []},
     died:            {required: ["role","kind","cause"],              optional: []},
     gate:            {required: ["role","verdict"],                  optional: ["gate","mode","result","detail"]},
-    plan:            {required: ["role","plan"],                     optional: []},
-    plan_gate:       {required: ["role","command","mode","timeout"], optional: []},
     files_to_touch:  {required: ["role","files"],                    optional: []},
     files_modified:  {required: ["role","files"],                    optional: []},
     exit:            {required: ["status","signal","stderr_tail"],   optional: []},
@@ -320,8 +288,6 @@ usage() {
     printf '  codegen-log append <role> --no-learning "<text>" [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --died interrupted|aborted [--cause "<text>"] [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --verdict clear|failed|inconclusive [--slug <slug>]\n' >&2
-    printf '  codegen-log append <role> --plan @<file-or-@-> [--slug <slug>]\n' >&2
-    printf '  codegen-log append <role> --plan-gate @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --files-to-touch @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --files-modified @<file-or-@-> [--slug <slug>]\n' >&2
     printf '  codegen-log append <role> --waiver <hook-id> --waiver-slug <slug> [--slug <slug>]\n' >&2
@@ -443,22 +409,6 @@ while [[ $# -gt 0 ]]; do
         ;;
     --verdict)
         VERDICT_KIND="$2"
-        shift 2
-        ;;
-    --plan=*)
-        PLAN_SOURCE="${1#--plan=}"
-        shift
-        ;;
-    --plan)
-        PLAN_SOURCE="$2"
-        shift 2
-        ;;
-    --plan-gate=*)
-        PLAN_GATE_SOURCE="${1#--plan-gate=}"
-        shift
-        ;;
-    --plan-gate)
-        PLAN_GATE_SOURCE="$2"
         shift 2
         ;;
     --files-to-touch=*)
@@ -638,18 +588,16 @@ MARKER_FLAG_COUNT=0
 [[ -n "$NO_LEARNING_TEXT" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$DIED_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$VERDICT_KIND" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
-[[ -n "$PLAN_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
-[[ -n "$PLAN_GATE_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$FILES_TO_TOUCH_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$FILES_MODIFIED_SOURCE" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 [[ -n "$WAIVER_HOOK" ]] && MARKER_FLAG_COUNT=$((MARKER_FLAG_COUNT + 1))
 if [[ "$MARKER_FLAG_COUNT" -gt 1 ]]; then
-    printf 'codegen-log: --learned, --no-learning, --died, --verdict, --plan, --plan-gate, --files-to-touch, --files-modified, and --waiver are mutually exclusive\n' >&2
+    printf 'codegen-log: --learned, --no-learning, --died, --verdict, --files-to-touch, --files-modified, and --waiver are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" || -n "$PLAN_SOURCE" || -n "$PLAN_GATE_SOURCE" || -n "$FILES_TO_TOUCH_SOURCE" || -n "$FILES_MODIFIED_SOURCE" || -n "$WAIVER_HOOK" ]]; then
+if [[ -n "$DIED_KIND" || -n "$VERDICT_KIND" || -n "$NO_LEARNING_TEXT" || -n "$FILES_TO_TOUCH_SOURCE" || -n "$FILES_MODIFIED_SOURCE" || -n "$WAIVER_HOOK" ]]; then
     if [[ "$SUBCOMMAND" != "append" ]]; then
-        printf 'codegen-log: --died/--verdict/--no-learning/--plan/--plan-gate/--files-to-touch/--files-modified/--waiver are only valid with the append subcommand\n' >&2
+        printf 'codegen-log: --died/--verdict/--no-learning/--files-to-touch/--files-modified/--waiver are only valid with the append subcommand\n' >&2
         exit 2
     fi
 fi
@@ -670,15 +618,15 @@ fi
 
 # validate_role — ensure ROLE_OVERRIDE matches the known role-family
 # vocabulary. Exits 2 on unknown role (same families the old markdown header
-# mapping recognized: planner*/developer-*/reviewer-*/context-curator/
+# mapping recognized: loop/developer-*/reviewer-*/context-curator/
 # committer/dev-gate). dev-gate is only ever set internally by the `verdict`
 # subcommand, never accepted from a caller-supplied --role for section/append.
 validate_role() {
     local role="$1"
     case "$role" in
-    planner* | developer-* | reviewer-* | context-curator | committer) ;;
+    loop | developer-* | reviewer-* | context-curator | committer) ;;
     *)
-        printf 'codegen-log: could not resolve role (got %q). Pass the role positionally (codegen-log section <role>) or via --role <planner*|developer-*|reviewer-*|context-curator|committer>.\n' "${role:-unknown}" >&2
+        printf 'codegen-log: could not resolve role (got %q). Pass the role positionally (codegen-log section <role>) or via --role <loop|developer-*|reviewer-*|context-curator|committer>.\n' "${role:-unknown}" >&2
         exit 2
         ;;
     esac
@@ -1381,54 +1329,6 @@ append)
             ;;
         esac
         line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg verdict "$VERDICT_KIND" '{ev: "gate", role: $role, verdict: $verdict}')"
-        append_event_line "$log_file" "$line"
-        printf '%s\n' "$log_file"
-        exit 0
-    fi
-
-    if [[ -n "$PLAN_SOURCE" ]]; then
-        plan_text="$(read_at_source --plan "$PLAN_SOURCE")"
-        plan_trimmed="$(printf '%s' "$plan_text" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        if [[ -z "$plan_trimmed" ]]; then
-            printf 'codegen-log: --plan value is empty/whitespace-only — a blank plan can never reach the log\n' >&2
-            exit 2
-        fi
-        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg plan "$plan_text" '{ev: "plan", role: $role, plan: $plan}')"
-        append_event_line "$log_file" "$line"
-        printf '%s\n' "$log_file"
-        exit 0
-    fi
-
-    if [[ -n "$PLAN_GATE_SOURCE" ]]; then
-        plan_gate_json="$(read_at_source --plan-gate "$PLAN_GATE_SOURCE")"
-        if ! printf '%s' "$plan_gate_json" | jq -e . >/dev/null 2>&1; then
-            printf 'codegen-log: --plan-gate value is not valid JSON\n' >&2
-            exit 2
-        fi
-        pg_command="$(printf '%s' "$plan_gate_json" | jq -r '.command // empty' 2>/dev/null)"
-        pg_mode="$(printf '%s' "$plan_gate_json" | jq -r '.mode // empty' 2>/dev/null)"
-        pg_timeout="$(printf '%s' "$plan_gate_json" | jq -r '.timeout // empty' 2>/dev/null)"
-        if [[ -z "$pg_command" ]]; then
-            printf 'codegen-log: --plan-gate JSON missing required field "command"\n' >&2
-            exit 2
-        fi
-        if [[ -z "$pg_mode" ]]; then
-            printf 'codegen-log: --plan-gate JSON missing required field "mode"\n' >&2
-            exit 2
-        fi
-        case "$pg_mode" in
-        short | long) ;;
-        *)
-            printf 'codegen-log: --plan-gate JSON invalid "mode" %q (must be short or long)\n' "$pg_mode" >&2
-            exit 2
-            ;;
-        esac
-        if [[ -z "$pg_timeout" || ! "$pg_timeout" =~ ^[0-9]+$ ]]; then
-            printf 'codegen-log: --plan-gate JSON missing/invalid required field "timeout" (must be an integer)\n' >&2
-            exit 2
-        fi
-        line="$(jq -c -n --arg role "$ROLE_OVERRIDE" --arg command "$pg_command" --arg mode "$pg_mode" --argjson timeout "$pg_timeout" \
-            '{ev: "plan_gate", role: $role, command: $command, mode: $mode, timeout: $timeout}')"
         append_event_line "$log_file" "$line"
         printf '%s\n' "$log_file"
         exit 0

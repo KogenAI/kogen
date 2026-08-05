@@ -26,6 +26,9 @@
 #  (q) integrate is idempotent for gitignore (re-running doesn't duplicate lines)
 #  (ad) --recipe-source plants codegen/recipes-extra symlink, keeps generic codegen/recipes
 #  (ae) no --recipe-source → recipes-extra absent (default unchanged)
+#  (ak) integrate --stack=phoenix plants .claude/gate-config.sh (NOT static-only)
+#  (al) gate-config.sh is write-once — a hand-tuned config survives re-integrate
+#  (am) the planted phoenix config resolves a gate (no __GATE_UNRESOLVED__)
 
 set -euo pipefail
 
@@ -557,6 +560,33 @@ case "$REWRITTEN_CONTENT" in
     ;;
 esac
 assert_contains "manifest.yaml rewritten with current schema version" "$REWRITTEN_CONTENT" "scaffold_schema_version: $EXPECTED_SCHEMA_VERSION"
+
+# (ak) integrate --stack=phoenix plants .claude/gate-config.sh — the write is
+# NOT static-only. `create` renders a richer config from the stack's
+# gate-config.sh.eex; `integrate` has no template step, so without this floor a
+# Phoenix app wired up by integrate resolves __GATE_UNRESOLVED__ at gate time.
+# Mirrors the static-stack assertion at (f4).
+GATE_PHOENIX_CWD="$BASE_TMP/gate_config_phoenix_test"
+mkdir -p "$GATE_PHOENIX_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$GATE_PHOENIX_CWD" --slug=test-gate-phoenix
+assert_file_exists "phoenix integrate writes .claude/gate-config.sh" "$GATE_PHOENIX_CWD/.claude/gate-config.sh"
+GATE_PHOENIX_CONTENT="$(<"$GATE_PHOENIX_CWD/.claude/gate-config.sh")"
+assert_contains "phoenix gate-config.sh has GATE_STACK=phoenix" "$GATE_PHOENIX_CONTENT" "GATE_STACK=phoenix"
+assert_contains "phoenix gate-config.sh has GATE_COMMAND=make ci" "$GATE_PHOENIX_CONTENT" "GATE_COMMAND=\"make ci\""
+assert_contains "phoenix gate-config.sh is executable" "$GATE_PHOENIX_CONTENT" "#!/usr/bin/env bash"
+
+# (al) gate-config.sh is write-once — a hand-tuned config survives re-integrate
+printf '#!/usr/bin/env bash\nGATE_STACK=phoenix\nGATE_COMMAND="make custom-gate"\n' >"$GATE_PHOENIX_CWD/.claude/gate-config.sh"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$GATE_PHOENIX_CWD" --slug=test-gate-phoenix
+assert_contains "re-integrate does not clobber an existing gate-config.sh" \
+    "$(<"$GATE_PHOENIX_CWD/.claude/gate-config.sh")" "make custom-gate"
+
+# (am) the planted config actually resolves a gate (no __GATE_UNRESOLVED__)
+GATE_RESOLVE_CWD="$BASE_TMP/gate_config_resolve_test"
+mkdir -p "$GATE_RESOLVE_CWD"
+"$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$GATE_RESOLVE_CWD" --slug=test-gate-resolve
+GATE_DECIDE_OUT="$(bash -c "source '$CODEGEN_ROOT/harnesses/claude/hooks/lib/gate-select.sh' && gate_select_decide '$GATE_RESOLVE_CWD'")"
+check "phoenix integrate gate resolves to make ci" "gate=make ci" "$(printf '%s' "$GATE_DECIDE_OUT" | sed -n '1p')"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

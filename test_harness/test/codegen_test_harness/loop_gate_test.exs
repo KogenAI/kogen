@@ -10,22 +10,29 @@ defmodule CodegenTestHarness.LoopGateTest do
     {:ok, dir: dir}
   end
 
-  # Writes a per-app `.claude/gate-config.sh` with the given GATE_COMMAND so
-  # `decide_gate`/`run_gate` resolve explicitly instead of raising unresolved.
-  defp write_gate_config!(dir, gate_command) do
+  # Writes a per-app `.claude/gate-config.sh` with the given GATE_COMMAND (and
+  # optional GATE_MODE / GATE_TIMEOUT overrides) so `decide_gate`/`run_gate`
+  # resolve explicitly instead of raising unresolved. This config file is now
+  # the SOLE gate source — there is no per-cycle override left.
+  defp write_gate_config!(dir, gate_command, extra \\ []) do
     claude_dir = Path.join(dir, ".claude")
     File.mkdir_p!(claude_dir)
-    File.write!(Path.join(claude_dir, "gate-config.sh"), ~s(GATE_COMMAND="#{gate_command}"\n))
+
+    body =
+      [{"GATE_COMMAND", gate_command} | extra]
+      |> Enum.map_join("", fn {key, value} -> ~s(#{key}="#{value}"\n) end)
+
+    File.write!(Path.join(claude_dir, "gate-config.sh"), body)
   end
 
-  describe "decide_gate/2" do
-    test "no step_log, no project config → raises unresolved (fail loud)", %{dir: dir} do
+  describe "decide_gate/1" do
+    test "no project config → raises unresolved (fail loud)", %{dir: dir} do
       assert_raise RuntimeError, ~r/could not resolve a gate/, fn ->
         LoopGate.decide_gate(dir)
       end
     end
 
-    test "no step_log, mix.exs present but no gate-config → still raises unresolved", %{
+    test "mix.exs present but no gate-config → still raises unresolved", %{
       dir: dir
     } do
       File.write!(Path.join(dir, "mix.exs"), "")
@@ -35,126 +42,58 @@ defmodule CodegenTestHarness.LoopGateTest do
       end
     end
 
-    test "no step_log, GATE_COMMAND from per-app config resolves", %{dir: dir} do
+    test "GATE_COMMAND from per-app config resolves", %{dir: dir} do
       write_gate_config!(dir, "make ci")
 
       assert LoopGate.decide_gate(dir) == {"make ci", "short", 900}
     end
 
-    test "planner gate-json block in step log wins", %{dir: dir} do
-      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+    test "GATE_MODE override wins over the command-derived mode", %{dir: dir} do
+      write_gate_config!(dir, "make ci", [{"GATE_MODE", "long"}])
 
+      assert {_gate, "long", _timeout} = LoopGate.decide_gate(dir)
+    end
+
+    test "GATE_TIMEOUT override wins over the command-derived timeout", %{dir: dir} do
+      write_gate_config!(dir, "make ci", [{"GATE_TIMEOUT", "42"}])
+
+      assert LoopGate.decide_gate(dir) == {"make ci", "short", 42}
+    end
+
+    test "a non-numeric GATE_TIMEOUT is a misconfiguration, not a silent fall-back", %{dir: dir} do
+      write_gate_config!(dir, "make ci", [{"GATE_TIMEOUT", "soon"}])
+
+      assert_raise RuntimeError, ~r/could not resolve a gate/, fn ->
+        LoopGate.decide_gate(dir)
+      end
+    end
+
+    test "an unrecognised GATE_MODE is a misconfiguration, not a silent fall-back", %{dir: dir} do
+      write_gate_config!(dir, "make ci", [{"GATE_MODE", "medium"}])
+
+      assert_raise RuntimeError, ~r/could not resolve a gate/, fn ->
+        LoopGate.decide_gate(dir)
+      end
+    end
+
+    test "a cycle log next to the project is NOT a gate source", %{dir: dir} do
+      # The retired planner could name a per-cycle gate in the cycle log.
+      # Nothing may re-introduce that: with no `.claude/gate-config.sh` the
+      # gate is unresolved no matter what the log contains.
       File.write!(
-        step_log,
+        Path.join(dir, "20260601_120000_test_cycle.jsonl"),
         Jason.encode!(%{
           "ev" => "plan_gate",
-          "role" => "planner-phoenix",
+          "role" => "developer-phoenix-backend",
           "command" => "make custom-gate",
           "mode" => "short",
           "timeout" => 42
         }) <> "\n"
       )
 
-      assert LoopGate.decide_gate(dir, step_log) == {"make custom-gate", "short", 42}
-    end
-
-    test "planner gate wins over per-app GATE_COMMAND", %{dir: dir} do
-      write_gate_config!(dir, "make ci")
-
-      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
-
-      File.write!(
-        step_log,
-        Jason.encode!(%{
-          "ev" => "plan_gate",
-          "role" => "planner-phoenix",
-          "command" => "make custom-gate",
-          "mode" => "short",
-          "timeout" => 900
-        }) <> "\n"
-      )
-
-      assert {"make custom-gate", _mode, _timeout} = LoopGate.decide_gate(dir, step_log)
-    end
-
-    test "raises when gate_select_decide returns a parse-error sentinel (crash loud)", %{dir: dir} do
-      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
-
-      # Malformed plan_gate event (not valid JSON on the line) still resolves
-      # to the unresolved sentinel when no other gate source is configured —
-      # gate_select_decide must raise loud, never silently fall through.
-      File.write!(step_log, "not-json-at-all\n")
-
       assert_raise RuntimeError, ~r/could not resolve a gate/, fn ->
-        LoopGate.decide_gate(dir, step_log)
+        LoopGate.decide_gate(dir)
       end
-    end
-  end
-
-  describe "planner_body/1" do
-    test "nil log_file returns empty string, never raises" do
-      assert LoopGate.planner_body(nil) == ""
-    end
-
-    test "missing log file on disk returns empty string" do
-      assert LoopGate.planner_body("/tmp/does-not-exist-loop-gate-test.jsonl") == ""
-    end
-
-    test "extracts a single planner role body verbatim", %{dir: dir} do
-      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
-
-      body = "## Plan\n\n**Approach**: do the thing.\n"
-
-      File.write!(
-        step_log,
-        Jason.encode!(%{"ev" => "role", "role" => "planner-phoenix", "body" => body}) <> "\n"
-      )
-
-      assert LoopGate.planner_body(step_log) == body <> "\n"
-    end
-
-    test "concatenates multiple planner role events (re-runs) in call order, newline-joined", %{
-      dir: dir
-    } do
-      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
-
-      lines =
-        [
-          %{"ev" => "role", "role" => "planner-phoenix", "body" => "## Plan\n\nplan A"},
-          %{"ev" => "role", "role" => "planner-phoenix", "body" => "## Plan\n\nplan B"}
-        ]
-        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
-
-      File.write!(step_log, lines)
-
-      assert LoopGate.planner_body(step_log) == "## Plan\n\nplan A\n## Plan\n\nplan B\n"
-    end
-
-    test "ignores non-planner role events and non-role events", %{dir: dir} do
-      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
-
-      lines =
-        [
-          %{"ev" => "init", "pitch" => "x"},
-          %{"ev" => "role", "role" => "developer-phoenix-backend", "body" => "dev work"},
-          %{"ev" => "role", "role" => "planner-phoenix", "body" => "## Plan\n\nthe plan"}
-        ]
-        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
-
-      File.write!(step_log, lines)
-
-      assert LoopGate.planner_body(step_log) == "## Plan\n\nthe plan\n"
-    end
-
-    test "log with no planner role event returns empty string", %{dir: dir} do
-      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
-
-      File.write!(
-        step_log,
-        Jason.encode!(%{"ev" => "init", "pitch" => "x"}) <> "\n"
-      )
-
-      assert LoopGate.planner_body(step_log) == ""
     end
   end
 
@@ -209,7 +148,7 @@ defmodule CodegenTestHarness.LoopGateTest do
 
       lines =
         [
-          %{"ev" => "learned", "role" => "planner-phoenix", "text" => "caught a bug"},
+          %{"ev" => "learned", "role" => "developer-phoenix-backend", "text" => "caught a bug"},
           %{"ev" => "no_learning", "role" => "reviewer-phoenix", "text" => "routine review"}
         ]
         |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
@@ -541,30 +480,21 @@ defmodule CodegenTestHarness.LoopGateTest do
   end
 
   describe "run_gate/2 — timeout enforcement" do
-    test "a run_fn that never returns within the planner-declared deadline yields INCONCLUSIVE (timeout)",
+    test "a run_fn that never returns within the config-declared deadline yields INCONCLUSIVE (timeout)",
          %{dir: dir} do
-      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
-
-      File.write!(
-        step_log,
-        Jason.encode!(%{
-          "ev" => "plan_gate",
-          "role" => "planner-phoenix",
-          "command" => "make custom-slow-gate",
-          "mode" => "short",
-          # Sub-second timeout — decide_gate/2 truncates to whole seconds via
-          # String.to_integer, so 1 is the smallest usable value here; the
-          # run_fn below blocks far longer than 1s.
-          "timeout" => 1
-        }) <> "\n"
-      )
+      # GATE_TIMEOUT is expressed in whole seconds, so 1 is the smallest usable
+      # value here; the run_fn below blocks far longer than 1s.
+      write_gate_config!(dir, "make custom-slow-gate", [
+        {"GATE_MODE", "short"},
+        {"GATE_TIMEOUT", "1"}
+      ])
 
       run_fn = fn _gate, _project_dir ->
         Process.sleep(:infinity)
       end
 
       assert {:failed, "make custom-slow-gate"} =
-               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix", step_log: step_log)
+               LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
 
       result =
         Path.join(dir, "codegen/gate-pending/gate-result.json")
@@ -1100,21 +1030,16 @@ defmodule CodegenTestHarness.LoopGateEnvScrubTest do
   end
 
   test "default runner scrubs CODEGEN_BUILD_* from the gate subprocess", %{dir: dir} do
-    step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+    claude_dir = Path.join(dir, ".claude")
+    File.mkdir_p!(claude_dir)
 
     File.write!(
-      step_log,
-      Jason.encode!(%{
-        "ev" => "plan_gate",
-        "role" => "planner-phoenix",
-        "command" => "env | grep -c '^CODEGEN_BUILD_'",
-        "mode" => "short",
-        "timeout" => 0
-      }) <> "\n"
+      Path.join(claude_dir, "gate-config.sh"),
+      ~s(GATE_COMMAND="env | grep -c '^CODEGEN_BUILD_'"\nGATE_MODE="short"\nGATE_TIMEOUT="0"\n)
     )
 
     # No run_fn override → exercises the REAL default_run_fn/2.
-    LoopGate.run_gate(dir, stack: "phoenix", step_log: step_log)
+    LoopGate.run_gate(dir, stack: "phoenix")
 
     log = File.read!(Path.join(dir, "codegen/gate-pending/gate-run.log"))
 

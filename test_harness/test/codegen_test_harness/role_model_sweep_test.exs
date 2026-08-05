@@ -39,7 +39,8 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
     end
 
     test "rejects a role not in the stack's role sequence" do
-      raw = %{@valid_raw | "role" => "planner-phoenix"}
+      # A real, surviving role — just one belonging to the OTHER stack.
+      raw = %{@valid_raw | "role" => "reviewer-phoenix"}
 
       assert_raise RuntimeError, ~r/not in the static role sequence/, fn ->
         RoleModelSweep.validate_matrix!(raw)

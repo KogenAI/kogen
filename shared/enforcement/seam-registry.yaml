@@ -26,8 +26,9 @@
 #                   and what would close it (usually names a follow-on pitch)
 #
 # Maintained by context-curator post-reviewer (see shared/rules/roles/context-curator.md
-# § Seam Registry Maintenance) and by planner when a new seam is introduced
-# (see shared/rules/roles/planner.md § Seam Registration).
+# § Seam Registry Maintenance) — the sole maintainer. The developer registers a
+# seam it introduces as it builds it (shared/rules/roles/developer.md
+# § Seam Registration); the curator's pass is the backstop for a missed row.
 
 seams:
   - id: enforcement-registry-to-hooks
@@ -289,7 +290,7 @@ seams:
     pattern: checked-mirror
 
   - id: whole-pitch-build-invariant
-    declares: "shared/rules/roles/planner.md § Whole-Pitch Builds Only + Deliverable Manifest (MANDATORY), shared/rules/roles/reviewer.md § No Born-Dead / Deferred Work (Rule N) — the prose invariant that a build implements the WHOLE pitch, never a build-time slice or deferred/born-dead entity"
+    declares: "shared/rules/roles/developer.md § Whole-Pitch Builds Only + shared/rules/roles/reviewer.md § Deliverable coverage (row 16) + § No Born-Dead / Deferred Work (Rule N) — the prose invariant that a build implements the WHOLE pitch"
     reflects: "test_harness/lib/codegen_test_harness/born_dead_detector.ex (BornDeadDetector.check/2), wired into OrchestrationLoop.assert_work_produced!/2 (solo floor, raises) and LoopQueueDrain's injectable :born_dead_fn seam (drain floor, routes to false-0 park-and-continue)"
     guard: test-hermetic
     guard_time: make-test

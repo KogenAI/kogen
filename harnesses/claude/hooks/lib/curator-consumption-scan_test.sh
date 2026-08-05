@@ -37,8 +37,8 @@ new_repo() {
 T1=$(new_repo)
 LOG1="$T1/cycle.jsonl"
 {
-    printf '{"ev":"role","role":"planner-phoenix","body":"did stuff"}\n'
-    printf '{"ev":"no_learning","role":"planner-phoenix","text":"nothing durable"}\n'
+    printf '{"ev":"role","role":"developer-phoenix-backend","body":"did stuff"}\n'
+    printf '{"ev":"no_learning","role":"developer-phoenix-backend","text":"nothing durable"}\n'
 } >"$LOG1"
 out=$(bash "$SCAN" "$T1" "$LOG1")
 rc=$?
@@ -51,7 +51,7 @@ T2=$(new_repo)
 mkdir -p "$T2/context"
 printf '# context doc\n' >"$T2/context/foo.md"
 LOG2="$T2/cycle.jsonl"
-printf '{"ev":"learned","role":"planner-phoenix","text":"[shared] something real learned here"}\n' >"$LOG2"
+printf '{"ev":"learned","role":"developer-phoenix-backend","text":"[shared] something real learned here"}\n' >"$LOG2"
 out=$(bash "$SCAN" "$T2" "$LOG2")
 rc=$?
 assert_exit "learnings + context/*.md edit -> exit 0" "0" "$rc"
@@ -77,7 +77,7 @@ rm -rf "$T3"
 T4=$(new_repo)
 LOG4="$T4/cycle.jsonl"
 {
-    printf '{"ev":"learned","role":"planner-phoenix","text":"[shared] learning one"}\n'
+    printf '{"ev":"learned","role":"developer-phoenix-backend","text":"[shared] learning one"}\n'
     printf '{"ev":"learned","role":"developer-phoenix-backend","text":"[local] learning two"}\n'
 } >"$LOG4"
 out=$(bash "$SCAN" "$T4" "$LOG4")
@@ -103,7 +103,7 @@ rm -rf "$T4"
 T5=$(new_repo)
 LOG5="$T5/cycle.jsonl"
 {
-    printf '{"ev":"learned","role":"planner-phoenix","text":"[shared] learning one"}\n'
+    printf '{"ev":"learned","role":"developer-phoenix-backend","text":"[shared] learning one"}\n'
     printf '{"ev":"learned","role":"context-curator","text":"dropped: learning one was too trivial to route, no durable doc change needed"}\n'
 } >"$LOG5"
 out=$(bash "$SCAN" "$T5" "$LOG5")

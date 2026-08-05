@@ -59,10 +59,10 @@ describe("subagent-read-discipline", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("allows planner-* to read the pitch", async () => {
+  it("allows context-curator to read the pitch", async () => {
     const result = await runHook(
       "codegen/pitches/draft/foo.md",
-      "planner-phoenix",
+      "context-curator",
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
@@ -100,13 +100,13 @@ describe("subagent-read-discipline", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  it("blocks developer-* reading context/*.md not in planner's files_to_touch", async () => {
+  it("blocks developer-* reading context/*.md not in the loop's files_to_touch", async () => {
     const logPath = path.join(tmpDir, "cycle.jsonl");
     fs.writeFileSync(
       logPath,
       JSON.stringify({
         ev: "files_to_touch",
-        role: "planner-phoenix",
+        role: "loop",
         files: ["context/other.md"],
       }) + "\n",
     );
@@ -118,13 +118,13 @@ describe("subagent-read-discipline", () => {
     assert.ok((result as { block?: boolean }).block === true);
   });
 
-  it("allows developer-* reading context/*.md listed in planner's files_to_touch", async () => {
+  it("allows developer-* reading context/*.md listed in the loop's files_to_touch", async () => {
     const logPath = path.join(tmpDir, "cycle.jsonl");
     fs.writeFileSync(
       logPath,
       JSON.stringify({
         ev: "files_to_touch",
-        role: "planner-phoenix",
+        role: "loop",
         files: ["context/harnesses.md"],
       }) + "\n",
     );
@@ -134,6 +134,42 @@ describe("subagent-read-discipline", () => {
       logPath,
     );
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
+  });
+
+  it("blocks developer-* when the files_to_touch event is developer-authored (self-authorization guard)", async () => {
+    const logPath = path.join(tmpDir, "cycle.jsonl");
+    fs.writeFileSync(
+      logPath,
+      JSON.stringify({
+        ev: "files_to_touch",
+        role: "developer-phoenix-backend",
+        files: ["context/harnesses.md"],
+      }) + "\n",
+    );
+    const result = await runHook(
+      "context/harnesses.md",
+      "developer-phoenix-backend",
+      logPath,
+    );
+    assert.ok((result as { block?: boolean }).block === true);
+  });
+
+  it("blocks developer-* when only its own files_modified event names the path", async () => {
+    const logPath = path.join(tmpDir, "cycle.jsonl");
+    fs.writeFileSync(
+      logPath,
+      JSON.stringify({
+        ev: "files_modified",
+        role: "developer-phoenix-backend",
+        files: ["context/harnesses.md"],
+      }) + "\n",
+    );
+    const result = await runHook(
+      "context/harnesses.md",
+      "developer-phoenix-backend",
+      logPath,
+    );
+    assert.ok((result as { block?: boolean }).block === true);
   });
 
   it("fail-opens developer-* context/*.md read when no step log resolvable", async () => {

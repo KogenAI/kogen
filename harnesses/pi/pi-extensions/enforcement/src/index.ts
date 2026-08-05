@@ -51,7 +51,6 @@ import { register as registerOrchestratorReadDiscipline } from "./hooks/orchestr
 import { register as registerPhoenixBackendDeveloperGuard } from "./hooks/phoenix-backend-developer-guard";
 import { register as registerPhoenixFrontendDeveloperGuard } from "./hooks/phoenix-frontend-developer-guard";
 import { register as registerPitchFormatValidator } from "./hooks/pitch-format-validator";
-import { register as registerPlannerGuard } from "./hooks/planner-guard";
 import { register as registerPreCommitGuard } from "./hooks/pre-commit-guard";
 import { register as registerPromptBudgetWriterOnly } from "./hooks/prompt-budget-writer-only";
 import { register as registerReviewerBashAllowlist } from "./hooks/reviewer-bash-allowlist";
@@ -62,7 +61,6 @@ import { register as registerSessionLogWriterOnly } from "./hooks/session-log-wr
 import { register as registerShapeRemoteReadonly } from "./hooks/shape-remote-readonly";
 import { register as registerStaticSiteExGuard } from "./hooks/static-site-ex-guard";
 import { register as registerStopResume } from "./hooks/stop-resume";
-import { register as registerStopVerifyPlannerGate } from "./hooks/stop-verify-planner-gate";
 import { register as registerSubagentReadDiscipline } from "./hooks/subagent-read-discipline";
 import { register as registerTrackSubagentEdits } from "./hooks/track-subagent-edits";
 import { register as registerTrackToolFailures } from "./hooks/track-tool-failures";
@@ -108,7 +106,6 @@ export default function (pi: ExtensionAPI): void {
   registerPhoenixBackendDeveloperGuard(pi);
   registerPhoenixFrontendDeveloperGuard(pi);
   registerPitchFormatValidator(pi);
-  registerPlannerGuard(pi);
   registerPreCommitGuard(pi);
   registerPromptBudgetWriterOnly(pi);
   registerReviewerBashAllowlist(pi);
@@ -119,7 +116,6 @@ export default function (pi: ExtensionAPI): void {
   registerShapeRemoteReadonly(pi);
   registerStaticSiteExGuard(pi);
   registerStopResume(pi);
-  registerStopVerifyPlannerGate(pi);
   registerSubagentReadDiscipline(pi);
   registerTrackSubagentEdits(pi);
   registerTrackToolFailures(pi);

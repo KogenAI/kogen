@@ -1,6 +1,6 @@
 /**
  * role-retrospective-before-stop.ts — Pi enforcement: warn when a
- * planner/developer/reviewer subagent stops without recording BOTH its work
+ * developer/reviewer subagent stops without recording BOTH its work
  * (an {"ev":"role"} event with a non-empty body) and its learning — either
  * an {"ev":"learned"} event or an {"ev":"no_learning"} event (the legal,
  * countable "this turn produced nothing to learn" exit).
@@ -13,7 +13,7 @@
  * Event: session_shutdown (Stop equivalent)
  * OBSERVE-ONLY — Pi session_shutdown cannot block; warns to stderr.
  *
- * Gate: only enforces when parseAgentType() matches planner-*, developer-*,
+ * Gate: only enforces when parseAgentType() matches developer-*
  * or reviewer-* (context-curator and committer are NOT gated).
  *
  * Validation:
@@ -26,7 +26,7 @@
  *     - neither a learned nor a no_learning event exists for this role
  *
  * Skip when:
- *   - AGENT_TYPE does not match planner-, developer-, or reviewer- prefix
+ *   - AGENT_TYPE does not match the developer- or reviewer- prefix
  *   - No cycle log found
  *   - Both work and learning are present
  */
@@ -94,7 +94,7 @@ export function register(pi: ExtensionAPI): void {
     const agentType = parseAgentType();
     debugLog("role-retrospective-before-stop", `agent_type=${agentType}`);
 
-    if (!/^(planner-|developer-|reviewer-)/.test(agentType)) {
+    if (!/^(developer-|reviewer-)/.test(agentType)) {
       debugLog(
         "role-retrospective-before-stop",
         `skip: agent_type=${agentType} not gated`,

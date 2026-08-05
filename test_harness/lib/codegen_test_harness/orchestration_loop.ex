@@ -32,15 +32,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @type stack :: String.t()
   @type run_opts :: keyword()
 
-  # Phoenix: plan-first. static: developer-first. Terminal role is committer
-  # in both sequences — the gate/reviewer/curator/committer tail is common.
-  @phoenix_roles ~w(planner-phoenix developer-phoenix-backend reviewer-phoenix context-curator committer)
-  # Static is developer-first (no planner) by design — static tasks are simpler and
-  # the planner is an opus-priced role whose scoping isn't needed for them. (An
-  # experiment briefly added planner-static to suppress "gold-plating" like SEO/OG
-  # metadata, but that polish is not a defect, so the planner was reverted here.)
-  # build_prompt/2 still threads a planner's plan to the developer WHEN one runs —
-  # i.e. on the phoenix (plan-first) sequence.
+  # Both stacks are developer-first. Terminal role is committer in both
+  # sequences — the gate/reviewer/curator/committer tail is common.
+  @phoenix_roles ~w(developer-phoenix-backend reviewer-phoenix context-curator committer)
+  # Scoping is not a cycle role: the pitch already carries its own deliverable
+  # list in the mandatory `scope:` frontmatter field, which the loop reads once
+  # (`:pitch_scope`) and threads two ways — as the `{"ev":"files_to_touch",
+  # "role":"loop",...}` event that grants the developer its context/*.md Reads,
+  # and as the `## Declared Scope` block build_prompt/2 appends for the
+  # developer and the reviewer.
   @static_roles ~w(developer-static reviewer-static context-curator committer)
 
   @cycle_state_lib Path.expand(
@@ -182,7 +182,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     Edit/Write/MultiEdit) never sees; and (3) a consumption check (shells
     `harnesses/claude/hooks/lib/curator-consumption-scan.sh <cwd> <cycle_log>`)
     asserting that when this cycle captured upstream `{"ev":"learned"}`
-    events (planner/developer/reviewer), the curator either routed at least
+    events (developer/reviewer), the curator either routed at least
     one into a durable doc (`context/*.md` or `shared/rules/**.md` — NEVER
     `codegen/rules/**`, a symlink spelling git never emits, see the scan's
     own header comment) or recorded each drop as its own `{"ev":"learned"}`
@@ -348,6 +348,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         ctx = %{
           cwd: cwd,
           pitch: pitch,
+          pitch_scope: Keyword.get(opts, :pitch_scope),
           artifacts: %{resume_state: state},
           base_head: cycle_base_head(cwd)
         }
@@ -392,7 +393,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         # write path via its own fresh exhaustion, same as any other).
         File.rm(Path.join([cwd, "codegen", "gate-pending", "terminal-state.json"]))
 
-        ctx = %{cwd: cwd, pitch: pitch, artifacts: %{}, base_head: cycle_base_head(cwd)}
+        ctx = %{
+          cwd: cwd,
+          pitch: pitch,
+          pitch_scope: Keyword.get(opts, :pitch_scope),
+          artifacts: %{},
+          base_head: cycle_base_head(cwd)
+        }
+
         run_body_from(harness, cwd, all_roles, ctx, opts, nil)
     end
   end
@@ -422,6 +430,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         log_init_fn = Keyword.get(opts, :log_init_fn, &default_log_init/3)
         Process.put(@log_path_key, log_init_fn.(slug, cwd, stamp))
     end
+
+    log_declared_scope(ctx, cwd, opts)
 
     case resume_info do
       {resume_role, state} -> log_resume(resume_role, state, opts)
@@ -598,7 +608,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Turn-0 repo-wide orientation-doc preflight: the sibling of
   # run_curator_doc_check/6's per-curator-turn scan, moved earlier so a cycle
   # catches INHERITED drift at $0 instead of dying at the curator step after
-  # planner+developer+gate+reviewer+curator have all been paid for. Runs
+  # developer+gate+reviewer+curator have all been paid for. Runs
   # AFTER preflight_clean_tree!/1 (called earlier in run_body/1), so any
   # violation surfaced here is proven pre-existing at HEAD, not caused by
   # this cycle's own edits — attribution is structural, not heuristic.
@@ -801,8 +811,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   # Resolves the app gate at turn 0 via the :gate_preflight_fn seam (default
-  # LoopGate.decide_gate/1). Reuses the same resolution path the later gate run
-  # takes (no :step_log in the real loop), so it cannot pass-then-fail. Rescues
+  # LoopGate.decide_gate/1). Reuses the exact same resolution path the later
+  # gate run takes, so it cannot pass-then-fail. Rescues
   # the __GATE_UNRESOLVED__ RuntimeError and re-raises with an actionable hint.
   # Returns the resolved gate command string when the seam's result is a
   # {gate, mode, timeout} tuple (real LoopGate.decide_gate/1 shape); nil when
@@ -934,24 +944,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     with {:ok, result} <- invoke_with_retry(role, harness, ctx, opts) do
       ctx = put_in(ctx, [:artifacts, role], result)
 
-      # No-developer-invoked-without-its-plan: immediately after a planner
-      # role finishes, lift its ACTUAL plan — the typed {"ev":"plan",...}
-      # event it wrote to the cycle log via `codegen-log append <role>
-      # --plan @-` (hook-guaranteed present by stop-verify-planner-gate.sh)
-      # — rather than trusting the envelope `result`'s `value` (that's the
-      # planner's final CHAT MESSAGE, which can be a recap with no plan in
-      # it at all) or re-parsing the free-form `ev:role` body prose (which
-      # is contractually opaque — see session-log.md § the body is opaque,
-      # never re-parsed as structure). An absent or blank plan event raises
-      # here — one role in, before a developer is ever invoked on nothing.
-      ctx =
-        if planner_role?(role) do
-          plan = resolve_planner_plan!(role, opts)
-          put_in(ctx, [:artifacts, :planner_plan], plan)
-        else
-          ctx
-        end
-
       cond do
         developer_role?(role) ->
           run_format_step(ctx.cwd, opts)
@@ -965,31 +957,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   defp developer_role?(role), do: String.starts_with?(role, "developer-")
 
-  defp planner_role?(role), do: String.starts_with?(role, "planner-")
-
   defp reviewer_role?(role), do: String.starts_with?(role, "reviewer-")
-
-  # Resolves the planner's plan text for threading into build_prompt/2, via
-  # the :planner_plan_fn seam (default reads the real cycle log's typed
-  # {"ev":"plan",...} event through LoopGate.planner_plan/1). Fail-closed: an
-  # absent or blank plan event raises immediately rather than letting a
-  # developer run with no plan — the plan is a typed marker, never
-  # re-parsed out of the planner's free-form role body prose (see
-  # session-log.md § the body is opaque, never re-parsed as structure).
-  defp resolve_planner_plan!(role, opts) do
-    plan_fn = Keyword.get(opts, :planner_plan_fn, &default_planner_plan/1)
-    log_file = Process.get(@log_path_key)
-    plan = plan_fn.(log_file)
-
-    if is_binary(plan) and String.trim(plan) != "" do
-      plan
-    else
-      raise "OrchestrationLoop: #{role} wrote no {\"ev\":\"plan\"} event to cycle log " <>
-              "#{inspect(log_file)} — refusing to invoke a developer with no plan"
-    end
-  end
-
-  defp default_planner_plan(log_file), do: LoopGate.planner_plan(log_file)
 
   # No-ship-on-a-gate-that-didn't-grade-this-tree: runs immediately BEFORE
   # the committer role is invoked (keyed on the role about to run, not its
@@ -1193,10 +1161,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   #   * `:advanced` (HEAD has moved past the recorded source base) or
   #     `:operator` (dirty same-scope operator edits alongside the recovered
   #     transaction) — intervening history or a second version of the work
-  #     can stale the prior plan's assumptions. Always reconciles: the
-  #     planner role when the stack has one (phoenix), else the developer
-  #     role directly (plan-less static stack) — never resumes straight to
-  #     reviewer/committer on a base that moved.
+  #     can stale the recovered transaction's assumptions. Always reconciles
+  #     at the developer role, the head of both stacks' sequences — never
+  #     resumes straight to reviewer/committer on a base that moved.
   @spec resume_role_for_recovery(:exact | :advanced | :operator, String.t() | nil, [String.t()]) ::
           String.t()
   def resume_role_for_recovery(:exact, cycle_state, roles) do
@@ -1209,15 +1176,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   def resume_role_for_recovery(mode, _cycle_state, roles) when mode in [:advanced, :operator] do
-    resolve_planner_role(roles) || resolve_developer_role(roles)
+    resolve_developer_role(roles)
   end
-
-  # The plan-having stack's planner role, when one is present in `roles`
-  # (phoenix); nil on a plan-less stack (static) — callers fall back to the
-  # developer role in that case, matching this pitch's "plan-less stack
-  # reconciles at developer" contract.
-  @spec resolve_planner_role([String.t()]) :: String.t() | nil
-  defp resolve_planner_role(roles), do: Enum.find(roles, &String.starts_with?(&1, "planner-"))
 
   # The stack's developer role — always present in both role sequences
   # (`developer-phoenix-backend` or `developer-static`).
@@ -1390,7 +1350,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # slug so the identity guard's decision is operator-visible) + one
   # best-effort cycle-log line appended under `resume_role` itself —
   # `resume_role` is always a real role from codegen-log's vocabulary
-  # (planner*/developer-*/reviewer-*/context-curator/committer — see
+  # (loop/developer-*/reviewer-*/context-curator/committer — see
   # shared/rules/_core/session-log.md § Event Schema), so the resume note
   # belongs to the role section it resumes into rather than an invented
   # pseudo-role codegen-log would refuse. Fail-loud-non-blocking: a
@@ -1435,6 +1395,77 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
       :ok
     end
+  end
+
+  # Turn-0 typed scope event. The LOOP — not a role — authors this cycle's
+  # `{"ev":"files_to_touch","role":"loop","files":[...]}` record, straight from
+  # the pitch's mandatory `scope:` frontmatter list (parsed once, in
+  # `Mix.Tasks.Codegen.Loop.resolve_pitch_scope!/2`, and threaded in as
+  # `ctx.pitch_scope`). This event is what grants the developer its
+  # `context/*.md` Reads: `subagent-read-discipline.sh` reads the field from
+  # its AUTHOR's event, never from the calling role's own, and the author is
+  # now a party that cannot be talked into widening its own grant.
+  #
+  # Nothing is written when the cycle has no log of its own (unit tests pass a
+  # nil slug) or the pitch declared no scope (an ad-hoc literal pitch). An
+  # absent event denies every `context/*.md` Read, which is the correct
+  # posture for a pitch that promised nothing.
+  #
+  # Fail-loud-non-blocking, matching `default_log_resume/2`: a codegen-log
+  # failure is reported on stderr and never aborts an otherwise valid cycle —
+  # the consequence is a narrower read surface, not a wrong one.
+  defp log_declared_scope(ctx, cwd, opts) do
+    log_scope_fn = Keyword.get(opts, :log_scope_fn, &default_log_declared_scope/2)
+    log_scope_fn.(Map.get(ctx, :pitch_scope), cwd)
+  end
+
+  defp default_log_declared_scope(scope, cwd) do
+    cycle_log = Process.get(@log_path_key)
+
+    cond do
+      is_nil(cycle_log) -> :ok
+      not is_list(scope) or scope == [] -> :ok
+      not File.exists?(@codegen_log_bin) -> :ok
+      true -> write_declared_scope_event(scope, cwd, cycle_log)
+    end
+  end
+
+  defp write_declared_scope_event(scope, cwd, cycle_log) do
+    tmp =
+      Path.join(
+        System.tmp_dir!(),
+        "codegen-loop-scope-#{System.unique_integer([:positive])}.json"
+      )
+
+    File.write!(tmp, Jason.encode!(scope))
+
+    # `cd:` only when the cwd really exists — the synthetic "/tmp/irrelevant"
+    # cwd many unit tests pass would make System.cmd/3 itself raise, and
+    # codegen-log resolves the target log from the absolute CODEGEN_LOG_PATH
+    # rather than from its working directory anyway.
+    cmd_opts = [
+      stderr_to_stdout: true,
+      env: [{"CODEGEN_DIR", @codegen_dir}, {"CODEGEN_LOG_PATH", cycle_log}]
+    ]
+
+    cmd_opts = if File.dir?(cwd), do: Keyword.put(cmd_opts, :cd, cwd), else: cmd_opts
+
+    try do
+      {output, exit_code} =
+        System.cmd(@codegen_log_bin, ["append", "loop", "--files-to-touch", "@" <> tmp], cmd_opts)
+
+      if exit_code != 0 do
+        IO.puts(
+          :stderr,
+          "OrchestrationLoop: codegen-log append loop --files-to-touch failed " <>
+            "(#{exit_code}): #{output}"
+        )
+      end
+    after
+      File.rm(tmp)
+    end
+
+    :ok
   end
 
   # Turn-0 HEAD guard, symmetric to verify_committed!/2's tail guard below.
@@ -1547,8 +1578,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # gate/commit shape being otherwise clean — see
   # `CodegenTestHarness.BornDeadDetector` moduledoc for the full contract.
   # This is the un-talk-around-able code guarantee behind "a build
-  # implements the WHOLE pitch" (planner.md § Whole-Pitch Builds Only,
-  # reviewer.md § No Born-Dead / Deferred Work); the drain twin
+  # implements the WHOLE pitch" (reviewer.md § Deliverable coverage and
+  # § No Born-Dead / Deferred Work); the drain twin
   # (`LoopQueueDrain`'s `:born_dead_fn` seam) enforces the identical check
   # on its own independent ship floor — both must move together or a
   # drained build can bypass this raise.
@@ -3970,16 +4001,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   def invoke_role(role, build_harness, ctx, opts) do
     resolve_fn = Keyword.get(opts, :resolve_fn, &RoleResolver.resolve_role/2)
 
-    # No-role-is-enforced-outside-its-own-turn (planner instance): a planner
-    # is FORCED by role-retrospective-before-stop to end its turn on the
-    # mandated `codegen-log --learned` tool call — sometimes with no
-    # trailing assistant text, which call-dispatch classifies as
-    # status:"failed" even though the planner's real deliverable (the typed
-    # {"ev":"plan",...} event) already landed. Same seam
-    # resolve_planner_plan!/2 uses one step later — reused here, not
-    # redefined, so both reads agree on what "plan present" means.
-    planner_plan_fn = Keyword.get(opts, :planner_plan_fn, &default_planner_plan/1)
-
     # Per-role harness override (config.yaml `.harness.<role>.harness`).
     # Resolved ONCE here and used for every downstream lookup this
     # invocation makes (model/effort resolution, the codegen-call --harness
@@ -4086,16 +4107,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         end
 
       %{"result" => %{"status" => "failed"} = result} ->
-        plan = planner_plan_fn.(Process.get(@log_path_key))
-
-        if planner_role?(role) and is_binary(plan) and String.trim(plan) != "" do
-          case check_budget(opts) do
-            :ok -> {:ok, Map.put(result, "session_id", envelope["session_id"])}
-            {:error, reason} -> {:error, reason}
-          end
-        else
-          {:error, result["reason"] || "role #{role} failed with no reason given"}
-        end
+        {:error, result["reason"] || "role #{role} failed with no reason given"}
 
       other ->
         raise "OrchestrationLoop: unexpected codegen-call envelope for role #{role}: #{inspect(other)}"
@@ -4142,10 +4154,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   @doc """
   The continuation prompt sent on a warm-resume transient retry — replaces
-  the full pitch/plan prompt `build_prompt/2` would otherwise re-send. The
-  resumed session already carries the role's full identity, plan, and prior
-  tool-call history; re-sending the pitch would waste tokens re-deriving
-  context the transcript already has.
+  the full pitch prompt `build_prompt/2` would otherwise re-send. The
+  resumed session already carries the role's full identity, declared scope,
+  and prior tool-call history; re-sending the pitch would waste tokens
+  re-deriving context the transcript already has.
   """
   @spec resume_prompt(String.t()) :: String.t()
   def resume_prompt(_role) do
@@ -4154,34 +4166,48 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       "and emit your result JSON."
   end
 
+  # The `## Declared Scope` prompt section — the deterministic half of what
+  # the retired `## Plan` block used to carry, rendered from the pitch's own
+  # `scope:` frontmatter list. Heading and fenced-list shape are contracted
+  # by `shared/rules/roles/{developer,reviewer}.md`; changing either is a
+  # rules-and-prompt change, not a formatting tweak.
+  @spec declared_scope_block([String.t()]) :: String.t()
+  defp declared_scope_block(scope) do
+    "## Declared Scope\n\n" <>
+      "The pitch's `scope:` field names every file this build is expected to touch. " <>
+      "This is the pitch's own declaration, not a forecast: a declared path your diff " <>
+      "does not cover is an incomplete build, and a file you touch that is NOT declared " <>
+      "here must be justified in your section body.\n\n" <>
+      "```\n" <> Enum.join(scope, "\n") <> "\n```"
+  end
+
   @doc false
   def build_prompt(role, ctx) do
     reason = get_in(ctx, [:artifacts, :last_failure_reason])
 
     base = ctx[:pitch] || ""
 
-    # Thread the planner's ACTUAL plan (resolved+validated at role-result-store
-    # time in run_roles/4, stashed at ctx.artifacts[:planner_plan] — read from
-    # the typed {"ev":"plan",...} event via LoopGate.planner_plan/1, NOT the
-    # envelope `result`'s `value`, which is the planner's final chat message
-    # and can be a recap with no plan in it, and NOT re-parsed out of the
-    # free-form ev:role body prose) to the developer AND the reviewer under
-    # the exact `## Plan` heading their baked rules contract on, so each
-    # works from what was actually planned instead of re-deriving scope from
-    # the raw pitch (developer) or reviewing blind with vacuous plan-fulfillment
-    # checks (reviewer — see pitch "reviewer checks bind to reality"). (This
-    # is the real value: prior-role context threading — see structural gap
-    # #6. We do NOT try to suppress "gold-plating" like SEO/OG/JSON-LD: that
-    # is normal, harmless polish, not a defect — an earlier iteration
-    # mis-treated it as one.) Static has no planner in its sequence, so this
-    # is always absent there — the prompt stays the raw pitch, unchanged, for
-    # both developer-static and reviewer-static.
-    plan = get_in(ctx, [:artifacts, :planner_plan])
+    # Thread the pitch's OWN declared file list to the developer AND the
+    # reviewer, under the exact `## Declared Scope` heading their baked rules
+    # contract on. This is the pitch's mandatory `scope:` frontmatter field,
+    # parsed deterministically at cycle start (no model in the loop, no
+    # forecast) and stashed at ctx.pitch_scope. It occupies the same prompt
+    # slot the retired `## Plan` block did: the developer gets the
+    # authoritative starting file set instead of re-deriving scope from prose,
+    # and the reviewer gets back its MECHANICAL coverage check — every
+    # declared path must appear in the developer's typed `files_modified`
+    # event. The judgement half of review binds to the pitch body, which is
+    # already `base` above.
+    #
+    # Absent for an ad-hoc literal pitch (no frontmatter to read), in which
+    # case the prompt stays the raw pitch, unchanged, and the reviewer reports
+    # the mechanical half `N/A`. A QUEUED pitch can never reach here without a
+    # scope — `Mix.Tasks.Codegen.Loop.resolve_pitch_scope!/2` raises first.
+    scope = Map.get(ctx, :pitch_scope)
 
     base =
-      if (developer_role?(role) or reviewer_role?(role)) and is_binary(plan) and
-           String.trim(plan) != "" do
-        base <> "\n\n" <> plan
+      if (developer_role?(role) or reviewer_role?(role)) and is_list(scope) and scope != [] do
+        base <> "\n\n" <> declared_scope_block(scope)
       else
         base
       end
@@ -4199,7 +4225,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base <>
           "\n\n## Repair brief — this is a repair, not a rebuild\n\n" <>
           "You wrote the diff below three minutes ago in this same cycle. The design is " <>
-          "settled: the plan above is unchanged and the approach was accepted. Do NOT " <>
+          "settled: the pitch above is unchanged and the approach was accepted. Do NOT " <>
           "re-explore the codebase, re-derive scope, or re-read files whose content is " <>
           "already in the diff. This is the uncommitted working tree — if something in it " <>
           "is not yours, it predates the cycle; leave it alone and fix only the fault named " <>

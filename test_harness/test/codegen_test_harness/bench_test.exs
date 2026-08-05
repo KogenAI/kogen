@@ -314,7 +314,7 @@ defmodule CodegenTestHarness.BenchTest do
           "engine" => "elixir_loop",
           "subtype" => "success",
           "per_role" => %{
-            "planner-phoenix" => %{
+            "reviewer-phoenix" => %{
               "input_tokens" => 100,
               "output_tokens" => 20,
               "cache_read_tokens" => 5000,
@@ -336,7 +336,7 @@ defmodule CodegenTestHarness.BenchTest do
         }) <> "\n"
 
       assert UsageParser.parse_per_role(output, :pi, []) == %{
-               "planner-phoenix" => %{
+               "reviewer-phoenix" => %{
                  input_tokens: 100,
                  output_tokens: 20,
                  cache_read_tokens: 5000,
@@ -382,8 +382,8 @@ defmodule CodegenTestHarness.BenchTest do
 
       {_base, sid, subagents_dir, proj} = build_per_role_fixture(tmp)
 
-      # planner: 2 turns
-      write_agent_jsonl(subagents_dir, "agent-1", "planner-phoenix", [
+      # reviewer: 2 turns
+      write_agent_jsonl(subagents_dir, "agent-1", "reviewer-phoenix", [
         {100, 20, 500, 10},
         {50, 10, 200, 5}
       ])
@@ -399,15 +399,15 @@ defmodule CodegenTestHarness.BenchTest do
       output = stream_output_with_sid(sid)
       result = UsageParser.parse_per_role(output, :claude, projects_root: tmp)
 
-      assert Map.has_key?(result, "planner-phoenix")
+      assert Map.has_key?(result, "reviewer-phoenix")
       assert Map.has_key?(result, "developer-phoenix-backend")
       assert Map.has_key?(result, "orchestrator")
 
-      planner = result["planner-phoenix"]
-      assert planner.input_tokens == 150
-      assert planner.output_tokens == 30
-      assert planner.cache_read_tokens == 700
-      assert planner.cache_creation_tokens == 15
+      reviewer = result["reviewer-phoenix"]
+      assert reviewer.input_tokens == 150
+      assert reviewer.output_tokens == 30
+      assert reviewer.cache_read_tokens == 700
+      assert reviewer.cache_creation_tokens == 15
 
       dev = result["developer-phoenix-backend"]
       assert dev.input_tokens == 200
@@ -446,7 +446,7 @@ defmodule CodegenTestHarness.BenchTest do
 
       {_base, sid, subagents_dir, proj} = build_per_role_fixture(tmp)
 
-      write_agent_jsonl(subagents_dir, "agent-1", "planner-phoenix", [
+      write_agent_jsonl(subagents_dir, "agent-1", "reviewer-phoenix", [
         {100, 20, 500, 10},
         {50, 10, 200, 5}
       ])
@@ -466,7 +466,7 @@ defmodule CodegenTestHarness.BenchTest do
         |> Enum.map(& &1.cache_read_tokens)
         |> Enum.sum()
 
-      # 500 + 200 (planner) + 1000 (developer) + 300 (orchestrator) = 2000
+      # 500 + 200 (reviewer) + 1000 (developer) + 300 (orchestrator) = 2000
       assert total_cache_read == 2000
     end
   end

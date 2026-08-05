@@ -15,8 +15,6 @@ Guidance for AI agents working in the codegen repository.
 Codegen uses the standard multi-agent chain. Role routing for this repo:
 
 ```
-planner-phoenix
-    ↓
 developer-phoenix-backend   ← ALL non-UI work in codegen (schemas, contexts, controllers, hooks, rules, scripts)
     ↓ (if frontend slice)
 developer-phoenix-frontend  ← only if HEEx/LiveView/Tailwind/JS changes needed
@@ -53,7 +51,7 @@ What the developer subagent runs after any change:
 4. Post-gate checks (optional): `make harness-path-check` — standalone optional manual target
 5. `make test-stacks` — slow ExUnit scaffold suite; real LLM calls; run as pre-deploy gate
 
-**Gate command = `make test`** (fast, hermetic). `make test-stacks` is the pre-deploy gate (slow, real LLM calls). `make ci` exists as a pure alias for `make test` (`ci: test`) — not a distinct target; the Phoenix-only gate is the _downstream generated app's_ `make ci`. Planners: always emit `Gate: make test` for codegen tasks.
+**Gate command = `make test`** (fast, hermetic). `make test-stacks` is the pre-deploy gate (slow, real LLM calls). `make ci` exists as a pure alias for `make test` (`ci: test`) — not a distinct target; the Phoenix-only gate is the _downstream generated app's_ `make ci`. Codegen's own `GATE_COMMAND` is declared once in `.claude/gate-config.sh`, never per cycle.
 
 ---
 

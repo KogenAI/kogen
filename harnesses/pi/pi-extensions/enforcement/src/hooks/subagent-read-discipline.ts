@@ -7,12 +7,12 @@
  * Matcher: read
  *
  * Rules:
- *   planner-*       → allow all (planner owns context AND pitch reads)
  *   context-curator → allow all (curator writes context post-reviewer)
  *   committer       → deny PROJECT_CONTEXT.md, context/*.md, codegen/pitches/**
- *   developer-*     → deny codegen/pitches/** always (plan is self-contained);
+ *   developer-*     → deny codegen/pitches/** always (the pitch is inlined in
+ *                     the delegation prompt);
  *                     deny PROJECT_CONTEXT.md always;
- *                     context/*.md allowed ONLY if listed in the PLANNER's
+ *                     context/*.md allowed ONLY if listed in the LOOP's
  *                     typed {"ev":"files_to_touch",...} event in the active
  *                     cycle log
  *   reviewer-*      → deny codegen/pitches/** always;
@@ -23,8 +23,9 @@
  *   (other / empty) → pass through (orchestrator handled by
  *                     orchestrator-read-discipline.ts)
  *
- * The field is read from its AUTHOR's event — never from the calling role's
- * own event; never re-parsed out of free-form body prose.
+ * The field is read from its AUTHOR's event (the loop's files_to_touch, the
+ * developer's files_modified) — never from the calling role's own event;
+ * never re-parsed out of free-form body prose.
  *
  * Fail-open: if the active step log is missing/unreadable, allow the Read
  * (avoids false-negatives during session initialisation — same as the bash
@@ -50,7 +51,7 @@ function filePathOf(input: unknown): string {
 function readEventFiles(
   stepLog: string,
   ev: "files_to_touch" | "files_modified",
-  rolePrefix: string,
+  roleMatches: (role: string) => boolean,
 ): string[] {
   let text: string;
   try {
@@ -67,7 +68,7 @@ function readEventFiles(
     } catch {
       continue;
     }
-    if (obj.ev === ev && typeof obj.role === "string" && obj.role.startsWith(rolePrefix)) {
+    if (obj.ev === ev && typeof obj.role === "string" && roleMatches(obj.role)) {
       if (Array.isArray(obj.files)) files.push(...obj.files);
     }
   }
@@ -98,7 +99,6 @@ export function register(pi: ExtensionAPI): void {
       `agent_type=${agentType} file=${filePath}`,
     );
 
-    if (agentType.startsWith("planner-")) return;
     if (agentType === "context-curator") return;
 
     if (agentType === "committer") {
@@ -123,21 +123,21 @@ export function register(pi: ExtensionAPI): void {
     if (agentType.startsWith("developer-")) {
       if (isPitch) {
         return deny(
-          "Developer cannot read the pitch — when a ## Plan is present it is self-contained, use it from the session log; when no ## Plan is present, the pitch text is already inlined in your delegation prompt.",
+          "Developer cannot read the pitch — the pitch text is already inlined in your delegation prompt, and the file list it declares is under ## Declared Scope.",
         );
       }
       if (isProjectContext) {
         return deny(
-          "Developer cannot read PROJECT_CONTEXT.md for orientation. When a ## Plan is present it is self-contained — use it from the active step log; when absent, the pitch text already inlined in your prompt is the complete scope.",
+          "Developer cannot read PROJECT_CONTEXT.md for orientation. The pitch text already inlined in your prompt is the complete scope, and the file list it declares is under ## Declared Scope.",
         );
       }
       if (isContextDir) {
         const stepLog = getActiveStepLog(process.cwd());
         if (!stepLog || !fs.existsSync(stepLog)) return; // ANTI-WEDGE FAIL-OPEN.
-        const files = readEventFiles(stepLog, "files_to_touch", "planner");
+        const files = readEventFiles(stepLog, "files_to_touch", (r) => r === "loop");
         if (files.includes(relPath)) return;
         return deny(
-          `Developer cannot read ${filePath} for orientation. Read context/*.md only when the path appears in planner's files_to_touch event as an (EDIT) or (NEW) target.`,
+          `Developer cannot read ${filePath} for orientation. Read context/*.md only when the path appears in the loop's files_to_touch event, which the loop writes from the pitch's scope: field.`,
         );
       }
       return;
@@ -146,18 +146,18 @@ export function register(pi: ExtensionAPI): void {
     if (agentType.startsWith("reviewer-")) {
       if (isPitch) {
         return deny(
-          "Reviewer cannot read the pitch — review against ## Plan (when present) and ## Files Modified in the active step log; when no ## Plan was threaded (plan-less stack), report plan-fulfillment checks N/A rather than reading the pitch.",
+          "Reviewer cannot read the pitch file — you do not need it: the full pitch body is already the first section of your prompt, and the file list it declares is under ## Declared Scope. Review against those and ## Files Modified.",
         );
       }
       if (isProjectContext) {
         return deny(
-          "Reviewer cannot read PROJECT_CONTEXT.md. Check plan fulfillment via ## Plan Goal line in active step log when present; when absent, report N/A — no ## Plan in the active step log (plan-less stack).",
+          "Reviewer cannot read PROJECT_CONTEXT.md. Check pitch fulfillment against the pitch body at the top of your prompt and the ## Declared Scope list, not raw context.",
         );
       }
       if (isContextDir) {
         const stepLog = getActiveStepLog(process.cwd());
         if (!stepLog || !fs.existsSync(stepLog)) return; // ANTI-WEDGE FAIL-OPEN.
-        const files = readEventFiles(stepLog, "files_modified", "developer");
+        const files = readEventFiles(stepLog, "files_modified", (r) => r.startsWith("developer"));
         if (files.includes(relPath)) return;
         return deny(
           `Reviewer cannot read ${filePath} — it is not listed in developer's files_modified event. Review only files that developer modified.`,

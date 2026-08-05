@@ -192,7 +192,7 @@ def validate_role_match(script_path: Path, manifest: dict) -> None:
     For literal role values (no *, |, not in {*, all}):
       - body must contain [ "$AGENT_TYPE" = "<literal>" ]
         OR case "$AGENT_TYPE" in ... <literal>) ;;
-    For glob roles (planner-*, developer-*):
+    For glob roles (developer-*, reviewer-*):
       - body must contain case "$AGENT_TYPE" in <glob>) ;;
         OR printf '%s' "$AGENT_TYPE" | grep -qE '^<prefix>-'
     For wildcard roles (*, all):

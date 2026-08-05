@@ -403,7 +403,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     recovery = if branch == "", do: "none (tree clean)", else: branch
 
     row =
-      "| interrupted recovery | #{utc_stamp()} | unaccountable | checkpoint=#{journal["stage"]}; recovery=#{recovery}; next=planner-inspection-required |"
+      "| interrupted recovery | #{utc_stamp()} | unaccountable | checkpoint=#{journal["stage"]}; recovery=#{recovery}; next=operator-inspection-required |"
 
     LoopQueue.write_history_row!(claim, "Build failure history", row)
   end
@@ -569,7 +569,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     - `:namespace` (required) — `"recovery/interrupted"` (direct/crash) or
       `"queue-fail"` (queue terminal failure)
     - `:cause` (optional) — fresh terminal-cause string; absent/nil records
-      `"unknown"` and forces planner/developer reconciliation at
+      `"unknown"` and forces developer reconciliation at
       materialization time, never a shortcut to exact-base resume
     - `:cycle_state` (optional) — the last completed cycle-state string
       (`"GATED"|"REVIEWED"|"CURATED"` or nil), snapshotted for later role

@@ -148,29 +148,25 @@ defmodule CodegenTestHarness.LoopGate do
   def codegen_root, do: @codegen_root
 
   @doc """
-  Decides the gate command for `project_dir` (optionally scoped by
-  `step_log`, the active session-log path used for the planner's
-  `**Gate**:` line) via `gate-select.sh`'s `gate_select_decide`.
+  Decides the gate command for `project_dir` via `gate-select.sh`'s
+  `gate_select_decide`, which resolves it solely from the project's own
+  `.claude/gate-config.sh` (`GATE_COMMAND`, plus the optional `GATE_MODE` /
+  `GATE_TIMEOUT` overrides). No cycle carries a per-cycle gate selection any
+  more, so there is nothing session-scoped left to pass.
 
   Returns `{gate_command, mode, timeout_secs}`. Raises if `gate-select.sh`
   is missing or the decision cannot be parsed.
   """
-  @spec decide_gate(String.t(), String.t() | nil) :: {String.t(), String.t(), non_neg_integer()}
-  def decide_gate(project_dir, step_log \\ nil) do
+  @spec decide_gate(String.t()) :: {String.t(), String.t(), non_neg_integer()}
+  def decide_gate(project_dir) do
     unless File.exists?(@gate_select_lib) do
       raise "LoopGate: gate-select.sh not found at #{@gate_select_lib}"
     end
 
-    args = if step_log, do: [project_dir, step_log], else: [project_dir]
-    arg_str = Enum.map_join(args, " ", &shell_quote/1)
-
-    script = "source #{shell_quote(@gate_select_lib)} && gate_select_decide #{arg_str}"
+    script =
+      "source #{shell_quote(@gate_select_lib)} && gate_select_decide #{shell_quote(project_dir)}"
 
     {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
-
-    if String.starts_with?(String.trim(output), "__GATE_PARSE_ERROR__:") do
-      raise "LoopGate: gate_select_decide returned a parse error — #{String.trim(output)}"
-    end
 
     if String.starts_with?(String.trim(output), "__GATE_UNRESOLVED__:") do
       raise "LoopGate: gate_select_decide could not resolve a gate — #{String.trim(output)}"
@@ -188,57 +184,6 @@ defmodule CodegenTestHarness.LoopGate do
   end
 
   @doc """
-  Extracts the concatenated planner role body text from a JSONL cycle log,
-  via `gate-select.sh`'s `planner_body_from_log` — the SAME decoder
-  `decide_gate/2` already shells for the `**Gate**:`/`gate-json` scan, reused
-  here rather than reimplemented. Returns `""` when `log_file` is nil,
-  missing, unreadable, or carries no planner role event (never raises —
-  the caller decides what an empty body means).
-  """
-  @spec planner_body(String.t() | nil) :: String.t()
-  def planner_body(nil), do: ""
-
-  def planner_body(log_file) when is_binary(log_file) do
-    unless File.exists?(@gate_select_lib) do
-      raise "LoopGate: gate-select.sh not found at #{@gate_select_lib}"
-    end
-
-    script =
-      "source #{shell_quote(@gate_select_lib)} && planner_body_from_log #{shell_quote(log_file)}"
-
-    {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
-
-    output
-  end
-
-  @doc """
-  Reads the planner's typed PLAN event (`{"ev":"plan","role":<planner*>,
-  "plan":<text>}`, written via `codegen-log append <role> --plan @-`) from a
-  JSONL cycle log, via `gate-select.sh`'s `gate_select_read_planner_plan` —
-  the SAME decoder `gate_select_read_planner_gate`/`decide_gate/2` already
-  shells for the plan-gate selection, reused here rather than reimplemented.
-  Returns `""` when `log_file` is nil, missing, unreadable, or carries no
-  `ev:plan` event for a planner* role (never raises — the caller,
-  `OrchestrationLoop.resolve_planner_plan!/2`, decides what an empty plan
-  means: it raises before invoking a developer).
-  """
-  @spec planner_plan(String.t() | nil) :: String.t()
-  def planner_plan(nil), do: ""
-
-  def planner_plan(log_file) when is_binary(log_file) do
-    unless File.exists?(@gate_select_lib) do
-      raise "LoopGate: gate-select.sh not found at #{@gate_select_lib}"
-    end
-
-    script =
-      "source #{shell_quote(@gate_select_lib)} && gate_select_read_planner_plan #{shell_quote(log_file)}"
-
-    {output, 0} = System.cmd("bash", ["-c", script], stderr_to_stdout: true)
-
-    output
-  end
-
-  @doc """
   Mechanical predicate for "does this cycle have anything for
   context-curator to curate?", read from the cycle's own JSONL via
   `gate-select.sh`'s `curator_learning_signal_from_log`. Returns one of:
@@ -252,8 +197,7 @@ defmodule CodegenTestHarness.LoopGate do
     `:learned` (spawn the curator) — a missing signal is never read as
     permission to skip.
 
-  Returns `:absent` when `log_file` is `nil` (mirrors `planner_body/1`'s
-  nil-tolerance). Never raises.
+  Returns `:absent` when `log_file` is `nil`. Never raises.
   """
   @spec curator_learning_signal(String.t() | nil) :: :learned | :no_learning | :absent
   def curator_learning_signal(nil), do: :absent
@@ -286,10 +230,9 @@ defmodule CodegenTestHarness.LoopGate do
     runs after a clear gate command exit, mirroring the function of the
     deleted `static-site-build-check.sh` SubagentStop hook (dead under the
     loop — no SubagentStop fires for a main-agent `codegen-call` session).
-    The gate command itself comes solely from `decide_gate/2` (planner
-    `**Gate**:` line, or per-app `.claude/gate-config.sh` GATE_COMMAND) —
-    there is no stack-derived default gate.
-  - `:step_log` — session-log path forwarded to `decide_gate/2`
+    The gate command itself comes solely from `decide_gate/1` (the per-app
+    `.claude/gate-config.sh` GATE_COMMAND) — there is no stack-derived
+    default gate.
   - `:session_id` — recorded in `gate-result.json` (default `""`)
   - `:run_fn` — test seam: `(gate_command, project_dir -> {output, exit_code})`,
     defaults to a real `System.cmd("bash", ["-c", gate_command], cd: project_dir)`
@@ -361,7 +304,6 @@ defmodule CodegenTestHarness.LoopGate do
   @spec run_gate(String.t(), keyword()) :: {verdict(), String.t()}
   def run_gate(project_dir, opts \\ []) do
     stack = Keyword.get(opts, :stack)
-    step_log = Keyword.get(opts, :step_log)
     session_id = Keyword.get(opts, :session_id, "")
     run_fn = Keyword.get(opts, :run_fn, &default_run_fn/2)
     preflight_fn = Keyword.get(opts, :preflight_fn, &static_render_deps_preflight!/1)
@@ -382,7 +324,7 @@ defmodule CodegenTestHarness.LoopGate do
 
     if stack == "static", do: preflight_fn.(project_dir)
 
-    {gate, mode, timeout} = decide_gate(project_dir, step_log)
+    {gate, mode, timeout} = decide_gate(project_dir)
 
     canary_verdict = canary_fn.(gate, evidence_fn)
 

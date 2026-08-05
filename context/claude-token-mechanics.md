@@ -64,7 +64,7 @@ Each turn's incremental tool I/O lands in `input_tokens` (full price) on arrival
 
 `cache_read_input_tokens` is a **per-turn snapshot**: the number of tokens the model read from cache on that single turn. It is bounded by the context window. Summing it across N turns yields **cumulative read-volume** — a billing dimension, not a memory dimension.
 
-Example: a planner session (Opus, 88 turns). Peak single-turn context = 95.7k tokens — well under Opus's 200k window. Summing `cache_read_input_tokens` across all 88 turns yields 5.3M tokens. That 5.3M is the total tokens read from cache over the entire session; it does not mean 5.3M tokens were in context simultaneously.
+Example: a read-heavy Opus session (88 turns). Peak single-turn context = 95.7k tokens — well under Opus's 200k window. Summing `cache_read_input_tokens` across all 88 turns yields 5.3M tokens. That 5.3M is the total tokens read from cache over the entire session; it does not mean 5.3M tokens were in context simultaneously.
 
 The billing consequence is real: 5.3M cache reads × $0.50/M = $2.65 in cache-read charges alone. But no context-window overflow occurred — the 5.3M is a throughput number, not a size number.
 
@@ -137,12 +137,12 @@ Confirmed by official docs: `Task` spawn does **not** inherit the orchestrator's
 delegation prompt ("Their work doesn't bloat your context"). `memory_tokens=0` in `/context` output for
 a subagent is correct, not a measurement artifact.
 
-### Planner (1–3 turns, or 80+ turns on heavy-Read sessions)
+### Read-heavy exploratory session (shape / debug / ops; 1–3 turns, or 80+ turns)
 
 Low turn count → cache write/read ratio near 1.0. Each turn loads large Read payloads into the suffix;
 next turn those reads are cached at 0.1×. **Less sensitive** to system prompt bloat; **more sensitive**
-to total prompt size approaching the 200k window. Heavy-Read planners (60+ Reads → 88 turns) shift into
-developer economics. (Example: an observed planner session ran 88 turns, 5.3M cumulative cache reads,
+to total prompt size approaching the 200k window. A heavy-Read session (60+ Reads → 88 turns) shifts into
+developer economics. (Example: an observed Opus session ran 88 turns, 5.3M cumulative cache reads,
 95.7k peak single-turn context — the same worked example as § 4 above, told from the tuning angle.)
 
 ### Developer (8–30 turns, edit-test-edit)

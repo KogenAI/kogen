@@ -21,19 +21,21 @@ e.g. `mcp__codegen__log_section_developer_phoenix_backend`) — role is hardcode
 caller argument. This closes the `unsupported role`/`no role (AGENT_TYPE unset)` failure class that
 hand-composed bash could hit: a role can only call the tool it was granted, and that grant IS its role.
 Role-less readers: `gate_status` (verdict/exit/witness from `gate-result.json`) and `log_read` (view:
-`manifest`|`retro`|`full` — planner's typed events, `ev:learned` only, or every event).
+`manifest`|`retro`|`full` — the loop's `ev:files_to_touch` events, `ev:learned` only, or every event).
 
-**Grant site**: each of the 9 concrete roles' `shared/subagents/**/*.md.j2` `tools:` frontmatter line —
+**Grant site**: each of the 7 concrete roles' `shared/subagents/**/*.md.j2` `tools:` frontmatter line —
 verified the actual offered-tool gate under `--agent` (`--allowedTools`/`--tools` alone does NOT expose
 an MCP tool there). Dispatch wiring: `call-dispatch.sh` (Claude) adds `--mcp-config <resolved config>`
 beside the existing `--strict-mcp-config`, generated on the fly per-machine and omitted when
 `mcp-server/dist/index.js` hasn't been built — see `context/harnesses.md` for the dispatch-side detail.
 `dispatch.sh` (execs `mix codegen.loop`) carries no MCP wiring; it has no `claude` argv to edit.
 
-## `ev` Event Kinds (13, not 6 — corrects a stale prior count)
+## `ev` Event Kinds (11)
 
-`init`, `role`, `learned`, `no_learning`, `died`, `gate`, `plan`, `plan_gate`, `files_to_touch`,
-`files_modified`, `exit`, `committed`, `waiver`. Verified via `codegen-log --kinds`. `waiver`
+`committed`, `died`, `exit`, `files_modified`, `files_to_touch`, `gate`, `init`, `learned`,
+`no_learning`, `role`, `waiver`. Verified via `codegen-log --kinds`. There is no `plan` or
+`plan_gate` kind — the pitch body plus the loop's `## Declared Scope` block replace the plan
+document, and the gate is declared per-project in `<project>/.claude/gate-config.sh`. `waiver`
 (`role`, `hook`, `slug`) is written by `harnesses/claude/hooks/_waiver.sh` (+ `.ts` twin) at the
 moment a `waivable: true` registry entry is granted a waiver for a promoted pitch's `waives:`
 declaration — see `shared/rules/_core/session-log.md` § A guard is waived only where a pitch

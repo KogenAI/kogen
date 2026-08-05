@@ -12,7 +12,7 @@ consumer:
 
 ## Role → Model/Effort (Claude harness; Pi mirrors with its own model IDs)
 
-Every deterministic BUILD role (planner, developer, reviewer, committer, context-curator, app_build) runs
+Every deterministic BUILD role (developer, reviewer, committer, context-curator, app_build) runs
 at canonical semantic effort `off` — an explicit operator choice, not an omission. This includes every
 `escalate_effort:` and `fallback[].effort:` rung on the three developer roles: a give-up-boundary
 escalation or a same-provider fallback rung still carries `off`, so a stuck build never silently
@@ -21,7 +21,6 @@ re-introduces reasoning effort on a retry. Investigative/supervisory modes (`ins
 
 | Role                                                        | Model  | Effort |
 | ----------------------------------------------------------- | ------ | ------ |
-| planner-phoenix / planner-static                            | opus   | off    |
 | developer-phoenix-backend / developer-phoenix-frontend      | sonnet | off    |
 | developer-static (claude twin; see per-role override below) | sonnet | off    |
 | reviewer-phoenix / reviewer-static                          | sonnet | off    |
@@ -106,7 +105,7 @@ Every Pi `model`/`escalate_model`/`fallback[].model` value in `config.yaml` is o
 `codegen-build --harness=claude --stack=static` still dispatches THIS role through Pi
 (`openai-codex/gpt-5.6-terra`, effort high; escalate/fallback `openai-codex/gpt-5.6-sol`, effort high —
 the same tier map above, mirroring its claude twin's sonnet/high and opus/high rungs) while
-`planner-static` / `reviewer-static` / `committer` stay on Claude. Escalation and fallback also
+`reviewer-static` / `committer` / `context-curator` stay on Claude. Escalation and fallback also
 resolve on the overridden harness — a Pi role never falls back to a Claude model. Measured ~3.4x
 cheaper than the Claude/sonnet twin for this role at equal call count (bench `20260717_064438`); the
 Claude `pi:` block above stays as the twin config for reference/reversion (comment out `harness: pi`

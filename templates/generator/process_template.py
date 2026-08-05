@@ -170,7 +170,7 @@ def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=Non
     When tool_name == 'claude' and config_yaml is provided, the YAML frontmatter
     model: line is rewritten using harness[role][claude].model and an effort: line
     is injected immediately after it.  Role name is derived from the template
-    basename (e.g. planner.md.j2 -> planner).
+    basename (e.g. reviewer-static.md.j2 -> reviewer-static).
 
     Only templates carrying a `model:` frontmatter line are treated as agent-role
     templates and are REQUIRED to resolve a role_cfg (fail loud if absent/incomplete).
@@ -193,7 +193,7 @@ def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=Non
         with open(config_yaml, 'r') as f:
             config = yaml.safe_load(f)
         harness = config.get('harness', {})
-        # Strip both extensions: planner.md.j2 -> planner.md -> planner
+        # Strip both extensions: reviewer-static.md.j2 -> reviewer-static.md -> reviewer-static
         role_name = os.path.splitext(os.path.splitext(os.path.basename(template_file))[0])[0]
 
         # Only agent-role templates carry a model: line in their frontmatter.

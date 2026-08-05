@@ -13,7 +13,7 @@ SENTINEL6="Latent contract-mirror fork"
 SENTINEL7="NEVER fail open by default"
 SENTINEL8="Lowercase letters/digits/hyphens only. No colons"
 SENTINEL9="context files are hints, probes are evidence"
-SENTINEL9_PLANNER="only \`ran:\` against git/fs counts"
+SENTINEL9_DEVELOPER_PROBES="only \`ran:\` against git/fs counts"
 
 pass=0
 fail=0
@@ -176,18 +176,6 @@ assert_contains \
     "$CODEGEN_DIR/shared/rules/stacks/static/tailwind.md" \
     "$SENTINEL8"
 
-# ── Tests 28a-28b: NO static planner prompt carries a package.json-gated tailwindcss clause ──
-# (mandate: Tailwind v4 always compiled, no package.json detection; regression guard for
-#  tailwind-mandate-stated-uniformly — the stale gate must not silently reappear)
-assert_absent \
-    "no package.json-gated tailwindcss clause in planner-static.md.j2" \
-    "$CODEGEN_DIR/shared/subagents/static/planner-static.md.j2" \
-    "detected in \`package.json\`, name \`stacks/static/tailwind.md\`"
-assert_absent \
-    "no package.json-gated tailwind path-pass in stacks/static/planner.md" \
-    "$CODEGEN_DIR/shared/rules/stacks/static/planner.md" \
-    "names \`stacks/static/tailwind.md\` in dev delegation prompt"
-
 # ── Tests 29-32: context-claim ≠ provenance proof sentinel in shape prompts + sources ──
 assert_contains \
     "context-claim≠proof sentinel in claude-shape-system-prompt.txt" \
@@ -205,9 +193,9 @@ assert_contains \
     "$SENTINEL9"
 
 assert_contains \
-    "edit-target provenance FORBIDDEN in planner.md source" \
-    "$CODEGEN_DIR/shared/rules/roles/planner.md" \
-    "$SENTINEL9_PLANNER"
+    "edit-target provenance FORBIDDEN in developer.md source" \
+    "$CODEGEN_DIR/shared/rules/roles/developer.md" \
+    "$SENTINEL9_DEVELOPER_PROBES"
 
 SENTINEL10="Runtime-path fidelity"
 assert_contains \

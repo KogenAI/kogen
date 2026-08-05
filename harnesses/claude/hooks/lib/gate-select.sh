@@ -11,52 +11,51 @@
 #   mode=<short|long>
 #   timeout=<seconds>   (0 for short gates; the foreground poll budget for long gates)
 #
-# Inputs (in priority order):
-#   1. The active step log's structured {"ev":"plan_gate",...} event, written
-#      by the planner via `codegen-log append <role> --plan-gate @-`. If
-#      present, planner wins — gate = its "command" field, mode/timeout from
-#      its "mode"/"timeout" fields directly (no re-derivation).
-#   2. Otherwise, per-app config `<project_dir>/.claude/gate-config.sh`, sourced
-#      for a single required variable GATE_COMMAND. If GATE_COMMAND is non-empty,
-#      gate = GATE_COMMAND (mode/timeout via gate_mode_for/gate_timeout_for).
-#   3. Otherwise (no planner gate AND no GATE_COMMAND): FAIL LOUD. Print
+# Input — a single source, the per-app config:
+#   1. `<project_dir>/.claude/gate-config.sh`, sourced for one required
+#      variable GATE_COMMAND plus two optional ones, GATE_MODE and
+#      GATE_TIMEOUT. If GATE_COMMAND is non-empty, gate = GATE_COMMAND;
+#      mode/timeout come from GATE_MODE/GATE_TIMEOUT when the config sets
+#      them, else from gate_mode_for/gate_timeout_for.
+#   2. Otherwise (no config file, or no GATE_COMMAND): FAIL LOUD. Print
 #      `__GATE_UNRESOLVED__:<reason>` to stdout and return 0. There is NO
 #      stack-guessing fallback and NO default gate — an unresolved gate is a
 #      real misconfiguration the caller must surface (block / raise), never
 #      silently skip.
 #
-# The gate SELECTION is a first-class JSONL event ({"ev":"plan_gate",...}) —
-# never re-parsed out of the planner's free-form role body prose. See
+# There is no per-cycle gate override: the gate is a per-PROJECT operator
+# declaration, read verbatim from the config, never inferred from any role's
+# output and never re-parsed out of free-form body prose. See
 # shared/rules/_core/session-log.md § the body is opaque, never re-parsed as
 # structure.
 #
 # Per-app config contract (`<project_dir>/.claude/gate-config.sh`):
-#   GATE_COMMAND — the exact gate command for this app (e.g. "make ci" for a
-#                  Phoenix/static downstream app, "make test" for codegen itself).
+#   GATE_COMMAND — REQUIRED. The exact gate command for this app (e.g. "make ci"
+#                  for a Phoenix/static downstream app, "make test" for codegen
+#                  itself).
+#   GATE_MODE    — OPTIONAL. "short" or "long". Unset/empty → derived from
+#                  GATE_COMMAND by gate_mode_for. Any other value is a
+#                  misconfiguration and yields __GATE_UNRESOLVED__ — never a
+#                  silent fall-back to the heuristic, which would hide the typo.
+#   GATE_TIMEOUT — OPTIONAL. Non-negative integer, seconds. Unset/empty →
+#                  derived from GATE_COMMAND by gate_timeout_for. Non-numeric is
+#                  a misconfiguration and yields __GATE_UNRESOLVED__.
 #
-# Mode selection from gate string (`gate_mode_for`):
+# Why the two optional overrides exist: the gate_mode_for/gate_timeout_for
+# heuristics only recognise `make ci`, `make llm` and `rebuild-seed-then`. Any
+# other gate command — codegen's own "make test", for one — derives
+# mode=short/timeout=0, i.e. no declared budget. The consumer
+# (LoopGate.run_with_deadline/4) floors a zero to its own 900s default, so this
+# is not a hang; but a project whose real budget is neither 0 nor 900 has no way
+# to say so from the command string alone. These two variables are that way:
+# per-PROJECT, set by the operator, read verbatim, never re-derived.
+#
+# Mode selection from gate string (`gate_mode_for`, used only when GATE_MODE is
+# unset):
 #   contains "make llm" or "rebuild-seed-then" → long
 #   anything else                              → short
 
 set -u
-
-# planner_body_from_log <step_log_file> — extract the concatenated planner
-# role body text from a JSONL cycle log. The `## Plan`/`**Gate**:` prose
-# scanners below operate on this DECODED body text, never on the raw JSONL
-# bytes (a plan body containing "## Plan" is just a JSON string value, not a
-# markdown structure). Multiple planner role events (re-runs) are joined with
-# a newline, in call order (jq preserves file order). Empty string when the
-# log is missing, unreadable, or carries no planner role event — callers fall
-# through to their existing "no gate found" path exactly as before.
-planner_body_from_log() {
-    local log_file="$1"
-    [ -f "$log_file" ] || {
-        printf ''
-        return 0
-    }
-    jq -r 'select(.ev == "role" and (.role | startswith("planner"))) | .body' \
-        "$log_file" 2>/dev/null
-}
 
 # curator_learning_signal_from_log <step_log_file> — mechanical predicate
 # for "does this cycle have anything for context-curator to curate?", read
@@ -161,111 +160,24 @@ gate_mode_for() {
     fi
 }
 
-# gate_select_read_planner_gate <step_log_file> — read the planner's typed
-# gate-SELECTION event ({"ev":"plan_gate","role":<planner*>,"command":<cmd>,
-# "mode":"short"|"long","timeout":<seconds>}), written by
-# `codegen-log append <role> --plan-gate @-`. Prints the command on the first
-# line followed by __GATE_JSON_MODE=<mode> and __GATE_JSON_TIMEOUT=<timeout>
-# lines (same output contract gate_select_decide already parses). Empty when
-# the log is missing, unreadable, or carries no plan_gate event for a
-# planner* role — caller falls through to its existing "no gate found" path.
-# No prose fallback: a missing structured field blocks, it never re-parses
-# `body` (session-log.md § the body is opaque, never re-parsed as structure).
-gate_select_read_planner_gate() {
-    local log_file="$1"
-    [ -f "$log_file" ] || {
-        printf ''
-        return 0
-    }
-
-    local last_event
-    last_event=$(jq -c 'select(.ev == "plan_gate" and (.role | startswith("planner")))' \
-        "$log_file" 2>/dev/null | tail -n 1)
-    [ -z "$last_event" ] && {
-        printf ''
-        return 0
-    }
-
-    local cmd mode timeout
-    cmd=$(printf '%s' "$last_event" | jq -r '.command // empty' 2>/dev/null)
-    mode=$(printf '%s' "$last_event" | jq -r '.mode // empty' 2>/dev/null)
-    timeout=$(printf '%s' "$last_event" | jq -r '.timeout // empty' 2>/dev/null)
-
-    [ -z "$cmd" ] && {
-        printf ''
-        return 0
-    }
-
-    printf '%s\n__GATE_JSON_MODE=%s\n__GATE_JSON_TIMEOUT=%s\n' "$cmd" "$mode" "${timeout:-0}"
-}
-
-# gate_select_read_planner_plan <step_log_file> — read the planner's typed
-# PLAN event ({"ev":"plan","role":<planner*>,"plan":<text>}), written by
-# `codegen-log append <role> --plan @-`. Prints the raw plan text on stdout.
-# Last-wins on a planner re-run (mirrors gate_select_read_planner_gate).
-# Empty when the log is missing, unreadable, or carries no plan event for a
-# planner* role — caller (OrchestrationLoop.resolve_planner_plan!/2) treats
-# that as "no plan" and raises before invoking a developer. No prose
-# fallback: a missing structured field blocks, it never re-parses `body`
-# (session-log.md § the body is opaque, never re-parsed as structure).
-gate_select_read_planner_plan() {
-    local log_file="$1"
-    [ -f "$log_file" ] || {
-        printf ''
-        return 0
-    }
-
-    local last_event
-    last_event=$(jq -c 'select(.ev == "plan" and (.role | startswith("planner")))' \
-        "$log_file" 2>/dev/null | tail -n 1)
-    [ -z "$last_event" ] && {
-        printf ''
-        return 0
-    }
-
-    printf '%s' "$last_event" | jq -r '.plan // empty' 2>/dev/null
-}
-
-# gate_select_decide <project_dir> [<step_log_file>]
-# Prints "gate=<cmd>\nmode=<short|long>".
+# gate_select_decide <project_dir>
+# Prints "gate=<cmd>\nmode=<short|long>\ntimeout=<seconds>".
 gate_select_decide() {
     local project_dir="$1"
-    local step_log="${2:-}"
 
-    # 1. Planner gate wins. Malformed selections can never reach the log —
-    # codegen-log validates --plan-gate JSON shape at write time — so there
-    # is no parse-error sentinel to propagate here anymore.
-    if [ -n "$step_log" ] && [ -f "$step_log" ]; then
-        local planner_out
-        planner_out=$(gate_select_read_planner_gate "$step_log")
-
-        if [ -n "$planner_out" ]; then
-            # Extract command (first line), and optional JSON sideband fields
-            local plan_gate json_mode json_timeout mode timeout
-            plan_gate=$(printf '%s' "$planner_out" | sed -n '1p')
-            json_mode=$(printf '%s' "$planner_out" | sed -n 's/^__GATE_JSON_MODE=//p' | head -n 1)
-            json_timeout=$(printf '%s' "$planner_out" | sed -n 's/^__GATE_JSON_TIMEOUT=//p' | head -n 1)
-
-            if [ -n "$json_mode" ]; then
-                mode="$json_mode"
-                timeout="${json_timeout:-0}"
-            else
-                mode=$(gate_mode_for "$plan_gate")
-                timeout=$(gate_timeout_for "$plan_gate")
-            fi
-            printf 'gate=%s\nmode=%s\ntimeout=%s\n' "$plan_gate" "$mode" "$timeout"
-            return 0
-        fi
-    fi
-
-    # 2. Per-app config: a single required GATE_COMMAND variable.
+    # 1. Per-app config: a single required GATE_COMMAND variable. This is the
+    # only resolver — there is no per-cycle override tier above it.
     local config="$project_dir/.claude/gate-config.sh"
     if [ ! -f "$config" ]; then
-        printf '__GATE_UNRESOLVED__:no planner gate and no %s\n' "$config"
+        printf '__GATE_UNRESOLVED__:no %s\n' "$config"
         return 0
     fi
 
+    # Pre-clear all three before sourcing so a stale value inherited from the
+    # caller's environment can never masquerade as a config declaration.
     GATE_COMMAND=""
+    GATE_MODE=""
+    GATE_TIMEOUT=""
     # shellcheck disable=SC1090
     source "$config"
 
@@ -274,8 +186,41 @@ gate_select_decide() {
         return 0
     fi
 
+    # 1a. Optional per-project mode/timeout overrides. Set → authoritative,
+    # taken verbatim, never re-derived from the command string. Unset/empty →
+    # the gate_mode_for/gate_timeout_for heuristics, unchanged. A value that is
+    # set but malformed FAILS LOUD rather than falling back — a silent fallback
+    # would turn `GATE_MODE=fast` into a working config that ignores the
+    # operator, and a non-numeric GATE_TIMEOUT would reach
+    # LoopGate.decide_gate/1's String.to_integer as an ArgumentError anyway.
     local mode timeout
-    mode=$(gate_mode_for "$GATE_COMMAND")
-    timeout=$(gate_timeout_for "$GATE_COMMAND")
+    if [ -n "$GATE_MODE" ]; then
+        case "$GATE_MODE" in
+        short | long)
+            mode="$GATE_MODE"
+            ;;
+        *)
+            printf '__GATE_UNRESOLVED__:%s sets GATE_MODE=%s (expected short or long)\n' "$config" "$GATE_MODE"
+            return 0
+            ;;
+        esac
+    else
+        mode=$(gate_mode_for "$GATE_COMMAND")
+    fi
+
+    if [ -n "$GATE_TIMEOUT" ]; then
+        case "$GATE_TIMEOUT" in
+        *[!0-9]*)
+            printf '__GATE_UNRESOLVED__:%s sets GATE_TIMEOUT=%s (expected a non-negative integer of seconds)\n' "$config" "$GATE_TIMEOUT"
+            return 0
+            ;;
+        *)
+            timeout="$GATE_TIMEOUT"
+            ;;
+        esac
+    else
+        timeout=$(gate_timeout_for "$GATE_COMMAND")
+    fi
+
     printf 'gate=%s\nmode=%s\ntimeout=%s\n' "$GATE_COMMAND" "$mode" "$timeout"
 }

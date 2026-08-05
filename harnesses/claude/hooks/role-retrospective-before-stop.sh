@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# role-retrospective-before-stop.sh — Stop hook that blocks a planner/developer/
+# role-retrospective-before-stop.sh — Stop hook that blocks a developer/
 # reviewer from stopping until this cycle's log carries BOTH its work
 # (an {"ev":"role"} event with a non-empty body) AND its learning — either
 # an {"ev":"learned"} event or an {"ev":"no_learning"} event (the legal,
@@ -13,9 +13,9 @@
 # matcher: *
 # surface: user_global
 # signal: AGENT_TYPE
-# role: planner-*|developer-*|reviewer-*
+# role: developer-*|reviewer-*
 # harnesses: all
-# rationale: Blocks a planner/developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text. Pi twin is observe-only (session_shutdown cannot block).
+# rationale: Blocks a developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text. Pi twin is observe-only (session_shutdown cannot block).
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.
@@ -38,10 +38,10 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
     exit 0
 fi
 
-# Role gate — planner-*, developer-*, reviewer-* only.
+# Role gate — developer-*, reviewer-* only.
 # (context-curator and committer are NOT gated.)
 case "${AGENT_TYPE:-}" in
-planner-* | developer-* | reviewer-*) ;;
+developer-* | reviewer-*) ;;
 *)
     debug_log role-retrospective-before-stop "skip: agent_type=${AGENT_TYPE:-} not gated"
     exit 0

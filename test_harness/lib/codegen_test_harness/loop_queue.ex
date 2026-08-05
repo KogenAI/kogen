@@ -1379,7 +1379,7 @@ defmodule CodegenTestHarness.LoopQueue do
   `@`-mention lines) — an opaque whole-artifact read. A stamp that lands
   on a pitch still sitting in
   `ready/` (because the mv that follows then fails) would read as
-  "already shipped" to the next planner — manufacturing the exact false
+  "already shipped" to the next build — manufacturing the exact false
   already-done class this function exists to prevent. This window is
   narrow (a `File.rename!` immediately after `mkdir_p!` succeeds, in the
   same directory) and pre-existing; it is not enlarged by having one

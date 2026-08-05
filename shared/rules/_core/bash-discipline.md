@@ -4,7 +4,7 @@
 
 `/context` startup ≤22K. Mid-session ≤80K. Auto-compact 167K. Every Read = tokens.
 
-- Delegate "where is X" to planner subagent — ~100 tokens vs 5K
+- Delegate "where is X" to an `Explore` subagent — ~100 tokens vs 5K
 - Read with `offset`/`limit` for large files. ✅ Grep tool, not `Bash(grep)`
 
 ## Forbidden Bash Tokens (hard list)
@@ -40,11 +40,11 @@ All git commands use relative paths (workspace root is cwd). NEVER hardcode `/Us
 
 `git mv <src> <dst>` — parent of `<dst>` must exist first. Use `mkdir -p <dst-parent>` before `git mv`.
 
-## Planner Bash Constraints
+## Session-Log Bash Constraints
 
-**Bash redirects to session logs are FORBIDDEN** (all forms: heredocs, `>`, `>>`, brace-group redirects to `codegen/logging/`). Bash tool_use entries are invisible to transcript-based hook discovery. **Workaround**: Use the Edit tool on session logs instead.
+**Bash redirects to session logs are FORBIDDEN** (all forms: heredocs, `>`, `>>`, brace-group redirects to `codegen/logging/`). `codegen-log` is the sole writer — route every log write through it.
 
-**Read tool blocks on rule files** (developer.md, testing-liveview.md, testing.md, reviewer.md, committer.md). Use Grep tool with `-B`/`-A` context to locate anchor text instead; supply verbatim anchors in plan prose.
+**Read tool blocks on rule files** (developer.md, testing-liveview.md, testing.md, reviewer.md, committer.md). Use Grep tool with `-B`/`-A` context to locate anchor text instead; quote verbatim anchors when you need to name one.
 
 ## Newline-List Membership Testing
 

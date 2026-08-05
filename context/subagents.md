@@ -8,12 +8,10 @@ Two common fragments (`_phoenix_developer_common.md.j2`, `_static_developer_comm
 
 | File                                                        | Purpose                                                             |
 | ----------------------------------------------------------- | ------------------------------------------------------------------- |
-| `shared/subagents/phoenix/planner-phoenix.md.j2`            | Phoenix planner — reads codebase, writes structured plan            |
 | `shared/subagents/phoenix/developer-phoenix-backend.md.j2`  | Backend developer — schemas, contexts, migrations, Oban             |
 | `shared/subagents/phoenix/developer-phoenix-frontend.md.j2` | Frontend developer — LiveView, HEEx, JS hooks, Tailwind             |
 | `shared/subagents/phoenix/reviewer-phoenix.md.j2`           | Phoenix reviewer — quality, patterns, architecture                  |
 | `shared/subagents/static/developer-static.md.j2`            | Static (Vite) site developer — vanilla by default, framework opt-in |
-| `shared/subagents/static/planner-static.md.j2`              | Static (Vite) site planner — vanilla vs framework decision          |
 | `shared/subagents/static/reviewer-static.md.j2`             | Static site reviewer                                                |
 | `shared/subagents/shared/committer.md.j2`                   | Committer — analyzes diff, crafts why-focused commit message        |
 | `shared/subagents/shared/context-curator.md.j2`             | Context curator — updates domain context files post-reviewer        |
@@ -27,13 +25,11 @@ shared/subagents/
   _phoenix_developer_common.md.j2
   _static_developer_common.md.j2
   phoenix/
-    planner-phoenix.md.j2
     developer-phoenix-backend.md.j2
     developer-phoenix-frontend.md.j2
     reviewer-phoenix.md.j2
   static/
     developer-static.md.j2  ← vanilla Vite by default, framework opt-in
-    planner-static.md.j2
     reviewer-static.md.j2
   shared/
     committer.md.j2
@@ -45,7 +41,7 @@ Generated output lands in `templates/generated/<harness>/` then installed to `~/
 ## Integration Points
 
 - **core**: `generate.sh` + `process_template.py` render these templates; output goes to `templates/generated/`
-- **rules**: templates `{% include %}` rule files from `shared/rules/` — rule changes require re-running `make install`; behavioral rules for each role are documented in `context/rules-roles.md`; these templates are the wiring mechanism, not the rules themselves. **High-leverage pattern**: a single append-only edit to a shared rule like `shared/rules/stacks/phoenix/_core.md` reaches dev + planner + reviewer **simultaneously** via multiple include sites (e.g., `{% include 'rules/stacks/phoenix/_core.md' %}` in `_phoenix_developer_common.md.j2`, `planner-phoenix.md.j2`, and `reviewer-phoenix.md.j2`). When a fact or constraint applies across roles, default to appending to the shared stack `_core.md` rather than role-specific rules — one edit lands cross-role knowledge far more efficiently than three separate edits. **Backend/frontend-specific rule homes**: For Phoenix stack, `shared/rules/stacks/phoenix/testing-liveview.md` is included ONLY by `developer-phoenix-frontend.md.j2` and `reviewer-phoenix.md.j2` — the frontend-exclusive rule home. By contrast, `_core.md`, `developer.md`, and `testing.md` reach BOTH backend and frontend via `_phoenix_developer_common.md.j2`. When a rule must NOT reach backend developers (e.g., LiveView-specific patterns, HEEx idioms, Tailwind UI), append it to `testing-liveview.md`; when pruning backend-reachable files of frontend content, verify via the include graph which templates pull the rule-file being edited.
+- **rules**: templates `{% include %}` rule files from `shared/rules/` — rule changes require re-running `make install`; behavioral rules for each role are documented in `context/rules-roles.md`; these templates are the wiring mechanism, not the rules themselves. **High-leverage pattern**: a single append-only edit to a shared rule like `shared/rules/stacks/phoenix/_core.md` reaches both developers + reviewer **simultaneously** via multiple include sites (e.g., `{% include 'rules/stacks/phoenix/_core.md' %}` in `_phoenix_developer_common.md.j2` — which backend and frontend both pull — and in `reviewer-phoenix.md.j2`). When a fact or constraint applies across roles, default to appending to the shared stack `_core.md` rather than role-specific rules — one edit lands cross-role knowledge far more efficiently than three separate edits. **Backend/frontend-specific rule homes**: For Phoenix stack, `shared/rules/stacks/phoenix/testing-liveview.md` is included ONLY by `developer-phoenix-frontend.md.j2` and `reviewer-phoenix.md.j2` — the frontend-exclusive rule home. By contrast, `_core.md`, `developer.md`, and `testing.md` reach BOTH backend and frontend via `_phoenix_developer_common.md.j2`. When a rule must NOT reach backend developers (e.g., LiveView-specific patterns, HEEx idioms, Tailwind UI), append it to `testing-liveview.md`; when pruning backend-reachable files of frontend content, verify via the include graph which templates pull the rule-file being edited.
 - **harnesses**: each harness may have harness-specific includes; claude harness renders phoenix + static; pi harness renders from the same `shared/subagents/` tree unless it has overrides in `harnesses/pi/`
 - **frontmatter renders for BOTH harnesses** — the shared `{% if tool.yaml_frontmatter %}...{% endif %}` block in each `.md.j2` is now rendered for pi as well as claude (`generate.sh`'s `_generate_pi` passes `pi true` + `--config config.yaml`). The `tools:` line is authored ONCE, in claude vocabulary; `process_template.py` translates it to pi vocabulary via `config.yaml`'s `tools.pi.tool_map` at generate time — no per-harness template fork. Adding a tool to a template's `tools:` line with no corresponding `tools.pi.tool_map` entry breaks `make install` loud (`SystemExit` naming the tool) — add the mapping in `config.yaml` before adding the tool to a template. `harnesses/pi/call-dispatch.sh` strips the rendered frontmatter before using the body as `--system-prompt` and emits the parsed `tools:` as `pi --tools`.
 - **scaffold**: `shared/apps/AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` are downstream AGENTS.md templates (separate from subagent templates here)
@@ -53,7 +49,7 @@ Generated output lands in `templates/generated/<harness>/` then installed to `~/
 
 ## Eager-vs-Lazy Include Discipline
 
-When a pattern applies to every invocation of a role in a stack (e.g., Tailwind always required for static reviews), eagerly include it in the role template. When a pattern applies only to specific tasks (e.g., Oban + Ecto.Multi rarely needed), keep it as a recipe for planner forwarding. Example: `reviewer-static.md.j2` now eagerly includes vite.md + tailwind.md (mandatory); Oban/refactor/node patterns moved to recipes (task-triggered, forwarded by orchestrator on keyword match).
+When a pattern applies to every invocation of a role in a stack (e.g., Tailwind always required for static reviews), eagerly include it in the role template. When a pattern applies only to specific tasks (e.g., Oban + Ecto.Multi rarely needed), keep it as a recipe the pitch names and the developer reads on demand. Example: `reviewer-static.md.j2` now eagerly includes vite.md + tailwind.md (mandatory); Oban/refactor/node patterns moved to recipes (task-triggered, forwarded by orchestrator on keyword match).
 
 ## Rule Propagation & Two-Common-Fragment Pattern
 
@@ -62,7 +58,7 @@ When a pattern applies to every invocation of a role in a stack (e.g., Tailwind 
 - `_phoenix_developer_common.md.j2` → included by `developer-phoenix-backend.md.j2` and `developer-phoenix-frontend.md.j2`
 - `_static_developer_common.md.j2` → included by `developer-static.md.j2`
 
-**High-leverage pattern**: When a rule change must reach all developers (e.g., forbidding a commit mechanism), edit `shared/rules/roles/developer.md` once. When a rule must reach all agents in a stack (planners, devs, reviewers), edit `shared/rules/stacks/<stack>/_core.md` — it reaches via multiple include sites across multiple templates. One-source-of-truth holds across all baked variants: a rule file edit + `make install` propagates synchronously to all subagent prompts via the static include graph resolved at render time. **Planner templates** — `planner-static.md.j2` and `planner-phoenix.md.j2` are kept parallel at key structural lines (e.g., the terse "Step 0: Load context" pointer near the top of each template). When a planner rule changes, apply the SAME replacement to both templates. Audit with `diff` post-edit to confirm both got the update.
+**High-leverage pattern**: When a rule change must reach all developers (e.g., forbidding a commit mechanism), edit `shared/rules/roles/developer.md` once. When a rule must reach all agents in a stack (devs + reviewer), edit `shared/rules/stacks/<stack>/_core.md` — it reaches via multiple include sites across multiple templates. One-source-of-truth holds across all baked variants: a rule file edit + `make install` propagates synchronously to all subagent prompts via the static include graph resolved at render time. **Parallel-template discipline** — the per-stack leaf templates that play the same part (`developer-static.md.j2` vs `developer-phoenix-backend.md.j2`/`-frontend.md.j2`; `reviewer-static.md.j2` vs `reviewer-phoenix.md.j2`) are kept parallel at key structural lines. When a role-level rule changes, apply the SAME replacement to every template for that role. Audit with `diff` post-edit to confirm each got the update.
 
 ## Authoring Spine Rules (Shape/Refactor)
 
@@ -103,16 +99,13 @@ Shape mode emits blockers with quoted context and remediation options before adv
 
 ## Session-Log Role Naming for Stack-Variant Templates
 
-When a developer subagent template is stack-prefixed (e.g., `planner-phoenix`, `planner-static`, `developer-static`), it writes its cycle-log event via `codegen-log section <agent_type> --body @-` (positional role, taken literally from `AGENT_TYPE`/`CLAUDE_ROLE`, e.g. `planner-phoenix`) — a `{"ev":"role","role":"planner-phoenix",...}` JSONL event, NOT a markdown `## <role> Section` header (the log has no headers at all; see `shared/rules/_core/session-log.md`). `codegen-log` is the sole writer — no raw Edit path exists, so there is no bypass/no-bypass distinction to track per stack variant.
+When a subagent template is stack-prefixed (e.g., `developer-phoenix-backend`, `developer-static`, `reviewer-phoenix`), it writes its cycle-log event via `codegen-log section <agent_type> --body @-` (positional role, taken literally from `AGENT_TYPE`/`CLAUDE_ROLE`, e.g. `developer-phoenix-backend`) — a `{"ev":"role","role":"developer-phoenix-backend",...}` JSONL event, NOT a markdown `## <role> Section` header (the log has no headers at all; see `shared/rules/_core/session-log.md`). `codegen-log` is the sole writer — no raw Edit path exists, so there is no bypass/no-bypass distinction to track per stack variant.
 
 ## Subagent Template Include Placement & Edit Uniqueness
 
-When editing subagent templates to add a new include line after an existing anchor (e.g., adding `{% include 'rules/shared/no-role-spawn.md' %}` after `output-style.md`), use a **two-line old_string** (anchor + the line immediately following it) to guarantee unique match per file. The anchor itself (`{% include 'rules/_core/output-style.md' %}`) appears identically across all 10 leaf-agent templates that include it — single-line matching would be ambiguous. Pairing anchor + context line disambiguates:
+When editing subagent templates to add a new include line after an existing anchor (e.g., adding a rule include after `output-style.md`), use a **two-line old_string** (anchor + the line immediately following it) so a scripted cross-file replacement lands on the intended site. The anchor itself (`{% include 'rules/_core/output-style.md' %}`) appears identically in every template that includes it — a single-line match tells you nothing about which template you are in.
 
-- Phoenix developers + planners/reviewers, plus static reviewers: anchor followed by another `{% include %}` line (e.g., `bash-discipline`, `cwd-discipline`)
-- Static planner (`planner-static.md.j2`): anchor followed by a **blank line**, then prose starting with "First: …" — pair anchor + blank line to avoid matching prose content
-
-Verified pattern: all 10 templates have `{% include 'rules/_core/output-style.md' %}` on a single line, followed by distinct next line (either another include or blank). Two-line pairing is sufficient for all files.
+Verified pattern (6 templates carry the anchor: both `_*_developer_common.md.j2` fragments, `reviewer-phoenix.md.j2`, `reviewer-static.md.j2`, `committer.md.j2`, `context-curator.md.j2`): all six have the anchor on a single line followed by `{% include 'rules/shared/no-role-spawn.md' %}`. The follow-line is UNIFORM across all six, so the two-line pair does not discriminate between templates. Uniqueness comes from the per-file edit itself (the anchor occurs once per file); a repo-wide replacement of the pair will hit all six, which is usually what you want when adding a rule to every leaf agent.
 
 ## Explicit Subagent Spawn Directives
 
@@ -134,11 +127,10 @@ Session logs are append-only JSONL, not markdown with H2 sections — there is n
 - **Pi templates** — Pi harness generates from the same `shared/subagents/` tree as Claude; check `harnesses/pi/manifest.yaml` for any pi-specific overrides or additional templates
 - **`dev-gate` is not a subagent template** — `dev-gate` refers to the gate step of the build cycle (owned unconditionally by the Elixir loop's `LoopGate`), not an agent role with a `.md.j2` template; see `context/hooks.md` for gate mechanics
 - **Trigger keywords refer to template wiring** — subagents.md covers how roles are assembled and baked into prompts; for what each role must/must-not do at runtime, see `context/rules-roles.md`
-- **Role-def include gaps create invisible rule blindness** — when including stack rules in subagent templates, inventory all related rule files and verify each is explicitly included where relevant. A rule file in `shared/rules/stacks/phoenix/` not included in any role-def is a coverage gap. Fix requires: (1) edit the missing rule file (or move content), (2) add `{% include %}` to the role-def template, (3) run `make install` to regenerate + reinstall prompts. (A prior instance of this gap — `generators.md`/`testing-liveview.md`/`manifest-external-resource.md` missing from planner/reviewer-phoenix — was closed: `generators.md` is now included in `planner-phoenix.md.j2`, `testing-liveview.md` in `reviewer-phoenix.md.j2`, and `manifest-external-resource.md` in both `planner-phoenix.md.j2` and `_phoenix_developer_common.md.j2`.)
-- **Static planner places `output-style.md` at end of include block** — `planner-static.md.j2` includes `output-style.md` as the LAST rule include before prose content, followed by a blank line. This is intentional (recency-bias placement for output constraints in planner decision-making). The adjacency rule "new rule lands immediately after `output-style.md`" is still satisfied; static planners are structured differently than phoenix planners, but they still honor the include-order contract.
+- **Role-def include gaps create invisible rule blindness** — when including stack rules in subagent templates, inventory all related rule files and verify each is explicitly included where relevant. A rule file in `shared/rules/stacks/phoenix/` not included in any role-def is a coverage gap. Fix requires: (1) edit the missing rule file (or move content), (2) add `{% include %}` to the role-def template, (3) run `make install` to regenerate + reinstall prompts. (A prior instance of this gap — `generators.md`/`testing-liveview.md`/`manifest-external-resource.md` unreachable from the phoenix role-defs — was closed: `generators.md` and `manifest-external-resource.md` are included in `_phoenix_developer_common.md.j2` (so both backend and frontend see them), and `testing-liveview.md` in `developer-phoenix-frontend.md.j2` + `reviewer-phoenix.md.j2`.)
 - **Removing config.yaml role breaks slow tests** — Silently passes `make test`, fails `make test-stacks`.
 - **[shared] Delegation-prompt H2 promotion (FIXED)** — `## ` lines in delegation bodies are indented to `##` before writing to prevent rank-order corruption.
 
 ## Trigger Keywords
 
-Planner, developer-phoenix-backend, developer-phoenix-frontend, developer-static, reviewer, committer, .md.j2 template, agent rendering, include-order contract, rule adjacency
+developer-phoenix-backend, developer-phoenix-frontend, developer-static, reviewer, committer, .md.j2 template, agent rendering, include-order contract, rule adjacency

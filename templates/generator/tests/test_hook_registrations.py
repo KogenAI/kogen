@@ -240,8 +240,8 @@ class TestValidateRoleMatch(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
 
     def test_glob_role_passes_with_case(self):
-        manifest = {"signal": "AGENT_TYPE", "role": "planner-*"}
-        content = 'case "$AGENT_TYPE" in\nplanner-*) ;;\nesac\n'
+        manifest = {"signal": "AGENT_TYPE", "role": "developer-*"}
+        content = 'case "$AGENT_TYPE" in\ndeveloper-*) ;;\nesac\n'
         with tempfile.TemporaryDirectory() as tmpdir:
             p = _write_sh(tmpdir, "ok.sh", content)
             hr.validate_role_match(p, manifest)

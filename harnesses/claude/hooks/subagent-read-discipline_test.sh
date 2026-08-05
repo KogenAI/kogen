@@ -48,10 +48,10 @@ run_test() {
 
 # Helper: create a real append-only JSONL cycle log fixture (schema:
 # [0-9]{8}_[0-9]{6}_<slug>_cycle.jsonl — matches SESSION_LOG_NAME_RE in
-# hooks-lib.sh) with a typed {"ev":"files_to_touch",...} event authored by a
-# planner* role AND a typed {"ev":"files_modified",...} event authored by a
+# hooks-lib.sh) with a typed {"ev":"files_to_touch",...} event authored by the
+# loop AND a typed {"ev":"files_modified",...} event authored by a
 # developer* role (the AUTHOR's event — never the querying role's own body).
-# $2 is the role authoring the files_to_touch event (a planner*), $3 is a
+# $2 is the role authoring the files_to_touch event (normally "loop"), $3 is a
 # bash array-literal string of relative paths for files_to_touch, $4 is the
 # role authoring files_modified (a developer*), $5 is its path list. Either
 # pair may be omitted (empty array written) when a test only needs one side.
@@ -100,16 +100,6 @@ make_fixture_dir() {
     printf '%s/codegen/logging/20260101_000000_fixture_cycle.jsonl' "$tmp"
 }
 
-# ── Planner bypass ──────────────────────────────────────────────────────────
-
-# Test 1: planner-phoenix Read PROJECT_CONTEXT.md → ALLOW
-F1='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"PROJECT_CONTEXT.md"},"agent_id":"abc","agent_type":"planner-phoenix"}'
-run_test "planner-phoenix Read PROJECT_CONTEXT.md allows" "0" "$F1"
-
-# Test 2: planner-phoenix Read context/builds.md → ALLOW
-F2='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"planner-phoenix"}'
-run_test "planner-phoenix Read context/builds.md allows" "0" "$F2"
-
 # ── Curator bypass ──────────────────────────────────────────────────────────
 
 # Test 3: context-curator Read PROJECT_CONTEXT.md → ALLOW
@@ -153,17 +143,17 @@ rm -rf "$TMP_CWD10"
 
 # ── Developer: context/*.md step-log allowlist ──────────────────────────────
 
-# Test 11: developer Read context/builds.md — listed in ## Plan Files to touch → ALLOW
+# Test 11: developer Read context/builds.md — listed in the loop's files_to_touch → ALLOW
 TMP11="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP11="$(make_fixture_dir "$TMP11")"
 TRANS11="${TMP11}/transcript.jsonl"
-make_step_log "$STEP11" "planner-phoenix" "context/builds.md"
+make_step_log "$STEP11" "loop" "context/builds.md"
 make_transcript "$TRANS11" "$STEP11"
 F11='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS11"'","cwd":"'"$TMP11"'"}'
-run_test "developer Read context/builds.md listed in plan allows" "0" "$F11"
+run_test "developer Read context/builds.md listed in loop's files_to_touch allows" "0" "$F11"
 rm -rf "$TMP11"
 
-# Test 12: developer Read context/builds.md — NOT listed in ## Plan → DENY
+# Test 12: developer Read context/builds.md — NOT listed in files_to_touch → DENY
 # "cwd" is REQUIRED here (isolated tmpdir) — omitting it lets CWD default to
 # $PWD (the live repo), which falls through session_log_from_transcript()'s
 # .active-sentinel / disk-mtime-scan branches and discovers the REAL
@@ -172,24 +162,24 @@ rm -rf "$TMP11"
 TMP12="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP12="$(make_fixture_dir "$TMP12")"
 TRANS12="${TMP12}/transcript.jsonl"
-make_step_log "$STEP12" "planner-phoenix" "lib/foo.ex"
+make_step_log "$STEP12" "loop" "lib/foo.ex"
 make_transcript "$TRANS12" "$STEP12"
 F12='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS12"'","cwd":"'"$TMP12"'"}'
-run_test "developer Read context/builds.md not in plan denies" "2" "$F12"
+run_test "developer Read context/builds.md not in files_to_touch denies" "2" "$F12"
 rm -rf "$TMP12"
 
 # Test 13: developer Read lib/foo.ex → ALLOW (outside scope)
 F13='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/foo.ex"},"agent_id":"abc","agent_type":"developer-phoenix-backend"}'
 run_test "developer Read lib/foo.ex allows (outside scope)" "0" "$F13"
 
-# Test 14: developer-phoenix-frontend Read context/builds.md NOT in plan → DENY
+# Test 14: developer-phoenix-frontend Read context/builds.md NOT in files_to_touch → DENY
 TMP14="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP14="$(make_fixture_dir "$TMP14")"
 TRANS14="${TMP14}/transcript.jsonl"
-make_step_log "$STEP14" "planner-phoenix" "lib/web/live/foo_live.ex"
+make_step_log "$STEP14" "loop" "lib/web/live/foo_live.ex"
 make_transcript "$TRANS14" "$STEP14"
 F14='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-frontend","transcript_path":"'"$TRANS14"'","cwd":"'"$TMP14"'"}'
-run_test "developer-phoenix-frontend Read context/builds.md not in plan denies" "2" "$F14"
+run_test "developer-phoenix-frontend Read context/builds.md not in files_to_touch denies" "2" "$F14"
 rm -rf "$TMP14"
 
 # Test 15: developer-static Read PROJECT_CONTEXT.md → DENY (static stack coverage)
@@ -262,13 +252,13 @@ run_test "reviewer Read codegen/pitches/*.md denies" "2" "$F24"
 F25='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"committer"}'
 run_test "committer Read codegen/pitches/*.md denies" "2" "$F25"
 
-# Test 26: planner-phoenix Read codegen/pitches/foo.md → ALLOW
-F26='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"planner-phoenix"}'
-run_test "planner-phoenix Read codegen/pitches/*.md allows" "0" "$F26"
+# Test 26: context-curator Read codegen/pitches/foo.md → ALLOW (curator bypass)
+F26='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"context-curator"}'
+run_test "context-curator Read codegen/pitches/*.md allows" "0" "$F26"
 
 # ── Regression: DENY must be a genuine allowlist miss, not a vacuous ───────
 # fail-through to the REAL invoking session's active cycle log. Proof: build
-# a fixture where the "Files to touch" plan LISTS context/builds.md (so a
+# a fixture where the loop's files_to_touch LISTS context/builds.md (so a
 # genuine allowlist check must ALLOW), but omit "cwd" from the hook input so
 # CWD defaults to $PWD. If the hook were silently discovering some unrelated
 # real cycle log (via .active sentinel / disk-mtime fallback) instead of this
@@ -277,7 +267,7 @@ run_test "planner-phoenix Read codegen/pitches/*.md allows" "0" "$F26"
 # root cause: cwd-less resolution leaking the real session's log into a
 # fixture-driven test. Confirms cwd is load-bearing, not decorative.
 
-# Test 27: developer Read context/builds.md, listed in plan, NO "cwd" in
+# Test 27: developer Read context/builds.md, listed in files_to_touch, NO "cwd" in
 # input → the hook's own CWD-defaulting-to-$PWD behavior means this cannot
 # be asserted deterministically across environments (a real repo cycle log
 # may or may not list context/builds.md) — instead assert directly against
@@ -286,7 +276,7 @@ run_test "planner-phoenix Read codegen/pitches/*.md allows" "0" "$F26"
 TMP27="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP27="$(make_fixture_dir "$TMP27")"
 TRANS27="${TMP27}/transcript.jsonl"
-make_step_log "$STEP27" "planner-phoenix" "context/builds.md"
+make_step_log "$STEP27" "loop" "context/builds.md"
 make_transcript "$TRANS27" "$STEP27"
 F27='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS27"'","cwd":"'"$TMP27"'"}'
 out27=$(printf '%s' "$F27" | env -u CODEGEN_LOG_PATH bash "$GUARD" 2>/dev/null || true)
@@ -300,29 +290,28 @@ fi
 rm -rf "$TMP27"
 
 # Test 28: same fixture dir, DIFFERENT developer AGENT_TYPE than the one
-# that authored the planner fixture's files_to_touch (backend vs frontend
-# querying role). Since the field is read from the AUTHOR's event
-# (planner-phoenix), not the querying role's own — both backend and
-# frontend developers share the SAME planner-authored allowlist. This
-# proves the read is author-keyed, not caller-keyed: a DIFFERENT querying
-# role still ALLOWS, because the field never depended on who is asking.
+# the loop's files_to_touch was written for (backend vs frontend querying
+# role). Since the field is read from the AUTHOR's event (the loop), not
+# the querying role's own — both backend and frontend developers share the
+# SAME loop-authored allowlist. This proves the read is author-keyed, not
+# caller-keyed: a DIFFERENT querying role still ALLOWS, because the field
+# never depended on who is asking.
 TMP28="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP28="$(make_fixture_dir "$TMP28")"
 TRANS28="${TMP28}/transcript.jsonl"
-make_step_log "$STEP28" "planner-phoenix" "context/builds.md"
+make_step_log "$STEP28" "loop" "context/builds.md"
 make_transcript "$TRANS28" "$STEP28"
 F28='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-frontend","transcript_path":"'"$TRANS28"'","cwd":"'"$TMP28"'"}'
-run_test "developer-phoenix-frontend reads planner-authored allowlist (author-keyed, not caller-keyed)" "0" "$F28"
+run_test "developer-phoenix-frontend reads loop-authored allowlist (author-keyed, not caller-keyed)" "0" "$F28"
 rm -rf "$TMP28"
 
-# Test 29: self-authorization is now denied — a developer's OWN
-# files_to_touch-shaped event (wrong ev kind: files_modified, which is a
-# developer's own event kind) must NOT satisfy the developer branch's
-# planner-authored check. This is the hole the author-keyed read closes:
-# today's caller-keyed self-read let a role widen its own permissions by
-# writing a heading; a developer-authored files_modified event naming
-# context/builds.md must not leak into the developer branch's
-# files_to_touch check (only planner* authors files_to_touch).
+# Test 29: self-authorization is denied — a developer's OWN files_modified
+# event (the developer's own event kind) must NOT satisfy the developer
+# branch's loop-authored files_to_touch check. This is the hole the
+# author-keyed read closes: a caller-keyed self-read would let a role widen
+# its own permissions by writing its own event; a developer-authored
+# files_modified event naming context/builds.md must not leak into the
+# developer branch's files_to_touch check.
 TMP29="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP29="$(make_fixture_dir "$TMP29")"
 TRANS29="${TMP29}/transcript.jsonl"
@@ -331,6 +320,20 @@ make_transcript "$TRANS29" "$STEP29"
 F29='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS29"'","cwd":"'"$TMP29"'"}'
 run_test "developer cannot self-authorize via its own files_modified event" "2" "$F29"
 rm -rf "$TMP29"
+
+# Test 30: self-authorization guard, forged-author variant — a developer
+# that writes a files_to_touch event under its OWN role name grants
+# nothing. Only {"role":"loop"} authors files_to_touch; the predicate is an
+# exact equality on "loop", not a prefix, so no subagent role can mint its
+# own context/*.md grant.
+TMP30="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
+STEP30="$(make_fixture_dir "$TMP30")"
+TRANS30="${TMP30}/transcript.jsonl"
+make_step_log "$STEP30" "developer-phoenix-backend" "context/builds.md"
+make_transcript "$TRANS30" "$STEP30"
+F30='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS30"'","cwd":"'"$TMP30"'"}'
+run_test "developer-authored files_to_touch event grants nothing" "2" "$F30"
+rm -rf "$TMP30"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

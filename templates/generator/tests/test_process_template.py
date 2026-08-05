@@ -188,7 +188,7 @@ class TestProcessTemplate(unittest.TestCase):
 
     TEMPLATE_CONTENT = textwrap.dedent("""\
         ---
-        name: planner-phoenix
+        name: developer-phoenix-backend
         model: sonnet
         ---
         Body text here.
@@ -196,14 +196,14 @@ class TestProcessTemplate(unittest.TestCase):
 
     CONFIG_YAML = textwrap.dedent("""\
         harness:
-          planner-phoenix:
+          developer-phoenix-backend:
             claude: { model: opus, effort: high }
     """)
 
     def test_claude_mode_rewrites_model_and_effort(self):
         """claude mode with config → model line rewritten, effort injected."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
+            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", self.TEMPLATE_CONTENT)
             config = self._make_config(tmpdir, self.CONFIG_YAML)
             with patch("sys.stdout", new_callable=StringIO) as mock_out:
                 pt.process_template(template, "claude", False, config)
@@ -215,7 +215,7 @@ class TestProcessTemplate(unittest.TestCase):
     def test_pi_mode_never_rewrites(self):
         """pi mode: model line is never rewritten regardless of config."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
+            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", self.TEMPLATE_CONTENT)
             config = self._make_config(tmpdir, self.CONFIG_YAML)
             with patch("sys.stdout", new_callable=StringIO) as mock_out:
                 pt.process_template(template, "pi", False, config)
@@ -231,21 +231,21 @@ class TestProcessTemplate(unittest.TestCase):
                 claude: { model: opus, effort: high }
         """)
         with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
+            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", self.TEMPLATE_CONTENT)
             config = self._make_config(tmpdir, config_yaml)
             with self.assertRaises(SystemExit) as ctx:
                 pt.process_template(template, "claude", False, config)
-            self.assertIn("planner-phoenix", str(ctx.exception))
+            self.assertIn("developer-phoenix-backend", str(ctx.exception))
 
     def test_role_cfg_missing_model_or_effort_raises(self):
         """Role present but claude cfg missing model/effort → fail loud."""
         config_yaml = textwrap.dedent("""\
             harness:
-              planner-phoenix:
+              developer-phoenix-backend:
                 claude: { model: opus }
         """)
         with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
+            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", self.TEMPLATE_CONTENT)
             config = self._make_config(tmpdir, config_yaml)
             with self.assertRaises(SystemExit) as ctx:
                 pt.process_template(template, "claude", False, config)
@@ -275,7 +275,7 @@ class TestProcessTemplate(unittest.TestCase):
     def test_missing_yaml_module_raises(self):
         """yaml import failure → SystemExit with install hint (fail-loud)."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
+            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", self.TEMPLATE_CONTENT)
             config = self._make_config(tmpdir, self.CONFIG_YAML)
             with patch.dict(sys.modules, {"yaml": None}):
                 with self.assertRaises(SystemExit) as ctx:
@@ -285,7 +285,7 @@ class TestProcessTemplate(unittest.TestCase):
     def test_no_config_no_rewrite(self):
         """config_yaml=None → model line stays as-is."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "planner-phoenix.md.j2", self.TEMPLATE_CONTENT)
+            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", self.TEMPLATE_CONTENT)
             with patch("sys.stdout", new_callable=StringIO) as mock_out:
                 pt.process_template(template, "claude", False, None)
                 output = mock_out.getvalue()
@@ -317,7 +317,7 @@ class PiToolMapTests(unittest.TestCase):
               Read: read
               Write: write
         harness:
-          planner-phoenix:
+          developer-phoenix-backend:
             claude: { model: opus, effort: high }
     """)
 
@@ -325,14 +325,14 @@ class PiToolMapTests(unittest.TestCase):
         """claude tool names in tools: line → pi tool names."""
         content = textwrap.dedent("""\
             ---
-            name: planner-phoenix
+            name: developer-phoenix-backend
             model: sonnet
             tools: Bash, Edit, Glob, Grep, Read
             ---
             Body text here.
         """)
         with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "planner-phoenix.md.j2", content)
+            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", content)
             config = self._make_config(tmpdir, self.TOOL_MAP_CONFIG)
             with patch("sys.stdout", new_callable=StringIO) as mock_out:
                 pt.process_template(template, "pi", True, config)
@@ -414,7 +414,7 @@ class PiToolMapTests(unittest.TestCase):
         """claude render of the same content still emits claude tool names verbatim."""
         content = textwrap.dedent("""\
             ---
-            name: planner-phoenix
+            name: developer-phoenix-backend
             model: sonnet
             tools: Bash, Edit, Glob, Grep, Read
             ---
@@ -426,11 +426,11 @@ class PiToolMapTests(unittest.TestCase):
                 tool_map:
                   Bash: bash
             harness:
-              planner-phoenix:
+              developer-phoenix-backend:
                 claude: { model: opus, effort: high }
         """)
         with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "planner-phoenix.md.j2", content)
+            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", content)
             config = self._make_config(tmpdir, config_yaml)
             with patch("sys.stdout", new_callable=StringIO) as mock_out:
                 pt.process_template(template, "claude", True, config)

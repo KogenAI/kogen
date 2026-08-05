@@ -86,8 +86,10 @@ zero live non-test caller AND zero registration (manifest `launchers:`, `escript
 `settings.json` hook — the escape valve). Wired into BOTH ship floors so a drained build can't bypass
 the solo raise: `OrchestrationLoop.assert_work_produced!/2` (solo, raises → loop_failed) and
 `LoopQueueDrain`'s injectable `:born_dead_fn` seam (drain, routes to false-0 park-and-continue). Runs
-PRE-commit — ship chokepoint unchanged, no new stranding path. Backs `planner.md` § Whole-Pitch
-Builds Only + `reviewer.md` § No Born-Dead / Deferred Work (Rule N).
+PRE-commit — ship chokepoint unchanged, no new stranding path. This detector is the deterministic
+half of "one cycle builds the WHOLE pitch"; the prose half is `developer.md` § Whole-Pitch Builds
+Only (producer) and `reviewer.md` § Deliverable coverage + § No Born-Dead / Deferred Work
+(Rule N) (consumer).
 
 ## Per-Cycle Spend Cap
 
@@ -98,19 +100,15 @@ behavior. Present + `telemetry.cost_usd >= cap` → `{:error, "spend cap reached
 before next role. This is the PER-CYCLE cap — distinct from the queue drain's queue-wide
 `CODEGEN_BUILD_QUEUE_BUDGET_USD` (see the loop-queue-drain owner file).
 
-## Envelope Classifier — Planner-Plan-Present Override
+## Envelope Classifier
 
-`invoke_role/4`'s `case envelope do` classifier normally maps `status:"failed"` straight to
-`{:error, reason}`. One override sits before that: a PLANNER role (`planner_role?/1`) whose cycle log
-already carries a valid, non-blank typed `{"ev":"plan",...}` event (read via the SAME
-`:planner_plan_fn` seam `resolve_planner_plan!/2` uses one step later, default
-`LoopGate.planner_plan/1`) is promoted to `{:ok, result}` even though the envelope said `"failed"`.
-Rationale: `role-retrospective-before-stop` forces every role, including the planner, to end its final
-turn on a mandated `codegen-log --learned` tool call — sometimes with no trailing assistant text, which
-call-dispatch classifies as `status:"failed"`. The planner's real deliverable (the plan) is a durable
-typed event, not the chat turn, so a tool-final turn must not fail a cycle that already has a valid
-plan. A plan-less planner (blank/absent `{"ev":"plan"}`) still fails loud — the override is gated on
-BOTH `planner_role?(role)` AND a non-empty plan string; no other role is affected.
+`invoke_role/4`'s `case envelope do` classifier maps `status:"failed"` straight to `{:error, reason}`
+for every role — there is no per-role override, and no typed event can promote a failed envelope to
+`{:ok, _}`. `role-retrospective-before-stop` forces every role to end its final turn on a mandated
+`codegen-log --learned` tool call, so a role whose last turn is tool-final and text-empty classifies as
+`status:"failed"` and fails the cycle loudly. That is intended: every cycle role's deliverable is
+either the working tree or its own section body, both of which a genuinely-failed turn may not have
+produced.
 
 Every role transport receives `CODEGEN_CALL_OWNER_OS_PID=System.pid()` from
 `run_call_split/4`. Claude's independently-sessioned guardian treats that BEAM OS PID as a lifecycle
@@ -234,7 +232,8 @@ CHECKED `git diff --binary` + `apply --check`/`apply` — never checkout/reset/H
 source base, tree byte-identical) resumes at the earliest trustworthy role
 (`resume_role_for_recovery/3`: GATED→reviewer, REVIEWED→curator, CURATED→committer, else→developer);
 `:advanced`/`:operator` (moved HEAD / a same-scope dirty tree, parked onto a second
-`recovery/operator/<slug>/<ts>` ref first) reconcile at planner (phoenix) or developer (static); a
+`recovery/operator/<slug>/<ts>` ref first) reconcile at the stack's developer (`resolve_developer_role/1`
+— the first `developer-*` role in the sequence, both stacks); a
 conflict or out-of-scope edit refuses non-zero, ref/checkout untouched. `run/1`'s `:recovery_mode` opt
 bypasses `preflight_clean_tree!/1` ONLY for a materialized run. `complete_transaction!/2` retires the
 dossier after the ordinary post-committer commit/tree/gate verification — the recovery commit stays
@@ -285,7 +284,7 @@ joined into one violations message via `combine_curator_doc_results/2` folded tw
 2. **Factcheck backstop** (`context-factcheck-scan.sh <cwd> <doc>...`) — diff-scoped to this cycle's own
    `changed_orientation_docs/1`; catches a Bash write the PreToolUse edit-gate hook never saw.
 3. **Consumption check** (`curator-consumption-scan.sh <cwd> <cycle_log>`) — asserts that when this
-   cycle captured upstream `{"ev":"learned"}` events (planner/developer/reviewer), the curator either
+   cycle captured upstream `{"ev":"learned"}` events (developer/reviewer), the curator either
    routed at least one into a durable doc (working-tree diff or untracked file matching
    `^(context/[^/]+\.md|shared/rules/.*\.md)$`) or recorded the drop as its own `{"ev":"learned"}`
    event. The curator rule (`shared/rules/roles/context-curator.md` § Constraints) now MANDATES this

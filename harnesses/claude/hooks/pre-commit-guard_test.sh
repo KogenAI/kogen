@@ -644,7 +644,7 @@ run_test_env "babysit plain git push allowed" "0" "$FIXTURE_BABYSIT_PUSH" "CLAUD
 FIXTURE_BABYSIT_SWITCH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git switch main"},"agent_type":"","agent_id":"a"}'
 run_test_env "babysit git switch denied (not in tree-restoring allow-list)" "2" "$FIXTURE_BABYSIT_SWITCH" "CLAUDE_ROLE=babysit"
 
-# Test 77: exact planner corpus-inspection command from the incident transcript.
+# Test 77: exact subagent corpus-inspection command from the incident transcript.
 # Hundreds of matching files previously made strip_git_global_opts expand each
 # literal glob on every invocation, multiplying the command subject until the
 # hook appeared wedged. Keep the guard itself bounded without relying on GNU
@@ -656,7 +656,7 @@ for glob_stall_i in $(seq 1 600); do
     : >"$GLOB_STALL_DIR/codegen/logging/$(printf '%04d' "$glob_stall_i").jsonl"
 done
 GLOB_STALL_COMMAND="ls -la codegen/logging/.active; ls codegen/logging/*.jsonl 2>/dev/null | wc -l; ls -t codegen/logging/*.jsonl 2>/dev/null | sed -n '1,3p'"
-GLOB_STALL_INPUT="$(jq -cn --arg command "$GLOB_STALL_COMMAND" '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$command},agent_type:"planner-phoenix",agent_id:"glob-stall"}')"
+GLOB_STALL_INPUT="$(jq -cn --arg command "$GLOB_STALL_COMMAND" '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$command},agent_type:"developer-phoenix-backend",agent_id:"glob-stall"}')"
 GLOB_STALL_STDOUT="$GLOB_STALL_DIR/stdout"
 GLOB_STALL_STDIN="$GLOB_STALL_DIR/stdin"
 printf '%s' "$GLOB_STALL_INPUT" >"$GLOB_STALL_STDIN"
@@ -680,10 +680,10 @@ if wait "$GLOB_STALL_PID"; then GLOB_STALL_RC=0; else GLOB_STALL_RC=$?; fi
 if pgrep -P "$GLOB_STALL_PID" >/dev/null 2>&1; then GLOB_STALL_CHILDREN="yes"; else GLOB_STALL_CHILDREN="no"; fi
 if [ "$GLOB_STALL_FINISHED" = 1 ] && [ "$GLOB_STALL_RC" = 0 ] && [ "$GLOB_STALL_CHILDREN" = "no" ] &&
     ! grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' "$GLOB_STALL_STDOUT"; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: exact planner glob command completes bounded with no orphan children\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: exact subagent glob command completes bounded with no orphan children\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: exact planner glob command — finished=%s rc=%s children=%s stdout=%s\n' \
+    printf 'FAIL: exact subagent glob command — finished=%s rc=%s children=%s stdout=%s\n' \
         "$GLOB_STALL_FINISHED" "$GLOB_STALL_RC" "$GLOB_STALL_CHILDREN" "$(<"$GLOB_STALL_STDOUT")"
     fail=$((fail + 1))
 fi

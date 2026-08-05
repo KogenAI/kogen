@@ -168,8 +168,8 @@ _generate_pi() {
         for template_file in "$subdir"/*.md.j2; do
             [ -f "$template_file" ] || continue
             local base_name role_name output_file
-            base_name=$(basename "$template_file" .j2) # e.g. planner.md
-            role_name="${base_name%.md}"               # e.g. planner
+            base_name=$(basename "$template_file" .j2) # e.g. reviewer-static.md
+            role_name="${base_name%.md}"               # e.g. reviewer-static
             output_file="$output_agents_dir/${role_name}.md"
 
             echo "   Generating: ${role_name}.md"

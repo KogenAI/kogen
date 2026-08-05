@@ -12,7 +12,7 @@
 #   8:  orchestrator mix test (bare) → deny (2)
 #   9:  orchestrator mix test test/foo_test.exs → deny (2) — orchestrator NEVER runs tests
 #   10: developer-phoenix-backend make ci → allow (0) — dev-no-ci.sh owns this
-#   11: planner-phoenix make ci → allow (0) — planner-guard.sh owns this
+#   11: reviewer-phoenix make ci → allow (0) — this hook only gates the orchestrator
 #   12: subagent with non-empty agent_id, empty agent_type, make ci → allow (0)
 #   13: CLAUDE_ROLE=ops make ci → allow (0) — ops bypass via resolve_role
 #   14: PI_ROLE=ops make ci → allow (0) — ops bypass via resolve_role
@@ -96,9 +96,9 @@ run_test "orchestrator mix test specific file → deny" "2" \
 run_test "developer-phoenix-backend make ci → allow (skip)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
-# Test 11: planner-phoenix make ci → allow (planner-guard.sh owns this)
-run_test "planner-phoenix make ci → allow (skip)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"planner-phoenix","agent_id":"xyz789"}'
+# Test 11: reviewer-phoenix make ci → allow (this hook only gates the orchestrator)
+run_test "reviewer-phoenix make ci → allow (skip)" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"reviewer-phoenix","agent_id":"xyz789"}'
 
 # Test 12: subagent with non-empty agent_id but empty agent_type → allow (not orchestrator)
 run_test "subagent non-empty agent_id empty agent_type make ci → allow (skip)" "0" \

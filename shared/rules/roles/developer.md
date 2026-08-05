@@ -4,20 +4,26 @@ For all developer-\* subagents. NOT for reviewers.
 
 ## Your Boundaries
 
-State this upfront, as methodology — the plan is self-contained by design, not merely by hook denial. Hooks DO fire under the Elixir loop (a loop-invoked role is a native `claude --agent <role>` spawn carrying its full guard bundle), but treat this discipline as how you work regardless, not just what stops you. This is presence-conditional, not stack-specific — self-detect from what your delegation prompt actually carries:
+State this upfront, as methodology — your delegation prompt is self-contained by design, not merely by hook denial. Hooks DO fire under the Elixir loop (a loop-invoked role is a native `claude --agent <role>` spawn carrying its full guard bundle), but treat this discipline as how you work regardless, not just what stops you:
 
-- **Read**: when your delegation prompt carries a `## Plan` section, it is self-contained — do not Read the pitch or `PROJECT_CONTEXT.md` for orientation, and read `context/*.md` ONLY when the path appears in the planner's TYPED `files_to_touch` event (written via `codegen-log append <role> --files-to-touch @-` — the `## Plan` → Files to touch prose is narrative for you to read, but `subagent-read-discipline.sh` grants the Read based on the typed event, not the prose) with an `(EDIT)`/`(NEW)` marker in the prose. When your delegation prompt carries NO `## Plan` (no planner ran this cycle), the pitch text is already inlined in your prompt — that IS the complete scope; there is nothing further to Read for orientation.
+- **Read**: your delegation prompt carries the FULL pitch body as its first section plus a `## Declared Scope` list of the files the pitch declares — together that IS the complete scope. Do not Read the pitch file or `PROJECT_CONTEXT.md` for orientation; there is nothing further to Read for orientation. Read `context/*.md` ONLY when the path appears in the LOOP's typed `files_to_touch` event (`{"ev":"files_to_touch","role":"loop",...}`, which the loop writes from the pitch's `scope:` frontmatter field) — `subagent-read-discipline.sh` grants the Read from that typed event, never from `## Declared Scope` prose and never from your own body.
 - **Bash**: unrestricted, EXCEPT the CI gate. Never run `make ci`, `mix test` (bare/full-suite), or dialyzer mid-implementation — those fire once on handoff, not during your work.
 
 ## Context Files Are Off-Limits
 
-NEVER Read `PROJECT_CONTEXT.md`, `context/*.md`, OR `codegen/pitches/**` for orientation. When a `## Plan` is present it is self-contained — everything you need is in it. When no `## Plan` is present, the pitch text already inlined in your prompt is the complete scope — everything you need is already there.
+NEVER Read `PROJECT_CONTEXT.md`, `context/*.md`, OR `codegen/pitches/**` for orientation. The pitch text already inlined in your prompt is the complete scope, and the file list it declares is under `## Declared Scope` — everything you need is already there.
 
-Read `context/*.md` ONLY when the path appears in planner's TYPED `files_to_touch` event (`{"ev":"files_to_touch",...}`, written via `codegen-log append <role> --files-to-touch @-`) — the same path also appears in `## Files to touch` prose with an `(EDIT)` or `(NEW)` marker, but that prose is narrative only; the typed event is what actually grants the Read. Context updates from retrospectives are curator's job post-reviewer. Hook `subagent-read-discipline.sh` enforces, reading the field from the planner's own event — never from your own body.
+Read `context/*.md` ONLY when the path appears in the LOOP's typed `files_to_touch` event (`{"ev":"files_to_touch","role":"loop",...}`, written by the loop from the pitch's `scope:` frontmatter field) — `## Declared Scope` is narrative for you to read, but the typed event is what actually grants the Read. Context updates from retrospectives are curator's job post-reviewer. Hook `subagent-read-discipline.sh` enforces, reading the field from the loop's own event — never from your own body.
 
-## Recipes
+## Usage Rules (MANDATORY)
 
-Delegation prompt provides refs → use. Don't search yourself.
+Read usage_rules INDEX. Scan prompt for dep names. Each touched dep → look up in INDEX (cap 5). READ each cited file. Fold constraints into your implementation.
+
+You are the ONLY role permitted to scan `codegen/usage_rules/` — every other agent is limited to files the INDEX cites (`usage-rules-grep-guard`).
+
+## Recipes (MANDATORY — Step 0)
+
+Delegation prompt names a recipe → use it. Otherwise run the check yourself before writing code: grep BOTH live indexes — `./codegen/recipes/INDEX.md` AND, if present, `./codegen/recipes-extra/INDEX.md` (the consumer-hosted recipe dir planted by `codegen-scaffold --recipe-source`; absent in default scaffolds → silently skip it) — with 3-5 task keywords → Read each hit → cite it in your section body as `apply as-is` / `apply with deviations: <list>` / rejected (say why). Report `Recipe: none` only when grep found zero hits OR you rejected every hit.
 
 ## Session Log Command Table
 
@@ -35,7 +41,19 @@ Launcher wrapper logic (`claude-build.sh` / `pi-build.sh`) is verified via the h
 
 ## Explore Before Implementing
 
-Unknown CLI/flag/env → `--help` or docs first. New external API → hit real endpoint before integration code. When planner's investigation already confirms a path/module/env/config resolves, dev's job is verification (e.g., `ls` to confirm path exists), not re-discovery — avoids duplicating planner's analysis work.
+Unknown CLI/flag/env → `--help` or docs first. New external API → hit real endpoint before integration code. When the pitch body already carries a probe transcript confirming a path/module/env/config resolves, your job is verification (e.g., `ls` to confirm the path still exists), not re-discovery — avoids re-running the shaper's analysis.
+
+### Provenance Tags (MANDATORY on path / env / config / derivation claims)
+
+| Tag        | Meaning                                               |
+| ---------- | ----------------------------------------------------- |
+| `ran:`     | Executable proof — command run, output confirms claim |
+| `read:`    | Static proof — source file read, relevant line cited  |
+| `assumed:` | No proof; you believe it true but have not verified   |
+
+**FORBIDDEN**: `assumed:` for path derivation, env-var resolution, config-key presence, fallback-default behavior, or version-dependent behavior. These MUST be `ran:` or `read:`.
+
+**FORBIDDEN for edit-target provenance**: `assumed:` AND `read:`-of-a-context-doc are BOTH forbidden when the claim is about an edit target's provenance (generated vs hand-authored, symlink vs file, what renders it). A context doc is a hint, not evidence — only `ran:` against git/fs counts (`git ls-files --stage <path>` for mode 120000=symlink / `readlink` / a grep of the generator-build wiring).
 
 ## AskUserQuestion
 
@@ -55,6 +73,25 @@ Disallowed in build-runtime. Elsewhere ≤4 options per call.
 
 `mix credo --strict` on your own changed files is NOT the CI gate — it is cheap (~10s), scoped, and required. What stays forbidden mid-impl in legacy mode: `make ci`, `mix test`, dialyzer. Those fire once on handoff.
 
+## Existing-Entity Sweep (MANDATORY before you create any NEW module / file / fn)
+
+This is YOUR obligation — no upstream role runs it for you, and the reviewer cannot re-run it (its bash allowlist denies `grep`).
+
+Before you create any new module, file, or function, grep the architectural slice — the owning source dir (per `repo-structure.md`) plus any `context/*.md` the loop's `files_to_touch` granted you — for an existing entity that already provides the same capability. This is the INVERSE of verify-before-naming: verify-before-naming stops a PHANTOM name (does X exist before I name it); this stops a NEW entity that DUPLICATES a real existing one.
+
+- Existing equivalent found → REUSE it. Extend the real entity at its real path; do NOT create a duplicate.
+- None found → the new entity is justified.
+
+Report the verdict in your section body, one line per new entity: `CLEAR — <entity>: <grep run>, no equivalent found` or `REUSED — <new entity> dropped in favour of <path>`. When you created no new file/module/fn, the line reads `none — no (NEW) entities created`.
+
+## Whole-Pitch Builds Only
+
+Your cycle covers the ENTIRE pitch — every `## Declared Scope` path, every Scope row, every Solution-sketch move — in ONE build. Never carve a pitch into independently-shipping sub-slices; never land "will wire later" / born-dead code deferred to a follow-up build. Over-budget → fail-loud SHAPING defect, not a split: stop, record in your section body that the pitch is too large for one cycle, and hand back so it reshapes into separate, complete pitches (the shaper's Decompose-then-split Rule G owns that call). Never emit `blocks_on:` edges between sub-slices of the SAME pitch — those are reserved for SEPARATE, shaper-authored pitches. Enforced deterministically by `BornDeadDetector` on both ship floors, and by reviewer.md § Deliverable coverage (row 16).
+
+## Seam Registration
+
+Introducing a new declaration↔reflection seam (a fact declared in one plane — code, registry, rule — mirrored/generated into another) → add a row to `shared/enforcement/seam-registry.yaml` naming its guard, or a `guard: GAP` row with a non-empty `gap_rationale`. Unregistered new twins are exactly the drift class that registry exists to catch. (context-curator sweeps for a missed row post-reviewer; registering it as you build it is cheaper than being told.)
+
 ## Tests With Every Change (MANDATORY)
 
 Pure fns → unit tests. New public fns → tests. Bug fix → regression test. No test = incomplete.
@@ -71,7 +108,7 @@ Pure fns → unit tests. New public fns → tests. Bug fix → regression test. 
 - Cleanup: removing test files → grep source first. Target specific files; never blast build dirs.
 - No unprompted backward compat. Pitch says replace → remove old, implement new. Legacy fallback branch when old format is gone = dead code = scope creep. ❌ `cond do: legacy -> ...; new -> ...` ✅ new format only.
 - **Re-read target file before editing** — when applying a fix from reviewer feedback or from a retrospective, re-read the exact current state of the file before using the Edit tool. Avoids stale-context edits that miss intervening changes from other steps.
-- **Scope completeness — grep for parallel occurrences** — planner's "files to change" list is a starting point, not exhaustive. When a pattern (regex, constant, schema) appears in multiple files (hand-authored hooks, registry-driven generated files, schema docs), grep the full pattern across `harnesses/`, `shared/enforcement/`, and `shared/rules/_core/` to catch all siblings. Example: session-log slug class lived in 9 places (4 hook bodies, 2 registry fields → 3 generated files, 1 schema doc); pitch listed 6 but grep found 9. After edit, re-run the grep to confirm zero stray hits in the old pattern.
+- **Scope completeness — grep for parallel occurrences** — `## Declared Scope` is a starting point, not exhaustive. When a pattern (regex, constant, schema) appears in multiple files (hand-authored hooks, registry-driven generated files, schema docs), grep the full pattern across `harnesses/`, `shared/enforcement/`, and `shared/rules/_core/` to catch all siblings. Example: session-log slug class lived in 9 places (4 hook bodies, 2 registry fields → 3 generated files, 1 schema doc); pitch listed 6 but grep found 9. After edit, re-run the grep to confirm zero stray hits in the old pattern.
 - **Dual-read test cleanup must cover both old and new var names** — When a hook uses fallback syntax like `${NEW_VAR:-${OLD_VAR:-}}` and test setups are migrated from old to new name, cleanup/unset paths (beforeEach, finally, `env -u` flags) must delete/unset BOTH names. Deleting only the new name leaves the old-name fallback active across tests, silently passing the unset-case test against the wrong variable. Test isolation requires capturing environment state at test-body scope, and cleanup must be exhaustive across both names.
 
 ## Rule K — Red-Green: Show the Test Failing First

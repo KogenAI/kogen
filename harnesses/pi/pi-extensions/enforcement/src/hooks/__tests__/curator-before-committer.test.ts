@@ -106,7 +106,7 @@ describe("curator-before-committer", () => {
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 
-  it("allows planner-phoenix unconditionally (not committer)", async () => {
+  it("allows developer-phoenix-backend unconditionally (not committer)", async () => {
     const logPath = writeLog(
       "20260601_test_cycle.jsonl",
       JSON.stringify({
@@ -117,7 +117,7 @@ describe("curator-before-committer", () => {
     );
     writeCycleState("REVIEWED", logPath);
 
-    const result = await runHook("planner-phoenix");
+    const result = await runHook("developer-phoenix-backend");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

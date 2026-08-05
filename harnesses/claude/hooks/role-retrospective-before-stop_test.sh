@@ -2,8 +2,8 @@
 # role-retrospective-before-stop_test.sh — unit tests for role-retrospective-before-stop.sh
 #
 # Tests:
-#   1: planner-phoenix, ev:role + ev:learned present → allow
-#   2: planner-phoenix, ev:role present, no ev:learned/no_learning → block; names codegen-log append --learned
+#   1: developer-phoenix-backend, ev:role + ev:learned present → allow
+#   2: developer-phoenix-backend, ev:role present, no ev:learned/no_learning → block; names codegen-log append --learned
 #   3: developer-phoenix-backend, no ev:role at all → block; names codegen-log section
 #   4: reviewer-phoenix, ev:learned present (any text — substance is a writer-side concern) → allow
 #   5: reviewer-static, ev:no_learning present (no ev:learned) → allow (legal empty-turn exit)
@@ -124,11 +124,11 @@ T1_dir=$(mktemp -d)
 mkdir -p "$T1_dir/codegen/logging"
 T1_log="$T1_dir/codegen/logging/20260714_test_cycle.jsonl"
 T1_transcript="$T1_dir/transcript.jsonl"
-append_role_event "$T1_log" "planner-phoenix" "Did the planning work."
-append_learned_event "$T1_log" "planner-phoenix" "$VALID_LEARNING"
+append_role_event "$T1_log" "developer-phoenix-backend" "Did the work."
+append_learned_event "$T1_log" "developer-phoenix-backend" "$VALID_LEARNING"
 make_transcript_with_log_write "$T1_transcript" "$T1_log"
-out=$(make_stop_input "$T1_dir" "planner-phoenix" false "$T1_transcript" "sess1-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
-assert_not_contains "planner-phoenix, work+learning present → allow" '"decision"' "$out"
+out=$(make_stop_input "$T1_dir" "developer-phoenix-backend" false "$T1_transcript" "sess1-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "developer-phoenix-backend, work+learning present → allow" '"decision"' "$out"
 rm -rf "$T1_dir"
 
 # ── Test 2: work present, no learning → block, names append --learned ───────
@@ -136,11 +136,11 @@ T2_dir=$(mktemp -d)
 mkdir -p "$T2_dir/codegen/logging"
 T2_log="$T2_dir/codegen/logging/20260714_test_cycle.jsonl"
 T2_transcript="$T2_dir/transcript.jsonl"
-append_role_event "$T2_log" "planner-phoenix" "Did the planning work."
+append_role_event "$T2_log" "developer-phoenix-backend" "Did the work."
 make_transcript_with_log_write "$T2_transcript" "$T2_log"
-out=$(make_stop_input "$T2_dir" "planner-phoenix" false "$T2_transcript" "sess2-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "planner-phoenix, no learning → block" '"decision"' "$out"
-assert_contains "block reason names codegen-log append --no-learning" 'codegen-log append planner-phoenix --no-learning' "$out"
+out=$(make_stop_input "$T2_dir" "developer-phoenix-backend" false "$T2_transcript" "sess2-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "developer-phoenix-backend, no learning → block" '"decision"' "$out"
+assert_contains "block reason names codegen-log append --no-learning" 'codegen-log append developer-phoenix-backend --no-learning' "$out"
 rm -rf "$T2_dir"
 
 # ── Test 3: no ev:role at all → block, names codegen-log section ────────────
@@ -240,13 +240,13 @@ T11_log="$T11_dir/codegen/logging/20260714_test_cycle.jsonl"
 T11_transcript="$T11_dir/transcript.jsonl"
 : >"$T11_log"
 make_transcript_with_log_write "$T11_transcript" "$T11_log"
-out=$(make_stop_input "$T11_dir" "planner-phoenix" true "$T11_transcript" "sess11-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
+out=$(make_stop_input "$T11_dir" "developer-phoenix-backend" true "$T11_transcript" "sess11-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "STOP_HOOK_ACTIVE=true → allow (recursion guard)" '"decision"' "$out"
 rm -rf "$T11_dir"
 
 # ── Test 12: no cycle log resolvable → allow (fail-open) ────────────────────
 T12_dir=$(mktemp -d)
-out=$(make_stop_input "$T12_dir" "planner-phoenix" false "" "sess12-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
+out=$(make_stop_input "$T12_dir" "developer-phoenix-backend" false "" "sess12-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "no cycle log resolvable → allow (fail-open)" '"decision"' "$out"
 rm -rf "$T12_dir"
 
@@ -307,11 +307,11 @@ T15_dir=$(mktemp -d)
 mkdir -p "$T15_dir/codegen/logging"
 T15_log="$T15_dir/codegen/logging/20260714_test_cycle.jsonl"
 T15_transcript="$T15_dir/transcript.jsonl"
-append_role_event "$T15_log" "planner-phoenix" "   "
-append_learned_event "$T15_log" "planner-phoenix" "$VALID_LEARNING"
+append_role_event "$T15_log" "developer-phoenix-backend" "   "
+append_learned_event "$T15_log" "developer-phoenix-backend" "$VALID_LEARNING"
 make_transcript_with_log_write "$T15_transcript" "$T15_log"
-out=$(make_stop_input "$T15_dir" "planner-phoenix" false "$T15_transcript" "sess15-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "planner-phoenix, whitespace-only body → block (work missing)" '"decision"' "$out"
+out=$(make_stop_input "$T15_dir" "developer-phoenix-backend" false "$T15_transcript" "sess15-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "developer-phoenix-backend, whitespace-only body → block (work missing)" '"decision"' "$out"
 rm -rf "$T15_dir"
 
 # ── Test 16: ev:learned belongs to a DIFFERENT role → block ─────────────────
@@ -331,10 +331,10 @@ T17_dir=$(mktemp -d)
 mkdir -p "$T17_dir/codegen/logging"
 T17_log="$T17_dir/codegen/logging/20260714_test_cycle.jsonl"
 T17_transcript="$T17_dir/transcript.jsonl"
-append_role_event "$T17_log" "planner-phoenix" "Did the planning work."
+append_role_event "$T17_log" "developer-phoenix-backend" "Did the work."
 make_transcript_with_log_write "$T17_transcript" "$T17_log"
-out=$(make_stop_input "$T17_dir" "planner-phoenix" false "$T17_transcript" "sess17-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
-assert_contains "planner-phoenix, no learning → block" '"decision"' "$out"
+out=$(make_stop_input "$T17_dir" "developer-phoenix-backend" false "$T17_transcript" "sess17-${SUFFIX}" | bash "$HOOK" 2>/dev/null || true)
+assert_contains "developer-phoenix-backend, no learning → block" '"decision"' "$out"
 assert_not_contains "block reason never states a char-count criterion" '40 char' "$out"
 assert_not_contains "block reason never states 'forty'" 'forty' "$out"
 assert_contains "block reason names the --no-learning escape hatch" 'no-learning' "$out"

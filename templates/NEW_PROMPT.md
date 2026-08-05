@@ -40,11 +40,10 @@ Work ONLY in this workspace — git worktree isolated from main repo.
 
 **Per step:**
 
-1. Delegate plan → **planner-phoenix** (or **planner-static**)
-2. Delegate impl → **developer-phoenix-backend** / **developer-phoenix-frontend** (or **developer-static**)
-3. After impl → dev-gate.sh hook runs CI/tests; orchestrator reads verdict from step log
-4. After `ALL CLEAR ✅` → **reviewer-phoenix** (or **reviewer-static**) for quality review
-5. After `✅ QUALITY APPROVED` → **committer**, then IMMEDIATELY start next step
+1. Delegate impl → **developer-phoenix-backend** / **developer-phoenix-frontend** (or **developer-static**), inlining the pitch body and its `## Declared Scope` list
+2. After impl → dev-gate.sh hook runs CI/tests; orchestrator reads verdict from step log
+3. After `ALL CLEAR ✅` → **reviewer-phoenix** (or **reviewer-static**) for quality review
+4. After `✅ QUALITY APPROVED` → **committer**, then IMMEDIATELY start next step
 
 **Issue Discovery → Immediate Fixing:**
 

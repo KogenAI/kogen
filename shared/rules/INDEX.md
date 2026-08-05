@@ -20,7 +20,6 @@ rules/
     shell-script-discipline.md   shebang, set -euo pipefail, quoting, trap, exit codes, path derivation
     no-role-spawn.md             leaf agent never spawns/delegates another role
   roles/                    ← universal role rules
-    planner.md              recipe/usage rules/plan structure
     developer.md            workflow, completion, pre-completion
     reviewer.md             15-step process + ast-grep
     committer.md            commit message rules, multi-repo
@@ -29,7 +28,6 @@ rules/
     phoenix/
       _core.md              idioms, Ecto, contexts, LiveView UI
       no-defensive-code.md  discriminating test: defensive swallow (forbidden) vs boundary validation / OTP carve-outs (allowed)
-      planner.md            dep scan, OTP convention
       developer.md          pre-completion greps, mix workflow, hot reload, cleanup, codegen
       reviewer.md           @spec/@type/~p/Gettext/github_workflows
       committer.md          .po/.pot translator note
@@ -38,7 +36,6 @@ rules/
       generators.md         force phx.gen.schema/auth; never hand-write schemas or migrations
       manifest-external-resource.md  external resource manifest: tracking third-party deps and APIs
     static/
-      planner.md            substack detection, tailwind detect
       developer.md          output dir, build pipeline, npm, Tailwind v4 invariants
       reviewer.md           selector/a11y/asset/JS/responsive checks
       vite.md               Vite: vanilla + framework

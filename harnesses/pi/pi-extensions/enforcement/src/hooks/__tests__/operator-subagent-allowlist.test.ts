@@ -32,8 +32,8 @@ describe("operator-subagent-allowlist", () => {
     delete process.env["PI_ROLE"];
   });
 
-  it("allows project subagents (planner-phoenix)", async () => {
-    const result = await runHook("planner-phoenix", "build");
+  it("allows project subagents (developer-phoenix-backend)", async () => {
+    const result = await runHook("developer-phoenix-backend", "build");
     assert.ok(result == null || (result as { block?: boolean }).block !== true);
   });
 

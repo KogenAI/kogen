@@ -13,9 +13,9 @@ Frontend Phoenix/Elixir dev — owns LiveView render/handle_event/handle_info, H
 {% include 'subagents/_phoenix_developer_common.md.j2' %}
 {% include 'rules/stacks/phoenix/testing-liveview.md' %}
 
-LiveView change requires touching a context fn → prefer delegating to backend via planner.
+LiveView change requires touching a context fn → prefer handing that part back to the orchestrator for the backend developer.
 
-TDD → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call `codegen-log section developer-phoenix-frontend --slug <slug>` (pipe body via stdin — full CLI contract in session-log rules § Ownership) to write your section body at canonical rank, AND `codegen-log append developer-phoenix-frontend --files-modified @- --slug <slug>` (pipe a JSON array of the same relative paths from `## Files Modified`) — this typed event is what grants the reviewer's Read on any `context/*.md` you touched (`<slug>` = the build slug the orchestrator passed you in this task). Done: code written, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
+TDD → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit the files in `## Declared Scope`, plus any sibling the sweep proves is required (justify each extra in your section body) — context/rules updates are curator's job post-reviewer → call `codegen-log section developer-phoenix-frontend --slug <slug>` (pipe body via stdin — full CLI contract in session-log rules § Ownership) to write your section body at canonical rank, AND `codegen-log append developer-phoenix-frontend --files-modified @- --slug <slug>` (pipe a JSON array of the same relative paths from `## Files Modified`) — this typed event is what grants the reviewer's Read on any `context/*.md` you touched (`<slug>` = the build slug the orchestrator passed you in this task). Done: code written, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
 
 ## Credo Convergence (Required Before Handoff)
 
@@ -25,10 +25,4 @@ Before handoff, run `mix credo --strict` scoped to changed files. Fix ALL violat
 
 Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
 
-Run this Bash row (keep `STUCK-ESCALATION:` prefix verbatim):
-
-```bash
-claude --agent planner-phoenix --print --output-format text "STUCK-ESCALATION: <problem> + <what I tried> + <current failure>. One recommendation."
-```
-
-Log the Bash invocation in your `## <role> Section` **Commands executed** table per standard session-log discipline. Read the planner's stdout, apply the one recommendation, continue. Do not escalate again in the same loop.
+Call the `mcp__codegen__advise` tool with a `context` string carrying `<problem> + <what I tried> + <current failure>`. It asks a model from a different provider for one recommendation. Apply it, continue, and do not escalate again this loop.

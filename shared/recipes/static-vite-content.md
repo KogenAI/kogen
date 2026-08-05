@@ -549,7 +549,7 @@ React Router v6 uses client-side routing. On static hosts that do not support UR
 
 **Request**: "Build a blog with RSS feed, tag pages, and paginated post listings using Vite and React."
 
-**Planner injects**: `static-vite-scaffold.md` (React add-on baseline) + `static-vite-content.md` (this recipe, opt-in).
+**Recipes matched**: `static-vite-scaffold.md` (React add-on baseline) + `static-vite-content.md` (this recipe, opt-in) — the developer greps the recipe indexes itself and applies every match.
 
 **Developer applies**:
 

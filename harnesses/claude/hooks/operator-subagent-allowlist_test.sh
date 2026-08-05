@@ -63,8 +63,8 @@ run_test "shape + reviewer-phoenix denied" "deny" "shape" "$(mk_agent 'reviewer-
 # 6c: committer denied under shape (shape is read-only)
 run_test "shape + committer denied" "deny" "shape" "$(mk_agent 'committer')"
 
-# 7: planner-phoenix allowed under shape (planner is investigation, not editing)
-run_test "shape + planner-phoenix allowed" "allow" "shape" "$(mk_agent 'planner-phoenix')"
+# 7: context-curator allowed under shape (curation is not source editing)
+run_test "shape + context-curator allowed" "allow" "shape" "$(mk_agent 'context-curator')"
 
 # 8: reviewer-phoenix allowed under debug (project subagents allowed everywhere)
 run_test "debug + reviewer-phoenix allowed" "allow" "debug" "$(mk_agent 'reviewer-phoenix')"
@@ -143,14 +143,14 @@ else
     fail=$((fail + 1))
 fi
 
-# 16: unset + planner-phoenix allowed (project subagent, no CLAUDE_ROLE restriction)
-ORCHESTRATOR_PLANNER_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"planner-phoenix","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
-stdout_planner=$(printf '%s' "$ORCHESTRATOR_PLANNER_INPUT" | bash "$GUARD" 2>/dev/null || true)
-if printf '%s' "$stdout_planner" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    printf 'FAIL: unset CLAUDE_ROLE + planner-phoenix should be allowed — got deny\n  stdout: %s\n' "$stdout_planner"
+# 16: unset + developer-phoenix-backend allowed (project subagent, no CLAUDE_ROLE restriction)
+ORCHESTRATOR_DEVELOPER_INPUT='{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"developer-phoenix-backend","description":"x","prompt":"y"},"agent_id":"","agent_type":""}'
+stdout_developer=$(printf '%s' "$ORCHESTRATOR_DEVELOPER_INPUT" | bash "$GUARD" 2>/dev/null || true)
+if printf '%s' "$stdout_developer" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'FAIL: unset CLAUDE_ROLE + developer-phoenix-backend should be allowed — got deny\n  stdout: %s\n' "$stdout_developer"
     fail=$((fail + 1))
 else
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + planner-phoenix allowed\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: unset CLAUDE_ROLE + developer-phoenix-backend allowed\n'
     pass=$((pass + 1))
 fi
 
@@ -229,15 +229,15 @@ run_test_env "PI_ROLE=shape + Explore allowed" "allow" "PI_ROLE" "shape" "$(mk_a
 
 # ── Message-content tests: deny strings name the legal subagent set ──────────
 
-# 22a: build-mode (no CLAUDE_ROLE) + Plan → deny AND stdout names "planner"
+# 22a: build-mode (no CLAUDE_ROLE) + Plan → deny AND stdout names "developer-"
 INPUT_22A=$(mk_agent 'Plan')
 stdout_22a=$(printf '%s' "$INPUT_22A" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_22a" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    if printf '%s' "$stdout_22a" | grep -q 'planner'; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22a build + Plan denied with "planner" in reason\n'
+    if printf '%s' "$stdout_22a" | grep -q 'developer-'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22a build + Plan denied with "developer-" in reason\n'
         pass=$((pass + 1))
     else
-        printf 'FAIL: 22a build + Plan denied but reason does not mention "planner"\n  stdout: %s\n' "$stdout_22a"
+        printf 'FAIL: 22a build + Plan denied but reason does not mention "developer-"\n  stdout: %s\n' "$stdout_22a"
         fail=$((fail + 1))
     fi
 else
@@ -249,11 +249,11 @@ fi
 INPUT_22B=$(mk_agent '')
 stdout_22b=$(printf '%s' "$INPUT_22B" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_22b" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    if printf '%s' "$stdout_22b" | grep -q 'planner'; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22b build + empty subagent_type denied with "planner" in reason\n'
+    if printf '%s' "$stdout_22b" | grep -q 'developer-'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22b build + empty subagent_type denied with "developer-" in reason\n'
         pass=$((pass + 1))
     else
-        printf 'FAIL: 22b build + empty subagent_type denied but reason does not mention "planner"\n  stdout: %s\n' "$stdout_22b"
+        printf 'FAIL: 22b build + empty subagent_type denied but reason does not mention "developer-"\n  stdout: %s\n' "$stdout_22b"
         fail=$((fail + 1))
     fi
 else
@@ -265,11 +265,11 @@ fi
 INPUT_22C=$(mk_agent 'general-purpose')
 stdout_22c=$(printf '%s' "$INPUT_22C" | bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_22c" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    if printf '%s' "$stdout_22c" | grep -q 'planner'; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22c build + general-purpose denied with "planner" in reason\n'
+    if printf '%s' "$stdout_22c" | grep -q 'developer-'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22c build + general-purpose denied with "developer-" in reason\n'
         pass=$((pass + 1))
     else
-        printf 'FAIL: 22c build + general-purpose denied but reason does not mention "planner"\n  stdout: %s\n' "$stdout_22c"
+        printf 'FAIL: 22c build + general-purpose denied but reason does not mention "developer-"\n  stdout: %s\n' "$stdout_22c"
         fail=$((fail + 1))
     fi
 else
@@ -277,15 +277,15 @@ else
     fail=$((fail + 1))
 fi
 
-# 22d: shape + developer-phoenix-backend → deny AND stdout names shape-available set (planner / Explore)
+# 22d: shape + developer-phoenix-backend → deny AND stdout names shape-available set (Explore)
 INPUT_22D=$(mk_agent 'developer-phoenix-backend')
 stdout_22d=$(printf '%s' "$INPUT_22D" | CLAUDE_ROLE=shape bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_22d" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    if printf '%s' "$stdout_22d" | grep -q 'planner' && printf '%s' "$stdout_22d" | grep -q 'Explore'; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22d shape + developer-phoenix-backend denied with "planner" and "Explore" in reason\n'
+    if printf '%s' "$stdout_22d" | grep -q 'Explore'; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: 22d shape + developer-phoenix-backend denied with "Explore" in reason\n'
         pass=$((pass + 1))
     else
-        printf 'FAIL: 22d shape + developer-phoenix-backend denied but reason missing "planner" or "Explore"\n  stdout: %s\n' "$stdout_22d"
+        printf 'FAIL: 22d shape + developer-phoenix-backend denied but reason missing "Explore"\n  stdout: %s\n' "$stdout_22d"
         fail=$((fail + 1))
     fi
 else

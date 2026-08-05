@@ -8,8 +8,8 @@ defmodule CodegenTestHarness.BornDeadDetector do
   escript) with zero live non-test caller AND zero registration.
 
   This is the code-level guarantee behind "a build implements the WHOLE
-  pitch" — rule prompts (`planner.md` § Whole-Pitch Builds Only,
-  `reviewer.md` § No Born-Dead / Deferred Work) are the first line, this
+  pitch" — rule prompts (`reviewer.md` § Deliverable coverage and
+  § No Born-Dead / Deferred Work) are the first line, this
   module is the un-talk-around-able second line. Wired into BOTH the solo
   loop (`OrchestrationLoop.assert_work_produced!/2`, raises) and the drain
   twin (`LoopQueueDrain`'s injectable `:born_dead_fn` seam, routes to the

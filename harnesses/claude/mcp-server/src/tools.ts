@@ -69,8 +69,6 @@ const MARKER_FLAG: Record<MarkerKind, string> = {
   no_learning: "--no-learning",
   died: "--died",
   verdict: "--verdict",
-  plan: "--plan",
-  plan_gate: "--plan-gate",
   files_to_touch: "--files-to-touch",
   files_modified: "--files-modified",
 };
@@ -102,7 +100,7 @@ function registerAppendTool(server: McpServer, spec: RoleSpec) {
           .string()
           .optional()
           .describe(
-            "Raw text/JSON payload for plan/plan_gate/files_to_touch/files_modified (piped via stdin).",
+            "Raw text/JSON payload for files_to_touch/files_modified (piped via stdin).",
           ),
         died_kind: z
           .enum(["interrupted", "aborted"])
@@ -143,8 +141,6 @@ function registerAppendTool(server: McpServer, spec: RoleSpec) {
             return errorResult('kind=verdict requires "verdict_value"');
           args.push("--verdict", verdict_value);
           break;
-        case "plan":
-        case "plan_gate":
         case "files_to_touch":
         case "files_modified":
           if (!body)
@@ -194,7 +190,7 @@ function registerReaders(server: McpServer) {
     {
       title: "Read cycle log projection",
       description:
-        "Read the active cycle log filtered by view: manifest (planner's plan/plan_gate/files_to_touch), " +
+        "Read the active cycle log filtered by view: manifest (the loop's files_to_touch), " +
         "retro (ev:learned events), or full (every event).",
       inputSchema: {
         cwd: z

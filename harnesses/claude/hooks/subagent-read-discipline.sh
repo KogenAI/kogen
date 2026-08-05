@@ -14,15 +14,15 @@
 # check logic below is NOT generated and is safe to hand-edit.
 #
 # Rules:
-#   planner-*       → allow all (planner owns context reads AND pitch reads)
 #   context-curator → allow all (curator writes context post-reviewer)
 #   committer       → deny PROJECT_CONTEXT.md, context/*.md, codegen/pitches/**
-#   developer-*     → deny codegen/pitches/** always (plan is self-contained);
+#   developer-*     → deny codegen/pitches/** always (the pitch is inlined in
+#                     the delegation prompt);
 #                     deny PROJECT_CONTEXT.md always;
 #                     context/*.md allowed ONLY if path is listed in the
-#                     PLANNER's typed {"ev":"files_to_touch",...} event in the
+#                     LOOP's typed {"ev":"files_to_touch",...} event in the
 #                     active cycle log (written via
-#                     `codegen-log append <role> --files-to-touch @-`)
+#                     `codegen-log append loop --files-to-touch @-`)
 #   reviewer-*      → deny codegen/pitches/** always;
 #                     deny PROJECT_CONTEXT.md always;
 #                     context/*.md allowed ONLY if path is listed in the
@@ -31,8 +31,8 @@
 #                     `codegen-log append <role> --files-modified @-`)
 #   (other / empty) → pass through (orchestrator handled by orchestrator-read-discipline.sh)
 #
-# The field is read from its AUTHOR's event (planner's files_to_touch,
-# developer's files_modified) — never from the calling role's own event.
+# The field is read from its AUTHOR's event (the loop's files_to_touch,
+# the developer's files_modified) — never from the calling role's own event.
 # This is a typed JSONL event, never re-parsed out of a role's free-form
 # body prose (session-log.md § the body is opaque, never re-parsed as
 # structure).
@@ -101,11 +101,6 @@ fi
 # Role dispatch.
 case "$AGENT_TYPE" in
 
-planner-*)
-    # Planner owns all context reads.
-    exit 0
-    ;;
-
 context-curator)
     # Curator writes context post-reviewer — full read access.
     exit 0
@@ -129,19 +124,19 @@ committer)
     ;;
 
 developer-*)
-    # Pitch: always denied — plan is self-contained.
+    # Pitch: always denied — the pitch body is inlined in the prompt.
     if [ "$is_pitch" -eq 1 ]; then
-        deny "Developer cannot read the pitch — when a ## Plan is present it is self-contained, use it from the session log; when no ## Plan is present, the pitch text is already inlined in your delegation prompt."
+        deny "Developer cannot read the pitch — the pitch text is already inlined in your delegation prompt, and the file list it declares is under ## Declared Scope."
         exit 0
     fi
 
-    # PROJECT_CONTEXT.md: always denied — plan is self-contained.
+    # PROJECT_CONTEXT.md: always denied — the inlined pitch is the scope.
     if [ "$is_project_context" -eq 1 ]; then
-        deny "Developer cannot read PROJECT_CONTEXT.md for orientation. When a ## Plan is present it is self-contained — use it from the active step log; when absent, the pitch text already inlined in your prompt is the complete scope."
+        deny "Developer cannot read PROJECT_CONTEXT.md for orientation. The pitch text already inlined in your prompt is the complete scope, and the file list it declares is under ## Declared Scope."
         exit 0
     fi
 
-    # context/*.md: allowed only if listed in the PLANNER's typed
+    # context/*.md: allowed only if listed in the LOOP's typed
     # files_to_touch event.
     if [ "$is_context_dir" -eq 1 ]; then
         step_log=$(session_log_from_transcript)
@@ -155,29 +150,29 @@ developer-*)
             exit 0
         fi
 
-        # Read the PLANNER's typed files_to_touch event, not the developer's
+        # Read the LOOP's typed files_to_touch event, not the developer's
         # own body — the field is read from its AUTHOR's event.
         if jq -e --arg p "$rel_path" \
-            'select(.ev=="files_to_touch" and (.role | startswith("planner"))) | .files[]? | select(. == $p)' \
+            'select(.ev=="files_to_touch" and (.role == "loop")) | .files[]? | select(. == $p)' \
             "$step_log" >/dev/null 2>&1; then
             exit 0
         fi
 
-        deny "Developer cannot read $FILE_PATH for orientation. Read context/*.md only when the path appears in planner's files_to_touch event as an (EDIT) or (NEW) target."
+        deny "Developer cannot read $FILE_PATH for orientation. Read context/*.md only when the path appears in the loop's files_to_touch event, which the loop writes from the pitch's scope: field."
         exit 0
     fi
     ;;
 
 reviewer-*)
-    # Pitch: always denied — reviewer reviews against ## Plan and ## Files Modified.
+    # Pitch: always denied — reviewer reviews against ## Declared Scope and ## Files Modified.
     if [ "$is_pitch" -eq 1 ]; then
-        deny "Reviewer cannot read the pitch — review against ## Plan (when present) and ## Files Modified in the active step log; when no ## Plan was threaded (plan-less stack), report plan-fulfillment checks N/A rather than reading the pitch."
+        deny "Reviewer cannot read the pitch file — you do not need it: the full pitch body is already the first section of your prompt, and the file list it declares is under ## Declared Scope. Review against those and ## Files Modified."
         exit 0
     fi
 
     # PROJECT_CONTEXT.md: always denied — reviewer reads ## Files Modified, not raw context.
     if [ "$is_project_context" -eq 1 ]; then
-        deny "Reviewer cannot read PROJECT_CONTEXT.md. Check plan fulfillment via ## Plan Goal line in active step log when present; when absent, report N/A — no ## Plan in the active step log (plan-less stack)."
+        deny "Reviewer cannot read PROJECT_CONTEXT.md. Check pitch fulfillment against the pitch body at the top of your prompt and the ## Declared Scope list, not raw context."
         exit 0
     fi
 

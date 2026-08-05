@@ -489,15 +489,6 @@
   harnesses: all
 
 - kind: registration
-  id: planner-guard
-  event: PreToolUse
-  tool_guard: "Bash|Write|Edit|MultiEdit|EnterPlanMode|ExitPlanMode|Read"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "planner-*"
-  harnesses: all
-
-- kind: registration
   id: pre-commit-guard
   event: PreToolUse
   tool_guard: Bash
@@ -532,9 +523,9 @@
   tool_guard: "*"
   surface: user_global
   signal: AGENT_TYPE
-  role: "planner-*|developer-*|reviewer-*"
+  role: "developer-*|reviewer-*"
   harnesses: all
-  rationale: Blocks a planner/developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text. Pi twin is observe-only (session_shutdown cannot block).
+  rationale: Blocks a developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text. Pi twin is observe-only (session_shutdown cannot block).
 
 - kind: registration
   id: session-log-writer-only
@@ -572,15 +563,6 @@
   surface: user_global
   signal: none
   role: "*"
-  harnesses: all
-
-- kind: registration
-  id: stop-verify-planner-gate
-  event: Stop
-  tool_guard: "*"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "planner-*"
   harnesses: all
 
 - kind: registration

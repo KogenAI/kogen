@@ -2,6 +2,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.InterruptedCycleRecovery
+  alias CodegenTestHarness.OrchestrationLoop
   alias Mix.Tasks.Codegen.Loop
 
   setup do
@@ -13,7 +14,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
   end
 
   test "returns none when no pitch is claimed", %{cwd: cwd} do
-    assert {:ok, :none} = InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+    assert {:ok, :none} =
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["developer-phoenix-backend"])
   end
 
   test "resumes a ready claim from a persisted recovery journal", %{cwd: cwd} do
@@ -29,7 +31,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     assert {:ok, {:resume, "stranded"}} =
              InterruptedCycleRecovery.reconcile(
                cwd: cwd,
-               roles: ["planner-phoenix", "reviewer-phoenix"],
+               roles: ["developer-phoenix-backend", "reviewer-phoenix"],
                cycle_state_get_fn: fn _ -> "GATED" end,
                cycle_state_slug_fn: fn _ -> "stranded" end,
                read_verdict_fn: fn _ -> :clear end,
@@ -42,7 +44,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     write_journal!(cwd, "stranded", "", "resume_pending")
 
     assert {:error, reason} =
-             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["developer-phoenix-backend"])
 
     assert reason =~ "no ready claim"
   end
@@ -66,7 +68,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     )
 
     assert {:error, reason} =
-             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["developer-phoenix-backend"])
 
     assert reason =~ "malformed journal fields"
     assert File.exists?(claim)
@@ -79,7 +81,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     File.write!(journal, "not JSON")
 
     assert {:error, reason} =
-             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["developer-phoenix-backend"])
 
     assert reason =~ "malformed JSON"
     assert File.exists?(claim)
@@ -96,7 +98,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     assert {:ok, {:resume, "stranded"}} =
              InterruptedCycleRecovery.reconcile(
                cwd: cwd,
-               roles: ["planner-phoenix", "reviewer-phoenix"],
+               roles: ["developer-phoenix-backend", "reviewer-phoenix"],
                cycle_state_get_fn: fn _ -> "GATED" end,
                cycle_state_slug_fn: fn _ -> "stranded" end,
                read_verdict_fn: fn _ -> :clear end,
@@ -120,7 +122,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     assert {:ok, {:requeued, "stranded", :clean}} =
              InterruptedCycleRecovery.reconcile(
                cwd: cwd,
-               roles: ["planner-phoenix"],
+               roles: ["developer-phoenix-backend"],
                cycle_state_get_fn: fn _ -> "" end
              )
 
@@ -237,7 +239,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     write_journal!(cwd, "stranded", branch, "parked", transaction_id)
 
     assert {:ok, {:requeued, "stranded", {:parked, ^branch}}} =
-             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["developer-phoenix-backend"])
 
     refute File.exists?(claim)
     assert File.exists?(ready_pitch(cwd, "stranded"))
@@ -265,7 +267,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     write_journal!(cwd, "stranded", "", "parking", transaction_id)
 
     assert {:ok, {:requeued, "stranded", {:parked, branch}}} =
-             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["developer-phoenix-backend"])
 
     assert {"parked\n", 0} = System.cmd("git", ["-C", cwd, "show", "#{branch}:tracked.txt"])
     refute File.exists?(journal_path(cwd))
@@ -278,7 +280,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     write_journal!(cwd, "stranded", "", "parking", "expected-transaction")
 
     assert {:error, reason} =
-             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["planner-phoenix"])
+             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["developer-phoenix-backend"])
 
     assert reason =~ "no matching stash or branch"
     assert File.exists?(claim)
@@ -296,15 +298,59 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     assert {:ok, {:requeued, "stranded", {:parked, branch}}} =
              InterruptedCycleRecovery.reconcile(
                cwd: cwd,
-               roles: ["planner-phoenix"],
+               roles: ["developer-phoenix-backend"],
                cycle_state_get_fn: fn _ -> "" end
              )
 
     refute File.exists?(claim)
-    assert File.exists?(Path.join([cwd, "codegen", "pitches", "ready", "stranded.md"]))
+    requeued = Path.join([cwd, "codegen", "pitches", "ready", "stranded.md"])
+    assert File.exists?(requeued)
     assert {_, 0} = System.cmd("git", ["-C", cwd, "diff", "--quiet"])
     assert {"changed\n", 0} = System.cmd("git", ["-C", cwd, "show", "#{branch}:tracked.txt"])
     assert {"preserve\n", 0} = System.cmd("git", ["-C", cwd, "show", "#{branch}:untracked.txt"])
+
+    # The requeued pitch carries a Build failure history row naming who must
+    # look at it next. There is no planner to hand an interrupted cycle back
+    # to any more — the row names the operator.
+    history = File.read!(requeued)
+    assert history =~ "| interrupted recovery |"
+    assert history =~ "next=operator-inspection-required"
+    refute history =~ "planner"
+  end
+
+  describe "resume_role_for_recovery/3" do
+    @phoenix_roles ~w(developer-phoenix-backend reviewer-phoenix context-curator committer)
+    @static_roles ~w(developer-static reviewer-static context-curator committer)
+
+    test ":advanced always reconciles at the stack's developer, on both stacks" do
+      assert OrchestrationLoop.resume_role_for_recovery(:advanced, "GATED", @phoenix_roles) ==
+               "developer-phoenix-backend"
+
+      assert OrchestrationLoop.resume_role_for_recovery(:advanced, "REVIEWED", @static_roles) ==
+               "developer-static"
+    end
+
+    test ":operator always reconciles at the stack's developer, on both stacks" do
+      assert OrchestrationLoop.resume_role_for_recovery(:operator, "CURATED", @phoenix_roles) ==
+               "developer-phoenix-backend"
+
+      assert OrchestrationLoop.resume_role_for_recovery(:operator, nil, @static_roles) ==
+               "developer-static"
+    end
+
+    test "the recorded cycle_state cannot pull a moved-base resume past the developer" do
+      # Every cycle_state a dossier can carry — the developer is the answer
+      # for all of them once the base has moved.
+      for state <- ["GATED", "REVIEWED", "CURATED", nil, ""] do
+        assert OrchestrationLoop.resume_role_for_recovery(:advanced, state, @phoenix_roles) ==
+                 "developer-phoenix-backend"
+      end
+    end
+
+    test ":exact still honours the recorded cycle_state (unchanged)" do
+      assert OrchestrationLoop.resume_role_for_recovery(:exact, "GATED", @phoenix_roles) ==
+               "reviewer-phoenix"
+    end
   end
 
   # ── Per-transaction recovery dossiers (park_failure/1, materialize/2) ──────

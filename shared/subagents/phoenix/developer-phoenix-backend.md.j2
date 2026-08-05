@@ -12,7 +12,7 @@ Backend Phoenix/Elixir dev — owns Ecto schemas/migrations/changesets/seeds, bu
 
 {% include 'subagents/_phoenix_developer_common.md.j2' %}
 
-TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit ONLY files in planner's `## Files to touch` — context/rules updates are curator's job post-reviewer → call `codegen-log section developer-phoenix-backend --slug <slug>` (pipe body via stdin — full CLI contract in session-log rules § Ownership) to write your section body at canonical rank, AND `codegen-log append developer-phoenix-backend --files-modified @- --slug <slug>` (pipe a JSON array of the same relative paths from `## Files Modified`) — this typed event is what grants the reviewer's Read on any `context/*.md` you touched (`<slug>` = the build slug the orchestrator passed you in this task). Done: code written, migrations reversible, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
+TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollback && mix ecto.migrate` → targeted tests for files you touched (`mix test path/to/specific_test.exs`) → edit the files in `## Declared Scope`, plus any sibling the sweep proves is required (justify each extra in your section body) — context/rules updates are curator's job post-reviewer → call `codegen-log section developer-phoenix-backend --slug <slug>` (pipe body via stdin — full CLI contract in session-log rules § Ownership) to write your section body at canonical rank, AND `codegen-log append developer-phoenix-backend --files-modified @- --slug <slug>` (pipe a JSON array of the same relative paths from `## Files Modified`) — this typed event is what grants the reviewer's Read on any `context/*.md` you touched (`<slug>` = the build slug the orchestrator passed you in this task). Done: code written, migrations reversible, tests pass, pre-completion clean, log appended. Full suite is VE's job at end of step.
 
 ## Credo Convergence (Required Before Handoff)
 
@@ -20,16 +20,10 @@ Before handoff, run `mix credo --strict` scoped to changed files. Fix ALL violat
 
 ## Stuck-loop escalation
 
-If the gate log contains 2+ prior `FAILED ❌` sections for this task → escalate to planner-phoenix BEFORE the next retry (do not patch again). The counter is persistent across spawns — read it from the active step log, not from memory.
+If the gate log contains 2+ prior `FAILED ❌` sections for this task → escalate BEFORE the next retry (do not patch again). The counter is persistent across spawns — read it from the active step log, not from memory.
 
 Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
 
-Run this Bash row (keep `STUCK-ESCALATION:` prefix verbatim):
+Call the `mcp__codegen__advise` tool with a `context` string carrying `<problem> + <what I tried> + <current failure>`. It asks a model from a different provider for one recommendation. Apply it, continue, and do not escalate again this loop.
 
-```bash
-claude --agent planner-phoenix --print --output-format text "STUCK-ESCALATION: <problem> + <what I tried> + <current failure>. One recommendation."
-```
-
-Log the Bash invocation in your `## <role> Section` **Commands executed** table per standard session-log discipline. Read the planner's stdout, apply the one recommendation, continue. Do not escalate again in the same loop.
-
-If you identify a root cause that implies an **architectural or design choice** (sync vs async, data-structure/algorithm change, comparator/ordering semantics, schema shape), do NOT implement it — escalate to planner-phoenix with the diagnosis so the approach is planned. You implement plans; you do not design them.
+If you identify a root cause that implies an **architectural or design choice** (sync vs async, data-structure/algorithm change, comparator/ordering semantics, schema shape), do NOT implement it. Stop, record the diagnosis in your section body, and hand back to the orchestrator. Do not redesign the approach yourself.

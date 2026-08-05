@@ -109,7 +109,7 @@ export interface LogReadResult {
 
 /**
  * Project a cycle log by view:
- *  - manifest: planner's typed plan/plan_gate/files_to_touch events
+ *  - manifest: the loop's typed files_to_touch events
  *  - retro:    ev:learned events only (ev:no_learning is deliberately
  *              excluded — session-log.md: "invisible to the context-curator")
  *  - full:     every event, call order
@@ -131,9 +131,7 @@ export function readLogWithEnv(
   let events = readEvents(logPath);
 
   if (view === "manifest") {
-    events = events.filter((e) =>
-      ["plan", "plan_gate", "files_to_touch"].includes(e.ev),
-    );
+    events = events.filter((e) => e.ev === "files_to_touch");
   } else if (view === "retro") {
     events = events.filter((e) => e.ev === "learned");
   }

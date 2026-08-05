@@ -6,7 +6,7 @@ Core discipline rules that apply to ALL agents regardless of role or stack. Thes
 
 | File                                              | Purpose                                                                |
 | ------------------------------------------------- | ---------------------------------------------------------------------- |
-| `shared/rules/INDEX.md`                           | Registry — file → trigger keywords; loaded by orchestrators/planners   |
+| `shared/rules/INDEX.md`                           | Registry — file → trigger keywords; loaded by the orchestrator        |
 | `shared/rules/STYLE_GUIDE.md`                     | Cross-cutting style rules for all agents                               |
 | `shared/rules/_core/bash-discipline.md`           | Forbidden bash patterns, token-budget rules, safe alternatives         |
 | `shared/rules/_core/output-style.md`              | Caveman Ultra output compression rules                                 |
@@ -69,9 +69,9 @@ The carve-out parenthetical is the most error-prone location for this slip — e
 
 The `codegen-log` binary resolves role via precedence chain: `ROLE_OVERRIDE` env var (test-only) > `AGENT_TYPE` env var (shape/ops/debug launchers) > `CLAUDE_ROLE` env var (legacy, shape-mode only) > `--role <literal>` flag. The env-var fallback is kept (valid for non-build launchers), but **build subagents spawned via `codegen-build` Task export NO role env vars** — they must use `--role <literal>` explicitly in their `codegen-log section`/`append` instructions. Teaching every subagent prompt to emit the literal ensures correct role resolution across all contexts (build + shape + debug).
 
-## Typed Marker Flags — `--plan` / `--plan-gate` / `--files-to-touch` / `--files-modified`
+## Typed Marker Flags — `--files-to-touch` / `--files-modified`
 
-PLAN, gate-SELECTION, and read-discipline markers are first-class JSONL events (`ev:plan`/`ev:plan_gate`/`ev:files_to_touch`/`ev:files_modified`), written via typed `codegen-log append <role> --plan|--plan-gate|--files-to-touch|--files-modified @-` calls — never re-parsed out of a role's free-form `body` prose. planner* authors `plan` (the full plan document, threaded verbatim under `## Plan` to developer/reviewer by `OrchestrationLoop.resolve_planner_plan!/2` → `LoopGate.planner_plan/1`), `plan_gate` (gate command/mode/timeout), and `files_to_touch` (the files a developer may Read `context/*.md`under); developer* authors`files_modified`(the files a reviewer may Read`context/\*.md`under).`gate-select.sh`(`gate_select_read_planner_plan`/`gate_select_read_planner_gate`) and`subagent-read-discipline.sh`read the field from its AUTHOR's event, never the calling role's own — a caller-authored self-read cannot self-authorize a Read. An absent or blank `plan`event raises before a developer is ever invoked — the developer's`## Plan` slot holds a plan, or the cycle halts. Full contract:`shared/rules/\_core/session-log.md` § Ownership.
+Read-discipline markers are first-class JSONL events (`ev:files_to_touch`/`ev:files_modified`), written via typed `codegen-log append <role> --files-to-touch|--files-modified @-` calls (JSON array of strings on stdin, shape-validated at write) — never re-parsed out of a role's free-form `body` prose. The **loop** authors `files_to_touch` under `"role":"loop"`, deriving it deterministically from the pitch's `scope:` frontmatter field; it is the set of `context/*.md` paths a `developer-*` may Read. `developer-*` authors `files_modified`, the set a `reviewer-*` may Read. `subagent-read-discipline.sh` reads each field from its AUTHOR's event, never the calling role's own — a caller-authored self-read cannot self-authorize a Read. There is no `plan` or `plan_gate` event kind: the pitch body (inlined at the top of every role prompt) plus the loop's `## Declared Scope` block replace the plan document, and the gate command/mode/timeout come from `<project>/.claude/gate-config.sh` (`GATE_COMMAND`/`GATE_MODE`/`GATE_TIMEOUT`), read by `gate-select.sh`. Full contract: `shared/rules/_core/session-log.md` § Ownership.
 
 ## FAILED-Gate Witness Requirement
 

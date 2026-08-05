@@ -48,6 +48,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   alias CodegenTestHarness.BuildSignalHandler
   alias CodegenTestHarness.InfraAbort
   alias CodegenTestHarness.InterruptedCycleRecovery
+  alias CodegenTestHarness.LoopGate
   alias CodegenTestHarness.LoopQueue
   alias CodegenTestHarness.OrchestrationLoop
 
@@ -189,6 +190,58 @@ defmodule Mix.Tasks.Codegen.Loop do
   defp source_slug({:file, abs}), do: Path.basename(abs, ".md")
   defp source_slug(:literal), do: nil
 
+  # The pitch's own `scope:` frontmatter list — the deterministic deliverable
+  # file list the build is graded against. `resolve_pitch/2` pipes
+  # the file through `LoopQueue.strip_frontmatter/1` and throws the
+  # frontmatter away, so the field is re-read here from the CLAIMED path and
+  # threaded into the loop as `:pitch_scope`. Two consumers, one parse: the
+  # loop's own `{"ev":"files_to_touch","role":"loop",...}` event (the
+  # developer's `context/*.md` Read grant) and the `## Declared Scope` block
+  # `build_prompt/2` threads to the developer and the reviewer.
+  #
+  # Fail-closed for a queue-driven build. `scope:` is MANDATORY for every
+  # pitch promoted to `ready/` (context/pitch-writing-guide.md) and already
+  # gate-checked by `make pitch-scope-parity`, so a missing one is a repo
+  # fault, not a runtime condition. Degrading silently would leave the
+  # reviewer's mechanical coverage check with nothing to check — the exact
+  # "absent -> vacuous pass" hole `context/rules-roles.md` § Producer-ABSENT
+  # warns can let a sliced, born-dead build ship undetected. Ad-hoc literal
+  # pitches (and a `--pitch=@<path>` pointing outside `codegen/pitches/`)
+  # carry no frontmatter contract at all, so they stay permissive (nil) and
+  # the reviewer reports the mechanical half N/A.
+  @doc false
+  @spec resolve_pitch_scope!({:file, String.t()} | :literal, String.t()) :: [String.t()] | nil
+  def resolve_pitch_scope!(:literal, _slug), do: nil
+
+  def resolve_pitch_scope!({:file, abs}, slug) do
+    case LoopQueue.parse_scope(slug, abs) do
+      {:ok, nil} ->
+        if queue_pitch_path?(abs) do
+          LoopGate.infra_abort!(
+            "pitch-scope-preflight",
+            "#{slug} declares no scope: frontmatter field — a queued pitch must name the " <>
+              "files it delivers, and nothing downstream can reconstruct that list. Add " <>
+              "`scope: [...]` to the pitch (see context/pitch-writing-guide.md; " <>
+              "`make pitch-scope-parity` checks it) and re-run."
+          )
+        else
+          nil
+        end
+
+      {:ok, files} ->
+        files
+    end
+  end
+
+  @spec queue_pitch_path?(String.t()) :: boolean()
+  defp queue_pitch_path?(abs) do
+    abs
+    |> Path.expand()
+    |> Path.split()
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.any?(&match?(["codegen", "pitches"], &1))
+  end
+
   defp run_claimed_cycle(
          source,
          pitch_arg,
@@ -202,6 +255,7 @@ defmodule Mix.Tasks.Codegen.Loop do
     pitch = resolve_pitch(pitch_arg, cwd)
     source = claim_pitch!(source, cwd)
     slug = source_slug(source) || "adhoc"
+    pitch_scope = resolve_pitch_scope!(source, slug)
 
     if source != :literal do
       InterruptedCycleRecovery.complete_resume_claim!(cwd, slug)
@@ -228,6 +282,7 @@ defmodule Mix.Tasks.Codegen.Loop do
           stack: stack,
           cwd: cwd,
           pitch: pitch,
+          pitch_scope: pitch_scope,
           cycle_id: cycle_id,
           slug: slug,
           stamp: stamp,

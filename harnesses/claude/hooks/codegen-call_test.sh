@@ -15,7 +15,7 @@
 # (j) pi empty reply: result.status==failed
 # (l) exit codes: success→0; harness exits non-zero→codegen-call exits 1, error-envelope on stdout
 # (m) envelope JSON validates against contract (all required keys present, types correct)
-# (o) codegen-call source contains zero role-name tokens (planner/developer/committer/reviewer/curator)
+# (o) codegen-call source contains zero role-name tokens (developer/committer/reviewer/curator)
 # (p) codegen-call source contains zero --append-system-prompt tokens (REPLACE-only identity)
 # (q) --agents value missing @ prefix exits 2
 # (r) --agents @<nonexistent-path> exits 2
@@ -897,7 +897,7 @@ check "(snap) no fixture flag missing from parser" "0" "$CC_SNAP_REMOVED"
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (o): codegen-call source contains zero role-name tokens
 # ─────────────────────────────────────────────────────────────────────────────
-ROLE_TOKEN_COUNT="$(grep -cE 'planner|developer|committer|reviewer|curator' "$CODEGEN_CALL" || true)"
+ROLE_TOKEN_COUNT="$(grep -cE 'developer|committer|reviewer|curator' "$CODEGEN_CALL" || true)"
 ROLE_TOKEN_COUNT="${ROLE_TOKEN_COUNT:-0}"
 check "(o) codegen-call has zero role-name tokens" "0" "$ROLE_TOKEN_COUNT"
 

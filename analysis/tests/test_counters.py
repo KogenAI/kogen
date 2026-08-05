@@ -513,6 +513,48 @@ class TestContextMissed(unittest.TestCase):
             self.assertFalse(f.pattern_key.startswith("/"))
             self.assertTrue(f.pattern_key.startswith("context/"))
 
+    def test_historical_remediation_wordings_still_match(self) -> None:
+        # The counter anchors on the stable prefix only. Every historical
+        # remediation sentence (the planner-era wordings, and the current
+        # loop-authored one) must still be mined, or retroactive analysis of
+        # older transcripts silently loses the signal.
+        from analysis.session_loader import Session, Turn, ToolResult
+
+        remediations = [
+            "Read context/*.md only when the path appears in planner's "
+            "## Files to touch list as an (EDIT) or (NEW) target.",
+            "Read context/*.md only when the path appears in planner's "
+            "files_to_touch event as an (EDIT) or (NEW) target.",
+            "Read context/*.md only when the path appears in the loop's "
+            "files_to_touch event, which the loop writes from the pitch's "
+            "scope: field.",
+        ]
+        for remediation in remediations:
+            with self.subTest(remediation=remediation[:48]):
+                turns = [
+                    Turn(
+                        index=0,
+                        kind="user",
+                        timestamp="",
+                        cwd="",
+                        tool_results=[
+                            ToolResult(
+                                tool_use_id="x",
+                                is_error=True,
+                                content=(
+                                    "Developer cannot read "
+                                    "/repo/context/hooks.md for orientation. "
+                                    + remediation
+                                ),
+                            )
+                        ],
+                    )
+                ]
+                session = Session("x", Path("/tmp/x.jsonl"), turns)
+                findings = self.counter.run(session, _thrash_config())
+                self.assertEqual(len(findings), 1)
+                self.assertEqual(findings[0].pattern_key, "context/hooks.md")
+
 
 if __name__ == "__main__":
     unittest.main()

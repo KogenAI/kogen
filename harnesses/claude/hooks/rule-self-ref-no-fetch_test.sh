@@ -247,10 +247,8 @@ for tmpl in \
     "$SUBAGENTS_DIR/phoenix/developer-phoenix-backend.md.j2" \
     "$SUBAGENTS_DIR/phoenix/developer-phoenix-frontend.md.j2" \
     "$SUBAGENTS_DIR/phoenix/reviewer-phoenix.md.j2" \
-    "$SUBAGENTS_DIR/phoenix/planner-phoenix.md.j2" \
     "$SUBAGENTS_DIR/static/developer-static.md.j2" \
     "$SUBAGENTS_DIR/static/reviewer-static.md.j2" \
-    "$SUBAGENTS_DIR/static/planner-static.md.j2" \
     "$SUBAGENTS_DIR/_phoenix_developer_common.md.j2" \
     "$SUBAGENTS_DIR/_static_developer_common.md.j2"; do
     if [ -f "$tmpl" ]; then

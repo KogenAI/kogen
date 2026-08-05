@@ -54,19 +54,25 @@ describe("roles.ts — role-baking", { concurrency: 1 }, () => {
     assert.equal(findRole("not-a-real-role"), undefined);
   });
 
+  test("the planner roles are gone from the registry", () => {
+    assert.equal(findRole("planner-phoenix"), undefined);
+    assert.equal(findRole("planner-static"), undefined);
+  });
+
+  test("no surviving role is granted the retired plan/plan_gate kinds", () => {
+    for (const spec of ROLES) {
+      assert.ok(!spec.extraKinds.includes("plan" as never));
+      assert.ok(!spec.extraKinds.includes("plan_gate" as never));
+    }
+  });
+
   test("universal marker kinds (learned/no_learning/died) plus per-role extras", () => {
-    const planner = findRole("planner-phoenix")!;
-    assert.deepEqual(planner.extraKinds, [
-      "plan",
-      "plan_gate",
-      "files_to_touch",
-    ]);
     const dev = findRole("developer-phoenix-backend")!;
     assert.deepEqual(dev.extraKinds, ["files_modified"]);
     const reviewer = findRole("reviewer-phoenix")!;
     assert.deepEqual(reviewer.extraKinds, []);
     assert.equal(reviewer.readers, true);
-    assert.equal(planner.readers, false);
+    assert.equal(dev.readers, false);
   });
 });
 
@@ -175,20 +181,26 @@ describe("readers.ts — log_read views", { concurrency: 1 }, () => {
     return logPath;
   }
 
-  test("manifest view returns only plan/plan_gate/files_to_touch events", async () => {
+  test("manifest view returns only the loop's files_to_touch events", async () => {
     await withTmpDir((dir) => {
       writeFixtureLog(dir, [
         { ev: "init", pitch: "fixture-slug" },
-        { ev: "role", role: "planner-phoenix", body: "did planning" },
-        { ev: "plan", role: "planner-phoenix", plan: "the plan text" },
-        { ev: "files_to_touch", role: "planner-phoenix", files: ["a.ex"] },
-        { ev: "learned", role: "planner-phoenix", text: "something" },
+        {
+          ev: "role",
+          role: "developer-phoenix-backend",
+          body: "did the work",
+        },
+        { ev: "files_to_touch", role: "loop", files: ["a.ex"] },
+        {
+          ev: "learned",
+          role: "developer-phoenix-backend",
+          text: "something",
+        },
       ]);
       const result = readLog(dir, "manifest");
-      assert.equal(result.events.length, 2);
-      assert.ok(
-        result.events.every((e) => ["plan", "files_to_touch"].includes(e.ev)),
-      );
+      assert.equal(result.events.length, 1);
+      assert.equal(result.events[0].ev, "files_to_touch");
+      assert.equal(result.events[0].role, "loop");
     });
   });
 
@@ -212,7 +224,7 @@ describe("readers.ts — log_read views", { concurrency: 1 }, () => {
     await withTmpDir((dir) => {
       writeFixtureLog(dir, [
         { ev: "init", pitch: "fixture-slug" },
-        { ev: "role", role: "planner-phoenix", body: "x" },
+        { ev: "role", role: "developer-phoenix-backend", body: "x" },
         { ev: "gate", role: "dev-gate", verdict: "clear" },
       ]);
       const result = readLog(dir, "full");
@@ -224,7 +236,7 @@ describe("readers.ts — log_read views", { concurrency: 1 }, () => {
   test("role filter narrows to one role's events across any view", async () => {
     await withTmpDir((dir) => {
       writeFixtureLog(dir, [
-        { ev: "role", role: "planner-phoenix", body: "a" },
+        { ev: "role", role: "developer-phoenix-backend", body: "a" },
         { ev: "role", role: "reviewer-phoenix", body: "b" },
       ]);
       const result = readLog(dir, "full", undefined, "reviewer-phoenix");

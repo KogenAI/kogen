@@ -53,7 +53,7 @@ FIXTURE_BLOCK_ETC='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_inpu
 run_test "orchestrator Read /etc/passwd in user-app cwd blocks" "2" "$FIXTURE_BLOCK_ETC"
 
 # Test 2: Subagent Read of /etc/passwd — ALLOW (escape hatch)
-FIXTURE_SUBAGENT_ETC='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"abc123","agent_type":"planner","cwd":"'"$PROJECT_DIR"'"}'
+FIXTURE_SUBAGENT_ETC='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/etc/passwd"},"agent_id":"abc123","agent_type":"developer-phoenix-backend","cwd":"'"$PROJECT_DIR"'"}'
 run_test "subagent Read /etc/passwd allows (escape hatch)" "0" "$FIXTURE_SUBAGENT_ETC"
 
 # Test 3: Orchestrator Read of project file — ALLOW

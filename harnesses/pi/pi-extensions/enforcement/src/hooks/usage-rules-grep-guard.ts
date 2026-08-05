@@ -1,10 +1,14 @@
 /**
- * usage-rules-grep-guard.ts — Pi enforcement: block non-planner agents from
- * scanning codegen/usage_rules/.
+ * usage-rules-grep-guard.ts — Pi enforcement: block every agent except the
+ * developer from scanning codegen/usage_rules/.
  *
- * Mirrors: templates/shared/hooks/usage-rules-grep-guard.sh
+ * Mirrors: harnesses/claude/hooks/usage-rules-grep-guard.sh
  * Event: tool_call (PreToolUse equivalent)
  * Matcher: bash, grep
+ *
+ * Blocks every agent except the developer from grepping/scanning
+ * codegen/usage_rules/. Only the developer may scan the full corpus — every
+ * other agent must read only files cited by codegen/usage_rules/INDEX.md.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -21,7 +25,7 @@ export function register(pi: ExtensionAPI): void {
     if (event.toolName !== "bash" && event.toolName !== "grep") return;
 
     const agentType = parseAgentType();
-    if (agentType === "planner" || /^planner-/.test(agentType)) return;
+    if (/^developer-/.test(agentType)) return;
 
     debugLog(
       "usage-rules-grep-guard",
@@ -33,7 +37,7 @@ export function register(pi: ExtensionAPI): void {
         (event.input as { command?: string }).command ?? "";
       if (/(grep|rg)\s+.*codegen\/usage_rules\//.test(command)) {
         return deny(
-          'BLOCKED by usage-rules-grep-guard: only planner may scan codegen/usage_rules/. Read only the files cited in the plan\'s "Usage rules for implementer:" field.',
+          "BLOCKED by usage-rules-grep-guard: only the developer may scan codegen/usage_rules/. Read codegen/usage_rules/INDEX.md, look up the deps you are touching, and Read at most 5 cited files.",
         );
       }
     }
@@ -42,7 +46,7 @@ export function register(pi: ExtensionAPI): void {
       const grepPath: string = (event.input as { path?: string }).path ?? "";
       if (grepPath.includes("codegen/usage_rules")) {
         return deny(
-          'BLOCKED by usage-rules-grep-guard: only planner may scan codegen/usage_rules/. Read only the files cited in the plan\'s "Usage rules for implementer:" field.',
+          "BLOCKED by usage-rules-grep-guard: only the developer may scan codegen/usage_rules/. Read codegen/usage_rules/INDEX.md, look up the deps you are touching, and Read at most 5 cited files.",
         );
       }
     }

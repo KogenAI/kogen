@@ -254,63 +254,16 @@ assert "--verdict failed emits gate event with verdict=failed" "1" "$(jq_count "
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role developer-phoenix-backend --slug marker-flags --verdict inconclusive >/dev/null
 assert "--verdict inconclusive emits gate event with verdict=inconclusive" "1" "$(jq_count "$marker_log" 'select(.ev=="gate" and .verdict=="inconclusive")')"
 
-# Test 8a: --plan emits the typed plan event the loop threads under ## Plan
-# — raw text (not JSON), same @-file/@- stdin convention as --body.
-plan_out="$(
-    cd "$PROJECT" && printf '## Plan\n\nDo the thing.\n' |
-        env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan @-
-)"
-plan_path="$(printf '%s' "$plan_out" | tail -n 1)"
-assert "--plan wrote to the marker-flags log" "0" "$([ "$plan_path" = "$marker_log" ] && printf 0 || printf 1)"
-assert "--plan emits exactly one plan event" "1" "$(jq_count "$marker_log" 'select(.ev=="plan" and .role=="planner-phoenix")')"
-assert "--plan preserves the raw text verbatim" "0" "$(jq -r 'select(.ev=="plan")|.plan' "$marker_log" | grep -qF 'Do the thing.' && printf 0 || printf 1)"
-
-set +e
-plan_empty_rc=0
-(cd "$PROJECT" && printf '   \n  \n' |
-    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan @-) >/dev/null 2>&1
-plan_empty_rc=$?
-set -e
-assert "--plan empty/whitespace-only exits 2" "2" "$plan_empty_rc"
-assert "--plan empty/whitespace-only writes no new event" "1" "$(jq_count "$marker_log" 'select(.ev=="plan")')"
-
-set +e
-plan_mutex_rc=0
-(cd "$PROJECT" && printf 'plan text' |
-    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan @- --learned "text") >/dev/null 2>&1
-plan_mutex_rc=$?
-set -e
-assert "--plan + --learned mutually exclusive exits 2" "2" "$plan_mutex_rc"
-
-# Test 8b: --plan-gate/--files-to-touch/--files-modified emit structured
-# events the gate-select/read-discipline reader hooks jq-select for.
-plan_gate_out="$(
-    cd "$PROJECT" && printf '{"command":"make ci","mode":"short","timeout":900}' |
-        env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan-gate @-
-)"
-plan_gate_path="$(printf '%s' "$plan_gate_out" | tail -n 1)"
-assert "--plan-gate wrote to the marker-flags log" "0" "$([ "$plan_gate_path" = "$marker_log" ] && printf 0 || printf 1)"
-assert "--plan-gate emits exactly one plan_gate event" "1" "$(jq_count "$marker_log" 'select(.ev=="plan_gate" and .role=="planner-phoenix")')"
-assert "--plan-gate command field" "0" "$([ "$(jq -r 'select(.ev=="plan_gate")|.command' "$marker_log")" = "make ci" ] && printf 0 || printf 1)"
-assert "--plan-gate mode field" "0" "$([ "$(jq -r 'select(.ev=="plan_gate")|.mode' "$marker_log")" = "short" ] && printf 0 || printf 1)"
-assert "--plan-gate timeout field" "0" "$([ "$(jq -r 'select(.ev=="plan_gate")|.timeout' "$marker_log")" = "900" ] && printf 0 || printf 1)"
-
-set +e
-plan_gate_bad_rc=0
-(cd "$PROJECT" && printf 'not json' |
-    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan-gate @-) >/dev/null 2>&1
-plan_gate_bad_rc=$?
-set -e
-assert "--plan-gate malformed JSON exits 2" "2" "$plan_gate_bad_rc"
-assert "--plan-gate malformed JSON writes no new event" "1" "$(jq_count "$marker_log" 'select(.ev=="plan_gate")')"
-
+# Test 8b: --files-to-touch/--files-modified emit structured events the
+# read-discipline reader hooks jq-select for. --files-to-touch is authored
+# by the LOOP; --files-modified by the developer.
 files_to_touch_out="$(
     cd "$PROJECT" && printf '["context/foo.md","lib/bar.ex"]' |
-        env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --files-to-touch @-
+        env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role loop --slug marker-flags --files-to-touch @-
 )"
 files_to_touch_path="$(printf '%s' "$files_to_touch_out" | tail -n 1)"
 assert "--files-to-touch wrote to the marker-flags log" "0" "$([ "$files_to_touch_path" = "$marker_log" ] && printf 0 || printf 1)"
-assert "--files-to-touch emits exactly one event" "1" "$(jq_count "$marker_log" 'select(.ev=="files_to_touch" and .role=="planner-phoenix")')"
+assert "--files-to-touch emits exactly one event" "1" "$(jq_count "$marker_log" 'select(.ev=="files_to_touch" and .role=="loop")')"
 assert "--files-to-touch array count" "0" "$([ "$(jq -r 'select(.ev=="files_to_touch")|.files|length' "$marker_log")" = "2" ] && printf 0 || printf 1)"
 
 files_modified_out="$(
@@ -323,11 +276,20 @@ assert "--files-modified emits exactly one event" "1" "$(jq_count "$marker_log" 
 
 set +e
 mutex_rc=0
-(cd "$PROJECT" && printf '{"command":"make ci","mode":"short","timeout":900}' |
-    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --plan-gate @- --learned "text") >/dev/null 2>&1
+(cd "$PROJECT" && printf '["lib/bar.ex"]' |
+    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role loop --slug marker-flags --files-to-touch @- --learned "text") >/dev/null 2>&1
 mutex_rc=$?
 set -e
-assert "--plan-gate + --learned mutually exclusive exits 2" "2" "$mutex_rc"
+assert "--files-to-touch + --learned mutually exclusive exits 2" "2" "$mutex_rc"
+
+# The planner role is gone: its name is no longer in the accepted vocabulary.
+set +e
+dead_role_rc=0
+(cd "$PROJECT" && printf 'body' |
+    env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append --role planner-phoenix --slug marker-flags --body @-) >/dev/null 2>&1
+dead_role_rc=$?
+set -e
+assert "--role planner-phoenix is rejected (role deleted)" "2" "$dead_role_rc"
 
 # Test 9: init writes the .active sentinel with the resolved absolute log path.
 unset CODEGEN_LOG_PATH
@@ -403,9 +365,9 @@ assert "first verdict event's result still present after second call" "1" "$(jq_
 assert "second verdict event derives verdict=failed" "1" "$(jq_count "$verdict_log" 'select(.ev=="gate" and .verdict=="failed")')"
 assert "second verdict event's detail present" "0" "$([ "$(jq -r 'select(.ev=="gate" and .verdict=="failed")|.detail' "$verdict_log")" = "Log: /tmp/bar.log" ] && printf 0 || printf 1)"
 
-# Test 13b: `--kinds` enumerates 13 kinds, including "committed" and "waiver".
+# Test 13b: `--kinds` enumerates 11 kinds, including "committed" and "waiver".
 kinds_out="$(env -u CODEGEN_LOG_PATH "$CODEGEN/codegen-log" --kinds)"
-assert "--kinds prints 13 kinds" "13" "$(printf '%s\n' "$kinds_out" | grep -c .)"
+assert "--kinds prints 11 kinds" "11" "$(printf '%s\n' "$kinds_out" | grep -c .)"
 assert "--kinds includes committed" "0" "$(printf '%s\n' "$kinds_out" | grep -qxF 'committed' && printf 0 || printf 1)"
 assert "--kinds includes waiver" "0" "$(printf '%s\n' "$kinds_out" | grep -qxF 'waiver' && printf 0 || printf 1)"
 
@@ -905,20 +867,18 @@ assert "exit with unresolvable log exits 0 (not a hard failure)" "0" "$exit_nore
 assert "exit with unresolvable log notes the skip on stderr" "0" "$(printf '%s' "$exit_norecord_stderr" | grep -qF 'not recorded' && printf 0 || printf 1)"
 assert "exit with unresolvable log wrote no file" "0" "$([ -z "$(find "$NOLOG_PROJECT/codegen/logging" -name '*_cycle.jsonl' 2>/dev/null)" ] && printf 0 || printf 1)"
 
-# Test 33: known_kinds drift fix — plan_gate/files_to_touch/files_modified/exit
-# no longer render as "other events:" in `show` — they were previously
-# missing from the known-kinds allowlist despite being first-class writers.
+# Test 33: known_kinds drift fix — files_to_touch/files_modified/exit no
+# longer render as "other events:" in `show` — they were previously missing
+# from the known-kinds allowlist despite being first-class writers.
 unset CODEGEN_LOG_PATH
 drift_log="$PROJECT/codegen/logging/20260112_000100_known-kinds-drift_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"known-kinds-drift",path:"",stamp:{}}' >"$drift_log"
-jq -c -n '{ev:"role",role:"planner-phoenix",body:"plan body"}' >>"$drift_log"
-jq -c -n '{ev:"plan",role:"planner-phoenix",plan:"## Plan\n\nDo the thing."}' >>"$drift_log"
-jq -c -n '{ev:"plan_gate",role:"planner-phoenix",command:"make ci",mode:"short",timeout:900}' >>"$drift_log"
-jq -c -n '{ev:"files_to_touch",role:"planner-phoenix",files:["a.ex"]}' >>"$drift_log"
+jq -c -n '{ev:"role",role:"developer-phoenix-backend",body:"work body"}' >>"$drift_log"
+jq -c -n '{ev:"files_to_touch",role:"loop",files:["a.ex"]}' >>"$drift_log"
 jq -c -n '{ev:"files_modified",role:"developer-phoenix-backend",files:["a.ex"]}' >>"$drift_log"
 jq -c -n '{ev:"exit",status:0,signal:null,stderr_tail:""}' >>"$drift_log"
 drift_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug known-kinds-drift 2>/dev/null)"
-assert "show no longer reports plan_gate/files_to_touch/files_modified/exit as unknown" \
+assert "show no longer reports files_to_touch/files_modified/exit as unknown" \
     "0" "$(printf '%s' "$drift_show" | grep -qF 'other events:' && printf 1 || printf 0)"
 
 # Test 34: --body accepts literal text directly (no leading @) — the

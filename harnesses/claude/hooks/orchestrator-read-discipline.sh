@@ -17,7 +17,7 @@
 #   2. Investigating via Bash with exploration verbs: find, grep, rg, ls, tree, cat
 #      (denial anchored on LEADING token only so git/make/date/cp pass through)
 #
-# Orchestrator should delegate exploration to the planner subagent (planner-phoenix / planner-static).
+# Orchestrator should delegate exploration to the developer subagent (developer-phoenix-backend / developer-static).
 #
 # Read — Allowed paths:
 #   - codegen/logging/* (session logs only)
@@ -58,7 +58,7 @@ if [ -n "$AGENT_ID" ]; then
 fi
 
 # Only apply to orchestrator (empty agent_type = orchestrator level).
-# Planner and other named agents have non-empty AGENT_TYPE.
+# Named subagents (developer-*, reviewer-*, ...) have non-empty AGENT_TYPE.
 if [ -n "$AGENT_TYPE" ]; then
     exit 0
 fi
@@ -80,8 +80,8 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     if printf '%s' "$_cmd" | grep -qE '^[[:space:]]*(find|grep|rg|ls|tree|cat)\b'; then
         # Extract the leading verb for the deny message.
         _verb=$(printf '%s' "$_cmd" | grep -oE '(find|grep|rg|ls|tree|cat)' | head -1 || true)
-        deny "Orchestrator cannot investigate via Bash (\`${_verb}\`). For files you may read directly, use the Read tool; otherwise delegate to planner.
-Example: delegate to planner with 'Find X in lib/...' — planner reads/greps codebase, returns 100-token answer instead of flooding orchestrator context."
+        deny "Orchestrator cannot investigate via Bash (\`${_verb}\`). For files you may read directly, use the Read tool; otherwise delegate to the developer.
+Example: delegate to the developer with 'Find X in lib/...' — the developer reads/greps codebase, returns 100-token answer instead of flooding orchestrator context."
     fi
     exit 0
 fi
@@ -116,7 +116,7 @@ if printf '%s' "$rel_path" | grep -qE '^codegen/rules/build-runtime/[^/]+\.md$';
 fi
 
 # Allowlist check 3: codegen/*.md (top-level design docs only — no subdirs)
-# Exclude PROJECT_CONTEXT.md — planner reads it, orchestrator must not.
+# Exclude PROJECT_CONTEXT.md — the orchestrator must not read it for orientation.
 if printf '%s' "$rel_path" | grep -qE '^codegen/[^/]+\.md$'; then
     bn="${rel_path##*/}"
     if [ "$bn" != "PROJECT_CONTEXT.md" ]; then
@@ -135,6 +135,6 @@ if printf '%s' "$rel_path" | grep -qE '^codegen/gate-pending/'; then
     exit 0
 fi
 
-deny "Orchestrator cannot read $FILE_PATH. Delegate to the planner subagent (planner-phoenix / planner-static).
-Example: delegate to planner with 'Find X in lib/...' — planner reads codebase, returns 100-token answer instead of flooding orchestrator context."
+deny "Orchestrator cannot read $FILE_PATH. Delegate to the developer subagent (developer-phoenix-backend / developer-static).
+Example: delegate to the developer with 'Find X in lib/...' — the developer reads codebase, returns 100-token answer instead of flooding orchestrator context."
 exit 0

@@ -104,7 +104,7 @@ describe("pre-commit-guard", () => {
     const result = await runHook(
       "bash",
       "git push origin main --force",
-      "planner-phoenix",
+      "developer-phoenix-backend",
     );
     assert.ok((result as { block?: boolean }).block === true);
   });

@@ -1,6 +1,6 @@
 # Git — Read-Only
 
-For orchestrator, planner, reviewers, devs (non-staging).
+For orchestrator, reviewers, devs (non-staging).
 
 - ❌ `git push`, `pull`, `fetch`
 - ❌ `git stash` — hides changes → breaks reproduction

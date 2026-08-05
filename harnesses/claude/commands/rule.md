@@ -27,12 +27,12 @@ After drafting: `echo "your section" | wc -l`. Section > 10 lines → compress. 
 
 1. **Shared rule** (`~/Areas/Optimum/codegen/shared/rules/`) — universally true across ALL projects, baked into subagent system prompts, makes sense word-for-word in an unrelated project.
 2. **Shared context** (`~/Areas/Optimum/context/`) — universal platform/tooling knowledge not in `rules/` (e.g., `claude-code-cli.md` for CLI semantics).
-3. **Project `context/` file** (`./context/*.md`) — project-specific domain knowledge, infra pitfalls, per-tool config. Read on demand by planner. NOT baked into subagent prompts.
+3. **Project `context/` file** (`./context/*.md`) — project-specific domain knowledge, infra pitfalls, per-tool config. Read on demand by the developer, only when the loop's `files_to_touch` event names the path. NOT baked into subagent prompts.
 4. **`PROJECT_CONTEXT.md` / `CLAUDE.md`** — short operational facts, gate commands, port numbers.
 
 Ask BEFORE placing:
 
-- "Does a different project's planner/dev need this?" No → stay in `./context/`.
+- "Does a different project's dev/reviewer need this?" No → stay in `./context/`.
 - "Which agent READS the target file?" Rule audience must match. ❌ Test-assertion guidance in `vite.md` (read by UI dev). ❌ Hook internals in `orchestrator.md`.
 - "Is `make <target>` project-specific?" Yes → `./context/ci.md`, not shared rules.
 
@@ -112,7 +112,6 @@ Check `codegen/rules/INDEX.md` first to understand file boundaries.
 | File              | Scope                                                      |
 | ----------------- | ---------------------------------------------------------- |
 | `orchestrator.md` | Universal delegation/gates/commit timing/user comms/deploy |
-| `planner.md`      | Universal — recipe/usage rules/plan structure              |
 | `developer.md`    | Universal dev workflow — completion, pre-completion        |
 | `reviewer.md`     | Universal 15-step review + ast-grep                        |
 | `committer.md`    | Universal commit message, multi-repo                       |
@@ -123,13 +122,11 @@ Check `codegen/rules/INDEX.md` first to understand file boundaries.
 | ----------------------------- | ---------------------------------------------------------------- |
 | `phoenix/_core.md`            | Cross-role idioms, Ecto, contexts, LiveView UI                   |
 | `phoenix/orchestrator.md`     | Gate commands, INCONCLUSIVE, ext→agent, slice routing            |
-| `phoenix/planner.md`          | Phoenix dep scan + OTP convention                                |
 | `phoenix/developer.md`        | Pre-completion greps, mix workflow, hot reload, codegen patterns |
 | `phoenix/reviewer.md`         | @spec/@type/~p/Gettext/github_workflows                          |
 | `phoenix/committer.md`        | `.po/.pot` staging                                               |
 | `phoenix/testing.md`          | CI/TDD/coverage/BDD/LLM partitions/backend                       |
 | `phoenix/testing-liveview.md` | LiveView/HEEx/browser/SPA testing                                |
-| `static/planner.md`           | Substack detection, tailwind detect                              |
 | `static/developer.md`         | Output dir, build pipeline, npm, Tailwind v4 invariants          |
 | `static/reviewer.md`          | Selector/a11y/asset/JS checks                                    |
 | `static/vite.md`              | Vite: vanilla + framework                                        |

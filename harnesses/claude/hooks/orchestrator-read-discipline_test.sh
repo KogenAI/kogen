@@ -66,9 +66,9 @@ run_test "orchestrator Read on config/ blocks" "2" "$FIXTURE_CONFIG"
 FIXTURE_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"abc123","agent_type":"developer-phoenix-backend"}'
 run_test "subagent Read on lib/ allows" "0" "$FIXTURE_SUBAGENT"
 
-# Test 8: named agent (planner) — ALLOW (AGENT_TYPE non-empty, not orchestrator)
-FIXTURE_PLANNER='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":"planner"}'
-run_test "planner Read on lib/ allows (not orchestrator)" "0" "$FIXTURE_PLANNER"
+# Test 8: named agent (developer) — ALLOW (AGENT_TYPE non-empty, not orchestrator)
+FIXTURE_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":"developer-phoenix-backend"}'
+run_test "developer-phoenix-backend Read on lib/ allows (not orchestrator)" "0" "$FIXTURE_SUBAGENT"
 
 # Test 9: non-Read tool — ALLOW
 FIXTURE_WRITE='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"lib/my_app/foo.ex"},"agent_id":"","agent_type":""}'
@@ -292,9 +292,9 @@ run_test "orchestrator Bash git log --grep= allows (grep not leading)" "0" "$FIX
 FIXTURE_BASH_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -rn foo lib/"},"agent_id":"abc123","agent_type":"developer-phoenix-backend"}'
 run_test "subagent Bash grep allows (not orchestrator)" "0" "$FIXTURE_BASH_SUBAGENT"
 
-# Test B15: planner (agent_type=planner) Bash grep — ALLOW
-FIXTURE_BASH_PLANNER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -rn foo lib/"},"agent_id":"","agent_type":"planner"}'
-run_test "planner Bash grep allows (AGENT_TYPE non-empty)" "0" "$FIXTURE_BASH_PLANNER"
+# Test B15: developer (agent_type=developer-phoenix-backend) Bash grep — ALLOW
+FIXTURE_BASH_SUBAGENT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep -rn foo lib/"},"agent_id":"","agent_type":"developer-phoenix-backend"}'
+run_test "developer-phoenix-backend Bash grep allows (AGENT_TYPE non-empty)" "0" "$FIXTURE_BASH_SUBAGENT"
 
 # Test B16: CLAUDE_ROLE=debug Bash grep — ALLOW
 FIXTURE_BASH_DEBUG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'

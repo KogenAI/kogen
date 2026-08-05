@@ -469,7 +469,7 @@ _post_result_threshold_compaction() {
 #       (default 300s) AND no live tool subprocess (pgrep -P empty) — detects a
 #       dead socket fast without false-killing a role legitimately silent for
 #       minutes while a bash tool (e.g. make test) runs. 300s (not 60s) because
-#       a large cached context (e.g. planner-phoenix at ~10M cache_read_tokens)
+#       a large cached context (e.g. developer-phoenix-backend at ~10M cache_read_tokens)
 #       routinely exceeds 60s of server-side first-token latency with no tool
 #       subprocess running — a slow turn is not a dead stream. The 900s
 #       IDLE_CAP_SECS remains the genuine-stall backstop either way.
