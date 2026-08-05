@@ -1131,10 +1131,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # semantics), not a stand-in `:blocked_fn`.
   @spec reblock_for_exclude(LoopQueue.blocked_map(), map(), MapSet.t(String.t())) ::
           LoopQueue.blocked_map()
-  defp reblock_for_exclude(blocked, _state, exclude) when map_size(exclude) == 0, do: blocked
-
-  defp reblock_for_exclude(_blocked, state, exclude) do
-    LoopQueue.blocked_by_unmet_dep(state.ready_dir, state.shipped_dir, exclude)
+  defp reblock_for_exclude(blocked, state, exclude) do
+    if MapSet.size(exclude) == 0 do
+      blocked
+    else
+      LoopQueue.blocked_by_unmet_dep(state.ready_dir, state.shipped_dir, exclude)
+    end
   end
 
   # Print a SKIPPED line once per NEWLY-blocked slug (mirrors legacy
