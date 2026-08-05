@@ -330,7 +330,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
 
   defp park_worktree(cwd, slug, namespace, _policy, transaction_id) do
     with {:ok, status} <- git(cwd, ["status", "--porcelain", "--untracked-files=all"]),
-         {:dirty, _status} <- {:dirty, status},
+         {:dirty, status} when status != "" <- {:dirty, status},
          {:ok, original_ref} <- original_ref(cwd),
          branch = "#{namespace}/#{slug}/#{utc_stamp()}",
          :ok <- ensure_branch_absent(cwd, branch),
