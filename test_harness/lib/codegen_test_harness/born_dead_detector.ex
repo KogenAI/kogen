@@ -217,7 +217,6 @@ defmodule CodegenTestHarness.BornDeadDetector do
   defp registered?(base, cwd) do
     registration_files = [
       Path.join([cwd, "harnesses", "claude", "manifest.yaml"]),
-      Path.join([cwd, "harnesses", "pi", "manifest.yaml"]),
       Path.join([cwd, "harnesses", "claude", "claude-code-settings.json"]),
       Path.join([cwd, "mix.exs"]),
       Path.join([cwd, "test_harness", "mix.exs"])

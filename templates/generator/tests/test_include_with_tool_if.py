@@ -1,8 +1,8 @@
 """Regression test: {% if tool.name %} inside an included fragment must be stripped per-tool.
 
 Before the include-before-if-strip fix, fragments with tool conditionals produced both
-branches concatenated (e.g. "CLAUDEPI") for every tool. After the fix, claude → "CLAUDE"
-and pi → "PI".
+branches concatenated (e.g. "CLAUDEOTHER") for every tool. After the fix, claude → "CLAUDE"
+and agents → "OTHER".
 """
 
 import os
@@ -28,7 +28,7 @@ class TestIncludeWithToolIf(unittest.TestCase):
 
         fragment = shared / "_frag.md.j2"
         fragment.write_text(
-            "{% if tool.name == 'claude' %}CLAUDE{% else %}PI{% endif %}\n"
+            "{% if tool.name == 'claude' %}CLAUDE{% else %}OTHER{% endif %}\n"
         )
 
         parent = Path(tmpdir) / "parent.md.j2"
@@ -43,19 +43,19 @@ class TestIncludeWithToolIf(unittest.TestCase):
             return pt._strip_template_blocks(content, tool_name, False)
 
     def test_claude_renders_claude_branch_from_included_fragment(self):
-        """claude tool: fragment's claude-branch rendered, pi-branch dropped."""
+        """claude tool: fragment's claude-branch rendered, else-branch dropped."""
         with tempfile.TemporaryDirectory() as tmpdir:
             parent = self._setup_tmpdir_with_fragment_and_parent(tmpdir)
             result = self._read_and_strip(tmpdir, parent, "claude")
         self.assertIn("CLAUDE", result)
-        self.assertNotIn("PI", result)
+        self.assertNotIn("OTHER", result)
 
-    def test_pi_renders_pi_branch_from_included_fragment(self):
-        """pi tool: fragment's pi-branch rendered, claude-branch dropped."""
+    def test_agents_renders_else_branch_from_included_fragment(self):
+        """agents mode: fragment's else-branch rendered, claude-branch dropped."""
         with tempfile.TemporaryDirectory() as tmpdir:
             parent = self._setup_tmpdir_with_fragment_and_parent(tmpdir)
-            result = self._read_and_strip(tmpdir, parent, "pi")
-        self.assertIn("PI", result)
+            result = self._read_and_strip(tmpdir, parent, "agents")
+        self.assertIn("OTHER", result)
         self.assertNotIn("CLAUDE", result)
 
     def test_no_concatenated_branches_for_claude(self):
@@ -63,14 +63,14 @@ class TestIncludeWithToolIf(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             parent = self._setup_tmpdir_with_fragment_and_parent(tmpdir)
             result = self._read_and_strip(tmpdir, parent, "claude")
-        self.assertNotIn("CLAUDEPI", result)
+        self.assertNotIn("CLAUDEOTHER", result)
 
-    def test_no_concatenated_branches_for_pi(self):
-        """REGRESSION: both branches must NOT appear concatenated for pi either."""
+    def test_no_concatenated_branches_for_agents(self):
+        """REGRESSION: both branches must NOT appear concatenated for agents either."""
         with tempfile.TemporaryDirectory() as tmpdir:
             parent = self._setup_tmpdir_with_fragment_and_parent(tmpdir)
-            result = self._read_and_strip(tmpdir, parent, "pi")
-        self.assertNotIn("CLAUDEPI", result)
+            result = self._read_and_strip(tmpdir, parent, "agents")
+        self.assertNotIn("CLAUDEOTHER", result)
 
     def test_surrounding_parent_text_preserved(self):
         """Non-conditional parent text (BEFORE: / AFTER) is preserved around the include."""

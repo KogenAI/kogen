@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
 # templates/generator/generate.sh — unified manifest-driven generator.
 #
-# Absorbs generate-claude.sh + generate-pi.sh (deleted).
 # Reads harnesses/<harness>/manifest.yaml.
 # Regenerates *-system-prompt.txt from tools-header + shared body (byte-stable).
 #
 # Usage:
-#   generate.sh claude          — generate claude harness only
-#   generate.sh pi              — generate pi harness only
-#   generate.sh claude pi       — generate both (default from make install)
+#   generate.sh claude          — generate claude harness (default from make install)
 #
-# Output: templates/generated/<harness>/ (same as legacy generators).
-# Byte-identity guaranteed: output identical to former generate-{claude,pi}.sh.
+# Output: templates/generated/<harness>/.
 
 set -euo pipefail
 
@@ -53,7 +49,7 @@ _process_template() {
     fi
 }
 
-# _ensure_pyyaml: auto-install pyyaml if missing (pi generator requirement).
+# _ensure_pyyaml: auto-install pyyaml if missing (process_template.py --config requirement).
 _ensure_pyyaml() {
     if ! python3 -c "import yaml" 2>/dev/null; then
         echo "   Installing pyyaml..."
@@ -127,69 +123,11 @@ _generate_claude() {
     _log_success "All template generation complete!"
 }
 
-_generate_pi() {
-    _ensure_pyyaml
-
-    local output_agents_dir="$GENERATED_ROOT/pi/agent"
-    local output_prompts_dir="$GENERATED_ROOT/pi/prompts"
-
-    mkdir -p "$output_agents_dir"
-    mkdir -p "$output_prompts_dir"
-
-    echo "🚀 Generating Pi command prompts..."
-
-    local shared_commands_dir="$CODEGEN_DIR/harnesses/claude/commands"
-    if [ -d "$shared_commands_dir" ]; then
-        for cmd_file in "$shared_commands_dir"/*.j2; do
-            if [ -f "$cmd_file" ]; then
-                local cmd_name
-                cmd_name=$(basename "$cmd_file" .j2)
-                _process_template "$cmd_file" pi true >"$output_prompts_dir/$cmd_name"
-                echo "   Processed command: $cmd_name"
-            fi
-        done
-        for cmd_file in "$shared_commands_dir"/*.md; do
-            if [ -f "$cmd_file" ]; then
-                local cmd_name
-                cmd_name=$(basename "$cmd_file")
-                cp "$cmd_file" "$output_prompts_dir/$cmd_name"
-                echo "   Copied command: $cmd_name"
-            fi
-        done
-    fi
-
-    echo "🚀 Generating Pi Markdown agents..."
-
-    local subagents_root="$CODEGEN_DIR/shared/subagents"
-    local subdirs=("$subagents_root/shared" "$subagents_root/phoenix" "$subagents_root/static")
-
-    for subdir in "${subdirs[@]}"; do
-        [ -d "$subdir" ] || continue
-        for template_file in "$subdir"/*.md.j2; do
-            [ -f "$template_file" ] || continue
-            local base_name role_name output_file
-            base_name=$(basename "$template_file" .j2) # e.g. reviewer-static.md
-            role_name="${base_name%.md}"               # e.g. reviewer-static
-            output_file="$output_agents_dir/${role_name}.md"
-
-            echo "   Generating: ${role_name}.md"
-            python3 "$SCRIPT_DIR/process_template.py" --config "$SCRIPT_DIR/config.yaml" \
-                "$template_file" pi true >"$output_file"
-            echo "   ✅ Written: $(basename "$output_file")"
-        done
-    done
-
-    echo ""
-    echo "✅ Pi generation complete!"
-    echo "   Agents: $output_agents_dir"
-    echo "   Prompts: $GENERATED_ROOT/pi/prompts"
-}
-
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 if [ $# -eq 0 ]; then
     echo "Usage: generate.sh <harness> [<harness> ...]" >&2
-    echo "  harness: claude | pi" >&2
+    echo "  harness: claude" >&2
     exit 1
 fi
 
@@ -208,11 +146,8 @@ for harness in "$@"; do
     claude)
         _generate_claude
         ;;
-    pi)
-        _generate_pi
-        ;;
     *)
-        echo "generate.sh: unknown harness '$harness' (expected: claude | pi)" >&2
+        echo "generate.sh: unknown harness '$harness' (expected: claude)" >&2
         exit 1
         ;;
     esac

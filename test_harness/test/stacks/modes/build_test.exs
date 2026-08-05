@@ -7,7 +7,7 @@ defmodule CodegenTestHarness.Stacks.Modes.BuildTest do
   basename resolver keys off the correct `codegen/pitches/ready/` dir and emits
   the relative pitch mention rather than the literal-token fallthrough.
 
-  Covers cells: claude-build, pi-build.
+  Covers cells: claude-build.
   """
 
   use ExUnit.Case, async: true
@@ -80,7 +80,7 @@ defmodule CodegenTestHarness.Stacks.Modes.BuildTest do
     captured =
       if File.exists?(capture_file), do: File.read!(capture_file), else: ""
 
-    # claude emits @codegen/pitches/ready/<slug>.md; pi emits the same without @.
+    # claude emits @codegen/pitches/ready/<slug>.md.
     expected_mention =
       case harness_val do
         "claude" -> "@codegen/pitches/ready/#{@slug}.md"

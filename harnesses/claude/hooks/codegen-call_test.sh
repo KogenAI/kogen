@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# codegen-call_test.sh — unit tests for codegen-call + call-dispatch.sh (claude + pi).
+# codegen-call_test.sh — unit tests for codegen-call + call-dispatch.sh (claude).
 #
-# Tests use stub harnesses (PATH-override bash scripts) so no real claude/pi calls.
+# Tests use stub harnesses (PATH-override bash scripts) so no real claude calls.
 #
 # (a) --version prints version and exits 0
 # (b) missing --harness exits 2 with usage on stderr
@@ -11,8 +11,6 @@
 # (f) claude_code success fixture: result.status==success, harness==claude_code, usage.input_tokens>0
 # (g) claude_code schema-retry-exhausted fixture: result.status==schema_retry_exhausted, retry_meta populated
 # (h) claude_code with --json-schema returning structured JSON: result.value is object
-# (i) pi success fixture (agent_end with assistant text): result.status==success, harness==pi
-# (j) pi empty reply: result.status==failed
 # (l) exit codes: success→0; harness exits non-zero→codegen-call exits 1, error-envelope on stdout
 # (m) envelope JSON validates against contract (all required keys present, types correct)
 # (o) codegen-call source contains zero role-name tokens (developer/committer/reviewer/curator)
@@ -30,7 +28,6 @@ HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_ROOT="$(cd "$HOOKS_DIR/../../.." && pwd)"
 CODEGEN_CALL="$CODEGEN_ROOT/codegen-call"
 REAL_CLAUDE_HARNESS="$CODEGEN_ROOT/harnesses/claude"
-REAL_PI_HARNESS="$CODEGEN_ROOT/harnesses/pi"
 
 # shellcheck source=/dev/null
 source "$CODEGEN_ROOT/harnesses/shared/test-stub-lib.sh"
@@ -117,14 +114,6 @@ make_claude_dispatch_stub() {
     local cc_root="$1"
     local body="$2"
     local harness_dir="$cc_root/harnesses/claude"
-    mkdir -p "$harness_dir"
-    make_stub "$harness_dir/call-dispatch.sh" "$body"
-}
-
-make_pi_dispatch_stub() {
-    local cc_root="$1"
-    local body="$2"
-    local harness_dir="$cc_root/harnesses/pi"
     mkdir -p "$harness_dir"
     make_stub "$harness_dir/call-dispatch.sh" "$body"
 }
@@ -267,39 +256,6 @@ OUT_H="$("$CC_H/codegen-call" \
 check "(h) json-schema exits 0" "0" "$actual_exit"
 assert_jq "(h) result.status == success" "$OUT_H" ".result.status" "success"
 assert_jq_truthy "(h) result.value is object" "$OUT_H" '(.result.value | type) == "object"'
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (i): pi success fixture (agent_end with assistant text)
-# ─────────────────────────────────────────────────────────────────────────────
-PI_SUCCESS_ENVELOPE='{"result":{"status":"success","value":"The answer is 42","reason":null,"retry_meta":null},"usage":{"input_tokens":30,"output_tokens":8,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":400,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi"}'
-
-CC_I="$(make_cc_root cc_i)"
-make_pi_dispatch_stub "$CC_I" "printf '%s\n' '${PI_SUCCESS_ENVELOPE}'"
-
-actual_exit=0
-OUT_I="$("$CC_I/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=high \
-    --system-prompt "@$SP_FILE" "pi test" 2>/dev/null)" || actual_exit=$?
-
-check "(i) pi success exits 0" "0" "$actual_exit"
-assert_jq "(i) result.status == success" "$OUT_I" ".result.status" "success"
-assert_jq "(i) harness == pi" "$OUT_I" ".harness" "pi"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (j): pi empty reply → failed
-# ─────────────────────────────────────────────────────────────────────────────
-PI_EMPTY_ENVELOPE='{"result":{"status":"failed","value":null,"reason":"pi returned empty reply","retry_meta":null},"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":300,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi"}'
-
-CC_J="$(make_cc_root cc_j)"
-make_pi_dispatch_stub "$CC_J" "printf '%s\n' '${PI_EMPTY_ENVELOPE}'"
-
-actual_exit=0
-OUT_J="$("$CC_J/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=high \
-    --system-prompt "@$SP_FILE" "pi empty test" 2>/dev/null)" || actual_exit=$?
-
-check "(j) pi empty reply exits 0" "0" "$actual_exit"
-assert_jq "(j) result.status == failed" "$OUT_J" ".result.status" "failed"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (l): exit codes — success→0; harness exits non-zero→codegen-call exits 1
@@ -448,229 +404,6 @@ Q3_HAS_COLD_SESSION=0
 check "(q3) --session-id value is dropped when --resume also set" "0" "$Q3_HAS_COLD_SESSION"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (r): pi --agent=committer resolves agent definition and mints session_id
-# ─────────────────────────────────────────────────────────────────────────────
-CC_R="$(make_cc_root cc_r)"
-
-mkdir -p "$CC_R/templates/generated/pi/agent"
-printf -- '---\nname: committer\ndescription: d\nmodel: haiku\ntools: bash, edit, grep, read\n---\n# Committer\n\nYou are a committer specialist.' >"$CC_R/templates/generated/pi/agent/committer.md"
-
-# Stub that echoes a minted session_id
-make_pi_dispatch_stub "$CC_R" 'printf '"'"'{"result":{"status":"success","value":"committed","reason":null,"retry_meta":null},"usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0.001,"latency_ms":200,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"r-minted-session"}'"'"''
-
-actual_exit=0
-OUT_R="$("$CC_R/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=low \
-    --agent=committer "commit test" 2>/dev/null)" || actual_exit=$?
-
-check "(r) pi --agent=committer exits 0" "0" "$actual_exit"
-assert_jq "(r) result.status == success" "$OUT_R" ".result.status" "success"
-assert_jq "(r) harness == pi" "$OUT_R" ".harness" "pi"
-SESSION_ID_R="$(printf '%s' "$OUT_R" | jq -r '.session_id')"
-check "(r) pi mints non-null session_id for agent call" "false" "$([[ "$SESSION_ID_R" == "null" ]] && echo true || echo false)"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper: real pi dispatch + a stubbed `pi` binary on PATH that captures argv
-# and the --system-prompt value to files the test can grep. Used by (r2)-(r5)
-# to exercise the ACTUAL frontmatter-strip + --tools emission logic in
-# harnesses/pi/call-dispatch.sh (not a call-dispatch stub).
-# ─────────────────────────────────────────────────────────────────────────────
-make_pi_binary_stub() {
-    local bindir="$1"
-    local argv_file="$2"
-    local sp_file="$3"
-    mkdir -p "$bindir"
-    cat >"$bindir/pi.body" <<STUB
-#!/usr/bin/env bash
-printf '%s\n' "\$*" > "$argv_file"
-prev=""
-for a in "\$@"; do
-    if [[ "\$prev" == "--system-prompt" ]]; then
-        printf '%s' "\$a" > "$sp_file"
-    fi
-    prev="\$a"
-done
-printf '%s\n' '{"type":"agent_end","messages":[{"role":"assistant","content":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}'
-STUB
-    link_stub_path "$bindir/pi"
-}
-
-setup_real_pi_dispatch() {
-    local cc_root="$1"
-    local role="$2"
-    local agent_body="$3"
-    mkdir -p "$cc_root/templates/generated/pi/agent"
-    printf '%s' "$agent_body" >"$cc_root/templates/generated/pi/agent/$role.md"
-    mkdir -p "$cc_root/harnesses/pi" "$cc_root/harnesses/claude/hooks/lib"
-    link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$cc_root/harnesses/pi/call-dispatch.sh"
-    link_or_copy "$REAL_PI_HARNESS/pi-jsonl-filter.cjs" "$cc_root/harnesses/pi/pi-jsonl-filter.cjs"
-    link_or_copy "$REAL_CLAUDE_HARNESS/hooks/lib/schema-validate.js" \
-        "$cc_root/harnesses/claude/hooks/lib/schema-validate.js"
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (r2): --system-prompt (real dispatch) contains only the body — no
-# leading '---' and no 'tools:' line leaked from the frontmatter.
-# ─────────────────────────────────────────────────────────────────────────────
-CC_R2="$(make_cc_root cc_r2)"
-setup_real_pi_dispatch "$CC_R2" "committer" '---
-name: committer
-description: d
-model: haiku
-tools: bash, edit, grep, read
----
-# Committer
-
-You are a committer specialist.'
-
-R2_BIN="$BASE_TMP/cc_r2_bin"
-R2_ARGV="$BASE_TMP/cc_r2_argv.txt"
-R2_SP="$BASE_TMP/cc_r2_sp.txt"
-make_pi_binary_stub "$R2_BIN" "$R2_ARGV" "$R2_SP"
-
-# HOME override: _resolve_pi_agent checks $HOME/.pi/agent/agents/<role>.md
-# FIRST — an installed agent on the operator's real machine would shadow the
-# fixture. Point HOME at an empty dir so only the fixture resolves.
-R2_HOME="$BASE_TMP/cc_r2_home"
-mkdir -p "$R2_HOME"
-
-actual_exit=0
-HOME="$R2_HOME" PATH="$R2_BIN:$PATH" "$CC_R2/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=low \
-    --agent=committer "commit test" >/dev/null 2>/dev/null || actual_exit=$?
-check "(r2) real pi dispatch exits 0" "0" "$actual_exit"
-
-SP_R2="$(cat "$R2_SP" 2>/dev/null || true)"
-assert_contains "(r2) system-prompt contains body" "$SP_R2" "# Committer"
-if [[ "$SP_R2" == *"tools:"* ]]; then
-    printf 'FAIL: (r2) system-prompt leaks frontmatter tools: line\n'
-    fail=$((fail + 1))
-else
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(r2) system-prompt has no tools: line"
-    pass=$((pass + 1))
-fi
-if [[ "$SP_R2" == "---"* ]]; then
-    printf 'FAIL: (r2) system-prompt leaks leading ---\n'
-    fail=$((fail + 1))
-else
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(r2) system-prompt has no leading ---"
-    pass=$((pass + 1))
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (r3): pi argv carries --tools with the frontmatter's tools: value.
-# ─────────────────────────────────────────────────────────────────────────────
-ARGV_R2="$(cat "$R2_ARGV" 2>/dev/null || true)"
-assert_contains "(r3) pi argv carries --tools with frontmatter value" "$ARGV_R2" "--tools bash, edit, grep, read"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (r4): explicit --allowed-tools wins over agent frontmatter.
-# ─────────────────────────────────────────────────────────────────────────────
-CC_R4="$(make_cc_root cc_r4)"
-setup_real_pi_dispatch "$CC_R4" "committer" '---
-name: committer
-description: d
-model: haiku
-tools: bash, edit, grep, read
----
-# Committer
-
-You are a committer specialist.'
-
-R4_BIN="$BASE_TMP/cc_r4_bin"
-R4_ARGV="$BASE_TMP/cc_r4_argv.txt"
-R4_SP="$BASE_TMP/cc_r4_sp.txt"
-make_pi_binary_stub "$R4_BIN" "$R4_ARGV" "$R4_SP"
-
-R4_HOME="$BASE_TMP/cc_r4_home"
-mkdir -p "$R4_HOME"
-
-actual_exit=0
-HOME="$R4_HOME" PATH="$R4_BIN:$PATH" "$CC_R4/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=low \
-    --agent=committer --allowed-tools=read "commit test" >/dev/null 2>/dev/null || actual_exit=$?
-check "(r4) explicit --allowed-tools + --agent exits 0" "0" "$actual_exit"
-ARGV_R4="$(cat "$R4_ARGV" 2>/dev/null || true)"
-assert_contains "(r4) explicit --allowed-tools wins over frontmatter" "$ARGV_R4" "--tools read"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (r5): frontmatter-less legacy agent file → body = whole file, no --tools.
-# ─────────────────────────────────────────────────────────────────────────────
-CC_R5="$(make_cc_root cc_r5)"
-setup_real_pi_dispatch "$CC_R5" "committer" '# Committer
-
-You are a committer specialist.'
-
-R5_BIN="$BASE_TMP/cc_r5_bin"
-R5_ARGV="$BASE_TMP/cc_r5_argv.txt"
-R5_SP="$BASE_TMP/cc_r5_sp.txt"
-make_pi_binary_stub "$R5_BIN" "$R5_ARGV" "$R5_SP"
-
-R5_HOME="$BASE_TMP/cc_r5_home"
-mkdir -p "$R5_HOME"
-
-actual_exit=0
-HOME="$R5_HOME" PATH="$R5_BIN:$PATH" "$CC_R5/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=low \
-    --agent=committer "commit test" >/dev/null 2>/dev/null || actual_exit=$?
-check "(r5) legacy frontmatter-less agent exits 0" "0" "$actual_exit"
-SP_R5="$(cat "$R5_SP" 2>/dev/null || true)"
-assert_contains "(r5) legacy agent body is whole file" "$SP_R5" "# Committer"
-ARGV_R5="$(cat "$R5_ARGV" 2>/dev/null || true)"
-if [[ "$ARGV_R5" == *"--tools"* ]]; then
-    printf 'FAIL: (r5) legacy frontmatter-less agent must not emit --tools\n'
-    fail=$((fail + 1))
-else
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "(r5) legacy frontmatter-less agent emits no --tools"
-    pass=$((pass + 1))
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (s): pi --agent=nonexistent_role exits 2 with error on stderr
-# ─────────────────────────────────────────────────────────────────────────────
-CC_S="$(make_cc_root cc_s)"
-mkdir -p "$CC_S/templates/generated/pi/agent"
-
-# Copy real dispatcher dependencies so agent resolution runs before Pi startup.
-mkdir -p "$CC_S/harnesses/pi" "$CC_S/harnesses/claude/hooks/lib"
-link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$CC_S/harnesses/pi/call-dispatch.sh"
-link_or_copy "$REAL_PI_HARNESS/pi-jsonl-filter.cjs" "$CC_S/harnesses/pi/pi-jsonl-filter.cjs"
-link_or_copy "$REAL_CLAUDE_HARNESS/hooks/lib/schema-validate.js" \
-    "$CC_S/harnesses/claude/hooks/lib/schema-validate.js"
-
-actual_exit=0
-STDERR_S="$("$CC_S/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=low \
-    --agent=nonexistent_role "test" 2>&1 >/dev/null || true)"
-
-# Verify exit code is 2
-"$CC_S/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=low \
-    --agent=nonexistent_role "test" >/dev/null 2>/dev/null || actual_exit=$?
-check "(s) pi --agent=nonexistent_role exits 2" "2" "$actual_exit"
-assert_contains "(s) stderr mentions agent not found" "$STDERR_S" "agent definition not found"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (t): pi --agent with --resume round-trips session_id
-# ─────────────────────────────────────────────────────────────────────────────
-CC_T="$(make_cc_root cc_t)"
-
-mkdir -p "$CC_T/templates/generated/pi/agent"
-printf '# Developer\n\nYou are a developer.' >"$CC_T/templates/generated/pi/agent/developer.md"
-
-# Stub that captures CODEGEN_CALL_RESUME and echoes it back in session_id
-make_pi_dispatch_stub "$CC_T" 'RESUME_VAL="${CODEGEN_CALL_RESUME:-}"; printf '"'"'{"result":{"status":"success","value":"done","reason":null,"retry_meta":null},"usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cost_usd":0,"latency_ms":100,"model":"gpt-5","num_turns":1},"error":null,"harness":"pi","session_id":"%s"}'"'"' "$RESUME_VAL"'
-
-actual_exit=0
-OUT_T="$("$CC_T/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=low \
-    --agent=developer --resume=test-session-456 \
-    "resume with agent test" 2>/dev/null)" || actual_exit=$?
-
-check "(t) pi --agent with --resume exits 0" "0" "$actual_exit"
-assert_jq "(t) session_id round-trips with --resume" "$OUT_T" ".session_id" "test-session-456"
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Test (q): --agents value missing @ prefix exits 2
 # ─────────────────────────────────────────────────────────────────────────────
 CC_Q2="$(make_cc_root cc_q2)"
@@ -799,38 +532,6 @@ PATH="$STUB_BIN_T2:$PATH" "$CC_EFFC/codegen-call" \
 check "(eff-claude-bad) unsupported effort exits 2 (claude leg)" "2" "$actual_exit"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (eff-pi-off): canonical effort "off" on the pi leg -- maps directly to
-# pi's native --thinking flag (pi accepts "off" natively, unlike claude).
-# ─────────────────────────────────────────────────────────────────────────────
-CC_EFFP="$(make_cc_root cc_effp)"
-mkdir -p "$CC_EFFP/harnesses/pi" "$CC_EFFP/harnesses/claude/hooks/lib"
-link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$CC_EFFP/harnesses/pi/call-dispatch.sh"
-link_or_copy "$REAL_PI_HARNESS/pi-jsonl-filter.cjs" "$CC_EFFP/harnesses/pi/pi-jsonl-filter.cjs"
-link_or_copy "$REAL_CLAUDE_HARNESS/hooks/lib/schema-validate.js" \
-    "$CC_EFFP/harnesses/claude/hooks/lib/schema-validate.js"
-
-actual_exit=0
-OUT_EFFP="$(PATH="$STUB_BIN_T2:$PATH" "$CC_EFFP/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=off \
-    --system-prompt "@$SP_FILE" --print-argv \
-    "off prompt" 2>/dev/null)" || actual_exit=$?
-
-check "(eff-pi-off) --print-argv with --effort=off exits 0 on pi leg" "0" "$actual_exit"
-assert_contains "(eff-pi-off) --print-argv output contains --thinking" "$OUT_EFFP" "--thinking"
-assert_contains "(eff-pi-off) --print-argv output contains off" "$OUT_EFFP" "off"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (eff-pi-bad): an unrecognized effort value exits 2 before pi is ever
-# invoked (pi leg).
-# ─────────────────────────────────────────────────────────────────────────────
-actual_exit=0
-PATH="$STUB_BIN_T2:$PATH" "$CC_EFFP/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=bogus \
-    --system-prompt "@$SP_FILE" --print-argv \
-    "bad prompt" >/dev/null 2>/dev/null || actual_exit=$?
-check "(eff-pi-bad) unsupported effort exits 2 (pi leg)" "2" "$actual_exit"
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Test (u): usage<->parse parity — every parsed --flag appears in usage string,
 # and every usage-mentioned --flag is parsed in the case block
 # ─────────────────────────────────────────────────────────────────────────────
@@ -909,71 +610,6 @@ APPEND_FLAG_COUNT="${APPEND_FLAG_COUNT:-0}"
 check "(p) codegen-call has zero --append-system-prompt tokens" "0" "$APPEND_FLAG_COUNT"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (extdir): --extension accepts a package DIRECTORY, not just a file.
-#
-# pi resolves a package dir's entry itself (package.json main/pi.extensions),
-# and the enforcement extension ships ONLY as a package dir — so the previous
-# `-f`-only check rejected every pi loop role at 0 tokens with
-# "--extension file not found". Uses --print-argv: pure argv assembly, no
-# model call, no token spend.
-# ─────────────────────────────────────────────────────────────────────────────
-EXT_DIR="$(mktemp -d)"
-mkdir -p "$EXT_DIR/dist"
-printf '{"name":"probe-ext","main":"dist/index.js"}' >"$EXT_DIR/package.json"
-printf 'export default {};' >"$EXT_DIR/dist/index.js"
-SP_FIXTURE="$EXT_DIR/system-prompt.txt"
-printf 'You are a probe.' >"$SP_FIXTURE"
-
-EXT_DIR_RC=0
-CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
-    --harness=pi \
-    --model=openai-codex/gpt-5.6-terra \
-    --effort=low \
-    --system-prompt="@$SP_FIXTURE" \
-    --extension="@$EXT_DIR" \
-    --print-argv \
-    "PING" >/dev/null 2>&1 || EXT_DIR_RC=$?
-check "(extdir) --extension accepts a package directory" "0" "$EXT_DIR_RC"
-
-EXT_DIR_SECOND="$(mktemp -d)"
-MULTI_EXTENSION_ARGV="$(CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
-    --harness=pi \
-    --model=openai-codex/gpt-5.6-terra \
-    --effort=low \
-    --system-prompt="@$SP_FIXTURE" \
-    --extension="@$EXT_DIR" \
-    --extension="@$EXT_DIR_SECOND" \
-    --print-argv \
-    "PING")"
-MULTI_EXTENSION_ORDER="$(printf '%s\n' "$MULTI_EXTENSION_ARGV" | awk '/^--extension$/{getline; print}')"
-check "(extdir-repeat) repeated extensions preserve order" "$EXT_DIR
-$EXT_DIR_SECOND" "$MULTI_EXTENSION_ORDER"
-
-EXT_NEWLINE_RC=0
-CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
-    --harness=pi \
-    --model=openai-codex/gpt-5.6-terra \
-    --effort=low \
-    --system-prompt="@$SP_FIXTURE" \
-    --extension=$'@bad\npath' \
-    --print-argv \
-    "PING" >/dev/null 2>&1 || EXT_NEWLINE_RC=$?
-check "(extdir-newline) extension rejects newline path" "2" "$EXT_NEWLINE_RC"
-
-EXT_MISSING_RC=0
-CODEGEN_DIR="$CODEGEN_ROOT" "$CODEGEN_CALL" \
-    --harness=pi \
-    --model=openai-codex/gpt-5.6-terra \
-    --effort=low \
-    --system-prompt="@$SP_FIXTURE" \
-    --extension="@$EXT_DIR/nope" \
-    --print-argv \
-    "PING" >/dev/null 2>&1 || EXT_MISSING_RC=$?
-check "(extdir2) --extension still rejects a nonexistent path" "2" "$EXT_MISSING_RC"
-
-rm -rf "$EXT_DIR" "$EXT_DIR_SECOND"
-
-# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"
 
@@ -981,3 +617,4 @@ if [[ "$fail" -gt 0 ]]; then
     exit 1
 fi
 exit 0
+# ─────────────────────────────────────────────────────────────────────────────

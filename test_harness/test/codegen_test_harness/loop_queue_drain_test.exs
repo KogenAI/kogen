@@ -3491,10 +3491,6 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert LoopQueueDrain.mention_prefix("claude") == "@"
     end
 
-    test "pi -> empty string" do
-      assert LoopQueueDrain.mention_prefix("pi") == ""
-    end
-
     test "unknown harness raises" do
       assert_raise RuntimeError, ~r/unknown harness/, fn ->
         LoopQueueDrain.mention_prefix("bogus")
@@ -3506,11 +3502,6 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     test "claude -> @-prefixed absolute path" do
       assert LoopQueueDrain.pitch_arg_for("x", "claude", "/repo") ==
                "@/repo/codegen/pitches/ready/x.md"
-    end
-
-    test "pi -> bare absolute path" do
-      assert LoopQueueDrain.pitch_arg_for("x", "pi", "/repo") ==
-               "/repo/codegen/pitches/ready/x.md"
     end
   end
 

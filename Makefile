@@ -15,8 +15,6 @@ endef
 
 
 
-PI_EXTENSION_DIR ?= $(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement
-
 .PHONY: hook-parity
 hook-parity:
 	@pf=$$(mktemp); \
@@ -59,20 +57,15 @@ install:
 	fi
 	@python3 "$(SCRIPT_DIR)/templates/generator/enforcement_compiler.py" \
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
-		--bash-out "$(SCRIPT_DIR)/harnesses/claude/hooks" \
-		--ts-out "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
-		--pi-hooks-dir "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
-		--index "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts"
+		--bash-out "$(SCRIPT_DIR)/harnesses/claude/hooks"
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
 		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
 		--emit-headers
 	@$(MAKE) hook-parity
-	@bash "$(SCRIPT_DIR)/templates/generator/generate-pi-extension.sh" "$(PI_EXTENSION_DIR)"
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
 		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
-		--output-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json" \
-		--pi-extension-dir "$(PI_EXTENSION_DIR)"
+		--output-settings "$(SCRIPT_DIR)/harnesses/claude/claude-code-settings.json"
 	@./install.sh
 
 # harness-parity: verify codegen-build + dispatch.sh stubs are self-consistent.
@@ -81,15 +74,11 @@ install:
 # Exits non-zero if any generated file differs from what is committed.
 .PHONY: enforce-registry-parity
 enforce-registry-parity:
-	@t_idx=$$(mktemp); t_bash=$$(mktemp -d); t_ts=$$(mktemp -d); \
-	trap 'rm -rf "$$t_idx" "$$t_bash" "$$t_ts"' EXIT; \
-	cp "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts" "$$t_idx"; \
+	@t_bash=$$(mktemp -d); \
+	trap 'rm -rf "$$t_bash"' EXIT; \
 	python3 "$(SCRIPT_DIR)/templates/generator/enforcement_compiler.py" \
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
-		--bash-out "$$t_bash" \
-		--ts-out "$$t_ts" \
-		--pi-hooks-dir "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
-		--index "$$t_idx" > /dev/null 2>&1; \
+		--bash-out "$$t_bash" > /dev/null 2>&1; \
 	fail=0; \
 	for f in "$$t_bash"/*.sh; do \
 		name=$$(basename "$$f"); \
@@ -103,30 +92,8 @@ enforce-registry-parity:
 			fail=1; \
 		fi; \
 	done; \
-	for f in "$$t_ts"/*.ts; do \
-		name=$$(basename "$$f"); \
-		committed="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks/$$name"; \
-		if [ ! -f "$$committed" ]; then \
-			echo "enforce-registry-parity: MISSING committed $$committed"; \
-			fail=1; \
-		elif ! diff -q "$$committed" "$$f" > /dev/null 2>&1; then \
-			echo "enforce-registry-parity: DRIFT in $$name (ts)"; \
-			diff -u "$$committed" "$$f" || true; \
-			fail=1; \
-		fi; \
-	done; \
-	committed_index="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/index.ts"; \
-	if [ ! -f "$$committed_index" ]; then \
-		echo "enforce-registry-parity: MISSING committed $$committed_index"; \
-		fail=1; \
-	elif ! diff -q "$$committed_index" "$$t_idx" > /dev/null 2>&1; then \
-		echo "enforce-registry-parity: DRIFT in index.ts"; \
-		diff -u "$$committed_index" "$$t_idx" || true; \
-		fail=1; \
-	fi; \
 	bash "$(SCRIPT_DIR)/templates/generator/orphan-hook-check.sh" \
 		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
-		--ts-dir "$(SCRIPT_DIR)/harnesses/pi/pi-extensions/enforcement/src/hooks" \
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" || fail=1; \
 	if [ $$fail -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "enforce-registry-parity: PASS"; fi; \
 	exit $$fail
@@ -151,8 +118,6 @@ harness-parity:
 	{ \
 		printf '%s\0' \
 			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh" \
-			"$(SCRIPT_DIR)/harnesses/pi/dispatch_test.sh" \
-			"$(SCRIPT_DIR)/harnesses/pi/call-dispatch_test.sh" \
 			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh" \
 			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-propose_test.sh" \
 			"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh" \
@@ -207,18 +172,6 @@ prompt-content-parity:
 	fi; \
 	exit $$rc
 
-.PHONY: tools-header-no-dup
-tools-header-no-dup:
-	@out=$$(bash "$(SCRIPT_DIR)/harnesses/claude/hooks/tools-header-no-dup_test.sh" 2>&1); rc=$$?; \
-	if [ -n "$$VERBOSE" ]; then printf '%s\n' "$$out"; fi; \
-	if [ $$rc -ne 0 ]; then \
-		[ -z "$$VERBOSE" ] && printf '%s\n' "$$out"; \
-		echo "tools-header-no-dup: FAIL"; \
-	elif [ -n "$$VERBOSE" ]; then \
-		echo "tools-header-no-dup: PASS"; \
-	fi; \
-	exit $$rc
-
 .PHONY: ci
 ci: test
 
@@ -226,7 +179,7 @@ ci: test
 # plus every gate check, in ONE pass — not fail-fast. All 11 former prereq
 # checks (hook-parity, hook-header-parity, harness-parity, test-generator,
 # enforce-registry-parity, enforce-hook-rationale, test-hermetic,
-# prompt-content-parity, tools-header-no-dup, rule-render-freshness,
+# prompt-content-parity, rule-render-freshness,
 # usage-rules-index-parity) run as backgrounded `$(MAKE)` stages alongside the
 # existing hooks/scaffold/install/npm stages, so a single `make test` surfaces
 # every independent failure at once instead of stopping at the first failing
@@ -236,7 +189,7 @@ ci: test
 # Post-deps stages (hook-tests, phoenix scaffold, test_harness/install, npm) run
 # concurrently via & + wait to reduce wall time.
 # One-owner execution: five hook tests owned by harness-parity/prompt-content-parity/
-# tools-header-no-dup are excluded from the backgrounded hooks-arm run (see
+# are excluded from the backgrounded hooks-arm run (see
 # run-all-tests.sh HOOK_DEDUP_EXCLUDE) so each discovered hook test runs exactly
 # once per `make test`. Standalone `bash harnesses/claude/hooks/run-tests.sh`
 # still runs the full population.
@@ -275,20 +228,7 @@ test-coverage-elixir:
 	@cp "$(SCRIPT_DIR)/test_harness/cover/excoveralls.json" "$(SCRIPT_DIR)/coverage/elixir/excoveralls.json"
 
 test-coverage-typescript:
-	@mkdir -p "$(SCRIPT_DIR)/coverage/typescript"
-	@fail=0; \
-	for ext in enforcement subagents askuserquestion web-utils pitch-files; do \
-		ext_dir="$(SCRIPT_DIR)/harnesses/pi/pi-extensions/$$ext"; \
-		if [ -f "$$ext_dir/package.json" ] && grep -q '"test:coverage"' "$$ext_dir/package.json"; then \
-			echo "▶ Coverage: $$ext"; \
-			(cd "$$ext_dir" && mise exec -- npm run test:coverage) || { echo "⚠  $$ext: test:coverage failed"; fail=1; }; \
-			mkdir -p "$(SCRIPT_DIR)/coverage/typescript/$$ext"; \
-			[ -d "$$ext_dir/coverage" ] && cp -R "$$ext_dir/coverage/." "$(SCRIPT_DIR)/coverage/typescript/$$ext/"; \
-		else \
-			echo "⏭  Skip $$ext (no test:coverage script)"; \
-		fi; \
-	done; \
-	exit "$$fail"
+	@echo "test-coverage-typescript: no TypeScript packages in this repo — nothing to do"
 
 test-coverage-shell:
 	@{ command -v kcov >/dev/null 2>&1 || { echo "⚠  kcov not installed — shell coverage skipped (brew install kcov)"; exit 0; }; } && \
@@ -337,28 +277,17 @@ test-coverage-summary:
 # Benchmarking mode: set BENCH=1 REASON="<reason>" to capture per-test
 # stream-json telemetry into codegen/benchmarks/<UTC-ts>/. BENCH unset
 # (default) is byte-identical to pre-bench behaviour.
-.PHONY: test-stacks test-stacks-claude test-stacks-pi test-stacks-claude-compile test-stacks-pi-compile test-all record-green test-harness-parity test-harness-parity-compile check-green-staleness
+.PHONY: test-stacks test-stacks-claude test-stacks-claude-compile test-all record-green check-green-staleness
 ifeq ($(BENCH),1)
 test-stacks:
-	$(MAKE) test-harness-parity
 	$(eval BENCH_RUN_DIR := $(shell BENCH=1 REASON="$(REASON)" "$(SCRIPT_DIR)/test_harness/bench-prepare.sh"))
-	$(MAKE) -j2 \
+	$(MAKE) \
 		BENCH_RUN_DIR="$(BENCH_RUN_DIR)" \
-		test-stacks-claude \
-		test-stacks-pi
+		test-stacks-claude
 else
 test-stacks:
-	$(MAKE) test-harness-parity
-	$(MAKE) -j2 test-stacks-claude test-stacks-pi
+	$(MAKE) test-stacks-claude
 endif
-
-test-harness-parity-compile:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		MIX_BUILD_PATH=_build/parity_test mix compile
-
-test-harness-parity: test-harness-parity-compile
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		MIX_BUILD_PATH=_build/parity_test mix test --no-compile --only harness_parity
 
 check-green-staleness:
 	@JSON="$(SCRIPT_DIR)/test_harness/last_green.json"; \
@@ -386,16 +315,6 @@ test-stacks-claude-compile:
 	cd "$(SCRIPT_DIR)/test_harness" && \
 		MIX_BUILD_PATH=_build/claude_test mix compile
 
-test-stacks-pi: test-stacks-pi-compile
-	cd "$(SCRIPT_DIR)/test_harness" && \
-	  HARNESS=pi MIX_BUILD_PATH=_build/pi_test \
-	  $(if $(BENCH_RUN_DIR),BENCH_RUN_DIR="$(BENCH_RUN_DIR)") \
-	  mix test --no-compile --only slow
-
-test-stacks-pi-compile:
-	cd "$(SCRIPT_DIR)/test_harness" && \
-		MIX_BUILD_PATH=_build/pi_test mix compile
-
 # bench-preflight: spend-free bench-path validity gate. Runs ONLY offline,
 # zero-model checks — never invoke mix codegen.loop, bare codegen-build (no
 # --print-argv), make bench, or BENCH=1 in this recipe. The "no model turn"
@@ -422,7 +341,7 @@ bench-preflight:
 	echo ""; \
 	echo "--- (b) codegen-build --print-argv flag validation ---"; \
 	_tmp=$$(mktemp -d); \
-	for h in claude pi; do \
+	for h in claude; do \
 		for s in phoenix static; do \
 			if "$(SCRIPT_DIR)/codegen-build" --print-argv --harness=$$h --stack=$$s --cwd="$$_tmp" >/dev/null 2>&1; then \
 				echo "OK: codegen-build --print-argv --harness=$$h --stack=$$s"; \
@@ -476,10 +395,9 @@ bench:
 		exit 1; \
 	fi
 	@echo "▶ bench run dir: $(BENCH_RUN_DIR)"
-	$(MAKE) -j2 \
+	$(MAKE) \
 		BENCH_RUN_DIR="$(BENCH_RUN_DIR)" \
-		test-stacks-claude \
-		test-stacks-pi; \
+		test-stacks-claude; \
 	BENCH_EXIT=$$?; \
 	node "$(SCRIPT_DIR)/test_harness/bench/summarize.js" "$(BENCH_RUN_DIR)" > /dev/null; \
 	cat "$(BENCH_RUN_DIR)/summary-short.txt"; \
@@ -503,9 +421,9 @@ record-green:
 harness-path-check:
 	@AGENTS_DIR="$(HOME)/.claude/agents"; \
 	if [ -d "$$AGENTS_DIR" ]; then \
-		if grep -rl "templates/shared/claude-\|templates/shared/pi-" "$$AGENTS_DIR" 2>/dev/null | grep -q .; then \
-			echo "harness-path-check: ERROR — generated agent files reference old templates/shared/claude-* or pi-* paths"; \
-			grep -rl "templates/shared/claude-\|templates/shared/pi-" "$$AGENTS_DIR" 2>/dev/null; \
+		if grep -rl "templates/shared/claude-" "$$AGENTS_DIR" 2>/dev/null | grep -q .; then \
+			echo "harness-path-check: ERROR — generated agent files reference old templates/shared/claude-* paths"; \
+			grep -rl "templates/shared/claude-" "$$AGENTS_DIR" 2>/dev/null; \
 			exit 1; \
 		fi; \
 		echo "harness-path-check: OK — no stale harness paths in baked agents [checked: $$AGENTS_DIR]"; \
@@ -534,7 +452,7 @@ rule-render-freshness:
 	cp -R shared "$$tmp/shared"; \
 	for base in AGENTS-phoenix AGENTS-static; do \
 		variant=$${base#AGENTS-}; \
-		CODEGEN_DIR="$$PWD" python3 templates/generator/process_template.py "shared/apps/$$base.md.j2" pi false > "$$tmp/shared/apps/$$base.md"; \
+		CODEGEN_DIR="$$PWD" python3 templates/generator/process_template.py "shared/apps/$$base.md.j2" agents false > "$$tmp/shared/apps/$$base.md"; \
 		CODEGEN_DIR="$$PWD" python3 templates/generator/process_template.py "shared/apps/$$base.md.j2" claude false > "$$tmp/shared/apps/CLAUDE-$$variant.md"; \
 	done; \
 	node node_modules/prettier/bin/prettier.cjs -w --log-level error --ignore-path /dev/null "$$tmp/shared"; \
@@ -685,22 +603,6 @@ doctor:
 	else \
 		echo "FAIL: node not on PATH (install via mise: mise install node)"; fails=$$((fails + 1)); \
 	fi; \
-	_pi_pinned_ver=$$(yq -r '.runtime.version' "$(SCRIPT_DIR)/harnesses/pi/manifest.yaml" 2>/dev/null); \
-	if command -v pi >/dev/null 2>&1 && pi --version >/dev/null 2>&1; then \
-		_pi_installed_ver=$$(pi --version 2>/dev/null | tr -d '[:space:]'); \
-		if [ "$$_pi_installed_ver" = "$$_pi_pinned_ver" ]; then \
-			echo "OK: pi on PATH, version $$_pi_installed_ver matches pinned $$_pi_pinned_ver"; \
-		else \
-			echo "FAIL: pi version $$_pi_installed_ver != pinned $$_pi_pinned_ver (run: make install)"; fails=$$((fails + 1)); \
-		fi; \
-	else \
-		echo "FAIL: pi on PATH and --version exits 0 (run: make install)"; fails=$$((fails + 1)); \
-	fi; \
-	if [ -f "$$HOME/.pi/agent/auth.json" ]; then \
-		echo "OK: ~/.pi/agent/auth.json exists"; \
-	else \
-		echo "FAIL: ~/.pi/agent/auth.json exists (authenticate pi: run 'pi' and sign in, or provision ~/.pi/agent/auth.json)"; fails=$$((fails + 1)); \
-	fi; \
 	if command -v git >/dev/null 2>&1; then \
 		echo "OK: git on PATH"; \
 	else \
@@ -767,7 +669,7 @@ help:
 	@echo "  make test           Run hook unit tests"
 	@echo "  make test-generator  Run Python unittest + bash unit tests for generator pipeline"
 	@echo "  make test-coverage  Coverage report per language → coverage/<lang>/"
-	@echo "  make test-stacks    Run ExUnit stack scaffold tests (claude+pi parallel, real LLM, slow)"
+	@echo "  make test-stacks    Run ExUnit stack scaffold tests (real LLM, slow)"
 	@echo "  make bench REASON=  Run benchmark stacks + write summary.md (real LLM, slow)"
 	@echo "  make bench-preflight  Spend-free bench-path validity check (no LLM)"
 	@echo "  make test-all       Full pre-deploy gate: test + test-stacks + record-green"
@@ -788,73 +690,6 @@ help:
 	@echo "PATH binaries (no make target):"
 	@echo "  codegen-analyze     Scan Claude sessions for agent turn-waste; ranked report (--since, --json, --window, --threshold-reread, --project-dir)"
 	@echo "  codegen-propose     Turn codegen-analyze clusters into human-gated proposed-change records (--since, --max, --min-wasted-turns, --model)"
-
-.PHONY: diagnose-pi-all diagnose-pi-phoenix-scaffold diagnose-pi-phoenix-gate diagnose-pi-phoenix-committer diagnose-pi-phoenix-iteration diagnose-pi-phoenix-seed diagnose-pi-static-iteration-vanilla diagnose-pi-static-iteration-react diagnose-pi-static-iteration-vue diagnose-pi-static-iteration-multilingual
-
-diagnose-pi-phoenix-scaffold:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/phoenix-scaffold-pi-{N}.jsonl" \
-	  mix test test/stacks/phoenix/scaffold_test.exs --only slow || true
-
-diagnose-pi-phoenix-gate:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/phoenix-gate-pi-{N}.jsonl" \
-	  mix test test/stacks/phoenix/gate_test.exs --only slow || true
-
-diagnose-pi-phoenix-committer:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/phoenix-committer-pi-{N}.jsonl" \
-	  mix test test/stacks/phoenix/committer_test.exs --only slow || true
-
-diagnose-pi-phoenix-iteration:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/phoenix-iteration-pi-{N}.jsonl" \
-	  mix test test/stacks/phoenix/iteration_test.exs --only slow || true
-
-diagnose-pi-phoenix-seed:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/phoenix-seed-pi-{N}.jsonl" \
-	  mix test test/stacks/phoenix/seed_test.exs --only slow || true
-
-diagnose-pi-static-iteration-vanilla:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-vanilla-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs --only slow || true
-
-diagnose-pi-static-iteration-react:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-react-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs --only slow || true
-
-diagnose-pi-static-iteration-vue:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-vue-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs --only slow || true
-
-diagnose-pi-static-iteration-multilingual:
-	mkdir -p test_harness/_diagnostics
-	cd test_harness && \
-	  HARNESS=pi KEEP_TMP=1 \
-	  DIAGNOSTICS_FILE="$(SCRIPT_DIR)/test_harness/_diagnostics/static-iteration-multilingual-pi-{N}.jsonl" \
-	  mix test test/stacks/static/iteration_test.exs --only slow || true
-
-diagnose-pi-all: diagnose-pi-phoenix-scaffold diagnose-pi-phoenix-gate diagnose-pi-phoenix-committer diagnose-pi-phoenix-iteration diagnose-pi-phoenix-seed diagnose-pi-static-iteration-vanilla diagnose-pi-static-iteration-react diagnose-pi-static-iteration-vue diagnose-pi-static-iteration-multilingual
 
 # Default target shows help
 .DEFAULT_GOAL := help

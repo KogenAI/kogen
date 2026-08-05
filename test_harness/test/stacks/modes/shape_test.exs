@@ -3,7 +3,7 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
   Asserts {harness}-shape.sh dispatches correctly and edits or creates a
   Shape Up pitch at <cwd>/codegen/pitches/draft/<slug>.md.
 
-  Covers cells: claude-shape, pi-shape.
+  Covers cells: claude-shape.
   """
 
   use ExUnit.Case, async: true
@@ -18,8 +18,6 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
   @slug "test-mode-shape"
   @prompt_for_claude "Read codegen/pitches/draft/#{@slug}.md and add a '## Solution sketch' section " <>
                        "describing one concrete approach to solving the problem. Edit the file in place."
-  @prompt_for_pi "Read codegen/pitches/draft/#{@slug}.md and add a '## Solution sketch' section describing one concrete approach. " <>
-                   "Edit the pitch file in place. Emit `Ready.` when done."
 
   setup do
     cwd = Fixtures.isolated_tmp_dir()
@@ -36,7 +34,6 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
     prompt =
       case Fixtures.harness() do
         "claude" -> @prompt_for_claude
-        "pi" -> @prompt_for_pi
       end
 
     {output, exit_code} = Fixtures.run_mode_launcher(cwd, :shape, prompt, test_name: "shape_mode")
@@ -97,7 +94,6 @@ defmodule CodegenTestHarness.Stacks.Modes.ShapeTest do
     {binary_name, env_key, expected_prompt} =
       case harness_val do
         "claude" -> {"claude", "CLAUDE_NONINTERACTIVE", "@codegen/pitches/draft/#{@slug}.md"}
-        _ -> {"pi", "PI_NON_INTERACTIVE", "shape codegen/pitches/draft/#{@slug}.md"}
       end
 
     capture_file = Path.join(cwd, "args.txt")

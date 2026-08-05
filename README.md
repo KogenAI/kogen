@@ -8,7 +8,7 @@ Optimum Codegen (OCG) is a workspace management system that enables parallel dev
 
 ## Harnesses
 
-OCG supports multiple LLM harnesses (`claude`, `pi`). Each harness is declared in a single manifest file — the manifest is the single source of truth (SSoT) for launchers, agents, completions, system prompts, and install/uninstall steps.
+OCG's harness layer is manifest-driven — one harness ships today (`claude`), declared in a single manifest file — the manifest is the single source of truth (SSoT) for launchers, agents, completions, system prompts, and install/uninstall steps.
 
 | File                                        | Role                                                                     |
 | ------------------------------------------- | ------------------------------------------------------------------------ |
@@ -28,7 +28,7 @@ Three Makefile targets, increasing cost:
 
 | Target             | What it runs                                                                     | Cost                      | When                   |
 | ------------------ | -------------------------------------------------------------------------------- | ------------------------- | ---------------------- |
-| `make test`        | bash hook unit tests + `codegen-build_test.sh` + pi npm tests + hermetic ExUnit  | seconds                   | every commit           |
+| `make test`        | bash hook unit tests + `codegen-build_test.sh` + hermetic ExUnit  | seconds                   | every commit           |
 | `make test-stacks` | ExUnit stack scaffold tests under `test_harness/` for both harnesses in parallel | minutes + real LLM tokens | before deploy          |
 | `make test-all`    | `test` → `test-stacks` → writes `test_harness/last_green.json`                   | same as test-stacks       | weekly pre-deploy gate |
 
@@ -49,7 +49,6 @@ Three Makefile targets, increasing cost:
 - ripgrep/rg (`brew install ripgrep`)
 - node — required for ajv/playwright hook verification (install via mise: `mise install node`)
 - AI Assistant: Claude Code (installed automatically by `make install`)
-- AI Assistant: Pi (install manually: `npm install -g @earendil-works/pi-coding-agent`; `make install` configures `~/.pi/agent/` but does NOT install the binary)
 
 ## Configuration
 
@@ -184,7 +183,7 @@ Each workspace can run in an isolated Docker container with:
 
 - `ocg new <name> [options]` - Create new feature workspace
   - `--model, -m <model>` - AI model to use (haiku/sonnet/opus, default: sonnet)
-  - `--agent, -a <name>` - AI agent to use (claude/pi, default: from config)
+  - `--agent, -a <name>` - AI agent to use (claude, default: from config)
   - `--container` - Run in Docker container
 - `ocg resume <name> [options]` - Resume existing workspace
   - `--model, -m <model>` - AI model to use (default: from workspace)
@@ -195,7 +194,7 @@ Each workspace can run in an isolated Docker container with:
 
 ### AI Agent Configuration
 
-- `ocg ai-config set default <agent>` - Set default AI agent (claude/pi)
+- `ocg ai-config set default <agent>` - Set default AI agent (claude)
 - `ocg ai-config get default` - Show current default agent
 - `ocg ai-config status` - Show full AI agent configuration
 
@@ -278,17 +277,16 @@ cd /path/to/codegen && make install
 OCG supports two AI agents:
 
 - **Claude Code**: Official Anthropic CLI with rich terminal UI
-- **Pi**: Pi CLI agent
 
 During installation, both agents are installed and you'll be prompted to choose a default. You can switch between them anytime:
 
 ```bash
 # Set default agent
-ocg ai-config set default pi
+ocg ai-config set default claude
 
 # Use specific agent for a workspace
 ocg new my-feature --agent claude
-ocg new my-feature -a pi --model opus
+ocg new my-feature -a claude --model opus
 
 # Check current configuration
 ocg ai-config status

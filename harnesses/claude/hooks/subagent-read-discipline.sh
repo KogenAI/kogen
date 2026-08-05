@@ -8,7 +8,7 @@
 # signal: AGENT_TYPE
 # role: developer-*|reviewer-*|committer|context-curator
 # harnesses: all
-# rationale: Claude Code per-call Read inspector; Pi twin mirrors the same typed files_to_touch/files_modified event gate for full parity
+# rationale: Claude Code per-call Read inspector over the typed files_to_touch/files_modified event gate
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.

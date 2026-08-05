@@ -3,7 +3,7 @@
 `CodegenTestHarness.LoopQueueDrain` (`loop_queue_drain.ex`). Drains `codegen/pitches/ready/`
 in dependency order, spawning one fresh `codegen-build` child process per pitch — distinct from
 `context/loop.md`'s single-cycle engine: this is the multi-pitch orchestrator ON TOP of it. Invoked via
-`claude-build.sh --queue` / `pi-build.sh --queue`, which both run `mix codegen.loop.queue` through the
+`claude-build.sh --queue`, which runs `mix codegen.loop.queue` through the
 shared `harnesses/shared/loop-signal-bridge.sh` helper (`run_supervised_loop`) rather than a direct
 `exec` — job-controlled, non-exec, so a terminal Ctrl-C becomes a group SIGTERM the BEAM's
 `BuildSignalHandler` can catch instead of hitting Erlang's uncatchable SIGINT handler directly. Same
@@ -207,7 +207,7 @@ always leaves a clean tree). The pitch stays in `ready_dir`, and the drain retur
 rather than spawning the next pitch — continuing would build on an unpublished base, and the next push
 would fail too, compounding the divergence silently. Halting bounds the loss at `ahead=1`.
 
-`claude-babysit`/`pi-babysit` no longer push — `harnesses/shared/prompt-bodies/babysit.txt` step 5 is now
+`claude-babysit` no longer pushes — `harnesses/shared/prompt-bodies/babysit.txt` step 5 is now
 a verify-only step (probe HEAD not ahead of upstream), since the drain publishes on its own.
 
 ## Queue-Wide Spend Ceiling

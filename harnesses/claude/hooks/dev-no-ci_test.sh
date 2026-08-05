@@ -166,10 +166,6 @@ run_test "make test-stacks blocked for developer-phoenix-backend" "2" \
 run_test "make test-stacks-claude blocked for developer-phoenix-backend" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make test-stacks-claude"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
-# Test 26: make test-stacks-pi → deny
-run_test "make test-stacks-pi blocked for developer-phoenix-backend" "2" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make test-stacks-pi"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
-
 # Test 27: make test-all → deny
 run_test "make test-all blocked for developer-phoenix-backend" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make test-all"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'

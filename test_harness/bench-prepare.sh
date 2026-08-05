@@ -34,28 +34,23 @@ fi
 mkdir -p \
     "${BENCH_RUN_DIR}/runs/claude/phoenix" \
     "${BENCH_RUN_DIR}/runs/claude/static" \
-    "${BENCH_RUN_DIR}/runs/claude/modes" \
-    "${BENCH_RUN_DIR}/runs/pi/phoenix" \
-    "${BENCH_RUN_DIR}/runs/pi/static" \
-    "${BENCH_RUN_DIR}/runs/pi/modes"
+    "${BENCH_RUN_DIR}/runs/claude/modes"
 
 printf '%s' "${REASON}" >"${BENCH_RUN_DIR}/reason.txt"
 
 CODEGEN_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo "")"
-# advisory: CLAUDE_VERSION/PI_VERSION feed manifest.json harness_versions as
+# advisory: CLAUDE_VERSION feeds manifest.json harness_versions as
 # diagnostic metadata only. A missing harness binary yielding "" is a benign
 # informational gap (bench still runs) — NOT a required-value mask. Keep
 # soft per fail-loud-rule justified-advisory carve-out.
 CLAUDE_VERSION="$(claude --version 2>&1 || echo "")"
-PI_VERSION="$(pi --version 2>&1 || echo "")"
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 cat >"${BENCH_RUN_DIR}/manifest.json" <<JSON
 {
   "codegen_sha": "${CODEGEN_SHA}",
   "harness_versions": {
-    "claude": "${CLAUDE_VERSION}",
-    "pi": "${PI_VERSION}"
+    "claude": "${CLAUDE_VERSION}"
   },
   "started_at": "${STARTED_AT}",
   "model_resolution": {}

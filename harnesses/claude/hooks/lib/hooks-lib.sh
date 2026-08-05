@@ -60,7 +60,6 @@ set -u
 # (reviewer-guard.sh, committer-write-allowlist.sh both do `codegen/logging/${SESSION_LOG_NAME_RE}`).
 # Kept in lockstep (parity-tested, not shared via a single runtime include —
 # bash guards cannot `source` a fragment mid-grep-pattern) with:
-#   - harnesses/pi/pi-extensions/enforcement/src/hooks/committer-write-allowlist.ts (CANONICAL_LOG_RE)
 #   - shared/enforcement/registry.yaml (2 `match:` lines)
 #   - shared/rules/_core/session-log.md § File Naming (authoritative prose)
 # Any edit to the slug-class shape MUST update all 6 sites in the same change;
@@ -375,7 +374,7 @@ hooks_repo_root() {
 # .input.command invokes a codegen-log writer subcommand
 # (init|section|append). That is treated as equivalent creation evidence,
 # and — UNCONDITIONALLY, not gated on OCG_APPS_ROOT — falls through to a disk
-# mtime-scan of codegen/logging/*.jsonl under $cwd (same heuristic the Pi TS
+# mtime-scan of codegen/logging/*.jsonl under $cwd (the same heuristic the
 # twins already use). This closes the deadlock where a session's transcript
 # never contains a Write/Edit/MultiEdit event for the log (because
 # codegen-log is a Bash invocation), so the strict scan always returns empty.

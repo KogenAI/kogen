@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# install_failloud_test.sh — assert the 3 install.sh robustness sites fail loud:
-#  (1) pi-ext npm install no longer masked by `| sed`; captures exit + exit 1 on fail
-#  (2) prettier errors dumped (mktemp/cat stderr), still non-fatal
-#  (3) manifest-lib.sh source guarded by [[ -f ]] + exit 1 BEFORE the source
+# install_failloud_test.sh — assert the install.sh robustness sites fail loud:
+#  (1) prettier errors dumped (mktemp/cat stderr), still non-fatal
+#  (2) manifest-lib.sh source guarded by [[ -f ]] + exit 1 BEFORE the source
 # Pure source-grep — hermetic, no install run.
 set -euo pipefail
 
@@ -23,19 +22,13 @@ assert() {
 CODEGEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 INSTALL="$CODEGEN_DIR/install.sh"
 
-# (1) pi-ext npm fail-loud
-assert "pi-ext npm masking pipe removed" \
-    '! grep -qF "npm install --prefer-offline 2>&1 | sed" "$INSTALL"'
-assert "pi-ext npm failure captured" \
-    'grep -qF "_pi_ext_install_failed" "$INSTALL"'
-
-# (2) prettier observable-non-fatal
+# (1) prettier observable-non-fatal
 assert "prettier 2>/dev/null || true suppression removed" \
     '! grep -qF "\"$CODEGEN_DIR/shared\" 2>/dev/null || true" "$INSTALL"'
 assert "prettier stderr dumped on failure" \
     'grep -qF "_prettier_err" "$INSTALL"'
 
-# (3) manifest-lib.sh guard precedes source (line-order check)
+# (2) manifest-lib.sh guard precedes source (line-order check)
 guard_ln="$(grep -nF '[[ ! -f "$CODEGEN_DIR/templates/generator/manifest-lib.sh" ]]' "$INSTALL" | head -1 | cut -d: -f1)"
 src_ln="$(grep -nF 'source "$CODEGEN_DIR/templates/generator/manifest-lib.sh"' "$INSTALL" | head -1 | cut -d: -f1)"
 assert "manifest-lib.sh existence guard present" '[ -n "$guard_ln" ]'

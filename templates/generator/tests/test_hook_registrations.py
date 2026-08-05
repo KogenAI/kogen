@@ -421,10 +421,6 @@ class TestRenderHeader(unittest.TestCase):
         h = hr.render_header(self._base_entry(harnesses="all"))
         self.assertIn("# harnesses: all", h)
 
-    def test_harnesses_pi_passthrough(self):
-        h = hr.render_header(self._base_entry(harnesses="pi"))
-        self.assertIn("# harnesses: pi", h)
-
     def test_single_line_rationale(self):
         h = hr.render_header(self._base_entry(rationale="short reason"))
         self.assertIn("# rationale: short reason", h)

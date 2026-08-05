@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # worktree-lifecycle.sh — single create/reattach/release/destroy authority for
 # experiment worktrees. Supersedes experiment-prune.sh (folded verbatim below as
-# worktree_destroy). create/reattach are wired in a follow-up (S5 pi-experiment
+# worktree_destroy). create/reattach are wired in a follow-up (S5 claude-experiment
 # --new); until then they exit 2 loud rather than silently no-op.
 #
-# Sourced by claude-experiment.sh and pi-experiment.sh; expects CODEGEN_DIR
+# Sourced by claude-experiment.sh; expects CODEGEN_DIR
 # exported by the caller.
 set -uo pipefail # NOTE: no -e — fail-open teardown steps must not abort the function
 
@@ -42,14 +42,14 @@ worktree_destroy() {
     return 0
 }
 
-# worktree_create/reattach — wired in S5 (pi-experiment --new). Loud until
+# worktree_create/reattach — wired in S5 (claude-experiment --new). Loud until
 # then: no caller invokes them in this slice, so this is not a silent no-op.
 worktree_create() {
-    echo "worktree_create: not wired until S5 (pi-experiment --new)" >&2
+    echo "worktree_create: not wired until S5 (claude-experiment --new)" >&2
     return 2
 }
 
 worktree_reattach() {
-    echo "worktree_reattach: not wired until S5 (pi-experiment --new)" >&2
+    echo "worktree_reattach: not wired until S5 (claude-experiment --new)" >&2
     return 2
 }

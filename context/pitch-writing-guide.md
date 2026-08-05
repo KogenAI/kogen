@@ -96,7 +96,7 @@ Run before a multi-pitch drain (`--queue`) to detect which pitches can safely ru
 
 ## Cross-reference
 
-`## Output Contract` in `shared/prompt-fragments/_authoring-spine.txt` (spliced into the shape system prompt per `harnesses/{claude,pi}/manifest.yaml` — concatenated after `harnesses/shared/prompt-bodies/shape.txt` and `_probing.txt`; NOT present in `tools-header/shape.txt`, which only lists tool access). Current text (verify against source before quoting further — spine content evolves independently of this doc):
+`## Output Contract` in `shared/prompt-fragments/_authoring-spine.txt` (spliced into the shape system prompt per `harnesses/claude/manifest.yaml` — concatenated after `harnesses/shared/prompt-bodies/shape.txt` and `_probing.txt`; NOT present in `tools-header/shape.txt`, which only lists tool access). Current text (verify against source before quoting further — spine content evolves independently of this doc):
 
 ## Trigger Keywords
 

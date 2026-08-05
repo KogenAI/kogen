@@ -62,7 +62,7 @@ run_test() {
     local input="$3"
 
     local stdout
-    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -213,7 +213,7 @@ dir14=$(make_fixture 14)
 content14=$(head -c 50000 /dev/zero | tr '\0' 'x')
 payload14=$(jq -n --arg fp "$dir14/context/big.md" --arg content "$content14" --arg cwd "$dir14" '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:$content},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
 
-stdout14=$(printf '%s' "$payload14" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+stdout14=$(printf '%s' "$payload14" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
 
 if printf '%s' "$stdout14" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
     printf '%s' "$stdout14" | grep -qi "compress" &&
@@ -232,7 +232,7 @@ dir15=$(make_fixture 15)
 content15=$(head -c 50000 /dev/zero | tr '\0' 'x')
 payload15=$(jq -n --arg fp "$dir15/context/big.md" --arg content "$content15" --arg cwd "$dir15" '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:$content},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
 
-stdout15=$(printf '%s' "$payload15" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+stdout15=$(printf '%s' "$payload15" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
 
 if printf '%s' "$stdout15" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
     printf '%s' "$stdout15" | grep -q "50000" &&
@@ -338,7 +338,7 @@ dir25=$(make_fixture 25)
 content25=$(head -c 50000 /dev/zero | tr '\0' 'x')
 payload25=$(jq -n --arg fp "$dir25/PROJECT_CONTEXT.md" --arg content "$content25" --arg cwd "$dir25" '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:$content},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
 
-stdout25=$(printf '%s' "$payload25" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+stdout25=$(printf '%s' "$payload25" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
 
 if printf '%s' "$stdout25" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
     ! printf '%s' "$stdout25" | grep -q "add the matching PROJECT_CONTEXT.md"; then

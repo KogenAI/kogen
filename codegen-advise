@@ -3,39 +3,39 @@
 # OPPOSITE provider from the CURRENT build harness.
 #
 # Usage:
-#   codegen-advise --harness=<claude_code|pi> --context @<abs-path>
-#   codegen-advise --harness=<claude_code|pi> <<< "problem text on stdin"
+#   codegen-advise --harness=claude_code --context @<abs-path>
+#   codegen-advise --harness=claude_code <<< "problem text on stdin"
 #
 # --harness names the CURRENT build harness (the one that is stuck); this
 # script flips to the OPPOSITE provider via a FIXED internal mapping — this
 # is a deliberate operator decision (see pitch "a stuck build asks the other
-# provider" § No-gos): not configurable yet.
+# provider" § No-gos): not configurable.
 #
-#   current build harness   | advisor runs on          | codegen-call argv
-#   -------------------------+---------------------------+----------------------------------------------
-#   claude_code              | OpenAI GPT-5.6 (sol) / pi | --harness=pi --model=openai-codex/gpt-5.6-sol
-#   pi                       | Anthropic Opus / claude   | --harness=claude_code --model=opus
+# STATUS: DORMANT — this repo currently installs exactly one provider
+# (Anthropic, via the claude harness). A second-opinion call is only worth
+# making against a DIFFERENT vendor: escalating to a bigger Claude model is
+# already what the give-up boundary's model escalation does, and the advisor
+# exists precisely because another vendor sees different failure modes. With
+# one provider there is no opposite row to flip to, so every invocation
+# reports that and exits 1 WITHOUT making a model call. No replacement
+# provider is invented here.
 #
-# Both directions run at --effort=high.
+# This degradation is safe by existing contract, not by accident — every
+# caller already treats a non-zero exit as ADDITIVE-failure:
+#   - OrchestrationLoop.do_maybe_advise/2 maps any non-zero exit to `:error`
+#     and returns the context unchanged; the build proceeds.
+#   - The `advise` MCP tool returns isError text; the dev's turn continues.
 #
-# Output: the advisor's {plan, confidence} JSON (codegen-call envelope's
-# result.value) on stdout. Exit 0 on a successful call — even a
-# schema-invalid or LLM-failed call still emits SOMETHING on stdout via
-# codegen-call's own envelope contract, but this script treats a non-success
-# envelope status as a hard failure (exit 1) since the caller (loop or MCP
-# tool) needs a real plan, not a passthrough failure envelope.
+# Restoring it: add the second provider's row to the mapping below and drop
+# the guard. The argv contract, system prompt, JSON schema and envelope
+# handling are all still here and unchanged.
 #
 # Exit codes:
 #   0   — advisor plan printed on stdout
-#   1   — codegen-call ran but returned a non-success envelope status, or
-#         its stdout was not parseable JSON
+#   1   — no opposite provider configured, or codegen-call returned a
+#         non-success envelope / unparseable stdout
 #   2   — usage error: missing/unknown --harness, missing/empty --context
 #   127 — codegen-call binary not found
-#
-# This script never gates a build — a non-zero exit here is meant to be
-# treated as ADDITIVE-failure by every caller: the loop proceeds unchanged
-# when this fails; the MCP tool returns isError text but the dev's turn
-# continues.
 
 set -euo pipefail
 
@@ -52,7 +52,7 @@ CONTEXT_PATH=""
 CONTEXT_FROM_STDIN=""
 
 usage() {
-    printf 'Usage: codegen-advise --harness=<claude_code|pi> (--context @<path> | via stdin)\n' >&2
+    printf 'Usage: codegen-advise --harness=claude_code (--context @<path> | via stdin)\n' >&2
     exit 2
 }
 
@@ -90,8 +90,8 @@ if [[ -z "$HARNESS" ]]; then
     usage
 fi
 
-if [[ "$HARNESS" != "claude_code" && "$HARNESS" != "pi" ]]; then
-    printf 'codegen-advise: --harness must be "claude_code" or "pi", got %q\n' "$HARNESS" >&2
+if [[ "$HARNESS" != "claude_code" ]]; then
+    printf 'codegen-advise: --harness must be "claude_code", got %q\n' "$HARNESS" >&2
     usage
 fi
 
@@ -123,15 +123,15 @@ if [[ -z "${CONTEXT_TEXT//[[:space:]]/}" ]]; then
 fi
 
 # Fixed opposite-provider mapping — deliberately not configurable (see
-# header + pitch No-gos). Two rows only.
+# header + pitch No-gos). One provider is installed, so there is no opposite
+# row. Fail additively here rather than silently re-asking the SAME vendor,
+# which would be a second opinion in name only.
+ADVISOR_HARNESS=""
+ADVISOR_MODEL=""
 case "$HARNESS" in
 claude_code)
-    ADVISOR_HARNESS="pi"
-    ADVISOR_MODEL="openai-codex/gpt-5.6-sol"
-    ;;
-pi)
-    ADVISOR_HARNESS="claude_code"
-    ADVISOR_MODEL="opus"
+    printf 'codegen-advise: no opposite provider is configured — %s is the only installed harness, so a second-opinion call would re-ask the same vendor. Skipping the advisor; the build continues unaffected.\n' "$HARNESS" >&2
+    exit 1
     ;;
 esac
 ADVISOR_EFFORT="high"

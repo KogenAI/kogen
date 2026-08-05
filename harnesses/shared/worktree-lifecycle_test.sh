@@ -306,13 +306,13 @@ assert_eq "T7: --done with no slug exits 2" "2" "$T7_EXIT"
 T8_EXIT=0
 T8_STDERR=$(bash -c ". \"$HELPER\"; worktree_create" 2>&1 >/dev/null) || T8_EXIT=$?
 assert_eq "T8: worktree_create exits 2 (not wired until S5)" "2" "$T8_EXIT"
-assert_eq "T8: worktree_create stderr names S5" "worktree_create: not wired until S5 (pi-experiment --new)" "$T8_STDERR"
+assert_eq "T8: worktree_create stderr names S5" "worktree_create: not wired until S5 (claude-experiment --new)" "$T8_STDERR"
 
 # ── Test 9: worktree_reattach stub — exits 2, loud, not silent no-op ────────
 T9_EXIT=0
 T9_STDERR=$(bash -c ". \"$HELPER\"; worktree_reattach" 2>&1 >/dev/null) || T9_EXIT=$?
 assert_eq "T9: worktree_reattach exits 2 (not wired until S5)" "2" "$T9_EXIT"
-assert_eq "T9: worktree_reattach stderr names S5" "worktree_reattach: not wired until S5 (pi-experiment --new)" "$T9_STDERR"
+assert_eq "T9: worktree_reattach stderr names S5" "worktree_reattach: not wired until S5 (claude-experiment --new)" "$T9_STDERR"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"

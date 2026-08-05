@@ -3,7 +3,7 @@ defmodule CodegenTestHarness.Stacks.Modes.DebugTest do
   Asserts {harness}-debug.sh dispatches correctly and produces a diagnostic
   report (Root Cause + Evidence) WITHOUT writing any files.
 
-  Covers the harness×mode cells: claude-debug, pi-debug.
+  Covers the harness×mode cells: claude-debug.
   """
 
   use ExUnit.Case, async: true

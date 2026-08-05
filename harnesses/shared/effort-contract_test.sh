@@ -10,12 +10,10 @@
 #   2. codegen-build --print-argv threads --effort into the loop argv
 #      (claude leg); invalid --effort exits 2 before any argv is printed.
 #   3. codegen-build --print-argv threads --effort into the loop argv
-#      (pi leg).
 #   4. codegen-call --print-argv on the claude leg omits --effort for "off",
 #      emits --effort <v> for "high"; invalid value exits 2.
-#   5. codegen-call --print-argv on the pi leg emits --thinking <v> for every
 #      canonical value including "off"; invalid value exits 2.
-#   6. config.yaml: every build-role .effort (both claude/pi bindings, plus
+#   6. config.yaml: every build-role .effort (claude bindings, plus
 #      escalate_effort/fallback[].effort on the three developer roles) is
 #      "off"; every investigative-mode .effort is unchanged (spot-check).
 #
@@ -26,7 +24,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REAL_CLAUDE_HARNESS="$CODEGEN_DIR/harnesses/claude"
-REAL_PI_HARNESS="$CODEGEN_DIR/harnesses/pi"
 
 # shellcheck source=harnesses/shared/effort-canonical.sh
 source "$CODEGEN_DIR/harnesses/shared/effort-canonical.sh"
@@ -75,13 +72,6 @@ make_claude_harness() {
     local harness_dir="$cb_root/harnesses/claude"
     mkdir -p "$harness_dir"
     link_or_copy "$REAL_CLAUDE_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
-}
-
-make_pi_harness() {
-    local cb_root="$1"
-    local harness_dir="$cb_root/harnesses/pi"
-    mkdir -p "$harness_dir"
-    link_or_copy "$REAL_PI_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
 }
 
 make_mix_stub() {
@@ -149,20 +139,6 @@ PATH="$BIN_CB:$PATH" OCG_CODEGEN_DIR="$CODEGEN_DIR" \
 check "(2) codegen-build --effort=bogus exits 2" "2" "$ec"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test 3: codegen-build --print-argv threads --effort=<v> (pi leg).
-# ─────────────────────────────────────────────────────────────────────────────
-CB_PI="$(make_cb_root cb_pi)"
-make_pi_harness "$CB_PI"
-
-ec=0
-OUT_CB_PI="$(PATH="$BIN_CB:$PATH" OCG_CODEGEN_DIR="$CODEGEN_DIR" \
-    "$CB_PI/codegen-build" \
-    --harness=pi --stack=phoenix --cwd="$CB_MARKER" \
-    --effort=high --print-argv "prompt" 2>/dev/null)" || ec=$?
-check "(3) codegen-build --print-argv --effort=high exits 0 (pi)" "0" "$ec"
-assert_contains "(3) argv contains --effort=high" "$OUT_CB_PI" "--effort=high"
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Test 4: codegen-call --print-argv claude leg — off omits --effort, high
 # emits --effort high, bogus exits 2.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -207,39 +183,6 @@ PATH="$STUB_BIN:$PATH" OCG_CODEGEN_DIR="$CODEGEN_DIR" "$CC_CLAUDE/codegen-call" 
 check "(4) codegen-call claude --effort=bogus exits 2" "2" "$ec"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test 5: codegen-call --print-argv pi leg — every canonical value (incl.
-# off) emits --thinking <v>; bogus exits 2.
-# ─────────────────────────────────────────────────────────────────────────────
-CC_PI="$(make_cc_root cc_pi)"
-mkdir -p "$CC_PI/harnesses/pi" "$CC_PI/harnesses/claude/hooks/lib"
-link_or_copy "$REAL_PI_HARNESS/call-dispatch.sh" "$CC_PI/harnesses/pi/call-dispatch.sh"
-link_or_copy "$REAL_PI_HARNESS/pi-jsonl-filter.cjs" "$CC_PI/harnesses/pi/pi-jsonl-filter.cjs"
-link_or_copy "$REAL_CLAUDE_HARNESS/hooks/lib/schema-validate.js" \
-    "$CC_PI/harnesses/claude/hooks/lib/schema-validate.js"
-
-STUB_BIN_PI="$BASE_TMP/stub_bin_pi"
-mkdir -p "$STUB_BIN_PI"
-cat >"$STUB_BIN_PI/pi.body" <<'STUB'
-#!/usr/bin/env bash
-printf '{"type":"agent_end","messages":[{"role":"assistant","content":"ok"}]}\n'
-STUB
-link_stub_path "$STUB_BIN_PI/pi"
-
-ec=0
-OUT_CC_PI_OFF="$(PATH="$STUB_BIN_PI:$PATH" OCG_CODEGEN_DIR="$CODEGEN_DIR" "$CC_PI/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=off \
-    --system-prompt "@$SP_FILE" --print-argv "prompt" 2>/dev/null)" || ec=$?
-check "(5) codegen-call pi --effort=off exits 0" "0" "$ec"
-assert_contains "(5) pi --effort=off emits --thinking" "$OUT_CC_PI_OFF" "--thinking"
-assert_contains "(5) pi --effort=off emits off value" "$OUT_CC_PI_OFF" "off"
-
-ec=0
-PATH="$STUB_BIN_PI:$PATH" OCG_CODEGEN_DIR="$CODEGEN_DIR" "$CC_PI/codegen-call" \
-    --harness=pi --model=gpt-5 --effort=bogus \
-    --system-prompt "@$SP_FILE" --print-argv "prompt" >/dev/null 2>/dev/null || ec=$?
-check "(5) codegen-call pi --effort=bogus exits 2" "2" "$ec"
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Test 6: config.yaml — every build-role effort is "off"; investigative
 # modes unchanged (spot-check shape/inspector).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -249,31 +192,17 @@ BUILD_ROLE_EFFORTS="$(yq '
   .harness["developer-phoenix-backend"].claude.effort,
   .harness["developer-phoenix-backend"].claude.escalate_effort,
   .harness["developer-phoenix-backend"].claude.fallback[0].effort,
-  .harness["developer-phoenix-backend"].pi.effort,
-  .harness["developer-phoenix-backend"].pi.escalate_effort,
-  .harness["developer-phoenix-backend"].pi.fallback[0].effort,
   .harness["developer-phoenix-frontend"].claude.effort,
   .harness["developer-phoenix-frontend"].claude.escalate_effort,
   .harness["developer-phoenix-frontend"].claude.fallback[0].effort,
-  .harness["developer-phoenix-frontend"].pi.effort,
-  .harness["developer-phoenix-frontend"].pi.escalate_effort,
-  .harness["developer-phoenix-frontend"].pi.fallback[0].effort,
   .harness["developer-static"].claude.effort,
   .harness["developer-static"].claude.escalate_effort,
   .harness["developer-static"].claude.fallback[0].effort,
-  .harness["developer-static"].pi.effort,
-  .harness["developer-static"].pi.escalate_effort,
-  .harness["developer-static"].pi.fallback[0].effort,
   .harness["reviewer-phoenix"].claude.effort,
-  .harness["reviewer-phoenix"].pi.effort,
   .harness["reviewer-static"].claude.effort,
-  .harness["reviewer-static"].pi.effort,
   .harness["committer"].claude.effort,
-  .harness["committer"].pi.effort,
   .harness["context-curator"].claude.effort,
-  .harness["context-curator"].pi.effort,
-  .harness["app_build"].claude.effort,
-  .harness["app_build"].pi.effort
+  .harness["app_build"].claude.effort
 ' "$CONFIG_YAML")"
 
 NON_OFF_COUNT=0

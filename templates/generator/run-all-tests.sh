@@ -35,7 +35,7 @@
 #   the defect this validation closes.
 #
 # One-owner execution: five harnesses/claude/hooks/*_test.sh files are ALSO
-# invoked directly by harness-parity/prompt-content-parity/tools-header-no-dup
+# invoked directly by harness-parity/prompt-content-parity
 # in phase 1. HOOK_DEDUP_EXCLUDE lists those exact repo-relative paths and is
 # passed as HOOK_TEST_EXCLUDE to the hooks tail population ONLY (never
 # exported), so each discovered hook test runs exactly once per `make test`.
@@ -118,32 +118,9 @@ if ! git status --porcelain --untracked-files=all -- >"$tmp_untracked_before" 2>
     exit 1
 fi
 
-tmp_prebuild=$(mktemp)
-subagents_ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/subagents"
-if [ -f "$subagents_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$subagents_ext_dir/package.json"; then
-    (cd "$subagents_ext_dir" && mise exec -- npm run build) >>"$tmp_prebuild" 2>&1 || {
-        cat "$tmp_prebuild"
-        echo "subagents pre-build failed"
-        rm -f "$tmp_prebuild"
-        exit 1
-    }
-fi
-enforcement_ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/enforcement"
-if [ -f "$enforcement_ext_dir/package.json" ] && grep -q '"build"[[:space:]]*:' "$enforcement_ext_dir/package.json"; then
-    (cd "$enforcement_ext_dir" && mise exec -- npm run build) >>"$tmp_prebuild" 2>&1 || {
-        cat "$tmp_prebuild"
-        echo "enforcement pre-build failed"
-        rm -f "$tmp_prebuild"
-        exit 1
-    }
-fi
-rm -f "$tmp_prebuild"
-
 # ── Phase 1: broad parallel fan-out ─────────────────────────────────────────
 tmp_scaffold=$(mktemp)
 tmp_install=$(mktemp)
-tmp_npm=$(mktemp)
-tmp_subagents=$(mktemp)
 tmp_hook_parity=$(mktemp)
 tmp_hook_header_parity=$(mktemp)
 tmp_harness_parity=$(mktemp)
@@ -151,7 +128,6 @@ tmp_test_generator=$(mktemp)
 tmp_enforce_registry_parity=$(mktemp)
 tmp_enforce_hook_rationale=$(mktemp)
 tmp_prompt_content_parity=$(mktemp)
-tmp_tools_header_no_dup=$(mktemp)
 tmp_usage_rules_index_parity=$(mktemp)
 tmp_prompt_size_budget=$(mktemp)
 tmp_pitch_scope_parity=$(mktemp)
@@ -167,8 +143,7 @@ tmps=()
 HOOK_DEDUP_EXCLUDE="harnesses/claude/hooks/codegen-build_test.sh
 harnesses/claude/hooks/codegen-call_test.sh
 harnesses/claude/hooks/codegen-propose_test.sh
-harnesses/claude/hooks/prompt-content-parity_test.sh
-harnesses/claude/hooks/tools-header-no-dup_test.sh"
+harnesses/claude/hooks/prompt-content-parity_test.sh"
 { ./shared/scaffold/phoenix/run-tests.sh; } >"$tmp_scaffold" 2>&1 &
 pids+=($!)
 labels+=(scaffold-phoenix)
@@ -205,10 +180,6 @@ tmps+=("$tmp_enforce_hook_rationale")
 pids+=($!)
 labels+=(prompt-content-parity)
 tmps+=("$tmp_prompt_content_parity")
-{ make --no-print-directory tools-header-no-dup; } >"$tmp_tools_header_no_dup" 2>&1 &
-pids+=($!)
-labels+=(tools-header-no-dup)
-tmps+=("$tmp_tools_header_no_dup")
 { make --no-print-directory usage-rules-index-parity; } >"$tmp_usage_rules_index_parity" 2>&1 &
 pids+=($!)
 labels+=(usage-rules-index-parity)
@@ -221,57 +192,6 @@ tmps+=("$tmp_prompt_size_budget")
 pids+=($!)
 labels+=(pitch-scope-parity)
 tmps+=("$tmp_pitch_scope_parity")
-{
-    fail=0
-    for ext in enforcement askuserquestion subagents web-utils pitch-files; do
-        ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/$ext"
-        if [ -f "$ext_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$ext_dir/package.json"; then
-            if [ "$ext" != "subagents" ] && [ "$ext" != "enforcement" ] && grep -q '"build"[[:space:]]*:' "$ext_dir/package.json"; then
-                if ! (cd "$ext_dir" && mise exec -- npm run build); then
-                    fail=1
-                fi
-            fi
-            if [ -n "$VERBOSE" ]; then
-                echo "▶ Test: $ext"
-                if ! (cd "$ext_dir" && mise exec -- npm test); then
-                    fail=1
-                fi
-            else
-                if ! out=$(cd "$ext_dir" && mise exec -- npm test 2>&1); then
-                    echo "▶ Test: $ext — FAILED"
-                    printf '%s\n' "$out"
-                    fail=1
-                fi
-            fi
-        fi
-    done
-    exit "$fail"
-} >"$tmp_npm" 2>&1 &
-pids+=($!)
-labels+=(npm-ext)
-tmps+=("$tmp_npm")
-{
-    ext_dir="$SCRIPT_DIR/harnesses/pi/pi-extensions/subagents"
-    fail=0
-    if [ -d "$ext_dir/test/integration" ] && [ -n "$(ls "$ext_dir/test/integration/"*.test.ts 2>/dev/null)" ]; then
-        if [ -n "$VERBOSE" ]; then
-            echo "▶ Test:integration: subagents"
-            if ! (cd "$ext_dir" && mise exec -- npm run test:integration); then
-                fail=1
-            fi
-        else
-            if ! out=$(cd "$ext_dir" && mise exec -- npm run test:integration 2>&1); then
-                echo "▶ Test:integration: subagents — FAILED"
-                printf '%s\n' "$out"
-                fail=1
-            fi
-        fi
-    fi
-    exit "$fail"
-} >"$tmp_subagents" 2>&1 &
-pids+=($!)
-labels+=(subagents-integration)
-tmps+=("$tmp_subagents")
 tmp_mcp_server=$(mktemp)
 {
     mcp_dir="$SCRIPT_DIR/harnesses/claude/mcp-server"
@@ -407,7 +327,7 @@ if [ "$fail" -eq 0 ]; then
     echo "ALL CLEAR ✅ make test"
 else
     bash_fails=$(cat "$tmp_hooks" "$tmp_scaffold" "$tmp_install" 2>/dev/null | grep -oE 'FAIL: [^ —]+' | sed 's/FAIL: //' | tr '\n' ',' | sed 's/,$//' || true)
-    npm_fails=$(cat "$tmp_npm" "$tmp_subagents" "$tmp_mcp_server" 2>/dev/null | grep -oE '▶ Test: [^ —]+' | sed 's/▶ Test: //' | tr '\n' ',' | sed 's/,$//' || true)
+    npm_fails=$(cat "$tmp_mcp_server" 2>/dev/null | grep -oE '▶ Test: [^ —]+' | sed 's/▶ Test: //' | tr '\n' ',' | sed 's/,$//' || true)
     all_fails="$bash_fails"
     [ -n "$npm_fails" ] && [ -n "$all_fails" ] && all_fails="$all_fails,$npm_fails" || all_fails="$all_fails$npm_fails"
     joined=$(printf '%s, ' "${failed_labels[@]}")
@@ -418,9 +338,9 @@ else
         echo "FAILED ❌ make test — $joined"
     fi
 fi
-rm -f "$tmp_hooks" "$tmp_scaffold" "$tmp_install" "$tmp_npm" "$tmp_subagents" "$tmp_mcp_server" \
+rm -f "$tmp_hooks" "$tmp_scaffold" "$tmp_install" "$tmp_mcp_server" \
     "$tmp_hook_parity" "$tmp_hook_header_parity" "$tmp_harness_parity" "$tmp_test_generator" \
     "$tmp_enforce_registry_parity" "$tmp_enforce_hook_rationale" "$tmp_test_hermetic" \
-    "$tmp_prompt_content_parity" "$tmp_tools_header_no_dup" "$tmp_rule_render_freshness" \
+    "$tmp_prompt_content_parity" "$tmp_rule_render_freshness" \
     "$tmp_usage_rules_index_parity" "$tmp_prompt_size_budget" "$tmp_pitch_scope_parity"
 exit "$fail"

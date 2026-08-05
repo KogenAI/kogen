@@ -32,7 +32,7 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 - **Credo ABC/Complexity**: (a) `cond do` with 7+ arms reliably exceeds Credo ABC (30) and cyclomatic (9). Extract each arm's logic to a private `check_*!/1` helper. (b) Sequential `if raise` blocks accumulate ABC score — extract each guard condition to a named private `check_*!/1` helper instead. Both patterns restore clean scoring.
 - NEVER `any()` — research types in `deps/`
 - Return-type change or new branches → update `@spec`, run `mix dialyzer`
-- **Multi-clause default-arg compile error fix**: When a function needs default args across multiple clauses (e.g., pattern-matching on atom tags), use a SINGLE function head carrying the default plus bare delegating clauses. Example: `def parse_per_role(output, harness, opts \\ [])` head, followed by `def parse_per_role(_output, :pi, _opts), do: %{}` and `def parse_per_role(output, :claude, opts) do ... end`. Elixir requires the default `\\` on only the FIRST clause; placing it on multiple clauses is a compile error. The single-head + delegate form avoids it.
+- **Multi-clause default-arg compile error fix**: When a function needs default args across multiple clauses (e.g., pattern-matching on atom tags), use a SINGLE function head carrying the default plus bare delegating clauses. Example: `def parse_per_role(output, harness, opts \\ [])` head, followed by `def parse_per_role(_output, :other, _opts), do: %{}` and `def parse_per_role(output, :claude, opts) do ... end`. Elixir requires the default `\\` on only the FIRST clause; placing it on multiple clauses is a compile error. The single-head + delegate form avoids it.
 
 ## Code Patterns
 

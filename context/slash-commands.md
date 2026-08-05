@@ -1,4 +1,4 @@
-# Slash Commands — Claude Custom Commands / Pi Prompts
+# Slash Commands — Claude Custom Commands
 
 7 hand-authored/generated slash commands, dual-source, dual-install into each harness's own command
 surface.
@@ -29,17 +29,6 @@ pitch carrying `handoffs:`, it shells `mix codegen.pitches.scope --check --dir=d
 `handoff_receipt:` into every draft participant. `document.md`'s promotion note routes concrete handoffs
 through `/ready` (not a raw manual `mv`) — see `context/pitch-lifecycle.md`.
 
-## Pi — Prompts (Superset Asymmetry)
-
-Pi has no dedicated `commands/` source dir mirroring Claude's — its slash-command surface is
-`templates/generated/pi/prompts/*.md` (`prompts_install: all`), installed to
-`~/.pi/agent/prompts`. Pi's rendered prompt set is NOT a 1:1 mirror of Claude's 6 commands; treat Pi's
-prompt surface as its own generation target, not a port of the Claude command list.
-
-`generate.sh` copies `harnesses/claude/commands/document.md` byte-for-byte into the generated Pi
-prompts dir at `templates/generated/pi/prompts/document.md`. `generate_test.sh` asserts the
-generated copy is byte-identical to the Claude source.
-
 ## Trigger Keywords
 
-slash commands, /command, /document, /rule, /release-new-version, /poke-holes, /ready, /babysit, commands_source, commands_dir, install_commands, pi prompts, prompts_dir, prompts_source, handoff reconciliation, stamp-handoff-receipt, bilateral handoff record, handoff_receipt fleet transfer
+slash commands, /command, /document, /rule, /release-new-version, /poke-holes, /ready, /babysit, commands_source, commands_dir, install_commands, prompts_dir, prompts_source, handoff reconciliation, stamp-handoff-receipt, bilateral handoff record, handoff_receipt fleet transfer

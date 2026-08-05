@@ -253,7 +253,6 @@ else
     pass=$((pass + 1))
 fi
 
-# PI_ROLE parity tests (run_test uses CLAUDE_ROLE env var; use separate helper for PI_ROLE)
 
 run_test_env() {
     local desc="$1"
@@ -281,22 +280,6 @@ run_test_env() {
         fail=$((fail + 1))
     fi
 }
-
-# 31: PI_ROLE=debug + rm -rf → deny
-run_test_env "PI_ROLE=debug rm -rf blocked" "2" \
-    "$(mk 'rm -rf /tmp/foo')" "PI_ROLE" "debug"
-
-# 32: PI_ROLE=debug + ls → allow
-run_test_env "PI_ROLE=debug ls allowed" "0" \
-    "$(mk 'ls -la /tmp')" "PI_ROLE" "debug"
-
-# 33: PI_ROLE=shape + git push → deny
-run_test_env "PI_ROLE=shape git push blocked" "2" \
-    "$(mk 'git push origin main')" "PI_ROLE" "shape"
-
-# 34: PI_ROLE=shape + ls → allow
-run_test_env "PI_ROLE=shape ls allowed" "0" \
-    "$(mk 'ls -la /tmp')" "PI_ROLE" "shape"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

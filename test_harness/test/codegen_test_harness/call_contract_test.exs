@@ -2,7 +2,7 @@ defmodule CodegenTestHarness.CallContractTest do
   @moduledoc """
   Hermetic tests for `run_codegen_call/3` harness-name mapping.
 
-  `codegen-call` requires `--harness=claude_code` or `--harness=pi`.
+  `codegen-call` requires `--harness=claude_code`.
   `Fixtures.harness/0` returns `"claude"` (short form used by `codegen-build`).
   `Fixtures.codegen_call_harness/0` MUST map `"claude"` → `"claude_code"`.
 
@@ -78,7 +78,7 @@ defmodule CodegenTestHarness.CallContractTest do
 
       assert exit_code == 2, "expected exit 2, got #{exit_code}:\n#{output}"
 
-      assert output =~ ~r/must be "claude_code" or "pi"/,
+      assert output =~ ~r/must be "claude_code"/,
              "expected parser to reach harness validation (all fixture flags known), got:\n#{output}"
 
       refute output =~ ~r/unknown flag/,
@@ -216,20 +216,6 @@ defmodule CodegenTestHarness.CallContractTest do
       try do
         System.put_env("HARNESS", "claude")
         assert Fixtures.codegen_call_harness() == "claude_code"
-      after
-        case original do
-          nil -> System.delete_env("HARNESS")
-          v -> System.put_env("HARNESS", v)
-        end
-      end
-    end
-
-    test "passes \"pi\" through unchanged when HARNESS=pi" do
-      original = System.get_env("HARNESS")
-
-      try do
-        System.put_env("HARNESS", "pi")
-        assert Fixtures.codegen_call_harness() == "pi"
       after
         case original do
           nil -> System.delete_env("HARNESS")

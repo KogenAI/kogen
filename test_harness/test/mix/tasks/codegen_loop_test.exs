@@ -21,7 +21,7 @@ defmodule Mix.Tasks.Codegen.LoopTest do
     assert Loop.resolve_pitch("@codegen/pitches/ready/x.md", ctx.tmp) == body
   end
 
-  test "2: bare-relative path (pi convention) resolves against cwd", ctx do
+  test "2: bare-relative path resolves against cwd", ctx do
     body = "# Pitch: x\n"
     File.write!(Path.join(ctx.ready_dir, "x.md"), body)
 

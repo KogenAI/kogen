@@ -13,7 +13,7 @@
 # check logic below is NOT generated and is safe to hand-edit.
 #
 # Blocks: make ci-fast / ci-cover / predeploy / llm / llm-phoenix / llm-all
-#         make test / test-stacks / test-stacks-claude / test-stacks-pi / test-all /
+#         make test / test-stacks / test-stacks-claude / test-all /
 #         test-coverage / test-hermetic / bench (unowned, expensive, slow
 #         full-suite targets)
 #         bare `mix test` (no path argument)
@@ -74,7 +74,7 @@ fi
 # Deny: full-suite/expensive targets (test, test-all, test-hermetic, test-coverage,
 # test-stacks*, bench) — unowned by per-cycle iteration, owned by the loop's
 # LoopGate (do_gate_loop/9 in orchestration_loop.ex) which runs after your turn.
-if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(test|test-all|test-hermetic|test-coverage|test-stacks(-claude|-pi)?|bench)([[:space:]]|$)'; then
+if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*make[[:space:]]+(test|test-all|test-hermetic|test-coverage|test-stacks(-claude)?|bench)([[:space:]]|$)'; then
     deny "Dev MUST NOT run this full-suite target — it is slow and owned by the loop's LoopGate (do_gate_loop/9 in orchestration_loop.ex), which runs after your turn. Use targeted checks like \`mix test test/path/file.exs\` / \`make hook-parity\` / \`make enforce-registry-parity\` to iterate."
     exit 0
 fi

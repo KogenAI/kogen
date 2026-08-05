@@ -56,8 +56,7 @@ with no `handoffs:` key is entirely unaffected — this is additive, never requi
 
 ## Validation — Dual-Implemented (Bash + TS)
 
-`pitch-format-validator.sh` (Claude) and `pitch-format-validator.ts` (Pi, TypeScript twin under
-`harnesses/pi/pi-extensions/enforcement/src/hooks/`) both validate pitch frontmatter shape at write
+`pitch-format-validator.sh` validates pitch frontmatter shape at write
 time. Keep both in sync when the schema changes — no automated cross-language parity test enforces this
 pair; a schema change to one without the other is a silent gap.
 

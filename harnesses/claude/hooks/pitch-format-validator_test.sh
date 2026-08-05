@@ -17,7 +17,6 @@
 #  13:  > Status: SHAPED → allow
 #  14:  > Status: BOGUS → block
 #  15:  no > Status: line → allow
-#  16:  PI_ROLE=ops + malformed Questions → block
 #  17:  block reason includes "pitch-format-validator" (traceability)
 #  18:  frontmatter status: SHAPED → allow
 #  19:  frontmatter status: BOGUS → block
@@ -87,9 +86,8 @@ run_hook() {
     local stop_active="${2:-false}"
     local transcript_path="${3:-}"
     local claude_role="${4:-}"
-    local pi_role="${5:-}"
     make_stop_json "$cwd" "$stop_active" "$transcript_path" |
-        CLAUDE_ROLE="$claude_role" PI_ROLE="$pi_role" bash "$HOOK" 2>/dev/null || true
+        CLAUDE_ROLE="$claude_role" bash "$HOOK" 2>/dev/null || true
 }
 
 # make_transcript_with_pitch_write <transcript_path> <pitch_path>
@@ -608,17 +606,6 @@ out=$(run_hook "$T15_dir" false "$T15_transcript" "shape" "")
 assert_not_contains "no > Status: line → allow" '"decision"' "$out"
 rm -rf "$T15_dir"
 
-# ── Test 16: PI_ROLE=ops + malformed Questions → block ──────────────────────
-T16_dir=$(mktemp -d)
-mkdir -p "$T16_dir/codegen/pitches/draft"
-T16_pitch="$T16_dir/codegen/pitches/draft/my-pitch.md"
-T16_transcript="$T16_dir/transcript.jsonl"
-write_malformed_pitch_no_q_headings "$T16_pitch"
-make_transcript_with_pitch_write "$T16_transcript" "$T16_pitch"
-out=$(run_hook "$T16_dir" false "$T16_transcript" "" "ops")
-assert_contains "PI_ROLE=ops + malformed Questions → block" '"decision"' "$out"
-rm -rf "$T16_dir"
-
 # ── Test 17: block reason includes "pitch-format-validator" (traceability) ───
 T17_dir=$(mktemp -d)
 mkdir -p "$T17_dir/codegen/pitches/draft"
@@ -777,7 +764,7 @@ T29_transcript="$T29_dir/transcript.jsonl"
 write_pitch_waives_split_root_id "$T29_pitch"
 make_transcript_with_pitch_write "$T29_transcript" "$T29_pitch"
 out=$(make_stop_json "$T29_dir" false "$T29_transcript" |
-    CODEGEN_DIR="$T29_codegen_dir" CLAUDE_ROLE=shape PI_ROLE="" bash "$HOOK" 2>/dev/null || true)
+    CODEGEN_DIR="$T29_codegen_dir" CLAUDE_ROLE=shape bash "$HOOK" 2>/dev/null || true)
 assert_not_contains "split-root: CODEGEN_DIR registry resolves waiver → allow" '"decision"' "$out"
 rm -rf "$T29_dir" "$T29_codegen_dir"
 
@@ -799,7 +786,7 @@ T30_transcript="$T30_dir/transcript.jsonl"
 write_pitch_waives_unknown_id "$T30_pitch"
 make_transcript_with_pitch_write "$T30_transcript" "$T30_pitch"
 out=$(make_stop_json "$T30_dir" false "$T30_transcript" |
-    CODEGEN_DIR="$T30_codegen_dir" CLAUDE_ROLE=shape PI_ROLE="" bash "$HOOK" 2>/dev/null || true)
+    CODEGEN_DIR="$T30_codegen_dir" CLAUDE_ROLE=shape bash "$HOOK" 2>/dev/null || true)
 assert_contains "split-root: unknown id still blocks with CODEGEN_DIR registry" '"decision"' "$out"
 rm -rf "$T30_dir" "$T30_codegen_dir"
 

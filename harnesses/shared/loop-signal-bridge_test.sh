@@ -238,7 +238,7 @@ else
 fi
 
 # Case 7: Darwin-caffeinated queue spawn — same contract with caffeinate as
-# the supervised command's argv[0] (mirrors claude-build.sh/pi-build.sh's
+# the supervised command's argv[0] (mirrors claude-build.sh's
 # --watch leg on Darwin). Skips (not a failure) when caffeinate is absent
 # (non-Darwin CI runners).
 if command -v caffeinate >/dev/null 2>&1; then

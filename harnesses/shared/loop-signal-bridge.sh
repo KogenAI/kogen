@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # loop-signal-bridge.sh — shared INT->group-TERM->re-wait boundary for the
 # four bash callers that spawn the Elixir orchestration loop as a
-# job-controlled child: harnesses/{claude,pi}/dispatch.sh (single-build) and
-# the `--queue` leg of harnesses/{claude,pi}/{claude,pi}-build.sh (multi-pitch
+# job-controlled child: harnesses/claude/dispatch.sh (single-build) and
+# the `--queue` leg of harnesses/claude/claude-build.sh (multi-pitch
 # drain). Sourced, never executed directly.
 #
 # Why this exists: SIGINT is uncatchable inside the BEAM

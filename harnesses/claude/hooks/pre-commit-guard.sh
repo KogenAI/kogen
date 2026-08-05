@@ -18,7 +18,7 @@
 # is "") is also blocked — per CLAUDE.md only the committer may touch
 # history.
 #
-# Ops mode (CLAUDE_ROLE=ops / PI_ROLE=ops) scopes the gate to destructive git
+# Ops mode (CLAUDE_ROLE=ops) scopes the gate to destructive git
 # verbs ONLY — non-git Bash, read-only git (status/diff/log/show), and a
 # plain `git push` pass straight through for interactive ops on live boxes.
 # Destructive git ALSO requires CODEGEN_OPS_GIT_UNLOCK=1 — a two-signal gate.
@@ -27,7 +27,7 @@
 # harness-only toggle (NOT an app runtime var — do not add to
 # .env.sample/.env.prod.sample).
 #
-# Babysit mode (CLAUDE_ROLE=babysit / PI_ROLE=babysit) has a SEPARATE, NARROWER
+# Babysit mode (CLAUDE_ROLE=babysit) has a SEPARATE, NARROWER
 # posture — no unlock var, no two-signal gate. It is allowed exactly the
 # tree-restoring verbs (checkout/restore/reset --hard|--merge|--keep) needed
 # to clear a wedge it found and verified dead, and denied every

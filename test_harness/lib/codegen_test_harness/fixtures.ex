@@ -2,8 +2,7 @@ defmodule CodegenTestHarness.Fixtures do
   @moduledoc """
   Shared fixtures and helpers for stack scaffold tests.
 
-  `harness/0` returns the harness under test (`"claude"` by default, override
-  with `HARNESS=pi`).
+  `harness/0` returns the harness under test (`"claude"`).
 
   `codegen_build_path/0` returns the absolute path to the `codegen-build`
   script in the OCG repo root.
@@ -146,7 +145,7 @@ defmodule CodegenTestHarness.Fixtures do
   @doc """
   Returns the harness name in the form accepted by `codegen-call` (`--harness` flag).
 
-  `codegen-call` accepts `"claude_code"` or `"pi"`. The `harness/0` function returns
+  `codegen-call` accepts `"claude_code"`. The `harness/0` function returns
   `"claude"` (the short form used by `codegen-build`). This function maps `"claude"` →
   `"claude_code"` and passes other values through unchanged.
   """
@@ -224,7 +223,7 @@ defmodule CodegenTestHarness.Fixtures do
   """
   @spec run_codegen_call(String.t(), String.t(), keyword()) :: map()
   def run_codegen_call(prompt, schema, opts) do
-    # codegen-call accepts "claude_code" or "pi"; map "claude" → "claude_code".
+    # codegen-call accepts "claude_code"; map "claude" → "claude_code".
     harness_val = codegen_call_harness()
     role = Keyword.fetch!(opts, :role)
     system_prompt = Keyword.fetch!(opts, :system_prompt)
@@ -555,8 +554,7 @@ defmodule CodegenTestHarness.Fixtures do
   appropriate system prompt, bypassing `{harness}-{mode}.sh` which requires
   interactive stdin.
 
-  For other harnesses (e.g. `pi`): delegates to `{harness}-{mode}.sh` as
-  before.
+  For any other harness: delegates to `{harness}-{mode}.sh` as before.
 
   Returns `{output, exit_code}` — does NOT raise on failure (callers inspect
   exit_code themselves).
@@ -773,7 +771,6 @@ defmodule CodegenTestHarness.Fixtures do
       harness_atom =
         case harness_val do
           "claude" -> :claude
-          "pi" -> :pi
           other -> String.to_atom(other)
         end
 
@@ -851,7 +848,6 @@ defmodule CodegenTestHarness.Fixtures do
       harness_atom =
         case harness_val do
           "claude" -> :claude
-          "pi" -> :pi
           other -> String.to_atom(other)
         end
 

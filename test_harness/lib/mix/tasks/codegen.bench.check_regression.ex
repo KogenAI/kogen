@@ -134,7 +134,7 @@ defmodule Mix.Tasks.Codegen.Bench.CheckRegression do
 
   @spec compute_actuals(String.t()) :: %{String.t() => float()}
   defp compute_actuals(run_dir) do
-    harness_names = ["claude", "pi"]
+    harness_names = ["claude"]
 
     Enum.reduce(harness_names, %{}, fn harness, acc ->
       records = load_harness_summaries(run_dir, harness)

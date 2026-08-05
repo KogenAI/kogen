@@ -33,7 +33,7 @@
 seams:
   - id: enforcement-registry-to-hooks
     declares: shared/enforcement/registry.yaml (kind:denial entries)
-    reflects: harnesses/claude/hooks/no-*.sh, harnesses/pi/pi-extensions/enforcement/src/hooks/*.ts, index.ts
+    reflects: harnesses/claude/hooks/no-*.sh
     guard: enforce-registry-parity
     guard_time: make-test
     pattern: generated
@@ -87,13 +87,6 @@ seams:
     guard_time: make-test
     pattern: checked-mirror
 
-  - id: tools-header-no-cross-harness-dup
-    declares: harnesses/claude/tools-header, harnesses/pi/tools-header
-    reflects: (no file may duplicate lines byte-identical across both headers)
-    guard: harnesses/claude/hooks/tools-header-no-dup_test.sh
-    guard_time: make-test
-    pattern: checked-mirror
-
   - id: context-docs-line-citations
     declares: context/*.md, PROJECT_CONTEXT.md (line/module citations)
     reflects: (citation must still resolve to real, current code/doc location)
@@ -103,7 +96,7 @@ seams:
 
   - id: codegen-build-to-dispatch-stubs
     declares: codegen-build (argv contract)
-    reflects: harnesses/claude/dispatch.sh, harnesses/pi/dispatch.sh (stub consumption)
+    reflects: harnesses/claude/dispatch.sh (stub consumption)
     guard: harness-parity
     guard_time: make-test
     pattern: checked-mirror
@@ -157,13 +150,6 @@ seams:
     guard_time: runtime
     pattern: set-parity
 
-  - id: test-harness-elixir-config-parity
-    declares: test_harness/ Elixir config (claude vs pi harness code paths)
-    reflects: (both harness legs of test_harness compile+behave consistently)
-    guard: test-harness-parity
-    guard_time: runtime
-    pattern: checked-mirror
-
   - id: scaffold-project-context-template-to-generated-docs
     declares: shared/apps/PROJECT_CONTEXT*.j2 (promises context/*.md files exist)
     reflects: shared/scaffold/**/scaffold.sh (actual context/*.md files created in scaffolded app)
@@ -182,35 +168,6 @@ seams:
     guard: harnesses/claude/hooks/seam-registry-parity_test.sh
     guard_time: make-test
     pattern: set-parity
-
-  - id: call-dispatch-twins
-    declares: harnesses/claude/call-dispatch.sh (CODEGEN_CALL_* env reads + envelope key-set)
-    reflects: harnesses/pi/call-dispatch.sh (CODEGEN_CALL_* env reads + envelope key-set)
-    guard: harnesses/shared/call-dispatch-parity_test.sh
-    guard_time: make-test
-    pattern: set-parity
-
-  - id: enforcement-registration-hook-behavior-twins
-    declares: shared/enforcement/registry.yaml (kind:registration entries, 48 of 50)
-    reflects: harnesses/claude/hooks/*.sh bodies vs harnesses/pi/pi-extensions/enforcement/src/hooks/*.ts bodies (hand-written twin BEHAVIOR, not just header/existence)
-    guard: GAP
-    guard_time: make-test
-    pattern: checked-mirror
-    gap_rationale: >
-      enforce-registry-parity + orphan-hook-check guard the generated header
-      and the file SET (no orphan .sh/.ts), but the 47 kind:registration
-      hand-written bash<->TS bodies are never behavior-diffed — only the 2
-      kind:denial entries get full generated-file parity. Closing this
-      requires extending enforcement_compiler.py to generate both twins from
-      shared pattern dialects (out of scope for this build; see pitch
-      "eliminate-at-source: extend compiler beyond kind:denial").
-
-  - id: self-gate-matcher-to-deny-message
-    declares: harnesses/claude/hooks/developer-no-self-gate.sh (command_invokes matcher + credo exemption branch), harnesses/pi/pi-extensions/enforcement/src/hooks/developer-no-self-gate.ts (commandInvokes matcher)
-    reflects: harnesses/claude/hooks/developer-no-self-gate.sh deny() texts, harnesses/pi/pi-extensions/enforcement/src/hooks/developer-no-self-gate.ts deny() texts
-    guard: harnesses/claude/hooks/developer-no-self-gate-message-parity_test.sh
-    guard_time: make-test
-    pattern: checked-mirror
 
   - id: build-lock-format-to-codegen-drain-status
     declares: test_harness/lib/codegen_test_harness/build_lock.ex (lock line format + "queue"/"solo" label literals)
@@ -242,28 +199,27 @@ seams:
 
   - id: codegen-mcp-role-list-to-tool-names
     declares: "harnesses/claude/mcp-server/src/roles.ts ROLES (9 concrete role names + per-role kind/reader grants)"
-    reflects: "generated mcp__codegen__log_section_<role>/log_append_<role> tool names; shared/subagents/**/*.md.j2 tools: frontmatter grants; templates/generator/config.yaml tools.pi.tool_map entries; harnesses/pi/pi-extensions/enforcement/src/codegen-tools.ts ROLES port (hand-kept twin, no cross-package import)"
+    reflects: "generated mcp__codegen__log_section_<role>/log_append_<role> tool names; shared/subagents/**/*.md.j2 tools: frontmatter grants"
     guard: GAP
     guard_time: make-test
     pattern: checked-mirror
     gap_rationale: >
-      Checked by two node:test suites wired into make test's npm-ext/mcp-server
-      stages (harnesses/pi/pi-extensions/enforcement/src/hooks/__tests__/codegen-tools.test.ts
-      name-set parity vs a literal Claude list; harnesses/claude/mcp-server/src/__tests__/server.test.ts
+      Checked by a node:test suite wired into make test's mcp-server stage
+      (harnesses/claude/mcp-server/src/__tests__/server.test.ts
       role-baked writer assertions) — not a bash _test.sh or Makefile .PHONY
       target, so it falls outside this registry's forward/reverse-parity scan
       convention. A follow-on could extend seam-registry-parity_test.sh to
       also recognize node:test files as first-class guards.
 
   - id: hook-test-ownership-to-runner-exclusion
-    declares: Makefile direct hook-test callers (harness-parity, prompt-content-parity, tools-header-no-dup)
+    declares: Makefile direct hook-test callers (harness-parity, prompt-content-parity)
     reflects: templates/generator/run-all-tests.sh HOOK_DEDUP_EXCLUDE -> HOOK_TEST_EXCLUDE consumed by harnesses/claude/hooks/run-tests.sh
     guard: templates/generator/run-all-tests_test.sh
     guard_time: make-test
     pattern: set-parity
   - id: registry-waivable-to-waiver-helpers
     declares: "shared/enforcement/registry.yaml (waivable: true entries — currently prompt-budget-writer-only only)"
-    reflects: "harnesses/claude/hooks/_waiver.sh + harnesses/pi/pi-extensions/enforcement/src/hooks/_waiver.ts (both scan registry.yaml at grant-check time, not compile time — no generated artifact to diff); harnesses/claude/hooks/pitch-format-validator.sh + .ts (validation (d): a promoted pitch's waives: frontmatter must name a waivable: true id)"
+    reflects: "harnesses/claude/hooks/_waiver.sh (scans registry.yaml at grant-check time, not compile time — no generated artifact to diff); harnesses/claude/hooks/pitch-format-validator.sh (validation (d): a promoted pitch's waives: frontmatter must name a waivable: true id)"
     guard: harnesses/claude/hooks/_waiver_test.sh
     guard_time: make-test
     pattern: checked-mirror
@@ -272,20 +228,6 @@ seams:
     declares: "test_harness/lib/mix/tasks/codegen.pitches.scope.ex (--fleet-safe JSON dependency_bound key, delegating to LoopQueue.fleet_partition/3)"
     reflects: "codegen-drain (cmd_assign_auto reads .dependency_bound[] from the --fleet-safe JSON leg; dependency_preflight reads a separately-built fleet_snapshot for targeted assign --slug --node)"
     guard: test-hermetic
-    guard_time: make-test
-    pattern: checked-mirror
-
-  - id: document-md-to-generated-pi-prompt
-    declares: harnesses/claude/commands/document.md (sole document-prompt source)
-    reflects: templates/generated/pi/prompts/document.md (byte-for-byte copy via generate.sh _generate_pi)
-    guard: templates/generator/generate_test.sh
-    guard_time: make-test
-    pattern: generated
-
-  - id: shape-remote-readonly-vector-parity
-    declares: harnesses/claude/hooks/shape-remote-readonly_test.sh (closed remote-grammar allow/deny vectors)
-    reflects: harnesses/pi/pi-extensions/enforcement/src/hooks/__tests__/shape-remote-readonly.test.ts (same vector classes, ported per-case)
-    guard: harnesses/claude/hooks/shape-remote-readonly_test.sh
     guard_time: make-test
     pattern: checked-mirror
 

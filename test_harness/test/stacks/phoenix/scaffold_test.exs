@@ -2,7 +2,7 @@ defmodule CodegenTestHarness.Stacks.Phoenix.ScaffoldTest do
   @moduledoc """
   Asserts that `codegen-build --stack=phoenix` provisions a compilable
   Phoenix app with a root LiveView route, for both `HARNESS=claude` and
-  `HARNESS=pi`.
+  the `HARNESS` env var.
   """
 
   use ExUnit.Case, async: true

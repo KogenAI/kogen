@@ -1,7 +1,7 @@
-# Call Contract — Claude/Pi Envelope
+# Call Contract — Envelope
 
 The structured JSON envelope every `codegen-call`/loop role invocation returns, and where the two
-harness builders diverge. Producers: `harnesses/claude/call-dispatch.sh`, `harnesses/pi/call-dispatch.sh`
+harness builders diverge. Producer: `harnesses/claude/call-dispatch.sh`
 (8 builders total — both harnesses × multiple exit paths per harness: normal completion, schema-invalid,
 early-exit variants).
 
@@ -18,7 +18,7 @@ early-exit variants).
     "permission_denials": null|0, "stop_reason": null|"..."
   },
   "error": null,
-  "harness": "claude_code" | "pi",
+  "harness": "claude_code",
   "session_id": null|"...",
   "metrics": {...}   // optional, present only when a JSON schema was supplied
 }
@@ -27,23 +27,10 @@ early-exit variants).
 **Model-vs-local split + hook-denial + cache signals** (`duration_ms`, `duration_api_ms`, `ttft_ms`,
 `permission_denials`, `stop_reason`) — lifted from the `result` event on Claude's success path (see
 pitch `build-cycle-accounts-for-its-own-time` Move 2); absent on the 3 abnormal Claude exit paths and on
-ALL of pi's builders (pi's `agent_end` carries no equivalent fields). **Absent → JSON `null`, never a
+every builder. **Absent → JSON `null`, never a
 fabricated `0`** — a `0` would read as "instant"/"free"/"no denials", masking the exact defect this field
 exists to surface. `usage.num_turns` and `usage.total_cost_usd`-derived `cost_usd` follow the same
 null-preserving contract on both harnesses (previously `// 1` / `// 0` masking-default sentinels).
-
-## Claude vs Pi Asymmetries (17 total, swept; a sample — not exhaustive)
-
-- **`session_id`**: 3 of Claude's 4 envelope builders hardcode `null` even on success (only the
-  post-completion success path emits the real Claude session id). Pi's 4 builders ALL emit a real
-  session id. This is a real gap on Claude's warm-resume path — a builder emitting `null` where a real
-  id was available loses resumability. (Corrects a prior doc that had this backwards.)
-- **`retry_meta`**: both harnesses hardcode `null` at all early-exit sites (3 sites each) — retry
-  metadata is only ever populated on the normal completion path, never on schema-invalid/early-exit
-  paths. This is symmetric across harnesses (a previously-suspected divergence, refuted by direct grep).
-- **`metrics`**: present ONLY when a JSON schema was supplied to the call AND the schema validator
-  (`ajv`) resolved; absent → the field is omitted entirely (not `null`) via the trailing
-  `+ (if $metrics == null then {} else {metrics: $metrics} end)` jq merge.
 
 ## Transient-Error Taxonomy
 
@@ -58,23 +45,19 @@ directly — it routes to an OUTAGE PAUSE (probe/hold/resume-same-slug) before `
 consulted, distinct from the deterministic-failure breaker path. See `context/loop-queue-drain.md` §
 Outage Pause.
 
-Both call-dispatch legs (`harnesses/claude/call-dispatch.sh`, `harnesses/pi/call-dispatch.sh`) also carry
+`harnesses/claude/call-dispatch.sh` also carries
 a THIRD watchdog trigger, `CODEGEN_CALL_STREAM_IDLE_SECS` (default 300s), alongside the pre-existing
 900s `CODEGEN_CALL_IDLE_CAP_SECS` backstop: it fires only when BOTH no output growth AND no live tool
-subprocess hold for the window. Pi's producer runs below a process-group shell supervisor, so the Pi
-leg records the actual Pi PID separately and probes `pgrep -P $PI_PROCESS_PID`; probing supervisor
-children would always see Pi itself and permanently disable this trigger. The child-presence guard is
+subprocess hold for the window. The child-presence guard is
 what makes a short cap safe against a role legitimately silent while a `make test`/`mix test` tool
 runs. Claude ignores its always-on codegen MCP server child in this guard; that child is transport
 plumbing, not tool work, and otherwise permanently disables the stream-idle trigger. The default was
 raised from 60s to 300s after observed false kills of a heavy-Read role turn (~10M
 cache_read_tokens) whose server-side first-token latency legitimately exceeds 60s with no tool
 subprocess running — a slow turn is not a dead stream. Both legs read this var identically;
-`harnesses/shared/call-dispatch-parity_test.sh` enforces the cross-leg read-set stays in sync.
 
-Pi's dispatcher snapshots its own script, JSONL filter, and schema-validator entry before launching Pi,
-so an in-role edit cannot make the active Bash invocation read mixed old/new bytes. Pi and the filter
-form one owned producer/consumer lifecycle: terminal salvage kills the entire Pi process group, while
+The dispatcher snapshots its own script and schema-validator entry before launching the CLI,
+so an in-role edit cannot make the active Bash invocation read mixed old/new bytes. Terminal salvage kills the entire producer process group, while
 every filter startup/status/write/drain failure also terminates and reaps that group before returning
 non-zero. The filtered capture drops only parsed top-level `message_update` snapshots; terminal, tool,
 usage, lifecycle, and non-JSON diagnostic records remain available to envelope parsing/transcripts.
@@ -94,7 +77,6 @@ TERM then KILL. The guardian survives even whole-dispatcher-process-group termin
 detection scans every member of the owned Claude PGID; the configured MCP executable and its
 descendant plumbing are excluded by ancestry. `CODEGEN_CALL_OWNER_OS_PID`,
 `CODEGEN_CALL_GUARD_POLL_SECS`, and `CODEGEN_CALL_TERM_GRACE_SECS` are intentionally Claude-only:
-Pi owns its producer group inside its separate stream supervisor and does not use the Claude guardian.
 
 ## Consumers
 
@@ -120,41 +102,14 @@ path) corrupts a merged-stream JSON parse at byte 0 — `Jason.decode!` raises
 the streams at the reader removes the corruption; a still-malformed stdout on a zero exit raises with the
 received text quoted (first ~200 bytes of stdout + stderr tail) instead of a bare byte offset.
 
-## Pi's Native Usage Shape (per-message, not top-level)
+## Tolerant JSONL Parsing — The Harness Is Spawned `2>&1`
 
-Pi's `agent_end` event carries **no top-level `usage` object and no `{"type":"usage"}` event** — the
-two shapes `call-dispatch.sh` previously read, which is why every pi call reported `input_tokens: 0` /
-`cost_usd: 0.0` forever. Pi reports usage **per assistant message**, in its own field vocabulary:
-
-```json
-{
-  "input": 420,
-  "output": 5,
-  "cacheRead": 0,
-  "cacheWrite": 0,
-  "reasoning": 0,
-  "totalTokens": 425,
-  "cost": { "total": 0.001125 }
-}
-```
-
-`harnesses/pi/call-dispatch.sh` sums these across every assistant message in `agent_end.messages` and
-translates field names into the envelope's claude-shaped `usage` keys (`input`→`input_tokens`,
-`cacheRead`→`cache_read_input_tokens`, `cacheWrite`→`cache_creation_input_tokens`, `cost.total`→`cost_usd`).
-This ONLY fires as a fallback when `agent_end.usage.input_tokens` is `0` (i.e. always, for pi). The
-intermediate jq object deliberately uses the SAME key names as the final envelope's `usage` block —
-`harnesses/shared/call-dispatch-parity_test.sh` source-scans for `usage: {`-scoped key names, so a
-differently-named intermediate key leaks into that scan as a phantom parity mismatch.
-
-## Tolerant JSONL Parsing — Both Harnesses Are Spawned `2>&1`
-
-Both `pi` and `claude` are spawned with stderr merged into the same capture stream as stdout JSONL
+`claude` is spawned with stderr merged into the same capture stream as stdout JSONL
 (cold-session warnings, model-catalog fetches, deprecation notices land inline). Plain `jq 'select(...)'`
 **hard-aborts at the first non-JSON line and emits nothing** — it does not skip and continue. Every
 `$TMP_OUT`/JSONL scan in both `call-dispatch.sh` scripts MUST use `jq -c -R 'fromjson? | select(...)'`
 (raw-input + optional-decode) so a single stderr line does not make a fully successful call parse as
-"no agent_end/result event found". Claude's script has always done this; pi's did not until this was
-caught as a live defect (a stderr warning made every successful pi call misreport as failed).
+"no agent_end/result event found". Claude's script has always done this.
 
 Relatedly, the assistant reply text is extracted from the **last** assistant message with ALL its text
 blocks newline-joined — never `head -1`'d. A `head -1` truncation silently drops any trailing sentinel

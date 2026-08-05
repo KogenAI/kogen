@@ -162,23 +162,16 @@ CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug bypasses read discipline" "0" "$FI
 FIXTURE_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=shape run_test "CLAUDE_ROLE=shape bypasses read discipline" "0" "$FIXTURE_SHAPE_BYPASS"
 
-# PI_ROLE parity tests
 
-# Test 29: PI_ROLE=debug bypasses read discipline
 FIXTURE_PI_DEBUG_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
-PI_ROLE=debug run_test "PI_ROLE=debug bypasses read discipline" "0" "$FIXTURE_PI_DEBUG_BYPASS"
 
-# Test 30: PI_ROLE=shape bypasses read discipline
 FIXTURE_PI_SHAPE_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
-PI_ROLE=shape run_test "PI_ROLE=shape bypasses read discipline" "0" "$FIXTURE_PI_SHAPE_BYPASS"
 
 # Test 31: CLAUDE_ROLE=ops bypasses read discipline — ops runs on live boxes, full access needed
 FIXTURE_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops bypasses read discipline" "0" "$FIXTURE_OPS_BYPASS"
 
-# Test 32: PI_ROLE=ops bypasses read discipline
 FIXTURE_PI_OPS_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
-PI_ROLE=ops run_test "PI_ROLE=ops bypasses read discipline" "0" "$FIXTURE_PI_OPS_BYPASS"
 
 # Test B18b: CLAUDE_ROLE=ops Bash grep — ALLOW (ops needs full local inspection)
 FIXTURE_BASH_OPS_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
@@ -188,9 +181,7 @@ CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops Bash grep allows" "0" "$FIXTURE_BASH_O
 FIXTURE_EXPERIMENT_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=experiment run_test "CLAUDE_ROLE=experiment bypasses read discipline" "0" "$FIXTURE_EXPERIMENT_BYPASS"
 
-# Test 32c: PI_ROLE=experiment bypasses read discipline
 FIXTURE_PI_EXPERIMENT_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
-PI_ROLE=experiment run_test "PI_ROLE=experiment bypasses read discipline" "0" "$FIXTURE_PI_EXPERIMENT_BYPASS"
 
 # Test B18c: CLAUDE_ROLE=experiment Bash grep — ALLOW (experiment needs full local inspection)
 FIXTURE_BASH_EXPERIMENT_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
@@ -200,9 +191,7 @@ CLAUDE_ROLE=experiment run_test "CLAUDE_ROLE=experiment Bash grep allows" "0" "$
 FIXTURE_BABYSIT_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=babysit run_test "CLAUDE_ROLE=babysit bypasses read discipline" "0" "$FIXTURE_BABYSIT_BYPASS"
 
-# Test 32e: PI_ROLE=babysit bypasses read discipline
 FIXTURE_PI_BABYSIT_BYPASS='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/my_app/apps.ex"},"agent_id":"","agent_type":""}'
-PI_ROLE=babysit run_test "PI_ROLE=babysit bypasses read discipline" "0" "$FIXTURE_PI_BABYSIT_BYPASS"
 
 # Test B18d: CLAUDE_ROLE=babysit Bash grep — ALLOW (babysit needs full local inspection)
 FIXTURE_BASH_BABYSIT_GREP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
@@ -304,9 +293,7 @@ CLAUDE_ROLE=debug run_test "CLAUDE_ROLE=debug Bash grep allows" "0" "$FIXTURE_BA
 FIXTURE_BASH_SHAPE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"find ."},"agent_id":"","agent_type":""}'
 CLAUDE_ROLE=shape run_test "CLAUDE_ROLE=shape Bash find allows" "0" "$FIXTURE_BASH_SHAPE"
 
-# Test B18: PI_ROLE=debug Bash grep — ALLOW
 FIXTURE_BASH_PI_DEBUG='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"grep foo"},"agent_id":"","agent_type":""}'
-PI_ROLE=debug run_test "PI_ROLE=debug Bash grep allows" "0" "$FIXTURE_BASH_PI_DEBUG"
 
 # ── Transcript-forge guard tests ─────────────────────────────────────────────
 

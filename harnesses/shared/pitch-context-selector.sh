@@ -2,7 +2,7 @@
 # pitch-context-selector.sh -- sole parser of PROJECT_CONTEXT.md
 # section "Domain Context Files" for pitch-driven Tier-1 context
 # selection. Sourced by claude-shape.sh, claude-experiment.sh,
-# pi-shape.sh, pi-experiment.sh. Never executed directly.
+# Never executed directly.
 #
 # Priority: (1) explicitly cited AND keyword-matched, (2) explicitly
 # cited only, (3) keyword-matched only. Table order preserved WITHIN

@@ -59,9 +59,9 @@ No `resumed` kind — a successful re-spawn just appends the role's normal `role
 
 ## Enforcement
 
-**Enforced by** the `session-log-writer-only` hard-deny hook (Claude + Pi twins) — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
+**Enforced by** the `session-log-writer-only` hard-deny hook — catalog in `context/hooks.md`; enumerate via `grep -rlE 'session.?log|codegen/logging' harnesses/claude/hooks/*.sh`.
 
-**Also enforced by** `role-retrospective-before-stop` (Claude: blocking `Stop` hook; Pi: observe-only twin) — a developer/reviewer ending its turn without BOTH a non-empty `ev:role` body AND EITHER `ev:learned` OR `ev:no_learning` for its own role is pushed back (Claude) or warned on stderr (Pi). PRESENCE only — substance enforced upstream by `codegen-log` (§ Substance Filter). Bounded at 3 attempts, then falls through loud — never fails the build. `context-curator`/`committer` NOT gated.
+**Also enforced by** `role-retrospective-before-stop` (blocking `Stop` hook) — a developer/reviewer ending its turn without BOTH a non-empty `ev:role` body AND EITHER `ev:learned` OR `ev:no_learning` for its own role is pushed back. PRESENCE only — substance enforced upstream by `codegen-log` (§ Substance Filter). Bounded at 3 attempts, then falls through loud — never fails the build. `context-curator`/`committer` NOT gated.
 
 ## Event Schema
 

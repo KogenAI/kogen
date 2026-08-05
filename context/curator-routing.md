@@ -22,7 +22,6 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Recipes, workloads** → `context/recipes.md`
 - **Scaffold behavior, output, symlinks** → `context/scaffold.md`
 - **Scaffold mutations, guard tests, credo cleanup** → `context/scaffold-mutations.md`
-- **Pi extensions, pi-specific paths** → `context/pi-extensions.md`
 - **Rules distribution, rule influence** → `context/rules-core.md`, `context/rules-roles.md`, `context/rules-stacks.md`
 - **Subagent DSL, template mechanics, influence stack** → `context/subagent-influence-stack.md`
 - **Test coverage, test inventory** → `context/test-coverage.md`
@@ -34,14 +33,13 @@ All `[local]` blocks (project-specific knowledge about codegen's structure, mode
 - **Document/usage-rules generation patterns, usage_rules corpus, INDEX.md** → `context/usage-rules-corpus.md`
 - **Launcher ↔ hook wiring matrix** → `context/launcher-hook-matrix.md`
 - **Fail-closed enforcement, anti-wedge exceptions, INCONCLUSIVE classification** → `context/fail-closed-posture.md`
-- **Pi hook test fixture techniques** → `context/pi-hook-test-techniques.md`
 - **Shape-mode discipline, pitch shaping** → `context/shaper-discipline.md`
 - **ExUnit stack test suite, test inventory** → `context/test-harness.md`
 - **Test monitoring, watch loops** → `context/test-monitoring.md`
 - **The Elixir orchestration loop engine, build lock, infra abort, signal handler, budget cap, fallback rungs, warm-resume** → `context/loop.md`
 - **Multi-pitch queue drain, drain process model, ship/skip/halt taxonomy, logging GC, circuit breaker, queue-wide spend ceiling** → `context/loop-queue-drain.md`
 - **Cycle log (`codegen-log`, `ev` kinds, substance filter, `.active`), gate-pending artifacts, gate verdict truth table** → `context/cycle-record.md`
-- **Claude/Pi call envelope, builder asymmetries, transient-error taxonomy** → `context/call-contract.md`
+- **Call envelope, builder asymmetries, transient-error taxonomy** → `context/call-contract.md`
 - **Role→model/effort/tools config, escalation ladder, fallback rungs** → `context/role-config.md`
 - **Turn-waste analysis, `codegen-analyze`, `codegen-propose`, counters** → `context/turn-waste-analysis.md`
 - **Port allocation, `resource_manager.sh`, `~/.ocg/resources.json`** → `context/port-allocation.md`

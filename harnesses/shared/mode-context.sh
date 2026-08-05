@@ -6,7 +6,7 @@ set -uo pipefail
 # (newline-separated, repo-relative paths). Fail-loud: a declared path that
 # does not exist under $CODEGEN_DIR is a hard exit 1 naming the mode and path.
 # Sole reader of roles.<mode>.context_files — consumed by load-role.sh
-# (claude leg) and pi-babysit.sh/pi-ops.sh/pi-debug.sh (pi leg) directly.
+# directly.
 resolve_mode_context() {
     local mode="$1"
     local cfg="${CODEGEN_DIR:?CODEGEN_DIR not set}/templates/generator/config.yaml"

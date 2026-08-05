@@ -2,10 +2,10 @@
 # codegen-build — canonical entrypoint for all harness-based build invocations.
 #
 # Usage:
-#   codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [options] PROMPT
+#   codegen-build --harness=claude [--stack=<phoenix|static>] [options] PROMPT
 #
 # Options:
-#   --harness=<claude|pi>     required: which harness to use
+#   --harness=claude          required: which harness to use
 #   --stack=<phoenix|static>  optional: project stack. When omitted, detected
 #                             from cwd markers (mix.exs -> phoenix,
 #                             vite.config.js -> static; codegen self-build
@@ -76,7 +76,7 @@ PRINT_ARGV=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n' >&2
+    printf 'Usage: codegen-build --harness=claude [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n' >&2
     exit 2
 }
 
@@ -147,7 +147,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     -h | --help)
-        printf 'Usage: codegen-build --harness=<claude|pi> [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n'
+        printf 'Usage: codegen-build --harness=claude [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n'
         exit 0
         ;;
     --)
@@ -176,8 +176,8 @@ if [[ -z "$HARNESS" ]]; then
     usage
 fi
 
-if [[ "$HARNESS" != "claude" && "$HARNESS" != "pi" ]]; then
-    printf 'codegen-build: --harness must be "claude" or "pi", got %q\n' "$HARNESS" >&2
+if [[ "$HARNESS" != "claude" ]]; then
+    printf 'codegen-build: --harness must be "claude", got %q\n' "$HARNESS" >&2
     usage
 fi
 

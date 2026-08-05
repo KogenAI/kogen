@@ -47,7 +47,7 @@ export function runCodegenLog(args: string[], stdinBody?: string): ExecResult {
  * reuse) since it wraps a different binary with a different argv shape.
  */
 export function runCodegenAdvise(
-  current: "claude_code" | "pi",
+  current: "claude_code",
   context: string,
 ): ExecResult {
   try {

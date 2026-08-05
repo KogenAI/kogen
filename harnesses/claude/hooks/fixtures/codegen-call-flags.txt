@@ -4,7 +4,6 @@
 --agents
 --allowed-tools
 --effort
---extension
 --harness
 --json-schema
 --model

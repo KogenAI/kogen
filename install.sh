@@ -2,20 +2,19 @@
 
 # Optimum Codegen CLI Installation Script
 # Usage: install.sh [--harness=<list>]
-#   --harness=claude,pi — comma-separated list of harnesses to install.
-#   When omitted, installs both harnesses (claude, pi).
+#   --harness=claude — comma-separated list of harnesses to install.
+#   When omitted, installs every harness (currently: claude).
 #   Invalid harness names cause a fail-fast exit with a helpful message.
 #
 # Environment variables (all optional):
-#   OCG_DEFAULT_AGENT=<claude|pi>   — skips agent-selection prompt; must match an installed harness.
+#   OCG_DEFAULT_AGENT=claude        — skips agent-selection prompt; must match an installed harness.
 #   OCG_NONINTERACTIVE=1            — auto-trusts nested .mise.toml; hard-fails if a prompt would block.
 #                                     Requires OCG_DEFAULT_AGENT when multiple harnesses are installed.
 #   OCG_CODEGEN_DIR=<path>          — dispatch fallback used by codegen-call when harnesses/ symlink unavailable.
 #
 # Examples:
-#   install.sh                          # installs claude + pi
+#   install.sh                          # installs claude
 #   install.sh --harness=claude         # claude only
-#   install.sh --harness=pi             # pi only, skip claude
 
 set -e
 
@@ -29,7 +28,7 @@ for arg in "$@"; do
     --harness=*)
         list="${arg#--harness=}"
         if [ -z "$list" ]; then
-            echo "❌ --harness= requires a value (one or more of: claude, pi)" >&2
+            echo "❌ --harness= requires a value (one or more of: claude)" >&2
             exit 1
         fi
         IFS=',' read -ra _tokens <<<"$list"
@@ -37,7 +36,7 @@ for arg in "$@"; do
             tok="$(echo "$tok" | tr -d '[:space:]')"
             [ -z "$tok" ] && continue
             case "$tok" in
-            claude | pi)
+            claude)
                 # Deduplicate
                 already=false
                 for existing in "${HARNESSES[@]}"; do
@@ -46,7 +45,7 @@ for arg in "$@"; do
                 [ "$already" = "false" ] && HARNESSES+=("$tok")
                 ;;
             *)
-                echo "❌ Unknown harness: '$tok' (expected one or more of: claude, pi)" >&2
+                echo "❌ Unknown harness: '$tok' (expected one or more of: claude)" >&2
                 exit 1
                 ;;
             esac
@@ -61,7 +60,7 @@ done
 
 # Default = all harnesses when --harness flag omitted
 if [ ${#HARNESSES[@]} -eq 0 ]; then
-    HARNESSES=("claude" "pi")
+    HARNESSES=("claude")
 fi
 
 harness_enabled() {
@@ -270,7 +269,7 @@ bash "$CODEGEN_DIR/templates/generator/generate.sh" "${HARNESSES[@]}"
 # These .md files are symlinked into user-app workspaces (e.g. via a platform copy_agents_md step)
 # at provision time, so they must exist as regenerable artifacts beside their .j2 source.
 # Each template renders TWICE:
-#   pi render     → AGENTS-{variant}.md  (→ See pointers; consumed by Pi)
+#   agents render → AGENTS-{variant}.md  (→ See pointers; harness-neutral)
 #   claude render → CLAUDE-{variant}.md  (@ auto-load imports; consumed by Claude Code)
 echo ""
 echo "🚀 Rendering user-app AGENTS templates (.j2 -> .md)..."
@@ -311,8 +310,8 @@ render_to_md() {
 
 for base in AGENTS-phoenix AGENTS-static; do
     src="$APPS_SRC_DIR/$base.md.j2"
-    # pi render → canonical AGENTS-{variant}.md
-    render_to_md "$src" pi "$APPS_OUT_DIR/$base.md"
+    # agents render → canonical AGENTS-{variant}.md
+    render_to_md "$src" agents "$APPS_OUT_DIR/$base.md"
     # claude render → CLAUDE-{variant}.md  (strip "AGENTS-" prefix, add "CLAUDE-")
     variant="${base#AGENTS-}"
     render_to_md "$src" claude "$APPS_OUT_DIR/CLAUDE-${variant}.md"
@@ -326,7 +325,7 @@ cleanup_generated_templates() {
 }
 
 # ─── Manifest-driven harness install loop ─────────────────────────────────────
-# Replaces the former inline claude + pi branches.
+# Each harness declares its surface in its own manifest.yaml.
 # Each harness's manifest.yaml declares its surface; this loop reads it.
 #
 # Zsh completions: install into first writable dir.
@@ -637,130 +636,6 @@ for _harness in "${HARNESSES[@]}"; do
         fi
         ;;
 
-    pi)
-        # ── Pi-specific: pin the binary to manifest.yaml's runtime.package@version
-        # (single authority — see harnesses/pi/manifest.yaml § Runtime). Fails
-        # loud (no latest-version fallback) when the installed `pi --version`
-        # is missing or differs from the pinned version.
-        _pi_pkg=$(yq -r '.runtime.package' "$CODEGEN_DIR/harnesses/pi/manifest.yaml")
-        _pi_ver=$(yq -r '.runtime.version' "$CODEGEN_DIR/harnesses/pi/manifest.yaml")
-        echo "🔧 Installing Pi runtime: ${_pi_pkg}@${_pi_ver}..."
-        if command -v npm >/dev/null 2>&1; then
-            npm install -g "${_pi_pkg}@${_pi_ver}" || {
-                echo "❌ install.sh: npm install -g ${_pi_pkg}@${_pi_ver} failed" >&2
-                exit 1
-            }
-        else
-            echo "❌ install.sh: npm not found — cannot install ${_pi_pkg}@${_pi_ver}" >&2
-            exit 1
-        fi
-        _pi_installed_ver=""
-        if command -v pi >/dev/null 2>&1; then
-            _pi_installed_ver=$(pi --version 2>/dev/null | tr -d '[:space:]')
-        fi
-        if [ -z "$_pi_installed_ver" ]; then
-            echo "❌ install.sh: 'pi --version' failed after install — cannot verify ${_pi_pkg}@${_pi_ver}" >&2
-            exit 1
-        fi
-        if [ "$_pi_installed_ver" != "$_pi_ver" ]; then
-            echo "❌ install.sh: installed pi version '${_pi_installed_ver}' != pinned '${_pi_ver}' — check for a stale PATH entry shadowing the npm-global install" >&2
-            exit 1
-        fi
-        echo "   ✅ pi ${_pi_installed_ver} matches pinned version"
-
-        # ── Pi-specific: agents ───────────────────────────────────────────────
-        echo "🔧 Setting up Pi configuration..."
-
-        mkdir -p "$HOME/.pi/agent/agents"
-
-        echo "   🤖 Installing Pi agents..."
-        CURRENT_PI_AGENTS=()
-        if [ -d "$GENERATED_ROOT/pi/agent" ]; then
-            for agent_file in "$GENERATED_ROOT/pi/agent"/*.md; do
-                if [ -f "$agent_file" ]; then
-                    agent_name=$(basename "$agent_file")
-                    content_stable_cp "$agent_file" "$HOME/.pi/agent/agents/$agent_name"
-                    echo "   ✅ Installed Pi agent: ${agent_name%.md}"
-                    CURRENT_PI_AGENTS+=("$agent_name")
-                fi
-            done
-        fi
-        if [ ${#CURRENT_PI_AGENTS[@]} -eq 0 ]; then
-            echo "   ⚠️  Skipping Pi agent prune — install set is empty (generator may have failed)"
-        else
-            for installed_agent in "$HOME/.pi/agent/agents"/*.md; do
-                [ -f "$installed_agent" ] || continue
-                agent_basename=$(basename "$installed_agent")
-                still_present=false
-                for cur in "${CURRENT_PI_AGENTS[@]}"; do
-                    [ "$cur" = "$agent_basename" ] && still_present=true && break
-                done
-                if [ "$still_present" = "false" ]; then
-                    rm -f "$installed_agent"
-                    echo "   🗑️  Removed stale Pi agent: ${agent_basename%.md}"
-                fi
-            done
-        fi
-
-        # Auto-trust nested .mise.toml to prevent mise from blocking with an interactive trust prompt.
-        if command -v mise >/dev/null 2>&1; then
-            mise trust "$CODEGEN_DIR/harnesses/pi/pi-extensions/enforcement/.mise.toml" >/dev/null 2>&1 || true
-        fi
-
-        # Install pi extensions — npm install runtime deps (no tsc; pi loads .ts via jiti)
-        # askuserquestion: peerDeps only, no runtime deps — skip npm install
-        # subagents + web-utils: have runtime dependencies that need node_modules
-        echo "   📦 Installing Pi extension dependencies..."
-        PI_EXTENSIONS_DIR="$CODEGEN_DIR/harnesses/pi/pi-extensions"
-        for _ext_dir in "$PI_EXTENSIONS_DIR/subagents" "$PI_EXTENSIONS_DIR/web-utils"; do
-            if [ -d "$_ext_dir" ] && [ -f "$_ext_dir/package.json" ]; then
-                _ext_name=$(basename "$_ext_dir")
-                echo "   Installing deps for pi-extension: $_ext_name..."
-                _pi_ext_install_failed=0
-                (cd "$_ext_dir" && mise exec -- npm install --prefer-offline) 2>&1 || _pi_ext_install_failed=1
-                if [ "$_pi_ext_install_failed" -eq 1 ]; then
-                    echo "❌ pi-extension npm install failed: $_ext_name — extension ships broken" >&2
-                    exit 1
-                fi
-                echo "   ✅ pi-extension deps installed: $_ext_name"
-            fi
-        done
-
-        # Install pi prompts — full generated set with mkdir + prune
-        PROMPTS_DST="$HOME/.pi/agent/prompts"
-        PROMPTS_SRC="$GENERATED_ROOT/pi/prompts"
-        mkdir -p "$PROMPTS_DST"
-        CURRENT_PI_PROMPTS=()
-        if [ -d "$PROMPTS_SRC" ]; then
-            echo "   Installing Pi prompts into $PROMPTS_DST..."
-            for _prompt_file in "$PROMPTS_SRC"/*.md; do
-                [ -f "$_prompt_file" ] || continue
-                _prompt_name=$(basename "$_prompt_file")
-                content_stable_cp "$_prompt_file" "$PROMPTS_DST/$_prompt_name"
-                echo "   ✅ Installed Pi prompt: $_prompt_name"
-                CURRENT_PI_PROMPTS+=("$_prompt_name")
-            done
-        fi
-        # Prune stale prompts
-        if [ ${#CURRENT_PI_PROMPTS[@]} -eq 0 ]; then
-            echo "   ⚠️  Skipping Pi prompt prune — install set is empty (generator may have failed)"
-        else
-            for _installed_prompt in "$PROMPTS_DST"/*.md; do
-                [ -f "$_installed_prompt" ] || continue
-                _prompt_basename=$(basename "$_installed_prompt")
-                _still_present=false
-                for _cur in "${CURRENT_PI_PROMPTS[@]}"; do
-                    [ "$_cur" = "$_prompt_basename" ] && _still_present=true && break
-                done
-                if [ "$_still_present" = "false" ]; then
-                    rm -f "$_installed_prompt"
-                    echo "   🗑️  Removed stale Pi prompt: $_prompt_basename"
-                fi
-            done
-        fi
-
-        echo "   ✅ Pi configuration complete"
-        ;;
     esac
 
     # ── Manifest-driven: launchers + completions (all harnesses) ─────────────
@@ -845,7 +720,7 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
             done
             echo ""
             if [[ ! -t 0 ]]; then
-                echo "❌ install.sh needs a TTY for agent selection; set OCG_DEFAULT_AGENT=<claude|pi> for non-interactive installs" >&2
+                echo "❌ install.sh needs a TTY for agent selection; set OCG_DEFAULT_AGENT=claude for non-interactive installs" >&2
                 exit 1
             fi
             read -p "   Choose [1-${#HARNESSES[@]}]: " choice
@@ -858,16 +733,13 @@ if [ ! -f "$HOME/.ocg/config.json" ]; then
     fi
 
     claude_enabled=false
-    pi_enabled=false
     harness_enabled claude && claude_enabled=true
-    harness_enabled pi && pi_enabled=true
 
     cat >"$HOME/.ocg/config.json" <<EOF
 {
     "default_agent": "$default_agent",
     "agents": {
-        "claude": { "enabled": $claude_enabled },
-        "pi": { "enabled": $pi_enabled }
+        "claude": { "enabled": $claude_enabled }
     }
 }
 EOF

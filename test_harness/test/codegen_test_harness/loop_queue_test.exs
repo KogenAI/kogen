@@ -772,7 +772,7 @@ defmodule CodegenTestHarness.LoopQueueTest do
     test "reason string matching the switch_model taxonomy is a model failure" do
       assert LoopQueue.switch_model_reason?("Claude Fable 5 is currently unavailable")
       assert LoopQueue.switch_model_reason?("model X is currently unavailable")
-      assert LoopQueue.switch_model_reason?("provider openai-codex unavailable")
+      assert LoopQueue.switch_model_reason?("provider acme-llm unavailable")
       assert LoopQueue.switch_model_reason?("model gpt-9 not found")
       assert LoopQueue.switch_model_reason?("unknown model requested")
     end

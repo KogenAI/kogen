@@ -23,7 +23,7 @@ defmodule CodegenTestHarness.Stacks.Call.CodegenCallTest do
     assert is_map(env["result"]["value"])
     assert Map.has_key?(env["result"]["value"], "lang")
     assert Map.has_key?(env["result"]["value"], "intent")
-    assert env["harness"] in ["pi", "claude", "claude_code"]
+    assert env["harness"] in ["claude", "claude_code"]
     assert is_map(env["usage"])
     assert Map.has_key?(env["usage"], "model")
     assert Map.has_key?(env["usage"], "input_tokens")
@@ -45,7 +45,7 @@ defmodule CodegenTestHarness.Stacks.Call.CodegenCallTest do
 
     assert env["result"]["status"] in ["success", "failed"]
     refute env["result"]["status"] == "clarifying_question"
-    assert env["harness"] in ["pi", "claude", "claude_code"]
+    assert env["harness"] in ["claude", "claude_code"]
     assert is_map(env["usage"])
     assert Map.has_key?(env["usage"], "model")
     assert Map.has_key?(env["usage"], "input_tokens")

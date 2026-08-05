@@ -1304,7 +1304,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   end
 
   describe "run/1 — reviewer verdict presentation-wrapper compatibility (#8)" do
-    for harness <- ["claude_code", "pi"], stack <- ["phoenix", "static"] do
+    for harness <- ["claude_code"], stack <- ["phoenix", "static"] do
       @harness harness
       @stack stack
 
@@ -1845,7 +1845,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  # Pins harness resolution to match the binding file's
                  # "harness" ("claude_code") independent of config.yaml's
                  # live per-role override (developer-static currently
-                 # forces "pi") — this test asserts the SUPPRESSION
+                 # forced an override) — this test asserts the SUPPRESSION
                  # contract, not config.yaml's current routing.
                  resolve_harness_fn: fn _role, build_harness -> build_harness end,
                  resolve_fallback_fn: resolve_fallback_fn,
@@ -1864,11 +1864,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, harness_seen_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(harness_seen_agent), do: Agent.stop(harness_seen_agent) end)
 
-      resolve_harness_fn = fn "developer-static", "claude_code" -> "pi" end
+      resolve_harness_fn = fn "developer-static", "claude_code" -> "other_harness" end
 
       resolve_fallback_fn = fn "developer-static", harness, 0 ->
         Agent.update(harness_seen_agent, fn seen -> seen ++ [harness] end)
-        {"openai-codex/gpt-5.6-terra", "medium"}
+        {"other-model", "medium"}
       end
 
       invoke_fn = fn role, _harness, ctx, _opts ->
@@ -1901,7 +1901,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
-      assert Agent.get(harness_seen_agent, & &1) == ["pi"]
+      assert Agent.get(harness_seen_agent, & &1) == ["other_harness"]
     end
 
     test "default :log_died_fn with no cycle log initialized (nil path) → silent no-op, run still completes" do
@@ -2076,11 +2076,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           do: Agent.stop(harness_seen_by_codegen_call_fn)
       end)
 
-      resolve_harness_fn = fn "developer-static", "claude_code" -> "pi" end
+      resolve_harness_fn = fn "developer-static", "claude_code" -> "other_harness" end
 
       resolve_fn = fn _role, harness ->
         Agent.update(harness_seen_by_resolve_fn, fn _ -> harness end)
-        {"openai-codex/gpt-5.6-terra", "medium"}
+        {"other-model", "medium"}
       end
 
       codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
@@ -2098,16 +2098,13 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  codegen_call_fn: codegen_call_fn
                )
 
-      assert Agent.get(harness_seen_by_resolve_fn, & &1) == "pi"
-      assert Agent.get(harness_seen_by_codegen_call_fn, & &1) == "pi"
+      assert Agent.get(harness_seen_by_resolve_fn, & &1) == "other_harness"
+      assert Agent.get(harness_seen_by_codegen_call_fn, & &1) == "other_harness"
     end
 
-    # Uses reviewer-static: a role with NO `.harness.<role>.harness` key in the
-    # real config.yaml. It used to name developer-static, which acquired a
-    # deliberate `harness: pi` override (it runs on ChatGPT inside claude
-    # builds), so this test then asserted the opposite of the shipped config and
-    # failed. Keep this pinned to a genuinely override-free role — the point is
-    # the passthrough default, not the identity of the role.
+    # No role carries a `.harness.<role>.harness` key in the real config.yaml
+    # any more, so every role takes this passthrough path. The point of the
+    # test is the passthrough default, not the identity of the role.
     test "no per-role harness override (default resolve_harness_fn against real config.yaml) -> build harness unchanged" do
       codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
         assert harness == "claude_code"
@@ -2127,37 +2124,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  resolve_fn: resolve_fn,
                  codegen_call_fn: codegen_call_fn
                )
-    end
-
-    # Twin of the above: developer-static DOES carry `harness: pi`, so the
-    # build-wide harness must be overridden per role. This is the regression
-    # guard for the shipped "ChatGPT for developer-static" config — if someone
-    # drops the key from config.yaml, this fails loudly rather than silently
-    # routing the role back to claude.
-    test "per-role harness override (developer-static) -> pi wins over the build harness" do
-      test_pid = self()
-
-      codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
-        send(test_pid, {:harness_used, harness})
-        %{"result" => %{"status" => "success", "value" => "x"}}
-      end
-
-      resolve_fn = fn _role, harness ->
-        send(test_pid, {:resolved_for, harness})
-        {"openai-codex/gpt-5.6-terra", "high"}
-      end
-
-      assert {:ok, _result} =
-               OrchestrationLoop.invoke_role(
-                 "developer-static",
-                 "claude_code",
-                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
-                 resolve_fn: resolve_fn,
-                 codegen_call_fn: codegen_call_fn
-               )
-
-      assert_received {:resolved_for, "pi"}
-      assert_received {:harness_used, "pi"}
     end
   end
 
@@ -2277,8 +2243,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         "arm" => "candidate-a",
         "role" => "developer-static",
         "stack" => "static",
-        "harness" => "pi",
-        "model" => "openai-codex/gpt-5.6-terra",
+        "harness" => "claude_code",
+        "model" => "other-model",
         "effort" => "high",
         "source_sha" => "deadbeef",
         "fixed" => true
@@ -2306,7 +2272,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert {:ok, _} =
                OrchestrationLoop.invoke_role(
                  "developer-static",
-                 "pi",
+                 "claude_code",
                  %{cwd: "/tmp", pitch: "x", artifacts: %{}},
                  resolve_fn: resolve_fn,
                  codegen_call_fn: codegen_call_fn,
@@ -2314,7 +2280,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  git_dirty_fn: fn -> false end
                )
 
-      assert Agent.get(seen_agent, & &1) == [{"pi", "openai-codex/gpt-5.6-terra", "high"}]
+      assert Agent.get(seen_agent, & &1) == [{"claude_code", "other-model", "high"}]
     end
 
     test "non-target role: binding present for a DIFFERENT role -> resolve_fn used unchanged", %{
@@ -2364,7 +2330,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  resolve_fn: resolve_fn,
                  # Pins harness resolution independent of config.yaml's live
                  # per-role override (developer-static currently forces
-                 # "pi") — this test asserts the fixed-binding ABSENCE
+                 # "claude_code") — this test asserts the fixed-binding ABSENCE
                  # contract, not config.yaml's current routing.
                  resolve_harness_fn: fn _role, build_harness -> build_harness end,
                  codegen_call_fn: codegen_call_fn
@@ -2432,7 +2398,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert_raise RuntimeError, ~r/source drift makes this arm INCONCLUSIVE/, fn ->
         OrchestrationLoop.invoke_role(
           "developer-static",
-          "pi",
+          "claude_code",
           %{cwd: "/tmp", pitch: "x", artifacts: %{}},
           resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
           codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
@@ -2457,7 +2423,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert_raise RuntimeError, ~r/dirty tree makes this arm INCONCLUSIVE/, fn ->
         OrchestrationLoop.invoke_role(
           "developer-static",
-          "pi",
+          "claude_code",
           %{cwd: "/tmp", pitch: "x", artifacts: %{}},
           resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
           codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
@@ -2483,7 +2449,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert {:ok, _} =
                OrchestrationLoop.invoke_role(
                  "developer-static",
-                 "pi",
+                 "claude_code",
                  %{cwd: "/tmp", pitch: "x", artifacts: %{}},
                  resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
                  codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
@@ -2499,11 +2465,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       [entry] = OrchestrationLoop.get_telemetry().per_role["developer-static"]
 
       assert entry.dispatch == %{
-               harness: "pi",
-               model: "openai-codex/gpt-5.6-terra",
+               harness: "claude_code",
+               model: "other-model",
                effort: "high",
                source: :campaign,
-               native_effort: "--thinking high"
+               native_effort: "--effort high"
              }
     end
   end
@@ -2545,29 +2511,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert entry.dispatch.native_effort == "settings.MAX_THINKING_TOKENS=0"
     end
 
-    test "override present, pi harness -> native_effort names --thinking" do
-      resolve_fn = fn _role, _harness -> {"openai-codex/gpt-5.6-terra", "medium"} end
-
-      assert {:ok, _} =
-               OrchestrationLoop.invoke_role(
-                 "developer-static",
-                 "pi",
-                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
-                 resolve_fn: resolve_fn,
-                 resolve_harness_fn: fn _role, build_harness -> build_harness end,
-                 codegen_call_fn: fn _h, _m, _e, _sp, _t, _pr ->
-                   %{
-                     "result" => %{"status" => "success", "value" => "x"},
-                     "usage" => %{"cost_usd" => 0.1}
-                   }
-                 end,
-                 effort_override: "off"
-               )
-
-      [entry] = OrchestrationLoop.get_telemetry().per_role["developer-static"]
-      assert entry.dispatch.native_effort == "--thinking off"
-    end
-
     test "fixed campaign binding wins over effort_override (override ignored for pinned role)" do
       run_dir =
         Path.join(System.tmp_dir!(), "rms_eff_override_#{:erlang.unique_integer([:positive])}")
@@ -2585,8 +2528,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           "arm" => "candidate-a",
           "role" => "developer-static",
           "stack" => "static",
-          "harness" => "pi",
-          "model" => "openai-codex/gpt-5.6-terra",
+          "harness" => "claude_code",
+          "model" => "other-model",
           "effort" => "high",
           "source_sha" => "deadbeef",
           "fixed" => true
@@ -2605,7 +2548,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert {:ok, _} =
                OrchestrationLoop.invoke_role(
                  "developer-static",
-                 "pi",
+                 "claude_code",
                  %{cwd: "/tmp", pitch: "x", artifacts: %{}},
                  resolve_fn: resolve_fn,
                  codegen_call_fn: codegen_call_fn,
@@ -2615,7 +2558,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       # Fixed binding's own effort ("high") wins; override never applied.
-      assert Agent.get(seen_agent, & &1) == [{"pi", "openai-codex/gpt-5.6-terra", "high"}]
+      assert Agent.get(seen_agent, & &1) == [{"claude_code", "other-model", "high"}]
 
       [entry] = OrchestrationLoop.get_telemetry().per_role["developer-static"]
       assert entry.dispatch.source == :campaign
@@ -4279,7 +4222,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  # Pins harness resolution to match the binding file's
                  # "harness" ("claude_code") independent of config.yaml's
                  # live per-role override (developer-static currently
-                 # forces "pi") — this test asserts the SUPPRESSION
+                 # forced an override) — this test asserts the SUPPRESSION
                  # contract, not config.yaml's current routing.
                  resolve_harness_fn: fn _role, build_harness -> build_harness end,
                  gate_fn: gate_fn,
@@ -4308,11 +4251,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, harness_seen_agent} = Agent.start_link(fn -> [] end)
       on_exit(fn -> if Process.alive?(harness_seen_agent), do: Agent.stop(harness_seen_agent) end)
 
-      resolve_harness_fn = fn "developer-static", "claude_code" -> "pi" end
+      resolve_harness_fn = fn "developer-static", "claude_code" -> "other_harness" end
 
       resolve_escalation_fn = fn "developer-static", harness ->
         Agent.update(harness_seen_agent, fn seen -> seen ++ [harness] end)
-        {"openai-codex/gpt-5.6-terra", "high"}
+        {"other-model", "high"}
       end
 
       assert {:error, _reason} =
@@ -4330,7 +4273,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  advisor_fn: no_op_advisor_fn()
                )
 
-      assert Agent.get(harness_seen_agent, & &1) == ["pi"]
+      assert Agent.get(harness_seen_agent, & &1) == ["other_harness"]
     end
 
     test "count-bound path: no escalation configured -> ctx unchanged, normal tier throughout", %{
@@ -6150,26 +6093,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                    end
     end
 
-    test "pi returns --extension=@<path> when the extension dir exists", %{dir: dir} do
-      ext_dir = Path.join(dir, "enforcement")
-      File.mkdir_p!(ext_dir)
-
-      assert OrchestrationLoop.guard_bundle_flag!("pi", pi_enforcement_ext_path: ext_dir) ==
-               ["--extension=@#{ext_dir}"]
-    end
-
-    test "pi raises when the extension dir is absent (refuse to run unguarded)", %{dir: dir} do
-      missing_dir = Path.join(dir, "nope-enforcement")
-
-      assert_raise RuntimeError,
-                   ~r/pi enforcement extension not found.*refusing to run a role unguarded/,
-                   fn ->
-                     OrchestrationLoop.guard_bundle_flag!("pi",
-                       pi_enforcement_ext_path: missing_dir
-                     )
-                   end
-    end
-
     test "unknown harness raises" do
       assert_raise RuntimeError, ~r/unknown harness/, fn ->
         OrchestrationLoop.guard_bundle_flag!("bogus")
@@ -6181,11 +6104,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # the full installed settings) exists in this checkout, so a live loop run would NOT raise.
       assert ["--settings=@" <> path] = OrchestrationLoop.guard_bundle_flag!("claude_code")
       assert String.ends_with?(path, "claude-code-settings.json")
-    end
-
-    test "real pi enforcement extension resolves without override (positive control)" do
-      assert ["--extension=@" <> path] = OrchestrationLoop.guard_bundle_flag!("pi")
-      assert String.ends_with?(path, "enforcement")
     end
   end
 

@@ -20,7 +20,7 @@ defmodule CodegenTestHarness.BenchManifest do
 
   The skeleton contains:
   - `codegen_sha` — current git HEAD
-  - `harness_versions` — `%{"claude" => version, "pi" => version}`
+  - `harness_versions` — `%{"claude" => version}`
   - `started_at` — ISO-8601 UTC timestamp
   - `model_resolution` — empty map (populated lazily by `record_resolution/4`)
 
@@ -32,7 +32,6 @@ defmodule CodegenTestHarness.BenchManifest do
     File.write!(Path.join(run_dir, "reason.txt"), reason)
 
     {claude_version, _} = System.cmd("claude", ["--version"], stderr_to_stdout: true)
-    {pi_version, _} = System.cmd("pi", ["--version"], stderr_to_stdout: true)
 
     {sha, _} =
       System.cmd("git", ["rev-parse", "HEAD"],
@@ -43,8 +42,7 @@ defmodule CodegenTestHarness.BenchManifest do
     skeleton = %{
       "codegen_sha" => String.trim(sha),
       "harness_versions" => %{
-        "claude" => String.trim(claude_version),
-        "pi" => String.trim(pi_version)
+        "claude" => String.trim(claude_version)
       },
       "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "model_resolution" => %{}

@@ -15,7 +15,7 @@
 # signal: AGENT_TYPE
 # role: developer-*|reviewer-*
 # harnesses: all
-# rationale: Blocks a developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text. Pi twin is observe-only (session_shutdown cannot block).
+# rationale: Blocks a developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text.
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.

@@ -41,7 +41,7 @@ The produced `summary.md` contains:
 - Pass rate per harness
 - Cost table (per-harness, per-stack, grand total)
 - Tokens table (input + cache totals, output)
-- Duration / turns (Claude only — Pi records `:unknown`, rendered as `—`)
+- Duration / turns (missing values render as `—`)
 - Full per-test results table
 - Screenshot counts per harness / stack
 

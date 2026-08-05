@@ -500,17 +500,16 @@ RE_EXTRACT_PATTERN='\[0-9\]\{8\}_\[0-9\]\{6\}_\[a-z0-9_-\]\+_cycle\\\.jsonl\$'
 assert_regex_site_matches "SESSION_LOG_NAME_RE parity: shared/rules/_core/session-log.md" \
     "$CODEGEN_ROOT_PARITY/shared/rules/_core/session-log.md" "$RE_EXTRACT_PATTERN"
 
-# registry.yaml carries 2 match: lines (committer-write-allowlist,
-# reviewer-guard-session-log-write) — both must match.
+# registry.yaml carries 1 match: line (committer-write-allowlist).
 registry_file="$CODEGEN_ROOT_PARITY/shared/enforcement/registry.yaml"
 registry_match_count=$(grep -cE "$RE_EXTRACT_PATTERN" "$registry_file" 2>/dev/null || true)
-assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml has 2 match: lines with the canonical regex" "2" "${registry_match_count:-0}"
+assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml has 1 match: line with the canonical regex" "1" "${registry_match_count:-0}"
 registry_mismatch=$(grep -oE "$RE_EXTRACT_PATTERN" "$registry_file" | sort -u | wc -l | tr -d ' ')
-assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml's 2 match: lines are byte-identical" "1" "$registry_mismatch"
+assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml's match: line is the canonical form" "1" "$registry_mismatch"
 registry_extracted=$(grep -oE "$RE_EXTRACT_PATTERN" "$registry_file" | head -n 1)
 assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml regex matches hooks-lib.sh" "$SESSION_LOG_NAME_RE" "$registry_extracted"
 
-# committer-write-allowlist.sh/.ts are compiler-GENERATED from registry.yaml's
+# committer-write-allowlist.sh is compiler-GENERATED from registry.yaml's
 # match: field (kind: generated, not kind: registration) — parity is already
 # enforced transitively via the registry.yaml assertions above + make
 # hook-parity (which fails if generated output drifts from the compiler's
@@ -519,8 +518,6 @@ assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml regex matches hooks-lib.sh"
 # generated file even if registry.yaml itself is correct).
 assert_regex_site_matches "SESSION_LOG_NAME_RE parity: committer-write-allowlist.sh (generated)" \
     "$CODEGEN_ROOT_PARITY/harnesses/claude/hooks/committer-write-allowlist.sh" "$RE_EXTRACT_PATTERN"
-assert_regex_site_matches "SESSION_LOG_NAME_RE parity: committer-write-allowlist.ts (generated, Pi)" \
-    "$CODEGEN_ROOT_PARITY/harnesses/pi/pi-extensions/enforcement/src/hooks/committer-write-allowlist.ts" "$RE_EXTRACT_PATTERN"
 
 # ── split_command_segments — direct unit tests ───────────────────────────────
 # Containment primitive for COMMAND-source allowlist gates (committer/reviewer

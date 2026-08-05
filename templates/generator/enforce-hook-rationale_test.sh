@@ -84,16 +84,6 @@ rc=0
 bash "$GATE" "$TMP/case4.yaml" >/dev/null 2>&1 || rc=$?
 _assert_eq "harnesses:all no rationale → exit 0" "0" "$rc"
 
-# ── Case 5: harnesses:pi, no rationale → exit 0 ───────────────────────────────
-cat >"$TMP/case5.yaml" <<'EOF'
-- kind: registration
-  id: pi-hook
-  harnesses: pi
-EOF
-rc=0
-bash "$GATE" "$TMP/case5.yaml" >/dev/null 2>&1 || rc=$?
-_assert_eq "harnesses:pi no rationale → exit 0" "0" "$rc"
-
 # ── Case 6: two claude entries BOTH with rationale → exit 0 ───────────────────
 cat >"$TMP/case6.yaml" <<'EOF'
 - kind: registration
@@ -211,8 +201,8 @@ cat >"$TMP/case15.yaml" <<'EOF'
   id: claude-offender
   harnesses: claude
 - kind: registration
-  id: pi-hook-ok
-  harnesses: pi
+  id: all-hook-ok
+  harnesses: all
 EOF
 rc=0
 out=$(bash "$GATE" "$TMP/case15.yaml" 2>&1) || rc=$?

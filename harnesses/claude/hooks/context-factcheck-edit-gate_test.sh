@@ -57,7 +57,7 @@ run_test() {
     local input="$3"
 
     local stdout
-    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -167,7 +167,7 @@ dir10=$(make_fixture 10)
 payload10=$(jq -n --arg fp "$dir10/context/foo.md" --arg cwd "$dir10" \
     '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"register*route\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
 
-stdout10=$(printf '%s' "$payload10" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+stdout10=$(printf '%s' "$payload10" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
 
 if printf '%s' "$stdout10" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
     printf '%s' "$stdout10" | grep -qE 'context/foo\.md:[0-9]+' &&

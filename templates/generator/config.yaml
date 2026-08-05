@@ -13,50 +13,6 @@ tools:
     commands_dir: "commands"
     agents_dir: "agents"
     settings_dir: "$HOME/.claude"
-  pi:
-    name: "pi"
-    display_name: "Pi"
-    yaml_frontmatter: true
-    agents_dir: "$HOME/.pi/agent/agents"
-    # claude tool name -> pi tool name. Pi's built-in registry is
-    # bash,edit,find,grep,ls,read,write (probed from the installed pi package);
-    # subagent/ask_user_question/web_search/fetch_webpage come from
-    # harnesses/pi/pi-extensions/*. An unmapped claude tool ABORTS generation —
-    # never silently drop a tool from a role's allowlist (pi silently ignores
-    # unknown --tools names at runtime, so generation-time is the only guard).
-    tool_map:
-      Agent: subagent
-      AskUserQuestion: ask_user_question
-      Bash: bash
-      Edit: edit
-      Glob: find
-      Grep: grep
-      MultiEdit: edit
-      Read: read
-      WebFetch: fetch_webpage
-      WebSearch: web_search
-      Write: write
-      # mcp__codegen__* -> bare pi.registerTool name (strip the MCP prefix).
-      # Pi has no MCP config; harnesses/pi/pi-extensions/enforcement's
-      # codegen-tools.ts registers the identical tool set under these bare
-      # names, so this mapping is genuine parity, not a shim.
-      mcp__codegen__gate_status: gate_status
-      mcp__codegen__log_read: log_read
-      mcp__codegen__advise: advise
-      mcp__codegen__log_section_developer_phoenix_backend: log_section_developer_phoenix_backend
-      mcp__codegen__log_append_developer_phoenix_backend: log_append_developer_phoenix_backend
-      mcp__codegen__log_section_developer_phoenix_frontend: log_section_developer_phoenix_frontend
-      mcp__codegen__log_append_developer_phoenix_frontend: log_append_developer_phoenix_frontend
-      mcp__codegen__log_section_developer_static: log_section_developer_static
-      mcp__codegen__log_append_developer_static: log_append_developer_static
-      mcp__codegen__log_section_reviewer_phoenix: log_section_reviewer_phoenix
-      mcp__codegen__log_append_reviewer_phoenix: log_append_reviewer_phoenix
-      mcp__codegen__log_section_reviewer_static: log_section_reviewer_static
-      mcp__codegen__log_append_reviewer_static: log_append_reviewer_static
-      mcp__codegen__log_section_committer: log_section_committer
-      mcp__codegen__log_append_committer: log_append_committer
-      mcp__codegen__log_section_context_curator: log_section_context_curator
-      mcp__codegen__log_append_context_curator: log_append_context_curator
 
 # Common variables available to all templates
 common:
@@ -77,9 +33,7 @@ harness:
   # Distinct from `escalate_model`/`escalate_effort` (a single give-up-
   # boundary override tried once on the FINAL gate-retry attempt): a
   # fallback rung is tried on ANY attempt whose failure classifies
-  # switch_model, immediately, not only at the end. Cross-provider rungs
-  # (Anthropic model on a pi/openai-codex role or vice versa) are OUT OF
-  # SCOPE here — see codegen/pitches/draft/cross-provider-model-fallback.md.
+  # switch_model, immediately, not only at the end.
   developer-phoenix-backend:
     claude:
       {
@@ -88,14 +42,6 @@ harness:
         escalate_model: opus,
         escalate_effort: "off",
         fallback: [{ model: opus, effort: "off" }],
-      }
-    pi:
-      {
-        model: openai-codex/gpt-5.6-terra,
-        effort: "off",
-        escalate_model: openai-codex/gpt-5.6-sol,
-        escalate_effort: "off",
-        fallback: [{ model: openai-codex/gpt-5.6-sol, effort: "off" }],
       }
   developer-phoenix-frontend:
     claude:
@@ -106,40 +52,7 @@ harness:
         escalate_effort: "off",
         fallback: [{ model: opus, effort: "off" }],
       }
-    pi:
-      {
-        model: openai-codex/gpt-5.6-terra,
-        effort: "off",
-        escalate_model: openai-codex/gpt-5.6-sol,
-        escalate_effort: "off",
-        fallback: [{ model: openai-codex/gpt-5.6-sol, effort: "off" }],
-      }
-  # Pi rungs pinned to the gpt-5.6 generation (see `pi --list-models`), used
-  # as the repo-wide Anthropic→ChatGPT tier map for every role below:
-  #   haiku  -> luna  (1/6 $/Mtok in/out)
-  #   sonnet -> terra (2.5/15 $/Mtok in/out, 372K ctx)
-  #   opus   -> sol   (5/30 $/Mtok in/out, 372K ctx)
-  # Effort is mirrored from each role's claude twin, not derived from the old
-  # pi model id. Full tier-map table + rationale: context/role-config.md
-  # § Anthropic → ChatGPT Tier Map.
   developer-static:
-    # PER-ROLE HARNESS OVERRIDE — this role runs on pi (ChatGPT) even inside an
-    # otherwise-claude build. RoleResolver.resolve_harness/2 reads
-    # `.harness.<role>.harness` and OrchestrationLoop.invoke_role/4 applies it
-    # per role, so `codegen-build --harness=claude` → `mix codegen.loop
-    # --harness=claude_code` still dispatches THIS role through pi, while
-    # reviewer-static / committer stay on claude.
-    # Absent this key the role would inherit the build-wide harness.
-    # Model/effort below are then read from the `pi:` block, not `claude:`.
-    #
-    # NOTE for benchmarking: `make bench` runs its claude and pi arms off THIS
-    # file, so while this key is set the "claude" arm runs developer-static on
-    # pi too. Comment it out to isolate a pure claude-vs-pi comparison.
-    #
-    # Evidence for pi (bench 20260717_064438, static vite-react scaffold):
-    #   developer-static  claude/sonnet $1.5142  vs  pi/gpt-5.6-terra $0.4462  → 3.4x cheaper
-    #   whole build       claude $2.2094 FAILED  vs  pi $0.7564 PASSED
-    harness: pi
     claude:
       {
         model: sonnet,
@@ -148,50 +61,31 @@ harness:
         escalate_effort: "off",
         fallback: [{ model: opus, effort: "off" }],
       }
-    pi:
-      {
-        model: openai-codex/gpt-5.6-terra,
-        effort: "off",
-        escalate_model: openai-codex/gpt-5.6-sol,
-        escalate_effort: "off",
-        fallback: [{ model: openai-codex/gpt-5.6-sol, effort: "off" }],
-      }
   reviewer-phoenix:
     claude: { model: sonnet, effort: "off" }
-    pi: { model: openai-codex/gpt-5.6-terra, effort: "off" }
   reviewer-static:
     claude: { model: sonnet, effort: "off" }
-    pi: { model: openai-codex/gpt-5.6-terra, effort: "off" }
-  # Pi infers the provider from the <provider>/ model prefix; no --provider flag is passed by the launchers.
   committer:
     claude: { model: haiku, effort: "off" }
-    pi: { model: openai-codex/gpt-5.6-luna, effort: "off" }
   context-curator:
     claude: { model: haiku, effort: "off" }
-    pi: { model: openai-codex/gpt-5.6-luna, effort: "off" }
   app_build:
     claude: { model: sonnet, effort: "off" }
-    pi: { model: openai-codex/gpt-5.6-terra, effort: "off" }
   inspector:
     claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
-  # debug = pi-debug launcher config; read by pi-debug.sh via yq .harness.debug.pi.model
+  # debug = claude-debug launcher config; read by claude-debug.sh via
+  # yq .harness.debug.claude.model
   # Distinct from harness.inspector (read-only inspector role).
   debug:
     claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
   shape:
     claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.6-sol, effort: high }
   experiment:
     claude: { model: opus, effort: high }
-    pi: { model: openai-codex/gpt-5.6-sol, effort: high }
   ops:
     claude: { model: sonnet, effort: high }
-    pi: { model: openai-codex/gpt-5.6-terra, effort: high }
   babysit:
     claude: { model: sonnet, effort: medium }
-    pi: { model: openai-codex/gpt-5.6-terra, effort: medium }
 
 roles:
   usage-rules:

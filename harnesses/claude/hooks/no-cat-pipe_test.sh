@@ -26,12 +26,11 @@ run_test() {
     local expected="$2"
     local input="$3"
 
-    # Ambient CLAUDE_ROLE/AGENT_TYPE/PI_ROLE (e.g. the developer session
+    # Ambient CLAUDE_ROLE/AGENT_TYPE (e.g. the developer session
     # running this test suite carries CLAUDE_ROLE=build) must not leak into
-    # the fixture — resolve_role()'s CLAUDE_ROLE > PI_ROLE precedence would
     # silently override a test's intended role.
     local stdout
-    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -62,10 +61,9 @@ run_test_env() {
     done
 
     # Same ambient-leak isolation as run_test — strip CLAUDE_ROLE/AGENT_TYPE/
-    # PI_ROLE from the outer shell before applying the test's explicit
     # env_prefix overrides.
     local stdout
-    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE $env_prefix bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE $env_prefix bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then

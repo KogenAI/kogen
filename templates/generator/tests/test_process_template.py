@@ -117,18 +117,18 @@ class TestProcessIncludesRecursively(unittest.TestCase):
 
 
 class TestStripTemplateBlocks(unittest.TestCase):
-    """_strip_template_blocks — claude/pi branch selection, frontmatter, invalid tool_name."""
+    """_strip_template_blocks — claude/agents branch selection, frontmatter, invalid tool_name."""
 
     def test_claude_keeps_claude_branch_drops_else(self):
-        content = "{% if tool.name == 'claude' %}CLAUDE_CONTENT{% else %}PI_CONTENT{% endif %}"
+        content = "{% if tool.name == 'claude' %}CLAUDE_CONTENT{% else %}AGENTS_CONTENT{% endif %}"
         result = pt._strip_template_blocks(content, "claude", False)
         self.assertIn("CLAUDE_CONTENT", result)
-        self.assertNotIn("PI_CONTENT", result)
+        self.assertNotIn("AGENTS_CONTENT", result)
 
-    def test_pi_keeps_else_branch_drops_claude(self):
-        content = "{% if tool.name == 'claude' %}CLAUDE_CONTENT{% else %}PI_CONTENT{% endif %}"
-        result = pt._strip_template_blocks(content, "pi", False)
-        self.assertIn("PI_CONTENT", result)
+    def test_agents_keeps_else_branch_drops_claude(self):
+        content = "{% if tool.name == 'claude' %}CLAUDE_CONTENT{% else %}AGENTS_CONTENT{% endif %}"
+        result = pt._strip_template_blocks(content, "agents", False)
+        self.assertIn("AGENTS_CONTENT", result)
         self.assertNotIn("CLAUDE_CONTENT", result)
 
     def test_claude_simple_if_no_else_kept(self):
@@ -136,9 +136,9 @@ class TestStripTemplateBlocks(unittest.TestCase):
         result = pt._strip_template_blocks(content, "claude", False)
         self.assertIn("ONLY_CLAUDE", result)
 
-    def test_pi_simple_if_no_else_dropped(self):
+    def test_agents_simple_if_no_else_dropped(self):
         content = "{% if tool.name == 'claude' %}ONLY_CLAUDE{% endif %}"
-        result = pt._strip_template_blocks(content, "pi", False)
+        result = pt._strip_template_blocks(content, "agents", False)
         self.assertNotIn("ONLY_CLAUDE", result)
         # block removed → not just tags stripped, whole block gone
         self.assertEqual(result.strip(), "")
@@ -174,7 +174,7 @@ class TestStripTemplateBlocks(unittest.TestCase):
 
 
 class TestProcessTemplate(unittest.TestCase):
-    """process_template — model+effort rewrite, pi mode untouched, role absent no-op, yaml absent no-op."""
+    """process_template — model+effort rewrite, agents mode untouched, role absent no-op, yaml absent no-op."""
 
     def _make_template(self, tmpdir, name, content):
         p = Path(tmpdir) / name
@@ -212,15 +212,15 @@ class TestProcessTemplate(unittest.TestCase):
             self.assertIn("effort: high", output)
             self.assertNotIn("model: sonnet", output)
 
-    def test_pi_mode_never_rewrites(self):
-        """pi mode: model line is never rewritten regardless of config."""
+    def test_agents_mode_never_rewrites(self):
+        """agents mode: model line is never rewritten regardless of config."""
         with tempfile.TemporaryDirectory() as tmpdir:
             template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", self.TEMPLATE_CONTENT)
             config = self._make_config(tmpdir, self.CONFIG_YAML)
             with patch("sys.stdout", new_callable=StringIO) as mock_out:
-                pt.process_template(template, "pi", False, config)
+                pt.process_template(template, "agents", False, config)
                 output = mock_out.getvalue()
-            # pi mode: model: sonnet left as-is (no config rewrite)
+            # agents mode: model: sonnet left as-is (no config rewrite)
             self.assertIn("model: sonnet", output)
 
     def test_role_absent_from_config_raises(self):
@@ -290,176 +290,6 @@ class TestProcessTemplate(unittest.TestCase):
                 pt.process_template(template, "claude", False, None)
                 output = mock_out.getvalue()
             self.assertIn("model: sonnet", output)
-
-
-class PiToolMapTests(unittest.TestCase):
-    """pi frontmatter tools: line rewrite via config.yaml tools.pi.tool_map."""
-
-    def _make_template(self, tmpdir, name, content):
-        p = Path(tmpdir) / name
-        p.write_text(content)
-        return str(p)
-
-    def _make_config(self, tmpdir, content):
-        p = Path(tmpdir) / "config.yaml"
-        p.write_text(content)
-        return str(p)
-
-    TOOL_MAP_CONFIG = textwrap.dedent("""\
-        tools:
-          pi:
-            tool_map:
-              Bash: bash
-              Edit: edit
-              Glob: find
-              Grep: grep
-              MultiEdit: edit
-              Read: read
-              Write: write
-        harness:
-          developer-phoenix-backend:
-            claude: { model: opus, effort: high }
-    """)
-
-    def test_pi_tools_line_mapped(self):
-        """claude tool names in tools: line → pi tool names."""
-        content = textwrap.dedent("""\
-            ---
-            name: developer-phoenix-backend
-            model: sonnet
-            tools: Bash, Edit, Glob, Grep, Read
-            ---
-            Body text here.
-        """)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", content)
-            config = self._make_config(tmpdir, self.TOOL_MAP_CONFIG)
-            with patch("sys.stdout", new_callable=StringIO) as mock_out:
-                pt.process_template(template, "pi", True, config)
-                output = mock_out.getvalue()
-            self.assertIn("tools: bash, edit, find, grep, read", output)
-
-    def test_pi_tools_dedupes_edit(self):
-        """Edit + MultiEdit both map to edit -> single entry, not duplicated."""
-        content = textwrap.dedent("""\
-            ---
-            name: developer-phoenix-backend
-            model: sonnet
-            tools: Edit, MultiEdit
-            ---
-            Body text here.
-        """)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", content)
-            config = self._make_config(tmpdir, self.TOOL_MAP_CONFIG)
-            with patch("sys.stdout", new_callable=StringIO) as mock_out:
-                pt.process_template(template, "pi", True, config)
-                output = mock_out.getvalue()
-            self.assertIn("tools: edit", output)
-            self.assertNotIn("tools: edit, edit", output)
-
-    def test_pi_tools_preserves_order(self):
-        """Mapped tool order matches the source order."""
-        content = textwrap.dedent("""\
-            ---
-            name: committer
-            model: haiku
-            tools: Write, Bash
-            ---
-            Body text here.
-        """)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "committer.md.j2", content)
-            config = self._make_config(tmpdir, self.TOOL_MAP_CONFIG)
-            with patch("sys.stdout", new_callable=StringIO) as mock_out:
-                pt.process_template(template, "pi", True, config)
-                output = mock_out.getvalue()
-            self.assertIn("tools: write, bash", output)
-
-    def test_pi_unmapped_tool_aborts(self):
-        """A claude tool with no tool_map entry aborts generation, naming the tool."""
-        content = textwrap.dedent("""\
-            ---
-            name: debug
-            model: opus
-            tools: Skill
-            ---
-            Body text here.
-        """)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "debug.md.j2", content)
-            config = self._make_config(tmpdir, self.TOOL_MAP_CONFIG)
-            with self.assertRaises(SystemExit) as ctx:
-                pt.process_template(template, "pi", True, config)
-            self.assertIn("Skill", str(ctx.exception))
-
-    def test_pi_frontmatter_without_tools_line_untouched(self):
-        """description:-only frontmatter (slash-command shape) renders unchanged."""
-        content = textwrap.dedent("""\
-            ---
-            description: some command
-            ---
-            Body text here.
-        """)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "poke-holes.md.j2", content)
-            config = self._make_config(tmpdir, self.TOOL_MAP_CONFIG)
-            with patch("sys.stdout", new_callable=StringIO) as mock_out:
-                pt.process_template(template, "pi", True, config)
-                output = mock_out.getvalue()
-            self.assertIn("description: some command", output)
-            self.assertNotIn("tools:", output)
-
-    def test_claude_render_unaffected_by_tool_map(self):
-        """claude render of the same content still emits claude tool names verbatim."""
-        content = textwrap.dedent("""\
-            ---
-            name: developer-phoenix-backend
-            model: sonnet
-            tools: Bash, Edit, Glob, Grep, Read
-            ---
-            Body text here.
-        """)
-        config_yaml = textwrap.dedent("""\
-            tools:
-              pi:
-                tool_map:
-                  Bash: bash
-            harness:
-              developer-phoenix-backend:
-                claude: { model: opus, effort: high }
-        """)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "developer-phoenix-backend.md.j2", content)
-            config = self._make_config(tmpdir, config_yaml)
-            with patch("sys.stdout", new_callable=StringIO) as mock_out:
-                pt.process_template(template, "claude", True, config)
-                output = mock_out.getvalue()
-            self.assertIn("tools: Bash, Edit, Glob, Grep, Read", output)
-
-    def test_pi_body_horizontal_rule_survives(self):
-        """A literal '---' line inside the prompt body is not treated as a frontmatter delimiter."""
-        content = textwrap.dedent("""\
-            ---
-            name: committer
-            model: haiku
-            tools: Write
-            ---
-            Above the rule.
-
-            ---
-
-            Below the rule.
-        """)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            template = self._make_template(tmpdir, "committer.md.j2", content)
-            config = self._make_config(tmpdir, self.TOOL_MAP_CONFIG)
-            with patch("sys.stdout", new_callable=StringIO) as mock_out:
-                pt.process_template(template, "pi", True, config)
-                output = mock_out.getvalue()
-            self.assertIn("tools: write", output)
-            self.assertIn("Above the rule.", output)
-            self.assertIn("Below the rule.", output)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,8 @@
 Simple Jinja2-like template processor for OCG template generation.
 
 Output format:
-  --format=md   (default) — emit Markdown body for Claude or Pi.
+  --format=md   (default) — emit Markdown body in the 'claude' or
+                'agents' flavour.
 """
 
 import sys
@@ -90,14 +91,16 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
         content = re.sub(r'{% if tool\.yaml_frontmatter %}.*?{% endif %}', '', content, flags=re.DOTALL)
 
     # if/else/endif and simple if/endif blocks.
-    # Supported tool names: 'claude', 'pi'.
+    # Supported render modes: 'claude', 'agents'.
     # Dual-render pattern:
-    #   {% if tool.name == 'claude' %}<claude-branch>{% else %}<pi-branch>{% endif %}
-    # claude → renders claude-branch (e.g. @-imports)
-    # pi → renders else-branch (e.g. → See pointers)
-    if tool_name not in ('claude', 'pi'):
+    #   {% if tool.name == 'claude' %}<claude-branch>{% else %}<agents-branch>{% endif %}
+    # claude → renders claude-branch (e.g. @-imports; CLAUDE-{variant}.md)
+    # agents → renders else-branch (e.g. → See pointers; AGENTS-{variant}.md,
+    #          the harness-neutral flavour read by any agent that does not
+    #          support Claude Code's @-import auto-load)
+    if tool_name not in ('claude', 'agents'):
         raise ValueError(
-            f"Unsupported tool_name: {tool_name!r} (expected 'claude' or 'pi')"
+            f"Unsupported tool_name: {tool_name!r} (expected 'claude' or 'agents')"
         )
 
     if tool_name == 'claude':
@@ -116,7 +119,7 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
             flags=re.DOTALL,
         )
     else:
-        # pi: keep else-branch; drop claude-branch.
+        # agents: keep else-branch; drop claude-branch.
         content = re.sub(
             r'\{%\s*if\s+tool\.name\s*==\s*\'claude\'\s*%\}.*?\{%\s*else\s*%\}(.*?)\{%\s*endif\s*%\}',
             r'\1',
@@ -137,31 +140,6 @@ def _strip_template_blocks(content, tool_name, yaml_frontmatter):
     # Clean up any remaining template syntax.
     content = re.sub(r'{% [^}]+ %}', '', content)
     return content
-
-
-def _map_pi_tools(tools_csv, tool_map, template_file):
-    """Translate a claude tools: CSV to pi tool names, de-duped, order-preserved.
-
-    Aborts loud (SystemExit) on any claude tool with no tool_map entry —
-    a silently-narrowed allowlist is an invisible capability removal. Pi
-    itself silently ignores unknown --tools names at runtime, so generation
-    time is the only guard against this.
-    """
-    mapped = []
-    for raw in tools_csv.split(','):
-        name = raw.strip()
-        if not name:
-            continue
-        if name not in tool_map:
-            raise SystemExit(
-                f"process_template.py: no pi tool_map entry for claude tool {name!r}"
-                f" (template {template_file}); add it to config.yaml tools.pi.tool_map"
-                f" or remove the tool from the template frontmatter"
-            )
-        pi_name = tool_map[name]
-        if pi_name not in mapped:
-            mapped.append(pi_name)
-    return ', '.join(mapped)
 
 
 def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=None):
@@ -242,49 +220,6 @@ def process_template(template_file, tool_name, yaml_frontmatter, config_yaml=Non
                 flags=re.DOTALL,
             )
 
-    if tool_name == 'pi' and config_yaml:
-        try:
-            import yaml
-        except ImportError:
-            raise SystemExit(
-                "process_template.py: PyYAML required for pi config rendering but not installed"
-                " — pip3 install pyyaml"
-            )
-
-        with open(config_yaml, 'r') as f:
-            config = yaml.safe_load(f)
-        tool_map = config.get('tools', {}).get('pi', {}).get('tool_map', {})
-
-        # Only rewrite when a frontmatter block with a tools: line is present.
-        # Slash-command templates carry description:-only frontmatter (no
-        # tools: line) and must render unchanged — this is the only
-        # legitimate no-op path.
-        def rewrite_pi_frontmatter(m):
-            fm = m.group(1)
-
-            def rewrite_tools_line(tm):
-                mapped = _map_pi_tools(tm.group(1), tool_map, template_file)
-                return f'tools: {mapped}'
-
-            fm, n = re.subn(
-                r'^tools:[ \t]*(.+)$',
-                rewrite_tools_line,
-                fm,
-                count=1,
-                flags=re.MULTILINE,
-            )
-            if n == 0:
-                return f'---\n{m.group(1)}\n---'
-            return f'---\n{fm}\n---'
-
-        content = re.sub(
-            r'^---\n(.*?)\n---',
-            rewrite_pi_frontmatter,
-            content,
-            count=1,
-            flags=re.DOTALL,
-        )
-
     print(content, end='')
 
 
@@ -294,7 +229,7 @@ if __name__ == "__main__":
                         help='Path to config.yaml (for model/effort frontmatter rewrite — claude only)')
     parser.add_argument('template_file', help='Template file to process')
     parser.add_argument('tool_name', nargs='?', default=None,
-                        help='Tool name (claude, pi)')
+                        help='Render mode (claude, agents)')
     parser.add_argument('yaml_frontmatter', nargs='?', default=None,
                         help='Whether to include YAML frontmatter (true/false)')
 

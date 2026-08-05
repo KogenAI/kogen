@@ -105,7 +105,7 @@ export MISE_DATA_DIR="$HOME/.local/share/mise"
 export MISE_STATE_DIR="$HOME/.local/state/mise"
 ```
 
-Pre-existing test fixture gap: when pi-extension npm install errors are surfaced (not masked by `| sed`), a test running in a temp HOME will hit `mise exec` → trust lookup failure → exit 1 (real error, not a false negative). Capturing real MISE_STATE_DIR before HOME override prevents spurious failures and surfaces real build issues.
+Pre-existing test fixture gap: when npm install errors are surfaced (not masked by `| sed`), a test running in a temp HOME will hit `mise exec` → trust lookup failure → exit 1 (real error, not a false negative). Capturing real MISE_STATE_DIR before HOME override prevents spurious failures and surfaces real build issues.
 
 ## Sourced Helpers — No Inherited `-e` Flag
 
@@ -214,7 +214,7 @@ Pattern: `local witness="${16:-}"` in function body (defaults to empty string wh
 
 ## Stub-Heredoc Exit-Code Control
 
-When a test stub uses a heredoc (e.g., heredoc-based mock pi binary emitting JSONL fixture bytes), the stub's trailing statements are reachable only if the heredoc is NOT wrapped in `exec`. Pattern: `exec cat "$FIXTURE_PATH"` replaces the shell process, making a subsequent `exit $N` unreachable — stub always exits with the exit code of `cat`, not the forced code. **Fix**: drop `exec`, then append the exit statement on a new line: `cat "$FIXTURE_PATH"` newline `exit "${STUB_EXIT:-0}"`. This allows the stub to emit fixture bytes AND force a non-zero exit code for failure-path testing. The stub's exit code becomes configurable via env var passed through the test harness (e.g., `STUB_EXIT=3 run_dispatch ...`), enabling single-stub-script multi-case testing without per-case stub duplication.
+When a test stub uses a heredoc (e.g., a heredoc-based mock CLI binary emitting JSONL fixture bytes), the stub's trailing statements are reachable only if the heredoc is NOT wrapped in `exec`. Pattern: `exec cat "$FIXTURE_PATH"` replaces the shell process, making a subsequent `exit $N` unreachable — stub always exits with the exit code of `cat`, not the forced code. **Fix**: drop `exec`, then append the exit statement on a new line: `cat "$FIXTURE_PATH"` newline `exit "${STUB_EXIT:-0}"`. This allows the stub to emit fixture bytes AND force a non-zero exit code for failure-path testing. The stub's exit code becomes configurable via env var passed through the test harness (e.g., `STUB_EXIT=3 run_dispatch ...`), enabling single-stub-script multi-case testing without per-case stub duplication.
 
 ## Printf Format Strings: Hyphen-Prefix Escape Requirement
 

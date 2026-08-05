@@ -8,7 +8,7 @@
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
 # harnesses: all
-# rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard; Pi twin gates via PI_ROLE/resolveRole() for parity with the native worktree/pitch write boundary
+# rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard on the worktree/pitch write boundary
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.
@@ -19,8 +19,8 @@
 # is narrowed for BOTH the orchestrator AND Agent-spawned helpers.
 # ops mode has full write surface — no restriction applies.
 #
-# Responds to CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness)
-# via resolve_role() — precedence: CLAUDE_ROLE > PI_ROLE.
+# Responds to CLAUDE_ROLE (Claude Code)
+# via resolve_role().
 
 set -u
 

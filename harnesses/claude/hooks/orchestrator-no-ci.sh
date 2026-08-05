@@ -14,7 +14,7 @@
 #
 # Only enforces when AGENT_TYPE is empty AND AGENT_ID is empty (orchestrator level).
 # Subagents (any non-empty AGENT_TYPE or AGENT_ID) pass through.
-# ops/experiment/babysit mode (CLAUDE_ROLE / PI_ROLE) bypasses via resolve_role() — ops runs on live
+# ops/experiment/babysit mode (CLAUDE_ROLE) bypasses via resolve_role() — ops runs on live
 # boxes, experiment is a standalone source-writable dev session, babysit dispatches the existing
 # codegen-build --queue drain; all three need full gate-command access for inspection/dispatch.
 #

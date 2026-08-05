@@ -2,7 +2,7 @@
 
 Guidance for AI agents working in the codegen repository.
 
-**Codegen = polyglot generator repo.** Generates and installs AI-agent harnesses (Claude Code, Pi) consumed by downstream Phoenix and static-site projects. Tech stack: Bash + Python (`process_template.py`, `hook_registrations.py`) + Jinja-style `.md.j2` templates + TypeScript Pi extensions + Elixir/ExUnit test harness.
+**Codegen = polyglot generator repo.** Generates and installs AI-agent harnesses (Claude Code) consumed by downstream Phoenix and static-site projects. Tech stack: Bash + Python (`process_template.py`, `hook_registrations.py`) + Jinja-style `.md.j2` templates + Elixir/ExUnit test harness.
 
 @context/repo-structure.md
 
@@ -27,7 +27,7 @@ committer
 ```
 
 **Codegen-specific gloss — `developer-phoenix-backend` scope:**
-In this repo "backend" means everything: Bash scripts, Python generator pipeline, TypeScript Pi extensions, Elixir/ExUnit test harness, `.md.j2` templates, rule files, hook scripts, scaffold files. There is no separate UI layer; `developer-phoenix-frontend` is only needed if a downstream-facing HEEx template, LiveView module, or Tailwind class is being changed.
+In this repo "backend" means everything: Bash scripts, Python generator pipeline, Elixir/ExUnit test harness, `.md.j2` templates, rule files, hook scripts, scaffold files. There is no separate UI layer; `developer-phoenix-frontend` is only needed if a downstream-facing HEEx template, LiveView module, or Tailwind class is being changed.
 
 **Split discipline (downstream Phoenix apps):** `lib/<app>/` (contexts, schemas, workers, mailers) → backend. `lib/<app>_web/` LiveView modules (`*_live.ex`), HEEx templates, JS hooks, Tailwind → frontend. Reviewer routes feedback to the correct subagent based on which layer the fix lands in.
 

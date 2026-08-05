@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# codegen-build_test.sh — unit tests for codegen-build, dispatch.sh (claude + pi).
+# codegen-build_test.sh — unit tests for codegen-build, dispatch.sh (claude).
 #
 # codegen-build has no engine flag: dispatch.sh always execs the deterministic
 # Elixir orchestration loop (mix codegen.loop). There is no legacy engine.
@@ -7,11 +7,10 @@
 # Tests:
 #  (a) --harness=claude → dispatch.sh execs `mix codegen.loop
 #      --harness=claude_code ...` (loop path)
-#  (b) --harness=pi → dispatch.sh execs `mix codegen.loop --harness=pi ...`
 #  (c) missing --harness exits 2 with usage on stderr
 #  (e) exit codes 0/1/2/130 propagate from stub
 #  (f) stdout passes through fixture output byte-identical (mix stub's own
-#      stdout — not a claude/pi passthrough)
+#      stdout — not a passthrough)
 #  (p1) --stack omitted, cwd has mix.exs only → detects phoenix
 #  (p2) --stack omitted, cwd has vite.config.js only → detects static
 #  (p3) --stack omitted, cwd has BOTH mix.exs and vite.config.js → ambiguous,
@@ -22,11 +21,9 @@
 #  (q1)-(q4) schema-staleness preflight (codegen/manifest.yaml)
 #  (pa1) --print-argv on claude leg: exits 0, prints codegen.loop argv, never
 #        invokes the stubbed mix binary
-#  (pa2) --print-argv on pi leg: same, --harness=pi
 #  (pa3) --print-argv performs zero mutation — integrate pre-step skipped
 #  (b1) dry-run honesty: --max-budget-usd threads through
 #       CODEGEN_BUILD_MAX_BUDGET_USD into the print-argv'd loop argv (claude leg)
-#  (b2-pi) same dry-run honesty check on the pi leg
 #  (b3) non-adoption: codegen itself never passes --max-budget-usd
 #  (u) usage<->parse parity: every parsed flag appears in the usage string
 #      and vice versa
@@ -39,7 +36,6 @@ HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_ROOT="$(cd "$HOOKS_DIR/../../.." && pwd)"
 CODEGEN_BUILD="$CODEGEN_ROOT/codegen-build"
 REAL_CLAUDE_HARNESS="$CODEGEN_ROOT/harnesses/claude"
-REAL_PI_HARNESS="$CODEGEN_ROOT/harnesses/pi"
 
 # shellcheck source=/dev/null
 source "$CODEGEN_ROOT/harnesses/shared/test-stub-lib.sh"
@@ -100,14 +96,6 @@ make_claude_harness() {
     local harness_dir="$cb_root/harnesses/claude"
     mkdir -p "$harness_dir"
     link_or_copy "$REAL_CLAUDE_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
-    echo "$harness_dir"
-}
-
-make_pi_harness() {
-    local cb_root="$1"
-    local harness_dir="$cb_root/harnesses/pi"
-    mkdir -p "$harness_dir"
-    link_or_copy "$REAL_PI_HARNESS/dispatch.sh" "$harness_dir/dispatch.sh"
     echo "$harness_dir"
 }
 
@@ -219,85 +207,6 @@ else
     printf 'FAIL: (a) args file not created — mix stub not invoked (exit: %s)\n' "$actual_ec"
     fail=$((fail + 5))
 fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (b): --harness=pi → dispatch.sh execs
-# `mix codegen.loop --harness=pi ...` (loop path)
-# ─────────────────────────────────────────────────────────────────────────────
-CB_B="$(make_cb_root cb_b)"
-make_pi_harness "$CB_B" >/dev/null
-
-ARGS_B="$BASE_TMP/args_b.txt"
-BIN_B="$BASE_TMP/bin_b"
-make_mix_stub "$BIN_B"
-make_codegen_log_stub "$BIN_B"
-
-# Real dispatch.sh execs a stubbed `mix` that never writes gate-result.json —
-# plant one at the --cwd target so the post-step's fail-closed check passes
-# and codegen-build's pi-leg `rm -f` on --cwd cleanup never touches the live
-# repo's own codegen/gate-pending/ (which is what --cwd omission used to do).
-MARKER_B="$BASE_TMP/marker_b"
-mkdir -p "$MARKER_B/codegen/gate-pending"
-printf '{"verdict":"clear"}\n' >"$MARKER_B/codegen/gate-pending/gate-result.json"
-
-actual_ec=0
-TARGET_ARGS_FILE="$ARGS_B" \
-    PATH="$BIN_B:$PATH" \
-    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    "$CB_B/codegen-build" --harness=pi --stack=phoenix --cwd="$MARKER_B" \
-    "pi prompt" 2>/dev/null ||
-    actual_ec=$?
-
-if [[ -f "$ARGS_B" ]]; then
-    ARGS_B_CONTENT="$(cat "$ARGS_B")"
-    assert_contains "(b) mix codegen.loop invoked" "$ARGS_B_CONTENT" "codegen.loop"
-    assert_contains "(b) --harness=pi passed" "$ARGS_B_CONTENT" "--harness=pi"
-    assert_contains "(b) --stack passed" "$ARGS_B_CONTENT" "--stack="
-    assert_contains "(b) --cwd passed" "$ARGS_B_CONTENT" "--cwd="
-    assert_contains "(b) prompt forwarded" "$ARGS_B_CONTENT" "pi prompt"
-else
-    printf 'FAIL: (b) args file not created — mix stub not invoked (exit: %s)\n' "$actual_ec"
-    fail=$((fail + 5))
-fi
-
-# Live-tree-untouched: this test used to run the real pi-leg codegen-build
-# with no --cwd, defaulting CWD=$PWD and rm -f'ing the live repo's
-# codegen/gate-pending/{gate-result.json,cycle-state.json}. --cwd="$MARKER_B"
-# above scopes the rm -f to the marker dir. run-tests.sh's whole-directory
-# snapshot/compare of the live codegen/gate-pending/ (see run-tests.sh) is
-# the backstop that catches any future regression of this kind.
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (b2): --harness=pi exits non-zero when dispatch succeeds but gate verdict is missing
-# ─────────────────────────────────────────────────────────────────────────────
-CB_B2="$(make_cb_root cb_b2)"
-mkdir -p "$CB_B2/harnesses/pi"
-make_stub "$CB_B2/harnesses/pi/dispatch.sh" 'exit 0'
-
-actual_ec=0
-(
-    cd "$CB_B2"
-    ./codegen-build --harness=pi --stack=phoenix "pi prompt" 2>"$BASE_TMP/stderr_b2"
-) || actual_ec=$?
-
-stderr_b2="$(cat "$BASE_TMP/stderr_b2")"
-check "(b2) missing gate result exits non-zero" "1" "$actual_ec"
-assert_contains "(b2) stderr mentions missing build-result.json" "$stderr_b2" "build-result.json"
-assert_contains "(b2) stderr is fail-closed" "$stderr_b2" "missing"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (b3): --harness=pi succeeds when dispatch writes a clear gate result
-# ─────────────────────────────────────────────────────────────────────────────
-CB_B3="$(make_cb_root cb_b3)"
-mkdir -p "$CB_B3/harnesses/pi"
-make_stub "$CB_B3/harnesses/pi/dispatch.sh" "$(result_ok_body)"
-
-actual_ec=0
-(
-    cd "$CB_B3"
-    ./codegen-build --harness=pi --stack=phoenix "pi prompt" >/dev/null 2>&1
-) || actual_ec=$?
-check "(b3) clear gate result exits 0" "0" "$actual_ec"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (f): stdout byte-identical pass-through — codegen-build → dispatch.sh
@@ -662,36 +571,6 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (pa2): --print-argv on pi leg — same, --harness=pi.
-# ─────────────────────────────────────────────────────────────────────────────
-CB_PA2="$(make_cb_root cb_pa2)"
-make_pi_harness "$CB_PA2" >/dev/null
-
-ARGS_PA2="$BASE_TMP/args_pa2.txt"
-rm -f "$ARGS_PA2"
-BIN_PA2="$BASE_TMP/bin_pa2"
-make_mix_stub "$BIN_PA2"
-make_codegen_log_stub "$BIN_PA2"
-
-actual_ec=0
-OUT_PA2=$(TARGET_ARGS_FILE="$ARGS_PA2" \
-    PATH="$BIN_PA2:$PATH" \
-    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    "$CB_PA2/codegen-build" --harness=pi --stack=phoenix \
-    --print-argv "pa2 prompt" 2>/dev/null) || actual_ec=$?
-
-check "(pa2) --print-argv exits 0 on pi leg" "0" "$actual_ec"
-assert_contains "(pa2) output mentions codegen.loop" "$OUT_PA2" "codegen.loop"
-assert_contains "(pa2) output mentions --harness=pi" "$OUT_PA2" "--harness=pi"
-if [[ -f "$ARGS_PA2" ]]; then
-    printf 'FAIL: (pa2) mix stub was invoked despite --print-argv (zero-spend violated)\n'
-    fail=$((fail + 1))
-else
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: (pa2) mix stub never invoked\n'
-    pass=$((pass + 1))
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Test (pa3): --print-argv performs zero mutation — integrate pre-step must
 # be skipped (no AGENTS.md / codegen/manifest.yaml written into --cwd).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -750,29 +629,9 @@ assert_contains "(b1) print-argv output contains --max-budget-usd=20" "$OUT_B1" 
 assert_contains "(b1) output still mentions codegen.loop" "$OUT_B1" "codegen.loop"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test (b2-pi) same dry-run honesty check on the pi leg.
-# ─────────────────────────────────────────────────────────────────────────────
-CB_B1PI="$(make_cb_root cb_b1pi)"
-make_pi_harness "$CB_B1PI" >/dev/null
-
-BIN_B1PI="$BASE_TMP/bin_b1pi"
-make_mix_stub "$BIN_B1PI"
-make_codegen_log_stub "$BIN_B1PI"
-
-actual_ec=0
-OUT_B1PI=$(PATH="$BIN_B1PI:$PATH" \
-    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    "$CB_B1PI/codegen-build" --harness=pi --stack=phoenix \
-    --max-budget-usd=7.50 --print-argv "b1pi prompt" 2>/dev/null) || actual_ec=$?
-
-check "(b2-pi) --print-argv with --max-budget-usd exits 0 on pi leg" "0" "$actual_ec"
-assert_contains "(b2-pi) print-argv output contains --max-budget-usd=7.50" "$OUT_B1PI" "--max-budget-usd=7.50"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test (eff1)/(eff2-pi): --effort=<v> threads through CODEGEN_BUILD_EFFORT ->
-# --print-argv output MUST contain --effort=<v>, on both the claude leg and
-# the pi leg. (eff-bad): an invalid --effort value exits 2 before any argv
-# is printed.
+# Test (eff1): --effort=<v> threads through CODEGEN_BUILD_EFFORT ->
+# --print-argv output MUST contain --effort=<v>. (eff-bad): an invalid
+# --effort value exits 2 before any argv is printed.
 # ─────────────────────────────────────────────────────────────────────────────
 CB_EFF1="$(make_cb_root cb_eff1)"
 make_claude_harness "$CB_EFF1" >/dev/null
@@ -792,22 +651,6 @@ OUT_EFF1=$(PATH="$BIN_EFF1:$PATH" \
 
 check "(eff1) --print-argv with --effort=off exits 0" "0" "$actual_ec"
 assert_contains "(eff1) print-argv output contains --effort=off" "$OUT_EFF1" "--effort=off"
-
-CB_EFF2PI="$(make_cb_root cb_eff2pi)"
-make_pi_harness "$CB_EFF2PI" >/dev/null
-
-BIN_EFF2PI="$BASE_TMP/bin_eff2pi"
-make_mix_stub "$BIN_EFF2PI"
-make_codegen_log_stub "$BIN_EFF2PI"
-
-actual_ec=0
-OUT_EFF2PI=$(PATH="$BIN_EFF2PI:$PATH" \
-    OCG_CODEGEN_DIR="$CODEGEN_ROOT" \
-    "$CB_EFF2PI/codegen-build" --harness=pi --stack=phoenix \
-    --effort=high --print-argv "eff2pi prompt" 2>/dev/null) || actual_ec=$?
-
-check "(eff2-pi) --print-argv with --effort=high exits 0 on pi leg" "0" "$actual_ec"
-assert_contains "(eff2-pi) print-argv output contains --effort=high" "$OUT_EFF2PI" "--effort=high"
 
 actual_ec=0
 PATH="$BIN_EFF1:$PATH" \
@@ -842,7 +685,6 @@ NONADOPT_HITS=$(
         nonadopt_scan |
             grep -vF -- "$CODEGEN_ROOT/codegen-build" |
             grep -vF -- "$CODEGEN_ROOT/harnesses/claude/dispatch.sh" |
-            grep -vF -- "$CODEGEN_ROOT/harnesses/pi/dispatch.sh" |
             grep -vF -- "$CODEGEN_ROOT/harnesses/claude/hooks/fixtures/codegen-build-flags.txt" |
             grep -vF -- "$CODEGEN_ROOT/harnesses/claude/hooks/codegen-build_test.sh" ||
             true
@@ -911,7 +753,7 @@ check "(snap) no fixture flag missing from parser" "0" "$CB_SNAP_REMOVED"
 # ─────────────────────────────────────────────────────────────────────────────
 # Test (d): dead-export absence — CODEGEN_BUILD_MODEL is advisory-only and
 # must never be exported. CODEGEN_BUILD_EFFORT is now a LIVE one-build
-# override and MUST be exported (see (b1)/(b2-pi)-style threading tests
+# override and MUST be exported (see (b1)-style threading tests
 # below). --model/--effort stay parsed (see (u)/(snap)) but --model must not
 # leak into a CODEGEN_BUILD_* env var nothing reads.
 # ─────────────────────────────────────────────────────────────────────────────

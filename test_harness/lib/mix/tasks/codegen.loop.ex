@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   @shortdoc "Runs the deterministic orchestration loop for one pitch."
 
   @moduledoc """
-  `mix codegen.loop --harness=<claude_code|pi> --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] [--max-budget-usd=<n>] [--effort=<e>] <pitch>`
+  `mix codegen.loop --harness=claude_code --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] [--max-budget-usd=<n>] [--effort=<e>] <pitch>`
 
   Execs from the build-mode `dispatch.sh` path in place of a single
   self-orchestrating agent session. Runs `CodegenTestHarness.OrchestrationLoop.run/1`
@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   ## Flags
 
-  - `--harness` — required, `claude_code` | `pi`
+  - `--harness` — required, `claude_code`
   - `--stack` — required, `phoenix` | `static`
   - `--cwd` — required, project directory the loop operates in
   - `--fallback-model` — optional. Prepends `<m>` as rung 0 of EVERY role's

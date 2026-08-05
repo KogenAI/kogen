@@ -20,7 +20,7 @@ assert_eq() {
 
 run_hook() {
     # $1 = json payload
-    printf '%s' "$1" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK"
+    printf '%s' "$1" | env -u CLAUDE_ROLE bash "$HOOK"
 }
 
 is_denied() {

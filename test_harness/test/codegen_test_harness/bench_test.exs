@@ -156,93 +156,6 @@ defmodule CodegenTestHarness.BenchTest do
     end
   end
 
-  # ── UsageParser — Pi path ─────────────────────────────────────────────────────
-
-  describe "UsageParser.parse/2 — :pi" do
-    @pi_agent_end """
-    {"type":"session","id":"abc"}
-    {"type":"agent_end","messages":[{"role":"assistant","model":"gpt-5.4-mini","usage":{"input":100,"output":18,"cacheRead":0,"cacheWrite":0,"totalTokens":118,"cost":{"input":0.004083,"output":0.000081,"cacheRead":0,"cacheWrite":0,"total":0.004164}}}],"willRetry":false}
-    """
-
-    test "extracts model from agent_end messages" do
-      parsed = UsageParser.parse(@pi_agent_end, :pi)
-      assert parsed.model == "gpt-5.4-mini"
-    end
-
-    test "extracts token counts from pi usage fields" do
-      parsed = UsageParser.parse(@pi_agent_end, :pi)
-      assert parsed.input_tokens == 100
-      assert parsed.output_tokens == 18
-      assert parsed.cache_read_tokens == 0
-      assert parsed.cache_creation_tokens == 0
-    end
-
-    test "extracts cost from pi cost.total" do
-      parsed = UsageParser.parse(@pi_agent_end, :pi)
-      assert_in_delta parsed.cost_usd, 0.004164, 0.000001
-    end
-
-    test "duration and turn fields are :unknown for pi" do
-      parsed = UsageParser.parse(@pi_agent_end, :pi)
-      assert parsed.duration_ms == :unknown
-      assert parsed.duration_api_ms == :unknown
-      assert parsed.num_turns == :unknown
-      assert parsed.terminal_reason == :unknown
-    end
-
-    test "returns :unknown map when no agent_end present" do
-      parsed = UsageParser.parse(~s({"type":"session"}), :pi)
-      assert parsed.model == :unknown
-      assert parsed.input_tokens == :unknown
-    end
-
-    # #8 — pi multi-message accumulation
-    test "accumulates tokens across multiple messages in agent_end" do
-      jsonl =
-        ~s({"type":"agent_end","messages":[{"role":"assistant","model":"gpt-5.4-mini","usage":{"input":100,"output":10,"cacheRead":5,"cacheWrite":2,"cost":{"total":0.001}}},{"role":"assistant","model":"gpt-5.4-mini","usage":{"input":200,"output":20,"cacheRead":3,"cacheWrite":1,"cost":{"total":0.002}}}]}) <>
-          "\n"
-
-      parsed = UsageParser.parse(jsonl, :pi)
-      assert parsed.model == "gpt-5.4-mini"
-      assert parsed.input_tokens == 300
-      assert parsed.output_tokens == 30
-      assert parsed.cache_read_tokens == 8
-      assert parsed.cache_creation_tokens == 3
-      assert_in_delta parsed.cost_usd, 0.003, 0.000001
-    end
-
-    # #9 — pi agent_end without messages key
-    test "returns :unknown for all fields when agent_end has no messages key" do
-      jsonl = ~s({"type":"agent_end"})
-      parsed = UsageParser.parse(jsonl, :pi)
-      assert parsed.model == :unknown
-      assert parsed.input_tokens == :unknown
-      assert parsed.output_tokens == :unknown
-      assert parsed.cost_usd == :unknown
-    end
-
-    # #10 — pi partial usage (missing fields)
-    test "returns :unknown for missing usage fields in pi message" do
-      jsonl = ~s({"type":"agent_end","messages":[{"role":"assistant","model":"gpt-x"}]})
-      parsed = UsageParser.parse(jsonl, :pi)
-      assert parsed.model == "gpt-x"
-      assert parsed.input_tokens == :unknown
-      assert parsed.output_tokens == :unknown
-      assert parsed.cache_read_tokens == :unknown
-      assert parsed.cost_usd == :unknown
-    end
-
-    test "partial usage: message with usage but no cost field" do
-      jsonl =
-        ~s({"type":"agent_end","messages":[{"model":"gpt-x","usage":{"input":50,"output":5}}]})
-
-      parsed = UsageParser.parse(jsonl, :pi)
-      assert parsed.input_tokens == 50
-      assert parsed.output_tokens == 5
-      assert parsed.cost_usd == :unknown
-    end
-  end
-
   # ── UsageParser — parse_per_role/3 ───────────────────────────────────────────
 
   describe "UsageParser.parse_per_role/3" do
@@ -305,55 +218,6 @@ defmodule CodegenTestHarness.BenchTest do
 
     defp stream_output_with_sid(sid) do
       Jason.encode!(%{"type" => "system", "subtype" => "init", "session_id" => sid}) <> "\n"
-    end
-
-    test "Pi maps loop terminal line per_role into per_role_usage shape" do
-      output =
-        Jason.encode!(%{
-          "type" => "result",
-          "engine" => "elixir_loop",
-          "subtype" => "success",
-          "per_role" => %{
-            "reviewer-phoenix" => %{
-              "input_tokens" => 100,
-              "output_tokens" => 20,
-              "cache_read_tokens" => 5000,
-              "cache_creation_tokens" => 300,
-              "cost_usd" => 0.05,
-              "num_turns" => 3,
-              "calls" => 1
-            },
-            "developer-phoenix-backend" => %{
-              "input_tokens" => 200,
-              "output_tokens" => 40,
-              "cache_read_tokens" => 9000,
-              "cache_creation_tokens" => 600,
-              "cost_usd" => 0.10,
-              "num_turns" => 6,
-              "calls" => 1
-            }
-          }
-        }) <> "\n"
-
-      assert UsageParser.parse_per_role(output, :pi, []) == %{
-               "reviewer-phoenix" => %{
-                 input_tokens: 100,
-                 output_tokens: 20,
-                 cache_read_tokens: 5000,
-                 cache_creation_tokens: 300
-               },
-               "developer-phoenix-backend" => %{
-                 input_tokens: 200,
-                 output_tokens: 40,
-                 cache_read_tokens: 9000,
-                 cache_creation_tokens: 600
-               }
-             }
-    end
-
-    test "Pi returns empty map when output has no loop terminal line" do
-      output = ~s({"type":"agent_end","messages":[]}\n)
-      assert UsageParser.parse_per_role(output, :pi, []) == %{}
     end
 
     test "returns empty map when output has no session_id" do
@@ -485,8 +349,8 @@ defmodule CodegenTestHarness.BenchTest do
               "cost_usd" => 0.2,
               "calls" => 2,
               "dispatches" => [
-                %{"harness" => "pi", "model" => "openai-codex/gpt-5.6-terra", "effort" => "high"},
-                %{"harness" => "pi", "model" => "openai-codex/gpt-5.6-terra", "effort" => "high"}
+                %{"harness" => "claude_code", "model" => "sonnet", "effort" => "high"},
+                %{"harness" => "claude_code", "model" => "sonnet", "effort" => "high"}
               ]
             }
           }
@@ -494,8 +358,8 @@ defmodule CodegenTestHarness.BenchTest do
 
       assert UsageParser.parse_dispatches(output) == %{
                "developer-static" => [
-                 %{harness: "pi", model: "openai-codex/gpt-5.6-terra", effort: "high"},
-                 %{harness: "pi", model: "openai-codex/gpt-5.6-terra", effort: "high"}
+                 %{harness: "claude_code", model: "sonnet", effort: "high"},
+                 %{harness: "claude_code", model: "sonnet", effort: "high"}
                ]
              }
     end
@@ -533,7 +397,7 @@ defmodule CodegenTestHarness.BenchTest do
     defp write_skeleton(run_dir) do
       manifest = %{
         "codegen_sha" => "abc123",
-        "harness_versions" => %{"claude" => "2.1.153", "pi" => "0.76.0"},
+        "harness_versions" => %{"claude" => "2.1.153"},
         "started_at" => "2026-05-28T07:00:00Z",
         "model_resolution" => %{}
       }
@@ -569,10 +433,10 @@ defmodule CodegenTestHarness.BenchTest do
     test "record_resolution/4 supports multiple harness/role keys", %{run_dir: run_dir} do
       write_skeleton(run_dir)
       BenchManifest.record_resolution(run_dir, "claude", "app_build", "claude-haiku")
-      BenchManifest.record_resolution(run_dir, "pi", "app_build", "gpt-5.4-mini")
+      BenchManifest.record_resolution(run_dir, "claude", "developer-static", "sonnet")
       manifest = BenchManifest.load(run_dir)
       assert manifest["model_resolution"]["claude/app_build"] == "claude-haiku"
-      assert manifest["model_resolution"]["pi/app_build"] == "gpt-5.4-mini"
+      assert manifest["model_resolution"]["claude/developer-static"] == "sonnet"
     end
 
     test "load/1 decodes manifest json", %{run_dir: run_dir} do
@@ -599,11 +463,11 @@ defmodule CodegenTestHarness.BenchTest do
       run_dir = Path.join(root_dir, ts)
 
       File.mkdir_p!(Path.join([run_dir, "runs", "claude", "phoenix"]))
-      File.mkdir_p!(Path.join([run_dir, "runs", "pi", "phoenix"]))
+      File.mkdir_p!(Path.join([run_dir, "runs", "claude", "phoenix"]))
 
       manifest = %{
         "codegen_sha" => "abc123",
-        "harness_versions" => %{"claude" => "2.1.153", "pi" => "0.76.0"},
+        "harness_versions" => %{"claude" => "2.1.153"},
         "started_at" => "2026-05-28T07:00:00Z",
         "model_resolution" => %{}
       }
@@ -786,11 +650,11 @@ defmodule CodegenTestHarness.BenchTest do
       # Build a second run with different cost (0.05)
       run_dir_b = Path.join(root_dir, "20260502_120000")
       File.mkdir_p!(Path.join([run_dir_b, "runs", "claude", "phoenix"]))
-      File.mkdir_p!(Path.join([run_dir_b, "runs", "pi", "phoenix"]))
+      File.mkdir_p!(Path.join([run_dir_b, "runs", "claude", "phoenix"]))
 
       manifest = %{
         "codegen_sha" => "def456",
-        "harness_versions" => %{"claude" => "2.1.153", "pi" => "0.76.0"},
+        "harness_versions" => %{"claude" => "2.1.153"},
         "started_at" => "2026-05-02T12:00:00Z",
         "model_resolution" => %{}
       }

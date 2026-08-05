@@ -28,12 +28,12 @@ This isolates RED and GREEN at the stub level, ensuring the RED probe actually e
 
 ## Test Environment Isolation: Ambient Env-Var Leakage
 
-Bash hook `_test.sh` files run directly (not via `run-tests.sh`) inherit ambient shell env vars. If the developer's own agent shell sets `CLAUDE_ROLE` or `PI_ROLE`, direct test invocations see the leakage and may hit unintended code paths. Example: Test 45 in `orchestrator-no-source-edit_test.sh` uses `run_test` (not `run_test_role`), so it reads the ambient env directly; if `CLAUDE_ROLE=build` is set, the test wrongly selects the build-role path and fails for an unrelated reason.
+Bash hook `_test.sh` files run directly (not via `run-tests.sh`) inherit ambient shell env vars. If the developer's own agent shell sets `CLAUDE_ROLE`, direct test invocations see the leakage and may hit unintended code paths. Example: Test 45 in `orchestrator-no-source-edit_test.sh` uses `run_test` (not `run_test_role`), so it reads the ambient env directly; if `CLAUDE_ROLE=build` is set, the test wrongly selects the build-role path and fails for an unrelated reason.
 
 **Fix**: When running hook `_test.sh` files interactively (outside the CI clean shell), strip inherited role vars before invocation:
 
 ```bash
-env -u CLAUDE_ROLE -u PI_ROLE bash <test>.sh
+env -u CLAUDE_ROLE bash <test>.sh
 ```
 
 This is NOT needed when tests run via `harnesses/claude/hooks/run-tests.sh` in a clean CI environment — only when invoking directly from within an agent session. The issue is test-invocation discipline (direct runs), not the tests themselves (run-tests.sh context cleans the env).
@@ -113,4 +113,4 @@ This keeps `dirname "$0"` resolutions working (via the symlink) without ever wri
 
 ## Trigger Keywords
 
-stateful stub, counter file, test isolation, RED-then-GREEN proof, bash test patterns, ambient env leakage, CLAUDE_ROLE, PI_ROLE, git show, dirname sourcing, PIPESTATUS, jq null safety, yq null safety, portable sed, macOS symlink, grep footguns, PATH stub, pathname expansion, noglob, set -f, hook deletion full-vocabulary grep, run-tests.sh not a registered hook, zsh completion bash -n misparse
+stateful stub, counter file, test isolation, RED-then-GREEN proof, bash test patterns, ambient env leakage, CLAUDE_ROLE, git show, dirname sourcing, PIPESTATUS, jq null safety, yq null safety, portable sed, macOS symlink, grep footguns, PATH stub, pathname expansion, noglob, set -f, hook deletion full-vocabulary grep, run-tests.sh not a registered hook, zsh completion bash -n misparse

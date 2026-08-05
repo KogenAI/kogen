@@ -33,8 +33,8 @@
 #
 # Subagents (non-empty agent_id) are always allowed through.
 #
-# Responds to CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness)
-# via resolve_role() for the debug/shape/ops/experiment/babysit bypass — precedence: CLAUDE_ROLE > PI_ROLE.
+# Responds to CLAUDE_ROLE (Claude Code) via resolve_role() for the
+# debug/shape/ops/experiment/babysit bypass.
 # Primary signal is AGENT_TYPE (set by Claude Code on subagent spawn); role check is secondary.
 
 set -u

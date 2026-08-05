@@ -21,8 +21,8 @@
 #
 # Registered on matcher "Agent" in claude-code-settings.json PreToolUse.
 #
-# Responds to CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness)
-# via resolve_role() — precedence: CLAUDE_ROLE > PI_ROLE.
+# Responds to CLAUDE_ROLE (Claude Code)
+# via resolve_role().
 
 set -u
 

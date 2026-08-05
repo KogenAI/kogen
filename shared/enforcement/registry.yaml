@@ -27,10 +27,10 @@
 #   surface      — hook surface (user_global, project, …)
 #   signal       — hook signal (none, AGENT_TYPE, …)
 #   role         — role scope (* = all roles; pipe-separated for multiple, e.g. "a|b")
-#   harnesses    — which harnesses deploy this hook (all, claude, pi)
+#   harnesses    — which harnesses deploy this hook (all, claude)
 #   canonicalize — path canonicalization (repo_relative); only used with source: FILE_PATH
-#   bypass_roles — optional list of launcher-mode values (from resolve_role / CLAUDE_ROLE /
-#                  PI_ROLE) that exit 0 before the role/match gate.
+#   bypass_roles — optional list of launcher-mode values (from resolve_role / CLAUDE_ROLE)
+#                  that exit 0 before the role/match gate.
 #
 # REGISTRATION ENTRY FIELDS (kind: registration):
 #   id           — kebab-case slug matching the .sh filename (without extension)
@@ -40,7 +40,7 @@
 #   surface      — hook surface (user_global)
 #   signal       — hook signal (none, AGENT_TYPE, CLAUDE_ROLE, CLAUDE_ROLE_FAMILY)
 #   role         — role scope (* = all; pipe-separated for multiple; glob e.g. developer-*)
-#   harnesses    — which harnesses deploy this hook (all, claude, pi)
+#   harnesses    — which harnesses deploy this hook (all, claude)
 #                  NOTE: registry value "claude" maps to header token "claude_code"
 #   rationale    — optional human-readable explanation (single-line string or YAML block
 #                  scalar for multi-line; rendered as "# rationale: <first-line>" +
@@ -50,7 +50,6 @@
 #   Registry stores:  tool_guard  → header emits: matcher
 #   Registry stores:  harnesses: claude → header emits: harnesses: claude_code
 #   Registry stores:  harnesses: all    → header emits: harnesses: all
-#   Registry stores:  harnesses: pi     → header emits: harnesses: pi
 #
 # NOT-YET-MIGRATED: hooks with awkward schema fit deferred to a follow-up wave.
 #   Reason documented per hook. Use marker: not-yet-migrated: true
@@ -144,22 +143,6 @@
   signal: AGENT_TYPE
   role: committer
   harnesses: all
-
-# SCHEMA: session-log.md — reviewer may only edit session logs (canonical schema)
-- id: reviewer-guard-session-log-write
-  generated: true
-  description: "reviewer may only edit canonical session log files (allowlist)"
-  event: PreToolUse
-  source: FILE_PATH
-  mode: allowlist
-  canonicalize: repo_relative
-  tool_guard: "Write|Edit"
-  match: 'codegen/logging/[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'
-  message: "BLOCKED by reviewer-guard-session-log-write: reviewer may only write to canonical session logs"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: "reviewer-phoenix|reviewer-static"
-  harnesses: pi
 
 # SCHEMA: session-log.md — reviewer Bash allowlist (default-deny; codegen-log plus safe read-only utilities only)
 - id: reviewer-bash-allowlist
@@ -260,7 +243,7 @@
   signal: CLAUDE_ROLE_FAMILY
   role: "*"
   harnesses: all
-  rationale: CLAUDE_ROLE_FAMILY-keyed on Claude; Pi twin gates only the explicit PI_DEBUG_REMOTE=1 branch (pi-debug --server), since local Pi debug/shape already carry no Bash grant
+  rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard for the debug/shape families
 
 - kind: registration
   id: curator-before-committer
@@ -450,7 +433,7 @@
   signal: CLAUDE_ROLE_FAMILY
   role: "*"
   harnesses: all
-  rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard; Pi twin gates via PI_ROLE/resolveRole() for parity with the native worktree/pitch write boundary
+  rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard on the worktree/pitch write boundary
 
 - kind: registration
   id: orchestrator-read-discipline
@@ -525,7 +508,7 @@
   signal: AGENT_TYPE
   role: "developer-*|reviewer-*"
   harnesses: all
-  rationale: Blocks a developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text. Pi twin is observe-only (session_shutdown cannot block).
+  rationale: Blocks a developer/reviewer Stop until the cycle log carries both its work (ev:role body) and either its learning (ev:learned) or an explicit ev:no_learning. Substance (not length) is enforced at the writer — codegen-log refuses placeholder/compliance-echo text.
 
 - kind: registration
   id: session-log-writer-only
@@ -573,7 +556,7 @@
   signal: AGENT_TYPE
   role: "developer-*|reviewer-*|committer|context-curator"
   harnesses: all
-  rationale: Claude Code per-call Read inspector; Pi twin mirrors the same typed files_to_touch/files_modified event gate for full parity
+  rationale: Claude Code per-call Read inspector over the typed files_to_touch/files_modified event gate
 
 - kind: registration
   id: track-subagent-edits

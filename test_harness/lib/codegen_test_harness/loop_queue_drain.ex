@@ -149,7 +149,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   BEFORE `:ordered_fn`/`:blocked_fn` run, not after, so a half-written
   dependency never silently satisfies a dependent's edge. On Darwin, sleep
   is the sole re-lock trigger for the login Keychain (no idle-lock by
-  default) — `claude-build.sh`/`pi-build.sh` wrap a `:watch` session in
+  default) — `claude-build.sh` wraps a `:watch` session in
   `caffeinate -dimsu`; this module's own backstop is the pre-spawn
   `:keychain_fn` check (`run_watch_preflight/4`), fail-closed against a
   box configured with an idle-lock despite `caffeinate`.
@@ -247,7 +247,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   `opts` (all required unless noted; `_fn` seams default to the real
   implementation, override for tests):
 
-    * `:harness` — `"claude"` | `"pi"` (required)
+    * `:harness` — `"claude"` (required)
     * `:stack` — stack name, e.g. `"phoenix"` (required)
     * `:cwd` — project directory the drain operates in (required)
     * `:ready_dir` — default `Path.join([cwd, "codegen", "pitches", "ready"])`
@@ -2603,10 +2603,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
-  @doc "Mention prefix for `harness`: `\"claude\"` -> `\"@\"`, `\"pi\"` -> `\"\"`."
+  @doc "Mention prefix for `harness`: `\"claude\"` -> `\"@\"`."
   @spec mention_prefix(String.t()) :: String.t()
   def mention_prefix("claude"), do: "@"
-  def mention_prefix("pi"), do: ""
   def mention_prefix(other), do: raise("LoopQueueDrain: unknown harness #{inspect(other)}")
 
   @doc false
@@ -2649,7 +2648,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       {~c"CODEGEN_BUILD_LOCK_HELD", ~c"1"},
       # Port.open env is ADDITIVE to the inherited environment — without an
       # explicit clear, this child would inherit the drain's own
-      # MIX_BUILD_PATH=_build/drain (set by claude-build.sh/pi-build.sh's
+      # MIX_BUILD_PATH=_build/drain (set by claude-build.sh's
       # --queue leg) and recompile the drain's own beams out from under it.
       # `false` removes the variable entirely so dispatch.sh's own
       # MIX_BUILD_PATH=_build/loop assignment governs instead.

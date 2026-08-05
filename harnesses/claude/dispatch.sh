@@ -91,7 +91,7 @@ fi
 # owns this INT->group-TERM->re-wait boundary for all four callers that spawn
 # the loop this way (both dispatch.sh twins + both build launchers' --queue
 # leg) — extracted from what used to be a duplicated `set -m`/`forward_term`/
-# `trap`/`wait` block here and in harnesses/pi/dispatch.sh.
+# `trap`/`wait` block here.
 #
 # Snapshot .active BEFORE the spawn: the exit-record write (below) needs to
 # tell "the loop inited its own log for this run" apart from "the loop died

@@ -98,7 +98,7 @@ mk_stop_input() {
 T1=$(make_project)
 mk_manifest "$T1" '{"slugs":["a","b","c"],"position":1,"started_at":"2026-01-01T00:00:00Z"}'
 mk_gate_result "$T1" "clear"
-out1=$(mk_stop_input "$T1" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out1=$(mk_stop_input "$T1" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_block "block: manifest position=1 len=3 (2 remain) + gate=clear" "$out1"
 rm -rf "$T1"
 
@@ -108,7 +108,7 @@ mk_manifest "$T1B" '{"slugs":["a","b","c"],"position":1,"started_at":"2026-01-01
 mk_gate_result "$T1B" "clear"
 mkdir -p "$T1B/codegen/pitches/shipped"
 printf 'Pitch: b\n' >"$T1B/codegen/pitches/shipped/b.md"
-out1b=$(mk_stop_input "$T1B" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out1b=$(mk_stop_input "$T1B" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_block "block: shipped slug at position is skipped, next live slug blocks" "$out1b"
 assert_not_contains "block: shipped slug is not nominated" "next: b" "$out1b"
 assert_contains "block: next live slug nominated" "next: c" "$out1b"
@@ -118,13 +118,13 @@ rm -rf "$T1B"
 T2=$(make_project)
 mk_manifest "$T2" '{"slugs":["a","b"],"position":2,"started_at":"2026-01-01T00:00:00Z"}'
 mk_gate_result "$T2" "clear"
-out2=$(mk_stop_input "$T2" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out2=$(mk_stop_input "$T2" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: queue exhausted (position=2 len=2)" "$out2"
 rm -rf "$T2"
 
 # ── Test 3: allow when no manifest file ───────────────────────────────────────
 T3=$(make_project)
-out3=$(mk_stop_input "$T3" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out3=$(mk_stop_input "$T3" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: no queue manifest (not a multi-pitch queue)" "$out3"
 rm -rf "$T3"
 
@@ -132,7 +132,7 @@ rm -rf "$T3"
 T4=$(make_project)
 mk_manifest "$T4" '{"slugs":["a","b","c"],"position":1,"started_at":"2026-01-01T00:00:00Z"}'
 mk_gate_result "$T4" "failed"
-out4=$(mk_stop_input "$T4" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out4=$(mk_stop_input "$T4" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: gate verdict=failed — mid-queue halt" "$out4"
 rm -rf "$T4"
 
@@ -140,21 +140,21 @@ rm -rf "$T4"
 T5=$(make_project)
 mk_manifest "$T5" '{"slugs":["a","b","c"],"position":1,"started_at":"2026-01-01T00:00:00Z"}'
 mk_gate_result "$T5" "inconclusive"
-out5=$(mk_stop_input "$T5" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out5=$(mk_stop_input "$T5" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: gate verdict=inconclusive — mid-queue halt" "$out5"
 rm -rf "$T5"
 
 # ── Test 6: allow when manifest is corrupt JSON ───────────────────────────────
 T6=$(make_project)
 mk_manifest "$T6" '{ not json at all'
-out6=$(mk_stop_input "$T6" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out6=$(mk_stop_input "$T6" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: corrupt manifest (fail-open)" "$out6"
 rm -rf "$T6"
 
 # ── Test 7: allow when manifest missing position key ─────────────────────────
 T7=$(make_project)
 mk_manifest "$T7" '{"slugs":["a","b"]}'
-out7=$(mk_stop_input "$T7" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out7=$(mk_stop_input "$T7" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_allow "allow: manifest missing position key (fail-open)" "$out7"
 rm -rf "$T7"
 
@@ -162,7 +162,7 @@ rm -rf "$T7"
 T8=$(make_project)
 mk_manifest "$T8" '{"slugs":["a","b","c"],"position":0,"started_at":"2026-01-01T00:00:00Z"}'
 # No gate-result.json → empty verdict → not failed → should block
-out8=$(mk_stop_input "$T8" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out8=$(mk_stop_input "$T8" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_block "block: manifest position=0 len=3 + no gate-result.json (empty verdict)" "$out8"
 rm -rf "$T8"
 
@@ -186,7 +186,7 @@ rm -rf "$T10"
 T11=$(make_project)
 mk_manifest "$T11" '{"slugs":["a","b","c"],"position":1,"started_at":"2026-01-01T00:00:00Z"}'
 mk_gate_result "$T11" "clear"
-out11=$(mk_stop_input "$T11" | env -u CLAUDE_ROLE -u PI_ROLE bash "$HOOK" 2>/dev/null || true)
+out11=$(mk_stop_input "$T11" | env -u CLAUDE_ROLE bash "$HOOK" 2>/dev/null || true)
 assert_block "block: role unset (build mode) — gate unchanged" "$out11"
 rm -rf "$T11"
 

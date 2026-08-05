@@ -4,12 +4,11 @@
 # NOT a registered hook — this is a library helper sourced by hook scripts.
 # Prefix "_" prevents hook_registrations.py from registering it.
 # Canonical use case: all hooks that previously checked ${CLAUDE_ROLE:-} now
-# source this file and call resolve_role() instead so they respond to
-# CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness) with a consistent
-# precedence order.
+# source this file and call resolve_role() instead, so role resolution has a
+# single definition. Kept as a helper (rather than inlining the env read) so a
+# future second harness adds its variable here and nowhere else.
 #
-# Precedence: CLAUDE_ROLE > PI_ROLE
-# Returns the first non-empty value; exits 0 with empty stdout when all unset.
+# Returns CLAUDE_ROLE when set; exits 0 with empty stdout when it is unset.
 #
 # is_build_mode() is the canonical build-cycle gate: the investigative set is
 # {shape, debug, ops, experiment, refactor, babysit} — resolve_role() returning
@@ -26,12 +25,7 @@
 set -u
 
 resolve_role() {
-    for v in "${CLAUDE_ROLE:-}" "${PI_ROLE:-}"; do
-        [ -n "$v" ] && {
-            printf '%s' "$v"
-            return 0
-        }
-    done
+    [ -n "${CLAUDE_ROLE:-}" ] && printf '%s' "$CLAUDE_ROLE"
     return 0
 }
 

@@ -10,13 +10,6 @@ defmodule CodegenTestHarness.UsageParser do
   `total_cost_usd`, `modelUsage`, `duration_ms`, `duration_api_ms`,
   `num_turns`, `terminal_reason`.
 
-  ## Pi envelope shape (from live probe)
-
-  `{"type":"agent_end","messages":[...]}` — each message has `model` and
-  `usage.{input,output,cacheRead,cacheWrite,totalTokens,cost.total}`. No
-  top-level `duration_ms`, `duration_api_ms`, `num_turns`, `terminal_reason`,
-  or `total_cost_usd` fields.
-
   All missing fields return `:unknown`.
 
   ## Per-role attribution (`parse_per_role/3`)
@@ -24,12 +17,6 @@ defmodule CodegenTestHarness.UsageParser do
   Claude reads per-subagent transcript files from
   `~/.claude/projects/<proj>/<session_id>/subagents/agent-*.jsonl` and adds
   the main transcript as an `"orchestrator"` bucket.
-
-  Pi sources per-role usage from the SAME loop terminal result line consumed
-  by `parse/2`'s `:pi` clause — the Elixir orchestration loop's `"per_role"`
-  sub-map already carries cache/input/output tokens per role for both
-  harnesses. Pi returns `%{}` only when that loop line is absent (e.g. a raw
-  `pi --mode json` capture, not a loop-driven build).
   """
 
   @type parsed :: %{
@@ -48,10 +35,10 @@ defmodule CodegenTestHarness.UsageParser do
   @doc """
   Parses `raw_stdout` captured from a `codegen-build` invocation.
 
-  `harness` is `:claude` or `:pi`. Returns a `t:parsed/0` map; all fields
+  `harness` is `:claude`. Returns a `t:parsed/0` map; all fields
   default to `:unknown` on missing or unparseable input.
   """
-  @spec parse(String.t(), :claude | :pi) :: parsed()
+  @spec parse(String.t(), :claude) :: parsed()
   def parse(raw_stdout, :claude) do
     lines = decode_lines(raw_stdout)
 
@@ -82,37 +69,6 @@ defmodule CodegenTestHarness.UsageParser do
     }
   end
 
-  def parse(raw_stdout, :pi) do
-    lines = decode_lines(raw_stdout)
-
-    # `codegen-build` drives the SAME Elixir orchestration loop for both
-    # harnesses, and the loop emits ONE terminal
-    # `{"type":"result","engine":"elixir_loop",...}` line carrying
-    # total_cost_usd / usage / num_turns / terminal_reason — identical shape to
-    # the claude leg above.
-    #
-    # `agent_end` is pi's INTERNAL per-call event. It is consumed inside
-    # harnesses/pi/call-dispatch.sh and never reaches codegen-build's stdout,
-    # so looking for it here always found nil → every pi bench record came back
-    # all-`:unknown` (cost "—", tokens 0) even on a fully successful build.
-    # That is why bench summaries showed real dollars for claude and nothing for
-    # pi. Read the loop result line first — same source as claude, so the two
-    # harnesses are finally measured on one axis.
-    #
-    # The agent_end path is retained as a fallback for a RAW pi stream (a
-    # direct `pi --mode json` capture rather than a loop-driven build).
-    case extract_loop_result(lines) do
-      %{} = result when map_size(result) > 0 ->
-        extract_loop_metrics(result)
-
-      _ ->
-        case Enum.find(lines, &match?(%{"type" => "agent_end"}, &1)) do
-          %{"messages" => messages} when is_list(messages) -> extract_pi_metrics(messages)
-          _ -> unknown_pi_map()
-        end
-    end
-  end
-
   # The loop's terminal result line. Unlike extract_claude_result/1 this accepts
   # ANY subtype: a failed build ("subtype":"error") still reports real
   # total_cost_usd and per_role spend, and a bench run that discards the cost of
@@ -124,46 +80,6 @@ defmodule CodegenTestHarness.UsageParser do
     |> case do
       nil -> %{}
       result -> result
-    end
-  end
-
-  defp extract_loop_metrics(result) do
-    usage = Map.get(result, "usage", %{})
-
-    %{
-      model: :unknown,
-      input_tokens: int_or_unknown(usage, "input_tokens"),
-      output_tokens: int_or_unknown(usage, "output_tokens"),
-      cache_read_tokens: int_or_unknown(usage, "cache_read_input_tokens"),
-      cache_creation_tokens: int_or_unknown(usage, "cache_creation_input_tokens"),
-      cost_usd: float_or_unknown(result, "total_cost_usd"),
-      duration_ms: :unknown,
-      duration_api_ms: :unknown,
-      num_turns: int_or_unknown(result, "num_turns"),
-      terminal_reason: Map.get(result, "terminal_reason") || :unknown
-    }
-  end
-
-  defp per_role_from_loop_result(%{} = result) when map_size(result) > 0 do
-    result
-    |> Map.get("per_role", %{})
-    |> Map.new(fn {role, entry} ->
-      {role,
-       %{
-         input_tokens: int_or_unknown_zero(entry, "input_tokens"),
-         output_tokens: int_or_unknown_zero(entry, "output_tokens"),
-         cache_read_tokens: int_or_unknown_zero(entry, "cache_read_tokens"),
-         cache_creation_tokens: int_or_unknown_zero(entry, "cache_creation_tokens")
-       }}
-    end)
-  end
-
-  defp per_role_from_loop_result(_), do: %{}
-
-  defp int_or_unknown_zero(map, key) do
-    case Map.get(map, key) do
-      n when is_integer(n) -> n
-      _ -> 0
     end
   end
 
@@ -184,10 +100,8 @@ defmodule CodegenTestHarness.UsageParser do
   Parses per-role, per-invocation dispatch provenance (the ACTUAL requested
   harness/model/effort tuple for every codegen-call the loop made) from raw
   `codegen-build` stdout — the loop's own terminal `{"type":"result",
-  "engine":"elixir_loop",...}` line, same source `parse_per_role/3`'s `:pi`
-  clause reads for token counts. Harness-agnostic: this is loop-internal
-  bookkeeping, not per-harness envelope shape, so there is no `:claude`
-  clause — call this regardless of which harness ran the build.
+  "engine":"elixir_loop",...}` line. Harness-agnostic: this is loop-internal
+  bookkeeping, not per-harness envelope shape.
 
   Returns `%{role => [dispatch(), ...]}`, one entry per invocation IN CALL
   ORDER (gate retries and rework re-invocations of the same role each add
@@ -231,24 +145,13 @@ defmodule CodegenTestHarness.UsageParser do
   Returns `%{}` on any failure (no session_id, dir not found) — graceful,
   never raises.
 
-  For `:pi`, returns `%{role => per_role_usage}` sourced from the loop's
-  terminal `"per_role"` sub-map (same source `parse/2`'s `:pi` clause reads
-  for top-level metrics). Returns `%{}` when the loop line is absent.
-
   `opts[:projects_root]` overrides the default `~/.claude/projects` base
-  (used for hermetic tests). Unused by the `:pi` clause.
+  (used for hermetic tests).
   """
-  @spec parse_per_role(String.t(), :claude | :pi, keyword()) :: %{
+  @spec parse_per_role(String.t(), :claude, keyword()) :: %{
           optional(String.t()) => per_role_usage()
         }
   def parse_per_role(output, harness, opts \\ [])
-
-  def parse_per_role(output, :pi, _opts) do
-    output
-    |> decode_lines()
-    |> extract_loop_result()
-    |> per_role_from_loop_result()
-  end
 
   def parse_per_role(output, :claude, opts) do
     projects_root = Keyword.get(opts, :projects_root, Path.expand("~/.claude/projects"))
@@ -469,92 +372,4 @@ defmodule CodegenTestHarness.UsageParser do
     end
   end
 
-  # ── Pi helpers ─────────────────────────────────────────────────────────────
-
-  defp extract_pi_metrics(messages) do
-    acc =
-      Enum.reduce(
-        messages,
-        %{
-          in: :unknown,
-          out: :unknown,
-          read: :unknown,
-          write: :unknown,
-          cost: :unknown,
-          model: nil
-        },
-        fn msg, acc ->
-          usage = Map.get(msg, "usage") || %{}
-          cost_map = Map.get(usage, "cost") || %{}
-          model = Map.get(msg, "model") || acc.model
-
-          %{
-            in: add_unknown(acc.in, pi_int(usage, "input")),
-            out: add_unknown(acc.out, pi_int(usage, "output")),
-            read: add_unknown(acc.read, pi_int(usage, "cacheRead")),
-            write: add_unknown(acc.write, pi_int(usage, "cacheWrite")),
-            cost: add_unknown_float(acc.cost, pi_float(cost_map, "total")),
-            model: model
-          }
-        end
-      )
-
-    %{
-      model: acc.model || :unknown,
-      input_tokens: acc.in,
-      output_tokens: acc.out,
-      cache_read_tokens: acc.read,
-      cache_creation_tokens: acc.write,
-      cost_usd: acc.cost,
-      duration_ms: :unknown,
-      duration_api_ms: :unknown,
-      num_turns: :unknown,
-      terminal_reason: :unknown
-    }
-  end
-
-  defp unknown_pi_map do
-    %{
-      model: :unknown,
-      input_tokens: :unknown,
-      output_tokens: :unknown,
-      cache_read_tokens: :unknown,
-      cache_creation_tokens: :unknown,
-      cost_usd: :unknown,
-      duration_ms: :unknown,
-      duration_api_ms: :unknown,
-      num_turns: :unknown,
-      terminal_reason: :unknown
-    }
-  end
-
-  defp pi_int(map, key) do
-    case Map.get(map, key) do
-      v when is_integer(v) -> v
-      v when is_float(v) -> round(v)
-      _ -> :unknown
-    end
-  end
-
-  defp pi_float(map, key) do
-    case Map.get(map, key) do
-      v when is_float(v) -> v
-      v when is_integer(v) -> v * 1.0
-      _ -> :unknown
-    end
-  end
-
-  # Adds two values where either may be :unknown.
-  # :unknown + N = N (treat missing as not-yet-seen, not as zero)
-  # N + :unknown = N
-  # :unknown + :unknown = :unknown
-  defp add_unknown(:unknown, :unknown), do: :unknown
-  defp add_unknown(:unknown, v) when is_number(v), do: v
-  defp add_unknown(acc, :unknown) when is_number(acc), do: acc
-  defp add_unknown(acc, v) when is_number(acc) and is_number(v), do: acc + v
-
-  defp add_unknown_float(:unknown, :unknown), do: :unknown
-  defp add_unknown_float(:unknown, v) when is_number(v), do: v * 1.0
-  defp add_unknown_float(acc, :unknown) when is_number(acc), do: acc
-  defp add_unknown_float(acc, v) when is_number(acc) and is_number(v), do: acc + v * 1.0
 end

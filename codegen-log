@@ -85,7 +85,7 @@
 #                      record of the loop CHILD PROCESS's raw wait status —
 #                      no "role" field, a process exit has no role.
 #   waiver          — role, hook, slug. Written by harnesses/claude/hooks/
-#                      _waiver.sh (+ Pi waiver.ts twin) at the moment a
+#                      _waiver.sh at the moment a
 #                      registry-opted-in guard is granted a waiver for a
 #                      promoted pitch's declared `waives:` list — see
 #                      session-log.md § A guard is waived only where a pitch
@@ -860,8 +860,6 @@ version_stamp_json() {
     fi
     if command -v claude >/dev/null 2>&1; then
         claude_version="$(claude --version 2>/dev/null || printf 'unknown')"
-    elif command -v pi >/dev/null 2>&1; then
-        claude_version="$(pi --version 2>/dev/null || printf 'unknown')"
     else
         claude_version="unknown"
     fi

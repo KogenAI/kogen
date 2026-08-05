@@ -50,7 +50,6 @@ For SubagentStop hooks that always exit 0 (fix-up, never block), the minimal pat
 
 Example: `curator-format.sh` (runs `make format` on markdown edits by context-curator). No ledger, no git-diff, no LLM-signal — single-purpose formatters use the whole tree (idempotent operation).
 
-**Pi mirror parity for SubagentStop target checks**: When a Bash hook checks for Makefile target presence (e.g., `grep -q '^format:'`), the Pi TypeScript mirror must also verify the target exists via regex match (`/^format:/m.test(readFileSync(...))`), not just `fs.existsSync(Makefile)` alone. File presence is weaker than target presence — a Makefile without the target causes `make` to fail with "No rule to make target", which a non-fatal catch swallows instead of short-circuiting cleanly. Guard both implementations with the target check.
 
 ## Hook Test Authoring Patterns
 
@@ -66,7 +65,7 @@ When adding assertion helpers (e.g., `assert_file_contains` / `assert_file_absen
 
 Example (`call-dispatch_test.sh`): fn wraps `grep -qF -- "$search_string" "$file_path"`, incrementing `pass_count`/`fail_count`, printing `FAIL: '<str>' not found in <file>` on miss.
 
-**Coverage minimum**: every guard ≥14 cases, DENY+ALLOW — silent failures (grep partial, null crash, missing `//`) caught by tests not review. **Optional-pipeline** (both FORBID bare skip): (a) guaranteed dep (node/prettier/yq) — assert presence, fail loud on absence; (b) genuinely-optional (e.g. app omits `assets.deploy`) — check fs+config preconditions, assert ABSENCE-path fallback/no-op, not bare skip. **Hermeticity**: role-reading guards tested via `env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD"`. **Markdown headings** in LLM output: case-insensitive `~r/##\s+heading/i` (capitalisation varies).
+**Coverage minimum**: every guard ≥14 cases, DENY+ALLOW — silent failures (grep partial, null crash, missing `//`) caught by tests not review. **Optional-pipeline** (both FORBID bare skip): (a) guaranteed dep (node/prettier/yq) — assert presence, fail loud on absence; (b) genuinely-optional (e.g. app omits `assets.deploy`) — check fs+config preconditions, assert ABSENCE-path fallback/no-op, not bare skip. **Hermeticity**: role-reading guards tested via `env -u CLAUDE_ROLE bash "$GUARD"`. **Markdown headings** in LLM output: case-insensitive `~r/##\s+heading/i` (capitalisation varies).
 
 ## Carve-Out Twin Rule — An ALLOW Fixture Requires a DENY Twin Crossing Its Axis
 
@@ -213,7 +212,7 @@ Key: `line.startsWith(header)` is a prefix test, so `"## developer-phoenix-backe
 
 **Interaction with other guards**: Sibling hooks (e.g., `session-log-no-duplicate-section.sh`) use end-anchored patterns like `^## .+ Section$` to detect duplicate bare headers — the `$` anchor exempts `(pass N)` suffixes from denial, so re-spawning does not trigger false duplicates.
 
-**Harness scoping**: `harnesses: all` (default) REQUIRES a matching `.ts` Pi handler or `make install` fails. Use `harnesses: claude_code` to skip Pi parity check.
+**Harness scoping**: `harnesses: all` (default) deploys to every harness. Use `harnesses: claude_code` to scope a hook to Claude only.
 
 **Role matching**: Manifest glob role (e.g., `developer-*`) → hook body MUST contain matching case/grep — `validate_role_match` in `hook_registrations.py` enforces this.
 
@@ -251,7 +250,6 @@ old_string=$(jq -r '.tool_input.old_string // ""' <<< "$RAW_INPUT")
 content=$(jq -r '.tool_input.content // ""' <<< "$RAW_INPUT")
 ```
 
-**Pi equivalent**: read from `event.input` directly (typed, no jq). Reference: `session-log-section-integrity.ts` lines 71–75. **Fail-open**: jq errors or missing fields default to `""` via `// ""`.
 
 ### `deny()` Requires Explicit `exit 0`
 
@@ -362,14 +360,7 @@ New guards can be added to codegen by following established patterns:
 - `SubagentStop` — fires when a subagent completes, for post-agent logic (e.g., the loop's dev-gate step appends gate verdict)
 - `Stop` — fires at session end for final guards
 
-**Pi harness** (`harnesses/pi/pi-extensions/enforcement/src/hooks/`)
-
-- `tool_call` on `"subagent"` tool name — Pi mirror of Claude's `Agent` PreToolUse matchers (e.g., `curator-before-committer.ts`)
-- `tool_call` on any tool name — Pi mirror of Claude's PreToolUse guards
-- `subagent_stop` — Pi mirror of Claude's SubagentStop
-- `tool_use_error` — Pi error handling (no strict Claude equivalent)
-
-Both harnesses use the same hook file naming, same test patterns (`*_test.sh` / `*_test.ts`), and fail-open semantics (missing state → allow). **Pi path resolution note**: When a Pi hook reads the original `filePath` from `event.input` (not a resolved relative form), the hook receives the raw path as written by the tool — for relative test paths this equals the repo-relative form; for absolute paths with symlinks it is not automatically resolved. Both forms correctly trigger tier-cap segment patterns (e.g., `/_core/`, `/roles/`, `/stacks/`) since these substrings appear in the path string regardless of symlink resolution. Verify test data contains the exact path strings that will be matched by the hook's regex pattern.
+Hooks use consistent file naming, test patterns (`*_test.sh`), and fail-open semantics (missing state → allow). **Path resolution note**: When a hook reads the original `filePath` from its input (not a resolved relative form), the hook receives the raw path as written by the tool — for relative test paths this equals the repo-relative form; for absolute paths with symlinks it is not automatically resolved. Both forms correctly trigger tier-cap segment patterns (e.g., `/_core/`, `/roles/`, `/stacks/`) since these substrings appear in the path string regardless of symlink resolution. Verify test data contains the exact path strings that will be matched by the hook's regex pattern.
 
 ## Coordinating Regex Patterns Across Multiple Files
 
@@ -443,7 +434,7 @@ Nav-word set (see/read/per/check/via/apply/from/at/in/→) must precede the back
 
 A post-hoc check that re-invokes a FINISHED role to repair an omission cannot win: a cold re-invoke has no memory of the work it did, and a warm `--resume` only works if the resume prompt and the validator it's re-checked against share ONE source of truth (drift = unwinnable — see `role-retrospective-before-stop`'s deleted predecessor, which asked for bare text but validated a literal header).
 
-**Pattern**: gate on `Stop` BEFORE the role's turn ends. A blocking `Stop` hook's `{"decision":"block",...}` pushes the role back into its OWN still-live session — no teardown, no re-invoke. Claude can block; Pi's `session_shutdown` cannot (observe-only, warns on stderr).
+**Pattern**: gate on `Stop` BEFORE the role's turn ends. A blocking `Stop` hook's `{"decision":"block",...}` pushes the role back into its OWN still-live session — no teardown, no re-invoke. Claude can block (warns on stderr).
 
 Corollary: a marker a hook keys on MUST be a typed structured field both writer and checker read the same way — never markdown text one side generates and the other re-parses heuristically. See `role-retrospective-before-stop` + `codegen-log section --learned`.
 

@@ -2,9 +2,9 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
   @shortdoc "Drains codegen/pitches/ready/ — one fresh isolated build per pitch."
 
   @moduledoc """
-  `mix codegen.loop.queue --harness=<claude|pi> --stack=<phoenix|static> --cwd=<dir>`
+  `mix codegen.loop.queue --harness=claude --stack=<phoenix|static> --cwd=<dir>`
 
-  Multi-pitch driver invoked by `claude-build --queue` / `pi-build --queue`.
+  Multi-pitch driver invoked by `claude-build --queue`.
   Delegates to `CodegenTestHarness.LoopQueueDrain.drain/1`, which spawns one
   fresh isolated `codegen-build` child per ordered pitch under
   `<cwd>/codegen/pitches/ready/`, moving each to `shipped/` on success.
@@ -26,7 +26,7 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
 
   ## Flags
 
-  - `--harness` — required, `claude` | `pi`
+  - `--harness` — required, `claude`
   - `--stack` — required, e.g. `phoenix` | `static`
   - `--cwd` — required, project directory whose `codegen/pitches/ready/` is drained
   - `--watch` — optional. When `ready/` empties, do not exit — sleep and
@@ -95,9 +95,9 @@ defmodule Mix.Tasks.Codegen.Loop.Queue do
     lock_path = Path.join([cwd, "codegen", "gate-pending", "queue.lock"])
     :ok = BuildSignalHandler.install(lock_path)
 
-    unless harness in ["claude", "pi"] do
+    unless harness in ["claude"] do
       Mix.shell().error(
-        "codegen.loop.queue: --harness must be \"claude\" or \"pi\", got #{inspect(harness)}"
+        "codegen.loop.queue: --harness must be \"claude\", got #{inspect(harness)}"
       )
 
       exit({:shutdown, 2})

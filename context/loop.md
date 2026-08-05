@@ -129,7 +129,7 @@ role-config owner file for the ladder's actual rung values.
 `do_gate_loop_rework/9` and `rework_final_gate/5`, `final_attempt?` true), immediately after
 escalation. Shells `codegen-advise --harness=<current build harness>` (test-seam: `opts[:advisor_fn]`,
 default `default_advisor_fn/3`) with the gate failure reason + rework brief. `codegen-advise` flips to
-the OPPOSITE provider via a FIXED mapping (`claude_code` → `pi`/`openai-codex/gpt-5.6-sol`; `pi` →
+the OPPOSITE provider via a FIXED mapping. DORMANT today: only one provider is installed, so `codegen-advise` reports that and exits 1; `maybe_advise/5` maps any non-zero exit to no-op. (`claude_code` →
 `claude_code`/`opus`; not configurable) and returns `{plan, confidence}` JSON, stashed at
 `ctx.artifacts.advisor_plan` and rendered under `## Advisor` for the reworked developer role. Composes
 with escalation (both `:escalated_model` and `:advisor_plan` can coexist; both cleared once resolved).

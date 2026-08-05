@@ -20,7 +20,6 @@ done
 
 SHA="$(git -C "$SCRIPT_DIR/.." rev-parse HEAD 2>/dev/null || echo unknown)"
 CLAUDE_V="$(claude --version 2>/dev/null || echo unknown)"
-PI_V="$(pi --version 2>/dev/null || echo unknown)"
 ELIXIR_V="$(elixir --version 2>/dev/null | tr '\n' ' ' || echo unknown)"
 OTP_V="$(erl -noshell -eval 'io:format("~s",[erlang:system_info(otp_release)]),halt().' 2>/dev/null || echo unknown)"
 NODE_V="$(node --version 2>/dev/null || echo unknown)"
@@ -31,14 +30,13 @@ TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -n \
     --arg sha "$SHA" \
     --arg cv "$CLAUDE_V" \
-    --arg pv "$PI_V" \
     --arg ev "$ELIXIR_V" \
     --arg ov "$OTP_V" \
     --arg nv "$NODE_V" \
     --arg yv "$YQ_V" \
     --arg os "$OS_V" \
     --arg ts "$TS" \
-    '{codegen_sha: $sha, harness_versions: {claude: $cv, pi: $pv}, tool_versions: {elixir: $ev, erlang_otp: $ov, node: $nv, yq: $yv}, os: $os, test_passed_at: $ts, test_command: "make test-all"}' \
+    '{codegen_sha: $sha, harness_versions: {claude: $cv}, tool_versions: {elixir: $ev, erlang_otp: $ov, node: $nv, yq: $yv}, os: $os, test_passed_at: $ts, test_command: "make test-all"}' \
     >"$OUTPUT"
 
 echo "wrote $OUTPUT (codegen_sha=$SHA, ts=$TS)"

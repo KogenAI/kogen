@@ -25,7 +25,7 @@ defmodule CodegenTestHarness.BenchMetrics do
     %{
       id: :cost_usd,
       unit: "USD",
-      source: "UsageParser total_cost_usd / pi cost.total sum",
+      source: "UsageParser total_cost_usd sum",
       aggregator: :sum,
       gap: nil
     },
@@ -46,14 +46,14 @@ defmodule CodegenTestHarness.BenchMetrics do
     %{
       id: :cache_read_tokens,
       unit: "count",
-      source: "UsageParser usage.cache_read_input_tokens / pi usage.cacheRead",
+      source: "UsageParser usage.cache_read_input_tokens",
       aggregator: :sum,
       gap: nil
     },
     %{
       id: :cache_creation_tokens,
       unit: "count",
-      source: "UsageParser usage.cache_creation_input_tokens / pi usage.cacheWrite",
+      source: "UsageParser usage.cache_creation_input_tokens",
       aggregator: :sum,
       gap: nil
     },
@@ -131,7 +131,7 @@ defmodule CodegenTestHarness.BenchMetrics do
       id: :cache_read_tokens_by_role,
       unit: "count",
       source:
-        "UsageParser.parse_per_role/3 — Claude: per-subagent transcript sums; Pi: loop terminal per_role sub-map",
+        "UsageParser.parse_per_role/3 — per-subagent transcript sums",
       aggregator: :sum,
       gap: "separate shape — %{role => %{...}}, not a flat scalar"
     }

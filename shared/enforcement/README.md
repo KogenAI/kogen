@@ -1,7 +1,7 @@
 # shared/enforcement/registry.yaml — Schema Reference
 
 Declarative registry of enforcement denial rules. Single source of truth for hook
-generation across Claude Code (bash `.sh`) and Pi (TypeScript `.ts`) harnesses.
+generation for the Claude Code (bash `.sh`) harness.
 
 ## File Location
 
@@ -21,7 +21,7 @@ generation across Claude Code (bash `.sh`) and Pi (TypeScript `.ts`) harnesses.
 | `surface`    | string          | yes      | Hook surface: `user_global`, `project`, etc.                                    |
 | `signal`     | string          | yes      | Hook signal: `none`, `AGENT_TYPE`, etc.                                         |
 | `role`       | string          | yes      | Role scope. `"*"` = all roles.                                                  |
-| `harnesses`  | string          | yes      | Which harnesses deploy this hook: `all`, `claude`, `pi`.                        |
+| `harnesses`  | string          | yes      | Which harnesses deploy this hook: `all`, `claude`.                              |
 
 Either `match` or `match_all` must be present — not both, not neither.
 
@@ -60,8 +60,6 @@ Invocation:
 python3 templates/generator/enforcement_compiler.py \
   --registry shared/enforcement/registry.yaml \
   --bash-out harnesses/claude/hooks \
-  --ts-out harnesses/pi/pi-extensions/enforcement/src/hooks \
-  --index harnesses/pi/pi-extensions/enforcement/src/index.ts
 ```
 
 - Reads registry via `yq -o=json '.'`
@@ -88,4 +86,3 @@ Set `generated: false` (or omit the entry entirely). The compiler skips entries
 with `generated: false`. Hand-authored hooks live in:
 
 - `harnesses/claude/hooks/<id>.sh`
-- `harnesses/pi/pi-extensions/enforcement/src/hooks/<id>.ts`

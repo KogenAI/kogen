@@ -15,11 +15,8 @@
 #   11: reviewer-phoenix make ci → allow (0) — this hook only gates the orchestrator
 #   12: subagent with non-empty agent_id, empty agent_type, make ci → allow (0)
 #   13: CLAUDE_ROLE=ops make ci → allow (0) — ops bypass via resolve_role
-#   14: PI_ROLE=ops make ci → allow (0) — ops bypass via resolve_role
 #   15: CLAUDE_ROLE=experiment make ci → allow (0) — experiment bypass via resolve_role
-#   16: PI_ROLE=experiment make ci → allow (0) — experiment bypass via resolve_role
 #   19: CLAUDE_ROLE=babysit make ci → allow (0) — babysit bypass via resolve_role
-#   20: PI_ROLE=babysit make ci → allow (0) — babysit bypass via resolve_role
 
 set -euo pipefail
 
@@ -108,16 +105,8 @@ run_test "subagent non-empty agent_id empty agent_type make ci → allow (skip)"
 CLAUDE_ROLE=ops run_test "CLAUDE_ROLE=ops make ci → allow (ops bypass)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
-# Test 14: PI_ROLE=ops make ci → allow (ops bypass via PI_ROLE parity)
-PI_ROLE=ops run_test "PI_ROLE=ops make ci → allow (ops bypass)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
-
 # Test 15: CLAUDE_ROLE=experiment make ci → allow (experiment bypass — standalone dev session)
 CLAUDE_ROLE=experiment run_test "CLAUDE_ROLE=experiment make ci → allow (experiment bypass)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
-
-# Test 16: PI_ROLE=experiment make ci → allow (experiment bypass via PI_ROLE parity)
-PI_ROLE=experiment run_test "PI_ROLE=experiment make ci → allow (experiment bypass)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
 # Test 17: codegen-log write narrating "make ci" in heredoc body → allow
@@ -130,10 +119,6 @@ run_test "orchestrator real make ci still denied (unchanged)" "2" \
 
 # Test 19: CLAUDE_ROLE=babysit make ci → allow (babysit bypass — dispatches codegen-build --queue)
 CLAUDE_ROLE=babysit run_test "CLAUDE_ROLE=babysit make ci → allow (babysit bypass)" "0" \
-    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
-
-# Test 20: PI_ROLE=babysit make ci → allow (babysit bypass via PI_ROLE parity)
-PI_ROLE=babysit run_test "PI_ROLE=babysit make ci → allow (babysit bypass)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"","agent_id":""}'
 
 echo ""

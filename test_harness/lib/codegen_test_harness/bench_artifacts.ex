@@ -31,7 +31,7 @@ defmodule CodegenTestHarness.BenchArtifacts do
   Captures a screenshot of the built site in `cwd` for the given `stack`.
 
   `run_dir` is the `BENCH_RUN_DIR` value. `harness` is a string (`"claude"` or
-  `"pi"`). `test_name` is used as the PNG filename.
+  `"claude"`). `test_name` is used as the PNG filename.
 
   Returns `:ok` on success (PNG written) or when the stack is skipped.
   Returns `{:error, reason}` when the Node script fails or the tool is missing.

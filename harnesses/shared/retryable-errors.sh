@@ -15,7 +15,7 @@ hard_fail_regex='API Error: 400|API Error: 401|API Error: 403|API Error: 404|Pro
 # switch_model_regex — the MODEL itself is down/gone, not a transport blip.
 # Retrying the SAME model (retryable_regex's contract) is pointless here;
 # the caller should walk the role's `fallback:` chain (config.yaml) instead.
-# Narrow subset of harnesses/pi/pi-extensions/subagents/src/runs/shared/
+# Narrow subset of the retryable-error taxonomy in
 # model-fallback.ts's RETRYABLE_MODEL_FAILURE_PATTERNS — only the
 # model/provider-availability tokens, not the broader quota/billing/auth/
 # transport vocabulary already covered by rate_limit_regex/hard_fail_regex/

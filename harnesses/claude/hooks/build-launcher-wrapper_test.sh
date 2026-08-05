@@ -1,26 +1,21 @@
 #!/usr/bin/env bash
-# build-launcher-wrapper_test.sh — hermetic tests for claude-build.sh + pi-build.sh
+# build-launcher-wrapper_test.sh — hermetic tests for claude-build.sh
 # wrapper logic (CODEGEN_DIR resolution, --queue dispatch, basename resolver,
 # cwd normalization).
 #
 # CRITICAL INVARIANT: no test case may ever reach a real exec of
-# `codegen-build`, `mix codegen.loop*`, `claude`, or `pi`. Every case stubs
+# `codegen-build`, `mix codegen.loop*`, or `claude`. Every case stubs
 # the terminal exec target(s) it can reach and asserts the stub's capture
 # file was written (absent capture file ⇒ real binary ran ⇒ FAIL loud).
 # run-tests.sh unsets OCG_CODEGEN_DIR before discovery, so every case pins it
 # explicitly (or copies the launcher into a synthetic SCRIPT_DIR layout for
 # the two non-override CODEGEN_DIR branches).
-#
-# Both launchers are ~identical; three divergences: pi exports PI_ROLE=build;
-# pi emits bare `codegen/pitches/ready/<slug>.md` mentions (claude prefixes
-# `@`); message prefixes `pi-build:` vs `claude-build:`.
 
 set -euo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_ROOT="$(cd "$HOOKS_DIR/../../.." && pwd)"
 CLAUDE_LAUNCHER="$CODEGEN_ROOT/harnesses/claude/claude-build.sh"
-PI_LAUNCHER="$CODEGEN_ROOT/harnesses/pi/pi-build.sh"
 
 pass=0
 fail=0
@@ -109,10 +104,10 @@ make_mix_stub_dir() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────
-# Parameterized runner: iterate both launchers.
-#   $1 = launcher path, $2 = harness label (claude|pi), $3 = msg prefix
+# Parameterized runner: iterate every launcher.
+#   $1 = launcher path, $2 = harness label, $3 = msg prefix
 # ─────────────────────────────────────────────────────────────────────────
-LAUNCHERS=("$CLAUDE_LAUNCHER:claude:claude-build" "$PI_LAUNCHER:pi:pi-build")
+LAUNCHERS=("$CLAUDE_LAUNCHER:claude:claude-build")
 
 for entry in "${LAUNCHERS[@]}"; do
     LAUNCHER="${entry%%:*}"

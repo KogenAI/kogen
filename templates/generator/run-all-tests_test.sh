@@ -555,7 +555,6 @@ full_raw_count=$(printf '%s\n%s\n' "$declared_hardcoded" "$shared_glob_files" | 
 full_unique_count=$(printf '%s\n' "$full_population" | wc -l | tr -d ' ')
 _assert_eq "harness-parity full population has no duplicate basename ownership" "$full_unique_count" "$full_raw_count"
 _assert_contains "harness-parity full population includes loop-signal-bridge_test.sh" "loop-signal-bridge_test.sh" "$full_population"
-_assert_contains "harness-parity full population includes pitch-postflight_test.sh" "pitch-postflight_test.sh" "$full_population"
 
 # ── Case 18: real scheduler executes full parity population exactly once ────
 _case18_build_fixture() {

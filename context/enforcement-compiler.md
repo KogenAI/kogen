@@ -9,7 +9,7 @@
 
 Both kinds coexist in `shared/enforcement/registry.yaml`. The compiler skips `kind: registration` entries entirely — they have no `match`/`message` and are not denial rules.
 
-**Content-matching hooks are always `kind: registration`** — the compiler's `source` axis supports only `COMMAND` (`.tool_input.command`) and `FILE_PATH` (the file path); neither reaches Edit/Write CONTENT (`.tool_input.new_string` / `.tool_input.content`). A hook that must inspect the text being written (e.g. `no-silent-failure` scanning for swallow tokens, `context-curator-guard` scanning path + projected line count) is hand-authored: `kind: registration` header + a hand-written body reading content directly from `$RAW_INPUT` via jq (bash) or `event.input` (Pi TS). Adding a `source: CONTENT` compiler template is a larger shared-codepath change (touches `parse_input` for every hook) and is not required — the hand-authored precedent is the sanctioned default for this class.
+**Content-matching hooks are always `kind: registration`** — the compiler's `source` axis supports only `COMMAND` (`.tool_input.command`) and `FILE_PATH` (the file path); neither reaches Edit/Write CONTENT (`.tool_input.new_string` / `.tool_input.content`). A hook that must inspect the text being written (e.g. `no-silent-failure` scanning for swallow tokens, `context-curator-guard` scanning path + projected line count) is hand-authored: `kind: registration` header + a hand-written body reading content directly from `$RAW_INPUT` via jq (bash). Adding a `source: CONTENT` compiler template is a larger shared-codepath change (touches `parse_input` for every hook) and is not required — the hand-authored precedent is the sanctioned default for this class.
 
 ### Compiler Axes
 
@@ -25,12 +25,12 @@ Both kinds coexist in `shared/enforcement/registry.yaml`. The compiler skips `ki
 
 **Role axis** — scope by agent:
 
-- `signal: AGENT_TYPE` — gate-guard on `$CLAUDE_ROLE` or `$PI_ROLE`; check proceeds only for listed role(s)
-- `bypass_roles: [list]` — launcher-mode values (debug, shape, ops, …) that exit 0 immediately before role/match gates (from `resolve_role()` which folds `CLAUDE_ROLE > PI_ROLE`); emits prelude sourcing `_role.sh` (bash) or env-reading process.env (TS); placement: after `parse_input`, before AGENT_TYPE gate
+- `signal: AGENT_TYPE` — gate-guard on `$CLAUDE_ROLE`; check proceeds only for listed role(s)
+- `bypass_roles: [list]` — launcher-mode values (debug, shape, ops, …) that exit 0 immediately before role/match gates (from `resolve_role()`); emits prelude sourcing `_role.sh`; placement: after `parse_input`, before AGENT_TYPE gate
 
-**Harness axis** — deployment target (Claude Code, Pi, or both):
+**Harness axis** — deployment target:
 
-- `harnesses: claude` (or `pi` or `all`) — determines which harness(es) own the hook. Verified bidirectionally: registry `harnesses: all` with a working pi `.ts` file is a drift if the registry was hand-maintained before compiler widening. Always audit both directions (registry→files AND files→registry) when migrating hand-wired hooks to generated blocks.
+- `harnesses: claude` (or `all`) — determines which harness(es) own the hook. is a drift if the registry was hand-maintained before compiler widening. Always audit both directions (registry→files AND files→registry) when migrating hand-wired hooks to generated blocks.
 
 ### Template Forms
 
@@ -46,7 +46,7 @@ All forms compose with `bypass_roles` prelude (if specified): the bypass exits e
 
 | Field          | Type   | Purpose                                                                                                                                        | Default  |
 | -------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `id`           | string | Hook filename slug (kebab-case); MUST match both `.sh` (Claude) and `.ts` (Pi) filenames — compiler contract is `id == filename`, no overrides | —        |
+| `id`           | string | Hook filename slug (kebab-case); MUST match the `.sh` (Claude) filename — compiler contract is `id == filename`, no overrides | —        |
 | `kind`         | string | `denial` (full-file generation) or `registration` (header-only injection)                                                                      | `denial` |
 | `generated`    | bool   | Compiler owns the output; `make install` regenerates it. Only valid for `kind: denial`                                                         | —        |
 | `event`        | string | Hook event (PreToolUse, SubagentStop, Stop)                                                                                                    | —        |
@@ -59,7 +59,7 @@ All forms compose with `bypass_roles` prelude (if specified): the bypass exits e
 | `signal`       | string | Hook signal (none, AGENT_TYPE, …)                                                                                                              | none     |
 | `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer)                                                                            | `*`      |
 | `bypass_roles` | list   | Launcher-mode values (debug, shape, ops) that exit before gates                                                                                | —        |
-| `harnesses`    | string | Canonical form: `claude` or `pi` (registry enum). Rendered to hook header as `claude_code` or `pi`. Deployment target (all, claude, pi)        | all      |
+| `harnesses`    | string | Canonical form: `claude` (registry enum). Rendered to hook header as `claude_code`. Deployment target (all, claude)                            | all      |
 | `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only                                  | —        |
 | `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only                                                                                          | —        |
 | `surface`      | string | Rendered as `# surface: {surface}` header comment (e.g., `user_global`); documents hook exposure scope                                         | —        |
@@ -82,21 +82,16 @@ FORBIDDEN: backreferences (`\1`, `\2`), lookahead/lookbehind (`(?=...)`, `(?!...
 2. Compiler reads `shared/enforcement/registry.yaml`
 3. For each `kind: denial` entry with `generated: true`, emits:
    - Bash hook → `harnesses/claude/hooks/<id>.sh` (chmod +x)
-   - TypeScript hook → `harnesses/pi/pi-extensions/enforcement/src/hooks/<id>.ts`
-4. Compiler collects pi-registerable ids: union of `kind: denial` entries with `emit_ts: true` AND `kind: registration` entries where `harnesses ∈ {all,pi}` AND the corresponding `.ts` file exists at `pi-hooks-dir/<id>.ts`. Compiler invokes `_update_index(index_ts_path, register_ids)` to update Pi `index.ts` GENERATED block (BEGIN/END markers) with sorted hook imports + registrations.
-   - **Existence guard**: only emit `import`/`register` for an id whose `.ts` file actually exists. Prevents broken imports for `harnesses: all` entries whose pi twin hasn't been written yet (transient state during development).
-   - **`--pi-hooks-dir` argument**: passed to compiler explicitly (Makefile) so existence guard checks the REAL hooks directory. Without it, tests copying `index.ts` to `/tmp` would have `index_path.parent == /tmp`, causing the guard to check the wrong path and generate a smaller block. Both `make install` and `make enforce-registry-parity` must use the same `--pi-hooks-dir` path for idempotency.
    - **Marker-replace branch**: if committed `index.ts` already contains `// BEGIN-GENERATED-ENFORCEMENT-BLOCK` and `// END-GENERATED-ENFORCEMENT-BLOCK` markers, the compiler replaces content BETWEEN markers only — it does NOT auto-remove hand-written import/register lines OUTSIDE the markers. One-time manual cleanup required after widening the generated set; thereafter file is idempotent.
 5. **`hook_registrations.py --emit-headers` reads `kind: registration` entries → injects `# HOOK-MANIFEST:` header into each hand-written `.sh` (body unchanged).** CRITICAL: `render_header()` must NOT include a trailing `#` terminator line — `inject_header()` preserves the terminator from the original file body. Header span is injected idempotently via mktemp/cmp/mv.
-6. `hook_registrations.py` rescans hook source dirs and rewrites `claude-code-settings.json` + pi manifest entries
+6. `hook_registrations.py` rescans hook source dirs and rewrites `claude-code-settings.json`
 7. Committed generated files must be byte-identical to compiler output → `make enforce-registry-parity` gate (part of `make test`) verifies this
 8. Committed hook headers must match registry entries → `make hook-header-parity` gate (part of `make test`) verifies this
 
 **Order dependency**: emit-headers (step 5) MUST run before hook-parity (step 6) so the settings generated from hook headers reflect the freshly-injected headers. Reversed order → stale settings.
 
-**Widening the generated set**: when migrating hand-maintained hook registrations to generated blocks (e.g., pi `index.ts` registration imports), audit the change bidirectionally BEFORE widening the filter:
+**Widening the generated set**: when migrating hand-maintained hook registrations to generated blocks, audit the change bidirectionally BEFORE widening the filter:
 
-- Registry→files: which entries have `harnesses: all|pi` but NO corresponding `.ts` file? (over-claimed entries; existence guard prevents broken imports)
 - Files→registry: which `.ts` files exist but have `harnesses: claude`? (under-claimed entries; flip to match living code)
 
 The generated set is rarely purely additive; drops are silent runtime breaks if undetected.
@@ -109,7 +104,7 @@ The generated set is rarely purely additive; drops are silent runtime breaks if 
 - `inject_header(script_path, header_text)` — rewrites ONLY the header span (from `# HOOK-MANIFEST:` to the original terminator) in an existing hook script, leaving body bytes identical. Uses mktemp/cmp/mv for idempotency (re-running with unchanged input → no file touch).
 - `--emit-headers` — injects freshly-rendered headers into all migrated hooks. Must run before `hook_registrations.py` default mode (step 6) to ensure settings are derived from the new headers.
 - `--check-headers` — regenerates headers to /tmp and diffs vs committed `.sh` files. Used by `make hook-header-parity` gate to verify headers match the registry.
-- Token mapping: registry stores `claude` (enum), but header field is `claude_code` (hook script format). Renderer maps `claude` → `claude_code` when emitting. Parser already accepts both via `hook_registrations.py`'s `VALID_HARNESSES` (currently `{"claude_code", "pi"}`) — distinct from `enforcement_compiler.py`'s own `_VALID_HARNESSES = ("all", "claude", "pi")` (registry-enum validation, different module, different value set/naming).
+- Token mapping: registry stores `claude` (enum), but header field is `claude_code` (hook script format). Renderer maps `claude` → `claude_code` when emitting. Parser already accepts both via `hook_registrations.py`'s `VALID_HARNESSES` (currently `{"claude_code"}`) — distinct from `enforcement_compiler.py`'s own `_VALID_HARNESSES = ("all", "claude")` (registry-enum validation, different module, different value set/naming).
 - Multi-line `rationale`: stored in registry as YAML block scalar (`|`); renderer emits `# rationale:` first line + `#   ` (indent) continuation lines. Parity diff catches any byte drift on round-trip.
 
 ## Enforcement Compiler — Renderer-Neutral Regex Tokens

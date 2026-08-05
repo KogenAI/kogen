@@ -22,8 +22,8 @@ defmodule CodegenTestHarness.BuildSignalHandler do
   layer down, by the shared bash helper `harnesses/shared/loop-signal-bridge.sh`
   (`run_supervised_loop`), sourced by all FOUR bash callers that spawn this
   BEAM as a job-controlled child — both `dispatch.sh` twins
-  (`harnesses/claude/dispatch.sh`, `harnesses/pi/dispatch.sh`) AND the
-  `--queue` leg of both build launchers (`claude-build.sh`/`pi-build.sh`).
+  (`harnesses/claude/dispatch.sh`) AND the `--queue` leg of the build
+  launcher (`claude-build.sh`).
   The helper never `exec`s (so its bash parent survives to trap), traps
   INT/TERM, and forwards a group `SIGTERM` to the child (`set -m` puts the
   child in its own process group) — SIGTERM IS catchable here, so that

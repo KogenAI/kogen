@@ -3,7 +3,6 @@
 #
 # Assertions (>=15):
 #  1. claude-build.sh sibling resolution (OCG_CODEGEN_DIR unset, non-Mac HOME)
-#  2. pi-build.sh same
 #  3. claude-shape.sh installed-flat layout — REAL launcher run; capture exported CODEGEN_DIR
 #  4. claude-shape.sh in-repo-checkout layout — REAL launcher run; no sibling harnesses dir
 #  5. OCG_CODEGEN_DIR override wins — REAL launcher run with populated fake OCG tree
@@ -18,7 +17,7 @@
 # 14. Static grep: no Areas/Optimum/codegen literal in launchers/dispatch/load-role
 # 15. Drift loop: SCRIPT_DIR + CODEGEN_DIR derivation block byte-identical across all non-build launchers
 # 20. Bash 3.2 empty-array splat guard: every "${arr[@]}" full-splat in mode
-#     launchers (claude-*.sh, pi-*.sh) must use the "${arr[@]+"${arr[@]}"}"
+#     launchers (claude-*.sh) must use the "${arr[@]+"${arr[@]}"}"
 #     empty-safe idiom. Includes a self-check on a synthetic fixture so a
 #     regression in the detection filter itself is caught.
 # 22. pitch-context-selector.sh citation priority: an explicitly-cited
@@ -31,7 +30,7 @@
 # 26. missing selected file fails loud: non-zero exit, stderr names the
 #     file, stub CLI never invoked.
 # 27. all four production callers (claude-shape, claude-experiment,
-#     pi-shape, pi-experiment) route through the same selector.
+#     route through the same selector.
 
 set -u
 
@@ -144,23 +143,6 @@ else
     fail=$((fail + 1))
 fi
 
-# ── Test 2: pi-build.sh sibling resolution ────────────────────────────────────
-T2="$BASE_TMP/t2_flat"
-mkdir -p "$T2"
-cp "$CODEGEN_ROOT/harnesses/pi/pi-build.sh" "$T2/pi-build.sh"
-ARGS_T2="$BASE_TMP/t2_args.txt"
-make_stub "$T2/codegen-build" "printf '%s\n' \"\$@\" > '$ARGS_T2'"
-
-actual_exit=0
-HOME="/tmp/nonexistent_user_xyz" bash "$T2/pi-build.sh" "pi prompt" 2>/dev/null || actual_exit=$?
-if [[ -f "$ARGS_T2" ]] && grep -q "harness=pi" "$ARGS_T2"; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: (2) pi-build.sh resolves sibling codegen-build without HOME fallback\n'
-    pass=$((pass + 1))
-else
-    printf 'FAIL: (2) pi-build.sh did not invoke sibling codegen-build (exit=%s)\n' "$actual_exit"
-    fail=$((fail + 1))
-fi
-
 # ── Test 3: claude-shape.sh installed-flat layout — run REAL launcher ────────
 # Simulate: scripts installed flat in INSTALL_DIR; harnesses symlink present next to scripts.
 # Stub claude to capture the exported CODEGEN_DIR that crosses the exec boundary.
@@ -255,9 +237,6 @@ DERIV_BLOCK=$(grep -A 8 '^SCRIPT_DIR=' "$REFERENCE_LAUNCHER" | head -9)
 LAUNCHERS_TO_CHECK=(
     "$CODEGEN_ROOT/harnesses/claude/claude-debug.sh"
     "$CODEGEN_ROOT/harnesses/claude/claude-ops.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-debug.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-ops.sh"
 )
 drift_found=""
 for launcher in "${LAUNCHERS_TO_CHECK[@]}"; do
@@ -326,12 +305,7 @@ FILES_TO_CHECK=(
     "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh"
     "$CODEGEN_ROOT/harnesses/claude/claude-debug.sh"
     "$CODEGEN_ROOT/harnesses/claude/claude-ops.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-build.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-debug.sh"
-    "$CODEGEN_ROOT/harnesses/pi/pi-ops.sh"
     "$CODEGEN_ROOT/harnesses/claude/dispatch.sh"
-    "$CODEGEN_ROOT/harnesses/pi/dispatch.sh"
     "$CODEGEN_ROOT/harnesses/claude/load-role.sh"
 )
 found_literal=""
@@ -521,7 +495,7 @@ assert_eq "(20) self-check: detection pipeline flags exactly the bare splat, not
 T20_LAUNCHERS=()
 while IFS= read -r -d '' f; do
     T20_LAUNCHERS+=("$f")
-done < <(find "$CODEGEN_ROOT/harnesses/claude" "$CODEGEN_ROOT/harnesses/pi" -maxdepth 1 \( -name 'claude-*.sh' -o -name 'pi-*.sh' \) -print0 2>/dev/null)
+done < <(find "$CODEGEN_ROOT/harnesses/claude" -maxdepth 1 -name 'claude-*.sh' -print0 2>/dev/null)
 
 t20_offenders=""
 for f in "${T20_LAUNCHERS[@]+"${T20_LAUNCHERS[@]}"}"; do
@@ -545,8 +519,7 @@ fi
 # "## Domain Context Files" — the boundary the pitch commits to. Proves the
 # whole-file append still forwards the field AND both parser-owned sections
 # (Always Load / Domain table) still produce unchanged output, across all four
-# PROJECT_CONTEXT-reading launchers (claude-shape, pi-shape, claude-experiment,
-# pi-experiment).
+# PROJECT_CONTEXT-reading launchers (claude-shape, claude-experiment).
 T21="$BASE_TMP/t21_required_platforms"
 mkdir -p "$T21/context" "$T21/codegen/pitches/draft"
 cat >"$T21/PROJECT_CONTEXT.md" <<'EOF'
@@ -606,19 +579,11 @@ assert_contains "(21) claude-shape: Always Load file still forwarded" "REPO_STRU
 assert_contains "(21) claude-shape: matched Domain-table file still forwarded" "HARNESSES_CONTENT" "$captured21_claude_shape"
 assert_not_contains "(21) claude-shape: unmatched Domain-table file not forwarded" "HOOKS_CONTENT" "$captured21_claude_shape"
 
-captured21_pi_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh" "pi-shape.sh" "pi" "t21-pitch")
-assert_contains "(21) pi-shape: required_platforms reaches args" "required_platforms: [darwin, linux]" "$captured21_pi_shape"
-assert_contains "(21) pi-shape: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_pi_shape"
-assert_contains "(21) pi-shape: matched Domain-table file still forwarded" "HARNESSES_CONTENT" "$captured21_pi_shape"
-assert_not_contains "(21) pi-shape: unmatched Domain-table file not forwarded" "HOOKS_CONTENT" "$captured21_pi_shape"
 
 captured21_claude_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-experiment.sh" "claude-experiment.sh" "claude" "")
 assert_contains "(21) claude-experiment: required_platforms reaches args (Tier-0)" "required_platforms: [darwin, linux]" "$captured21_claude_experiment"
 assert_contains "(21) claude-experiment: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_claude_experiment"
 
-captured21_pi_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-experiment.sh" "pi-experiment.sh" "pi" "")
-assert_contains "(21) pi-experiment: required_platforms reaches args (Tier-0)" "required_platforms: [darwin, linux]" "$captured21_pi_experiment"
-assert_contains "(21) pi-experiment: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_pi_experiment"
 
 # ── Test 22: citation priority — explicit context/<name>.md citation wins ─────
 T22="$BASE_TMP/t22_citation_priority"
@@ -886,14 +851,10 @@ printf '## Problem\nFix dispatch.sh. See context/cited-only27.md.\n' >"$T27/code
 captured27_claude_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "claude-shape.sh" "claude" "t27-pitch" "$T27")
 assert_contains "(27) claude-shape: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_claude_shape"
 
-captured27_pi_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-shape.sh" "pi-shape.sh" "pi" "t27-pitch" "$T27")
-assert_contains "(27) pi-shape: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_pi_shape"
 
 captured27_claude_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-experiment.sh" "claude-experiment.sh" "claude" "t27-pitch" "$T27")
 assert_contains "(27) claude-experiment: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_claude_experiment"
 
-captured27_pi_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/pi/pi-experiment.sh" "pi-experiment.sh" "pi" "t27-pitch" "$T27")
-assert_contains "(27) pi-experiment: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_pi_experiment"
 
 # (28) run_t21_launcher creates a <target>/harnesses symlink on EVERY call, and
 # the same target dir serves several launchers above. Assert repeated `ln -sfn`

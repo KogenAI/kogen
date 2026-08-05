@@ -202,7 +202,6 @@ function renderMetadata(manifest, reason) {
   const runDirName = path.basename(runDir);
   const hv = manifest.harness_versions || {};
   const claudeVer = hv.claude || "—";
-  const piVer = hv.pi || "—";
 
   return [
     `# Benchmark Summary: ${runDirName}`,
@@ -213,7 +212,6 @@ function renderMetadata(manifest, reason) {
     `| SHA | ${sha} |`,
     `| Reason | ${reason || "—"} |`,
     `| Claude harness | ${claudeVer} |`,
-    `| Pi harness | ${piVer} |`,
   ].join("\n");
 }
 
@@ -338,7 +336,7 @@ function renderTokensByRole(records) {
 
   const rows =
     roles.length === 0
-      ? ["| — (no per-role data; Pi or pre-change run) | — | — | — |"]
+      ? ["| — (no per-role data; pre-change run) | — | — | — |"]
       : roles.map((role) => {
           const { cacheRead, input, output } = byRole[role];
           return `| ${role} | ${fmtInt(cacheRead)} | ${fmtInt(input)} | ${fmtInt(output)} |`;
@@ -512,7 +510,6 @@ function writeShortSummary(manifest, reason, records, screenshotCounts, dir) {
     if (r.pass) byHarness[r.harness].passed++;
   }
   const claudePass = byHarness["claude"] || { passed: 0, total: 0 };
-  const piPass = byHarness["pi"] || { passed: 0, total: 0 };
 
   function passStr(h) {
     const pct2 = h.total ? ((100 * h.passed) / h.total).toFixed(0) : "0";
@@ -529,12 +526,9 @@ function writeShortSummary(manifest, reason, records, screenshotCounts, dir) {
   }
 
   const claudeRecs = harnessRecs("claude");
-  const piRecs = harnessRecs("pi");
 
   const claudeCostTotal = sumKey(claudeRecs, "cost_usd").total;
-  const piCostTotal = sumKey(piRecs, "cost_usd").total;
   const claudeCostAvg = avgKey(claudeRecs, "cost_usd");
-  const piCostAvg = avgKey(piRecs, "cost_usd");
 
   // ── tokens ───────────────────────────────────────────────────────────────
 
@@ -547,11 +541,8 @@ function writeShortSummary(manifest, reason, records, screenshotCounts, dir) {
   }
 
   const claudeInput = totalInput(claudeRecs);
-  const piInput = totalInput(piRecs);
   const claudeOutput = sumKey(claudeRecs, "output_tokens").total;
-  const piOutput = sumKey(piRecs, "output_tokens").total;
   const claudeTokenTotal = claudeInput + claudeOutput;
-  const piTokenTotal = piInput + piOutput;
 
   // ── assemble lines ───────────────────────────────────────────────────────
 
@@ -561,12 +552,8 @@ function writeShortSummary(manifest, reason, records, screenshotCounts, dir) {
   lines.push(`${startedAt}  SHA: ${shortSha}  Reason: ${reason || "-"}`);
   lines.push("");
 
-  // Claude vs Pi comparison table
   const claudeShots = Object.entries(screenshotCounts)
     .filter(([k]) => k.startsWith("claude/"))
-    .reduce((a, [, c]) => a + c, 0);
-  const piShots = Object.entries(screenshotCounts)
-    .filter(([k]) => k.startsWith("pi/"))
     .reduce((a, [, c]) => a + c, 0);
 
   function avgSecs(recs, key) {
@@ -578,31 +565,21 @@ function writeShortSummary(manifest, reason, records, screenshotCounts, dir) {
   }
 
   const metricRows = [
-    ["Pass rate", passStr(claudePass), passStr(piPass)],
-    ["Avg cost/test", fmtAvgUSD(claudeCostAvg), fmtAvgUSD(piCostAvg)],
-    [
-      "Avg build duration",
-      avgSecs(claudeRecs, "build_duration_ms"),
-      avgSecs(piRecs, "build_duration_ms"),
-    ],
-    [
-      "Avg agent duration",
-      avgSecs(claudeRecs, "duration_ms"),
-      avgSecs(piRecs, "duration_ms"),
-    ],
-    ["Avg turns", avgTurnsStr(claudeRecs), avgTurnsStr(piRecs)],
-    ["Total tokens", fmtIntShort(claudeTokenTotal), fmtIntShort(piTokenTotal)],
-    ["Screenshots captured", String(claudeShots), String(piShots)],
+    ["Pass rate", passStr(claudePass)],
+    ["Avg cost/test", fmtAvgUSD(claudeCostAvg)],
+    ["Avg build duration", avgSecs(claudeRecs, "build_duration_ms")],
+    ["Avg agent duration", avgSecs(claudeRecs, "duration_ms")],
+    ["Avg turns", avgTurnsStr(claudeRecs)],
+    ["Total tokens", fmtIntShort(claudeTokenTotal)],
+    ["Screenshots captured", String(claudeShots)],
   ];
 
   const W_METRIC = 22;
   const W_COL = 14;
-  lines.push(
-    pad("Metric", W_METRIC) + lpad("Claude", W_COL) + lpad("Pi", W_COL),
-  );
-  lines.push("-".repeat(W_METRIC + W_COL * 2));
-  for (const [label, c, p] of metricRows) {
-    lines.push(pad(label, W_METRIC) + lpad(c, W_COL) + lpad(p, W_COL));
+  lines.push(pad("Metric", W_METRIC) + lpad("Claude", W_COL));
+  lines.push("-".repeat(W_METRIC + W_COL));
+  for (const [label, c] of metricRows) {
+    lines.push(pad(label, W_METRIC) + lpad(c, W_COL));
   }
   lines.push("");
 

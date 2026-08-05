@@ -11,13 +11,6 @@ defmodule CodegenTestHarness.RoleResolverTest do
       assert effort == "off"
     end
 
-    test "pi: reads pi-specific model/effort" do
-      {model, effort} = RoleResolver.resolve_role("developer-phoenix-backend", "pi")
-
-      assert model == "openai-codex/gpt-5.6-terra"
-      assert effort == "off"
-    end
-
     test "claude_code canonical harness name normalizes to claude" do
       {model, effort} = RoleResolver.resolve_role("developer-phoenix-backend", "claude_code")
 
@@ -45,11 +38,6 @@ defmodule CodegenTestHarness.RoleResolverTest do
                {"opus", "off"}
     end
 
-    test "pi: reads pi-specific escalation tier" do
-      assert RoleResolver.resolve_escalation("developer-phoenix-backend", "pi") ==
-               {"openai-codex/gpt-5.6-sol", "off"}
-    end
-
     test "claude_code canonical harness name normalizes to claude" do
       assert RoleResolver.resolve_escalation("developer-phoenix-backend", "claude_code") ==
                {"opus", "off"}
@@ -68,8 +56,6 @@ defmodule CodegenTestHarness.RoleResolverTest do
     test "no per-role override configured -> build_default_harness unchanged" do
       assert RoleResolver.resolve_harness("developer-phoenix-backend", "claude_code") ==
                "claude_code"
-
-      assert RoleResolver.resolve_harness("developer-phoenix-backend", "pi") == "pi"
     end
 
     test "unknown role -> build_default_harness unchanged, never raises" do
@@ -77,7 +63,7 @@ defmodule CodegenTestHarness.RoleResolverTest do
     end
 
     test "committer (no override) -> build_default_harness unchanged" do
-      assert RoleResolver.resolve_harness("committer", "pi") == "pi"
+      assert RoleResolver.resolve_harness("committer", "claude_code") == "claude_code"
     end
   end
 
@@ -85,11 +71,6 @@ defmodule CodegenTestHarness.RoleResolverTest do
     test "claude: reads rung 0 of the fallback chain from real config.yaml" do
       assert RoleResolver.resolve_fallback("developer-phoenix-backend", "claude", 0) ==
                {"opus", "off"}
-    end
-
-    test "pi: reads pi-specific rung 0" do
-      assert RoleResolver.resolve_fallback("developer-phoenix-backend", "pi", 0) ==
-               {"openai-codex/gpt-5.6-sol", "off"}
     end
 
     test "claude_code canonical harness name normalizes to claude" do

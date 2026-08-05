@@ -93,7 +93,6 @@ assert ".ocg/config.json exists" '[ -f "$tmp_home/.ocg/config.json" ]'
 assert "hooks dir populated" '[ "$(ls "$tmp_home/.claude/hooks" 2>/dev/null | wc -l | tr -d " ")" -gt 0 ]'
 assert "hooks/lib dir populated" '[ "$(ls "$tmp_home/.claude/hooks/lib" 2>/dev/null | wc -l | tr -d " ")" -gt 0 ]'
 assert "agents dir populated" '[ "$(ls "$tmp_home/.claude/agents" 2>/dev/null | wc -l | tr -d " ")" -gt 0 ]'
-assert "no pi launchers present" '[ ! -f "$tmp_home/.local/bin/pi-build" ]'
 assert "codegen-log launcher exists" '[ -f "$tmp_home/.local/bin/codegen-log" ]'
 # codegen-log is installed as a stable COPY, not a live-checkout symlink (a
 # symlink dangles when the shared codegen checkout mutates mid-build). The
@@ -181,7 +180,7 @@ for _codex in codex-build codex-inspector codex-refactor codex-shape; do
 done
 
 # Note: claude-specific launchers (claude-build, etc.) are NOT removed by uninstall.sh
-# (only the ocg symlink and pi launchers are removed). This is current behavior.
+# (only the ocg symlink and the legacy launchers are removed). This is current behavior.
 
 # Claude data preserved (answered N)
 assert ".claude data tree preserved after N to prompt" '[ -d "$tmp_home/.claude" ]'

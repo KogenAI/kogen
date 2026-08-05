@@ -109,7 +109,6 @@ fi
 
 # Test 4/5/6/8/9: launcher consumption + ordering + no hand-rolled injection.
 CLAUDE_LAUNCHERS=(claude-babysit.sh claude-ops.sh claude-debug.sh)
-PI_LAUNCHERS=(pi-babysit.sh pi-ops.sh pi-debug.sh)
 
 for f in "${CLAUDE_LAUNCHERS[@]}"; do
     path="$CODEGEN_DIR/harnesses/claude/$f"
@@ -120,24 +119,9 @@ for f in "${CLAUDE_LAUNCHERS[@]}"; do
     fi
 done
 
-for f in "${PI_LAUNCHERS[@]}"; do
-    path="$CODEGEN_DIR/harnesses/pi/$f"
-    ok=0
-    grep -qF "resolve_mode_context" "$path" || ok=1
-    grep -qF "ROLE_CONTEXT_FILES" "$path" || ok=1
-    if [ "$ok" -eq 0 ]; then
-        assert_true "$f consumes resolve_mode_context + ROLE_CONTEXT_FILES" 0
-    else
-        assert_true "$f consumes resolve_mode_context + ROLE_CONTEXT_FILES" 1
-    fi
-done
-
-# Test 6: no hand-rolled injection remains in the 6 non-exempt launchers.
-for f in "${CLAUDE_LAUNCHERS[@]}" "${PI_LAUNCHERS[@]}"; do
-    case "$f" in
-    claude-*) path="$CODEGEN_DIR/harnesses/claude/$f" ;;
-    pi-*) path="$CODEGEN_DIR/harnesses/pi/$f" ;;
-    esac
+# Test 6: no hand-rolled injection remains in the 3 non-exempt launchers.
+for f in "${CLAUDE_LAUNCHERS[@]}"; do
+    path="$CODEGEN_DIR/harnesses/claude/$f"
     if grep -qE '\-\-append-system-prompt "\$\(cat ' "$path" 2>/dev/null; then
         # Allowed only when the $(cat ...) reads a context_files entry, i.e.
         # the line also references $CODEGEN_DIR/$_cf (our own loop var).
@@ -151,32 +135,9 @@ for f in "${CLAUDE_LAUNCHERS[@]}" "${PI_LAUNCHERS[@]}"; do
     fi
 done
 
-# Test 8: pi ordering — resolve_mode_context call precedes the mode's
-# *_STARTUP concat.
-startup_var_for() {
-    case "$1" in
-    pi-babysit.sh) echo BABYSIT_STARTUP ;;
-    pi-ops.sh) echo OPS_CONTEXT ;;
-    pi-debug.sh) echo DEBUG_CONTEXT ;;
-    esac
-}
-for f in "${PI_LAUNCHERS[@]}"; do
-    path="$CODEGEN_DIR/harnesses/pi/$f"
-    rmc_line=$(grep -n "resolve_mode_context " "$path" | head -1 | cut -d: -f1)
-    startup_var=$(startup_var_for "$f")
-    startup_line=$(grep -n "^${startup_var}=" "$path" | head -1 | cut -d: -f1)
-    if [ -n "$rmc_line" ] && [ -n "$startup_line" ] && [ "$rmc_line" -lt "$startup_line" ]; then
-        assert_true "$f: resolve_mode_context precedes $startup_var assignment" 0
-    else
-        echo "  $f: rmc_line=$rmc_line startup_line=$startup_line"
-        assert_true "$f: resolve_mode_context precedes $startup_var assignment" 1
-    fi
-done
-
 # Test 9: syntax check.
 for f in "$CODEGEN_DIR/harnesses/shared/mode-context.sh" \
-    "${CLAUDE_LAUNCHERS[@]/#/$CODEGEN_DIR/harnesses/claude/}" \
-    "${PI_LAUNCHERS[@]/#/$CODEGEN_DIR/harnesses/pi/}"; do
+    "${CLAUDE_LAUNCHERS[@]/#/$CODEGEN_DIR/harnesses/claude/}"; do
     if bash -n "$f" 2>/dev/null; then
         assert_true "$(basename "$f") passes bash -n" 0
     else

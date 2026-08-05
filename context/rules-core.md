@@ -54,9 +54,9 @@ Rules in `shared/rules/shared/` (and cross-referenced by downstream projects) mu
 
 **Anti-patterns**:
 
-- ❌ `claude` / `pi` (harness binary names)
+- ❌ `claude` (harness binary names)
 - ❌ `codegen-call` (codegen-internal dispatcher)
-- ❌ `claude -p` / `pi -p` (harness-specific CLI flags)
+- ❌ `claude -p` (harness-specific CLI flags)
 
 **Harness-neutral equivalents**:
 

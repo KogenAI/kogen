@@ -50,7 +50,7 @@ fi
 
 # --- Classify ---------------------------------------------------------------
 # Classification regexes live in the harness-agnostic shared fragment so the
-# (claude + pi) dispatch retry loops can source the same taxonomy. Single
+# dispatch retry loops can source the same taxonomy. Single
 # source of truth — do not re-inline here.
 # Prefer the flat install location (hooks/lib/, populated by install.sh from
 # harnesses/shared/); fall back to the in-tree shared path so hermetic tests

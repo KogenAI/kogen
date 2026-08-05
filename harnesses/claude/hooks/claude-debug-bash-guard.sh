@@ -9,13 +9,13 @@
 # signal: CLAUDE_ROLE_FAMILY
 # role: *
 # harnesses: all
-# rationale: CLAUDE_ROLE_FAMILY-keyed on Claude; Pi twin gates only the explicit PI_DEBUG_REMOTE=1 branch (pi-debug --server), since local Pi debug/shape already carry no Bash grant
+# rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard for the debug/shape families
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.
 #
 # Active when the active role (via resolve_role) is `debug` or `shape`.
-# Responds to CLAUDE_ROLE (Claude Code) and PI_ROLE (PI harness) — precedence: CLAUDE_ROLE > PI_ROLE.
+# Responds to CLAUDE_ROLE (Claude Code).
 # debug and shape are investigation/shaping sessions —
 # their only legitimate write surface is codegen/pitches/ (enforced by
 # orchestrator-no-source-edit.sh). Destructive Bash in these contexts is

@@ -15,23 +15,18 @@
 # hand-authored hooks, and would false-positive ~50 files.)
 #
 # Usage:
-#   orphan-hook-check.sh --hooks-dir DIR --ts-dir DIR --registry FILE
+#   orphan-hook-check.sh --hooks-dir DIR --registry FILE
 # Exit: 0 = no orphans; 1 = orphan(s) found; 2 = usage/yq error.
 
 set -euo pipefail
 
 HOOKS_DIR=""
-TS_DIR=""
 REGISTRY=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
     --hooks-dir)
         HOOKS_DIR="$2"
-        shift 2
-        ;;
-    --ts-dir)
-        TS_DIR="$2"
         shift 2
         ;;
     --registry)
@@ -84,7 +79,6 @@ check_dir() {
 }
 
 check_dir "$HOOKS_DIR" sh
-check_dir "$TS_DIR" ts
 
 [ "$fail" -eq 0 ] && [ -n "${VERBOSE:-}" ] && echo "orphan-hook-check: PASS" || true
 exit "$fail"

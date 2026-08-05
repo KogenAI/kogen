@@ -195,7 +195,6 @@ run_test "babysit + Plan denied" "deny" "babysit" "$(mk_agent 'Plan')"
 # 19k: babysit + developer-phoenix-backend allowed (project subagents always allowed)
 run_test "babysit + developer-phoenix-backend allowed" "allow" "babysit" "$(mk_agent 'developer-phoenix-backend')"
 
-# PI_ROLE parity tests (via env var, no CLAUDE_ROLE set)
 
 run_test_env() {
     local desc="$1"
@@ -220,12 +219,6 @@ run_test_env() {
         fail=$((fail + 1))
     fi
 }
-
-# 20: PI_ROLE=debug + Explore allowed
-run_test_env "PI_ROLE=debug + Explore allowed" "allow" "PI_ROLE" "debug" "$(mk_agent 'Explore')"
-
-# 21: PI_ROLE=shape + Explore allowed
-run_test_env "PI_ROLE=shape + Explore allowed" "allow" "PI_ROLE" "shape" "$(mk_agent 'Explore')"
 
 # ── Message-content tests: deny strings name the legal subagent set ──────────
 

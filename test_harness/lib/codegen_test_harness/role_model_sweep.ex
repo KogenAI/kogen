@@ -26,8 +26,8 @@ defmodule CodegenTestHarness.RoleModelSweep do
         duration_pct: 20
       candidates:
         - name: candidate-a
-          harness: pi
-          model: openai-codex/gpt-5.6-terra
+          harness: claude
+          model: opus
           effort: high
 
   ## Binding transport
@@ -44,7 +44,7 @@ defmodule CodegenTestHarness.RoleModelSweep do
 
   @codegen_root Path.expand("../../..", __DIR__)
   @valid_stacks ~w(phoenix static)
-  @valid_harnesses ~w(claude pi)
+  @valid_harnesses ~w(claude)
   @valid_efforts ~w(low medium high)
   @min_repetitions 3
 

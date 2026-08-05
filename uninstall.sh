@@ -146,105 +146,43 @@ else
     echo "   ℹ️  No Claude Code data found"
 fi
 
-# ── Pi uninstall ──────────────────────────────────────────────────────────────
+# ── Legacy cleanup: Pi + codex launchers ─────────────────────────────────────
+# Both harnesses were removed from source and are in no manifest, so nothing
+# here can be manifest-driven — these are hardcoded known names, cleaning up
+# what earlier installs of this repo put on disk.
 echo ""
-echo "🤖 Pi uninstallation..."
+echo "🧹 Removing legacy launchers and data..."
 
-# Remove pi launchers
-if command -v manifest_launchers >/dev/null 2>&1 && [ -f "$CODEGEN_DIR/harnesses/pi/manifest.yaml" ]; then
-    echo "   🔗 Removing Pi launchers..."
-    while IFS=' ' read -r _src _dest_name; do
-        _dest="$INSTALL_DIR/$_dest_name"
-        if [ -f "$_dest" ]; then
-            rm -f "$_dest"
-            echo "   ✅ Removed Pi launcher: $_dest_name"
-        fi
-    done < <(manifest_launchers pi 2>/dev/null)
-else
-    # Fallback: remove known launcher names
-    for _launcher in pi-build pi-debug pi-shape pi-ops; do
-        if [ -f "$INSTALL_DIR/$_launcher" ]; then
-            rm -f "$INSTALL_DIR/$_launcher"
-            echo "   ✅ Removed Pi launcher: $_launcher"
-        fi
-    done
-fi
-
-# Remove orphaned legacy codex-* launchers (removed from source; never in any
-# manifest). Hardcoded known names.
-for _codex in codex-build codex-inspector codex-refactor codex-shape; do
-    if [ -f "$INSTALL_DIR/$_codex" ]; then
-        rm -f "$INSTALL_DIR/$_codex"
-        echo "   ✅ Removed orphaned legacy launcher: $_codex"
+for _legacy in pi-build pi-debug pi-shape pi-ops pi-experiment \
+    codex-build codex-inspector codex-refactor codex-shape; do
+    if [ -f "$INSTALL_DIR/$_legacy" ]; then
+        rm -f "$INSTALL_DIR/$_legacy"
+        echo "   ✅ Removed legacy launcher: $_legacy"
     fi
 done
 
-# Remove pi agents
-PI_AGENTS_DIR="$HOME/.pi/agent/agents"
-if [ -d "$PI_AGENTS_DIR" ]; then
-    _pi_agent_count=0
-    for _agent in "$PI_AGENTS_DIR"/*.md; do
-        [ -f "$_agent" ] || continue
-        rm -f "$_agent"
-        _pi_agent_count=$((_pi_agent_count + 1))
-    done
-    if [ "$_pi_agent_count" -gt 0 ]; then
-        echo "   ✅ Removed $_pi_agent_count Pi agent(s) from $PI_AGENTS_DIR"
-    else
-        echo "   ℹ️  No Pi agents found in $PI_AGENTS_DIR"
-    fi
-else
-    echo "   ℹ️  Pi agents dir not found: $PI_AGENTS_DIR"
-fi
-
-# Remove pi prompts
-PI_PROMPTS_DIR="$HOME/.pi/agent/prompts"
-if [ -d "$PI_PROMPTS_DIR" ]; then
-    _pi_prompt_count=0
-    for _prompt in "$PI_PROMPTS_DIR"/*.md; do
-        [ -f "$_prompt" ] || continue
-        rm -f "$_prompt"
-        _pi_prompt_count=$((_pi_prompt_count + 1))
-    done
-    if [ "$_pi_prompt_count" -gt 0 ]; then
-        echo "   ✅ Removed $_pi_prompt_count Pi prompt(s) from $PI_PROMPTS_DIR"
-    else
-        echo "   ℹ️  No Pi prompts found in $PI_PROMPTS_DIR"
-    fi
-else
-    echo "   ℹ️  Pi prompts dir not found: $PI_PROMPTS_DIR"
-fi
-
-# Remove pi zsh completions
 # Override search list via env: ZSH_COMPLETION_DIRS="/path1:/path2" (colon-separated, same toggle as install.sh).
 IFS=':' read -ra _ZSH_COMPLETION_DIRS <<<"${ZSH_COMPLETION_DIRS:-/usr/local/share/zsh/site-functions:$HOME/.zsh/completions:$HOME/.local/share/zsh/site-functions}"
-_ZSH_COMPLETION_DST=""
-for _dir in "${_ZSH_COMPLETION_DIRS[@]}"; do
-    if [ -d "$_dir" ] && [ -w "$_dir" ]; then
-        _ZSH_COMPLETION_DST="$_dir"
-        break
-    fi
+for _comp in _pi-build _pi-debug _pi-shape _pi-ops; do
+    for _dir in "${_ZSH_COMPLETION_DIRS[@]}"; do
+        if [ -f "$_dir/$_comp" ]; then
+            rm -f "$_dir/$_comp"
+            echo "   ✅ Removed legacy zsh completion: $_comp from $_dir"
+        fi
+    done
 done
 
-if [ -n "$_ZSH_COMPLETION_DST" ] && command -v manifest_completions >/dev/null 2>&1 && [ -f "$CODEGEN_DIR/harnesses/pi/manifest.yaml" ]; then
-    while IFS= read -r _comp; do
-        _comp_path="$_ZSH_COMPLETION_DST/$_comp"
-        if [ -f "$_comp_path" ]; then
-            rm -f "$_comp_path"
-            echo "   ✅ Removed Pi zsh completion: $_comp"
-        fi
-    done < <(manifest_completions pi 2>/dev/null)
-else
-    # Fallback: remove known completion names
-    for _comp in _pi-build _pi-debug _pi-shape _pi-ops; do
-        for _dir in "${_ZSH_COMPLETION_DIRS[@]}"; do
-            if [ -f "$_dir/$_comp" ]; then
-                rm -f "$_dir/$_comp"
-                echo "   ✅ Removed Pi zsh completion: $_comp from $_dir"
-            fi
+for _legacy_dir in "$HOME/.pi/agent/agents" "$HOME/.pi/agent/prompts"; do
+    if [ -d "$_legacy_dir" ]; then
+        _count=0
+        for _f in "$_legacy_dir"/*.md; do
+            [ -f "$_f" ] || continue
+            rm -f "$_f"
+            _count=$((_count + 1))
         done
-    done
-fi
+        [ "$_count" -gt 0 ] && echo "   ✅ Removed $_count legacy file(s) from $_legacy_dir"
+    fi
+done
 
 echo ""
 echo "✅ Uninstallation complete!"

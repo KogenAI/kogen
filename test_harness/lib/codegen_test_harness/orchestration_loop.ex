@@ -90,7 +90,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   Runs one pitch through the full cycle for `opts[:stack]`.
 
   `opts`:
-  - `:harness` — `"claude_code"` | `"pi"` (required)
+  - `:harness` — `"claude_code"` (required)
   - `:stack` — `"phoenix"` | `"static"` (required)
   - `:cwd` — project directory the loop operates in (required)
   - `:pitch` — prompt/pitch text passed to the first role (required)
@@ -4116,15 +4116,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   # Names the adapter-realized native control for a canonical effort value —
   # telemetry-only description of what call-dispatch.sh actually emits, never
-  # itself passed as an argv/env value. Mirrors harnesses/{claude,pi}/
+  # itself passed as an argv/env value. Mirrors harnesses/claude/
   # call-dispatch.sh's effort-emission branches exactly: claude omits
   # `--effort` for `"off"` (relying on the ambient `MAX_THINKING_TOKENS=0`
-  # already set by call-dispatch.sh) and passes `--effort <value>` otherwise;
-  # pi passes `--thinking <value>` for every canonical value, including
-  # `"off"`.
+  # already set by call-dispatch.sh) and passes `--effort <value>` otherwise.
   defp native_effort_realization("claude_code", "off"), do: "settings.MAX_THINKING_TOKENS=0"
   defp native_effort_realization("claude_code", effort), do: "--effort #{effort}"
-  defp native_effort_realization("pi", effort), do: "--thinking #{effort}"
   defp native_effort_realization(_harness, effort), do: "effort=#{effort}"
 
   # ── Per-cycle spend cap (`--max-budget-usd`, threaded via
@@ -4422,16 +4419,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                           "../../../harnesses/claude/claude-code-settings.json",
                           __DIR__
                         )
-  @pi_enforcement_ext_path Path.expand(
-                             "../../../harnesses/pi/pi-extensions/enforcement",
-                             __DIR__
-                           )
 
   @doc """
   Resolves the B-bucket in-agent guard bundle flag for `harness`:
 
   - `"claude_code"` → `["--settings=@<claude-code-settings.json>"]`
-  - `"pi"` → `["--extension=@<enforcement extension dir>"]`
 
   The `"claude_code"` bundle is the FULL installed `claude-code-settings.json`
   (every registered hook), not a reduced bundle. Each loop-invoked
@@ -4451,8 +4443,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   `opts`:
   - `:claude_settings_path` — override for testing (default: the committed
     `harnesses/claude/claude-code-settings.json` full settings)
-  - `:pi_enforcement_ext_path` — override for testing (default: the built
-    `harnesses/pi/pi-extensions/enforcement` directory)
   """
   @spec guard_bundle_flag!(harness(), run_opts()) :: [String.t()]
   def guard_bundle_flag!(harness, opts \\ [])
@@ -4465,16 +4455,6 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
 
     ["--settings=@#{path}"]
-  end
-
-  def guard_bundle_flag!("pi", opts) do
-    path = Keyword.get(opts, :pi_enforcement_ext_path, @pi_enforcement_ext_path)
-
-    unless File.dir?(path) do
-      raise "OrchestrationLoop: pi enforcement extension not found at #{path} — refusing to run a role unguarded"
-    end
-
-    ["--extension=@#{path}"]
   end
 
   def guard_bundle_flag!(other, _opts) do
@@ -4730,8 +4710,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # dispatched. `source` names WHICH precedence rung supplied the effort
   # (`:role_config` | `:build_override` | `:escalation` | `:campaign`);
   # `native_effort` names the adapter-realized control (e.g.
-  # "settings.MAX_THINKING_TOKENS=0" for a claude `off`, "--thinking off" for
-  # a pi `off`, "--effort high" / "--thinking high" otherwise) — see
+  # "settings.MAX_THINKING_TOKENS=0" for a claude `off`, "--effort high"
+  # otherwise) — see
   # `native_effort_realization/2`. Empty map (the /2 delegate above, and any
   # other pre-existing caller) means "unknown", never a fabricated tuple —
   # `emit_loop_telemetry/1` reads it as an optional field per role_entry.
@@ -4952,8 +4932,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       raise "OrchestrationLoop: #{path} \"role\" must be a non-empty string"
     end
 
-    unless is_binary(binding["harness"]) and binding["harness"] in ["claude", "claude_code", "pi"] do
-      raise "OrchestrationLoop: #{path} \"harness\" must be one of claude/claude_code/pi, got: #{inspect(binding["harness"])}"
+    unless is_binary(binding["harness"]) and binding["harness"] in ["claude", "claude_code"] do
+      raise "OrchestrationLoop: #{path} \"harness\" must be one of claude/claude_code, got: #{inspect(binding["harness"])}"
     end
 
     unless is_binary(binding["model"]) and binding["model"] != "" do

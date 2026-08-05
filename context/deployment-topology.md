@@ -34,7 +34,7 @@ When `harnesses/` is symlinked from `$SCRIPT_DIR` (install target) back to the c
 
 Non-build launchers (shape, refactor, debug, ops) that derive `CODEGEN_DIR` via the installed `harnesses/` symlink MUST use `cd -P` to avoid landing in `~/bin` instead of the repo root.
 
-- **Build launchers** (`claude-build.sh`, `pi-build.sh`): resolve the `codegen-build` binary as a sibling of `$SCRIPT_DIR` (co-installed in the same directory). No repo-root walk needed.
+- **Build launchers** (`claude-build.sh`): resolve the `codegen-build` binary as a sibling of `$SCRIPT_DIR` (co-installed in the same directory). No repo-root walk needed.
 - **Non-build launchers** (shape, refactor, debug, ops, etc.): 3-branch `CODEGEN_DIR` derivation:
   1. `OCG_CODEGEN_DIR` env override if set (escape hatch)
   2. Installed-flat: follow the `harnesses/` symlink from `$SCRIPT_DIR` to derive the repo root
@@ -48,10 +48,9 @@ Non-build launchers (shape, refactor, debug, ops) that derive `CODEGEN_DIR` via 
 | Agent prompts | `~/.claude/agents/*.md`       | `shared/subagents/*.md.j2`                   |
 | Hook scripts  | `~/.claude/hooks/*.sh`        | `harnesses/claude/hooks/`                    |
 | Settings      | `~/.claude/settings.json`     | `harnesses/claude/claude-code-settings.json` |
-| Launchers     | `~/bin/` or `/usr/local/bin/` | `harnesses/claude/`, `harnesses/pi/`         |
-| Pi extensions | `~/.pi/`                      | `harnesses/pi/pi-extensions/`                |
+| Launchers     | `~/bin/` or `/usr/local/bin/` | `harnesses/claude/`                          |
 
-`~/.claude/`, `~/.pi/`, `/usr/local/bin/` (or `~/bin/`) are install TARGETS — where `make install` writes artifacts. They are NOT where source lives. Source lives in the codegen repo root (which differs per machine).
+`~/.claude/`, `/usr/local/bin/` (or `~/bin/`) are install TARGETS — where `make install` writes artifacts. They are NOT where source lives. Source lives in the codegen repo root (which differs per machine).
 
 ## OCG_CODEGEN_DIR Override
 
@@ -61,7 +60,7 @@ Non-build launchers (shape, refactor, debug, ops) that derive `CODEGEN_DIR` via 
 export OCG_CODEGEN_DIR=/path/to/codegen   # override only when BASH_SOURCE derivation is unavailable
 ```
 
-`OCG_CODEGEN_DIR` is NOT the primary mechanism. `BASH_SOURCE` derivation is primary (used by `install.sh`, `uninstall.sh`, `update_ai_tools.sh`). For non-build launchers, `OCG_CODEGEN_DIR` is branch 1 of 3 in the `CODEGEN_DIR` derivation; if unset the launcher walks the `harnesses/` symlink (branch 2) or falls back to `$SCRIPT_DIR/../..` (branch 3). Build launchers (`claude-build.sh`, `pi-build.sh`) do not need it — they resolve the `codegen-build` sibling binary directly from `$SCRIPT_DIR`.
+`OCG_CODEGEN_DIR` is NOT the primary mechanism. `BASH_SOURCE` derivation is primary (used by `install.sh`, `uninstall.sh`, `update_ai_tools.sh`). For non-build launchers, `OCG_CODEGEN_DIR` is branch 1 of 3 in the `CODEGEN_DIR` derivation; if unset the launcher walks the `harnesses/` symlink (branch 2) or falls back to `$SCRIPT_DIR/../..` (branch 3). Build launchers (`claude-build.sh`) do not need it — they resolve the `codegen-build` sibling binary directly from `$SCRIPT_DIR`.
 
 Cross-reference: `shared/rules/shared/shell-script-discipline.md` — "Derive Root, Never Hardcode" section.
 

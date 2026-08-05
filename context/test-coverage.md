@@ -20,15 +20,10 @@ Columns:
 | claude-debug           | launcher   | `harnesses/claude/claude-debug.sh`           | `test_harness/test/stacks/modes/debug_test.exs`                                                                                              | Stage 4 (HARNESS=claude)                                                       |
 | claude-shape           | launcher   | `harnesses/claude/claude-shape.sh`           | `test_harness/test/stacks/modes/shape_test.exs`; `harnesses/claude/hooks/portable-launcher_test.sh` (Tier-0/Tier-1 selection)                | Stage 4 (HARNESS=claude)                                                       |
 | claude-experiment      | launcher   | `harnesses/claude/claude-experiment.sh`      | `harnesses/claude/hooks/portable-launcher_test.sh` (Tier-0/Tier-1 selection)                                                                 | No dedicated ExUnit stage case                                                 |
-| pi-build               | launcher   | `harnesses/pi/pi-build.sh`                   | Same 7 ExUnit files when `HARNESS=pi`                                                                                                        | Exercised via `make test-stacks-pi-p{1..4}`                                    |
-| pi-debug               | launcher   | `harnesses/pi/pi-debug.sh`                   | `test_harness/test/stacks/modes/debug_test.exs`                                                                                              | Stage 4 (HARNESS=pi)                                                           |
-| pi-shape               | launcher   | `harnesses/pi/pi-shape.sh`                   | `test_harness/test/stacks/modes/shape_test.exs`; `harnesses/claude/hooks/portable-launcher_test.sh` (Tier-0/Tier-1 selection)                | Stage 4 (HARNESS=pi)                                                           |
-| pi-experiment          | launcher   | `harnesses/pi/pi-experiment.sh`              | `harnesses/claude/hooks/portable-launcher_test.sh` (Tier-0/Tier-1 selection)                                                                 | No dedicated ExUnit stage case                                                 |
-| pitch-context-selector | shared-lib | `harnesses/shared/pitch-context-selector.sh` | `harnesses/claude/hooks/portable-launcher_test.sh` (citation priority, cited-only, keyword-only, cap warning, missing-file error)            | Sourced by all 4 shape/experiment launchers                                    |
+| pitch-context-selector | shared-lib | `harnesses/shared/pitch-context-selector.sh` | `harnesses/claude/hooks/portable-launcher_test.sh` (citation priority, cited-only, keyword-only, cap warning, missing-file error)            | Sourced by the shape/experiment launchers                                    |
 | claude dispatch        | launcher   | `harnesses/claude/dispatch.sh`               | `harnesses/claude/hooks/dispatch_test.sh`; `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`)                        | Stubs validated; runtime path indirect via ExUnit                              |
-| pi dispatch            | launcher   | `harnesses/pi/dispatch.sh`                   | `harnesses/pi/dispatch_test.sh`; `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`)                                  | Pi build argv + fail-loud prompt contract                                      |
-| loop-signal-bridge     | shared-lib | `harnesses/shared/loop-signal-bridge.sh`     | `harnesses/shared/loop-signal-bridge_test.sh` (direct-call + foreground-PTY cases); auto-discovered via `harness-parity`'s `*_test.sh` glob  | Sourced by both dispatch.sh twins + both build launchers' `--queue` leg        |
-| codegen-build entry    | launcher   | `codegen-build` (repo root)                  | `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`); 11 ExUnit cases                                                  | Top-level harness API; Pi path now fails if the gate-result JSON is missing    |
+| loop-signal-bridge     | shared-lib | `harnesses/shared/loop-signal-bridge.sh`     | `harnesses/shared/loop-signal-bridge_test.sh` (direct-call + foreground-PTY cases); auto-discovered via `harness-parity`'s `*_test.sh` glob  | Sourced by dispatch.sh + the build launcher's `--queue` leg        |
+| codegen-build entry    | launcher   | `codegen-build` (repo root)                  | `harnesses/claude/hooks/codegen-build_test.sh` (via `make harness-parity`); 11 ExUnit cases                                                  | Top-level harness API; fails if the gate-result JSON is missing    |
 | codegen-scaffold entry | launcher   | `codegen-scaffold` (repo root)               | Exercised by `shared/scaffold/static/scaffold_test.sh` (via `make test`)                                                                     | No dedicated test                                                              |
 | codegen-call entry     | launcher   | `codegen-call` (repo root)                   | `harnesses/claude/hooks/codegen-call_test.sh` (via `make test`)                                                                              | One-shot structured LLM call binary                                            |
 | call-dispatch          | launcher   | `harnesses/claude/call-dispatch.sh`          | `harnesses/claude/hooks/call-dispatch_test.sh` (via `make test`)                                                                             | Dispatcher for codegen-call invocations                                        |
@@ -55,7 +50,6 @@ Columns:
 | process_template.py      | generator           | `templates/generator/process_template.py`      | `templates/generator/tests/test_process_template.py` (23 unittest cases)                       |                      |
 | hook_registrations.py    | generator           | `templates/generator/hook_registrations.py`    | `templates/generator/tests/test_hook_registrations.py` (38 unittest cases); `make hook-parity` |                      |
 | manifest-lib.sh          | generator           | `templates/generator/manifest-lib.sh`          | `templates/generator/manifest-lib_test.sh` (14 bash cases)                                     |                      |
-| generate-pi-extension.sh | generator           | `templates/generator/generate-pi-extension.sh` | Indirect via `make install` (Makefile:52)                                                      | Stage 5              |
 | config.yaml              | generator           | `templates/generator/config.yaml`              | Indirect via `make install` rendering                                                          | Schema not validated |
 | test_dual_render.sh      | generator-self-test | `templates/generator/test_dual_render.sh`      | self — wired into `make test` via `templates/generator/run-tests.sh`                           |                      |
 
@@ -63,24 +57,14 @@ Columns:
 
 | Surface             | Type                                               | File/Path             | Test that exercises it                                                                                         | Notes                                                                                                                                 |
 | ------------------- | -------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| install.sh          | install                                            | `install.sh`          | `test_harness/install/install_claude_round_trip_test.sh`; `test_harness/install/install_pi_round_trip_test.sh` | Hermetic — `HOME` override + `ZSH_COMPLETION_DIRS` env-toggle; runner: `test_harness/install/run-tests.sh`                            |
+| install.sh          | install                                            | `install.sh`          | `test_harness/install/install_claude_round_trip_test.sh` | Hermetic — `HOME` override + `ZSH_COMPLETION_DIRS` env-toggle; runner: `test_harness/install/run-tests.sh`                            |
 | uninstall.sh        | install                                            | `uninstall.sh`        | same round-trip tests (called after install to verify removal)                                                 | `ZSH_COMPLETION_DIRS` env-toggle applied; interactive prompts via `printf 'N\nN\n' \|`                                                |
 | resource_manager.sh | port-allocation — see `context/port-allocation.md` | `resource_manager.sh` | —                                                                                                              | Untested. NOT sourced by install.sh/uninstall.sh (prior "indirectly exercised via install" claim was false; 0 refs confirmed by grep) |
 | update_ai_tools.sh  | install                                            | `update_ai_tools.sh`  | —                                                                                                              | No dedicated test; manual only                                                                                                        |
 | config.sh           | install                                            | `config.sh`           | —                                                                                                              | No dedicated test; sourced everywhere                                                                                                 |
 | utils.sh            | install                                            | `utils.sh`            | —                                                                                                              | `content_stable_cp` and helpers; no test                                                                                              |
 
-### Section 5 — Pi Extensions
-
-| Surface         | Type      | File/Path                                     | Test that exercises it                                                                                                          | Notes                                                                                       |
-| --------------- | --------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| enforcement     | extension | `harnesses/pi/pi-extensions/enforcement/`     | `npm test` via `make test` for-loop (Makefile)                                                                                  | `npm run test:coverage` (c8) wired by Stage 2; invoked by `make test-coverage-typescript`   |
-| askuserquestion | extension | `harnesses/pi/pi-extensions/askuserquestion/` | `npm test` via `make test` for-loop (Makefile)                                                                                  | `npm run test:coverage` (vitest+istanbul) wired by Stage 2                                  |
-| subagents       | extension | `harnesses/pi/pi-extensions/subagents/`       | `npm test` (= `test:unit`) via `make test` for-loop; `test:integration` guarded — runs only when `test/integration/` exists     | `npm run test:coverage` (c8) wired by Stage 2; test/integration/ absent on this machine     |
-| web-utils       | extension | `harnesses/pi/pi-extensions/web-utils/`       | `npm test` (vitest run) via `make test` for-loop; `harnesses/pi/pi-extensions/web-utils/test/utils/formatters.test.ts` (1 case) | vitest + `@vitest/coverage-istanbul` devDeps added Stage 5; `test:coverage` wired           |
-| pitch-files     | extension | `harnesses/pi/pi-extensions/pitch-files/`     | `npm test` (vitest run) via `make test` for-loop + `run-all-tests.sh`; `tests/{index,paths,transaction}.test.ts` (26 cases)     | vitest + `@vitest/coverage-istanbul`; added to `Makefile` test-coverage-typescript ext list |
-
-### Section 6 — Scaffold Mutations
+### Section 5 — Scaffold Mutations
 
 | Surface             | Type            | File/Path                                            | Test that exercises it                                                                                                          | Notes                                                                             |
 | ------------------- | --------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -97,7 +81,7 @@ Columns:
 | phoenix scaffold.sh | scaffold-entry  | `shared/scaffold/phoenix/scaffold.sh`                | Indirect via `test_harness/test/stacks/phoenix/scaffold_test.exs`                                                               | Drives mutations                                                                  |
 | static scaffold.sh  | scaffold-entry  | `shared/scaffold/static/scaffold.sh`                 | `shared/scaffold/static/scaffold_test.sh` (via `make harness-parity`)                                                           | Already covered                                                                   |
 
-### Section 7 — Hook Scripts (paired tests)
+### Section 6 — Hook Scripts (paired tests)
 
 For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` in the same dir. After Stage 1's `run-tests.sh` fix, all of them — including the two under `lib/` — execute via `make test`.
 
@@ -123,7 +107,7 @@ Exceptions:
   allowlist (sole exemption); P–T: `||`-fallback, `fetch_env!`, concat/interpolation non-match,
   declared-defaulted pass.
 
-### Section 8 — Hook Shared Libraries (`hooks/lib/`)
+### Section 7 — Hook Shared Libraries (`hooks/lib/`)
 
 | Surface        | Type        | File/Path                                   | Test that exercises it                           | Notes                                                                                      |
 | -------------- | ----------- | ------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
@@ -131,7 +115,7 @@ Exceptions:
 | gate-select.sh | hook-lib    | `harnesses/claude/hooks/lib/gate-select.sh` | `harnesses/claude/hooks/lib/gate-select_test.sh` | **Previously silently skipped**; reactivated by Stage 1 fix                                |
 | run-tests.sh   | hook-runner | `harnesses/claude/hooks/run-tests.sh`       | — (runner itself)                                | No meta-test                                                                               |
 
-### Section 9 — Shared / Root Utilities
+### Section 8 — Shared / Root Utilities
 
 | Surface                            | Type        | File/Path                                             | Test that exercises it              | Notes                                                    |
 | ---------------------------------- | ----------- | ----------------------------------------------------- | ----------------------------------- | -------------------------------------------------------- |
@@ -144,13 +128,13 @@ Exceptions:
 | codegen_test_harness/assertions.ex | shared-lib  | `test_harness/lib/codegen_test_harness/assertions.ex` | Indirect — used by all ExUnit tests |                                                          |
 | codegen_test_harness/fixtures.ex   | shared-lib  | `test_harness/lib/codegen_test_harness/fixtures.ex`   | Indirect — used by all ExUnit tests |                                                          |
 
-### Section 10 — Make Targets (executable surfaces)
+### Section 9 — Make Targets (executable surfaces)
 
 | Surface                 | Type        | File/Path                              | Test that exercises it                                                      | Notes                                                                                    |
 | ----------------------- | ----------- | -------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | make install            | make-target | `Makefile` (`install` target)          | —                                                                           | Manual; round-trip in Stage 5                                                            |
 | make uninstall          | make-target | `Makefile` (`uninstall` target)        | —                                                                           | Manual; round-trip in Stage 5                                                            |
-| make test               | make-target | `Makefile` (`test` target)             | self-referential                                                            | runs hook tests + mutation tests + install round-trips + all 4 pi extensions (for-loop)  |
+| make test               | make-target | `Makefile` (`test` target)             | self-referential                                                            | runs hook tests + mutation tests + install round-trips  |
 | make test-stacks        | make-target | `Makefile` (`test-stacks` target)      | self-referential                                                            | runs ExUnit                                                                              |
 | make test-all           | make-target | `Makefile` (`test-all` target)         | self-referential                                                            |                                                                                          |
 | make hook-parity        | make-target | `Makefile` (`hook-parity` target)      | Round-trip diff (no unit test)                                              |                                                                                          |
@@ -162,15 +146,13 @@ Exceptions:
 | make test-coverage      | make-target | `Makefile:77+`                         | `make test-coverage && make test` (Stage 2 gate)                            | Chains elixir/typescript/shell/python/summary sub-targets; outputs to `coverage/<lang>/` |
 | make test-generator     | make-target | `Makefile`                             | self-referential                                                            | runs Python unittest + bash `*_test.sh` for generator pipeline                           |
 
-### Section 11 — Summary
+### Section 10 — Summary
 
-- 17 ExUnit cases across 10 files cover the `build` mode for `claude` + `pi` harnesses against 2 stacks (phoenix scaffold/seed/gate/committer/iteration + static iteration × 4 variants) plus 6 mode×harness launcher cells.
+- 17 ExUnit cases across 10 files cover the `build` mode for the `claude` harness against 2 stacks (phoenix scaffold/seed/gate/committer/iteration + static iteration × 4 variants) plus 3 mode launcher cells.
 - Bash hook test files run via `make test` in `harnesses/claude/hooks/` + `harnesses/claude/hooks/lib/`. The former `phoenix-dev-gate` SubagentStop gate hook is deleted — the loop's `LoopGate` (`test_harness/lib/codegen_test_harness/loop_gate.ex`) now owns gate execution for non-interactive builds.
-- 6 mode×harness launcher cells now covered by `test_harness/test/stacks/modes/` (Stage 4): `claude-{debug,shape,refactor}` + `pi-{debug,shape,refactor}`.
-- Pi build dispatch has a dedicated hermetic shell test (`harnesses/pi/dispatch_test.sh`) that checks the unconditional `mix codegen.loop --harness=pi` exec (no engine flag, no build system prompt).
+- 3 mode launcher cells now covered by `test_harness/test/stacks/modes/` (Stage 4): `claude-{debug,shape,refactor}`.
 - After Stage 5: **9 phoenix mutations + `eex_render.sh`** have isolated unit tests (`*_test.sh` per script) wired into `make test` via `shared/scaffold/phoenix/run-tests.sh`. Two bash 3.2 bugs fixed: `router.sh` (`${@L}` → `tr`) and `eex_render.sh` (`declare -A` → direct loop).
-- After Stage 5: **all 4 pi-extensions** wired into `make test` via a for-loop. `web-utils` gained vitest + 1 test case. `subagents test:integration` guarded (no-op when `test/integration/` absent).
-- After Stage 5: **install.sh + uninstall.sh** covered by hermetic round-trip tests (`test_harness/install/`) with `HOME` override + `ZSH_COMPLETION_DIRS` env-toggle. Tests for both `--harness=claude` (15 cases) and `--harness=pi` (13 cases) wired into `make test` via `test_harness/install/run-tests.sh`.
+- After Stage 5: **install.sh + uninstall.sh** covered by hermetic round-trip tests (`test_harness/install/`) with `HOME` override + `ZSH_COMPLETION_DIRS` env-toggle. Tests for `--harness=claude` (15 cases) wired into `make test` via `test_harness/install/run-tests.sh`.
 - Generator pipeline now has 4 unit test files (Python unittest + bash) wired into `make test`; `test_dual_render.sh` integrated into the runner via `templates/generator/run-tests.sh`.
 - Coverage entry-points wired: ExCoveralls (Elixir), c8 (enforcement+subagents), vitest+istanbul (askuserquestion+web-utils), kcov (shell), coverage.py declared (Python — Stage 3).
 

@@ -79,7 +79,7 @@ codegen/                          ← repo root
 
 | Target                    | Purpose                                                                                                                                                                                  |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make install`            | Full install cycle: hook-parity → generate pi-extension → render settings → install.sh                                                                                                   |
+| `make install`            | Full install cycle: hook-parity → render settings → install.sh                                                                                                   |
 | `make test`               | Two-phase: parallel parity/scaffold/npm checks, then serial tail (hooks, hermetic ExUnit, rule-render-freshness); tracked-tree backstop; fast, no LLM calls                              |
 | `make test-stacks`        | ExUnit scaffold tests both harnesses; slow, real LLM calls; pre-deploy gate                                                                                                              |
 | `make test-all`           | `test` + `test-stacks` + `record-green`                                                                                                                                                  |
@@ -99,7 +99,7 @@ codegen/                          ← repo root
 
 | File                 | Audience                       | Content                                                     | Status                                 |
 | -------------------- | ------------------------------ | ----------------------------------------------------------- | -------------------------------------- |
-| `AGENTS.md`          | AI sessions (pi render)        | Codegen session loop: what it is, dev loop, workspace rules | Committed regular file (hand-authored) |
+| `AGENTS.md`          | AI sessions (agents render)    | Codegen session loop: what it is, dev loop, workspace rules | Committed regular file (hand-authored) |
 | `CLAUDE.md`          | AI sessions (claude render)    | Same content as AGENTS.md; hand-authored                    | Committed regular file (hand-authored) |
 | `PROJECT_CONTEXT.md` | AI orchestrators               | Session analyzer command, gate commands, key paths          | Committed                              |
 | `README.md`          | New users / contributors       | Installation steps, prerequisites, quick-start              | Committed                              |
@@ -117,8 +117,8 @@ codegen/                          ← repo root
 | `context/`      | Domain context files — one file per functional domain; read by the orchestrator for orientation, and by a cycle role only when the pitch's `scope:` put the path in the loop's `files_to_touch` grant. Updated by context-curator subagent post-reviewer.                   | `context/*.md`                                                                                                                                                                                    |
 | `coverage/`     | Test coverage output (gitignored). Per-language subdirs written by `make test-coverage`.                                                                                    | `coverage/python/`, `coverage/shell/`, etc.                                                                                                                                                       |
 | `docs/`         | Contributor guides for multi-file coordinated tasks. Not AI orientation (that's `context/`).                                                                                | `docs/adding-a-harness.md`                                                                                                                                                                        |
-| `harnesses/`    | Per-harness launchers, hook scripts, settings, manifest, slash commands, Pi extensions.                                                                                     | `harnesses/claude/`, `harnesses/pi/`, `harnesses/shared/`                                                                                                                                         |
-| `node_modules/` | Root prettier dep only. Gitignored. Pi extension packages have their own per-extension `node_modules/`.                                                                     | Root only; `npm install` at repo root to regenerate                                                                                                                                               |
+| `harnesses/`    | Per-harness launchers, hook scripts, settings, manifest, slash commands.                                                                                                 | `harnesses/claude/`, `harnesses/shared/`                                                                                                                                               |
+| `node_modules/` | Root prettier dep only. Gitignored.                                                                                                                                         | Root only; `npm install` at repo root to regenerate                                                                                                                                               |
 | `shared/`       | Runtime artifacts installed/rendered into downstream agents: rules, recipes, subagents, scaffold, usage_rules.                                                              | `shared/rules/`, `shared/recipes/`, `shared/subagents/`, `shared/scaffold/`, `shared/usage_rules/`                                                                                                |
 | `templates/`    | Generator pipeline + `.j2` sources for codegen infrastructure. Distinct from `shared/` (runtime).                                                                           | `templates/generator/`                                                                                                                                                                            |
 | `test_harness/` | Elixir/ExUnit project for end-to-end scaffold validation. Slow (real LLM) + fast hermetic (deterministic). Mix path wire: `elixirc_paths(:test)` in `mix.exs`.              | `test_harness/test/stacks/`, `test_harness/test/codegen_test_harness/`, `test_harness/last_green.json`                                                                                            |
@@ -134,7 +134,6 @@ codegen/                          ← repo root
 | `harnesses/claude/manifest.yaml`                  | Claude harness install contract                                                          |
 | `harnesses/claude/hooks/`                         | 50 hook scripts (PostToolUseFailure, PreToolUse, Stop) + paired `_test.sh` + `lib/`      |
 | `harnesses/claude/commands/`                      | Slash command sources → installed to `~/.claude/commands/` at install time               |
-| `harnesses/pi/pi-extensions/`                     | TypeScript npm packages extending Pi: askuserquestion, enforcement, subagents, web-utils |
 | `harnesses/shared/prompt-bodies/`                 | Shared prompt body text (concatenated with `tools-header/` at generate time)             |
 
 ### `shared/` key paths
@@ -177,7 +176,6 @@ codegen/                          ← repo root
 | `codegen/logging/*.md`                            | Orchestrator + subagents                     | Session log write/edit during dev sessions                        | Every dev cycle on THIS repo                                                         |
 | `codegen/analysis-proposals/<from>_<to>.md`       | `codegen-propose`                            | Overwritten each `codegen-propose` run                            | Manual operator run; ephemeral, gitignored                                           |
 | `test_harness/last_green.json`                    | CI / `record-green.sh`                       | `make record-green` after `make test-all` passes                  | Pre-deploy gate                                                                      |
-| `harnesses/pi/pi-extensions/*/node_modules/`      | npm                                          | `npm install` in extension dir                                    | After any `package.json` change                                                      |
 | Root `node_modules/`                              | npm                                          | `npm install` at repo root                                        | After `package.json` changes                                                         |
 | `shared/enforcement/registry.yaml`                | Contributors / curator                       | Manual edit; compiler reads at `make install`                     | When adding/changing denial rules                                                    |
 | `shared/enforcement/seam-registry.yaml`           | Contributors / curator                       | Manual edit; `seam-registry-parity_test.sh` checks at `make test` | New/removed declaration↔reflection seam (twin, generated pair, index)                |
@@ -185,7 +183,6 @@ codegen/                          ← repo root
 | `shared/scaffold/SCHEMA_VERSION`                  | Maintainers                                  | Manual bump (plain integer)                                       | When a scaffold change requires apps to consciously re-integrate                     |
 | `<app>/codegen/manifest.yaml` (downstream)        | `codegen-scaffold` (`run_integrate_stage`)   | ALWAYS-REWRITE (not write-once) on every `create`/`integrate`     | Every scaffold integrate run; `codegen-build` refuses when stamped version is behind |
 | `harnesses/claude/hooks/no-*.sh` (generated)      | `enforcement_compiler.py`                    | `make install` (compiler step)                                    | When `registry.yaml` changes                                                         |
-| `harnesses/pi/.../hooks/no-*.ts` (generated)      | `enforcement_compiler.py`                    | `make install` (compiler step)                                    | When `registry.yaml` changes                                                         |
 
 ---
 
@@ -230,7 +227,6 @@ codegen/                          ← repo root
 | Generator pipeline, manifest schema, install lifecycle | `context/core.md`                     |
 | Harness launchers, dispatch, system prompt assembly    | `context/harnesses.md`                |
 | Hook scripts, registration, lifecycle events           | `context/hooks.md`                    |
-| Pi TypeScript extensions                               | `context/pi-extensions.md`            |
 | Recipe catalog                                         | `context/recipes.md`                  |
 | Core discipline rules                                  | `context/rules-core.md`               |
 | Per-role rules                                         | `context/rules-roles.md`              |

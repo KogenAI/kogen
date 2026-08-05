@@ -39,7 +39,7 @@ ExUnit.after_suite(fn _results ->
   end
 end)
 
-ExUnit.start(exclude: [:slow, :harness_parity])
+ExUnit.start(exclude: [:slow])
 
 # `OrchestrationLoop.run/1` acquires a per-cwd single-flight lock by default
 # (see CodegenTestHarness.BuildLock). Pre-existing async: true tests share a

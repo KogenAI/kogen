@@ -37,7 +37,7 @@ Every Bash = one row.
 
 "Compiles" ≠ "works". Test actual call before done. External process → run, check exit. Config → check resolved runtime. Lifecycle → trigger end-to-end.
 
-Launcher wrapper logic (`claude-build.sh` / `pi-build.sh`) is verified via the hermetic `harnesses/claude/hooks/build-launcher-wrapper_test.sh`, NEVER by invoking the installed `claude-build` / `pi-build` binaries (that starts a real LLM-driven build).
+Launcher wrapper logic (`claude-build.sh`) is verified via the hermetic `harnesses/claude/hooks/build-launcher-wrapper_test.sh`, NEVER by invoking the installed `claude-build` binaries (that starts a real LLM-driven build).
 
 ## Explore Before Implementing
 
@@ -101,7 +101,7 @@ Pure fns → unit tests. New public fns → tests. Bug fix → regression test. 
 - Fix root cause — file that owns broken value. Never patch around.
 - Minimal fix. Red flags: "infrastructure" for simple tasks, multiple abstraction layers, hypothetical scenarios.
 - 100% complete. Never stop after "should work now". Stuck → report specific blocker, never "technical debt" punt.
-- **You NEVER create commits.** Not via `git commit`, not via a nested `claude`/`pi`/`codegen-call`, not via `claude --agent committer`. When your implementation is complete, STOP and return control — the loop delegates the commit to the committer subagent next. If a delegation prompt tells you to commit, treat it as "finish the implementation and stop": committing is structurally not your job and not in your tool surface.
+- **You NEVER create commits.** Not via `git commit`, not via a nested `claude`/`codegen-call`, not via `claude --agent committer`. When your implementation is complete, STOP and return control — the loop delegates the commit to the committer subagent next. If a delegation prompt tells you to commit, treat it as "finish the implementation and stop": committing is structurally not your job and not in your tool surface.
 - Update step context. Report "Work complete" + evidence. Never declare tests done without running.
 - Smallest test scope. Read background output — don't re-run.
 - Server: ASSUME running. NEVER restart — report the blocker instead.

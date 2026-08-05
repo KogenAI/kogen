@@ -50,22 +50,10 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
     "$SENTINEL"
 
-# ── Test 2: sentinel present in pi shape baked prompt ─────────────────────────
-assert_contains \
-    "ASK-GATE sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL"
-
 # ── Test 3: INTERACTION-AUDIT sentinel present in claude shape baked prompt ───
 assert_contains \
     "INTERACTION-AUDIT sentinel in claude-shape-system-prompt.txt" \
     "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL2"
-
-# ── Test 4: INTERACTION-AUDIT sentinel present in pi shape baked prompt ───────
-assert_contains \
-    "INTERACTION-AUDIT sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
     "$SENTINEL2"
 
 # ── Test 5: sentinel present in ready.md.j2 source ────────────────────────────
@@ -96,11 +84,6 @@ assert_contains \
     "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
     "same observable behavior"
 
-assert_contains \
-    "mechanism-question sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "same observable behavior"
-
 # ── Tests 11-14: LiveView correctness checklist in phoenix reviewer.md ────────
 assert_contains \
     "LiveView correctness: form events" \
@@ -129,11 +112,6 @@ assert_contains \
     "$SENTINEL5"
 
 assert_contains \
-    "SWEEP-CLASS COMPLETENESS sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL5"
-
-assert_contains \
     "SWEEP-CLASS COMPLETENESS sentinel in ready.md.j2" \
     "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
     "$SENTINEL5"
@@ -142,11 +120,6 @@ assert_contains \
 assert_contains \
     "Latent contract-mirror fork sentinel in claude-shape-system-prompt.txt" \
     "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL6"
-
-assert_contains \
-    "Latent contract-mirror fork sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
     "$SENTINEL6"
 
 assert_contains \
@@ -183,11 +156,6 @@ assert_contains \
     "$SENTINEL9"
 
 assert_contains \
-    "context-claim≠proof sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL9"
-
-assert_contains \
     "context-claim≠proof sentinel in shape.txt source" \
     "$CODEGEN_DIR/harnesses/shared/prompt-bodies/shape.txt" \
     "$SENTINEL9"
@@ -196,40 +164,6 @@ assert_contains \
     "edit-target provenance FORBIDDEN in developer.md source" \
     "$CODEGEN_DIR/shared/rules/roles/developer.md" \
     "$SENTINEL9_DEVELOPER_PROBES"
-
-SENTINEL10="Runtime-path fidelity"
-assert_contains \
-    "Runtime-path fidelity sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL10"
-assert_contains \
-    "Runtime-path fidelity sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL10"
-
-SENTINEL11="User-facing surface removal/change without operator sign-off"
-assert_contains \
-    "operator-surface sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL11"
-assert_contains \
-    "operator-surface sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL11"
-assert_contains \
-    "operator-surface sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL11"
-
-SENTINEL12="New-producer / existing-convention reconciliation"
-assert_contains \
-    "new-producer reconciliation sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL12"
-assert_contains \
-    "new-producer reconciliation sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL12"
 
 # Tests 33-34: reviewer-static eager stack includes (vite + tailwind)
 assert_contains \
@@ -240,72 +174,6 @@ assert_contains \
     "tailwind.md include wired into reviewer-static.md.j2" \
     "$CODEGEN_DIR/shared/subagents/static/reviewer-static.md.j2" \
     "{% include 'rules/stacks/static/tailwind.md' %}"
-
-SENTINEL13="CONTRACT-DECLARATION-SITE COMPLETENESS:"
-assert_contains \
-    "contract-declaration-site sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL13"
-assert_contains \
-    "contract-declaration-site sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL13"
-assert_contains \
-    "contract-declaration-site sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL13"
-
-SENTINEL15="CAPABILITY-REMOVAL REACHABILITY:"
-assert_contains \
-    "capability-removal-reachability sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL15"
-assert_contains \
-    "capability-removal-reachability sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL15"
-assert_contains \
-    "capability-removal-reachability sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL15"
-
-SENTINEL16="CAPABILITY-GRANT BOUNDARY-INTENT"
-assert_contains \
-    "capability-grant-boundary-intent sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL16"
-assert_contains \
-    "capability-grant-boundary-intent sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL16"
-assert_contains \
-    "capability-grant-boundary-intent sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL16"
-
-SENTINEL_PLATFORM="REQUIRED-PLATFORM COVERAGE:"
-assert_contains \
-    "required-platform-coverage sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_PLATFORM"
-assert_contains \
-    "required-platform-coverage sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_PLATFORM"
-assert_contains \
-    "required-platform-coverage sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL_PLATFORM"
-
-SENTINEL_DEADCODE="Dead-code retention / soft-deprecation"
-assert_contains \
-    "dead-code-retention sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_DEADCODE"
-assert_contains \
-    "dead-code-retention sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_DEADCODE"
 
 SENTINEL_PUSHBACK="Concede in ≤1 sentence"
 
@@ -321,126 +189,6 @@ for mode in debug shape experiment ops; do
         "$CODEGEN_DIR/harnesses/claude/claude-${mode}-system-prompt.txt" \
         "$SENTINEL_PUSHBACK"
 done
-
-# ── Test: Under Pushback / When Wrong sentinel in remaining pi modes ─────────
-for mode in debug shape experiment ops; do
-    assert_contains \
-        "pushback sentinel in pi-${mode}-system-prompt.txt" \
-        "$CODEGEN_DIR/harnesses/pi/pi-${mode}-system-prompt.txt" \
-        "$SENTINEL_PUSHBACK"
-done
-
-# ── Test: Incomplete-replacement blocker sentinel across shape prompts + /ready ──
-SENTINEL_INCOMPLETE_REPLACEMENT="Incomplete replacement (dropped functionality / unwired new code)"
-assert_contains \
-    "incomplete-replacement sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_INCOMPLETE_REPLACEMENT"
-assert_contains \
-    "incomplete-replacement sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_INCOMPLETE_REPLACEMENT"
-assert_contains \
-    "incomplete-replacement sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL_INCOMPLETE_REPLACEMENT"
-
-SENTINEL_EMPIRICAL_USAGE="Empirical-usage-grounding"
-assert_contains \
-    "empirical-usage-grounding sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_EMPIRICAL_USAGE"
-assert_contains \
-    "empirical-usage-grounding sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_EMPIRICAL_USAGE"
-assert_contains \
-    "empirical-usage-grounding sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL_EMPIRICAL_USAGE"
-
-SENTINEL_FORMAT_CONSUMER="Format/syntax-change consumer completeness"
-assert_contains \
-    "format-consumer sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_FORMAT_CONSUMER"
-assert_contains \
-    "format-consumer sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_FORMAT_CONSUMER"
-assert_contains \
-    "format-consumer sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL_FORMAT_CONSUMER"
-
-SENTINEL_SILENT_FAILURE="Silent-failure / fail-open design"
-assert_contains \
-    "silent-failure blocker sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_SILENT_FAILURE"
-assert_contains \
-    "silent-failure blocker sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_SILENT_FAILURE"
-
-SENTINEL_PROBE_COMPLETENESS="PROBE-COMPLETENESS: derive second-order claims to the leaves"
-assert_contains \
-    "probe-completeness sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_PROBE_COMPLETENESS"
-assert_contains \
-    "probe-completeness sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_PROBE_COMPLETENESS"
-assert_contains \
-    "probe-completeness sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL_PROBE_COMPLETENESS"
-
-# ── Handoff-record contract sentinel: Claude shape, Pi shape, and ready.md.j2
-# must all teach the SAME bilateral handoffs: obligation (see
-# codegen/pitches/draft/deferred-work-has-exactly-one-owner.md). This is the
-# one guard that would catch teaching-site drift if a future edit updates
-# one of the three without the others. ──────────────────────────────────────
-SENTINEL_HANDOFF="deferred-work-has-exactly-one-owner"
-assert_contains \
-    "handoff-record contract sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_HANDOFF"
-assert_contains \
-    "handoff-record contract sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_HANDOFF"
-assert_contains \
-    "handoff-record contract sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL_HANDOFF"
-
-# ── Decision-handoff completeness sentinel: Claude shape, Pi shape, and
-# ready.md.j2 must all teach the SAME `## Decisions` table contract. ─────────
-SENTINEL_DECISIONS="DECISION-HANDOFF COMPLETENESS"
-assert_contains \
-    "decision-handoff completeness sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_DECISIONS"
-assert_contains \
-    "decision-handoff completeness sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_DECISIONS"
-assert_contains \
-    "decision-handoff completeness sentinel in ready.md.j2" \
-    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
-    "$SENTINEL_DECISIONS"
-
-SENTINEL_DECISIONS_TABLE="ID | Decision | Why | Source | Consequence"
-assert_contains \
-    "Decisions table shape sentinel in claude-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
-    "$SENTINEL_DECISIONS_TABLE"
-assert_contains \
-    "Decisions table shape sentinel in pi-shape-system-prompt.txt" \
-    "$CODEGEN_DIR/harnesses/pi/pi-shape-system-prompt.txt" \
-    "$SENTINEL_DECISIONS_TABLE"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

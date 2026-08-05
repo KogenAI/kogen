@@ -2,7 +2,7 @@
 # _role_test.sh — unit tests for _role.sh (resolve_role / is_build_mode)
 #
 # Tests:
-#   1: unset CLAUDE_ROLE/PI_ROLE → resolve_role empty, is_build_mode active (0)
+#   1: unset CLAUDE_ROLE → resolve_role empty, is_build_mode active (0)
 #   2: CLAUDE_ROLE=build → is_build_mode active (0)
 #   3: CLAUDE_ROLE=unknown-role → is_build_mode active (0), fail-safe
 #   4: CLAUDE_ROLE=shape → is_build_mode skip (1)
@@ -11,8 +11,6 @@
 #   7: CLAUDE_ROLE=experiment → is_build_mode skip (1)
 #   8: CLAUDE_ROLE=refactor → is_build_mode skip (1)
 #   9: CLAUDE_ROLE=babysit → is_build_mode skip (1)
-#  10: PI_ROLE=babysit → is_build_mode skip (1) — PI_ROLE parity
-#  11: CLAUDE_ROLE precedence over PI_ROLE when both set
 
 set -euo pipefail
 
@@ -64,8 +62,8 @@ run_resolve_role() {
 }
 
 # Test 1: unset both → resolve_role empty, is_build_mode active
-run_resolve_role "unset CLAUDE_ROLE/PI_ROLE → resolve_role empty" ""
-run_is_build_mode "unset CLAUDE_ROLE/PI_ROLE → is_build_mode active" "1"
+run_resolve_role "unset CLAUDE_ROLE → resolve_role empty" ""
+run_is_build_mode "unset CLAUDE_ROLE → is_build_mode active" "1"
 
 # Test 2: CLAUDE_ROLE=build → active
 run_is_build_mode "CLAUDE_ROLE=build → is_build_mode active" "1" CLAUDE_ROLE=build
@@ -82,12 +80,6 @@ run_is_build_mode "CLAUDE_ROLE=refactor → is_build_mode skip" "0" CLAUDE_ROLE=
 
 # Test 9: babysit — the new mode under test
 run_is_build_mode "CLAUDE_ROLE=babysit → is_build_mode skip" "0" CLAUDE_ROLE=babysit
-
-# Test 10: PI_ROLE parity
-run_is_build_mode "PI_ROLE=babysit → is_build_mode skip" "0" PI_ROLE=babysit
-
-# Test 11: CLAUDE_ROLE precedence over PI_ROLE
-run_resolve_role "CLAUDE_ROLE precedence over PI_ROLE" "babysit" CLAUDE_ROLE=babysit PI_ROLE=ops
 
 echo ""
 echo "$pass passed, $fail failed"

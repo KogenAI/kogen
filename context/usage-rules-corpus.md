@@ -18,7 +18,7 @@ dependencies of the platform today." Do NOT treat `INDEX.md` as an inventory of 
 
 ## Developer-Only Grep-Guard
 
-Only the developer role may grep/scan the corpus for API surface. `usage-rules-grep-guard.sh` (+ its Pi
+Only the developer role may grep/scan the corpus for API surface. `usage-rules-grep-guard.sh` (
 `.ts` twin) allows `developer-*` and denies every other agent with:
 
 > BLOCKED by usage-rules-grep-guard: only the developer may scan codegen/usage_rules/. Read codegen/usage_rules/INDEX.md, look up the deps you are touching, and Read at most 5 cited files.

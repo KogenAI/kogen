@@ -41,10 +41,6 @@ codegen/benchmarks/<UTC-ts>/
       phoenix/<test_name>.jsonl
       static/<test_name>.jsonl
       modes/<test_name>.jsonl
-    pi/
-      phoenix/<test_name>.jsonl
-      static/<test_name>.jsonl
-      modes/<test_name>.jsonl
 ```
 
 PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness>/<stack>/<test_name>.png` (1280×720 full-page, captured by `BenchArtifacts.capture_screenshot/4` via `test_harness/bench/screenshot.js`). Modes stack excluded — no website to render. Static stacks use a Node HTTP server; Phoenix stacks spawn `mix phx.server` on a dynamic port, poll for HTTP 200, capture the screenshot, then SIGTERM/SIGKILL the process group. Screenshot failure is non-fatal: test continues and JSONL is written regardless; missing Playwright logs a warning and returns `:ok`.
@@ -57,7 +53,7 @@ PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness
 
 **Capture seam**: `Fixtures.run_codegen_build/3` pipes harness stdout to JSONL when `BENCH_RUN_DIR` env var is set. The seam reuses the same `maybe_write_diagnostics/2` mechanism that writes diagnostic reports in non-benchmark mode (the `maybe_write_diagnostics/2` clause in `fixtures.ex`).
 
-**Per-test JSONL shape**: raw stream-json lines from codegen-build (claude line-1 = `system/init` with resolved model ID; pi envelope shape varies but final line always contains usage). Final synthetic record appended by harness:
+**Per-test JSONL shape**: raw stream-json lines from codegen-build (claude line-1 = `system/init` with resolved model ID; envelope shape varies but final line always contains usage). Final synthetic record appended by harness:
 
 ```json
 {"type":"harness_summary","test_name":"...","exit_code":0,"assertion_passed":false,"parsed":{...},"per_role":{...}}
@@ -65,11 +61,11 @@ PNG screenshot per static-stack and Phoenix test: `<BENCH_RUN_DIR>/runs/<harness
 
 `assertion_passed` is write-pending `false` at build time (written before ExUnit assertions run). After all assertions pass, `Fixtures.bench_assertions_passed!(stack, test_name)` flips it to `true` in-place by rewriting the last `harness_summary` line in the JSONL file. Tests that fail ExUnit assertions leave `assertion_passed: false` in the record.
 
-**`per_role` map values are always integers**: The `per_role` key in `harness_summary` contains per-subagent token attribution (e.g., `{"developer-phoenix-backend": {input_tokens: 100, output_tokens: 50, ...}, "orchestrator": {...}}`). Map values are accumulated token sums with default 0 per field — never `:unknown` atoms. Unlike the top-level `parsed` map (which carries `:unknown` atoms for missing Pi metrics), per-role sums are always concrete integers because aggregation only runs for roles that produced ≥1 assistant turn. Claude sources per-role sums from `~/.claude` subagent transcripts (`agentType`-keyed, plus an `"orchestrator"` bucket); Pi sources per-role sums from the SAME loop terminal `{"type":"result","engine":"elixir_loop"}` line `parse/2` reads for top-level metrics — its `"per_role"` sub-map is keyed by loop role name. For both harnesses, the empty map `%{}` is the sole graceful-failure sentinel (missing session_id/dir for Claude; loop line absent — e.g. a raw `pi --mode json` capture — for Pi). No `:unknown`-atom serialization pass is needed — the per_role map is JSON-encodable as-is (string keys, integer values).
+**`per_role` map values are always integers**: The `per_role` key in `harness_summary` contains per-subagent token attribution (e.g., `{"developer-phoenix-backend": {input_tokens: 100, output_tokens: 50, ...}, "orchestrator": {...}}`). Map values are accumulated token sums with default 0 per field — never `:unknown` atoms. Unlike the top-level `parsed` map (which carries `:unknown` atoms for missing metrics), per-role sums are always concrete integers because aggregation only runs for roles that produced ≥1 assistant turn. Claude sources per-role sums from `~/.claude` subagent transcripts (`agentType`-keyed, plus an `"orchestrator"` bucket); per-role sums are read for top-level metrics — its `"per_role"` sub-map is keyed by loop role name. For both harnesses, the empty map `%{}` is the sole graceful-failure sentinel (missing session_id/dir for Claude). No `:unknown`-atom serialization pass is needed — the per_role map is JSON-encodable as-is (string keys, integer values).
 
 **Modes tests bench records**: `run_mode_launcher/4` (4th `opts` arg, `test_name:` key; default `"<mode>_mode"`) now writes JSONL records under `runs/<harness>/modes/<test_name>.jsonl`. Records contain only a `harness_summary` line (no raw codegen stream-json prefix) with mostly `:unknown` parsed metrics — modes tests don't produce structured usage output. Finalize with `Fixtures.bench_assertions_passed!("modes", test_name)` after last assertion.
 
-Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model_id, tokens_in, tokens_out, cost_api, duration_ms}`. Pi tokens were never actually missing — a prior parser bug searched pi's stdout for `agent_end`, an internal per-call event consumed inside `harnesses/pi/call-dispatch.sh` that codegen-build never surfaces, so every Pi record came back all-`:unknown` even on a green build. Both harnesses now read the loop's single `{"type":"result","engine":"elixir_loop"}` terminal line (`codegen-build` drives the same Elixir orchestration loop for both harnesses); `:unknown` now means a genuine parse failure, not a harness limitation. `agent_end` is retained only as a fallback for a raw `pi --mode json` capture (not loop-driven).
+Parser (`CodegenTestHarness.UsageParser`) trims each harness envelope to `{model_id, tokens_in, tokens_out, cost_api, duration_ms}`. It reads the loop's single `{"type":"result","engine":"elixir_loop"}` terminal line (`codegen-build` drives the same Elixir orchestration loop for both harnesses); `:unknown` now means a genuine parse failure, not a harness limitation.
 
 Bench cost now includes FAILED builds too: the result-line filter used to require `subtype == "success"`, so a build that failed still spent real tokens (an observed failed static build billed $2.209391 across 94 turns) but recorded `cost_usd: :unknown` — under-reporting spend exactly on the runs that most need costing. The filter now accepts any subtype; pass/fail is carried separately via `assertion_passed` + `terminal_reason`, so this cannot make a red run look green.
 
@@ -127,7 +123,7 @@ requested `{harness, model, effort}` for every invocation into an additive `disp
 list on the terminal `per_role.<role>` telemetry entry (`emit_loop_telemetry/1`); every
 pre-existing key stays byte-identical. `UsageParser.parse_dispatches/1` reads this list
 from raw `codegen-build` stdout (the loop's own terminal `{"type":"result","engine":
-"elixir_loop",...}` line — harness-agnostic, unlike `parse_per_role/3`'s Claude-vs-Pi
+"elixir_loop",...}` line — harness-agnostic, unlike `parse_per_role/3`'s per-harness
 split) so a repetition's classification can assert the role's dispatched tuple actually
 MATCHES the arm's requested tuple before counting it complete.
 

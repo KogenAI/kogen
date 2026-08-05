@@ -17,9 +17,9 @@ run_test() {
 
     local stdout
     if [ -n "$extra_env" ]; then
-        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE $extra_env bash "$GUARD" 2>/dev/null || true)
+        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE $extra_env bash "$GUARD" 2>/dev/null || true)
     else
-        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
     fi
 
     local outcome
@@ -149,7 +149,7 @@ run_waiver_test() {
     stdout=$(
         cd "$WAIVER_TMP_ROOT" &&
             printf '%s' "$input" |
-            env -u CLAUDE_ROLE -u PI_ROLE -u GIT_DIR -u GIT_WORK_TREE \
+            env -u CLAUDE_ROLE -u GIT_DIR -u GIT_WORK_TREE \
                 CLAUDE_ROLE=developer-phoenix-backend \
                 CODEGEN_WAIVED_GUARDS="$waived_env" \
                 PATH="$WAIVER_STUB_BIN:$PATH" \

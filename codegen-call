@@ -2,31 +2,28 @@
 # codegen-call — one-shot structured LLM call binary.
 #
 # Usage:
-#   codegen-call --harness=<claude_code|pi> \
+#   codegen-call --harness=claude_code \
 #     --model=<m> --effort=<e> \
 #     --system-prompt @<abs-path> \
 #     [--json-schema @<abs-path>] \
 #     [--allowed-tools=<comma-list>] \
 #     [--settings @<abs-path>] \
-#     [--extension @<abs-path>] \
 #     [--agents @<abs-path>] \
 #     PROMPT
 #
 # Flags:
 #   --version             print "codegen-call 0.1.0" and exit 0
-#   --harness=<h>         REQUIRED: claude_code | pi
+#   --harness=<h>         REQUIRED: claude_code
 #   --model=<m>           REQUIRED: model string
 #   --effort=<e>          REQUIRED: effort string (low/medium/high/…)
 #   --system-prompt @<p>  REQUIRED: @<abs-path> to system prompt file
 #   --json-schema @<p>    OPTIONAL: @<abs-path> to JSON schema file
 #   --allowed-tools=<l>   OPTIONAL: comma-list of tools; empty string → no tools
 #   --settings @<p>       OPTIONAL: @<abs-path> to settings JSON (claude only)
-#   --extension @<p>      OPTIONAL, repeatable: @<file-or-directory> extension (pi only)
 #   --agents @<p>         OPTIONAL: claude only — inline agent-def JSON; identity
 #                         travels with the def. This script never opens,
 #                         parses, or names the agents the JSON carries — pure
-#                         passthrough (mirrors --settings / --extension).
-#                         Ignored (accepted, dropped) on pi.
+#                         passthrough (mirrors --settings).
 #   --agent=<v>           OPTIONAL: generic passthrough value; when set, the
 #                         --system-prompt requirement below is waived (the
 #                         invoking harness supplies identity another way).
@@ -64,11 +61,10 @@
 #                                whole agent identity for this call (no
 #                                layering, no merge with any prior prompt)
 #     --model / --effort        which model + effort tier runs the call
-#     --harness                 claude_code | pi — which CLI executes it
+#     --harness                 claude_code — which CLI executes it
 #     --allowed-tools            tool allowlist for this call, if the harness
 #                                supports scoping tools per invocation
 #     --settings @<path>        claude only — enforcement/hook bundle overlay
-#     --extension @<path>       pi only — ordered extension bundle overlays
 #     --agents @<path>          claude only — inline agent-def JSON; identity
 #                                travels with the def
 #   No agent name is hardcoded anywhere in this file or its dispatch targets.
@@ -112,7 +108,6 @@ JSON_SCHEMA_PATH=""
 ALLOWED_TOOLS=""
 ALLOWED_TOOLS_SET=""
 SETTINGS_PATH=""
-EXTENSION_PATHS=()
 AGENTS_PATH=""
 AGENT=""
 RESUME=""
@@ -121,7 +116,7 @@ PRINT_ARGV=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-call --harness=<claude_code|pi> --model=<m> --effort=<e> [--system-prompt @<path>] [--agent=<v>] [--agents @<path>] [--resume=<sid>] [--session-id=<sid>] [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--extension @<path>] [--print-argv] PROMPT\n' >&2
+    printf 'Usage: codegen-call --harness=claude_code --model=<m> --effort=<e> [--system-prompt @<path>] [--agent=<v>] [--agents @<path>] [--resume=<sid>] [--session-id=<sid>] [--json-schema @<path>] [--allowed-tools=<list>] [--settings @<path>] [--print-argv] PROMPT\n' >&2
     exit 2
 }
 
@@ -187,14 +182,6 @@ while [[ $# -gt 0 ]]; do
         ;;
     --settings)
         SETTINGS_PATH="$2"
-        shift 2
-        ;;
-    --extension=*)
-        EXTENSION_PATHS+=("${1#--extension=}")
-        shift
-        ;;
-    --extension)
-        EXTENSION_PATHS+=("$2")
         shift 2
         ;;
     --agents=*)
@@ -265,8 +252,8 @@ if [[ -z "$HARNESS" ]]; then
     usage
 fi
 
-if [[ "$HARNESS" != "claude_code" && "$HARNESS" != "pi" ]]; then
-    printf 'codegen-call: --harness must be "claude_code" or "pi", got %q\n' "$HARNESS" >&2
+if [[ "$HARNESS" != "claude_code" ]]; then
+    printf 'codegen-call: --harness must be "claude_code", got %q\n' "$HARNESS" >&2
     usage
 fi
 
@@ -332,65 +319,14 @@ if [[ -n "$SETTINGS_PATH" ]]; then
     SETTINGS_ABS_PATH="$(_read_at_path "--settings" "$SETTINGS_PATH")"
 fi
 
-# Resolve extension path (optional).
-#
-# Unlike --system-prompt/--json-schema (whose contents we cat), --extension is
-# handed to `pi --extension` verbatim, and pi accepts EITHER a single entry
-# file OR a package directory (it resolves the entry itself, via package.json
-# `main`/`pi.extensions`). _read_at_path enforces `-f`, which rejected a
-# package dir outright:
-#   codegen-call: --extension file not found: harnesses/pi/pi-extensions/enforcement
-# That killed every pi loop role at 0 tokens — OrchestrationLoop passes
-# `--extension=@<enforcement package dir>` (orchestration_loop.ex:3158), and
-# the enforcement extension ships as a package dir (package.json →
-# main: dist/index.js), never a bare file. Verified against pi 0.80.10: a
-# package dir loads and the turn ends stopReason "stop".
-_read_at_path_or_dir() {
-    local flag_name="$1"
-    local value="$2"
-    local path
-    if [[ "$value" != @* ]]; then
-        printf 'codegen-call: %s value must start with @ (got %q)\n' "$flag_name" "$value" >&2
-        exit 2
-    fi
-    path="${value#@}"
-    if [[ ! -e "$path" ]]; then
-        printf 'codegen-call: %s path not found: %s\n' "$flag_name" "$path" >&2
-        exit 2
-    fi
-    printf '%s' "$path"
-}
-
-EXTENSION_ABS_PATHS=()
-for extension_path in "${EXTENSION_PATHS[@]+"${EXTENSION_PATHS[@]}"}"; do
-    if [[ -z "$extension_path" ]] || [[ "$extension_path" == *$'\n'* ]]; then
-        printf 'codegen-call: --extension must be non-empty and contain no newline\n' >&2
-        exit 2
-    fi
-    EXTENSION_ABS_PATHS+=("$(_read_at_path_or_dir "--extension" "$extension_path")")
-done
-
-# Newline-delimited internal form is safe because extension paths reject newlines.
-# Keep singular export for pre-plural downstream dispatchers during installation.
-EXTENSION_PATHS_VALUE=""
-if [[ "${#EXTENSION_ABS_PATHS[@]}" -gt 0 ]]; then
-    EXTENSION_PATHS_VALUE="$(printf '%s\n' "${EXTENSION_ABS_PATHS[@]}")"
-    EXTENSION_PATHS_VALUE="${EXTENSION_PATHS_VALUE%$'\n'}"
-fi
-EXTENSION_ABS_PATH="${EXTENSION_ABS_PATHS[0]:-}"
-
-# Resolve agents path (optional, claude only — pi ignores it)
+# Resolve agents path (optional, claude only)
 AGENTS_ABS_PATH=""
 if [[ -n "$AGENTS_PATH" ]]; then
     AGENTS_ABS_PATH="$(_read_at_path "--agents" "$AGENTS_PATH")"
 fi
 
 # Map harness name to dispatch directory
-if [[ "$HARNESS" == "claude_code" ]]; then
-    DISPATCH_DIR="claude"
-else
-    DISPATCH_DIR="pi"
-fi
+DISPATCH_DIR="claude"
 
 # Export env vars for dispatch script
 export CODEGEN_CALL_HARNESS="$HARNESS"
@@ -402,8 +338,6 @@ export CODEGEN_CALL_JSON_SCHEMA_PATH="$JSON_SCHEMA_ABS_PATH"
 export CODEGEN_CALL_ALLOWED_TOOLS="${ALLOWED_TOOLS:-}"
 export CODEGEN_CALL_ALLOWED_TOOLS_SET="${ALLOWED_TOOLS_SET:-}"
 export CODEGEN_CALL_SETTINGS_PATH="$SETTINGS_ABS_PATH"
-export CODEGEN_CALL_EXTENSION_PATH="$EXTENSION_ABS_PATH"
-export CODEGEN_CALL_EXTENSION_PATHS="$EXTENSION_PATHS_VALUE"
 export CODEGEN_CALL_AGENTS_PATH="$AGENTS_ABS_PATH"
 export CODEGEN_CALL_AGENT="$AGENT"
 export CODEGEN_CALL_RESUME="$RESUME"

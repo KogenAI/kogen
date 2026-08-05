@@ -20,8 +20,8 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
     "candidates" => [
       %{
         "name" => "candidate-a",
-        "harness" => "pi",
-        "model" => "openai-codex/gpt-5.6-terra",
+        "harness" => "claude",
+        "model" => "opus",
         "effort" => "high"
       }
     ]
@@ -104,7 +104,7 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
     end
 
     test "rejects duplicate candidate names" do
-      dup = %{"name" => "candidate-a", "harness" => "pi", "model" => "m", "effort" => "high"}
+      dup = %{"name" => "candidate-a", "harness" => "claude", "model" => "m", "effort" => "high"}
       raw = %{@valid_raw | "candidates" => [dup, dup]}
 
       assert_raise RuntimeError, ~r/candidate names must be unique/, fn ->
@@ -116,7 +116,7 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
       raw = %{
         @valid_raw
         | "candidates" => [
-            %{"name" => "Candidate_A", "harness" => "pi", "model" => "m", "effort" => "high"}
+            %{"name" => "Candidate_A", "harness" => "claude", "model" => "m", "effort" => "high"}
           ]
       }
 
@@ -129,7 +129,7 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
       raw = %{
         @valid_raw
         | "candidates" => [
-            %{"name" => "candidate-a", "harness" => "pi", "model" => "m", "effort" => "extreme"}
+            %{"name" => "candidate-a", "harness" => "claude", "model" => "m", "effort" => "extreme"}
           ]
       }
 
@@ -236,11 +236,11 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
               "repetitions" => 3,
               "tolerances" => %{"cost_pct" => 0, "duration_pct" => 20},
               "candidates" => [
-                %{"name" => "c", "harness" => "pi", "model" => "m", "effort" => "high"}
+                %{"name" => "c", "harness" => "claude", "model" => "m", "effort" => "high"}
               ]
             })
 
-    @arm %{name: "baseline", harness: "pi", model: "m", effort: "high"}
+    @arm %{name: "baseline", harness: "claude", model: "m", effort: "high"}
 
     test "non-zero exit -> incomplete naming the exit code" do
       rep = %{exit_code: 1, run_dir: "/irrelevant", wall_ms: 100, output: ""}
@@ -273,7 +273,7 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
       run_dir =
         Path.join(System.tmp_dir!(), "rms_classify_#{:erlang.unique_integer([:positive])}")
 
-      runs_dir = Path.join([run_dir, "runs", "pi", "static"])
+      runs_dir = Path.join([run_dir, "runs", "claude", "static"])
       File.mkdir_p!(runs_dir)
       on_exit(fn -> File.rm_rf!(run_dir) end)
 
@@ -303,7 +303,7 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
           "subtype" => "success",
           "per_role" => %{
             "developer-static" => %{
-              "dispatches" => [%{"harness" => "pi", "model" => "m", "effort" => "high"}]
+              "dispatches" => [%{"harness" => "claude", "model" => "m", "effort" => "high"}]
             }
           }
         })
@@ -318,7 +318,7 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
       run_dir =
         Path.join(System.tmp_dir!(), "rms_classify_#{:erlang.unique_integer([:positive])}")
 
-      runs_dir = Path.join([run_dir, "runs", "pi", "static"])
+      runs_dir = Path.join([run_dir, "runs", "claude", "static"])
       File.mkdir_p!(runs_dir)
       on_exit(fn -> File.rm_rf!(run_dir) end)
 
@@ -349,7 +349,7 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
           "per_role" => %{
             "developer-static" => %{
               # WRONG model — does not match @arm.model "m"
-              "dispatches" => [%{"harness" => "pi", "model" => "wrong-model", "effort" => "high"}]
+              "dispatches" => [%{"harness" => "claude", "model" => "wrong-model", "effort" => "high"}]
             }
           }
         })
@@ -476,8 +476,8 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
 
       arm = %{
         name: "candidate-a",
-        harness: "pi",
-        model: "openai-codex/gpt-5.6-terra",
+        harness: "claude",
+        model: "opus",
         effort: "high"
       }
 
@@ -505,8 +505,8 @@ defmodule CodegenTestHarness.RoleModelSweepTest do
                "arm" => "candidate-a",
                "role" => "developer-static",
                "stack" => "static",
-               "harness" => "pi",
-               "model" => "openai-codex/gpt-5.6-terra",
+               "harness" => "claude",
+               "model" => "opus",
                "effort" => "high",
                "source_sha" => "deadbeef",
                "fixed" => true

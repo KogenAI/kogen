@@ -17,9 +17,9 @@ run_test() {
 
     local stdout
     if [ -n "$extra_env" ]; then
-        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE $extra_env bash "$GUARD" 2>/dev/null || true)
+        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE $extra_env bash "$GUARD" 2>/dev/null || true)
     else
-        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u PI_ROLE bash "$GUARD" 2>/dev/null || true)
+        stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
     fi
 
     local outcome

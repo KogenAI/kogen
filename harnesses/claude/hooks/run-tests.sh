@@ -17,12 +17,12 @@
 set -u
 
 # Neutralize the ambient role inherited from the launching session.
-# resolve_role() returns empty when CLAUDE_ROLE/PI_ROLE are unset, so hooks
+# resolve_role() returns empty when CLAUDE_ROLE is unset, so hooks
 # take their non-investigative (build-like) path and deny-case tests assert
 # correctly. Tests that need a specific role set it per-invocation
 # (CLAUDE_ROLE=X bash "$HOOK"), which overrides this unset for that child only.
 # unset is safe under set -u (only reads of missing vars error, not unset).
-unset CLAUDE_ROLE PI_ROLE
+unset CLAUDE_ROLE
 
 # Neutralize an ambient CODEGEN_LOG_PATH pin from the launching (this very)
 # dev session. session_log_from_transcript's new step 0 resolves this env var
@@ -111,9 +111,9 @@ export -f run_one
 # Backstop: assert the runner is role-clean before any test body starts.
 # Converts a future mid-runner role re-leak (someone exporting a role above
 # this point) into an attributable failure instead of a silent wall of red.
-if [ -n "${CLAUDE_ROLE:-}" ] || [ -n "${PI_ROLE:-}" ]; then
+if [ -n "${CLAUDE_ROLE:-}" ]; then
     printf 'FAIL: ambient role leaked into make test runner — not hermetic!\n' >&2
-    printf '  CLAUDE_ROLE=%s PI_ROLE=%s\n' "${CLAUDE_ROLE:-}" "${PI_ROLE:-}" >&2
+    printf '  CLAUDE_ROLE=%s\n' "${CLAUDE_ROLE:-}" >&2
     exit 1
 fi
 
@@ -124,7 +124,7 @@ fi
 # spuriously deny against the real repo's HEAD commit time. OCG_CODEGEN_DIR
 # (set by the launcher that spawned the current agent session, e.g. when this
 # suite runs inside a codegen-build-managed dev session) overrides
-# claude-build.sh/pi-build.sh sibling-resolution of codegen-build, causing
+# claude-build.sh sibling-resolution of codegen-build, causing
 # portable-launcher_test.sh and worktree-*_test.sh fixtures (which stub a
 # sibling codegen-build next to the launcher under test) to silently invoke
 # the REAL installed codegen-build instead of the test stub.

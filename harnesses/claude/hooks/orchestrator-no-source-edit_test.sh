@@ -219,70 +219,17 @@ FIXTURE_NOREPO_PITCH='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_
 run_test "non-repo pitch write via launch-cwd fallback allows" "0" "$FIXTURE_NOREPO_PITCH"
 rm -rf "$NOREPO"
 
-run_test_parity() {
-    local desc="$1"
-    local expected="$2"
-    local env_var="$3"
-    local role_val="$4"
-    local input="$5"
-
-    local stdout
-    stdout=$(printf '%s' "$input" | env "$env_var=$role_val" bash "$GUARD" 2>/dev/null || true)
-
-    local outcome
-    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-        outcome="2"
-    else
-        outcome="0"
-    fi
-
-    if [ "$outcome" = "$expected" ]; then
-        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
-        pass=$((pass + 1))
-    else
-        printf 'FAIL: %s — expected %s (deny=2/allow=0), got %s\n  stdout: %s\n' "$desc" "$expected" "$outcome" "$stdout"
-        fail=$((fail + 1))
-    fi
-}
-
-# PI_ROLE parity tests
-
-# Test 27: PI_ROLE=debug + Edit on lib/ — BLOCK
-FIXTURE_PI_DEBUG_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=debug Edit on lib/ blocks" "2" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_LIB"
-
-# Test 28: PI_ROLE=debug + Write to codegen/pitches/draft/ — ALLOW
-FIXTURE_PI_DEBUG_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=debug Write to pitches/draft/ allows" "0" "PI_ROLE" "debug" "$FIXTURE_PI_DEBUG_DRAFT"
-
-# Test 29: PI_ROLE=shape + Edit lib/ — BLOCK
-FIXTURE_PI_SHAPE_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=shape Edit on lib/ blocks" "2" "PI_ROLE" "shape" "$FIXTURE_PI_SHAPE_LIB"
-
-# Test 30: PI_ROLE=shape + Write to codegen/pitches/draft/ — ALLOW
-FIXTURE_PI_SHAPE_DRAFT='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"codegen/pitches/draft/foo.md","content":"x"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=shape Write to pitches/draft/ allows" "0" "PI_ROLE" "shape" "$FIXTURE_PI_SHAPE_DRAFT"
 
 # Precedence tests
 
-# Test 35: CLAUDE_ROLE=debug + PI_ROLE=build → CLAUDE_ROLE wins → debug branch → blocks lib/
+# Test 35: CLAUDE_ROLE=debug → debug branch → blocks lib/
 FIXTURE_PREC_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-stdout_prec=$(printf '%s' "$FIXTURE_PREC_LIB" | CLAUDE_ROLE=debug PI_ROLE=build bash "$GUARD" 2>/dev/null || true)
+stdout_prec=$(printf '%s' "$FIXTURE_PREC_LIB" | CLAUDE_ROLE=debug bash "$GUARD" 2>/dev/null || true)
 if printf '%s' "$stdout_prec" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: precedence — CLAUDE_ROLE=debug wins over PI_ROLE=build → blocks lib/\n'
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: CLAUDE_ROLE=debug blocks lib/\n'
     pass=$((pass + 1))
 else
-    printf 'FAIL: precedence — CLAUDE_ROLE=debug should win and block lib/ — got allow\n  stdout: %s\n' "$stdout_prec"
-    fail=$((fail + 1))
-fi
-
-# Test 36: only PI_ROLE=debug set (CLAUDE_ROLE unset) → behaves as debug → blocks lib/
-stdout_pi_only=$(printf '%s' "$FIXTURE_PREC_LIB" | PI_ROLE=debug bash "$GUARD" 2>/dev/null || true)
-if printf '%s' "$stdout_pi_only" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
-    [ -n "${VERBOSE:-}" ] && printf 'PASS: only PI_ROLE=debug set — behaves as debug, blocks lib/\n'
-    pass=$((pass + 1))
-else
-    printf 'FAIL: only PI_ROLE=debug set — should behave as debug and block lib/ — got allow\n  stdout: %s\n' "$stdout_pi_only"
+    printf 'FAIL: CLAUDE_ROLE=debug should block lib/ — got allow\n  stdout: %s\n' "$stdout_prec"
     fail=$((fail + 1))
 fi
 
@@ -309,10 +256,6 @@ run_test_role "experiment mode Write to pitches/draft/ allows" "0" "experiment" 
 # Test 41: CLAUDE_ROLE=experiment + Edit on arbitrary on-box path — ALLOW
 FIXTURE_EXP_SRV='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"/srv/app.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "experiment mode Edit on arbitrary on-box path allows" "0" "experiment" "$FIXTURE_EXP_SRV"
-
-# Test 42: PI_ROLE=experiment + Edit on lib/ — ALLOW
-FIXTURE_PI_EXP_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
-run_test_parity "PI_ROLE=experiment Edit on lib/ allows" "0" "PI_ROLE" "experiment" "$FIXTURE_PI_EXP_LIB"
 
 # Test 43: CLAUDE_ROLE=debug + empty FILE_PATH — DENY (fail-closed)
 # Matcher is Write|Edit|MultiEdit|NotebookEdit (all file-bearing); an empty

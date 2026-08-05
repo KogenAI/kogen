@@ -36,12 +36,11 @@ run_test() {
     # to stdout for deny outcomes (exit 0) instead of stderr + exit 2. We
     # translate the legacy expected values: "2" means "expect deny",
     # "0" means "expect allow (no deny envelope)".
-    # Ambient CLAUDE_ROLE/AGENT_TYPE/PI_ROLE (e.g. the developer session
+    # Ambient CLAUDE_ROLE/AGENT_TYPE (e.g. the developer session
     # running this test suite carries CLAUDE_ROLE=build) must not leak into
-    # the fixture — resolve_role()'s CLAUDE_ROLE > PI_ROLE precedence would
     # silently override a test's intended role.
     local stdout
-    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE -u CODEGEN_BUILD_START_TS -u CODEGEN_CYCLE_BASE_SHA bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u CODEGEN_BUILD_START_TS -u CODEGEN_CYCLE_BASE_SHA bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -73,10 +72,9 @@ run_test_env() {
     done
 
     # Same ambient-leak isolation as run_test — strip CLAUDE_ROLE/AGENT_TYPE/
-    # PI_ROLE from the outer shell before applying the test's explicit
     # env_prefix overrides.
     local stdout
-    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE -u CODEGEN_BUILD_START_TS -u CODEGEN_CYCLE_BASE_SHA $env_prefix bash "$GUARD" 2>/dev/null || true)
+    stdout=$(printf '%s' "$input" | env -u CLAUDE_ROLE -u AGENT_TYPE -u CODEGEN_BUILD_START_TS -u CODEGEN_CYCLE_BASE_SHA $env_prefix bash "$GUARD" 2>/dev/null || true)
 
     local outcome
     if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
@@ -174,10 +172,6 @@ run_test_env "ops role + unlock + git reset --hard allowed" "0" "$FIXTURE_OPS_RE
 FIXTURE_OPS_PUSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"agent_type":"","agent_id":"a"}'
 run_test_env "ops role + unlock + git push --force allowed" "0" "$FIXTURE_OPS_PUSH" "CLAUDE_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
 
-# Test 14: PI_ROLE=ops + CODEGEN_OPS_GIT_UNLOCK=1 + git commit — MUST ALLOW (parity with CLAUDE_ROLE=ops)
-FIXTURE_PI_OPS_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"pi-ops hotfix\""},"agent_type":"","agent_id":"a"}'
-run_test_env "PI_ROLE=ops + unlock + git commit allowed" "0" "$FIXTURE_PI_OPS_COMMIT" "PI_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
-
 # Test 14b: ops role WITHOUT CODEGEN_OPS_GIT_UNLOCK — MUST DENY (two-signal gate: role alone insufficient)
 FIXTURE_OPS_ALONE_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"hotfix\""},"agent_type":"","agent_id":"a"}'
 run_test_env "ops role alone (no unlock) + git commit denied" "2" "$FIXTURE_OPS_ALONE_COMMIT" "CLAUDE_ROLE=ops"
@@ -187,10 +181,6 @@ run_test_env "ops role alone (no unlock) + git reset --hard denied" "2" "$FIXTUR
 
 FIXTURE_OPS_ALONE_PUSH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"agent_type":"","agent_id":"a"}'
 run_test_env "ops role alone (no unlock) + git push --force denied" "2" "$FIXTURE_OPS_ALONE_PUSH" "CLAUDE_ROLE=ops"
-
-# Test 14c: PI_ROLE=ops + CODEGEN_OPS_GIT_UNLOCK=1 — MUST ALLOW (parity, two-signal satisfied)
-FIXTURE_PI_OPS_UNLOCK='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"pi-ops unlock\""},"agent_type":"","agent_id":"a"}'
-run_test_env "PI_ROLE=ops + CODEGEN_OPS_GIT_UNLOCK=1 allowed (parity)" "0" "$FIXTURE_PI_OPS_UNLOCK" "PI_ROLE=ops" "CODEGEN_OPS_GIT_UNLOCK=1"
 
 # Test 15: git add -A for non-committer — MUST DENY
 FIXTURE_ADD_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
@@ -662,7 +652,7 @@ GLOB_STALL_STDIN="$GLOB_STALL_DIR/stdin"
 printf '%s' "$GLOB_STALL_INPUT" >"$GLOB_STALL_STDIN"
 (
     cd "$GLOB_STALL_DIR"
-    exec env -u CLAUDE_ROLE -u AGENT_TYPE -u PI_ROLE bash "$GUARD" <"$GLOB_STALL_STDIN" >"$GLOB_STALL_STDOUT" 2>/dev/null
+    exec env -u CLAUDE_ROLE -u AGENT_TYPE bash "$GUARD" <"$GLOB_STALL_STDIN" >"$GLOB_STALL_STDOUT" 2>/dev/null
 ) &
 GLOB_STALL_PID=$!
 GLOB_STALL_FINISHED=0

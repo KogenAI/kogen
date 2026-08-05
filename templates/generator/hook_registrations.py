@@ -25,10 +25,6 @@ Manifest-driven hook events (fully regenerated):
 
 Hook ordering within each event:
     Sorted alphabetically by filename for deterministic output.
-
-Pi TS handler parity:
-    When --pi-extension-dir is provided, validates that every Pi-targeted hook
-    has a matching TypeScript handler in <pi-extension-dir>/src/hooks/.
 """
 
 import argparse
@@ -65,7 +61,7 @@ def dumps_compact(obj, indent=2, print_width=80):
 REQUIRED_FIELDS = {"event", "matcher", "surface", "signal", "role"}
 VALID_SURFACES = {"user_global"}
 VALID_SIGNALS = {"AGENT_TYPE", "CLAUDE_ROLE", "CLAUDE_ROLE_FAMILY", "none"}
-VALID_HARNESSES = {"claude_code", "pi"}
+VALID_HARNESSES = {"claude_code"}
 
 # Hook events managed entirely by manifests — regenerated from script headers.
 MANIFEST_DRIVEN_EVENTS = {"PreToolUse", "SubagentStop", "Stop", "PostToolUseFailure"}
@@ -273,7 +269,7 @@ def validate_signal(script_path: Path, manifest: dict) -> None:
     Signal semantics:
       CLAUDE_ROLE         — body must reference CLAUDE_ROLE literal.
       CLAUDE_ROLE_FAMILY  — body must call resolve_role() or is_build_mode() (from _role.sh);
-                            supports CLAUDE_ROLE, PI_ROLE with unified precedence.
+                            supports CLAUDE_ROLE.
       AGENT_TYPE          — body must reference AGENT_TYPE literal.
       none                — no signal check.
     """
@@ -374,8 +370,6 @@ def render_header(entry: dict) -> str:
         harnesses_header = "claude_code"
     elif harnesses_raw == "all":
         harnesses_header = "all"
-    elif harnesses_raw == "pi":
-        harnesses_header = "pi"
     else:
         # Comma-separated list — map each token
         tokens = [t.strip() for t in str(harnesses_raw).split(",")]
@@ -723,36 +717,6 @@ def regenerate_settings(
     print(f"Wrote {settings_path}")
 
 
-def validate_pi_ts_handlers(pi_hooks: list, pi_extension_dir: Path) -> None:
-    """Verify every Pi-targeted hook has a matching TypeScript handler.
-
-    For each hook in pi_hooks, derives handler name = filename without .sh extension,
-    then checks <pi_extension_dir>/src/hooks/<name>.ts exists.
-    Exits non-zero with a descriptive message listing all missing handlers.
-    """
-    hooks_src_dir = pi_extension_dir / "src" / "hooks"
-    missing = []
-    for h in sorted(pi_hooks, key=lambda x: x["filename"]):
-        name = h["filename"][:-3] if h["filename"].endswith(".sh") else h["filename"]
-        ts_path = hooks_src_dir / f"{name}.ts"
-        if not ts_path.exists():
-            missing.append(f"  {h['filename']} → expected {ts_path}")
-
-    if missing:
-        print(
-            "ERROR: Pi handler parity check FAILED. "
-            f"The following {len(missing)} hook(s) have no TypeScript handler in "
-            f"{hooks_src_dir}:\n" + "\n".join(missing) + "\n"
-            "Add the missing .ts handler(s) before running make install.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    print(f"Pi TS handler parity: OK ({len(pi_hooks)} hooks matched)")
-
-
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate hook registration JSONs from HOOK-MANIFEST headers"
@@ -767,10 +731,6 @@ def main() -> None:
     parser.add_argument(
         "--existing-settings",
         help="Path to read existing settings from (for preserved events). Defaults to --output-settings.",
-    )
-    parser.add_argument(
-        "--pi-extension-dir",
-        help="Path to Pi extension package root (validates TS handler parity for Pi-targeted hooks)",
     )
     parser.add_argument(
         "--registry",
@@ -824,11 +784,6 @@ def main() -> None:
     # Regenerate settings.json
     existing = load_existing_settings(settings_path, existing_settings_path)
     regenerate_settings(existing, user_global_hooks, settings_path)
-
-    # Validate Pi TS handler parity if --pi-extension-dir provided
-    if args.pi_extension_dir:
-        pi_hooks = [h for h in all_hooks if "pi" in (h.get("harnesses") or [])]
-        validate_pi_ts_handlers(pi_hooks, Path(args.pi_extension_dir))
 
     print("hook_registrations.py: OK")
 

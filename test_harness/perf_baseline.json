@@ -7,12 +7,6 @@
     "claude.avg_num_turns": { "baseline": 0, "max_regression_pct": 30 },
     "claude.avg_input_tokens": { "baseline": 0, "max_regression_pct": 30 },
     "claude.avg_output_tokens": { "baseline": 0, "max_regression_pct": 30 },
-    "claude.pass_rate": { "baseline": 1.0, "min_abs": 0.9 },
-    "pi.avg_build_duration_ms": { "baseline": 0, "max_regression_pct": 25 },
-    "pi.avg_cost_usd": { "baseline": 0, "max_regression_pct": 30 },
-    "pi.avg_num_turns": { "baseline": 0, "max_regression_pct": 30 },
-    "pi.avg_input_tokens": { "baseline": 0, "max_regression_pct": 30 },
-    "pi.avg_output_tokens": { "baseline": 0, "max_regression_pct": 30 },
-    "pi.pass_rate": { "baseline": 1.0, "min_abs": 0.9 }
+    "claude.pass_rate": { "baseline": 1.0, "min_abs": 0.9 }
   }
 }
