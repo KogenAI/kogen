@@ -59,6 +59,11 @@ while IFS= read -r -d '' f; do
     files+=("$f")
 done < <(find "$HERE" -maxdepth 1 -name 'scaffold_cache_test.sh' -type f -print0 2>/dev/null)
 
+# Collect scaffold_args_test.sh
+while IFS= read -r -d '' f; do
+    files+=("$f")
+done < <(find "$HERE" -maxdepth 1 -name 'scaffold_args_test.sh' -type f -print0 2>/dev/null)
+
 if [ "${#files[@]}" -eq 0 ]; then
     echo "scaffold mutation tests: no test files found under $HERE"
     exit 1

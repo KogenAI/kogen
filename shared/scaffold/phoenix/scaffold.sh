@@ -23,6 +23,10 @@
 #   --no-ecto              skip Ecto/DB setup
 #   --with-appsignal       add AppSignal monitoring
 #   --github-url <url>     set source_url in mix.exs
+#   -- <phx.new flags>     raw passthrough, appended AFTER codegen's own phx.new
+#                          defaults (last-wins). --database <db> is additionally
+#                          captured to pick the right .env DB var (DATABASE_URL
+#                          vs sqlite3's DATABASE_PATH).
 
 set -euo pipefail
 
@@ -48,6 +52,8 @@ OTP_VERSION=""
 NO_ECTO=""
 WITH_APPSIGNAL=""
 GITHUB_URL=""
+PHX_PASSTHROUGH_DATABASE=""
+PHX_PASSTHROUGH_FLAGS=()
 
 APP_NAME=""
 TARGET_DIR=""
@@ -77,6 +83,27 @@ while [[ $# -gt 0 ]]; do
     --github-url)
         GITHUB_URL="$2"
         shift 2
+        ;;
+    --)
+        shift
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+            --database=*)
+                PHX_PASSTHROUGH_DATABASE="${1#--database=}"
+                PHX_PASSTHROUGH_FLAGS+=("$1")
+                shift
+                ;;
+            --database)
+                PHX_PASSTHROUGH_DATABASE="${2:-}"
+                PHX_PASSTHROUGH_FLAGS+=("$1" "${2:-}")
+                shift 2
+                ;;
+            *)
+                PHX_PASSTHROUGH_FLAGS+=("$1")
+                shift
+                ;;
+            esac
+        done
         ;;
     -*)
         echo "[scaffold.sh] Unknown flag: $1" >&2
@@ -136,6 +163,9 @@ PHX_NEW_FLAGS=(
     --install
 )
 [[ -n "$NO_ECTO" ]] && PHX_NEW_FLAGS+=(--no-ecto)
+if [[ ${#PHX_PASSTHROUGH_FLAGS[@]} -gt 0 ]]; then
+    PHX_NEW_FLAGS+=("${PHX_PASSTHROUGH_FLAGS[@]}")
+fi
 (cd "$PARENT_DIR" && mix phx.new "$SLUG" "${PHX_NEW_FLAGS[@]}")
 echo "[scaffold.sh] mix phx.new complete"
 
@@ -154,6 +184,19 @@ trap cleanup_partial EXIT
 # Phase 1: render standalone templates
 # ---------------------------------------------------------------------------
 echo "[scaffold.sh] rendering templates..."
+
+# DB adapter drives which env var the generated app's own runtime.exs reads:
+# postgres/mysql/mssql read DATABASE_URL; sqlite3 reads DATABASE_PATH (its
+# config/dev.exs uses a filesystem path, not a connection URL). Default
+# postgres matches codegen's prior fixed --binary-id / no --database flag.
+DB_ADAPTER="${PHX_PASSTHROUGH_DATABASE:-postgres}"
+if [[ "$DB_ADAPTER" == "sqlite3" ]]; then
+    DB_ENV_LINE_DEV="DATABASE_PATH=${APP_NAME}_dev.db"
+    DB_ENV_LINE_PROD="DATABASE_PATH=${APP_NAME}_prod.db"
+else
+    DB_ENV_LINE_DEV="DATABASE_URL=ecto://postgres:postgres@localhost/${APP_NAME}_dev"
+    DB_ENV_LINE_PROD="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/${APP_NAME}_prod"
+fi
 
 render() {
     local template_rel="$1"
@@ -189,7 +232,9 @@ render() {
         "otp_major_version=$OTP_MAJOR_VERSION" \
         "slug=$SLUG" \
         "dev_port=4000" \
-        "secret_key_base=$secret_key_base"
+        "secret_key_base=$secret_key_base" \
+        "db_env_line_dev=$DB_ENV_LINE_DEV" \
+        "db_env_line_prod=$DB_ENV_LINE_PROD"
 }
 
 render "Makefile.eex"

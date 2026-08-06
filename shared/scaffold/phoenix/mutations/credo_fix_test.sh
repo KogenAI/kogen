@@ -84,6 +84,53 @@ assert "credo_fix.sh is idempotent for error_json.ex" '[ "$sha1_ejson" = "$sha2_
 
 rm -rf "$tmp"
 
+# ---------------------------------------------------------------------------
+# Case 3: application.ex — strips skip_migrations?() zero-arity parens
+# (only present when phx.new was invoked with --database; not in the base
+# fixture skeleton, so synthesize the minimal reproducer inline).
+# ---------------------------------------------------------------------------
+tmp="$(setup_tmp)"
+mkdir -p "$tmp/lib/fixture_app"
+cat >"$tmp/lib/fixture_app/application.ex" <<'EOF'
+defmodule FixtureApp.Application do
+  @moduledoc false
+  use Application
+
+  @impl true
+  def start(_type, _args) do
+    children = [
+      {Ecto.Migrator,
+        repos: Application.fetch_env!(:fixture_app, :ecto_repos), skip: skip_migrations?()}
+    ]
+
+    opts = [strategy: :one_for_one, name: FixtureApp.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+
+  defp skip_migrations?() do
+    System.get_env("RELEASE_NAME") == nil
+  end
+end
+EOF
+"$MUTATION" "$tmp" FixtureApp >/dev/null
+# The DEF loses its empty parens (Credo's ParenthesesOnZeroArityDefs); the
+# CALL SITE keeps them — a bare `skip_migrations?` reference without parens
+# there is parsed by Elixir as an undefined local variable, not a call, and
+# fails to compile.
+assert "application.ex: def skip_migrations? has no empty parens" \
+    '! grep -qF "defp skip_migrations?() do" "$tmp/lib/fixture_app/application.ex"'
+assert "application.ex: def skip_migrations? survives without parens" \
+    'grep -qF "defp skip_migrations? do" "$tmp/lib/fixture_app/application.ex"'
+assert "application.ex: call site skip_migrations?() keeps its parens" \
+    'grep -qF "skip: skip_migrations?()}" "$tmp/lib/fixture_app/application.ex"'
+
+# Idempotent — second invocation is a no-op
+sha1_app="$(shasum "$tmp/lib/fixture_app/application.ex" | awk '{print $1}')"
+"$MUTATION" "$tmp" FixtureApp >/dev/null
+sha2_app="$(shasum "$tmp/lib/fixture_app/application.ex" | awk '{print $1}')"
+assert "credo_fix.sh is idempotent for application.ex" '[ "$sha1_app" = "$sha2_app" ]'
+rm -rf "$tmp"
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2

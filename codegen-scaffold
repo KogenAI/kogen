@@ -21,6 +21,11 @@
 #   --elixir-version=<v>       phoenix only; default: 1.19.5
 #   --node-version=<v>         phoenix only; default: 24.14.0
 #   --otp-version=<v>          phoenix only; default: 28.4.1
+#   -- <phx.new flags>         phoenix only: raw passthrough appended AFTER codegen's own
+#                              phx.new defaults (last-wins; also toggles --no-x for booleans).
+#                              A fixed denylist of flags codegen does not support is rejected
+#                              at parse time — see PHX_NEW_DENYLIST below. `--database <db>`
+#                              is inspected (not just forwarded) to pick the right `.env` var.
 #
 # Options (integrate):
 #   --stack=<phoenix|static>   required
@@ -49,10 +54,29 @@ WITH_APPSIGNAL=""
 GITHUB_URL=""
 RESTART_RPC_CMD=""
 RECIPE_SOURCE=""
+PHX_PASSTHROUGH_DATABASE=""
+PHX_PASSTHROUGH_FLAGS=()
+
+# ── phx.new flags codegen does not support via `--` passthrough ──────────────
+# Denylist, not allowlist: phx.new's own flag set evolves; codegen names only
+# what actively breaks a mutation/template, and lets everything else through.
+# Each entry: "<flag>|<reason>". Checked at parse time, before any mix work.
+PHX_NEW_DENYLIST=(
+    "--app|derived from --slug; a mismatch breaks endpoint.sh's anchor and the health-controller template's <Module>.Repo reference"
+    "--module|derived from --slug; a mismatch breaks endpoint.sh's anchor and the health-controller template's <Module>.Repo reference"
+    "--umbrella|every mutation hardcodes lib/<app> + lib/<app>_web; umbrella layout is incompatible"
+    "--no-agents-md|codegen owns AGENTS.md (symlinked at integrate); do not let phx.new manage it"
+    "--agents-md|codegen owns AGENTS.md (symlinked at integrate); do not let phx.new manage it"
+    "--no-html|formatter_exs.sh and router.sh assume phx.new's default HTML/LiveView scaffolding is present"
+    "--no-live|formatter_exs.sh and router.sh assume phx.new's default HTML/LiveView scaffolding is present"
+    "--no-assets|data/mix_exs/aliases.txt wires tailwind/esbuild into the setup: alias that scaffold.sh's mix setup step runs"
+    "--no-esbuild|data/mix_exs/aliases.txt wires esbuild into the setup: alias that scaffold.sh's mix setup step runs"
+    "--no-tailwind|data/mix_exs/aliases.txt wires tailwind into the setup: alias that scaffold.sh's mix setup step runs"
+)
 
 usage() {
     printf 'Usage:\n' >&2
-    printf '  codegen-scaffold create   --stack=<phoenix|static> --cwd=<dir> --slug=<slug> [--app-name=<name>] [--restart-rpc-cmd=<cmd>] [--recipe-source=<path>] [--elixir-version=<v>] [--node-version=<v>] [--otp-version=<v>]\n' >&2
+    printf '  codegen-scaffold create   --stack=<phoenix|static> --cwd=<dir> --slug=<slug> [--app-name=<name>] [--restart-rpc-cmd=<cmd>] [--recipe-source=<path>] [--elixir-version=<v>] [--node-version=<v>] [--otp-version=<v>] [-- <phx.new flags>]\n' >&2
     printf '  codegen-scaffold integrate --stack=<phoenix|static> --cwd=<dir> [--slug=<slug>]\n' >&2
     exit 2
 }
@@ -169,6 +193,39 @@ while [[ $# -gt 0 ]]; do
         RECIPE_SOURCE="$2"
         shift 2
         ;;
+    --)
+        shift
+        # Everything after `--` is a raw phx.new passthrough tail. Check each
+        # flag against the denylist at parse time (before any mix work), and
+        # capture --database's value separately (it drives .env rendering,
+        # not just a passthrough forward).
+        while [[ $# -gt 0 ]]; do
+            for _deny_entry in "${PHX_NEW_DENYLIST[@]}"; do
+                _deny_flag="${_deny_entry%%|*}"
+                _deny_reason="${_deny_entry#*|}"
+                if [[ "$1" == "$_deny_flag" || "$1" == "$_deny_flag="* ]]; then
+                    printf 'codegen-scaffold: %s is not supported by the codegen phoenix scaffold (%s)\n' "$_deny_flag" "$_deny_reason" >&2
+                    exit 2
+                fi
+            done
+            case "$1" in
+            --database=*)
+                PHX_PASSTHROUGH_DATABASE="${1#--database=}"
+                PHX_PASSTHROUGH_FLAGS+=("$1")
+                shift
+                ;;
+            --database)
+                PHX_PASSTHROUGH_DATABASE="${2:-}"
+                PHX_PASSTHROUGH_FLAGS+=("$1" "${2:-}")
+                shift 2
+                ;;
+            *)
+                PHX_PASSTHROUGH_FLAGS+=("$1")
+                shift
+                ;;
+            esac
+        done
+        ;;
     --*)
         printf 'codegen-scaffold: unknown flag %q\n' "$1" >&2
         usage
@@ -214,6 +271,17 @@ fi
 if [[ "$STACK" != "phoenix" && "$STACK" != "static" ]]; then
     printf 'codegen-scaffold: --stack must be "phoenix" or "static", got %q\n' "$STACK" >&2
     usage
+fi
+
+# --no-ecto + a passthrough --database is a conflicting combination: phx.new
+# generates the ecto-repo migrator code (skip_migrations?/0 in application.ex)
+# whenever --database is present, REGARDLESS of --no-ecto — an interaction
+# phx.new itself doesn't validate, and it fails codegen's own `make ci` gate
+# (unused-parens Credo violation) on the generated app. Fail loud at parse
+# time rather than let the operator hit a confusing scaffold-time credo error.
+if [[ -n "$NO_ECTO" && -n "$PHX_PASSTHROUGH_DATABASE" ]]; then
+    printf 'codegen-scaffold: --no-ecto and -- --database %s conflict: phx.new generates ecto-repo migrator code whenever --database is set, regardless of --no-ecto. Drop one of the two.\n' "$PHX_PASSTHROUGH_DATABASE" >&2
+    exit 2
 fi
 
 # ── Subcommand-specific validation ────────────────────────────────────────────
@@ -460,6 +528,11 @@ do_create() {
         [[ -n "$NO_ECTO" ]] && phoenix_extra_flags+=("--no-ecto")
         [[ -n "$WITH_APPSIGNAL" ]] && phoenix_extra_flags+=("--with-appsignal")
         [[ -n "$GITHUB_URL" ]] && phoenix_extra_flags+=("--github-url" "$GITHUB_URL")
+        if [[ ${#PHX_PASSTHROUGH_FLAGS[@]} -gt 0 ]]; then
+            phoenix_extra_flags+=("--")
+            phoenix_extra_flags+=("${PHX_PASSTHROUGH_FLAGS[@]}")
+            printf '[codegen-scaffold] phx.new passthrough flags: %s\n' "${PHX_PASSTHROUGH_FLAGS[*]}"
+        fi
         "$phoenix_scaffold" "$SLUG" "$TEMP_PARENT/$SLUG" \
             --elixir-version "$ELIXIR_VERSION" \
             --node-version "$NODE_VERSION" \

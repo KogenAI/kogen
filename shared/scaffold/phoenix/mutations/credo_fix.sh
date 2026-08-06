@@ -264,4 +264,32 @@ PYEOF
     fi
 fi
 
+# ---------------------------------------------------------------------------
+# 7. application.ex — strip empty parens on the skip_migrations?() DEFINITION
+#    only (never the call site — a bare `skip_migrations?` reference without
+#    parens at the call site is parsed by Elixir as an undefined local
+#    variable, not a function call, and fails to compile; only the `defp
+#    skip_migrations?()` line trips Credo's ParenthesesOnZeroArityDefs).
+#    phx.new's --database-driven skeleton generates this function
+#    unconditionally whenever --database is passed (regardless of --no-ecto).
+#    Idempotent: no-op if the def's zero-arg parens are already gone (e.g. a
+#    future phx.new fixes this upstream, or the file is absent under the
+#    postgres/no --database default).
+# ---------------------------------------------------------------------------
+APPLICATION_EX="$APP_PATH/lib/${APP_NAME}/application.ex"
+if [ -f "$APPLICATION_EX" ] && grep -qF 'defp skip_migrations?() do' "$APPLICATION_EX"; then
+    sed 's/defp skip_migrations?() do/defp skip_migrations? do/' "$APPLICATION_EX" >"$APPLICATION_EX.tmp"
+    mv "$APPLICATION_EX.tmp" "$APPLICATION_EX"
+
+    # Postcondition — the def's empty parens are gone; the call site keeps its parens
+    if grep -qF 'defp skip_migrations?() do' "$APPLICATION_EX"; then
+        echo "[credo_fix.sh] ERROR: postcondition failed — skip_migrations?() parens remain on def in application.ex" >&2
+        exit 1
+    fi
+    if ! grep -qF 'skip_migrations?()' "$APPLICATION_EX"; then
+        echo "[credo_fix.sh] ERROR: postcondition failed — call site skip_migrations?() parens were unexpectedly stripped in application.ex" >&2
+        exit 1
+    fi
+fi
+
 echo "[credo_fix.sh] done"

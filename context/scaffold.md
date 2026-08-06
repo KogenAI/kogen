@@ -180,6 +180,7 @@ Why this order: PROJECT_CONTEXT + restart + usage_rules_INDEX render in integrat
 | `--no-ecto`                 | Omit Ecto dependency; skip DB pieces (migrations, tests) | false   |
 | `--with-appsignal`          | Include AppSignal integration (prod-only)                | false   |
 | `--github-url=<full-url>`   | GitHub repository URL for source_url in mix.exs          | (none)  |
+| `-- <phx.new flags>`        | Raw passthrough to `mix phx.new`, phoenix only           | (none)  |
 
 `--no-ecto`: Drops DATABASE_URL from .env, excludes Ecto from deps, condionalizes aliases (setup/ecto elements removed; test: alias rewritten to ["test"] instead of deleted), skips DataCase, removes ecto.rollback from Makefile ci target.
 
@@ -188,6 +189,28 @@ Why this order: PROJECT_CONTEXT + restart + usage_rules_INDEX render in integrat
 `--with-appsignal`: Adds appsignal_phoenix dep (dev-only for telemetry testing); requires `APPSIGNAL_PUSH_API_KEY` env var at runtime (opt-in, not default).
 
 `--github-url`: Populates `source_url:` line in mix.exs project() block; omitted if not supplied.
+
+### `--` phx.new Passthrough (phoenix only)
+
+Everything after a literal `--` on `codegen-scaffold create` is forwarded, unmodified, straight into the `mix phx.new` invocation — appended AFTER codegen's own fixed defaults (`--app --module --binary-id --no-mailer --no-dashboard --no-agents-md --no-version-check --install`). `phx.new`'s `OptionParser` is last-wins for repeated switches and auto-generates `--x`/`--no-x` for every boolean switch, so a passthrough flag transparently overrides the matching codegen default (e.g. `-- --no-binary-id` cancels codegen's `--binary-id`; `-- --database sqlite3 --database postgres` — later wins). No suppression machinery exists or is needed.
+
+Forwarding path: `codegen-scaffold` (arg loop `--)` case) → `phoenix_extra_flags` (appended after `--no-ecto`/`--with-appsignal`/`--github-url`, itself preceded by a `--` separator) → `shared/scaffold/phoenix/scaffold.sh` (own `--)` case, same last-wins append) → `PHX_NEW_FLAGS`.
+
+**Denylist, not allowlist**: `codegen-scaffold` checks each passthrough flag against a fixed denylist (`PHX_NEW_DENYLIST` array) at PARSE TIME, before any `mix` work — exit 2, no temp dirs created. Unlisted flags pass straight through; `phx.new`'s own flag set evolves and codegen only needs to name what actively breaks a mutation or template:
+
+| Denied flag(s)                                 | Reason                                                                                                               |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `--app`, `--module`                            | Derived from `--slug`; a mismatch breaks `endpoint.sh`'s anchor and the health-controller template's `<Module>.Repo` |
+| `--umbrella`                                   | Every mutation hardcodes `lib/<app>` + `lib/<app>_web`                                                               |
+| `--no-agents-md` / `--agents-md`               | Codegen owns AGENTS.md (symlinked at integrate)                                                                      |
+| `--no-html`, `--no-live`                       | `formatter_exs.sh` and `router.sh` assume phx.new's default HTML/LiveView scaffolding is present                     |
+| `--no-assets`, `--no-esbuild`, `--no-tailwind` | `data/mix_exs/aliases.txt` wires tailwind/esbuild into `setup:`, which `scaffold.sh`'s `mix setup` step runs         |
+
+**`--database <adapter>` is inspected, not just forwarded**: `scaffold.sh` captures its value (default: `postgres` when omitted) to pick the `.env`/`.env.sample`/`.env.prod.sample` DB variable — `postgres`/`mysql`/`mssql` all read `DATABASE_URL` at runtime, in the `<app>/config/runtime.exs` that `mix phx.new` itself generates inside the scaffolded downstream app; `sqlite3` reads `DATABASE_PATH` instead (a filesystem path, not a connection URL) and RAISES on boot if `DATABASE_URL` is set instead. Templates use `<%= db_env_line_dev %>` / `<%= db_env_line_prod %>` bindings computed once in `scaffold.sh` before Phase 1 rendering, rather than a hardcoded `DATABASE_URL=...` line.
+
+`codegen-scaffold` prints the resolved passthrough flags before delegating to `scaffold.sh` (`[codegen-scaffold] phx.new passthrough flags: ...`) so the operator can see which overrides landed.
+
+**`--no-ecto` + `-- --database <db>` is a rejected combination** (exit 2, parse time, before any `mix` work): phx.new generates the ecto-repo migrator code (`skip_migrations?/0` in `application.ex`) whenever `--database` is present on its own invocation, REGARDLESS of `--no-ecto` — an interaction phx.new itself does not validate. That generated function fails the scaffolded app's own `make ci` gate (Credo unused-parens violation), so codegen refuses the combination up front rather than let the operator hit a confusing scaffold-time failure deep inside `mix ci`.
 
 ### Version Defaults (Dispatcher → Scaffold Flow)
 
@@ -209,7 +232,7 @@ Flow: dispatcher version vars → `scaffold.sh` `render` args (L159-161) → `.t
 After scaffold creates the directory tree, `scaffold.sh` automatically:
 
 1. Runs `mise trust` on the generated app's `.mise.toml` (mirrors the guarded `mise trust` block in `install.sh`, search `mise trust`)
-2. Renders `.env` with generated `SECRET_KEY_BASE`, `DATABASE_URL` (unless `--no-ecto`), `PHX_HOST`, `PORT`
+2. Renders `.env` with generated `SECRET_KEY_BASE`, DB var (unless `--no-ecto`; `DATABASE_URL` for postgres/mysql/mssql, `DATABASE_PATH` for sqlite3 — see `--database` passthrough above), `PHX_HOST`, `PORT`
 3. Runs `mix deps.get && mix format` (bootstrap + formatting)
 4. Runs `mix setup` (dependency install + aliases bootstrap)
 5. **Phase 7: Self-Check & Formatting**
