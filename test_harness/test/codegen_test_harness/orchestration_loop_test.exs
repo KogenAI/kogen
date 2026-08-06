@@ -1,6 +1,8 @@
 defmodule CodegenTestHarness.OrchestrationLoopTest do
   use ExUnit.Case, async: true
 
+  import CodegenTestHarness.AgentTeardown, only: [stop_agent: 1]
+
   alias CodegenTestHarness.OrchestrationLoop
 
   @phoenix_sequence ~w(developer-phoenix-backend reviewer-phoenix context-curator committer)
@@ -243,7 +245,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
   setup do
     {:ok, calls_agent} = Agent.start_link(fn -> [] end)
-    on_exit(fn -> if Process.alive?(calls_agent), do: Agent.stop(calls_agent) end)
+    on_exit(fn -> stop_agent(calls_agent) end)
     {:ok, calls_agent: calls_agent}
   end
 
@@ -287,7 +289,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "gate_fn receives :session_id == the developer role that just ran (not the anonymous default)",
          %{calls_agent: calls_agent} do
       {:ok, gate_opts_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(gate_opts_agent), do: Agent.stop(gate_opts_agent) end)
+      on_exit(fn -> stop_agent(gate_opts_agent) end)
 
       capturing_gate_fn = fn _cwd, opts ->
         Agent.update(gate_opts_agent, &(&1 ++ [Keyword.get(opts, :session_id)]))
@@ -372,7 +374,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "violations seam result naming only curator-writable docs → repairs via context-curator instead of InfraAbort",
          %{calls_agent: calls_agent} do
       {:ok, scan_agent} = Agent.start_link(fn -> :first end)
-      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+      on_exit(fn -> stop_agent(scan_agent) end)
 
       scan_fn = fn _cwd ->
         Agent.get_and_update(scan_agent, fn
@@ -562,7 +564,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "repairable violation converges across 2 curator turns before resuming the normal suffix",
          %{calls_agent: calls_agent} do
       {:ok, scan_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+      on_exit(fn -> stop_agent(scan_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_agent, fn c -> {c, c + 1} end)
@@ -627,7 +629,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "hard ceiling caps turn-0 repair even with continuous one-per-turn progress",
          %{calls_agent: calls_agent} do
       {:ok, scan_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+      on_exit(fn -> stop_agent(scan_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_agent, fn c -> {c, c + 1} end)
@@ -797,7 +799,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "turn-0 repair never advances CURATED itself — the only CURATED write comes from the real suffix's own post-curator check, after GATED",
          %{calls_agent: calls_agent} do
       {:ok, scan_agent} = Agent.start_link(fn -> :first end)
-      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+      on_exit(fn -> stop_agent(scan_agent) end)
 
       scan_fn = fn _cwd ->
         Agent.get_and_update(scan_agent, fn
@@ -810,7 +812,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+      on_exit(fn -> stop_agent(states_agent) end)
 
       advance_fn = fn state, _step_log, _session_id, _verdict, _cwd, _slug ->
         Agent.update(states_agent, &[state | &1])
@@ -853,7 +855,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "repair-turn prompt to context-curator carries the Orientation-doc violations heading, the verbatim lines, and the edit-scope trailer",
          %{calls_agent: calls_agent} do
       {:ok, scan_agent} = Agent.start_link(fn -> :first end)
-      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+      on_exit(fn -> stop_agent(scan_agent) end)
 
       violation_text = "context-index-parity-scan: context/loop.md keyword drift"
 
@@ -865,7 +867,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, prompts_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(prompts_agent), do: Agent.stop(prompts_agent) end)
+      on_exit(fn -> stop_agent(prompts_agent) end)
 
       capturing_invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, &(&1 ++ [role]))
@@ -909,7 +911,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "operator output: 'found repairable drift' on entry, 'repaired — continuing' after clear; the latter ABSENT on a clean first pass",
          %{calls_agent: calls_agent} do
       {:ok, scan_agent} = Agent.start_link(fn -> :first end)
-      on_exit(fn -> if Process.alive?(scan_agent), do: Agent.stop(scan_agent) end)
+      on_exit(fn -> stop_agent(scan_agent) end)
 
       scan_fn = fn _cwd ->
         Agent.get_and_update(scan_agent, fn
@@ -1583,7 +1585,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
-      on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
+      on_exit(fn -> stop_agent(fail_once_agent) end)
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -1637,9 +1639,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "role fails once then succeeds on retry → death stamp is 'interrupted' (a recovered drop is still stamped)",
          %{calls_agent: calls_agent} do
       {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
-      on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
+      on_exit(fn -> stop_agent(fail_once_agent) end)
       {:ok, died_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(died_agent), do: Agent.stop(died_agent) end)
+      on_exit(fn -> stop_agent(died_agent) end)
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -1678,7 +1680,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     test "role fails twice in a row → death stamps are 'interrupted' then 'aborted'" do
       {:ok, died_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(died_agent), do: Agent.stop(died_agent) end)
+      on_exit(fn -> stop_agent(died_agent) end)
 
       invoke_fn = fn _role, _harness, _ctx, _opts -> {:error, "deterministic failure"} end
 
@@ -1711,9 +1713,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "role fails with a transient reason repeatedly → retries up to 4 attempts with backoff, then aborts",
          %{calls_agent: calls_agent} do
       {:ok, died_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(died_agent), do: Agent.stop(died_agent) end)
+      on_exit(fn -> stop_agent(died_agent) end)
       {:ok, sleep_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(sleep_agent), do: Agent.stop(sleep_agent) end)
+      on_exit(fn -> stop_agent(sleep_agent) end)
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -1766,7 +1768,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "role fails with a transient reason then succeeds on retry → recovers without exhausting attempts",
          %{calls_agent: calls_agent} do
       {:ok, fail_count_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(fail_count_agent), do: Agent.stop(fail_count_agent) end)
+      on_exit(fn -> stop_agent(fail_count_agent) end)
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -1806,9 +1808,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "role fails with a switch_model reason → walks the fallback chain instead of retrying the same model",
          %{calls_agent: calls_agent} do
       {:ok, died_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(died_agent), do: Agent.stop(died_agent) end)
+      on_exit(fn -> stop_agent(died_agent) end)
       {:ok, models_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(models_agent), do: Agent.stop(models_agent) end)
+      on_exit(fn -> stop_agent(models_agent) end)
 
       resolve_fn = fn _r, _h -> {"sonnet", "medium"} end
       resolve_fallback_fn = fn _role, _harness, 0 -> {"opus", "medium"} end
@@ -1957,7 +1959,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     test "switch_model fallback resolution uses the per-role resolve_harness_fn override, not the build harness" do
       {:ok, harness_seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(harness_seen_agent), do: Agent.stop(harness_seen_agent) end)
+      on_exit(fn -> stop_agent(harness_seen_agent) end)
 
       resolve_harness_fn = fn "developer-static", "claude_code" -> "other_harness" end
 
@@ -2001,7 +2003,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     test "default :log_died_fn with no cycle log initialized (nil path) → silent no-op, run still completes" do
       {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
-      on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
+      on_exit(fn -> stop_agent(fail_once_agent) end)
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         already_failed = Agent.get(fail_once_agent, &MapSet.member?(&1, role))
@@ -2036,7 +2038,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
          %{calls_agent: calls_agent} do
       log_path = fresh_cycle_log!()
       {:ok, fail_once_agent} = Agent.start_link(fn -> MapSet.new() end)
-      on_exit(fn -> if Process.alive?(fail_once_agent), do: Agent.stop(fail_once_agent) end)
+      on_exit(fn -> stop_agent(fail_once_agent) end)
 
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -2165,10 +2167,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       harness_seen_by_codegen_call_fn = Agent.start_link(fn -> nil end) |> elem(1)
 
       on_exit(fn ->
-        if Process.alive?(harness_seen_by_resolve_fn), do: Agent.stop(harness_seen_by_resolve_fn)
+        stop_agent(harness_seen_by_resolve_fn)
 
-        if Process.alive?(harness_seen_by_codegen_call_fn),
-          do: Agent.stop(harness_seen_by_codegen_call_fn)
+        stop_agent(harness_seen_by_codegen_call_fn)
       end)
 
       resolve_harness_fn = fn "developer-static", "claude_code" -> "other_harness" end
@@ -2357,7 +2358,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
         Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
@@ -2386,7 +2387,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
         Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
@@ -2410,7 +2411,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "absent BENCH_RUN_DIR -> resolve_fn used unchanged (ordinary build behavior)" do
       resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
         Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
@@ -2579,7 +2580,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "override present, no fixed binding -> replaces effort, model unchanged" do
       resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
         Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
@@ -2633,7 +2634,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
         Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
@@ -2688,7 +2689,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "transient failure carries the SAME resume_session_id into the next attempt's ctx",
          %{calls_agent: calls_agent} do
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -2739,7 +2740,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "deterministic (non-transient) failure carries NO resume_session_id on retry",
          %{calls_agent: calls_agent} do
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -2777,7 +2778,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "a resumed attempt's stale-session reason falls back to a FRESH cold id, never loops",
          %{calls_agent: calls_agent} do
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       # Attempt 1: transient drop -> attempt 2 resumes the same session.
       # Attempt 2 (resumed): the resumed session itself turns out to have
@@ -2841,7 +2842,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   describe "mint_session_id/0 (via warm resume)" do
     test "minted ids are lowercase v4-uuid shaped", %{calls_agent: calls_agent} do
       {:ok, seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_agent), do: Agent.stop(seen_agent) end)
+      on_exit(fn -> stop_agent(seen_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -2887,7 +2888,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       # Calls: 0 = initial gate (failed), 1 = the flake-check standalone
       # re-run (stays failed — a genuine red, not a load flake), 2 = the
@@ -2988,7 +2989,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
@@ -3015,7 +3016,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "phoenix: the gate runs after developer-phoenix-backend — the head of the sequence — and a failed verdict re-invokes it",
          %{calls_agent: calls_agent} do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       # gate_fn records a "GATE" marker into the same calls_agent list used by
       # invoke_fn, so the interleave position (relative to role invocations)
@@ -3065,7 +3066,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "a context-doc-shaped witness routes the rework to context-curator, not the developer",
          %{calls_agent: calls_agent} do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
@@ -3108,7 +3109,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
@@ -3137,7 +3138,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       # Call 0: initial gate -> failed. Call 1: flake-check standalone
       # re-run -> CLEAR (the flake). Since do_gate_loop_flake_check's own
@@ -3191,10 +3192,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "a stale-_build verdict rebuilds once and re-runs the gate WITHOUT consuming a rework attempt",
          %{calls_agent: calls_agent} do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       {:ok, heal_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(heal_calls_agent), do: Agent.stop(heal_calls_agent) end)
+      on_exit(fn -> stop_agent(heal_calls_agent) end)
 
       # Call 0: initial gate -> failed (classified :stale_build below).
       # Call 1: heal-leg re-run -> CLEAR (rebuild fixed it).
@@ -3242,7 +3243,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "a stale-_build verdict that persists after rebuild eventually exhausts to ordinary rework (no infinite heal loop)",
          %{calls_agent: calls_agent} do
       {:ok, heal_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(heal_calls_agent), do: Agent.stop(heal_calls_agent) end)
+      on_exit(fn -> stop_agent(heal_calls_agent) end)
 
       # Every gate call stays :failed even after the "rebuild" — this
       # asserts termination (bounded by the rework budget), not a tight
@@ -3283,10 +3284,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "a stale-_build verdict that passes standalone is absorbed as a load flake WITHOUT nuking _build",
          %{calls_agent: calls_agent} do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       {:ok, heal_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(heal_calls_agent), do: Agent.stop(heal_calls_agent) end)
+      on_exit(fn -> stop_agent(heal_calls_agent) end)
 
       # Call 0: initial gate -> failed (classified :stale_build below).
       # Call 1: re-entered do_gate_loop/9 after the flake-check absorbed it
@@ -3354,7 +3355,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # Standalone flake-check fails (genuinely stale, not a load flake) so
       # the real heal fn actually runs; then the gate clears post-heal.
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
@@ -3407,7 +3408,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       on_exit(fn -> File.rm_rf!(tmp_cwd) end)
 
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
@@ -3852,7 +3853,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, prompt_agent} = Agent.start_link(fn -> nil end)
-      on_exit(fn -> if Process.alive?(prompt_agent), do: Agent.stop(prompt_agent) end)
+      on_exit(fn -> stop_agent(prompt_agent) end)
 
       set_fn = fn _cwd -> "lib/only_file.ex" end
 
@@ -3891,10 +3892,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, set_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(set_calls_agent), do: Agent.stop(set_calls_agent) end)
+      on_exit(fn -> stop_agent(set_calls_agent) end)
 
       {:ok, prompts_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(prompts_agent), do: Agent.stop(prompts_agent) end)
+      on_exit(fn -> stop_agent(prompts_agent) end)
 
       set_fn = fn _cwd ->
         n = Agent.get_and_update(set_calls_agent, fn n -> {n, n + 1} end)
@@ -3987,7 +3988,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       on_exit(fn -> File.rm_rf!(tmp_cwd) end)
 
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
@@ -3997,7 +3998,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, reviewer_prompt_agent} = Agent.start_link(fn -> nil end)
 
       on_exit(fn ->
-        if Process.alive?(reviewer_prompt_agent), do: Agent.stop(reviewer_prompt_agent)
+        stop_agent(reviewer_prompt_agent)
       end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
@@ -4034,7 +4035,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "signature changes each attempt → re-invokes past legacy count-1 bound, then clears",
          %{calls_agent: calls_agent} do
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       # Fails 3 times (more than the legacy max_gate_retries: 1 default),
       # then clears — only possible under the progress bound, not the old
@@ -4050,7 +4051,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # A fresh, always-different signature each call simulates continuous
       # progress (the developer edits something every retry).
       {:ok, sig_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(sig_calls_agent), do: Agent.stop(sig_calls_agent) end)
+      on_exit(fn -> stop_agent(sig_calls_agent) end)
 
       signature_fn = fn _cwd ->
         n = Agent.get_and_update(sig_calls_agent, fn n -> {n, n + 1} end)
@@ -4107,7 +4108,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, sig_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(sig_calls_agent), do: Agent.stop(sig_calls_agent) end)
+      on_exit(fn -> stop_agent(sig_calls_agent) end)
 
       signature_fn = fn _cwd ->
         n = Agent.get_and_update(sig_calls_agent, fn n -> {n, n + 1} end)
@@ -4173,7 +4174,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       on_exit(fn -> File.rm_rf!(tmp_cwd) end)
 
       {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(gate_calls_agent), do: Agent.stop(gate_calls_agent) end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
 
       gate_fn = fn _cwd, _opts ->
         n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
@@ -4181,7 +4182,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, seen_reason_agent} = Agent.start_link(fn -> nil end)
-      on_exit(fn -> if Process.alive?(seen_reason_agent), do: Agent.stop(seen_reason_agent) end)
+      on_exit(fn -> stop_agent(seen_reason_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4223,7 +4224,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4292,7 +4293,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4344,7 +4345,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, harness_seen_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(harness_seen_agent), do: Agent.stop(harness_seen_agent) end)
+      on_exit(fn -> stop_agent(harness_seen_agent) end)
 
       resolve_harness_fn = fn "developer-static", "claude_code" -> "other_harness" end
 
@@ -4377,7 +4378,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4420,7 +4421,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, sig_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(sig_calls_agent), do: Agent.stop(sig_calls_agent) end)
+      on_exit(fn -> stop_agent(sig_calls_agent) end)
 
       signature_fn = fn _cwd ->
         n = Agent.get_and_update(sig_calls_agent, fn n -> {n, n + 1} end)
@@ -4428,7 +4429,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4480,7 +4481,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4558,7 +4559,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4626,7 +4627,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4669,7 +4670,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -4786,7 +4787,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+      on_exit(fn -> stop_agent(states_agent) end)
 
       advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
@@ -4811,10 +4812,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     test "GATED write carries verdict=clear; later states carry empty verdict" do
       {:ok, calls_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(calls_agent), do: Agent.stop(calls_agent) end)
+      on_exit(fn -> stop_agent(calls_agent) end)
 
       {:ok, verdicts_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(verdicts_agent), do: Agent.stop(verdicts_agent) end)
+      on_exit(fn -> stop_agent(verdicts_agent) end)
 
       advance_fn = fn state, _step_log, _session_id, verdict, _project_dir, _slug ->
         Agent.update(verdicts_agent, fn v -> v ++ [{state, verdict}] end)
@@ -4848,7 +4849,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, format_calls_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(format_calls_agent), do: Agent.stop(format_calls_agent) end)
+      on_exit(fn -> stop_agent(format_calls_agent) end)
 
       format_fn = fn cwd ->
         Agent.update(format_calls_agent, fn calls -> calls ++ [cwd] end)
@@ -4949,7 +4950,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "signal :no_learning still runs the format step (doc scan runs on the pre-existing tree)",
          %{calls_agent: calls_agent} do
       {:ok, format_calls_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(format_calls_agent), do: Agent.stop(format_calls_agent) end)
+      on_exit(fn -> stop_agent(format_calls_agent) end)
 
       format_fn = fn cwd ->
         Agent.update(format_calls_agent, fn calls -> calls ++ [cwd] end)
@@ -4981,7 +4982,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     test "signal :no_learning still advances CURATED state (via run_curator_doc_check's :clean branch)" do
       {:ok, verdicts_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(verdicts_agent), do: Agent.stop(verdicts_agent) end)
+      on_exit(fn -> stop_agent(verdicts_agent) end)
 
       advance_fn = fn state, _step_log, _session_id, verdict, _cwd, _slug ->
         Agent.update(verdicts_agent, fn v -> v ++ [{state, verdict}] end)
@@ -4989,7 +4990,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, calls_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(calls_agent), do: Agent.stop(calls_agent) end)
+      on_exit(fn -> stop_agent(calls_agent) end)
 
       assert :ok ==
                OrchestrationLoop.run(
@@ -5013,7 +5014,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5067,7 +5068,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "violation once then clean invokes context-curator exactly once (pre-scan seeds the first prompt), then reaches committer",
          %{calls_agent: calls_agent} do
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5107,10 +5108,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "the curator's FIRST prompt carries the scanned violation text (write/read key parity)",
          %{calls_agent: calls_agent} do
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       {:ok, prompt_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(prompt_agent), do: Agent.stop(prompt_agent) end)
+      on_exit(fn -> stop_agent(prompt_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5157,7 +5158,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "ADD-without-row index-parity violation invokes context-curator exactly once (pre-scan seeds it), then reaches committer",
          %{calls_agent: calls_agent} do
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5192,7 +5193,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "violations exhausting max_curator_doc_cycles returns {:error, reason} with combined factcheck+index-parity text; CURATED never advances, committer never invoked",
          %{calls_agent: calls_agent} do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+      on_exit(fn -> stop_agent(states_agent) end)
 
       advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
@@ -5270,7 +5271,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # refused past the floor exactly like an unchanging thrash — proves
       # `repair_allowed?/4` is not accidentally inverted.
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5332,7 +5333,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # change: A+B -> B+C -> C -> clean, each turn resolving exactly one
       # violation from the prior scan.
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5371,7 +5372,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # reaches clean. Proves @repair_progress_ceiling caps otherwise
       # unbounded progress-earned turns.
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5438,7 +5439,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # no working-tree delta this turn) — routing must still land on the
       # context-curator, same as every other curator-doc-check violation.
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5540,7 +5541,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "violation once then clean re-invokes developer exactly once, then GATED then committer",
          %{calls_agent: calls_agent} do
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5548,7 +5549,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+      on_exit(fn -> stop_agent(states_agent) end)
 
       advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
@@ -5580,7 +5581,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "violations exhausting max_env_var_cycles returns {:error, reason}; GATED never advances, committer never invoked",
          %{calls_agent: calls_agent} do
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+      on_exit(fn -> stop_agent(states_agent) end)
 
       advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
@@ -5657,7 +5658,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # Mirrors the curator-doc fix-A-surface-B case: the developer fixes
       # MY_VAR, OTHER_VAR surfaces, then it's fixed too, then clean.
       {:ok, scan_calls_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(scan_calls_agent), do: Agent.stop(scan_calls_agent) end)
+      on_exit(fn -> stop_agent(scan_calls_agent) end)
 
       scan_fn = fn _cwd ->
         n = Agent.get_and_update(scan_calls_agent, fn c -> {c, c + 1} end)
@@ -5671,7 +5672,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, states_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(states_agent), do: Agent.stop(states_agent) end)
+      on_exit(fn -> stop_agent(states_agent) end)
 
       advance_fn = fn state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         Agent.update(states_agent, fn states -> states ++ [state] end)
@@ -6936,7 +6937,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       dir: dir
     } do
       {:ok, committed_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(committed_agent), do: Agent.stop(committed_agent) end)
+      on_exit(fn -> stop_agent(committed_agent) end)
 
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
@@ -7044,7 +7045,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, committed_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(committed_agent), do: Agent.stop(committed_agent) end)
+      on_exit(fn -> stop_agent(committed_agent) end)
 
       log_committed_fn = fn role, sha, subject, _cycle_log, _opts ->
         Agent.update(committed_agent, fn calls -> calls ++ [{role, sha, subject}] end)
@@ -7075,10 +7076,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       dir: dir
     } do
       {:ok, calls_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(calls_agent), do: Agent.stop(calls_agent) end)
+      on_exit(fn -> stop_agent(calls_agent) end)
 
       {:ok, committed_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(committed_agent), do: Agent.stop(committed_agent) end)
+      on_exit(fn -> stop_agent(committed_agent) end)
 
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
@@ -7434,7 +7435,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       {:ok, seen_ctx_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(seen_ctx_agent), do: Agent.stop(seen_ctx_agent) end)
+      on_exit(fn -> stop_agent(seen_ctx_agent) end)
 
       invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
@@ -7769,7 +7770,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, probes_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(probes_agent), do: Agent.stop(probes_agent) end)
+      on_exit(fn -> stop_agent(probes_agent) end)
 
       inconclusive_probe = fn _cwd ->
         Agent.update(probes_agent, &(&1 + 1))
@@ -7803,7 +7804,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # read must not kill a build before any role runs. Contrast the
       # missing-role case above, which stays fail-closed and unretried.
       {:ok, probes_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(probes_agent), do: Agent.stop(probes_agent) end)
+      on_exit(fn -> stop_agent(probes_agent) end)
 
       flaky_probe = fn cwd ->
         n = Agent.get_and_update(probes_agent, fn c -> {c, c + 1} end)
@@ -7836,7 +7837,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent
     } do
       {:ok, probes_agent} = Agent.start_link(fn -> 0 end)
-      on_exit(fn -> if Process.alive?(probes_agent), do: Agent.stop(probes_agent) end)
+      on_exit(fn -> stop_agent(probes_agent) end)
 
       missing_committer_probe = fn _cwd ->
         Agent.update(probes_agent, &(&1 + 1))
@@ -7885,7 +7886,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     test "log_init_fn is called exactly once, with the cycle's slug, before the first role invoke",
          %{calls_agent: calls_agent} do
       {:ok, init_calls_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(init_calls_agent), do: Agent.stop(init_calls_agent) end)
+      on_exit(fn -> stop_agent(init_calls_agent) end)
 
       log_path =
         Path.join(System.tmp_dir!(), "init_pin_#{System.unique_integer([:positive])}.jsonl")
@@ -7932,7 +7933,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     test "run/1 without :stamp passes nil to log_init_fn — no crash on the unit-test path" do
       {:ok, init_calls_agent} = Agent.start_link(fn -> [] end)
-      on_exit(fn -> if Process.alive?(init_calls_agent), do: Agent.stop(init_calls_agent) end)
+      on_exit(fn -> stop_agent(init_calls_agent) end)
 
       log_path =
         Path.join(System.tmp_dir!(), "init_pin_#{System.unique_integer([:positive])}.jsonl")

@@ -1,5 +1,6 @@
 defmodule CodegenTestHarness.LoopQueueDrainTest do
   use ExUnit.Case, async: true
+  import CodegenTestHarness.AgentTeardown, only: [stop_agent: 1]
   import ExUnit.CaptureIO
 
   alias CodegenTestHarness.LoopQueueDrain
@@ -579,7 +580,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     write_pitch(ctx.ready_dir, "solo")
 
     {:ok, attempts_agent} = Agent.start_link(fn -> 0 end)
-    on_exit(fn -> if Process.alive?(attempts_agent), do: Agent.stop(attempts_agent) end)
+    on_exit(fn -> stop_agent(attempts_agent) end)
 
     spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
       n = Agent.get_and_update(attempts_agent, fn n -> {n, n + 1} end)
