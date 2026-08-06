@@ -234,6 +234,16 @@
   rationale: "Denies ANY role's Edit/Write/MultiEdit to context/<file>.md, PROJECT_CONTEXT.md, or codegen/PROJECT_CONTEXT.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the writer's own turn — where the doc is editable this turn — instead of failing later at the deterministic commit step, which cannot repair it. Composes with context-curator-guard (path surface, curator-only)."
 
 - kind: registration
+  id: rule-edit-reach
+  event: PreToolUse
+  tool_guard: "Edit|Write|MultiEdit"
+  surface: user_global
+  signal: none
+  role: "*"
+  harnesses: all
+  rationale: "Advises ANY role's Edit/Write/MultiEdit to shared/rules/** (or the codegen/rules symlink) with the fragment's transitive fan-out across rendered agent prompts and the projected byte overflow at each reached prompt, computed via prompt_size_budget.py --report --path. Delivered as hookSpecificOutput.additionalContext — the one channel a PreToolUse hook can use that the model actually reads. NEVER denies — cannot block, deny, or ask. Supersedes context-curator-guard.sh's deleted warn_if_over_cap (curator-only, own-row-only, stderr-only — proven unreachable by the model on an exit-0 PreToolUse hook)."
+
+- kind: registration
   id: context-factcheck-edit-gate
   event: PreToolUse
   tool_guard: "Edit|Write|MultiEdit"

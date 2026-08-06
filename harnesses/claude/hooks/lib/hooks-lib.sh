@@ -8,6 +8,9 @@
 #   parse_input                  — read stdin once, populate exported vars (see contract below)
 #   deny "<reason>"              — emit a PreToolUse permissionDecision: "deny" JSON envelope
 #                                  to stdout. Caller should `exit 0` after.
+#   advise "<text>"              — emit a PreToolUse hookSpecificOutput.additionalContext JSON
+#                                  envelope to stdout (never permissionDecision — cannot block).
+#                                  Caller should `exit 0` after.
 #   block "<reason>"             — emit a Stop-event {"decision":"block","reason":...} JSON
 #                                  envelope to stdout. Caller should `exit 0` after.
 #   debug_log <slug> ...         — append a timestamped line to /tmp/<slug>-debug.log when
@@ -130,6 +133,22 @@ deny() {
             hookEventName: "PreToolUse",
             permissionDecision: "deny",
             permissionDecisionReason: $reason
+        }
+    }'
+}
+
+# advise <text> — emit PreToolUse hookSpecificOutput.additionalContext JSON
+# envelope. Unlike deny(), this NEVER carries permissionDecision — it cannot
+# block, deny, or ask; it only injects <text> into the model's context for
+# this tool call. Confirmed reachable (unlike a PreToolUse hook's stderr on
+# exit 0, which the model never sees — see context/hook-authoring-patterns.md
+# § Hook Output Protocol). The caller should `exit 0` after invoking this.
+advise() {
+    local text="$1"
+    jq -n --arg text "$text" '{
+        hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            additionalContext: $text
         }
     }'
 }

@@ -32,9 +32,33 @@ Usage:
   prompt_size_budget.py --write                  (operator-only, terminal:
                                                    regenerate prompt-budgets.txt
                                                    from CURRENT measured sizes)
+  prompt_size_budget.py --report [--path <repo-relative>] [--added-bytes <n>]
+                                                  (read-only; see below)
+
+--report is a READ-ONLY reach projector, in two forms:
+
+  --report --path <p> [--added-bytes <n>] — the targeted question an editor
+    or the rule-edit-reach.sh hook asks before/at edit time: <p>'s own
+    committed line budget + headroom, which rendered prompts it reaches
+    (fan-out via the SAME transitive {% include %} walk process_template.py
+    performs), each reached prompt's current headroom, and — with
+    --added-bytes — which prompts would overflow, by how much, and the total
+    that must be evicted this pass to fit. This form supersedes
+    context-curator-guard.sh's old (deleted) warn_if_over_cap: it carries the
+    same own-row line projection PLUS the fan-out projection that helper
+    never had.
+
+  --report (no --path) — the whole-corpus meter: every rendered prompt as
+    now/budget/headroom, every rule fragment as fan-out -> tightest
+    downstream headroom. KEEP-ADVISORY: this form has no automated caller
+    and none is planned — it exists for a human operator reading the corpus,
+    the same "no consumer, kept anyway" shape as codegen-analyze/
+    codegen-propose. Do not wire an automated caller to the bare form; add
+    --path instead, which IS the wired, consumed shape (rule-edit-reach.sh).
 """
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -94,6 +118,85 @@ AGENT_SUBAGENT_DIRS = [
     CODEGEN_DIR / "shared" / "subagents" / "phoenix",
     CODEGEN_DIR / "shared" / "subagents" / "static",
 ]
+
+# Same {% include '<path>' %} regex process_template.py's resolve_include /
+# process_includes_recursively pair uses — a literal quoted path only (no
+# variables, no conditionals), so the transitive walk below is exact, not a
+# heuristic.
+INCLUDE_RE = re.compile(r"\{%\s*include\s+['\"]([^'\"]+)['\"]\s*%\}")
+
+
+def _all_top_level_prompts():
+    """Every shared/subagents/{shared,phoenix,static}/*.md.j2 top-level
+    prompt template, relative to CODEGEN_DIR (POSIX), sorted."""
+    prompts = []
+    for subdir in AGENT_SUBAGENT_DIRS:
+        if not subdir.is_dir():
+            continue
+        for f in sorted(subdir.glob("*.md.j2")):
+            prompts.append(f.relative_to(CODEGEN_DIR).as_posix())
+    return prompts
+
+
+def _includes_of(template_relpath):
+    """Direct {% include %} targets of one template, resolved to CODEGEN_DIR-
+    relative POSIX paths (rules/... -> shared/rules/...). Occurrence-counted:
+    a template that includes the same fragment twice yields it twice."""
+    full = CODEGEN_DIR / template_relpath
+    if not full.is_file():
+        return []
+    content = full.read_text()
+    targets = []
+    for m in INCLUDE_RE.finditer(content):
+        include_path = m.group(1).strip()
+        resolved = (CODEGEN_DIR / "shared" / include_path).resolve()
+        try:
+            rel = resolved.relative_to(CODEGEN_DIR.resolve()).as_posix()
+        except ValueError:
+            # Outside CODEGEN_DIR entirely — not expected, but do not crash
+            # the walk over it; just record the resolved absolute form.
+            rel = str(resolved)
+        targets.append(rel)
+    return targets
+
+
+def build_include_graph():
+    """Transitive {% include %} walk over every top-level prompt template.
+
+    Returns (fanout, reach):
+      fanout: dict relpath (rule/subagent fragment, CODEGEN_DIR-relative
+              POSIX) -> sorted list of top-level prompt relpaths that reach
+              it transitively (occurrence-deduped per prompt: a prompt that
+              reaches a fragment via two different paths counts once in this
+              list — REACH is a prompt-level fact, not an occurrence count).
+      reach: dict top-level prompt relpath -> sorted list of every fragment
+             relpath it transitively includes (deduped the same way).
+
+    MAX_DEPTH mirrors process_template.py's own recursion cap (10) so a
+    pathological include cycle cannot spin this walk forever; in practice
+    the real include graph is a shallow DAG (2-3 levels).
+    """
+    MAX_DEPTH = 10
+    fanout = {}
+    reach = {}
+    for prompt in _all_top_level_prompts():
+        seen = set()
+        frontier = [prompt]
+        depth = 0
+        while frontier and depth < MAX_DEPTH:
+            next_frontier = []
+            for node in frontier:
+                for target in _includes_of(node):
+                    if target not in seen:
+                        seen.add(target)
+                        next_frontier.append(target)
+            frontier = next_frontier
+            depth += 1
+        reach[prompt] = sorted(seen)
+        for fragment in seen:
+            fanout.setdefault(fragment, set()).add(prompt)
+    fanout = {k: sorted(v) for k, v in sorted(fanout.items())}
+    return fanout, reach
 
 
 def measure_rule_files():
@@ -162,6 +265,26 @@ def parse_budget_file(path):
     return budgets
 
 
+def attribute_prompt_overage(prompt_relpath, reach, rule_sizes, top_n=3):
+    """Human-readable attribution line for an overflowing rendered prompt:
+    the top_n heaviest rule fragments it transitively includes, by CURRENT
+    line count. This is current-contribution attribution, not a diff against
+    a prior render — enough to aim an eviction, no git-history dependency.
+
+    Returns "" when the prompt has no rule-fragment reach recorded (reach is
+    keyed by build_include_graph(), which always has an entry for every
+    top-level prompt scanned — an empty return only happens if the prompt
+    relpath itself was never walked)."""
+    fragments = reach.get(prompt_relpath, [])
+    sized = [(f, rule_sizes[f]) for f in fragments if f in rule_sizes]
+    if not sized:
+        return ""
+    sized.sort(key=lambda pair: pair[1], reverse=True)
+    top = sized[:top_n]
+    parts = ", ".join(f"{relpath} ({lines} lines)" for relpath, lines in top)
+    return f" Heaviest included fragments: {parts}. Run --report --path <fragment> for its own reach."
+
+
 def render_budget_file(rule_sizes, agent_sizes):
     lines = []
     lines.append("# prompt-budgets.txt — committed size ceilings for the prompt attention")
@@ -186,6 +309,104 @@ def render_budget_file(rule_sizes, agent_sizes):
     return "\n".join(lines)
 
 
+def report_path(relpath, added_bytes, rule_sizes, agent_sizes, budgets, fanout, reach):
+    """--report --path <relpath> [--added-bytes <n>] body. Returns (text, rc).
+
+    rc is 2 when relpath is not a repo-relative path under shared/rules/
+    (the CLI's own usage contract — the hook never calls this with anything
+    else, but a human operator might)."""
+    if not (relpath.startswith("shared/rules/") or relpath in agent_sizes):
+        return (
+            f"prompt_size_budget: --path must be a repo-relative path under shared/rules/ "
+            f"(or a rendered agent prompt .md.j2 source), got {relpath!r}",
+            2,
+        )
+
+    lines = [f"prompt_size_budget --report --path {relpath}"]
+
+    # Own-row projection is LINE-counted (the rule file's own committed unit);
+    # --added-bytes is a BYTE count (the unit every downstream rendered prompt
+    # is measured in, and what the hook can actually compute from an Edit/
+    # Write/MultiEdit payload). The two units are not interchangeable — a
+    # byte delta is never assumed to equal a line delta — so this section
+    # reports the own row's CURRENT state only; the projection lives entirely
+    # in the byte-measured fan-out section below, which is what a net-additive
+    # rule-fragment edit actually threatens.
+    if relpath in rule_sizes:
+        current = rule_sizes[relpath]
+        budget = budgets.get(relpath, derived_ceiling(relpath))
+        headroom = budget - current
+        row_kind = "committed row" if relpath in budgets else "derived STYLE_GUIDE ceiling (no committed row)"
+        lines.append(
+            f"  own row ({row_kind}): {current} lines now, {budget} lines budget, "
+            f"{headroom} lines headroom"
+        )
+    elif relpath in agent_sizes:
+        lines.append("  (this path IS a rendered agent prompt source, not a rule fragment — see below)")
+
+    reached = fanout.get(relpath, [])
+    if not reached:
+        lines.append(f"  reaches 0 rendered prompts")
+        return ("\n".join(lines), 0)
+
+    lines.append(f"  reaches {len(reached)} rendered prompt(s):")
+    total_evict = 0
+    for prompt in reached:
+        now = agent_sizes.get(prompt)
+        budget = budgets.get(prompt)
+        if now is None or budget is None:
+            lines.append(f"    - {prompt}: (unmeasured or no committed row)")
+            continue
+        headroom = budget - now
+        if added_bytes:
+            projected = now + added_bytes
+            over = projected - budget
+            if over > 0:
+                lines.append(
+                    f"    - {prompt}: {now} B now, {headroom} B headroom -> "
+                    f"+{added_bytes} B OVERFLOWS by {over} B — evict >= {over} B in this pass"
+                )
+                total_evict = max(total_evict, over)
+            else:
+                lines.append(f"    - {prompt}: {now} B now, {headroom} B headroom -> +{added_bytes} B fits")
+        else:
+            lines.append(f"    - {prompt}: {now} B now, {headroom} B headroom")
+
+    if added_bytes and total_evict > 0:
+        lines.append(f"  evict >= {total_evict} B in this pass to fit the tightest reached prompt")
+
+    return ("\n".join(lines), 0)
+
+
+def report_whole_corpus(rule_sizes, agent_sizes, budgets, fanout):
+    """--report (no --path) — the whole-corpus meter. KEEP-ADVISORY, no
+    automated caller — see module docstring."""
+    lines = ["prompt_size_budget --report (whole corpus)", "", "rendered prompts (now / budget / headroom):"]
+    for relpath in sorted(agent_sizes):
+        now = agent_sizes[relpath]
+        budget = budgets.get(relpath)
+        if budget is None:
+            lines.append(f"  {relpath}: {now} B / (no committed row)")
+        else:
+            lines.append(f"  {relpath}: {now} B / {budget} B / {budget - now} B headroom")
+    lines.append("")
+    lines.append("rule fragments (fan-out -> tightest downstream headroom):")
+    for relpath in sorted(fanout):
+        reached = fanout[relpath]
+        tightest = None
+        for prompt in reached:
+            now = agent_sizes.get(prompt)
+            budget = budgets.get(prompt)
+            if now is None or budget is None:
+                continue
+            headroom = budget - now
+            if tightest is None or headroom < tightest:
+                tightest = headroom
+        tightest_str = f"{tightest} B" if tightest is not None else "n/a"
+        lines.append(f"  {relpath}: fan-out {len(reached)} -> tightest headroom {tightest_str}")
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -199,10 +420,38 @@ def main():
         action="store_true",
         help="regenerate prompt-budgets.txt from current measured sizes",
     )
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="read-only reach projection — whole corpus, or --path <relpath> for one fragment",
+    )
+    parser.add_argument(
+        "--path",
+        default=None,
+        help="repo-relative path (with --report) to project reach/headroom for",
+    )
+    parser.add_argument(
+        "--added-bytes",
+        dest="added_bytes",
+        type=int,
+        default=None,
+        help="with --report --path: bytes/lines being added, to project overflow",
+    )
     args = parser.parse_args()
 
-    if not args.check and not args.write:
+    if not args.check and not args.write and not args.report:
         args.check = True  # default action
+
+    if args.report and args.path is None and args.added_bytes is not None:
+        print("prompt_size_budget: --added-bytes requires --path", file=sys.stderr)
+        return 2
+
+    if args.added_bytes is not None and args.added_bytes < 0:
+        print(
+            f"prompt_size_budget: --added-bytes must be a non-negative integer, got {args.added_bytes}",
+            file=sys.stderr,
+        )
+        return 2
 
     rule_sizes = measure_rule_files()
     agent_sizes = measure_agent_prompts()
@@ -211,6 +460,18 @@ def main():
         rendered = render_budget_file(rule_sizes, agent_sizes)
         BUDGET_FILE.write_text(rendered)
         print(f"prompt_size_budget: wrote {BUDGET_FILE} ({len(rule_sizes)} rule files, {len(agent_sizes)} agent prompts)")
+        return 0
+
+    if args.report:
+        budgets = parse_budget_file(BUDGET_FILE)
+        fanout, reach = build_include_graph()
+        if args.path is not None:
+            text, rc = report_path(
+                args.path, args.added_bytes or 0, rule_sizes, agent_sizes, budgets, fanout, reach
+            )
+            print(text)
+            return rc
+        print(report_whole_corpus(rule_sizes, agent_sizes, budgets, fanout))
         return 0
 
     budgets = parse_budget_file(BUDGET_FILE)
@@ -227,6 +488,7 @@ def main():
     all_sizes.update(agent_sizes)
 
     notices = []
+    _fanout, reach = build_include_graph()
 
     for relpath, actual in sorted(all_sizes.items()):
         if relpath not in budgets:
@@ -253,7 +515,12 @@ def main():
         budget = budgets[relpath]
         if actual > budget:
             unit = "bytes" if relpath in agent_sizes else "lines"
-            failures.append(f"{relpath}: {actual} {unit} exceeds committed budget {budget} {unit}")
+            attribution = ""
+            if relpath in agent_sizes:
+                attribution = attribute_prompt_overage(relpath, reach, rule_sizes)
+            failures.append(
+                f"{relpath}: {actual} {unit} exceeds committed budget {budget} {unit}.{attribution}"
+            )
 
     # A budget row naming a file that no longer exists is stale. It is NOT a
     # size violation — a deleted file cannot overflow anything — and its only

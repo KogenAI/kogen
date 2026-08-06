@@ -26,10 +26,26 @@ Trigger for the full decision procedure.
 
 `_core`/shared rule files: <50 lines. `roles`/`stacks` rule files: <150 lines. Several files already
 exceed these as pre-existing scar tissue — the caps are advisory targets for new content, not a
-retroactive gate. `context-curator-guard.sh`'s edit-time `warn_if_over_cap` no longer warns off these
-tier numbers — it predicts the committed `prompt-budgets.txt` row instead (see below), so a file at
-its full committed budget (even one that already exceeds its STYLE_GUIDE target) stays silent, and a
-file under its tier target but at its committed budget still warns correctly.
+retroactive gate. `rule-edit-reach.sh` (role-agnostic PreToolUse advisory, see § Reach Advisory below)
+predicts the committed `prompt-budgets.txt` row, not these tier numbers — a file at its full committed
+budget (even one that already exceeds its STYLE_GUIDE target) is reported accurately either way.
+
+## Reach Advisory (`rule-edit-reach.sh`) — Fan-Out Before the Edit Lands
+
+Any role's net-additive Edit/Write/MultiEdit to `shared/rules/**` (or the `codegen/rules` symlink)
+triggers `rule-edit-reach.sh`, a PreToolUse hook that shells to
+`prompt_size_budget.py --report --path <fragment> --added-bytes <n>` and returns the fragment's own
+committed line budget, which rendered agent prompts it transitively reaches (via the SAME
+`{% include %}` walk `process_template.py` performs), and — per reached prompt — the projected byte
+overflow and the minimum eviction needed to fit. Delivered via `hookSpecificOutput.additionalContext`,
+confirmed reachable by the model (unlike stderr on an exit-0 PreToolUse hook, which is not — see
+`context/hook-authoring-patterns.md` § Hook Output Protocol). Warn-only by design: it can never deny,
+block, or ask — a denying gate at zero-headroom would refuse the add half of a legitimate
+add-then-evict pass. The fail-closed backstop is unchanged: `prompt-size-budget` (component of
+`make test`) still fails the build on a real overflow. `--report` (no `--path`) is a separate,
+KEEP-ADVISORY whole-corpus meter with no automated caller — an operator-facing surface only.
+Supersedes the deleted `context-curator-guard.sh` helper `warn_if_over_cap` (curator-only, own-row-only,
+delivered on stderr — a channel proven unreachable by the model on an exit-0 PreToolUse hook).
 
 ## `prompt-size-budget` Gate (hard, freezes current size as ceiling)
 

@@ -152,3 +152,211 @@ class DerivedCeilingTest(unittest.TestCase):
         # new file would enter under a weaker bar than the guide states.
         self.assertLessEqual(psb.derived_ceiling("shared/rules/_core/x.md"), 50)
         self.assertLessEqual(psb.derived_ceiling("shared/rules/roles/x.md"), 150)
+
+
+class IncludeGraphTest(unittest.TestCase):
+    """Transitive {% include %} walk against the REAL repo tree — no fixtures,
+    since build_include_graph() reads from CODEGEN_DIR directly (module-level
+    constant, not injectable), same pattern as MeasureRuleFilesTest above."""
+
+    def test_high_fanout_fragments_reach_all_six_prompts(self):
+        fanout, _reach = psb.build_include_graph()
+        six_of_six = [
+            "shared/rules/_core/bash-discipline.md",
+            "shared/rules/_core/fail-fast-required-values.md",
+            "shared/rules/_core/fail-loud.md",
+            "shared/rules/_core/output-style.md",
+            "shared/rules/_core/session-log.md",
+            "shared/rules/shared/git-readonly.md",
+            "shared/rules/shared/no-role-spawn.md",
+        ]
+        for fragment in six_of_six:
+            self.assertEqual(
+                len(fanout.get(fragment, [])), 6, f"{fragment} expected fan-out 6"
+            )
+
+    def test_reach_is_symmetric_with_fanout(self):
+        # Every (fragment -> prompt) pair recorded in fanout must also appear
+        # as (prompt -> fragment) in reach, and vice versa.
+        fanout, reach = psb.build_include_graph()
+        for fragment, prompts in fanout.items():
+            for prompt in prompts:
+                self.assertIn(
+                    fragment,
+                    reach.get(prompt, []),
+                    f"{fragment} claims to reach {prompt} but reach[{prompt}] disagrees",
+                )
+        for prompt, fragments in reach.items():
+            for fragment in fragments:
+                self.assertIn(
+                    prompt,
+                    fanout.get(fragment, []),
+                    f"reach[{prompt}] claims {fragment} but fanout[{fragment}] disagrees",
+                )
+
+    def test_every_top_level_prompt_has_a_reach_entry(self):
+        _fanout, reach = psb.build_include_graph()
+        for relpath in psb._all_top_level_prompts():
+            self.assertIn(relpath, reach)
+
+
+class ReportPathTest(unittest.TestCase):
+    """--report --path unit tests against injected (fake) sizes/budgets so the
+    projection arithmetic is verified independent of the real repo's current
+    numbers (which drift over time)."""
+
+    def _fixture(self):
+        rule_sizes = {"shared/rules/_core/x.md": 40}
+        agent_sizes = {
+            "shared/subagents/phoenix/a.md.j2": 900,
+            "shared/subagents/static/b.md.j2": 950,
+        }
+        budgets = {
+            "shared/rules/_core/x.md": 50,
+            "shared/subagents/phoenix/a.md.j2": 910,
+            "shared/subagents/static/b.md.j2": 960,
+        }
+        fanout = {
+            "shared/rules/_core/x.md": [
+                "shared/subagents/phoenix/a.md.j2",
+                "shared/subagents/static/b.md.j2",
+            ],
+        }
+        reach = {
+            "shared/subagents/phoenix/a.md.j2": ["shared/rules/_core/x.md"],
+            "shared/subagents/static/b.md.j2": ["shared/rules/_core/x.md"],
+        }
+        return rule_sizes, agent_sizes, budgets, fanout, reach
+
+    def test_own_row_reported_in_lines_not_conflated_with_added_bytes(self):
+        # A byte delta is never assumed to equal a line delta — the own-row
+        # section reports CURRENT state only, never a projected line count
+        # from --added-bytes (a byte count). Regression guard for the
+        # lines-vs-bytes unit-conflation bug caught during development.
+        rule_sizes, agent_sizes, budgets, fanout, reach = self._fixture()
+        text, rc = psb.report_path(
+            "shared/rules/_core/x.md", 71, rule_sizes, agent_sizes, budgets, fanout, reach
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("40 lines now, 50 lines budget, 10 lines headroom", text)
+        self.assertNotIn("71 lines", text)
+
+    def test_added_bytes_overflows_tightest_reached_prompt(self):
+        rule_sizes, agent_sizes, budgets, fanout, reach = self._fixture()
+        # a.md.j2: 900/910 -> 10 B headroom. b.md.j2: 950/960 -> 10 B headroom.
+        # +15 B overflows both by 5 B.
+        text, rc = psb.report_path(
+            "shared/rules/_core/x.md", 15, rule_sizes, agent_sizes, budgets, fanout, reach
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("OVERFLOWS by 5 B", text)
+        self.assertIn("evict >= 5 B in this pass", text)
+
+    def test_added_bytes_within_headroom_fits(self):
+        rule_sizes, agent_sizes, budgets, fanout, reach = self._fixture()
+        text, rc = psb.report_path(
+            "shared/rules/_core/x.md", 3, rule_sizes, agent_sizes, budgets, fanout, reach
+        )
+        self.assertEqual(rc, 0)
+        self.assertNotIn("OVERFLOWS", text)
+        self.assertIn("fits", text)
+
+    def test_zero_reach_reports_zero_prompts(self):
+        rule_sizes = {"shared/rules/_core/orphan.md": 10}
+        agent_sizes = {}
+        budgets = {}
+        fanout = {}
+        reach = {}
+        text, rc = psb.report_path(
+            "shared/rules/_core/orphan.md", 0, rule_sizes, agent_sizes, budgets, fanout, reach
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("reaches 0 rendered prompts", text)
+
+    def test_path_outside_shared_rules_and_not_an_agent_prompt_exits_2(self):
+        rule_sizes, agent_sizes, budgets, fanout, reach = self._fixture()
+        text, rc = psb.report_path(
+            "lib/not_a_rule.ex", 0, rule_sizes, agent_sizes, budgets, fanout, reach
+        )
+        self.assertEqual(rc, 2)
+        self.assertIn("--path must be a repo-relative path under shared/rules/", text)
+
+
+class ReportWholeCorpusTest(unittest.TestCase):
+    def test_lists_every_prompt_and_fragment_with_headroom(self):
+        rule_sizes = {"shared/rules/_core/x.md": 40}
+        agent_sizes = {"shared/subagents/phoenix/a.md.j2": 900}
+        budgets = {
+            "shared/rules/_core/x.md": 50,
+            "shared/subagents/phoenix/a.md.j2": 910,
+        }
+        fanout = {"shared/rules/_core/x.md": ["shared/subagents/phoenix/a.md.j2"]}
+        text = psb.report_whole_corpus(rule_sizes, agent_sizes, budgets, fanout)
+        self.assertIn("shared/subagents/phoenix/a.md.j2: 900 B / 910 B / 10 B headroom", text)
+        self.assertIn("shared/rules/_core/x.md: fan-out 1 -> tightest headroom 10 B", text)
+
+
+class AttributePromptOverageTest(unittest.TestCase):
+    def test_names_heaviest_fragments_by_current_line_count(self):
+        reach = {
+            "shared/subagents/phoenix/a.md.j2": [
+                "shared/rules/_core/small.md",
+                "shared/rules/_core/big.md",
+            ]
+        }
+        rule_sizes = {
+            "shared/rules/_core/small.md": 10,
+            "shared/rules/_core/big.md": 200,
+        }
+        text = psb.attribute_prompt_overage(
+            "shared/subagents/phoenix/a.md.j2", reach, rule_sizes, top_n=2
+        )
+        self.assertIn("shared/rules/_core/big.md (200 lines)", text)
+        # heaviest listed before the lighter one
+        self.assertLess(text.index("big.md"), text.index("small.md"))
+
+    def test_no_reach_returns_empty_string(self):
+        text = psb.attribute_prompt_overage("shared/subagents/phoenix/nope.md.j2", {}, {})
+        self.assertEqual(text, "")
+
+
+class CheckModeAddedBytesValidationTest(unittest.TestCase):
+    def test_added_bytes_without_path_is_rejected_at_argv_level(self):
+        # Regression guard for the CLI usage contract: --added-bytes only
+        # means something paired with --path. Exercised via the module's
+        # own argparse wiring by calling main() with sys.argv patched.
+        import io
+        import contextlib
+
+        old_argv = sys.argv
+        try:
+            sys.argv = ["prompt_size_budget.py", "--report", "--added-bytes", "5"]
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                rc = psb.main()
+            self.assertEqual(rc, 2)
+            self.assertIn("--added-bytes requires --path", buf.getvalue())
+        finally:
+            sys.argv = old_argv
+
+    def test_negative_added_bytes_is_rejected(self):
+        import io
+        import contextlib
+
+        old_argv = sys.argv
+        try:
+            sys.argv = [
+                "prompt_size_budget.py",
+                "--report",
+                "--path",
+                "shared/rules/_core/fail-loud.md",
+                "--added-bytes",
+                "-1",
+            ]
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                rc = psb.main()
+            self.assertEqual(rc, 2)
+            self.assertIn("non-negative integer", buf.getvalue())
+        finally:
+            sys.argv = old_argv

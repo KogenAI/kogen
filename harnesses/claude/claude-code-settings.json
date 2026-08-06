@@ -474,6 +474,15 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/rule-edit-reach.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Bash|Edit|Write|MultiEdit",
         "hooks": [
           {

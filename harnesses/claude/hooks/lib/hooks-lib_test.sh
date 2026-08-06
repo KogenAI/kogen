@@ -117,6 +117,12 @@ assert_eq "deny permissionDecision" "deny" "$(printf '%s' "$denyout" | jq -r '.h
 assert_eq "deny hookEventName" "PreToolUse" "$(printf '%s' "$denyout" | jq -r '.hookSpecificOutput.hookEventName')"
 assert_eq "deny reason" "test reason" "$(printf '%s' "$denyout" | jq -r '.hookSpecificOutput.permissionDecisionReason')"
 
+# ── advise — PreToolUse additionalContext envelope, never permissionDecision ─
+adviseout=$(advise "test advisory text")
+assert_eq "advise hookEventName" "PreToolUse" "$(printf '%s' "$adviseout" | jq -r '.hookSpecificOutput.hookEventName')"
+assert_eq "advise additionalContext" "test advisory text" "$(printf '%s' "$adviseout" | jq -r '.hookSpecificOutput.additionalContext')"
+assert_eq "advise never carries permissionDecision" "null" "$(printf '%s' "$adviseout" | jq -r '.hookSpecificOutput.permissionDecision // "null"')"
+
 # ── block — Stop event envelope ──────────────────────────────────────────────
 blockout=$(block "stop reason")
 assert_eq "block decision" "block" "$(printf '%s' "$blockout" | jq -r '.decision')"

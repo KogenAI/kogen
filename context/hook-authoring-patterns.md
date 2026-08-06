@@ -318,6 +318,8 @@ Valid `permissionDecision` values:
 | `ask`   | Escalate to user for interactive approval         |
 | `defer` | No opinion — let Claude Code apply default policy |
 
+**Advisory context (`hookSpecificOutput.additionalContext`)** — a PreToolUse hook that must never block still needs a channel the model reads: stderr on an exit-0 hook is confirmed NOT delivered to the model (probed live), so a warn-only hook must use `additionalContext` instead. `advise()` in `hooks-lib.sh` emits `{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$text}}` — no `permissionDecision` key, so it can never deny/ask, only inject context alongside the tool call. First user: `rule-edit-reach.sh` (see `context/size-governance.md` § Reach Advisory). Use this pattern whenever a hook's job is "surface a fact before the edit lands" rather than "gate the edit".
+
 **Events codegen does not yet use** — for `PreCompact`, `PermissionRequest`, `PostCompact`, `SubagentStart`, and other unregistered events, verify the exact field shape against https://code.claude.com/docs/en/hooks before relying on them. Codegen has not exercised these events in production; the protocol above is confirmed only for the events in the registered subset.
 
 ## Gate Verdict Flow
