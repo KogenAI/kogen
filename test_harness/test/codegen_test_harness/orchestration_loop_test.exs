@@ -658,8 +658,13 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
-    test "turn-0 repair exhaustion writes codegen/gate-pending/terminal-state.json naming context-curator as owner",
+    test "turn-0 repair exhaustion writes NO terminal marker — doc drift stays retryable",
          %{calls_agent: calls_agent} do
+      # A terminal marker is read before retry_eligible?/5 and routes the pitch
+      # to park + skip + circuit breaker, never a retry. Orientation-doc drift
+      # is not that: the curator owns every path the scan can name, so a second
+      # pass can land what one bounded pass did not. The cycle must still fail,
+      # and must stay retry-eligible.
       tmp_cwd =
         Path.join(
           System.tmp_dir!(),
@@ -689,34 +694,29 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         )
       end
 
-      marker =
-        Path.join(tmp_cwd, "codegen/gate-pending/terminal-state.json")
-        |> File.read!()
-        |> Jason.decode!()
-
-      assert marker["terminal"] == true
-      assert marker["owner"] == "context-curator"
-      assert marker["reason"] =~ "orientation-doc preflight unresolved"
+      refute File.exists?(Path.join(tmp_cwd, "codegen/gate-pending/terminal-state.json"))
     end
 
-    test "terminal marker write failure during turn-0 exhaustion raises InfraAbort instead of leaving the deterministic error unmarked",
+    test "terminal marker write failure raises InfraAbort instead of leaving the deterministic error unmarked",
          %{calls_agent: calls_agent} do
       # codegen/gate-pending exists as a FILE (not a dir), so File.mkdir_p
       # for the marker path fails — proves the write-failure path raises
       # loud rather than degrading to a silent stderr note.
+      #
+      # Driven through the ENV-VAR exhaustion producer: the two orientation-doc
+      # producers deliberately no longer write a marker (doc drift is
+      # retryable), so they can no longer exercise the write-failure path.
       tmp_cwd =
         Path.join(
           System.tmp_dir!(),
-          "loop-turn0-marker-write-fail-#{System.unique_integer([:positive])}"
+          "loop-marker-write-fail-#{System.unique_integer([:positive])}"
         )
 
       File.mkdir_p!(Path.join(tmp_cwd, "codegen"))
       File.write!(Path.join([tmp_cwd, "codegen", "gate-pending"]), "not a directory")
       on_exit(fn -> File.rm_rf!(tmp_cwd) end)
 
-      always_violates_fn = fn _cwd ->
-        {:violations, "context-index-parity-scan: context/loop.md drift"}
-      end
+      always_violates_fn = fn _cwd -> {:violations, "MY_VAR"} end
 
       assert_raise CodegenTestHarness.InfraAbort,
                    ~r/terminal-marker-write/,
@@ -731,8 +731,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                        gate_preflight_fn: no_op_gate_preflight_fn(),
                        preflight_probe_fn: all_present_preflight_probe_fn(),
                        advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
-                       orientation_preflight_fn: always_violates_fn,
-                       max_curator_doc_cycles: 1
+                       curator_doc_check_fn: always_clean_curator_doc_fn(),
+                       env_var_scan_fn: always_violates_fn,
+                       max_env_var_cycles: 1
                      )
                    end
     end
@@ -1439,15 +1440,109 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert "committer" not in Agent.get(calls_agent, & &1)
     end
 
+    # Regression for the backtick incident: a complete, gate-clear, APPROVED
+    # review was thrown away because the reviewer rendered the sentinel as
+    # inline code. Any ordinary markdown decoration must classify.
+    for {name, verdict_text} <- [
+          {"backticked", "`REVIEW_VERDICT: APPROVED`"},
+          {"strong-wrapping-backticks", "**`REVIEW_VERDICT: APPROVED`**"},
+          {"backticks-wrapping-strong", "`**REVIEW_VERDICT: APPROVED**`"},
+          {"underscore-emphasis", "_REVIEW_VERDICT: APPROVED_"},
+          {"single-asterisk-emphasis", "*REVIEW_VERDICT: APPROVED*"},
+          {"surrounding-whitespace", "   REVIEW_VERDICT: APPROVED   "},
+          {"decorated-with-inner-whitespace", "  ` REVIEW_VERDICT: APPROVED `  "}
+        ] do
+      @verdict_text verdict_text
+
+      test "accepted APPROVED: #{name}", %{calls_agent: calls_agent} do
+        verdict_text = @verdict_text
+
+        invoke_fn = fn role, _harness, _ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+          value = if role == "reviewer-static", do: verdict_text, else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
+        end
+
+        assert :ok ==
+                 OrchestrationLoop.run(
+                   harness: "claude_code",
+                   stack: "static",
+                   cwd: "/tmp/irrelevant",
+                   pitch: "do the thing",
+                   invoke_fn: invoke_fn,
+                   gate_fn: always_clear_gate_fn(),
+                   gate_preflight_fn: no_op_gate_preflight_fn(),
+                   preflight_probe_fn: all_present_preflight_probe_fn(),
+                   advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 )
+
+        calls = Agent.get(calls_agent, & &1)
+        # Exactly one reviewer call: the verdict parsed first time, with no
+        # `:unknown` re-invocation burning a second review.
+        assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
+        assert "committer" in calls
+      end
+    end
+
+    # The same decoration tolerance must apply to CHANGES_REQUESTED — a
+    # decorated rejection that read as `:unknown` would be just as wrong.
+    for {name, verdict_text} <- [
+          {"backticked", "`REVIEW_VERDICT: CHANGES_REQUESTED`"},
+          {"strong-wrapping-backticks", "**`REVIEW_VERDICT: CHANGES_REQUESTED`**"},
+          {"underscore-emphasis", "_REVIEW_VERDICT: CHANGES_REQUESTED_"},
+          {"surrounding-whitespace", "   REVIEW_VERDICT: CHANGES_REQUESTED   "}
+        ] do
+      @verdict_text verdict_text
+
+      test "accepted CHANGES_REQUESTED: #{name}", %{calls_agent: calls_agent} do
+        verdict_text = @verdict_text
+
+        invoke_fn = fn role, _harness, _ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+          value = if role == "reviewer-static", do: verdict_text, else: "did #{role}"
+          {:ok, %{"status" => "success", "value" => value}}
+        end
+
+        assert {:error, reason} =
+                 OrchestrationLoop.run(
+                   harness: "claude_code",
+                   stack: "static",
+                   cwd: "/tmp/irrelevant",
+                   pitch: "do the thing",
+                   invoke_fn: invoke_fn,
+                   gate_fn: always_clear_gate_fn(),
+                   gate_preflight_fn: no_op_gate_preflight_fn(),
+                   preflight_probe_fn: all_present_preflight_probe_fn(),
+                   advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                   max_review_cycles: 0
+                 )
+
+        # Classified as a rejection, not as an unparseable verdict.
+        assert reason =~ "review re-work budget"
+        refute reason =~ "no parseable REVIEW_VERDICT"
+        assert "committer" not in Agent.get(calls_agent, & &1)
+      end
+    end
+
     for {name, verdict_text} <- [
           {"strong-then-bare", "**REVIEW_VERDICT: CHANGES_REQUESTED**\nREVIEW_VERDICT: APPROVED"},
           {"bare-then-strong", "REVIEW_VERDICT: CHANGES_REQUESTED\n**REVIEW_VERDICT: APPROVED**"},
           {"bare-duplicate", "REVIEW_VERDICT: APPROVED\nREVIEW_VERDICT: APPROVED"},
           {"bare-conflict", "REVIEW_VERDICT: CHANGES_REQUESTED\nREVIEW_VERDICT: APPROVED"},
           {"malformed-suffix", "REVIEW_VERDICT: APPROVED extra"},
-          {"backtick-wrapper", "`REVIEW_VERDICT: APPROVED`"},
           {"marker-nonterminal", "REVIEW_VERDICT: APPROVED\nmore prose"},
-          {"strong-marker-then-prose", "**REVIEW_VERDICT: APPROVED**\nthanks for reading"}
+          {"strong-marker-then-prose", "**REVIEW_VERDICT: APPROVED**\nthanks for reading"},
+          # Decoration tolerance must not decay into "contains APPROVED
+          # somewhere". A mid-sentence mention is not a verdict, and reading it
+          # as one would turn a wasted build into a bad ship.
+          {"prose-mention", "I would have said REVIEW_VERDICT: APPROVED but the gate is red"},
+          {"prose-mention-decorated",
+           "*I would have said REVIEW_VERDICT: APPROVED but the gate is red*"},
+          # Normalisation peels wrappers; it does not invent tokens.
+          {"unknown-token", "REVIEW_VERDICT: MAYBE"},
+          {"backticked-unknown-token", "`REVIEW_VERDICT: MAYBE`"},
+          # Only *matched* pairs are decoration — a dangling delimiter is not.
+          {"unbalanced-backtick", "`REVIEW_VERDICT: APPROVED"}
         ] do
       @verdict_text verdict_text
 
@@ -5134,9 +5229,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       refute "committer" in Agent.get(calls_agent, & &1)
     end
 
-    test "curator-doc exhaustion writes the terminal marker naming context-curator as owner", %{
+    test "curator-doc exhaustion writes NO terminal marker — doc drift stays retryable", %{
       calls_agent: calls_agent
     } do
+      # Sibling of the turn-0 case: the cycle still fails, but a marker would
+      # park the pitch and charge the circuit breaker for a condition a second
+      # curator pass routinely clears.
       tmp_cwd =
         Path.join(
           System.tmp_dir!(),
@@ -5163,14 +5261,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  max_curator_doc_cycles: 1
                )
 
-      marker =
-        Path.join(tmp_cwd, "codegen/gate-pending/terminal-state.json")
-        |> File.read!()
-        |> Jason.decode!()
-
-      assert marker["terminal"] == true
-      assert marker["reason"] =~ "context-curator doc check unresolved"
-      assert marker["owner"] == "context-curator"
+      refute File.exists?(Path.join(tmp_cwd, "codegen/gate-pending/terminal-state.json"))
     end
 
     test "curator introduces a superset (fixes nothing, adds a violation) → dies at the guaranteed floor",
@@ -7674,8 +7765,16 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(calls_agent, & &1) == []
     end
 
-    test "an inconclusive probe (no parseable agent list) raises", %{calls_agent: calls_agent} do
-      inconclusive_probe = fn _cwd -> "some unrelated CLI error with no agent list" end
+    test "a PERSISTENTLY inconclusive probe (no parseable agent list) raises", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, probes_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(probes_agent), do: Agent.stop(probes_agent) end)
+
+      inconclusive_probe = fn _cwd ->
+        Agent.update(probes_agent, &(&1 + 1))
+        "some unrelated CLI error with no agent list"
+      end
 
       assert_raise RuntimeError, ~r/could not confirm role-agent resolution/, fn ->
         OrchestrationLoop.run(
@@ -7690,6 +7789,77 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         )
       end
 
+      # Fail-closed posture is preserved — but only AFTER a re-probe.
+      assert Agent.get(probes_agent, & &1) == 2
+      assert Agent.get(calls_agent, & &1) == []
+    end
+
+    test "a ONE-OFF inconclusive probe is re-probed and the build proceeds", %{
+      calls_agent: calls_agent
+    } do
+      # An unparseable probe output is an inconclusive PARSE, not a missing
+      # agent: nothing was learned about the agent set. Its observed causes are
+      # transient, and the probe costs zero model turns, so a single unlucky
+      # read must not kill a build before any role runs. Contrast the
+      # missing-role case above, which stays fail-closed and unretried.
+      {:ok, probes_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(probes_agent), do: Agent.stop(probes_agent) end)
+
+      flaky_probe = fn cwd ->
+        n = Agent.get_and_update(probes_agent, fn c -> {c, c + 1} end)
+
+        if n == 0 do
+          "spinner noise, truncated pipe, no agent list"
+        else
+          all_present_preflight_probe_fn().(cwd)
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "phoenix",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 preflight_probe_fn: flaky_probe
+               )
+
+      assert Agent.get(probes_agent, & &1) == 2
+      assert Agent.get(calls_agent, & &1) == @phoenix_sequence
+    end
+
+    test "a re-probe never rescues a MISSING role — that stays fail-closed and unretried", %{
+      calls_agent: calls_agent
+    } do
+      {:ok, probes_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> if Process.alive?(probes_agent), do: Agent.stop(probes_agent) end)
+
+      missing_committer_probe = fn _cwd ->
+        Agent.update(probes_agent, &(&1 + 1))
+
+        "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
+          "developer-phoenix-backend, developer-phoenix-frontend, " <>
+          "reviewer-phoenix, context-curator"
+      end
+
+      assert_raise RuntimeError, ~r/required role agent\(s\) not resolvable: committer/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "phoenix",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          invoke_fn: always_ok_invoke_fn(calls_agent),
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: missing_committer_probe
+        )
+      end
+
+      assert Agent.get(probes_agent, & &1) == 1
       assert Agent.get(calls_agent, & &1) == []
     end
 

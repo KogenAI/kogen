@@ -294,4 +294,4 @@ The shape launcher (`claude-shape.sh`) accepts a `--draft <path> "text"` flag th
 
 ## Trigger Keywords
 
-claude-build, claude-debug, claude-shape, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, claude-babysit, babysit mode, drain supervisor, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence, context_files, mode-context, ROLE_CONTEXT_FILES, resolve_mode_context, mode declared context, FIFO stderr capture, process substitution, stdout transparency, loop-signal-bridge, run_supervised_loop, SIGINT SIGTERM group forward
+claude-build, claude-debug, claude-shape, dispatch.sh, launcher, system prompt, modes, tools-header, new launcher mode, claude-ops, claude-babysit, babysit mode, drain supervisor, CLAUDE_ROLE, per-mode hook bypass, claude-experiment.sh, harness-parity launcher tests, operator vs batch divergence, transcript access, context_files, mode-context, ROLE_CONTEXT_FILES, resolve_mode_context, mode declared context, FIFO stderr capture, process substitution, stdout transparency, loop-signal-bridge, run_supervised_loop, SIGINT SIGTERM group forward

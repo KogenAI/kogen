@@ -576,8 +576,10 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
       selection
 
   Returns `{:ok, dossier}` (the written dossier map) or `{:error, reason}`.
-  A dossier is written even on an ownership/scope mismatch — parking always
-  preserves bytes; automatic materialization is what a mismatch forbids.
+  Parking always preserves bytes. When the changed paths reach beyond the
+  pitch's declared `scope:`, the dossier records the expansion
+  (`ownership: "expanded"` + `scope_expansion: [paths]`) and the pitch's
+  history row names it — it does NOT restrict later materialization.
   """
   @spec park_failure(keyword()) :: {:ok, map()} | {:error, String.t()}
   def park_failure(opts) do
@@ -687,7 +689,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
 
       paths = changed_paths |> String.split("\n", trim: true)
 
-      scope_verdict = classify_scope(slug, pitch_path, paths)
+      {scope_verdict, undeclared} = classify_scope(slug, pitch_path, paths)
 
       dossier =
         slug
@@ -704,6 +706,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
         )
         |> Map.put("recovery_tree_sha", recovery_tree_sha)
         |> Map.put("ownership", scope_verdict)
+        |> Map.put("scope_expansion", undeclared)
 
       with :ok <- write_dossier!(cwd, slug, transaction_id, dossier) do
         finish_park!(cwd, pitch_path, slug, transaction_id, dossier)
@@ -733,26 +736,41 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   end
 
   # Classifies the parked transaction's changed paths against the pitch's
-  # own `scope:` frontmatter — `"ok"` when the pitch declares no scope (an
-  # unrouted pitch has no boundary to violate) or every changed path falls
-  # inside a declared exact-file/directory-prefix entry; `"mismatch"`
-  # otherwise. A mismatch NEVER discards bytes — it only forbids automatic
-  # materialization later (see `materialize/2`).
-  @spec classify_scope(String.t(), String.t(), [String.t()]) :: String.t()
+  # own `scope:` frontmatter and returns `{verdict, undeclared_paths}`.
+  # The verdict is REPORT-ONLY: `"ok"` when the pitch declares no scope (an
+  # unrouted pitch has no boundary) or every changed path falls inside a
+  # declared exact-file/directory-prefix entry; `"expanded"` when the
+  # developer also touched paths the pitch did not declare; `"unknown"`
+  # when the pitch could not be read or parsed.
+  #
+  # A non-`"ok"` verdict NEVER discards, withholds, or refuses to restore
+  # bytes. Planning cannot enumerate every line an implementation needs,
+  # and the REVIEWER is the mechanism that adjudicates whether an expansion
+  # was warranted — recovery must not re-litigate that verdict with a
+  # cruder check. Recovery's job is to record what happened (dossier
+  # `scope_expansion` + the pitch's build-failure history row) so a human
+  # can see it.
+  @spec classify_scope(String.t(), String.t(), [String.t()]) :: {String.t(), [String.t()]}
   defp classify_scope(slug, pitch_path, paths) do
     case LoopQueue.parse_scope(slug, pitch_path) do
       {:ok, nil} ->
-        "ok"
+        {"ok", []}
 
       {:ok, []} ->
-        if paths == [], do: "ok", else: "mismatch"
+        scope_verdict(paths)
 
       {:ok, scope} ->
-        if Enum.all?(paths, &path_in_scope?(&1, scope)), do: "ok", else: "mismatch"
+        paths |> Enum.reject(&path_in_scope?(&1, scope)) |> scope_verdict()
     end
   rescue
-    _ -> "mismatch"
+    # An unreadable/unparseable pitch is a REPORTING gap, never a reason to
+    # strand finished work: record `"unknown"` and let materialization run.
+    _ -> {"unknown", []}
   end
+
+  @spec scope_verdict([String.t()]) :: {String.t(), [String.t()]}
+  defp scope_verdict([]), do: {"ok", []}
+  defp scope_verdict(undeclared), do: {"expanded", undeclared}
 
   @spec path_in_scope?(String.t(), [String.t()]) :: boolean()
   defp path_in_scope?(path, scope) do
@@ -775,10 +793,19 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   defp write_history_row(pitch_path, dossier) do
     recovery_commit = dossier["recovery_commit"] || "none (tree clean)"
 
+    # Scope expansion is REPORTED here (never refused): the row names the
+    # undeclared paths so the next human — or the reviewer on the re-run —
+    # can see exactly what the implementation reached beyond the pitch.
+    expansion =
+      case dossier["scope_expansion"] || [] do
+        [] -> ""
+        paths -> "; scope_expansion=#{Enum.join(paths, ", ")}"
+      end
+
     row =
       "| interrupted recovery | #{utc_stamp()} | unaccountable | " <>
         "txn=#{dossier["transaction_id"]}; recovery=#{recovery_commit}; " <>
-        "ownership=#{dossier["ownership"] || "ok"} |"
+        "ownership=#{dossier["ownership"] || "ok"}#{expansion} |"
 
     LoopQueue.write_history_row!(pitch_path, "Build failure history", row)
     :ok
@@ -1034,14 +1061,18 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     - `{:ok, {disposition, dossier}}` — `disposition` is `:exact`
       (current HEAD == dossier's `source_base_sha`, replayed tree exactly
       equals `recovery_tree_sha`), `:advanced` (current HEAD descends from
-      `source_base_sha` but has moved), or `:operator` (a differing
-      same-scope dirty tree was itself parked onto a second
-      `recovery/operator/<slug>/<ts>` ref before materializing the original
-      recovery). The working tree now carries the recovered bytes
-      dirty-and-unstaged.
-    - `{:error, reason}` — ownership mismatch, missing/moved ref, wrong
-      ancestry, conflicting apply, or out-of-scope dirty bytes. The
-      original clean checkout and recovery ref are left untouched.
+      `source_base_sha` but has moved), or `:operator` (a differing dirty
+      tree was itself parked onto a second `recovery/operator/<slug>/<ts>`
+      ref before materializing the original recovery). The working tree now
+      carries the recovered bytes dirty-and-unstaged.
+    - `{:error, reason}` — missing/moved ref, wrong ancestry, conflicting
+      apply, or an already-materialized dossier. The original clean
+      checkout and recovery ref are left untouched.
+
+  Scope is NEVER a reason to refuse: a dossier whose changed paths exceed
+  the pitch's declared `scope:` materializes like any other, because the
+  reviewer — not recovery — adjudicates scope expansion, and refusing here
+  would strand finished work.
   """
   @spec materialize(String.t(), String.t()) ::
           {:ok, :none | {disposition(), map()}} | {:error, String.t()}
@@ -1054,10 +1085,13 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
         %{"recovery_commit" => nil} ->
           {:ok, :none}
 
-        %{"ownership" => "mismatch"} = d ->
-          {:error,
-           "recovery for #{slug} is out of scope — refusing automatic materialization (transaction #{d["transaction_id"]})"}
-
+        # NOTE: there is deliberately NO scope clause here. A dossier whose
+        # changed paths exceeded the pitch's declared `scope:` (any
+        # `ownership` verdict, including legacy `"mismatch"` dossiers
+        # written by older builds) materializes like any other — losing
+        # finished, reviewed, approved bytes is strictly worse than any
+        # sprawl a refusal would have prevented. The expansion is recorded
+        # on the dossier and in the pitch's history, not enforced.
         %{} = d ->
           do_materialize(cwd, slug, d)
       end
@@ -1201,9 +1235,13 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   # bytes are preserved on a second named ref
   # (`recovery/operator/<slug>/<ts>`), recorded as auxiliary evidence on the
   # dossier, the checkout is cleaned, and the ORIGINAL recovery is then
-  # materialized — reconciliation later sees both diffs. Out-of-scope dirty
-  # bytes are preserved the same way but the whole materialization refuses
-  # (non-zero) before any recovered bytes are applied.
+  # materialized — reconciliation later sees both diffs. Operator bytes
+  # OUTSIDE the pitch's declared `scope:` take exactly the same path: they
+  # are preserved on the same ref, the expansion is recorded on the dossier
+  # (`operator_ownership` / `operator_scope_expansion`), and the recovery
+  # still materializes. Refusing here would have parked the operator's tree
+  # and then withheld the recovered bytes — two sets of finished work
+  # stranded to enforce a boundary the reviewer already adjudicates.
   defp park_and_apply_over_operator_edits(
          cwd,
          slug,
@@ -1227,49 +1265,30 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
          {:ok, operator_tree_sha} <- git(cwd, ["rev-parse", "HEAD^{tree}"]),
          {:ok, _} <- git(cwd, ["checkout", original_ref]) do
       paths = porcelain_paths(status)
-      out_of_scope? = classify_scope(slug, pitch_path || "", paths) == "mismatch"
+      {operator_verdict, operator_undeclared} = classify_scope(slug, pitch_path || "", paths)
 
       updated =
         Map.merge(dossier, %{
           "operator_ref" => operator_branch,
-          "operator_tree_sha" => operator_tree_sha
+          "operator_tree_sha" => operator_tree_sha,
+          "operator_ownership" => operator_verdict,
+          "operator_scope_expansion" => operator_undeclared
         })
 
       :ok = write_dossier!(cwd, slug, dossier["transaction_id"], updated)
 
-      if out_of_scope? do
-        {:error,
-         "recovery for #{slug}: operator dirty tree includes out-of-scope paths #{inspect(paths)} — " <>
-           "preserved on #{operator_branch}, refusing before spend"}
+      if head == source_base or ancestor?(cwd, source_base, head) do
+        apply_and_verify(
+          cwd,
+          source_base,
+          recovery_commit,
+          recovery_tree_sha,
+          :operator,
+          updated
+        )
       else
-        case head == source_base do
-          true ->
-            apply_and_verify(
-              cwd,
-              source_base,
-              recovery_commit,
-              recovery_tree_sha,
-              :operator,
-              updated
-            )
-
-          false ->
-            case ancestor?(cwd, source_base, head) do
-              true ->
-                apply_and_verify(
-                  cwd,
-                  source_base,
-                  recovery_commit,
-                  recovery_tree_sha,
-                  :operator,
-                  updated
-                )
-
-              false ->
-                {:error,
-                 "recovery for #{slug}: current HEAD #{head} does not descend from source base #{source_base}"}
-            end
-        end
+        {:error,
+         "recovery for #{slug}: current HEAD #{head} does not descend from source base #{source_base}"}
       end
     else
       {:error, reason} -> {:error, "could not park operator edits for #{slug}: #{reason}"}

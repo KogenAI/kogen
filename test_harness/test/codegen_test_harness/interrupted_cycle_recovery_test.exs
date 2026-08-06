@@ -383,7 +383,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
       assert {"base\n", 0} = System.cmd("git", ["-C", cwd, "show", "HEAD:tracked.txt"])
     end
 
-    test "scope mismatch parks bytes but marks ownership mismatch — no auto-materialize", %{
+    test "scope expansion parks bytes, REPORTS the undeclared paths, and still materializes", %{
       cwd: cwd
     } do
       init_repo!(cwd)
@@ -392,7 +392,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
       File.write!(Path.join(cwd, "tracked.txt"), "base\n")
       commit!(cwd, "base")
 
-      File.write!(Path.join(cwd, "unrelated.txt"), "out of scope\n")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+      File.write!(Path.join(cwd, "unrelated.txt"), "beyond declared scope\n")
 
       assert {:ok, dossier} =
                InterruptedCycleRecovery.park_failure(
@@ -403,10 +404,73 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
                  cause: "test"
                )
 
-      assert dossier["ownership"] == "mismatch"
+      # Reported, not enforced: verdict + the exact undeclared paths.
+      assert dossier["ownership"] == "expanded"
+      assert dossier["scope_expansion"] == ["unrelated.txt"]
+      assert File.read!(pitch_path) =~ "scope_expansion=unrelated.txt"
 
-      assert {:error, reason} = InterruptedCycleRecovery.materialize(cwd, "probe")
-      assert reason =~ "out of scope"
+      # ...and the work is restored anyway, byte-identical to what was parked.
+      assert {:ok, {:exact, materialized}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert File.read!(Path.join(cwd, "tracked.txt")) == "changed\n"
+      assert File.read!(Path.join(cwd, "unrelated.txt")) == "beyond declared scope\n"
+      assert worktree_tree_sha!(cwd) == materialized["recovery_tree_sha"]
+    end
+
+    test "an unparseable pitch records ownership unknown and still materializes", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      # `scope:` present but not a `[...]` flow list — `parse_scope/2` raises.
+      # Historically `classify_scope/3`'s bare rescue turned that into
+      # "mismatch", which stranded the work behind a parse bug.
+      File.write!(pitch_path, "---\nscope: tracked.txt\n---\n# probe\n")
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier["ownership"] == "unknown"
+
+      assert {:ok, {:exact, materialized}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert File.read!(Path.join(cwd, "tracked.txt")) == "changed\n"
+      assert worktree_tree_sha!(cwd) == materialized["recovery_tree_sha"]
+    end
+
+    test "a legacy dossier tagged ownership mismatch still materializes", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      # Rewrite the on-disk dossier the way an older build would have.
+      [dossier_file] =
+        Path.wildcard(Path.join([cwd, "codegen", "gate-pending", "recoveries", "probe", "*.json"]))
+
+      File.write!(dossier_file, Jason.encode!(Map.put(dossier, "ownership", "mismatch")))
+
+      assert {:ok, {:exact, materialized}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert File.read!(Path.join(cwd, "tracked.txt")) == "changed\n"
+      assert worktree_tree_sha!(cwd) == materialized["recovery_tree_sha"]
     end
 
     test "materialize/2: exact-base disposition replays byte-identical tree", %{cwd: cwd} do
@@ -520,7 +584,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
                ])
     end
 
-    test "materialize/2: out-of-scope operator edit refuses before spend, preserved on a branch",
+    test "materialize/2: an operator edit beyond scope is preserved AND the recovery applies",
          %{cwd: cwd} do
       init_repo!(cwd)
       File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
@@ -538,11 +602,27 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
                  cause: "test"
                )
 
-      File.write!(Path.join(cwd, "unrelated.txt"), "operator out of scope\n")
+      File.write!(Path.join(cwd, "unrelated.txt"), "operator beyond scope\n")
 
-      assert {:error, reason} = InterruptedCycleRecovery.materialize(cwd, "probe")
-      assert reason =~ "out-of-scope"
-      refute File.exists?(Path.join(cwd, "unrelated.txt"))
+      assert {:ok, {:operator, dossier}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+
+      # The recovered bytes land...
+      assert File.read!(Path.join(cwd, "tracked.txt")) == "changed\n"
+
+      # ...the operator's own bytes survive on their named ref...
+      assert is_binary(dossier["operator_ref"])
+
+      assert {"operator beyond scope\n", 0} =
+               System.cmd("git", [
+                 "-C",
+                 cwd,
+                 "show",
+                 "#{dossier["operator_ref"]}:unrelated.txt"
+               ])
+
+      # ...and the expansion is REPORTED on the dossier rather than enforced.
+      assert dossier["operator_ownership"] == "expanded"
+      assert dossier["operator_scope_expansion"] == ["unrelated.txt"]
     end
 
     test "successor transaction: a second failure supersedes the predecessor dossier", %{
@@ -675,6 +755,24 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
                )
 
       assert reason =~ "multiple active recovery dossiers"
+    end
+  end
+
+  # Tree sha of the working tree as-is (HEAD + every dirty/untracked path),
+  # computed against a throwaway index so the repo's own index is untouched
+  # — the comparison target for "the restored tree matches recovery_tree_sha".
+  defp worktree_tree_sha!(cwd) do
+    idx = Path.join(System.tmp_dir!(), "recovery-test-idx-#{System.unique_integer([:positive])}")
+    env = [{"GIT_INDEX_FILE", idx}]
+
+    try do
+      {head, 0} = System.cmd("git", ["-C", cwd, "rev-parse", "HEAD"])
+      {_, 0} = System.cmd("git", ["-C", cwd, "read-tree", String.trim(head)], env: env)
+      {_, 0} = System.cmd("git", ["-C", cwd, "add", "-A"], env: env)
+      {tree, 0} = System.cmd("git", ["-C", cwd, "write-tree"], env: env)
+      String.trim(tree)
+    after
+      File.rm(idx)
     end
   end
 

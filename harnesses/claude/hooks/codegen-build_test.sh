@@ -508,6 +508,47 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (m4): unborn/non-git --cwd → HEAD binding is WAIVED, not failed.
+# Mirrors the loop's own carve-out: Mix.Tasks.Codegen.Loop.git_head/1 maps a
+# nonzero `git rev-parse HEAD` to :unborn and verify_commit_landed(:unborn, _)
+# returns {:ok, nil}. The wrapper used to set _dispatch_rc=1 with
+# "cannot resolve current HEAD" on the exact condition the loop waives.
+# Every other binding stays live — (m4b) proves a wrong invocation_id still
+# fails closed with no HEAD to compare.
+# ─────────────────────────────────────────────────────────────────────────────
+# Dispatch stub that writes result evidence WITHOUT ever `git init`-ing --cwd,
+# so `git rev-parse HEAD` finds no repository at all.
+result_unborn_body() {
+    printf 'cwd="${CODEGEN_BUILD_CWD:-.}"\npending="$cwd/codegen/gate-pending"\nmkdir -p "$pending"\nprintf "{\\\"invocation_id\\\":\\\"%%s\\\",\\\"slug\\\":\\\"%%s\\\",\\\"status\\\":\\\"success\\\",\\\"head\\\":\\\"\\\",\\\"updated_at\\\":\\\"fixture\\\"}\\n" "${RESULT_INVOCATION_ID:-$CODEGEN_BUILD_INVOCATION_ID}" "${RESULT_SLUG:-adhoc}" > "$pending/build-result.json"\nprintf "{\\\"verdict\\\":\\\"clear\\\"}\\n" > "$pending/gate-result.json"\nexit 0\n'
+}
+
+CB_M4="$(make_cb_root cb_m4)"
+mkdir -p "$CB_M4/harnesses/claude"
+make_stub "$CB_M4/harnesses/claude/dispatch.sh" "$(result_unborn_body)"
+MARKER_M4="$BASE_TMP/marker_m4"
+mkdir -p "$MARKER_M4"
+
+actual_ec=0
+stderr_m4=$("$CB_M4/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_M4" \
+    "m4 prompt" 2>&1 >/dev/null) || actual_ec=$?
+check "(m4) unborn HEAD waives the head binding instead of failing" "0" "$actual_ec"
+m4_head_complaint=$(printf '%s' "$stderr_m4" | grep -c "cannot resolve current HEAD" || true)
+check "(m4) no 'cannot resolve current HEAD' refusal on an unborn cwd" "0" "$m4_head_complaint"
+
+# (m4b) unborn HEAD does NOT relax the remaining bindings.
+CB_M4B="$(make_cb_root cb_m4b)"
+mkdir -p "$CB_M4B/harnesses/claude"
+make_stub "$CB_M4B/harnesses/claude/dispatch.sh" "$(result_unborn_body)"
+MARKER_M4B="$BASE_TMP/marker_m4b"
+mkdir -p "$MARKER_M4B"
+
+actual_ec=0
+RESULT_INVOCATION_ID=stale-invocation \
+    "$CB_M4B/codegen-build" --harness=claude --stack=phoenix --cwd="$MARKER_M4B" \
+    "m4b prompt" >/dev/null 2>&1 || actual_ec=$?
+check "(m4b) unborn HEAD still fails closed on a stale invocation id" "1" "$actual_ec"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Test (g): codegen-build must never write into $PWD when --cwd points
 # elsewhere — no gate-pending state leaks into the invoking shell's directory.
 # ─────────────────────────────────────────────────────────────────────────────

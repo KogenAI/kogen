@@ -190,6 +190,25 @@ for mode in debug shape experiment ops; do
         "$SENTINEL_PUSHBACK"
 done
 
+# ── Test: committer staging scope is unconditional `git add -A` ───────────────
+# `shared/rules/roles/committer.md` already says "never hand-pick a subset" and
+# "Partial snapshots ... are FORBIDDEN", but the baked `## Job` step 6 in the
+# .md.j2 rendered AFTER that include used to end with "Some unrelated → stage by
+# name only" — the last staging instruction the model reads, and a licence to
+# leave curator-written `context/**` / `PROJECT_CONTEXT.md` behind. The committer
+# is deliberately denied Read on exactly those paths (subagent-read-discipline),
+# so it can never tell "unrelated" from "cycle output"; anything it skips trips
+# the loop's post-committer clean-tree gate (`verify_committed!`).
+assert_absent \
+    "committer.md.j2 carries no stage-by-name hand-pick licence" \
+    "$CODEGEN_DIR/shared/subagents/shared/committer.md.j2" \
+    "stage by name only"
+
+assert_contains \
+    "committer.md.j2 mandates unconditional git add -A" \
+    "$CODEGEN_DIR/shared/subagents/shared/committer.md.j2" \
+    "ALWAYS \`git add -A\`"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

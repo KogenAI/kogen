@@ -61,13 +61,13 @@ First benchmark run installs Playwright Chromium automatically via npm.
 
 ## Stack Detection
 
-`screenshot.js` maps each `--stack` argument to a serve directory via `resolveServeDir()`. Phoenix is handled separately — it spawns its own server rather than using a static serve directory. The fallback chains per static stack are:
+`screenshot.js` recognises exactly TWO stacks: `phoenix` (handled in `main()`, spawns its own server) and `static` (mapped to a serve directory by `resolveServeDir()`). Any other `--stack` value hits `resolveServeDir`'s `default:` branch and exits 1 with `Unknown stack: <name>` — there is no `multilingual`, `vite_react` or `vite_vue` branch, whatever earlier revisions of this file claimed.
 
 ### Vite Bundle-Marker Detection
 
 An agent may write a source-shape `index.html` into `public/` (e.g. `<!doctype html>...<div id="root"></div>`) without running `npm run build`. With `outDir: "public"` (Vite project rule), the screenshot logic would find `public/index.html` and serve it directly — but it has no `<script src="/assets/index-HASH.js">` reference, so React/Vue never loads and the PNG is blank.
 
-`hasBundledScript(html)` scans the first 4KB of any candidate `index.html` for a `<script src="...">` pointing to a built asset (hashed filename like `index-UV0H7q2h.js`, or paths under `/assets/` or `/dist/`). If the check fails **and** the sub-stack is Vite, the existing file is ignored and the Vite build branch runs, overwriting `public/index.html` with real bundled output. This applies to both `public/index.html` and `dist/index.html`.
+`hasBundledScript(html)` scans the first 4KB of `public/index.html` for a `<script src="...">` pointing to a built asset (hashed filename like `index-UV0H7q2h.js`, or paths under `/assets/` or `/dist/`). If the check fails, the existing file is ignored and the build branch runs, overwriting `public/index.html` with real bundled output. `public/index.html` is the only candidate — `resolveServeDir` never looks at `dist/`.
 
 ### Phoenix Server Lifecycle
 
@@ -83,26 +83,15 @@ An agent may write a source-shape `index.html` into `public/` (e.g. `<!doctype h
 
 ### `static`
 
-Sub-stack is detected first (before any directory existence check) to avoid the Vite source-convention trap: Vite projects place a source `index.html` at the cwd root, which looks like a plain-HTML project but references untranspiled ESM files that browsers cannot load.
+`resolveServeDir`'s only non-default case. Serve dir is `public/` — the Vite
+`outDir` this repo's static scaffold configures (see
+`context/scaffold.md` § static SEO baseline).
 
 Detection order:
 
-1. `dist/index.html` exists **and** passes bundle-marker check → serve `dist/` (already built — Vite output)
-2. `vite.config.*` + `package.json` detected (or bundle-marker check failed above) → run `npm install && npm run build`, then serve `dist/` (or `public/` if build outputs there)
-3. `index.html` at cwd root (plain HTML) → serve cwd
-4. Any `.html` file at cwd root → serve cwd
-
-### `multilingual`
-
-Detection order:
-
-1. `dist/index.html` exists → serve `dist/` (Vite multilingual build)
-2. `static/index.html` exists → serve `static/` (plain multi-page layout)
-3. Fallback: serve cwd
-
-### `vite_react` / `vite_vue`
-
-Checks `dist/`. If missing, runs `npm install && npm run build` and serves `dist/`.
+1. `public/index.html` exists **and** passes the bundle-marker check → serve `public/` (already built)
+2. Otherwise → `npm install --silent --no-audit --no-fund` then `npm run build`, then serve `public/`
+3. `public/index.html` still absent after the build → throw `Vite build ran but public/index.html not found in <cwd>`
 
 ## CSS Injection
 

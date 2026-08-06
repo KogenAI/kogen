@@ -58,6 +58,10 @@ install:
 	@python3 "$(SCRIPT_DIR)/templates/generator/enforcement_compiler.py" \
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
 		--bash-out "$(SCRIPT_DIR)/harnesses/claude/hooks"
+	@bash "$(SCRIPT_DIR)/templates/generator/orphan-hook-check.sh" \
+		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
+		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
+		--prune
 	@python3 "$(SCRIPT_DIR)/templates/generator/hook_registrations.py" \
 		--hooks-dir "$(SCRIPT_DIR)/harnesses/claude/hooks" \
 		--registry "$(SCRIPT_DIR)/shared/enforcement/registry.yaml" \
@@ -112,6 +116,20 @@ enforce-hook-rationale:
 
 .PHONY: harness-parity
 harness-parity:
+	@bad=""; \
+	for s in "$(SCRIPT_DIR)/codegen-build" "$(SCRIPT_DIR)/codegen-call" \
+		"$(SCRIPT_DIR)/codegen-propose" "$(SCRIPT_DIR)/codegen-log" \
+		"$(SCRIPT_DIR)/harnesses/claude/dispatch.sh" \
+		"$(SCRIPT_DIR)/shared/scaffold/static/scaffold.sh"; do \
+		[ -f "$$s" ] || continue; \
+		bash -n "$$s" 2>/dev/null || bad="$$bad $$s"; \
+	done; \
+	if [ -n "$$bad" ]; then \
+		echo "harness-parity: ABORTED — script(s) under test do not parse:$$bad"; \
+		for s in $$bad; do bash -n "$$s" 2>&1 | sed 's/^/  /'; done; \
+		echo "harness-parity: every assertion below would have failed for this one reason — fix the syntax error first (see also: make shell-syntax)."; \
+		exit 1; \
+	fi
 	@t_out=$$(mktemp -d); \
 	t_in=$$(mktemp); \
 	trap 'rm -rf "$$t_out"; rm -f "$$t_in"' EXIT; \
@@ -311,9 +329,19 @@ test-stacks-claude: test-stacks-claude-compile
 	  $(if $(BENCH_RUN_DIR),BENCH_RUN_DIR="$(BENCH_RUN_DIR)") \
 	  mix test --no-compile --only slow
 
+# MIX_ENV=test is load-bearing, not decoration. MIX_BUILD_PATH suppresses
+# Mix's per-environment subdirectory, so `_build/claude_test` is ONE physical
+# directory shared by every invocation that names it. Compiling it in dev
+# (the default) made every alternation with `make test`/`mix test --only slow`
+# a full 26-file purge-and-recompile of that root — and a purge landing under
+# a concurrently running BEAM is exactly the `UndefinedFunctionError: module
+# ... is not available` this repo already documents (context/development.md
+# § Mix build-path assignment). It also meant `test-stacks-claude` below ran
+# `mix test --no-compile` (test env) against dev-compiled beams.
+# One build root, one MIX_ENV — enforced by `make mix-build-path-parity`.
 test-stacks-claude-compile:
 	cd "$(SCRIPT_DIR)/test_harness" && \
-		MIX_BUILD_PATH=_build/claude_test mix compile
+		MIX_ENV=test MIX_BUILD_PATH=_build/claude_test mix compile
 
 # bench-preflight: spend-free bench-path validity gate. Runs ONLY offline,
 # zero-model checks — never invoke mix codegen.loop, bare codegen-build (no
@@ -332,7 +360,7 @@ bench-preflight:
 	echo ""; \
 	echo "--- (a) bench Mix task name resolution ---"; \
 	for t in codegen.bench.check_regression codegen.bench.view codegen.bench.list; do \
-		if (cd "$(SCRIPT_DIR)/test_harness" && MIX_BUILD_PATH=_build/claude_test mix help "$$t" >/dev/null 2>&1); then \
+		if (cd "$(SCRIPT_DIR)/test_harness" && MIX_BUILD_PATH=_build/bench_preflight mix help "$$t" >/dev/null 2>&1); then \
 			echo "OK: mix help $$t resolves"; \
 		else \
 			echo "FAIL: mix task $$t does not resolve (mix help $$t)"; fails=$$((fails + 1)); \
@@ -498,6 +526,61 @@ pitch-scope-parity:
 prompt-size-budget:
 	@python3 "$(SCRIPT_DIR)/templates/generator/prompt_size_budget.py" --check; rc=$$?; \
 	if [ $$rc -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "prompt-size-budget: PASS"; fi; \
+	exit $$rc
+
+# context-index-parity: fail-closed gate over the repo's OWN context docs.
+# Two legs, both run, both reported (never fail-fast on the first):
+#   1. context_index_sync.py --check — the PROJECT_CONTEXT.md "Load when
+#      prompt mentions..." column is GENERATED from each context/*.md
+#      § Trigger Keywords section. Drift here is fixed by `make
+#      context-index-sync`, never by hand-editing the index.
+#   2. context-index-parity-scan.sh — the same scan the build-time curator
+#      gate runs (coverage, phantom rows, missing Trigger Keywords sections,
+#      non-.md clutter), pointed at THIS repo. It used to run only against
+#      test fixtures, so repo-level drift blocked every build while `make ci`
+#      stayed green. A gate that blocks builds must be visible to CI.
+.PHONY: context-index-parity
+context-index-parity:
+	@fail=0; \
+	out=$$(python3 "$(SCRIPT_DIR)/templates/generator/context_index_sync.py" \
+		--repo-root "$(SCRIPT_DIR)" --check 2>&1) || fail=1; \
+	[ -z "$$out" ] || printf '%s\n' "$$out"; \
+	out=$$(bash "$(SCRIPT_DIR)/harnesses/claude/hooks/lib/context-index-parity-scan.sh" \
+		"$(SCRIPT_DIR)" 2>&1) || fail=1; \
+	[ -z "$$out" ] || printf '%s\n' "$$out"; \
+	if [ $$fail -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "context-index-parity: PASS"; fi; \
+	exit $$fail
+
+# context-index-sync: regenerate the index's trigger column from the context
+# files. This is the remedy for a red context-index-parity — it needs no
+# judgement, which is the whole point of deriving the column instead of
+# maintaining a second copy of it by hand.
+.PHONY: context-index-sync
+context-index-sync:
+	@python3 "$(SCRIPT_DIR)/templates/generator/context_index_sync.py" \
+		--repo-root "$(SCRIPT_DIR)" --write
+
+# shell-syntax: every tracked shell script parses (`bash -n`, `zsh -n` for
+# zsh). Its own stage, deliberately: an unparseable script does not fail once
+# — `codegen-build` with a missing `fi` produced thirteen red assertions in
+# codegen-build_test.sh, none of which said "syntax error". Reported here, the
+# cause is one line with the parser's own line number. See the script header.
+.PHONY: shell-syntax
+shell-syntax:
+	@out=$$(bash "$(SCRIPT_DIR)/templates/generator/shell-syntax-check.sh" "$(SCRIPT_DIR)" 2>&1); rc=$$?; \
+	if [ -n "$$VERBOSE" ] || [ $$rc -ne 0 ]; then [ -z "$$out" ] || printf '%s\n' "$$out"; fi; \
+	exit $$rc
+
+# mix-build-path-parity: one Mix build root, one MIX_ENV. MIX_BUILD_PATH has
+# no per-environment subdirectory, so two invocations naming the same root
+# under different environments purge and recompile each other — the documented
+# `UndefinedFunctionError: module ... is not available` hazard. Derives the
+# root -> env map from the sources instead of trusting the prose table in
+# context/development.md § Mix build-path assignment.
+.PHONY: mix-build-path-parity
+mix-build-path-parity:
+	@out=$$(bash "$(SCRIPT_DIR)/templates/generator/mix-build-path-parity.sh" "$(SCRIPT_DIR)" 2>&1); rc=$$?; \
+	if [ -n "$$VERBOSE" ] || [ $$rc -ne 0 ]; then [ -z "$$out" ] || printf '%s\n' "$$out"; fi; \
 	exit $$rc
 
 # show-failures: pretty-print the durable agent tool-failure store.

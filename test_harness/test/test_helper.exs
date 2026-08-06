@@ -10,24 +10,24 @@
 # caller that omits a :log_init_fn stub silently writes a real cycle log into
 # the LIVE codegen/logging/ dir instead of a test sandbox. See
 # context/test-harness-pitfalls.md.
-_live_logging = Path.expand("../../codegen/logging", __DIR__)
+live_logging = Path.expand("../../codegen/logging", __DIR__)
 
-_logging_before =
-  if File.dir?(_live_logging) do
-    MapSet.new(File.ls!(_live_logging))
+logging_before =
+  if File.dir?(live_logging) do
+    MapSet.new(File.ls!(live_logging))
   else
     MapSet.new()
   end
 
 ExUnit.after_suite(fn _results ->
   after_set =
-    if File.dir?(_live_logging) do
-      MapSet.new(File.ls!(_live_logging))
+    if File.dir?(live_logging) do
+      MapSet.new(File.ls!(live_logging))
     else
       MapSet.new()
     end
 
-  leaked = MapSet.difference(after_set, _logging_before)
+  leaked = MapSet.difference(after_set, logging_before)
 
   unless MapSet.size(leaked) == 0 do
     IO.puts(
@@ -39,7 +39,14 @@ ExUnit.after_suite(fn _results ->
   end
 end)
 
-ExUnit.start(exclude: [:slow])
+# capture_log: BenchArtifacts logs a `Logger.warning` whenever screenshot.js
+# exits non-zero — correct production behaviour, and exactly what the
+# negative-path bench_artifacts tests provoke on purpose (no mix.exs, no
+# package.json, nonexistent cwd). Printed straight through, those expected
+# warnings read like breakage in the suite's own output. Capturing them keeps
+# the logging intact AND still surfaces it: ExUnit prints the captured log for
+# any test that actually fails.
+ExUnit.start(exclude: [:slow], capture_log: true)
 
 # `OrchestrationLoop.run/1` acquires a per-cwd single-flight lock by default
 # (see CodegenTestHarness.BuildLock). Pre-existing async: true tests share a

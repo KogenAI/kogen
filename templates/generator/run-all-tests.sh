@@ -131,6 +131,9 @@ tmp_prompt_content_parity=$(mktemp)
 tmp_usage_rules_index_parity=$(mktemp)
 tmp_prompt_size_budget=$(mktemp)
 tmp_pitch_scope_parity=$(mktemp)
+tmp_context_index_parity=$(mktemp)
+tmp_mix_build_path_parity=$(mktemp)
+tmp_shell_syntax=$(mktemp)
 # The three tail-population tmp files are mktemp'd unconditionally here (not
 # inside the phase-2 block below) so cleanup at the end of the script is
 # uniform regardless of which branch (overlap or serial) actually runs them.
@@ -192,11 +195,51 @@ tmps+=("$tmp_prompt_size_budget")
 pids+=($!)
 labels+=(pitch-scope-parity)
 tmps+=("$tmp_pitch_scope_parity")
+{ make --no-print-directory context-index-parity; } >"$tmp_context_index_parity" 2>&1 &
+pids+=($!)
+labels+=(context-index-parity)
+tmps+=("$tmp_context_index_parity")
+{ make --no-print-directory mix-build-path-parity; } >"$tmp_mix_build_path_parity" 2>&1 &
+pids+=($!)
+labels+=(mix-build-path-parity)
+tmps+=("$tmp_mix_build_path_parity")
+{ make --no-print-directory shell-syntax; } >"$tmp_shell_syntax" 2>&1 &
+pids+=($!)
+labels+=(shell-syntax)
+tmps+=("$tmp_shell_syntax")
 tmp_mcp_server=$(mktemp)
 {
     mcp_dir="$SCRIPT_DIR/harnesses/claude/mcp-server"
     fail=0
+    # Bootstrap, not breakage. `npm test` here runs `tsc`, which lives in this
+    # package's own node_modules — never installed by `make test`, and not by
+    # anything else a fresh clone/worktree runs either. Without this the stage
+    # reported `sh: vitest/tsc: command not found` as a TEST FAILURE, and the
+    # developer spent a rework cycle proving their change was innocent. Install
+    # once, keyed on the lockfile hash so a warm tree pays nothing; if the
+    # install itself fails, say ENVIRONMENT NOT READY — a distinct verdict from
+    # "your code is broken".
     if [ -f "$mcp_dir/package.json" ] && grep -q '"test"[[:space:]]*:' "$mcp_dir/package.json"; then
+        lock_stamp="$mcp_dir/node_modules/.codegen-lock-stamp"
+        want=""
+        if [ -f "$mcp_dir/package-lock.json" ]; then
+            want=$(shasum -a 256 "$mcp_dir/package-lock.json" 2>/dev/null | awk '{print $1}')
+        fi
+        have=""
+        [ -f "$lock_stamp" ] && have=$(cat "$lock_stamp" 2>/dev/null)
+        if [ ! -d "$mcp_dir/node_modules" ] || [ "$want" != "$have" ]; then
+            echo "▶ Bootstrap: mcp-server node_modules (lockfile changed or absent)"
+            if boot=$(cd "$mcp_dir" && mise exec -- npm ci --prefer-offline --no-audit --no-fund 2>&1); then
+                [ -n "$want" ] && printf '%s' "$want" >"$lock_stamp"
+            else
+                echo "▶ ENVIRONMENT NOT READY: mcp-server — npm ci failed. This is a"
+                echo "  bootstrap failure, not a test failure: nothing was installed, so"
+                echo "  nothing was tested. Fix the environment (network/registry/node"
+                echo "  version), then re-run."
+                printf '%s\n' "$boot"
+                exit 1
+            fi
+        fi
         if [ -n "$VERBOSE" ]; then
             echo "▶ Test: mcp-server"
             if ! (cd "$mcp_dir" && mise exec -- npm test); then
@@ -342,5 +385,6 @@ rm -f "$tmp_hooks" "$tmp_scaffold" "$tmp_install" "$tmp_mcp_server" \
     "$tmp_hook_parity" "$tmp_hook_header_parity" "$tmp_harness_parity" "$tmp_test_generator" \
     "$tmp_enforce_registry_parity" "$tmp_enforce_hook_rationale" "$tmp_test_hermetic" \
     "$tmp_prompt_content_parity" "$tmp_rule_render_freshness" \
-    "$tmp_usage_rules_index_parity" "$tmp_prompt_size_budget" "$tmp_pitch_scope_parity"
+    "$tmp_usage_rules_index_parity" "$tmp_prompt_size_budget" "$tmp_pitch_scope_parity" \
+    "$tmp_context_index_parity" "$tmp_mix_build_path_parity" "$tmp_shell_syntax"
 exit "$fail"

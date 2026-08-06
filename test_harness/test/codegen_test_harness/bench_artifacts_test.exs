@@ -93,10 +93,20 @@ defmodule CodegenTestHarness.BenchArtifactsTest do
     end
   end
 
-  # ── Case 3: vite_react without dist/ or package.json → {:error, _} ────────
+  # ── Case 3: a stack screenshot.js does not implement → {:error, _} ────────
+  #
+  # `screenshot.js` recognises exactly two stacks: "phoenix" (own server) and
+  # "static" (resolveServeDir). Every other value — "vite_react" here — hits
+  # resolveServeDir's `default:` branch and exits 1 with `Unknown stack`. This
+  # test asserts the NON-FATAL contract (capture_screenshot surfaces that as
+  # {:error, _} and never raises), NOT anything about Vite builds; an earlier
+  # revision of test_harness/bench/README.md claimed vite_react/vite_vue/
+  # multilingual branches that resolveServeDir has never had.
 
-  describe "capture_screenshot/4 — vite_react with missing build artifacts" do
-    test "returns {:error, _} when dist/ is absent and build would fail", %{run_dir: run_dir} do
+  describe "capture_screenshot/4 — stack screenshot.js does not implement" do
+    test "returns {:error, _} for an unimplemented stack instead of raising", %{
+      run_dir: run_dir
+    } do
       cwd =
         Path.join([
           System.tmp_dir!(),
@@ -106,15 +116,15 @@ defmodule CodegenTestHarness.BenchArtifactsTest do
       File.mkdir_p!(cwd)
       ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(cwd) end)
 
-      # No package.json → npm run build will fail → screenshot.js exits 1
-      # (unless node/playwright is missing → graceful :ok skip)
+      # "vite_react" is not a stack screenshot.js implements → it exits 1 on
+      # `Unknown stack` (unless node/playwright is missing → graceful :ok skip)
       png_path = Path.join([run_dir, "runs", "claude", "vite_react", "vite_test.png"])
 
       result = BenchArtifacts.capture_screenshot(cwd, "vite_react", run_dir, "vite_test")
 
       case result do
         {:error, _} ->
-          # Build failed as expected
+          # Rejected as expected — not raised
           :ok
 
         :ok ->

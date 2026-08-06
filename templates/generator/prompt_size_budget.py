@@ -60,6 +60,35 @@ RULE_DIRS = [
     CODEGEN_DIR / "shared" / "rules" / "stacks",
 ]
 
+# Ceiling applied to a rule file that has NO committed row — derived from the
+# STYLE_GUIDE.md targets (shared rules < 50 lines, subagent/orchestration rules
+# < 150 lines) rather than from a row someone has to remember to add.
+#
+# Why derive instead of failing: the committed rows freeze CURRENT size as a
+# grandfathered ceiling for files that predate the gate. A brand-new rule file
+# has no such history, so "no row" used to be a hard fail whose ONLY stated
+# remedy was `--write` — a command every agent write path to this file denies.
+# That is a deadlock: the role that legitimately adds a rule file (curator,
+# /rule) could not clear the gate by any action available to it. Deriving the
+# ceiling removes the deadlock WITHOUT loosening anything: a new file is held
+# to the STYLE_GUIDE target, which is STRICTER than the grandfathered ceilings
+# beside it, and an overflow has an action the author can actually take —
+# shrink it.
+DERIVED_CEILING_LINES = {
+    "shared/rules/_core": 50,
+    "shared/rules/roles": 150,
+    "shared/rules/stacks": 150,
+}
+DERIVED_CEILING_FALLBACK_LINES = 150
+
+
+def derived_ceiling(relpath):
+    """STYLE_GUIDE-derived line ceiling for a rule file with no committed row."""
+    for prefix, ceiling in DERIVED_CEILING_LINES.items():
+        if relpath.startswith(prefix + "/"):
+            return ceiling
+    return DERIVED_CEILING_FALLBACK_LINES
+
 AGENT_SUBAGENT_DIRS = [
     CODEGEN_DIR / "shared" / "subagents" / "shared",
     CODEGEN_DIR / "shared" / "subagents" / "phoenix",
@@ -197,20 +226,49 @@ def main():
     all_sizes.update(rule_sizes)
     all_sizes.update(agent_sizes)
 
+    notices = []
+
     for relpath, actual in sorted(all_sizes.items()):
         if relpath not in budgets:
-            failures.append(f"{relpath}: no committed budget row — run --write to seed one")
+            if relpath in agent_sizes:
+                # A rendered agent prompt has no STYLE_GUIDE target to derive
+                # from, and a new one only appears when an operator adds a
+                # subagent template. Seeding its ceiling is a real operator
+                # decision, so this stays a hard fail — but say which command,
+                # and that it is the operator's to run.
+                failures.append(
+                    f"{relpath}: new rendered agent prompt with no committed budget row. "
+                    "There is no derivable ceiling for an agent prompt — an operator must "
+                    "seed one: python3 templates/generator/prompt_size_budget.py --write"
+                )
+                continue
+            budget = derived_ceiling(relpath)
+            if actual > budget:
+                failures.append(
+                    f"{relpath}: {actual} lines exceeds the STYLE_GUIDE ceiling {budget} lines "
+                    "for a NEW rule file (no committed row — new files are held to the "
+                    "STYLE_GUIDE target, not to a grandfathered ceiling). Shrink it."
+                )
             continue
         budget = budgets[relpath]
         if actual > budget:
             unit = "bytes" if relpath in agent_sizes else "lines"
             failures.append(f"{relpath}: {actual} {unit} exceeds committed budget {budget} {unit}")
 
-    # A budget row naming a file that no longer exists is stale — flag it too,
-    # so a deleted/renamed file doesn't leave an orphaned ceiling forever.
+    # A budget row naming a file that no longer exists is stale. It is NOT a
+    # size violation — a deleted file cannot overflow anything — and its only
+    # remedy (--write) is denied to every agent, so failing on it deadlocked
+    # the role that deleted or renamed the file. Reported, not fatal: the
+    # operator prunes it, and until they do the derived ceiling above governs
+    # any file that later takes the name (stricter than the orphaned row).
     for relpath in sorted(budgets):
         if relpath not in all_sizes:
-            failures.append(f"{relpath}: budget row present but file no longer exists — stale row")
+            notices.append(f"{relpath}: budget row present but file no longer exists — stale row")
+
+    if notices:
+        print("prompt_size_budget: stale budget row(s) — operator prune with --write:", file=sys.stderr)
+        for n in notices:
+            print(f"  - {n}", file=sys.stderr)
 
     if failures:
         print("prompt_size_budget: FAILED — prompt attention budget exceeded:", file=sys.stderr)

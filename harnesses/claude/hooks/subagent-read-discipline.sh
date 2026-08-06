@@ -158,7 +158,7 @@ developer-*)
             exit 0
         fi
 
-        deny "Developer cannot read $FILE_PATH for orientation. Read context/*.md only when the path appears in the loop's files_to_touch event, which the loop writes from the pitch's scope: field."
+        deny "Developer cannot read $FILE_PATH for orientation — it is not in the loop's files_to_touch event, which the loop writes from the pitch's scope: field. This limits ORIENTATION READS only; it does not limit which files you may change. If the implementation genuinely needs a file the pitch did not declare, edit it and name it in your report's files-modified list with a one-line justification — the reviewer adjudicates scope expansion, and an expansion the reviewer accepts is a legitimate outcome. Do not narrow the pitch to fit the declared list."
         exit 0
     fi
     ;;

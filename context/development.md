@@ -52,6 +52,10 @@ The `tracked-tree-isolation` backstop snapshots `git diff --binary --full-index 
 | `make uninstall`          | Remove installed claude harness artifacts                                                                                                                                  |
 | `make test-coverage`      | Run coverage per language → `coverage/<lang>/`                                                                                                                             |
 | `make test-generator`     | Run Python unittest + bash unit tests for generator pipeline                                                                                                               |
+| `make shell-syntax`       | `bash -n` every tracked shell script (`zsh -n` for zsh) — an unparseable script is reported once, by name, instead of as N assertion failures in whatever test runs it     |
+| `make mix-build-path-parity` | One Mix build root, one `MIX_ENV` — see § Mix build-path assignment                                                                                                     |
+| `make context-index-parity`  | The `PROJECT_CONTEXT.md` trigger column matches `context/*.md` § Trigger Keywords, plus the build-time index scan against this repo's own docs                           |
+| `make context-index-sync`    | Regenerate that trigger column from the context files (the remedy for a red `context-index-parity`)                                                                     |
 
 **`rule-render-freshness` gate**: `make test` includes a `rule-render-freshness` target that re-renders all `shared/apps/*.j2` templates via `process_template.py` + prettier and diffs against the committed `shared/apps/*.md` files. A STALE verdict means the committed files don't match a fresh render — i.e., a rule or template changed without re-running `make install`. This is distinct from ExUnit and hook tests; a FAILED `make test` log may show multiple subsystem failures. It overlaps phase 1 on a threshold-eligible box and remains the final member of the low-core serial tail. There is no retry-on-STALE; a first-pass mismatch is authoritative.
 
@@ -59,11 +63,14 @@ The `tracked-tree-isolation` backstop snapshots `git diff --binary --full-index 
 
 **Mix build-path assignment**: every long-lived or child-spawning Mix invocation in this repo gets its own `MIX_BUILD_PATH` so a self-build recompiling engine source (`test_harness/lib/`) can never yank beams out from under a still-running parent — Elixir loads modules lazily, so two processes sharing one `_build/*` root is a live `UndefinedFunctionError` hazard, not a theoretical one.
 
+**One build root, one `MIX_ENV`** — `MIX_BUILD_PATH` replaces the build path wholesale and does NOT get a per-environment subdirectory, so `_build/claude_test` is one physical directory whatever env names it. Two envs on one root purge and recompile each other on every alternation (measured: a full 26-file recompile per flip), and a purge landing under a running BEAM is the same `UndefinedFunctionError`. `make mix-build-path-parity` derives the root -> env map from the sources and fails on any root claimed by two envs, so this table can no longer be the only thing holding the invariant.
+
 | Process                                                   | Build path                | Set by                                                        |
 | ----------------------------------------------------------- | -------------------------- | --------------------------------------------------------------- |
 | drain, long-lived (`claude-build.sh --queue`)                | `_build/drain`             | `claude-build.sh` `--queue` leg (`export`)                       |
 | per-pitch loop child (`dispatch.sh` both twins)              | `_build/loop`              | `dispatch.sh`'s `env \` wrapper around `mix codegen.loop`        |
-| dev-gate (`make test`, `make test-stacks`)                   | `_build/claude_test` etc.   | Makefile targets directly                                      |
+| dev-gate (`make test`, `make test-stacks`) — MIX_ENV=test only | `_build/claude_test`       | Makefile targets directly                                      |
+| `mix help` task resolution (`make bench-preflight`)          | `_build/bench_preflight`   | Makefile target directly                                       |
 | harness/parity tests                                        | own dedicated paths        | Makefile targets directly                                      |
 | `mix codegen.pitches.scope` (`codegen-drain assign`)          | `_build/pitch_scope_parity` | `codegen-drain` (matches the `pitch-scope-parity` Makefile target) |
 | ad-hoc `mix compile` / `iex -S mix`                          | `_build/dev`                | unset — Mix default                                             |
@@ -148,4 +155,4 @@ Elixir seam threading (preserving test-override capacity) + RoleResolver shape-c
 
 ## Trigger Keywords
 
-make install, make test, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, launcher tests, Makefile for t in list, dev loop, tech stack, coding conventions, developer-no-self-gate, test budget
+make install, make test, mix-build-path-parity, one build root one MIX_ENV, core-gated tail overlap, TAIL_OVERLAP_MIN_CORES, EXUNIT_MAX_CASES, make test-stacks, CI/CD, Makefile, contribution, README, env vars, harness-parity, parallel harness-parity, launcher tests, exact-once population, dev loop, tech stack, coding conventions, developer-no-self-gate, test budget

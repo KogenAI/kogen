@@ -143,12 +143,19 @@ seams:
     guard_time: make-test
     pattern: checked-mirror
 
+  - id: mix-build-root-to-mix-env
+    declares: every `MIX_BUILD_PATH=_build/<root>` invocation site (Makefile, launchers, drain)
+    reflects: context/development.md § Mix build-path assignment (the root -> process table)
+    guard: mix-build-path-parity
+    guard_time: make-test
+    pattern: set-parity
+
   - id: context-docs-to-project-context-index
     declares: context/*.md (file set + § Trigger Keywords)
     reflects: PROJECT_CONTEXT.md (§ Domain Context Files table rows + keyword cells)
-    guard: harnesses/claude/hooks/lib/context-index-parity-scan.sh
-    guard_time: runtime
-    pattern: set-parity
+    guard: context-index-parity
+    guard_time: make-test
+    pattern: generated
 
   - id: scaffold-project-context-template-to-generated-docs
     declares: shared/apps/PROJECT_CONTEXT*.j2 (promises context/*.md files exist)

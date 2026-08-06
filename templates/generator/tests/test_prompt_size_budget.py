@@ -126,3 +126,29 @@ class RemedyMessageTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DerivedCeilingTest(unittest.TestCase):
+    """A rule file with no committed row must have a DERIVABLE ceiling.
+
+    Before: "no committed budget row" was a hard fail whose only remedy was
+    --write, a command every agent write path to prompt-budgets.txt denies —
+    so the role that legitimately added a rule file could not clear the gate
+    by any action available to it.
+    """
+
+    def test_core_rules_derive_the_strict_style_guide_ceiling(self):
+        self.assertEqual(psb.derived_ceiling("shared/rules/_core/foo.md"), 50)
+
+    def test_role_and_stack_rules_derive_the_subagent_ceiling(self):
+        self.assertEqual(psb.derived_ceiling("shared/rules/roles/foo.md"), 150)
+        self.assertEqual(psb.derived_ceiling("shared/rules/stacks/phoenix/foo.md"), 150)
+
+    def test_unclassified_path_falls_back_to_the_looser_ceiling(self):
+        self.assertEqual(psb.derived_ceiling("shared/rules/other/foo.md"), 150)
+
+    def test_derived_ceiling_is_at_or_below_every_style_guide_target(self):
+        # The derived ceiling must never be looser than STYLE_GUIDE.md, or a
+        # new file would enter under a weaker bar than the guide states.
+        self.assertLessEqual(psb.derived_ceiling("shared/rules/_core/x.md"), 50)
+        self.assertLessEqual(psb.derived_ceiling("shared/rules/roles/x.md"), 150)

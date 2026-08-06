@@ -14,17 +14,30 @@
 # hook_registrations.py --emit-headers into EVERY manifest header, incl.
 # hand-authored hooks, and would false-positive ~50 files.)
 #
+# Two modes, ONE predicate. `--prune` deletes exactly the files the default
+# check mode would fail on, so the gate and its remedy can never disagree
+# about what an orphan is. `make install` runs --prune right after the
+# compiler, which is what makes "delete a registry id" a complete action: the
+# generated hook that backed it disappears with it, instead of surviving on
+# disk (still firing fleet-wide) until someone reads a red gate and works out
+# that the fix is an `rm` no tool performs for them.
+#
 # Usage:
-#   orphan-hook-check.sh --hooks-dir DIR --registry FILE
-# Exit: 0 = no orphans; 1 = orphan(s) found; 2 = usage/yq error.
+#   orphan-hook-check.sh --hooks-dir DIR --registry FILE [--prune]
+# Exit: 0 = no orphans (or all pruned); 1 = orphan(s) found; 2 = usage/yq error.
 
 set -euo pipefail
 
 HOOKS_DIR=""
 REGISTRY=""
+PRUNE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
+    --prune)
+        PRUNE=1
+        shift
+        ;;
     --hooks-dir)
         HOOKS_DIR="$2"
         shift 2
@@ -72,8 +85,13 @@ check_dir() {
         base=$(basename "$f")
         id="${base%.$ext}"
         if ! is_live "$id"; then
-            echo "enforce-registry-parity: ORPHAN $f (no live registry id '$id')"
-            fail=1
+            if [ "$PRUNE" -eq 1 ]; then
+                rm -f "$f"
+                echo "orphan-hook-check: PRUNED $f (no live registry id '$id')"
+            else
+                echo "enforce-registry-parity: ORPHAN $f (no live registry id '$id') — its registry id was deleted or renamed but the generated file was left on disk, where hook_registrations.py still registers it from a filesystem glob. Run 'make install' (which prunes it) or delete the file."
+                fail=1
+            fi
         fi
     done
 }

@@ -6,7 +6,7 @@ The scaffold domain produces the initial file tree for new downstream Phoenix or
 
 ## Trigger Keywords
 
-scaffold.sh, eex_render, mutations, AGENTS.md.j2, PROJECT_CONTEXT.md.j2, ocg setup, codegen-scaffold, downstream app scaffolding, static SEO baseline, vite publicDir, robots.txt
+scaffold.sh, eex_render, mutations, AGENTS.md.j2, PROJECT_CONTEXT.md.j2, ocg setup, codegen-scaffold, generated-app git repo, GIT_CEILING_DIRECTORIES, clean initial commit, downstream app scaffolding, static SEO baseline, vite publicDir, robots.txt
 
 ## Components
 

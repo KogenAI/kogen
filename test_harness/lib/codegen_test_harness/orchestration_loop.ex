@@ -209,10 +209,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     thrashing or unsatisfiable-by-any-edit violation set dies at the SAME
     turn it dies today; only a converging repair earns extra turns.
     Diverges from `:max_review_cycles` (which proceeds on budget
-    exhaustion): exhaustion fails the cycle LOUD instead of proceeding — the
-    committer cannot Read/Edit `context/*.md`, so handing it a known-bad doc
-    is an unfixable dead-end that used to deadlock as a compounding
-    dirty-tree retry.
+    exhaustion): exhaustion fails the cycle LOUD instead of proceeding —
+    `context-curator` is the only role permitted to edit these docs, so a
+    violation it did not clear must never travel onward as if it had been
+    fixed. The failure is retryable (no terminal marker).
   - `:env_var_scan_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
     defaults to `default_env_var_scan/1` (shells
     `harnesses/claude/hooks/lib/env-var-sample-scan.sh <cwd>`, which scopes
@@ -533,7 +533,30 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # call-dispatch.sh established (single-sourced scope — no Elixir-side
   # duplication). Fails CLOSED: an inconclusive probe (no parseable
   # "Available agents:" line) raises rather than assuming the roles resolve.
-  defp preflight_roles!(roles, cwd, opts) do
+  #
+  # Two DIFFERENT failures live in this function and only one of them is a
+  # verdict about the agent set:
+  #
+  #   * `{:ok, available}` with a non-empty `missing` — the probe SPOKE and
+  #     named a set that omits a required role. That is a real, reproducible
+  #     defect (`make install` never ran, an agent was renamed). It raises,
+  #     unretried, and must stay that way.
+  #
+  #   * `:error` — the probe produced no parseable agent list at all. Nothing
+  #     was learned about the agents; this is an inconclusive PARSE, not a
+  #     missing agent. Its observed causes are transient (a CLI that wrote a
+  #     spinner/warning ahead of the error line, a truncated pipe, a slow
+  #     cold start), and a single unlucky probe used to kill the whole build
+  #     before any role ran. Probe again — `default_preflight_probe/1` costs
+  #     zero model turns (the sentinel `--agent` makes claude exit 1 before
+  #     any turn), so a retry is free. Only a SECOND inconclusive probe
+  #     raises, preserving the fail-closed posture for a genuinely
+  #     unparseable environment.
+  @preflight_probe_attempts 2
+
+  defp preflight_roles!(roles, cwd, opts), do: preflight_roles!(roles, cwd, opts, 1)
+
+  defp preflight_roles!(roles, cwd, opts, attempt) do
     probe_fn = Keyword.get(opts, :preflight_probe_fn, &default_preflight_probe/1)
 
     output = probe_fn.(cwd)
@@ -552,9 +575,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
         :ok
 
+      :error when attempt < @preflight_probe_attempts ->
+        IO.puts(
+          :stderr,
+          "OrchestrationLoop: role-agent preflight probe returned no agent list " <>
+            "(attempt #{attempt}/#{@preflight_probe_attempts}) — re-probing: " <>
+            String.slice(output, 0, 400)
+        )
+
+        preflight_roles!(roles, cwd, opts, attempt + 1)
+
       :error ->
         raise "OrchestrationLoop: could not confirm role-agent resolution (preflight probe " <>
-                "returned no agent list): #{String.slice(output, 0, 400)}"
+                "returned no agent list after #{@preflight_probe_attempts} attempts): " <>
+                String.slice(output, 0, 400)
     end
   end
 
@@ -1774,9 +1808,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # combined violation list into context, re-invoke the context-curator (the
   # last role that CAN edit `context/*.md`), re-format, re-scan, recurse.
   # Budget-exhausted → FAIL LOUD (diverges from
-  # `handle_review`'s proceed-on-exhaustion): the committer cannot Read/Edit
-  # `context/*.md`, so handing it a known-bad doc is an unfixable dead-end
-  # that used to compound into a dirty-tree retry loop.
+  # `handle_review`'s proceed-on-exhaustion): the curator is the only role
+  # permitted to edit these docs, so a violation it did not clear must never
+  # travel onward as if it had been fixed. Retryable, never terminal-marked.
   defp run_curator_doc_check(
          curator_role,
          rest,
@@ -1855,25 +1889,37 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     })
   end
 
+  # NO terminal marker here. A terminal marker is a claim that no retry can
+  # ever succeed: `default_terminal_marker_fn/1` is read BEFORE
+  # `retry_eligible?/5` and routes straight to park + skip + circuit breaker
+  # (`context/loop-queue-drain.md` § Deterministic Failure), so a marked
+  # cycle is NEVER retried. Orientation-doc drift does not earn that claim —
+  # the curator writes `context/**`/`PROJECT_CONTEXT.md` freely, the scan is
+  # deterministic over the tree, and a repeat pass on a re-primed curator
+  # routinely lands what one bounded pass did not. The cycle still FAILS
+  # (the `{:error, ...}` below is unchanged); it just stays retry-eligible
+  # instead of parking the pitch and burning a slot on the breaker.
+  # Contrast `:gate verdict=failed`, which keeps its marker: a red gate is a
+  # real, reproduced defect in the tree, and re-paying for the same red is
+  # exactly what the marker exists to stop.
   defp curator_doc_check_exhausted(ctx, cycle, violations) do
-    write_terminal_marker(ctx.cwd, "context-curator doc check unresolved", "context-curator")
-
     {:error,
      "Turn-0 preflight found no inherited orientation-doc drift at HEAD #{ctx.base_head}; " <>
        "the violations below arrived with this cycle's own edits.\n" <>
        "context-curator doc check unresolved after #{cycle} cycle(s):\n#{violations}\n" <>
-       "The committer cannot Read/Edit context/*.md (subagent-read-discipline denies it), " <>
-       "so handing this violation onward would be an unfixable dead-end. Fix the orientation " <>
-       "docs and re-run the cycle."}
+       "context-curator is the only role permitted to edit these docs, so a violation it did " <>
+       "not clear must not travel onward as if it had been fixed. This cycle FAILED but is " <>
+       "retry-eligible (no terminal marker) — re-run it, or fix the orientation docs directly."}
   end
 
   # Turn-0 phase exhaustion formatter — sibling of `curator_doc_check_exhausted/3`
   # above (post-curator phase). Distinguishes the two in the returned
   # message: this violation was ALREADY present at HEAD (inherited), not
   # introduced by this cycle's own edits.
-  defp turn0_repair_exhausted(ctx, cycle, violations) do
-    write_terminal_marker(ctx.cwd, "orientation-doc preflight unresolved", "context-curator")
-
+  # Same reasoning as `curator_doc_check_exhausted/3` above: no terminal
+  # marker. Inherited drift that one bounded repair pass did not clear is a
+  # retryable cycle failure, not a permanent one.
+  defp turn0_repair_exhausted(_ctx, cycle, violations) do
     {:error,
      "inherited orientation-doc repair remained unresolved after #{cycle} cycle(s):\n" <>
        "#{violations}\n" <>
@@ -2390,16 +2436,53 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   defp parse_review_verdict(_), do: :unknown
 
-  # Exactly four accepted exact byte forms: bare terminal verdict, or that
-  # same line wrapped once in a single outer `**…**` pair (the one observed
-  # presentation wrapper — probe measured 4 strong occurrences, 0 backtick).
-  # Backticks, underscores, headings, list/blockquote prefixes, code fences,
-  # suffix text, and nested/multiple emphasis all fall through to `:unknown`.
-  defp classify_verdict_line("REVIEW_VERDICT: APPROVED"), do: :approved
-  defp classify_verdict_line("**REVIEW_VERDICT: APPROVED**"), do: :approved
-  defp classify_verdict_line("REVIEW_VERDICT: CHANGES_REQUESTED"), do: :changes_requested
-  defp classify_verdict_line("**REVIEW_VERDICT: CHANGES_REQUESTED**"), do: :changes_requested
+  # Normalise presentation, then match the sentinel exactly.
+  #
+  # Reviewers reliably emit the verdict but decorate it as markdown — it reads
+  # as a machine token, so models render it as one (`**bold**`, `` `code` ``,
+  # or both). The previous allowlist of accepted byte forms grew one incident
+  # at a time and cost a completed, gate-clear, reviewer-APPROVED build because
+  # the sentinel arrived in backticks. Formatting cannot be made deterministic
+  # by asking, so tolerate it here instead of enumerating wrappers.
+  #
+  # Anchoring is what keeps this safe. `strip_verdict_decoration/1` only peels
+  # *symmetric* pairs from the outside; it never searches inside the line, and
+  # the regex then requires the whole remainder to be the sentinel plus one
+  # known token. So prose that merely mentions the sentinel ("I would have said
+  # REVIEW_VERDICT: APPROVED, but the gate is red"), a trailing suffix, and an
+  # unrecognised token all leave a remainder that fails the anchored match and
+  # stay `:unknown`. This widens what counts as *parseable*, never what counts
+  # as *approved* — the fail-closed refusal in `handle_review/7` is unchanged.
+  @verdict_decoration ["`", "*", "_"]
+  @verdict_line ~r/^REVIEW_VERDICT:[ \t]*(?<token>[A-Z_]+)$/
+
+  defp classify_verdict_line(line) when is_binary(line) do
+    case Regex.named_captures(@verdict_line, strip_verdict_decoration(line)) do
+      %{"token" => "APPROVED"} -> :approved
+      %{"token" => "CHANGES_REQUESTED"} -> :changes_requested
+      _ -> :unknown
+    end
+  end
+
   defp classify_verdict_line(_), do: :unknown
+
+  # Peels matched outer decoration pairs (and surrounding whitespace) one layer
+  # at a time, so nested/mixed wrappers like ``**`…`**`` reduce to the bare
+  # line. An unmatched delimiter is left in place — it will fail the anchored
+  # match, which is the intended `:unknown`.
+  defp strip_verdict_decoration(line) do
+    trimmed = String.trim(line)
+    first = String.first(trimmed)
+
+    if String.length(trimmed) > 2 and first in @verdict_decoration and
+         String.last(trimmed) == first do
+      trimmed
+      |> String.slice(1..-2//1)
+      |> strip_verdict_decoration()
+    else
+      trimmed
+    end
+  end
 
   defp dev_role_from_ctx(ctx) do
     (ctx[:artifacts] || %{})

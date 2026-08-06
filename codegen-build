@@ -313,16 +313,30 @@ if [[ -z "$PRINT_ARGV" ]] && [[ "$_dispatch_rc" -eq 0 ]]; then
         printf 'codegen-build: %s build missing build-result.json after successful dispatch\n' "$HARNESS" >&2
         _dispatch_rc=1
     else
+        # HEAD binding is the loop's own contract, and the loop fails OPEN on an
+        # unresolvable HEAD: `Mix.Tasks.Codegen.Loop.git_head/1` maps a nonzero
+        # `git rev-parse HEAD` to `:unborn`, and `verify_commit_landed(:unborn, _cwd)`
+        # returns `{:ok, nil}` — "nothing to compare", not "verification failed".
+        # The wrapper must mirror that carve-out or the two halves of one contract
+        # disagree and the wrapper's half wins: an unborn/non-git cwd used to fail
+        # the whole build with `cannot resolve current HEAD` while the loop had
+        # already, deliberately, waived the same check. Every OTHER field
+        # (invocation_id, slug, status, updated_at) stays bound unconditionally —
+        # only the head equality is waived, and only when there is no HEAD to
+        # compare against.
         _current_head="$(git -C "$CWD" rev-parse HEAD 2>/dev/null || printf '')"
 
         if [[ -z "$_current_head" ]]; then
-            printf 'codegen-build: %s build cannot resolve current HEAD for result validation\n' "$HARNESS" >&2
-            _dispatch_rc=1
-        elif ! jq -e \
+            _head_filter='true'
+        else
+            _head_filter='(.head == $expected_head)'
+        fi
+
+        if ! jq -e \
             --arg invocation_id "$CODEGEN_BUILD_INVOCATION_ID" \
             --arg expected_slug "$_expected_slug" \
             --arg expected_head "$_current_head" \
-            '(.invocation_id == $invocation_id) and (.slug == $expected_slug) and (.status == "success") and (.head == $expected_head) and (.updated_at | type == "string" and length > 0)' \
+            "(.invocation_id == \$invocation_id) and (.slug == \$expected_slug) and (.status == \"success\") and $_head_filter and (.updated_at | type == \"string\" and length > 0)" \
             "$_build_result" >/dev/null 2>&1; then
             printf 'codegen-build: %s build result missing, malformed, stale, or mismatched\n' "$HARNESS" >&2
             _dispatch_rc=1

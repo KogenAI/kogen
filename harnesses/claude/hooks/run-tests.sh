@@ -31,13 +31,64 @@ unset CLAUDE_ROLE
 # session happens to be pinned to, instead of exercising its own fixtures.
 unset CODEGEN_LOG_PATH
 
+# Canonical temp paths — one place, not once per test file.
+#
+# On macOS $TMPDIR is /var/folders/... and /var is a symlink to /private/var.
+# Production hooks resolve their inputs through hooks_realpath / `pwd -P`, so a
+# hook reports /private/var/folders/... while a test that built its expectation
+# from `mktemp -d` holds /var/folders/... — the two never compare equal and the
+# test fails for a reason that has nothing to do with the hook. Four test files
+# already carry a hand-written `TMP="$(cd "$TMP" && pwd -P)"` for exactly this;
+# every one of the ~140 other `mktemp` sites is a fresh chance to forget it.
+#
+# Exporting a canonical $TMPDIR is NOT sufficient on macOS: bare `mktemp -d`
+# ignores TMPDIR entirely (it uses confstr(_CS_DARWIN_USER_TEMP_DIR)) — verified
+# on this platform. So the runner puts a `mktemp` shim ahead of the real one on
+# PATH that canonicalizes whatever the real mktemp returns. Test authors write
+# plain `mktemp -d` and get a symlink-free path automatically; there is nothing
+# left to remember, and nothing about production changes — the shim exists only
+# inside the test runner.
+#
+# Conservative by construction: it delegates to the real mktemp, and if
+# canonicalization fails for any reason it prints the real mktemp output
+# unchanged. A test that installs its own PATH stub dir simply gets the real
+# mktemp back, i.e. exactly today's behaviour.
+#
+# BOUNDARY: the five hook tests harness-parity/prompt-content-parity invoke
+# DIRECTLY from the Makefile do not pass through this runner and so do not get
+# the shim. They pass today; if one of them ever grows a raw-tmp-path
+# comparison, either give it the usual hand-written `pwd -P` or lift this block
+# into something both callers share.
+if [ -n "${TMPDIR:-}" ] && [ -d "${TMPDIR:-}" ]; then
+    TMPDIR="$(cd "$TMPDIR" && pwd -P)"
+    export TMPDIR
+fi
+
+_canon_mktemp_dir=$(command mktemp -d)
+cat >"$_canon_mktemp_dir/mktemp" <<'CANON_MKTEMP'
+#!/usr/bin/env bash
+# Test-runner mktemp shim: real mktemp, symlink-free output. See run-tests.sh.
+real=$(PATH=$(getconf PATH) command mktemp "$@") || exit $?
+if [ -d "$real" ]; then
+    (cd "$real" 2>/dev/null && pwd -P) || printf '%s\n' "$real"
+elif [ -e "$real" ]; then
+    d=$(cd "$(dirname "$real")" 2>/dev/null && pwd -P) || d=""
+    if [ -n "$d" ]; then printf '%s/%s\n' "$d" "$(basename "$real")"; else printf '%s\n' "$real"; fi
+else
+    printf '%s\n' "$real"
+fi
+CANON_MKTEMP
+chmod +x "$_canon_mktemp_dir/mktemp"
+PATH="$_canon_mktemp_dir:$PATH"
+export PATH
+
 # Isolate test suite from the live cycle-state file.
 # Production hooks resolve project_dir="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}".
 # Tests that set an explicit cwd override this; hooks without an explicit cwd
 # fall through to this temp dir instead of the real repo root.
 _test_project_dir=$(mktemp -d)
 export CLAUDE_PROJECT_DIR="$_test_project_dir"
-trap 'rm -rf "$_test_project_dir"' EXIT
+trap 'rm -rf "$_test_project_dir" "${_canon_mktemp_dir:-}"' EXIT
 
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOBS="${JOBS:-8}"

@@ -86,22 +86,22 @@ defmodule CodegenTestHarness.RenderCheckTest do
       assert deps_idx < wait_idx,
              "invariant violated: deps.get+compile must precede the readiness wait " <>
                "so the 30s window covers only server boot, not cold dep install " <>
-               "(deps_idx=#{deps_idx}, wait_idx=#{wait_idx})"
+               "(deps_idx=#{inspect(deps_idx)}, wait_idx=#{inspect(wait_idx)})"
 
       assert compile_idx < wait_idx,
              "invariant violated: deps.get+compile must precede the readiness wait " <>
                "so the 30s window covers only server boot, not cold dep install " <>
-               "(compile_idx=#{compile_idx}, wait_idx=#{wait_idx})"
+               "(compile_idx=#{inspect(compile_idx)}, wait_idx=#{inspect(wait_idx)})"
 
       assert deps_idx < spawn_idx,
              "invariant violated: deps.get+compile must precede the readiness wait " <>
                "so the 30s window covers only server boot, not cold dep install " <>
-               "(deps_idx=#{deps_idx}, spawn_idx=#{spawn_idx})"
+               "(deps_idx=#{inspect(deps_idx)}, spawn_idx=#{inspect(spawn_idx)})"
 
       assert compile_idx < spawn_idx,
              "invariant violated: deps.get+compile must precede the readiness wait " <>
                "so the 30s window covers only server boot, not cold dep install " <>
-               "(compile_idx=#{compile_idx}, spawn_idx=#{spawn_idx})"
+               "(compile_idx=#{inspect(compile_idx)}, spawn_idx=#{inspect(spawn_idx)})"
     end
 
     test "cold-boot failures in deps.get/compile are surfaced, not swallowed" do

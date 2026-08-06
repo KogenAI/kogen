@@ -64,7 +64,7 @@ Check for pre-existing assertions by RUNNING the full test file (not just the ne
 
 ## Trigger Keywords
 
-test harness pitfall, exunit fixture, seam override, flake triage, ecto timestamp, port env charlist, npm extension race, role resolver ripple, seam threading, build path isolation, mix build path, Mix.shell, capture_io stdout, arity beam stale, capture_io return value, exit-code assertion, state-machine exit constant, test refactoring state change, engine build isolation, spawn env clear, UndefinedFunctionError phantom
+test harness pitfall, exunit fixture, seam override, flake triage, event-hardened fixture, owned PID/PGID cleanup, empty BSD xargs, clean scaffold baseline, ecto timestamp, port env charlist, npm extension race, role resolver ripple, seam threading, build path isolation, mix build path, Mix.shell, capture_io stdout, arity beam stale, capture_io return value, exit-code assertion, state-machine exit constant, test refactoring state change, engine build isolation, spawn env clear, UndefinedFunctionError phantom
 
 ## Update When Changing
 

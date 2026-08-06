@@ -3,19 +3,38 @@ defmodule CodegenTestHarness.RoleResolverTest do
 
   alias CodegenTestHarness.RoleResolver
 
+  # These tests used to hard-code "sonnet"/"opus"/"off" — literal copies of
+  # templates/generator/config.yaml. One role retune reddened a dozen
+  # assertions that had nothing to say about the retune, and the only fix was
+  # to hand-edit the copies. The invariant worth asserting was never "the
+  # developer runs on sonnet"; it is "the resolver returns WHAT THE FILE
+  # SAYS". So read the file.
+  #
+  # Read independently of RoleResolver (same `yq`, own invocation) — asserting
+  # the resolver against its own reader would be circular.
+  @config_yaml Path.expand("../../../templates/generator/config.yaml", __DIR__)
+
+  defp config!(key) do
+    {out, 0} = System.cmd("yq", ["-r", key, @config_yaml])
+    value = String.trim(out)
+    refute value in ["", "null"], "config.yaml has no value at #{key}"
+    value
+  end
+
+  @dev_role "developer-phoenix-backend"
+
   describe "resolve_role/2,3" do
     test "claude: reads model/effort from real config.yaml" do
-      {model, effort} = RoleResolver.resolve_role("developer-phoenix-backend", "claude")
-
-      assert model == "sonnet"
-      assert effort == "off"
+      assert RoleResolver.resolve_role(@dev_role, "claude") ==
+               {config!(".harness.#{@dev_role}.claude.model"),
+                config!(".harness.#{@dev_role}.claude.effort")}
     end
 
     test "claude_code canonical harness name normalizes to claude" do
-      {model, effort} = RoleResolver.resolve_role("developer-phoenix-backend", "claude_code")
-
-      assert model == "sonnet"
-      assert effort == "off"
+      # No config literal needed: the invariant IS that the two harness
+      # spellings resolve identically.
+      assert RoleResolver.resolve_role(@dev_role, "claude_code") ==
+               RoleResolver.resolve_role(@dev_role, "claude")
     end
 
     test "unknown role raises" do
@@ -25,22 +44,21 @@ defmodule CodegenTestHarness.RoleResolverTest do
     end
 
     test "resolve_role/3 with empty opts behaves like resolve_role/2" do
-      {model, effort} = RoleResolver.resolve_role("developer-phoenix-backend", "claude", [])
-
-      assert model == "sonnet"
-      assert effort == "off"
+      assert RoleResolver.resolve_role(@dev_role, "claude", []) ==
+               RoleResolver.resolve_role(@dev_role, "claude")
     end
   end
 
   describe "resolve_escalation/2" do
     test "claude: reads escalate_model/escalate_effort from real config.yaml" do
-      assert RoleResolver.resolve_escalation("developer-phoenix-backend", "claude") ==
-               {"opus", "off"}
+      assert RoleResolver.resolve_escalation(@dev_role, "claude") ==
+               {config!(".harness.#{@dev_role}.claude.escalate_model"),
+                config!(".harness.#{@dev_role}.claude.escalate_effort")}
     end
 
     test "claude_code canonical harness name normalizes to claude" do
-      assert RoleResolver.resolve_escalation("developer-phoenix-backend", "claude_code") ==
-               {"opus", "off"}
+      assert RoleResolver.resolve_escalation(@dev_role, "claude_code") ==
+               RoleResolver.resolve_escalation(@dev_role, "claude")
     end
 
     test "role with no escalation key configured -> :none, never raises" do
@@ -69,17 +87,19 @@ defmodule CodegenTestHarness.RoleResolverTest do
 
   describe "resolve_fallback/3" do
     test "claude: reads rung 0 of the fallback chain from real config.yaml" do
-      assert RoleResolver.resolve_fallback("developer-phoenix-backend", "claude", 0) ==
-               {"opus", "off"}
+      assert RoleResolver.resolve_fallback(@dev_role, "claude", 0) ==
+               {config!(".harness.#{@dev_role}.claude.fallback[0].model"),
+                config!(".harness.#{@dev_role}.claude.fallback[0].effort")}
     end
 
     test "claude_code canonical harness name normalizes to claude" do
-      assert RoleResolver.resolve_fallback("developer-phoenix-backend", "claude_code", 0) ==
-               {"opus", "off"}
+      assert RoleResolver.resolve_fallback(@dev_role, "claude_code", 0) ==
+               RoleResolver.resolve_fallback(@dev_role, "claude", 0)
     end
 
     test "rung past the end of a configured chain -> :none, never raises" do
-      assert RoleResolver.resolve_fallback("developer-phoenix-backend", "claude", 1) == :none
+      rungs = String.to_integer(config!(".harness.#{@dev_role}.claude.fallback | length"))
+      assert RoleResolver.resolve_fallback(@dev_role, "claude", rungs) == :none
     end
 
     test "role with no fallback key configured -> :none, never raises" do

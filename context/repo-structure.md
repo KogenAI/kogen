@@ -243,7 +243,7 @@ codegen/                          ← repo root
 
 ## Trigger Keywords
 
-repo layout, structure, where does X go, file tree, top-level files, codegen root, which directory, where to add, artifact location, file organization, repo anatomy, ocg vs codegen-build, ai-agents orphaned, self-meta codegen/, codegen/logging, context vs templates, shared vs templates, bin/ utilities, CLAUDE.md symlink, AGENTS.md source, codegen-propose, analysis-proposals, proposed-change record, turn-waste to proposal, scaffold schema version, per-app manifest, staleness preflight, codegen-build refuse, SCHEMA_VERSION, codegen-advise, opposite-provider advisor, advise tool, advisor_plan, `mcp__codegen__advise`, stuck build second opinion
+repo layout, structure, where does X go, file tree, top-level files, codegen root, which directory, where to add, artifact location, file organization, repo anatomy, ocg vs codegen-build, codegen-scaffold, ai-agents orphaned, self-meta codegen/, codegen/logging, context vs templates, shared vs templates, bin/ utilities, CLAUDE.md symlink, AGENTS.md source, codegen-propose, analysis-proposals, proposed-change record, turn-waste to proposal, scaffold schema version, per-app manifest, staleness preflight, codegen-build refuse, SCHEMA_VERSION, codegen-advise
 
 ---
 

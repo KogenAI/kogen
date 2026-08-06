@@ -223,18 +223,24 @@ this narrow stranded-claim case.
 "restarted builds resume owned work") are the authority for CONTROLLED terminal failures (direct or
 queue) and same-slug resume. `park_failure/1` mints one dossier per failure (stages
 `parking`→`parked`→`history_written`→`ready`→`materialized`/`superseded`→`completed`); identity is the
-CLAIMED pitch's own basename + `scope:`, never branch name — a scope mismatch parks but tags
-`ownership: "mismatch"` (no auto-materialize). One active dossier per slug; a repeat failure chains a
-superseding transaction, never overwrites.
+CLAIMED pitch's own basename + `scope:`, never branch name. Scope is REPORT-ONLY at every recovery
+stage: changed paths beyond the pitch's declared `scope:` tag `ownership: "expanded"` plus
+`scope_expansion: [paths]` and name those paths in the pitch's build-failure history row — they never
+restrict materialization, because the REVIEWER adjudicates scope expansion and planning cannot enumerate
+every line an implementation needs. An unreadable/unparseable pitch tags `ownership: "unknown"` and
+likewise still materializes. One active dossier per slug; a repeat failure chains a superseding
+transaction, never overwrites.
 
 `materialize/2` resolves the slug's active dossier (reselecting that slug IS adoption) and replays it via
 CHECKED `git diff --binary` + `apply --check`/`apply` — never checkout/reset/HEAD-move. `:exact` (HEAD ==
 source base, tree byte-identical) resumes at the earliest trustworthy role
 (`resume_role_for_recovery/3`: GATED→reviewer, REVIEWED→curator, CURATED→committer, else→developer);
-`:advanced`/`:operator` (moved HEAD / a same-scope dirty tree, parked onto a second
-`recovery/operator/<slug>/<ts>` ref first) reconcile at the stack's developer (`resolve_developer_role/1`
-— the first `developer-*` role in the sequence, both stacks); a
-conflict or out-of-scope edit refuses non-zero, ref/checkout untouched. `run/1`'s `:recovery_mode` opt
+`:advanced`/`:operator` (moved HEAD / any dirty tree, parked onto a second
+`recovery/operator/<slug>/<ts>` ref first — including operator bytes beyond the declared scope, which are
+preserved and recorded as `operator_ownership`/`operator_scope_expansion`, never refused) reconcile at
+the stack's developer (`resolve_developer_role/1`
+— the first `developer-*` role in the sequence, both stacks); a missing/moved ref, non-descendant HEAD,
+conflicting apply, or an already-materialized dossier refuses non-zero, ref/checkout untouched. `run/1`'s `:recovery_mode` opt
 bypasses `preflight_clean_tree!/1` ONLY for a materialized run. `complete_transaction!/2` retires the
 dossier after the ordinary post-committer commit/tree/gate verification — the recovery commit stays
 backup evidence, never a second publish.
@@ -302,8 +308,11 @@ joined into one violations message via `combine_curator_doc_results/2` folded tw
 Violations from any leg that are NOT classified `:infra` (`LoopGate.classify_failure/1`) route into the
 progress-bounded rework loop (`:max_curator_doc_cycles`, floor 1, ceiling 15 via `repair_allowed?/4`);
 `:infra`-classified violations raise `LoopGate.infra_abort!/2` immediately (unsatisfiable by any curator
-edit). Budget exhaustion fails the cycle LOUD (`curator_doc_check_exhausted/3`) — the committer cannot
-Read/Edit `context/*.md`, so handing it a known-bad doc is an unfixable dead-end.
+edit). Budget exhaustion fails the cycle LOUD (`curator_doc_check_exhausted/3`) — the curator is the only
+role that may edit `context/*.md`, so a violation it did not clear must not travel onward as if it had
+been fixed. Exhaustion writes NO terminal marker: the cycle fails but stays retry-eligible, because the
+curator owns every path the scan can name and a second pass routinely clears what one bounded pass did
+not. Compare the gate's `verdict=failed` marker, which is kept — a red gate is a reproduced defect.
 
 ### Turn-0 Sibling — Inherited Orientation-Doc Drift
 
@@ -313,12 +322,12 @@ Read/Edit `context/*.md`, so handing it a known-bad doc is an unfixable dead-end
 (`classify_orientation_violations/1`): when every line names a curator-writable doc
 (`context/<basename>.md` or `PROJECT_CONTEXT.md`), the loop lazily resolves `context-curator`
 (`preflight_roles!/3`) and runs a BOUNDED repair loop via the SHARED `run_orientation_repair/1` engine
-(the same floor/progress/ceiling bound, prompt artifact, and terminal-marker path this section's
-post-curator check uses) — never advancing `CURATED`. Any other shape — a line naming
-`AGENTS.md`/`CLAUDE.md`/another surface, an unparseable line, or a MIXED writable/non-writable set —
-still raises `InfraAbort` unconditionally: NEVER a partial repair. Repair failure (invocation error,
-no-progress, or ceiling exhaustion) writes the terminal marker with owner `"context-curator"` and returns
-a deterministic `{:error, _}`, never `InfraAbort`.
+(the same floor/progress/ceiling bound and prompt artifact this section's post-curator check uses) —
+never advancing `CURATED`. Any other shape — a line naming `AGENTS.md`/`CLAUDE.md`/another surface, an
+unparseable line, or a MIXED writable/non-writable set — still raises `InfraAbort` unconditionally: NEVER
+a partial repair. Repair failure (invocation error, no-progress, or ceiling exhaustion) returns a
+deterministic `{:error, _}`, never `InfraAbort` — and, like its post-curator sibling, writes NO terminal
+marker, so the pitch stays retry-eligible instead of being parked.
 
 ## Infra Abort
 
@@ -354,12 +363,17 @@ diff), recording `null` when either timestamp is unparseable.
 
 `OrchestrationLoop.write_terminal_marker/3` writes `codegen/gate-pending/terminal-state.json`
 (`{terminal: true, reason, owner}`) whenever a rework loop's OWNING role genuinely exhausts its
-progress+ceiling bound — gate rework (`do_gate_loop_rework/9`), curator-doc check
-(`curator_doc_check_exhausted/3`), env-var check (`run_env_var_step_rework/9`), or the turn-0 orientation
-repair (`turn0_repair_exhausted/3`) — immediately alongside the `{:error, ...}` it already returns. This
+progress+ceiling bound over a REPRODUCED DEFECT — gate rework (`do_gate_loop_rework/9`) and the env-var
+check (`run_env_var_step_rework/9`) — immediately alongside the `{:error, ...}` it already returns. This
 DOES NOT change the `{:error}`/exit-1 return value; it is a durable, additional signal distinguishing a
 DETERMINISTIC exhaustion ("this cycle cannot succeed however many times you run it") from a RECOVERABLE
 transient exit (a process death mid-cycle).
+
+The two orientation-doc producers deliberately do NOT write it. `curator_doc_check_exhausted/3` and
+`turn0_repair_exhausted/3` return their `{:error, ...}` unmarked: a marker is read BEFORE
+`retry_eligible?/5` and routes straight to park + skip + circuit breaker, and documentation drift has not
+earned that claim — the curator writes every path the scan can name, the scan is deterministic over the
+tree, and a re-primed second pass routinely lands what one bounded pass did not.
 
 Deliberately NOT `InfraAbort`/exit 3 on a SUCCESSFUL exhaustion write: every marker-writing caller is
 PITCH-SPECIFIC (this cycle's own gate/doc/env/orientation exhaustion) — the next pitch in a drain is

@@ -18,6 +18,20 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     {:ok, dir: dir, ready_dir: ready_dir, shipped_dir: shipped_dir, lock_path: lock_path}
   end
 
+  # Production progress logging — the `[i/n] <slug> ... building` banner and
+  # the `queue: GC codegen/logging — reclaimed ...` line — is written straight
+  # to :stderr by design; operators watching a live drain need it. In the test
+  # suite it is pure noise: it interleaves with ExUnit's own output and makes a
+  # `make ci` failure dump unreadable. Routing every drain/1 call through
+  # with_io(:stderr, ...) parks that output in the capture buffer instead of the
+  # terminal WITHOUT suppressing it — an enclosing capture_io(:stderr, ...) still
+  # sees every line (ExUnit's capture server shares one buffer per device), so
+  # the tests that assert on the banner and the GC line keep working unchanged.
+  defp quiet_drain(opts) do
+    {result, _stderr} = ExUnit.CaptureIO.with_io(:stderr, fn -> LoopQueueDrain.drain(opts) end)
+    result
+  end
+
   defp write_pitch(ready_dir, slug, body \\ nil) do
     File.write!(Path.join(ready_dir, "#{slug}.md"), body || "# Pitch: #{slug}\n")
   end
@@ -153,7 +167,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       {:exit_code, 0}
     end
 
-    assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 2} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     assert Agent.get(calls, & &1) == ["a", "b"]
     refute File.exists?(Path.join(ctx.ready_dir, "a.md"))
     refute File.exists?(Path.join(ctx.ready_dir, "b.md"))
@@ -181,9 +195,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
-                   shipped_opts(ctx, spawn_fn: spawn_fn, born_dead_fn: born_dead_fn)
-                 )
+                 quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, born_dead_fn: born_dead_fn))
       end)
 
     # Never shipped — the pitch stays in ready/ (draft_fn is stubbed as a
@@ -203,9 +215,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     born_dead_fn = fn _cwd, _base_sha -> :ok end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
-               shipped_opts(ctx, spawn_fn: spawn_fn, born_dead_fn: born_dead_fn)
-             )
+             quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, born_dead_fn: born_dead_fn))
 
     refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
@@ -224,7 +234,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     # unverified commit (refuse to ship), never silently pass through.
     opts = shipped_opts(ctx, spawn_fn: spawn_fn) |> Keyword.delete(:born_dead_fn)
 
-    assert {:ok, 0} = LoopQueueDrain.drain(opts)
+    assert {:ok, 0} = quiet_drain(opts)
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
     refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
@@ -239,7 +249,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       {:exit_code, 0}
     end
 
-    assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
 
     captured = Agent.get(jsonl_path, & &1)
     assert Path.basename(captured) == "20231114_221320_solo_build.log"
@@ -255,7 +265,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+        assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
     assert output =~ ~r/\[1\/1\] solo \.\.\. building/
@@ -269,7 +279,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+        assert {:ok, 2} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
     assert output =~ "[1/2] a ... building"
@@ -291,7 +301,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    shipped_opts(ctx,
                      spawn_fn: spawn_fn,
                      discover_session_log_fn: discover_session_log_fn
@@ -314,7 +324,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    shipped_opts(ctx,
                      spawn_fn: spawn_fn,
                      discover_session_log_fn: fn _, _, _ -> nil end
@@ -369,7 +379,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     :ok = File.touch(ancient_build, thirty_one_days_ago)
     :ok = File.touch(aging_build, twenty_days_ago)
 
-    assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+    assert {:ok, 0} = quiet_drain(base_opts(ctx, []))
 
     refute File.exists?(ancient_build)
     refute File.exists?(aging_build)
@@ -392,7 +402,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     :ok = File.touch(active_cycle, ancient)
     :ok = File.touch(gate_verdicts, ancient)
 
-    assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+    assert {:ok, 0} = quiet_drain(base_opts(ctx, []))
 
     assert File.exists?(active_cycle)
     refute File.exists?(active_cycle <> ".gz")
@@ -437,7 +447,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     :ok = File.touch(ancient_transcript_dir, forty_six_days_ago)
     :ok = File.touch(aging_transcript_dir, twenty_days_ago)
 
-    assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+    assert {:ok, 0} = quiet_drain(base_opts(ctx, []))
 
     refute File.exists?(old_cycle)
     assert File.exists?(old_cycle <> ".gz")
@@ -461,7 +471,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+        assert {:ok, 0} = quiet_drain(base_opts(ctx, []))
       end)
 
     assert output =~ "queue: GC codegen/logging — reclaimed"
@@ -487,9 +497,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-                 )
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
     assert output =~ "boom"
@@ -517,9 +525,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-                 )
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
     assert output =~ "terminal: loop_failed (error)"
@@ -551,7 +557,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -600,7 +606,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         # regression guard is that the outage pause fires and resumes
         # exactly once (attempt count == 2), not the eventual outcome.
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -654,7 +660,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
     assert_raise RuntimeError, ~r/cyclic/, fn ->
-      LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      quiet_drain(base_opts(ctx, spawn_fn: spawn_fn))
     end
   end
 
@@ -665,7 +671,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
-    assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
@@ -687,7 +693,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         {:exit_code, 0}
       end
 
-      assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+      assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     end
@@ -698,7 +704,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # non-compliant agent: exits 0 but never ships (leaves ready/<slug>.md).
       spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
-      assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+      assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       refute File.exists?(Path.join(ctx.ready_dir, "solo.md"))
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     end
@@ -713,7 +719,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       assert_raise RuntimeError, ~r/solo in neither ready.*nor shipped/, fn ->
-        LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+        quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end
     end
   end
@@ -730,7 +736,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       output =
         capture_io(:stderr, fn ->
           assert {:ok, 1} =
-                   LoopQueueDrain.drain(
+                   quiet_drain(
                      shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
                    )
         end)
@@ -752,9 +758,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       git_publish_fn = fn _cwd, _slug -> {:ok, {:rewritten, "newsha123"}} end
 
       assert {:ok, 1} =
-               LoopQueueDrain.drain(
-                 shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
-               )
+               quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
 
       content = File.read!(Path.join(ctx.shipped_dir, "solo.md"))
       assert content =~ "shipped_sha: newsha123"
@@ -767,9 +771,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       git_publish_fn = fn _cwd, _slug -> {:error, "rebase conflict: boom"} end
 
       assert {:error, reason} =
-               LoopQueueDrain.drain(
-                 shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
-               )
+               quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
 
       assert reason =~ "HALTED"
       assert reason =~ "solo"
@@ -790,7 +792,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       publish_preflight_fn = fn _cwd -> {:error, "no upstream"} end
 
       assert {:error, reason} =
-               LoopQueueDrain.drain(
+               quiet_drain(
                  base_opts(ctx, spawn_fn: spawn_fn, publish_preflight_fn: publish_preflight_fn)
                )
 
@@ -818,9 +820,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       assert {:ok, 1} =
-               LoopQueueDrain.drain(
-                 shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
-               )
+               quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
 
       assert Agent.get(publish_calls, & &1) == 1
     end
@@ -837,9 +837,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       assert {:ok, 1} =
-               LoopQueueDrain.drain(
-                 shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn)
-               )
+               quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_publish_fn: git_publish_fn))
 
       assert Agent.get(publish_calls, & &1) == 1
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
@@ -900,7 +898,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -936,7 +934,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:error, reason} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -977,7 +975,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     capture_io(:stderr, fn ->
       assert {:error, _reason} =
-               LoopQueueDrain.drain(
+               quiet_drain(
                  base_opts(ctx,
                    spawn_fn: spawn_fn,
                    transient_fn: transient_fn,
@@ -1005,9 +1003,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-                 )
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
     assert File.exists?(Path.join(ctx.ready_dir, "a.md"))
@@ -1028,7 +1024,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     transient_fn = fn _jsonl -> false end
 
     assert {:error, reason} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+             quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
 
     assert reason =~ "HALTED"
     assert reason =~ "consecutive"
@@ -1089,7 +1085,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  transient_fn: transient_fn,
@@ -1114,7 +1110,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     transient_fn = fn _jsonl -> false end
 
     assert {:error, reason} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  transient_fn: transient_fn,
@@ -1140,7 +1136,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     assert {:ok, 0} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  transient_fn: transient_fn,
@@ -1193,7 +1189,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -1229,7 +1225,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -1264,7 +1260,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      git_head_fn: fn _cwd -> nil end,
@@ -1295,7 +1291,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:error, reason} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -1328,7 +1324,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     capture_io(:stderr, fn ->
       assert {:error, _reason} =
-               LoopQueueDrain.drain(base_opts(ctx, spawn_fn: infra_spawn_fn, draft_fn: draft_fn))
+               quiet_drain(base_opts(ctx, spawn_fn: infra_spawn_fn, draft_fn: draft_fn))
     end)
 
     assert Agent.get(calls, & &1) == []
@@ -1348,7 +1344,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     capture_io(:stderr, fn ->
       assert {:error, _reason} =
-               LoopQueueDrain.drain(
+               quiet_drain(
                  base_opts(ctx,
                    spawn_fn: orphan_spawn_fn,
                    git_head_fn: git_head_fn,
@@ -1371,7 +1367,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -1528,7 +1524,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -1574,7 +1570,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     capture_io(:stderr, fn ->
       assert {:ok, 0} =
-               LoopQueueDrain.drain(
+               quiet_drain(
                  base_opts(ctx,
                    spawn_fn: spawn_fn,
                    transient_fn: transient_fn,
@@ -1617,7 +1613,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -1660,7 +1656,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     capture_io(:stderr, fn ->
       assert {:ok, 0} =
-               LoopQueueDrain.drain(
+               quiet_drain(
                  base_opts(ctx,
                    spawn_fn: spawn_fn,
                    transient_fn: transient_fn,
@@ -1677,7 +1673,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   end
 
   test "D11: invariant — no drafted failure block ever shows an unqualified clear verdict without naming a non-clear cause",
-       ctx do
+       _ctx do
     fixtures = [
       # {spawn_exit, transient?, gate_verdict, git_head_fn, extra_opts}
       {0, false, "clear", fn _cwd -> "aaa" end,
@@ -1718,7 +1714,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
+        quiet_drain(
           base_opts(
             %{dir: dir, ready_dir: ready_dir, shipped_dir: shipped_dir, lock_path: lock_path},
             Keyword.merge(
@@ -1764,9 +1760,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-                 )
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       ready_path = Path.join(ctx.ready_dir, "solo.md")
@@ -1799,9 +1793,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       output =
         capture_io(:stderr, fn ->
           assert {:ok, 0} =
-                   LoopQueueDrain.drain(
-                     base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-                   )
+                   quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
         end)
 
       ready_path = Path.join(ctx.ready_dir, "solo.md")
@@ -1839,7 +1831,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       capture_io(:stderr, fn ->
         assert {:error, reason} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -1863,7 +1855,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      git_head_fn: fn _cwd -> nil end
@@ -1888,7 +1880,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -1954,7 +1946,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       output =
         capture_io(:stderr, fn ->
-          LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+          quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
         end)
 
       assert output =~ "queue: DEMOTED a after 2 deterministic failures"
@@ -1969,7 +1961,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -2002,7 +1994,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
@@ -2020,7 +2012,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
@@ -2076,7 +2068,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, git_head_fn: fn _cwd -> nil end))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, git_head_fn: fn _cwd -> nil end))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2094,7 +2086,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
+        quiet_drain(
           base_opts(ctx,
             spawn_fn: spawn_fn,
             transient_fn: transient_fn,
@@ -2114,7 +2106,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2145,7 +2137,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
+        quiet_drain(
           base_opts(ctx,
             spawn_fn: spawn_fn,
             transient_fn: transient_fn,
@@ -2182,7 +2174,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # gate_mtime_fn stays at base_opts' default (0) — always stale.
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2198,7 +2190,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2219,7 +2211,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2235,7 +2227,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       git_stash_fn = fn _cwd, _slug, _reason -> {:ok, nil} end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
+        quiet_drain(
           base_opts(ctx,
             spawn_fn: spawn_fn,
             transient_fn: transient_fn,
@@ -2256,7 +2248,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       git_stash_fn = fn _cwd, slug, _reason -> {:ok, "queue-fail/#{slug}/123"} end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
+        quiet_drain(
           base_opts(ctx,
             spawn_fn: spawn_fn,
             transient_fn: transient_fn,
@@ -2280,7 +2272,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2311,7 +2303,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       body = File.read!(Path.join(ctx.ready_dir, "solo.md"))
@@ -2337,7 +2329,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       transient_fn = fn _jsonl -> false end
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       draft_path = Path.join([ctx.dir, "codegen", "pitches", "draft", "solo.md"])
@@ -2385,9 +2377,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       output =
         capture_io(:stderr, fn ->
           assert {:error, reason} =
-                   LoopQueueDrain.drain(
-                     base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-                   )
+                   quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
 
           assert reason =~
                    "queue: HALTED — could not persist failure evidence for solo"
@@ -2429,7 +2419,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -2459,7 +2449,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -2511,7 +2501,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     sleep_fn = fn secs -> Agent.update(sleeps, &(&1 ++ [secs])) end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -2542,7 +2532,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     transient_fn = fn _jsonl -> false end
 
     assert {:ok, 0} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -2562,7 +2552,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     transient_fn = fn _jsonl -> false end
 
     assert {:ok, 0} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  transient_fn: transient_fn,
@@ -2596,7 +2586,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     stderr =
       capture_io(:stderr, fn ->
         assert {:error, reason} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      git_head_fn: git_head_fn,
@@ -2630,9 +2620,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     stderr =
       capture_io(:stderr, fn ->
         assert {:error, reason} =
-                 LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn)
-                 )
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
 
         assert reason =~ "HALTED"
         assert reason =~ "infra abort"
@@ -2658,7 +2646,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     capture_io(:stderr, fn ->
-      assert {:error, _reason} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+      assert {:error, _reason} = quiet_drain(base_opts(ctx, spawn_fn: spawn_fn))
     end)
 
     assert Agent.get(spawn_calls, & &1) == ["a"]
@@ -2685,7 +2673,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -2730,7 +2718,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     # is correctly treated as a FAILED cycle (never an unverifiable ship),
     # per the pitch's core fix: exit 0 alone is no longer sufficient proof.
     assert {:ok, 0} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -2767,7 +2755,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     gate_mtime_fn = fn _cwd -> 1_700_000_000 end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -2801,7 +2789,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      git_head_fn: git_head_fn,
@@ -2837,7 +2825,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      git_head_fn: git_head_fn,
@@ -2883,7 +2871,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     transient_fn = fn _jsonl -> false end
 
     assert {:ok, 0} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx,
                  spawn_fn: spawn_fn,
                  git_head_fn: git_head_fn,
@@ -2920,9 +2908,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
-               shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn)
-             )
+             quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
 
     assert Agent.get(stash_calls, & &1) == [{ctx.dir, "solo"}]
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
@@ -2943,7 +2929,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     assert {:ok, 0} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
+             quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
 
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
     assert length(Agent.get(stash_calls, & &1)) == 2
@@ -2957,7 +2943,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if slug == "bad", do: :timeout, else: {:exit_code, 0}
     end
 
-    assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     assert File.exists?(Path.join(ctx.ready_dir, "bad.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "good.md"))
   end
@@ -2981,9 +2967,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(
-                   shipped_opts(ctx, spawn_fn: spawn_fn, blocked_fn: blocked_fn)
-                 )
+                 quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, blocked_fn: blocked_fn))
       end)
 
     assert File.exists?(Path.join(ctx.ready_dir, "blocked.md"))
@@ -3007,9 +2991,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     git_stash_fn = fn _cwd, _slug, _reason -> {:error, :not_a_repo} end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
-               shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn)
-             )
+             quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
   end
 
   test "9b: real-ish git_stash_fn label format queue-timeout:<slug>:<ts>", ctx do
@@ -3025,7 +3007,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     assert {:ok, 0} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
+             quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, git_stash_fn: git_stash_fn))
 
     assert Agent.get(labels, & &1) == [
              "queue-timeout:solo:1700000000",
@@ -3052,7 +3034,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
              )
 
@@ -3068,7 +3050,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     git_stash_restore_fn = fn _cwd, _slug -> :ok end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                shipped_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
              )
 
@@ -3086,7 +3068,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     assert {:error, reason} =
-             LoopQueueDrain.drain(
+             quiet_drain(
                base_opts(ctx, spawn_fn: spawn_fn, git_stash_restore_fn: git_stash_restore_fn)
              )
 
@@ -3115,7 +3097,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    shipped_opts(ctx,
                      spawn_fn: spawn_fn,
                      git_stash_restore_fn: git_stash_restore_fn
@@ -3219,7 +3201,14 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     System.cmd("git", ["add", "tracked.txt"], cd: ctx.dir)
     install_failing_pre_commit_hook!(ctx.dir)
 
-    assert {:ok, branch} = LoopQueueDrain.default_git_stash_fn(ctx.dir, "myslug", "fail")
+    # The operator-facing "work is on the branch, not in a stash" warning goes
+    # to :stderr by design; park it in the capture buffer rather than the
+    # suite's own output (see quiet_drain/1).
+    {{:ok, branch}, _stderr} =
+      ExUnit.CaptureIO.with_io(:stderr, fn ->
+        LoopQueueDrain.default_git_stash_fn(ctx.dir, "myslug", "fail")
+      end)
+
     assert branch =~ ~r{^queue-fail/myslug/\d+$}
 
     # The stash is already gone — `git stash branch` dropped it before the
@@ -3253,7 +3242,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     pid_alive_fn = fn _pid -> true end
 
     assert {:error, reason} =
-             LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn))
+             quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn))
 
     assert reason =~ "already running"
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
@@ -3267,9 +3256,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     pid_alive_fn = fn _pid -> false end
 
     assert {:ok, 1} =
-             LoopQueueDrain.drain(
-               shipped_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn)
-             )
+             quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn))
 
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
     refute File.exists?(ctx.lock_path)
@@ -3287,7 +3274,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     write_pitch(ctx.ready_dir, "solo")
     spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
 
-    assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     refute File.exists?(manifest)
     assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
   end
@@ -3309,7 +3296,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       |> base_opts(spawn_fn: spawn_fn, pid_alive_fn: pid_alive_fn)
       |> Keyword.delete(:lock_path)
 
-    assert {:error, reason} = LoopQueueDrain.drain(opts)
+    assert {:error, reason} = quiet_drain(opts)
     assert reason =~ "already running"
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
   end
@@ -3327,7 +3314,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       {:exit_code, 0}
     end
 
-    assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+    assert {:ok, 2} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
     assert File.exists?(Path.join(ctx.shipped_dir, "a.md"))
     assert File.exists?(Path.join(ctx.shipped_dir, "c.md"))
   end
@@ -3396,7 +3383,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 2} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      transient_fn: transient_fn,
@@ -3455,7 +3442,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      git_head_fn: git_head_fn,
@@ -3717,7 +3704,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         base_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
         |> Keyword.put(:orphan_scan_fn, fn _cwd -> ["424242"] end)
 
-      assert {:error, reason} = LoopQueueDrain.drain(opts)
+      assert {:error, reason} = quiet_drain(opts)
       assert reason =~ "orphan codegen-build process(es)"
       assert reason =~ "424242"
       assert reason =~ "kill -9 424242"
@@ -3734,7 +3721,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         shipped_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
         |> Keyword.put(:orphan_scan_fn, fn _cwd -> [] end)
 
-      assert {:ok, 1} = LoopQueueDrain.drain(opts)
+      assert {:ok, 1} = quiet_drain(opts)
     end
 
     test "default_build_orphan_scan/1 excludes this process's own OS pid" do
@@ -3775,7 +3762,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
           end
         )
 
-      assert {:error, reason} = LoopQueueDrain.drain(opts)
+      assert {:error, reason} = quiet_drain(opts)
       assert reason =~ "multiple building pitches"
       refute Agent.get(preflight_called, & &1)
     end
@@ -3850,7 +3837,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # ever calls ordered_fn. Spawn order must equal PLAIN alphabetical
       # ready/ order — "resumed" earns no priority from having been
       # reconciled.
-      assert {:ok, _shipped} = LoopQueueDrain.drain(opts)
+      assert {:ok, _shipped} = quiet_drain(opts)
       refute File.exists?(Path.join(building_dir, "resumed.md"))
 
       spawn_order = Agent.get(spawned, & &1) |> Enum.map(fn {slug, _, _} -> slug end)
@@ -3865,7 +3852,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # {:ok, :none}; ordinary ordering runs untouched.
       opts = shipped_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
 
-      assert {:ok, 2} = LoopQueueDrain.drain(opts)
+      assert {:ok, 2} = quiet_drain(opts)
     end
 
     test "forwards clean-checkpoint seam and dispatches the requeued full run", ctx do
@@ -3918,7 +3905,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
           end
         )
 
-      assert {:ok, 1} = LoopQueueDrain.drain(opts)
+      assert {:ok, 1} = quiet_drain(opts)
       assert Agent.get(seam_calls, & &1) == 1
       assert Agent.get(spawned, & &1) == ["resumed"]
       refute File.exists?(journal_path)
@@ -3959,7 +3946,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       git_stash_fn = &LoopQueueDrain.default_git_stash_fn/3
 
       capture_io(:stderr, fn ->
-        LoopQueueDrain.drain(
+        quiet_drain(
           base_opts(ctx,
             spawn_fn: spawn_fn,
             transient_fn: transient_fn,
@@ -3988,7 +3975,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       opts = shipped_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
 
-      assert {:ok, 1} = LoopQueueDrain.drain(opts)
+      assert {:ok, 1} = quiet_drain(opts)
     end
 
     test "refuses BEFORE any spawn when load_deps_fn cannot load :jason", ctx do
@@ -4005,7 +3992,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
         base_opts(ctx, spawn_fn: spawn_fn)
         |> Keyword.put(:load_deps_fn, fn Jason -> {:error, :nofile} end)
 
-      assert {:error, reason} = LoopQueueDrain.drain(opts)
+      assert {:error, reason} = quiet_drain(opts)
       assert reason =~ "jason"
       assert reason =~ "mix deps.get"
 
@@ -4071,7 +4058,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(
+                 quiet_drain(
                    base_opts(ctx,
                      spawn_fn: spawn_fn,
                      git_head_fn: git_head_fn,
@@ -4100,7 +4087,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:ok, 1} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+        assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
     assert output =~ "queue: 1 shipped, 0 failed, 0 drafted, $0.42 total"
@@ -4124,9 +4111,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:error, reason} =
-                 LoopQueueDrain.drain(
-                   shipped_opts(ctx, spawn_fn: spawn_fn, queue_budget_usd: 10.0)
-                 )
+                 quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, queue_budget_usd: 10.0))
 
         assert reason =~ "spend ceiling reached"
         assert reason =~ "$12.00"
@@ -4162,9 +4147,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     output =
       capture_io(:stderr, fn ->
         assert {:error, reason} =
-                 LoopQueueDrain.drain(
-                   shipped_opts(ctx, spawn_fn: spawn_fn, queue_budget_usd: 10.0)
-                 )
+                 quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn, queue_budget_usd: 10.0))
 
         assert reason =~ "cannot account for"
         assert reason =~ "no result record"
@@ -4189,7 +4172,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     output =
       capture_io(:stderr, fn ->
-        assert {:ok, 2} = LoopQueueDrain.drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+        assert {:ok, 2} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
       end)
 
     assert output =~
@@ -4246,7 +4229,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       output =
         capture_io(:stderr, fn ->
-          assert_raise WatchStop, fn -> LoopQueueDrain.drain(opts) end
+          assert_raise WatchStop, fn -> quiet_drain(opts) end
         end)
 
       assert output =~ "queue: watching"
@@ -4255,7 +4238,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     test "without :watch, empty ready/ still returns immediately (default unchanged)", ctx do
-      assert {:ok, 0} = LoopQueueDrain.drain(base_opts(ctx, []))
+      assert {:ok, 0} = quiet_drain(base_opts(ctx, []))
     end
   end
 
@@ -4293,7 +4276,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # -> watch branch sleeps (wake 0, no raise) -> second scan: "fresh"
       # now quiesced -> built and shipped -> ready/ empty again -> watch
       # branch sleeps again (wake 1) -> WatchStop.
-      assert_raise WatchStop, fn -> LoopQueueDrain.drain(opts) end
+      assert_raise WatchStop, fn -> quiet_drain(opts) end
       assert File.exists?(Path.join(ctx.shipped_dir, "fresh.md"))
     end
 
@@ -4338,7 +4321,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
           quiesce_secs: 30
         )
 
-      assert_raise WatchStop, fn -> LoopQueueDrain.drain(opts) end
+      assert_raise WatchStop, fn -> quiet_drain(opts) end
       # "dep" must be built (and shipped) strictly before "dependent" — the
       # dependent must never see its dep as satisfied while quiescing.
       assert Agent.get(built, & &1) == ["dep", "dependent"]
@@ -4379,7 +4362,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       output =
         capture_io(:stderr, fn ->
-          assert_raise WatchStop, fn -> LoopQueueDrain.drain(opts) end
+          assert_raise WatchStop, fn -> quiet_drain(opts) end
         end)
 
       if match?({:unix, :darwin}, :os.type()) do
@@ -4421,7 +4404,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       output =
         capture_io(:stderr, fn ->
-          assert {:ok, 1} = LoopQueueDrain.drain(base_opts(ctx, spawn_fn: spawn_fn))
+          assert {:ok, 1} = quiet_drain(base_opts(ctx, spawn_fn: spawn_fn))
         end)
 
       assert output =~ "solo"
@@ -4451,9 +4434,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       capture_io(:stderr, fn ->
         assert {:ok, 1} =
-                 LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, building_dir: building_dir)
-                 )
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, building_dir: building_dir))
       end)
 
       refute File.exists?(Path.join(building_dir, "solo.md"))
@@ -4469,9 +4450,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       capture_io(:stderr, fn ->
         assert {:ok, 0} =
-                 LoopQueueDrain.drain(
-                   base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn)
-                 )
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
       end)
 
       # exit 5 is a deterministic failure — the pitch stays in ready/, never

@@ -46,6 +46,20 @@ verdict means shrink the file or evict its lowest-value content and name what wa
 the cap. Routes to context-curator's `retire`/compact action (`shared/rules/roles/context-curator.md`
 § Retire / Compact Action).
 
+**A file with no committed row is not a deadlock.** Because the only writer of `prompt-budgets.txt` is
+an operator, "no row" must never be a verdict whose sole remedy is a write the agent is denied. So:
+
+- **New rule file, no row** — the ceiling is DERIVED from the STYLE_GUIDE targets (`_core` 50 lines,
+  `roles`/`stacks` 150) rather than seeded. A new file is therefore held to a STRICTER bar than the
+  grandfathered ceilings beside it, and an overflow has a remedy the author can perform: shrink it.
+- **New rendered agent prompt, no row** — still a hard fail. There is no STYLE_GUIDE target to derive
+  from and a new subagent template is an operator action anyway; the message names `--write` and says
+  it is the operator's to run.
+- **Stale row (the file it names is gone)** — reported on stderr, NOT fatal. A deleted file cannot
+  overflow anything, and failing on it deadlocked whoever deleted or renamed the file. Until the
+  operator prunes it, any file later taking that name is governed by the derived ceiling above, which
+  is stricter than the orphaned row.
+
 ## Curator Retire/Compact Action
 
 The one place the curator's normal no-re-sectioning ban is lifted — scoped to the named over-budget

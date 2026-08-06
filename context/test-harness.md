@@ -253,4 +253,4 @@ Benchmark mode (BENCH=1), artifact layout, screenshot capture, mix viewer tasks:
 
 ## Trigger Keywords
 
-test_harness, test-stacks, last_green, record-green.sh, stack scaffold test, ExUnit assertions, role resolver, orchestration loop, mix codegen.loop, mix codegen.loop.queue, mix codegen.pitches.scope, LoopGate, LoopQueue, LoopQueueDrain, claude-build --queue, flake triage, hermetic regression guards, scope: frontmatter, post-review curator gate ownership
+test_harness, test-stacks, last_green, record-green.sh, stack scaffold test, clean fixture baseline, prepare_codegen_build_baseline, ExUnit max-cases, ExUnit assertions, role resolver, orchestration loop, mix codegen.loop, mix codegen.loop.queue, mix codegen.pitches.scope, LoopGate, LoopQueue, LoopQueueDrain, claude-build --queue, flake triage, hermetic regression guards, scope: frontmatter, post-review curator gate ownership

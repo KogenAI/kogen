@@ -109,4 +109,4 @@ rung is strictly higher-capability than its primary — never a lateral or downg
 
 ## Trigger Keywords
 
-config.yaml, role model mapping, escalate_model, escalate_effort, fallback rung, switch_model_reason, RoleResolver, per-role effort, harness block, load-role.sh, thinking_tokens, ROLE_THINKING_TOKENS, MAX_THINKING_TOKENS, role-model-sweep, fixed binding suppression, campaign arm
+config.yaml, role model mapping, escalate_model, escalate_effort, fallback rung, switch_model_reason, tool_map, RoleResolver, per-role effort, harness block, load-role.sh, thinking_tokens, ROLE_THINKING_TOKENS, MAX_THINKING_TOKENS, role-model-sweep, fixed binding suppression, campaign arm
