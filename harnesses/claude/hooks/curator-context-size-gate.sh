@@ -78,14 +78,16 @@ if [ "$TOOL_NAME" = "MultiEdit" ]; then
     old_blob=$(printf '%s' "$RAW_INPUT" | jq -r '[.tool_input.edits[]?.old_string] | join("")' 2>/dev/null) || exit 0
     new_blob=$(printf '%s' "$RAW_INPUT" | jq -r '[.tool_input.edits[]?.new_string] | join("")' 2>/dev/null) || exit 0
     on_disk=0
-    if [ -f "$FILE_PATH" ]; then
-        on_disk=$(wc -c <"$FILE_PATH" 2>/dev/null | tr -d ' ')
+    if [ -f "$abs_path" ]; then
+        on_disk=$(wc -c <"$abs_path" 2>/dev/null | tr -d ' ')
         [ -z "$on_disk" ] && on_disk=0
     fi
     old_b=$(printf '%s' "$old_blob" | wc -c | tr -d ' ')
     new_b=$(printf '%s' "$new_blob" | wc -c | tr -d ' ')
     projected=$((on_disk - old_b + new_b))
-    if [ "$projected" -gt "$CAP" ]; then
+    # A file already over cap must stay repairable: only deny a write that
+    # moves it further from compliance, never one that shrinks it.
+    if [ "$projected" -gt "$CAP" ] && [ "$projected" -gt "$on_disk" ]; then
         if [ "$is_root_doc" = "1" ]; then
             deny "curator-context-size-gate: your MultiEdit to ${FILE_PATH} would make it ${projected} bytes, over the ${CAP}-byte (40k) cap. ${FILE_PATH} is editable this turn — compress a Domain Context Files row's keyword cell or relocate prose into the context/*.md file that row points at. Get the file under 40960 bytes before finishing this cycle."
         else
@@ -93,6 +95,11 @@ if [ "$TOOL_NAME" = "MultiEdit" ]; then
         fi
     fi
     exit 0
+fi
+on_disk=0
+if [ -f "$abs_path" ]; then
+    on_disk=$(wc -c <"$abs_path" 2>/dev/null | tr -d ' ')
+    [ -z "$on_disk" ] && on_disk=0
 fi
 if [ "$TOOL_NAME" = "Write" ]; then
     content=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.content // ""' 2>/dev/null) || exit 0
@@ -103,17 +110,14 @@ else # Edit
     new_string=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.new_string // ""' 2>/dev/null) || exit 0
     old_string=$(printf '%s' "$RAW_INPUT" | jq -r '.tool_input.old_string // ""' 2>/dev/null) || exit 0
     [ -z "$new_string" ] && [ -z "$old_string" ] && exit 0
-    on_disk=0
-    if [ -f "$FILE_PATH" ]; then
-        on_disk=$(wc -c <"$FILE_PATH" 2>/dev/null | tr -d ' ')
-        [ -z "$on_disk" ] && on_disk=0
-    fi
     old_b=$(printf '%s' "$old_string" | wc -c | tr -d ' ')
     new_b=$(printf '%s' "$new_string" | wc -c | tr -d ' ')
     projected=$((on_disk - old_b + new_b))
 fi
 
-if [ "$projected" -gt "$CAP" ]; then
+# A file already over cap must stay repairable: only deny a write that moves
+# it further from compliance, never one that shrinks it.
+if [ "$projected" -gt "$CAP" ] && [ "$projected" -gt "$on_disk" ]; then
     if [ "$is_root_doc" = "1" ]; then
         deny "curator-context-size-gate: your write to ${FILE_PATH} would make it ${projected} bytes, over the ${CAP}-byte (40k) cap. ${FILE_PATH} is editable this turn — compress a Domain Context Files row's keyword cell or relocate prose into the context/*.md file that row points at. Get the file under 40960 bytes before finishing this cycle."
     else
