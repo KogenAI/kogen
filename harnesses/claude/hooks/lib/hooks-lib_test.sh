@@ -560,6 +560,22 @@ result=$(split_command_segments "a & b")
 expected=$'a \n b'
 assert_eq "split_command_segments: single & splits into two segments" "$expected" "$result"
 
+# ── redirection & is literal, not a control-operator split (this pitch) ─────
+# An & immediately preceded/followed by '>' is part of a redirection operator
+# (2>&1, >&2, &>, &>>) — it must NOT be treated as a background/chain
+# separator. Before the fix, `make test 2>&1 | tail -150` mis-split into
+# three segments (`make test 2>` / `1` / ` tail -150`), and the middle
+# segment `1` matched no allowlist prefix -> phantom deny.
+result=$(split_command_segments "make test 2>&1 | tail -150")
+expected=$'make test 2>&1 \n tail -150'
+assert_eq "split_command_segments: 2>&1 stays literal, only | splits" "$expected" "$result"
+
+result=$(split_command_segments "cmd &> file")
+assert_eq "split_command_segments: &> stays literal (one segment)" "cmd &> file" "$result"
+
+result=$(split_command_segments "git status --porcelain 2>&1")
+assert_eq "split_command_segments: trailing 2>&1 -> single segment" "git status --porcelain 2>&1" "$result"
+
 # ── breadcrumb mtime probe — GNU-first with BSD fallback, OS-portable ────────
 # Regression for: on Linux/GNU coreutils, `stat -f` means --file-system (exits
 # 0, prints filesystem info) — NOT "format" as on BSD/macOS. A BSD-first probe
@@ -668,9 +684,15 @@ assert_eq "command_invokes: grep -n 'git push' docs.md -> mention, no match" "1"
 if command_invokes "rm --force /tmp/foo" '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|--recursive\b'; then r=0; else r=1; fi
 assert_eq "command_invokes: rm --force -> no recursive flag, no match" "1" "$r"
 
-# Fail-closed on unbalanced quote
-if command_invokes "echo 'unterminated" '^(kill)$'; then r=0; else r=1; fi
-assert_eq "command_invokes: unbalanced quote -> fail closed (matches)" "0" "$r"
+# Unparseable (unbalanced quote) is now a DISTINCT return code (2), not a
+# collapsed "match" (0) — callers that must stay fail-closed check the
+# actual return code, not just boolean truthiness (`if cmd; then` treats
+# both 1 and 2 as falsy). This asserts the real contract: rc=2, not rc=0.
+# Capture rc via `r=$?` inside an `if`/`||` so the bare non-zero return
+# never trips this file's own `set -e`.
+r=0
+command_invokes "echo 'unterminated" '^(kill)$' || r=$?
+assert_eq "command_invokes: unbalanced quote -> distinct unparseable code (2), not collapsed into match" "2" "$r"
 
 # ci flag — case-insensitive argv match (SQL keyword check)
 if command_invokes "psql \$DATABASE_URL -c 'truncate table users;'" '^psql$' '\b(TRUNCATE|DROP[[:space:]]+TABLE|DELETE[[:space:]]+FROM)\b' ci; then r=0; else r=1; fi
@@ -745,6 +767,17 @@ assert_eq "split_command_segments: escaped dq inside dq string -> parses (rc 0)"
 result=$(split_command_segments 'grep "a\"b" file')
 assert_eq "split_command_segments: escaped dq stays inside one segment" 'grep "a\"b" file' "$result"
 
+# Outside-quote backslash-escape (this pitch's second core fix): a `\"`
+# OUTSIDE any quoted region must be consumed as an escaped literal pair, not
+# read as an opening double-quote that never closes. Before the fix,
+# `echo \"x\"` was wrongly reported unbalanced (rc 1) even though every
+# quote is escaped and the command is fully balanced.
+split_command_segments 'echo \"x\"' >/dev/null 2>&1
+assert_eq "split_command_segments: outside-quote backslash-escape -> parses (rc 0)" "0" "$?"
+
+result=$(split_command_segments 'echo \"x\"')
+assert_eq "split_command_segments: outside-quote backslash-escape stays one segment" 'echo \"x\"' "$result"
+
 # FP1 (live, 2026-07-17): grep -o pipeline with an escaped-quote pattern.
 if command_invokes 'grep -o "{% include \"[^\"]*\"" tmpl | sed -n 1p' '^rm$'; then r=0; else r=1; fi
 assert_eq "command_invokes FP1: grep -o pipeline w/ escaped quotes -> no rm invocation" "1" "$r"
@@ -780,9 +813,13 @@ assert_eq "command_invokes CONTROL: bash -c 'rm -rf /x' -> still denies" "0" "$r
 if command_invokes 'rm -rf "/x\"y"' '^rm$' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|--recursive\b'; then r=0; else r=1; fi
 assert_eq 'command_invokes CONTROL: rm -rf "/x\"y" (escaped quote in arg) -> still denies' "0" "$r"
 
-# Genuinely unbalanced quote (not escaped) must still fail-closed -> deny.
-if command_invokes 'echo "oops' '^(kill)$'; then r=0; else r=1; fi
-assert_eq "command_invokes CONTROL: genuinely unbalanced quote -> fail closed (matches)" "0" "$r"
+# Genuinely unbalanced quote (not escaped) must still be distinguishable as
+# UNPARSEABLE (rc=2), not collapsed into "match" (rc=0) — see the earlier
+# "distinct unparseable code" assertion above for the full rationale.
+# Capture rc via `||` so the bare non-zero return never trips `set -e`.
+r=0
+command_invokes 'echo "oops' '^(kill)$' || r=$?
+assert_eq "command_invokes CONTROL: genuinely unbalanced quote -> distinct unparseable code (2)" "2" "$r"
 
 # ── command_word_of_segment / segment_argv_of — cwd-independence (defect 2) ─
 # Unquoted `local -a words=($seg)` performs glob expansion against cwd; the

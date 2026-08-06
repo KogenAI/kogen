@@ -20,6 +20,14 @@ Intentional, commented, justified (fail-loud-rule exemption):
 
 This is not a contradiction of the fail-closed ruling — it is a deliberate, narrow carve-out with an explicit justification comment. Future fail-closed sweeps must preserve it. (The `stop-cycle-guard.sh` retry-cap release, a second former survivor, was retired along with the legacy self-orchestrating harness engine it guarded.)
 
+## Allowlist Defense-in-Depth: Verb-Level vs Flag-Level Safety
+
+A verb-level allowlist (`reviewer-bash-allowlist` via `registry.yaml`) assumes defense-in-depth: the allowlist blocks write-capable verbs, and a secondary layer (`build-agent-app-confinement`) denies writes outside `CODEGEN_BUILD_CWD`. When widening the allowlist to include a new verb (e.g., adding `sed` for stream editing), the widening is unsafe if the verb has write-capable flags (e.g., `sed -i` for in-place edits) that the assumed backstop does not catch.
+
+**Concrete risk**: `sed -i <file>` modifies a file in-place. `build-agent-app-confinement` is gated on `CODEGEN_BUILD_CWD`, which is set by `dispatch.sh` and in hook test fixtures, but NOT in the normal `mix codegen.loop` role-spawn path. A reviewer-phoenix session running under the loop has no backstop against `sed -i`, defeating the read-only sandbox.
+
+**Mitigation**: When widening `reviewer-bash-allowlist`, verify that the new verb's commonly-used flags are ALL read-only (no `-i`, `-w`, `-e` write modes), OR add a flag-level deny in the same pass, OR verify a secondary guard catches the write-capable flags (not just the verb) and fires in the normal spawn path. Allowlist words alone cannot enforce flag-level safety — default to denying a verb if its flags straddle safe and unsafe modes.
+
 ## Resolved Green-on-Red: Fabricated Gate Verdict on Missing Result
 
 `codegen-build`'s claude leg previously synthesized a fabricated `verdict: "clear"` gate-result JSON (execution_evidence 1, ALL CLEAR marker) whenever a successful dispatch left no real gate-result behind — with no gate having actually run. Resolved: the build now fails closed — a successful dispatch with no gate-result.json is treated as a build defect, never papered over with an invented clear verdict. The loop is the sole build engine and always gates, so this path should never fire on a healthy build; if it does, it must be loud.

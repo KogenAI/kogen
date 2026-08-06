@@ -65,7 +65,7 @@ When adding assertion helpers (e.g., `assert_file_contains` / `assert_file_absen
 
 Example (`call-dispatch_test.sh`): fn wraps `grep -qF -- "$search_string" "$file_path"`, incrementing `pass_count`/`fail_count`, printing `FAIL: '<str>' not found in <file>` on miss.
 
-**Coverage minimum**: every guard ≥14 cases, DENY+ALLOW — silent failures (grep partial, null crash, missing `//`) caught by tests not review. **Optional-pipeline** (both FORBID bare skip): (a) guaranteed dep (node/prettier/yq) — assert presence, fail loud on absence; (b) genuinely-optional (e.g. app omits `assets.deploy`) — check fs+config preconditions, assert ABSENCE-path fallback/no-op, not bare skip. **Hermeticity**: role-reading guards tested via `env -u CLAUDE_ROLE bash "$GUARD"`. **Markdown headings** in LLM output: case-insensitive `~r/##\s+heading/i` (capitalisation varies).
+**Coverage minimum**: every guard ≥14 cases, DENY+ALLOW — silent failures (grep partial, null crash, missing `//`) caught by tests not review. A guard's ALLOW cases are drawn from `fixtures/denial-ledger.jsonl` where it has rows for that guard; a new denial observed in a build is added to the ledger, not worked around. **Optional-pipeline** (both FORBID bare skip): (a) guaranteed dep (node/prettier/yq) — assert presence, fail loud on absence; (b) genuinely-optional (e.g. app omits `assets.deploy`) — check fs+config preconditions, assert ABSENCE-path fallback/no-op, not bare skip. **Hermeticity**: role-reading guards tested via `env -u CLAUDE_ROLE bash "$GUARD"`. **Markdown headings** in LLM output: case-insensitive `~r/##\s+heading/i` (capitalisation varies).
 
 ## Carve-Out Twin Rule — An ALLOW Fixture Requires a DENY Twin Crossing Its Axis
 
@@ -456,4 +456,4 @@ HOOK-MANIFEST edits require BOTH `.sh` AND `registry.yaml` to update:
 
 ## Trigger Keywords
 
-how to write a hook, SubagentStop fix-up, Stop hook authoring, hook test authoring, hooks-lib, output protocol, gate verdict flow, hook registration, transcript lag, kind: registration vs denial, hook layering, measurement vs enforcement, DENY+ALLOW, ≥14 cases, hook relocation, diff-scanning hook scope, hook porting, diff source widening, file-extension scope, scope independence, self-referential blast radius, test-fixture false-positive
+how to write a hook, SubagentStop fix-up, Stop hook authoring, hook test authoring, hooks-lib, output protocol, gate verdict flow, hook registration, transcript lag, kind: registration vs denial, hook layering, measurement vs enforcement, DENY+ALLOW, ≥14 cases, hook relocation, diff-scanning hook scope, hook porting, diff source widening, file-extension scope, scope independence, self-referential blast radius, test-fixture false-positive, denial ledger

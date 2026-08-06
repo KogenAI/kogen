@@ -10,11 +10,15 @@ deliberately-deferred question (per-domain budget vs. per-file, summary+detail t
 
 `curator-context-size-gate.sh` denies ANY role's Edit/Write/MultiEdit to `context/<file>.md`,
 `PROJECT_CONTEXT.md`, or `codegen/PROJECT_CONTEXT.md` when the PROJECTED post-write byte size exceeds
-40,960 B — computed as `on_disk - old_bytes + new_bytes` for an Edit, or the literal content size for a
-Write. Role-agnostic (fires for any role, not just curator). Fixed in the writer's OWN turn — a denied
-write must be resolved before the cycle continues; it cannot be deferred to commit time. `CLAUDE.md`/
-`AGENTS.md` are deliberately NOT gated — in downstream repos those are rendered symlinks whose bytes are
-decided by a `.j2` template, not by the editing agent.
+40,960 B AND that projection is GREATER than the file's `on_disk` size — a non-increasing ratchet, not a
+strict-shrink requirement. `projected` is computed as `on_disk - old_bytes + new_bytes` for an Edit, or
+the literal content size for a Write. Role-agnostic (fires for any role, not just curator). Fixed in the
+writer's OWN turn — a denied write must be resolved before the cycle continues; it cannot be deferred to
+commit time. An already-over-cap file stays REPAIRABLE: a byte-neutral or shrinking edit is always
+allowed, even while the file remains over cap; only a write that makes it WORSE is denied. An
+allowed-but-still-over-cap write emits a non-blocking `advise()` notice naming the file and its size, so
+the over-cap state is never silent. `CLAUDE.md`/`AGENTS.md` are deliberately NOT gated — in downstream
+repos those are rendered symlinks whose bytes are decided by a `.j2` template, not by the editing agent.
 
 **This cap knows nothing about domain size.** A domain can legitimately exceed 40,960 bytes (hooks:
 ~122,805 B measured; tests: ~117,656 B measured) — when it does, the cap is a per-FILE constraint, not a
@@ -85,7 +89,7 @@ pass, or skip the write and note the conflict.
 
 ## Editor Pre-Check Discipline
 
-Before editing any `context/*.md` file, run `wc -c <file>` to confirm headroom. A file already over the 40,960-byte cap requires compressing or relocating unrelated content BEFORE the edit can proceed — add-only edits to an already-over-cap file fail at gate time with no escape. Workflow: (1) `wc -c` measure, (2) if over cap, identify an unrelated dense paragraph elsewhere in the same file to compress, (3) apply both edits in parallel, (4) re-measure to confirm under cap before proceeding. Headroom-less edits block the gate and force rework in-cycle; pre-flight discipline prevents cycle-blocking gate denials.
+Before editing any `context/*.md` file, run `wc -c <file>` to confirm headroom. A file already over the 40,960-byte cap stays repairable — a byte-neutral or shrinking edit is always allowed (the gate denies only a write that GROWS an already-over-cap file further, per the ratchet above) — but a net-additive edit still requires compressing or relocating unrelated content first. Workflow: (1) `wc -c` measure, (2) if over cap and the edit is net-additive, identify an unrelated dense paragraph elsewhere in the same file to compress, (3) apply both edits in parallel, (4) re-measure to confirm under cap before proceeding. Headroom-less net-additive edits still block the gate; pre-flight discipline prevents cycle-blocking gate denials.
 
 ## Open Question (Deliberately Deferred, Not This File's Job to Resolve)
 

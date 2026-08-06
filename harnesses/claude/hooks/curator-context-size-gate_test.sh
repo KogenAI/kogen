@@ -27,6 +27,11 @@
 #  23: outside a git repo → ALLOW (fail-open)
 #  24: CLAUDE.md / AGENTS.md over cap → ALLOW (deliberately not gated)
 #  25: PROJECT_CONTEXT.md over-cap deny message does NOT say "add the matching PROJECT_CONTEXT.md row"
+#  26: byte-neutral Edit on already-over-cap file → ALLOW (ratchet)
+#  27: shrinking Edit on already-over-cap file (still over) → ALLOW (ratchet)
+#  28: growing Edit on already-over-cap file → DENY (ratchet still blocks growth)
+#  29: allowed byte-neutral over-cap edit emits advise() notice naming size
+#  30: plain under-cap allowed write emits no advise() notice
 
 set -euo pipefail
 
@@ -346,6 +351,92 @@ if printf '%s' "$stdout25" | grep -q '"permissionDecision"[[:space:]]*:[[:space:
     pass=$((pass + 1))
 else
     printf 'FAIL: root-doc deny message incoherently references adding a PROJECT_CONTEXT.md row\n  stdout: %s\n' "$stdout25"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 26: curator Edit on an ALREADY-over-cap file, BYTE-NEUTRAL (projected
+# == on_disk, both over cap) → ALLOW. The ratchet denies only a write that
+# makes an over-cap file WORSE (projected > on_disk); a byte-neutral edit
+# (e.g. a single-character correctness fix) must stay repairable.
+# on-disk 41000 (over cap) - old(3) + new(3) = 41000 (unchanged, still over)
+# ---------------------------------------------------------------------------
+dir26=$(make_fixture 26)
+head -c 41000 /dev/zero | tr '\0' 'x' >"$dir26/context/existing.md"
+old26="xxx"
+new26="yyy"
+payload26=$(jq -n --arg fp "$dir26/context/existing.md" --arg old "$old26" --arg new "$new26" --arg cwd "$dir26" '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:$old,new_string:$new},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "curator byte-neutral Edit on already-over-cap file → ALLOW (ratchet)" "0" "$payload26"
+
+# ---------------------------------------------------------------------------
+# Test 27: curator Edit that SHRINKS an already-over-cap file (projected <
+# on_disk, still over cap) → ALLOW.
+# on-disk 41000 (over cap) - old(1000) + new(10) = 40010 (shrunk, still... wait, under cap)
+# Use a shrink that stays OVER cap to isolate the ratchet from the plain
+# under-cap allow path already covered by Test 6.
+# on-disk 41000 - old(30) + new(10) = 40980 (shrunk but still just over cap)
+# ---------------------------------------------------------------------------
+dir27=$(make_fixture 27)
+head -c 41000 /dev/zero | tr '\0' 'x' >"$dir27/context/existing.md"
+old27=$(head -c 30 /dev/zero | tr '\0' 'x')
+new27=$(head -c 10 /dev/zero | tr '\0' 'y')
+payload27=$(jq -n --arg fp "$dir27/context/existing.md" --arg old "$old27" --arg new "$new27" --arg cwd "$dir27" '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:$old,new_string:$new},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "curator shrinking Edit on already-over-cap file (still over) → ALLOW (ratchet)" "0" "$payload27"
+
+# ---------------------------------------------------------------------------
+# Test 28: curator Edit that GROWS an already-over-cap file further → DENY.
+# The ratchet only tolerates non-growing edits — growth is still denied.
+# on-disk 41000 (over cap) - old(3) + new(5000) = 45997 (grew)
+# ---------------------------------------------------------------------------
+dir28=$(make_fixture 28)
+head -c 41000 /dev/zero | tr '\0' 'x' >"$dir28/context/existing.md"
+old28="xxx"
+new28=$(head -c 5000 /dev/zero | tr '\0' 'y')
+payload28=$(jq -n --arg fp "$dir28/context/existing.md" --arg old "$old28" --arg new "$new28" --arg cwd "$dir28" '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:$old,new_string:$new},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "curator GROWING Edit on already-over-cap file → DENY (ratchet still blocks growth)" "2" "$payload28"
+
+# ---------------------------------------------------------------------------
+# Test 29: an ALLOWED byte-neutral edit on an already-over-cap file emits a
+# non-blocking advise() notice naming the file and its size — the over-cap
+# state must never be silent, since this is the ONLY enforcement on these
+# paths (no commit-time backstop).
+# ---------------------------------------------------------------------------
+dir29=$(make_fixture 29)
+head -c 41000 /dev/zero | tr '\0' 'x' >"$dir29/context/existing.md"
+old29="xxx"
+new29="yyy"
+payload29=$(jq -n --arg fp "$dir29/context/existing.md" --arg old "$old29" --arg new "$new29" --arg cwd "$dir29" '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:$old,new_string:$new},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+stdout29=$(printf '%s' "$payload29" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
+
+if ! printf '%s' "$stdout29" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout29" | grep -q '"additionalContext"' &&
+    printf '%s' "$stdout29" | grep -q "41000"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: allowed byte-neutral over-cap edit emits advise() notice with size\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: allowed byte-neutral over-cap edit missing advise() notice\n  stdout: %s\n' "$stdout29"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 30: a plain UNDER-cap allowed write (Test 2's shape) emits NO
+# advise() notice — the notice is scoped to the over-cap case only.
+# ---------------------------------------------------------------------------
+dir30=$(make_fixture 30)
+content30=$(head -c 100 /dev/zero | tr '\0' 'x')
+payload30=$(jq -n --arg fp "$dir30/context/ok.md" --arg content "$content30" --arg cwd "$dir30" '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:$content},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+stdout30=$(printf '%s' "$payload30" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
+
+if [ -z "$stdout30" ]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: plain under-cap write emits no advise() notice\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: plain under-cap write unexpectedly emitted output\n  stdout: %s\n' "$stdout30"
     fail=$((fail + 1))
 fi
 

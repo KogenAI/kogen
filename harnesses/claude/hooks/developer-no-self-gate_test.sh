@@ -311,5 +311,31 @@ out2=$(make_loop_input "make test" "developer-phoenix-backend" "$SID17" | CODEGE
 assert_contains "loop-mode 2nd run, SAME resume token, no tree change DENIED (spin)" '"permissionDecision"' "$out2"
 rm -f "/tmp/codegen-self-gate-${SID17}.sig"
 
+# ── Test 18: loop-mode, SAME tree but a DIFFERENT targeted test command →
+# ALLOW (not a spin). RED-then-GREEN: the spin signature now folds in the
+# normalized COMMAND, not just tree content — before this fix, running
+# `mix test test/a_test.exs` then `mix test test/b_test.exs` against an
+# unchanged tree denied as a "pure spin", even though it is two DIFFERENT
+# targeted test files — exactly the idiom dev-no-ci.sh prescribes as safe
+# ("Specific test files are OK: mix test test/path/file.exs").
+SID18="sid18-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID18}.sig"
+out=$(make_loop_input "mix test test/a_test.exs" "developer-phoenix-backend" "$SID18" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 1st run (mix test test/a_test.exs) ALLOWED" '"permissionDecision"' "$out"
+out2=$(make_loop_input "mix test test/b_test.exs" "developer-phoenix-backend" "$SID18" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 2nd run, SAME tree, DIFFERENT targeted test file ALLOWED (not a spin)" '"permissionDecision"' "$out2"
+rm -f "/tmp/codegen-self-gate-${SID18}.sig"
+
+# ── Test 19: loop-mode, SAME tree AND the SAME command again → DENY (spin).
+# Confirms the D6 fix did not weaken the ORIGINAL spin detection — repeating
+# the identical command against an unchanged tree is still a genuine spin.
+SID19="sid19-$$-$(date -u +%s)"
+rm -f "/tmp/codegen-self-gate-${SID19}.sig"
+out=$(make_loop_input "mix test test/a_test.exs" "developer-phoenix-backend" "$SID19" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_not_contains "loop-mode 1st run (mix test test/a_test.exs) ALLOWED" '"permissionDecision"' "$out"
+out2=$(make_loop_input "mix test test/a_test.exs" "developer-phoenix-backend" "$SID19" | CODEGEN_LOOP=1 bash "$HOOK" 2>/dev/null || true)
+assert_contains "loop-mode 2nd run, SAME tree, SAME command DENIED (spin)" '"permissionDecision"' "$out2"
+rm -f "/tmp/codegen-self-gate-${SID19}.sig"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

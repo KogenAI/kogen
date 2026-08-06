@@ -140,7 +140,12 @@ developer-*)
             exit 0
         fi
 
-        deny "Developer cannot read $FILE_PATH for orientation — it is not in the loop's files_to_touch event, which the loop writes from the pitch's scope: field. This limits ORIENTATION READS only; it does not limit which files you may change. If the implementation genuinely needs a file the pitch did not declare, edit it and name it in your report's files-modified list with a one-line justification — the reviewer adjudicates scope expansion, and an expansion the reviewer accepts is a legitimate outcome. Do not narrow the pitch to fit the declared list."
+        # Not in the declared files_to_touch — but a path the role may
+        # WRITE it may READ (this hook's own deny text used to concede
+        # that in the same breath it denied the read, which is not
+        # enforcement). Advise, don't block: the read proceeds, and scope
+        # adjudication stays with the reviewer at handoff.
+        advise "$FILE_PATH is not in the loop's files_to_touch event (derived from the pitch's scope: field). Reading it anyway — this only limits ORIENTATION cost tracking, not which files you may change. If the implementation genuinely needs this file, name it in your report's files-modified list with a one-line justification; the reviewer adjudicates scope expansion."
         exit 0
     fi
     ;;
@@ -180,7 +185,12 @@ reviewer-*)
             exit 0
         fi
 
-        deny "Reviewer cannot read $FILE_PATH — it is not listed in developer's files_modified event. Review only files that developer modified."
+        # Not in developer's files_modified — advise, don't block. A path
+        # the developer may have written it may be worth reading even when
+        # the typed event missed it (e.g. a sibling the developer touched
+        # but under-reported); the reviewer's own judgment adjudicates
+        # whether that expansion was legitimate.
+        advise "$FILE_PATH is not listed in developer's files_modified event. Reading it anyway — confirm during review whether this file's change (if any) was in scope."
         exit 0
     fi
     ;;

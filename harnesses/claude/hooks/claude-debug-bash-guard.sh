@@ -55,6 +55,18 @@ if [ "${role}" != "debug" ] && [ "${role}" != "shape" ]; then
     exit 0
 fi
 
+# Parseability check BEFORE any rule-specific command_invokes() call below.
+# Every check in this file stays fail-closed on an unparseable command (a
+# real unbalanced quote), but the denial must say so honestly — never
+# borrow an unrelated rule's message for a command that rule never actually
+# matched (that was the bug: command_invokes() used to return 0 — "match"
+# — on a parse failure, so whichever rule happened to run first claimed the
+# denial for a command it never checked).
+if ! split_command_segments "$COMMAND" >/dev/null; then
+    deny "BLOCKED by claude-debug-bash-guard: could not parse this command (unbalanced quote) — rewrite it as a single balanced command"
+    exit 0
+fi
+
 # rm -rf / rm -r (recursive deletion) — anchor on a short flag cluster
 # containing r/R (e.g. -r, -rf, -fr, -rfv) anywhere in argv, or the explicit
 # --recursive long flag. Must NOT match long flags like --force/--verbose

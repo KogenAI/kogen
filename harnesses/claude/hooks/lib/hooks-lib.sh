@@ -836,6 +836,20 @@ split_command_segments() {
             i=$((i + 1))
             continue
         fi
+        if [ "$ch" = '\' ]; then
+            # Outside any quoted region, a backslash escapes the next
+            # character — consume both verbatim with no quote-state toggle,
+            # mirroring the escaped-pair rule already applied inside a
+            # double-quoted region above. Without this, `echo \"x\"` is
+            # misread as an OPENING double-quote that never closes, so the
+            # whole command is wrongly reported unbalanced (return 1) even
+            # though every quote is escaped and the command is fully
+            # balanced. A trailing lone backslash at end-of-string is simply
+            # consumed as itself (cmd:i:2 on a 1-char tail yields 1 char).
+            seg+="${cmd:i:2}"
+            i=$((i + 2))
+            continue
+        fi
         case "$ch" in
         "'")
             in_sq=1
@@ -856,6 +870,19 @@ split_command_segments() {
             seg=""
             i=$((i + 2))
             continue
+        fi
+        if [ "$ch" = "&" ]; then
+            # An & immediately preceded by '>' (2>&1, >&2) or immediately
+            # followed by '>' (&>, &>>) is part of a redirection operator,
+            # not a control-operator background/chain separator. Literal:
+            # append and advance past it without splitting.
+            prev1="${seg: -1}"
+            next1="${cmd:i+1:1}"
+            if [ "$prev1" = ">" ] || [ "$next1" = ">" ]; then
+                seg+="$ch"
+                i=$((i + 1))
+                continue
+            fi
         fi
         if [ "$ch" = ";" ] || [ "$ch" = "|" ] || [ "$ch" = "&" ] || [ "$ch" = $'\n' ]; then
             printf '%s\n' "$seg"
@@ -1040,14 +1067,25 @@ segment_argv_of() {
 # still matches — this is what keeps strip_quoted's false negative
 # (bash -c 'kill 123' silently passing) from reappearing here.
 #
-# Fails CLOSED (returns 0 — treat as an invocation, i.e. the caller should
-# deny) only when split_command_segments itself cannot parse the overall
-# <command_string> (unbalanced quote) — the whole string is then ambiguous
-# and is treated as a match. Per-segment resolution is NOT fail-closed: a
-# segment whose command word cannot be resolved (or that is blank) is simply
-# skipped (`continue`) and evaluation proceeds to the next segment — it is
-# never itself treated as a match. Fail-closed applies to the parse-level
-# failure, not to an individual unresolvable segment.
+# Return contract: 0 = matched (an invocation was found), 1 = no match
+# (parsed cleanly, nothing matched), 2 = UNPARSEABLE (split_command_segments
+# could not parse <command_string> — unbalanced quote). Callers that must
+# stay fail-closed (deny on "cannot tell") treat BOTH 0 and 2 as "should
+# deny", but MUST distinguish them when composing the denial message: rc=0
+# names the rule that matched; rc=2 must say "could not parse this command",
+# never the rule's own message — reporting a parse failure as a rule match
+# denies an arbitrary unrelated command for a rule it never violated. A
+# plain `if command_invokes ...; then` (bash truthiness) treats rc=2 the
+# same as rc=1 (both non-zero → falsy) — callers that need fail-closed-on-
+# unparseable behavior MUST check the actual return code, not just boolean
+# truthiness. See callers in claude-debug-bash-guard.sh,
+# developer-no-self-gate.sh, shape-remote-readonly.sh for the pattern.
+#
+# Per-segment resolution is NEVER fail-closed: a segment whose command word
+# cannot be resolved (or that is blank) is simply skipped (`continue`) and
+# evaluation proceeds to the next segment — it is never itself treated as a
+# match. The rc=2 unparseable path applies ONLY to a parse-level failure of
+# the whole <command_string>, never to an individual unresolvable segment.
 command_invokes() {
     local command_string="$1"
     local word_ere="$2"
@@ -1056,8 +1094,8 @@ command_invokes() {
 
     local segments
     if ! segments=$(split_command_segments "$command_string"); then
-        # unbalanced quote — fail closed: treat as a match so the caller denies.
-        return 0
+        # unbalanced quote — parse failure, distinct from "matched".
+        return 2
     fi
 
     local seg word argv payload
@@ -1092,8 +1130,16 @@ command_invokes() {
                 payload="${payload%\'}"
                 payload="${payload#\"}"
                 payload="${payload%\"}"
-                if command_invokes "$payload" "$word_ere" "$argv_ere" "$ci_flag"; then
-                    return 0
+                local nested_rc
+                command_invokes "$payload" "$word_ere" "$argv_ere" "$ci_flag"
+                nested_rc=$?
+                # 0 = matched one level down → propagate as a match. 2 =
+                # the nested payload itself is unparseable → propagate the
+                # distinct unparseable code rather than collapsing it into
+                # "no match" (1). 1 = no match at this level → keep scanning
+                # remaining segments.
+                if [ "$nested_rc" -eq 0 ] || [ "$nested_rc" -eq 2 ]; then
+                    return "$nested_rc"
                 fi
             fi
             ;;
@@ -1160,6 +1206,23 @@ expand_command_indirection() {
         esac
 
         argv=$(segment_argv_of "$seg")
+
+        # A bash/sh/zsh segment carrying the POSIX no-exec flag (-n) only
+        # CHECKS syntax — it never executes the file, so the file's body
+        # must NOT be appended (that would make a pure syntax probe like
+        # `bash -n codegen-commit` read as if it RAN codegen-commit,
+        # letting a downstream COMMAND-source guard match a verb sitting
+        # inside the referenced file's body for a command that never
+        # invoked it). `source`/`.` have no -n equivalent — they always
+        # execute — so this carve-out is scoped to bash/sh/zsh only.
+        case "$word" in
+        bash | sh | zsh)
+            if printf '%s' "$argv" | grep -qE '(^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$)'; then
+                continue
+            fi
+            ;;
+        esac
+
         candidate=""
         for tok in $argv; do
             case "$tok" in

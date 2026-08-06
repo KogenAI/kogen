@@ -62,6 +62,15 @@ H="codegen-test-host"
 run_test "local command in shape role — unaffected, allow" "allow" \
     "grep -rn foo ."
 
+# ── Local command with 2>&1 piped to a filter — regression for the
+# split_command_segments fix: the & inside 2>&1 must not be treated as a
+# control-operator split point, which would otherwise leave a bare,
+# unresolvable segment that this hook's ssh-classification loop simply
+# skips (no ssh word to find) — proves the fix does not introduce any new
+# denial on an ordinary local pipeline. ──
+run_test "local command with 2>&1 | grep in shape role — unaffected, allow" "allow" \
+    "mix test 2>&1 | grep -i warning"
+
 # ── Non-shape role — hook entirely inactive even on a remote mutation ─────
 run_test_role() {
     local desc="$1"

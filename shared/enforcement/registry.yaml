@@ -121,8 +121,15 @@
   source: COMMAND
   mode: allowlist
   tool_guard: Bash
-  match: "^\\s*(codegen-log\\b|git\\s+(-C\\s+\\S+\\s+)?(diff|status|log|show)\\b|printf\\b|echo\\b|wc\\b|cat\\b|ls\\b|true\\b|:)"
-  message: "BLOCKED by reviewer-bash-allowlist: only codegen-log and safe read-only shell utilities (git diff/status/log/show, echo, wc, cat, ls, true, :) allowed for reviewer"
+  # Widened per the ledger: the guard's own intent is read-only inspection
+  # (git diff/status/log/show were already allowed), so text-filter verbs
+  # that narrow that same read-only output are the same intent, not a wider
+  # write posture. Verbs that execute arbitrary OTHER verbs (xargs, bash,
+  # sh, env) stay denied — every segment of a chained command is checked
+  # independently by split_command_segments, so `xargs rm` still denies on
+  # its own segment even if piped from an allowed producer.
+  match: "^\\s*(codegen-log\\b|git\\s+(-C\\s+\\S+\\s+)?(diff|status|log|show)\\b|printf\\b|echo\\b|wc\\b|cat\\b|ls\\b|true\\b|:|head\\b|tail\\b|grep\\b|rg\\b|awk\\b|sed\\b|sort\\b|uniq\\b|nl\\b|cut\\b|tr\\b|comm\\b|diff\\b|jq\\b|find\\b|basename\\b|dirname\\b)"
+  message: "BLOCKED by reviewer-bash-allowlist: only codegen-log and safe read-only shell utilities (git diff/status/log/show, echo, wc, cat, ls, true, :, head, tail, grep, rg, awk, sed, sort, uniq, nl, cut, tr, comm, diff, jq, find, basename, dirname) allowed for reviewer"
   surface: user_global
   signal: AGENT_TYPE
   role: "reviewer-phoenix|reviewer-static"

@@ -157,11 +157,44 @@ fi
 scan_out=$(FACTCHECK_DOC_ROOT="$tmp_root" bash "$(dirname "$0")/lib/context-factcheck-scan.sh" "$repo_root" "$rel_path")
 scan_rc=$?
 
-if [ "$scan_rc" -eq 1 ] && [ -n "$scan_out" ]; then
-    # scan_out lines are prefixed "context-factcheck-scan: <doc>:<linenum> ..."
-    # — rewrite the tmp-root-relative doc path prefix if needed (it already
-    # is $rel_path, so no rewrite required).
-    deny "$scan_out
-context/*.md is editable this turn — fix before finishing this cycle."
+if [ "$scan_rc" -ne 1 ] || [ -z "$scan_out" ]; then
+    exit 0
+fi
+
+# Monotonic gate: deny only violations the projected content ADDS, never
+# ones already present on disk. Without this, an incremental Edit on a
+# multi-reference doc that already carries pre-existing violations never
+# converges — every call re-denies the same pre-existing violations the
+# edit did not touch. Compare by MESSAGE TEXT WITH THE LINE NUMBER STRIPPED
+# (a violation's line number shifts as surrounding content is added/removed,
+# so an unchanged violation's raw line "doc:41 ..." vs "doc:43 ..." would
+# otherwise misregister as "new").
+strip_linenum() {
+    # "context-factcheck-scan: <doc>:<N> <rest>" -> "context-factcheck-scan: <doc>: <rest>"
+    sed -E 's/^(context-factcheck-scan: [^:]+):[0-9]+ /\1: /'
+}
+
+baseline_out=""
+if [ -f "$abs_path" ]; then
+    baseline_out=$(bash "$(dirname "$0")/lib/context-factcheck-scan.sh" "$repo_root" "$rel_path" 2>/dev/null || true)
+fi
+baseline_normalized=$(printf '%s\n' "$baseline_out" | strip_linenum)
+
+is_pre_existing() {
+    printf '%s\n' "$baseline_normalized" | grep -qxF "$1"
+}
+
+added_original=""
+while IFS= read -r scan_line; do
+    [ -z "$scan_line" ] && continue
+    norm_line=$(printf '%s\n' "$scan_line" | strip_linenum)
+    if ! is_pre_existing "$norm_line"; then
+        added_original="${added_original}${added_original:+$'\n'}${scan_line}"
+    fi
+done <<<"$scan_out"
+
+if [ -n "$added_original" ]; then
+    deny "$added_original
+context/*.md is editable this turn — fix before finishing this cycle. (Pre-existing violations elsewhere in this doc were not re-denied — they are not something this edit introduced.)"
 fi
 exit 0

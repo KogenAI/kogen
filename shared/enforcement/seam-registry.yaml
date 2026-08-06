@@ -244,3 +244,10 @@ seams:
     guard: test-hermetic
     guard_time: make-test
     pattern: checked-mirror
+
+  - id: denial-ledger-to-live-hooks
+    declares: "harnesses/claude/hooks/fixtures/denial-ledger.jsonl (curated allow/deny cases drawn from the record of what roles actually ran, per context/hook-authoring-patterns.md § Coverage minimum)"
+    reflects: "the live PreToolUse hook set (dynamically discovered from claude-code-settings.json), replayed as real subprocesses"
+    guard: harnesses/claude/hooks/denial-ledger-replay_test.sh
+    guard_time: make-test
+    pattern: checked-mirror

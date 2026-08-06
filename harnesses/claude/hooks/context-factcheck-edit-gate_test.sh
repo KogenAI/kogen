@@ -21,6 +21,9 @@
 #      tree, not the empty tmp_root mirror)
 #  15: Write context/foo.md referencing a path that does NOT exist anywhere
 #      in the fixture repo → DENY (genuine stale-path violation still caught)
+#  16: Edit fixing ONE of two pre-existing violations, leaving the other → ALLOW (monotonic)
+#  17: Edit adding a NEW violation while pre-existing ones remain → DENY naming only the new one
+#  18: Write to a brand-new file with a real violation still DENIES (no false-open on empty baseline)
 
 set -euo pipefail
 
@@ -229,6 +232,54 @@ payload15=$(jq -n --arg fp "$dir15/context/foo.md" --arg cwd "$dir15" \
     '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"see `lib/nonexistent_module.ex` for details\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
 
 run_test "Write context/foo.md referencing STALE path lib/nonexistent_module.ex → DENY" "2" "$payload15"
+
+# ---------------------------------------------------------------------------
+# Test 16: Edit that FIXES one pre-existing violation but leaves a SECOND
+# pre-existing violation (elsewhere in the same doc) untouched → ALLOW. The
+# gate is monotonic — it denies only violations the edit ADDS, never ones
+# already on disk. Before this fix, an incremental edit on a multi-reference
+# doc that already carried pre-existing violations never converged (it kept
+# re-denying the violation it did not touch).
+# ---------------------------------------------------------------------------
+dir16=$(make_fixture 16)
+printf 'see `lib/missing_one.ex` for details.\n\nsee `lib/missing_two.ex` too.\n' >"$dir16/context/foo.md"
+payload16=$(jq -n --arg fp "$dir16/context/foo.md" --arg cwd "$dir16" \
+    '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:"lib/missing_one.ex",new_string:"PROJECT_CONTEXT.md"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Edit fixing ONE of two pre-existing violations, leaving the other → ALLOW (monotonic)" "0" "$payload16"
+
+# ---------------------------------------------------------------------------
+# Test 17: Edit that leaves pre-existing violations untouched AND adds a
+# genuinely NEW violation elsewhere in the same doc → DENY, naming only the
+# NEW violation (not the pre-existing one it did not touch).
+# ---------------------------------------------------------------------------
+dir17=$(make_fixture 17)
+printf 'see `lib/missing_one.ex` for details.\n' >"$dir17/context/foo.md"
+payload17=$(jq -n --arg fp "$dir17/context/foo.md" --arg cwd "$dir17" \
+    '{hook_event_name:"PreToolUse",tool_name:"Edit",tool_input:{file_path:$fp,old_string:"for details.",new_string:"for details. Also see `lib/brand_new_missing.ex`."},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+stdout17=$(printf '%s' "$payload17" | env -u CLAUDE_ROLE bash "$GUARD" 2>/dev/null || true)
+
+if printf '%s' "$stdout17" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' &&
+    printf '%s' "$stdout17" | grep -q "brand_new_missing.ex" &&
+    ! printf '%s' "$stdout17" | grep -q "missing_one.ex"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: Edit adding a new violation denies naming ONLY the new one\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: Edit adding a new violation should deny naming only the NEW violation\n  stdout: %s\n' "$stdout17"
+    fail=$((fail + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# Test 18: a Write to a BRAND-NEW file (nothing on disk to baseline against)
+# still denies a real violation — the monotonic baseline must not
+# accidentally fail-open when there is no pre-existing file.
+# ---------------------------------------------------------------------------
+dir18=$(make_fixture 18)
+payload18=$(jq -n --arg fp "$dir18/context/new-file.md" --arg cwd "$dir18" \
+    '{hook_event_name:"PreToolUse",tool_name:"Write",tool_input:{file_path:$fp,content:"see `lib/does_not_exist.ex` for details\n"},agent_type:"context-curator",agent_id:"a",cwd:$cwd}')
+
+run_test "Write to brand-new file with a real violation still DENIES (no false-open on empty baseline)" "2" "$payload18"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

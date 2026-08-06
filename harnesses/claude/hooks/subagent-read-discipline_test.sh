@@ -46,6 +46,37 @@ run_test() {
     fi
 }
 
+# run_test_advise — same as run_test but for a case expected to ALLOW (0)
+# via a non-blocking advise() notice rather than a bare silent allow. Asserts
+# BOTH: no permissionDecision:deny, AND a non-empty additionalContext is
+# present (proves the undeclared-path visibility survived, not just that the
+# read was allowed).
+run_test_advise() {
+    local desc="$1"
+    local input="$2"
+    local env_vars="${3:-}"
+
+    local stdout
+    if [ -n "$env_vars" ]; then
+        stdout=$(printf '%s' "$input" | env -u CODEGEN_LOG_PATH $env_vars bash "$GUARD" 2>/dev/null || true)
+    else
+        stdout=$(printf '%s' "$input" | env -u CODEGEN_LOG_PATH bash "$GUARD" 2>/dev/null || true)
+    fi
+
+    if printf '%s' "$stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+        printf 'FAIL: %s — expected allow-via-advise, got deny\n  stdout: %s\n' "$desc" "$stdout"
+        fail=$((fail + 1))
+        return
+    fi
+    if ! printf '%s' "$stdout" | grep -q '"additionalContext"'; then
+        printf 'FAIL: %s — expected a non-blocking advise() notice, got none\n  stdout: %s\n' "$desc" "$stdout"
+        fail=$((fail + 1))
+        return
+    fi
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+    pass=$((pass + 1))
+}
+
 # Helper: create a real append-only JSONL cycle log fixture (schema:
 # [0-9]{8}_[0-9]{6}_<slug>_cycle.jsonl — matches SESSION_LOG_NAME_RE in
 # hooks-lib.sh) with a typed {"ev":"files_to_touch",...} event authored by the
@@ -156,7 +187,9 @@ F11='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path
 run_test "developer Read context/builds.md listed in loop's files_to_touch allows" "0" "$F11"
 rm -rf "$TMP11"
 
-# Test 12: developer Read context/builds.md — NOT listed in files_to_touch → DENY
+# Test 12: developer Read context/builds.md — NOT listed in files_to_touch →
+# ALLOW via advise() (D7: a path the role may write it may read; the deny
+# became a non-blocking notice naming the undeclared path).
 # "cwd" is REQUIRED here (isolated tmpdir) — omitting it lets CWD default to
 # $PWD (the live repo), which falls through session_log_from_transcript()'s
 # .active-sentinel / disk-mtime-scan branches and discovers the REAL
@@ -168,21 +201,22 @@ TRANS12="${TMP12}/transcript.jsonl"
 make_step_log "$STEP12" "loop" "lib/foo.ex"
 make_transcript "$TRANS12" "$STEP12"
 F12='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS12"'","cwd":"'"$TMP12"'"}'
-run_test "developer Read context/builds.md not in files_to_touch denies" "2" "$F12"
+run_test_advise "developer Read context/builds.md not in files_to_touch allows via advise" "$F12"
 rm -rf "$TMP12"
 
 # Test 13: developer Read lib/foo.ex → ALLOW (outside scope)
 F13='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/foo.ex"},"agent_id":"abc","agent_type":"developer-phoenix-backend"}'
 run_test "developer Read lib/foo.ex allows (outside scope)" "0" "$F13"
 
-# Test 14: developer-phoenix-frontend Read context/builds.md NOT in files_to_touch → DENY
+# Test 14: developer-phoenix-frontend Read context/builds.md NOT in
+# files_to_touch → ALLOW via advise() (same D7 change)
 TMP14="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP14="$(make_fixture_dir "$TMP14")"
 TRANS14="${TMP14}/transcript.jsonl"
 make_step_log "$STEP14" "loop" "lib/web/live/foo_live.ex"
 make_transcript "$TRANS14" "$STEP14"
 F14='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-frontend","transcript_path":"'"$TRANS14"'","cwd":"'"$TMP14"'"}'
-run_test "developer-phoenix-frontend Read context/builds.md not in files_to_touch denies" "2" "$F14"
+run_test_advise "developer-phoenix-frontend Read context/builds.md not in files_to_touch allows via advise" "$F14"
 rm -rf "$TMP14"
 
 # Test 15: developer-static Read PROJECT_CONTEXT.md → DENY (static stack coverage)
@@ -215,14 +249,15 @@ F18='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path
 run_test "reviewer Read context/builds.md in ## Files Modified allows" "0" "$F18"
 rm -rf "$TMP18"
 
-# Test 19: reviewer Read context/builds.md — NOT in ## Files Modified → DENY
+# Test 19: reviewer Read context/builds.md — NOT in ## Files Modified →
+# ALLOW via advise() (same D7 change, reviewer side)
 TMP19="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP19="$(make_fixture_dir "$TMP19")"
 TRANS19="${TMP19}/transcript.jsonl"
 make_step_log "$STEP19" "" "" "developer-phoenix-backend" "lib/foo.ex"
 make_transcript "$TRANS19" "$STEP19"
 F19='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"reviewer-phoenix","transcript_path":"'"$TRANS19"'","cwd":"'"$TMP19"'"}'
-run_test "reviewer Read context/builds.md not in ## Files Modified denies" "2" "$F19"
+run_test_advise "reviewer Read context/builds.md not in ## Files Modified allows via advise" "$F19"
 rm -rf "$TMP19"
 
 # Test 20: reviewer-static Read PROJECT_CONTEXT.md → DENY
@@ -309,34 +344,39 @@ F28='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path
 run_test "developer-phoenix-frontend reads loop-authored allowlist (author-keyed, not caller-keyed)" "0" "$F28"
 rm -rf "$TMP28"
 
-# Test 29: self-authorization is denied — a developer's OWN files_modified
-# event (the developer's own event kind) must NOT satisfy the developer
-# branch's loop-authored files_to_touch check. This is the hole the
-# author-keyed read closes: a caller-keyed self-read would let a role widen
-# its own permissions by writing its own event; a developer-authored
-# files_modified event naming context/builds.md must not leak into the
-# developer branch's files_to_touch check.
+# Test 29: self-authorization does not satisfy the typed-event check — a
+# developer's OWN files_modified event (the developer's own event kind)
+# must NOT satisfy the developer branch's loop-authored files_to_touch
+# check. This is the hole the author-keyed read closes: a caller-keyed
+# self-read would let a role widen its own permissions by writing its own
+# event. Post-D7 the unsatisfied case is allow-via-advise (not a hard deny)
+# for EVERY unsatisfied context/*.md read, so this fixture now proves the
+# same structural point (files_modified does not leak into the
+# files_to_touch check) via the advise() path rather than a deny.
 TMP29="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP29="$(make_fixture_dir "$TMP29")"
 TRANS29="${TMP29}/transcript.jsonl"
 make_step_log "$STEP29" "" "" "developer-phoenix-backend" "context/builds.md"
 make_transcript "$TRANS29" "$STEP29"
 F29='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS29"'","cwd":"'"$TMP29"'"}'
-run_test "developer cannot self-authorize via its own files_modified event" "2" "$F29"
+run_test_advise "developer's own files_modified event does not satisfy files_to_touch (advise, not silent grant)" "$F29"
 rm -rf "$TMP29"
 
 # Test 30: self-authorization guard, forged-author variant — a developer
-# that writes a files_to_touch event under its OWN role name grants
-# nothing. Only {"role":"loop"} authors files_to_touch; the predicate is an
-# exact equality on "loop", not a prefix, so no subagent role can mint its
-# own context/*.md grant.
+# that writes a files_to_touch event under its OWN role name does not
+# satisfy the check. Only {"role":"loop"} authors files_to_touch; the
+# predicate is an exact equality on "loop", not a prefix, so no subagent
+# role can mint its own silent context/*.md grant. Post-D7 the unsatisfied
+# case is allow-via-advise (not a hard deny), so this proves the same
+# structural point (a forged-author event grants nothing) via the advise()
+# path.
 TMP30="$(mktemp -d /var/tmp/subagent-read-XXXXXX)"
 STEP30="$(make_fixture_dir "$TMP30")"
 TRANS30="${TMP30}/transcript.jsonl"
 make_step_log "$STEP30" "developer-phoenix-backend" "context/builds.md"
 make_transcript "$TRANS30" "$STEP30"
 F30='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"developer-phoenix-backend","transcript_path":"'"$TRANS30"'","cwd":"'"$TMP30"'"}'
-run_test "developer-authored files_to_touch event grants nothing" "2" "$F30"
+run_test_advise "developer-authored files_to_touch event grants nothing (advise, not silent grant)" "$F30"
 rm -rf "$TMP30"
 
 echo ""

@@ -93,6 +93,12 @@ if [ "$TOOL_NAME" = "MultiEdit" ]; then
         else
             deny "curator-context-size-gate: your MultiEdit to ${FILE_PATH} would make it ${projected} bytes, over the ${CAP}-byte (40k) cap. context/*.md is editable this turn — compress a stale/redundant bullet, relocate a verbose example to another context file, or split to a new context/*.md (add the matching PROJECT_CONTEXT.md Domain Context Files row). Get the file under 40960 bytes before finishing this cycle."
         fi
+        exit 0
+    fi
+    # Allowed (non-growing) but still over cap: nothing else enforces this,
+    # so make the over-cap state visible rather than silent.
+    if [ "$projected" -gt "$CAP" ]; then
+        advise "curator-context-size-gate: ${FILE_PATH} is ${projected} bytes, over the ${CAP}-byte (40k) cap. This write did not grow it, so it was allowed — shrink it below 40960 bytes before the cycle ends."
     fi
     exit 0
 fi
@@ -123,5 +129,11 @@ if [ "$projected" -gt "$CAP" ] && [ "$projected" -gt "$on_disk" ]; then
     else
         deny "curator-context-size-gate: your write to ${FILE_PATH} would make it ${projected} bytes, over the ${CAP}-byte (40k) cap. context/*.md is editable this turn — compress a stale/redundant bullet, relocate a verbose example to another context file, or split to a new context/*.md (add the matching PROJECT_CONTEXT.md Domain Context Files row). Get the file under 40960 bytes before finishing this cycle."
     fi
+    exit 0
+fi
+# Allowed (non-growing) but still over cap: nothing else enforces this, so
+# make the over-cap state visible rather than silent.
+if [ "$projected" -gt "$CAP" ]; then
+    advise "curator-context-size-gate: ${FILE_PATH} is ${projected} bytes, over the ${CAP}-byte (40k) cap. This write did not grow it, so it was allowed — shrink it below 40960 bytes before the cycle ends."
 fi
 exit 0

@@ -239,6 +239,21 @@ BASH_INPUT_T25=$(jq -n --arg cmd "mix test 2>/dev/null" --arg cwd "$BASH_SANDBOX
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
 run_test "Bash redirect to /dev/null → ALLOW" "allow" "$BASH_INPUT_T25" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
 
+# ── Test 26: 2>&1 piped to tail → ALLOW (split_command_segments must not
+# split the & inside 2>&1 into a bare, unresolvable segment; regression for
+# the incident's largest false-positive class) ──
+BASH_INPUT_T26=$(jq -n --arg cmd "mix test 2>&1 | tail -150" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "2>&1 piped to tail → ALLOW (redirect & not split)" "allow" "$BASH_INPUT_T26" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
+# ── Test 27: cd .. combined with 2>&1 redirect-shaped text in the SAME
+# segment still fails closed (proves the & fix did not weaken the existing
+# cd+write-verb fail-closed detection — cd/pushd/../ paired with a
+# write-verb or interpreter must still deny) ──
+BASH_INPUT_T27=$(jq -n --arg cmd "cd $BASH_SANDBOX && cd .. && echo x 2>&1 > file.txt" --arg cwd "$BASH_SANDBOX" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":$cmd},"agent_type":"developer-phoenix-backend","agent_id":"abc","cwd":$cwd}')
+run_test "cd .. + 2>&1 + redirect → DENY (fail-closed, regression check)" "deny" "$BASH_INPUT_T27" "CODEGEN_BUILD_CWD=$BASH_SANDBOX"
+
 rm -rf "$BASH_SANDBOX" "$BASH_OUTSIDE"
 
 echo ""

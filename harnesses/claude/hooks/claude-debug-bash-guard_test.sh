@@ -253,6 +253,39 @@ else
     pass=$((pass + 1))
 fi
 
+# 43: a genuinely unbalanced quote is denied with the honest "could not
+# parse" message, never a borrowed rule name (e.g. "recursive rm forbidden")
+# for a command that never actually invoked that rule's verb.
+unparseable_stdout=$(printf '%s' "$(mk "echo 'unterminated")" |
+    CLAUDE_ROLE="debug" bash "$GUARD" 2>/dev/null || true)
+if ! printf '%s' "$unparseable_stdout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    printf 'FAIL: genuinely unbalanced quote must still deny (fail-closed) — got: %s\n' \
+        "$unparseable_stdout"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: genuinely unbalanced quote denies (fail-closed)\n'
+    pass=$((pass + 1))
+fi
+if ! printf '%s' "$unparseable_stdout" | grep -q 'could not parse this command'; then
+    printf 'FAIL: unparseable command must name itself honestly, not borrow a rule message: %s\n' \
+        "$unparseable_stdout"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: unparseable command names itself honestly\n'
+    pass=$((pass + 1))
+fi
+
+# 44: bash -n against a script whose body legitimately contains a forbidden
+# verb (e.g. "git push" inside a comment) is ALLOWED — a syntax-only check
+# never executes the file, so the referenced body must not be appended via
+# indirection (the fix this pitch makes to expand_command_indirection).
+NDIR="$(mktemp -d)"
+trap 'rm -rf "$NDIR"' EXIT
+printf '#!/bin/bash\n# see also: git push origin main\necho hi\n' >"$NDIR/danger.sh"
+run_test "bash -n against a script mentioning 'git push' in a comment allows" "0" \
+    "$(mk "bash -n $NDIR/danger.sh")" "debug"
+rm -rf "$NDIR"
+
 run_test_env() {
     local desc="$1"
     local expected="$2"

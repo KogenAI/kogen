@@ -88,13 +88,24 @@ if [ "${CODEGEN_LOOP:-}" = "1" ]; then
     # falsely reports "no progress" after a real fixing edit. Combine the
     # tracked-diff bytes (`git diff HEAD`, covers modified+staged content)
     # with the untracked-file listing+content so both edit classes register.
-    signature=$(cd "$cwd" 2>/dev/null && {
+    #
+    # Signature ALSO folds in the normalized COMMAND itself, not just the
+    # tree content — without this, `mix test test/a_test.exs` followed by
+    # `mix test test/b_test.exs` against an unchanged tree denied as a
+    # "pure spin" even though it is two DIFFERENT targeted test files (the
+    # exact idiom dev-no-ci.sh prescribes as safe: "Specific test files are
+    # OK"). Re-running the SAME command against an unchanged tree is still a
+    # spin and still denied; a different command against the same tree is
+    # progress, not a spin.
+    tree_sig=$(cd "$cwd" 2>/dev/null && {
         git diff HEAD -- . 2>/dev/null
         git ls-files -o --exclude-standard -z 2>/dev/null | sort -z | while IFS= read -r -d '' f; do
             printf '%s\t' "$f"
             cksum <"$f" 2>/dev/null
         done
     } | shasum 2>/dev/null | cut -d' ' -f1)
+    normalized_cmd=$(printf '%s' "$COMMAND" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
+    signature=$(printf '%s\x1e%s' "$tree_sig" "$normalized_cmd" | shasum 2>/dev/null | cut -d' ' -f1)
 
     sig_file="/tmp/codegen-self-gate-${session_id}.sig"
 
