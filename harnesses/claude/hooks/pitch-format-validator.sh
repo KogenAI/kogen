@@ -45,6 +45,14 @@
 #       declared it — an unknown or non-waivable id is caught here, at
 #       promotion, rather than wasting a paid build cycle. See
 #       harnesses/claude/hooks/_waiver.sh.
+#   (e) status: SHAPED AND a "---" frontmatter block is present → MUST carry
+#       a non-empty `commit_subject:` field that passes
+#       `codegen-commit --check-subject`. The loop's deterministic commit
+#       step has no committer role left to derive a subject from a diff, so
+#       the shaper must seal one before promotion. Scoped to
+#       frontmatter-carrying pitches only — a legacy `> Status:` blockquote
+#       pitch (dual-read compat, predates frontmatter) has nowhere to
+#       declare the field and is not required to.
 
 set -euo pipefail
 
@@ -134,6 +142,44 @@ if [ -n "$status_value" ]; then
         exit 0
         ;;
     esac
+fi
+
+# ── Validation (e): commit_subject: frontmatter — REQUIRED when status:
+# SHAPED AND the pitch carries a "---" frontmatter block at all. The loop's
+# deterministic commit step has no committer role left to derive a subject
+# from a diff — the shaper is the one place that holds the why (see pitch
+# "committing is deterministic, not a model call"). Scoped to
+# frontmatter-carrying pitches only: a legacy `> Status:` blockquote pitch
+# (dual-read compat, predates the frontmatter convention entirely) has no
+# frontmatter to declare commit_subject: in — enforcing it there would
+# strand old-format pitches with no remedy. Runs BEFORE the (b)/(c)
+# Questions early-exit, so a SHAPED pitch with no ## Questions block still
+# gets this check. ──────────────────────────────────────────────────────
+if [ "$status_value" = "SHAPED" ] && [ "$first_line" = "---" ]; then
+    commit_subject_value=""
+    frontmatter_block=$(awk 'NR==1{next} /^---$/{exit} {print}' "$pitch")
+    fm_commit_subject_line=$(printf '%s\n' "$frontmatter_block" | grep -m1 '^commit_subject:' || true)
+    if [ -n "$fm_commit_subject_line" ]; then
+        commit_subject_value=$(printf '%s' "$fm_commit_subject_line" | sed 's/^commit_subject:[[:space:]]*//')
+    fi
+
+    if [ -z "$commit_subject_value" ]; then
+        reason="pitch-format-validator: ${pitch} has status: SHAPED but no commit_subject: frontmatter field. The loop's deterministic commit step needs a sealed subject — write one now (see shape.txt's \"On completion\" step) and re-emit."
+        debug_log pitch-format-validator "BLOCK: SHAPED with no commit_subject:"
+        block "$reason"
+        exit 0
+    fi
+
+    codegen_commit_bin="${CODEGEN_DIR:-$(dirname "$0")/../../..}/codegen-commit"
+    if [ -x "$codegen_commit_bin" ]; then
+        if ! "$codegen_commit_bin" --check-subject "$commit_subject_value" >/dev/null 2>&1; then
+            check_out=$("$codegen_commit_bin" --check-subject "$commit_subject_value" 2>&1 || true)
+            reason="pitch-format-validator: ${pitch}'s commit_subject: \"${commit_subject_value}\" failed codegen-commit --check-subject validation: ${check_out}. Fix the subject and re-emit."
+            debug_log pitch-format-validator "BLOCK: commit_subject failed mechanical check"
+            block "$reason"
+            exit 0
+        fi
+    fi
 fi
 
 # ── Validation (d): waives: frontmatter — every id must be a registry entry

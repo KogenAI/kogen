@@ -5,8 +5,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
   alias CodegenTestHarness.OrchestrationLoop
 
-  @phoenix_sequence ~w(developer-phoenix-backend reviewer-phoenix context-curator committer)
-  @static_sequence ~w(developer-static reviewer-static context-curator committer)
+  @phoenix_sequence ~w(developer-phoenix-backend reviewer-phoenix context-curator)
+  @static_sequence ~w(developer-static reviewer-static context-curator)
 
   describe "build_prompt/2 — reviewer file set (loop-supplied ## Files Modified)" do
     test "reviewer-phoenix prompt renders the loop-supplied ## Files Modified list" do
@@ -594,7 +594,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # (context-curator is always in @static_sequence) = 3 total.
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
       assert curator_calls == 3
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "no progress (identical violation set every pass) → {:error, _} owned by context-curator, invoked exactly the guaranteed floor",
@@ -1035,9 +1035,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       prompts = Agent.get(seen, & &1)
       assert prompts["reviewer-phoenix"] =~ "## Declared Scope"
       assert prompts["reviewer-phoenix"] =~ "lib/foo.ex"
-      # ...and no other role does.
+      # ...and no other role does. The commit step is not a role invocation
+      # at all (see pitch "committing is deterministic, not a model call"),
+      # so there is no `prompts["committer"]`/commit-step entry to check.
       refute prompts["context-curator"] =~ "## Declared Scope"
-      refute prompts["committer"] =~ "## Declared Scope"
     end
 
     test "no :pitch_scope option (ad-hoc literal pitch) → prompts carry no ## Declared Scope",
@@ -1169,7 +1170,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls = Agent.get(calls_agent, & &1)
       assert Enum.count(calls, &(&1 == "developer-static")) == 2
       assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
-      assert "committer" in calls
+      # `:ok` above already proves the commit step ran — it is no longer a
+      # role dispatched through invoke_fn (see pitch "committing is
+      # deterministic, not a model call").
     end
 
     test "APPROVED runs the developer exactly once", %{calls_agent: calls_agent} do
@@ -1267,7 +1270,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       calls = Agent.get(calls_agent, & &1)
       assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
-      assert "committer" in calls
+      # `:ok` above already proves the commit step ran.
     end
 
     # Regression: budget-exhausted CHANGES_REQUESTED must be aligned to the
@@ -1342,7 +1345,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
         calls = Agent.get(calls_agent, & &1)
         assert Enum.count(calls, &(&1 == reviewer_role)) == 1
-        assert "committer" in calls
+        # `:ok` above already proves the commit step ran.
       end
     end
 
@@ -1368,7 +1371,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       calls = Agent.get(calls_agent, & &1)
       assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
-      assert "committer" in calls
+      # `:ok` above already proves the commit step ran.
     end
 
     test "strong CHANGES_REQUESTED re-invokes developer, completes on strong APPROVED",
@@ -1406,7 +1409,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls = Agent.get(calls_agent, & &1)
       assert Enum.count(calls, &(&1 == "developer-static")) == 2
       assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
-      assert "committer" in calls
+      # `:ok` above already proves the commit step ran.
     end
 
     test "budget-exhausted strong CHANGES_REQUESTED fails loud, carries original text, no committer",
@@ -1482,7 +1485,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         # Exactly one reviewer call: the verdict parsed first time, with no
         # `:unknown` re-invocation burning a second review.
         assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
-        assert "committer" in calls
+        # `:ok` above already proves the commit step ran.
       end
     end
 
@@ -3055,10 +3058,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # there is no earlier role.
       assert Enum.count(calls, &(&1 == "developer-phoenix-backend")) == 2
 
-      # Full role sequence still completes to the end (reviewer/curator/committer).
+      # Full role sequence still completes to the end (reviewer/curator),
+      # and `:ok` above already proves the commit step ran after them.
       assert "reviewer-phoenix" in calls
       assert "context-curator" in calls
-      assert "committer" in calls
     end
   end
 
@@ -3519,14 +3522,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert content =~ "assets/app.js"
     end
 
-    test "committer and context-curator prompts are NOT enriched" do
+    test "context-curator prompt is NOT enriched" do
       ctx = scoped_ctx(["lib/foo.ex"])
 
-      committer_content = OrchestrationLoop.build_prompt("committer", ctx)
       curator_content = OrchestrationLoop.build_prompt("context-curator", ctx)
 
-      refute committer_content =~ "## Declared Scope"
-      refute committer_content =~ "lib/foo.ex"
       refute curator_content =~ "## Declared Scope"
       refute curator_content =~ "lib/foo.ex"
     end
@@ -4778,7 +4778,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
   end
 
@@ -4923,7 +4923,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator")) == 1
     end
 
-    test "signal :no_learning skips the curator spawn but still reaches the committer", %{
+    test "signal :no_learning skips the curator spawn but still reaches the commit step", %{
       calls_agent: calls_agent
     } do
       assert :ok ==
@@ -4942,9 +4942,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       # "context-curator" never appears in calls_agent — no spawn happened —
-      # but the sequence still terminates at the committer.
+      # but `:ok` above already proves the commit step still ran after it.
       refute "context-curator" in Agent.get(calls_agent, & &1)
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "reviewer-static"
     end
 
     test "signal :no_learning still runs the format step (doc scan runs on the pre-existing tree)",
@@ -5041,7 +5041,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # spawn for rework, even though the learning signal said "no_learning".
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
       assert curator_calls == 1
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
       assert Agent.get(scan_calls_agent, & &1) == 2
     end
   end
@@ -5094,7 +5094,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # not two (first empty + second rework respawn).
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
       assert curator_calls == 1
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
       # Pre-scan (finds violation) + post-invoke rescan (clean) = 2 scans.
       assert Agent.get(scan_calls_agent, & &1) == 2
     end
@@ -5187,7 +5187,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
       assert curator_calls == 1
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "violations exhausting max_curator_doc_cycles returns {:error, reason} with combined factcheck+index-parity text; CURATED never advances, committer never invoked",
@@ -5363,7 +5363,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
       assert curator_calls == 3
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "curator repair ceiling backstop: resolving one violation per turn from a large set still refuses past the hard ceiling",
@@ -5468,7 +5468,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       curator_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "context-curator"))
       assert curator_calls == 1
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "curator_doc_check_fn raising propagates (loop crashes loud)", %{
@@ -5573,7 +5573,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       dev_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static"))
       assert dev_calls == 2
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
       assert Agent.get(scan_calls_agent, & &1) == 2
       assert "GATED" in Agent.get(states_agent, & &1)
     end
@@ -5698,7 +5698,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       dev_calls = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static"))
       assert dev_calls == 4
       assert "GATED" in Agent.get(states_agent, & &1)
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "developer thrashes on env-var scan (identical violation) → dies at the guaranteed floor",
@@ -5800,22 +5800,24 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
-  # Like always_ok_invoke_fn/1, but commits the working tree when it "runs"
-  # the committer role — needed because these tests use a REAL git repo cwd
-  # (to exercise the real `changed_orientation_docs/1` diff-scope logic), so
-  # `verify_committed!/2` actually checks tree cleanliness post-committer.
+  # Like always_ok_invoke_fn/1 — the commit step is no longer dispatched
+  # through invoke_fn at all (it left the role vocabulary; see pitch
+  # "committing is deterministic, not a model call"). Real git commits for
+  # tests exercising `changed_orientation_docs/1`'s diff-scope logic now go
+  # through `real_commit_fn/0` (a `:commit_fn` override), not through this
+  # invoke_fn's dead `"committer"` clause.
   defp always_ok_invoke_fn_with_real_commit(calls_agent) do
-    fn
-      "committer", _harness, ctx, _opts ->
-        Agent.update(calls_agent, fn calls -> calls ++ ["committer"] end)
-        System.cmd("git", ["add", "-A"], cd: ctx.cwd)
-        System.cmd("git", ["commit", "-q", "-m", "test commit"], cd: ctx.cwd)
-        {:ok, %{"status" => "success", "value" => "did committer"}}
+    always_ok_invoke_fn(calls_agent)
+  end
 
-      role, _harness, _ctx, _opts ->
-        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
-        value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
-        {:ok, %{"status" => "success", "value" => value}}
+  # `:commit_fn` override for tests that use a REAL git repo cwd and need
+  # `verify_committed!/2` to actually observe a clean, advanced tree —
+  # commits whatever is on disk with a fixed test subject.
+  defp real_commit_fn do
+    fn cwd, _subject ->
+      System.cmd("git", ["add", "-A"], cd: cwd)
+      System.cmd("git", ["commit", "-q", "-m", "test commit"], cd: cwd)
+      {:ok, "COMMITTED: test commit"}
     end
   end
 
@@ -5878,6 +5880,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn_with_real_commit(calls_agent),
+                 commit_fn: real_commit_fn(),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -5885,7 +5888,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "orientation doc changed this cycle with a genuine dead-path violation → factcheck fails loud",
@@ -5941,6 +5944,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn_with_real_commit(calls_agent),
+                 commit_fn: real_commit_fn(),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -5948,7 +5952,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "context/*.md added this cycle without a PROJECT_CONTEXT.md row → index-parity fails loud",
@@ -5996,6 +6000,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn_with_real_commit(calls_agent),
+                 commit_fn: real_commit_fn(),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6003,7 +6008,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
   end
 
@@ -6057,6 +6062,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn_with_real_commit(calls_agent),
+                 commit_fn: real_commit_fn(),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6064,10 +6070,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
                )
 
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
-    test "learnings captured this cycle + curator routes a shared/rules/**.md edit → clean, reaches the committer",
+    test "learnings captured this cycle + curator routes a shared/rules/**.md edit → clean, reaches the commit step",
          %{calls_agent: calls_agent, dir: dir} do
       log_path =
         fixture_cycle_log!([
@@ -6100,6 +6106,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
+                 commit_fn: real_commit_fn(),
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6109,7 +6116,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  slug: "consumption-scan-test"
                )
 
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "learnings captured this cycle, curator routes nothing and records no drop → consumption check fails loud",
@@ -6535,6 +6542,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           cwd: dir,
           pitch: "do the thing",
           invoke_fn: invoke_fn,
+          commit_fn: fn _cwd, _subject -> {:ok, "COMMITTED: test"} end,
+          commit_subject: "Test subject",
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn()
@@ -6542,7 +6551,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
-    test "committer returning success on a CLEAN tree with real work committed proceeds to :ok",
+    test "commit step returning success on a CLEAN tree with real work committed proceeds to :ok",
          %{
            calls_agent: calls_agent,
            dir: dir
@@ -6555,16 +6564,17 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        if role == "committer" do
-          File.write!(Path.join(dir, "feature.txt"), "done\n")
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
-        end
-
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        File.write!(Path.join(cwd, "feature.txt"), "done\n")
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: cwd)
+        {:ok, "COMMITTED: impl"}
       end
 
       # advance_cycle_state_fn is stubbed to a no-op: the real implementation
@@ -6578,6 +6588,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
+                 commit_fn: commit_fn,
+                 commit_subject: "Test subject",
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6593,7 +6605,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
     end
 
-    test "committer producing TWO commits raises (split-commit guard, exactly-one enforced)", %{
+    test "commit step producing TWO commits raises (split-commit guard, exactly-one enforced)", %{
       calls_agent: calls_agent,
       dir: dir
     } do
@@ -6605,19 +6617,20 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        if role == "committer" do
-          File.write!(Path.join(dir, "a.txt"), "one\n")
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "c1"], cd: dir)
-          File.write!(Path.join(dir, "b.txt"), "two\n")
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "c2"], cd: dir)
-        end
-
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        File.write!(Path.join(cwd, "a.txt"), "one\n")
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "c1"], cd: cwd)
+        File.write!(Path.join(cwd, "b.txt"), "two\n")
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "c2"], cd: cwd)
+        {:ok, "COMMITTED: c2"}
       end
 
       assert_raise RuntimeError, ~r/exactly one commit|expected 1|split commits/, fn ->
@@ -6627,6 +6640,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           cwd: dir,
           pitch: "do the thing",
           invoke_fn: invoke_fn,
+          commit_fn: commit_fn,
+          commit_subject: "Test subject",
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6643,7 +6658,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
-    test "committer orphaning the base via git reset raises (ancestry backstop)", %{
+    test "commit step orphaning the base via git reset raises (ancestry backstop)", %{
       calls_agent: calls_agent,
       dir: dir
     } do
@@ -6661,20 +6676,21 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        if role == "committer" do
-          # Orphaning move: reset past the prior-cycle commit (base_head),
-          # then make exactly ONE new commit on the older history. This
-          # passes the count+diff guard but must trip the ancestry backstop.
-          {_o, 0} = System.cmd("git", ["reset", "--hard", "HEAD~1"], cd: dir)
-          File.write!(Path.join(dir, "new_work.txt"), "new\n")
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "orphaning commit"], cd: dir)
-        end
-
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        # Orphaning move: reset past the prior-cycle commit (base_head),
+        # then make exactly ONE new commit on the older history. This
+        # passes the count+diff guard but must trip the ancestry backstop.
+        {_o, 0} = System.cmd("git", ["reset", "--hard", "HEAD~1"], cd: cwd)
+        File.write!(Path.join(cwd, "new_work.txt"), "new\n")
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "orphaning commit"], cd: cwd)
+        {:ok, "COMMITTED: orphaning commit"}
       end
 
       assert_raise RuntimeError, ~r/no longer an ancestor|orphaned the base/, fn ->
@@ -6684,6 +6700,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           cwd: dir,
           pitch: "do the thing",
           invoke_fn: invoke_fn,
+          commit_fn: commit_fn,
+          commit_subject: "Test subject",
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6741,7 +6759,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert reason =~ "cycle produced no changes — nothing for the reviewer to review"
     end
 
-    test "committer landing a born-dead new module (no caller, no registration) raises", %{
+    test "commit step landing a born-dead new module (no caller, no registration) raises", %{
       calls_agent: calls_agent,
       dir: dir
     } do
@@ -6751,23 +6769,24 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        if role == "committer" do
-          lib_dir = Path.join(dir, "lib")
-          File.mkdir_p!(lib_dir)
-
-          File.write!(
-            Path.join(lib_dir, "orphan_module.ex"),
-            "defmodule OrphanModule do\n  def run, do: :ok\nend\n"
-          )
-
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
-        end
-
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        lib_dir = Path.join(cwd, "lib")
+        File.mkdir_p!(lib_dir)
+
+        File.write!(
+          Path.join(lib_dir, "orphan_module.ex"),
+          "defmodule OrphanModule do\n  def run, do: :ok\nend\n"
+        )
+
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: cwd)
+        {:ok, "COMMITTED: impl"}
       end
 
       assert_raise RuntimeError, ~r/born-dead detector: new entity.*orphan_module/, fn ->
@@ -6777,6 +6796,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           cwd: dir,
           pitch: "do the thing",
           invoke_fn: invoke_fn,
+          commit_fn: commit_fn,
+          commit_subject: "Test subject",
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6793,7 +6814,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
-    test "committer landing a defer-marker (\"not yet wired\") raises", %{
+    test "commit step landing a defer-marker (\"not yet wired\") raises", %{
       calls_agent: calls_agent,
       dir: dir
     } do
@@ -6802,20 +6823,21 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        if role == "committer" do
-          File.write!(
-            Path.join(dir, "note.md"),
-            "# Notes\n\nFuture migration (not yet wired) — will connect this later.\n"
-          )
-
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
-        end
-
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        File.write!(
+          Path.join(cwd, "note.md"),
+          "# Notes\n\nFuture migration (not yet wired) — will connect this later.\n"
+        )
+
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: cwd)
+        {:ok, "COMMITTED: impl"}
       end
 
       assert_raise RuntimeError, ~r/born-dead detector: defer marker/, fn ->
@@ -6825,6 +6847,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           cwd: dir,
           pitch: "do the thing",
           invoke_fn: invoke_fn,
+          commit_fn: commit_fn,
+          commit_subject: "Test subject",
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
           preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6841,7 +6865,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
-    test "committer landing a fully-wired new module (real caller) proceeds to :ok", %{
+    test "commit step landing a fully-wired new module (real caller) proceeds to :ok", %{
       calls_agent: calls_agent,
       dir: dir
     } do
@@ -6858,28 +6882,29 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        if role == "committer" do
-          lib_dir = Path.join(dir, "lib")
-          File.mkdir_p!(lib_dir)
-
-          File.write!(
-            Path.join(lib_dir, "helper_thing.ex"),
-            "defmodule HelperThing do\n  def run, do: :ok\nend\n"
-          )
-
-          File.write!(
-            Path.join(dir, "caller.ex"),
-            "defmodule Caller do\n  def go, do: HelperThing.run()\nend\n"
-          )
-
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
-        end
-
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        lib_dir = Path.join(cwd, "lib")
+        File.mkdir_p!(lib_dir)
+
+        File.write!(
+          Path.join(lib_dir, "helper_thing.ex"),
+          "defmodule HelperThing do\n  def run, do: :ok\nend\n"
+        )
+
+        File.write!(
+          Path.join(cwd, "caller.ex"),
+          "defmodule Caller do\n  def go, do: HelperThing.run()\nend\n"
+        )
+
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: cwd)
+        {:ok, "COMMITTED: impl"}
       end
 
       assert :ok ==
@@ -6889,6 +6914,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
+                 commit_fn: commit_fn,
+                 commit_subject: "Test subject",
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6928,11 +6955,13 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, dir: dir}
     end
 
-    # (a) The legitimate path: committer moves HEAD -> a {"ev":"committed"}
-    # (captured via :log_committed_fn) with role="committer" is recorded and
-    # the cycle proceeds to :ok. No raise — this is the only role permitted
-    # to move HEAD.
-    test "committer moving HEAD records a committed event (role=committer) and proceeds", %{
+    # (a) The legitimate path: the deterministic commit step moves HEAD ->
+    # a {"ev":"committed"} (captured via :log_committed_fn) with role="loop"
+    # is recorded and the cycle proceeds to :ok. No raise — the commit step
+    # is not a role invocation at all, so `record_and_assert_head_move!/5`
+    # (which now raises unconditionally for ANY role moving HEAD) never
+    # sees this move.
+    test "commit step moving HEAD records a committed event (role=loop) and proceeds", %{
       calls_agent: calls_agent,
       dir: dir
     } do
@@ -6944,16 +6973,17 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-        if role == "committer" do
-          File.write!(Path.join(dir, "feature.txt"), "done\n")
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
-        end
-
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        File.write!(Path.join(cwd, "feature.txt"), "done\n")
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: cwd)
+        {:ok, "COMMITTED: impl"}
       end
 
       log_committed_fn = fn role, sha, subject, _cycle_log, _opts ->
@@ -6968,6 +6998,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
+                 commit_fn: commit_fn,
+                 commit_subject: "Test subject",
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -6985,7 +7017,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       recorded = Agent.get(committed_agent, & &1)
       assert length(recorded) == 1
-      assert [{"committer", sha, subject}] = recorded
+      assert [{"loop", sha, subject}] = recorded
       assert is_binary(sha) and sha != ""
       assert subject == "impl"
     end
@@ -7092,18 +7124,19 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
             # First attempt fails (no HEAD move) -> retried once.
             {:error, "transient failure, please retry"}
 
-          role == "committer" ->
-            File.write!(Path.join(dir, "feature.txt"), "done\n")
-            {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-            {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
-            {:ok, %{"status" => "success", "value" => "did committer"}}
-
           role == "reviewer-static" ->
             {:ok, %{"status" => "success", "value" => "REVIEW_VERDICT: APPROVED"}}
 
           true ->
             {:ok, %{"status" => "success", "value" => "did #{role}"}}
         end
+      end
+
+      commit_fn = fn cwd, _subject ->
+        File.write!(Path.join(cwd, "feature.txt"), "done\n")
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: cwd)
+        {:ok, "COMMITTED: impl"}
       end
 
       log_committed_fn = fn role, sha, subject, _cycle_log, _opts ->
@@ -7118,6 +7151,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
+                 commit_fn: commit_fn,
+                 commit_subject: "Test subject",
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -7134,7 +7169,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       recorded = Agent.get(committed_agent, & &1)
-      assert [{"committer", _sha, "impl"}] = recorded
+      assert [{"loop", _sha, "impl"}] = recorded
     end
   end
 
@@ -7161,16 +7196,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, dir: dir}
     end
 
-    # committer commits whatever is on disk at the time it runs (mirrors a
-    # faithful `git add -A && git commit`).
-    defp committing_invoke_fn(calls_agent, dir) do
+    defp committing_invoke_fn(calls_agent, _dir) do
       fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
-
-        if role == "committer" do
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
-        end
 
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
@@ -7179,7 +7207,20 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
-    test "tree unchanged since gate → proceeds straight to the committer, no re-gate", %{
+    # The commit step is no longer dispatched via invoke_fn — it left the
+    # role vocabulary (see pitch "committing is deterministic, not a model
+    # call"). Commits whatever is on disk at the time it runs (mirrors a
+    # faithful `git add -A && git commit`), matching this describe block's
+    # `:commit_fn` seam.
+    defp committing_commit_fn(dir) do
+      fn _cwd, _subject ->
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
+        {:ok, "COMMITTED: impl"}
+      end
+    end
+
+    test "tree unchanged since gate → proceeds straight to the commit step, no re-gate", %{
       calls_agent: calls_agent,
       dir: dir
     } do
@@ -7203,6 +7244,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 commit_fn: committing_commit_fn(dir),
                  gate_fn: gate_fn,
                  gate_tree_match_fn: match_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -7247,6 +7289,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 commit_fn: committing_commit_fn(dir),
                  gate_fn: gate_fn,
                  gate_tree_match_fn: match_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -7292,6 +7335,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 commit_fn: committing_commit_fn(dir),
                  gate_fn: gate_fn,
                  gate_tree_match_fn: match_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -7343,6 +7387,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 commit_fn: committing_commit_fn(dir),
                  gate_fn: gate_fn,
                  gate_tree_match_fn: match_fn,
                  gate_owner_fn: gate_owner_fn,
@@ -7394,6 +7439,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: committing_invoke_fn(calls_agent, dir),
+                 commit_fn: committing_commit_fn(dir),
                  gate_fn: gate_fn,
                  gate_tree_match_fn: match_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -7445,15 +7491,16 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           Agent.update(seen_ctx_agent, fn seen -> seen ++ [escalated] end)
         end
 
-        if role == "committer" do
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: dir)
-        end
-
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: cwd)
+        {:ok, "COMMITTED: impl"}
       end
 
       resolve_escalation_fn = fn "developer-static", _harness -> {"opus", "high"} end
@@ -7465,6 +7512,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
+                 commit_fn: commit_fn,
+                 commit_subject: "Test subject",
                  gate_fn: gate_fn,
                  gate_tree_match_fn: match_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -7482,28 +7531,29 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(seen_ctx_agent, & &1) == [nil, {"opus", "high"}]
     end
 
-    test "committer commits DIFFERENT content than the last-graded tree → post-commit guard raises",
+    test "commit step commits DIFFERENT content than the last-graded tree → post-commit guard raises",
          %{
            calls_agent: calls_agent,
            dir: dir
          } do
       # The pre-commit match check says "match" (skip re-gate), but the
-      # committer itself still diverges from the stamped graded_tree_sha
-      # (simulating a bug in the committer, or a race). assert_commit_matches_gate!
+      # commit step itself still diverges from the stamped graded_tree_sha
+      # (simulating a codegen-commit bug, or a race). assert_commit_matches_gate!
       # must catch this independently of the pre-commit re-gate.
       invoke_fn = fn role, _harness, _ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
-
-        if role == "committer" do
-          File.write!(Path.join(dir, "unexpected.txt"), "not what was graded\n")
-          {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "diverged"], cd: dir)
-        end
 
         value =
           if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        File.write!(Path.join(cwd, "unexpected.txt"), "not what was graded\n")
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "diverged"], cd: cwd)
+        {:ok, "COMMITTED: diverged"}
       end
 
       # gate_result_sha_fn seam is not exposed directly — simulate the
@@ -7534,6 +7584,8 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                        cwd: dir,
                        pitch: "do the thing",
                        invoke_fn: invoke_fn,
+                       commit_fn: commit_fn,
+                       commit_subject: "Test subject",
                        gate_fn: gate_fn,
                        gate_tree_match_fn: match_fn,
                        gate_preflight_fn: no_op_gate_preflight_fn(),
@@ -7639,12 +7691,6 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           File.write!(Path.join(ctx.cwd, "feature.txt"), "wip\n")
           {:ok, %{"status" => "success", "value" => "did developer-static"}}
 
-        "committer", _harness, ctx, _opts ->
-          Agent.update(calls_agent, fn calls -> calls ++ ["committer"] end)
-          System.cmd("git", ["add", "-A"], cd: ctx.cwd)
-          System.cmd("git", ["commit", "-q", "-m", "test commit"], cd: ctx.cwd)
-          {:ok, %{"status" => "success", "value" => "did committer"}}
-
         role, _harness, _ctx, _opts ->
           Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
@@ -7654,6 +7700,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           {:ok, %{"status" => "success", "value" => value}}
       end
 
+      commit_fn = fn cwd, _subject ->
+        System.cmd("git", ["add", "-A"], cd: cwd)
+        System.cmd("git", ["commit", "-q", "-m", "test commit"], cd: cwd)
+        {:ok, "COMMITTED: test commit"}
+      end
+
       assert :ok ==
                OrchestrationLoop.run(
                  harness: "claude_code",
@@ -7661,13 +7713,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  cwd: dir,
                  pitch: "do the thing",
                  invoke_fn: invoke_fn,
+                 commit_fn: commit_fn,
+                 commit_subject: "Test subject",
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  advance_cycle_state_fn: no_op_advance_cycle_state_fn()
                )
 
-      assert List.last(Agent.get(calls_agent, & &1)) == "committer"
+      assert List.last(Agent.get(calls_agent, & &1)) == "context-curator"
     end
 
     test "non-git cwd is fail-exempt (mocked-test synthetic cwd unaffected)", %{
@@ -7743,13 +7797,13 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
   describe "run/1 — turn-0 role-agent resolution preflight (loop-agent-resolution-preflight)" do
     test "a missing required role raises BEFORE any role is invoked", %{calls_agent: calls_agent} do
-      missing_committer_probe = fn _cwd ->
+      missing_curator_probe = fn _cwd ->
         "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
           "developer-phoenix-backend, developer-phoenix-frontend, " <>
-          "reviewer-phoenix, context-curator"
+          "reviewer-phoenix"
       end
 
-      assert_raise RuntimeError, ~r/required role agent\(s\) not resolvable: committer/, fn ->
+      assert_raise RuntimeError, ~r/required role agent\(s\) not resolvable: context-curator/, fn ->
         OrchestrationLoop.run(
           harness: "claude_code",
           stack: "phoenix",
@@ -7758,7 +7812,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           invoke_fn: always_ok_invoke_fn(calls_agent),
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: missing_committer_probe
+          preflight_probe_fn: missing_curator_probe
         )
       end
 
@@ -7839,15 +7893,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       {:ok, probes_agent} = Agent.start_link(fn -> 0 end)
       on_exit(fn -> stop_agent(probes_agent) end)
 
-      missing_committer_probe = fn _cwd ->
+      missing_curator_probe = fn _cwd ->
         Agent.update(probes_agent, &(&1 + 1))
 
         "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
           "developer-phoenix-backend, developer-phoenix-frontend, " <>
-          "reviewer-phoenix, context-curator"
+          "reviewer-phoenix"
       end
 
-      assert_raise RuntimeError, ~r/required role agent\(s\) not resolvable: committer/, fn ->
+      assert_raise RuntimeError, ~r/required role agent\(s\) not resolvable: context-curator/, fn ->
         OrchestrationLoop.run(
           harness: "claude_code",
           stack: "phoenix",
@@ -7856,7 +7910,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           invoke_fn: always_ok_invoke_fn(calls_agent),
           gate_fn: always_clear_gate_fn(),
           gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: missing_committer_probe
+          preflight_probe_fn: missing_curator_probe
         )
       end
 
@@ -8140,20 +8194,23 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         invoke_fn: fn role, _harness, _ctx, _opts ->
           Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
-          if role == "committer" do
-            # Real committer role stages + commits whatever the (real or
-            # simulated) prior cycle left behind — commit exactly the dirty
-            # tree the checkpoint fixture set up, satisfying
-            # verify_committed!'s single-commit + clean-tree tail guard.
-            {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
-            {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "resume test commit"], cd: dir)
-          end
-
           value =
             if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
 
           {:ok, %{"status" => "success", "value" => value}}
         end,
+        # The deterministic commit step stages + commits whatever the (real
+        # or simulated) prior cycle left behind — commit exactly the dirty
+        # tree the checkpoint fixture set up, satisfying verify_committed!'s
+        # single-commit + clean-tree tail guard. It is no longer dispatched
+        # via invoke_fn (see pitch "committing is deterministic, not a
+        # model call").
+        commit_fn: fn cwd, _subject ->
+          {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+          {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "resume test commit"], cd: cwd)
+          {:ok, "COMMITTED: resume test commit"}
+        end,
+        commit_subject: "Test subject",
         gate_fn: always_clear_gate_fn(),
         gate_preflight_fn: no_op_gate_preflight_fn(),
         preflight_probe_fn: all_present_preflight_probe_fn(),
@@ -8196,7 +8253,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       calls = Agent.get(calls_agent, & &1)
       refute "developer-static" in calls
-      assert calls == ["reviewer-static", "context-curator", "committer"]
+      # "committer" left the role vocabulary — the commit step is now the
+      # unconditional terminator of run_roles/4's `[]` clause, not an
+      # invoke_fn-dispatched role, so it never appears in `calls`.
+      assert calls == ["reviewer-static", "context-curator"]
     end
 
     test "valid REVIEWED checkpoint resumes at context-curator, skipping developer+reviewer", %{
@@ -8224,10 +8284,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls = Agent.get(calls_agent, & &1)
       refute "developer-static" in calls
       refute "reviewer-static" in calls
-      assert calls == ["context-curator", "committer"]
+      assert calls == ["context-curator"]
     end
 
-    test "valid CURATED checkpoint resumes at committer only", %{
+    test "valid CURATED checkpoint resumes directly at the commit step (no role invoked)", %{
       dir: dir,
       base_head: base_head,
       calls_agent: calls_agent
@@ -8249,7 +8309,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  )
                )
 
-      assert Agent.get(calls_agent, & &1) == ["committer"]
+      # No role is invoked at all — the commit step is the sentinel resume
+      # target and resolves directly to `[]` (resume_suffix/2).
+      assert Agent.get(calls_agent, & &1) == []
     end
 
     test "clean GATED checkpoint is not resumable at reviewer", %{
@@ -8270,7 +8332,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
     end
 
-    test "clean CURATED checkpoint is not resumable at committer", %{
+    test "clean CURATED checkpoint is not resumable at the commit step", %{
       dir: dir,
       base_head: base_head
     } do
@@ -8278,7 +8340,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       write_cycle_state!(dir, "CURATED", "matching-slug")
 
       assert :full ==
-               OrchestrationLoop.resume_checkpoint(dir, ["context-curator", "committer"],
+               OrchestrationLoop.resume_checkpoint(dir, ["context-curator"],
                  slug: "matching-slug",
                  cycle_state_get_fn: fn _cwd -> "CURATED" end,
                  cycle_state_slug_fn: fn _cwd -> "matching-slug" end,
@@ -8319,7 +8381,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) ==
-               ["developer-static", "reviewer-static", "context-curator", "committer"]
+               ["developer-static", "reviewer-static", "context-curator"]
     end
 
     test "checkpoint stamped with an empty slug (pre-upgrade record) → full run, never resumes",
@@ -8346,7 +8408,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) ==
-               ["developer-static", "reviewer-static", "context-curator", "committer"]
+               ["developer-static", "reviewer-static", "context-curator"]
     end
 
     test "no cycle-state.json → full run from role 0 (developer-static first)", %{
@@ -8365,7 +8427,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) ==
-               ["developer-static", "reviewer-static", "context-curator", "committer"]
+               ["developer-static", "reviewer-static", "context-curator"]
     end
 
     test "cycle-state COMMITTED → full run from role 0 (terminal state never resumes)", %{
@@ -8394,7 +8456,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) ==
-               ["developer-static", "reviewer-static", "context-curator", "committer"]
+               ["developer-static", "reviewer-static", "context-curator"]
     end
 
     test "gate verdict not clear → full run from role 0", %{
@@ -8418,7 +8480,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) ==
-               ["developer-static", "reviewer-static", "context-curator", "committer"]
+               ["developer-static", "reviewer-static", "context-curator"]
     end
 
     test "read_verdict_fn raising (absent gate-result.json) → full run, never propagates", %{
@@ -8440,7 +8502,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) ==
-               ["developer-static", "reviewer-static", "context-curator", "committer"]
+               ["developer-static", "reviewer-static", "context-curator"]
     end
 
     test "graded_tree_sha drifted since the gate ran → full run from role 0", %{
@@ -8465,7 +8527,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) ==
-               ["developer-static", "reviewer-static", "context-curator", "committer"]
+               ["developer-static", "reviewer-static", "context-curator"]
     end
 
     test "HEAD moved past base_sha (committer landed before dying) → full run from role 0", %{
@@ -8490,7 +8552,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert Agent.get(calls_agent, & &1) ==
-               ["developer-static", "reviewer-static", "context-curator", "committer"]
+               ["developer-static", "reviewer-static", "context-curator"]
     end
   end
 end
@@ -8537,12 +8599,14 @@ defmodule CodegenTestHarness.OrchestrationLoopLockTest do
         value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
         {:ok, %{"status" => "success", "value" => value}}
       end,
+      commit_fn: fn _cwd, _subject -> {:ok, "COMMITTED: deadbeef test subject"} end,
+      commit_subject: "Test subject",
       gate_fn: fn _cwd, _opts -> {:clear, "make test"} end,
       gate_preflight_fn: fn _cwd -> {"make test", "short", 0} end,
       preflight_probe_fn: fn _cwd ->
         "--agent '__codegen_loop_preflight_probe__' not found. Available agents: " <>
           "developer-phoenix-backend, developer-phoenix-frontend, " <>
-          "reviewer-phoenix, context-curator, committer, developer-static, reviewer-static"
+          "reviewer-phoenix, context-curator, developer-static, reviewer-static"
       end,
       advance_cycle_state_fn: fn _state, _step_log, _session_id, _verdict, _project_dir, _slug ->
         :ok

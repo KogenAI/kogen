@@ -21,6 +21,6 @@ or
 - `status` exactly `"success"` or `"failed"`
 - Failure: `reason` single sentence (<200 chars)
 - At most ONE block. Second one → recorded failed.
-- ❌ Emit before committer reports done.
+- ❌ Emit before the deterministic commit step reports done.
 
 `{"status":"success"}` requires ALL: (1) session log + all subagent sections; (2) CI passed (`ALL CLEAR ✅`); (3) quality approved (Phoenix only); (4) git commit made.

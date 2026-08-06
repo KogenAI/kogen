@@ -316,7 +316,7 @@ defmodule CodegenTestHarness.LoopGate do
     # function can raise (canary, preflight, a crash). Every abort path
     # (canary failure, static_render_deps_preflight!'s raise, an unexpected
     # exception) must leave the verdict ABSENT, never a leftover prior
-    # `clear` sitting on disk for `committer-gate-verdict-clear.sh` to read.
+    # `clear` sitting on disk for `codegen-commit` to read.
     # `read_verdict/1` already raises loud on an absent file — "absent"
     # already denies; this just makes every raise fail-closed instead of
     # fail-open on a stale file (ledger #21).
@@ -526,7 +526,7 @@ defmodule CodegenTestHarness.LoopGate do
   HEAD the gate ran against. Returns `""` when the file/field is absent
   (legacy record, or a gate that hasn't run). Used by
   `OrchestrationLoop`'s resume-checkpoint validity check to confirm HEAD
-  has not moved since the gate ran (rules out the rare "committer
+  has not moved since the gate ran (rules out the rare "commit step
   committed then died before advancing cycle-state to COMMITTED" edge).
   """
   @spec gate_result_base_sha(String.t()) :: String.t()
@@ -575,8 +575,8 @@ defmodule CodegenTestHarness.LoopGate do
   same computation `run_gate/2` stamps at gate time (see `graded_tree_sha/1`
   private helper), exposed publicly so the loop's pre-commit re-check
   (`verify_gate_graded_this_tree/2`) can compare "what the gate graded" vs.
-  "what the tree looks like right now, immediately before the committer
-  runs" without re-running the whole gate.
+  "what the tree looks like right now, immediately before the deterministic
+  commit step runs" without re-running the whole gate.
   """
   @spec graded_tree_sha_now(String.t()) :: String.t()
   def graded_tree_sha_now(project_dir), do: graded_tree_sha(project_dir)
@@ -641,7 +641,7 @@ defmodule CodegenTestHarness.LoopGate do
   end
 
   # Short HEAD of `project_dir` at GATE time (pre-commit — the loop gates
-  # before the committer in role order). "" when project_dir is not a git
+  # before the deterministic commit step). "" when project_dir is not a git
   # repo — fail-closed sentinel: the drain's freshness check treats "" as
   # never-fresh, and LoopGate's own tests run in a bare non-git tmp dir.
   @spec gate_base_sha(String.t()) :: String.t()

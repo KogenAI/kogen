@@ -12,7 +12,7 @@ consumer:
 
 ## Role → Model/Effort (Claude harness)
 
-Every deterministic BUILD role (developer, reviewer, committer, context-curator, app_build) runs
+Every deterministic BUILD role (developer, reviewer, context-curator, app_build) runs
 at canonical semantic effort `off` — an explicit operator choice, not an omission. This includes every
 `escalate_effort:` and `fallback[].effort:` rung on the three developer roles: a give-up-boundary
 escalation or a same-provider fallback rung still carries `off`, so a stuck build never silently
@@ -24,7 +24,6 @@ re-introduces reasoning effort on a retry. Investigative/supervisory modes (`ins
 | developer-phoenix-backend / developer-phoenix-frontend      | sonnet | off    |
 | developer-static (claude twin; see per-role override below) | sonnet | off    |
 | reviewer-phoenix / reviewer-static                          | sonnet | off    |
-| committer                                                   | haiku  | off    |
 | context-curator                                             | haiku  | off    |
 | build (orchestrator)                                        | sonnet | medium |
 | inspector                                                   | sonnet | medium |

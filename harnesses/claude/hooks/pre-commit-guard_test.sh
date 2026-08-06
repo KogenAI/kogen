@@ -4,7 +4,9 @@
 # Tests:
 #   1. git commit is BLOCKED for developer-phoenix-backend (exit 2)
 #   2. git status PASSES for developer-phoenix-backend (exit 0)
-#   3. git commit PASSES for committer (exit 0)
+#   3. git commit is BLOCKED for every agent, unconditionally — no per-role
+#      exemption survives (see pitch "committing is deterministic, not a
+#      model call")
 
 set -euo pipefail
 
@@ -107,9 +109,12 @@ run_test "git status passes for developer-phoenix-backend" "0" "$FIXTURE_STATUS_
 FIXTURE_COMMIT_GRAPH_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit-graph write"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 run_test "git commit-graph passes for developer-phoenix-backend" "0" "$FIXTURE_COMMIT_GRAPH_ALLOWED"
 
-# Test 3: git commit PASSES for committer
+# Test 3: git commit is DENIED even for an agent_type of "committer" — that
+# role left the vocabulary entirely; the string is now just an unrecognized
+# agent_type, denied like any other (see pitch "committing is deterministic,
+# not a model call").
 FIXTURE_COMMIT_ALLOWED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m '\''foo'\''"},"agent_type":"committer","agent_id":"abc123"}'
-run_test "git commit passes for committer" "0" "$FIXTURE_COMMIT_ALLOWED"
+run_test "git commit denied even for agent_type=committer (no per-role exemption)" "2" "$FIXTURE_COMMIT_ALLOWED"
 
 # Test 4: debug role + read-only Bash (journalctl) — MUST ALLOW
 # Regression: prior code blanket-denied all Bash in debug sessions.
@@ -117,29 +122,29 @@ FIXTURE_DEBUG_READONLY='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool
 run_test_env "debug role + journalctl allowed" "0" "$FIXTURE_DEBUG_READONLY" "CLAUDE_ROLE=debug"
 
 # Test 5: debug role + git commit — MUST DENY
-# Debug sessions must not bypass committer-only rule.
+# Debug sessions must not bypass the no-agent-commits rule.
 FIXTURE_DEBUG_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m foo"},"agent_type":"","agent_id":"a"}'
 run_test_env "debug role + git commit denied" "2" "$FIXTURE_DEBUG_COMMIT" "CLAUDE_ROLE=debug"
 
-# Test 6: git rebase for non-committer — MUST DENY
+# Test 6: git rebase — MUST DENY (no agent touches history)
 FIXTURE_REBASE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git rebase -i HEAD~3"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
-run_test "git rebase denied for non-committer" "2" "$FIXTURE_REBASE"
+run_test "git rebase denied" "2" "$FIXTURE_REBASE"
 
-# Test 7: git cherry-pick for non-committer — MUST DENY
+# Test 7: git cherry-pick — MUST DENY (no agent touches history)
 FIXTURE_CHERRY_PICK='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git cherry-pick abc123"},"agent_type":"reviewer-phoenix","agent_id":"a"}'
-run_test "git cherry-pick denied for non-committer" "2" "$FIXTURE_CHERRY_PICK"
+run_test "git cherry-pick denied" "2" "$FIXTURE_CHERRY_PICK"
 
-# Test 8: git push --force for non-committer — MUST DENY
+# Test 8: git push --force — MUST DENY (no agent owns push discipline)
 FIXTURE_PUSH_FORCE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
-run_test "git push --force denied for non-committer" "2" "$FIXTURE_PUSH_FORCE"
+run_test "git push --force denied" "2" "$FIXTURE_PUSH_FORCE"
 
-# Test 9: git reset --hard for non-committer — MUST DENY
+# Test 9: git reset --hard — MUST DENY (destructive, no agent touches history)
 FIXTURE_RESET_HARD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD~1"},"agent_type":"developer-phoenix-frontend","agent_id":"a"}'
-run_test "git reset --hard denied for non-committer" "2" "$FIXTURE_RESET_HARD"
+run_test "git reset --hard denied" "2" "$FIXTURE_RESET_HARD"
 
-# Test 10: git reset (soft) for non-committer — MUST ALLOW
+# Test 10: git reset (soft) — MUST ALLOW (path-scoped/soft unstage stays legal)
 FIXTURE_RESET_SOFT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
-run_test "git reset soft allowed for non-committer" "0" "$FIXTURE_RESET_SOFT"
+run_test "git reset soft allowed" "0" "$FIXTURE_RESET_SOFT"
 
 # Test 11: git reset (soft) for non-committer — MUST DENY when HEAD predates cycle start
 FIXTURE_RESET_FOREIGN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
@@ -186,9 +191,10 @@ run_test_env "ops role alone (no unlock) + git push --force denied" "2" "$FIXTUR
 FIXTURE_ADD_BLOCKED='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git add -A blocked for non-committer" "2" "$FIXTURE_ADD_BLOCKED"
 
-# Test 16: git add -A for committer — MUST ALLOW
+# Test 16: git add -A is DENIED even for an agent_type of "committer" — that
+# role left the vocabulary entirely; no per-role exemption survives.
 FIXTURE_ADD_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"committer","agent_id":"a"}'
-run_test "git add -A passes for committer" "0" "$FIXTURE_ADD_COMMITTER"
+run_test "git add -A denied even for agent_type=committer (no per-role exemption)" "2" "$FIXTURE_ADD_COMMITTER"
 
 # Test 17: git add -A in ops mode + CODEGEN_OPS_GIT_UNLOCK=1 — MUST ALLOW
 FIXTURE_ADD_OPS='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"","agent_id":"a"}'
@@ -251,18 +257,20 @@ run_test "git reset --merge denied for non-committer (leg D)" "2" "$FIXTURE_RESE
 FIXTURE_RESET_KEEP='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git reset --keep HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git reset --keep denied for non-committer (leg D)" "2" "$FIXTURE_RESET_KEEP"
 
-# Test 22i: committer STILL allowed for git checkout/restore/clean/switch (actor gate unaffected)
+# Test 22i: agent_type=committer is now DENIED for git checkout/restore/clean/
+# switch too — that role left the vocabulary entirely, no per-role exemption
+# survives (see pitch "committing is deterministic, not a model call").
 FIXTURE_COMMITTER_CHECKOUT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git checkout -- foo.ex"},"agent_type":"committer","agent_id":"a"}'
-run_test "git checkout -- still allowed for committer (leg D)" "0" "$FIXTURE_COMMITTER_CHECKOUT"
+run_test "git checkout -- denied even for agent_type=committer (no per-role exemption)" "2" "$FIXTURE_COMMITTER_CHECKOUT"
 
 FIXTURE_COMMITTER_RESTORE='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git restore foo"},"agent_type":"committer","agent_id":"a"}'
-run_test "git restore still allowed for committer (leg D)" "0" "$FIXTURE_COMMITTER_RESTORE"
+run_test "git restore denied even for agent_type=committer (no per-role exemption)" "2" "$FIXTURE_COMMITTER_RESTORE"
 
 FIXTURE_COMMITTER_CLEAN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean -fd"},"agent_type":"committer","agent_id":"a"}'
-run_test "git clean -fd still allowed for committer (leg D)" "0" "$FIXTURE_COMMITTER_CLEAN"
+run_test "git clean -fd denied even for agent_type=committer (no per-role exemption)" "2" "$FIXTURE_COMMITTER_CLEAN"
 
 FIXTURE_COMMITTER_SWITCH='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git switch main"},"agent_type":"committer","agent_id":"a"}'
-run_test "git switch still allowed for committer (leg D)" "0" "$FIXTURE_COMMITTER_SWITCH"
+run_test "git switch denied even for agent_type=committer (no per-role exemption)" "2" "$FIXTURE_COMMITTER_SWITCH"
 
 # Test 22j: ops mode + git checkout WITHOUT unlock — MUST DENY (leg D ops-arm widened)
 FIXTURE_OPS_CHECKOUT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git checkout -- foo.ex"},"agent_type":"","agent_id":"a"}'
@@ -488,9 +496,10 @@ run_test "git -C <dir> push --force denied for non-committer" "2" "$FIXTURE_C_PU
 FIXTURE_C_RESET_HARD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x reset --hard HEAD~1"},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "git -C <dir> reset --hard denied for non-committer" "2" "$FIXTURE_C_RESET_HARD"
 
-# Test 51: committer STILL allowed for git -C <dir> commit (actor gate unaffected)
+# Test 51: agent_type=committer is now DENIED for git -C <dir> commit too —
+# no per-role exemption survives.
 FIXTURE_C_COMMIT_COMMITTER='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x commit -m y"},"agent_type":"committer","agent_id":"a"}'
-run_test "git -C <dir> commit still allowed for committer" "0" "$FIXTURE_C_COMMIT_COMMITTER"
+run_test "git -C <dir> commit denied even for agent_type=committer (no per-role exemption)" "2" "$FIXTURE_C_COMMIT_COMMITTER"
 
 # Test 52: ops mode + git -C <dir> commit WITHOUT unlock — MUST DENY (ops-arm evasion closed)
 FIXTURE_OPS_C_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git -C /tmp/x commit -m y"},"agent_type":"","agent_id":"a"}'
@@ -520,9 +529,10 @@ run_test "bash <file with benign body> allowed for non-committer (no regression)
 FIXTURE_INDIRECT_DYNAMIC='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"bash \"$dynamic\""},"agent_type":"developer-phoenix-backend","agent_id":"a"}'
 run_test "bash \"\$dynamic\" (unresolvable) allowed for non-committer (no regression)" "0" "$FIXTURE_INDIRECT_DYNAMIC"
 
-# Test 57: committer STILL allowed for bash <file with git reset --hard body> (actor gate unaffected)
+# Test 57: agent_type=committer is now DENIED for bash <file with git reset
+# --hard body> too — no per-role exemption survives.
 FIXTURE_INDIRECT_COMMITTER="{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash $INDIRECTION_TMPDIR/danger.sh\"},\"agent_type\":\"committer\",\"agent_id\":\"a\"}"
-run_test "bash <file with git reset --hard body> still allowed for committer (actor gate unaffected)" "0" "$FIXTURE_INDIRECT_COMMITTER"
+run_test "bash <file with git reset --hard body> denied even for agent_type=committer (no per-role exemption)" "2" "$FIXTURE_INDIRECT_COMMITTER"
 
 # ── the missing 2x2 cell (this pitch's core fix) ────────────────────────────
 # A real git commit/add whose MESSAGE merely SPELLS "codegen-log" must NOT be
@@ -591,11 +601,11 @@ run_test_env "babysit git clean -fd denied (not in allow-list)" "2" "$FIXTURE_BA
 FIXTURE_BABYSIT_CLEAN_DRYRUN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git clean -n"},"agent_type":"","agent_id":"a"}'
 run_test_env "babysit git clean -n allowed (dry-run carve-out)" "0" "$FIXTURE_BABYSIT_CLEAN_DRYRUN" "CLAUDE_ROLE=babysit"
 
-# Test 67: babysit + git add — MUST DENY (committer owns staging)
+# Test 67: babysit + git add — MUST DENY (no agent stages)
 FIXTURE_BABYSIT_ADD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git add -A"},"agent_type":"","agent_id":"a"}'
 run_test_env "babysit git add denied" "2" "$FIXTURE_BABYSIT_ADD" "CLAUDE_ROLE=babysit"
 
-# Test 68: babysit + git commit — MUST DENY (committer owns history)
+# Test 68: babysit + git commit — MUST DENY (no agent commits)
 FIXTURE_BABYSIT_COMMIT='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m \"x\""},"agent_type":"","agent_id":"a"}'
 run_test_env "babysit git commit denied" "2" "$FIXTURE_BABYSIT_COMMIT" "CLAUDE_ROLE=babysit"
 

@@ -23,7 +23,7 @@ reviewer-phoenix
     ↓
 context-curator
     ↓
-committer
+codegen-commit --subject "<text>"   ← deterministic script, not a subagent
 ```
 
 **Codegen-specific gloss — `developer-phoenix-backend` scope:**

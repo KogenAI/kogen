@@ -82,7 +82,6 @@
       "List",
       "mcp__codegen__advise",
       "mcp__codegen__gate_status",
-      "mcp__codegen__log_append_committer",
       "mcp__codegen__log_append_context_curator",
       "mcp__codegen__log_append_developer_phoenix_backend",
       "mcp__codegen__log_append_developer_phoenix_frontend",
@@ -90,7 +89,6 @@
       "mcp__codegen__log_append_reviewer_phoenix",
       "mcp__codegen__log_append_reviewer_static",
       "mcp__codegen__log_read",
-      "mcp__codegen__log_section_committer",
       "mcp__codegen__log_section_context_curator",
       "mcp__codegen__log_section_developer_phoenix_backend",
       "mcp__codegen__log_section_developer_phoenix_frontend",
@@ -269,87 +267,6 @@
         ]
       },
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-bash-allowlist.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-gate-verdict-clear.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-no-head-move-reset.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-no-revert-prior-commit.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-no-trailer-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-single-commit-per-cycle.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-single-line-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-subject-length.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/committer-write-allowlist.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
@@ -364,15 +281,6 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/context-factcheck-edit-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/curator-before-committer.sh"
           }
         ]
       },

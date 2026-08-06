@@ -99,7 +99,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   # given attempt is guaranteed head_after != head_before (forward move),
   # independent of how many extra calls earlier timeout attempts consumed.
   #
-  # The gate runs BEFORE the committer (loop role order), so a real gate
+  # The gate runs BEFORE the deterministic commit step (loop step order), so a real gate
   # record's base_sha can only ever equal the head AT GATE TIME — i.e. this
   # attempt's head_before, the value git_head_fn returned on the call
   # immediately BEFORE the current (most recent) one. gate_verdict_fn/
@@ -109,13 +109,13 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   #
   # SAFE for: exit-0-only sequences, and TIMEOUT-then-exit-0 sequences
   # (timeout attempts never reach handle_nonzero_exit, so its
-  # committer-post-commit-hiccup ship branches are never evaluated with this
+  # post-commit-hiccup ship branches are never evaluated with this
   # fixture's "clear" verdict).
   #
   # UNSAFE for: sequences with a NONZERO-exit attempt before the real
   # exit-0 ship (e.g. transient-retry-then-ship) — a nonzero attempt DOES
   # reach handle_nonzero_exit/7, which shares this same "always clear"
-  # verdict and would spuriously trip its committer-post-commit-hiccup
+  # verdict and would spuriously trip its post-commit-hiccup
   # branches (shipping early, on the wrong attempt, before the intended
   # retry). Tests with that shape need a bespoke fixture (see test 4,
   # 6r3, 6f above) that keeps the gate non-clear until the exit-0 attempt.
@@ -865,7 +865,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     # Attempt 1 (nonzero) must NOT look committed/clear — else
-    # handle_nonzero_exit/7's committer-post-commit-hiccup branch would ship
+    # handle_nonzero_exit/7's post-commit-hiccup branch would ship
     # on attempt 1, short-circuiting the intended retry. HEAD stays "aaa"
     # through attempt 1's head_before/head_after pair (gate "" too), then
     # moves to "bbb" for attempt 2's pair once the retry actually spawns
@@ -1050,7 +1050,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     # Only "b_good" (exit 0) must look committed + fresh-clear; the *_fail
     # slugs (nonzero) must NOT — else handle_nonzero_exit/6's
-    # committer-post-commit-hiccup branch would ship them anyway.
+    # post-commit-hiccup branch would ship them anyway.
     # git_head_fn is called TWICE per attempt whenever head_before is
     # non-nil/non-empty (head_before pre-spawn, head_after post-spawn — both
     # handle_nonzero_exit/6 and handle_exit_zero/6 re-read HEAD when
@@ -1163,7 +1163,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     transient_fn = fn _jsonl -> false end
 
     # "bad" (nonzero) must NOT look committed/clear — else
-    # handle_nonzero_exit's committer-post-commit-hiccup branch would ship it
+    # handle_nonzero_exit's post-commit-hiccup branch would ship it
     # anyway. "good" (exit 0) needs committed + fresh-clear to ship via
     # handle_exit_zero. current_slug (set by spawn_fn just above) lets
     # git_head_fn/gate_verdict_fn special-case per slug.
@@ -2402,7 +2402,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
 
     spawn_fn = fn slug, _h, _s, cwd, _jsonl ->
-      # simulate the agent's own committer having already shipped the pitch
+      # simulate the agent's own commit step having already shipped the pitch
       # (ready/<slug>.md -> shipped/<slug>.md) before the post-commit hiccup
       File.rename!(
         Path.join(ctx.ready_dir, "#{slug}.md"),
@@ -2572,7 +2572,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     head_calls = start_agent(0)
 
     # HEAD moved (aaa -> bbb) and gate is clear — without the forward-only
-    # fix this would match the committer-post-commit-hiccup branch and ship.
+    # fix this would match the post-commit-hiccup branch and ship.
     git_head_fn = fn _cwd ->
       n = Agent.get_and_update(head_calls, fn n -> {n, n + 1} end)
       if n == 0, do: "aaa", else: "bbb"
@@ -2853,8 +2853,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       if n == 0, do: "aaa", else: "bbb"
     end
 
-    # Committer-post-commit-hiccup shape: nonzero exit, but the pitch is
-    # already in shipped/ (agent's own committer ran) — this is exactly the
+    # Post-commit-hiccup shape: nonzero exit, but the pitch is
+    # already in shipped/ (agent's own commit step ran) — this is exactly the
     # branch a stale record must NOT be allowed to satisfy.
     spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
       File.rename!(

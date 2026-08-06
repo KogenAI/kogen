@@ -31,11 +31,12 @@ Typical firing order for common roles:
 | `Read`                     | `subagent-read-discipline`, `usage-rules-grep-guard`                 |
 | `Edit`/`Write`/`MultiEdit` | `reviewer-guard` (Write/MultiEdit denied; Edit gated to session log) |
 
-### Committer (`agent_type=committer`)
+### Commit step (`codegen-commit`, no `agent_type` — a script, not an agent)
 
-| Event               | Hooks that fire                                |
-| ------------------- | ---------------------------------------------- |
-| `Bash` (git commit) | `committer-subject-length`, `pre-commit-guard` |
+The deterministic commit step is not a subagent spawn at all — the loop shells `codegen-commit
+--subject <sealed>` directly, so no Claude Code hook fires for it. `pre-commit-guard` still denies
+`git commit`/`git add`/etc. to every AGENT unconditionally — the script itself, running outside the
+Bash-tool hook surface entirely, is the only thing that ever commits.
 
 ### Debug (`CLAUDE_ROLE=debug`)
 
@@ -48,13 +49,16 @@ Typical firing order for common roles:
 
 ## Policy Summary
 
-| Role         | Bash writes           | File writes                               | Git       | Notes                       |
-| ------------ | --------------------- | ----------------------------------------- | --------- | --------------------------- |
-| Orchestrator | mkdir/log only        | codegen/logging/, codegen/pitches/, /tmp/ | read-only | no source edits             |
-| Developer    | any (no `make ci`)    | any                                       | read-only | no CI gates                 |
-| Reviewer     | allowlist only        | codegen/logging/ only                     | read-only | review-only, no re-run gate |
-| Committer    | `git commit/add/push` | none                                      | write     | subject ≤50B                |
-| Debug        | none (read-only)      | none                                      | read-only | investigation, no mutations |
+| Role         | Bash writes        | File writes                               | Git       | Notes                       |
+| ------------ | ------------------ | ----------------------------------------- | --------- | --------------------------- |
+| Orchestrator | mkdir/log only     | codegen/logging/, codegen/pitches/, /tmp/ | read-only | no source edits             |
+| Developer    | any (no `make ci`) | any                                       | read-only | no CI gates                 |
+| Reviewer     | allowlist only     | codegen/logging/ only                     | read-only | review-only, no re-run gate |
+| Debug        | none (read-only)   | none                                      | read-only | investigation, no mutations |
+
+No agent role has `git commit`/`git add`/`git push` access — `pre-commit-guard` denies it to every
+role unconditionally. The deterministic `codegen-commit` script (repo root, not a hook-gated agent)
+is the sole committer, subject ≤72B hard cap.
 
 ---
 
@@ -65,8 +69,8 @@ Typical firing order for common roles:
 - **`orchestrator-no-source-edit`** — Restricts orchestrator writes per launcher. Plain orchestrator (no `CLAUDE_ROLE`, also covers `claude-build`) writes allowed under `codegen/logging/`, `codegen/pitches/`, and absolute `/tmp/`. `claude-debug` / `claude-shape` (`CLAUDE_ROLE=debug|shape`) writes scoped to `codegen/pitches/` only — for both the orchestrator and Agent-spawned helpers. Subagents under plain orchestrator bypass the hook.
 - **`build-worker-cwd-guard`** — In user-app context (the platform apps_root), prevents orchestrator from reading/writing outside the user app directory.
 - **`usage-rules-grep-guard`** — Only the developer may grep/scan `codegen/usage_rules/`. Every other agent must read `codegen/usage_rules/INDEX.md`, look up the deps it is touching, and Read at most 5 cited files.
-- **`subagent-read-discipline`** — Denies `codegen/pitches/**` and `PROJECT_CONTEXT.md` to `developer-*`/`reviewer-*`/`committer`; allows a `context/*.md` Read only when the path appears in the LOOP's typed `files_to_touch` event (for a developer) or the DEVELOPER's `files_modified` event (for a reviewer).
-- **`committer-subject-length`** — Blocks `git commit -m "subject"` where subject exceeds 50 bytes. Heredoc form denied (can't extract subject).
+- **`subagent-read-discipline`** — Denies `codegen/pitches/**` and `PROJECT_CONTEXT.md` to `developer-*`/`reviewer-*`; allows a `context/*.md` Read only when the path appears in the LOOP's typed `files_to_touch` event (for a developer) or the DEVELOPER's `files_modified` event (for a reviewer).
+- **`pre-commit-guard`** — Blocks `git commit`/`add`/`rm`/`mv`/`restore`/`checkout`/`clean`/`rebase`/`cherry-pick`/`revert`/`merge`/`reset --hard`/force-push for every agent, unconditionally. The deterministic `codegen-commit` script (validates subject ≤72 bytes, single-line, imperative-capitalized, no trailer) runs outside the hook surface entirely.
 - **`dev-no-ci`** — Blocks developers from running `make ci`, `make llm`, `make llm-phoenix`. Gate commands run via the loop's `LoopGate` (non-interactive builds) or a SubagentStop hook (interactive-session fallback).
 - **`claude-debug-bash-guard`** — In debug sessions (`CLAUDE_ROLE=debug`), blocks: recursive rm, DB migrations, git writes, mix deps.get, seeds, destructive SQL, curl mutations (POST/PUT/PATCH/DELETE), docker mutations, systemctl/launchctl mutations, kill/pkill, package installs.
 - **`session-log-writer-only`** — `codegen-log` is the SOLE writer of session logs. Denies raw `Edit`/`Write`/`MultiEdit` on `codegen/logging/*.md`, and raw Bash writes (redirect/tee/in-place-stream-edit/move-into) into that path. All log mutation routes through `codegen-log init` / `section --body @-` / `section --role <role>` / `append --role <role>`.
@@ -86,7 +90,7 @@ Non-interactive builds are driven by the deterministic Elixir orchestration loop
 
 ## Known Limitations
 
-- `committer-subject-length` uses byte count (`wc -c`), not character count. Multi-byte UTF-8 subject lines may be over-blocked.
+- `codegen-commit`'s subject-length check uses byte count (`wc -c`), not character count. Multi-byte UTF-8 subject lines may be over-refused.
 - `debug-bash-safety-guard` `curl` mutation check matches flag order `curl -X DELETE`; a command using `curl --request DELETE` or with flags before `-X` may bypass. Acceptable risk for investigation-only mode.
 - No hook currently guards against `xargs rm` or `find -exec rm`.
 
@@ -105,7 +109,7 @@ Run individual:
 ```bash
 bash orchestrator-no-source-edit_test.sh
 bash claude-debug-bash-guard_test.sh
-bash committer-subject-length_test.sh
+bash pre-commit-guard_test.sh
 bash session-log-writer-only_test.sh
 bash track-subagent-edits_test.sh
 bash track-tool-failures_test.sh

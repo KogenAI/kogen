@@ -124,8 +124,8 @@ via a git ref/branch/note/stash is explicitly NOT a goal this codebase pursues.
   wrapper script/Mix task that hashes, commits, or pushes a cycle log anywhere. A cycle log surviving
   one machine is not a requirement — logs are ephemeral, per-box, and disposable.
 - **Enforcement lives at the rule layer**, not a hook: `shared/rules/_core/session-log.md` § Ownership
-  and `shared/rules/roles/committer.md` both state the prohibition explicitly. Reviewer flags any
-  reintroduction of a corpus-branch-shaped mechanism as a design regression, not a style nit.
+  states the prohibition explicitly. Reviewer flags any reintroduction of a corpus-branch-shaped
+  mechanism as a design regression, not a style nit.
 - **Rationale**: operator determined the mechanism contradicted the "cycle logs stay local" contract —
   removal is the approved, final disposition; no replacement transport is planned or wanted.
 

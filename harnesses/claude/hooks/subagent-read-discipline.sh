@@ -6,7 +6,7 @@
 # matcher: Read
 # surface: user_global
 # signal: AGENT_TYPE
-# role: developer-*|reviewer-*|committer|context-curator
+# role: developer-*|reviewer-*|context-curator
 # harnesses: all
 # rationale: Claude Code per-call Read inspector over the typed files_to_touch/files_modified event gate
 # registration only (hand-authored body) — the registry entry for this hook
@@ -15,7 +15,6 @@
 #
 # Rules:
 #   context-curator → allow all (curator writes context post-reviewer)
-#   committer       → deny PROJECT_CONTEXT.md, context/*.md, codegen/pitches/**
 #   developer-*     → deny codegen/pitches/** always (the pitch is inlined in
 #                     the delegation prompt);
 #                     deny PROJECT_CONTEXT.md always;
@@ -103,23 +102,6 @@ case "$AGENT_TYPE" in
 
 context-curator)
     # Curator writes context post-reviewer — full read access.
-    exit 0
-    ;;
-
-committer)
-    # Committer derives commit msg from git diff; never needs context or pitch.
-    if [ "$is_pitch" -eq 1 ]; then
-        deny "Committer cannot read the pitch — derive commit message from git diff only."
-        exit 0
-    fi
-    if [ "$is_project_context" -eq 1 ]; then
-        deny "Committer cannot read PROJECT_CONTEXT.md. Derive commit message from git diff only."
-        exit 0
-    fi
-    if [ "$is_context_dir" -eq 1 ]; then
-        deny "Committer cannot read context/*.md. Derive commit message from git diff only."
-        exit 0
-    fi
     exit 0
     ;;
 

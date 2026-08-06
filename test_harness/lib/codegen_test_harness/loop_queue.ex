@@ -211,6 +211,49 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
+  @doc """
+  Parses the `commit_subject:` frontmatter field out of the pitch file at
+  `pitch_path` — the shaper's sealed commit subject, written at SHAPED
+  alongside `summary:`/`scope:`, and read by the loop's deterministic
+  commit step (`codegen-commit`) in place of a paid committer-role guess.
+
+  Reuses the same `extract_frontmatter_key/2` reader as `parse_scope/2`,
+  `parse_split_subject/2`, and `parse_edges/2` — a scalar key, no new
+  frontmatter grammar. Mechanical validity (length, single-line, casing,
+  trailing punctuation, trailer tokens) is NOT checked here — that lives
+  in `codegen-commit --check-subject`, the single implementation shared
+  by `/ready`, `pitch-format-validator.sh`, and this pre-claim check, so
+  the rule is defined once.
+
+  Returns:
+
+    - `{:ok, nil}` — no `commit_subject:` key, or no frontmatter block at
+      all. A literal-prompt build or a pitch in a repo with no shape
+      workflow carries no frontmatter at all — this is always a legal
+      absence, resolved at the `--commit-subject` CLI-flag call site
+      instead (see `Mix.Tasks.Codegen.Loop`).
+    - `{:ok, subject}` — `commit_subject:` present, trimmed.
+  """
+  @spec parse_commit_subject(slug(), String.t()) :: {:ok, String.t() | nil}
+  def parse_commit_subject(_slug, pitch_path) do
+    if File.exists?(pitch_path) do
+      content = File.read!(pitch_path)
+
+      case frontmatter_block(content) do
+        nil ->
+          {:ok, nil}
+
+        block ->
+          case extract_frontmatter_key(block, "commit_subject:") do
+            "" -> {:ok, nil}
+            raw -> {:ok, String.trim(raw)}
+          end
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
   # Like parse_flow_list/1 but distinguishes "not a flow-list at all"
   # (:error, for parse_scope/2's loud raise) from "flow-list, possibly
   # empty" ({:ok, list}). parse_flow_list/1 keeps its own [] collapse

@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   @shortdoc "Runs the deterministic orchestration loop for one pitch."
 
   @moduledoc """
-  `mix codegen.loop --harness=claude_code --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] [--max-budget-usd=<n>] [--effort=<e>] <pitch>`
+  `mix codegen.loop --harness=claude_code --stack=<phoenix|static> --cwd=<dir> [--fallback-model=<m>] [--max-budget-usd=<n>] [--effort=<e>] [--commit-subject=<text>] <pitch>`
 
   Execs from the build-mode `dispatch.sh` path in place of a single
   self-orchestrating agent session. Runs `CodegenTestHarness.OrchestrationLoop.run/1`
@@ -39,6 +39,16 @@ defmodule Mix.Tasks.Codegen.Loop do
     role's effort is exactly what `config.yaml` declares, unchanged. A fixed
     campaign binding (benchmark harness) still wins over this override for
     its own pinned role.
+  - `--commit-subject` — the explicit substitute for a pitch's own
+    `commit_subject:` frontmatter field, threaded from `codegen-build
+    --commit-subject=<text>` via `CODEGEN_BUILD_COMMIT_SUBJECT`. Resolution
+    order is explicit flag -> frontmatter -> refuse (fail-closed, never a
+    silent default). REQUIRED for a literal-prompt build (no frontmatter to
+    fall back to); optional for a pitch build that already carries
+    `commit_subject:` — and the escape hatch for a pitch in a repo with no
+    shape workflow at all. Validated via `codegen-commit --check-subject`
+    before ANY role is invoked or spend occurs — see pitch "committing is
+    deterministic, not a model call".
   - `<pitch>` — required positional arg, the prompt/pitch text (or `@<path>`
     to read it from a file, matching `codegen-call`'s `@<path>` convention)
   """
@@ -81,7 +91,8 @@ defmodule Mix.Tasks.Codegen.Loop do
           cwd: :string,
           fallback_model: :string,
           max_budget_usd: :float,
-          effort: :string
+          effort: :string,
+          commit_subject: :string
         ]
       )
 
@@ -102,6 +113,13 @@ defmodule Mix.Tasks.Codegen.Loop do
     # Optional: absent -> nil -> OrchestrationLoop.run/1 applies no
     # build-wide effort override, exactly today's behavior.
     effort_override = Keyword.get(opts, :effort)
+    # Optional: the explicit substitute for a pitch's own commit_subject:
+    # frontmatter — required for a literal prompt, and the escape hatch for
+    # a pitch in a repo with no shape workflow (no frontmatter producer at
+    # all). Resolution order is explicit flag -> frontmatter -> refuse,
+    # never a silent default (see pitch "committing is deterministic, not
+    # a model call").
+    commit_subject_flag = Keyword.get(opts, :commit_subject)
 
     # Move 2: install the SIGTERM handler for the solo path (SIGINT cannot
     # be caught at the BEAM level — see BuildSignalHandler moduledoc; the
@@ -146,7 +164,8 @@ defmodule Mix.Tasks.Codegen.Loop do
                 stack,
                 fallback_model,
                 max_budget_usd,
-                effort_override
+                effort_override,
+                commit_subject_flag
               )
             end
           )
@@ -242,6 +261,78 @@ defmodule Mix.Tasks.Codegen.Loop do
     |> Enum.any?(&match?(["codegen", "pitches"], &1))
   end
 
+  # Resolves the sealed commit subject this cycle will pass to the
+  # deterministic `codegen-commit` step. Resolution order is explicit flag
+  # -> pitch frontmatter -> refuse (fail-closed, never a silent default —
+  # see pitch "committing is deterministic, not a model call").
+  #
+  # Runs BEFORE `claim_pitch!/2` (called from `run_claimed_cycle/9`, not
+  # inlined into `claim_pitch!/2`'s own body — that function's arity-2
+  # contract has a large pre-existing test surface, and running this check
+  # strictly before the call achieves the identical fail-closed-before-spend
+  # guarantee without touching it) so a missing/invalid subject is refused
+  # before any role invocation, model spend, or ready/->building/ rename —
+  # the same fail-closed posture `verify_handoff_receipt_before_claim!/1`
+  # already applies to `handoffs:` from inside `claim_pitch!/2`.
+  #
+  # A `--commit-subject` flag ALWAYS wins when given, even for a pitch that
+  # also carries `commit_subject:` frontmatter — the flag is the explicit,
+  # in-the-moment override; the frontmatter is the pitch's own default.
+  # Mechanical validity is checked via `codegen-commit --check-subject`,
+  # the single implementation shared with `/ready` and
+  # `pitch-format-validator.sh` — the rule is defined once, not duplicated
+  # in Elixir.
+  @spec resolve_commit_subject!({:file, String.t()} | :literal, String.t() | nil) :: String.t()
+  defp resolve_commit_subject!(source, commit_subject_flag) do
+    frontmatter_subject =
+      case source do
+        :literal ->
+          nil
+
+        {:file, abs} ->
+          slug = source_slug(source) || Path.basename(abs, ".md")
+          {:ok, subject} = LoopQueue.parse_commit_subject(slug, abs)
+          subject
+      end
+
+    subject = commit_subject_flag || frontmatter_subject
+
+    cond do
+      is_nil(subject) or subject == "" ->
+        Mix.shell().error(
+          "codegen.loop: no commit subject available — the pitch declares no " <>
+            "commit_subject: frontmatter field and no --commit-subject flag was " <>
+            "given. A literal prompt ALWAYS requires --commit-subject=<text>; a " <>
+            "pitch build requires either commit_subject: in frontmatter or the " <>
+            "same flag (see pitch \"committing is deterministic, not a model call\")."
+        )
+
+        exit({:shutdown, 2})
+
+      not check_subject_valid?(subject) ->
+        Mix.shell().error(
+          "codegen.loop: commit subject #{inspect(subject)} failed codegen-commit " <>
+            "--check-subject validation — fix it in frontmatter or the --commit-subject " <>
+            "flag and re-run."
+        )
+
+        exit({:shutdown, 2})
+
+      true ->
+        subject
+    end
+  end
+
+  @codegen_commit_bin Path.expand("../../../../codegen-commit", __DIR__)
+
+  @spec check_subject_valid?(String.t()) :: boolean()
+  defp check_subject_valid?(subject) do
+    case System.cmd(@codegen_commit_bin, ["--check-subject", subject], stderr_to_stdout: true) do
+      {_out, 0} -> true
+      {_out, _nonzero} -> false
+    end
+  end
+
   defp run_claimed_cycle(
          source,
          pitch_arg,
@@ -250,9 +341,11 @@ defmodule Mix.Tasks.Codegen.Loop do
          stack,
          fallback_model,
          max_budget_usd,
-         effort_override
+         effort_override,
+         commit_subject_flag
        ) do
     pitch = resolve_pitch(pitch_arg, cwd)
+    commit_subject = resolve_commit_subject!(source, commit_subject_flag)
     source = claim_pitch!(source, cwd)
     slug = source_slug(source) || "adhoc"
     pitch_scope = resolve_pitch_scope!(source, slug)
@@ -291,7 +384,8 @@ defmodule Mix.Tasks.Codegen.Loop do
           max_budget_usd: max_budget_usd,
           effort_override: effort_override,
           recovery_mode: recovery_mode,
-          recovery_role: recovery_role
+          recovery_role: recovery_role,
+          commit_subject: commit_subject
         )
       end)
 
@@ -341,7 +435,10 @@ defmodule Mix.Tasks.Codegen.Loop do
         role =
           OrchestrationLoop.resume_role_for_recovery(disposition, dossier["cycle_state"], roles)
 
-        Mix.shell().info("codegen.loop: recovered #{slug} (#{disposition}) — resuming at #{role}")
+        Mix.shell().info(
+          "codegen.loop: recovered #{slug} (#{disposition}) — resuming at " <>
+            OrchestrationLoop.display_resume_role(role)
+        )
         {disposition, role}
 
       {:error, reason} ->

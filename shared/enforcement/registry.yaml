@@ -113,37 +113,6 @@
   role: "*"
   harnesses: all
 
-# SCHEMA: committer.md — committer Bash allowlist (default-deny; git + safe shell utilities only)
-- id: committer-bash-allowlist
-  generated: true
-  description: "committer may only run git commands and safe shell utilities (allowlist)"
-  event: PreToolUse
-  source: COMMAND
-  mode: allowlist
-  tool_guard: Bash
-  match: "^\\s*(cd\\b|git\\s+(-C\\s+\\S+\\s+)?(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\\b|codegen-log\\b|printf\\b|echo\\b|wc\\b|cat\\b|ls\\b|true\\b|:)"
-  message: "BLOCKED by committer-bash-allowlist: only git read/write commands and safe shell utilities allowed for committer"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-
-# SCHEMA: session-log.md — committer may only write to canonical session logs
-- id: committer-write-allowlist
-  generated: true
-  description: "committer may only edit canonical session log files (allowlist)"
-  event: PreToolUse
-  source: FILE_PATH
-  mode: allowlist
-  canonicalize: repo_relative
-  tool_guard: "Write|Edit"
-  match: 'codegen/logging/[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'
-  message: "BLOCKED by committer-write-allowlist: committer may only write to canonical session logs"
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-
 # SCHEMA: session-log.md — reviewer Bash allowlist (default-deny; codegen-log plus safe read-only utilities only)
 - id: reviewer-bash-allowlist
   generated: true
@@ -246,82 +215,6 @@
   rationale: CLAUDE_ROLE_FAMILY-keyed launcher mode guard for the debug/shape families
 
 - kind: registration
-  id: curator-before-committer
-  event: PreToolUse
-  tool_guard: Agent
-  surface: user_global
-  signal: none
-  role: "*"
-  harnesses: all
-
-- kind: registration
-  id: committer-no-revert-prior-commit
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-  rationale: Blocks git commit when staged content would byte-identically match a file state that a prior session commit already superseded, preventing silent backward rolls within the same build session.
-
-- kind: registration
-  id: committer-single-commit-per-cycle
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-  rationale: Denies a second non-amend git commit from the committer agent within the same build cycle, enforcing one commit per cycle and preventing accidental double-commits.
-
-- kind: registration
-  id: committer-no-head-move-reset
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-  rationale: Denies a HEAD-moving git reset (e.g. git reset HEAD~1, --hard/--soft/--keep/--merge, or a targeted commit-ish) from the committer agent, preventing a prior cycle's already-committed commit from being silently orphaned and folded into a new one.
-
-- kind: registration
-  id: committer-no-trailer-guard
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-
-- kind: registration
-  id: committer-single-line-guard
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-
-- kind: registration
-  id: committer-gate-verdict-clear
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-  rationale: Denies a git commit from the committer agent unless codegen/gate-pending/gate-result.json exists and its .verdict field is "clear" — enforces the mandatory verdict read (shared/rules/roles/committer.md) rather than leaving it as an unenforced instruction.
-
-- kind: registration
-  id: committer-subject-length
-  event: PreToolUse
-  tool_guard: Bash
-  surface: user_global
-  signal: AGENT_TYPE
-  role: committer
-  harnesses: all
-
-- kind: registration
   id: context-curator-guard
   event: PreToolUse
   tool_guard: "Edit|Write|MultiEdit"
@@ -338,7 +231,7 @@
   signal: none
   role: "*"
   harnesses: all
-  rationale: "Denies ANY role's Edit/Write/MultiEdit to context/<file>.md, PROJECT_CONTEXT.md, or codegen/PROJECT_CONTEXT.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the writer's own turn — where the doc is editable this turn — instead of failing later at commit on the committer, which cannot repair it. Composes with context-curator-guard (path surface, curator-only)."
+  rationale: "Denies ANY role's Edit/Write/MultiEdit to context/<file>.md, PROJECT_CONTEXT.md, or codegen/PROJECT_CONTEXT.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the writer's own turn — where the doc is editable this turn — instead of failing later at the deterministic commit step, which cannot repair it. Composes with context-curator-guard (path surface, curator-only)."
 
 - kind: registration
   id: context-factcheck-edit-gate
@@ -348,7 +241,7 @@
   signal: none
   role: "*"
   harnesses: all
-  rationale: "Denies ANY role's Edit/Write/MultiEdit to an orientation doc (CLAUDE.md, AGENTS.md, PROJECT_CONTEXT.md, codegen/PROJECT_CONTEXT.md, context/*.md) when the PROJECTED post-write content contains a factcheck violation (named-path claim, count-anchor mismatch, or `_`->`*` identifier corruption), so it is fixed in the writer's own turn — where the doc is editable this turn — instead of failing later at a downstream role (committer) that cannot repair it. Mirrors curator-context-size-gate. Supersedes the deleted context-factcheck-curator-stop (dead SubagentStop under the loop) and context-factcheck-guard (commit-time dead-end)."
+  rationale: "Denies ANY role's Edit/Write/MultiEdit to an orientation doc (CLAUDE.md, AGENTS.md, PROJECT_CONTEXT.md, codegen/PROJECT_CONTEXT.md, context/*.md) when the PROJECTED post-write content contains a factcheck violation (named-path claim, count-anchor mismatch, or `_`->`*` identifier corruption), so it is fixed in the writer's own turn — where the doc is editable this turn — instead of failing later at the deterministic commit step, which cannot repair it. Mirrors curator-context-size-gate. Supersedes the deleted context-factcheck-curator-stop (dead SubagentStop under the loop) and context-factcheck-guard (commit-time dead-end)."
 
 - kind: registration
   id: dev-no-ci
@@ -554,7 +447,7 @@
   tool_guard: Read
   surface: user_global
   signal: AGENT_TYPE
-  role: "developer-*|reviewer-*|committer|context-curator"
+  role: "developer-*|reviewer-*|context-curator"
   harnesses: all
   rationale: Claude Code per-call Read inspector over the typed files_to_touch/files_modified event gate
 

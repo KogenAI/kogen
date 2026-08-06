@@ -32,16 +32,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @type stack :: String.t()
   @type run_opts :: keyword()
 
-  # Both stacks are developer-first. Terminal role is committer in both
-  # sequences — the gate/reviewer/curator/committer tail is common.
-  @phoenix_roles ~w(developer-phoenix-backend reviewer-phoenix context-curator committer)
+  # Both stacks are developer-first. `committer` is NOT a role — it left the
+  # role vocabulary entirely (see pitch "committing is deterministic, not a
+  # model call"). The deterministic commit step is the unconditional
+  # terminator of `run_roles/4` (its `[]` clause), not a named role in
+  # either list — the gate/reviewer/curator tail is common; the commit step
+  # follows every sequence regardless of what it ends with.
+  @phoenix_roles ~w(developer-phoenix-backend reviewer-phoenix context-curator)
   # Scoping is not a cycle role: the pitch already carries its own deliverable
   # list in the mandatory `scope:` frontmatter field, which the loop reads once
   # (`:pitch_scope`) and threads two ways — as the `{"ev":"files_to_touch",
   # "role":"loop",...}` event that grants the developer its context/*.md Reads,
   # and as the `## Declared Scope` block build_prompt/2 appends for the
   # developer and the reviewer.
-  @static_roles ~w(developer-static reviewer-static context-curator committer)
+  @static_roles ~w(developer-static reviewer-static context-curator)
 
   @cycle_state_lib Path.expand(
                      "../../../harnesses/claude/hooks/lib/cycle-state.sh",
@@ -55,6 +59,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
   @codegen_log_bin Path.expand("../../../codegen-log", __DIR__)
   @codegen_advise_bin Path.expand("../../../codegen-advise", __DIR__)
+  @codegen_commit_bin Path.expand("../../../codegen-commit", __DIR__)
   @codegen_dir Path.expand("../../..", __DIR__)
 
   @factcheck_scan_lib Path.expand(
@@ -114,8 +119,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     after via `cycle_base_head/1`): writes a `{"ev":"committed"}` event via
     `codegen-log committed --role <role> --sha <sha> --subject <subject>`.
     The loop asserts on its OWN pre/post HEAD samples (never on this event,
-    which a bypassing role could forge) and raises when `role != "committer"`
-    — see § Enforcement in `shared/rules/_core/session-log.md`.
+    which a bypassing role could forge) and raises whenever ANY role moves
+    HEAD — no role commits anymore; the deterministic commit step
+    (`run_commit_step/3`) is the ONLY thing that moves HEAD, and it is not a
+    role invocation at all, so it never reaches this guard. See § Enforcement
+    in `shared/rules/_core/session-log.md`.
   - `:gate_preflight_fn` — test seam: `(cwd -> resolved)` — resolves the app
     gate at turn 0 before any role runs; defaults to `LoopGate.decide_gate/1`
   - `:preflight_probe_fn` — test seam: `(cwd -> raw_output)` — resolves the
@@ -882,14 +890,16 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Runs each role in sequence up to (not including) the gate-dependent
   # tail (reviewer onward); the gate step is interleaved between the
   # developer role and the reviewer role.
-  defp run_roles([], _harness, _ctx, _opts), do: :ok
-
-  defp run_roles([role | rest], harness, ctx, opts) when role == "committer" do
-    # No-ship-on-a-gate-that-didn't-grade-this-tree: the pre-commit re-gate
-    # check has to run BEFORE the committer role is invoked at all — unlike
-    # every other role clause below, this one intercepts ahead of the
-    # `invoke_with_retry` call rather than after it.
-    ensure_gate_graded_this_tree!(ctx, rest, harness, opts, 0)
+  #
+  # `committer` is NOT a role — it left `@phoenix_roles`/`@static_roles`
+  # (see pitch "committing is deterministic, not a model call"). The commit
+  # step is now the UNCONDITIONAL terminator of every role sequence: it
+  # runs here, in the `[]` clause, rather than being dispatched as a named
+  # role. No-ship-on-a-gate-that-didn't-grade-this-tree still applies —
+  # `ensure_gate_graded_this_tree!/5` intercepts before the commit itself,
+  # exactly as it did when `committer` was the head of a non-empty list.
+  defp run_roles([], harness, ctx, opts) do
+    ensure_gate_graded_this_tree!(ctx, [], harness, opts, 0)
   end
 
   defp run_roles([role | rest], harness, ctx, opts)
@@ -994,29 +1004,29 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   defp reviewer_role?(role), do: String.starts_with?(role, "reviewer-")
 
   # No-ship-on-a-gate-that-didn't-grade-this-tree: runs immediately BEFORE
-  # the committer role is invoked (keyed on the role about to run, not its
+  # the deterministic commit step (keyed on the step about to run, not its
   # predecessor, so it holds for both the phoenix and static sequences — the
   # context-curator, `run_format_step`, and env-var steps are all sequenced
-  # ahead of the committer in both). A tree that changed since the last gate
-  # ran (curator doc edits, formatting, or a destructive revert like the
-  # incident that motivated this guard) means the recorded verdict no longer
-  # describes what's about to be committed — re-gate to restamp a verdict
-  # for the CURRENT tree before the committer ever runs.
+  # ahead of the commit step in both). A tree that changed since the last
+  # gate ran (curator doc edits, formatting, or a destructive revert like
+  # the incident that motivated this guard) means the recorded verdict no
+  # longer describes what's about to be committed — re-gate to restamp a
+  # verdict for the CURRENT tree before the commit ever runs.
   #
   # Match (or no comparable signature — non-git cwd, or no prior gate has
   # run in this cycle's opts, e.g. most mocked unit tests) → proceed
-  # straight to the committer. Stale → re-gate via the same `LoopGate.run_gate/2`
-  # contract the primary gate loop uses. Clear on re-gate → proceed. Non-clear
-  # → route through the SAME developer-rework shape `do_gate_loop/9` uses
-  # (fold the gate failure reason + rework brief into context, re-invoke the
-  # developer, re-format, re-check), bounded by `:max_final_gate_cycles`
-  # (default 1 — separate from `:max_gate_retries`; this is a pre-commit
-  # backstop, not the primary gate loop). Exhaustion → `{:error, reason}`,
-  # no commit.
+  # straight to the commit step. Stale → re-gate via the same
+  # `LoopGate.run_gate/2` contract the primary gate loop uses. Clear on
+  # re-gate → proceed. Non-clear → route through the SAME developer-rework
+  # shape `do_gate_loop/9` uses (fold the gate failure reason + rework brief
+  # into context, re-invoke the developer, re-format, re-check), bounded by
+  # `:max_final_gate_cycles` (default 1 — separate from `:max_gate_retries`;
+  # this is a pre-commit backstop, not the primary gate loop). Exhaustion →
+  # `{:error, reason}`, no commit.
   defp ensure_gate_graded_this_tree!(ctx, rest, harness, opts, cycle) do
     case gate_tree_match?(ctx.cwd, opts) do
       true ->
-        run_committer(ctx, rest, harness, opts)
+        run_commit_step(ctx, rest, opts)
 
       false ->
         max_cycles = Keyword.get(opts, :max_final_gate_cycles, 1)
@@ -1026,7 +1036,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         else
           {:error,
            "pre-commit re-gate: tree changed since the gate ran and the gate stayed non-clear " <>
-             "after #{cycle + 1} rework attempt(s) — refusing to invoke the committer on a tree " <>
+             "after #{cycle + 1} rework attempt(s) — refusing to run the commit step on a tree " <>
              "the gate never graded clear (loop_failed, never a false loop_committed)."}
         end
     end
@@ -1050,25 +1060,94 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     graded == "" or current == "" or graded == current
   end
 
-  defp run_committer(ctx, rest, harness, opts) do
-    with {:ok, result} <- invoke_with_retry("committer", harness, ctx, opts) do
-      ctx = put_in(ctx, [:artifacts, "committer"], result)
+  # The commit step is DETERMINISTIC — no model call, no `invoke_with_retry`
+  # retry ladder, no role artifact. Shells `codegen-commit --subject <sealed>
+  # --cwd <ctx.cwd>` (the single implementation shared with `/ready` and
+  # `pitch-format-validator.sh`), then runs the IDENTICAL post-commit
+  # verification chain the paid committer role used to be checked against —
+  # `verify_committed!/2` is unchanged, because it was always re-deriving
+  # the loop's own guarantee from git state, never trusting the role's
+  # return. See pitch "committing is deterministic, not a model call".
+  #
+  # `rest` is always `[]` here (the commit step is the unconditional
+  # terminator of `run_roles/4`) — kept as a parameter only so a future
+  # sequence change does not have to rediscover this call shape.
+  defp run_commit_step(ctx, _rest, opts) do
+    commit_fn = Keyword.get(opts, :commit_fn, &default_commit_fn/2)
+    subject = Keyword.get(opts, :commit_subject)
 
-      # Structural gap #9: the committer ROLE returning success does NOT
-      # prove a commit landed — the committer can inspect the repo, see the
-      # feature already implemented (it was, by the developer), and report
-      # "done" without ever running `git commit`. Trusting role-return here
-      # is the exact false-success failure the loop exists to prevent. VERIFY
-      # the working tree is actually clean (all cycle output committed); a
-      # dirty tree after the committer means it did not commit → fail loud.
-      verify_committed!(ctx.cwd, ctx.base_head)
-      advance_cycle_state_step("COMMITTED", ctx, opts)
-      run_roles(rest, harness, ctx, opts)
+    case commit_fn.(ctx.cwd, subject) do
+      {:ok, _output} ->
+        # Structural gap #9 (unchanged): a successful commit_fn return does
+        # NOT by itself prove a commit landed on the RIGHT tree — VERIFY the
+        # working tree is actually clean and exactly one commit advanced
+        # base_head. A dirty tree here means codegen-commit's own internal
+        # guards (empty index, backward-roll, gate-verdict) already refused
+        # and commit_fn should have returned {:error, _} — this is the same
+        # belt-and-braces posture the loop has always applied post-committer.
+        verify_committed!(ctx.cwd, ctx.base_head)
+
+        # `{"ev":"committed"}` — loop-authored (never role-authored; no role
+        # invocation happened here at all). post_head is sampled fresh
+        # rather than reusing verify_committed!'s internal read, since this
+        # is a distinct concern (observability event vs correctness guard).
+        # nil post_head (non-git cwd, e.g. most mocked unit tests) skips the
+        # event entirely — `codegen-log committed` requires a non-empty
+        # `--sha`, and there is nothing real to attribute anyway.
+        case cycle_base_head(ctx.cwd) do
+          nil ->
+            :ok
+
+          post_head ->
+            commit_subject = git_commit_subject(ctx.cwd, post_head)
+            log_committed("loop", post_head, commit_subject, opts)
+        end
+
+        advance_cycle_state_step("COMMITTED", ctx, opts)
+        :ok
+
+      {:error, reason} ->
+        {:error, "codegen-commit refused: #{reason} (loop_failed, never a false loop_committed)"}
+    end
+  end
+
+  # Default `:commit_fn` — shells `codegen-commit --subject <subject> --cwd
+  # <cwd>`. `Mix.Tasks.Codegen.Loop.resolve_commit_subject!/2` is the ONE
+  # real production caller of `OrchestrationLoop.run/1` (verified: no other
+  # `lib/` call site exists) and it ALWAYS resolves + validates a subject
+  # BEFORE this function is ever reached — so a nil subject here can only
+  # mean either a genuine defect in that caller, or a synthetic/non-git test
+  # cwd exercising role-sequencing logic that never intended to reach a real
+  # commit at all.
+  #
+  # Non-git `cwd` (`File.dir?` false, or `git rev-parse` fails — the
+  # synthetic "/tmp/irrelevant" paths the large majority of this module's
+  # OWN test suite uses) fails OPEN here, mirroring `cycle_base_head/1` and
+  # `verify_committed!/2`'s own documented fail-open posture for the exact
+  # same non-git-cwd case: "only a real git work tree can be verified...
+  # nothing to verify there." A REAL git cwd with a nil subject IS the
+  # genuine defect case — raise loud rather than shell a broken invocation.
+  @spec default_commit_fn(String.t(), String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
+  defp default_commit_fn(cwd, nil) do
+    if File.dir?(cwd) and match?({_, 0}, System.cmd("git", ["rev-parse", "HEAD"], cd: cwd, stderr_to_stdout: true)) do
+      raise "OrchestrationLoop: run_commit_step reached a real git cwd with no commit_subject — " <>
+              "resolve_commit_subject!/2 should have refused this cycle before any role ran."
+    else
+      {:ok, "no-op (non-git cwd, no commit_subject — test seam)"}
+    end
+  end
+
+  defp default_commit_fn(cwd, subject) do
+    case System.cmd(@codegen_commit_bin, ["--subject", subject, "--cwd", cwd],
+           stderr_to_stdout: true
+         ) do
+      {output, 0} -> {:ok, output}
+      {output, _nonzero} -> {:error, String.trim(output)}
     end
   end
 
   # Re-gates the CURRENT tree (the same `:gate_fn` contract `do_gate_loop/9`
-  # uses) before the committer runs. Clear → proceed to the committer
+  # uses) before the commit step runs. Clear → proceed to the commit step
   # (restamped `gate-result.json` now matches). Non-clear → resolve the
   # OWNER of the failure via `resolve_gate_owner/2` (the same owner-routing
   # `do_gate_loop/9`'s owner arm already uses — a `context/*.md` /
@@ -1077,7 +1156,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # into context (mirrors `do_gate_loop/9`'s rework shape), then recurse
   # into `ensure_gate_graded_this_tree!/5` for another match check + gate
   # cycle. No developer role in this cycle's artifacts (should not happen
-  # in practice — a developer always runs before the committer in both
+  # in practice — a developer always runs before the commit step in both
   # role sequences) → treat as exhausted rather than crash on a nil
   # dev_role; owner resolution never runs without a dev_role to fall back
   # to.
@@ -1089,7 +1168,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     case gate_fn.(ctx.cwd, gate_opts(opts, ctx)) do
       {:clear, _gate_cmd} ->
-        run_committer(ctx, rest, harness, opts)
+        run_commit_step(ctx, rest, opts)
 
       {:failed, _gate_cmd} ->
         dev_role = dev_role_from_ctx(ctx)
@@ -1152,6 +1231,24 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  # Sentinel resume target for the deterministic commit step — NOT a role
+  # name (see pitch "committing is deterministic, not a model call": the
+  # commit step left the role vocabulary entirely). Handled specially by
+  # `resolve_resume_role/2` (bypasses the `roles`-membership search — the
+  # sentinel is never a member of any stack's role list) and `resume_suffix/2`
+  # (resolves directly to `[]`, since `run_roles([], ...)` already runs the
+  # commit step unconditionally).
+  @commit_step_sentinel "__commit_step__"
+
+  @doc """
+  Renders a `resume_role_for_recovery/3` result for a human-facing log line
+  — `@commit_step_sentinel` (an internal, non-role marker) prints as `"the
+  commit step"`; every real role name passes through unchanged.
+  """
+  @spec display_resume_role(String.t()) :: String.t()
+  def display_resume_role(@commit_step_sentinel), do: "the commit step"
+  def display_resume_role(role), do: role
+
   # Maps a completed cycle-state to the role the resumed cycle must start
   # from. Deliberately NOT `cycle-state.sh`'s `cycle_state_role` (that helper
   # returns "" for GATED and is shaped for human block-message text, not a
@@ -1159,14 +1256,21 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @spec resume_role_for_state(String.t()) :: String.t() | nil
   defp resume_role_for_state("GATED"), do: "reviewer"
   defp resume_role_for_state("REVIEWED"), do: "context-curator"
-  defp resume_role_for_state("CURATED"), do: "committer"
+  defp resume_role_for_state("CURATED"), do: @commit_step_sentinel
   defp resume_role_for_state(_other), do: nil
 
   # Resolves a state's abstract "reviewer" target against the STACK-SPECIFIC
   # role name actually present in `roles` (role_sequence/1 emits
   # "reviewer-phoenix" or "reviewer-static", never a bare "reviewer") — never
   # hardcode either variant here.
+  #
+  # `@commit_step_sentinel` bypasses the `roles`-membership search entirely
+  # and resolves unconditionally — the commit step is never a member of any
+  # stack's role list (it left the role vocabulary; see
+  # `@commit_step_sentinel` doc above).
   @spec resolve_resume_role(String.t(), [String.t()]) :: String.t() | nil
+  defp resolve_resume_role(@commit_step_sentinel, _roles), do: @commit_step_sentinel
+
   defp resolve_resume_role("reviewer", roles) do
     Enum.find(roles, &(&1 == "reviewer-phoenix" or &1 == "reviewer-static"))
   end
@@ -1223,7 +1327,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   # Determines whether `cwd` carries a valid resume checkpoint: a durable,
   # gate-clear, tree-matched record of a prior cycle that died AFTER the
-  # gate went green but BEFORE the committer landed. See pitch "no
+  # gate went green but BEFORE the commit step landed. See pitch "no
   # whole-build restart when the loop dies mid-cycle" for the full
   # discipline this encodes.
   #
@@ -1276,10 +1380,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # consistent. It does not prove there is still work to publish: a gate can
   # legitimately grade a clean tree (for example after another recovery
   # already landed the intended bytes). Resuming that checkpoint at reviewer
-  # produces an empty review set; resuming at committer produces a no-op. Both
-  # are deterministic failures, so reject the resume before either role is
-  # invoked. Non-git test/synthetic cwd values retain the historical fail-open
-  # behavior; production cycles always run in a git work tree.
+  # produces an empty review set; resuming at the commit step produces a
+  # no-op. Both are deterministic failures, so reject the resume before
+  # either is invoked. Non-git test/synthetic cwd values retain the
+  # historical fail-open behavior; production cycles always run in a git
+  # work tree.
   defp resume_work_present?(cwd, opts) do
     work_present_fn =
       Keyword.get(opts, :resume_work_present_fn, &default_resume_work_present?/1)
@@ -1375,7 +1480,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # (and including) `resume_role`. `resume_role` is always a member of
   # `roles` here — resume_checkpoint/3 only returns a resume_role it found
   # via resolve_resume_role/2, which searches `roles` itself.
+  #
+  # `@commit_step_sentinel` resolves directly to `[]` — it is never a member
+  # of `roles`, and `run_roles([], ...)` already runs the commit step
+  # unconditionally as its terminal `[]` clause.
   @spec resume_suffix([String.t()], String.t()) :: [String.t()]
+  defp resume_suffix(_roles, @commit_step_sentinel), do: []
+
   defp resume_suffix(roles, resume_role) do
     Enum.drop_while(roles, &(&1 != resume_role))
   end
@@ -1384,25 +1495,30 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # slug so the identity guard's decision is operator-visible) + one
   # best-effort cycle-log line appended under `resume_role` itself —
   # `resume_role` is always a real role from codegen-log's vocabulary
-  # (loop/developer-*/reviewer-*/context-curator/committer — see
-  # shared/rules/_core/session-log.md § Event Schema), so the resume note
-  # belongs to the role section it resumes into rather than an invented
-  # pseudo-role codegen-log would refuse. Fail-loud-non-blocking: a
-  # codegen-log failure here must never abort a resume that is otherwise
-  # valid.
+  # (loop/developer-*/reviewer-*/context-curator — see
+  # shared/rules/_core/session-log.md § Event Schema), EXCEPT
+  # `@commit_step_sentinel`, which `default_log_resume/2` maps to `"loop"`
+  # (the commit step is loop-authored, not role-authored — see pitch
+  # "committing is deterministic, not a model call") before ever shelling
+  # `codegen-log`, so the resume note belongs to the section it resumes
+  # into rather than an invented pseudo-role codegen-log would refuse.
+  # Fail-loud-non-blocking: a codegen-log failure here must never abort a
+  # resume that is otherwise valid.
   @spec log_resume(String.t(), String.t(), run_opts()) :: :ok
   defp log_resume(resume_role, state, opts) do
     slug = Keyword.get(opts, :slug)
 
     IO.puts(
       :stderr,
-      "codegen.loop: resuming at #{resume_role} (prior state #{state}, gate clear, tree matched, " <>
-        "slug #{slug}) — skipping the completed prefix"
+      "codegen.loop: resuming at #{display_resume_role(resume_role)} (prior state #{state}, " <>
+        "gate clear, tree matched, slug #{slug}) — skipping the completed prefix"
     )
 
     log_resume_fn = Keyword.get(opts, :log_resume_fn, &default_log_resume/2)
     log_resume_fn.(resume_role, state)
   end
+
+  defp default_log_resume(@commit_step_sentinel, state), do: default_log_resume("loop", state)
 
   defp default_log_resume(resume_role, state) do
     cycle_log = Process.get(@log_path_key)
@@ -3615,13 +3731,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   # HEAD moved during this role's invocation (pre_head != post_head, both
-  # non-nil — a real git tree). Records a `{"ev":"committed"}` event (loop-
-  # authored, never role-authored) and asserts on the loop's OWN pre/post
-  # samples — never on the recorded event itself, which a bypassing role
-  # could forge via the codegen-log CLI. `role != "committer"` moving HEAD
-  # is a guard bypass (see the three known incidents this reproduces as
-  # fixtures) — raise loud, naming the role and the sha, so the cycle fails
-  # rather than silently shipping an unattributed commit.
+  # non-nil — a real git tree). Records a `{"ev":"committed"}` event
+  # (loop-authored, never role-authored) and asserts on the loop's OWN
+  # pre/post samples — never on the recorded event itself, which a
+  # bypassing role could forge via the codegen-log CLI.
+  #
+  # NO ROLE may move HEAD, unconditionally — `committer` left the role
+  # vocabulary entirely (see pitch "committing is deterministic, not a
+  # model call"); the ONLY thing that ever legitimately moves HEAD now is
+  # `run_commit_step/3`'s `codegen-commit` shell-out, which is NOT a role
+  # invocation and therefore never reaches `invoke_with_retry/4` (the sole
+  # caller of this function) at all. Any role moving HEAD is a guard
+  # bypass (see the three known incidents this reproduces as fixtures) —
+  # raise loud, naming the role and the sha, so the cycle fails rather
+  # than silently shipping an unattributed commit.
   #
   # nil sampling (non-git cwd, or unborn branch) short-circuits: nothing to
   # attribute, nothing to assert — mirrors cycle_base_head/1's own fail-open
@@ -3641,11 +3764,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     subject = git_commit_subject(cwd, post_head)
     log_committed(role, post_head, subject, opts)
 
-    unless role == "committer" do
-      raise "OrchestrationLoop: HEAD moved during #{role} (#{post_head}); only the committer writes history"
-    end
-
-    :ok
+    raise "OrchestrationLoop: HEAD moved during #{role} (#{post_head}); no role writes history " <>
+            "— only the deterministic commit step does, and it is not a role invocation."
   end
 
   defp record_and_assert_head_move!(_role, _cwd, _pre_head, _post_head, _opts), do: :ok

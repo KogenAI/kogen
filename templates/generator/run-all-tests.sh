@@ -146,6 +146,7 @@ tmps=()
 HOOK_DEDUP_EXCLUDE="harnesses/claude/hooks/codegen-build_test.sh
 harnesses/claude/hooks/codegen-call_test.sh
 harnesses/claude/hooks/codegen-propose_test.sh
+harnesses/claude/hooks/codegen-commit_test.sh
 harnesses/claude/hooks/prompt-content-parity_test.sh"
 { ./shared/scaffold/phoenix/run-tests.sh; } >"$tmp_scaffold" 2>&1 &
 pids+=($!)

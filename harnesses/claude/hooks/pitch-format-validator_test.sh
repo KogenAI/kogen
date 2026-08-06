@@ -31,6 +31,10 @@
 #  28:  waives: resolution unaffected by neighboring handoffs:/handoff_receipt: keys
 #  29:  split-root: CODEGEN_DIR registry resolves waivable id → allow
 #  30:  split-root: CODEGEN_DIR registry, unknown id → block
+#  31:  frontmatter status: SHAPED + no commit_subject: → block, naming field
+#  32:  frontmatter status: SHAPED + mechanically-invalid commit_subject: → block
+#  33:  frontmatter status: SHAPED + mechanically-valid commit_subject: → allow
+#  34:  legacy `> Status: SHAPED` (no frontmatter) → allow, commit_subject check scoped out
 
 set -u
 
@@ -259,6 +263,7 @@ write_pitch_frontmatter_status_shaped() {
 ---
 status: SHAPED
 blocks_on: []
+commit_subject: Test build commit
 ---
 # My Pitch
 
@@ -277,6 +282,7 @@ write_pitch_waives_split_root_id() {
 ---
 status: SHAPED
 waives: [test-waivable-hook]
+commit_subject: Test build commit
 ---
 # My Pitch
 
@@ -294,6 +300,7 @@ write_pitch_waives_unknown_id() {
 ---
 status: SHAPED
 waives: [no-such-hook]
+commit_subject: Test build commit
 ---
 # My Pitch
 
@@ -311,6 +318,7 @@ write_pitch_waives_non_waivable_id() {
 ---
 status: SHAPED
 waives: [session-log-writer-only]
+commit_subject: Test build commit
 ---
 # My Pitch
 
@@ -328,6 +336,7 @@ write_pitch_waives_valid_id() {
 ---
 status: SHAPED
 waives: [prompt-budget-writer-only]
+commit_subject: Test build commit
 ---
 # My Pitch
 
@@ -349,8 +358,84 @@ status: SHAPED
 waives: [prompt-budget-writer-only]
 handoffs: [d::my-pitch::other-pitch::lib/x.ex]
 handoff_receipt: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+commit_subject: Test build commit
 ---
 # My Pitch
+
+## Problem
+
+Done.
+MD
+}
+
+# write_pitch_frontmatter_status_shaped_no_commit_subject <path>
+# frontmatter status: SHAPED, no commit_subject: key at all. The loop's
+# deterministic commit step has no committer role left to derive a subject
+# from a diff — validation (e) must block promotion until one is sealed.
+write_pitch_frontmatter_status_shaped_no_commit_subject() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: SHAPED
+blocks_on: []
+---
+# My Pitch
+
+## Problem
+
+Done.
+MD
+}
+
+# write_pitch_frontmatter_status_shaped_invalid_commit_subject <path>
+# frontmatter status: SHAPED, commit_subject: present but mechanically
+# invalid (lowercase first letter + trailing period) — must fail
+# `codegen-commit --check-subject` and block.
+write_pitch_frontmatter_status_shaped_invalid_commit_subject() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: SHAPED
+blocks_on: []
+commit_subject: bad lowercase subject with trailing period.
+---
+# My Pitch
+
+## Problem
+
+Done.
+MD
+}
+
+# write_pitch_frontmatter_status_shaped_valid_commit_subject <path>
+# frontmatter status: SHAPED, commit_subject: present and mechanically
+# valid — must pass `codegen-commit --check-subject` and allow.
+write_pitch_frontmatter_status_shaped_valid_commit_subject() {
+    local path="$1"
+    cat >"$path" <<'MD'
+---
+status: SHAPED
+blocks_on: []
+commit_subject: Stop paying a model to run the finalize step
+---
+# My Pitch
+
+## Problem
+
+Done.
+MD
+}
+
+# write_pitch_status_shaped_legacy_no_commit_subject <path>
+# Legacy `> Status: SHAPED` blockquote pitch (no frontmatter block at all).
+# Validation (e) is scoped to frontmatter-carrying pitches only — this
+# fixture proves a pre-frontmatter pitch is NOT stranded by the new check.
+write_pitch_status_shaped_legacy_no_commit_subject() {
+    local path="$1"
+    cat >"$path" <<'MD'
+# My Pitch
+
+> Status: SHAPED
 
 ## Problem
 
@@ -370,6 +455,7 @@ write_pitch_frontmatter_status_shaped_large() {
         printf -- '---\n'
         printf -- 'status: SHAPED\n'
         printf -- 'blocks_on: []\n'
+        printf -- 'commit_subject: Test build commit\n'
         printf -- '---\n'
         printf -- '# My Pitch\n\n## Problem\n\n'
         # ~20k lines, well past the 64 KB pipe buffer.
@@ -418,6 +504,7 @@ write_pitch_frontmatter_status_shaped_valid_questions() {
 ---
 status: SHAPED
 blocks_on: []
+commit_subject: Test build commit
 ---
 # My Pitch
 
@@ -437,6 +524,7 @@ write_pitch_frontmatter_status_shaped_malformed_questions() {
 ---
 status: SHAPED
 blocks_on: []
+commit_subject: Test build commit
 ---
 # My Pitch
 
@@ -789,6 +877,59 @@ out=$(make_stop_json "$T30_dir" false "$T30_transcript" |
     CODEGEN_DIR="$T30_codegen_dir" CLAUDE_ROLE=shape bash "$HOOK" 2>/dev/null || true)
 assert_contains "split-root: unknown id still blocks with CODEGEN_DIR registry" '"decision"' "$out"
 rm -rf "$T30_dir" "$T30_codegen_dir"
+
+# ── Test 31: frontmatter status: SHAPED + no commit_subject: key at all →
+# block, naming the missing field. ──────────────────────────────────────────
+T31_dir=$(mktemp -d)
+mkdir -p "$T31_dir/codegen/pitches/draft"
+T31_pitch="$T31_dir/codegen/pitches/draft/my-pitch.md"
+T31_transcript="$T31_dir/transcript.jsonl"
+write_pitch_frontmatter_status_shaped_no_commit_subject "$T31_pitch"
+make_transcript_with_pitch_write "$T31_transcript" "$T31_pitch"
+out=$(run_hook "$T31_dir" false "$T31_transcript" "shape" "")
+assert_contains "SHAPED + no commit_subject: → block" '"decision"' "$out"
+assert_contains "SHAPED + no commit_subject: → reason names commit_subject" 'commit_subject:' "$out"
+rm -rf "$T31_dir"
+
+# ── Test 32: frontmatter status: SHAPED + mechanically-invalid
+# commit_subject: (lowercase first letter + trailing period) → block, naming
+# the codegen-commit --check-subject failure. ───────────────────────────────
+T32_dir=$(mktemp -d)
+mkdir -p "$T32_dir/codegen/pitches/draft"
+T32_pitch="$T32_dir/codegen/pitches/draft/my-pitch.md"
+T32_transcript="$T32_dir/transcript.jsonl"
+write_pitch_frontmatter_status_shaped_invalid_commit_subject "$T32_pitch"
+make_transcript_with_pitch_write "$T32_transcript" "$T32_pitch"
+out=$(run_hook "$T32_dir" false "$T32_transcript" "shape" "")
+assert_contains "SHAPED + invalid commit_subject: → block" '"decision"' "$out"
+assert_contains "SHAPED + invalid commit_subject: → reason names check-subject failure" 'codegen-commit --check-subject validation' "$out"
+rm -rf "$T32_dir"
+
+# ── Test 33: frontmatter status: SHAPED + mechanically-valid commit_subject:
+# → allow. ───────────────────────────────────────────────────────────────
+T33_dir=$(mktemp -d)
+mkdir -p "$T33_dir/codegen/pitches/draft"
+T33_pitch="$T33_dir/codegen/pitches/draft/my-pitch.md"
+T33_transcript="$T33_dir/transcript.jsonl"
+write_pitch_frontmatter_status_shaped_valid_commit_subject "$T33_pitch"
+make_transcript_with_pitch_write "$T33_transcript" "$T33_pitch"
+out=$(run_hook "$T33_dir" false "$T33_transcript" "shape" "")
+assert_not_contains "SHAPED + valid commit_subject: → allow" '"decision"' "$out"
+rm -rf "$T33_dir"
+
+# ── Test 34: legacy `> Status: SHAPED` blockquote pitch (no frontmatter
+# block at all) → allow, unaffected by validation (e). Scoped to
+# frontmatter-carrying pitches only — a pre-frontmatter pitch has no place
+# to declare commit_subject: and must not be stranded. ─────────────────────
+T34_dir=$(mktemp -d)
+mkdir -p "$T34_dir/codegen/pitches/draft"
+T34_pitch="$T34_dir/codegen/pitches/draft/my-pitch.md"
+T34_transcript="$T34_dir/transcript.jsonl"
+write_pitch_status_shaped_legacy_no_commit_subject "$T34_pitch"
+make_transcript_with_pitch_write "$T34_transcript" "$T34_pitch"
+out=$(run_hook "$T34_dir" false "$T34_transcript" "shape" "")
+assert_not_contains "legacy SHAPED, no frontmatter → allow (commit_subject check scoped out)" '"decision"' "$out"
+rm -rf "$T34_dir"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -394,12 +394,18 @@ defmodule CodegenTestHarness.Fixtures do
   - `stack:` (string, default `"phoenix"`)
   - `test_name:` (string, default `"unnamed"`) — stable identifier written to
     the benchmark JSONL file when `BENCH_RUN_DIR` is set
+  - `commit_subject:` (string, default `"Test build commit"`) — a literal
+    prompt carries no `commit_subject:` frontmatter for the loop to read, so
+    `--commit-subject=<text>` is REQUIRED (see pitch "committing is
+    deterministic, not a model call"); absent, the build now refuses at
+    preflight before any role runs.
   """
   @spec run_codegen_build(String.t(), String.t(), keyword()) :: String.t()
   def run_codegen_build(cwd, prompt, opts \\ []) do
     harness_val = harness()
     stack = Keyword.get(opts, :stack, "phoenix")
     test_name = Keyword.get(opts, :test_name, "unnamed")
+    commit_subject = Keyword.get(opts, :commit_subject, "Test build commit")
 
     prepare_codegen_build_baseline!(cwd, stack)
 
@@ -412,6 +418,7 @@ defmodule CodegenTestHarness.Fixtures do
           "--harness=#{harness_val}",
           "--stack=#{stack}",
           "--cwd=#{cwd}",
+          "--commit-subject=#{commit_subject}",
           prompt
         ],
         [],
@@ -447,6 +454,7 @@ defmodule CodegenTestHarness.Fixtures do
   def run_codegen_build_parity(cwd, harness, prompt, opts \\ []) do
     stack = Keyword.get(opts, :stack, "phoenix")
     timeout_ms = Keyword.get(opts, :timeout_ms, @parity_build_timeout_ms)
+    commit_subject = Keyword.get(opts, :commit_subject, "Test build commit")
 
     prepare_codegen_build_baseline!(cwd, stack)
 
@@ -457,6 +465,7 @@ defmodule CodegenTestHarness.Fixtures do
           "--harness=#{harness}",
           "--stack=#{stack}",
           "--cwd=#{cwd}",
+          "--commit-subject=#{commit_subject}",
           prompt
         ],
         [],

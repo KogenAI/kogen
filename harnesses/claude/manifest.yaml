@@ -30,6 +30,8 @@ launchers:
     src: codegen-scaffold
   - name: codegen-drain
     src: codegen-drain
+  - name: codegen-commit
+    src: codegen-commit
   - name: claude-build
     src: harnesses/claude/claude-build.sh
   - name: claude-debug

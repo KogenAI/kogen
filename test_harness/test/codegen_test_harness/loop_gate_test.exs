@@ -338,7 +338,7 @@ defmodule CodegenTestHarness.LoopGateTest do
     # This is the fail-closed proof: a STALE prior gate-result.json claiming
     # `clear` must not survive a canary halt. Move A's first act (unlink
     # before anything else can raise) is what makes this true — without it,
-    # a halted build would leave the committer reading yesterday's `clear`.
+    # a halted build would leave the commit step reading yesterday's `clear`.
     test "a stale prior clear gate-result.json does not survive a canary halt", %{dir: dir} do
       write_gate_config!(dir, "make test")
       gate_pending_dir = Path.join(dir, "codegen/gate-pending")

@@ -29,8 +29,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   independent check here, a drained build could bypass the solo raise
   entirely. A born-dead finding here routes to the same false-0
   park-and-continue path as an unverified commit — never a silent ship.
-  The gate ALWAYS runs BEFORE the committer (loop role
-  order: developer -> gate -> reviewer -> curator -> committer),
+  The gate ALWAYS runs BEFORE the deterministic commit step (loop step
+  order: developer -> gate -> reviewer -> curator -> commit),
   so the recorded `base_sha` can only ever prefix `head_before` — never the
   post-commit `head_after`. The mtime leg is what rejects a stale clear
   verdict left on disk by an EARLIER cycle: `head_before` alone cannot
@@ -41,7 +41,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   pitch is skipped-and-continued, same as a genuine nonzero exit.
   `is_gate_green`/committed-but-nonzero recovery (legacy `build-queue.sh`
   lines 529, 546-551, 554) IS ported — see `git_head_fn`/`gate_verdict_fn`
-  below: a committer-post-commit hiccup (child exits non-zero after HEAD
+  below: a post-commit hiccup (child exits non-zero after HEAD
   already moved and the gate verdict is `"clear"` AND fresh) ships or
   counts the pitch as shipped instead of halting the whole queue.
 
@@ -338,7 +338,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     * `:gate_base_sha_fn` — `(cwd -> String.t())`, default reads
       `codegen/gate-pending/gate-result.json` `.base_sha` (SHORT sha); `""`
       when absent. Compared against `head_before` (FULL sha, the base the
-      gate actually ran against — the loop gates BEFORE the committer) via
+      gate actually ran against — the loop gates BEFORE the commit step) via
       `String.starts_with?/2`, never a bare equality (which would always
       fail short-vs-full), and never `head_after` — no gate record can ever
       carry a post-commit sha.
@@ -1225,9 +1225,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   # A gate record is trustworthy only if a real gate wrote it, THIS cycle,
-  # against THIS cycle's base. The loop gates BEFORE the committer
-  # (orchestration_loop.ex role order: developer -> gate ->
-  # reviewer -> curator -> committer), so the recorded short `base_sha` can
+  # against THIS cycle's base. The loop gates BEFORE the deterministic
+  # commit step (orchestration_loop.ex step order: developer -> gate ->
+  # reviewer -> curator -> commit), so the recorded short `base_sha` can
   # only ever prefix `head_before` — never the post-commit `head_after`. The
   # mtime leg (gate record written at/after this child's spawn `ts`) is what
   # rejects a stale "clear" verdict left on disk by an EARLIER cycle:
@@ -1759,8 +1759,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       end
     else
       # The pitch file is genuinely absent from BOTH ready/ and building/ —
-      # an out-of-band actor (e.g. the child's own committer) already moved
-      # it elsewhere (typically shipped/) before this classification ran.
+      # an out-of-band actor (e.g. the child's own commit step) already
+      # moved it elsewhere (typically shipped/) before this classification
+      # ran.
       # There is no pitch left to record evidence INTO; this is a distinct
       # case from a write/rename I/O error against a file that IS present,
       # so it warns loud and continues rather than halting the drain.
@@ -1971,7 +1972,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
       committed? and gate_clear? and whole_pitch? and
           File.exists?(Path.join(state.shipped_dir, "#{slug}.md")) ->
-        # committer-post-commit hiccup: agent already shipped the pitch
+        # post-commit hiccup: agent already shipped the pitch
         # (moved ready/<slug>.md -> shipped/<slug>.md) before the non-zero
         # exit. Count it shipped, do not call ship/3 again (src is gone) —
         # still publish the landed commit.
@@ -1992,7 +1993,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
       committed? and gate_clear? and whole_pitch? and
           File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
-        # committer-post-commit hiccup: commit landed, gate is clear, but the
+        # post-commit hiccup: commit landed, gate is clear, but the
         # pitch file is still sitting in ready/ (ship step never ran). Finish
         # the ship ourselves rather than halting the whole queue.
         case publish_or_halt(state, slug, head_before, head_after) do

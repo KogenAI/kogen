@@ -21,7 +21,7 @@ For the per-hook inventory table, hook-event taxonomy, key paths, and the Pitfal
 - `stop-spin-guard.sh` — `signal: AGENT_TYPE` — scoped to developer-\* roles; fires on every SubagentStop but exits 0 (allow) when AGENT_TYPE is not a developer role variant.
 - `stop-gate-failure-breaker.sh` — `signal: AGENT_TYPE` — scoped to developer-\* roles; reads session-log `FAILED ❌` count + cross-checks `gate_result_verdict`; blocks at ≥3 failures with verdict=failed.
 
-**Fail-open principle**: When a hook cannot determine the required state (missing transcript, unreadable log file), it exits 0 → allow the action. Blocking on missing evidence is worse than missing evidence of an error. Example: `curator-before-committer.sh` exits 0 if no log found (orchestrator may spawn committer before any log is written). The orchestrator prompt is the primary enforcer; the hook is a backstop.
+**Fail-open principle**: When a hook cannot determine the required state (missing transcript, unreadable log file), it exits 0 → allow the action. Blocking on missing evidence is worse than missing evidence of an error. Example: `subagent-read-discipline.sh`'s transcript-lag path exits 0 (allow) if no log found yet — an early-session Read may fire before the step log exists. The orchestrator prompt is the primary enforcer; the hook is a backstop.
 
 See `context/launcher-hook-matrix.md` for a table of per-hook bypass and fail-open behavior per launcher mode.
 
@@ -355,7 +355,7 @@ New guards can be added to codegen by following established patterns:
 
 **Claude Code** (`harnesses/claude/hooks/`)
 
-- `PreToolUse` on `Agent` tool + `tool_input.subagent_type == "name"` match — intercepts subagent spawning (e.g., `curator-before-committer.sh` blocks committer spawn)
+- `PreToolUse` on `Agent` tool + `tool_input.subagent_type == "name"` match — intercepts subagent spawning (e.g., `operator-subagent-allowlist.sh` blocks a non-allowlisted spawn)
 - `PreToolUse` on any tool — blocks arbitrary tool calls (e.g., `no-git-stash.sh` blocks `git stash`)
 - `SubagentStop` — fires when a subagent completes, for post-agent logic (e.g., the loop's dev-gate step appends gate verdict)
 - `Stop` — fires at session end for final guards

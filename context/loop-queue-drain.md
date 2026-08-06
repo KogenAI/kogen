@@ -168,7 +168,7 @@ code change; this only names the cascade so the operator sees it.
 returns `{:error, "queue: HALTED — could not persist failure evidence for <slug>: <reason>"}` — every
 call site halts the drain on this result BEFORE breaker accounting or another spawn. Required evidence
 must never silently vanish. The ONE exception is a pitch file genuinely ABSENT from both `ready_dir` and
-`building_dir` (an out-of-band actor, typically the child's own committer, already moved it to
+`building_dir` (an out-of-band actor, typically the child's own commit step, already moved it to
 `shipped/` before this classification ran) — there is no pitch left to record evidence INTO, so this
 warns loud and continues rather than halting. Contrast `draft_failure/4` (the advisory skeleton
 drafter), which stays fail-open: it creates optional follow-up work, not the required durable record.

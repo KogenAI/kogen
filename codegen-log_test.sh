@@ -150,11 +150,11 @@ init_log_stamped() {
 # (a) --role override yields correct role event, ignoring ambient env
 WS_A="$(new_workspace)"
 LOG_A="$(init_log "$WS_A" test-role-override)"
-OUT_A=$(printf 'body a\n' | env -u AGENT_TYPE -u CODEGEN_LOG_PATH CLAUDE_ROLE=committer \
+OUT_A=$(printf 'body a\n' | env -u AGENT_TYPE -u CODEGEN_LOG_PATH CLAUDE_ROLE=context-curator \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_A" \
     "$CODEGEN_LOG" section --role reviewer-phoenix --body @-)
-check "(a) --role override appends a reviewer-phoenix role event, not committer" "1" "$(jq_count "$LOG_A" 'select(.ev=="role" and .role=="reviewer-phoenix")')"
-check "(a) committer role event NOT inserted (env ignored)" "0" "$(jq_count "$LOG_A" 'select(.ev=="role" and .role=="committer")')"
+check "(a) --role override appends a reviewer-phoenix role event, not context-curator" "1" "$(jq_count "$LOG_A" 'select(.ev=="role" and .role=="reviewer-phoenix")')"
+check "(a) context-curator role event NOT inserted (env ignored)" "0" "$(jq_count "$LOG_A" 'select(.ev=="role" and .role=="context-curator")')"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # (b) empty-body `section --role <role>` still appends a role event
@@ -238,7 +238,7 @@ LOG_H1="$(init_log "$WS_H" slug-one)"
 LOG_H2="$(init_log "$WS_H" slug-two)"
 printf 'body for slug one\n' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_H" \
-    "$CODEGEN_LOG" section --role committer --slug slug-one --body @- >/dev/null
+    "$CODEGEN_LOG" section --role context-curator --slug slug-one --body @- >/dev/null
 CONTENT_H1="$(cat "$LOG_H1")"
 CONTENT_H2="$(cat "$LOG_H2")"
 assert_contains "(h) --slug section writes into the matching log" "$CONTENT_H1" "body for slug one"
@@ -253,7 +253,7 @@ init_log "$WS_I" some-other-slug >/dev/null
 set +e
 ERR_I=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_I" \
-    "$CODEGEN_LOG" section --role committer --slug missing-slug --body @- 2>&1)
+    "$CODEGEN_LOG" section --role context-curator --slug missing-slug --body @- 2>&1)
 RC_I=$?
 set -e
 check "(i) --slug zero-match exits 2" "2" "$RC_I"
@@ -267,7 +267,7 @@ touch "$WS_J/codegen/logging/20260101_000002_dup_cycle.jsonl"
 set +e
 ERR_J=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE -u CODEGEN_LOG_PATH \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_J" \
-    "$CODEGEN_LOG" section --role committer --slug dup --body @- 2>&1)
+    "$CODEGEN_LOG" section --role context-curator --slug dup --body @- 2>&1)
 RC_J=$?
 set -e
 check "(j) --slug many-match exits 2" "2" "$RC_J"
@@ -354,7 +354,7 @@ init_log "$WS_U" test-marker-exclusivity >/dev/null
 set +e
 ERR_U1=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_U" \
-    "$CODEGEN_LOG" append --role committer --learned "x" --verdict clear 2>&1)
+    "$CODEGEN_LOG" append --role context-curator --learned "x" --verdict clear 2>&1)
 RC_U1=$?
 set -e
 check "(u) --learned + --verdict exits 2" "2" "$RC_U1"
@@ -363,7 +363,7 @@ assert_contains "(u) mutual-exclusivity error message" "$ERR_U1" "mutually exclu
 set +e
 ERR_U2=$(printf 'x\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_U" \
-    "$CODEGEN_LOG" append --role committer --learned "x" --body @- 2>&1)
+    "$CODEGEN_LOG" append --role context-curator --learned "x" --body @- 2>&1)
 RC_U2=$?
 set -e
 check "(u) --learned + --body on append exits 2" "2" "$RC_U2"
@@ -470,9 +470,9 @@ WS_BB="$(new_workspace)"
 LOG_BB="$(init_log "$WS_BB" test-section-learned)"
 printf 'did the work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_BB" \
-    "$CODEGEN_LOG" section committer --learned "[local] learned something useful this step" >/dev/null
-check "(bb) section --learned emits exactly one role event" "1" "$(jq_count "$LOG_BB" 'select(.ev=="role" and .role=="committer")')"
-check "(bb) section --learned emits exactly one learned event" "1" "$(jq_count "$LOG_BB" 'select(.ev=="learned" and .role=="committer")')"
+    "$CODEGEN_LOG" section context-curator --learned "[local] learned something useful this step" >/dev/null
+check "(bb) section --learned emits exactly one role event" "1" "$(jq_count "$LOG_BB" 'select(.ev=="role" and .role=="context-curator")')"
+check "(bb) section --learned emits exactly one learned event" "1" "$(jq_count "$LOG_BB" 'select(.ev=="learned" and .role=="context-curator")')"
 check "(bb) role event body is the piped stdin" "did the work" "$(jq -r 'select(.ev=="role")|.body' "$LOG_BB")"
 check "(bb) learned event text matches --learned" "[local] learned something useful this step" "$(jq -r 'select(.ev=="learned")|.text' "$LOG_BB")"
 
@@ -480,8 +480,8 @@ WS_BB2="$(new_workspace)"
 LOG_BB2="$(init_log "$WS_BB2" test-section-no-learned)"
 printf 'no learned flag here\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_BB2" \
-    "$CODEGEN_LOG" section committer >/dev/null
-check "(bb) section without --learned emits exactly one role event" "1" "$(jq_count "$LOG_BB2" 'select(.ev=="role" and .role=="committer")')"
+    "$CODEGEN_LOG" section context-curator >/dev/null
+check "(bb) section without --learned emits exactly one role event" "1" "$(jq_count "$LOG_BB2" 'select(.ev=="role" and .role=="context-curator")')"
 check "(bb) section without --learned emits zero learned events (never refuses)" "0" "$(jq_count "$LOG_BB2" 'select(.ev=="learned")')"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -626,13 +626,13 @@ LOG_GG="$(init_log "$WS_GG" test-show-anomalies)"
 STEM_GG="${LOG_GG%_cycle.jsonl}"
 mkdir -p "$STEM_GG"
 cat >"$STEM_GG/cycle-summary.jsonl" <<'SUMMARY'
-{"cost_usd":0.1,"num_turns":3,"role":"committer","seq":1,"status":"success","transcript":"/tmp/c.jsonl"}
+{"cost_usd":0.1,"num_turns":3,"role":"context-curator","seq":1,"status":"success","transcript":"/tmp/c.jsonl"}
 SUMMARY
 ANOM_GG=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_GG" \
     "$CODEGEN_LOG" show --slug test-show-anomalies)
-assert_contains "(gg) invoked-but-no-body anomaly fires for committer" "$ANOM_GG" "committer: invoked but wrote no body"
-assert_contains "(gg) no-learned/no_learning anomaly fires for committer" "$ANOM_GG" "no learned/no_learning event"
+assert_contains "(gg) invoked-but-no-body anomaly fires for context-curator" "$ANOM_GG" "context-curator: invoked but wrote no body"
+assert_contains "(gg) no-learned/no_learning anomaly fires for context-curator" "$ANOM_GG" "no learned/no_learning event"
 
 WS_GG2="$(new_workspace)"
 LOG_GG2="$(init_log "$WS_GG2" test-show-clean)"
@@ -718,12 +718,12 @@ printf 'clean work\n' | env -u AGENT_TYPE -u CLAUDE_ROLE \
     "$CODEGEN_LOG" section --role developer-phoenix-backend --body @- --learned "[local] role-spine fallback fixture, real learning text" >/dev/null
 env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_JJ" \
-    "$CODEGEN_LOG" append --role committer --died interrupted --cause "session dropped before writing anything" >/dev/null
+    "$CODEGEN_LOG" append --role context-curator --died interrupted --cause "session dropped before writing anything" >/dev/null
 ANOM_JJ=$(env -u AGENT_TYPE -u CLAUDE_ROLE \
     OCG_CODEGEN_DIR="$CODEGEN_ROOT" CODEGEN_BUILD_CWD="$WS_JJ" \
     "$CODEGEN_LOG" show --slug test-show-role-spine-anomaly)
 assert_contains "(jj) role-spine fallback is actually in use (no ev:turn, no summary sibling)" "$ANOM_JJ" "spine: role"
-assert_contains "(jj) invoked-but-no-body anomaly fires for committer under role-spine fallback" "$ANOM_JJ" "committer: invoked but wrote no body"
+assert_contains "(jj) invoked-but-no-body anomaly fires for context-curator under role-spine fallback" "$ANOM_JJ" "context-curator: invoked but wrote no body"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # (oo) `append loop --files-to-touch @-` emits a structured files_to_touch

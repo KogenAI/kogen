@@ -200,7 +200,6 @@ BUILD_ROLE_EFFORTS="$(yq '
   .harness["developer-static"].claude.fallback[0].effort,
   .harness["reviewer-phoenix"].claude.effort,
   .harness["reviewer-static"].claude.effort,
-  .harness["committer"].claude.effort,
   .harness["context-curator"].claude.effort,
   .harness["app_build"].claude.effort
 ' "$CONFIG_YAML")"

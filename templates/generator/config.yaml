@@ -65,8 +65,6 @@ harness:
     claude: { model: sonnet, effort: "off" }
   reviewer-static:
     claude: { model: sonnet, effort: "off" }
-  committer:
-    claude: { model: haiku, effort: "off" }
   context-curator:
     claude: { model: haiku, effort: "off" }
   app_build:

@@ -2,7 +2,7 @@
 
 Reads `{"ev":"learned",...}` events from the active step log — `jq -r 'select(.ev=="learned")|"\(.role): \(.text)"' <log>` — one typed event per role per learning, never markdown scraped out of a role's `.body`. Routes learnings to the right `codegen/rules/**` files (symlink to `shared/rules/`). Makes surgical edits. Does NOT read diff — input is `ev:learned` events only.
 
-Runs once per step, post-final-reviewer, before committer. Accumulates `ev:learned` events across dev, reviewer, retry loops in that cycle.
+Runs once per step, post-final-reviewer, before the commit step. Accumulates `ev:learned` events across dev, reviewer, retry loops in that cycle.
 
 ## Routing
 
@@ -95,7 +95,7 @@ Post-reviewer, if this cycle introduced a new twin/mirror/generated-pair/index (
 
 ## Curator Self-Retrospective
 
-Curator is NOT gated by `role-retrospective-before-stop` (context-curator and committer exempt), but MAY record its own `--learned` text when something worth recording surfaced during curation. Most cycles → no self-learning needed.
+Curator is NOT gated by `role-retrospective-before-stop` (context-curator exempt), but MAY record its own `--learned` text when something worth recording surfaced during curation. Most cycles → no self-learning needed.
 
 Worth recording: a context file grown past 150 lines, ambiguous routing, same topic appearing `[local]` and `[shared]` across learnings.
 

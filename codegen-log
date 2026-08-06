@@ -618,15 +618,19 @@ fi
 
 # validate_role — ensure ROLE_OVERRIDE matches the known role-family
 # vocabulary. Exits 2 on unknown role (same families the old markdown header
-# mapping recognized: loop/developer-*/reviewer-*/context-curator/
-# committer/dev-gate). dev-gate is only ever set internally by the `verdict`
-# subcommand, never accepted from a caller-supplied --role for section/append.
+# mapping recognized: loop/developer-*/reviewer-*/context-curator/dev-gate).
+# `committer` left the role vocabulary entirely — commits are made by a
+# deterministic script (codegen-commit), never a role, so the `{"ev":
+# "committed"}` event is authored `loop` (see pitch "committing is
+# deterministic, not a model call"). dev-gate is only ever set internally by
+# the `verdict` subcommand, never accepted from a caller-supplied --role for
+# section/append.
 validate_role() {
     local role="$1"
     case "$role" in
-    loop | developer-* | reviewer-* | context-curator | committer) ;;
+    loop | developer-* | reviewer-* | context-curator) ;;
     *)
-        printf 'codegen-log: could not resolve role (got %q). Pass the role positionally (codegen-log section <role>) or via --role <loop|developer-*|reviewer-*|context-curator|committer>.\n' "${role:-unknown}" >&2
+        printf 'codegen-log: could not resolve role (got %q). Pass the role positionally (codegen-log section <role>) or via --role <loop|developer-*|reviewer-*|context-curator>.\n' "${role:-unknown}" >&2
         exit 2
         ;;
     esac

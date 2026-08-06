@@ -17,7 +17,7 @@
 #   Built-in subagents {Plan, general-purpose, statusline-setup} denied always.
 #   Empty subagent_type denied defensively (fail-closed).
 #   Explore denied unless active role ∈ {debug, shape, ops, experiment, babysit}.
-#   Project subagents (developer-*, reviewer-*, committer, etc.) allowed everywhere.
+#   Project subagents (developer-*, reviewer-*, context-curator, etc.) allowed everywhere.
 #
 # Registered on matcher "Agent" in claude-code-settings.json PreToolUse.
 #
@@ -47,13 +47,13 @@ debug_log operator-subagent-allowlist "role=${_role} subagent_type=$subagent_typ
 
 # Built-in subagent types — denied in all launcher modes.
 if [ "$subagent_type" = "Plan" ] || [ "$subagent_type" = "general-purpose" ] || [ "$subagent_type" = "statusline-setup" ]; then
-    deny "BLOCKED by operator-subagent-allowlist: built-in subagent $subagent_type is denied in all launcher modes. Valid project subagents in build mode: developer-phoenix-backend / developer-static / etc., reviewer-*, committer. Use developer-<stack> to do the work, not the built-in Plan."
+    deny "BLOCKED by operator-subagent-allowlist: built-in subagent $subagent_type is denied in all launcher modes. Valid project subagents in build mode: developer-phoenix-backend / developer-static / etc., reviewer-*, context-curator. Use developer-<stack> to do the work, not the built-in Plan."
     exit 0
 fi
 
 # Empty subagent_type — deny defensively (fail-closed).
 if [ -z "$subagent_type" ]; then
-    deny "BLOCKED by operator-subagent-allowlist: subagent_type is empty — cannot determine safe subagent. Specify a named project subagent. Valid project subagents in build mode: developer-phoenix-backend / developer-static / etc., reviewer-*, committer. Use developer-<stack> to do the work, not the built-in Plan."
+    deny "BLOCKED by operator-subagent-allowlist: subagent_type is empty — cannot determine safe subagent. Specify a named project subagent. Valid project subagents in build mode: developer-phoenix-backend / developer-static / etc., reviewer-*, context-curator. Use developer-<stack> to do the work, not the built-in Plan."
     exit 0
 fi
 
@@ -69,8 +69,8 @@ fi
 # Shape mode is read-only — deny source-editing subagents.
 if [ "$_role" = "shape" ]; then
     case "$subagent_type" in
-    developer-* | reviewer-* | committer)
-        deny "BLOCKED by operator-subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead. Available in shape mode: Explore; developer-*/reviewer-*/committer are build-mode only."
+    developer-* | reviewer-*)
+        deny "BLOCKED by operator-subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead. Available in shape mode: Explore; developer-*/reviewer-* are build-mode only."
         exit 0
         ;;
     esac

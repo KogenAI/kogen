@@ -44,7 +44,7 @@ All git commands use relative paths (workspace root is cwd). NEVER hardcode `/Us
 
 **Bash redirects to session logs are FORBIDDEN** (all forms: heredocs, `>`, `>>`, brace-group redirects to `codegen/logging/`). `codegen-log` is the sole writer — route every log write through it.
 
-**Read tool blocks on rule files** (developer.md, testing-liveview.md, testing.md, reviewer.md, committer.md). Use Grep tool with `-B`/`-A` context to locate anchor text instead; quote verbatim anchors when you need to name one.
+**Read tool blocks on rule files** (developer.md, testing-liveview.md, testing.md, reviewer.md). Use Grep tool with `-B`/`-A` context to locate anchor text instead; quote verbatim anchors when you need to name one.
 
 ## Newline-List Membership Testing
 

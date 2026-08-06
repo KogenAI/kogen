@@ -371,11 +371,11 @@ defmodule CodegenTestHarness.BenchTest do
           "engine" => "elixir_loop",
           "subtype" => "success",
           "per_role" => %{
-            "committer" => %{"cost_usd" => 0.01, "calls" => 1}
+            "context-curator" => %{"cost_usd" => 0.01, "calls" => 1}
           }
         }) <> "\n"
 
-      assert UsageParser.parse_dispatches(output) == %{"committer" => []}
+      assert UsageParser.parse_dispatches(output) == %{"context-curator" => []}
     end
 
     test "returns empty map when output has no loop terminal line" do

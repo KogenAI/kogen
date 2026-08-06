@@ -57,13 +57,17 @@ set -u
 # old markdown "_session.md" / "_stepN_<slug>.md" forms are gone; the latter
 # was never written by codegen-log and is not ported).
 # Consumers that need the "codegen/logging/" prefix concatenate it themselves
-# (reviewer-guard.sh, committer-write-allowlist.sh both do `codegen/logging/${SESSION_LOG_NAME_RE}`).
-# Kept in lockstep (parity-tested, not shared via a single runtime include —
-# bash guards cannot `source` a fragment mid-grep-pattern) with:
-#   - shared/enforcement/registry.yaml (2 `match:` lines)
+# (reviewer-guard.sh does `codegen/logging/${SESSION_LOG_NAME_RE}`).
+# committer-write-allowlist.sh (the ONLY other consumer, and the sole
+# registry.yaml `match:` carrier of a LITERAL copy of this regex) was deleted
+# along with the committer role entirely (see pitch "committing is
+# deterministic, not a model call": no role writes history, so no role needs
+# a session-log write-allowlist). Kept in lockstep (parity-tested, not shared
+# via a single runtime include — bash guards cannot `source` a fragment
+# mid-grep-pattern) with:
 #   - shared/rules/_core/session-log.md § File Naming (authoritative prose)
-# Any edit to the slug-class shape MUST update all 6 sites in the same change;
-# see codegen-log_test.sh / hooks-lib_test.sh for the cross-site parity assertion.
+# Any edit to the slug-class shape MUST update both remaining sites in the
+# same change; see hooks-lib_test.sh for the cross-site parity assertion.
 SESSION_LOG_NAME_RE='[0-9]{8}_[0-9]{6}_[a-z0-9_-]+_cycle\.jsonl$'
 
 # parse_input — populate exported vars from JSON-on-stdin.

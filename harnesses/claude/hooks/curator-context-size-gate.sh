@@ -11,7 +11,7 @@
 # signal: none
 # role: *
 # harnesses: all
-# rationale: Denies ANY role's Edit/Write/MultiEdit to context/<file>.md, PROJECT_CONTEXT.md, or codegen/PROJECT_CONTEXT.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the writer's own turn — where the doc is editable this turn — instead of failing later at commit on the committer, which cannot repair it. Composes with context-curator-guard (path surface, curator-only).
+# rationale: Denies ANY role's Edit/Write/MultiEdit to context/<file>.md, PROJECT_CONTEXT.md, or codegen/PROJECT_CONTEXT.md when the projected post-write byte size exceeds the 40,960-byte cap, so the over-cap file is fixed in the writer's own turn — where the doc is editable this turn — instead of failing later at the deterministic commit step, which cannot repair it. Composes with context-curator-guard (path surface, curator-only).
 # registration only (hand-authored body) — the registry entry for this hook
 # is `kind: registration`, which emits ONLY the settings.json wiring; the
 # check logic below is NOT generated and is safe to hand-edit.

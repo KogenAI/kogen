@@ -244,9 +244,11 @@ assert_eq "cycle_state_next garbage → empty" "" "$got"
 got=$(cycle_state_role "REVIEWED")
 assert_eq "cycle_state_role REVIEWED → context-curator" "context-curator" "$got"
 
-# Test 28: cycle_state_role CURATED → committer
+# Test 28: cycle_state_role CURATED → "" (next step is the deterministic
+# commit step, not an agent role — see pitch "committing is deterministic,
+# not a model call")
 got=$(cycle_state_role "CURATED")
-assert_eq "cycle_state_role CURATED → committer" "committer" "$got"
+assert_eq "cycle_state_role CURATED → empty (commit step is not a role)" "" "$got"
 
 # Test 29: cycle_state_role COMMITTED → "" (terminal, no next role)
 got=$(cycle_state_role "COMMITTED")

@@ -124,7 +124,7 @@ See `.env.sample` and `.env.prod.sample` for full variable lists.
 - **Elixir** — **ExUnit test naming in `for`-generated matrices**: Test and describe block names concatenate into a single atom at compile time. A `for`-comprehension that interpolates loop variables into describe and test name strings (e.g., `describe "#{harness}/#{stack}: ..."` + `test "#{name}/#{variant}: ..."` spanning a full harness/stack matrix) can exceed Erlang's atom length limit, producing a cryptic `SystemLimitError: a system limit has been reached` inside v3_core compilation. Fix: keep both describe and test name strings SHORT, especially when interpolating loop variables — use 1-2 word descriptions (e.g., `"#{harness}/#{stack}: strong APPROVED"`) rather than full sentences. When a matrix is verbose, move the detail into the test body (e.g., a comment or doc), not the name.
 
 - **Makefile `@bash -c 'source <lib>; <fn> <args>'`** — clean pattern for invoking sourced bash library functions from make targets without a wrapper script. Hard-tab recipe lines required.
-- **Commit messages**: why-focused, delegated to committer subagent — never written directly by orchestrator
+- **Commit messages**: why-focused, sealed by the shaper at SHAPED time in `commit_subject:` frontmatter, committed by the deterministic `codegen-commit` script — never written directly by orchestrator
 - **Session log body placement**: Anchor insertions to text DIRECTLY UNDER the intended `## ` header, never to text below a sibling section — misplaced content silently breaks hook parsing. Pattern: locate exact text immediately after the target header, use as `old_string`.
 
 ## Dev Scripts

@@ -380,12 +380,12 @@ jq -c -n '{ev:"init",pitch:"committed-subcommand",path:"",stamp:{}}' >"$committe
 
 committed_out1="$(
     cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
-        committed --role committer --sha abc1234 --subject "fix: thing" --slug committed-subcommand
+        committed --role loop --sha abc1234 --subject "fix: thing" --slug committed-subcommand
 )"
 committed_path1="$(printf '%s' "$committed_out1" | tail -n 1)"
 assert "committed wrote to the committed-subcommand log" "0" "$([ "$committed_path1" = "$committed_log" ] && printf 0 || printf 1)"
 assert "committed emits exactly one committed event" "1" "$(jq_count "$committed_log" 'select(.ev=="committed")')"
-assert "committed carries role=committer" "0" "$([ "$(jq -r 'select(.ev=="committed")|.role' "$committed_log")" = "committer" ] && printf 0 || printf 1)"
+assert "committed carries role=loop" "0" "$([ "$(jq -r 'select(.ev=="committed")|.role' "$committed_log")" = "loop" ] && printf 0 || printf 1)"
 assert "committed carries sha" "0" "$([ "$(jq -r 'select(.ev=="committed")|.sha' "$committed_log")" = "abc1234" ] && printf 0 || printf 1)"
 assert "committed carries subject" "0" "$([ "$(jq -r 'select(.ev=="committed")|.subject' "$committed_log")" = "fix: thing" ] && printf 0 || printf 1)"
 
@@ -407,12 +407,12 @@ assert "committed without --role exits 2" "2" "$missing_role_rc"
 
 missing_sha_rc=0
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
-    committed --role committer --subject foo --slug committed-subcommand >/dev/null 2>&1 || missing_sha_rc=$?
+    committed --role loop --subject foo --slug committed-subcommand >/dev/null 2>&1 || missing_sha_rc=$?
 assert "committed without --sha exits 2" "2" "$missing_sha_rc"
 
 missing_subject_rc=0
 cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" \
-    committed --role committer --sha abc --slug committed-subcommand >/dev/null 2>&1 || missing_subject_rc=$?
+    committed --role loop --sha abc --slug committed-subcommand >/dev/null 2>&1 || missing_subject_rc=$?
 assert "committed without --subject exits 2" "2" "$missing_subject_rc"
 
 # Test 14: root resolution from CODEGEN_DIR / OCG_CODEGEN_DIR when the
@@ -672,11 +672,11 @@ jq -c -n '{ev:"init",pitch:"show-anomalies",path:"",stamp:{}}' >"$anomaly_log"
 anomaly_stem="${anomaly_log%_cycle.jsonl}"
 mkdir -p "$anomaly_stem"
 cat >"$anomaly_stem/cycle-summary.jsonl" <<'SUMMARY'
-{"cost_usd":0.1,"num_turns":3,"role":"committer","seq":1,"status":"success","transcript":"/tmp/c.jsonl"}
+{"cost_usd":0.1,"num_turns":3,"role":"context-curator","seq":1,"status":"success","transcript":"/tmp/c.jsonl"}
 SUMMARY
 anomaly_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-anomalies)"
-assert "invoked-but-no-body anomaly fires for committer" "0" "$(printf '%s' "$anomaly_show" | grep -qF 'committer: invoked but wrote no body' && printf 0 || printf 1)"
-assert "no-learned/no_learning anomaly fires for committer" "0" "$(printf '%s' "$anomaly_show" | grep -qF 'no learned/no_learning event' && printf 0 || printf 1)"
+assert "invoked-but-no-body anomaly fires for context-curator" "0" "$(printf '%s' "$anomaly_show" | grep -qF 'context-curator: invoked but wrote no body' && printf 0 || printf 1)"
+assert "no-learned/no_learning anomaly fires for context-curator" "0" "$(printf '%s' "$anomaly_show" | grep -qF 'no learned/no_learning event' && printf 0 || printf 1)"
 
 clean_log="$PROJECT/codegen/logging/20260111_000300_show-clean_cycle.jsonl"
 jq -c -n '{ev:"init",pitch:"show-clean",path:"",stamp:{}}' >"$clean_log"
@@ -751,10 +751,10 @@ jq -c -n '{ev:"init",pitch:"show-role-spine-anomaly",path:"",stamp:{}}' >"$roles
 clean work
 EOF
 )
-(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append committer --slug show-role-spine-anomaly --died interrupted --cause "session dropped before writing anything" >/dev/null)
+(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" append context-curator --slug show-role-spine-anomaly --died interrupted --cause "session dropped before writing anything" >/dev/null)
 rolespine_show="$(cd "$PROJECT" && env -u CODEGEN_BUILD_CWD -u CLAUDE_PROJECT_DIR "$CODEGEN/codegen-log" show --slug show-role-spine-anomaly)"
 assert "role-spine fallback is actually in use (no ev:turn, no summary sibling)" "0" "$(printf '%s' "$rolespine_show" | grep -qF 'spine: role' && printf 0 || printf 1)"
-assert "invoked-but-no-body anomaly fires for committer under role-spine fallback" "0" "$(printf '%s' "$rolespine_show" | grep -qF 'committer: invoked but wrote no body' && printf 0 || printf 1)"
+assert "invoked-but-no-body anomaly fires for context-curator under role-spine fallback" "0" "$(printf '%s' "$rolespine_show" | grep -qF 'context-curator: invoked but wrote no body' && printf 0 || printf 1)"
 
 # Test 27: two inits, same slug, different stamps -> two distinct logs; the
 # first gains zero events (the run-identity fix's core invariant — a retry

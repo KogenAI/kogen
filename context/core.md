@@ -71,7 +71,7 @@ Enforcement compiler (registry schema, pattern dialects, renderer-neutral tokens
 
 **Architecture requirement**: codegen-call's arg parser must NEVER hardcode a role name or reference `--append-system-prompt`. Tests enforce this via regex assertions:
 
-- Test (o) in `codegen-call_test.sh` (the role-name-token assertion) — asserts source has ZERO role-name tokens (`developer|committer|reviewer|curator`)
+- Test (o) in `codegen-call_test.sh` (the role-name-token assertion) — asserts source has ZERO role-name tokens (`developer|committer|reviewer|curator`; `committer` kept in the regex as a defensive check against reintroduction even though it is no longer a role)
 - Test (p) (the --append-system-prompt-token assertion) — asserts source has ZERO `--append-system-prompt` tokens
 
 These tests block any regression that would hardcode role knowledge into codegen-call's source. The `--append-system-prompt` flag lives ONLY in `call-dispatch.sh` (`:56`, conditionally omitted when `CODEGEN_CALL_AGENT` is set); codegen-call never exports it.
@@ -168,7 +168,7 @@ Load this file when touching: `manifest.yaml`, `generate.sh`, `process_template.
 
 ## Loop Role Invocation
 
-The Elixir `OrchestrationLoop` (`test_harness/lib/codegen_test_harness/orchestration_loop.ex`, `guard_bundle_flag!/2`) invokes each role via native `claude --agent <role>` + the FULL committed `harnesses/claude/claude-code-settings.json` — the same settings file the legacy (non-loop) path loads. `--agent <role>` stamps `.agent_type` natively (the installed `~/.claude/agents/<role>.md` supplies system prompt + tools), so AGENT_TYPE-gated role guards (committer/reviewer/curator/developer) and the two orchestrator confinement guards (which bypass on either `agent_id` OR `agent_type`) apply exactly as they do under a real subagent spawn. There is no reduced hook subset — the loop and legacy paths share one settings.json.
+The Elixir `OrchestrationLoop` (`test_harness/lib/codegen_test_harness/orchestration_loop.ex`, `guard_bundle_flag!/2`) invokes each role via native `claude --agent <role>` + the FULL committed `harnesses/claude/claude-code-settings.json` — the same settings file the legacy (non-loop) path loads. `--agent <role>` stamps `.agent_type` natively (the installed `~/.claude/agents/<role>.md` supplies system prompt + tools), so AGENT_TYPE-gated role guards (reviewer/curator/developer) and the two orchestrator confinement guards (which bypass on either `agent_id` OR `agent_type`) apply exactly as they do under a real subagent spawn. There is no reduced hook subset — the loop and legacy paths share one settings.json. The deterministic commit step (`codegen-commit`) is a script the loop shells directly, not an `--agent` invocation, so it carries no `AGENT_TYPE` at all.
 
 ## Pitfalls
 

@@ -9,8 +9,8 @@
 # both pre-invoke (seeding a same-cycle violation into the curator's FIRST
 # prompt) and end-of-turn (in-loop OrchestrationLoop.run_curator_doc_check,
 # the backstop), reading on-disk content instead of the staged git index —
-# the curator's edits are still uncommitted at this point (the committer
-# runs after).
+# the curator's edits are still uncommitted at this point (the deterministic
+# commit step runs after).
 #
 # Usage: context-index-parity-scan.sh <repo_root>
 #

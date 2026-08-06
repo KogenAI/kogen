@@ -25,6 +25,7 @@ PRINT_ARGV="${CODEGEN_BUILD_PRINT_ARGV:-}"
 FALLBACK_MODEL="${CODEGEN_BUILD_FALLBACK_MODEL:-}"
 MAX_BUDGET_USD="${CODEGEN_BUILD_MAX_BUDGET_USD:-}"
 EFFORT="${CODEGEN_BUILD_EFFORT:-}"
+COMMIT_SUBJECT="${CODEGEN_BUILD_COMMIT_SUBJECT:-}"
 
 # Extra flags (--max-budget-usd, etc.) are NOT forwarded via $@ — this script
 # never splats codegen-build's positionals onward. Any such flag that reaches
@@ -34,8 +35,10 @@ EFFORT="${CODEGEN_BUILD_EFFORT:-}"
 # codegen.loop` below. --max-budget-usd is threaded the same way via
 # CODEGEN_BUILD_MAX_BUDGET_USD into an explicit `--max-budget-usd=<n>` argv
 # entry. --effort is threaded the same way via CODEGEN_BUILD_EFFORT into an
-# explicit `--effort=<e>` argv entry. Only the last positional is read below,
-# and only as the PROMPT (only if any positional args were given).
+# explicit `--effort=<e>` argv entry. --commit-subject is threaded the same
+# way via CODEGEN_BUILD_COMMIT_SUBJECT into an explicit
+# `--commit-subject=<text>` argv entry. Only the last positional is read
+# below, and only as the PROMPT (only if any positional args were given).
 if [[ $# -gt 0 ]]; then
     PROMPT="${*: -1}"
 else
@@ -50,8 +53,10 @@ if [[ -n "$CWD" ]]; then
 fi
 
 # The deterministic Elixir orchestration loop is the sole engine: it drives
-# the whole cycle (developer→gate→reviewer→curator→committer) via
-# per-role codegen-call invocations.
+# the whole cycle (developer→gate→reviewer→curator→commit) via
+# per-role codegen-call invocations, plus one deterministic commit step at
+# the end (a script, not a role — see pitch "committing is deterministic,
+# not a model call").
 STACK="${CODEGEN_BUILD_STACK:-}"
 if [[ -z "$STACK" ]]; then
     printf 'claude dispatch: CODEGEN_BUILD_STACK is required but empty/unset\n' >&2
@@ -76,6 +81,9 @@ if [[ -n "$PRINT_ARGV" ]]; then
     fi
     if [[ -n "$EFFORT" ]]; then
         _argv+=("--effort=$EFFORT")
+    fi
+    if [[ -n "$COMMIT_SUBJECT" ]]; then
+        _argv+=("--commit-subject=$COMMIT_SUBJECT")
     fi
     _argv+=(-- "$PROMPT")
     printf '%s\n' "${_argv[@]}"
@@ -131,6 +139,7 @@ run_supervised_loop env \
         if [[ -n "$5" ]]; then _loop_argv+=("--fallback-model=$5"); fi
         if [[ -n "$6" ]]; then _loop_argv+=("--max-budget-usd=$6"); fi
         if [[ -n "$8" ]]; then _loop_argv+=("--effort=$8"); fi
+        if [[ -n "$9" ]]; then _loop_argv+=("--commit-subject=$9"); fi
         _loop_argv+=(-- "$4")
         _stderr_fifo="$(mktemp "${TMPDIR:-/tmp}/codegen-stderr.XXXXXX")"
         rm -f "$_stderr_fifo"
@@ -142,7 +151,7 @@ run_supervised_loop env \
         _status=$?
         wait "$_tee_pid" || true
         exit "$_status"' \
-    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" "$EFFORT" || exit_code=$?
+    _ "$LOOP_DIR" "$STACK" "$CWD" "$PROMPT" "$FALLBACK_MODEL" "$MAX_BUDGET_USD" "$_stderr_tail_file" "$EFFORT" "$COMMIT_SUBJECT" || exit_code=$?
 
 # Decode signal deaths (128+N convention — see
 # test_harness/lib/codegen_test_harness/build_signal_handler.ex moduledoc,

@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# role-boundary-parity_test.sh — drift-guard: reviewer/committer rule-file "Your
+# role-boundary-parity_test.sh — drift-guard: reviewer rule-file "Your
 # Boundaries" prose vs shared/enforcement/registry.yaml Bash-allowlist match regex.
 #
-# Enforcement (subagent-read-discipline.sh, reviewer-bash-allowlist.sh,
-# committer-bash-allowlist.sh) is the backstop and is NEVER edited by this test.
-# This test only guards that the hand-authored "upfront methodology" prose in
-# shared/rules/roles/{reviewer,committer}.md keeps mirroring the enforced
-# allowlist tokens in registry.yaml — so the two never silently diverge.
+# Enforcement (subagent-read-discipline.sh, reviewer-bash-allowlist.sh) is the
+# backstop and is NEVER edited by this test. This test only guards that the
+# hand-authored "upfront methodology" prose in shared/rules/roles/reviewer.md
+# keeps mirroring the enforced allowlist tokens in registry.yaml — so the two
+# never silently diverge.
 #
-# Two independent parity directions per role:
+# The committer half of this test (committer-bash-allowlist parity,
+# committer.md prose-parity) was deleted along with the committer role
+# entirely — commits are made by a deterministic script (codegen-commit),
+# never by an agent, so there is no committer prose or committer allowlist
+# left to keep in parity. See pitch "committing is deterministic, not a
+# model call".
+#
+# Two independent parity directions:
 #   (a) registry-parity — expected token still present in registry.yaml's match:
 #       line for the hook (proves the test's own expectation still matches SoT)
 #   (b) prose-parity     — expected token present in the rule .md (proves the
@@ -21,18 +28,13 @@
 # Tests:
 #   1  reviewer  registry-parity (all tokens present in reviewer-bash-allowlist match:)
 #   2  reviewer  prose-parity    (all tokens present in reviewer.md, word-boundary)
-#   3  committer registry-parity (all tokens present in committer-bash-allowlist match:)
-#   4  committer prose-parity    (all tokens present in committer.md, word-boundary)
 #   5  clean fixture (registry + md both contain all tokens) → detector exit 0
-#   6  fixture: token removed from committer registry match → registry-parity FAIL names token
-#   7  fixture: token removed from committer rule .md → prose-parity FAIL names token + file
 #   8  detector exit code 1 on failure fixture
 #   9  detector exit code 0 on clean fixture
 #   10 substring safety: codegen-log present, standalone "log" absent → prose-parity FAILs for git log
 #   11 reviewer registry match must NOT contain write verbs (commit/add) — reviewer stays read-only
 #   12 missing registry.yaml file → fail loud (non-zero), never silently pass
 #   13 word-boundary false-positive guard: token embedded in a larger word does not satisfy
-#   14 committer-specific write verb (commit) present in committer prose but reviewer prose does NOT claim it
 #
 # Usage: bash role-boundary-parity_test.sh
 # Exit 0 → all pass. Exit 1 → one or more failures.
@@ -44,7 +46,6 @@ CODEGEN_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 REGISTRY="$CODEGEN_DIR/shared/enforcement/registry.yaml"
 REVIEWER_MD="$CODEGEN_DIR/shared/rules/roles/reviewer.md"
-COMMITTER_MD="$CODEGEN_DIR/shared/rules/roles/committer.md"
 
 pass=0
 fail=0
@@ -54,7 +55,10 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 # ── Expected token sets ───────────────────────────────────────────────────────
 REVIEWER_TOKENS=(codegen-log diff status log show echo wc cat ls)
-COMMITTER_TOKENS=(codegen-log diff status log show commit add rm mv tag checkout switch branch restore reset echo wc cat ls)
+# Fixture-only token set — exercises the shared detector functions
+# (match_line/token_in_registry_line/token_in_prose) against a synthetic
+# read-write role fixture, independent of any real role's rule file.
+FIXTURE_TOKENS=(codegen-log diff status log show commit add rm mv tag checkout switch branch restore reset echo wc cat ls)
 
 # ── Reusable functions ────────────────────────────────────────────────────────
 
@@ -119,51 +123,23 @@ token_in_prose() {
     fi
 }
 
-# ── Test 3 (live): committer registry-parity ─────────────────────────────────
-{
-    line=$(match_line "$REGISTRY" "committer-bash-allowlist")
-    missing=()
-    for t in "${COMMITTER_TOKENS[@]}"; do
-        token_in_registry_line "$line" "$t" || missing+=("$t")
-    done
-    if [ "${#missing[@]}" -eq 0 ]; then
-        pass=$((pass + 1))
-    else
-        printf 'FAIL: registry allowlist changed — token(s) %s no longer in committer-bash-allowlist\n' "${missing[*]}"
-        fail=$((fail + 1))
-    fi
-}
-
-# ── Test 4 (live): committer prose-parity ────────────────────────────────────
-{
-    missing=()
-    for t in "${COMMITTER_TOKENS[@]}"; do
-        token_in_prose "$COMMITTER_MD" "$t" || missing+=("$t")
-    done
-    if [ "${#missing[@]}" -eq 0 ]; then
-        pass=$((pass + 1))
-    else
-        printf 'FAIL: rule file %s missing allowlist token(s): %s\n' "$COMMITTER_MD" "${missing[*]}"
-        fail=$((fail + 1))
-    fi
-}
-
-# ── Fixture: clean registry + md, all tokens present ─────────────────────────
+# ── Fixture: clean registry + md, all tokens present (synthetic read-write
+# role, exercises the detector functions independent of any real role) ──────
 make_clean_fixture() {
     local dir="$1"
     mkdir -p "$dir"
     cat >"$dir/registry.yaml" <<'EOF'
-- id: committer-bash-allowlist
+- id: fixture-bash-allowlist
   generated: true
   match: "^\\s*(git\\s+(diff|status|log|show|commit|add|rm|mv|tag|checkout|switch|branch|restore|reset)\\b|codegen-log\\b|echo\\b|wc\\b|cat\\b|ls\\b)"
-  role: committer
+  role: fixture-role
 
 - id: reviewer-bash-allowlist
   generated: true
   match: "(^|\\s|/)codegen-log\\b|^\\s*(git\\s+(diff|status|log|show)\\b|echo\\b|wc\\b|cat\\b|ls\\b)"
   role: reviewer-phoenix
 EOF
-    cat >"$dir/committer.md" <<'EOF'
+    cat >"$dir/fixture.md" <<'EOF'
 ## Your Boundaries
 
 Bash: git diff, status, log, show, commit, add, rm, mv, tag, checkout, switch,
@@ -180,54 +156,16 @@ EOF
 {
     t="$TMP_DIR/t5"
     make_clean_fixture "$t"
-    line=$(match_line "$t/registry.yaml" "committer-bash-allowlist")
+    line=$(match_line "$t/registry.yaml" "fixture-bash-allowlist")
     ok=1
-    for tok in "${COMMITTER_TOKENS[@]}"; do
+    for tok in "${FIXTURE_TOKENS[@]}"; do
         token_in_registry_line "$line" "$tok" || ok=0
-        token_in_prose "$t/committer.md" "$tok" || ok=0
+        token_in_prose "$t/fixture.md" "$tok" || ok=0
     done
     if [ "$ok" -eq 1 ]; then
         pass=$((pass + 1))
     else
-        printf 'FAIL: Test 5 — clean fixture should satisfy all committer parity checks\n'
-        fail=$((fail + 1))
-    fi
-}
-
-# ── Test 6: token removed from committer registry match → registry-parity FAIL ──
-{
-    t="$TMP_DIR/t6"
-    make_clean_fixture "$t"
-    # strip "commit" verb from the committer registry match line
-    sed 's/commit|add/add/' "$t/registry.yaml" >"$t/registry.yaml.tmp" && mv "$t/registry.yaml.tmp" "$t/registry.yaml"
-
-    line=$(match_line "$t/registry.yaml" "committer-bash-allowlist")
-    missing=()
-    for tok in "${COMMITTER_TOKENS[@]}"; do
-        token_in_registry_line "$line" "$tok" || missing+=("$tok")
-    done
-    if printf '%s\n' "${missing[@]:-}" | grep -qxF 'commit'; then
-        pass=$((pass + 1))
-    else
-        printf 'FAIL: Test 6 — registry-parity should name "commit" as missing. Got: %s\n' "${missing[*]:-}"
-        fail=$((fail + 1))
-    fi
-}
-
-# ── Test 7: token removed from committer rule .md → prose-parity FAIL ───────
-{
-    t="$TMP_DIR/t7"
-    make_clean_fixture "$t"
-    sed 's/restore, reset,/reset,/' "$t/committer.md" >"$t/committer.md.tmp" && mv "$t/committer.md.tmp" "$t/committer.md"
-
-    missing=()
-    for tok in "${COMMITTER_TOKENS[@]}"; do
-        token_in_prose "$t/committer.md" "$tok" || missing+=("$tok")
-    done
-    if printf '%s\n' "${missing[@]:-}" | grep -qxF 'restore'; then
-        pass=$((pass + 1))
-    else
-        printf 'FAIL: Test 7 — prose-parity should name "restore" as missing from %s. Got: %s\n' "$t/committer.md" "${missing[*]:-}"
+        printf 'FAIL: Test 5 — clean fixture should satisfy all parity checks\n'
         fail=$((fail + 1))
     fi
 }
@@ -241,8 +179,8 @@ EOF
     rc=0
     (
         set -euo pipefail
-        line=$(match_line "$t/registry.yaml" "committer-bash-allowlist")
-        for tok in "${COMMITTER_TOKENS[@]}"; do
+        line=$(match_line "$t/registry.yaml" "fixture-bash-allowlist")
+        for tok in "${FIXTURE_TOKENS[@]}"; do
             token_in_registry_line "$line" "$tok" || exit 1
         done
         exit 0
@@ -264,10 +202,10 @@ EOF
     rc=0
     (
         set -euo pipefail
-        line=$(match_line "$t/registry.yaml" "committer-bash-allowlist")
-        for tok in "${COMMITTER_TOKENS[@]}"; do
+        line=$(match_line "$t/registry.yaml" "fixture-bash-allowlist")
+        for tok in "${FIXTURE_TOKENS[@]}"; do
             token_in_registry_line "$line" "$tok" || exit 1
-            token_in_prose "$t/committer.md" "$tok" || exit 1
+            token_in_prose "$t/fixture.md" "$tok" || exit 1
         done
         exit 0
     ) || rc=$?
@@ -284,7 +222,7 @@ EOF
 {
     t="$TMP_DIR/t10"
     mkdir -p "$t"
-    cat >"$t/committer.md" <<'EOF'
+    cat >"$t/fixture.md" <<'EOF'
 ## Your Boundaries
 
 Bash: codegen-log, git diff, status, show, commit, add, rm, mv, tag,
@@ -292,7 +230,7 @@ checkout, switch, branch, restore, reset, echo, wc, cat, ls.
 EOF
     # "log" (standalone git verb) intentionally omitted; only codegen-log present.
     # Assertion: word-boundary "log" must NOT match on this codegen-log-only fixture.
-    if token_in_prose "$t/committer.md" "log"; then
+    if token_in_prose "$t/fixture.md" "log"; then
         printf 'FAIL: Test 10 — word-boundary "log" should NOT be satisfied by "codegen-log" alone\n'
         fail=$((fail + 1))
     else
@@ -318,7 +256,7 @@ EOF
     rc=0
     (
         set -euo pipefail
-        match_line "$t/registry.yaml" "committer-bash-allowlist" >/dev/null
+        match_line "$t/registry.yaml" "fixture-bash-allowlist" >/dev/null
     ) 2>/dev/null || rc=$?
 
     if [ "$rc" -ne 0 ]; then
@@ -341,17 +279,6 @@ EOF
         fail=$((fail + 1))
     else
         pass=$((pass + 1))
-    fi
-}
-
-# ── Test 14 (live): committer-specific write verb present in committer prose,
-#     absent from reviewer prose (role-scope discrimination) ─────────────────
-{
-    if token_in_prose "$COMMITTER_MD" "commit" && ! token_in_prose "$REVIEWER_MD" "commit"; then
-        pass=$((pass + 1))
-    else
-        printf 'FAIL: Test 14 — expected "commit" verb present in committer.md but absent from reviewer.md\n'
-        fail=$((fail + 1))
     fi
 }
 

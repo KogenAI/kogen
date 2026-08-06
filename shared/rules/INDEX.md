@@ -22,7 +22,6 @@ rules/
   roles/                    ← universal role rules
     developer.md            workflow, completion, pre-completion
     reviewer.md             15-step process + ast-grep
-    committer.md            commit message rules, multi-repo
     context-curator.md      routing learnings, write surface, stale-line preference
   stacks/
     phoenix/
@@ -30,7 +29,6 @@ rules/
       no-defensive-code.md  discriminating test: defensive swallow (forbidden) vs boundary validation / OTP carve-outs (allowed)
       developer.md          pre-completion greps, mix workflow, hot reload, cleanup, codegen
       reviewer.md           @spec/@type/~p/Gettext/github_workflows
-      committer.md          .po/.pot translator note
       testing.md            CI authority, TDD, coverage, BDD, LLM partitions, backend
       testing-liveview.md   LiveView/HEEx/browser/SPA testing
       generators.md         force phx.gen.schema/auth; never hand-write schemas or migrations
@@ -49,15 +47,14 @@ rules/
 
 ## Role Ownership
 
-| Mistake                       | Role            | File                                                            |
-| ----------------------------- | --------------- | --------------------------------------------------------------- |
-| Committer wrote wrong message | Committer       | `roles/committer.md`                                            |
-| Developer wrote wrong code    | Developer       | `roles/developer.md`                                            |
-| Curator edited wrong path     | Context Curator | `roles/context-curator.md`                                      |
-| Gate misclassified            | Hook author     | `test_harness/lib/codegen_test_harness/loop_gate.ex` (the loop) |
-| CR missed issues              | CR              | `roles/reviewer.md`                                             |
-| Elixir style broken           | Developer       | `stacks/phoenix/developer.md`                                   |
-| CI broken                     | Developer       | `stacks/phoenix/testing.md`                                     |
+| Mistake                    | Role            | File                                                            |
+| -------------------------- | --------------- | --------------------------------------------------------------- |
+| Developer wrote wrong code | Developer       | `roles/developer.md`                                            |
+| Curator edited wrong path  | Context Curator | `roles/context-curator.md`                                      |
+| Gate misclassified         | Hook author     | `test_harness/lib/codegen_test_harness/loop_gate.ex` (the loop) |
+| CR missed issues           | CR              | `roles/reviewer.md`                                             |
+| Elixir style broken        | Developer       | `stacks/phoenix/developer.md`                                   |
+| CI broken                  | Developer       | `stacks/phoenix/testing.md`                                     |
 
 **Key principle**: if the loop's sequencing made a wrong call, that's an Elixir bug in `test_harness/`, not a rule-prose fix — rule files govern per-role behavior only.
 

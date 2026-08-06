@@ -110,19 +110,22 @@ run_test "context-curator Read PROJECT_CONTEXT.md allows" "0" "$F3"
 F4='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"context-curator"}'
 run_test "context-curator Read context/builds.md allows" "0" "$F4"
 
-# ── Committer deny ──────────────────────────────────────────────────────────
+# ── Unknown AGENT_TYPE (e.g. a deleted role) — pass through ─────────────────
 
-# Test 5: committer Read PROJECT_CONTEXT.md → DENY
+# Test 5: an unrecognized agent_type (e.g. "committer", no longer a role)
+# Read PROJECT_CONTEXT.md → ALLOW (falls through to the `*)` unknown-agent
+# pass-through — committing is now a deterministic script, not a role; see
+# pitch "committing is deterministic, not a model call".
 F5='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"PROJECT_CONTEXT.md"},"agent_id":"abc","agent_type":"committer"}'
-run_test "committer Read PROJECT_CONTEXT.md denies" "2" "$F5"
+run_test "unrecognized agent_type Read PROJECT_CONTEXT.md allows (pass-through)" "0" "$F5"
 
-# Test 6: committer Read context/builds.md → DENY
+# Test 6: same unrecognized agent_type, context/builds.md → ALLOW
 F6='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"context/builds.md"},"agent_id":"abc","agent_type":"committer"}'
-run_test "committer Read context/builds.md denies" "2" "$F6"
+run_test "unrecognized agent_type Read context/builds.md allows (pass-through)" "0" "$F6"
 
-# Test 7: committer Read lib/foo.ex → ALLOW (outside scope)
+# Test 7: same unrecognized agent_type, lib/foo.ex → ALLOW (outside scope anyway)
 F7='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"lib/foo.ex"},"agent_id":"abc","agent_type":"committer"}'
-run_test "committer Read lib/foo.ex allows (outside scope)" "0" "$F7"
+run_test "unrecognized agent_type Read lib/foo.ex allows (outside scope)" "0" "$F7"
 
 # ── Developer: PROJECT_CONTEXT.md always denied ─────────────────────────────
 
@@ -248,9 +251,10 @@ run_test "developer Read codegen/pitches/*.md denies" "2" "$F23"
 F24='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"reviewer-phoenix"}'
 run_test "reviewer Read codegen/pitches/*.md denies" "2" "$F24"
 
-# Test 25: committer Read codegen/pitches/foo.md → DENY
+# Test 25: unrecognized agent_type (e.g. "committer", no longer a role) Read
+# codegen/pitches/foo.md → ALLOW (pass-through — see Test 5-7 above)
 F25='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"committer"}'
-run_test "committer Read codegen/pitches/*.md denies" "2" "$F25"
+run_test "unrecognized agent_type Read codegen/pitches/*.md allows (pass-through)" "0" "$F25"
 
 # Test 26: context-curator Read codegen/pitches/foo.md → ALLOW (curator bypass)
 F26='{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"codegen/pitches/foo.md"},"agent_id":"abc","agent_type":"context-curator"}'

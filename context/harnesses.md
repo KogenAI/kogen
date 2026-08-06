@@ -157,7 +157,7 @@ Claude Code supports a `--settings` JSON flag that provides a command-line scope
 
 The loop creates the cycle log via `codegen-log init --slug <slug> --stamp <ts>` BEFORE delegating to any subagent — passing its own already-minted `stamp` (naming the run's `cycle_id`/transcript dir), so the log stem equals `cycle_id` and a retry of the same slug mints its own log. Append-only JSONL, not markdown — no header-boundary scan. Each role writes via `codegen-log section <role> --slug <slug>` (stdin body), appending `{"ev":"role","role":<role>,"body":<prose>}`. Full contract: `shared/rules/_core/session-log.md`.
 
-Retrospective capture: `role-retrospective-before-stop.sh` (blocking `Stop`) asserts the stopping role's log carries a non-empty `ev:role` body plus `ev:learned`/`ev:no_learning` — via reader selectors, not markdown scanning. `context-curator`/`committer` not gated. Full CLI contract: `shared/rules/_core/session-log.md` § Ownership/Enforcement.
+Retrospective capture: `role-retrospective-before-stop.sh` (blocking `Stop`) asserts the stopping role's log carries a non-empty `ev:role` body plus `ev:learned`/`ev:no_learning` — via reader selectors, not markdown scanning. `context-curator` not gated (and the deterministic commit step is a script, not a role, so it is out of scope entirely). Full CLI contract: `shared/rules/_core/session-log.md` § Ownership/Enforcement.
 
 ## Worktree Isolation (Native `--worktree`)
 

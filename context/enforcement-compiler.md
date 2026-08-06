@@ -57,7 +57,7 @@ All forms compose with `bypass_roles` prelude (if specified): the bypass exits e
 | `match_all`    | list   | AND-logic pattern list (mutually exclusive with `match`). Only for `kind: denial`                                             | —        |
 | `message`      | string | Denial reason shown to agent. Only for `kind: denial`                                                                         | —        |
 | `signal`       | string | Hook signal (none, AGENT_TYPE, …)                                                                                             | none     |
-| `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer)                                                           | `*`      |
+| `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., reviewer\|context-curator)                                                     | `*`      |
 | `bypass_roles` | list   | Launcher-mode values (debug, shape, ops) that exit before gates                                                               | —        |
 | `harnesses`    | string | Canonical form: `claude` (registry enum). Rendered to hook header as `claude_code`. Deployment target (all, claude)           | all      |
 | `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only                 | —        |

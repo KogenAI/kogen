@@ -23,7 +23,7 @@ Only the developer role may grep/scan the corpus for API surface. `usage-rules-g
 
 > BLOCKED by usage-rules-grep-guard: only the developer may scan codegen/usage_rules/. Read codegen/usage_rules/INDEX.md, look up the deps you are touching, and Read at most 5 cited files.
 
-Every other role — reviewer, curator, committer, orchestrator — must go through
+Every other role — reviewer, curator, orchestrator — must go through
 `codegen/usage_rules/INDEX.md`, look up the deps it is touching, and Read at most 5 cited files.
 
 ## `codegen-document` Record Format

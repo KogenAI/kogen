@@ -101,13 +101,14 @@ cycle_state_next() {
 # cycle_state_role <state>
 #   Maps a non-terminal state to the human role name used in block messages.
 #   REVIEWED → context-curator (the next agent after reviewer)
-#   CURATED  → committer (the next agent after curator)
+#   CURATED  → "" (the next step is the deterministic commit step — a
+#              script, not an agent role; see pitch "committing is
+#              deterministic, not a model call")
 #   All others (GATED, COMMITTED, unknown) → ""
 cycle_state_role() {
     local state="$1"
     case "$state" in
     REVIEWED) printf 'context-curator' ;;
-    CURATED) printf 'committer' ;;
     *) printf '' ;;
     esac
 }

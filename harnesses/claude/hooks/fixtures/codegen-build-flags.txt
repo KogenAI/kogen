@@ -1,5 +1,6 @@
 # Public flag surface of codegen-build. A diff here IS the review signal —
 # update deliberately in the same commit; never delete the assertion.
+--commit-subject
 --cwd
 --effort
 --fallback-model

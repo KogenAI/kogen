@@ -51,7 +51,9 @@ run_test "debug + general-purpose denied" "deny" "debug" "$(mk_agent 'general-pu
 # 4: Plan denied under shape (we don't use Plan tool)
 run_test "shape + Plan denied" "deny" "shape" "$(mk_agent 'Plan')"
 
-# 5: committer allowed under debug (project subagents are allowed everywhere)
+# 5: "committer" (no longer a role — see pitch "committing is deterministic,
+# not a model call") allowed under debug (falls through as an unrecognized
+# project-subagent string; the fallback path allows everywhere)
 run_test "debug + committer allowed" "allow" "debug" "$(mk_agent 'committer')"
 
 # 6: developer-phoenix-backend denied under shape (shape is read-only)
@@ -60,8 +62,10 @@ run_test "shape + developer-phoenix-backend denied" "deny" "shape" "$(mk_agent '
 # 6b: reviewer-phoenix denied under shape (shape is read-only)
 run_test "shape + reviewer-phoenix denied" "deny" "shape" "$(mk_agent 'reviewer-phoenix')"
 
-# 6c: committer denied under shape (shape is read-only)
-run_test "shape + committer denied" "deny" "shape" "$(mk_agent 'committer')"
+# 6c: "committer" (no longer a role) is NOT denied under shape — it left the
+# shape-mode case pattern along with the role itself, so it now falls
+# through to the generic allow path (same as any other unrecognized string).
+run_test "shape + committer allowed (role deleted, no case match)" "allow" "shape" "$(mk_agent 'committer')"
 
 # 7: context-curator allowed under shape (curation is not source editing)
 run_test "shape + context-curator allowed" "allow" "shape" "$(mk_agent 'context-curator')"

@@ -31,7 +31,7 @@ To inspect what a subagent actually has: Read tool on `~/.claude/agents/<role>.m
 
 ## Layer 3 — Project Context Files
 
-Files: `./context/*.md`. NOT auto-loaded into subagent prompts. Audience = the interactive orchestrator (reads on demand based on trigger keywords in `PROJECT_CONTEXT.md`) and the context-curator (writes them post-reviewer). A cycle role never browses them: `subagent-read-discipline.sh` denies `PROJECT_CONTEXT.md` outright to `developer-*`/`reviewer-*`/`committer`, and allows a `context/*.md` Read ONLY when that exact path appears in a typed grant — the LOOP's `{"ev":"files_to_touch","role":"loop",...}` event for the developer, the DEVELOPER's `{"ev":"files_modified",...}` event for the reviewer. The loop derives `files_to_touch` from the pitch's `scope:` frontmatter field, so a context file reaches a developer only because the pitch declared it.
+Files: `./context/*.md`. NOT auto-loaded into subagent prompts. Audience = the interactive orchestrator (reads on demand based on trigger keywords in `PROJECT_CONTEXT.md`) and the context-curator (writes them post-reviewer). A cycle role never browses them: `subagent-read-discipline.sh` denies `PROJECT_CONTEXT.md` outright to `developer-*`/`reviewer-*` (and the deterministic commit step has no Read tool at all — it is a script), and allows a `context/*.md` Read ONLY when that exact path appears in a typed grant — the LOOP's `{"ev":"files_to_touch","role":"loop",...}` event for the developer, the DEVELOPER's `{"ev":"files_modified",...}` event for the reviewer. The loop derives `files_to_touch` from the pitch's `scope:` frontmatter field, so a context file reaches a developer only because the pitch declared it.
 
 ## Layer 4 — Runtime CLI Flags
 
@@ -58,7 +58,7 @@ Two discriminators:
 
 Hooks can't read LLM output content — only tool calls and subagent identity. `SubagentStart` CANNOT block (inject context only). All subagent gating uses `PreToolUse` on `Agent` matched by `tool_input.subagent_type`.
 
-Key enforcement hooks (Examples): `orchestrator-no-source-edit.sh` (write surface), `dev-no-ci.sh` (blocks gate commands + bare test runners), `pre-commit-guard.sh` (blocks git commit for non-committer), `operator-subagent-allowlist.sh` (blocks `Plan`/`general-purpose` built-ins). For non-interactive builds, the gate is owned by the Elixir loop's `LoopGate`, not a SubagentStop hook.
+Key enforcement hooks (Examples): `orchestrator-no-source-edit.sh` (write surface), `dev-no-ci.sh` (blocks gate commands + bare test runners), `pre-commit-guard.sh` (blocks git commit for every agent, unconditionally — no per-role exemption), `operator-subagent-allowlist.sh` (blocks `Plan`/`general-purpose` built-ins). For non-interactive builds, the gate is owned by the Elixir loop's `LoopGate`, not a SubagentStop hook.
 
 ## Layer 6 — Recipes
 

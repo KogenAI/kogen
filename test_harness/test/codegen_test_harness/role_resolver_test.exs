@@ -62,7 +62,7 @@ defmodule CodegenTestHarness.RoleResolverTest do
     end
 
     test "role with no escalation key configured -> :none, never raises" do
-      assert RoleResolver.resolve_escalation("committer", "claude") == :none
+      assert RoleResolver.resolve_escalation("context-curator", "claude") == :none
     end
 
     test "unknown role -> :none, never raises (fail-safe, not fail-open)" do
@@ -80,8 +80,8 @@ defmodule CodegenTestHarness.RoleResolverTest do
       assert RoleResolver.resolve_harness("no-such-role-xyz", "claude_code") == "claude_code"
     end
 
-    test "committer (no override) -> build_default_harness unchanged" do
-      assert RoleResolver.resolve_harness("committer", "claude_code") == "claude_code"
+    test "context-curator (no override) -> build_default_harness unchanged" do
+      assert RoleResolver.resolve_harness("context-curator", "claude_code") == "claude_code"
     end
   end
 
@@ -103,7 +103,7 @@ defmodule CodegenTestHarness.RoleResolverTest do
     end
 
     test "role with no fallback key configured -> :none, never raises" do
-      assert RoleResolver.resolve_fallback("committer", "claude", 0) == :none
+      assert RoleResolver.resolve_fallback("context-curator", "claude", 0) == :none
     end
 
     test "unknown role -> :none, never raises (fail-safe, not fail-open)" do

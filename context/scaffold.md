@@ -136,9 +136,9 @@ When extending scaffold injection (e.g., adding new recipe lines to a Makefile t
 | 2     | Developer       | Implementation                                                                                                      |
 | 3     | Reviewer        | Code review and approval                                                                                            |
 | 3.5   | Context-curator | Updates context files post-reviewer; provides backstop before commit                                                |
-| 4     | Committer       | Commits changes to git                                                                                              |
+| 4     | (script)        | `codegen-commit` — deterministic commit step, not a spawnable agent                                                 |
 
-**Phase 3.5 curator insertion**: When updating downstream templates due to orchestrator role changes, ensure Phase 3.5 exists between reviewer (Phase 3) and committer (Phase 4). The curator phase enforces the reviewer → curator → committer ordering. Remove any "Act now" skip logic that bypasses curator, as that breaks the ordering contract.
+**Phase 3.5 curator insertion**: When updating downstream templates due to orchestrator role changes, ensure Phase 3.5 exists between reviewer (Phase 3) and the commit step (Phase 4). The curator phase enforces the reviewer → curator → commit ordering. Remove any "Act now" skip logic that bypasses curator, as that breaks the ordering contract.
 
 ## Subcommand Dispatch: `create` vs `integrate`
 

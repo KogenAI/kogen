@@ -88,8 +88,7 @@ For every `harnesses/claude/hooks/<name>.sh` there is a paired `<name>_test.sh` 
 Every hook below follows the pattern `.../hooks/<name>.sh` + paired `.../hooks/<name>_test.sh`, EXCEPT
 where noted:
 
-build-worker-cwd-guard, claude-debug-bash-guard, committer-no-trailer-guard, committer-single-line-guard,
-committer-subject-length, context-curator-guard, context-factcheck-edit-gate, dev-no-ci,
+build-worker-cwd-guard, claude-debug-bash-guard, context-curator-guard, context-factcheck-edit-gate, dev-no-ci,
 developer-no-self-gate, llm-pending-sweep, llm-suite-guard,
 llm-test-guard, no-cat-pipe, no-git-stash, no-python-json, operator-subagent-allowlist,
 orchestrator-no-ci, orchestrator-no-source-edit, orchestrator-read-discipline,

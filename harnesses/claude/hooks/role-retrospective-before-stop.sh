@@ -39,7 +39,8 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
 fi
 
 # Role gate — developer-*, reviewer-* only.
-# (context-curator and committer are NOT gated.)
+# (context-curator is NOT gated; the commit step is a deterministic script,
+# not a role, and was never gated here either.)
 case "${AGENT_TYPE:-}" in
 developer-* | reviewer-*) ;;
 *)

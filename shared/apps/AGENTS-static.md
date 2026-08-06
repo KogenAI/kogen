@@ -1,6 +1,6 @@
 # AGENTS.md — Static Sites
 
-Builds against this site run through the platform's deterministic Elixir orchestration loop (`mix codegen.loop`), which drives the full cycle — developer → gate → reviewer → context-curator → committer — via separate per-role invocations. There is no self-orchestrating agent session for non-interactive builds; the loop is the sole build driver.
+Builds against this site run through the platform's deterministic Elixir orchestration loop (`mix codegen.loop`), which drives the full cycle — developer → gate → reviewer → context-curator → commit — via separate per-role invocations, plus one deterministic commit step at the end (`codegen-commit`, a script, not a role). There is no self-orchestrating agent session for non-interactive builds; the loop is the sole build driver.
 
 → See `codegen/rules/_core/output-style.md` for output-style rules.
 
@@ -59,7 +59,7 @@ Gate command for this site: `static-site-build-check.sh` (four deterministic che
 
 ## Commit Discipline
 
-Only the committer role makes git commits, and only after the reviewer approves and the build check is clear. Commit messages are why-focused — never include the gate command, test output, or CI status.
+No agent makes git commits. Commits are made by a deterministic script (`codegen-commit`), automatically, after the reviewer approves and the build check is clear — never by a model call. Commit messages are why-focused, sealed by the shaper at SHAPED time — never include the gate command, test output, or CI status.
 
 ## Result Reporting (MANDATORY)
 
@@ -94,8 +94,8 @@ Rules:
 
 ## Most-Violated Hard Rules (recap)
 
-- NEVER `git commit` directly — always delegate to committer subagent
+- NEVER `git commit` directly — the loop's deterministic commit step (`codegen-commit`) runs after you; no agent commits
 - NEVER edit `public/` — it is generated and gitignored
 - NEVER use Tailwind CDN or add `tailwind.config.js` / `postcss.config.js` — Tailwind v4
 - NEVER run `npm run build`, `vite build`, or any build command — build-check script handles it
-- NEVER emit `{"status":"success"}` before committer confirms
+- NEVER emit `{"status":"success"}` before the commit step confirms

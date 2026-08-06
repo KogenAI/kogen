@@ -1027,7 +1027,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
 
   @doc """
   Idempotently retires an active dossier to `"completed"` after the
-  deterministic post-committer verification (one commit, tree, gate) has
+  deterministic post-commit-step verification (one commit, tree, gate) has
   proven the recovered bytes durably landed. Replaces
   `complete_resume_claim!/2` for the dossier-based path. A no-op (`:ok`)
   when no active dossier exists for `slug` — completion is the SOLE success

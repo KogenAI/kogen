@@ -277,12 +277,12 @@ result=$(TRANSCRIPT_PATH="$TMP_T13/transcript.jsonl" OCG_APPS_ROOT="" CWD="$TMP_
 assert_eq "session_log_from_transcript: codegen-log section evidence only → disk log" "$TMP_T13/codegen/logging/20260702_000000_demo_cycle.jsonl" "$result"
 rm -rf "$TMP_T13"
 
-# Case 14: codegen-log append --role committer --body @- (no Write event) →
-# resolves disk log.
+# Case 14: codegen-log append --role context-curator --body @- (no Write
+# event) → resolves disk log.
 TMP_T14=$(mktemp -d)
 mkdir -p "$TMP_T14/codegen/logging"
 : >"$TMP_T14/codegen/logging/20260702_000000_demo_cycle.jsonl"
-make_bash_line "codegen-log append --role committer --body @-" >"$TMP_T14/transcript.jsonl"
+make_bash_line "codegen-log append --role context-curator --body @-" >"$TMP_T14/transcript.jsonl"
 result=$(TRANSCRIPT_PATH="$TMP_T14/transcript.jsonl" OCG_APPS_ROOT="" CWD="$TMP_T14" \
     bash -c "source '$SCRIPT_DIR/hooks-lib.sh'; session_log_from_transcript")
 assert_eq "session_log_from_transcript: codegen-log append evidence only → disk log" "$TMP_T14/codegen/logging/20260702_000000_demo_cycle.jsonl" "$result"
@@ -500,24 +500,15 @@ RE_EXTRACT_PATTERN='\[0-9\]\{8\}_\[0-9\]\{6\}_\[a-z0-9_-\]\+_cycle\\\.jsonl\$'
 assert_regex_site_matches "SESSION_LOG_NAME_RE parity: shared/rules/_core/session-log.md" \
     "$CODEGEN_ROOT_PARITY/shared/rules/_core/session-log.md" "$RE_EXTRACT_PATTERN"
 
-# registry.yaml carries 1 match: line (committer-write-allowlist).
+# registry.yaml carried its ONE match: line via committer-write-allowlist
+# (kind: generated) — deleted along with the committer role entirely (see
+# pitch "committing is deterministic, not a model call": no role writes
+# history, so no role needs a session-log write-allowlist). registry.yaml
+# now carries ZERO literal occurrences of the canonical regex; the sole
+# remaining carrier is shared/rules/_core/session-log.md (asserted above).
 registry_file="$CODEGEN_ROOT_PARITY/shared/enforcement/registry.yaml"
 registry_match_count=$(grep -cE "$RE_EXTRACT_PATTERN" "$registry_file" 2>/dev/null || true)
-assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml has 1 match: line with the canonical regex" "1" "${registry_match_count:-0}"
-registry_mismatch=$(grep -oE "$RE_EXTRACT_PATTERN" "$registry_file" | sort -u | wc -l | tr -d ' ')
-assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml's match: line is the canonical form" "1" "$registry_mismatch"
-registry_extracted=$(grep -oE "$RE_EXTRACT_PATTERN" "$registry_file" | head -n 1)
-assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml regex matches hooks-lib.sh" "$SESSION_LOG_NAME_RE" "$registry_extracted"
-
-# committer-write-allowlist.sh is compiler-GENERATED from registry.yaml's
-# match: field (kind: generated, not kind: registration) — parity is already
-# enforced transitively via the registry.yaml assertions above + make
-# hook-parity (which fails if generated output drifts from the compiler's
-# render of registry.yaml). Assert their generated output still carries the
-# canonical string as a defense-in-depth check (catches a stale un-installed
-# generated file even if registry.yaml itself is correct).
-assert_regex_site_matches "SESSION_LOG_NAME_RE parity: committer-write-allowlist.sh (generated)" \
-    "$CODEGEN_ROOT_PARITY/harnesses/claude/hooks/committer-write-allowlist.sh" "$RE_EXTRACT_PATTERN"
+assert_eq "SESSION_LOG_NAME_RE parity: registry.yaml has 0 matches (committer-write-allowlist deleted)" "0" "${registry_match_count:-0}"
 
 # ── split_command_segments — direct unit tests ───────────────────────────────
 # Containment primitive for COMMAND-source allowlist gates (committer/reviewer

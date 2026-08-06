@@ -13,7 +13,6 @@ Two common fragments (`_phoenix_developer_common.md.j2`, `_static_developer_comm
 | `shared/subagents/phoenix/reviewer-phoenix.md.j2`           | Phoenix reviewer — quality, patterns, architecture                  |
 | `shared/subagents/static/developer-static.md.j2`            | Static (Vite) site developer — vanilla by default, framework opt-in |
 | `shared/subagents/static/reviewer-static.md.j2`             | Static site reviewer                                                |
-| `shared/subagents/shared/committer.md.j2`                   | Committer — analyzes diff, crafts why-focused commit message        |
 | `shared/subagents/shared/context-curator.md.j2`             | Context curator — updates domain context files post-reviewer        |
 | `shared/subagents/_phoenix_developer_common.md.j2`          | Shared rules fragment included by backend + frontend templates      |
 | `shared/subagents/_static_developer_common.md.j2`           | Shared rules fragment included by all static developer templates    |
@@ -32,9 +31,10 @@ shared/subagents/
     developer-static.md.j2  ← vanilla Vite by default, framework opt-in
     reviewer-static.md.j2
   shared/
-    committer.md.j2
     context-curator.md.j2
 ```
+
+Committing is a deterministic script (`codegen-commit`), not a subagent template — there is no `committer.md.j2` to render.
 
 Generated output lands in `templates/generated/<harness>/` then installed to `~/.claude/agents/` or equivalent.
 
@@ -105,13 +105,13 @@ When a subagent template is stack-prefixed (e.g., `developer-phoenix-backend`, `
 
 When editing subagent templates to add a new include line after an existing anchor (e.g., adding a rule include after `output-style.md`), use a **two-line old_string** (anchor + the line immediately following it) so a scripted cross-file replacement lands on the intended site. The anchor itself (`{% include 'rules/_core/output-style.md' %}`) appears identically in every template that includes it — a single-line match tells you nothing about which template you are in.
 
-Verified pattern (6 templates carry the anchor: both `_*_developer_common.md.j2` fragments, `reviewer-phoenix.md.j2`, `reviewer-static.md.j2`, `committer.md.j2`, `context-curator.md.j2`): all six have the anchor on a single line followed by `{% include 'rules/shared/no-role-spawn.md' %}`. The follow-line is UNIFORM across all six, so the two-line pair does not discriminate between templates. Uniqueness comes from the per-file edit itself (the anchor occurs once per file); a repo-wide replacement of the pair will hit all six, which is usually what you want when adding a rule to every leaf agent.
+Verified pattern (5 templates carry the anchor: both `_*_developer_common.md.j2` fragments, `reviewer-phoenix.md.j2`, `reviewer-static.md.j2`, `context-curator.md.j2`): all five have the anchor on a single line followed by `{% include 'rules/shared/no-role-spawn.md' %}`. The follow-line is UNIFORM across all five, so the two-line pair does not discriminate between templates. Uniqueness comes from the per-file edit itself (the anchor occurs once per file); a repo-wide replacement of the pair will hit all five, which is usually what you want when adding a rule to every leaf agent.
 
 ## Explicit Subagent Spawn Directives
 
 Every spawn-prompt code fence in `shared/apps/AGENTS-{phoenix,static}.md.j2` must be preceded by a directive line naming the subagent type. Pattern: a line `**Spawn**: use subagent_type \`<token>\``immediately above the fenced delegation prompt, on its own line, OUTSIDE any Jinja conditional. This allows the orchestrator to declare`subagent_type`parameter to the Agent tool, preventing fallback-guessing from prompt-text heuristics. The directive satisfies`operator-subagent-allowlist.sh` gate (allowlisted tokens pass on first spawn; preventing churn from denied built-in agents).
 
-**Committer spawn**: the deterministic `OrchestrationLoop` spawns the committer role directly as the loop's COMMITTED step (see `context/test-harness.md`) for every build. The `AGENTS-{phoenix,static}.md.j2` session-loop prose is a downstream human-driven interactive-session artifact, not a codegen build fallback (the former shared `_orch-committer.md.j2` include fragment was retired this cutover).
+**Commit step**: `OrchestrationLoop` shells the deterministic `codegen-commit --subject <sealed-subject>` launcher directly as the loop's COMMITTED step (see `context/test-harness.md`) for every build — no subagent spawn, no `.md.j2` template. The `AGENTS-{phoenix,static}.md.j2` session-loop prose documents the same `codegen-commit` invocation for a downstream human-driven interactive session.
 
 **Spawn directive placement**: The line is placed immediately ABOVE the opening `\`\`\`` fence of the delegation prompt, on its own line. It is NOT wrapped in Jinja conditionals (`{% if tool.name == 'claude' %}...{% endif %}`), so it renders identically in every harness variant.
 
@@ -132,4 +132,4 @@ Session logs are append-only JSONL, not markdown with H2 sections — there is n
 
 ## Trigger Keywords
 
-developer-phoenix-backend, developer-phoenix-frontend, developer-static, reviewer, committer, .md.j2 template, agent rendering, include-order contract, rule adjacency
+developer-phoenix-backend, developer-phoenix-frontend, developer-static, reviewer, codegen-commit, .md.j2 template, agent rendering, include-order contract, rule adjacency

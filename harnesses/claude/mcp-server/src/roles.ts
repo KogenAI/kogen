@@ -1,4 +1,4 @@
-// roles.ts — single source of truth for the 7 concrete cycle roles and their
+// roles.ts — single source of truth for the 6 concrete cycle roles and their
 // per-role codegen-log kind grants + reader grants. Mirrors what each role is
 // taught in shared/rules/_core/session-log.md:37 (the loop authors
 // files_to_touch; developer authors files_modified) and the
@@ -44,7 +44,6 @@ export const ROLES: RoleSpec[] = [
   { role: "reviewer-phoenix", extraKinds: [], readers: true },
   { role: "reviewer-static", extraKinds: [], readers: true },
   { role: "context-curator", extraKinds: [], readers: true },
-  { role: "committer", extraKinds: [], readers: true },
 ];
 
 export function findRole(role: string): RoleSpec | undefined {

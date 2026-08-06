@@ -119,6 +119,7 @@ harness-parity:
 	@bad=""; \
 	for s in "$(SCRIPT_DIR)/codegen-build" "$(SCRIPT_DIR)/codegen-call" \
 		"$(SCRIPT_DIR)/codegen-propose" "$(SCRIPT_DIR)/codegen-log" \
+		"$(SCRIPT_DIR)/codegen-commit" \
 		"$(SCRIPT_DIR)/harnesses/claude/dispatch.sh" \
 		"$(SCRIPT_DIR)/shared/scaffold/static/scaffold.sh"; do \
 		[ -f "$$s" ] || continue; \
@@ -138,6 +139,7 @@ harness-parity:
 			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-build_test.sh" \
 			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-call_test.sh" \
 			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-propose_test.sh" \
+			"$(SCRIPT_DIR)/harnesses/claude/hooks/codegen-commit_test.sh" \
 			"$(SCRIPT_DIR)/shared/scaffold/static/scaffold_test.sh" \
 			"$(SCRIPT_DIR)/codegen-log_test.sh"; \
 		for st in "$(SCRIPT_DIR)/harnesses/shared/"*_test.sh; do \

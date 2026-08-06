@@ -190,24 +190,23 @@ for mode in debug shape experiment ops; do
         "$SENTINEL_PUSHBACK"
 done
 
-# ── Test: committer staging scope is unconditional `git add -A` ───────────────
-# `shared/rules/roles/committer.md` already says "never hand-pick a subset" and
-# "Partial snapshots ... are FORBIDDEN", but the baked `## Job` step 6 in the
-# .md.j2 rendered AFTER that include used to end with "Some unrelated → stage by
-# name only" — the last staging instruction the model reads, and a licence to
-# leave curator-written `context/**` / `PROJECT_CONTEXT.md` behind. The committer
-# is deliberately denied Read on exactly those paths (subagent-read-discipline),
-# so it can never tell "unrelated" from "cycle output"; anything it skips trips
-# the loop's post-committer clean-tree gate (`verify_committed!`).
+# ── Test: the deterministic commit step's staging scope is unconditional
+# `git add -A` ──────────────────────────────────────────────────────────────
+# The committer ROLE (and its prompt-level "never hand-pick a subset" /
+# "Partial snapshots ... are FORBIDDEN" instructions) is gone — commits are
+# now made by codegen-commit, a script, which can never choose to stage by
+# name: the invariant is enforced structurally (no model in the loop to
+# licence a hand-pick), not by prompt wording. See pitch "committing is
+# deterministic, not a model call".
 assert_absent \
-    "committer.md.j2 carries no stage-by-name hand-pick licence" \
-    "$CODEGEN_DIR/shared/subagents/shared/committer.md.j2" \
+    "codegen-commit carries no stage-by-name hand-pick option" \
+    "$CODEGEN_DIR/codegen-commit" \
     "stage by name only"
 
 assert_contains \
-    "committer.md.j2 mandates unconditional git add -A" \
-    "$CODEGEN_DIR/shared/subagents/shared/committer.md.j2" \
-    "ALWAYS \`git add -A\`"
+    "codegen-commit mandates unconditional git add -A" \
+    "$CODEGEN_DIR/codegen-commit" \
+    "git -C \"\$CWD\" add -A"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

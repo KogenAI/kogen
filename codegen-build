@@ -38,6 +38,14 @@
 #                             override of templates/generator/config.yaml);
 #                             threaded via CODEGEN_BUILD_FALLBACK_MODEL, not
 #                             EXTRA_FLAGS -- never blind-passed to dispatch
+#   --commit-subject=<text>  explicit substitute for a pitch's own
+#                             commit_subject: frontmatter field; threaded via
+#                             CODEGEN_BUILD_COMMIT_SUBJECT, not EXTRA_FLAGS --
+#                             never blind-passed to dispatch. REQUIRED for a
+#                             literal-prompt build (no frontmatter to read);
+#                             optional for a pitch build that already carries
+#                             commit_subject: -- and the escape hatch for a
+#                             pitch in a repo with no shape workflow.
 #   --print-dir               print this script's directory and exit 0
 #   --print-argv              dry-run: parse + validate every flag, print the
 #                             would-be `mix codegen.loop` argv one arg per
@@ -71,12 +79,13 @@ MODEL=""
 EFFORT=""
 FALLBACK_MODEL=""
 MAX_BUDGET_USD=""
+COMMIT_SUBJECT=""
 EXTRA_FLAGS=()
 PRINT_ARGV=""
 PROMPT=""
 
 usage() {
-    printf 'Usage: codegen-build --harness=claude [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n' >&2
+    printf 'Usage: codegen-build --harness=claude [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--commit-subject=<text>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n' >&2
     exit 2
 }
 
@@ -138,6 +147,14 @@ while [[ $# -gt 0 ]]; do
         FALLBACK_MODEL="$2"
         shift 2
         ;;
+    --commit-subject=*)
+        COMMIT_SUBJECT="${1#--commit-subject=}"
+        shift
+        ;;
+    --commit-subject)
+        COMMIT_SUBJECT="$2"
+        shift 2
+        ;;
     --print-dir)
         printf '%s\n' "$SCRIPT_DIR"
         exit 0
@@ -147,7 +164,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     -h | --help)
-        printf 'Usage: codegen-build --harness=claude [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n'
+        printf 'Usage: codegen-build --harness=claude [--stack=<phoenix|static>] [--cwd=<dir>] [--model=<m>] [--effort=<e>] [--max-budget-usd=<n>] [--fallback-model=<m>] [--commit-subject=<text>] [--print-dir] [--print-argv] [-h|--help] PROMPT\n'
         exit 0
         ;;
     --)
@@ -273,6 +290,7 @@ export CODEGEN_BUILD_CWD="$CWD"
 export CODEGEN_BUILD_FALLBACK_MODEL="${FALLBACK_MODEL:-}"
 export CODEGEN_BUILD_EFFORT="${EFFORT:-}"
 export CODEGEN_BUILD_MAX_BUDGET_USD="${MAX_BUDGET_USD:-}"
+export CODEGEN_BUILD_COMMIT_SUBJECT="${COMMIT_SUBJECT:-}"
 export CODEGEN_BUILD_PRINT_ARGV="${PRINT_ARGV:-}"
 export CODEGEN_BUILD_INVOCATION_ID="${CODEGEN_BUILD_INVOCATION_ID:-}"
 export CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=0

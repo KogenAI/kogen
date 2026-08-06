@@ -319,8 +319,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
   end
 
   describe "resume_role_for_recovery/3" do
-    @phoenix_roles ~w(developer-phoenix-backend reviewer-phoenix context-curator committer)
-    @static_roles ~w(developer-static reviewer-static context-curator committer)
+    @phoenix_roles ~w(developer-phoenix-backend reviewer-phoenix context-curator)
+    @static_roles ~w(developer-static reviewer-static context-curator)
 
     test ":advanced always reconciles at the stack's developer, on both stacks" do
       assert OrchestrationLoop.resume_role_for_recovery(:advanced, "GATED", @phoenix_roles) ==

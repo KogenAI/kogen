@@ -70,13 +70,13 @@ Signs of leakage into shared rules: project names, repo paths, app-specific modu
 Rule goes on the actor's file; instruction framing goes on the instructor's file.
 If A tells B to do X → how to do X → B's file; how A communicates X → A's file.
 
-❌ "orchestrator passes task summary to committer" in `committer.md` — committer doesn't decide how orchestrator communicates.
-✅ Delegation framing → `orchestrator.md`; committer's file covers only what committer does with what it receives.
+❌ "orchestrator passes task summary to shaper" in `developer.md` — the developer doesn't decide how the orchestrator communicates.
+✅ Delegation framing → `orchestrator.md`; a role's own file covers only what that role does with what it receives.
 
 | Mistake                                                | Role         | File                                                                                                                              |
 | ------------------------------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | Orchestrator delegated wrong time / communicated badly | Orchestrator | `roles/orchestrator.md`                                                                                                           |
-| Committer wrote wrong message / committed wrong files  | Committer    | `roles/committer.md`                                                                                                              |
+| Sealed commit_subject: was wrong                       | Shaper       | `shape.txt` "On completion" step (the deterministic `codegen-commit` script never derives the message itself)                     |
 | Developer wrote wrong code / skipped tests             | Developer    | `roles/developer.md` (universal) or `stacks/phoenix/developer.md` (Elixir style) or `stacks/phoenix/testing.md` (test discipline) |
 | Gate misclassified verdict                             | Hook author  | `codegen/harnesses/claude/hooks/dev-gate.sh`                                                                                      |
 | CR approved bad code / missed issues                   | CR           | `roles/reviewer.md` (universal) or `stacks/<stack>/reviewer.md` (stack-specific)                                                  |
@@ -114,7 +114,6 @@ Check `codegen/rules/INDEX.md` first to understand file boundaries.
 | `orchestrator.md` | Universal delegation/gates/commit timing/user comms/deploy |
 | `developer.md`    | Universal dev workflow — completion, pre-completion        |
 | `reviewer.md`     | Universal 15-step review + ast-grep                        |
-| `committer.md`    | Universal commit message, multi-repo                       |
 
 ### Stacks (`rules/stacks/`)
 
@@ -124,7 +123,6 @@ Check `codegen/rules/INDEX.md` first to understand file boundaries.
 | `phoenix/orchestrator.md`     | Gate commands, INCONCLUSIVE, ext→agent, slice routing            |
 | `phoenix/developer.md`        | Pre-completion greps, mix workflow, hot reload, codegen patterns |
 | `phoenix/reviewer.md`         | @spec/@type/~p/Gettext/github_workflows                          |
-| `phoenix/committer.md`        | `.po/.pot` staging                                               |
 | `phoenix/testing.md`          | CI/TDD/coverage/BDD/LLM partitions/backend                       |
 | `phoenix/testing-liveview.md` | LiveView/HEEx/browser/SPA testing                                |
 | `static/developer.md`         | Output dir, build pipeline, npm, Tailwind v4 invariants          |
