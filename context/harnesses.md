@@ -69,11 +69,11 @@ tools-header/<mode>.txt   (per-harness: mode title + ## Tools + any pre-Tools co
 
 **Mode assembly map:**
 
-| Mode  | tools-header contains (per-harness)                                                                                                                   | prompt_body list (shared)                                                                                                                                                                                                                         |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance                                                                  | [harnesses/shared/prompt-bodies/debug.txt] — no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot                                                                                                                                            |
-| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit) | [harnesses/shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt] |
-| ops   | `## Tools` + harness-specific per-tool bullets                                                                                                        | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules                                                                                                                                 |
+| Mode  | tools-header contains (per-harness)                                                         | prompt_body list (shared)                                                                                         |
+| ----- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| debug | `## Tools` + harness-specific tool list + FORBIDDEN list + cross-repo grep allowance        | [harnesses/shared/prompt-bodies/debug.txt] — no-cat-pipe line + Protocol + Forbidden + Refusal & Pivot            |
+| shape | `## Tools` + harness-specific tool bullets (claude: Agent/Skill/AskUserQuestion/Write-Edit) | [harnesses/shared/prompt-bodies/shape.txt, _probing.txt, _authoring-spine.txt]                                    |
+| ops   | `## Tools` + harness-specific per-tool bullets                                              | [harnesses/shared/prompt-bodies/ops.txt] — starts with Cold-Start Opening block, followed by procedural ops rules |
 
 **Placement checklist**:
 
@@ -237,7 +237,7 @@ Models decompose multi-step instructions (Edit → Agent) into pick-one alternat
 
 ## SSH Target Identity Persistence (`harnesses/shared/ssh-target.sh`)
 
-**Location**: `harnesses/shared/ssh-target.sh` (shared). Test: `harnesses/shared/ssh-target_test.sh`. 
+**Location**: `harnesses/shared/ssh-target.sh` (shared). Test: `harnesses/shared/ssh-target_test.sh`.
 **Two-identity model**: `ssh-target.sh` persists two user identities in `~/.ssh/config` alias blocks — (1) login user (`User <login>` line), (2) operate-as user (`# ops-operate-as: <user>` comment). Resolver exports `${PREFIX}_LOGIN_USER` and `${PREFIX}_OPERATE_AS` alongside `_SERVER`/`_ENV`.
 
 **Backfill logic**: Alias with `HostName`-only triggers one-time interactive prompt → collects login user (default `root`) + operate-as (optional) → awk block-scoped rewrite via temp-file/mv. Guard: runs only when `User` line absent; idempotent on re-run.

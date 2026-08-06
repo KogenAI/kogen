@@ -219,7 +219,6 @@ FIXTURE_NOREPO_PITCH='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_
 run_test "non-repo pitch write via launch-cwd fallback allows" "0" "$FIXTURE_NOREPO_PITCH"
 rm -rf "$NOREPO"
 
-
 # Precedence tests
 
 # Test 35: CLAUDE_ROLE=debug → debug branch → blocks lib/

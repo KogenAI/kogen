@@ -6,7 +6,7 @@ Core discipline rules that apply to ALL agents regardless of role or stack. Thes
 
 | File                                              | Purpose                                                                |
 | ------------------------------------------------- | ---------------------------------------------------------------------- |
-| `shared/rules/INDEX.md`                           | Registry — file → trigger keywords; loaded by the orchestrator        |
+| `shared/rules/INDEX.md`                           | Registry — file → trigger keywords; loaded by the orchestrator         |
 | `shared/rules/STYLE_GUIDE.md`                     | Cross-cutting style rules for all agents                               |
 | `shared/rules/_core/bash-discipline.md`           | Forbidden bash patterns, token-budget rules, safe alternatives         |
 | `shared/rules/_core/output-style.md`              | Caveman Ultra output compression rules                                 |

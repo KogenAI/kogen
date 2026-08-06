@@ -579,11 +579,9 @@ assert_contains "(21) claude-shape: Always Load file still forwarded" "REPO_STRU
 assert_contains "(21) claude-shape: matched Domain-table file still forwarded" "HARNESSES_CONTENT" "$captured21_claude_shape"
 assert_not_contains "(21) claude-shape: unmatched Domain-table file not forwarded" "HOOKS_CONTENT" "$captured21_claude_shape"
 
-
 captured21_claude_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-experiment.sh" "claude-experiment.sh" "claude" "")
 assert_contains "(21) claude-experiment: required_platforms reaches args (Tier-0)" "required_platforms: [darwin, linux]" "$captured21_claude_experiment"
 assert_contains "(21) claude-experiment: Always Load file still forwarded" "REPO_STRUCTURE_CONTENT" "$captured21_claude_experiment"
-
 
 # ── Test 22: citation priority — explicit context/<name>.md citation wins ─────
 T22="$BASE_TMP/t22_citation_priority"
@@ -851,10 +849,8 @@ printf '## Problem\nFix dispatch.sh. See context/cited-only27.md.\n' >"$T27/code
 captured27_claude_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "claude-shape.sh" "claude" "t27-pitch" "$T27")
 assert_contains "(27) claude-shape: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_claude_shape"
 
-
 captured27_claude_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-experiment.sh" "claude-experiment.sh" "claude" "t27-pitch" "$T27")
 assert_contains "(27) claude-experiment: cited file reaches args" "CITEDONLY27_CONTENT" "$captured27_claude_experiment"
-
 
 # (28) run_t21_launcher creates a <target>/harnesses symlink on EVERY call, and
 # the same target dir serves several launchers above. Assert repeated `ln -sfn`

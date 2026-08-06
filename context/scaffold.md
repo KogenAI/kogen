@@ -129,14 +129,14 @@ When extending scaffold injection (e.g., adding new recipe lines to a Makefile t
 
 `AGENTS-phoenix.md.j2` and `AGENTS-static.md.j2` define phases that guide the orchestrator through each agent cycle:
 
-| Phase | Agent           | Role                                                                 |
-| ----- | --------------- | -------------------------------------------------------------------- |
-| 0     | Orchestrator    | Session start, context load                                          |
+| Phase | Agent           | Role                                                                                                                |
+| ----- | --------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 0     | Orchestrator    | Session start, context load                                                                                         |
 | 1     | Loop            | Declares scope — writes `ev:files_to_touch` and the `## Declared Scope` block from the pitch's `scope:` frontmatter |
-| 2     | Developer       | Implementation                                                       |
-| 3     | Reviewer        | Code review and approval                                             |
-| 3.5   | Context-curator | Updates context files post-reviewer; provides backstop before commit |
-| 4     | Committer       | Commits changes to git                                               |
+| 2     | Developer       | Implementation                                                                                                      |
+| 3     | Reviewer        | Code review and approval                                                                                            |
+| 3.5   | Context-curator | Updates context files post-reviewer; provides backstop before commit                                                |
+| 4     | Committer       | Commits changes to git                                                                                              |
 
 **Phase 3.5 curator insertion**: When updating downstream templates due to orchestrator role changes, ensure Phase 3.5 exists between reviewer (Phase 3) and committer (Phase 4). The curator phase enforces the reviewer → curator → committer ordering. Remove any "Act now" skip logic that bypasses curator, as that breaks the ordering contract.
 

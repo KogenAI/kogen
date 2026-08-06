@@ -44,25 +44,25 @@ All forms compose with `bypass_roles` prelude (if specified): the bypass exits e
 
 ### Registry Fields
 
-| Field          | Type   | Purpose                                                                                                                                        | Default  |
-| -------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Field          | Type   | Purpose                                                                                                                       | Default  |
+| -------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `id`           | string | Hook filename slug (kebab-case); MUST match the `.sh` (Claude) filename — compiler contract is `id == filename`, no overrides | —        |
-| `kind`         | string | `denial` (full-file generation) or `registration` (header-only injection)                                                                      | `denial` |
-| `generated`    | bool   | Compiler owns the output; `make install` regenerates it. Only valid for `kind: denial`                                                         | —        |
-| `event`        | string | Hook event (PreToolUse, SubagentStop, Stop)                                                                                                    | —        |
-| `source`       | string | COMMAND or FILE_PATH                                                                                                                           | COMMAND  |
-| `mode`         | string | deny or allowlist                                                                                                                              | deny     |
-| `tool_guard`   | string | Canonical registry form; rendered to hook header as `matcher:`. Tool name (Bash, Write, Edit, …)                                               | —        |
-| `match`        | string | Single regex-neutral pattern (mutually exclusive with `match_all`). Only for `kind: denial`                                                    | —        |
-| `match_all`    | list   | AND-logic pattern list (mutually exclusive with `match`). Only for `kind: denial`                                                              | —        |
-| `message`      | string | Denial reason shown to agent. Only for `kind: denial`                                                                                          | —        |
-| `signal`       | string | Hook signal (none, AGENT_TYPE, …)                                                                                                              | none     |
-| `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer)                                                                            | `*`      |
-| `bypass_roles` | list   | Launcher-mode values (debug, shape, ops) that exit before gates                                                                                | —        |
-| `harnesses`    | string | Canonical form: `claude` (registry enum). Rendered to hook header as `claude_code`. Deployment target (all, claude)                            | all      |
-| `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only                                  | —        |
-| `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only                                                                                          | —        |
-| `surface`      | string | Rendered as `# surface: {surface}` header comment (e.g., `user_global`); documents hook exposure scope                                         | —        |
+| `kind`         | string | `denial` (full-file generation) or `registration` (header-only injection)                                                     | `denial` |
+| `generated`    | bool   | Compiler owns the output; `make install` regenerates it. Only valid for `kind: denial`                                        | —        |
+| `event`        | string | Hook event (PreToolUse, SubagentStop, Stop)                                                                                   | —        |
+| `source`       | string | COMMAND or FILE_PATH                                                                                                          | COMMAND  |
+| `mode`         | string | deny or allowlist                                                                                                             | deny     |
+| `tool_guard`   | string | Canonical registry form; rendered to hook header as `matcher:`. Tool name (Bash, Write, Edit, …)                              | —        |
+| `match`        | string | Single regex-neutral pattern (mutually exclusive with `match_all`). Only for `kind: denial`                                   | —        |
+| `match_all`    | list   | AND-logic pattern list (mutually exclusive with `match`). Only for `kind: denial`                                             | —        |
+| `message`      | string | Denial reason shown to agent. Only for `kind: denial`                                                                         | —        |
+| `signal`       | string | Hook signal (none, AGENT_TYPE, …)                                                                                             | none     |
+| `role`         | string | Role scope: `*` (all) or pipe-separated (e.g., committer\|reviewer)                                                           | `*`      |
+| `bypass_roles` | list   | Launcher-mode values (debug, shape, ops) that exit before gates                                                               | —        |
+| `harnesses`    | string | Canonical form: `claude` (registry enum). Rendered to hook header as `claude_code`. Deployment target (all, claude)           | all      |
+| `rationale`    | string | Hook rationale text (optional, supports multi-line via YAML block scalar `\|`). For `kind: registration` only                 | —        |
+| `canonicalize` | string | Path canonicalization (repo_relative); FILE_PATH only                                                                         | —        |
+| `surface`      | string | Rendered as `# surface: {surface}` header comment (e.g., `user_global`); documents hook exposure scope                        | —        |
 
 ### Pattern Dialect
 
@@ -83,10 +83,10 @@ FORBIDDEN: backreferences (`\1`, `\2`), lookahead/lookbehind (`(?=...)`, `(?!...
 3. For each `kind: denial` entry with `generated: true`, emits:
    - Bash hook → `harnesses/claude/hooks/<id>.sh` (chmod +x)
    - **Marker-replace branch**: if committed `index.ts` already contains `// BEGIN-GENERATED-ENFORCEMENT-BLOCK` and `// END-GENERATED-ENFORCEMENT-BLOCK` markers, the compiler replaces content BETWEEN markers only — it does NOT auto-remove hand-written import/register lines OUTSIDE the markers. One-time manual cleanup required after widening the generated set; thereafter file is idempotent.
-5. **`hook_registrations.py --emit-headers` reads `kind: registration` entries → injects `# HOOK-MANIFEST:` header into each hand-written `.sh` (body unchanged).** CRITICAL: `render_header()` must NOT include a trailing `#` terminator line — `inject_header()` preserves the terminator from the original file body. Header span is injected idempotently via mktemp/cmp/mv.
-6. `hook_registrations.py` rescans hook source dirs and rewrites `claude-code-settings.json`
-7. Committed generated files must be byte-identical to compiler output → `make enforce-registry-parity` gate (part of `make test`) verifies this
-8. Committed hook headers must match registry entries → `make hook-header-parity` gate (part of `make test`) verifies this
+4. **`hook_registrations.py --emit-headers` reads `kind: registration` entries → injects `# HOOK-MANIFEST:` header into each hand-written `.sh` (body unchanged).** CRITICAL: `render_header()` must NOT include a trailing `#` terminator line — `inject_header()` preserves the terminator from the original file body. Header span is injected idempotently via mktemp/cmp/mv.
+5. `hook_registrations.py` rescans hook source dirs and rewrites `claude-code-settings.json`
+6. Committed generated files must be byte-identical to compiler output → `make enforce-registry-parity` gate (part of `make test`) verifies this
+7. Committed hook headers must match registry entries → `make hook-header-parity` gate (part of `make test`) verifies this
 
 **Order dependency**: emit-headers (step 5) MUST run before hook-parity (step 6) so the settings generated from hook headers reflect the freshly-injected headers. Reversed order → stale settings.
 

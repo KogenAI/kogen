@@ -4,14 +4,14 @@
 
 ## Layer Map
 
-| #   | Layer                  | Where it lives                   | Who reads it                                   | When it applies                           |
-| --- | ---------------------- | -------------------------------- | ---------------------------------------------- | ----------------------------------------- |
-| 1   | Shared rules           | OCG shared rules dir             | Subagents (baked), orchestrator (live via `@`) | Every invocation                          |
-| 2   | Subagent system prompt | `~/.claude/agents/<role>.md`     | Subagent on spawn                              | Every subagent invocation                 |
+| #   | Layer                  | Where it lives                   | Who reads it                                              | When it applies                                 |
+| --- | ---------------------- | -------------------------------- | --------------------------------------------------------- | ----------------------------------------------- |
+| 1   | Shared rules           | OCG shared rules dir             | Subagents (baked), orchestrator (live via `@`)            | Every invocation                                |
+| 2   | Subagent system prompt | `~/.claude/agents/<role>.md`     | Subagent on spawn                                         | Every subagent invocation                       |
 | 3   | Project context files  | `./context/*.md`                 | Orchestrator + curator; a cycle role only per typed grant | When the loop's `files_to_touch` lists the path |
-| 4   | Runtime CLI flags      | Built by your platform's harness | Claude Code CLI                                | Per-invocation; append-only               |
-| 5   | Hooks                  | `~/.claude/hooks/*.sh`           | Claude Code runtime                            | On tool use / subagent stop / stop events |
-| 6   | Recipes                | `./codegen/recipes/`             | Developer on demand                            | When known pattern matches task           |
+| 4   | Runtime CLI flags      | Built by your platform's harness | Claude Code CLI                                           | Per-invocation; append-only                     |
+| 5   | Hooks                  | `~/.claude/hooks/*.sh`           | Claude Code runtime                                       | On tool use / subagent stop / stop events       |
+| 6   | Recipes                | `./codegen/recipes/`             | Developer on demand                                       | When known pattern matches task                 |
 
 ## Layer 1 — Shared Rules (baked into system prompt)
 

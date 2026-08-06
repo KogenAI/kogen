@@ -27,8 +27,7 @@ fail=0
 
 # ── Arm (a): dispatcher source must carry zero phantom-status tokens ─────────
 for f in \
-    "$CODEGEN_ROOT/harnesses/claude/call-dispatch.sh" \
-    ; do
+    "$CODEGEN_ROOT/harnesses/claude/call-dispatch.sh"; do
     hits=0
     hits="$(grep -c "clarifying_question\|CLARIFYING_QUESTION" "$f" 2>/dev/null || true)"
     hits="${hits:-0}"

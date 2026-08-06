@@ -25,10 +25,10 @@ Typical firing order for common roles:
 
 ### Reviewer (`agent_type=reviewer-phoenix` / `reviewer-static`)
 
-| Event                      | Hooks that fire                                                     |
-| -------------------------- | --------------------------------------------------------------------- |
-| `Bash`                     | `reviewer-bash-allowlist` (default-deny), `session-log-writer-only` |
-| `Read`                     | `subagent-read-discipline`, `usage-rules-grep-guard`                |
+| Event                      | Hooks that fire                                                      |
+| -------------------------- | -------------------------------------------------------------------- |
+| `Bash`                     | `reviewer-bash-allowlist` (default-deny), `session-log-writer-only`  |
+| `Read`                     | `subagent-read-discipline`, `usage-rules-grep-guard`                 |
 | `Edit`/`Write`/`MultiEdit` | `reviewer-guard` (Write/MultiEdit denied; Edit gated to session log) |
 
 ### Committer (`agent_type=committer`)

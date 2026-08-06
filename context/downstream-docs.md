@@ -6,8 +6,8 @@ Templates + committed rendered outputs for AGENTS.md/CLAUDE.md that downstream c
 
 ## Sources → Outputs (2 `.j2` → 4 committed `.md`)
 
-| `.j2` source                       | Renders to (per-harness param)                                                              |
-| ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| `.j2` source                       | Renders to (per-harness param)                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `shared/apps/AGENTS-phoenix.md.j2` | `shared/apps/AGENTS-phoenix.md` (agents param) + `shared/apps/CLAUDE-phoenix.md` (claude param) |
 | `shared/apps/AGENTS-static.md.j2`  | `shared/apps/AGENTS-static.md` (agents param) + `shared/apps/CLAUDE-static.md` (claude param)   |
 

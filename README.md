@@ -28,7 +28,7 @@ Three Makefile targets, increasing cost:
 
 | Target             | What it runs                                                                     | Cost                      | When                   |
 | ------------------ | -------------------------------------------------------------------------------- | ------------------------- | ---------------------- |
-| `make test`        | bash hook unit tests + `codegen-build_test.sh` + hermetic ExUnit  | seconds                   | every commit           |
+| `make test`        | bash hook unit tests + `codegen-build_test.sh` + hermetic ExUnit                 | seconds                   | every commit           |
 | `make test-stacks` | ExUnit stack scaffold tests under `test_harness/` for both harnesses in parallel | minutes + real LLM tokens | before deploy          |
 | `make test-all`    | `test` → `test-stacks` → writes `test_harness/last_green.json`                   | same as test-stacks       | weekly pre-deploy gate |
 

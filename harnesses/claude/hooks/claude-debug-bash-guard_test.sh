@@ -253,7 +253,6 @@ else
     pass=$((pass + 1))
 fi
 
-
 run_test_env() {
     local desc="$1"
     local expected="$2"

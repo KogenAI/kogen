@@ -195,7 +195,6 @@ run_test "babysit + Plan denied" "deny" "babysit" "$(mk_agent 'Plan')"
 # 19k: babysit + developer-phoenix-backend allowed (project subagents always allowed)
 run_test "babysit + developer-phoenix-backend allowed" "allow" "babysit" "$(mk_agent 'developer-phoenix-backend')"
 
-
 run_test_env() {
     local desc="$1"
     local expected="$2"
