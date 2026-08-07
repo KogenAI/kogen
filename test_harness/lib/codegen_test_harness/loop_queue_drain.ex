@@ -560,6 +560,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           git_publish_fn: Keyword.get(opts, :git_publish_fn, &default_git_publish_fn/2),
           timed_out_slugs: MapSet.new(),
           failed_slugs: MapSet.new(),
+          reconciliation_slugs: MapSet.new(),
           parked_branches: %{},
           consecutive_fails: 0,
           drafted_count: 0,
@@ -1004,6 +1005,32 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       state.ordered_fn.(state.ready_dir)
       |> Enum.reject(&MapSet.member?(exclude, &1))
 
+    # Dependency-blocked pitches are not selected this scan, so their
+    # recovery must stay dormant too. Assessing them before a prerequisite
+    # ships could freeze an otherwise valid later replay against a temporary
+    # base; only a slug that can actually be selected reaches quarantine.
+    blocked = state.blocked_fn.() |> reblock_for_exclude(state, exclude)
+
+    selectable =
+      Enum.reject(ordered, fn slug ->
+        MapSet.member?(state.timed_out_slugs, slug) or
+          MapSet.member?(state.failed_slugs, slug) or Map.has_key?(blocked, slug)
+      end)
+
+    # Recovery compatibility is decided before selecting/spawning a child.
+    # An incompatible dossier is durably quarantined by
+    # InterruptedCycleRecovery and remains in ready/ for an operator; it
+    # must never consume retries or cause an unrelated pitch to wait.
+    case quarantine_recoveries(state, selectable) do
+      {:ok, state, _selectable} ->
+        run_ordered_loop(state, ordered, exclude, shipped_count, concluded_count)
+
+      {:error, reason} ->
+        {:error, "queue: recovery preflight failed — #{reason}"}
+    end
+  end
+
+  defp run_ordered_loop(state, ordered, exclude, shipped_count, concluded_count) do
     blocked = state.blocked_fn.() |> reblock_for_exclude(state, exclude)
 
     state = print_new_blocked(state, blocked)
@@ -1011,7 +1038,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     remaining =
       Enum.reject(ordered, fn slug ->
         MapSet.member?(state.timed_out_slugs, slug) or
-          MapSet.member?(state.failed_slugs, slug) or Map.has_key?(blocked, slug)
+          MapSet.member?(state.failed_slugs, slug) or
+          MapSet.member?(state.reconciliation_slugs, slug) or Map.has_key?(blocked, slug)
       end)
 
     case remaining do
@@ -1034,6 +1062,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
                   :error -> slug
                 end
               end)
+          )
+        end
+
+        if MapSet.size(state.reconciliation_slugs) > 0 do
+          IO.puts(
+            :stderr,
+            "queue: SKIPPED (reconciliation required) bucket: " <>
+              Enum.join(state.reconciliation_slugs, ", ")
           )
         end
 
@@ -1061,6 +1097,35 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           :ok ->
             run_watch_preflight(state, slug, shipped_count, concluded_count)
         end
+    end
+  end
+
+  defp quarantine_recoveries(state, ordered) do
+    Enum.reduce_while(ordered, {:ok, state, []}, fn slug, {:ok, state, eligible} ->
+      case InterruptedCycleRecovery.preflight_materialization(state.cwd, slug) do
+        {:ok, {:reconciliation_required, dossier}} ->
+          unless MapSet.member?(state.reconciliation_slugs, slug) do
+            IO.puts(
+              :stderr,
+              "queue: #{slug} requires reconciliation at #{dossier["reconciliation_head"]}; " <>
+                "skipping without spawning a child"
+            )
+          end
+
+          {:cont,
+           {:ok, %{state | reconciliation_slugs: MapSet.put(state.reconciliation_slugs, slug)},
+            eligible}}
+
+        {:ok, _} ->
+          {:cont, {:ok, state, [slug | eligible]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, state, eligible} -> {:ok, state, Enum.reverse(eligible)}
+      {:error, reason} -> {:error, reason}
     end
   end
 

@@ -173,18 +173,20 @@ defmodule Mix.Tasks.Codegen.Loop do
             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: roles),
             requested_slug,
             fn ->
-              run_claimed_cycle(
-                requested_source,
-                pitch_arg,
-                cwd,
-                harness,
-                stack,
-                fallback_model,
-                max_budget_usd,
-                effort_override,
-                commit_subject_flag,
-                review_budget_opts
-              )
+              with :ok <- recovery_claimable(requested_source, cwd, requested_slug) do
+                run_claimed_cycle(
+                  requested_source,
+                  pitch_arg,
+                  cwd,
+                  harness,
+                  stack,
+                  fallback_model,
+                  max_budget_usd,
+                  effort_override,
+                  commit_subject_flag,
+                  review_budget_opts
+                )
+              end
             end
           )
         end
@@ -226,6 +228,27 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   defp source_slug({:file, abs}), do: Path.basename(abs, ".md")
   defp source_slug(:literal), do: nil
+
+  # Reject a known quarantined recovery BEFORE claiming ready/ -> building/.
+  # This is the normal path after a prior incompatible replay; the narrow
+  # post-claim restore in run_claimed_cycle/10 only protects a race between
+  # this assessment and materialization.
+  defp recovery_claimable(:literal, _cwd, _slug), do: :ok
+
+  defp recovery_claimable({:file, _abs}, cwd, slug) do
+    case InterruptedCycleRecovery.preflight_materialization(cwd, slug) do
+      {:ok, {:reconciliation_required, dossier}} ->
+        {:error,
+         "recovery for #{slug} requires reconciliation at #{dossier["reconciliation_head"]}: " <>
+           "#{dossier["reconciliation_reason"]}"}
+
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
   # The pitch's own `scope:` frontmatter list — the deterministic deliverable
   # file list the build is graded against. `resolve_pitch/2` pipes
@@ -381,8 +404,53 @@ defmodule Mix.Tasks.Codegen.Loop do
     # thread into `OrchestrationLoop.run/1` so the preflight-clean-tree
     # guard is bypassed for the recovered dirty bytes and the cycle starts
     # at the earliest role whose prior output remains trustworthy.
-    {recovery_mode, recovery_role} = materialize_recovery(source, cwd, slug, stack)
+    case materialize_recovery(source, cwd, slug, stack) do
+      {:error, reason} ->
+        # A recovery replay can still lose a race after its pre-claim
+        # preflight (for example, HEAD changes between checks). It has not
+        # run a role or dirtied the tree, so do not park/supersede the
+        # original dossier: return possession to ready/ and let its newly
+        # persisted reconciliation-required state block future claims.
+        restore_claim(source, cwd)
+        emit_loop_telemetry({:error, reason})
+        {:error, reason}
 
+      {recovery_mode, recovery_role} ->
+        run_materialized_cycle(
+          source,
+          pitch,
+          pitch_scope,
+          cwd,
+          slug,
+          harness,
+          stack,
+          fallback_model,
+          max_budget_usd,
+          effort_override,
+          commit_subject,
+          review_budget_opts,
+          recovery_mode,
+          recovery_role
+        )
+    end
+  end
+
+  defp run_materialized_cycle(
+         source,
+         pitch,
+         pitch_scope,
+         cwd,
+         slug,
+         harness,
+         stack,
+         fallback_model,
+         max_budget_usd,
+         effort_override,
+         commit_subject,
+         review_budget_opts,
+         recovery_mode,
+         recovery_role
+       ) do
     stamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
     cycle_id = "#{stamp}_#{slug}"
     head_before = git_head(cwd)
@@ -444,12 +512,12 @@ defmodule Mix.Tasks.Codegen.Loop do
   # `{nil, nil}` (no recovery, byte-for-byte today's behavior) when there is
   # no active dossier for this slug, or when the dossier belongs to a
   # different slug/was never selected this invocation. A materialization
-  # `{:error, reason}` is fatal — the claimed pitch's own recovered bytes
-  # could not be safely restored, so the cycle must not proceed pretending
-  # nothing happened.
+  # error is returned to the claim owner, which restores building/ to
+  # ready/ without parking or superseding the already-preserved recovery.
   @doc false
   @spec materialize_recovery({:file, String.t()} | :literal, String.t(), String.t(), String.t()) ::
           {CodegenTestHarness.InterruptedCycleRecovery.disposition() | nil, String.t() | nil}
+          | {:error, String.t()}
   def materialize_recovery(:literal, _cwd, _slug, _stack), do: {nil, nil}
 
   def materialize_recovery({:file, _abs}, cwd, slug, stack) do
@@ -467,11 +535,12 @@ defmodule Mix.Tasks.Codegen.Loop do
           "codegen.loop: recovered #{slug} (#{disposition}) — resuming at " <>
             OrchestrationLoop.display_resume_role(role)
         )
+
         {disposition, role}
 
       {:error, reason} ->
         Mix.shell().error("codegen.loop: FAILED — #{reason}")
-        exit({:shutdown, 1})
+        {:error, reason}
     end
   end
 

@@ -541,7 +541,9 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   # default: writing a dossier never reorders queue/direct selection.
 
   @dossier_schema_version 1
-  @dossier_stages ~w(parking parked history_written ready materialized superseded completed)a
+  @dossier_stages ~w(
+    parking parked history_written ready materialized reconciliation_required superseded completed
+  )a
 
   @type dossier_stage ::
           :parking
@@ -549,6 +551,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
           | :history_written
           | :ready
           | :materialized
+          | :reconciliation_required
           | :superseded
           | :completed
   @type disposition :: :exact | :advanced | :operator | :conflict
@@ -1056,6 +1059,136 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   end
 
   @doc """
+  Checks whether an active recovery can be replayed onto the current checkout
+  without changing it. An incompatible replay is recorded once as the typed
+  `"reconciliation_required"` dossier state, retaining the observed HEAD,
+  reason, and best-effort conflicting paths. Later callers read that durable
+  state without repeating either the patch check or a raw apply.
+
+  This is deliberately a narrow quarantine seam, not an automatic resolver:
+  the pitch, recovery ref, and worktree remain untouched for reconciliation.
+  """
+  @spec preflight_materialization(String.t(), String.t()) ::
+          {:ok, :none | :ready | {:reconciliation_required, map()}} | {:error, String.t()}
+  def preflight_materialization(cwd, slug) do
+    with {:ok, dossier} <- active_dossier(cwd, slug) do
+      case dossier do
+        nil ->
+          {:ok, :none}
+
+        %{"stage" => "reconciliation_required"} = dossier ->
+          {:ok, {:reconciliation_required, dossier}}
+
+        %{"recovery_commit" => nil} ->
+          {:ok, :none}
+
+        %{} = dossier ->
+          check_materialization(cwd, slug, dossier)
+      end
+    end
+  end
+
+  defp check_materialization(cwd, slug, dossier) do
+    source_base = dossier["source_base_sha"]
+    recovery_commit = dossier["recovery_commit"]
+
+    with {:ok, ref_exists} <- verify_recovery_ref(cwd, dossier),
+         {:ok, head} <- git(cwd, ["rev-parse", "HEAD"]) do
+      cond do
+        not ref_exists ->
+          require_reconciliation(
+            cwd,
+            slug,
+            dossier,
+            head,
+            "recovery ref #{dossier["recovery_ref"]} is missing or moved",
+            dossier["changed_paths"] || []
+          )
+
+        head != source_base and not ancestor?(cwd, source_base, head) ->
+          require_reconciliation(
+            cwd,
+            slug,
+            dossier,
+            head,
+            "current HEAD #{head} does not descend from source base #{source_base}",
+            dossier["changed_paths"] || []
+          )
+
+        true ->
+          # A dirty tree belongs to the established materialization path:
+          # it parks operator edits on their own ref before applying the
+          # recovery. Do not turn an expected same-path apply conflict into
+          # a durable quarantine before that preservation can run.
+          case git(cwd, ["status", "--porcelain", "--untracked-files=all"]) do
+            {:ok, status} ->
+              if String.trim(status) == "" do
+                check_recovery_patch(cwd, slug, dossier, head, source_base, recovery_commit)
+              else
+                {:ok, :ready}
+              end
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+      end
+    end
+  end
+
+  defp check_recovery_patch(cwd, slug, dossier, head, source_base, recovery_commit) do
+    patch = Path.join(System.tmp_dir!(), ".ohms-preflight-#{System.unique_integer([:positive])}")
+
+    result =
+      with {:ok, diff} <- git_raw_diff(cwd, source_base, recovery_commit),
+           :ok <- File.write(patch, diff),
+           {:ok, _} <- git(cwd, ["apply", "--check", patch]) do
+        {:ok, :ready}
+      else
+        {:error, reason} ->
+          require_reconciliation(
+            cwd,
+            slug,
+            dossier,
+            head,
+            "recovery apply check refused: #{reason}",
+            conflict_paths(reason, dossier["changed_paths"] || [])
+          )
+      end
+
+    File.rm(patch)
+    result
+  end
+
+  defp require_reconciliation(cwd, slug, dossier, head, reason, paths) do
+    quarantined =
+      Map.merge(dossier, %{
+        "stage" => "reconciliation_required",
+        "reconciliation_head" => head,
+        "reconciliation_reason" => reason,
+        "reconciliation_paths" => paths,
+        "updated_at" => now()
+      })
+
+    case write_dossier!(cwd, slug, dossier["transaction_id"], quarantined) do
+      :ok -> {:ok, {:reconciliation_required, quarantined}}
+      {:error, write_reason} -> {:error, write_reason}
+    end
+  end
+
+  defp conflict_paths(reason, fallback_paths) do
+    matched =
+      (Regex.scan(~r/patch failed:\s*([^:\n]+):/, reason, capture: :all_but_first) ++
+         Regex.scan(~r/error:\s*([^:\n]+):\s*patch does not apply/, reason,
+           capture: :all_but_first
+         ))
+      |> Enum.map(fn [path] -> String.trim(path) end)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+
+    if matched == [], do: fallback_paths, else: matched
+  end
+
+  @doc """
   Materializes the ACTIVE dossier for `slug` (when one exists and the
   claimed pitch is genuinely ready-only) onto the current working tree via a
   checked binary-diff replay — never a branch checkout, soft-reset, or HEAD
@@ -1082,23 +1215,27 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   @spec materialize(String.t(), String.t()) ::
           {:ok, :none | {disposition(), map()}} | {:error, String.t()}
   def materialize(cwd, slug) do
-    with {:ok, dossier} <- active_dossier(cwd, slug) do
-      case dossier do
-        nil ->
+    with {:ok, preflight} <- preflight_materialization(cwd, slug) do
+      case preflight do
+        :none ->
           {:ok, :none}
 
-        %{"recovery_commit" => nil} ->
-          {:ok, :none}
+        {:reconciliation_required, dossier} ->
+          {:error,
+           "recovery for #{slug} requires reconciliation at #{dossier["reconciliation_head"]}: " <>
+             "#{dossier["reconciliation_reason"]}"}
 
-        # NOTE: there is deliberately NO scope clause here. A dossier whose
-        # changed paths exceeded the pitch's declared `scope:` (any
-        # `ownership` verdict, including legacy `"mismatch"` dossiers
-        # written by older builds) materializes like any other — losing
-        # finished, reviewed, approved bytes is strictly worse than any
-        # sprawl a refusal would have prevented. The expansion is recorded
-        # on the dossier and in the pitch's history, not enforced.
-        %{} = d ->
-          do_materialize(cwd, slug, d)
+        :ready ->
+          {:ok, dossier} = active_dossier(cwd, slug)
+          do_materialize(cwd, slug, dossier)
+
+          # NOTE: there is deliberately NO scope clause here. A dossier whose
+          # changed paths exceeded the pitch's declared `scope:` (any
+          # `ownership` verdict, including legacy `"mismatch"` dossiers
+          # written by older builds) materializes like any other — losing
+          # finished, reviewed, approved bytes is strictly worse than any
+          # sprawl a refusal would have prevented. The expansion is recorded
+          # on the dossier and in the pitch's history, not enforced.
       end
     end
   end
@@ -1227,11 +1364,32 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
             {:ok, {disposition, dossier}}
           end
         else
-          {:error, reason} -> {:error, "recovery apply refused: #{reason}"}
+          {:error, reason} -> quarantine_apply_failure(cwd, dossier, reason)
         end
 
       File.rm(patch)
       result
+    end
+  end
+
+  defp quarantine_apply_failure(cwd, dossier, reason) do
+    slug = dossier["slug"]
+
+    with {:ok, head} <- git(cwd, ["rev-parse", "HEAD"]),
+         {:ok, {:reconciliation_required, quarantined}} <-
+           require_reconciliation(
+             cwd,
+             slug,
+             dossier,
+             head,
+             "recovery apply refused: #{reason}",
+             conflict_paths(reason, dossier["changed_paths"] || [])
+           ) do
+      {:error,
+       "recovery for #{slug} requires reconciliation at #{quarantined["reconciliation_head"]}: " <>
+         "#{quarantined["reconciliation_reason"]}"}
+    else
+      {:error, quarantine_reason} -> {:error, quarantine_reason}
     end
   end
 

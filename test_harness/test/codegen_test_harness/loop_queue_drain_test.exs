@@ -3844,6 +3844,72 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
   # on.
 
   describe "drain/1 startup recovery — InterruptedCycleRecovery wiring" do
+    test "quarantines an incompatible recovery once, skips it on restart, and ships unrelated ready work",
+         ctx do
+      {_, 0} = System.cmd("git", ["init", "-q", ctx.dir])
+      System.cmd("git", ["-C", ctx.dir, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", ctx.dir, "config", "user.name", "Test"])
+      File.write!(Path.join(ctx.dir, ".gitignore"), "codegen/\n")
+      File.write!(Path.join(ctx.dir, "tracked.txt"), "base\n")
+      System.cmd("git", ["-C", ctx.dir, "add", "-A"])
+      System.cmd("git", ["-C", ctx.dir, "commit", "-qm", "base"])
+
+      bad_pitch = Path.join(ctx.ready_dir, "bad.md")
+      File.write!(bad_pitch, "---\nscope: [tracked.txt]\n---\n# Pitch: bad\n")
+      write_pitch(ctx.ready_dir, "good")
+      File.write!(Path.join(ctx.dir, "tracked.txt"), "recovered bytes\n")
+
+      assert {:ok, parked} =
+               CodegenTestHarness.InterruptedCycleRecovery.park_failure(
+                 cwd: ctx.dir,
+                 pitch_path: bad_pitch,
+                 slug: "bad",
+                 namespace: "queue-fail",
+                 cause: "test"
+               )
+
+      File.write!(Path.join(ctx.dir, "tracked.txt"), "conflicting landed bytes\n")
+      System.cmd("git", ["-C", ctx.dir, "add", "tracked.txt"])
+      System.cmd("git", ["-C", ctx.dir, "commit", "-qm", "conflict"])
+      {head, 0} = System.cmd("git", ["-C", ctx.dir, "rev-parse", "HEAD"])
+      head = String.trim(head)
+
+      spawned = start_agent([])
+
+      opts =
+        shipped_opts(ctx,
+          ordered_fn: fn _ -> ["bad", "good"] end,
+          spawn_fn: fn slug, _h, _s, _cwd, _jsonl ->
+            Agent.update(spawned, &(&1 ++ [slug]))
+            {:exit_code, 0}
+          end,
+          git_ancestor_fn: fn _cwd, _ancestor, _descendant -> true end
+        )
+
+      assert {:ok, 1} = quiet_drain(opts)
+      assert Agent.get(spawned, & &1) == ["good"]
+      assert File.exists?(bad_pitch)
+
+      assert {:ok, quarantined} =
+               CodegenTestHarness.InterruptedCycleRecovery.active_dossier(ctx.dir, "bad")
+
+      assert quarantined["stage"] == "reconciliation_required"
+      assert quarantined["reconciliation_head"] == head
+      assert quarantined["recovery_ref"] == parked["recovery_ref"]
+      assert {"", 0} = System.cmd("git", ["-C", ctx.dir, "status", "--porcelain"])
+
+      # A fresh drain sees the durable state and makes zero child attempts
+      # for bad; the pitch/ref/worktree remain available for reconciliation.
+      assert {:ok, 0} = quiet_drain(opts)
+      assert Agent.get(spawned, & &1) == ["good"]
+
+      assert {:ok, ^quarantined} =
+               CodegenTestHarness.InterruptedCycleRecovery.active_dossier(ctx.dir, "bad")
+
+      assert File.exists?(bad_pitch)
+      assert {"", 0} = System.cmd("git", ["-C", ctx.dir, "status", "--porcelain"])
+    end
+
     test "reconcile error short-circuits BEFORE publish_preflight_fn ever runs", ctx do
       building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
       File.mkdir_p!(building_dir)

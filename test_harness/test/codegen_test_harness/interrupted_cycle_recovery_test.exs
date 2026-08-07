@@ -546,8 +546,48 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
       conflict_head = git_head!(cwd)
 
       assert {:error, reason} = InterruptedCycleRecovery.materialize(cwd, "probe")
-      assert reason =~ "apply refused"
+      assert reason =~ "apply check refused"
       assert git_head!(cwd) == conflict_head
+      assert git_status!(cwd) == ""
+    end
+
+    test "incompatible replay is durably quarantined without a second apply attempt", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "recovered\n")
+
+      assert {:ok, parked} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      File.write!(Path.join(cwd, "tracked.txt"), "conflict\n")
+      commit!(cwd, "conflict")
+      head = git_head!(cwd)
+
+      assert {:error, first_reason} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert first_reason =~ "requires reconciliation"
+
+      assert {:ok, quarantined} = InterruptedCycleRecovery.active_dossier(cwd, "probe")
+      assert quarantined["stage"] == "reconciliation_required"
+      assert quarantined["reconciliation_head"] == head
+      assert quarantined["reconciliation_reason"] =~ "apply check refused"
+      assert quarantined["reconciliation_paths"] == ["tracked.txt"]
+      assert quarantined["recovery_ref"] == parked["recovery_ref"]
+      assert git_status!(cwd) == ""
+
+      # The durable state is authoritative: later startup reads it without
+      # another replay attempt or any mutation of the dossier/ref/worktree.
+      assert {:error, second_reason} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert second_reason == first_reason
+      assert {:ok, ^quarantined} = InterruptedCycleRecovery.active_dossier(cwd, "probe")
       assert git_status!(cwd) == ""
     end
 

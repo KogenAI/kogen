@@ -340,6 +340,8 @@ selection). This is DISTINCT from the pre-existing per-pitch failure-evidence ma
 (the parked-branch string `write_demotion`/`format_failure_row` writes on a deterministic-failure
 demotion) — unrelated maps, unrelated lifecycles, never touched by this change.
 
+Before selecting a ready slug, the drain performs a recovery compatibility preflight. A replay that cannot apply is durably marked `reconciliation_required` with its observed HEAD, reason, and conflict paths, then is held in `ready/` and printed in a distinct skipped bucket. A fresh `--queue --watch` run reads that state without a raw apply or child spawn; unrelated ready pitches continue in ordinary order. The recovery ref and clean worktree are preserved for an operator to reconcile.
+
 **Queue terminal failures share the same dossier authority** as a direct terminal failure
 (`context/loop.md` § Interrupted-Cycle Recovery): `park_failed_tree/2` (both the general catch-all arm
 and the terminal-marker arm) calls `InterruptedCycleRecovery.park_failure/1` — namespace `"queue-fail"` —

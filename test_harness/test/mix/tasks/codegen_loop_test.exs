@@ -56,7 +56,8 @@ defmodule Mix.Tasks.Codegen.LoopTest do
   test "terminal telemetry preserves an actionable failure cause" do
     output =
       ExUnit.CaptureIO.capture_io(fn ->
-        assert :ok = Loop.emit_loop_telemetry({:error, "gate verdict=failed after reviewer rework"})
+        assert :ok =
+                 Loop.emit_loop_telemetry({:error, "gate verdict=failed after reviewer rework"})
       end)
 
     telemetry = output |> String.trim() |> Jason.decode!()
@@ -760,9 +761,8 @@ defmodule Mix.Tasks.Codegen.LoopShellTest do
       assert File.read!(Path.join(tmp, "tracked.txt")) == "changed\n"
     end
 
-    test "a materialization error exits {:shutdown, 1} — never proceeds pretending nothing happened",
+    test "a materialization error returns for the claim owner to restore safely",
          %{tmp: tmp} do
-      Mix.shell(Mix.Shell.Process)
       init_repo!(tmp)
       File.write!(Path.join(tmp, ".gitignore"), "codegen/\n")
       pitch_path = seeded_pitch!(tmp, "probe", "tracked.txt")
@@ -784,11 +784,15 @@ defmodule Mix.Tasks.Codegen.LoopShellTest do
       File.write!(Path.join(tmp, "tracked.txt"), "conflict\n")
       commit!(tmp, "conflict")
 
-      assert catch_exit(Loop.materialize_recovery({:file, pitch_path}, tmp, "probe", "phoenix")) ==
-               {:shutdown, 1}
+      assert {:error, reason} =
+               Loop.materialize_recovery({:file, pitch_path}, tmp, "probe", "phoenix")
 
-      assert_receive {:mix_shell, :error, [msg]}
-      assert msg =~ "FAILED"
+      assert reason =~ "requires reconciliation"
+
+      assert {:ok, dossier} =
+               CodegenTestHarness.InterruptedCycleRecovery.active_dossier(tmp, "probe")
+
+      assert dossier["stage"] == "reconciliation_required"
     end
   end
 
