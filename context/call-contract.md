@@ -130,4 +130,4 @@ from this list.
 
 ## Trigger Keywords
 
-call envelope, codegen-call contract, result.status, retry_meta, session_id null, harness asymmetry, transient error, LoopQueue.transient?, call-dispatch.sh, usage block, cache_read_input_tokens, metrics field, ajv schema validation, stream idle watchdog, MCP server child, process group, guardian, orphan cleanup
+call envelope, codegen-call contract, result.status, retry_meta, session_id null, harness asymmetry, transient error, LoopQueue.transient?, call-dispatch.sh, usage block, cache_read_input_tokens, metrics field, ajv schema validation, stream idle watchdog, watchdog cause, late result event, MCP server child, process group, guardian, orphan cleanup

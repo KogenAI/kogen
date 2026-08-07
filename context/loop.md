@@ -21,7 +21,7 @@ owns the ExUnit stack SUITE, not the engine under test).
 | `CodegenTestHarness.BuildSignalHandler` (`build_signal_handler.ex`) | SIGINT/SIGTERM → halt 130                                                          |
 | `CodegenTestHarness.LoopQueueDrain` (`loop_queue_drain.ex`)         | multi-pitch drain — separate domain, own owner file                                |
 
-## The Decider Map — What Is LLM vs Deterministic (swept, exactly 2 LLM stages of 42)
+## LLM vs Deterministic — 2 of 42 Stages
 
 | Stage                                                             | Decider                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Where                                                                                                                                         |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -215,137 +215,15 @@ launchers) share this one helper — see `context/harnesses.md` § Orchestrated 
 
 ## Warm-Resume
 
-`resume_checkpoint/3` inspects `codegen/gate-pending/cycle-state.json` for a durable checkpoint
-(`GATED`/`REVIEWED`/`CURATED` states map to resuming at `reviewer`/`context-curator`/the commit step
-respectively via `resume_role_for_state/1`). A resume is honored ONLY when ALL of: the mapped resume
-role/step is present in `roles` for this stack, **the checkpoint's stamped `slug` matches this cycle's
-`opts[:slug]` (identity guard — prevents pitch A's orphaned checkpoint from being resumed by pitch B)**,
-the gate verdict at checkpoint time reads as non-error (missing verdict is NOT silently treated as clear —
-an explicit check), the matched tree still has publishable working-tree changes (a clean tree restarts
-instead of entering reviewer/curator with no diff), and `resume_head_unmoved?/2` confirms HEAD hasn't
-moved since the checkpoint (stale checkpoint after an external commit → full run, never a corrupt
-resume). Resume replaces the full pitch/plan prompt with a continuation prompt (the resumed session
-already carries prior tool-call history in its transcript). An empty or foreign slug → full run, never
-resume.
+`resume_checkpoint/3` reads `codegen/gate-pending/cycle-state.json` for durable checkpoint (`GATED`/`REVIEWED`/`CURATED` map to resuming at reviewer/curator/commit-step). Honor when: mapped role is in this stack's roles, slug matches `opts[:slug]` (prevent pitch A's orphaned checkpoint resuming under pitch B), gate verdict non-error, tree has publishable changes, HEAD unmoved since checkpoint. Clean tree or foreign slug → full run.
 
 ## Interrupted-Cycle Recovery
 
-`CodegenTestHarness.InterruptedCycleRecovery.reconcile/1` recovers a killed loop's sole
-`codegen/pitches/building/*.md` claim before the NEXT cycle spawns any role — informational only, never a
-selection veto. Returns `{:ok, :none}` / `{:ok, {:resume, slug}}` / `{:ok, {:requeued, slug, recovery}}` /
-`{:error, reason}`; the legacy `interrupted-recovery.json` journal and its 4-stage machine
-(`parking`→`parked`→`history_written`→`resume_pending`, transaction-identity-checked) are unchanged for
-this narrow stranded-claim case.
+Dossiers (`codegen/gate-pending/recoveries/<slug>/<tx-id>.json`) are authority for controlled terminal failures and same-slug resume. `park_failure/1` mints per failure (identity: pitch basename + scope, never branch). Scope is REPORT-ONLY: changed paths beyond declared `scope:` tag with `ownership: expanded` + `scope_expansion` list in build-failure row. `materialize/2` replays via checked `git diff --binary` + `apply --check`/`apply` (never checkout/reset). `:exact` resumes at earliest trustworthy role; `:advanced`/`:operator` reconcile at stack developer. Dossier-derived `:recovery_role` wins over on-disk checkpoint. `codegen-drain assign` refuses cross-node transfer of slug with local dossier. `write_build_result!` atomically writes `build-result.json` only when `CODEGEN_BUILD_INVOCATION_ID` is set; `codegen-build` requires match before exit 0.
 
-**Per-transaction dossiers** (`codegen/gate-pending/recoveries/<slug>/<transaction-id>.json`, see pitch
-"restarted builds resume owned work") are the authority for CONTROLLED terminal failures (direct or
-queue) and same-slug resume. `park_failure/1` mints one dossier per failure (stages
-`parking`→`parked`→`history_written`→`ready`→`materialized`/`superseded`→`completed`); identity is the
-CLAIMED pitch's own basename + `scope:`, never branch name. Scope is REPORT-ONLY at every recovery
-stage: changed paths beyond the pitch's declared `scope:` tag `ownership: "expanded"` plus
-`scope_expansion: [paths]` and name those paths in the pitch's build-failure history row — they never
-restrict materialization, because the REVIEWER adjudicates scope expansion and planning cannot enumerate
-every line an implementation needs. An unreadable/unparseable pitch tags `ownership: "unknown"` and
-likewise still materializes. One active dossier per slug; a repeat failure chains a superseding
-transaction, never overwrites.
+## Curator-Doc Check Gates
 
-`materialize/2` resolves the slug's active dossier (reselecting that slug IS adoption) and replays it via
-CHECKED `git diff --binary` + `apply --check`/`apply` — never checkout/reset/HEAD-move. `:exact` (HEAD ==
-source base, tree byte-identical) resumes at the earliest trustworthy role
-(`resume_role_for_recovery/3`: GATED→reviewer, REVIEWED→curator, CURATED→the commit step, else→developer);
-`:advanced`/`:operator` (moved HEAD / any dirty tree, parked onto a second
-`recovery/operator/<slug>/<ts>` ref first — including operator bytes beyond the declared scope, which are
-preserved and recorded as `operator_ownership`/`operator_scope_expansion`, never refused) reconcile at
-the stack's developer (`resolve_developer_role/1`
-— the first `developer-*` role in the sequence, both stacks); a missing/moved ref, non-descendant HEAD,
-conflicting apply, or an already-materialized dossier refuses non-zero, ref/checkout untouched. A
-dossier-derived `:recovery_role` wins over any on-disk checkpoint because materialization is newer;
-`park_failure/1` clears retired checkpoint files before its dossier becomes ready. `run/1`'s
-`:recovery_mode` opt bypasses `preflight_clean_tree!/1` ONLY for a materialized run. `complete_transaction!/2` retires the
-dossier after the ordinary post-commit-step commit/tree/gate verification — the recovery commit stays
-backup evidence, never a second publish.
-
-`codegen-drain assign` refuses (exit 1) a cross-node transfer of a slug with a local dossier — machine-
-local state, not part of pitch-file transfer; same-node placement stays a no-op.
-
-`OrchestrationLoop.with_startup_guard/2` wraps solo `BuildLock` acquisition/reclaim/orphan-refusal AROUND
-this step. The solo Mix task passes `build_lock_held: true` so the lock is acquired once. Queue startup
-recovers at the equivalent `with`-chain point — see `context/loop-queue-drain.md`.
-
-After a verified commit, `write_build_result!/3` atomically writes
-`codegen/gate-pending/build-result.json` (`invocation_id`, `slug`, `status: success`, `head`,
-`updated_at`) ONLY when `CODEGEN_BUILD_INVOCATION_ID` is set (the wrapper's mktemp'd single-flight
-sentinel) — absent the env var, it is a no-op, never a fabricated success record. `codegen-build` reads
-this file back and requires its `invocation_id`/`slug`/`head` to match the CURRENT dispatch plus a clear
-`gate-result.json` before exiting 0 — see `context/harnesses.md` § Orchestrated Build Mode.
-
-## Curator-Doc Check (Three Legs)
-
-The post-review curator delegation carries an authoritative stage block: the loop gate already passed
-for the exact tree and the reviewer approved it; the curator consumes typed `ev:learned` events and
-MUST NOT run the full gate/test command. Targeted routing/factcheck checks remain allowed. Formatting
-and the three scans below are loop-owned, and `ensure_gate_graded_this_tree!` still re-gates before
-the commit step whenever curator edits change the tree. Turn-0 orientation repair does not receive this
-post-review claim; a resumed `REVIEWED` checkpoint does.
-
-**Pre-scan at curator-stage entry (first-prompt seed) + post-turn backstop**: the `run_roles/4`
-`context-curator` clause runs the SAME scan (`run_curator_doc_scan/2`) BEFORE the first curator
-invocation, not only after it. A violation already present at curator-stage entry (from earlier
-developer/reviewer edits this cycle) is threaded straight into the FIRST curator prompt via the shared
-`run_orientation_repair/1` engine (same floor/progress/ceiling bound the post-turn leg uses) — one paid
-call instead of an empty first call plus a second rework respawn. `:infra`-classified violations abort
-loud (`LoopGate.infra_abort!/2`) before any invocation. `run_curator_doc_check/6` (below) remains the
-AUTHORITATIVE post-turn backstop, unconditionally, for drift the curator's OWN edits introduce this turn
-— the pre-scan only changes WHEN an already-present violation first reaches a curator prompt, never what
-counts as a violation or how repair is bounded. See pitch `a-deterministic-doc-check-costs-no-extra-turn`.
-
-`run_curator_doc_check/6` shells `default_curator_doc_scan/2`
-(dispatched via the `:curator_doc_check_fn` seam, still arity-1 for the 30+ existing test overrides —
-the default closure captures `gate_opts(opts)` itself, since this step runs upstream of
-`run_gate_once/2`'s own `gate_opts/1` call and has to resolve `:cycle_log` on its own). Three checks,
-joined into one violations message via `combine_curator_doc_results/2` folded twice:
-
-1. **Index-parity** (`context-index-parity-scan.sh <cwd>`) — cross-file `context/*.md` add/delete vs
-   `PROJECT_CONTEXT.md` § Domain Context Files parity.
-2. **Factcheck backstop** (`context-factcheck-scan.sh <cwd> <doc>...`) — diff-scoped to this cycle's own
-   `changed_orientation_docs/1`; catches a Bash write the PreToolUse edit-gate hook never saw.
-3. **Consumption check** (`curator-consumption-scan.sh <cwd> <cycle_log>`) — asserts that when this
-   cycle captured upstream `{"ev":"learned"}` events (developer/reviewer), the curator either
-   routed at least one into a durable doc (working-tree diff or untracked file matching
-   `^(context/[^/]+\.md|shared/rules/.*\.md)$`) or recorded the drop as its own `{"ev":"learned"}`
-   event. The curator rule (`shared/rules/roles/context-curator.md` § Constraints) now MANDATES this
-   recorded drop whenever nothing gets routed — a silent drop is a rule violation, not the accepted norm
-   — so the scan is satisfiable on the curator's first turn instead of a rework round-trip.
-   **Path-filter trap**: curator edits are conventionally spelled `codegen/rules/**`, but that is a
-   symlink into `shared/rules/` and `/codegen/` is gitignored — `git` NEVER reports that spelling
-   (`git check-ignore` errors "pathspec is beyond a symbolic link"). Filters against `git diff`/`ls-files`
-   output MUST use `shared/rules/**` or match nothing and pass vacuously. `opts[:cycle_log]` nil (most
-   unit tests) skips this leg with `{:clean}`; present-but-unreadable is fail-closed (exit 1). See pitch
-   `no-role-work-recorded-without-its-learning`.
-
-Violations from any leg that are NOT classified `:infra` (`LoopGate.classify_failure/1`) route into the
-progress-bounded rework loop (`:max_curator_doc_cycles`, floor 1, ceiling 15 via `repair_allowed?/4`);
-`:infra`-classified violations raise `LoopGate.infra_abort!/2` immediately (unsatisfiable by any curator
-edit). Budget exhaustion fails the cycle LOUD (`curator_doc_check_exhausted/3`) — the curator is the only
-role that may edit `context/*.md`, so a violation it did not clear must not travel onward as if it had
-been fixed. Exhaustion writes NO terminal marker: the cycle fails but stays retry-eligible, because the
-curator owns every path the scan can name and a second pass routinely clears what one bounded pass did
-not. Compare the gate's `verdict=failed` marker, which is kept — a red gate is a reproduced defect.
-
-### Turn-0 Sibling — Inherited Orientation-Doc Drift
-
-`OrchestrationLoop.run_orientation_preflight/4` runs the SAME index-parity + factcheck scan pair at turn
-0, before any role is invoked or paid for (see `:orientation_preflight_fn` moduledoc doc, and
-`default_orientation_preflight/1`). A `{:violations, v}` result is CLASSIFIED
-(`classify_orientation_violations/1`): when every line names a curator-writable doc
-(`context/<basename>.md` or `PROJECT_CONTEXT.md`), the loop lazily resolves `context-curator`
-(`preflight_roles!/3`) and runs a BOUNDED repair loop via the SHARED `run_orientation_repair/1` engine
-(the same floor/progress/ceiling bound and prompt artifact this section's post-curator check uses) —
-never advancing `CURATED`. Any other shape — a line naming `AGENTS.md`/`CLAUDE.md`/another surface, an
-unparseable line, or a MIXED writable/non-writable set — still raises `InfraAbort` unconditionally: NEVER
-a partial repair. Repair failure (invocation error, no-progress, or ceiling exhaustion) returns a
-deterministic `{:error, _}`, never `InfraAbort` — and, like its post-curator sibling, writes NO terminal
-marker, so the pitch stays retry-eligible instead of being parked.
+Post-review: gate already passed, reviewer approved. Curator consumes `ev:learned` events, MUST NOT run full gate/test. Three scans via `run_curator_doc_check/6`: (1) index-parity (`context/*.md` ↔ `PROJECT_CONTEXT.md`), (2) factcheck (diff-scoped changes), (3) consumption (upstream learned events routed to docs or recorded as curator's own learned/no-learning). Violations route to repair loop (max 15 cycles); exhaustion fails loud. Pre-scan at curator-stage entry (not only after) threads violations into first prompt. Turn-0 preflight runs same index+factcheck pair before any role invokes; curator-writable violations route to bounded repair; mixed/non-writable violations abort loud.
 
 ## Infra Abort
 
@@ -356,62 +234,14 @@ Inherited orientation-doc drift raises this ONLY when at least one violated doc 
 write surface, or the violation set is unparseable/mixed — see the Turn-0 Sibling paragraph above for the
 curator-writable-only repair path that replaced the prior unconditional abort.
 
-## Timing/Metrics Telemetry (consume, don't produce)
+## Terminal Reason & Cause
 
-The terminal telemetry result keeps `terminal_reason` as the stable
-`loop_committed`/`loop_failed` classification and adds `terminal_cause` for a
-failure's concrete returned reason. Emission occurs after commit verification,
-so the record describes the invocation's actual terminal disposition rather
-than an earlier provisional loop result.
+`terminal_reason` (`loop_committed`/`loop_failed`) is stable; `terminal_cause` is the concrete failure reason (when applicable). Emission after commit verification. Gate verdict and telemetry carry `:session_id` attributed to the invoking developer role (fallback: `dev_role_from_ctx/1`), never anonymous `""`. `gate-result.sh` derives `duration_s` from ISO8601 timestamps (portable via `jq`'s `fromdateiso8601`), recording `null` when unparseable.
 
-`OrchestrationLoop.accumulate_telemetry/2` and the private `write_cycle_summary/6` both widen their read
-of the per-role envelope's `usage`/`metrics` fields rather than adding a new clock — both harnesses'
-`call-dispatch.sh` already compute `latency_ms` and (Claude only, success path) lift `duration_ms` /
-`duration_api_ms` / `ttft_ms` / `permission_denials` / `stop_reason` from the underlying `result` event
-(see `context/call-contract.md`). **Unknown stays unknown**: a dedicated `t_opt_int/1` helper (sibling
-of the pre-existing `t_int/1`, which backs arithmetic sums and stays byte-identical) carries an
-absent/malformed value through as `nil` rather than coercing it to a fabricated `0` — a `cycle-summary.jsonl`
-row with `"duration_ms": null` means unknown, never "instant". `metrics` is entirely OMITTED (not
-zeroed) by the envelope on any abnormal call; the loop reads it as `nil`-when-absent for the same
-reason, never defaulting to `%{}`.
+## Terminal Marker — Deterministic Exhaustion
 
-`LoopGate.run_gate/2`'s gate-verdict calls now carry an attributable `:session_id` — `gate_opts/2`
-(private) resolves it from the developer role that just ran (either the caller's own already-known
-`dev_role` parameter, or `dev_role_from_ctx/1` as a fallback) instead of the anonymous `""` default
-`LoopGate.run_gate/2` itself still falls back to when no opt is supplied. `gate-result.sh`'s
-`write_gate_result` derives `duration_s` from the same `started`/`ended` ISO8601 timestamps it already
-receives (via `jq`'s `fromdateiso8601`, portable across macOS/Linux — never a bash `date -d`/`date -j`
-diff), recording `null` when either timestamp is unparseable.
-
-## Terminal Marker — Deterministic Exhaustion vs Recoverable Transient
-
-`OrchestrationLoop.write_terminal_marker/3` writes `codegen/gate-pending/terminal-state.json`
-(`{terminal: true, reason, owner}`) whenever a rework loop's OWNING role genuinely exhausts its
-progress+ceiling bound over a REPRODUCED DEFECT — gate rework (`do_gate_loop_rework/9`) and the env-var
-check (`run_env_var_step_rework/9`) — immediately alongside the `{:error, ...}` it already returns. This
-DOES NOT change the `{:error}`/exit-1 return value; it is a durable, additional signal distinguishing a
-DETERMINISTIC exhaustion ("this cycle cannot succeed however many times you run it") from a RECOVERABLE
-transient exit (a process death mid-cycle).
-
-The two orientation-doc producers deliberately do NOT write it. `curator_doc_check_exhausted/3` and
-`turn0_repair_exhausted/3` return their `{:error, ...}` unmarked: a marker is read BEFORE
-`retry_eligible?/5` and routes straight to park + skip + circuit breaker, and documentation drift has not
-earned that claim — the curator writes every path the scan can name, the scan is deterministic over the
-tree, and a re-primed second pass routinely lands what one bounded pass did not.
-
-Deliberately NOT `InfraAbort`/exit 3 on a SUCCESSFUL exhaustion write: every marker-writing caller is
-PITCH-SPECIFIC (this cycle's own gate/doc/env/orientation exhaustion) — the next pitch in a drain is
-unaffected, so the queue should skip and continue rather than HALT. Exit 3 stays reserved for genuinely
-repo-wide infra faults (see Infra Abort above). The marker WRITE ITSELF, however, is REQUIRED, not
-best-effort: a failed `mkdir`/`File.write` now raises `InfraAbort` (`"terminal-marker-write"`) rather than
-degrading to a stderr note — `LoopQueueDrain` reads this marker BEFORE `retry_eligible?/5`, so a silently
-lost write would leave a deterministic exhaustion unmarked and risk a blind full-price queue retry.
-
-The marker is unlinked at the start of every FULL (non-resumed) cycle — see `run_body/1`'s `:full`
-branch — so a stale marker from an earlier, already-concluded cycle never leaks into a fresh one.
-`LoopQueueDrain` is the consumer: see the loop-queue-drain owner file's "Deterministic Failure — Skip"
-section for how a marked nonzero exit routes to park+skip+breaker instead of `retry_eligible?/5`.
+`write_terminal_marker/3` writes `codegen/gate-pending/terminal-state.json` when rework loop's owning role exhausts progress+ceiling over reproduced defect (gate rework, env-var check). Durable signal: deterministic exhaustion ("cannot succeed however many runs") vs recoverable transient. Marker read BEFORE `retry_eligible?/5` routes to park+skip+circuit-breaker. Orientation-doc producers do NOT write it (scan is deterministic, re-primed second pass routinely lands). Marker write is REQUIRED (failed write raises `InfraAbort`); unlinked at FULL cycle start. Consumer: `LoopQueueDrain`.
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, recovery dossier, recoveries/<slug>/<txid>.json, schema_version, dossier stages, transaction identity, materialize, resume_role_for_recovery, recovery_mode, park_failure, recovery/interrupted branch, recovery/operator branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, same-harness advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`, born-dead detector, borndeaddetector, defer-marker, test-coverage deletion floor, TestCoverageFloor, test-deletion-exempt, sub-slice forbidden, whole-pitch builds, whole-pitch completeness backstop, codegen-commit, deterministic commit step, run_commit_step
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, max-budget-usd, spend cap, infra abort, LoopGate, gate verdict, LLM vs deterministic, curator doc check, index-parity, factcheck, ev:learned routing, duration_ms, telemetry, terminal marker, terminal-state.json, terminal cause, terminal reason, BEAM OS PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, role-model-binding.json, dispatch provenance, InterruptedCycleRecovery, build-result.json, recovery dossier, materialize, recovery_mode, park_failure, run_orientation_preflight, classify_orientation_violations, orientation-doc violations, curator-writable doc, maybe_advise, advisor_plan, codegen-advise, born-dead detector, defer-marker, test-coverage deletion floor, TestCoverageFloor, test-deletion-exempt, whole-pitch builds, codegen-commit, deterministic commit step
