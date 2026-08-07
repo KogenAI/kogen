@@ -20,9 +20,3 @@ TDD → targeted tests for files you touched (`mix test path/to/specific_test.ex
 ## Credo Convergence (Required Before Handoff)
 
 Before handoff, run `mix credo --strict` scoped to changed files. Fix ALL violations — no "minor" skips. Re-run until clean; uncounted against gate cap. Never rely on the post-turn gate to catch residuals — one residual = one wasted round-trip.
-
-## Stuck-loop escalation
-
-Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
-
-Call the `mcp__codegen__advise` tool with a `context` string carrying `<problem> + <what I tried> + <current failure>`. It asks a model from a different provider for one recommendation. Apply it, continue, and do not escalate again this loop.

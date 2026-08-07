@@ -40,11 +40,12 @@ export function runCodegenLog(args: string[], stdinBody?: string): ExecResult {
 }
 
 /**
- * Run codegen-advise for the CURRENT build harness, piping the stuck-context
- * text on stdin (codegen-advise reads stdin when --context is omitted). The
- * OPPOSITE provider is chosen internally by codegen-advise itself — this
- * server never picks it. Sibling of runCodegenLog; a distinct helper (not a
- * reuse) since it wraps a different binary with a different argv shape.
+ * Run codegen-advise for the CURRENT build harness, piping the context text
+ * on stdin (codegen-advise reads stdin when --context is omitted). The
+ * stronger-model tier of the SAME harness is chosen internally by
+ * codegen-advise itself — this server never picks it. Sibling of
+ * runCodegenLog; a distinct helper (not a reuse) since it wraps a different
+ * binary with a different argv shape.
  */
 export function runCodegenAdvise(
   current: "claude_code",

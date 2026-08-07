@@ -1,39 +1,22 @@
 #!/usr/bin/env bash
-# codegen-advise — black-box "problem in, plan out" advisor call, run on the
-# OPPOSITE provider from the CURRENT build harness.
+# codegen-advise — black-box "problem in, plan out" advisor call: the SAME
+# build harness, at a STRONGER model and higher effort than the caller.
 #
 # Usage:
 #   codegen-advise --harness=claude_code --context @<abs-path>
 #   codegen-advise --harness=claude_code <<< "problem text on stdin"
 #
-# --harness names the CURRENT build harness (the one that is stuck); this
-# script flips to the OPPOSITE provider via a FIXED internal mapping — this
-# is a deliberate operator decision (see pitch "a stuck build asks the other
-# provider" § No-gos): not configurable.
-#
-# STATUS: DORMANT — this repo currently installs exactly one provider
-# (Anthropic, via the claude harness). A second-opinion call is only worth
-# making against a DIFFERENT vendor: escalating to a bigger Claude model is
-# already what the give-up boundary's model escalation does, and the advisor
-# exists precisely because another vendor sees different failure modes. With
-# one provider there is no opposite row to flip to, so every invocation
-# reports that and exits 1 WITHOUT making a model call. No replacement
-# provider is invented here.
-#
-# This degradation is safe by existing contract, not by accident — every
-# caller already treats a non-zero exit as ADDITIVE-failure:
-#   - OrchestrationLoop.do_maybe_advise/2 maps any non-zero exit to `:error`
-#     and returns the context unchanged; the build proceeds.
-#   - The `advise` MCP tool returns isError text; the dev's turn continues.
-#
-# Restoring it: add the second provider's row to the mapping below and drop
-# the guard. The argv contract, system prompt, JSON schema and envelope
-# handling are all still here and unchanged.
+# --harness names the CURRENT build harness (the one asking); this script
+# maps it to a stronger tier of the SAME harness via a FIXED internal
+# mapping — deliberate operator decision (see pitch "a stuck developer asks
+# before it guesses" D1): not configurable. There is one installed harness
+# today, so a cross-vendor second opinion is unbuildable by definition; when
+# a second harness exists, restoring a cross-vendor flip is a separate,
+# later bet.
 #
 # Exit codes:
 #   0   — advisor plan printed on stdout
-#   1   — no opposite provider configured, or codegen-call returned a
-#         non-success envelope / unparseable stdout
+#   1   — codegen-call returned a non-success envelope / unparseable stdout
 #   2   — usage error: missing/unknown --harness, missing/empty --context
 #   127 — codegen-call binary not found
 
@@ -122,16 +105,15 @@ if [[ -z "${CONTEXT_TEXT//[[:space:]]/}" ]]; then
     usage
 fi
 
-# Fixed opposite-provider mapping — deliberately not configurable (see
-# header + pitch No-gos). One provider is installed, so there is no opposite
-# row. Fail additively here rather than silently re-asking the SAME vendor,
-# which would be a second opinion in name only.
+# Fixed same-harness-stronger-model mapping — deliberately not configurable
+# (see header + D1). One harness is installed today; the second opinion is
+# a stronger tier of it, not a different vendor.
 ADVISOR_HARNESS=""
 ADVISOR_MODEL=""
 case "$HARNESS" in
 claude_code)
-    printf 'codegen-advise: no opposite provider is configured — %s is the only installed harness, so a second-opinion call would re-ask the same vendor. Skipping the advisor; the build continues unaffected.\n' "$HARNESS" >&2
-    exit 1
+    ADVISOR_HARNESS="claude_code"
+    ADVISOR_MODEL="opus"
     ;;
 esac
 ADVISOR_EFFORT="high"

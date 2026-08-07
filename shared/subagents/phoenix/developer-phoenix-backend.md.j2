@@ -18,12 +18,6 @@ TDD → schemas/migrations (if needed) → `mix ecto.migrate && mix ecto.rollbac
 
 Before handoff, run `mix credo --strict` scoped to changed files. Fix ALL violations — no "minor" skips. Re-run until clean; uncounted against gate cap. Never rely on the post-turn gate to catch residuals — one residual = one wasted round-trip.
 
-## Stuck-loop escalation
-
-If the gate log contains 2+ prior `FAILED ❌` sections for this task → escalate BEFORE the next retry (do not patch again). The counter is persistent across spawns — read it from the active step log, not from memory.
-
-Same approach failed twice OR same test failing 3+ times → escalate BEFORE the next retry. ONE escalation per loop.
-
-Call the `mcp__codegen__advise` tool with a `context` string carrying `<problem> + <what I tried> + <current failure>`. It asks a model from a different provider for one recommendation. Apply it, continue, and do not escalate again this loop.
+## Architectural root causes go back, not forward
 
 If you identify a root cause that implies an **architectural or design choice** (sync vs async, data-structure/algorithm change, comparator/ordering semantics, schema shape), do NOT implement it. Stop, record the diagnosis in your section body, and hand back to the orchestrator. Do not redesign the approach yourself.

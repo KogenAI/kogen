@@ -219,23 +219,29 @@ function registerReaders(server: McpServer) {
   );
 
   // Current build harness is baked in server-side — the caller never picks
-  // it. codegen-advise itself flips to the OPPOSITE provider internally.
+  // it. codegen-advise maps it to a STRONGER model of the SAME harness.
   server.registerTool(
     "advise",
     {
-      title: "Ask the opposite provider for a recovery plan",
+      title: "Ask a stronger model before you guess",
       description:
-        "Call this when you are STUCK: repeated gate failures, going in circles, or a " +
-        "rework attempt that keeps failing the same way. Shells codegen-advise, which asks " +
-        "a DIFFERENT model on a DIFFERENT provider for a recovery plan. This is a full " +
-        "opposite-provider LLM call — expect it to take tens of seconds.",
+        "Call this when you are UNSURE, not just when something has already failed: " +
+        "choosing between two approaches with no stated reason to prefer one, unable to " +
+        "state the correctness of what you are about to write as a testable claim, relying " +
+        "on a tool or language mechanism whose behavior you have assumed but not verified, " +
+        "or about to depart from a numbered decision in the pitch you were handed. Also use " +
+        "it on repeated gate failures or a rework attempt that keeps failing the same way. " +
+        "Shells codegen-advise, which asks a stronger model of the SAME harness, with clean " +
+        "context, for a recovery plan. This is a full LLM call — expect it to take tens of " +
+        "seconds.",
       inputSchema: {
         context: z
           .string()
           .min(1)
           .describe(
-            "Describe what is stuck: the gate failure, what you already tried, and the " +
-              "current failure. The more concrete, the better the plan.",
+            "Describe what you are unsure about — the mechanism you assumed, the choice " +
+              "you're weighing, or a failure, if there is one — but there does not need to " +
+              "be one. The more concrete, the better the plan.",
           ),
       },
     },

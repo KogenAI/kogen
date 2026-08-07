@@ -14,6 +14,9 @@ SENTINEL7="NEVER fail open by default"
 SENTINEL8="Lowercase letters/digits/hyphens only. No colons"
 SENTINEL9="context files are hints, probes are evidence"
 SENTINEL9_DEVELOPER_PROBES="only \`ran:\` against git/fs counts"
+SENTINEL10_UNVERIFIED_MECHANISM="the error-path behavior of any mechanism you did not run"
+SENTINEL11_ADVISE_UNSURE="Ask a stronger model before you guess"
+SENTINEL12_ADVISE_NO_OPPOSITE_PROVIDER="opposite provider"
 
 pass=0
 fail=0
@@ -164,6 +167,56 @@ assert_contains \
     "edit-target provenance FORBIDDEN in developer.md source" \
     "$CODEGEN_DIR/shared/rules/roles/developer.md" \
     "$SENTINEL9_DEVELOPER_PROBES"
+
+# ── Tests: unverified-mechanism provenance clause + advise semantics ──────────
+# "a stuck developer asks before it guesses" — the assumed: forbid extends to
+# unverified error-path behavior, and the advise tool/prompt trigger on
+# uncertainty rather than repeated failure. No harness runs jq itself, so the
+# jq-swallow incident this pitch is about has no direct regression test here
+# — this sentinel is the guard against it recurring unverified.
+assert_contains \
+    "unverified-mechanism FORBIDDEN clause in developer.md source" \
+    "$CODEGEN_DIR/shared/rules/roles/developer.md" \
+    "$SENTINEL10_UNVERIFIED_MECHANISM"
+
+assert_contains \
+    "advise tool description leads with uncertainty, not failure" \
+    "$CODEGEN_DIR/harnesses/claude/mcp-server/src/tools.ts" \
+    "$SENTINEL11_ADVISE_UNSURE"
+
+assert_absent \
+    "advise tool no longer promises an opposite-provider call" \
+    "$CODEGEN_DIR/harnesses/claude/mcp-server/src/tools.ts" \
+    "$SENTINEL12_ADVISE_NO_OPPOSITE_PROVIDER"
+
+assert_absent \
+    "advise-system-prompt.md no longer promises a DIFFERENT provider" \
+    "$CODEGEN_DIR/harnesses/claude/advise-system-prompt.md" \
+    "DIFFERENT provider"
+
+assert_absent \
+    "codegen-advise no longer reports a dormant opposite-provider guard" \
+    "$CODEGEN_DIR/codegen-advise" \
+    "$SENTINEL12_ADVISE_NO_OPPOSITE_PROVIDER"
+
+for dev_tpl in \
+    developer-phoenix-backend.md.j2 \
+    developer-phoenix-frontend.md.j2; do
+    assert_absent \
+        "Stuck-loop escalation block removed from $dev_tpl" \
+        "$CODEGEN_DIR/shared/subagents/phoenix/$dev_tpl" \
+        "## Stuck-loop escalation"
+done
+
+assert_absent \
+    "Stuck-loop escalation block removed from developer-static.md.j2" \
+    "$CODEGEN_DIR/shared/subagents/static/developer-static.md.j2" \
+    "## Stuck-loop escalation"
+
+assert_contains \
+    "backend developer prompt still hands back architectural root causes" \
+    "$CODEGEN_DIR/shared/subagents/phoenix/developer-phoenix-backend.md.j2" \
+    "architectural or design choice"
 
 # Tests 33-34: reviewer-static eager stack includes (vite + tailwind)
 assert_contains \

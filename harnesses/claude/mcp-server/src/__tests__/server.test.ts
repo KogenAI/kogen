@@ -6,17 +6,31 @@
 //  - body arrives on stdin, never argv
 //  - non-zero codegen-log exit surfaces as isError with stderr, never swallowed
 //  - gate_status/log_read return real shapes from fixture files
+//  - the `advise` tool's registered description triggers on UNCERTAINTY, not
+//    only repeated failure, and no longer promises a different vendor (see
+//    pitch "a stuck developer asks before it guesses")
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+
 import { ROLES, sectionToolName, appendToolName, findRole } from "../roles";
 import { runCodegenLog } from "../exec";
 import { readGateStatus, readLogWithEnv } from "../readers";
+import { registerAllTools } from "../tools";
 
 // Hermetic wrapper: readLogWithEnv requires an explicit envLogPath (empty
 // string = no override) so ambient CODEGEN_LOG_PATH from the CALLING
@@ -249,5 +263,66 @@ describe("readers.ts — log_read views", { concurrency: 1 }, () => {
     await withTmpDir((dir) => {
       assert.throws(() => readLog(dir, "full"), /no cycle log found/);
     });
+  });
+});
+
+describe("tools.ts — advise registration semantics", { concurrency: 1 }, () => {
+  async function listRegisteredTools() {
+    const server = new McpServer({ name: "codegen-test", version: "0.0.0" });
+    registerAllTools(server);
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+    try {
+      const { tools } = await client.listTools();
+      return tools;
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  }
+
+  test("advise tool is actually registered and reachable over the protocol", async () => {
+    const tools = await listRegisteredTools();
+    const advise = tools.find((t) => t.name === "advise");
+    assert.ok(advise, "advise tool missing from tools/list");
+  });
+
+  test("advise description triggers on uncertainty, not only repeated failure", async () => {
+    const tools = await listRegisteredTools();
+    const advise = tools.find((t) => t.name === "advise")!;
+    assert.match(advise.description ?? "", /UNSURE/);
+    assert.match(
+      advise.description ?? "",
+      /assumed but not verified|no stated reason to prefer one/,
+    );
+  });
+
+  test("advise never promises a different vendor/provider", () => {
+    // Static-source assertion (not a live listTools call): the wording this
+    // pitch removes must not resurface anywhere in the registration module,
+    // not just in the one field already asserted above. __dirname at test
+    // runtime is dist/__tests__ (compiled output); src/ is a sibling of
+    // dist/ one level up from the mcp-server root.
+    const src = readFileSync(
+      join(__dirname, "..", "..", "src", "tools.ts"),
+      "utf8",
+    );
+    assert.doesNotMatch(src, /opposite provider/i);
+    assert.doesNotMatch(src, /DIFFERENT provider/);
+  });
+
+  test("advise context schema no longer requires a failure to exist", async () => {
+    const tools = await listRegisteredTools();
+    const advise = tools.find((t) => t.name === "advise")!;
+    const contextDesc = (
+      advise.inputSchema?.properties?.context as { description?: string }
+    )?.description;
+    assert.ok(contextDesc, "advise context param has no description");
+    assert.match(contextDesc, /does not need to\s+be one|need not be one/);
   });
 });

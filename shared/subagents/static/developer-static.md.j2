@@ -18,10 +18,4 @@ Domain context: read `context/*.md` only when the loop's typed `files_to_touch` 
 
 Read the pitch body at the top of your prompt → edit source → NEVER run builds → `mise exec -- npm install` for new deps only → edit the files in `## Declared Scope`, plus any sibling the sweep proves is required (justify each extra in your section body) — context/rules updates are curator's job post-reviewer → call `codegen-log section developer-static --slug <slug>` (stdin body — full CLI contract in session-log rules § Ownership) to write your section at canonical rank, AND `codegen-log append developer-static --files-modified @- --slug <slug>` (JSON array of the same relative paths from `## Files Modified`) — this typed event grants the reviewer's Read on any `context/*.md` you touched (`<slug>` = build slug from orchestrator). Done: source updated, log appended.
 
-## Stuck-loop escalation
-
-Same approach failed twice OR same test fails 3+ times → escalate BEFORE next retry. ONE escalation per loop.
-
-Call the `mcp__codegen__advise` tool with a `context` string carrying `<problem> + <what I tried> + <current failure>`. It asks a model from a different provider for one recommendation. Apply it, continue, and do not escalate again this loop.
-
 {% include 'rules/stacks/static/developer-pre-done.md' %}

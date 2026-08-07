@@ -45,7 +45,7 @@ Unknown CLI/flag/env → `--help` or docs first. New external API → hit real e
 | `read:`    | Static proof — source file read, relevant line cited  |
 | `assumed:` | No proof; you believe it true but have not verified   |
 
-**FORBIDDEN**: `assumed:` for path derivation, env-var resolution, config-key presence, fallback-default behavior, or version-dependent behavior. These MUST be `ran:` or `read:`.
+**FORBIDDEN**: `assumed:` for path derivation, env-var resolution, config-key presence, fallback-default behavior, version-dependent behavior, or the error-path behavior of any mechanism you did not run. These MUST be `ran:` or `read:`. Cannot reach `ran:` or `read:`? That is a blocker, not a licence — do not write the line and then defend it in a comment.
 
 **FORBIDDEN for edit-target provenance**: `assumed:` AND `read:`-of-a-context-doc are BOTH forbidden when the claim is about an edit target's provenance (generated vs hand-authored, symlink vs file, what renders it). A context doc is a hint, not evidence — only `ran:` against git/fs counts (`git ls-files --stage <path>` for mode 120000=symlink / `readlink` / a grep of the generator-build wiring).
 

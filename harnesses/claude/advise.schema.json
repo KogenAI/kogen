@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "opposite-provider advisor recovery plan",
+  "title": "stronger-model advisor recovery plan",
   "type": "object",
   "additionalProperties": false,
   "required": ["plan", "confidence"],
