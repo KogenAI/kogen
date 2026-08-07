@@ -1,11 +1,15 @@
 # {{SITE_NAME}} — Project Context
 
+<!-- Fill in this file before it is read as authoritative — an unfilled field
+     below is left blank rather than as a bracketed placeholder, so a session
+     reading this sees "not yet filled in" rather than a claim. -->
+
 ## Overview
 
-- **What**: [What this site is and its purpose]
-- **URL**: https://[domain]
-- **Location**: `[app root]`
-- **Stack**: [Vite (vanilla or framework) + Tailwind v4]
+- **What**:
+- **URL**:
+- **Location**: `{{SITE_NAME}}`
+- **Stack**: Vite (vanilla or framework) + Tailwind v4
 
 ## Required Platforms
 
@@ -26,18 +30,16 @@ Detailed context is split by domain. **Load this index always. Load every row wh
 
 ## Always Load
 
-The following files are loaded unconditionally by the shape launcher at Tier 0 (foundational docs every shaping session needs, regardless of pitch topic):
+The following files are loaded unconditionally by the shape launcher at Tier 0 (foundational docs every shaping session needs, regardless of pitch topic). Basenames only, one per line — the launcher resolves each to `context/<name>`.
 
-- `context/development.md` — stack, build, conventions; always present
-- `context/core.md` — site content, structure, styling; always present
-- _(add your app's structural/repo-layout doc here when you create one)_
+- development.md
+- core.md
+<!-- add your app's structural/repo-layout doc basename here when you create one -->
 
 ## File Structure
 
-```
-[Filled in after first build based on chosen stack]
-```
+<!-- Filled in after first build based on chosen stack -->
 
 ## Integration Points
 
-- **[Integration]**: [How it connects]
+<!-- Add one bullet per external integration: **Name**: how it connects -->

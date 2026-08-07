@@ -80,7 +80,18 @@ if [[ -f "./PROJECT_CONTEXT.md" ]]; then
         "- "*)
             _bn="${_line#- }"
             _bn="${_bn%% *}"
+            # Tolerate both the documented bare-basename form (repo-structure.md)
+            # and the backticked/context/-prefixed form app authors hand-write
+            # (`context/development.md`) — strip backticks, strip a leading
+            # context/, then require a .md suffix so a stray non-doc token is
+            # skipped rather than resolved.
+            _bn="${_bn//\`/}"
+            _bn="${_bn#context/}"
             [[ -n "$_bn" ]] || continue
+            case "$_bn" in
+            *.md) : ;;
+            *) continue ;;
+            esac
             if [[ -f "./context/$_bn" ]]; then
                 CONTEXT_FLAGS+=(--append-system-prompt "$(cat "./context/$_bn")")
                 TIER0_LOADED="${TIER0_LOADED} ${_bn}"

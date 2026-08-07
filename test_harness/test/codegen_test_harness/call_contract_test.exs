@@ -86,6 +86,71 @@ defmodule CodegenTestHarness.CallContractTest do
     end
   end
 
+  describe "no caller in the tree passes a flag codegen-call rejects" do
+    @codegen_root Path.expand("../../..", __DIR__)
+
+    test "codegen-document's real codegen-call invocation does not pass --role" do
+      # codegen-document previously passed --role usage-rules; codegen-call
+      # rejects any --role flag outright (removed 2026-06-25). Scope the
+      # check to codegen-document's actual invocation line(s), not a
+      # repo-wide text grep — that would false-positive on doc mentions
+      # (context/*.md), this test's own name, and
+      # codegen-call_test.sh's INTENTIONAL --role=x rejection fixture.
+      codegen_document_path = Path.join(@codegen_root, "codegen-document")
+      source = File.read!(codegen_document_path)
+
+      invocation_lines =
+        source
+        |> String.split("\n")
+        |> Enum.filter(&(&1 =~ ~r/codegen-call\b/))
+
+      assert invocation_lines != [], "expected to find a codegen-call invocation line"
+
+      refute Enum.any?(invocation_lines, &(&1 =~ ~r/--role/)),
+             "codegen-document still passes --role to codegen-call (rejected, removed 2026-06-25):\n#{Enum.join(invocation_lines, "\n")}"
+    end
+
+    test "every literal --system-prompt @<path> target in codegen-document exists" do
+      # codegen-document's SYSTEM_PROMPT_FILE must resolve to a real,
+      # trackable (.md, not .gitignore'd *-system-prompt.txt) file.
+      codegen_document_path = Path.join(@codegen_root, "codegen-document")
+      source = File.read!(codegen_document_path)
+
+      assert source =~ ~r/SYSTEM_PROMPT_FILE="\$CODEGEN_DIR\/harnesses\/claude\/([^"]+)"/,
+             "expected codegen-document to declare SYSTEM_PROMPT_FILE"
+
+      [_, rel_path] =
+        Regex.run(~r/SYSTEM_PROMPT_FILE="\$CODEGEN_DIR\/harnesses\/claude\/([^"]+)"/, source)
+
+      assert String.ends_with?(rel_path, ".md"),
+             "SYSTEM_PROMPT_FILE must be .md — a .txt would be silently untracked by .gitignore's *-system-prompt.txt pattern, got: #{rel_path}"
+
+      full_path = Path.join([@codegen_root, "harnesses", "claude", rel_path])
+
+      assert File.exists?(full_path),
+             "codegen-document's SYSTEM_PROMPT_FILE does not exist on disk: #{full_path}"
+    end
+
+    test "codegen-document's whole-lock main() returns non-zero when failed_rules > 0" do
+      codegen_document_path = Path.join(@codegen_root, "codegen-document")
+      source = File.read!(codegen_document_path)
+
+      assert source =~ ~r/if \[ "\$failed_rules" -gt 0 \]/,
+             "expected main() to branch on failed_rules > 0"
+
+      # The branch must actually return/exit non-zero, not just print a warning —
+      # otherwise scaffold.sh's FATAL guard downstream is dead code.
+      [_, branch_body] =
+        Regex.run(
+          ~r/if \[ "\$failed_rules" -gt 0 \]; then(.*?)fi/s,
+          String.replace(source, "\n", "")
+        )
+
+      assert branch_body =~ "return 1",
+             "expected the failed_rules>0 branch to `return 1` so a non-zero exit propagates, got branch body: #{branch_body}"
+    end
+  end
+
   describe "envelope decode survives stderr noise ahead of stdout" do
     # These tests exercise the SAME `sh -c 'exec "$@" 2>"$CG_ERR"'` stream-split
     # mechanism used by both `OrchestrationLoop.run_call_split/4` (defp) and

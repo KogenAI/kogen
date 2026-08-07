@@ -1,10 +1,14 @@
 # {{PROJECT_NAME}} — Project Context
 
+<!-- Fill in this file before it is read as authoritative — an unfilled field
+     below is left blank rather than as a bracketed placeholder, so a session
+     reading this sees "not yet filled in" rather than a claim. -->
+
 ## Overview
 
-- **What**: [What this app does and its purpose]
-- **URL**: https://[domain]
-- **Location**: `[app root]`
+- **What**:
+- **URL**:
+- **Location**: `{{PROJECT_NAME}}`
 
 ## Required Platforms
 
@@ -20,10 +24,12 @@ Detailed context is split by business domain. **Load this index always. Load eve
 
 Split by distinct business domains — not just core + development. Each domain file should cover a cohesive area of functionality. `development.md` is always present; add as many domain files as the app needs.
 
-| File                     | Domain                        | Load when prompt mentions...   | Update when changing...                                 |
-| ------------------------ | ----------------------------- | ------------------------------ | ------------------------------------------------------- |
-| `context/[domain].md`    | [Business domain description] | [Prompt keywords or path glob] | [Module paths or file globs that belong to this domain] |
-| `context/development.md` | Tech stack, testing, env vars | Testing, CI, config, pitfalls  | `config/`, `mix.exs`, env vars, CI workflows            |
+<!-- Add one row per business domain, following the shape of the development.md
+     row below: File | Domain | Load when prompt mentions... | Update when changing... -->
+
+| File                     | Domain                        | Load when prompt mentions...  | Update when changing...                      |
+| ------------------------ | ----------------------------- | ----------------------------- | -------------------------------------------- |
+| `context/development.md` | Tech stack, testing, env vars | Testing, CI, config, pitfalls | `config/`, `mix.exs`, env vars, CI workflows |
 
 Examples of domain splits for larger apps:
 
@@ -39,25 +45,25 @@ Examples of domain splits for larger apps:
 
 ## Always Load
 
-The following files are loaded unconditionally by the shape launcher at Tier 0 (foundational docs every shaping session needs, regardless of pitch topic):
+The following files are loaded unconditionally by the shape launcher at Tier 0 (foundational docs every shaping session needs, regardless of pitch topic). Basenames only, one per line — the launcher resolves each to `context/<name>`.
 
-- `context/development.md` — conventions, stack, pitfalls; always present
-- _(add your app's structural/repo-layout doc here when you create one)_
+- development.md
+<!-- add your app's structural/repo-layout doc basename here when you create one -->
 
 ## Module Directory
 
+<!-- Add one row per module: Module | Purpose -->
+
 ### Core Modules
 
-| Module        | Purpose             |
-| ------------- | ------------------- |
-| [Module Name] | [Brief description] |
+| Module | Purpose |
+| ------ | ------- |
 
 ### Web Layer
 
-| Module        | Purpose             |
-| ------------- | ------------------- |
-| [Module Name] | [Brief description] |
+| Module | Purpose |
+| ------ | ------- |
 
 ## Integration Points
 
-- **[Integration]**: [How it connects]
+<!-- Add one bullet per external integration: **Name**: how it connects -->

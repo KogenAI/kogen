@@ -9,8 +9,8 @@ Builds against this app run through the platform's deterministic Elixir orchestr
 An interactive (non-headless) session in this app directory is NOT driven by the loop — the loop only runs for non-interactive/headless builds launched by the platform. If you are a human or an interactive agent session working here directly:
 
 - Do NOT self-orchestrate a multi-phase build cycle. Make the requested change directly, following the rules below.
-- Do NOT put `PORT`, `DATABASE_URL`, `PHX_HOST`, `SECRET_KEY_BASE`, or `PHX_SERVER` in `.env` — ProcessManager injects these.
-- Do NOT run `mix phx.server` directly — use `./codegen/restart_server.sh`.
+- In a DEPLOYED environment, do NOT put `PORT`, `DATABASE_URL`, `PHX_HOST`, `SECRET_KEY_BASE`, or `PHX_SERVER` in `.env` — ProcessManager injects these there. Locally, the scaffold DOES write these four into `.env` on purpose — `.mise.toml`'s `_.file = '.env'` is the only local loader, so local dev depends on them being present; this rule is about the deployed target, not your local checkout.
+- Do NOT run `mix phx.server` directly — use `./restart_server.sh`.
 - Do NOT run `mix release` — platform handles releases.
 - Do NOT run `mix ecto.create`, `mix ecto.migrate`, `mix ecto.setup`, or `mix setup` directly — platform handles DB lifecycle.
 - Do NOT access files outside this app directory.
@@ -24,8 +24,8 @@ An interactive (non-headless) session in this app directory is NOT driven by the
 
 ## What You Never Do
 
-- Put `PORT`, `DATABASE_URL`, `PHX_HOST`, `SECRET_KEY_BASE`, or `PHX_SERVER` in `.env` — ProcessManager injects these
-- Run `mix phx.server` directly — use `./codegen/restart_server.sh`
+- Put `PORT`, `DATABASE_URL`, `PHX_HOST`, `SECRET_KEY_BASE`, or `PHX_SERVER` in `.env` in a DEPLOYED environment — ProcessManager injects these there (locally the scaffold writes these on purpose; see above)
+- Run `mix phx.server` directly — use `./restart_server.sh`
 - Run `mix release` — platform handles releases
 - Access files outside app directory
 - Run `mix ecto.create`, `mix ecto.migrate`, `mix ecto.setup`, or `mix setup` directly — platform handles DB lifecycle

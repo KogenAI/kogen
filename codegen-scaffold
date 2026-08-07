@@ -332,6 +332,22 @@ run_integrate_stage() {
     local usage_rules_source="$SCRIPT_DIR/shared/usage_rules"
     local recipes_source="$SCRIPT_DIR/shared/recipes"
 
+    # Verify every symlink target exists BEFORE linking — a dangling link here
+    # ships an app that resolves AGENTS.md/CLAUDE.md/codegen/rules/etc to
+    # nothing, and the failure would otherwise surface much later (or not at
+    # all, since `ln -sf` never checks its target).
+    local _link_src
+    for _link_src in "$agents_source" "$claude_source" "$rules_source" "$usage_rules_source"; do
+        if [[ ! -e "$_link_src" ]]; then
+            printf 'codegen-scaffold: FATAL: integrate symlink source does not exist: %s\n' "$_link_src" >&2
+            exit 1
+        fi
+    done
+    if [[ ! -d "$recipes_source" ]]; then
+        printf 'codegen-scaffold: FATAL: integrate symlink source does not exist: %s\n' "$recipes_source" >&2
+        exit 1
+    fi
+
     # AGENTS.md → relative(shared/apps/AGENTS-*.md) from app root
     ln -sf "$(_relpath "$agents_source" "$link_base_dir")" "$target_dir/AGENTS.md"
 
@@ -479,13 +495,33 @@ RESTARTEOF
         fi
     fi
 
+    # ── codegen/pitches/{draft,ready,shipped}/ + priv/plts/ (recreated every run) ─
+    # Both dirs sit under unnegated .gitignore boundaries (/codegen/,
+    # /priv/plts/), so no sentinel file (.gitkeep/.keep) can ever survive a
+    # clone — a sentinel there only looks solved. This integrate stage is the
+    # durable recreator: three launchers (claude-shape/-experiment/-build)
+    # resolve straight out of codegen/pitches/{draft,ready,shipped}, and the
+    # ship move needs shipped/ to exist. mkdir -p is idempotent; no sentinel
+    # is written.
+    for _pitch_dir in draft ready shipped; do
+        mkdir -p "$target_dir/codegen/pitches/$_pitch_dir"
+    done
+    mkdir -p "$target_dir/priv/plts"
+
     # ── codegen/manifest.yaml provenance (ALWAYS REWRITE; not write-once) ──────
     # Records which codegen scaffold schema wired this app so codegen-build can
     # refuse builds whose stamped version is behind the repo's current version.
     # Machine-local: /codegen/ is gitignored in the app (see .gitignore block above).
+    # An unreadable SCHEMA_VERSION is fatal, not a "unknown" sentinel — codegen-build's
+    # staleness refusal only fires on a positively-parsed integer, so "unknown"
+    # permanently and silently disables that refusal for this app.
     local schema_version_file="$SCRIPT_DIR/shared/scaffold/SCHEMA_VERSION"
+    if [[ ! -f "$schema_version_file" ]] || [[ -z "$(cat "$schema_version_file" 2>/dev/null)" ]]; then
+        echo "[codegen-scaffold] FATAL: $schema_version_file missing or empty — cannot stamp codegen/manifest.yaml with a real schema version" >&2
+        exit 1
+    fi
     local schema_version scaffolded_sha scaffolded_at
-    schema_version="$(cat "$schema_version_file" 2>/dev/null || echo unknown)"
+    schema_version="$(cat "$schema_version_file")"
     scaffolded_sha="$(git -C "$SCRIPT_DIR/shared" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     scaffolded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     mkdir -p "$target_dir/codegen"
@@ -581,8 +617,21 @@ do_create() {
     mv "$TEMP_PARENT/$SLUG" "$target_dir"
 
     # Re-trust after atomic mv: mise trust is keyed to the config file's absolute path;
-    # a mv invalidates trust recorded against the pre-move temp path.
-    mise trust "$target_dir/.mise.toml" >/dev/null 2>&1 || true
+    # a mv invalidates trust recorded against the pre-move temp path. Phoenix-only
+    # (.mise.toml is never rendered for static); tool ABSENCE stays a quiet skip,
+    # tool FAILURE (mise present, .mise.toml present, trust genuinely fails) is loud —
+    # an untrusted .mise.toml means the app's .env never loads locally.
+    if [[ -f "$target_dir/.mise.toml" ]] && command -v mise >/dev/null 2>&1; then
+        local _mise_retrust_stderr_file
+        _mise_retrust_stderr_file="$(mktemp)"
+        if ! mise trust "$target_dir/.mise.toml" >/dev/null 2>"$_mise_retrust_stderr_file"; then
+            printf 'codegen-scaffold: ERROR: mise re-trust after mv failed — .mise.toml will not load .env; real stderr:\n' >&2
+            cat "$_mise_retrust_stderr_file" >&2
+            rm -f "$_mise_retrust_stderr_file"
+            exit 1
+        fi
+        rm -f "$_mise_retrust_stderr_file"
+    fi
 
     # Success — disarm trap
     trap - EXIT

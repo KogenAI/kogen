@@ -69,8 +69,12 @@ scaffold_cache_disable() {
 # scaffold_cache_restore <target_dir> <root> <key>
 #   Restores deps/, _build/*/lib/<dep> (all env dirs), and
 #   priv/plts/dialyzer.plt from <root>/<key>/ into <target_dir>.
-#   Returns 1 (no-op, target left untouched) if the cache entry is missing
-#   or disabled.
+#   All-or-nothing: any individual cp failure fails the WHOLE restore (not
+#   just that one artifact) and removes whatever this call already copied
+#   into target_dir, so a caller falling back to a cold run never builds on
+#   top of a half-restored deps/_build/PLT reported as a "hit".
+#   Returns 1 (no-op, target left untouched) if the cache entry is missing,
+#   disabled, or any copy step fails.
 scaffold_cache_restore() {
     local target_dir="$1" root="$2" key="$3"
     local entry="$root/$key"
@@ -83,13 +87,18 @@ scaffold_cache_restore() {
     fi
 
     local restored_any=""
+    local ok="1"
 
-    if [ -d "$entry/deps" ]; then
+    if [ -n "$ok" ] && [ -d "$entry/deps" ]; then
         mkdir -p "$target_dir"
-        cp -R "$entry/deps" "$target_dir/deps" 2>/dev/null && restored_any="1"
+        if cp -R "$entry/deps" "$target_dir/deps" 2>/dev/null; then
+            restored_any="1"
+        else
+            ok=""
+        fi
     fi
 
-    if [ -d "$entry/_build" ]; then
+    if [ -n "$ok" ] && [ -d "$entry/_build" ]; then
         mkdir -p "$target_dir/_build"
         local env_dir
         for env_dir in "$entry/_build"/*/; do
@@ -102,14 +111,30 @@ scaffold_cache_restore() {
                 [ -d "$dep_dir" ] || continue
                 local dep_name
                 dep_name="$(basename "$dep_dir")"
-                cp -R "$dep_dir" "$target_dir/_build/$env_name/lib/$dep_name" 2>/dev/null && restored_any="1"
+                if cp -R "$dep_dir" "$target_dir/_build/$env_name/lib/$dep_name" 2>/dev/null; then
+                    restored_any="1"
+                else
+                    ok=""
+                    break 2
+                fi
             done
         done
     fi
 
-    if [ -f "$entry/dialyzer.plt" ]; then
+    if [ -n "$ok" ] && [ -f "$entry/dialyzer.plt" ]; then
         mkdir -p "$target_dir/priv/plts"
-        cp "$entry/dialyzer.plt" "$target_dir/priv/plts/dialyzer.plt" 2>/dev/null && restored_any="1"
+        if cp "$entry/dialyzer.plt" "$target_dir/priv/plts/dialyzer.plt" 2>/dev/null; then
+            restored_any="1"
+        else
+            ok=""
+        fi
+    fi
+
+    if [ -z "$ok" ]; then
+        # Partial restore: remove whatever this call copied so a cold-run
+        # fallback never builds on top of half-restored artifacts.
+        rm -rf "$target_dir/deps" "$target_dir/_build" "$target_dir/priv/plts/dialyzer.plt" 2>/dev/null || true
+        return 1
     fi
 
     if [ -z "$restored_any" ]; then

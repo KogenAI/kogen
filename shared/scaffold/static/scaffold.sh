@@ -20,7 +20,7 @@
 #   .gitignore
 #   Makefile              ← build surface with ci: target (linting, format check, build)
 #   .claude/gate-config.sh ← gate configuration for loop integration
-#   codegen/pitches/{draft,ready,shipped}/.gitkeep
+#   codegen/pitches/{draft,ready,shipped}/  (recreated by codegen-scaffold integrate; no sentinel)
 #
 # Does NOT: run npm install, touch git, Caddy, or any database.
 
@@ -242,9 +242,12 @@ render "Makefile.eex"
 render ".claude/gate-config.sh.eex"
 
 # ── codegen/pitches lifecycle dirs ────────────────────────────────────────────
+# No sentinel: these dirs sit under an unnegated /codegen/ .gitignore boundary,
+# so a .gitkeep file cannot survive a clone. run_integrate_stage
+# (codegen-scaffold) is the durable recreator; mkdir here only covers first
+# provision.
 for _d in draft ready shipped; do
     mkdir -p "$CWD/codegen/pitches/$_d"
-    touch "$CWD/codegen/pitches/$_d/.gitkeep"
 done
 
 printf '[static/scaffold.sh] Scaffold complete for %s at %s\n' "$SLUG" "$CWD"

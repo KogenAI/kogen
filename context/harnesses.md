@@ -201,6 +201,8 @@ Claude loops `ROLE_CONTEXT_FILES` into `--append-system-prompt` flags + startup 
 
 Guard: `mode-context-parity_test.sh` (auto-discovered via `harness-parity`'s `harnesses/shared/*_test.sh` glob).
 
+**Tier-0 `## Always Load` parser contract**: `claude-shape.sh` and `claude-experiment.sh` carry byte-identical Tier-0 loops (any fix here needs both). Each `- <token>` bullet under the app's `PROJECT_CONTEXT.md` `## Always Load` heading is hardened to accept the documented bare-basename form (`- development.md`, matching this repo's own `PROJECT_CONTEXT.md`) AND the backticked/`context/`-prefixed form app authors hand-write (``- `context/development.md` — desc``) — backticks are stripped, a leading `context/` is stripped, and the result must end `.md` or the entry is skipped rather than resolved. Resolution still fails open: a missing (but well-formed) entry warns on stderr and continues. The Tier-1 selector (`pitch-context-selector.sh`, § above) already tolerated both forms — the Tier-0 loops previously didn't, so a hand-authored `PROJECT_CONTEXT.md` entry could silently resolve to nothing at Tier-0 while working at Tier-1.
+
 ## Headless Investigative Mode
 
 The Claude investigative/supervisory launchers (`claude-shape`, `claude-ops`, `claude-debug`, `claude-babysit`) honor the `CLAUDE_NONINTERACTIVE` env var. When set to any non-empty value, each launcher builds a `NON_INTERACTIVE_FLAGS` array. **Important distinction**: investigative launchers deliberately restrict `--setting-sources` to `project` (no user-scope agents/hooks) because they export `CLAUDE_ROLE` and gate the Agent tool to project subagents only. Build dispatch (`codegen-build --non-interactive`) uses `user,project,local` to load the full agent set + user-level gating hooks.

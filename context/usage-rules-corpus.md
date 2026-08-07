@@ -26,6 +26,10 @@ Only the developer role may grep/scan the corpus for API surface. `usage-rules-g
 Every other role — reviewer, curator, orchestrator — must go through
 `codegen/usage_rules/INDEX.md`, look up the deps it is touching, and Read at most 5 cited files.
 
+## System Prompt + Exit Status
+
+`codegen-document` calls `codegen-call --harness claude_code --model "$MODEL" --effort low --system-prompt @"$SYSTEM_PROMPT_FILE" ...` where `SYSTEM_PROMPT_FILE` is `harnesses/claude/usage-rules-system-prompt.md` — `.md`, matching its three siblings (`document-system-prompt.md`, `advise-system-prompt.md`, `propose-system-prompt.md`); `.gitignore`'s `*-system-prompt.txt` pattern is the generated-prompt convention and would make a hand-authored `.txt` here permanently untracked. The call never passes `--role` — `codegen-call` rejects any `--role` flag outright (removed 2026-06-25, guarded by `call_contract_test.exs`). Whole-lock `main()` returns non-zero when `failed_rules > 0` (after `regenerate_index` still runs) — a partial run is a real failure, not a benign summary line; `scaffold.sh`'s `FATAL: codegen-document failed` guard depends on this exit status to be anything other than dead code.
+
 ## `codegen-document` Record Format
 
 `extract_dependencies` emits pipe-delimited records carrying git coordinates alongside version info:

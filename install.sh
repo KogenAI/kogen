@@ -149,6 +149,29 @@ SHARED_SYMLINK="$INSTALL_DIR/shared"
 rm -f "$SHARED_SYMLINK"
 ln -sfn "$CODEGEN_DIR/shared" "$SHARED_SYMLINK"
 
+# Wire templates/ + analysis/ paths: installed launchers are COPIES (not
+# symlinks — a symlinked launcher would dangle if the checkout mutates
+# mid-build), so each copy derives CODEGEN_DIR from its OWN location
+# ($INSTALL_DIR) and cannot reach anything outside harnesses/ or shared/
+# without a sibling link. codegen-document needs templates/ (INDEX
+# regeneration script); codegen-analyze needs analysis/ (its Python
+# package) — both currently fail from the installed copy without this.
+TEMPLATES_SYMLINK="$INSTALL_DIR/templates"
+rm -f "$TEMPLATES_SYMLINK"
+ln -sfn "$CODEGEN_DIR/templates" "$TEMPLATES_SYMLINK"
+if [ ! -d "$TEMPLATES_SYMLINK/" ]; then
+    echo "❌ could not wire templates path: $TEMPLATES_SYMLINK -> $CODEGEN_DIR/templates"
+    exit 1
+fi
+
+ANALYSIS_SYMLINK="$INSTALL_DIR/analysis"
+rm -f "$ANALYSIS_SYMLINK"
+ln -sfn "$CODEGEN_DIR/analysis" "$ANALYSIS_SYMLINK"
+if [ ! -d "$ANALYSIS_SYMLINK/" ]; then
+    echo "❌ could not wire analysis path: $ANALYSIS_SYMLINK -> $CODEGEN_DIR/analysis"
+    exit 1
+fi
+
 # Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo ""
@@ -302,6 +325,12 @@ render_to_md() {
             rm -f "$tmp"
             echo "   ✅ $(basename "$dst") already up to date"
         fi
+        # mktemp creates 0600. The idempotent branch above never reaches the
+        # mv, so a chmod placed after only the mv branch would never repair a
+        # $dst that is already stuck at 0600 from a prior install. Placed
+        # here (after the whole if/else, on every pass) it always converges
+        # $dst to 0644 regardless of which branch ran.
+        chmod 0644 "$dst"
     else
         echo "❌ Required app-doc template missing: $src" >&2
         exit 1

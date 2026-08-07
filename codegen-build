@@ -267,8 +267,13 @@ if [[ -z "$PRINT_ARGV" ]] && [[ -x "$SCAFFOLD_CMD" ]]; then
     if [[ -f "$CWD/harnesses/claude/manifest.yaml" && -f "$CWD/templates/generator/generate.sh" ]]; then
         printf 'codegen-build: self-build detected (codegen repo markers present in cwd); skipping integrate pre-step\n' >&2
     else
+        # Fatal, not "non-fatal; continuing": this pre-step is what rebuilds
+        # AGENTS.md, codegen/rules, PROJECT_CONTEXT.md, and .claude/gate-config.sh —
+        # a failure here means the build would otherwise proceed with no rules
+        # and no gate config, silently.
         _integrate_out=$("$SCAFFOLD_CMD" integrate --stack="$STACK" --cwd="$CWD" 2>&1) || {
-            printf 'codegen-build: codegen-scaffold integrate failed (non-fatal; continuing):\n%s\n' "$_integrate_out" >&2
+            printf 'codegen-build: FATAL: codegen-scaffold integrate failed:\n%s\n' "$_integrate_out" >&2
+            exit 1
         }
     fi
 fi

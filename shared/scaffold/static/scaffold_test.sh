@@ -91,6 +91,43 @@ assert_exit() {
     fi
 }
 
+assert_not_contains() {
+    local desc="$1"
+    local haystack="$2"
+    local needle="$3"
+    if [[ "$haystack" != *"$needle"* ]]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — did not expect to find %q in output\n' "$desc" "$needle"
+        fail=$((fail + 1))
+    fi
+}
+
+assert_dir_exists() {
+    local desc="$1"
+    local path="$2"
+    if [[ -d "$path" ]]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — directory not found: %s\n' "$desc" "$path"
+        fail=$((fail + 1))
+    fi
+}
+
+assert_not_exists() {
+    local desc="$1"
+    local path="$2"
+    if [[ ! -e "$path" ]]; then
+        [ -n "${VERBOSE:-}" ] && printf 'PASS: %s\n' "$desc"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s — expected absent, found: %s\n' "$desc" "$path"
+        fail=$((fail + 1))
+    fi
+}
+
 # ── Setup: hermetic tmp dir ───────────────────────────────────────────────────
 BASE_TMP="$(mktemp -d)"
 cleanup() { rm -rf "$BASE_TMP"; }
@@ -170,10 +207,16 @@ PRETTIER_EXIT=0
 "$PRETTIER_BIN" --no-config --check "$TMPDIR" >/dev/null 2>&1 || PRETTIER_EXIT=$?
 assert_exit "scaffold output is prettier-clean" "0" "$PRETTIER_EXIT"
 
-# codegen/pitches lifecycle dirs
-assert_file_exists "codegen/pitches/draft/.gitkeep exists" "$TMPDIR/codegen/pitches/draft/.gitkeep"
-assert_file_exists "codegen/pitches/ready/.gitkeep exists" "$TMPDIR/codegen/pitches/ready/.gitkeep"
-assert_file_exists "codegen/pitches/shipped/.gitkeep exists" "$TMPDIR/codegen/pitches/shipped/.gitkeep"
+# codegen/pitches lifecycle dirs — the directories exist, and NO sentinel is
+# left behind. .gitkeep/.keep cannot survive a clone under the unnegated
+# /codegen/ .gitignore boundary; codegen-scaffold's run_integrate_stage (not
+# a scaffold-time sentinel) is the durable recreator.
+assert_dir_exists "codegen/pitches/draft exists" "$TMPDIR/codegen/pitches/draft"
+assert_dir_exists "codegen/pitches/ready exists" "$TMPDIR/codegen/pitches/ready"
+assert_dir_exists "codegen/pitches/shipped exists" "$TMPDIR/codegen/pitches/shipped"
+assert_not_exists "codegen/pitches/draft/.gitkeep NOT left behind" "$TMPDIR/codegen/pitches/draft/.gitkeep"
+assert_not_exists "codegen/pitches/ready/.gitkeep NOT left behind" "$TMPDIR/codegen/pitches/ready/.gitkeep"
+assert_not_exists "codegen/pitches/shipped/.gitkeep NOT left behind" "$TMPDIR/codegen/pitches/shipped/.gitkeep"
 
 # (ah) SEO/AI-discoverability baseline head tags present in index.html
 assert_contains "index.html has meta description" "$INDEX_CONTENT" '<meta name="description" content="My Test App is a website." />'
@@ -352,7 +395,9 @@ mkdir -p "$PROJECT_CONTEXT_CWD"
 "$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$PROJECT_CONTEXT_CWD" --slug=test-pc
 assert_file_exists "integrate writes PROJECT_CONTEXT.md" "$PROJECT_CONTEXT_CWD/PROJECT_CONTEXT.md"
 PC_CONTENT="$(cat "$PROJECT_CONTEXT_CWD/PROJECT_CONTEXT.md")"
-assert_contains "PROJECT_CONTEXT.md has location [app root]" "$PC_CONTENT" "[app root]"
+# Location renders the slug via {{SITE_NAME}} substitution, not a literal bracket placeholder
+assert_contains "PROJECT_CONTEXT.md has rendered Location line" "$PC_CONTENT" "**Location**:"
+assert_not_contains "PROJECT_CONTEXT.md has no unfilled [app root] placeholder" "$PC_CONTENT" "[app root]"
 assert_contains "static PROJECT_CONTEXT.md declares required_platforms" "$PC_CONTENT" "required_platforms:"
 
 # (u2) Integrate seeds context/core.md + context/development.md for static stack —
@@ -587,6 +632,45 @@ mkdir -p "$GATE_RESOLVE_CWD"
 "$CODEGEN_SCAFFOLD" integrate --stack=phoenix --cwd="$GATE_RESOLVE_CWD" --slug=test-gate-resolve
 GATE_DECIDE_OUT="$(bash -c "source '$CODEGEN_ROOT/harnesses/claude/hooks/lib/gate-select.sh' && gate_select_decide '$GATE_RESOLVE_CWD'")"
 check "phoenix integrate gate resolves to make ci" "gate=make ci" "$(printf '%s' "$GATE_DECIDE_OUT" | sed -n '1p')"
+
+# (an) Both shipped PROJECT_CONTEXT-*-template.md's "## Always Load" sections
+# parse under the shipped Tier-0 parser (claude-shape.sh) and yield a
+# resolvable basename — the exact failure mode this pitch fixed (both parser
+# hardening AND template format convergence must hold together).
+TIER0_PARSE_CWD="$BASE_TMP/tier0_parse_test"
+mkdir -p "$TIER0_PARSE_CWD/context"
+"$CODEGEN_SCAFFOLD" integrate --stack=static --cwd="$TIER0_PARSE_CWD" --slug=test-tier0-parse
+TIER0_PARSE_BIN="$BASE_TMP/tier0_parse_bin"
+mkdir -p "$TIER0_PARSE_BIN"
+cat >"$TIER0_PARSE_BIN/claude" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$CAPTURE_TIER0_PARSE"
+STUBEOF
+chmod +x "$TIER0_PARSE_BIN/claude"
+if command -v yq >/dev/null 2>&1; then
+    ln -sf "$(command -v yq)" "$TIER0_PARSE_BIN/yq"
+fi
+cp "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "$TIER0_PARSE_CWD/claude-shape.sh"
+ln -sfn "$CODEGEN_ROOT/harnesses" "$TIER0_PARSE_CWD/harnesses"
+CAPTURE_TIER0_PARSE="$BASE_TMP/tier0_parse_args.txt"
+(cd "$TIER0_PARSE_CWD" && PATH="$TIER0_PARSE_BIN:$PATH" HOME="/tmp/nonexistent_xyz" CAPTURE_TIER0_PARSE="$CAPTURE_TIER0_PARSE" bash claude-shape.sh 2>/dev/null) || true
+TIER0_PARSE_CAPTURED=""
+[ -f "$CAPTURE_TIER0_PARSE" ] && TIER0_PARSE_CAPTURED=$(cat "$CAPTURE_TIER0_PARSE")
+DEVELOPMENT_STUB_CONTENT="$(cat "$TIER0_PARSE_CWD/context/development.md")"
+CORE_STUB_CONTENT="$(cat "$TIER0_PARSE_CWD/context/core.md")"
+assert_contains "shipped static template Always Load resolves development.md" "$TIER0_PARSE_CAPTURED" "$DEVELOPMENT_STUB_CONTENT"
+assert_contains "shipped static template Always Load resolves core.md" "$TIER0_PARSE_CAPTURED" "$CORE_STUB_CONTENT"
+
+# (ao) Rendered agent docs (AGENTS-*.md / CLAUDE-*.md) are group/other-readable —
+# read GNU-first (falls back to BSD -f), never BSD-first (which returns garbage
+# filesystem info on Linux instead of falling back). A 0600 file would still
+# resolve through the same-owner symlink locally but breaks for any other
+# reader (CI runner, different user).
+AGENTS_PHOENIX_SRC="$CODEGEN_ROOT/shared/apps/AGENTS-phoenix.md"
+if [[ -f "$AGENTS_PHOENIX_SRC" ]]; then
+    AGENTS_MODE="$(stat -c '%a' "$AGENTS_PHOENIX_SRC" 2>/dev/null || stat -f '%Lp' "$AGENTS_PHOENIX_SRC" 2>/dev/null || echo "")"
+    check "AGENTS-phoenix.md is 644 (group/other readable)" "644" "$AGENTS_MODE"
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

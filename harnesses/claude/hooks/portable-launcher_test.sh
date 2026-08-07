@@ -868,6 +868,33 @@ for _t28_dir in "$T21" "$T22" "$T27"; do
     fi
 done
 
+# ── Test 29: Tier-0 hardening — SHIPPED template form (backtick + context/
+# prefix), on both launchers. All 11 pre-existing Always-Load fixtures above
+# use the bare-basename form; none used the form the shipped
+# PROJECT_CONTEXT-*-template.md actually emits (`` - `context/development.md`
+# — desc ``) — that gap is exactly why the shipped templates resolved to
+# nothing at Tier-0 before this hardening. Also proves a non-.md token is
+# skipped rather than resolved.
+T29="$BASE_TMP/t29_tier0_shipped_form"
+mkdir -p "$T29/context"
+cat >"$T29/PROJECT_CONTEXT.md" <<'EOF'
+## Always Load
+
+- `context/development.md` — conventions, stack, pitfalls; always present
+- repo-structure.md
+- not-a-doc-token
+EOF
+printf 'DEVELOPMENT_CONTENT' >"$T29/context/development.md"
+printf 'REPO_STRUCTURE_CONTENT' >"$T29/context/repo-structure.md"
+
+captured29_claude_shape=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-shape.sh" "claude-shape.sh" "claude" "" "$T29")
+assert_contains "(29) claude-shape: backticked context/-prefixed entry resolves" "DEVELOPMENT_CONTENT" "$captured29_claude_shape"
+assert_contains "(29) claude-shape: plain basename entry still resolves" "REPO_STRUCTURE_CONTENT" "$captured29_claude_shape"
+
+captured29_claude_experiment=$(run_t21_launcher "$CODEGEN_ROOT/harnesses/claude/claude-experiment.sh" "claude-experiment.sh" "claude" "" "$T29")
+assert_contains "(29) claude-experiment: backticked context/-prefixed entry resolves" "DEVELOPMENT_CONTENT" "$captured29_claude_experiment"
+assert_contains "(29) claude-experiment: plain basename entry still resolves" "REPO_STRUCTURE_CONTENT" "$captured29_claude_experiment"
+
 # ── Results ───────────────────────────────────────────────────────────────────
 printf '\nResults: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -149,6 +149,37 @@ not_disabled_rc=0
 scaffold_cache_is_disabled "$cache_root" "$hit_key" >/dev/null 2>&1 || not_disabled_rc=$?
 assert "is_disabled false when no sentinel present" '[ "$not_disabled_rc" -ne 0 ]'
 
+# ---------------------------------------------------------------------------
+# restore: all-or-nothing — a failure partway through (unreadable dep dir in
+# _build) fails the WHOLE restore and removes whatever this call already
+# copied, never leaving a half-restored deps/_build reported as a hit.
+# ---------------------------------------------------------------------------
+partial_key="partial-key-1"
+partial_entry="$cache_root/$partial_key"
+mkdir -p "$partial_entry/deps/foo"
+echo 'dep-foo-content' >"$partial_entry/deps/foo/mix.exs"
+mkdir -p "$partial_entry/_build/dev/lib/foo"
+echo 'dev-foo-beam' >"$partial_entry/_build/dev/lib/foo/foo.app"
+mkdir -p "$partial_entry/_build/dev/lib/bar"
+echo 'dev-bar-beam' >"$partial_entry/_build/dev/lib/bar/bar.app"
+echo 'plt-bytes' >"$partial_entry/dialyzer.plt"
+
+partial_restore_target="$tmp/restore-target-partial"
+mkdir -p "$partial_restore_target/_build/dev/lib"
+# Make the bar dep dir uncopyable: pre-create bar as a read-only, non-writable
+# directory containing a file cp cannot overwrite, forcing cp -R to fail on
+# the second dep dir but succeed on the first (foo).
+mkdir -p "$partial_restore_target/_build/dev/lib/bar"
+touch "$partial_restore_target/_build/dev/lib/bar/foo.app"
+chmod 0000 "$partial_restore_target/_build/dev/lib/bar" 2>/dev/null || true
+
+partial_rc=0
+scaffold_cache_restore "$partial_restore_target" "$cache_root" "$partial_key" >/dev/null 2>&1 || partial_rc=$?
+chmod 0755 "$partial_restore_target/_build/dev/lib/bar" 2>/dev/null || true
+assert "partial restore (mid-failure) returns non-zero" '[ "$partial_rc" -ne 0 ]'
+assert "partial restore removes the copied deps/ dir on failure" '[ ! -e "$partial_restore_target/deps" ]'
+assert "partial restore removes the copied _build/ dir on failure" '[ ! -e "$partial_restore_target/_build/dev/lib/foo" ]'
+
 echo "$passed passed, $failed failed"
 if [ "$failed" -gt 0 ]; then
     printf '%s\n' "${fail_lines[@]}" >&2

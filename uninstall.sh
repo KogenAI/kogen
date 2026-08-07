@@ -32,6 +32,17 @@ else
     echo "   ℹ️  $CODEGEN_LOG_NAME command not found"
 fi
 
+# Remove dispatch-path sibling symlinks (harnesses/shared/templates/analysis)
+# planted by install.sh so installed launcher COPIES can resolve outside
+# harnesses/ and shared/.
+for _sib in harnesses shared templates analysis; do
+    _sib_path="$INSTALL_DIR/$_sib"
+    if [ -L "$_sib_path" ]; then
+        echo "   🔗 Removing $_sib symlink"
+        rm -f "$_sib_path"
+    fi
+done
+
 # Remove autocompletion from shell configuration
 echo "   🧹 Removing autocompletion setup..."
 

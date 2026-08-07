@@ -55,7 +55,7 @@ All section writes go through codegen-log (`section <role>`, `append <role>` —
 
 ## Gate
 
-Gate command for this site: `static-site-build-check.sh` (four deterministic checks — `mise exec -- npm run build`, `package.json` script invariants, Tailwind v4 config absence, no `@tailwind ` directives). The loop runs it after the developer role and interprets `ALL CLEAR ✅` / `FAILED ❌` / `INCONCLUSIVE ⚠️` from `gate-result.json`.
+Gate command for this site: `make ci` — installs `node_modules` if missing (`mise exec -- npm install`), then `npm run lint`, `npx prettier --check .`, and `npm run build`. The loop runs it after the developer role and interprets `ALL CLEAR ✅` / `FAILED ❌` / `INCONCLUSIVE ⚠️` from `gate-result.json`.
 
 ## Commit Discipline
 

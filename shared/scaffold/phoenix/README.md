@@ -34,7 +34,7 @@ bash scaffold/phoenix/scaffold.sh my_app /path/to/my_app
 2. Runs 9 mutation scripts from `mutations/` in fixed order:
    `mix_exs.sh` → `config_exs.sh` → `prod_exs.sh` → `formatter_exs.sh` → `gitignore.sh`
    → `router.sh` → `endpoint.sh` → `telemetry.sh` → `data_case.sh`
-3. Creates `priv/plts/.keep`
+3. Creates `priv/plts/` (no sentinel file — it sits under an unnegated .gitignore boundary and cannot survive a clone; `codegen-scaffold integrate` recreates it on every build)
 
 All mutations are idempotent — re-running on an already-scaffolded dir is safe.
 

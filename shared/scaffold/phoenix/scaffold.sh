@@ -209,14 +209,20 @@ render() {
     mkdir -p "$TARGET_DIR/$(dirname "$output_rel")"
 
     # Generate SECRET_KEY_BASE if rendering .env
+    # Required-for-correctness value: a placeholder here ships as a live secret
+    # in every scaffolded app. mix phx.gen.secret only exists as a task INSIDE
+    # the app dir (mix.exs must be found) — every other mix/npx/git invocation
+    # in this file already wraps (cd "$TARGET_DIR" && ...); this is that same
+    # form. Failure is fatal, not a silent placeholder substitution.
     local secret_key_base=""
     if [[ "$template_rel" == ".env.eex" ]]; then
         local secret_stderr_file
         secret_stderr_file="$(mktemp)"
-        if ! secret_key_base="$(mix phx.gen.secret 2>"$secret_stderr_file")"; then
-            echo "[scaffold.sh] WARN: mix phx.gen.secret failed — using placeholder; real stderr:" >&2
+        if ! secret_key_base="$(cd "$TARGET_DIR" && mix phx.gen.secret 2>"$secret_stderr_file")"; then
+            echo "[scaffold.sh] ERROR: mix phx.gen.secret failed — cannot generate a real SECRET_KEY_BASE; real stderr:" >&2
             cat "$secret_stderr_file" >&2
-            secret_key_base="REPLACE_with_mix_phx.gen.secret_output"
+            rm -f "$secret_stderr_file"
+            exit 1
         fi
         rm -f "$secret_stderr_file"
     fi
@@ -333,30 +339,66 @@ bash "$MUTATIONS_DIR/credo_fix.sh" "$TARGET_DIR" "$APP_NAME_MODULE" "${EXTRA_FLA
 # ---------------------------------------------------------------------------
 # Phase 3: ensure priv/plts dir exists
 # ---------------------------------------------------------------------------
+# No sentinel: priv/plts/ sits under the same unnegated /priv/plts/ .gitignore
+# boundary as codegen/ above — a .keep file there cannot survive a clone
+# either. run_integrate_stage (codegen-scaffold) recreates this dir on every
+# integrate; the mkdir here only covers first-provision.
 echo "[scaffold.sh] ensuring priv/plts..."
 mkdir -p "$TARGET_DIR/priv/plts"
-touch "$TARGET_DIR/priv/plts/.keep"
 
 # ---------------------------------------------------------------------------
 # Phase 3b: ensure codegen/pitches lifecycle dirs exist
 # ---------------------------------------------------------------------------
+# codegen/pitches/{draft,ready,shipped}/ are created here so first provision
+# doesn't depend on a later build running codegen-scaffold integrate — but
+# they live under an unnegated .gitignore boundary (/codegen/), so a sentinel
+# file cannot survive a clone. run_integrate_stage (codegen-scaffold) is the
+# durable owner that recreates these on every integrate; no sentinel is
+# written here (see context/scaffold.md § clone survivability).
 echo "[scaffold.sh] ensuring codegen/pitches/{draft,ready,shipped}/ dirs..."
 for _d in draft ready shipped; do
     mkdir -p "$TARGET_DIR/codegen/pitches/$_d"
-    touch "$TARGET_DIR/codegen/pitches/$_d/.gitkeep"
 done
 
 # ---------------------------------------------------------------------------
 # Phase 4: mise trust
 # ---------------------------------------------------------------------------
+# Tool ABSENCE stays a quiet skip (prerequisite-policy question, out of
+# scope). Tool FAILURE (mise present but trust fails — e.g. corrupt config,
+# permission error) is fatal: an untrusted .mise.toml means .env never loads
+# locally (.mise.toml's [env] _.file = '.env' is the only local .env loader),
+# so a scaffolded app silently boots with no config.
 if command -v mise >/dev/null 2>&1; then
     echo "[scaffold.sh] trusting mise toolchain..."
-    mise trust "$TARGET_DIR/.mise.toml" >/dev/null 2>&1 || true
+    _mise_trust_stderr_file="$(mktemp)"
+    if ! mise trust "$TARGET_DIR/.mise.toml" >/dev/null 2>"$_mise_trust_stderr_file"; then
+        echo "[scaffold.sh] ERROR: mise trust failed — .mise.toml will not load .env; real stderr:" >&2
+        cat "$_mise_trust_stderr_file" >&2
+        rm -f "$_mise_trust_stderr_file"
+        exit 1
+    fi
+    rm -f "$_mise_trust_stderr_file"
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 5: scaffold cache restore attempt, then deps.get + format
+# Phase 5: deps.get (always, to produce the REAL lock), then scaffold cache
+# restore attempt keyed on that lock, then format
 # ---------------------------------------------------------------------------
+# Cache key ordering: mutations (Phase 2) inject optimum deps into mix.exs,
+# but mix.lock is not updated until deps.get resolves it. Computing the key
+# from mix.lock BEFORE deps.get (the previous ordering) hashed the STOCK
+# phx.new lock — every scaffolded app's key ignored the injected deps
+# entirely, and a "cache hit" printed a warm-cache line while deps.get went
+# on to fetch every optimum package cold. deps.get must run first, always;
+# the key (and the restore attempt) come after, against the lock the app
+# actually builds against. This restore only saves compiled-artifact time
+# (_build/*/lib/<dep>, PLT) — deps.get itself is not skippable by this cache.
+echo "[scaffold.sh] running mix deps.get..."
+(cd "$TARGET_DIR" && mix deps.get) || {
+    echo "[scaffold.sh] ERROR: mix deps.get failed" >&2
+    exit 1
+}
+
 echo "[scaffold.sh] checking scaffold cache..."
 if key="$(scaffold_cache_key "$TARGET_DIR" "$OTP_VERSION" "$ELIXIR_VERSION" 2>/dev/null)"; then
     CACHE_KEY="$key"
@@ -375,12 +417,6 @@ else
     CACHE_STATUS="miss"
     echo "[scaffold.sh] scaffold cache key not computable (mix.lock absent) — cold run" >&2
 fi
-
-echo "[scaffold.sh] running mix deps.get..."
-(cd "$TARGET_DIR" && mix deps.get) || {
-    echo "[scaffold.sh] ERROR: mix deps.get failed" >&2
-    exit 1
-}
 
 echo "[scaffold.sh] running mix format (best-effort)..."
 (cd "$TARGET_DIR" && mix format) || true

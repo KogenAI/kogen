@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEGEN_DIR="$SCRIPT_DIR"
 
 USAGE_RULES_DIR="$CODEGEN_DIR/shared/usage_rules"
-SYSTEM_PROMPT_FILE="$CODEGEN_DIR/harnesses/claude/usage-rules-system-prompt.txt"
+SYSTEM_PROMPT_FILE="$CODEGEN_DIR/harnesses/claude/usage-rules-system-prompt.md"
 REGEN_INDEX_SCRIPT="$CODEGEN_DIR/templates/generator/regenerate_usage_rules_index.py"
 MODEL="haiku"
 
@@ -269,7 +269,7 @@ PROMPT_EOF
     local success=false
 
     while [ $retry -lt $max_retries ] && [ "$success" = false ]; do
-        if codegen-call --harness claude_code --role usage-rules --model "$MODEL" --effort low \
+        if codegen-call --harness claude_code --model "$MODEL" --effort low \
             --system-prompt @"$SYSTEM_PROMPT_FILE" \
             --allowed-tools "Write,WebFetch" \
             -- "$per_dep_prompt" >"$temp_output" 2>/dev/null; then
@@ -459,12 +459,15 @@ main() {
     echo "  Failed generations: ${failed_rules}"
     echo "  Total processed: $((new_rules + existing_rules + failed_rules))"
 
+    regenerate_index
+
     if [ "$failed_rules" -gt 0 ]; then
         echo ""
         echo "Some dependencies failed after 3 retries. Run again to retry, or check hexdocs.pm." >&2
+        return 1
     fi
 
-    regenerate_index
+    return 0
 }
 
 # ─── Argument parsing ─────────────────────────────────────────────────────────
