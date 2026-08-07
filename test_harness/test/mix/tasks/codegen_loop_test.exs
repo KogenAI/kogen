@@ -825,6 +825,18 @@ defmodule Mix.Tasks.Codegen.LoopShellTest do
                CodegenTestHarness.InterruptedCycleRecovery.active_dossier(tmp, "probe")
 
       assert dossier["stage"] == "ready"
+
+      # M6/M7 — single-pitch mode has no queue/drain record_build_failure/4
+      # counterpart, so park_and_restore_claim/5 must record its own COUNTED
+      # history row (AFTER restore_claim/2, at the pitch's new ready/
+      # location) — this attempt now counts toward build_failures:, exactly
+      # like the queue drain's own deterministic path (see pitch
+      # "build-record-matches-what-happened" M6/M7).
+      restored = File.read!(Path.join(ready_dir, "probe.md"))
+      assert restored =~ "## Build failure history"
+      assert restored =~ "| interrupted recovery |"
+      assert restored =~ "txn=#{dossier["transaction_id"]}"
+      assert restored =~ "build_failures: 1"
     end
 
     test "restore_claim runs even when park_failure itself fails (non-blocking observability)",

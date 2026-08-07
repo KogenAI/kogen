@@ -183,6 +183,23 @@ extract_witness() {
         # credo / dialyzer location: "lib/foo.ex:12:7:" (col optional).
         line=$(grep -oE '[A-Za-z0-9_./-]+\.exs?:[0-9]+(:[0-9]+)?' "$log_path" 2>/dev/null | head -n 1 || true)
     fi
+    if [ -z "$line" ]; then
+        # Doc-shaped gate failure (e.g. context-index-parity): names a
+        # context/*.md or PROJECT_CONTEXT.md file with NO line number by
+        # construction — a doc has no compiler/test-runner location to
+        # report. Without this branch the witness is empty and
+        # resolve_gate_owner/2 falls back to the developer, who
+        # subagent-read-discipline then denies the Read on that exact path.
+        # No `\b` word-boundary: a GNU-grep extension with no guaranteed
+        # BSD ERE support (required_platforms: [darwin, linux]); the
+        # Elixir consumer's own \b-anchored @curator_owned_signatures
+        # re-applies the boundary on its side.
+        line=$(grep -oE 'context/[A-Za-z0-9_-]+\.md|PROJECT_CONTEXT\.md' "$log_path" 2>/dev/null | head -n 1 || true)
+        [ -n "$line" ] && {
+            printf '%s' "$line"
+            return 0
+        }
+    fi
     [ -n "$line" ] || {
         printf ''
         return 0

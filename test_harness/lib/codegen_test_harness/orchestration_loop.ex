@@ -230,11 +230,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     ceiling (`@repair_progress_ceiling`, 15) bounds this regardless. A
     thrashing or unsatisfiable-by-any-edit violation set dies at the SAME
     turn it dies today; only a converging repair earns extra turns.
-    Diverges from `:max_review_cycles` (which proceeds on budget
-    exhaustion): exhaustion fails the cycle LOUD instead of proceeding —
-    `context-curator` is the only role permitted to edit these docs, so a
-    violation it did not clear must never travel onward as if it had been
-    fixed. The failure is retryable (no terminal marker).
+    Same posture as `:max_review_cycles`: exhaustion fails the cycle LOUD
+    rather than proceeding — `context-curator` is the only role permitted
+    to edit these docs, so a violation it did not clear must never travel
+    onward as if it had been fixed. The failure is retryable (no terminal
+    marker).
   - `:env_var_scan_fn` — test seam: `(cwd -> {:clean} | {:violations, String.t()})`,
     defaults to `default_env_var_scan/1` (shells
     `harnesses/claude/hooks/lib/env-var-sample-scan.sh <cwd>`, which scopes
@@ -251,10 +251,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     first rework is always granted). Beyond the floor, the same
     progress-past-the-floor extension as `:max_curator_doc_cycles` applies
     (resolved-violation check, `@repair_progress_ceiling` hard cap).
-    Exhaustion fails the cycle LOUD (same posture as
-    `:max_curator_doc_cycles`, not `:max_review_cycles`'s
-    proceed-on-exhaustion): an undeclared required env var is a real defect
-    the app crashes on at runtime, so handing it onward unfixed is not safe.
+    Exhaustion fails the cycle LOUD (same posture as `:max_curator_doc_cycles`
+    and `:max_review_cycles` — none of the three budgets proceeds on
+    exhaustion): an undeclared required env var is a real defect the app
+    crashes on at runtime, so handing it onward unfixed is not safe.
   - `:lock_path` — per-cwd single-flight lock file, default
     `Path.join([cwd, "codegen", "gate-pending", "queue.lock"])` — the SAME
     physical path `LoopQueueDrain.drain/1` locks, so a bare single build and
@@ -2305,10 +2305,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # provably resolving violations (see `repair_allowed?/4`), → fold the
   # combined violation list into context, re-invoke the context-curator (the
   # last role that CAN edit `context/*.md`), re-format, re-scan, recurse.
-  # Budget-exhausted → FAIL LOUD (diverges from
-  # `handle_review`'s proceed-on-exhaustion): the curator is the only role
-  # permitted to edit these docs, so a violation it did not clear must never
-  # travel onward as if it had been fixed. Retryable, never terminal-marked.
+  # Budget-exhausted → FAIL LOUD (same posture as `handle_review`'s own
+  # budget exhaustion): the curator is the only role permitted to edit
+  # these docs, so a violation it did not clear must never travel onward as
+  # if it had been fixed. Retryable, never terminal-marked.
   defp run_curator_doc_check(
          curator_role,
          rest,
@@ -2626,9 +2626,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # undocumented-var list into context, re-invoke the SAME developer role
   # (the one that can edit `.env.sample`/`.env.prod.sample`), re-format,
   # re-scan, recurse. Budget-exhausted → FAIL LOUD (same posture
-  # as `run_curator_doc_check`, not `handle_review`'s proceed-on-exhaustion):
-  # an undeclared required env var is a real defect the app crashes on at
-  # runtime.
+  # as `run_curator_doc_check` and `handle_review` — none of the three
+  # budgets proceeds on exhaustion): an undeclared required env var is a
+  # real defect the app crashes on at runtime.
   defp run_env_var_step(dev_role, rest, harness, ctx, opts, cycle, prev_violations \\ nil) do
     max_cycles = Keyword.get(opts, :max_env_var_cycles, 1)
 

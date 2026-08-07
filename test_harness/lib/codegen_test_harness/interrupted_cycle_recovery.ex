@@ -129,7 +129,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
             restored_claim = Path.join(ready_dir, Path.basename(claim))
             File.mkdir_p!(ready_dir)
             File.write!(restored_claim, claim_body)
-            write_history!(restored_claim, parked, result)
+            write_history!(restored_claim, parked, cwd, result)
 
             history_written = %{parked | "stage" => "history_written", "updated_at" => now()}
             write_journal!(path, history_written)
@@ -272,7 +272,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
 
       parked = %{journal | "branch" => branch, "stage" => "parked", "updated_at" => now()}
       write_journal!(path, parked)
-      write_history!(history_claim, parked, {:parked, branch})
+      write_history!(history_claim, parked, cwd, {:parked, branch})
       write_journal!(path, %{parked | "stage" => "history_written", "updated_at" => now()})
       finish_requeue!(claim, ready_dir, cwd, path)
       {:ok, {:requeued, journal["slug"], {:parked, branch}}}
@@ -294,7 +294,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
 
         "parked" ->
           verify_parked_branch(cwd, journal)
-          write_history!(claim, journal, {:parked, journal["branch"]})
+          write_history!(claim, journal, cwd, {:parked, journal["branch"]})
           write_journal!(path, %{journal | "stage" => "history_written", "updated_at" => now()})
           finish_requeue!(claim, ready_dir, cwd, path)
           {:ok, {:requeued, slug, {:parked, journal["branch"]}}}
@@ -398,14 +398,51 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     end
   end
 
-  defp write_history!(claim, journal, result) do
+  # Writes ONE COUNTED `## Build failure history` row for the STARTUP
+  # recovery flow (`reconcile/1`'s three call sites above) — this runs
+  # BEFORE `LoopQueueDrain.drain/1` constructs its own `state` map
+  # (`reconcile/1` is called from inside the drain's own startup `with`
+  # chain, ahead of the `state = %{...}` literal), so
+  # `LoopQueueDrain.record_build_failure/4`'s DRAIN-STATE counted-evidence
+  # path genuinely does not exist yet at this call site.
+  #
+  # This attempt is counted via `LoopQueue.record_counted_history!/3` (the
+  # context-free sibling of `record_build_failure/4`, needing only a
+  # pitch path + draft dir, not drain `state`) — NOT skipped. A single
+  # interrupted-then-resumed cycle recovering cleanly is one physical
+  # attempt, exactly like a deterministic failure the drain counts; the
+  # defect this fixes is a CRASH-LOOPING drain process, where `reconcile/1`
+  # fires fresh on every process restart before `state`/`consecutive_fails`
+  # ever exist, and — before this fix — nothing anywhere incremented
+  # `build_failures:` for those restart cycles, so a pitch could be
+  # attempted indefinitely while its own frontmatter still read zero
+  # failures (see pitch "build-record-matches-what-happened" M6, and its
+  # own 107-row incident). `checkpoint=<stage>` names the stage a retry
+  # resumes from; it is preserved verbatim in the row.
+  #
+  # Non-blocking observability, matching this call's existing posture:
+  # `record_counted_history!/3` raises on a read/write/rename failure
+  # against a pitch file proven present moments earlier (mirroring
+  # `write_build_failures!/3`/`write_demotion!/5`) — rescued here so a
+  # counting/write failure can never re-strand or crash an otherwise
+  # successful recovery.
+  defp write_history!(claim, journal, cwd, result) do
     branch = result_branch(result)
     recovery = if branch == "", do: "none (tree clean)", else: branch
 
     row =
-      "| interrupted recovery | #{utc_stamp()} | unaccountable | checkpoint=#{journal["stage"]}; recovery=#{recovery}; next=operator-inspection-required |"
+      "| interrupted recovery | #{utc_stamp()} | unaccountable | checkpoint=#{journal["stage"]}; recovery=#{recovery} |"
 
-    LoopQueue.write_history_row!(claim, "Build failure history", row)
+    LoopQueue.record_counted_history!(claim, pitches_dir(cwd, "draft"), row)
+    :ok
+  rescue
+    e ->
+      IO.puts(
+        :stderr,
+        "InterruptedCycleRecovery: could not record counted history row for #{claim} (non-blocking): #{Exception.message(e)}"
+      )
+
+      :ok
   end
 
   defp read_journal(path) do
@@ -782,9 +819,20 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     end)
   end
 
-  defp finish_park!(cwd, pitch_path, slug, transaction_id, dossier) do
-    with :ok <- write_history_row(pitch_path, dossier),
-         history_dossier =
+  # `finish_park!/5` is dossier-only — it does NOT write a `## Build failure
+  # history` row itself. `park_failure/1` has two real callers:
+  #   - `Mix.Tasks.Codegen.Loop.park_and_restore_claim/5` (single-pitch `mix
+  #     codegen.loop`, no drain/queue in scope) — genuinely has no other
+  #     writer, so IT calls `record_park_history_row!/3` explicitly on the
+  #     returned dossier.
+  #   - `LoopQueueDrain.record_queue_park_dossier/2` — runs immediately
+  #     before `record_build_failure/4` for the SAME terminal failure, which
+  #     already writes a counted evidence row. A row written here too was a
+  #     duplicate write for one attempt (confirmed: neither path was under
+  #     test with a real git cwd, so the duplicate was silent). The drain
+  #     deliberately does NOT call `record_park_history_row!/3`.
+  defp finish_park!(cwd, _pitch_path, slug, transaction_id, dossier) do
+    with history_dossier =
            Map.merge(dossier, %{"stage" => "history_written", "updated_at" => now()}),
          :ok <- write_dossier!(cwd, slug, transaction_id, history_dossier),
          ready_dossier = Map.merge(history_dossier, %{"stage" => "ready", "updated_at" => now()}),
@@ -798,7 +846,29 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     end
   end
 
-  defp write_history_row(pitch_path, dossier) do
+  @doc """
+  Writes ONE COUNTED `## Build failure history` row for a park dossier —
+  pitch `pitch_path`'s CURRENT physical location. `pitch_path` is a
+  `park_failure/1` caller's own claim path (not re-resolved) since a
+  single-pitch recovery already knows exactly which file the claim was
+  restored to. `cwd` derives the `draft/` dir a threshold-reaching call
+  demotes into (mirrors `LoopQueueDrain.record_build_failure/4`'s own
+  `draft_dir/1`).
+
+  Counts via `LoopQueue.record_counted_history!/3` — single-pitch `mix
+  codegen.loop` has no queue/drain `record_build_failure/4` counterpart to
+  count this attempt, so this is the ONLY writer for it; leaving it
+  uncounted would let a repeatedly-interrupted single-pitch run retry
+  forever with `build_failures:` never advancing (see pitch
+  "build-record-matches-what-happened" M6/M7).
+
+  Non-blocking observability: returns `{:error, reason}` on a write failure
+  (mirrors `park_failure/1`'s own non-blocking posture — see
+  `codegen.loop.ex`'s `park_and_restore_claim/5`, which logs and continues
+  rather than propagating).
+  """
+  @spec record_park_history_row!(String.t(), String.t(), map()) :: :ok | {:error, String.t()}
+  def record_park_history_row!(pitch_path, cwd, dossier) do
     recovery_commit = dossier["recovery_commit"] || "none (tree clean)"
 
     # Scope expansion is REPORTED here (never refused): the row names the
@@ -815,7 +885,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
         "txn=#{dossier["transaction_id"]}; recovery=#{recovery_commit}; " <>
         "ownership=#{dossier["ownership"] || "ok"}#{expansion} |"
 
-    LoopQueue.write_history_row!(pitch_path, "Build failure history", row)
+    LoopQueue.record_counted_history!(pitch_path, pitches_dir(cwd, "draft"), row)
     :ok
   rescue
     e -> {:error, "history write failed: #{Exception.message(e)}"}

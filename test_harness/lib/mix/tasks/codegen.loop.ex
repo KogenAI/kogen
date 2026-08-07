@@ -551,6 +551,12 @@ defmodule Mix.Tasks.Codegen.Loop do
   # resume owned work" defect #6) and must never strand the pitch outside
   # `ready/`. A park failure is logged loud but does not change the
   # cycle's own `{:error, reason}` outcome (already decided by the caller).
+  # After a successful park, records ONE COUNTED `## Build failure history`
+  # row on the restored claim (single-pitch mode has no queue/drain
+  # counterpart to count/write one) — see pitch
+  # "build-record-matches-what-happened" M6/M7. At
+  # `LoopQueue.max_pitch_fails_from_env/0`'s threshold this demotes the
+  # pitch to `draft/`, exactly like the queue drain's own counted path.
   @doc false
   @spec park_and_restore_claim(
           {:file, String.t()} | :literal,
@@ -563,13 +569,16 @@ defmodule Mix.Tasks.Codegen.Loop do
     do: restore_claim(:literal, cwd)
 
   def park_and_restore_claim({:file, abs} = source, _pitch, cwd, slug, reason) do
-    case InterruptedCycleRecovery.park_failure(
-           cwd: cwd,
-           pitch_path: abs,
-           slug: slug,
-           namespace: "recovery/interrupted",
-           cause: reason
-         ) do
+    park_result =
+      InterruptedCycleRecovery.park_failure(
+        cwd: cwd,
+        pitch_path: abs,
+        slug: slug,
+        namespace: "recovery/interrupted",
+        cause: reason
+      )
+
+    case park_result do
       {:ok, _dossier} ->
         :ok
 
@@ -578,7 +587,30 @@ defmodule Mix.Tasks.Codegen.Loop do
         :ok
     end
 
-    restore_claim(source, cwd)
+    :ok = restore_claim(source, cwd)
+
+    # Single-pitch mode has no queue/drain, so no `record_build_failure/4`
+    # counterpart ever writes a row for this attempt — record one here,
+    # AFTER restore_claim/2 so the row lands at the pitch's CURRENT physical
+    # location (ready/<slug>.md, not the pre-restore building/ path).
+    # Best-effort: a park failure already produced no dossier to describe,
+    # and a row-write failure must never re-strand the claim outside ready/.
+    with {:ok, dossier} <- park_result do
+      ready_dir = Path.join([cwd, "codegen", "pitches", "ready"])
+      ready_path = Path.join(ready_dir, Path.basename(abs))
+
+      case InterruptedCycleRecovery.record_park_history_row!(ready_path, cwd, dossier) do
+        :ok ->
+          :ok
+
+        {:error, row_reason} ->
+          Mix.shell().error(
+            "codegen.loop: history row for #{slug} could not be written (non-blocking): #{row_reason}"
+          )
+      end
+    end
+
+    :ok
   end
 
   # Claims a `ready/<slug>.md` pitch by an atomic same-filesystem rename into

@@ -1499,4 +1499,194 @@ defmodule CodegenTestHarness.LoopQueueTest do
       end
     end
   end
+
+  # ── write_build_failures!/3 — append_history_row/3's line-start anchor ────
+  # Regression coverage for "build-record-matches-what-happened" M3:
+  # append_history_row/3 previously located its `## <header>` marker via a
+  # bare String.contains?/String.split, which matches ANY substring
+  # occurrence — including a prose mention of the heading text earlier in
+  # the pitch body. append_history_row/3 itself has no direct test (it is
+  # `defp`); these tests exercise it through its two public callers.
+  describe "write_build_failures!/3 — Build failure history marker anchoring" do
+    test "a prose line matching the marker text earlier in the file does NOT hijack the row",
+         %{dir: dir} do
+      path = Path.join(dir, "a.md")
+
+      body =
+        "---\nstatus: SHAPED\n---\n# a\n\n" <>
+          "## Solution sketch\n\n" <>
+          "The row lands under `## Build failure history` in the pitch.\n\n" <>
+          "## Dependencies\n\nSome deps.\n\n" <>
+          "## Build failure history\n\n" <>
+          "| run | when | cost | terminal reason |\n|---|---|---|---|\n"
+
+      File.write!(path, body)
+
+      assert :ok = LoopQueue.write_build_failures!(path, 1, "| queue drain | NEWROW |")
+
+      updated = File.read!(path)
+
+      # The new row must land AFTER "## Dependencies", inside the REAL
+      # section — never spliced into the prose mention above it.
+      [_before_deps, after_deps] = String.split(updated, "## Dependencies", parts: 2)
+      assert after_deps =~ "| queue drain | NEWROW |"
+
+      [before_real_heading, _] = String.split(updated, "## Build failure history", parts: 2)
+      refute before_real_heading =~ "NEWROW"
+    end
+
+    test "mints the section at EOF when none exists, unchanged from prior behavior", %{dir: dir} do
+      path = Path.join(dir, "a.md")
+      File.write!(path, "---\nstatus: SHAPED\n---\n# a\n\n## Problem\n\nNo history section.\n")
+
+      assert :ok = LoopQueue.write_build_failures!(path, 1, "| queue drain | ROW1 |")
+
+      updated = File.read!(path)
+      assert updated =~ "## Build failure history"
+      assert updated =~ "| run | when | cost | terminal reason |"
+      assert updated =~ "| queue drain | ROW1 |"
+    end
+
+    test "a second failure appends inside the EXISTING section, preserving the first row",
+         %{dir: dir} do
+      path = Path.join(dir, "a.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nbuild_failures: 1\n---\n# a\n\n" <>
+          "## Build failure history\n\n" <>
+          "| run | when | cost | terminal reason |\n|---|---|---|---|\n" <>
+          "| queue drain | ROW1 |\n"
+      )
+
+      assert :ok = LoopQueue.write_build_failures!(path, 2, "| queue drain | ROW2 |")
+
+      updated = File.read!(path)
+      assert updated =~ "build_failures: 2"
+      assert updated =~ "| queue drain | ROW1 |"
+      assert updated =~ "| queue drain | ROW2 |"
+
+      rows =
+        updated |> String.split("\n") |> Enum.filter(&String.starts_with?(&1, "| queue drain"))
+
+      assert length(rows) == 2
+    end
+  end
+
+  # ── record_counted_history!/3 — the context-free counted write M6/M8 wire
+  # InterruptedCycleRecovery through. Regression coverage for
+  # "build-record-matches-what-happened" M8: below max_pitch_fails_from_env/0
+  # the row is appended in place; AT the threshold the pitch is demoted to
+  # draft/ with status: SHAPING and the full history preserved — this is the
+  # exact branch that produced the 107-row crash loop when it was bypassed.
+  describe "record_counted_history!/3" do
+    test "below threshold: appends the row in place and returns the incremented count",
+         %{dir: dir} do
+      pitch_path = Path.join(dir, "solo.md")
+      draft_dir = Path.join(dir, "draft")
+
+      File.write!(
+        pitch_path,
+        "---\nstatus: SHAPED\n---\n# solo\n\n## Build failure history\n\n" <>
+          "| run | when | cost | terminal reason |\n|---|---|---|---|\n"
+      )
+
+      assert LoopQueue.record_counted_history!(
+               pitch_path,
+               draft_dir,
+               "| interrupted recovery | ROW1 |"
+             ) == 1
+
+      assert File.exists?(pitch_path)
+      refute File.exists?(Path.join(draft_dir, "solo.md"))
+      updated = File.read!(pitch_path)
+      assert updated =~ "build_failures: 1"
+      assert updated =~ "| interrupted recovery | ROW1 |"
+      refute updated =~ "status: SHAPING"
+    end
+
+    test "at max_pitch_fails_from_env/0's threshold: demotes to draft/ with status: SHAPING and preserves history",
+         %{dir: dir} do
+      ready_dir = Path.join(dir, "ready")
+      draft_dir = Path.join(dir, "draft")
+      File.mkdir_p!(ready_dir)
+      pitch_path = Path.join(ready_dir, "solo.md")
+
+      # Pre-seeded at count 1 (one prior counted attempt already recorded),
+      # mirroring the loop_queue_drain_test.exs pattern for driving
+      # write_demotion!/5 — this call is the SECOND physical attempt, which
+      # reaches max_pitch_fails_from_env/0's default threshold of 2.
+      File.write!(
+        pitch_path,
+        "---\nstatus: SHAPED\nbuild_failures: 1\n---\n# solo\n\n## Build failure history\n\n" <>
+          "| run | when | cost | terminal reason |\n|---|---|---|---|\n" <>
+          "| interrupted recovery | ROW1 |\n"
+      )
+
+      assert LoopQueue.record_counted_history!(
+               pitch_path,
+               draft_dir,
+               "| interrupted recovery | ROW2 |"
+             ) == 2
+
+      refute File.exists?(pitch_path)
+      draft_path = Path.join(draft_dir, "solo.md")
+      assert File.exists?(draft_path)
+
+      demoted = File.read!(draft_path)
+      assert demoted =~ "build_failures: 2"
+      assert demoted =~ "status: SHAPING"
+      # Both rows survive the demotion — the pitch carries its FULL counted
+      # history into draft/ for the reshaper, not just the demoting row.
+      assert demoted =~ "| interrupted recovery | ROW1 |"
+      assert demoted =~ "| interrupted recovery | ROW2 |"
+    end
+  end
+end
+
+# Sibling module, async: false — CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS is
+# process-global env state (System.put_env), so it cannot run concurrently
+# with any other test in this suite that reads
+# LoopQueue.max_pitch_fails_from_env/0's default via an unset env var.
+defmodule CodegenTestHarness.LoopQueueEnvSerialTest do
+  use ExUnit.Case, async: false
+
+  alias CodegenTestHarness.LoopQueue
+
+  setup do
+    dir =
+      Path.join(System.tmp_dir!(), "loop_queue_env_test_#{:erlang.unique_integer([:positive])}")
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    {:ok, dir: dir}
+  end
+
+  describe "record_counted_history!/3 — CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS" do
+    test "honors the env var when set below the default", %{dir: dir} do
+      System.put_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS", "1")
+
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS") end)
+
+      ready_dir = Path.join(dir, "ready")
+      draft_dir = Path.join(dir, "draft")
+      File.mkdir_p!(ready_dir)
+      pitch_path = Path.join(ready_dir, "solo.md")
+      File.write!(pitch_path, "---\nstatus: SHAPED\n---\n# solo\n")
+
+      # With the threshold lowered to 1, the FIRST counted attempt already
+      # demotes — proves record_counted_history!/3 reads the threshold via
+      # max_pitch_fails_from_env/0 rather than a hardcoded default.
+      assert LoopQueue.record_counted_history!(
+               pitch_path,
+               draft_dir,
+               "| interrupted recovery | ROW1 |"
+             ) == 1
+
+      refute File.exists?(pitch_path)
+      draft_path = Path.join(draft_dir, "solo.md")
+      assert File.exists?(draft_path)
+      assert File.read!(draft_path) =~ "status: SHAPING"
+    end
+  end
 end

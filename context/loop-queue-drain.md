@@ -177,6 +177,61 @@ drafter), which stays fail-open: it creates optional follow-up work, not the req
 `:consecutive_fails` — the breaker (§ Circuit Breaker) remains a pure box-health backstop; a systemically
 broken environment still HALTs the whole drain even when every individual pitch is auto-demoting cleanly.
 
+**`InterruptedCycleRecovery.park_failure/1` does NOT write a `## Build failure history` row itself.**
+`finish_park!/5` (`interrupted_cycle_recovery.ex`) is dossier-only — it writes the recovery dossier and
+returns `{:ok, dossier}`, never touching the pitch body. `park_failure/1` has two real callers, and each
+decides independently whether a row is warranted:
+
+- `record_queue_park_dossier/2` (this module, called from `park_failed_tree/2`, which itself runs
+  immediately before `record_build_failure/4` for the SAME terminal failure, in all three
+  deterministic-failure `cond` arms) deliberately does NOT call any row-writer — `record_build_failure/4`
+  already writes the counted evidence row moments later for the same attempt. Before this fix,
+  `finish_park!/5` wrote a row unconditionally and this call site produced a SILENT DUPLICATE write on
+  every real-git-repo drain failure (never caught because every pre-existing drain test used a
+  non-git `cwd`, where `park_failure/1`'s `git rev-parse HEAD` fails and the write never runs).
+- `Mix.Tasks.Codegen.Loop.park_and_restore_claim/5` (single-pitch `mix codegen.loop`, no queue/drain in
+  scope) has no other writer for this attempt, so IT calls
+  `InterruptedCycleRecovery.record_park_history_row!/3` explicitly, AFTER `restore_claim/2` so the row
+  lands at the pitch's current physical location (`ready/<slug>.md`, not the pre-restore `building/`
+  path). This is a COUNTED write (see next paragraph) — best-effort only in the sense that a row-write
+  failure is logged loud and non-blocking, mirroring `park_failure/1`'s own non-blocking posture.
+
+**`InterruptedCycleRecovery.reconcile/1`'s three `write_history!/4` call sites — and
+`record_park_history_row!/3` above — DO count toward `build_failures:`, via
+`LoopQueue.record_counted_history!/3`.** `reconcile/1` runs during `LoopQueueDrain.drain/1`'s own STARTUP
+`with` chain, BEFORE the drain constructs its `state` map, so `LoopQueueDrain.record_build_failure/4`'s
+DRAIN-STATE counted-evidence path genuinely does not exist yet at this point — but the attempt is still
+real and must still count. `LoopQueue.record_counted_history!/3` is the context-free sibling:
+given only a pitch path, a `draft/` dir, and an already-formatted row, it reads `build_failures:`,
+increments it, and either appends the row (`LoopQueue.write_build_failures!/3`) or demotes the pitch to
+`draft/` at `LoopQueue.max_pitch_fails_from_env/0`'s threshold (`LoopQueue.write_demotion!/5`) — the exact
+same threshold `LoopQueueDrain.max_pitch_fails_from_env/0` now delegates to, so the drain-state path and
+the context-free path can never disagree. This closes the gap a CRASH-LOOPING drain process exploited:
+before this fix, `reconcile/1` fired fresh on every process restart, before `state`/`consecutive_fails`
+ever existed, and nothing anywhere incremented `build_failures:` for those restart cycles — a pitch could
+be attempted indefinitely while its own frontmatter still read zero failures (observed directly: pitch
+"build-record-matches-what-happened" accumulated 107 such rows in one day with no counter advancing). The
+row still names `checkpoint=<stage>` (the stage a retry resumes from) and
+`recovery=<branch|"none (tree clean)">`; `record_counted_history!/3` raises on a genuine read/write/rename
+failure against a pitch file proven present moments earlier (mirroring `write_build_failures!/3`/
+`write_demotion!/5`), and both `write_history!/4` and `record_park_history_row!/3` rescue that into loud,
+non-blocking stderr rather than propagating — a counting/write failure must never re-strand or crash an
+otherwise-successful recovery.
+
+**`transient?/1` is a RETRY predicate, not a blame predicate — `:transient_exhausted` still counts on
+exhaustion, deliberately.** `LoopQueue.transient?/1` matches THREE unlike things (unreadable jsonl,
+retryable-transport regex, absent result record) because its job is "worth retrying?", not "was the
+pitch at fault?". `retry_eligible?/5` gates the actual RETRY; only once `max_retries` is exhausted does
+execution fall to the catch-all, `classify_drain_failure/1` names it `:transient_exhausted`, and
+`record_build_failure/4` counts it exactly like any other deterministic-looking failure (same
+`deterministic-build-failure-x<N>` demotion at threshold). This is intentional, not a gap: an UNCOUNTED
+exhaustion would let a persistently broken box retry a pitch forever with `build_failures:` never
+advancing — the exact livelock the counted path exists to prevent. A genuinely DIFFERENT, narrower
+category — a host/transport abort so early that no child/jsonl artifact exists at all (as opposed to a
+child that ran, produced no result record, and exhausted retries) — is a distinct disposition this
+module does not currently detect or write; if that category needs its own non-counting record, it is a
+new detection seam with its own scope, not a change to `transient?/1` or the exhaustion path above.
+
 ## Publish — a Watched Node Publishes Its Own Commits
 
 The drain publishes every commit it lands (`publish_or_halt/4`, called at ALL THREE commit-landed ship
@@ -267,24 +322,34 @@ those — zero new seam reads. Clause order is significant, transient-first:
    first)". This is a distinct concept from (1): a REAL result record exists and the gate genuinely
    passed THIS cycle, but the ship itself was never verified (e.g. a concurrent drain shipped the same
    slug first — see `a-landed-pitch-cannot-be-handed-out-again`).
-3. Catch-all → `:gate_failed` — "gate verdict=<v>" (never a silent `nil`/defensive sink; every
-   terminal-FAILED cycle gets a named cause).
+3. `gate_verdict: "clear", gate_clear?: false, committed?: <bool>` → `:gate_never_ran_this_cycle` —
+   "recorded gate verdict is a STALE \"clear\" from an earlier run — this cycle's gate produced no fresh
+   verdict, so the failure is not the gate's", with an appended "(HEAD DID advance: a commit exists that
+   was never freshly gated)" clause when `committed?` is true. The calling arm's own `gate_clear?` value
+   already bakes in `gate_fresh?/3` (and, at the exit-0 site, `whole_pitch?`/`coverage_floor_ok?` too), so
+   `gate_verdict == "clear"` reaching here with `gate_clear? == false` is the exact staleness case —
+   never blame the gate for a verdict it never freshly produced for THIS cycle.
+4. Catch-all → `:gate_failed` — "gate verdict=<v>" (never a silent `nil`/defensive sink; every
+   terminal-FAILED cycle gets a named cause). Reached only when `gate_verdict` is NOT `"clear"` (a
+   genuine non-clear verdict) — a stale-clear verdict is intercepted by clause 3 above, never mislabeled
+   as a gate failure that ran and found a problem.
 
 `format_failure_block/3` composes `Failure cause: <atom> — <str>\nGate verdict: <display>\n`. `display`
 qualifies a raw `"clear"` verdict THREE ways: `"clear (STALE — not fresh for this cycle)"` when
-`gate_fresh?/3` rejected it (a genuinely stale record from an EARLIER cycle), `"clear (ship not
-verified — HEAD did not advance)"` when the verdict IS fresh for this cycle but the cause is
-`:ship_not_verified`, or `"clear (transient — child produced no result record this cycle)"` when the
-cause is `:transient_exhausted` — `transient?` is checked FIRST in `classify_drain_failure/1`, so a
-fresh-clear gate left over from a prior successful run in the same working tree can still co-occur with
-a crashed/killed child on THIS cycle. All three qualifiers apply regardless of which cause fired — a
-drafted block's raw-`"clear"` verdict is NEVER rendered unqualified for ANY cause atom.
+`gate_fresh?/3` rejected it (a genuinely stale record from an EARLIER cycle — this same qualifier covers
+both `:gate_never_ran_this_cycle` and any other not-`gate_clear?` case), `"clear (ship not verified —
+HEAD did not advance)"` when the verdict IS fresh for this cycle but the cause is `:ship_not_verified`,
+or `"clear (transient — child produced no result record this cycle)"` when the cause is
+`:transient_exhausted` — `transient?` is checked FIRST in `classify_drain_failure/1`, so a fresh-clear
+gate left over from a prior successful run in the same working tree can still co-occur with a
+crashed/killed child on THIS cycle. All qualifiers apply regardless of which cause fired — a drafted
+block's raw-`"clear"` verdict is NEVER rendered unqualified for ANY cause atom.
 `draft_failure/4` also emits a loud `queue: WARN — <slug> classified <atom> but raw gate verdict on disk
 reads "clear" (<matching qualifier text>)` stderr line when the cause is
-`:ship_not_verified`/`:transient_exhausted` while the raw on-disk verdict still reads `clear` — the
-qualifier in the WARN matches the cause atom (never a hardcoded "stale" for a fresh-but-unverified or
-fresh-but-transient cause) — the buried-contradiction case surfaced immediately, not only discoverable
-by reading the drafted skeleton later. The `:draft_fn` seam signature is UNCHANGED
+`:ship_not_verified`/`:transient_exhausted`/`:gate_never_ran_this_cycle` while the raw on-disk verdict
+still reads `clear` — the qualifier in the WARN matches the cause atom (never a hardcoded "stale" for a
+fresh-but-unverified or fresh-but-transient cause) — the buried-contradiction case surfaced immediately,
+not only discoverable by reading the drafted skeleton later. The `:draft_fn` seam signature is UNCHANGED
 (`(cwd, slug, jsonl, failure_block -> {:ok, path} | {:error, reason})`, still 4-arity) — only the STRING
 content of the 4th arg changed from a bare verdict to the composed block; `build_draft_prompt/4` renders
 whichever shape it receives (a composed block starting with `"Failure cause:"`, or — for direct
@@ -294,15 +359,20 @@ verdict: "`).
 **Failure evidence fallback — `failure_summary/1`**: the child's LAST `{"type":"result"}` envelope does
 NOT always carry a `result` key — `mix codegen.loop`'s result-line writer always emits `terminal_reason`
 
-- `subtype` (`loop_failed`/`error` on failure, `loop_committed`/`success` on success) but only sometimes
-  emits a human `result` string. Both failure-evidence readers — `emit_failure_diagnostics/4` (operator
-  stderr) and `default_draft_fn/4` (the `result_text` fed into the draft prompt) — share one extractor,
-  `failure_summary/1`: prefers a non-empty `result`, falls back to `"terminal: <reason> (<subtype>)"` when
-  `result` is absent, and only returns `""` when the envelope carries neither. Without this fallback a
-  `loop_failed` exhaustion with a `clear` gate verdict (the pre-commit re-gate case: gate passed, a later
-  tree edit invalidated it) surfaced as "gate: clear, result: (empty)" to both the operator and the
-  auto-drafter — undiagnosable. `gate_verdict_fn`'s own read is untouched; this only adds the missing
-  reason beside it.
+- `subtype` (`loop_failed`/`error` on failure, `loop_committed`/`success` on success) AND a
+  `terminal_cause` field (`terminal_cause/1` in `codegen.loop.ex` — the loop's own concrete failure
+  reason string, e.g. `"the review re-work budget (3) is exhausted: changes requested"`, or `nil` on a
+  cause-less `:ok`) but only sometimes emits a human `result` string. Both failure-evidence readers —
+  `emit_failure_diagnostics/4` (operator stderr) and `default_draft_fn/4` (the `result_text` fed into the
+  draft prompt) — share one extractor, `failure_summary/1`: prefers a non-empty `result`; when absent,
+  prefers `"terminal: <reason> — <terminal_cause>"` over the generic `"terminal: <reason> (<subtype>)"`
+  whenever a non-empty `terminal_cause` is present (far more actionable than the bare subtype
+  classification); falls back to `"terminal: <reason> (<subtype>)"` for an envelope with no
+  `terminal_cause` (older records, or a genuinely uncaused terminal); and only returns `""` when the
+  envelope carries none of the above. Without this fallback a `loop_failed` exhaustion with a `clear`
+  gate verdict (the pre-commit re-gate case: gate passed, a later tree edit invalidated it) surfaced as
+  "gate: clear, result: (empty)" to both the operator and the auto-drafter — undiagnosable.
+  `gate_verdict_fn`'s own read is untouched; this only adds the missing reason beside it.
 
 ## Boot-Time Decode-Dep Force-Load — `:load_deps_fn`
 
@@ -359,4 +429,4 @@ there never changes `park_failed_tree/2`'s own returned branch name or the pre-e
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block, InterruptedCycleRecovery, reconciliation_required, recovery preflight, queue startup recovery, prioritize_recovered_slug, reconcile_opts, state.recovery, stranded building claim, park_failure, recovery dossier, queue-fail dossier, startup parks stranded claim, ordinary order precedence, recovery informational
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, terminal_cause, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, gate_never_ran_this_cycle, stale clear verdict cause, failure cause, contradiction warn, failure block, InterruptedCycleRecovery, reconciliation_required, recovery preflight, queue startup recovery, prioritize_recovered_slug, reconcile_opts, state.recovery, stranded building claim, park_failure, record_park_history_row, finish_park, duplicate history row, recovery dossier, queue-fail dossier, startup parks stranded claim, ordinary order precedence, recovery informational, record_counted_history, context-free counted write, crash-looping drain, uncounted interrupted attempt, max_pitch_fails_from_env

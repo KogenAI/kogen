@@ -309,12 +309,16 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
     assert {"changed\n", 0} = System.cmd("git", ["-C", cwd, "show", "#{branch}:tracked.txt"])
     assert {"preserve\n", 0} = System.cmd("git", ["-C", cwd, "show", "#{branch}:untracked.txt"])
 
-    # The requeued pitch carries a Build failure history row naming who must
-    # look at it next. There is no planner to hand an interrupted cycle back
-    # to any more — the row names the operator.
+    # The requeued pitch carries a COUNTED Build failure history row (M6/M7
+    # — a startup recovery attempt is a real physical attempt and now
+    # counts toward build_failures:, exactly like the queue drain's own
+    # deterministic path). There is no planner to hand an interrupted cycle
+    # back to any more — the row names the checkpoint stage and recovery
+    # branch instead.
     history = File.read!(requeued)
     assert history =~ "| interrupted recovery |"
-    assert history =~ "next=operator-inspection-required"
+    assert history =~ "checkpoint="
+    assert history =~ "build_failures: 1"
     refute history =~ "planner"
   end
 
@@ -407,7 +411,13 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
       # Reported, not enforced: verdict + the exact undeclared paths.
       assert dossier["ownership"] == "expanded"
       assert dossier["scope_expansion"] == ["unrelated.txt"]
+
+      # park_failure/1 itself is dossier-only (no history row) — the caller
+      # decides whether a row is warranted. record_park_history_row!/3 is the
+      # single-pitch-mode caller's own explicit COUNTED write.
+      assert :ok = InterruptedCycleRecovery.record_park_history_row!(pitch_path, cwd, dossier)
       assert File.read!(pitch_path) =~ "scope_expansion=unrelated.txt"
+      assert File.read!(pitch_path) =~ "build_failures: 1"
 
       # ...and the work is restored anyway, byte-identical to what was parked.
       assert {:ok, {:exact, materialized}} = InterruptedCycleRecovery.materialize(cwd, "probe")

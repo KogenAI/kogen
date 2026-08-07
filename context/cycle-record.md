@@ -97,8 +97,14 @@ results, where a warning location would be misleading.
 `extract_witness <log_path>` — best-effort, fall-open-empty (never errors; missing witness never breaks
 the gate). ExUnit-aware: finds the first `  N) test ...` headline block, prefers the stacktrace's first
 frame over the raw definition line (definition line misleads on setup-raise and doctests). Falls back to
-a generic `file:line` grep for credo/dialyzer-style output. See `shared/rules/_core` § Witness
-Discipline for the cross-role contract this feeds.
+a generic `file:line` grep for credo/dialyzer-style output, then — when still empty — a doc-shaped
+fallback: `grep -oE 'context/[A-Za-z0-9_-]+\.md|PROJECT_CONTEXT\.md'` (no `\b`, since GNU-grep's `\b` has
+no guaranteed BSD ERE support and `required_platforms: [darwin, linux]`; the Elixir consumer's own
+`\b`-anchored `@curator_owned_signatures` re-applies the boundary). Without it a doc-shaped gate failure
+(e.g. `context-index-parity`, which names a file with no line number by construction) produced an empty
+witness, and `resolve_gate_owner/2` fell back to the developer — who `subagent-read-discipline` then
+denies the Read on that exact path. See `shared/rules/_core` § Witness Discipline for the cross-role
+contract this feeds.
 
 ## Whole-Pitch Completeness — Pre-Commit Deterministic Floor
 
@@ -148,4 +154,4 @@ Cross-reference `shared/rules/_core/session-log.md` § Enforcement for the full 
 
 ## Trigger Keywords
 
-codegen-log, cycle log, gate-pending, gate-result.json, cycle-state.json, write_gate_result, derive_verdict, verdict truth table, extract_witness, witness fallback, witness discipline, gate-verdicts.jsonl, graded_tree_sha, ev kinds, .active sentinel, no git-tracked logs, no cross-box log transport, recovery dossier, dossier stages, machine-local gitignored ephemeral artifact, recoveries/<slug>/<txid>.json, schema_version, transaction identity
+codegen-log, cycle log, gate-pending, gate-result.json, cycle-state.json, write_gate_result, derive_verdict, verdict truth table, extract_witness, witness fallback, doc-shaped witness, context-index-parity witness, witness discipline, gate-verdicts.jsonl, graded_tree_sha, ev kinds, .active sentinel, no git-tracked logs, no cross-box log transport, recovery dossier, dossier stages, machine-local gitignored ephemeral artifact, recoveries/<slug>/<txid>.json, schema_version, transaction identity

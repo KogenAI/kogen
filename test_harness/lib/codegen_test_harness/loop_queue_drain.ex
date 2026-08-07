@@ -1607,6 +1607,29 @@ defmodule CodegenTestHarness.LoopQueueDrain do
        "(ship not verified — another supervisor may have shipped it first)"}
   end
 
+  # A recorded "clear" verdict that this arm's OWN gate_clear? computation
+  # (which already bakes in gate_fresh?/3 — see both handle_exit_zero/7 and
+  # handle_nonzero_exit/8) rejected as not-fresh-for-this-cycle must never be
+  # blamed on the gate: :gate_failed would tell an operator the gate ran and
+  # found a problem, when in truth no fresh verdict for THIS cycle exists at
+  # all. Distinguishes whether HEAD still advanced (a real commit exists that
+  # was simply never freshly gated) from a genuinely unmoved HEAD, since the
+  # former is a materially different situation for a reader deciding what to
+  # do next.
+  defp classify_drain_failure(%{
+         gate_verdict: "clear",
+         gate_clear?: false,
+         committed?: committed?
+       }) do
+    {:gate_never_ran_this_cycle,
+     "recorded gate verdict is a STALE \"clear\" from an earlier run — this cycle's gate " <>
+       "produced no fresh verdict, so the failure is not the gate's" <>
+       if(committed?,
+         do: " (HEAD DID advance: a commit exists that was never freshly gated)",
+         else: ""
+       )}
+  end
+
   defp classify_drain_failure(%{gate_verdict: v}) do
     {:gate_failed, "gate verdict=#{inspect(v)}"}
   end
@@ -1693,11 +1716,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   defp draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?}) do
     {cause_atom, _cause_str} = cause
 
-    if cause_atom in [:ship_not_verified, :transient_exhausted] and gate_verdict == "clear" do
+    if cause_atom in [:ship_not_verified, :transient_exhausted, :gate_never_ran_this_cycle] and
+         gate_verdict == "clear" do
       qualifier =
         case cause_atom do
           :ship_not_verified -> "ship not verified — HEAD did not advance"
           :transient_exhausted -> "transient — child produced no result record this cycle"
+          :gate_never_ran_this_cycle -> "STALE — not fresh for this cycle"
         end
 
       IO.puts(
@@ -2333,23 +2358,29 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   # Human-readable failure evidence for a result record. Prefers the loop's
   # own `result` prose when present (the loop-committed/loop-failed happy
-  # path). Falls back to the envelope's `terminal_reason` + `subtype` — the
-  # ONLY fields a `loop_failed`/`error` envelope carries when the loop never
-  # wrote a `result` key at all (see `codegen.loop.ex`'s result-line writer,
-  # which always emits `terminal_reason`/`subtype` but only sometimes emits
-  # `result`). Returns `""` only when the envelope carries neither — a
-  # genuinely evidence-less record (e.g. a killed child's last partial line).
-  # Shared by `emit_failure_diagnostics/4` (operator stderr) and
-  # `default_draft_fn/4` (auto-drafter prompt) so both surfaces agree.
+  # path). Next prefers `terminal_reason` + `terminal_cause` — the loop's own
+  # concrete reason string (`codegen.loop.ex`'s `terminal_cause/1`, e.g. "the
+  # review re-work budget (3) is exhausted: ...") is far more actionable than
+  # the generic `subtype` classification alone. Falls back to
+  # `terminal_reason` + `subtype` for an envelope with no `terminal_cause`
+  # (older records, or a genuinely uncaused `:ok` terminal). Returns `""`
+  # only when the envelope carries none of the above — a genuinely
+  # evidence-less record (e.g. a killed child's last partial line). Shared by
+  # `emit_failure_diagnostics/4` (operator stderr) and `default_draft_fn/4`
+  # (auto-drafter prompt) so both surfaces agree.
   @spec failure_summary(map()) :: String.t()
   defp failure_summary(record) do
     result = Map.get(record, "result")
     reason = Map.get(record, "terminal_reason")
     subtype = Map.get(record, "subtype")
+    cause = Map.get(record, "terminal_cause")
 
     cond do
       is_binary(result) and result != "" ->
         result
+
+      is_binary(reason) and reason != "" and is_binary(cause) and cause != "" ->
+        "terminal: #{reason} — #{cause}"
 
       is_binary(reason) and reason != "" and is_binary(subtype) and subtype != "" ->
         "terminal: #{reason} (#{subtype})"
@@ -2612,14 +2643,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
-  @doc "Resolves `CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS`, default #{@default_max_pitch_fails}."
+  @doc """
+  Resolves `CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS`, default
+  #{@default_max_pitch_fails}. Delegates to `LoopQueue.max_pitch_fails_from_env/0`
+  — the SOLE parser — so this module's drain-state counted path
+  (`record_build_failure/4`) and `InterruptedCycleRecovery`'s context-free
+  counted path (`LoopQueue.record_counted_history!/3`) can never disagree
+  on the threshold.
+  """
   @spec max_pitch_fails_from_env() :: pos_integer()
-  def max_pitch_fails_from_env do
-    case System.get_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS") do
-      nil -> @default_max_pitch_fails
-      str -> parse_pos_int(str, @default_max_pitch_fails)
-    end
-  end
+  def max_pitch_fails_from_env, do: LoopQueue.max_pitch_fails_from_env()
 
   @doc "Resolves `CODEGEN_BUILD_QUEUE_OUTAGE_PAUSE_SECS`, default #{@default_outage_pause_secs}."
   @spec outage_pause_from_env() :: pos_integer()

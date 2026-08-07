@@ -6,17 +6,17 @@ Two common fragments (`_phoenix_developer_common.md.j2`, `_static_developer_comm
 
 ## Components
 
-| File                                                        | Purpose                                                             |
-| ----------------------------------------------------------- | ------------------------------------------------------------------- |
-| `shared/subagents/phoenix/developer-phoenix-backend.md.j2`  | Backend developer — schemas, contexts, migrations, Oban             |
-| `shared/subagents/phoenix/developer-phoenix-frontend.md.j2` | Frontend developer — LiveView, HEEx, JS hooks, Tailwind             |
-| `shared/subagents/phoenix/reviewer-phoenix.md.j2`           | Phoenix reviewer — quality, patterns, architecture                  |
-| `shared/subagents/static/developer-static.md.j2`            | Static (Vite) site developer — vanilla by default, framework opt-in |
-| `shared/subagents/static/reviewer-static.md.j2`             | Static site reviewer                                                |
-| `shared/subagents/shared/context-curator.md.j2`             | Context curator — updates domain context files post-reviewer        |
-| `shared/subagents/shared/spike-builder.md.j2`                | Sandboxed feasibility-spike builder — spawned from shape mode (its designed caller) or debug mode (also reachable there, no shape-only restriction), confined to codegen/pitches/ + absolute /tmp/ |
-| `shared/subagents/_phoenix_developer_common.md.j2`          | Shared rules fragment included by backend + frontend templates      |
-| `shared/subagents/_static_developer_common.md.j2`           | Shared rules fragment included by all static developer templates    |
+| File                                                        | Purpose                                                                                                                                                                                            |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shared/subagents/phoenix/developer-phoenix-backend.md.j2`  | Backend developer — schemas, contexts, migrations, Oban                                                                                                                                            |
+| `shared/subagents/phoenix/developer-phoenix-frontend.md.j2` | Frontend developer — LiveView, HEEx, JS hooks, Tailwind                                                                                                                                            |
+| `shared/subagents/phoenix/reviewer-phoenix.md.j2`           | Phoenix reviewer — quality, patterns, architecture                                                                                                                                                 |
+| `shared/subagents/static/developer-static.md.j2`            | Static (Vite) site developer — vanilla by default, framework opt-in                                                                                                                                |
+| `shared/subagents/static/reviewer-static.md.j2`             | Static site reviewer                                                                                                                                                                               |
+| `shared/subagents/shared/context-curator.md.j2`             | Context curator — updates domain context files post-reviewer                                                                                                                                       |
+| `shared/subagents/shared/spike-builder.md.j2`               | Sandboxed feasibility-spike builder — spawned from shape mode (its designed caller) or debug mode (also reachable there, no shape-only restriction), confined to codegen/pitches/ + absolute /tmp/ |
+| `shared/subagents/_phoenix_developer_common.md.j2`          | Shared rules fragment included by backend + frontend templates                                                                                                                                     |
+| `shared/subagents/_static_developer_common.md.j2`           | Shared rules fragment included by all static developer templates                                                                                                                                   |
 
 ## Key Paths
 

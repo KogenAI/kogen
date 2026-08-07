@@ -563,6 +563,66 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert output =~ ~r/\[1\/1\] solo \.\.\. FAILED/
   end
 
+  test "1h4: failure diagnostics prefer terminal_reason + terminal_cause over the generic subtype",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      File.write!(
+        jsonl,
+        Jason.encode!(%{
+          "type" => "result",
+          "subtype" => "error",
+          "terminal_reason" => "loop_failed",
+          "terminal_cause" =>
+            "the review re-work budget (3) is exhausted: changes requested",
+          "session_id" => "sess-cause"
+        }) <> "\n"
+      )
+
+      {:exit_code, 1}
+    end
+
+    transient_fn = fn _jsonl -> false end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+      end)
+
+    assert output =~
+             "terminal: loop_failed — the review re-work budget (3) is exhausted: changes requested"
+
+    refute output =~ "terminal: loop_failed (error)"
+    assert output =~ "session_id: sess-cause"
+  end
+
+  test "1h5: failure diagnostics fall back to terminal_reason/subtype when terminal_cause is absent (byte-for-byte prior behavior)",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    spawn_fn = fn _slug, _h, _s, _cwd, jsonl ->
+      File.write!(
+        jsonl,
+        ~s({"type":"result","subtype":"error","terminal_reason":"loop_failed","session_id":"sess-nocause"}\n)
+      )
+
+      {:exit_code, 1}
+    end
+
+    transient_fn = fn _jsonl -> false end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+      end)
+
+    assert output =~ "terminal: loop_failed (error)"
+    refute output =~ "terminal: loop_failed —"
+  end
+
   test "1h2: a terminal-marked nonzero exit parks + skips — NEVER retried, even though transient_fn is true",
        ctx do
     write_pitch(ctx.ready_dir, "solo")
@@ -1845,6 +1905,94 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert failure_block =~ "Failure cause: gate_failed"
     assert failure_block =~ "gate verdict=\"failed\""
     assert failure_block =~ "Gate verdict: failed\n"
+  end
+
+  test "D12: recorded \"clear\" verdict but NOT fresh for this cycle, not committed -> classifies gate_never_ran_this_cycle, never gate_failed",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    # gate_verdict_fn reads "clear", but gate_mtime_fn/gate_base_sha_fn stay
+    # at base_opts' defaults (mtime 0, base_sha "") -- gate_fresh?/3 rejects
+    # this as stale for THIS cycle, so gate_clear? is false even though the
+    # raw on-disk string is "clear". HEAD never moves (git_head_fn nil) ->
+    # committed? false too -- neither ship_not_verified's `gate_clear?: true`
+    # guard nor a genuine :gate_failed applies; only the new staleness
+    # clause fits.
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+    gate_verdict_fn = fn _cwd -> "clear" end
+
+    calls = start_agent([])
+
+    draft_fn = fn _cwd, slug, _jsonl, failure_block ->
+      Agent.update(calls, &(&1 ++ [{slug, failure_block}]))
+      {:ok, "/dev/null"}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 quiet_drain(
+                   base_opts(ctx,
+                     spawn_fn: spawn_fn,
+                     transient_fn: transient_fn,
+                     gate_verdict_fn: gate_verdict_fn,
+                     draft_fn: draft_fn
+                   )
+                 )
+      end)
+
+    assert [{"solo", failure_block}] = Agent.get(calls, & &1)
+    assert failure_block =~ "Failure cause: gate_never_ran_this_cycle"
+    refute failure_block =~ "Failure cause: gate_failed"
+    assert failure_block =~ "STALE \"clear\" from an earlier run"
+    refute failure_block =~ "HEAD DID advance"
+    refute failure_block =~ "Gate verdict: clear\n"
+    assert failure_block =~ "Gate verdict: clear (STALE — not fresh for this cycle)"
+
+    assert output =~
+             "queue: WARN — solo classified gate_never_ran_this_cycle but raw gate verdict on disk reads \"clear\""
+  end
+
+  test "D13: recorded \"clear\" verdict but NOT fresh for this cycle, HEAD DID advance -> names the advance",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+
+    # HEAD moves this time (git_head_fn returns a new value on every call --
+    # "head-0" pre-spawn, "head-1" post-spawn) but the gate record is still
+    # stale (default mtime 0 / base_sha "") -- a real commit exists that was
+    # never freshly gated, which the cause string must call out explicitly.
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+    transient_fn = fn _jsonl -> false end
+    gate_verdict_fn = fn _cwd -> "clear" end
+    head_calls = start_agent(0)
+    git_head_fn = fn _cwd -> Agent.get_and_update(head_calls, fn n -> {"head-#{n}", n + 1} end) end
+    git_ancestor_fn = fn _cwd, _ancestor, _descendant -> true end
+
+    calls = start_agent([])
+
+    draft_fn = fn _cwd, slug, _jsonl, failure_block ->
+      Agent.update(calls, &(&1 ++ [{slug, failure_block}]))
+      {:ok, "/dev/null"}
+    end
+
+    capture_io(:stderr, fn ->
+      assert {:ok, 0} =
+               quiet_drain(
+                 base_opts(ctx,
+                   spawn_fn: spawn_fn,
+                   transient_fn: transient_fn,
+                   gate_verdict_fn: gate_verdict_fn,
+                   git_head_fn: git_head_fn,
+                   git_ancestor_fn: git_ancestor_fn,
+                   draft_fn: draft_fn
+                 )
+               )
+    end)
+
+    assert [{"solo", failure_block}] = Agent.get(calls, & &1)
+    assert failure_block =~ "Failure cause: gate_never_ran_this_cycle"
+    assert failure_block =~ "HEAD DID advance: a commit exists that was never freshly gated"
   end
 
   test "D11: invariant — no drafted failure block ever shows an unqualified clear verdict without naming a non-clear cause",

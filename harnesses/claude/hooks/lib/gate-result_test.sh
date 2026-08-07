@@ -268,6 +268,25 @@ printf 'just some unparseable noise with no location at all\n' >"$WIT_NONE"
 assert_eq "extract_witness unparseable → empty string" "" "$(extract_witness "$WIT_NONE")"
 rm -f "$WIT_NONE"
 
+# ── extract_witness: doc-shaped gate failure (no compiler location) ──────────
+
+WIT_DOC=$(mktemp)
+cat >"$WIT_DOC" <<'LOG'
+===== context-index-parity =====
+context-index-sync: PROJECT_CONTEXT.md § Domain Context Files row for context/loop.md does not match context/loop.md § Trigger Keywords.
+make[1]: *** [context-index-parity] Error 1
+FAILED ❌ make test — context-index-parity
+LOG
+assert_eq "extract_witness doc-shaped (PROJECT_CONTEXT.md) → non-empty witness, no line number" \
+    "PROJECT_CONTEXT.md" "$(extract_witness "$WIT_DOC")"
+rm -f "$WIT_DOC"
+
+WIT_DOC_CTX=$(mktemp)
+printf 'context-index-sync: context/loop.md is stale.\n' >"$WIT_DOC_CTX"
+assert_eq "extract_witness doc-shaped (context/*.md) → names the context file" \
+    "context/loop.md" "$(extract_witness "$WIT_DOC_CTX")"
+rm -f "$WIT_DOC_CTX"
+
 assert_eq "extract_witness missing file → empty + exit 0" \
     "ok" "$(extract_witness /nonexistent/log.txt >/dev/null 2>&1 && echo ok || echo err)"
 

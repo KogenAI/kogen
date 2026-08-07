@@ -1649,6 +1649,77 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
+  @default_max_pitch_fails 2
+
+  @doc """
+  Resolves `CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS`, default
+  #{@default_max_pitch_fails}. The SOLE definition — `LoopQueueDrain` reads
+  the env var only through this function (never re-parses it) so a
+  context-free counted write (`record_counted_history!/3`, called from
+  `InterruptedCycleRecovery` where no drain `state` map exists yet) and a
+  drain-state counted write agree on the exact same threshold with no
+  circular module dependency (`LoopQueueDrain` already depends on
+  `InterruptedCycleRecovery`, so the reverse dependency is forbidden).
+  """
+  @spec max_pitch_fails_from_env() :: pos_integer()
+  def max_pitch_fails_from_env do
+    case System.get_env("CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS") do
+      nil ->
+        @default_max_pitch_fails
+
+      str ->
+        case Integer.parse(str) do
+          {n, ""} when n > 0 -> n
+          _ -> @default_max_pitch_fails
+        end
+    end
+  end
+
+  @doc """
+  Context-free counted write for a recovery-shaped `## Build failure
+  history` row — reads `build_failures:`, increments it, and either
+  appends the row (below threshold) or demotes the pitch to
+  `draft_dir/<slug>.md` (at `max_pitch_fails_from_env/0`'s threshold),
+  exactly like `LoopQueueDrain.record_build_failure/4`'s deterministic
+  path, but callable BEFORE a drain `state` map exists (`reconcile/1` runs
+  during `LoopQueueDrain.drain/1`'s own startup `with` chain, ahead of the
+  `state = %{...}` literal — see `InterruptedCycleRecovery`'s moduledoc
+  note above `write_history!/3`).
+
+  `pitch_path` is the claim's CURRENT physical location (the caller
+  resolves it — this function does not probe `ready_dir`/`building_dir`
+  itself, since `InterruptedCycleRecovery`'s callers already know exactly
+  which file the claim was restored to). `draft_dir` is the absolute path
+  to `codegen/pitches/draft` the demoted file lands in. `row` is the
+  already-formatted markdown table row for this attempt.
+
+  Returns the resolved `count` on success (fail-open by design: a caller
+  whose OWN row-write already has a non-blocking-observability posture,
+  e.g. `InterruptedCycleRecovery.write_history!/3`, can rescue this and log
+  rather than propagate — mirroring `record_build_failure/4`'s own
+  fail-CLOSED semantics would turn a startup recovery notice into a drain
+  HALT, which is a stronger posture than a recovery-of-an-already-terminal
+  attempt warrants). Raises on the same conditions `write_build_failures!/3`
+  and `write_demotion!/5` already raise on (a read/write/rename failure
+  against a pitch file proven present moments earlier) — callers that need
+  non-blocking behavior wrap this in their own rescue, exactly as they do
+  today for `write_history_row!/3`.
+  """
+  @spec record_counted_history!(String.t(), String.t(), String.t()) :: non_neg_integer()
+  def record_counted_history!(pitch_path, draft_dir, row) do
+    slug = Path.basename(pitch_path, ".md")
+    count = parse_build_failures(slug, pitch_path) + 1
+
+    if count >= max_pitch_fails_from_env() do
+      draft_path = Path.join(draft_dir, "#{slug}.md")
+      write_demotion!(pitch_path, draft_path, count, row, "Build failure history")
+    else
+      write_build_failures!(pitch_path, count, row)
+    end
+
+    count
+  end
+
   # Shared frontmatter upsert grammar — reused by write_build_failures!/2 and
   # write_demotion!/5 so the increment-only write and the full-demotion write
   # can never disagree on how `key: value` lines are inserted or replaced.
@@ -1691,33 +1762,53 @@ defmodule CodegenTestHarness.LoopQueue do
   # breaking the table it claimed to extend. Normalizes a missing trailing
   # newline before appending so a minted section never runs onto the same
   # line as the file's last byte.
+  #
+  # The marker is located ONLY where it begins a line (start-of-string, or
+  # immediately after a newline) — a bare `String.contains?`/`String.split`
+  # on the marker text matches ANY substring occurrence, including a prose
+  # mention of the heading inside an unrelated section, or a mention inside a
+  # backtick code span. A pitch body that discusses its own `## Build failure
+  # history` section in prose (as this repo's own pitches legitimately do)
+  # would otherwise have every row spliced in at that first prose mention
+  # instead of the real heading — reproduced and confirmed against a real
+  # pitch body before this fix.
   @spec append_history_row(String.t(), String.t(), String.t()) :: String.t()
   defp append_history_row(content, header, row) do
     normalized = String.trim_trailing(content) <> "\n"
     marker = "## #{header}"
+    # Line-start anchor: `\A` (string start) or a literal `\n` immediately
+    # before the marker, with a mandatory trailing `\n` — so the marker only
+    # counts when it is the ENTIRE content of a line. `Regex.run/3` with
+    # `return: :index` gives the byte range of the WHOLE match (group 0,
+    # first tuple) — used to slice `before`/`after_marker` around exactly
+    # the matched marker text, never the surrounding `\A|\n` anchor bytes.
+    anchored_marker = Regex.compile!("(?:\\A|\\n)(#{Regex.escape(marker)})\\n")
 
-    if String.contains?(normalized, marker) do
-      [before, after_marker] = String.split(normalized, marker, parts: 2)
+    case Regex.run(anchored_marker, normalized, return: :index) do
+      [_whole, {marker_start, marker_len}] ->
+        before = String.slice(normalized, 0, marker_start)
+        after_marker = String.slice(normalized, (marker_start + marker_len)..-1//1)
 
-      case String.split(after_marker, "\n## ", parts: 2) do
-        [section_only] ->
-          # History section is the LAST section in the file — EOF append.
-          before <> marker <> String.trim_trailing(section_only) <> "\n" <> row <> "\n"
+        case String.split(after_marker, "\n## ", parts: 2) do
+          [section_only] ->
+            # History section is the LAST section in the file — EOF append.
+            before <> marker <> String.trim_trailing(section_only) <> "\n" <> row <> "\n"
 
-        [section, rest] ->
-          # Another `## ` heading follows — insert before it, inside the
-          # history section.
-          before <>
-            marker <> String.trim_trailing(section) <> "\n" <> row <> "\n\n## " <> rest
-      end
-    else
-      normalized <>
-        "\n" <>
-        marker <>
-        "\n\n" <>
-        "| run | when | cost | terminal reason |\n" <>
-        "|---|---|---|---|\n" <>
-        row <> "\n"
+          [section, rest] ->
+            # Another `## ` heading follows — insert before it, inside the
+            # history section.
+            before <>
+              marker <> String.trim_trailing(section) <> "\n" <> row <> "\n\n## " <> rest
+        end
+
+      nil ->
+        normalized <>
+          "\n" <>
+          marker <>
+          "\n\n" <>
+          "| run | when | cost | terminal reason |\n" <>
+          "|---|---|---|---|\n" <>
+          row <> "\n"
     end
   end
 
