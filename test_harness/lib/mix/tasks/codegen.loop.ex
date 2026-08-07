@@ -413,26 +413,30 @@ defmodule Mix.Tasks.Codegen.Loop do
         )
       end)
 
-    emit_loop_telemetry(result)
+    terminal_result =
+      case result do
+        :ok ->
+          case verify_commit_landed(head_before, cwd) do
+            {:ok, after_sha} ->
+              Mix.shell().info("codegen.loop: COMMITTED, gate clear")
+              InterruptedCycleRecovery.complete_transaction!(cwd, slug)
+              maybe_ship_pitch(source, cwd, before_sha(head_before), after_sha)
+              write_build_result!(cwd, slug, after_sha)
 
-    case result do
-      :ok ->
-        case verify_commit_landed(head_before, cwd) do
-          {:ok, after_sha} ->
-            Mix.shell().info("codegen.loop: COMMITTED, gate clear")
-            InterruptedCycleRecovery.complete_transaction!(cwd, slug)
-            maybe_ship_pitch(source, cwd, before_sha(head_before), after_sha)
-            write_build_result!(cwd, slug, after_sha)
+            {:error, reason} ->
+              park_and_restore_claim(source, pitch, cwd, slug, reason)
+              {:error, reason}
+          end
 
-          {:error, reason} ->
-            park_and_restore_claim(source, pitch, cwd, slug, reason)
-            {:error, reason}
-        end
+        {:error, reason} ->
+          park_and_restore_claim(source, pitch, cwd, slug, reason)
+          {:error, reason}
+      end
 
-      {:error, reason} ->
-        park_and_restore_claim(source, pitch, cwd, slug, reason)
-        {:error, reason}
-    end
+    # Emit after post-loop commit verification. A terminal record must name
+    # what THIS invocation finally did, rather than a pre-verification :ok.
+    emit_loop_telemetry(terminal_result)
+    terminal_result
   end
 
   # Resolves `slug`'s active recovery dossier (if any) and, when found,
@@ -674,6 +678,7 @@ defmodule Mix.Tasks.Codegen.Loop do
   end
 
   @doc false
+  @spec emit_loop_telemetry(:ok | {:error, String.t()}) :: :ok
   def emit_loop_telemetry(result) do
     t = OrchestrationLoop.get_telemetry()
 
@@ -723,6 +728,10 @@ defmodule Mix.Tasks.Codegen.Loop do
         "num_turns" => t.num_turns,
         "total_cost_usd" => t.cost_usd,
         "terminal_reason" => if(result == :ok, do: "loop_committed", else: "loop_failed"),
+        # Keep terminal_reason as the stable machine classification while
+        # preserving the concrete reason that made this terminal failure
+        # actionable for a recovery reader.
+        "terminal_cause" => terminal_cause(result),
         "role_calls" => t.role_calls,
         "usage" => %{
           "input_tokens" => t.input_tokens,
@@ -734,7 +743,12 @@ defmodule Mix.Tasks.Codegen.Loop do
       })
 
     IO.puts(line)
+    :ok
   end
+
+  defp terminal_cause(:ok), do: nil
+  defp terminal_cause({:error, reason}) when is_binary(reason) and reason != "", do: reason
+  defp terminal_cause({:error, _reason}), do: "loop failed without a supplied cause"
 
   @doc false
   @spec resolve_pitch(String.t(), String.t()) :: String.t()

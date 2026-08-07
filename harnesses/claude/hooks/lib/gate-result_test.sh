@@ -408,6 +408,19 @@ assert_eq "write_gate_result 15-arg legacy → .witness empty (default)" \
     "" "$(jq -r '.witness' "$DIR_LEG/codegen/gate-pending/gate-result.json")"
 rm -rf "$DIR_LEG"
 
+# Omitted witness on a failed direct/legacy call falls back to the gate log.
+DIR_WITNESS_FALLBACK=$(mktemp -d)
+WITNESS_FALLBACK_LOG="$DIR_WITNESS_FALLBACK/gate.log"
+printf '  1) test fails (FallbackTest)\n     test/fallback_test.exs:12\n     ** (RuntimeError) boom\n' >"$WITNESS_FALLBACK_LOG"
+write_gate_result "make test" "short" "abc1234" 3 \
+    "true" 1 1 1 "" "" \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "abc123" "$WITNESS_FALLBACK_LOG" "$DIR_WITNESS_FALLBACK"
+assert_eq "write_gate_result failed omitted witness → extracts log witness" \
+    "test/fallback_test.exs:12 — 1) test fails (FallbackTest): ** (RuntimeError) boom" \
+    "$(jq -r '.witness' "$DIR_WITNESS_FALLBACK/codegen/gate-pending/gate-result.json")"
+rm -rf "$DIR_WITNESS_FALLBACK"
+
 # ── graded_tree_sha (17th positional) ───────────────────────────────────────
 
 # write_gate_result with witness + graded_tree_sha (16th + 17th positional)

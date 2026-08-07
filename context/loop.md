@@ -358,6 +358,12 @@ curator-writable-only repair path that replaced the prior unconditional abort.
 
 ## Timing/Metrics Telemetry (consume, don't produce)
 
+The terminal telemetry result keeps `terminal_reason` as the stable
+`loop_committed`/`loop_failed` classification and adds `terminal_cause` for a
+failure's concrete returned reason. Emission occurs after commit verification,
+so the record describes the invocation's actual terminal disposition rather
+than an earlier provisional loop result.
+
 `OrchestrationLoop.accumulate_telemetry/2` and the private `write_cycle_summary/6` both widen their read
 of the per-role envelope's `usage`/`metrics` fields rather than adding a new clock — both harnesses'
 `call-dispatch.sh` already compute `latency_ms` and (Claude only, success path) lift `duration_ms` /

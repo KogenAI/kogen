@@ -53,6 +53,18 @@ defmodule Mix.Tasks.Codegen.LoopTest do
     assert result =~ "Body text."
   end
 
+  test "terminal telemetry preserves an actionable failure cause" do
+    output =
+      ExUnit.CaptureIO.capture_io(fn ->
+        assert :ok = Loop.emit_loop_telemetry({:error, "gate verdict=failed after reviewer rework"})
+      end)
+
+    telemetry = output |> String.trim() |> Jason.decode!()
+
+    assert telemetry["terminal_reason"] == "loop_failed"
+    assert telemetry["terminal_cause"] == "gate verdict=failed after reviewer rework"
+  end
+
   describe "resolve_pitch_scope!/2 — the pitch's own deliverable list" do
     test "a pitch with a scope: flow-list returns the declared paths in order", ctx do
       abs = Path.join(ctx.ready_dir, "scoped.md")

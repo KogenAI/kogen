@@ -876,6 +876,54 @@ assert_jq_truthy \
 
 assert_file_contains "$BASE_TMP/wd_y_stderr.log" "watchdog killing claude"
 
+# (y2) A late result emitted while handling the watchdog SIGTERM must not
+# erase the watchdog's observed transport cause.
+WATCHDOG_LATE_RESULT_STUB_DIR="$BASE_TMP/watchdog_late_result_stub_bin"
+mkdir -p "$WATCHDOG_LATE_RESULT_STUB_DIR"
+cat >"$WATCHDOG_LATE_RESULT_STUB_DIR/claude.body" <<'WDLATERESULTSTUB'
+#!/usr/bin/env bash
+trap 'printf "%s\\n" "{\\"type\\":\\"result\\",\\"subtype\\":\\"error\\",\\"is_error\\":true,\\"errors\\":[\\"interrupted\\"],\\"result\\":\\"interrupted\\"}"; exit 0' TERM
+while true; do sleep 1; done
+WDLATERESULTSTUB
+link_stub_path "$WATCHDOG_LATE_RESULT_STUB_DIR/claude"
+
+WD_Y2_EXIT=0
+(
+    export PATH="$WATCHDOG_LATE_RESULT_STUB_DIR:$PATH"
+    export CODEGEN_CALL_SYSTEM_PROMPT="You are a test classifier assistant."
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Classify this message."
+    export CODEGEN_LOOP=1
+    export CODEGEN_CALL_RESULT_GRACE_SECS=30
+    export CODEGEN_CALL_IDLE_CAP_SECS=2
+    export CODEGEN_CALL_POLL_SECS=0.5
+    unset CODEGEN_CALL_JSON_SCHEMA 2>/dev/null || true
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" 2>"$BASE_TMP/wd_y2_stderr.log"
+) >"$BASE_TMP/wd_y2_envelope.json" || WD_Y2_EXIT=$?
+
+if [[ "$WD_Y2_EXIT" -eq 0 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (y2) watchdog late-result exits 0\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (y2) watchdog late-result exits 0 — got %d\n' "$WD_Y2_EXIT"
+    fail=$((fail + 1))
+fi
+WD_Y2_ENVELOPE="$(cat "$BASE_TMP/wd_y2_envelope.json")"
+assert_jq "(y2) watchdog late-result remains failed" "$WD_Y2_ENVELOPE" ".result.status" "failed"
+assert_jq_truthy \
+    "(y2) watchdog late-result preserves observed cause" \
+    "$WD_Y2_ENVELOPE" \
+    '(.result.reason // "") | test("Stream idle timeout")'
+assert_jq_truthy \
+    "(y2) watchdog late-result error preserves observed cause" \
+    "$WD_Y2_ENVELOPE" \
+    '(.error // "") | test("watchdog: Stream idle timeout")'
+
 # (z) Loop-gate off (no CODEGEN_LOOP): watchdog never engages — one-shot
 # platform codegen-call behavior stays byte-identical (uncapped). Uses a
 # short-lived stub (not the hanging one) since an unbounded exec would hang

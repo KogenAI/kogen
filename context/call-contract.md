@@ -68,6 +68,12 @@ are checked. Production is unaffected (default stays 5, unset in every real buil
 test files override it to `0.5` so killing test cases resolve in ~2s of poll latency instead of ~10s,
 without changing which trigger fires or the threshold it fires at.
 
+When the idle or dead-stream trigger terminates Claude, its observed cause is
+authoritative in the failed envelope even if Claude writes a late interrupted
+`result` event while handling SIGTERM. That preserves the retryable `Stream
+idle timeout` token for the loop. The separate result-present grace trigger
+has no failure cause and continues to salvage the already-emitted result.
+
 Claude loop calls run in a dedicated POSIX session/process group created by a tiny forked Perl
 supervisor (portable across Darwin/Linux; Perl is already the timestamp fallback). A separate,
 independently-sessioned guardian watches the dispatcher, supervisor, and the BEAM OS PID supplied by

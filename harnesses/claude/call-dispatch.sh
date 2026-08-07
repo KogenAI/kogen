@@ -223,6 +223,12 @@ START_TS_MS="$(_ts_ms)"
 # One-shot platform codegen-call (no CODEGEN_LOOP) runs the exec verbatim,
 # uncapped — byte-identical to pre-watchdog behavior.
 WATCHDOG_KILLED=""
+# A watchdog-triggered termination has more context than Claude's best-effort
+# post-SIGTERM result event. Keep that observed cause separate from the
+# boolean so a late interrupted event cannot overwrite a known retryable
+# transport failure. The result-present grace path intentionally leaves this
+# empty: it is a salvage, not a failed call.
+WATCHDOG_CAUSE=""
 CHILD_PID=""
 PROCESS_GROUP_PID=""
 GUARDIAN_PID=""
@@ -336,6 +342,7 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         if (((NOW_MS - LAST_GROWTH_TS) / 1000 >= IDLE_CAP_SECS)); then
             printf 'codegen-call: watchdog killing claude (pid %s) — idle %ss with no output growth\n' "$CHILD_PID" "$IDLE_CAP_SECS" >&2
             WATCHDOG_KILLED=1
+            WATCHDOG_CAUSE="Stream idle timeout: claude process produced no output growth for ${IDLE_CAP_SECS}s"
             break
         fi
 
@@ -346,6 +353,7 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         if ! _has_live_tool_subprocess && (((NOW_MS - LAST_GROWTH_TS) / 1000 >= STREAM_IDLE_SECS)); then
             printf 'codegen-call: watchdog killing claude (pid %s) — stream idle %ss, no tool subprocess\n' "$CHILD_PID" "$STREAM_IDLE_SECS" >&2
             WATCHDOG_KILLED=1
+            WATCHDOG_CAUSE="Stream idle timeout: claude process produced no output growth for ${STREAM_IDLE_SECS}s and no tool subprocess was live"
             break
         fi
     done
@@ -448,20 +456,21 @@ _summarize_metrics() {
     ' 2>/dev/null || true
 }
 
-# Watchdog stall (no salvageable result event) → emit a proper failed envelope
-# with a retryable-taxonomy reason and exit 0 (NOT 1) so the loop reads the
-# FULL untruncated reason via Jason.decode! rather than synthesizing its own
-# reason from only the last 400 chars of stdout (which can truncate the
-# "Stream idle timeout" token out of a large raw TMP_OUT tail).
-if [[ -n "$WATCHDOG_KILLED" ]] && [[ -z "$RESULT_EVENT" ]]; then
+# A known watchdog cause takes precedence over a result event emitted only in
+# response to the watchdog's SIGTERM. Its failed envelope exits 0 so the loop
+# reads the FULL untruncated retryable cause via Jason.decode! rather than
+# synthesizing one from a raw TMP_OUT tail. WATCHDOG_CAUSE is empty for the
+# result-present grace path, which therefore still salvages its real result.
+if [[ -n "$WATCHDOG_CAUSE" ]]; then
     jq -n \
         --argjson latency_ms "$LATENCY_MS" \
         --arg model "$MODEL" \
+        --arg cause "$WATCHDOG_CAUSE" \
         '{
             result: {
                 status: "failed",
                 value: null,
-                reason: "Stream idle timeout: claude process did not exit and produced no result event",
+                reason: $cause,
                 retry_meta: null
             },
             usage: {
@@ -474,7 +483,7 @@ if [[ -n "$WATCHDOG_KILLED" ]] && [[ -z "$RESULT_EVENT" ]]; then
                 model: $model,
                 num_turns: null
             },
-            error: "watchdog: Stream idle timeout",
+            error: ("watchdog: " + $cause),
             harness: "claude_code",
             session_id: null
         }'

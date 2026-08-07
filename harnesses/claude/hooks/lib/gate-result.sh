@@ -236,6 +236,15 @@ write_gate_result() {
     verdict=$(printf '%s' "$verdict_out" | sed -n 's/^verdict=//p' | head -n 1)
     verdict_marker=$(printf '%s' "$verdict_out" | sed -n 's/^verdict_marker=//p' | head -n 1)
 
+    # Production callers normally supply a witness, but the public helper is
+    # also used directly by older/downstream gates. A failed result with an
+    # omitted witness can still name a parseable location from its own log.
+    # CLEAR records deliberately do not inspect their log: a warning-like
+    # file:line must never turn a passing gate into a misleading failure.
+    if [ -z "$witness" ] && [ "$verdict" != "clear" ]; then
+        witness=$(extract_witness "$log")
+    fi
+
     local result_dir="$project_dir/codegen/gate-pending"
     mkdir -p "$result_dir"
     local result_file="$result_dir/gate-result.json"

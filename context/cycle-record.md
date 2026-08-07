@@ -87,6 +87,11 @@ macOS/Linux) — `null` when either timestamp is unparseable/empty, never a fabr
 the acting developer role (`dev_role_from_ctx/1` fallback) rather than left at `LoopGate.run_gate/2`'s
 own anonymous `""` default — see `context/loop.md` § Timing/Metrics Telemetry.
 
+For a non-clear result, `write_gate_result` also falls back to
+`extract_witness "$log"` when a caller omits the optional witness argument.
+This keeps direct/legacy callers actionable without inspecting logs for clear
+results, where a warning location would be misleading.
+
 ## Witness Extraction
 
 `extract_witness <log_path>` — best-effort, fall-open-empty (never errors; missing witness never breaks
