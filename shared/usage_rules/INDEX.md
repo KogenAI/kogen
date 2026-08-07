@@ -16,7 +16,7 @@ Use when: configuring AppSignal Phoenix integration, instrumenting LiveView, or 
 
 Use when: configuring HTTP server, tuning connection limits, or debugging Plug adapter behaviour.
 
-- `bandit-1.12.0.md`
+- `bandit-1.12.4.md`
 
 ## credo
 
@@ -46,13 +46,13 @@ Use when: formatting doctests or configuring the doctest formatter.
 
 Use when: writing migrations, queries, or troubleshooting Ecto adapter behaviour.
 
-- `ecto_sql-3.13.5.md`
+- `ecto_sql-3.14.0.md`
 
 ## elixir_make
 
 Use when: troubleshooting NIF compilation in deps that ship C code.
 
-- `elixir_make-0.9.0.md`
+- `elixir_make-0.10.0.md`
 
 ## esbuild
 
@@ -82,7 +82,7 @@ Use when: writing module docs, configuring `mix docs`, or setting up ExDoc extra
 
 Use when: writing test factories, using `build/2` or `insert/2`, or debugging factory associations.
 
-- `ex_machina-2.8.0.md`
+- `ex_machina-2.8.2.md`
 
 ## excoveralls
 
@@ -100,7 +100,7 @@ Use when: spawning OS processes for user-app builds, monitoring exit codes, or s
 
 Use when: generating test data (names, emails, phone numbers, sentences) in factory modules.
 
-- `faker-0.18.0.md`
+- `faker-0.19.0.md`
 
 ## gettext
 
@@ -162,21 +162,15 @@ Use when: understanding custom Credo checks added by the Optimum credo plugin.
 
 Use when: writing controllers, router scopes, channels, plugs, or deployment configs.
 
-- `phoenix-1.8.8.md`
-- `phoenix-1.8.8-components.md`
-- `phoenix-1.8.8-controllers-views.md`
-- `phoenix-1.8.8-controllers.md`
-- `phoenix-1.8.8-deployment.md`
-- `phoenix-1.8.8-ecto.md`
-- `phoenix-1.8.8-json.md`
-- `phoenix-1.8.8-liveview.md`
-- `phoenix-1.8.8-plug.md`
-- `phoenix-1.8.8-plugs-telemetry.md`
-- `phoenix-1.8.8-realtime.md`
-- `phoenix-1.8.8-routing.md`
-- `phoenix-1.8.8-security.md`
-- `phoenix-1.8.8-setup.md`
-- `phoenix-1.8.8-testing.md`
+- `phoenix-1.8.9.md`
+- `phoenix-1.8.9-channels.md`
+- `phoenix-1.8.9-controllers.md`
+- `phoenix-1.8.9-deployment.md`
+- `phoenix-1.8.9-ecto.md`
+- `phoenix-1.8.9-liveview.md`
+- `phoenix-1.8.9-plug.md`
+- `phoenix-1.8.9-routing.md`
+- `phoenix-1.8.9-testing.md`
 
 ## phoenix_ecto
 
@@ -200,25 +194,19 @@ Use when: configuring the LiveDashboard route, adding custom metrics pages, or d
 
 Use when: configuring live reload patterns or debugging hot-reload behaviour in development.
 
-- `phoenix_live_reload-1.6.2.md`
+- `phoenix_live_reload-1.7.0.md`
 
 ## phoenix_live_view
 
 Use when: writing LiveView modules, hooks, forms, navigation, uploads, or LiveView testing.
 
-- `phoenix_live_view-1.1.32.md`
-- `phoenix_live_view-1.1.32-assigns.md`
-- `phoenix_live_view-1.1.32-async.md`
-- `phoenix_live_view-1.1.32-bindings.md`
-- `phoenix_live_view-1.1.32-components.md`
-- `phoenix_live_view-1.1.32-forms.md`
-- `phoenix_live_view-1.1.32-js-interop.md`
-- `phoenix_live_view-1.1.32-js.md`
-- `phoenix_live_view-1.1.32-lifecycle.md`
-- `phoenix_live_view-1.1.32-navigation.md`
-- `phoenix_live_view-1.1.32-router.md`
-- `phoenix_live_view-1.1.32-security.md`
-- `phoenix_live_view-1.1.32-uploads.md`
+- `phoenix_live_view-1.2.8.md`
+- `phoenix_live_view-1.2.8-bindings.md`
+- `phoenix_live_view-1.2.8-forms.md`
+- `phoenix_live_view-1.2.8-js-interop.md`
+- `phoenix_live_view-1.2.8-lifecycle.md`
+- `phoenix_live_view-1.2.8-security.md`
+- `phoenix_live_view-1.2.8-uploads.md`
 
 ## postgrex
 
@@ -242,7 +230,7 @@ Use when: making HTTP requests, configuring middleware, retry logic, or testing 
 
 Use when: running security scans, understanding reported findings, or configuring `.sobelow-conf`.
 
-- `sobelow-0.14.1.md`
+- `sobelow-0.15.0.md`
 
 ## stripity_stripe
 
@@ -290,4 +278,4 @@ Use when: configuring periodic measurement polling or adding custom VM metrics.
 
 Use when: configuring the Tidewave MCP server or verifying unknown library function signatures.
 
-- `tidewave-0.6.1.md`
+- `tidewave-0.8.2.md`

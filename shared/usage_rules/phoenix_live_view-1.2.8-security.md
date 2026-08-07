@@ -1,0 +1,272 @@
+# phoenix_live_view - Security Best Practices
+
+## Critical Principle
+
+**The params argument contains untrusted data from the client. You must authorize and validate this data before using it to fetch or modify resources.**
+
+This foundational security principle applies everywhere client data enters your LiveView:
+
+- URL parameters in `mount/3` and `handle_params/3`
+- Form data and event parameters in `handle_event/3`
+- File upload data in `allow_upload/3` and `consume_uploaded_entries/3`
+
+## Authorization Patterns
+
+### Validate User Permissions in Mount
+
+Always verify that the current user is authorized before loading data:
+
+```elixir
+def mount(%{"user_id" => user_id}, session, socket) do
+  current_user = get_current_user(session)
+
+  # Authorize: Ensure user isn't accessing someone else's data
+  case current_user && current_user.id == user_id do
+    true ->
+      {:ok, assign(socket, :user, current_user)}
+    false ->
+      {:error, "Unauthorized"}
+  end
+end
+```
+
+### Validate with Changeset
+
+Use Ecto changesets for parameter validation:
+
+```elixir
+def handle_event("update", %{"user" => params}, socket) do
+  changeset = User.changeset(socket.assigns.user, params)
+
+  case Ecto.Changeset.apply_action(changeset, :validate) do
+    {:ok, validated} ->
+      # Process validated data
+      save_user(validated)
+    {:error, changeset} ->
+      {:noreply, assign(socket, :form, to_form(changeset))}
+  end
+end
+```
+
+Changesets automatically:
+
+- Type-cast parameters to expected types
+- Validate presence, format, and custom rules
+- Prevent unexpected fields from being used
+
+### Check Permissions Before Mutations
+
+Before modifying any resource, verify authorization:
+
+```elixir
+def handle_event("delete", %{"id" => id}, socket) do
+  case find_and_authorize_record(id, socket.assigns.current_user) do
+    {:ok, record} ->
+      delete(record)
+      {:noreply, assign(socket, :record, nil)}
+    {:error, :not_found} ->
+      {:noreply, put_flash(socket, :error, "Record not found")}
+    {:error, :unauthorized} ->
+      {:noreply, put_flash(socket, :error, "Unauthorized")}
+  end
+end
+```
+
+## Input Validation Best Practices
+
+### Whitelist Allowed Parameters
+
+Instead of blacklisting dangerous parameters, whitelist what you expect:
+
+```elixir
+def update_settings(params, current_user) do
+  allowed = Map.take(params, ["email", "name", "timezone"])
+
+  current_user
+  |> User.changeset(allowed)
+  |> Repo.update()
+end
+```
+
+### Validate File Uploads
+
+Restrict file types and sizes at the LiveView level:
+
+```elixir
+def mount(_params, _session, socket) do
+  {:ok,
+    socket
+    |> allow_upload(:avatar,
+        accept: ~w(.jpg .jpeg .png),
+        max_entries: 1,
+        max_file_size: 5_000_000  # 5MB
+    )
+  }
+end
+```
+
+Always validate again server-side:
+
+```elixir
+def handle_event("save", _params, socket) do
+  upload_dir = Application.app_dir(:my_app, "priv/uploads")
+
+  consume_uploaded_entries(socket, :avatar, fn %{path: path}, entry ->
+    case verify_file_safety(path, entry) do
+      :ok ->
+        dest = Path.join(upload_dir, entry.uuid)
+        File.cp!(path, dest)
+        {:ok, dest}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end)
+end
+
+defp verify_file_safety(path, entry) do
+  # Check file size after upload
+  case File.stat(path) do
+    {:ok, %{size: size}} when size > 5_000_000 ->
+      {:error, "File too large"}
+    {:ok, _} ->
+      # Additional MIME type check if needed
+      :ok
+    {:error, _} ->
+      {:error, "Cannot read file"}
+  end
+end
+```
+
+## Session Security
+
+### Use Server-Side Sessions
+
+Session data in LiveView lives server-side in the socket. Never trust or modify session data from client parameters:
+
+```elixir
+def mount(_params, session, socket) do
+  # Session is server-controlled and trusted
+  current_user = get_user_from_session(session)
+
+  # Params are client-controlled and untrusted
+  # Don't use params to set user_id or permissions
+  {:ok, assign(socket, :current_user, current_user)}
+end
+```
+
+### Regenerate Sessions on Authentication
+
+After login, regenerate session tokens to prevent fixation attacks:
+
+```elixir
+def handle_event("login", %{"email" => email}, socket) do
+  case authenticate_user(email) do
+    {:ok, user} ->
+      {:noreply,
+        socket
+        |> put_session(:user_id, user.id)
+        |> push_redirect(to: "/dashboard")
+      }
+    {:error, _} ->
+      {:noreply, put_flash(socket, :error, "Invalid credentials")}
+  end
+end
+```
+
+## XSS Prevention
+
+### Auto-Escaping in Templates
+
+HEEx templates automatically escape all string interpolations:
+
+```heex
+<!-- This is safe - @user_input is auto-escaped -->
+<p><%= @user_input %></p>
+
+<!-- Output: <p>&lt;script&gt;alert&#40;&quot;xss&quot;&#41;&lt;/script&gt;</p> -->
+```
+
+### Use Raw HTML Carefully
+
+Only use raw HTML for trusted, server-side generated content:
+
+```heex
+<!-- Safe: Generated by server -->
+<div>{@trusted_html |> raw}</div>
+
+<!-- NOT safe: Never do this with user input -->
+<div>{@user_input |> raw}</div>
+```
+
+### Escape JavaScript Context
+
+When inserting data into JavaScript, use proper escaping:
+
+```elixir
+defp js_escape(string) do
+  string
+  |> String.replace("\\", "\\\\")
+  |> String.replace("\"", "\\\"")
+  |> String.replace("\n", "\\n")
+  |> String.replace("\r", "\\r")
+end
+```
+
+## CSRF Protection
+
+Phoenix includes automatic CSRF protection for all LiveView forms. The framework automatically:
+
+1. Generates CSRF tokens
+2. Validates tokens on every event
+3. Invalidates tokens after login
+
+Ensure your layout includes the CSRF token:
+
+```heex
+<meta name="csrf-token" content={get_csrf_token()} />
+```
+
+## Common Security Mistakes to Avoid
+
+### ❌ Using params for authorization:
+
+```elixir
+# WRONG - User can forge params["user_id"]
+def mount(%{"user_id" => user_id}, _session, socket) do
+  {:ok, assign(socket, :user_id, user_id)}
+end
+```
+
+### ✅ Use session for authorization:
+
+```elixir
+# RIGHT - Session is server-controlled
+def mount(_params, session, socket) do
+  current_user = get_user_from_session(session)
+  {:ok, assign(socket, :current_user, current_user)}
+end
+```
+
+### ❌ Skipping validation:
+
+```elixir
+# WRONG - No type checking or validation
+def handle_event("save", %{"amount" => amount}, socket) do
+  Repo.insert(%Payment{amount: amount})
+end
+```
+
+### ✅ Validate with changesets:
+
+```elixir
+# RIGHT - Changesets provide type safety and validation
+def handle_event("save", %{"amount" => amount}, socket) do
+  changeset = Payment.changeset(%Payment{}, %{"amount" => amount})
+  Repo.insert(changeset)
+end
+```
+
+---
+
+[← Back to main](phoenix_live_view-1.2.8.md)
+**Version:** 1.2.8
