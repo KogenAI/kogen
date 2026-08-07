@@ -1481,7 +1481,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert output =~ "queue: 0 shipped, 1 failed, 0 drafted,"
   end
 
-  test "D6: default_draft_fn/4 skeleton scan returns only status: SKELETON drafts", ctx do
+  test "D6: default_draft_fn/4 draft scan returns SKELETON, SHAPING, and SHAPED drafts alike",
+       ctx do
     draft_dir = Path.join([ctx.dir, "codegen", "pitches", "draft"])
     File.mkdir_p!(draft_dir)
 
@@ -1517,7 +1518,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     args_line = File.read!(Path.join(ctx.dir, "call_args.txt"))
     assert args_line =~ "skel-one"
-    refute args_line =~ "shaped-one"
+    assert args_line =~ "shaped-one"
     assert File.exists?(Path.join(draft_dir, "captured.md"))
   end
 
@@ -1569,6 +1570,8 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     draft_dir = Path.join([ctx.dir, "codegen", "pitches", "draft"])
     File.mkdir_p!(draft_dir)
 
+    # A SHAPED draft is now a LEGAL merge target (widened population) — use a
+    # target_slug that names NO on-disk draft at all to exercise the reject path.
     shaped_path = Path.join(draft_dir, "shaped-one.md")
     shaped_body = "---\nstatus: SHAPED\n---\n\n## Appetite\n\nbar\n"
     File.write!(shaped_path, shaped_body)
@@ -1577,7 +1580,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
     File.write!(script, """
     #!/usr/bin/env bash
-    echo '{"result":{"status":"success","value":{"action":"merge","target_slug":"shaped-one","slug":"x","body":"overwritten"}}}'
+    echo '{"result":{"status":"success","value":{"action":"merge","target_slug":"nonexistent-slug","slug":"x","body":"overwritten"}}}'
     exit 0
     """)
 
@@ -1589,9 +1592,80 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     File.write!(jsonl, ~s({"type":"result","result":"boom"}\n))
 
     assert {:error, reason} = LoopQueueDrain.default_draft_fn(ctx.dir, "solo", jsonl, "failed")
-    assert reason =~ "shaped-one"
+    assert reason =~ "nonexistent-slug"
 
     assert File.read!(shaped_path) == shaped_body
+  end
+
+  test "D7b: merge into a SKELETON target overwrites the file with the drafter's full merged body",
+       ctx do
+    draft_dir = Path.join([ctx.dir, "codegen", "pitches", "draft"])
+    File.mkdir_p!(draft_dir)
+
+    skel_path = Path.join(draft_dir, "skel-one.md")
+    File.write!(skel_path, "---\nstatus: SKELETON\n---\n\n## Problem\n\nfoo\n")
+
+    script = Path.join(ctx.dir, "fake_codegen_call_merge_skeleton.sh")
+
+    File.write!(script, """
+    #!/usr/bin/env bash
+    echo '{"result":{"status":"success","value":{"action":"merge","target_slug":"skel-one","slug":"x","body":"---\\nstatus: SKELETON\\n---\\n\\n## Problem\\n\\nfoo, plus a new mechanism\\n"}}}'
+    exit 0
+    """)
+
+    File.chmod!(script, 0o755)
+    Process.put(:__queue_drain_call_bin__, script)
+    on_exit(fn -> Process.delete(:__queue_drain_call_bin__) end)
+
+    jsonl = Path.join(ctx.dir, "out.jsonl")
+    File.write!(jsonl, ~s({"type":"result","result":"boom"}\n))
+
+    assert {:ok, path} = LoopQueueDrain.default_draft_fn(ctx.dir, "solo", jsonl, "failed")
+    assert path == skel_path
+    assert File.read!(skel_path) =~ "foo, plus a new mechanism"
+  end
+
+  test "D7c: merge into a SHAPING/SHAPED target FOLDS the note — never overwrites committed frontmatter/body",
+       ctx do
+    draft_dir = Path.join([ctx.dir, "codegen", "pitches", "draft"])
+    File.mkdir_p!(draft_dir)
+
+    shaping_path = Path.join(draft_dir, "shaping-one.md")
+
+    shaping_body =
+      "---\nstatus: SHAPING\nsummary: >\n  Load-bearing summary text.\nblocks_on: []\n---\n\n" <>
+        "## Problem\n\nOriginal problem prose.\n\n## Claim ledger\n\n| # | Claim |\n"
+
+    File.write!(shaping_path, shaping_body)
+
+    script = Path.join(ctx.dir, "fake_codegen_call_merge_shaping.sh")
+
+    File.write!(script, """
+    #!/usr/bin/env bash
+    echo '{"result":{"status":"success","value":{"action":"merge","target_slug":"shaping-one","slug":"x","body":"A second queue-drain failure hit the same invariant."}}}'
+    exit 0
+    """)
+
+    File.chmod!(script, 0o755)
+    Process.put(:__queue_drain_call_bin__, script)
+    on_exit(fn -> Process.delete(:__queue_drain_call_bin__) end)
+
+    jsonl = Path.join(ctx.dir, "out.jsonl")
+    File.write!(jsonl, ~s({"type":"result","result":"boom"}\n))
+
+    assert {:ok, path} = LoopQueueDrain.default_draft_fn(ctx.dir, "solo", jsonl, "failed")
+    assert path == shaping_path
+
+    merged = File.read!(shaping_path)
+    # Committed frontmatter and existing body prose survive untouched.
+    assert merged =~ "status: SHAPING"
+    assert merged =~ "summary: >"
+    assert merged =~ "Load-bearing summary text."
+    assert merged =~ "blocks_on: []"
+    assert merged =~ "Original problem prose."
+    assert merged =~ "## Claim ledger"
+    # The note is folded on, not used to replace the file.
+    assert merged =~ "A second queue-drain failure hit the same invariant."
   end
 
   # ── D8-D11. classify_drain_failure — true-cause labeling ─────────────────
@@ -3878,7 +3952,19 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       opts =
         shipped_opts(ctx,
-          ordered_fn: fn _ -> ["bad", "good"] end,
+          # No :ordered_fn override — the default LoopQueue.ordered_slugs/1
+          # re-reads ready_dir on every scan. "bad" < "good" alphabetically
+          # with no dependency edge between them, so it already yields the
+          # same ["bad", "good"] order this test wants — but, unlike a
+          # static stub, it stops offering "good" once it physically leaves
+          # ready_dir on ship. A static `fn _ -> ["bad", "good"] end` here
+          # previously caused a livelock: run_loop re-invokes ordered_fn on
+          # every scan, and a static stub keeps re-selecting "good" forever
+          # after it ships (nothing else tracks "already shipped this run"
+          # — that's ordered_fn's job in production). Confirmed root cause
+          # of the deterministic gate timeout at this line recorded in
+          # codegen/pitches/draft/harness-builds-finish-or-preserve-the-truth.md
+          # incident #3.
           spawn_fn: fn slug, _h, _s, _cwd, _jsonl ->
             Agent.update(spawned, &(&1 ++ [slug]))
             {:exit_code, 0}

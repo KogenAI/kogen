@@ -236,13 +236,20 @@ consecutive-fail-streak tests). Default
 --system-prompt @harnesses/claude/document-system-prompt.md --json-schema
 @harnesses/claude/document.schema.json`, mirroring `codegen-propose`'s precedent. Input: the failing
 slug, the composed failure block, the failing cycle's last result text, and the FULL BODY of every
-existing `status: SKELETON` draft under `<cwd>/codegen/pitches/draft/` (`skeleton_drafts/1` —
-SHAPING/SHAPED drafts are never read or merge targets). Response `{action: "new"|"merge", slug,
+existing draft under `<cwd>/codegen/pitches/draft/` — SKELETON, SHAPING, and SHAPED alike
+(`skeleton_drafts/1`; a SHAPING/SHAPED draft is a legal same-invariant merge target too, despite the
+function's name). Response `{action: "new"|"merge", slug,
 target_slug, body}`: `new` writes `<slug>.md`; `merge` overwrites `target_slug` ONLY when that slug was
-among the supplied skeletons (`apply_draft_decision/3` — never a blind overwrite of an unlisted/in-flight
-draft). Fail-open: a `codegen-call` error is loud stderr, `state.drafted_count` unchanged, drain
-continues — mirrors `park_failed_tree/2`'s own fail-open contract; the draft is an observation, not a
-required value. `spend_report/3` reports `state.drafted_count` in its end-of-run line.
+among the supplied drafts (`apply_draft_decision/3` — never a blind overwrite of an unlisted/in-flight
+draft). A merge target's status governs how `body` is applied (`merged_draft_content/2`): a
+`status: SKELETON` target is FULLY OVERWRITTEN — the drafter's contract requires `body` to be the
+complete merged skeleton in that case; a SHAPING/SHAPED target is NEVER overwritten — `body` there is
+only a same-invariant note, folded onto the end of the existing file under a `## Queue-drain
+same-invariant note` heading, preserving the committed frontmatter (`summary:`, `blocks_on:`, `scope:`)
+and everything the shape session already decided. Fail-open: a `codegen-call` error is loud stderr,
+`state.drafted_count` unchanged, drain continues — mirrors `park_failed_tree/2`'s own fail-open
+contract; the draft is an observation, not a required value. `spend_report/3` reports
+`state.drafted_count` in its end-of-run line.
 
 **Failure Classification — `classify_drain_failure/1` + `format_failure_block/3`**: a retry-exhausted or
 false-exit-0 skeleton must never present as a bare, unqualified `Gate verdict: clear` — that reads to any
@@ -352,4 +359,4 @@ there never changes `park_failed_tree/2`'s own returned branch name or the pre-e
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block, InterruptedCycleRecovery, queue startup recovery, prioritize_recovered_slug, reconcile_opts, state.recovery, stranded building claim, park_failure, recovery dossier, queue-fail dossier, startup parks stranded claim, ordinary order precedence, recovery informational
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, failure cause, stale clear verdict, contradiction warn, failure block, InterruptedCycleRecovery, reconciliation_required, recovery preflight, queue startup recovery, prioritize_recovered_slug, reconcile_opts, state.recovery, stranded building claim, park_failure, recovery dossier, queue-fail dossier, startup parks stranded claim, ordinary order precedence, recovery informational

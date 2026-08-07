@@ -70,6 +70,8 @@ genuinely broad/unshaped extractions with no concrete path yet — see
 
 The gate is mechanical, not prose-trusting: `mix codegen.pitches.scope --check` (the `pitch-scope-parity` Makefile leg) additionally fails when one `ready/` pitch's `scope:` is a subset of (or equal to) another's and NEITHER declares `split_subject:` — the mechanical shadow of an unproven split. A pitch with a genuinely narrow scope that happens to sit inside another's clears the check by recording its two-clause subject; that recording IS the work the rule asks for. A `scope: []` pitch is excluded from this check entirely (vacuous subset of everything).
 
+**A sibling declaring `blocks_on:` its own source pitch is not automatically a separate bet.** `blocks_on:` is a build-order edge — it says WHICH pitch must ship first, never that the two are conflict-avoidance siblings that happen not to touch the same files. Before that edge is written, the shaper runs the standalone-promise test: does the source pitch keep its OWN stated promise if it ships alone with no sibling? No → the two are one mechanism, fold the sibling back rather than writing a second file. This fires at pitch-creation time, before the sibling has a `scope:` to compare — the mechanical SUBSUMED check above cannot catch this case, since a freshly-minted sibling has nothing to compare yet. At shape-session entry, the shaper additionally runs the one-clause collapse test PAIRWISE across every `draft/`-resident pitch (not only the pitch in hand) — a match folds the candidate before new work compounds an existing pileup. Already-`SHAPED` pitches whose split already passed the standalone-promise test are exempt from this entry-time sweep.
+
 ## Slug conventions
 
 - Lowercase, hyphens only: `fix-session-log-ordering.md`

@@ -161,6 +161,26 @@ run_test_role "babysit mode Write to pitches/ready/ allows" "0" "babysit" "$FIXT
 FIXTURE_BABYSIT_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"","agent_type":""}'
 run_test_role "babysit mode Edit on lib/ allows" "0" "babysit" "$FIXTURE_BABYSIT_LIB"
 
+# Test 18h: CLAUDE_ROLE=shape + Write to absolute /tmp/ — ALLOW (feasibility-spike sandbox)
+FIXTURE_SHAPE_TMP='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/spike/server.js","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "shape mode Write to absolute /tmp/ allows" "0" "shape" "$FIXTURE_SHAPE_TMP"
+
+# Test 18i: CLAUDE_ROLE=shape + Write to /private/tmp/ (macOS symlink target) — ALLOW
+FIXTURE_SHAPE_PRIVATE_TMP='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/private/tmp/spike/server.js","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "shape mode Write to /private/tmp/ allows" "0" "shape" "$FIXTURE_SHAPE_PRIVATE_TMP"
+
+# Test 18j: CLAUDE_ROLE=debug + Write to absolute /tmp/ — ALLOW
+FIXTURE_DEBUG_TMP='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/probe/out.txt","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "debug mode Write to absolute /tmp/ allows" "0" "debug" "$FIXTURE_DEBUG_TMP"
+
+# Test 18k: CLAUDE_ROLE=shape + Write to RELATIVE tmp/ (repo-relative, not absolute) — BLOCK
+FIXTURE_SHAPE_REL_TMP='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"tmp/spike/server.js","content":"x"},"agent_id":"","agent_type":""}'
+run_test_role "shape mode Write to relative tmp/ (source path) blocks" "2" "shape" "$FIXTURE_SHAPE_REL_TMP"
+
+# Test 18l: CLAUDE_ROLE=shape + subagent Write to absolute /tmp/ — ALLOW (spike-builder sandbox)
+FIXTURE_SHAPE_SUB_TMP='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/spike/server.js","content":"x"},"agent_id":"abc123","agent_type":"spike-builder"}'
+run_test_role "shape mode subagent Write to absolute /tmp/ allows" "0" "shape" "$FIXTURE_SHAPE_SUB_TMP"
+
 # Test 19: CLAUDE_ROLE=debug + subagent Edit on lib/ — BLOCK (subagent bypass disabled under debug/shape)
 FIXTURE_DEBUG_SUB_LIB='{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"lib/my_app/foo.ex","old_string":"x","new_string":"y"},"agent_id":"abc123","agent_type":"general-purpose"}'
 run_test_role "debug mode subagent Edit on lib/ blocks" "2" "debug" "$FIXTURE_DEBUG_SUB_LIB"

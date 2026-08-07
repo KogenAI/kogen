@@ -62,13 +62,34 @@ run_test "shape + developer-phoenix-backend denied" "deny" "shape" "$(mk_agent '
 # 6b: reviewer-phoenix denied under shape (shape is read-only)
 run_test "shape + reviewer-phoenix denied" "deny" "shape" "$(mk_agent 'reviewer-phoenix')"
 
-# 6c: "committer" (no longer a role) is NOT denied under shape — it left the
-# shape-mode case pattern along with the role itself, so it now falls
-# through to the generic allow path (same as any other unrecognized string).
-run_test "shape + committer allowed (role deleted, no case match)" "allow" "shape" "$(mk_agent 'committer')"
+# 6c: "committer" (no longer a role) is denied under shape — shape mode is
+# now an ALLOWLIST of exactly {Explore, spike-builder}; any unlisted name,
+# including a deleted/former role string, denies (fail-closed, not fail-open).
+run_test "shape + committer denied (allowlist, not a listed name)" "deny" "shape" "$(mk_agent 'committer')"
 
-# 7: context-curator allowed under shape (curation is not source editing)
-run_test "shape + context-curator allowed" "allow" "shape" "$(mk_agent 'context-curator')"
+# 6d: context-curator denied under shape (allowlist — only Explore/spike-builder)
+run_test "shape + context-curator denied (allowlist)" "deny" "shape" "$(mk_agent 'context-curator')"
+
+# 6e: spike-builder allowed under shape (sandboxed feasibility-spike builder)
+run_test "shape + spike-builder allowed" "allow" "shape" "$(mk_agent 'spike-builder')"
+
+# 6f: an invented/typo'd subagent name is denied under shape (fail-closed
+# allowlist regression test — proves membership churn cannot silently open
+# the gate)
+run_test "shape + invented name denied (allowlist fail-closed)" "deny" "shape" "$(mk_agent 'totally-made-up-agent')"
+
+# 6g: spike-builder is reachable from debug too, not shape-only — shape's
+# allowlist is a NARROWING that applies only inside shape mode (exactly
+# {Explore, spike-builder} there); debug carries no such allowlist at all,
+# so spike-builder — like any other project subagent — falls through to
+# the generic "project subagents allowed everywhere" rule below. The
+# sandbox bypass in claude-debug-bash-guard.sh mirrors this: it is active
+# under debug and shape alike, not shape-only.
+run_test "debug + spike-builder allowed (debug has no allowlist restriction)" "allow" "debug" "$(mk_agent 'spike-builder')"
+
+# 7: context-curator allowed under debug (project subagents allowed everywhere
+# except shape's allowlist)
+run_test "debug + context-curator allowed" "allow" "debug" "$(mk_agent 'context-curator')"
 
 # 8: reviewer-phoenix allowed under debug (project subagents allowed everywhere)
 run_test "debug + reviewer-phoenix allowed" "allow" "debug" "$(mk_agent 'reviewer-phoenix')"

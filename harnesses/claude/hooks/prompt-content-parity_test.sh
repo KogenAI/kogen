@@ -17,6 +17,11 @@ SENTINEL9_DEVELOPER_PROBES="only \`ran:\` against git/fs counts"
 SENTINEL10_UNVERIFIED_MECHANISM="the error-path behavior of any mechanism you did not run"
 SENTINEL11_ADVISE_UNSURE="Ask a stronger model before you guess"
 SENTINEL12_ADVISE_NO_OPPOSITE_PROVIDER="opposite provider"
+SENTINEL13_DELEGATED_ENUM="Delegated enumeration"
+SENTINEL14_READY_VERIFY_ONLY="This gate VERIFIES; it does not investigate, decide, or edit the pitch"
+SENTINEL15_BREAKING_DISPOSITION="BREAKING"
+SENTINEL16_SPLIT_TRIPWIRE="split tripwire"
+SENTINEL17_THESIS_DEFEATING="THESIS-DEFEATING DEFERRAL"
 
 pass=0
 fail=0
@@ -260,6 +265,54 @@ assert_contains \
     "codegen-commit mandates unconditional git add -A" \
     "$CODEGEN_DIR/codegen-commit" \
     "git -C \"\$CWD\" add -A"
+
+# ── Tests: shaping-finishes-its-own-diligence sentinels ────────────────────────
+# Delegated enumeration (move 1) lives in _authoring-spine.txt, reached by
+# shape (and refactor, if present) via {% include %}.
+assert_contains \
+    "delegated-enumeration sentinel in _authoring-spine.txt source" \
+    "$CODEGEN_DIR/shared/prompt-fragments/_authoring-spine.txt" \
+    "$SENTINEL13_DELEGATED_ENUM"
+
+assert_contains \
+    "delegated-enumeration sentinel in claude-shape-system-prompt.txt" \
+    "$CODEGEN_DIR/harnesses/claude/claude-shape-system-prompt.txt" \
+    "$SENTINEL13_DELEGATED_ENUM"
+
+# /ready is now a verify-only gate — no resolve-by-investigation loop.
+assert_contains \
+    "verify-only gate sentinel in ready.md.j2 source" \
+    "$CODEGEN_DIR/harnesses/claude/commands/ready.md.j2" \
+    "$SENTINEL14_READY_VERIFY_ONLY"
+
+# BREAKING is the third external-contract disposition (closed vocabulary).
+assert_contains \
+    "BREAKING disposition sentinel in _probing.txt source" \
+    "$CODEGEN_DIR/shared/prompt-fragments/_probing.txt" \
+    "$SENTINEL15_BREAKING_DISPOSITION"
+
+assert_contains \
+    "BREAKING disposition sentinel in shape.txt source" \
+    "$CODEGEN_DIR/harnesses/shared/prompt-bodies/shape.txt" \
+    "$SENTINEL15_BREAKING_DISPOSITION"
+
+# Split tripwire (move 17) lives in _authoring-spine.txt.
+assert_contains \
+    "split tripwire sentinel in _authoring-spine.txt source" \
+    "$CODEGEN_DIR/shared/prompt-fragments/_authoring-spine.txt" \
+    "$SENTINEL16_SPLIT_TRIPWIRE"
+
+# THESIS-DEFEATING DEFERRAL blocker (move 19) lives in both the spine and
+# shape.txt's DEFER rule.
+assert_contains \
+    "THESIS-DEFEATING DEFERRAL sentinel in _authoring-spine.txt source" \
+    "$CODEGEN_DIR/shared/prompt-fragments/_authoring-spine.txt" \
+    "$SENTINEL17_THESIS_DEFEATING"
+
+assert_contains \
+    "THESIS-DEFEATING DEFERRAL sentinel in shape.txt source" \
+    "$CODEGEN_DIR/harnesses/shared/prompt-bodies/shape.txt" \
+    "$SENTINEL17_THESIS_DEFEATING"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

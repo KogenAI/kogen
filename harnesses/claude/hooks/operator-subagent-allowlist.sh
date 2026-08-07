@@ -19,6 +19,13 @@
 #   Explore denied unless active role ∈ {debug, shape, ops, experiment, babysit}.
 #   Project subagents (developer-*, reviewer-*, context-curator, etc.) allowed everywhere.
 #
+#   Shape mode is an ALLOWLIST, not a denylist: exactly {Explore, spike-builder}
+#   are permitted; every other subagent_type (developer-*, reviewer-*, any
+#   invented/typo'd name) denies. This is deliberate — a denylist here has a
+#   fail-open default (any unlisted name falls through to ALLOW), and shape's
+#   own membership list mutated repeatedly during a single session. An
+#   allowlist is indifferent to that churn.
+#
 # Registered on matcher "Agent" in claude-code-settings.json PreToolUse.
 #
 # Responds to CLAUDE_ROLE (Claude Code)
@@ -66,11 +73,17 @@ if [ "$subagent_type" = "Explore" ]; then
     exit 0
 fi
 
-# Shape mode is read-only — deny source-editing subagents.
+# Shape mode is an ALLOWLIST: exactly {Explore, spike-builder} permitted.
+# Explore already exited 0 above via the debug/shape/ops/experiment/babysit
+# branch, so by the time we reach here in shape mode, only spike-builder (or
+# an unlisted/invented name) remains to classify.
 if [ "$_role" = "shape" ]; then
     case "$subagent_type" in
-    developer-* | reviewer-*)
-        deny "BLOCKED by operator-subagent-allowlist: shaping modes are read-only — they investigate and write pitches; spawn a builder from build mode instead. Available in shape mode: Explore; developer-*/reviewer-* are build-mode only."
+    spike-builder)
+        exit 0
+        ;;
+    *)
+        deny "BLOCKED by operator-subagent-allowlist: shape mode allows only Explore and spike-builder subagents. $subagent_type is not permitted — shaping investigates and writes pitches; spike-builder is the sandboxed feasibility-spike builder confined to codegen/pitches/ and absolute /tmp/. Spawn other builders from build mode instead."
         exit 0
         ;;
     esac

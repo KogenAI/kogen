@@ -55,6 +55,42 @@ if [ "${role}" != "debug" ] && [ "${role}" != "shape" ]; then
     exit 0
 fi
 
+# Sandbox-scoped bypass: the spike-builder subagent is confined to
+# codegen/pitches/ and absolute /tmp/ by orchestrator-no-source-edit.sh —
+# it needs package installs, process control, and its own destructive
+# HTTP/rm to build and probe a throwaway feasibility spike there. This
+# guard is active under BOTH debug and shape (see the role check above),
+# and spike-builder is reachable from both: shape via its explicit
+# {Explore, spike-builder} allowlist, debug via the generic "project
+# subagents allowed everywhere" rule (see operator-subagent-allowlist.sh)
+# — orchestrator-no-source-edit.sh already sandboxes debug identically to
+# shape, so this bypass matches that same debug+shape boundary rather than
+# narrowing to shape alone. Mirrors reviewer-bash-allowlist.sh's
+# AGENT_TYPE-scoped pattern. Placed AFTER the role check, BEFORE every verb
+# deny below — every actor OTHER than spike-builder (including the shaper
+# itself) keeps today's behavior byte-for-byte. git push, git reset --hard,
+# mix ecto.* migrations, and destructive SQL stay denied for every actor,
+# spike-builder included — those reach outside the sandbox.
+if [ "$AGENT_TYPE" = "spike-builder" ]; then
+    if command_invokes "$(strip_git_global_opts "$COMMAND")" '^git$' '^push\b'; then
+        deny "BLOCKED by claude-debug-bash-guard: git push forbidden in ${role} sessions (spike-builder is sandboxed to codegen/pitches/ and /tmp/, not a git write surface)"
+        exit 0
+    fi
+    if command_invokes "$(strip_git_global_opts "$COMMAND")" '^git$' '^reset\b.*--hard\b'; then
+        deny "BLOCKED by claude-debug-bash-guard: git reset --hard forbidden in ${role} sessions"
+        exit 0
+    fi
+    if command_invokes "$COMMAND" '^mix$' '^(ecto\.(migrate|rollback|drop|reset|create)|ecto\.setup)\b'; then
+        deny "BLOCKED by claude-debug-bash-guard: DB migration/drop commands forbidden in ${role} sessions"
+        exit 0
+    fi
+    if command_invokes "$COMMAND" '^(psql|mix)$' '\b(TRUNCATE|DROP[[:space:]]+TABLE|DELETE[[:space:]]+FROM)\b' ci; then
+        deny "BLOCKED by claude-debug-bash-guard: destructive SQL (TRUNCATE/DROP TABLE/DELETE FROM) forbidden in ${role} sessions"
+        exit 0
+    fi
+    exit 0
+fi
+
 # Parseability check BEFORE any rule-specific command_invokes() call below.
 # Every check in this file stays fail-closed on an unparseable command (a
 # real unbalanced quote), but the denial must say so honestly — never
@@ -146,8 +182,8 @@ if command_invokes "$COMMAND" '^(kill|pkill|killall)$'; then
     exit 0
 fi
 
-# Network package managers (npm install, pip install, brew install, gem install, pnpm add, cargo add)
-if command_invokes "$COMMAND" '^(npm|pip|pip3|brew|gem|pnpm|cargo)$' '^(install|add|update|upgrade|remove)\b'; then
+# Network package managers (npm install, npm i, pip install, brew install, gem install, pnpm add, cargo add)
+if command_invokes "$COMMAND" '^(npm|pip|pip3|brew|gem|pnpm|cargo)$' '^(install|i|add|update|upgrade|remove)\b'; then
     deny "BLOCKED by claude-debug-bash-guard: package installation forbidden in ${role} mode — investigation only"
     exit 0
 fi

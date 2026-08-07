@@ -159,17 +159,29 @@ class IncludeGraphTest(unittest.TestCase):
     since build_include_graph() reads from CODEGEN_DIR directly (module-level
     constant, not injectable), same pattern as MeasureRuleFilesTest above."""
 
-    def test_high_fanout_fragments_reach_all_six_prompts(self):
+    def test_high_fanout_fragments_reach_all_prompts(self):
+        # spike-builder.md.j2 (shape-mode-only) is a 7th prompt that includes
+        # only a subset of the universal _core/shared fragments — it does not
+        # include fail-fast-required-values.md, session-log.md, or
+        # git-readonly.md (no required-value/session-log/git surface in a
+        # sandboxed spike). Fragments it DOES include reach 7 prompts now;
+        # the rest stay at 6.
         fanout, _reach = psb.build_include_graph()
-        six_of_six = [
+        seven_of_seven = [
             "shared/rules/_core/bash-discipline.md",
-            "shared/rules/_core/fail-fast-required-values.md",
             "shared/rules/_core/fail-loud.md",
             "shared/rules/_core/output-style.md",
-            "shared/rules/_core/session-log.md",
-            "shared/rules/shared/git-readonly.md",
             "shared/rules/shared/no-role-spawn.md",
         ]
+        six_of_six = [
+            "shared/rules/_core/fail-fast-required-values.md",
+            "shared/rules/_core/session-log.md",
+            "shared/rules/shared/git-readonly.md",
+        ]
+        for fragment in seven_of_seven:
+            self.assertEqual(
+                len(fanout.get(fragment, [])), 7, f"{fragment} expected fan-out 7"
+            )
         for fragment in six_of_six:
             self.assertEqual(
                 len(fanout.get(fragment, [])), 6, f"{fragment} expected fan-out 6"

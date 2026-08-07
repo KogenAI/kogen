@@ -293,11 +293,16 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       verdict that reads as "nothing was wrong here". Drafts a
       `status: SKELETON` pitch into `<cwd>/codegen/pitches/draft/` via a
       headless `codegen-call` against `harnesses/claude/document-system-prompt.md`.
-      A merge target is fenced to an existing `status: SKELETON` draft ONLY —
-      never a `SHAPING`/`SHAPED` draft in flight. Fail-open on error: loud
-      stderr, `state.drafted_count` unchanged, drain continues (the draft is
-      an observation, not a required value — mirrors `park_failed_tree/2`'s
-      own fail-open contract).
+      A merge target may be ANY existing draft in `<cwd>/codegen/pitches/draft/`
+      — SKELETON, SHAPING, or SHAPED alike — that already states the same
+      invariant this failure violates; a merge into a SHAPING/SHAPED draft
+      touches only that draft's body prose, never its committed frontmatter.
+      `action: "merge"` is the drafter's default presumption when a
+      same-invariant draft is supplied; `action: "new"` fires only when none
+      match. Fail-open on error: loud stderr, `state.drafted_count`
+      unchanged, drain continues (the draft is an observation, not a
+      required value — mirrors `park_failed_tree/2`'s own fail-open
+      contract).
     * `:now_fn` — `(-> integer unix secs)`
     * `:ordered_fn` — `(ready_dir -> [slug])`, default `LoopQueue.ordered_slugs/1`
     * `:transient_fn` — `(jsonl_path -> boolean)`, default `LoopQueue.transient?/1`
@@ -3318,10 +3323,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     end
   end
 
-  # Every `status: SKELETON` draft currently sitting in
-  # `<cwd>/codegen/pitches/draft/` — `{slug, body}` pairs. A merge target is
-  # fenced to THIS list only: a `SHAPING`/`SHAPED` draft (operator work in
-  # flight) is never a legal merge target.
+  # Every pitch currently sitting in `<cwd>/codegen/pitches/draft/` —
+  # `{slug, body}` pairs, SKELETON, SHAPING, and SHAPED alike. A merge target
+  # may be ANY of these: a same-invariant SHAPING/SHAPED draft (operator work
+  # in flight) is a legal merge target too — the drafter is instructed to
+  # touch only that draft's body prose on a SHAPING/SHAPED merge, never its
+  # committed frontmatter (`summary:`, `blocks_on:`, `scope:`, etc.).
   @spec skeleton_drafts(String.t()) :: [{String.t(), String.t()}]
   defp skeleton_drafts(cwd) do
     draft_dir = Path.join([cwd, "codegen", "pitches", "draft"])
@@ -3338,7 +3345,6 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         |> Enum.map(fn {slug, path} -> {slug, File.read(path)} end)
         |> Enum.filter(&match?({_slug, {:ok, _body}}, &1))
         |> Enum.map(fn {slug, {:ok, body}} -> {slug, body} end)
-        |> Enum.filter(fn {_slug, body} -> String.contains?(body, "status: SKELETON") end)
 
       {:error, _reason} ->
         []
@@ -3359,11 +3365,12 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     skeleton_section =
       case skeletons do
         [] ->
-          "Existing SKELETON drafts: none."
+          "Existing drafts: none."
 
         list ->
-          "Existing SKELETON drafts (merge target MUST be one of these exact slugs, or omit " <>
-            "target_slug and use action \"new\"):\n\n" <>
+          "Existing drafts in codegen/pitches/draft/ (SKELETON, SHAPING, or SHAPED — merge " <>
+            "target MUST be one of these exact slugs, or omit target_slug and use action " <>
+            "\"new\"):\n\n" <>
             Enum.map_join(list, "\n\n", fn {slug, body} -> "### #{slug}\n\n#{body}" end)
       end
 
@@ -3381,14 +3388,19 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   # Parses `.result.value` out of a `codegen-call` response and writes the
-  # draft — `merge` overwrites `target_slug` ONLY when it was among the
-  # supplied skeleton slugs (never a blind overwrite of an unlisted, possibly
-  # SHAPING/SHAPED, draft); `new` writes `<slug>.md`.
+  # draft — `merge` writes `target_slug` ONLY when it was among the supplied
+  # draft slugs (SKELETON, SHAPING, or SHAPED alike; never a blind overwrite
+  # of an unlisted draft); `new` writes `<slug>.md`. A SKELETON merge target
+  # is fully OVERWRITTEN — `document-system-prompt.md` requires `body` to be
+  # the FULL merged skeleton for that case. A SHAPING/SHAPED merge target is
+  # NEVER overwritten — the drafter is instructed to return only a
+  # same-invariant note there, so this FOLDS that note onto the end of the
+  # existing file instead of replacing it, preserving the committed
+  # frontmatter (`summary:`, `blocks_on:`, `scope:`) and everything the
+  # shape session already decided.
   @spec apply_draft_decision(String.t(), String.t(), [{String.t(), String.t()}]) ::
           {:ok, String.t()} | {:error, term()}
   defp apply_draft_decision(cwd, call_out, skeletons) do
-    known_slugs = Enum.map(skeletons, fn {slug, _body} -> slug end)
-
     with {:ok, %{"result" => %{"status" => "success", "value" => value}}} <-
            Jason.decode(call_out),
          %{"action" => action, "slug" => slug, "body" => body} <- value do
@@ -3404,12 +3416,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         "merge" ->
           target_slug = Map.get(value, "target_slug")
 
-          if target_slug in known_slugs do
-            path = Path.join(draft_dir, "#{target_slug}.md")
-            File.write!(path, body)
-            {:ok, path}
-          else
-            {:error, "merge target_slug #{inspect(target_slug)} not among known skeletons"}
+          case Enum.find(skeletons, fn {s, _body} -> s == target_slug end) do
+            nil ->
+              {:error, "merge target_slug #{inspect(target_slug)} not among known drafts"}
+
+            {_slug, existing_body} ->
+              path = Path.join(draft_dir, "#{target_slug}.md")
+              File.write!(path, merged_draft_content(existing_body, body))
+              {:ok, path}
           end
 
         other ->
@@ -3417,6 +3431,20 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       end
     else
       _ -> {:error, "malformed codegen-call response: #{String.slice(call_out, 0, 400)}"}
+    end
+  end
+
+  # SKELETON target: `body` IS the full merged skeleton per the drafter's own
+  # contract — write it verbatim. SHAPING/SHAPED target: `body` is ONLY a
+  # same-invariant note — fold it onto the end of the existing file rather
+  # than overwriting, so committed frontmatter and prose survive untouched.
+  @spec merged_draft_content(String.t(), String.t()) :: String.t()
+  defp merged_draft_content(existing_body, body) do
+    if String.contains?(existing_body, "status: SKELETON") do
+      body
+    else
+      String.trim_trailing(existing_body) <>
+        "\n\n## Queue-drain same-invariant note\n\n" <> body <> "\n"
     end
   end
 

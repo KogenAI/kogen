@@ -59,6 +59,14 @@ mk() {
     printf '%s' "$DEBUG_AGENT" | jq --arg cmd "$cmd" '.tool_input = {command: $cmd}'
 }
 
+# mk_agent — like mk, but sets agent_type (for spike-builder sandbox-bypass tests)
+mk_agent() {
+    local cmd="$1"
+    local agent_type="$2"
+    printf '%s' "$DEBUG_AGENT" | jq --arg cmd "$cmd" --arg at "$agent_type" \
+        '.tool_input = {command: $cmd} | .agent_type = $at | .agent_id = "abc123"'
+}
+
 # 1: rm -rf blocked in debug
 run_test "rm -rf blocked in debug role" "2" \
     "$(mk 'rm -rf /tmp/foo')" "debug"
@@ -285,6 +293,78 @@ printf '#!/bin/bash\n# see also: git push origin main\necho hi\n' >"$NDIR/danger
 run_test "bash -n against a script mentioning 'git push' in a comment allows" "0" \
     "$(mk "bash -n $NDIR/danger.sh")" "debug"
 rm -rf "$NDIR"
+
+# npm i (alias for npm install) blocked in debug role — package-install
+# pattern must catch the short alias, not just the long form.
+run_test "npm i (install alias) blocked in debug role" "2" \
+    "$(mk 'npm i express')" "debug"
+
+run_test "npm install blocked in debug role (still)" "2" \
+    "$(mk 'npm install express')" "debug"
+
+run_test "npm info (not an install alias) allows in debug role" "0" \
+    "$(mk 'npm info express')" "debug"
+
+# spike-builder sandbox bypass — active under BOTH debug and shape (this
+# guard's role gate at the top admits both; spike-builder is reachable from
+# both per operator-subagent-allowlist.sh: shape via its explicit
+# {Explore, spike-builder} allowlist, debug via the generic "project
+# subagents allowed everywhere" rule — see operator-subagent-allowlist_test.sh
+# "debug + spike-builder allowed"). AGENT_TYPE=spike-builder bypasses the
+# verb denies this file otherwise enforces, so it can build and probe a
+# throwaway feasibility spike confined to codegen/pitches/ and /tmp/
+# (confinement enforced by orchestrator-no-source-edit.sh, not this file).
+run_test "spike-builder npm install allows in shape mode" "0" \
+    "$(mk_agent 'npm install express' 'spike-builder')" "shape"
+
+run_test "spike-builder kill allows in shape mode" "0" \
+    "$(mk_agent 'kill 123' 'spike-builder')" "shape"
+
+run_test "spike-builder rm -rf /tmp/spike allows in shape mode" "0" \
+    "$(mk_agent 'rm -rf /tmp/spike' 'spike-builder')" "shape"
+
+run_test "spike-builder curl -X POST allows in shape mode" "0" \
+    "$(mk_agent 'curl -X POST http://localhost:4000/probe' 'spike-builder')" "shape"
+
+run_test "spike-builder docker run allows in shape mode" "0" \
+    "$(mk_agent 'docker run --rm node:20' 'spike-builder')" "shape"
+
+# spike-builder still cannot escape the sandbox — git push / reset --hard /
+# mix ecto.* / destructive SQL stay denied even for the builder.
+run_test "spike-builder git push denies in shape mode" "2" \
+    "$(mk_agent 'git push' 'spike-builder')" "shape"
+
+run_test "spike-builder git reset --hard denies in shape mode" "2" \
+    "$(mk_agent 'git reset --hard' 'spike-builder')" "shape"
+
+run_test "spike-builder mix ecto.drop denies in shape mode" "2" \
+    "$(mk_agent 'mix ecto.drop' 'spike-builder')" "shape"
+
+run_test "spike-builder destructive SQL (TRUNCATE) denies in shape mode" "2" \
+    "$(mk_agent 'psql -c \"TRUNCATE TABLE users\"' 'spike-builder')" "shape"
+
+# Same bypass, same sandbox, under debug mode — spike-builder is reachable
+# from debug too (debug has no subagent allowlist restriction), so the
+# sandbox bypass here must fire identically rather than being shape-only.
+run_test "spike-builder npm install allows in debug mode" "0" \
+    "$(mk_agent 'npm install express' 'spike-builder')" "debug"
+
+run_test "spike-builder rm -rf /tmp/spike allows in debug mode" "0" \
+    "$(mk_agent 'rm -rf /tmp/spike' 'spike-builder')" "debug"
+
+run_test "spike-builder git push denies in debug mode" "2" \
+    "$(mk_agent 'git push' 'spike-builder')" "debug"
+
+run_test "spike-builder mix ecto.drop denies in debug mode" "2" \
+    "$(mk_agent 'mix ecto.drop' 'spike-builder')" "debug"
+
+# the shaper itself (no spike-builder agent_type) is unaffected — still
+# denied on the same verbs, byte-for-byte with pre-existing behavior.
+run_test "shaper (no agent_type) npm install still denies in shape mode" "2" \
+    "$(mk 'npm install express')" "shape"
+
+run_test "shaper (no agent_type) kill still denies in shape mode" "2" \
+    "$(mk 'kill 123')" "shape"
 
 run_test_env() {
     local desc="$1"

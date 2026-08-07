@@ -67,6 +67,8 @@ harness:
     claude: { model: sonnet, effort: "off" }
   context-curator:
     claude: { model: haiku, effort: "off" }
+  spike-builder:
+    claude: { model: sonnet, effort: "off" }
   app_build:
     claude: { model: sonnet, effort: "off" }
   inspector:

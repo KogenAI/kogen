@@ -16,7 +16,8 @@
 # Blocks the orchestrator from editing source files directly.
 # Subagents (non-empty agent_id) are allowed under no CLAUDE_ROLE_FAMILY (standard
 # orchestrator). Under any operator role (debug, shape) the write surface
-# is narrowed for BOTH the orchestrator AND Agent-spawned helpers.
+# is narrowed to codegen/pitches/ plus absolute /tmp/ (feasibility-spike
+# sandbox) — for BOTH the orchestrator AND Agent-spawned helpers.
 # ops mode has full write surface — no restriction applies.
 #
 # Responds to CLAUDE_ROLE (Claude Code)
@@ -67,7 +68,10 @@ if [ "$role" = "debug" ] || [ "$role" = "shape" ]; then
     if printf '%s' "$rel_path" | grep -qE '^codegen/pitches/'; then
         exit 0
     fi
-    deny "BLOCKED by orchestrator-no-source-edit: ${role} mode may only write to codegen/pitches/ — got $FILE_PATH"
+    if printf '%s' "$FILE_PATH" | grep -qE '^(/private)?/tmp/'; then
+        exit 0
+    fi
+    deny "BLOCKED by orchestrator-no-source-edit: ${role} mode may only write to codegen/pitches/ or absolute /tmp/ — got $FILE_PATH"
     exit 0
 fi
 

@@ -17,21 +17,19 @@ shared/rules/_core/fail-loud.md 25
 shared/rules/_core/output-style.md 35
 shared/rules/_core/session-log.md 128
 shared/rules/_core/witness-discipline.md 20
-shared/rules/roles/committer.md 162
 shared/rules/roles/context-curator.md 102
-shared/rules/roles/developer.md 138
-shared/rules/roles/reviewer.md 120
+shared/rules/roles/developer.md 128
+shared/rules/roles/reviewer.md 113
 shared/rules/stacks/phoenix/_core.md 142
-shared/rules/stacks/phoenix/committer.md 3
 shared/rules/stacks/phoenix/developer.md 103
 shared/rules/stacks/phoenix/generators.md 48
 shared/rules/stacks/phoenix/manifest-external-resource.md 5
 shared/rules/stacks/phoenix/no-defensive-code.md 25
-shared/rules/stacks/phoenix/reviewer.md 39
+shared/rules/stacks/phoenix/reviewer.md 21
 shared/rules/stacks/phoenix/testing-liveview.md 125
 shared/rules/stacks/phoenix/testing.md 247
 shared/rules/stacks/static/assets.md 128
-shared/rules/stacks/static/developer-pre-done.md 32
+shared/rules/stacks/static/developer-pre-done.md 30
 shared/rules/stacks/static/developer.md 103
 shared/rules/stacks/static/js.md 46
 shared/rules/stacks/static/reviewer.md 15
@@ -39,10 +37,10 @@ shared/rules/stacks/static/tailwind.md 114
 shared/rules/stacks/static/vite.md 112
 
 # --- rendered agent prompts (byte count) ---
-shared/subagents/phoenix/developer-phoenix-backend.md.j2 106764
-shared/subagents/phoenix/developer-phoenix-frontend.md.j2 114839
-shared/subagents/phoenix/reviewer-phoenix.md.j2 106693
-shared/subagents/shared/committer.md.j2 61091
-shared/subagents/shared/context-curator.md.j2 59485
-shared/subagents/static/developer-static.md.j2 94841
-shared/subagents/static/reviewer-static.md.j2 89352
+shared/subagents/phoenix/developer-phoenix-backend.md.j2 105051
+shared/subagents/phoenix/developer-phoenix-frontend.md.j2 113298
+shared/subagents/phoenix/reviewer-phoenix.md.j2 105939
+shared/subagents/shared/context-curator.md.j2 59463
+shared/subagents/shared/spike-builder.md.j2 25710
+shared/subagents/static/developer-static.md.j2 92778
+shared/subagents/static/reviewer-static.md.j2 88875

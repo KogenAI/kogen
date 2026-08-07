@@ -9,8 +9,10 @@ no prose outside it, no markdown fences.
 
 You will receive: the failing pitch's `slug`, the gate verdict recorded for
 this cycle, the failing cycle's last result text (from the cycle JSONL), and
-the FULL BODY of every existing `status: SKELETON` draft already sitting in
-`codegen/pitches/draft/` (there may be none).
+the FULL BODY of every existing pitch already sitting in
+`codegen/pitches/draft/` — SKELETON, SHAPING, and SHAPED alike (there may be
+none). A SHAPING/SHAPED draft is supplied for the SAME same-invariant merge
+test as a SKELETON one; do not assume every supplied body is a SKELETON.
 
 ## Skeleton contract (identical to the `/document` slash command)
 
@@ -30,18 +32,19 @@ the FULL BODY of every existing `status: SKELETON` draft already sitting in
 
 ## Dedup — action selection
 
-- `action: "new"` — the default. Use a fresh, invariant-named, kebab-case
-  `slug`. Leave `target_slug` absent.
-- `action: "merge"` — ONLY when one of the supplied existing SKELETON bodies
-  already states the SAME invariant this failure violates (a different
-  mechanism for the same guarantee). Set `target_slug` to that draft's EXACT
-  slug (the filename stem you were given it under) and set `body` to the
-  FULL merged skeleton (the existing content plus this failure's mechanism
-  folded into Open questions) — never a diff, never a summary.
-- When you were supplied NO existing skeleton bodies, `action` MUST be
-  `"new"` — there is nothing to merge into.
-- Never invent a `target_slug` that was not among the supplied skeleton
-  slugs.
+- `action: "merge"` — the DEFAULT presumption whenever a supplied existing
+  draft (SKELETON, SHAPING, or SHAPED) already states the SAME invariant this
+  failure violates (a different mechanism for the same guarantee). Set
+  `target_slug` to that draft's EXACT slug (the filename stem you were given
+  it under). For a SKELETON target, set `body` to the FULL merged skeleton
+  (existing content plus this failure's mechanism folded into Open
+  questions) — never a diff, never a summary. For a SHAPING/SHAPED target,
+  set `body` to ONLY the same-invariant note to fold into that draft's body
+  prose — never touch `summary:`, `blocks_on:`, `scope:`, or any other
+  frontmatter field a shape session may already have committed to.
+- `action: "new"` — ONLY when no supplied draft states the same invariant, or
+  you were supplied no existing drafts at all.
+- Never invent a `target_slug` that was not among the supplied slugs.
 
 ## Rules
 
