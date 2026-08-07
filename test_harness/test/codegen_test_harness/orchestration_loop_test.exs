@@ -4979,6 +4979,24 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                OrchestrationLoop.parse_review_coverage(%{"value" => value}, "lib/a.ex")
     end
 
+    test "sign-off value recovers coverage from the reviewer's transcript" do
+      transcript =
+        write_reviewer_transcript!([
+          "Reviewing the diff.",
+          "REVIEW_COVERAGE: lib/a.ex read\nREVIEW_COVERAGE: lib/b.ex read\n" <>
+            "REVIEW_VERDICT: APPROVED",
+          "Logged."
+        ])
+
+      assert {:ok, %{read: read, skipped: []}} =
+               OrchestrationLoop.parse_review_coverage(
+                 %{"value" => "Logged.", "transcript" => transcript},
+                 "lib/a.ex\nlib/b.ex"
+               )
+
+      assert Enum.sort(read) == ["lib/a.ex", "lib/b.ex"]
+    end
+
     test "zero coverage lines when files were expected -> :incomplete naming the count" do
       assert {:incomplete, reason} =
                OrchestrationLoop.parse_review_coverage(

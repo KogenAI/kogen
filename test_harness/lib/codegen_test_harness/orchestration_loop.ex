@@ -3092,8 +3092,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @spec parse_review_coverage(map(), String.t()) ::
           {:ok, %{read: [String.t()], skipped: [{String.t(), String.t()}]}}
           | {:incomplete, String.t()}
-  def parse_review_coverage(%{"value" => value}, expected_files)
+  def parse_review_coverage(%{"value" => value} = review_result, expected_files)
       when is_binary(value) and is_binary(expected_files) do
+    case parse_review_coverage_text(value, expected_files) do
+      {:ok, coverage} ->
+        {:ok, coverage}
+
+      {:incomplete, reason} ->
+        recover_review_coverage_from_transcript(review_result, expected_files, reason)
+    end
+  end
+
+  def parse_review_coverage(_, _), do: {:incomplete, "reviewer output was not a text value"}
+
+  defp parse_review_coverage_text(value, expected_files) do
     expected =
       expected_files
       |> String.split("\n", trim: true)
@@ -3117,7 +3129,27 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  def parse_review_coverage(_, _), do: {:incomplete, "reviewer output was not a text value"}
+  defp recover_review_coverage_from_transcript(
+         %{"transcript" => path},
+         expected_files,
+         original_reason
+       )
+       when is_binary(path) do
+    path
+    |> transcript_assistant_texts()
+    |> Enum.filter(&String.contains?(&1, "REVIEW_COVERAGE:"))
+    |> Enum.reverse()
+    |> Enum.reduce_while({:incomplete, original_reason}, fn text, fallback ->
+      case parse_review_coverage_text(text, expected_files) do
+        {:ok, _coverage} = ok -> {:halt, ok}
+        {:incomplete, _reason} -> {:cont, fallback}
+      end
+    end)
+  end
+
+  defp recover_review_coverage_from_transcript(_review_result, _expected_files, original_reason) do
+    {:incomplete, original_reason}
+  end
 
   defp classify_coverage_lines(coverage_lines, expected) do
     {parsed, malformed} =
