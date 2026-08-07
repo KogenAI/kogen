@@ -220,6 +220,50 @@ defmodule CodegenTestHarness.LoopGate do
   end
 
   @doc """
+  Sibling of `curator_learning_signal/1`: returns the cycle's own
+  `{"ev":"learned"}` events THEMSELVES (one `"role: text"` string per
+  event), not just the three-valued spawn signal — the material
+  `context-curator.md:3` names as the curator's ONLY routine input (pitch
+  "hand each role the material its job needs", move 3). Shells
+  `gate-select.sh`'s sibling `curator_learnings_from_log`.
+
+  Returns one of three DISTINCT outcomes — never collapsed to a single
+  silent case, per the pitch's D12 (a swallowed read error must not read
+  identically to "nothing was learned"):
+
+  - `{:ok, events}` — log exists and was read; `events` is a (possibly
+    empty) list of `"role: text"` strings. An empty list is legitimate —
+    a cycle can honestly produce no `ev:learned` events.
+  - `{:error, :absent}` — `log_file` is `nil` (no log initialized this
+    cycle, e.g. most unit tests).
+  - `{:error, :unreadable}` — `log_file` is set but does not exist / is
+    not a regular file on disk.
+
+  Never raises.
+  """
+  @spec curator_learnings(String.t() | nil) ::
+          {:ok, [String.t()]} | {:error, :absent | :unreadable}
+  def curator_learnings(nil), do: {:error, :absent}
+
+  def curator_learnings(log_file) when is_binary(log_file) do
+    unless File.exists?(@gate_select_lib) do
+      raise "LoopGate: gate-select.sh not found at #{@gate_select_lib}"
+    end
+
+    script =
+      "source #{shell_quote(@gate_select_lib)} && curator_learnings_from_log #{shell_quote(log_file)}"
+
+    case System.cmd("bash", ["-c", script], stderr_to_stdout: true) do
+      {output, 0} ->
+        events = output |> String.split("\n", trim: true)
+        {:ok, events}
+
+      {_output, _nonzero} ->
+        {:error, :unreadable}
+    end
+  end
+
+  @doc """
   Runs the gate for `project_dir`: decides the gate command, executes it
   in `project_dir`, writes `gate-result.json` via `write_gate_result`, and
   returns `{verdict, gate_command}`.

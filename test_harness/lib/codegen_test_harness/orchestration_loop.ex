@@ -945,6 +945,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     log_file = Process.get(@log_path_key)
     signal = signal_fn.(log_file)
 
+    # Move 3 (pitch "hand each role the material its job needs"): stash the
+    # cycle log's typed `ev:learned` events on ctx BEFORE the curator is
+    # invoked — the loop already reads this same log at `signal_fn.(log_file)`
+    # above to decide WHETHER to spawn the curator; this reuses that log
+    # read to hand over WHAT to curate too. build_prompt/2 renders one of
+    # three distinct outcomes (found / log-read-but-empty / log-unreadable)
+    # under `## Learnings to route` — never a silent omission that a
+    # swallowed read error could be confused with an honest empty cycle
+    # (D12).
+    learnings_fn = Keyword.get(opts, :curator_learnings_fn, &LoopGate.curator_learnings/1)
+    ctx = put_in(ctx, [:artifacts, :curator_learnings], {learnings_fn.(log_file), log_file})
+
     case run_curator_doc_scan(ctx.cwd, opts) do
       {:clean} ->
         case signal do
@@ -1127,9 +1139,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # same non-git-cwd case: "only a real git work tree can be verified...
   # nothing to verify there." A REAL git cwd with a nil subject IS the
   # genuine defect case — raise loud rather than shell a broken invocation.
-  @spec default_commit_fn(String.t(), String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
+  @spec default_commit_fn(String.t(), String.t() | nil) ::
+          {:ok, String.t()} | {:error, String.t()}
   defp default_commit_fn(cwd, nil) do
-    if File.dir?(cwd) and match?({_, 0}, System.cmd("git", ["rev-parse", "HEAD"], cd: cwd, stderr_to_stdout: true)) do
+    if File.dir?(cwd) and
+         match?({_, 0}, System.cmd("git", ["rev-parse", "HEAD"], cd: cwd, stderr_to_stdout: true)) do
       raise "OrchestrationLoop: run_commit_step reached a real git cwd with no commit_subject — " <>
               "resolve_commit_subject!/2 should have refused this cycle before any role ran."
     else
@@ -1855,6 +1869,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             case run_gate_once(ctx, opts) do
               :clear ->
                 advance_cycle_state_step("GATED", ctx, opts)
+
+                ctx =
+                  ctx
+                  |> put_in([:artifacts, :review_pass_number], cycle + 2)
+                  |> put_in([:artifacts, :review_max_passes], max_cycles + 1)
 
                 with {:ok, review2, ctx} <- invoke_reviewer(reviewer_role, harness, ctx, opts) do
                   ctx = put_in(ctx, [:artifacts, reviewer_role], review2)
@@ -3477,6 +3496,43 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # "Size bound" — observed cycle diffs run 35.6 KB typical, 111 KB worst).
   @rework_brief_max_bytes 40_000
 
+  # Header-neutral working-tree diff capture, shared by the developer's
+  # rework brief (`default_rework_brief_fn/1`) and the reviewer's
+  # `## Diff under review` block (pitch "hand each role the material its
+  # job needs"). `default_rework_brief_fn/1` used to inline this capture
+  # with its OWN second-person framing baked into the returned string
+  # ("### Your current diff (uncommitted, authoritative)") — false in a
+  # reviewer's voice, so the capture is split out and each caller supplies
+  # its own header/instruction text. Returns
+  # `{diff_trimmed, untracked, diff_out_byte_size, diff_args, oversized?}` —
+  # every value a caller needs to render either the verbatim body or the
+  # `--stat` degrade, without re-shelling anything. `diff_trimmed` and
+  # `untracked` are both "" when nothing changed (non-git cwd handled by
+  # the caller via `git_work_tree?/1`, exactly as before).
+  @spec capture_working_tree_diff(String.t(), keyword()) ::
+          {String.t(), String.t(), non_neg_integer(), [String.t()], boolean()}
+  defp capture_working_tree_diff(cwd, opts \\ []) do
+    base_head = cycle_base_head(cwd)
+    diff_args = if base_head, do: ["diff", "HEAD"], else: ["diff"]
+
+    {diff_out, _status} =
+      System.cmd("git", diff_args, cd: cwd, stderr_to_stdout: true)
+
+    {status_out, _status} =
+      System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true)
+
+    untracked =
+      status_out
+      |> String.split("\n", trim: true)
+      |> Enum.filter(&String.starts_with?(&1, "??"))
+      |> Enum.join("\n")
+
+    diff_trimmed = String.trim(diff_out)
+    max_bytes = Keyword.get(opts, :max_bytes, @rework_brief_max_bytes)
+
+    {diff_trimmed, untracked, byte_size(diff_out), diff_args, byte_size(diff_out) > max_bytes}
+  end
+
   # Captures the developer's uncommitted working-tree diff for a rework
   # re-entry (structural gap: gate-red / reviewer CHANGES_REQUESTED / env-var
   # violation). This is the compressed form of the work already done — the
@@ -3488,34 +3544,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @spec default_rework_brief_fn(String.t()) :: String.t()
   def default_rework_brief_fn(cwd) do
     if git_work_tree?(cwd) do
-      base_head = cycle_base_head(cwd)
-
-      diff_args = if base_head, do: ["diff", "HEAD"], else: ["diff"]
-
-      {diff_out, _status} =
-        System.cmd("git", diff_args, cd: cwd, stderr_to_stdout: true)
-
-      {status_out, _status} =
-        System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true)
-
-      untracked =
-        status_out
-        |> String.split("\n", trim: true)
-        |> Enum.filter(&String.starts_with?(&1, "??"))
-        |> Enum.join("\n")
-
-      diff_trimmed = String.trim(diff_out)
+      {diff_trimmed, untracked, diff_out_size, diff_args, oversized?} =
+        capture_working_tree_diff(cwd)
 
       cond do
         diff_trimmed == "" and untracked == "" ->
           ""
 
-        byte_size(diff_out) > @rework_brief_max_bytes ->
+        oversized? ->
           {stat_out, _status} =
             System.cmd("git", diff_args ++ ["--stat"], cd: cwd, stderr_to_stdout: true)
 
           "### Your current diff (uncommitted, authoritative) — TOO LARGE TO INLINE\n\n" <>
-            "Diff is #{byte_size(diff_out)} bytes — too large to inline. Run " <>
+            "Diff is #{diff_out_size} bytes — too large to inline. Run " <>
             "`git #{Enum.join(diff_args, " ")} -- <path>` for the specific files named in " <>
             "the fault below; do not sweep the tree.\n\n" <>
             "```\n" <>
@@ -3533,6 +3574,122 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     else
       ""
     end
+  end
+
+  # Reviewer's `## Diff under review` capture (move 1 of pitch "hand each
+  # role the material its job needs"): the SAME git idiom and SAME
+  # @rework_brief_max_bytes degrade as the developer's rework brief, but
+  # header-neutral — "authoritative, this is YOUR work" is false in a
+  # reviewer's voice. Also returns the per-path `sha256` digest map AND
+  # per-path diff body map move 2 needs to compute + render a re-review
+  # delta, so `invoke_reviewer/4` shells `git` exactly once per pass
+  # regardless of which blocks end up rendered. Digests/bodies are keyed on
+  # the file path as reported by `git diff --name-only` + `git status
+  # --porcelain` (bounded to the SAME max_bytes cap as the whole-tree
+  # capture — a single oversized path degrades to its own byte count
+  # rather than blowing the digest map's memory).
+  @spec default_review_diff_fn(String.t()) ::
+          {String.t(), %{String.t() => String.t()}, %{String.t() => String.t()}}
+  def default_review_diff_fn(cwd) do
+    if git_work_tree?(cwd) do
+      {diff_trimmed, untracked, diff_out_size, diff_args, oversized?} =
+        capture_working_tree_diff(cwd)
+
+      {digests, bodies} = per_path_diff_digests(cwd, diff_args)
+
+      block =
+        cond do
+          diff_trimmed == "" and untracked == "" ->
+            ""
+
+          oversized? ->
+            {stat_out, _status} =
+              System.cmd("git", diff_args ++ ["--stat"], cd: cwd, stderr_to_stdout: true)
+
+            "TOO LARGE TO INLINE\n\n" <>
+              "Diff is #{diff_out_size} bytes — too large to inline. Run " <>
+              "`git #{Enum.join(diff_args, " ")} -- <path>` for the specific files you need " <>
+              "to inspect; do not sweep the tree.\n\n" <>
+              "```\n" <>
+              String.trim(stat_out) <>
+              "\n```\n\n" <>
+              "### Untracked files\n\n```\n" <> untracked <> "\n```"
+
+          true ->
+            "```diff\n" <>
+              diff_trimmed <>
+              "\n```\n\n" <>
+              "### Untracked files\n\n```\n" <> untracked <> "\n```"
+        end
+
+      {block, digests, bodies}
+    else
+      {"", %{}, %{}}
+    end
+  end
+
+  # Per-path digest map for the re-review delta (move 2): one sha256 per
+  # changed path, computed from the loop's own `git diff` bytes — never
+  # from the developer's typed `files_modified` event, which is
+  # model-authored and must not be the source of a deterministic claim
+  # (pitch D4). Both tracked (`git diff --name-only`) and untracked
+  # (`git status --porcelain`) paths are included so a brand-new file
+  # counts as "changed since last review" too. Also returns the per-path
+  # diff BODY (not just its digest) so `since_last_review_section/1` can
+  # render the changed paths' diff blocks verbatim without a second `git`
+  # shell-out.
+  @spec per_path_diff_digests(String.t(), [String.t()]) ::
+          {%{String.t() => String.t()}, %{String.t() => String.t()}}
+  defp per_path_diff_digests(cwd, diff_args) do
+    name_only_args =
+      Enum.map(diff_args, fn
+        "diff" -> "diff"
+        other -> other
+      end) ++ ["--name-only"]
+
+    {tracked_out, _status} = System.cmd("git", name_only_args, cd: cwd, stderr_to_stdout: true)
+
+    {status_out, _status} =
+      System.cmd("git", ["status", "--porcelain"], cd: cwd, stderr_to_stdout: true)
+
+    untracked_paths =
+      status_out
+      |> String.split("\n", trim: true)
+      |> Enum.filter(&String.starts_with?(&1, "??"))
+      |> Enum.map(&String.trim_leading(&1, "?? "))
+
+    tracked_paths = String.split(tracked_out, "\n", trim: true)
+
+    per_path =
+      (tracked_paths ++ untracked_paths)
+      |> Enum.uniq()
+      |> Map.new(fn path ->
+        {out, _status} =
+          System.cmd("git", diff_args ++ ["--", path], cd: cwd, stderr_to_stdout: true)
+
+        # Untracked paths produce no `git diff` output (nothing to diff
+        # against) — fall back to the raw file content so a brand-new
+        # file's digest (and rendered body) still changes across passes if
+        # its content changes.
+        body =
+          if String.trim(out) == "" do
+            case File.read(Path.join(cwd, path)) do
+              {:ok, content} -> content
+              {:error, _reason} -> ""
+            end
+          else
+            out
+          end
+
+        digest = :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
+
+        {path, {digest, body}}
+      end)
+
+    digests = Map.new(per_path, fn {path, {digest, _body}} -> {path, digest} end)
+    bodies = Map.new(per_path, fn {path, {_digest, body}} -> {path, body} end)
+
+    {digests, bodies}
   end
 
   # Dispatches the `:rework_brief_fn` test seam; defaults to the real shelled
@@ -3633,6 +3790,69 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  # Move 2 (pitch "hand each role the material its job needs"): on a
+  # re-review pass, renders the delta since THIS reviewer's own last pass
+  # (the exact paths whose diff changed, verbatim — taken from the capture
+  # already in `ctx.artifacts.review_diff_bodies`, no new git call), the
+  # verdict text that pass returned (`ctx.artifacts.review_feedback`,
+  # already written by `handle_review/7` before the rework — this is the
+  # SAME value the re-entering developer already gets, now also handed to
+  # the re-invoked reviewer standing next to it), and a terminality notice
+  # naming the pass number and the budget. Renders nothing on a first pass
+  # (`review_diff_delta` is stashed only when a prior digest map existed —
+  # see `invoke_reviewer/4`) — the normal case, not an error.
+  @spec since_last_review_section(map()) :: String.t()
+  defp since_last_review_section(ctx) do
+    delta = get_in(ctx, [:artifacts, :review_diff_delta])
+
+    if is_list(delta) do
+      bodies = get_in(ctx, [:artifacts, :review_diff_bodies]) || %{}
+      feedback = get_in(ctx, [:artifacts, :review_feedback]) || ""
+      pass_number = get_in(ctx, [:artifacts, :review_pass_number])
+      max_passes = get_in(ctx, [:artifacts, :review_max_passes])
+
+      changed_block =
+        if delta == [] do
+          "No path's diff changed since your last pass (the rework may have addressed your " <>
+            "finding with a change too small to alter these files, or targeted a different " <>
+            "file than the ones you reviewed)."
+        else
+          Enum.map_join(delta, "\n\n", fn
+            {path, :removed} ->
+              "### #{path} (removed since your last pass)\n\nThis path no longer differs from " <>
+                "HEAD — the rework reverted it."
+
+            {path, kind} ->
+              body = Map.get(bodies, path, "")
+
+              "### #{path} (#{kind})\n\n```diff\n" <> String.trim(body) <> "\n```"
+          end)
+        end
+
+      terminal_notice =
+        if is_integer(pass_number) and is_integer(max_passes) do
+          if pass_number >= max_passes do
+            "\n\nThis is review pass #{pass_number} of #{max_passes} — the review re-work " <>
+              "budget is exhausted. A `REVIEW_VERDICT: CHANGES_REQUESTED` here ends the " <>
+              "build with no further rework."
+          else
+            "\n\nThis is review pass #{pass_number} of #{max_passes}."
+          end
+        else
+          ""
+        end
+
+      "\n\n## Since your last review\n\n" <>
+        "### Your prior finding\n\n" <>
+        feedback <>
+        "\n\n### What changed since then\n\n" <>
+        changed_block <>
+        terminal_notice
+    else
+      ""
+    end
+  end
+
   # Single reviewer-invocation seam (first pass in run_roles/4 AND re-review
   # in handle_review/7 both route here) so no entry path can ship a reviewer
   # prompt without the loop-derived ## Files Modified set -- the gap that
@@ -3643,6 +3863,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # loud rather than hand the reviewer an empty scope, mirroring
   # verify_committed!/2's existing dirty/empty guards. Non-git cwd (mocked
   # unit tests) yields "" and skips the refusal.
+  #
+  # Also captures the reviewer's diff-under-review + per-path digest map
+  # (pitch "hand each role the material its job needs", moves 1-2): the
+  # digest map from the PREVIOUS pass (stashed at
+  # `ctx.artifacts.review_diff_digests`, absent on pass 1) is compared to
+  # the freshly captured one, yielding the set of paths whose diff bytes
+  # changed since this reviewer's own last pass -- the re-review delta.
+  # `ctx.artifacts.review_diff` / `review_diff_digests` are updated on
+  # EVERY pass (pass 1 has no prior digests to diff against, so the delta
+  # is simply absent -- build_prompt/2 renders no `## Since your last
+  # review` block for a first pass).
   defp invoke_reviewer(reviewer_role, harness, ctx, opts) do
     set_fn = Keyword.get(opts, :review_file_set_fn, &default_review_file_set_fn/1)
     files = set_fn.(ctx.cwd)
@@ -3650,12 +3881,61 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     if files == "" and git_work_tree?(ctx.cwd) do
       {:error, "cycle produced no changes — nothing for the reviewer to review"}
     else
-      ctx = put_in(ctx, [:artifacts, :review_file_set], files)
+      diff_fn = Keyword.get(opts, :review_diff_fn, &default_review_diff_fn/1)
+      {diff_block, digests, bodies} = diff_fn.(ctx.cwd)
+
+      prior_digests = get_in(ctx, [:artifacts, :review_diff_digests])
+
+      ctx =
+        ctx
+        |> put_in([:artifacts, :review_file_set], files)
+        |> put_in([:artifacts, :review_diff], diff_block)
+        |> put_in([:artifacts, :review_diff_digests], digests)
+        |> put_in([:artifacts, :review_diff_bodies], bodies)
+        |> then(fn c ->
+          if is_map(prior_digests) do
+            changed_paths = diff_delta(prior_digests, digests)
+            put_in(c, [:artifacts, :review_diff_delta], changed_paths)
+          else
+            c
+          end
+        end)
 
       with {:ok, result} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
         {:ok, result, ctx}
       end
     end
+  end
+
+  # Computes the set of paths whose diff digest changed between two
+  # reviewer passes: added (new key), removed (key present before, absent
+  # now -- e.g. a rework that reverted a file), or changed (same key,
+  # different digest). Returns "" when nothing changed (identical digest
+  # maps) so build_prompt/2 can render no delta block for a no-op re-review
+  # (the :unknown-verdict re-invocation path, which reruns the SAME
+  # reviewer with no developer rework in between).
+  @spec diff_delta(%{String.t() => String.t()}, %{String.t() => String.t()}) :: [
+          {String.t(), :added | :removed | :changed}
+        ]
+  defp diff_delta(prior, current) do
+    added =
+      current
+      |> Map.keys()
+      |> Enum.reject(&Map.has_key?(prior, &1))
+      |> Enum.map(&{&1, :added})
+
+    removed =
+      prior
+      |> Map.keys()
+      |> Enum.reject(&Map.has_key?(current, &1))
+      |> Enum.map(&{&1, :removed})
+
+    changed =
+      current
+      |> Enum.filter(fn {path, digest} -> Map.get(prior, path) not in [nil, digest] end)
+      |> Enum.map(fn {path, _digest} -> {path, :changed} end)
+
+    (added ++ removed ++ changed) |> Enum.sort_by(fn {path, _} -> path end)
   end
 
   # Runs `mix format`/`make format` in `cwd` as an explicit loop step. This
@@ -4498,6 +4778,49 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base
       end
 
+    # Move 3 (pitch "hand each role the material its job needs"): the
+    # curator's own routine input, `ev:learned` events, HANDED OVER instead
+    # of reconstructed from source (measured: a real curator turn spent 15
+    # Reads + 6 Bash calls, ZERO of which touched the cycle log, because
+    # nothing handed it the events). Three distinct outcomes, three
+    # distinct renderings — see LoopGate.curator_learnings/1 and D12; a
+    # swallowed read error must never render identically to "nobody
+    # learned anything".
+    base =
+      if role == "context-curator" do
+        case get_in(ctx, [:artifacts, :curator_learnings]) do
+          {{:ok, events}, log_path} when is_list(events) ->
+            body =
+              if events == [] do
+                "No `ev:learned` events were recorded this cycle (log: `#{log_path}`)."
+              else
+                "The following `ev:learned` events were recorded this cycle " <>
+                  "(log: `#{log_path}`):\n\n```\n" <> Enum.join(events, "\n") <> "\n```"
+              end
+
+            base <> "\n\n## Learnings to route\n\n" <> body
+
+          {{:error, :unreadable}, log_path} ->
+            base <>
+              "\n\n## Learnings to route\n\n" <>
+              "The cycle log at `#{log_path}` could not be read — its `ev:learned` events " <>
+              "could not be recovered for this turn. This is NOT the same as an empty " <>
+              "cycle; do not report a drop for learnings you could not see."
+
+          {{:error, :absent}, _log_path} ->
+            base <>
+              "\n\n## Learnings to route\n\n" <>
+              "No cycle log was initialized for this run — its `ev:learned` events could " <>
+              "not be recovered for this turn. This is NOT the same as an empty cycle; do " <>
+              "not report a drop for learnings you could not see."
+
+          nil ->
+            base
+        end
+      else
+        base
+      end
+
     # On a review re-work pass, thread the reviewer's feedback to the developer.
     fb = get_in(ctx, [:artifacts, :review_feedback])
 
@@ -4579,10 +4902,37 @@ defmodule CodegenTestHarness.OrchestrationLoop do
             ""
           end
 
+        # Move 1 (pitch "hand each role the material its job needs"): the
+        # diff itself, not just the file names — the gate that graded this
+        # exact tree already shelled this diff seconds earlier
+        # (`review_diff` from `invoke_reviewer/4`'s capture); handing it
+        # here means the reviewer never has to re-derive it turn-by-turn via
+        # `git diff` (measured: 139 of 165 reviewer Bash calls on one build
+        # were exactly this re-derivation).
+        diff_block = get_in(ctx, [:artifacts, :review_diff]) || ""
+
+        diff_section =
+          if String.trim(diff_block) != "" do
+            "\n\n## Diff under review\n\n" <>
+              "The diff below is the SAME uncommitted working-tree change named above — " <>
+              "read it here; you do not need to re-derive it with `git diff`.\n\n" <> diff_block
+          else
+            ""
+          end
+
+        # Move 2: on a re-review pass, the delta since THIS reviewer's own
+        # last pass, plus the finding that pass raised, plus the price of
+        # this verdict. `review_diff_delta` is only ever stashed by
+        # `invoke_reviewer/4` when a prior digest map existed (i.e. never
+        # on pass 1) — no block for a first pass.
+        since_last_section = since_last_review_section(ctx)
+
         verifier_notice = verifier_surface_notice(files)
 
         base <>
           file_section <>
+          diff_section <>
+          since_last_section <>
           verifier_notice <>
           "\n\nReview these changes against normal reviewer checks (quality, security, " <>
           "silent-failure/Rule S, test coverage).\n\nEND your response with exactly one terminal line: " <>

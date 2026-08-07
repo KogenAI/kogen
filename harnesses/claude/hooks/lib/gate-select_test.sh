@@ -183,5 +183,46 @@ assert_eq "stale env GATE_MODE does not leak into the decision" "mode=short" "$(
 assert_eq "stale env GATE_TIMEOUT does not leak into the decision" "timeout=900" "$(printf '%s' "$out" | sed -n '3p')"
 rm -rf "$TGO9"
 
+# ── curator_learnings_from_log ──────────────────────────────────────────────
+# Missing log file → exit 1, no output.
+CLL1=$(mktemp -d)
+out=$(curator_learnings_from_log "$CLL1/does-not-exist.jsonl")
+rc=$?
+assert_eq "missing log: exit status 1" "1" "$rc"
+assert_eq "missing log: no output" "" "$out"
+rm -rf "$CLL1"
+
+# Log with ev:learned events → one "role: text" line per event, exit 0.
+CLL2=$(mktemp -d)
+log2="$CLL2/log.jsonl"
+{
+    printf '%s\n' '{"ev":"role","role":"developer-phoenix-backend","body":"dev work"}'
+    printf '%s\n' '{"ev":"learned","role":"developer-phoenix-backend","text":"caught a bug"}'
+    printf '%s\n' '{"ev":"learned","role":"reviewer-phoenix","text":"scoped a warning string"}'
+} >"$log2"
+out=$(curator_learnings_from_log "$log2")
+rc=$?
+assert_eq "learned events: exit status 0" "0" "$rc"
+assert_eq "learned events: line count" "2" "$(printf '%s\n' "$out" | grep -c .)"
+assert_eq "learned events: role-prefixed line 1" "developer-phoenix-backend: caught a bug" "$(printf '%s' "$out" | sed -n '1p')"
+assert_eq "learned events: role-prefixed line 2" "reviewer-phoenix: scoped a warning string" "$(printf '%s' "$out" | sed -n '2p')"
+rm -rf "$CLL2"
+
+# Log with zero ev:learned events (only ev:no_learning / other kinds) →
+# exit 0, empty output — distinct from the missing-log exit-1 case (D12:
+# "log unreadable" and "log held no learnings" must render as two
+# DIFFERENT outcomes at the caller).
+CLL3=$(mktemp -d)
+log3="$CLL3/log.jsonl"
+{
+    printf '%s\n' '{"ev":"init","pitch":"x"}'
+    printf '%s\n' '{"ev":"no_learning","role":"developer-phoenix-backend","text":"routine fix"}'
+} >"$log3"
+out=$(curator_learnings_from_log "$log3")
+rc=$?
+assert_eq "no learned events: exit status 0" "0" "$rc"
+assert_eq "no learned events: empty output" "" "$out"
+rm -rf "$CLL3"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

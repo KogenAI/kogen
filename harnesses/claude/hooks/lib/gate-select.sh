@@ -95,6 +95,37 @@ curator_learning_signal_from_log() {
     fi
 }
 
+# curator_learnings_from_log <step_log_file> — prints one `role: text` line
+# per `{"ev":"learned"}` event in the cycle's own JSONL (context-curator's
+# own contract, `context-curator.md:3`, names this typed event stream as
+# its ONLY routine input — never diff/source/tests). Sibling of
+# curator_learning_signal_from_log/1 above, which answers only "is there
+# anything to curate" (a three-valued atom); this prints the events
+# THEMSELVES so the curator is handed what it is contractually defined
+# over instead of reconstructing the change from source (pitch "hand each
+# role the material its job needs", move 3).
+#
+# Exit-status vocabulary (three distinct outcomes, never collapsed to one
+# silent print — see the pitch's D12: "log unreadable" and "log held no
+# learnings" must render as two DIFFERENT sentinels, or a swallowed `jq`
+# error is indistinguishable from an honest empty cycle):
+#
+#   0  — log exists and is readable; stdout carries zero or more
+#        `role: text` lines (zero lines is legitimate — a cycle can
+#        honestly produce no ev:learned events).
+#   1  — log_file does not exist or is not a regular file.
+#
+# Never raises; a malformed JSON line is skipped by `jq`'s own error
+# handling within the `select` filter (jq's `-e` on select already used
+# by the sibling fn tolerates this the same way).
+curator_learnings_from_log() {
+    local log_file="$1"
+    [ -f "$log_file" ] || return 1
+
+    jq -r 'select(.ev == "learned") | "\(.role): \(.text)"' "$log_file" 2>/dev/null
+    return 0
+}
+
 # gate_timeout_for <command> — print timeout in seconds for a gate command.
 # The timeout budget is based on substring matching, independent of gate mode:
 #   make ci (with or without llm)  → present in combined → contributes 900

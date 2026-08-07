@@ -176,6 +176,57 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "curator_learnings/1" do
+    test "nil log_file returns {:error, :absent}, never raises" do
+      assert LoopGate.curator_learnings(nil) == {:error, :absent}
+    end
+
+    test "missing log file on disk returns {:error, :unreadable}" do
+      assert LoopGate.curator_learnings("/tmp/does-not-exist-loop-gate-learnings-test.jsonl") ==
+               {:error, :unreadable}
+    end
+
+    test "log with ev:learned events returns {:ok, [\"role: text\", ...]}", %{dir: dir} do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      lines =
+        [
+          %{"ev" => "role", "role" => "developer-phoenix-backend", "body" => "dev work"},
+          %{"ev" => "learned", "role" => "developer-phoenix-backend", "text" => "caught a bug"},
+          %{"ev" => "learned", "role" => "reviewer-phoenix", "text" => "scoped a warning"}
+        ]
+        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
+
+      File.write!(step_log, lines)
+
+      assert LoopGate.curator_learnings(step_log) ==
+               {:ok,
+                [
+                  "developer-phoenix-backend: caught a bug",
+                  "reviewer-phoenix: scoped a warning"
+                ]}
+    end
+
+    test "log with zero ev:learned events returns {:ok, []} — not an error", %{dir: dir} do
+      step_log = Path.join(dir, "20260601_120000_test_cycle.jsonl")
+
+      lines =
+        [
+          %{"ev" => "init", "pitch" => "x"},
+          %{
+            "ev" => "no_learning",
+            "role" => "developer-phoenix-backend",
+            "text" => "routine fix, nothing durable"
+          }
+        ]
+        |> Enum.map_join("", &(Jason.encode!(&1) <> "\n"))
+
+      File.write!(step_log, lines)
+
+      assert LoopGate.curator_learnings(step_log) == {:ok, []}
+    end
+  end
+
   describe "run_gate/2" do
     test "clear verdict on exit 0, non-static stack (no render check)", %{dir: dir} do
       write_gate_config!(dir, "make test")
@@ -601,7 +652,8 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
 
     test "a single unavailable module -> false (plausible real deleted-module defect)" do
-      text = "** (UndefinedFunctionError) function Foo.bar/1 is undefined (module Foo is not available)"
+      text =
+        "** (UndefinedFunctionError) function Foo.bar/1 is undefined (module Foo is not available)"
 
       assert LoopGate.stale_build?(text) == false
     end

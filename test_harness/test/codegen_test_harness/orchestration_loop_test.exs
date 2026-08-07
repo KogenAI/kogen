@@ -55,6 +55,264 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "build_prompt/2 — ## Diff under review (loop-supplied, move 1)" do
+    test "reviewer-phoenix prompt renders the loop-supplied diff under review" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          review_file_set: "lib/foo.ex",
+          review_diff: "```diff\n+def foo, do: :ok\n```\n\n### Untracked files\n\n```\n```"
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "## Diff under review"
+      assert content =~ "+def foo, do: :ok"
+      assert content =~ "you do not need to re-derive it with `git diff`"
+    end
+
+    test "reviewer-static prompt renders the loop-supplied diff under review" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          review_file_set: "assets/app.js",
+          review_diff: "```diff\n+console.log(1)\n```\n\n### Untracked files\n\n```\n```"
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-static", ctx)
+
+      assert content =~ "## Diff under review"
+      assert content =~ "+console.log(1)"
+    end
+
+    test "no review_diff artifact → no ## Diff under review section" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_file_set: "lib/foo.ex"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      refute content =~ "## Diff under review"
+    end
+
+    test "developer prompt is NOT enriched with ## Diff under review (reviewer-only block)" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_diff: "```diff\n+foo\n```"}
+      }
+
+      content = OrchestrationLoop.build_prompt("developer-phoenix-backend", ctx)
+
+      refute content =~ "## Diff under review"
+    end
+  end
+
+  describe "build_prompt/2 — ## Since your last review (re-review delta, move 2)" do
+    test "first-pass reviewer prompt (no review_diff_delta) carries no ## Since your last review block" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{review_file_set: "lib/foo.ex"}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      refute content =~ "## Since your last review"
+    end
+
+    test "re-review prompt carries the prior finding, the changed-paths delta, and the terminality notice" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          review_file_set: "lib/foo.ex",
+          review_feedback: "the pitch-format-validator.sh SHAPED gate is untested",
+          review_diff_delta: [{"lib/foo.ex", :changed}],
+          review_diff_bodies: %{"lib/foo.ex" => "diff --git a/lib/foo.ex b/lib/foo.ex\n+fix"},
+          review_pass_number: 2,
+          review_max_passes: 2
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "## Since your last review"
+      assert content =~ "### Your prior finding"
+      assert content =~ "the pitch-format-validator.sh SHAPED gate is untested"
+      assert content =~ "### What changed since then"
+      assert content =~ "lib/foo.ex (changed)"
+      assert content =~ "+fix"
+      assert content =~ "This is review pass 2 of 2"
+      assert content =~ "review re-work budget is exhausted"
+      assert content =~ "no further rework"
+    end
+
+    test "re-review prompt with a non-terminal pass number states the pass without an exhaustion notice" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          review_file_set: "lib/foo.ex",
+          review_feedback: "fix the thing",
+          review_diff_delta: [{"lib/foo.ex", :changed}],
+          review_diff_bodies: %{"lib/foo.ex" => "+fix"},
+          review_pass_number: 2,
+          review_max_passes: 3
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "This is review pass 2 of 3."
+      refute content =~ "budget is exhausted"
+    end
+
+    test "an empty delta (no path's diff changed) is reported explicitly, not omitted" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          review_file_set: "lib/foo.ex",
+          review_feedback: "fix the thing",
+          review_diff_delta: [],
+          review_diff_bodies: %{}
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "## Since your last review"
+      assert content =~ "No path's diff changed since your last pass"
+    end
+
+    test "a removed path (rework reverted a file) is reported as removed, naming the path" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          review_file_set: "lib/foo.ex",
+          review_feedback: "fix the thing",
+          review_diff_delta: [{"lib/reverted.ex", :removed}],
+          review_diff_bodies: %{}
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      assert content =~ "lib/reverted.ex (removed since your last pass)"
+      assert content =~ "reverted it"
+    end
+
+    test "developer prompt is NOT enriched with ## Since your last review (reviewer-only block)" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          review_diff_delta: [{"lib/foo.ex", :changed}],
+          review_diff_bodies: %{"lib/foo.ex" => "+fix"}
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("developer-phoenix-backend", ctx)
+
+      refute content =~ "## Since your last review"
+    end
+  end
+
+  describe "build_prompt/2 — ## Learnings to route (curator ev:learned events, move 3)" do
+    test "curator prompt renders the found ev:learned events verbatim" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{
+          curator_learnings:
+            {{:ok,
+              [
+                "developer-phoenix-backend: caught a bug",
+                "reviewer-phoenix: scoped a warning"
+              ]}, "/tmp/log.jsonl"}
+        }
+      }
+
+      content = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      assert content =~ "## Learnings to route"
+      assert content =~ "developer-phoenix-backend: caught a bug"
+      assert content =~ "reviewer-phoenix: scoped a warning"
+      assert content =~ "/tmp/log.jsonl"
+    end
+
+    test "curator prompt states explicitly when the log was read but held no learnings" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{curator_learnings: {{:ok, []}, "/tmp/log.jsonl"}}
+      }
+
+      content = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      assert content =~ "## Learnings to route"
+      assert content =~ "No `ev:learned` events were recorded this cycle"
+      assert content =~ "/tmp/log.jsonl"
+    end
+
+    test "curator prompt states explicitly, and DIFFERENTLY, when the log could not be read (D12)" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{curator_learnings: {{:error, :unreadable}, "/tmp/missing.jsonl"}}
+      }
+
+      content = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      assert content =~ "## Learnings to route"
+      assert content =~ "could not be read"
+      assert content =~ "NOT the same as an empty cycle"
+      refute content =~ "No `ev:learned` events were recorded this cycle"
+    end
+
+    test "curator prompt states explicitly when no cycle log was initialized" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{curator_learnings: {{:error, :absent}, nil}}
+      }
+
+      content = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      assert content =~ "## Learnings to route"
+      assert content =~ "No cycle log was initialized"
+      assert content =~ "NOT the same as an empty cycle"
+    end
+
+    test "no curator_learnings artifact at all → no ## Learnings to route block" do
+      ctx = %{cwd: "/tmp", pitch: "do the thing", artifacts: %{}}
+
+      content = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      refute content =~ "## Learnings to route"
+    end
+
+    test "reviewer prompt is NOT enriched with ## Learnings to route (curator-only block)" do
+      ctx = %{
+        cwd: "/tmp",
+        pitch: "do the thing",
+        artifacts: %{curator_learnings: {{:ok, ["role: text"]}, "/tmp/log.jsonl"}}
+      }
+
+      content = OrchestrationLoop.build_prompt("reviewer-phoenix", ctx)
+
+      refute content =~ "## Learnings to route"
+    end
+  end
+
   describe "build_prompt/2 — verifier surface notice (surface, never deny)" do
     test "reviewer prompt gets a Verifier Surface Touched notice when the diff touches a gate test" do
       ctx = %{
@@ -3848,6 +4106,80 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "default_review_diff_fn/1" do
+    test "non-git cwd returns empty block and empty digest/body maps" do
+      assert OrchestrationLoop.default_review_diff_fn(
+               "/tmp/definitely-not-a-git-repo-diff-#{System.unique_integer([:positive])}"
+             ) == {"", %{}, %{}}
+    end
+
+    test "clean git work tree returns empty block and empty digest/body maps" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("review-diff-clean-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      assert OrchestrationLoop.default_review_diff_fn(tmp) == {"", %{}, %{}}
+    end
+
+    test "dirty tracked file produces a verbatim diff block and a digest+body entry for that path" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("review-diff-dirty-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      File.write!(Path.join(tmp, "a.txt"), "hello\nworld\n")
+
+      {block, digests, bodies} = OrchestrationLoop.default_review_diff_fn(tmp)
+
+      assert block =~ "+world"
+      assert Map.has_key?(digests, "a.txt")
+      assert bodies["a.txt"] =~ "+world"
+    end
+
+    test "an untracked new file gets a digest derived from its raw content" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("review-diff-untracked-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "a.txt"), "hello\n")
+      {_out, 0} = System.cmd("git", ["add", "a.txt"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      File.write!(Path.join(tmp, "new.txt"), "brand new\n")
+
+      {_block, digests, _bodies} = OrchestrationLoop.default_review_diff_fn(tmp)
+
+      assert Map.has_key?(digests, "new.txt")
+      expected = :crypto.hash(:sha256, "brand new\n") |> Base.encode16(case: :lower)
+      assert digests["new.txt"] == expected
+    end
+  end
+
   describe "run/1 — reviewer file set threading (loop-derived ## Files Modified)" do
     test "review_file_set_fn output reaches the reviewer prompt on first pass", %{
       calls_agent: calls_agent
@@ -3939,6 +4271,80 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert length(prompts) == 2
       assert Enum.at(prompts, 0) =~ "lib/pass_0.ex"
       assert Enum.at(prompts, 1) =~ "lib/pass_1.ex"
+    end
+
+    test "review_diff_fn output reaches the ## Diff under review block, and a re-review pass carries ## Since your last review with the prior finding and the delta",
+         %{calls_agent: calls_agent} do
+      {:ok, prompts_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> stop_agent(prompts_agent) end)
+
+      {:ok, diff_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> stop_agent(diff_calls_agent) end)
+
+      set_fn = fn _cwd -> "lib/foo.ex" end
+
+      # Pass 1 digest differs from pass 2 digest, so `diff_delta/2` reports
+      # `lib/foo.ex` as :changed on the re-review pass.
+      diff_fn = fn _cwd ->
+        n = Agent.get_and_update(diff_calls_agent, fn n -> {n, n + 1} end)
+
+        {"```diff\n+pass_#{n}\n```", %{"lib/foo.ex" => "digest_#{n}"},
+         %{"lib/foo.ex" => "+pass_#{n}"}}
+      end
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+          prompt = OrchestrationLoop.build_prompt(role, ctx)
+          Agent.update(prompts_agent, fn ps -> ps ++ [prompt] end)
+
+          value =
+            if seen <= 1,
+              do:
+                "the pitch-format-validator.sh gate is untested\nREVIEW_VERDICT: CHANGES_REQUESTED",
+              else: "REVIEW_VERDICT: APPROVED"
+
+          {:ok, %{"status" => "success", "value" => value}}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: set_fn,
+                 review_diff_fn: diff_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      prompts = Agent.get(prompts_agent, & &1)
+      assert length(prompts) == 2
+
+      first_pass = Enum.at(prompts, 0)
+      assert first_pass =~ "## Diff under review"
+      assert first_pass =~ "+pass_0"
+      refute first_pass =~ "## Since your last review"
+
+      re_review_pass = Enum.at(prompts, 1)
+      assert re_review_pass =~ "## Diff under review"
+      assert re_review_pass =~ "+pass_1"
+      assert re_review_pass =~ "## Since your last review"
+      assert re_review_pass =~ "### Your prior finding"
+      assert re_review_pass =~ "the pitch-format-validator.sh gate is untested"
+      assert re_review_pass =~ "lib/foo.ex (changed)"
+      assert re_review_pass =~ "+pass_1"
+      assert re_review_pass =~ "This is review pass 2 of 2"
+      assert re_review_pass =~ "review re-work budget is exhausted"
     end
 
     test "empty changed set in a real git tree → loop refuses to invoke the reviewer" do
@@ -7803,18 +8209,20 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           "reviewer-phoenix"
       end
 
-      assert_raise RuntimeError, ~r/required role agent\(s\) not resolvable: context-curator/, fn ->
-        OrchestrationLoop.run(
-          harness: "claude_code",
-          stack: "phoenix",
-          cwd: "/tmp/irrelevant",
-          pitch: "do the thing",
-          invoke_fn: always_ok_invoke_fn(calls_agent),
-          gate_fn: always_clear_gate_fn(),
-          gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: missing_curator_probe
-        )
-      end
+      assert_raise RuntimeError,
+                   ~r/required role agent\(s\) not resolvable: context-curator/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "phoenix",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: missing_curator_probe
+                     )
+                   end
 
       # The refusal MUST happen before the first role spend.
       assert Agent.get(calls_agent, & &1) == []
@@ -7901,18 +8309,20 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           "reviewer-phoenix"
       end
 
-      assert_raise RuntimeError, ~r/required role agent\(s\) not resolvable: context-curator/, fn ->
-        OrchestrationLoop.run(
-          harness: "claude_code",
-          stack: "phoenix",
-          cwd: "/tmp/irrelevant",
-          pitch: "do the thing",
-          invoke_fn: always_ok_invoke_fn(calls_agent),
-          gate_fn: always_clear_gate_fn(),
-          gate_preflight_fn: no_op_gate_preflight_fn(),
-          preflight_probe_fn: missing_curator_probe
-        )
-      end
+      assert_raise RuntimeError,
+                   ~r/required role agent\(s\) not resolvable: context-curator/,
+                   fn ->
+                     OrchestrationLoop.run(
+                       harness: "claude_code",
+                       stack: "phoenix",
+                       cwd: "/tmp/irrelevant",
+                       pitch: "do the thing",
+                       invoke_fn: always_ok_invoke_fn(calls_agent),
+                       gate_fn: always_clear_gate_fn(),
+                       gate_preflight_fn: no_op_gate_preflight_fn(),
+                       preflight_probe_fn: missing_curator_probe
+                     )
+                   end
 
       assert Agent.get(probes_agent, & &1) == 1
       assert Agent.get(calls_agent, & &1) == []
