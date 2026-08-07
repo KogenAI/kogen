@@ -64,15 +64,11 @@ Prose only. Correlating `${VAR:-…}` in one file with test setting `VAR` in ano
 
 **Override-unset proof**: include one of these marker lines in the review report when the change involves a fallback-default or env-override branch. Write this as a plain line in your report (not a fenced code block).
 
-```
 **Override-unset proof**: ✅ VERIFIED — override unset, <site> derived <value> (cmd row HH:MM:SS, exit 0)
-```
 
 or
 
-```
 **Override-unset proof**: ❌ NOT DEMONSTRATED
-```
 
 Staleness is handled by cycle ordering and the gate-result verdict — no per-line SHA stamp needed.
 
@@ -113,8 +109,4 @@ Priority: CI > Security > Cleanliness > Coverage > Quality > Style.
 
 NEVER emit `✅ QUALITY APPROVED` unless the gate verdict is `clear`. Read it from the `.verdict` field of the gate-result JSON written into `codegen/gate-pending/` directly — NOT by counting `ALL CLEAR ✅` strings in the session log body. Strings like `ALL CLEAR ✅` in the log are cosmetic status labels; they do NOT indicate gate approval. Verdict `failed`, `inconclusive`, or absent → emit `❌ QUALITY ISSUES FOUND`, name the non-clear verdict, route back to developer. Inconclusive is NOT approval — it means the gate did not confirm clear (e.g., `render-check-cmd-failed` when `CODEGEN_DIR` is unset). Always read the `.verdict` field from the JSON file.
 
-Before it: `REVIEW_COVERAGE: <path> read|skipped: <why>` per file. Final line: `REVIEW_VERDICT: APPROVED`/`CHANGES_REQUESTED`.
-
-## AST-Grep / Multi-Repo Audit / Blocking Severity
-
-AST-Grep: 10+ files same pattern OR 20+ occurrences OR formatting variation, else Edit. `which ast-grep || echo "not found — fall back to Edit"`. Workflow: `grep|wc -l` → `--pattern` preview → rule yaml → `--dry-run` → `--update-all` → `git diff --stat` (stack rule examples in stack files). Multi-repo: CR reads all affected repos — hook files exist, guard clauses present, `@external_resource` paths correct, config parity (shell vs Elixir model/effort match). Deployment blockers: null-safety crashes (yq without `//`), parity violations (model/effort drift), boot verification gaps (missing hooks, wrong paths).
+`REVIEW_COVERAGE: <path> read|skipped: <why>` EVERY changed file. `REVIEW_VERDICT: APPROVED`/`CHANGES_REQUESTED` exactly once (last line).

@@ -3,6 +3,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
   import CodegenTestHarness.AgentTeardown, only: [stop_agent: 1]
 
+  alias CodegenTestHarness.LoopGate
   alias CodegenTestHarness.OrchestrationLoop
 
   @phoenix_sequence ~w(developer-phoenix-backend reviewer-phoenix context-curator)
@@ -442,6 +443,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       |> Enum.map(&"REVIEW_COVERAGE: #{&1} read")
 
     Enum.join(coverage_lines ++ ["REVIEW_VERDICT: APPROVED"], "\n")
+  end
+
+  # Same shape as approved_verdict_for/1, but BLOCKING — for the resumed-cycle
+  # regression where there is no developer role in ctx.artifacts to route the
+  # rework to.
+  defp changes_requested_verdict_for(ctx) do
+    ctx
+    |> approved_verdict_for()
+    |> String.replace("REVIEW_VERDICT: APPROVED", "REVIEW_VERDICT: CHANGES_REQUESTED")
   end
 
   defp always_clear_gate_fn do
@@ -1583,6 +1593,267 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  # The three review budgets were (or became) hardcoded `1`s with no CLI
+  # switch. Between two of them they killed 5 of 14 cycles one night and 100%
+  # of cycles the next. These lock in that they are (a) sane by default and
+  # (b) genuinely independent — a RESTATEMENT must never cost a REWORK.
+  describe "run/1 — review budgets are separate and tunable" do
+    test "default rework budget allows 3 CHANGES_REQUESTED rounds before failing",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static",
+            do: "still not right\nREVIEW_VERDICT: CHANGES_REQUESTED",
+            else: "did #{role}"
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert reason =~ "review re-work budget (3)"
+
+      # 4 reviewer passes: the initial one plus 3 rework rounds.
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 4
+      assert Enum.count(calls, &(&1 == "developer-static")) == 4
+      assert "committer" not in calls
+    end
+
+    # The regression that forced the split: an :unknown verdict used to
+    # increment `cycle`, so ONE formatting slip silently spent a rework round
+    # the reviewer had genuinely asked for.
+    test "an unparseable verdict does NOT consume the rework budget",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+
+          # Pass 1: no verdict at all. Pass 2 (the verdict re-ask): a real
+          # rejection. Passes 3+: approve, proving the full rework budget
+          # survived the formatting slip.
+          value =
+            case seen do
+              1 -> "I reviewed it and have thoughts."
+              2 -> "fix the nav link\nREVIEW_VERDICT: CHANGES_REQUESTED"
+              _ -> "REVIEW_VERDICT: APPROVED"
+            end
+
+          {:ok, %{"status" => "success", "value" => value}}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      # 3 reviewer passes (unparseable → re-ask → rejection → rework → approve)
+      # and exactly ONE developer rework. Under the shared counter the
+      # rejection at pass 2 would have found `cycle` already at 1 and, with
+      # the old default of 1, failed the build outright.
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 3
+      assert Enum.count(calls, &(&1 == "developer-static")) == 2
+    end
+
+    test "the verdict re-ask budget is separately exhaustible and fails loud",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        value = if role == "reviewer-static", do: "no verdict here", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_review_verdict_cycles: 2
+               )
+
+      assert reason =~ "no parseable REVIEW_VERDICT"
+      assert reason =~ "after 3 attempt(s)"
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 3
+      assert "committer" not in calls
+      assert "context-curator" not in calls
+    end
+  end
+
+  # `aa404573` added 236 lines of enforcement and ONE line of instruction.
+  # These lock in the cheap teaching counterpart: zero prompt bytes in the
+  # steady state, the FULL violated contract exactly when it is needed —
+  # including the specific paths this reviewer actually missed, which no
+  # static rule file can name.
+  describe "run/1 — re-ask prompts state the contract that was violated" do
+    test "coverage re-ask names the regex, the totality rule, the missing paths, and the budget",
+         %{calls_agent: calls_agent} do
+      {:ok, prompts_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> stop_agent(prompts_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+
+          Agent.update(prompts_agent, fn ps ->
+            ps ++ [OrchestrationLoop.build_prompt(role, ctx)]
+          end)
+
+          # Pass 1 covers only one of the two changed paths.
+          value =
+            if seen == 1,
+              do: "REVIEW_COVERAGE: lib/a.ex read\nREVIEW_VERDICT: APPROVED",
+              else:
+                "REVIEW_COVERAGE: lib/a.ex read\nREVIEW_COVERAGE: lib/b.ex read\n" <>
+                  "REVIEW_VERDICT: APPROVED"
+
+          {:ok, %{"status" => "success", "value" => value}}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: fn _cwd -> "lib/a.ex\nlib/b.ex" end,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      re_ask = Agent.get(prompts_agent, & &1) |> Enum.at(1)
+
+      # The steady-state (first) prompt must NOT carry the full contract —
+      # the whole point is that it costs zero bytes until it is needed.
+      first = Agent.get(prompts_agent, & &1) |> Enum.at(0)
+      refute first =~ "## Coverage required (re-work)"
+
+      assert re_ask =~ "## Coverage required (re-work)"
+      # The exact gap, named.
+      assert re_ask =~ "lib/b.ex"
+      # The exact line format, as a regex the reviewer can match against.
+      assert re_ask =~ "^REVIEW_COVERAGE:"
+      assert re_ask =~ "read|skipped:"
+      # Totality against the LOOP-computed set, not the reviewer's choice.
+      assert re_ask =~ "TOTALITY"
+      assert re_ask =~ "## Files Modified"
+      # Naming a path outside the set is fatal.
+      assert re_ask =~ "NO INVENTED PATHS"
+      # Coverage precedes verdict parsing entirely.
+      assert re_ask =~ "BEFORE YOUR VERDICT IS READ"
+      # The retry budget, and that exhausting it FAILS rather than proceeds.
+      assert re_ask =~ "RETRY BUDGET"
+      assert re_ask =~ "attempt(s) remain"
+      # And the concrete set it must cover.
+      assert re_ask =~ "lib/a.ex"
+    end
+
+    test "verdict re-ask names the enum, the unanimity rule, and that absence is not approval",
+         %{calls_agent: calls_agent} do
+      {:ok, prompts_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> stop_agent(prompts_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+
+          Agent.update(prompts_agent, fn ps ->
+            ps ++ [OrchestrationLoop.build_prompt(role, ctx)]
+          end)
+
+          value =
+            if seen == 1,
+              do: "Review complete. Everything looks fine to me.",
+              else: "REVIEW_VERDICT: APPROVED"
+
+          {:ok, %{"status" => "success", "value" => value}}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      prompts = Agent.get(prompts_agent, & &1)
+      refute Enum.at(prompts, 0) =~ "## Verdict required (re-work)"
+
+      re_ask = Enum.at(prompts, 1)
+      assert re_ask =~ "## Verdict required (re-work)"
+      # What the reviewer actually returned, quoted back.
+      assert re_ask =~ "Review complete. Everything looks fine to me."
+      # The enum, and that it is closed.
+      assert re_ask =~ "REVIEW_VERDICT: APPROVED"
+      assert re_ask =~ "REVIEW_VERDICT: CHANGES_REQUESTED"
+      assert re_ask =~ "APPROVED_WITH_NITS"
+      # The uniqueness/unanimity rule — the one that actually bites.
+      assert re_ask =~ "UNANIMITY"
+      assert re_ask =~ "exactly once"
+      # The real failures from the logs: a trailing clause on the verdict line.
+      assert re_ask =~ "REVIEW_VERDICT: APPROVED. Logged."
+      # Terminality is NOT required (post-parser-fix) — say so, so the
+      # reviewer does not contort its output to satisfy a dead rule.
+      assert re_ask =~ "PLACEMENT IS FREE"
+      # Absence is not approval, plus the budget.
+      assert re_ask =~ "NOT AN APPROVAL"
+      assert re_ask =~ "attempt(s) remain"
+    end
+  end
+
   describe "run/1 — reviewer verdict presentation-wrapper compatibility (#8)" do
     for harness <- ["claude_code"], stack <- ["phoenix", "static"] do
       @harness harness
@@ -1806,20 +2077,30 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     for {name, verdict_text} <- [
           {"strong-then-bare", "**REVIEW_VERDICT: CHANGES_REQUESTED**\nREVIEW_VERDICT: APPROVED"},
           {"bare-then-strong", "REVIEW_VERDICT: CHANGES_REQUESTED\n**REVIEW_VERDICT: APPROVED**"},
-          {"bare-duplicate", "REVIEW_VERDICT: APPROVED\nREVIEW_VERDICT: APPROVED"},
           {"bare-conflict", "REVIEW_VERDICT: CHANGES_REQUESTED\nREVIEW_VERDICT: APPROVED"},
+          {"conflict-with-trailing-prose",
+           "REVIEW_VERDICT: APPROVED\nOn reflection: REVIEW_VERDICT: CHANGES_REQUESTED\nsee above"},
           {"malformed-suffix", "REVIEW_VERDICT: APPROVED extra"},
-          {"marker-nonterminal", "REVIEW_VERDICT: APPROVED\nmore prose"},
-          {"strong-marker-then-prose", "**REVIEW_VERDICT: APPROVED**\nthanks for reading"},
           # Decoration tolerance must not decay into "contains APPROVED
           # somewhere". A mid-sentence mention is not a verdict, and reading it
-          # as one would turn a wasted build into a bad ship.
+          # as one would turn a wasted build into a bad ship. Under the
+          # unanimity rule this matters MORE, not less: a marker-bearing line
+          # is now read wherever it sits, so a hedged mention has to poison the
+          # set rather than resolve on its own.
           {"prose-mention", "I would have said REVIEW_VERDICT: APPROVED but the gate is red"},
           {"prose-mention-decorated",
            "*I would have said REVIEW_VERDICT: APPROVED but the gate is red*"},
+          {"good-verdict-then-prose-mention",
+           "REVIEW_VERDICT: APPROVED\nRestating for the log: REVIEW_VERDICT: APPROVED"},
           # Normalisation peels wrappers; it does not invent tokens.
           {"unknown-token", "REVIEW_VERDICT: MAYBE"},
           {"backticked-unknown-token", "`REVIEW_VERDICT: MAYBE`"},
+          {"verdict-word-not-in-enum", "REVIEW_VERDICT: APPROVED_WITH_NITS"},
+          {"non-enum word poisons an otherwise good verdict",
+           "REVIEW_VERDICT: APPROVED\nREVIEW_VERDICT: MAYBE"},
+          {"lowercase verdict word", "REVIEW_VERDICT: approved"},
+          {"no marker at all (truncation, refusal, abort)",
+           "API Error: Connection closed mid-response."},
           # Only *matched* pairs are decoration — a dangling delimiter is not.
           {"unbalanced-backtick", "`REVIEW_VERDICT: APPROVED"}
         ] do
@@ -1853,6 +2134,79 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
         assert "committer" not in calls
         assert "context-curator" not in calls
+      end
+    end
+
+    # Sampled from 180 real `reviewer-*` sessions under
+    # ~/.claude/projects/**.jsonl (agentSetting == "reviewer-*", final
+    # assistant text = the value codegen-call returns). 71/180 (39%) parsed as
+    # `:unknown`, and the single biggest shape — 44/180 (24%) — is a perfectly
+    # well-formed verdict line followed by the reviewer's own action list or
+    # closing paragraph. Each cost a full second reviewer invocation over a
+    # verdict that was already stated plainly. Dropping the terminality demand
+    # (not the anchored per-line match) is what recovers them.
+    for {name, verdict_text, expected} <- [
+          {"trailing action list after CHANGES_REQUESTED (44/180 shape)",
+           "REVIEW_VERDICT: CHANGES_REQUESTED\n" <>
+             "- Provide `## Files Modified` for this cycle.\n" <>
+             "- Fix root cause: strip remaining `clarifying_question` tokens.\n" <>
+             "- Re-run `make test` to `clear` before resubmitting.", :changes_requested},
+          {"trailing summary paragraph after strong APPROVED",
+           "Review complete.\n\n**REVIEW_VERDICT: APPROVED**\n\n" <>
+             "Gate verdict clear, pitch fulfilled, all declared scope covered.", :approved},
+          {"backtick-wrapped verdict line above trailing table row (5/180 shape)",
+           "| Scope expansion | justified — real Credo defect fix |\n" <>
+             "`REVIEW_VERDICT: APPROVED`", :approved},
+          {"duplicated but agreeing marker lines",
+           "REVIEW_VERDICT: APPROVED\nREVIEW_VERDICT: APPROVED", :approved}
+        ] do
+      @verdict_text verdict_text
+      @expected expected
+
+      test "accepted from real reviewer output: #{name}", %{calls_agent: calls_agent} do
+        verdict_text = @verdict_text
+        expected = @expected
+
+        invoke_fn = fn role, _harness, _ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+          value =
+            if role == "reviewer-static" do
+              seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+              if seen <= 1, do: verdict_text, else: "REVIEW_VERDICT: APPROVED"
+            else
+              "did #{role}"
+            end
+
+          {:ok, %{"status" => "success", "value" => value}}
+        end
+
+        assert :ok ==
+                 OrchestrationLoop.run(
+                   harness: "claude_code",
+                   stack: "static",
+                   cwd: "/tmp/irrelevant",
+                   pitch: "do the thing",
+                   invoke_fn: invoke_fn,
+                   gate_fn: always_clear_gate_fn(),
+                   gate_preflight_fn: no_op_gate_preflight_fn(),
+                   preflight_probe_fn: all_present_preflight_probe_fn(),
+                   advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 )
+
+        calls = Agent.get(calls_agent, & &1)
+
+        # The point of the fix: neither shape buys a second reviewer
+        # invocation to re-derive a verdict the first one already stated.
+        case expected do
+          :approved ->
+            assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
+            assert Enum.count(calls, &(&1 == "developer-static")) == 1
+
+          :changes_requested ->
+            assert Enum.count(calls, &(&1 == "developer-static")) == 2
+            assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
+        end
       end
     end
   end
@@ -2119,6 +2473,207 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert reason =~ "cycle produced no changes — nothing for the reviewer to review"
+    end
+  end
+
+  # Writes a codegen-call stream-json transcript whose ASSISTANT turns carry
+  # `assistant_texts`. Deliberately includes a user turn naming BOTH enum
+  # members (it is the reviewer prompt) and a junk non-JSON line — recovery
+  # must ignore both.
+  defp write_reviewer_transcript!(assistant_texts) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "reviewer_transcript_#{:erlang.unique_integer([:positive])}.jsonl"
+      )
+
+    lines =
+      [
+        ~s({"type":"system","subtype":"init","agent":"reviewer-static"}),
+        Jason.encode!(%{
+          "type" => "user",
+          "message" => %{
+            "role" => "user",
+            "content" =>
+              "finish with `REVIEW_VERDICT: APPROVED` or `REVIEW_VERDICT: CHANGES_REQUESTED`"
+          }
+        })
+      ] ++
+        Enum.map(assistant_texts, fn text ->
+          Jason.encode!(%{
+            "type" => "assistant",
+            "message" => %{
+              "role" => "assistant",
+              "content" => [%{"type" => "text", "text" => text}]
+            }
+          })
+        end) ++ ["not json at all", ""]
+
+    File.write!(path, Enum.join(lines, "\n"))
+    on_exit(fn -> File.rm_rf(path) end)
+    path
+  end
+
+  describe "run/1 — verdict recovery from the reviewer's own transcript" do
+    test "sign-off-after-tool-call value recovers APPROVED without a second reviewer call",
+         %{calls_agent: calls_agent} do
+      transcript =
+        write_reviewer_transcript!([
+          "Reviewing the diff now.",
+          "No blocking findings.\n\nREVIEW_VERDICT: APPROVED",
+          "All sections recorded successfully across separate calls."
+        ])
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          {:ok,
+           %{
+             "status" => "success",
+             "value" => "All sections recorded successfully across separate calls.",
+             "transcript" => transcript
+           }}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
+    end
+
+    test "recovered CHANGES_REQUESTED routes the RECOVERED text to the developer, not the sign-off",
+         %{calls_agent: calls_agent} do
+      transcript =
+        write_reviewer_transcript!([
+          "REVIEW_VERDICT: CHANGES_REQUESTED\n- Working tree has zero diff — no code was written."
+        ])
+
+      {:ok, feedback_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> stop_agent(feedback_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if fb = get_in(ctx, [:artifacts, :review_feedback]) do
+          Agent.update(feedback_agent, fn seen -> seen ++ [fb] end)
+        end
+
+        cond do
+          role != "reviewer-static" ->
+            {:ok, %{"status" => "success", "value" => "did #{role}"}}
+
+          Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static")) <= 1 ->
+            {:ok, %{"status" => "success", "value" => "Recorded.", "transcript" => transcript}}
+
+          true ->
+            {:ok, %{"status" => "success", "value" => "REVIEW_VERDICT: APPROVED"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      feedback = Agent.get(feedback_agent, & &1)
+      assert feedback != []
+      assert Enum.all?(feedback, &(&1 =~ "Working tree has zero diff"))
+      refute Enum.any?(feedback, &(&1 == "Recorded."))
+    end
+
+    for {name, texts} <- [
+          {"no verdict anywhere in the transcript", ["Logged.", "Nothing else to add."]},
+          {"transcript states both verdicts (ambiguous)",
+           ["REVIEW_VERDICT: CHANGES_REQUESTED", "Actually REVIEW_VERDICT: APPROVED", "Logged."]}
+        ] do
+      @texts texts
+
+      test "no recovery: #{name}", %{calls_agent: calls_agent} do
+        transcript = write_reviewer_transcript!(@texts)
+
+        invoke_fn = fn role, _harness, _ctx, _opts ->
+          Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+          if role == "reviewer-static" do
+            {:ok, %{"status" => "success", "value" => "Logged.", "transcript" => transcript}}
+          else
+            {:ok, %{"status" => "success", "value" => "did #{role}"}}
+          end
+        end
+
+        assert {:error, reason} =
+                 OrchestrationLoop.run(
+                   harness: "claude_code",
+                   stack: "static",
+                   cwd: "/tmp/irrelevant",
+                   pitch: "do the thing",
+                   invoke_fn: invoke_fn,
+                   gate_fn: always_clear_gate_fn(),
+                   gate_preflight_fn: no_op_gate_preflight_fn(),
+                   preflight_probe_fn: all_present_preflight_probe_fn(),
+                   advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 )
+
+        assert reason =~ "no parseable REVIEW_VERDICT"
+        assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static")) == 2
+      end
+    end
+
+    test "a missing transcript file never raises — falls back to the re-invocation",
+         %{calls_agent: calls_agent} do
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          {:ok,
+           %{
+             "status" => "success",
+             "value" => "Logged.",
+             "transcript" => "/nonexistent/dir/nope.jsonl"
+           }}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert reason =~ "no parseable REVIEW_VERDICT"
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static")) == 2
     end
   end
 
@@ -4707,7 +5262,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  gate_fn: always_clear_gate_fn(),
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
-                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 # Pinned, not inherited: the two assertions below about pass
+                 # NUMBERING ("2 of 2") and the last-pass budget warning are
+                 # only true when pass 2 is the final one. This test is about
+                 # diff threading, not about what the default budget happens
+                 # to be, so it states the budget it needs rather than
+                 # silently re-breaking whenever that default moves.
+                 max_review_cycles: 1
                )
 
       prompts = Agent.get(prompts_agent, & &1)
@@ -9052,6 +9614,58 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert calls == ["reviewer-static", "context-curator"]
     end
 
+    # Regression: the resume branch seeds `artifacts: %{resume_state: state}`
+    # only, so `dev_role_from_ctx/1` (which finds a developer ONLY via a
+    # `"developer-"`-prefixed artifacts key) returns nil on EVERY resumed
+    # cycle. That nil arm used to advance "REVIEWED" and run on to the commit
+    # step — i.e. every blocking verdict on a resumed cycle was silently
+    # discarded and the loop committed anyway. A blocking verdict with nowhere
+    # to route rework must fail the cycle, never commit.
+    test "CHANGES_REQUESTED on a resumed cycle fails loud and commits nothing", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
+      write_gate_result!(dir, "clear", tree_sha, base_head)
+      write_cycle_state!(dir, "GATED", "matching-slug")
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   slug: "matching-slug",
+                   invoke_fn: fn role, _harness, ctx, _opts ->
+                     Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+                     value =
+                       if reviewer_role?(role),
+                         do: changes_requested_verdict_for(ctx),
+                         else: "did #{role}"
+
+                     {:ok, %{"status" => "success", "value" => value}}
+                   end,
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   cycle_state_slug_fn: fn _cwd -> "matching-slug" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: fn _cwd -> true end,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert reason =~ "no developer role is present"
+      assert reason =~ "never a false loop_committed"
+
+      # The cycle must NOT have proceeded past the reviewer: no curator, and
+      # HEAD is still the base commit (the deterministic commit step never ran).
+      calls = Agent.get(calls_agent, & &1)
+      assert calls == ["reviewer-static"]
+      refute "context-curator" in calls
+
+      {head, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: dir)
+      assert String.trim(head) == base_head
+    end
+
     test "valid REVIEWED checkpoint resumes at context-curator, skipping developer+reviewer", %{
       dir: dir,
       base_head: base_head,
@@ -9346,6 +9960,364 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert Agent.get(calls_agent, & &1) ==
                ["developer-static", "reviewer-static", "context-curator"]
+    end
+  end
+
+  # ── Cached review-re-work re-gate ────────────────────────────────────────
+  # After CHANGES_REQUESTED the loop re-invokes the developer and then
+  # re-runs the gate. That re-work is frequently a no-op (the developer comes
+  # back blocked, or answers the review in prose), and the gate then pays
+  # 100-160s to re-derive a verdict already stamped for the byte-identical
+  # tree — see cycle log 20260806_055519_adhoc_cycle.jsonl, gate #2, 100s,
+  # tree a8da05e8, the same tree gate #1 graded 92 seconds earlier.
+  #
+  # `run_gate_once/2` now consults the stamped `gate-result.json` first. The
+  # asymmetry these tests exist to pin down: skipping when it should is worth
+  # 100s; skipping when it should NOT ships a stale pass. So one test proves
+  # the hit and six prove the misses, one per conjunct.
+  describe "review-re-work re-gate — cached-clear skip" do
+    setup do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "regate_cache_test_#{:erlang.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(Path.join(dir, ".claude"))
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "test@example.com"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "Test"], cd: dir)
+      {_out, 0} = System.cmd("git", ["config", "commit.gpgsign", "false"], cd: dir)
+
+      # Mirrors a real scaffolded app: codegen/ (gate-pending + cycle logs)
+      # and .claude/ are gitignored, so neither the fixture's own
+      # gate-result.json nor its gate-config.sh perturbs graded_tree_sha.
+      # That is what makes the gate-command conjunct testable at all — a
+      # mid-cycle GATE_COMMAND edit is invisible to the tree signature.
+      File.write!(Path.join(dir, ".gitignore"), "codegen/\n.claude/\n")
+      File.write!(Path.join(dir, "README.md"), "init\n")
+      {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: dir)
+
+      File.write!(Path.join([dir, ".claude", "gate-config.sh"]), ~s(GATE_COMMAND="make test"\n))
+
+      # The cycle's simulated developer output. A real cycle never reaches
+      # the reviewer with a clean tree (invoke_reviewer/4 refuses an empty
+      # change set), and the committer needs something to commit.
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      {:ok, gate_calls} = Agent.start_link(fn -> 0 end)
+      {:ok, logged} = Agent.start_link(fn -> [] end)
+
+      on_exit(fn ->
+        if Process.alive?(gate_calls), do: Agent.stop(gate_calls)
+        if Process.alive?(logged), do: Agent.stop(logged)
+      end)
+
+      {:ok, dir: dir, gate_calls: gate_calls, logged: logged}
+    end
+
+    @cached_cycle_id "cycle-under-test"
+    @first_gate_started "2026-08-06T05:59:37Z"
+
+    defp regate_result_path(dir),
+      do: Path.join([dir, "codegen", "gate-pending", "gate-result.json"])
+
+    defp read_regate_result!(dir), do: regate_result_path(dir) |> File.read!() |> Jason.decode!()
+
+    # A `gate_fn` double that STAMPS like the real one. `run_gate/2` writing
+    # gate-result.json is the whole precondition the skip reads, so a double
+    # that only returned `:clear` would make every test here vacuous.
+    # `overrides` are applied to the FIRST stamp only — that is the record
+    # the re-gate will consult, and corrupting one field of it is how each
+    # conjunct gets its own negative test without disturbing the others.
+    defp stamping_gate_fn(dir, gate_calls, overrides) do
+      fn cwd, opts ->
+        n = Agent.get_and_update(gate_calls, fn n -> {n + 1, n + 1} end)
+
+        fields = %{
+          "gate" => "make test",
+          "mode" => "short",
+          "verdict" => "clear",
+          "verdict_marker" => "ALL CLEAR ✅",
+          "graded_tree_sha" => LoopGate.graded_tree_sha_now(cwd),
+          "cycle_id" => Keyword.get(opts, :cycle_id, ""),
+          "started" => @first_gate_started,
+          "ended" => "2026-08-06T06:01:59Z"
+        }
+
+        fields = if n == 1, do: Map.merge(fields, overrides), else: fields
+
+        File.mkdir_p!(Path.dirname(regate_result_path(dir)))
+        File.write!(regate_result_path(dir), Jason.encode!(fields))
+
+        {:clear, "make test"}
+      end
+    end
+
+    # developer → gate → reviewer(CHANGES_REQUESTED) → developer → [re-gate]
+    # → reviewer(APPROVED) → curator → committer. `rework_fn` is the second
+    # developer turn's side effect on the working tree; the default is the
+    # no-op re-work that motivates the whole change.
+    defp regate_run_opts(dir, gate_calls, logged, extra) do
+      rework_fn = Keyword.get(extra, :rework_fn, fn -> :ok end)
+      overrides = Keyword.get(extra, :overrides, %{})
+      extra = Keyword.drop(extra, [:rework_fn, :overrides])
+      {:ok, dev_turns} = Agent.start_link(fn -> 0 end)
+      {:ok, review_turns} = Agent.start_link(fn -> 0 end)
+
+      base = [
+        harness: "claude_code",
+        stack: "static",
+        cwd: dir,
+        pitch: "do the thing",
+        cycle_id: @cached_cycle_id,
+        slug: "regate-slug",
+        log_init_fn: log_init_fn_for(regate_cycle_log!(dir)),
+        format_fn: fn _cwd -> :ok end,
+        invoke_fn: fn role, _harness, ctx, _opts ->
+          cond do
+            role == "developer-static" ->
+              if Agent.get_and_update(dev_turns, fn n -> {n + 1, n + 1} end) == 2 do
+                rework_fn.()
+              end
+
+              {:ok, %{"status" => "success", "value" => "did #{role}"}}
+
+            reviewer_role?(role) ->
+              n = Agent.get_and_update(review_turns, fn n -> {n + 1, n + 1} end)
+              verdict = if n == 1, do: "CHANGES_REQUESTED", else: "APPROVED"
+
+              # These fixtures git-init a REAL tree, so the loop's default
+              # `review_file_set_fn` returns a non-empty `## Files Modified`
+              # set and the coverage precondition genuinely applies. Answer it
+              # from the set the loop itself computed rather than stubbing the
+              # seam off — the re-gate cache under test is orthogonal to
+              # coverage, but it must not be exercised through a reviewer the
+              # real loop would reject.
+              coverage =
+                (get_in(ctx, [:artifacts, :review_file_set]) || "")
+                |> String.split("\n", trim: true)
+                |> Enum.map_join("", &"REVIEW_COVERAGE: #{&1} read\n")
+
+              {:ok, %{"status" => "success", "value" => coverage <> "REVIEW_VERDICT: #{verdict}"}}
+
+            true ->
+              {:ok, %{"status" => "success", "value" => "did #{role}"}}
+          end
+        end,
+        # The commit is deterministic now — no committer role. Not asserted
+        # on: the loop's own verify_committed!/2 is left un-stubbed and
+        # enforces that a commit really landed on a clean tree. The one test
+        # that destroys .git mid-cycle needs these two to be allowed to fail.
+        commit_fn: fn cwd, _subject ->
+          System.cmd("git", ["add", "-A"], cd: cwd, stderr_to_stdout: true)
+
+          System.cmd("git", ["commit", "-q", "-m", "regate commit"],
+            cd: cwd,
+            stderr_to_stdout: true
+          )
+
+          {:ok, "COMMITTED: regate commit"}
+        end,
+        gate_fn: stamping_gate_fn(dir, gate_calls, overrides),
+        log_verdict_fn: fn cycle_log, gate, mode, marker, detail ->
+          Agent.update(logged, &(&1 ++ [{cycle_log, gate, mode, marker, detail}]))
+          :ok
+        end,
+        gate_preflight_fn: no_op_gate_preflight_fn(),
+        preflight_probe_fn: all_present_preflight_probe_fn(),
+        orientation_preflight_fn: no_op_orientation_preflight_fn(),
+        clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+        orphan_scan_fn: fn _cwd -> [] end,
+        env_var_scan_fn: always_clean_env_var_fn(),
+        advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+      ]
+
+      Keyword.merge(base, extra)
+    end
+
+    defp regate_cycle_log!(dir) do
+      logging_dir = Path.join([dir, "codegen", "logging"])
+      File.mkdir_p!(logging_dir)
+      path = Path.join(logging_dir, "cycle.jsonl")
+      File.write!(path, Jason.encode!(%{"ev" => "init", "pitch" => "do the thing"}) <> "\n")
+      path
+    end
+
+    test "no-op re-work on the identical tree → gate runs ONCE, not twice", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      assert :ok == OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, []))
+
+      assert Agent.get(gate_calls, & &1) == 1
+    end
+
+    test "the skip preserves the existing gate-result.json rather than unlinking it", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      assert :ok == OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, []))
+
+      # Skipping at the CALL SITE (not inside run_gate/2) is what keeps
+      # loop_gate.ex's leading `File.rm(gate_result_path/1)` from firing.
+      # The artifact the reviewer, codegen-commit's `.verdict == clear`
+      # check and assert_commit_matches_gate!/1 all read must still be the
+      # FIRST run's, untouched — same timestamps, not a rewrite.
+      result = read_regate_result!(dir)
+      assert result["verdict"] == "clear"
+      assert result["started"] == @first_gate_started
+      assert result["cycle_id"] == @cached_cycle_id
+    end
+
+    test "the skip is recorded as a cached gate event, never silent", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      assert :ok == OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, []))
+
+      # A developer step followed by a reviewer step with no gate event
+      # between them reads as a bypass to any later auditor, and anything
+      # summing gate time per cycle_id would silently lose the step.
+      assert [{cycle_log, gate, mode, marker, detail}] = Agent.get(logged, & &1)
+      assert String.ends_with?(cycle_log, "cycle.jsonl")
+      assert gate == "make test"
+      assert mode == "short"
+      assert marker == "ALL CLEAR ✅"
+      assert detail =~ "cached"
+      assert detail =~ @first_gate_started
+    end
+
+    test "re-work that CHANGED the tree → gate re-runs", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      rework = fn -> File.write!(Path.join(dir, "feature.txt"), "reworked\n") end
+
+      assert :ok ==
+               OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, rework_fn: rework))
+
+      assert Agent.get(gate_calls, & &1) == 2
+      assert Agent.get(logged, & &1) == []
+    end
+
+    test "re-work that added an UNTRACKED file → gate re-runs", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      # graded_tree_sha overlays `git ls-files -m -d -o --exclude-standard`,
+      # so a brand-new untracked file must move the signature. If it did not,
+      # the single commonest shape of developer output — a new file — would
+      # be invisible to the skip.
+      rework = fn -> File.write!(Path.join(dir, "new_module.txt"), "added\n") end
+
+      assert :ok ==
+               OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, rework_fn: rework))
+
+      assert Agent.get(gate_calls, & &1) == 2
+    end
+
+    test "re-work that DELETED a tracked file → gate re-runs", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      rework = fn -> File.rm!(Path.join(dir, "README.md")) end
+
+      assert :ok ==
+               OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, rework_fn: rework))
+
+      assert Agent.get(gate_calls, & &1) == 2
+    end
+
+    # One negative per conjunct. Each corrupts exactly ONE field of the
+    # first gate's stamped record and leaves every other conjunct
+    # satisfiable, so a passing test convicts that field alone.
+    for {name, overrides} <- [
+          {"a DIFFERENT cycle_id (a previous build's leftover clear record)",
+           %{"cycle_id" => "some-earlier-build"}},
+          {"an EMPTY cycle_id (pre-cycle_id record, or a gate run outside a loop)",
+           %{"cycle_id" => ""}},
+          {"a FAILED verdict", %{"verdict" => "failed", "verdict_marker" => "FAILED ❌"}},
+          {"an INCONCLUSIVE verdict",
+           %{"verdict" => "inconclusive", "verdict_marker" => "INCONCLUSIVE ⚠️"}},
+          {"an EMPTY graded_tree_sha", %{"graded_tree_sha" => ""}},
+          {"a DIFFERENT gate command", %{"gate" => "make ci"}},
+          {"an EMPTY gate command", %{"gate" => ""}}
+        ] do
+      @overrides overrides
+
+      test "no skip on #{name}", %{dir: dir, gate_calls: gate_calls, logged: logged} do
+        assert :ok ==
+                 OrchestrationLoop.run(
+                   regate_run_opts(dir, gate_calls, logged, overrides: @overrides)
+                 )
+
+        assert Agent.get(gate_calls, & &1) == 2
+        assert Agent.get(logged, & &1) == []
+      end
+    end
+
+    test "no skip when gate-result.json is absent entirely", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      # The first gate's stamp is deleted between the reviewer's
+      # CHANGES_REQUESTED and the re-gate — every abort path inside
+      # run_gate/2 leaves exactly this state, and it must read as "run",
+      # never as "nothing to compare, therefore fine".
+      rework = fn -> File.rm!(regate_result_path(dir)) end
+
+      assert :ok ==
+               OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, rework_fn: rework))
+
+      assert Agent.get(gate_calls, & &1) == 2
+    end
+
+    test "no skip when gate-result.json is malformed", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      rework = fn -> File.write!(regate_result_path(dir), "{not json") end
+
+      assert :ok ==
+               OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, rework_fn: rework))
+
+      assert Agent.get(gate_calls, & &1) == 2
+    end
+
+    test "no skip when the cwd is not a git repo (empty current signature)", %{
+      dir: dir,
+      gate_calls: gate_calls,
+      logged: logged
+    } do
+      # graded_tree_sha_now/1 returns "" for a non-git cwd. That sentinel is
+      # exactly what default_gate_tree_match?/1 fails OPEN on, and reusing
+      # that function here would skip the gate in every mocked unit test in
+      # this file. Proven by removing .git mid-cycle.
+      rework = fn -> File.rm_rf!(Path.join(dir, ".git")) end
+
+      # How this cycle ENDS is not the claim (a repo that lost its .git
+      # mid-cycle cannot commit, and the loop is entitled to fail however it
+      # likes downstream) — the claim is only what the re-gate decided.
+      try do
+        OrchestrationLoop.run(regate_run_opts(dir, gate_calls, logged, rework_fn: rework))
+      rescue
+        _ -> :raised
+      end
+
+      assert Agent.get(gate_calls, & &1) == 2
+      assert Agent.get(logged, & &1) == []
     end
   end
 end

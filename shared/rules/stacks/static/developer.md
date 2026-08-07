@@ -56,7 +56,7 @@ Correct:
 <span className="text-3xl font-bold tabular-nums">{count}</span>
 ```
 
-CSS file MUST be imported in entry module so Vite emits `<link rel=stylesheet>` in built `index.html`. Verify by reading `public/index.html` after build: a `<link rel="stylesheet" href="/assets/...css">` tag MUST be present.
+CSS file MUST be imported in entry module so Vite emits `<link rel=stylesheet>` in built `index.html`.
 
 ## Goal-Driven Verification
 
@@ -91,7 +91,7 @@ export default defineConfig({
 });
 ```
 
-Omitting `rollupOptions.input` → Vite defaults to single entry (`index.html`) and silently excludes `about.html` from the build. The second page then 404s at deploy. Always verify both pages appear under `public/` after `npm run build`.
+Omitting `rollupOptions.input` → Vite defaults to single entry (`index.html`) and silently excludes `about.html` from the build. The second page then 404s at deploy.
 
 Links between pages: use absolute paths (`/about.html`, `/index.html`) — no pretty routes, as the static server has no URL rewrites. (Router-based frameworks can use pretty routes; vanilla Vite serves files by name.)
 

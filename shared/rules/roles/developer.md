@@ -7,13 +7,7 @@ For all developer-\* subagents. NOT for reviewers.
 State this upfront, as methodology — your delegation prompt is self-contained by design, not merely by hook denial. Hooks DO fire under the Elixir loop (a loop-invoked role is a native `claude --agent <role>` spawn carrying its full guard bundle), but treat this discipline as how you work regardless, not just what stops you:
 
 - **Read**: your delegation prompt carries the FULL pitch body as its first section plus a `## Declared Scope` list of the files the pitch declares — together that IS the complete scope. Do not Read the pitch file or `PROJECT_CONTEXT.md` for orientation; there is nothing further to Read for orientation. Read `context/*.md` ONLY when the path appears in the LOOP's typed `files_to_touch` event (`{"ev":"files_to_touch","role":"loop",...}`, which the loop writes from the pitch's `scope:` frontmatter field) — `subagent-read-discipline.sh` grants the Read from that typed event, never from `## Declared Scope` prose and never from your own body.
-- **Bash**: unrestricted, EXCEPT the CI gate. Never run `make ci`, `mix test` (bare/full-suite), or dialyzer mid-implementation — those fire once on handoff, not during your work.
-
-## Context Files Are Off-Limits
-
-NEVER Read `PROJECT_CONTEXT.md`, `context/*.md`, OR `codegen/pitches/**` for orientation. The pitch text already inlined in your prompt is the complete scope, and the file list it declares is under `## Declared Scope` — everything you need is already there.
-
-Read `context/*.md` ONLY when the path appears in the LOOP's typed `files_to_touch` event (`{"ev":"files_to_touch","role":"loop",...}`, written by the loop from the pitch's `scope:` frontmatter field) — `## Declared Scope` is narrative for you to read, but the typed event is what actually grants the Read. Context updates from retrospectives are curator's job post-reviewer. Hook `subagent-read-discipline.sh` enforces, reading the field from the loop's own event — never from your own body.
+- **Bash**: unrestricted, EXCEPT the CI gate — § Gate states what each mode permits.
 
 ## Usage Rules (MANDATORY)
 
@@ -68,10 +62,6 @@ Disallowed in build-runtime. Elsewhere ≤4 options per call.
 **Legacy (non-loop, real-subagent) mode:** Dev MUST NOT run CI gate — gate fires on hand-off. Fix failures during impl. Wire new modules: grep new symbol across `lib/`/`test/`. The `developer-no-self-gate` hook caps you at 3 CI/test-command invocations per session in this mode.
 
 **Loop mode (`CODEGEN_LOOP=1`):** You run the delegated gate command yourself, in THIS warm session, before handing back — the loop's build_prompt threads the exact gate command into your task. A red gate is a FAILED build regardless of cause: fix EVERY red, yours OR inherited (stale render → `make install`; stale lock → `mix deps.get`; your own test/compile failures → fix them directly). Re-run the gate until it is GREEN, then stop. `developer-no-self-gate` permits gate re-runs in this mode as long as you keep making progress (the working tree must actually change between runs) — it denies a pure spin (re-running with no edit) and hard-caps at 15 runs regardless.
-
-**Credo convergence before handoff (REQUIRED):** Before handing off, run `mix credo --strict` scoped to your changed files. Read the COMPLETE violation list and fix EVERY item — no skipping "minor" violations. Re-run until the output is clean. Only then hand off. Do NOT rely on the gate to surface residual violations; that wastes a full round-trip per violation batch.
-
-`mix credo --strict` on your own changed files is NOT the CI gate — it is cheap (~10s), scoped, and required. What stays forbidden mid-impl in legacy mode: `make ci`, `mix test`, dialyzer. Those fire once on handoff.
 
 ## Existing-Entity Sweep (MANDATORY before you create any NEW module / file / fn)
 

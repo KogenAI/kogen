@@ -55,6 +55,13 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @transcript_seq_key :loop_transcript_seq
   @cycle_id_key :loop_cycle_id
   @log_path_key :loop_log_path
+  # role => how many times THIS cycle has invoked it. `@transcript_seq_key` is
+  # a global counter across all roles, so it cannot answer "is this the
+  # developer's first pass or its third?" — the question the whole rework
+  # measurement rests on. Rework was previously inferable only by grouping
+  # `cycle-summary.jsonl` rows after the fact, which silently reads as "no
+  # rework" whenever a row is missing (an aborted call writes none).
+  @role_call_count_key :loop_role_call_counts
 
   @codegen_call_bin Path.expand("../../../codegen-call", __DIR__)
   @codegen_log_bin Path.expand("../../../codegen-log", __DIR__)
@@ -454,12 +461,67 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # can thread it into the developer's self-verify instruction — reusing this
     # preflight result instead of re-shelling git inside build_prompt (which
     # would crash the synthetic-cwd ("/tmp/irrelevant") unit tests).
-    gate_command = preflight_gate!(cwd, opts)
+    gate_command = timed_preflight("gate", cwd, fn -> preflight_gate!(cwd, opts) end)
     ctx = put_in(ctx, [:artifacts, :gate_command], gate_command)
-    preflight_roles!(roles, cwd, opts)
-    ctx = run_orientation_preflight(cwd, ctx, harness, opts)
+    timed_preflight("roles", cwd, fn -> preflight_roles!(roles, cwd, opts) end)
+
+    ctx =
+      timed_preflight("orientation", cwd, fn ->
+        run_orientation_preflight(cwd, ctx, harness, opts)
+      end)
 
     run_roles(roles, harness, ctx, opts)
+  end
+
+  # Times one turn-0 preflight step and records it, then returns the step's
+  # own result untouched.
+  #
+  # Preflight runs before a single role is paid for and recorded NOTHING, so
+  # its cost was invisible to every measurement of a build. It is not small:
+  # the orientation step alone shells a whole-tree scan of every orientation
+  # doc, measured at 72s on this repo before it was made to stop forking per
+  # line. Anything that runs at turn 0 of every cycle and cannot be seen is
+  # exactly where time hides.
+  #
+  # Fail-open by construction: a write failure, an absent cycle id, or the
+  # synthetic cwd most unit tests pass all skip the record silently. Turn-0
+  # preflight decides whether a build starts at all — observability must
+  # never be the thing that stops it.
+  @spec timed_preflight(String.t(), String.t(), (-> result)) :: result when result: var
+  defp timed_preflight(step, cwd, fun) do
+    started = System.monotonic_time(:millisecond)
+    result = fun.()
+    elapsed = System.monotonic_time(:millisecond) - started
+
+    record_preflight_timing(step, cwd, elapsed)
+
+    result
+  end
+
+  @spec record_preflight_timing(String.t(), String.t(), integer()) :: :ok
+  defp record_preflight_timing(step, cwd, elapsed_ms) do
+    cycle_id = Process.get(@cycle_id_key)
+
+    if is_binary(cycle_id) and cycle_id != "" and File.dir?(cwd) do
+      line =
+        Jason.encode!(%{
+          "cycle_id" => cycle_id,
+          "step" => step,
+          "elapsed_ms" => elapsed_ms,
+          "at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+        })
+
+      dir = Path.join([cwd, "codegen", "logging"])
+
+      with :ok <- File.mkdir_p(dir),
+           :ok <- File.write(Path.join(dir, "preflight-timings.jsonl"), line <> "\n", [:append]) do
+        :ok
+      else
+        _ -> :ok
+      end
+    else
+      :ok
+    end
   end
 
   # Start-time orphan surfacing: scans for live `mix codegen.loop` beams
@@ -1827,9 +1889,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # :max_review_cycles, default 1) → re-invoke the developer with the reviewer's
   # feedback, re-format, re-gate, re-review, and recurse.
   #
-  # `:unknown` (the reviewer's output carried no parseable
-  # `REVIEW_VERDICT:` sentinel — truncated response, crash mid-sentence, or
-  # simply forgot it) is NEVER folded into the same "proceed" arm as
+  # `:unknown` here means `resolve_review/1` found no verdict in the returned
+  # value AND could not recover one from the reviewer's own transcript
+  # (truncated response, crash mid-sentence, refusal, or simply never stated
+  # one). It is NEVER folded into the same "proceed" arm as
   # `:approved` — that used to silently ship an unreviewed change (a
   # reviewer that fails to emit its verdict is not the same thing as a
   # reviewer that approved). One re-invocation is granted, explicitly
@@ -1846,14 +1909,35 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Coverage is checked BEFORE the verdict is parsed at all (pitch "review
   # verdicts name the surface they read") — an APPROVED (or
   # CHANGES_REQUESTED) that does not name what it read is not yet a
-  # reviewed result. `coverage_cycle` is a SEPARATE budget
-  # (`:max_review_coverage_cycles`, default 1) from `cycle`/`max_review_cycles`
-  # — a coverage restatement changes no code, so it must not consume the
-  # rework budget. It resets to 0 on every fresh reviewer pass (a rework or
-  # an :unknown-verdict re-invocation both hand back a NEW review to
-  # re-check) and only increments across a same-pass coverage retry.
+  # reviewed result.
+  #
+  # THREE budgets, deliberately separate, because they buy different things
+  # and a RESTATEMENT must never cost a REWORK:
+  #
+  #   * `cycle` / `:max_review_cycles` (default 3) — real rework. The
+  #     reviewer read the code and wants it changed; a developer runs, the
+  #     tree changes, the gate re-runs. Expensive, and the only one of the
+  #     three that makes progress on the code.
+  #   * `coverage_cycle` / `:max_review_coverage_cycles` (default 2) — the
+  #     reviewer did not name the surface it read. No code changes.
+  #   * `verdict_cycle` / `:max_review_verdict_cycles` (default 1) — the
+  #     reviewer stated no parseable verdict. No code changes.
+  #
+  # Both restatement budgets used to be, or still were, entangled with the
+  # rework budget: an `:unknown` verdict incremented `cycle`, so ONE
+  # formatting slip silently spent a rework the reviewer had actually asked
+  # for. They are now independent, which is also what makes it safe to raise
+  # `:max_review_cycles` — raising a shared counter would have tripled the
+  # far more expensive re-ask budgets along with it.
+  #
+  # Termination: `verdict_cycle` resets `coverage_cycle` (an :unknown re-ask
+  # hands back a wholly NEW review, whose coverage must be re-checked from
+  # scratch) but a coverage re-ask does NOT reset `verdict_cycle`. That
+  # asymmetry is what forbids a coverage/verdict ping-pong: the pair is
+  # bounded at `max_verdict_cycles * (max_coverage_cycles + 1)` re-asks. A
+  # rework resets both, and is itself bounded by `max_cycles`.
   defp handle_review(reviewer_role, review_result, rest, harness, ctx, opts, cycle) do
-    handle_review(reviewer_role, review_result, rest, harness, ctx, opts, cycle, 0)
+    handle_review(reviewer_role, review_result, rest, harness, ctx, opts, cycle, 0, 0)
   end
 
   defp handle_review(
@@ -1864,9 +1948,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          ctx,
          opts,
          cycle,
-         coverage_cycle
+         coverage_cycle,
+         verdict_cycle
        ) do
-    max_coverage_cycles = Keyword.get(opts, :max_review_coverage_cycles, 1)
+    max_coverage_cycles = Keyword.get(opts, :max_review_coverage_cycles, 2)
     expected_files = get_in(ctx, [:artifacts, :review_file_set]) || ""
 
     case parse_review_coverage(review_result, expected_files) do
@@ -1879,6 +1964,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           opts,
           cycle,
           coverage_cycle,
+          verdict_cycle,
           reason
         )
 
@@ -1888,7 +1974,16 @@ defmodule CodegenTestHarness.OrchestrationLoop do
            "#{coverage_cycle + 1} attempt(s): #{reason}"}
 
       {:ok, _coverage} ->
-        do_handle_review_verdict(reviewer_role, review_result, rest, harness, ctx, opts, cycle)
+        do_handle_review_verdict(
+          reviewer_role,
+          review_result,
+          rest,
+          harness,
+          ctx,
+          opts,
+          cycle,
+          verdict_cycle
+        )
     end
   end
 
@@ -1907,17 +2002,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          opts,
          cycle,
          coverage_cycle,
+         verdict_cycle,
          reason
        ) do
     ctx =
       put_in(
         ctx,
         [:artifacts, :review_coverage_incomplete],
-        "Your previous response's REVIEW_COVERAGE: lines did not fully name the " <>
-          "## Files Modified set: #{reason}. Before your terminal REVIEW_VERDICT: line, " <>
-          "emit exactly one `REVIEW_COVERAGE: <path> read` or " <>
-          "`REVIEW_COVERAGE: <path> skipped: <reason>` line for EVERY path listed under " <>
-          "## Files Modified — no more, no fewer."
+        coverage_contract_message(reason, ctx, opts, coverage_cycle)
       )
 
     with {:ok, review2} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
@@ -1931,22 +2023,101 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         ctx,
         opts,
         cycle,
-        coverage_cycle + 1
+        coverage_cycle + 1,
+        verdict_cycle
       )
     end
   end
 
-  defp do_handle_review_verdict(reviewer_role, review_result, rest, harness, ctx, opts, cycle) do
-    max_cycles = Keyword.get(opts, :max_review_cycles, 1)
+  # The re-ask prompt is the ONLY place the full coverage contract is stated,
+  # and it is stated ONLY here. `parse_review_coverage/2` terminally fails a
+  # build on six distinct rules; `shared/rules/roles/reviewer.md` names one of
+  # them in one line. Restating the whole contract in the steady-state role
+  # prompt would cost every reviewer invocation in every build those bytes,
+  # forever, to prevent a failure most of them never hit. Stating it HERE
+  # costs nothing until the contract is actually broken, and then states it
+  # in full, with the reviewer's own specific gap quoted back — which is
+  # strictly more teaching than a rule file can give, because a rule file
+  # cannot name the paths this reviewer actually missed.
+  defp coverage_contract_message(reason, ctx, opts, coverage_cycle) do
+    expected = get_in(ctx, [:artifacts, :review_file_set]) || ""
+    max_coverage_cycles = Keyword.get(opts, :max_review_coverage_cycles, 2)
+    remaining = max_coverage_cycles - coverage_cycle
 
-    case parse_review_verdict(review_result) do
+    expected_block =
+      expected
+      |> String.split("\n", trim: true)
+      |> Enum.map_join("\n", &"  #{&1}")
+
+    """
+    Your previous response's REVIEW_COVERAGE: lines did not satisfy the coverage \
+    contract, so this review was NOT accepted.
+
+    What was wrong, specifically: #{reason}
+
+    The full contract your next response must satisfy:
+
+    1. EXACT LINE FORMAT. Each coverage line must match this regex anchored at \
+    both ends: `^REVIEW_COVERAGE:[ \\t]*(?<path>\\S+)[ \\t]+(?<state>read|skipped:.*)$` \
+    — i.e. literally `REVIEW_COVERAGE: <path> read` or \
+    `REVIEW_COVERAGE: <path> skipped: <reason>`. The path may not contain \
+    whitespace. A `skipped:` reason may not be empty. Surrounding `**`/`` ` ``/`_` \
+    decoration is peeled, but nothing else is tolerated — no bullet prefix, no \
+    trailing commentary on the line, no prose wrapper.
+    2. TOTALITY. You must emit one line for EVERY path in the ## Files Modified \
+    set below — no more, no fewer. This is checked against the set the LOOP \
+    computed from git, not against what you chose to read.
+    3. NO INVENTED PATHS. Naming a path that is NOT in that set fails the build \
+    just as hard as omitting one. Do not normalise, abbreviate, or re-spell the \
+    paths — copy them exactly as listed.
+    4. `skipped:` IS ALLOWED. Skipping a file is a legitimate, non-blocking \
+    answer; leaving it unstated is not. If you did not read it, say \
+    `skipped: <why>` rather than omitting the line.
+    5. COVERAGE IS CHECKED BEFORE YOUR VERDICT IS READ AT ALL. An APPROVED that \
+    does not name its surface is not a reviewed result, and your verdict will \
+    not even be parsed until these lines are complete.
+    6. RETRY BUDGET. #{remaining} attempt(s) remain (`:max_review_coverage_cycles`). \
+    When it is exhausted the build FAILS — it does not proceed as approved.
+
+    The exact ## Files Modified set you must cover (#{length(String.split(expected, "\n", trim: true))} path(s)):
+    #{expected_block}
+
+    Emit these lines BEFORE your REVIEW_VERDICT: line, then restate that verdict.
+    """
+  end
+
+  defp do_handle_review_verdict(
+         reviewer_role,
+         review_result,
+         rest,
+         harness,
+         ctx,
+         opts,
+         cycle,
+         verdict_cycle
+       ) do
+    max_cycles = Keyword.get(opts, :max_review_cycles, 3)
+    max_verdict_cycles = Keyword.get(opts, :max_review_verdict_cycles, 1)
+    {verdict, review_result} = resolve_review(review_result)
+
+    case verdict do
       :changes_requested when cycle < max_cycles ->
         dev_role = dev_role_from_ctx(ctx)
 
         if is_nil(dev_role) do
-          # No developer role in this cycle to route feedback to — proceed.
-          advance_cycle_state_step("REVIEWED", ctx, opts)
-          run_roles(rest, harness, ctx, opts)
+          # Mirrors `rework_final_gate/5`'s nil-dev_role arm: a BLOCKING
+          # verdict with nowhere to route the rework is a failed cycle, never
+          # a silent advance. This arm used to `advance_cycle_state_step
+          # ("REVIEWED")` and proceed — i.e. treat CHANGES_REQUESTED as
+          # APPROVED — and `dev_role_from_ctx/1` finds a developer ONLY via a
+          # `"developer-"`-prefixed key in `ctx.artifacts`, which the resume
+          # branch (`artifacts: %{resume_state: state}`) never seeds. So on
+          # EVERY resumed (GATED) cycle, EVERY blocking verdict was discarded
+          # and the loop committed anyway.
+          {:error,
+           "reviewer requested changes and no developer role is present in this cycle's " <>
+             "artifacts to route rework to (loop_failed, never a false loop_committed): " <>
+             "#{review_result["value"] || "changes requested"}"}
         else
           feedback = review_result["value"] || "changes requested"
           brief = capture_rework_brief(ctx.cwd, opts)
@@ -1990,13 +2161,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         advance_cycle_state_step("REVIEWED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
 
-      :unknown when cycle < max_cycles ->
-        handle_unparseable_review(reviewer_role, rest, harness, ctx, opts, cycle)
+      :unknown when verdict_cycle < max_verdict_cycles ->
+        handle_unparseable_review(
+          reviewer_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          cycle,
+          verdict_cycle,
+          review_result["value"]
+        )
 
       :unknown ->
         {:error,
          "reviewer output carried no parseable REVIEW_VERDICT: sentinel after " <>
-           "#{cycle + 1} attempt(s) — refusing to silently advance as approved. " <>
+           "#{verdict_cycle + 1} attempt(s) — refusing to silently advance as approved. " <>
            "Last output: #{inspect(review_result["value"])}"}
     end
   end
@@ -2006,20 +2186,76 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # since nothing about the code changed; only the reviewer failed to state
   # its verdict. A second `:unknown` raises (see `handle_review/7`'s
   # `:unknown` catch-all) rather than looping indefinitely.
-  defp handle_unparseable_review(reviewer_role, rest, harness, ctx, opts, cycle) do
+  defp handle_unparseable_review(
+         reviewer_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         cycle,
+         verdict_cycle,
+         last_output
+       ) do
     ctx =
       put_in(
         ctx,
         [:artifacts, :review_verdict_missing],
-        "Your previous response did not end with a parseable `REVIEW_VERDICT: APPROVED` or " <>
-          "`REVIEW_VERDICT: CHANGES_REQUESTED` line. Re-state your review, ending with exactly " <>
-          "one of those two lines."
+        verdict_contract_message(last_output, opts, verdict_cycle)
       )
 
     with {:ok, review2} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
       ctx = put_in(ctx, [:artifacts, reviewer_role], review2)
-      handle_review(reviewer_role, review2, rest, harness, ctx, opts, cycle + 1)
+
+      # `cycle` is NOT incremented: a reviewer that failed to STATE a verdict
+      # has not spent a rework the reviewer might still be about to ask for.
+      # `coverage_cycle` resets — this is a wholly new review body.
+      handle_review(reviewer_role, review2, rest, harness, ctx, opts, cycle, 0, verdict_cycle + 1)
     end
+  end
+
+  # Counterpart to `coverage_contract_message/4`, same reasoning: state the
+  # whole verdict contract exactly when it has been broken, and nowhere else.
+  # `parse_review_verdict/1` fails a build on rules the one-line instruction
+  # in `shared/rules/roles/reviewer.md` does not mention at all — chiefly
+  # UNANIMITY (the rule that actually bites, and the least guessable).
+  defp verdict_contract_message(last, opts, verdict_cycle) do
+    max_verdict_cycles = Keyword.get(opts, :max_review_verdict_cycles, 1)
+    remaining = max_verdict_cycles - verdict_cycle
+
+    """
+    Your previous response carried no parseable REVIEW_VERDICT: verdict, so this \
+    review was NOT accepted.#{if last, do: "\n\nWhat you returned: #{inspect(last)}", else: ""}
+
+    The full contract your next response must satisfy:
+
+    1. EXACT LINE FORMAT. Emit a line that is exactly `REVIEW_VERDICT: APPROVED` \
+    or exactly `REVIEW_VERDICT: CHANGES_REQUESTED`. Those two are the ONLY \
+    accepted values — `MAYBE`, `APPROVED_WITH_NITS`, lowercase `approved`, or \
+    any other word fails.
+    2. NOTHING ELSE ON THE LINE. Symmetric `**`, `` ` `` or `_` decoration is \
+    peeled (so `**REVIEW_VERDICT: APPROVED**` is fine), but a trailing clause is \
+    NOT: `REVIEW_VERDICT: APPROVED. Logged.` and \
+    `✅ QUALITY APPROVED — REVIEW_VERDICT: APPROVED. Logged.` both fail. An \
+    unbalanced delimiter (`` `REVIEW_VERDICT: APPROVED ``) also fails.
+    3. UNANIMITY — the rule most often broken. EVERY line in your response that \
+    contains the string `REVIEW_VERDICT:` is classified, wherever it sits, and \
+    they must ALL agree. One well-formed verdict plus one earlier draft, \
+    restatement, or discussion of the other verdict is AMBIGUOUS and fails \
+    closed. Do not quote this contract back, do not narrate the verdict you \
+    considered, do not restate the verdict "for the log" — mention the string \
+    `REVIEW_VERDICT:` exactly once.
+    4. PROSE MENTIONS COUNT AGAINST YOU. A hedged line like "I would have said \
+    REVIEW_VERDICT: APPROVED but the gate is red" is not a verdict, and its \
+    presence poisons an otherwise good verdict elsewhere in the body.
+    5. PLACEMENT IS FREE. The verdict line does NOT have to be last. A findings \
+    list or closing paragraph after it is fine. State it once, correctly, \
+    anywhere.
+    6. FAILING TO STATE ONE IS NOT AN APPROVAL. #{remaining} attempt(s) remain \
+    (`:max_review_verdict_cycles`). When it is exhausted the build FAILS — it \
+    never advances as approved.
+
+    Re-state your review now, honouring all six.
+    """
   end
 
   # Context-curator → curator-doc fix cycle (factcheck + index-parity).
@@ -2643,27 +2879,58 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  # Uniqueness+terminality gate runs BEFORE classification, and uses
-  # `String.contains?/2` (not `starts_with?/2`) so a `**REVIEW_VERDICT: …**`
-  # line — which does NOT start with the literal `REVIEW_VERDICT:` but does
-  # contain it — is still counted. This closes the strong-then-bare hole:
-  # without it, a strong-emphasized rejection followed by a bare approval
-  # would sail through as a lone `starts_with?` match on the bare line,
-  # silently discarding the earlier verdict instead of flagging ambiguity.
+  # Verdict recognition is UNANIMITY-based, not position-based.
   #
-  # Exactly one marker-bearing line is required, AND it must be the final
-  # nonblank line (marker-then-prose is not terminal — `:unknown`).
-  defp parse_review_verdict(%{"value" => value}) when is_binary(value) do
-    lines = String.split(value, "\n", trim: true)
-    marker_lines = Enum.filter(lines, &String.contains?(&1, "REVIEW_VERDICT:"))
+  # The old rule demanded exactly one marker-bearing line AND that it be the
+  # final nonblank line. A 180-session sample of real `reviewer-*` outputs
+  # says that rule rejects 39% of them, and the single biggest shape (24%,
+  # 44/180) is a perfectly well-formed verdict line followed by the
+  # reviewer's own action list / findings / closing paragraph — i.e. the
+  # verdict was stated, unambiguously, and thrown away over placement.
+  # Backtick wrapping (5), a duplicated-but-agreeing marker (1) and
+  # `**…** — trailing clause` (1) were thrown away the same way.
+  #
+  # So: collect EVERY marker-bearing LINE in the body, wherever it sits,
+  # classify each with the same anchored `classify_verdict_line/1` the
+  # terminality rule already used, and honour the result only when they all
+  # agree. That keeps the property the terminality rule was actually bought
+  # for — a body carrying a rejection AND an approval is ambiguous and must
+  # fail closed (`:unknown`), never resolve to the one that happens to sit
+  # last — while dropping the placement demand the model does not reliably
+  # obey. A marker-bearing line that is not itself a verdict line classifies
+  # `:unknown` and poisons the set the same way a conflict does, rather than
+  # being silently skipped in favour of a neighbouring good one.
+  #
+  # Scanning LINES through the anchored matcher, rather than scanning the raw
+  # text for a bare `REVIEW_VERDICT: <WORD>` substring, is what keeps this
+  # from fabricating approvals: hedged prose ("I would emit REVIEW_VERDICT:
+  # APPROVED if the gate were green") leaves a remainder the anchor rejects,
+  # so a body — or a transcript turn — that only ever *discusses* a verdict
+  # resolves `:unknown` and re-invokes, exactly as before.
+  #
+  # Zero conflicts and zero non-enum verdict words occurred in the 180-session
+  # sample, so this recovers the discardable placement failures and changes no
+  # verdict that already parsed.
 
-    case {marker_lines, List.last(lines)} do
-      {[only], last} when only == last -> classify_verdict_line(only)
+  defp parse_review_verdict(%{"value" => value}) when is_binary(value) do
+    parse_verdict_text(value)
+  end
+
+  defp parse_review_verdict(_), do: :unknown
+
+  defp parse_verdict_text(text) when is_binary(text) do
+    text
+    |> String.split("\n", trim: true)
+    |> Enum.filter(&String.contains?(&1, "REVIEW_VERDICT:"))
+    |> Enum.map(&classify_verdict_line/1)
+    |> Enum.uniq()
+    |> case do
+      [verdict] when verdict != :unknown -> verdict
       _ -> :unknown
     end
   end
 
-  defp parse_review_verdict(_), do: :unknown
+  defp parse_verdict_text(_), do: :unknown
 
   # Normalise presentation, then match the sentinel exactly.
   #
@@ -2694,6 +2961,76 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp classify_verdict_line(_), do: :unknown
+
+  # Cheap failure path. The remaining 11% of the sample returns a value with
+  # no verdict in it at all — and 9 of those 20 are the SAME defect wearing a
+  # different hat: the reviewer stated its verdict, then called
+  # `codegen-log section`, and its post-tool-call closing line ("Logged.",
+  # "Recorded.") became the returned value. The verdict is sitting in an
+  # earlier assistant turn of a transcript this loop wrote itself.
+  #
+  # Reading that file costs a stat and a scan; the alternative (what used to
+  # happen) is a whole second reviewer invocation that re-reads the diff to
+  # re-derive a verdict already on disk. Only ASSISTANT text is scanned —
+  # the user turn holds the prompt, which names BOTH enum members and would
+  # self-conflict. Unanimity still applies, so a genuinely ambiguous
+  # transcript falls through to the re-invocation rather than guessing.
+  #
+  # When recovery lands, the recovered message REPLACES `"value"`: the
+  # `:changes_requested` arm feeds that string to the developer as rework
+  # feedback, and "Logged." is not feedback.
+  @spec resolve_review(map()) :: {:approved | :changes_requested | :unknown, map()}
+  defp resolve_review(review_result) do
+    case parse_review_verdict(review_result) do
+      :unknown -> recover_review_from_transcript(review_result)
+      verdict -> {verdict, review_result}
+    end
+  end
+
+  defp recover_review_from_transcript(%{"transcript" => path} = review_result)
+       when is_binary(path) do
+    texts = transcript_assistant_texts(path)
+
+    case parse_verdict_text(Enum.join(texts, "\n")) do
+      :unknown ->
+        {:unknown, review_result}
+
+      verdict ->
+        recovered =
+          texts
+          |> Enum.filter(&String.contains?(&1, "REVIEW_VERDICT:"))
+          |> List.last()
+
+        {verdict, Map.put(review_result, "value", recovered)}
+    end
+  end
+
+  defp recover_review_from_transcript(review_result), do: {:unknown, review_result}
+
+  # Best-effort stream-json reader: an absent/unreadable/garbage transcript
+  # yields [] and the caller falls back to the re-invocation it would have
+  # done anyway. Never raises — a recovery attempt must not be able to fail
+  # a cycle that was already going to retry.
+  defp transcript_assistant_texts(path) do
+    case File.read(path) do
+      {:ok, contents} ->
+        contents
+        |> String.split("\n", trim: true)
+        |> Enum.flat_map(fn line ->
+          case Jason.decode(line) do
+            {:ok, %{"type" => "assistant", "message" => %{"content" => content}}}
+            when is_list(content) ->
+              for %{"type" => "text", "text" => t} <- content, is_binary(t), t != "", do: t
+
+            _ ->
+              []
+          end
+        end)
+
+      {:error, _} ->
+        []
+    end
+  end
 
   # Peels matched outer decoration pairs (and surrounding whitespace) one layer
   # at a time, so nested/mixed wrappers like ``**`…`**`` reduce to the bare
@@ -2835,10 +3172,186 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   # Runs the gate once (developer already ran) and returns the verdict atom.
+  #
+  # THE REVIEW-REWORK RE-GATE. Sole caller: `handle_review/7`'s
+  # `:changes_requested` arm, after the developer has reworked and
+  # `run_format_step/2` has run. That rework can be a no-op — the developer
+  # can come back blocked, or answer the review in prose — and then this
+  # re-gate pays 100-160s to re-derive a verdict already on disk for the
+  # byte-identical tree. Real occurrence: cycle log
+  # `20260806_055519_adhoc_cycle.jsonl`, gate #2 at 06:03:32, 100s, tree
+  # a8da05e8 — the same tree gate #1 graded clear 92 seconds earlier.
+  #
+  # So: consult `cached_clear_gate/2` FIRST and return `:clear` without
+  # entering `LoopGate.run_gate/2` at all. Skipping at the CALL SITE (not
+  # inside `run_gate/2`) is load-bearing — `run_gate/2`'s very first
+  # statement unlinks `gate-result.json`, and that unlink must keep firing
+  # for every run that really happens. Never reaching it is what leaves the
+  # existing artifact intact for the reviewer, `codegen-commit`'s
+  # `.verdict == clear` check, and `assert_commit_matches_gate!/1`.
+  #
+  # Only THIS site is guarded. The other five `run_gate/2` call sites are
+  # left alone on purpose, and the exclusion is structural rather than a
+  # consequence of the guard's own conditions:
+  #
+  #   * `do_gate_loop_flake_check/10` and
+  #     `do_gate_loop_stale_build_flake_check/10` exist precisely to re-run
+  #     an unchanged tree and see whether a red reproduces.
+  #   * `do_gate_loop_stale_build_heal/10` re-gates after `rm -rf _build`.
+  #     `_build/` is gitignored, so `graded_tree_sha` is byte-identical
+  #     across the heal — a tree-sha skip there is a permanent no-op.
+  #   * `rework_final_gate/5` is only reached on a known tree MISMATCH.
+  #   * `do_gate_loop/9`'s entry gate is skippable in principle (a developer
+  #     turn that changed nothing) but is the cycle's FIRST gate, where the
+  #     only thing on disk is a previous build's record; that needs a
+  #     cross-build policy this change does not make.
   defp run_gate_once(ctx, opts) do
-    gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
-    {verdict, _cmd} = gate_fn.(ctx.cwd, gate_opts(opts, ctx))
-    verdict
+    gate_opts = gate_opts(opts, ctx)
+
+    case cached_clear_gate(ctx.cwd, gate_opts) do
+      {:cached, facts, gate, mode} ->
+        note_cached_gate(gate_opts, facts, gate, mode)
+        :clear
+
+      :miss ->
+        gate_fn = Keyword.get(opts, :gate_fn, &LoopGate.run_gate/2)
+        {verdict, _cmd} = gate_fn.(ctx.cwd, gate_opts)
+        verdict
+    end
+  end
+
+  # "Is the work in front of us PROVABLY already graded clear?" — the
+  # cached-gate predicate. `{:cached, facts, gate, mode}` only when every
+  # conjunct below holds; `:miss` otherwise, and `:miss` on ANY doubt.
+  #
+  # Read this as the mirror image of `default_gate_tree_match?/1` (:1074),
+  # and do NOT be tempted to reuse that function here. It answers "must I
+  # FORCE a re-gate?", so its `graded == "" or current == ""` treats an
+  # unknown signature as "no evidence of drift" → true. That fail-OPEN is
+  # correct there and catastrophic here: an empty sentinel is exactly what a
+  # non-git cwd, an unborn HEAD, or a legacy gate-result.json produces, and
+  # reusing it would skip the gate in every one of those cases. Every
+  # sentinel below therefore fails CLOSED.
+  #
+  #   1. `verdict == "clear"`. Never skip a red. A failure must stay
+  #      re-provable or one flake becomes a permanent verdict. Read as the
+  #      literal field rather than through `LoopGate.read_verdict/1` so
+  #      "inconclusive", a malformed record and an absent file all land on
+  #      the same `:miss` instead of raising.
+  #   2. `cycle_id` non-empty on BOTH sides and equal. Nothing clears
+  #      `gate-result.json` at cycle start (`run/1` unlinks only
+  #      `terminal-state.json`; `codegen-build`'s eager `rm -f` was removed
+  #      deliberately — context/fail-closed-posture.md:27), so a fresh build
+  #      routinely starts with the PREVIOUS build's `clear` record sitting on
+  #      disk. Tree-sha equality alone would read that as a pass. The
+  #      non-empty half is not decoration: `""` is what every pre-`cycle_id`
+  #      record, and every gate run outside a loop, carries — and `""` is
+  #      also what `gate_opts/2` supplies when no cycle id was set, so
+  #      `"" == ""` would wave through precisely the stale cross-build record
+  #      this conjunct exists to catch.
+  #   3. `graded_tree_sha` non-empty on both sides and equal. The
+  #      signature covers HEAD's tree plus tracked modifications, deletions
+  #      and untracked non-ignored files (`git ls-files -m -d -o
+  #      --exclude-standard`), which is the whole surface a developer's
+  #      rework turn can touch and have the gate read. It does NOT cover
+  #      gitignored state — `_build/`, `deps/`, `node_modules/`, `codegen/`
+  #      — nor the toolchain. Conjunct 2 is what bounds that gap: cache hits
+  #      can only occur within one build, minutes apart, and a dependency
+  #      change large enough to flip a verdict moves `mix.lock`, which IS in
+  #      the signature.
+  #   4. `gate` non-empty on both sides and equal. A mid-cycle edit to
+  #      `.claude/gate-config.sh` changes what "graded" means; the stamped
+  #      command is the only record of what was actually run.
+  #
+  # Ordered cheapest-first and short-circuiting: one `File.read` before any
+  # git work, and `LoopGate.decide_gate/1`'s bash spawn last of all. That
+  # ordering also keeps `decide_gate/1` — which RAISES on an unresolvable
+  # gate — off the path for every cwd that was never going to hit, which is
+  # every mocked unit test. Should it raise anyway, the rescue turns it into
+  # `:miss` and the real `run_gate/2` re-raises it a moment later, after its
+  # own unlink has fired. The guard may cost a cycle time; it may never cost
+  # it correctness.
+  @spec cached_clear_gate(String.t(), run_opts()) ::
+          {:cached, map(), String.t(), String.t()} | :miss
+  defp cached_clear_gate(cwd, gate_opts) do
+    cycle_id = gate_result_string(Keyword.get(gate_opts, :cycle_id))
+
+    with {:ok, facts} <- gate_result_facts(cwd),
+         true <- facts.verdict == "clear",
+         true <- cycle_id != "" and facts.cycle_id == cycle_id,
+         true <- facts.graded_tree_sha != "",
+         true <- facts.graded_tree_sha == LoopGate.graded_tree_sha_now(cwd),
+         true <- facts.gate != "",
+         {gate, mode, _timeout} <- LoopGate.decide_gate(cwd),
+         true <- facts.gate == gate do
+      {:cached, facts, gate, mode}
+    else
+      _ -> :miss
+    end
+  rescue
+    _ -> :miss
+  end
+
+  # The six `gate-result.json` fields the cached-gate predicate and its
+  # cycle-log event need, in ONE read. Decoded here rather than through
+  # `gate-result.sh`'s per-field bash readers: six `bash -c` + `jq` spawns
+  # to decide whether to skip would be a real fraction of the skip's own
+  # value, and every field is a plain string. `:error` (never a partial
+  # map) on anything unreadable.
+  @spec gate_result_facts(String.t()) :: {:ok, map()} | :error
+  defp gate_result_facts(cwd) do
+    path = Path.join(cwd, "codegen/gate-pending/gate-result.json")
+
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{} = json} <- Jason.decode(contents) do
+      {:ok,
+       %{
+         verdict: gate_result_string(json["verdict"]),
+         verdict_marker: gate_result_string(json["verdict_marker"]),
+         graded_tree_sha: gate_result_string(json["graded_tree_sha"]),
+         cycle_id: gate_result_string(json["cycle_id"]),
+         gate: gate_result_string(json["gate"]),
+         started: gate_result_string(json["started"])
+       }}
+    else
+      _ -> :error
+    end
+  end
+
+  # Absent/null/non-string JSON field → "", the sentinel every conjunct in
+  # `cached_clear_gate/2` rejects.
+  defp gate_result_string(value) when is_binary(value), do: value
+  defp gate_result_string(_value), do: ""
+
+  # Make the skip visible in both places a gate run is normally visible:
+  # operator stderr, and the cycle log's `{"ev":"gate"}` stream. Routed
+  # through the SAME `:log_verdict_fn` seam and the same 5-arity shape
+  # `LoopGate.run_gate/2` uses for a real verdict, so anything already
+  # watching gate events sees this one too — distinguished by a `cached:`
+  # detail naming the tree and the timestamp of the run being reused, since
+  # after a skip the stamped `started`/`ended`/`duration_s`/`session_id` all
+  # describe that earlier run and not this step.
+  #
+  # An empty `verdict_marker` (a hand-written or legacy record) makes
+  # `default_log_verdict/5` no-op rather than write a bogus event; the
+  # stderr note still fires, so the skip is never completely silent.
+  @spec note_cached_gate(run_opts(), map(), String.t(), String.t()) :: :ok
+  defp note_cached_gate(gate_opts, facts, gate, mode) do
+    short_sha = String.slice(facts.graded_tree_sha, 0, 12)
+
+    operator_note(
+      "codegen.loop: re-work re-gate SKIPPED — tree #{short_sha} was already graded " <>
+        "clear by `#{gate}` in this cycle at #{facts.started}; reusing that verdict"
+    )
+
+    detail =
+      "cached: tree #{short_sha} already graded clear in this cycle at #{facts.started} " <>
+        "— gate not re-run"
+
+    log_verdict_fn = Keyword.get(gate_opts, :log_verdict_fn, &LoopGate.log_cached_verdict/5)
+    log_verdict_fn.(Keyword.get(gate_opts, :cycle_log), gate, mode, facts.verdict_marker, detail)
+
+    :ok
   end
 
   # After a developer role completes, run the gate. Clear → continue to the
@@ -2875,12 +3388,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     opts
     |> Keyword.put_new(:cycle_log, Process.get(@log_path_key))
     |> Keyword.put_new(:session_id, dev_role)
+    |> Keyword.put_new(:cycle_id, Process.get(@cycle_id_key) || "")
   end
 
   defp gate_opts(opts, ctx) when is_map(ctx) or is_nil(ctx) do
     opts
     |> Keyword.put_new(:cycle_log, Process.get(@log_path_key))
     |> Keyword.put_new(:session_id, gate_actor(ctx))
+    |> Keyword.put_new(:cycle_id, Process.get(@cycle_id_key) || "")
   end
 
   defp gate_actor(nil), do: ""
@@ -4353,6 +4868,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         sid -> put_in(ctx, [:artifacts, :transport_session_id], sid)
       end
 
+    # Carry the retry index into the invocation so the per-role telemetry row
+    # can state it. A retried call is a full second round-trip — one observed
+    # reviewer retry cost 38 turns and $2.02 — and it was previously
+    # indistinguishable from a first call in `cycle-summary.jsonl`.
+    ctx = put_in(ctx, [:artifacts, :transport_attempt], attempt)
+
     case invoke_fn.(role, harness, ctx, opts) do
       {:ok, result} ->
         {:ok, result}
@@ -4500,6 +5021,9 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     if attempt < max_attempts do
       log_died(role, "interrupted", reason, opts)
       retry_ctx = put_in(ctx, [:artifacts, :last_failure_reason], reason)
+      # The budget is only decided once a failure has been classified, so it
+      # is recorded from here (the retry path) rather than guessed up front.
+      retry_ctx = put_in(retry_ctx, [:artifacts, :transport_attempt_max], max_attempts)
 
       # A transient drop resumes the SAME session on the next attempt —
       # unless the session itself turned out to be unresumable (never
@@ -4709,6 +5233,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     Process.put(@transcript_seq_key, seq)
     transcript = transcript_path(cycle_id, ctx.cwd, seq, role)
 
+    # Nth invocation of THIS role in THIS cycle. Counted here, in the one
+    # function every logical role call passes through, so a transport retry
+    # (which re-enters invoke_role/4) and a rework re-invocation are counted
+    # the same way: both are round-trips somebody paid for.
+    role_call_counts = Process.get(@role_call_count_key, %{})
+    role_call = Map.get(role_call_counts, role, 0) + 1
+    Process.put(@role_call_count_key, Map.put(role_call_counts, role, role_call))
+    call_reason = call_reason(ctx, role, role_call)
+
     # Session identity for THIS attempt — minted/carried forward by
     # do_invoke_attempt/6 before invoke_fn is ever called. resume_session_id
     # present -> warm-resume a transient-retry attempt; absent ->
@@ -4789,13 +5322,30 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       native_effort: native_effort_realization(harness, effort)
     })
 
-    write_cycle_summary(cycle_id, ctx.cwd, role, seq, transcript, envelope)
+    write_cycle_summary(cycle_id, ctx.cwd, role, seq, transcript, envelope, %{
+      "call" => role_call,
+      "call_reason" => call_reason,
+      "transport_attempt" => get_in(ctx, [:artifacts, :transport_attempt]) || 1,
+      "transport_attempt_max" => get_in(ctx, [:artifacts, :transport_attempt_max])
+    })
 
     case envelope do
       %{"result" => %{"status" => "success"} = result} ->
+        # `"transcript"` rides along for the same reason `"session_id"` does:
+        # the caller cannot recompute it (seq lives in a process key that has
+        # already advanced by the time a result is inspected). Its one
+        # consumer today is `resolve_review/1`, which reads this stream-json
+        # to recover a verdict the returned value dropped instead of paying
+        # for a second reviewer call.
         case check_budget(opts) do
-          :ok -> {:ok, Map.put(result, "session_id", envelope["session_id"])}
-          {:error, reason} -> {:error, reason}
+          :ok ->
+            {:ok,
+             result
+             |> Map.put("session_id", envelope["session_id"])
+             |> Map.put("transcript", transcript)}
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
       %{"result" => %{"status" => "failed"} = result} ->
@@ -5562,15 +6112,48 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # per role invocation — a durable per-cycle turn-summary alongside the raw
   # per-role transcript files. A nil cycle_id (legacy/one-shot callers, or
   # cycle_id-free ExUnit calls) is a no-op: no directory, no file.
-  defp write_cycle_summary(nil, _cwd, _role, _seq, _transcript, _envelope), do: :ok
+  # Why this invocation is happening, read off the artifacts the loop already
+  # threads into the prompt for exactly this purpose. Naming the cause is what
+  # turns "the developer ran 3 times" into an actionable number: three gate
+  # failures and three reviewer bounces are the same count and completely
+  # different problems.
+  #
+  # Order matters — a transport retry is checked first because it is a
+  # continuation of the SAME logical call (the fault artifacts from the
+  # original attempt are still on ctx and would otherwise mislabel it).
+  @spec call_reason(map(), String.t(), pos_integer()) :: String.t()
+  defp call_reason(ctx, role, role_call) do
+    artifacts = ctx[:artifacts] || %{}
+    present? = fn key -> is_binary(artifacts[key]) and String.trim(artifacts[key]) != "" end
 
-  defp write_cycle_summary(cycle_id, cwd, role, seq, transcript, envelope) do
+    cond do
+      (artifacts[:transport_attempt] || 1) > 1 -> "transport_retry"
+      role_call == 1 -> "initial"
+      present?.(:review_feedback) -> "review_changes_requested"
+      present?.(:curator_doc_violations) -> "orientation_repair"
+      present?.(:last_failure_reason) -> "gate_failed"
+      developer_role?(role) -> "gate_failed"
+      true -> "rework"
+    end
+  end
+
+  defp write_cycle_summary(nil, _cwd, _role, _seq, _transcript, _envelope, _attempt), do: :ok
+
+  defp write_cycle_summary(cycle_id, cwd, role, seq, transcript, envelope, attempt) do
     usage = Map.get(envelope, "usage", %{})
 
     line =
       Jason.encode!(%{
         "role" => role,
         "seq" => seq,
+        # Rework accounting, stated rather than inferred. `call` is the Nth
+        # invocation of this role this cycle; `call_reason` says what caused
+        # it; `transport_attempt` distinguishes a retried round-trip from a
+        # first one. A build that reworks twice now says so in its own log.
+        "call" => Map.get(attempt, "call", 1),
+        "call_reason" => Map.get(attempt, "call_reason", "initial"),
+        "transport_attempt" => Map.get(attempt, "transport_attempt", 1),
+        "transport_attempt_max" => Map.get(attempt, "transport_attempt_max"),
         "num_turns" => t_int(usage["num_turns"]),
         "cost_usd" => t_num(usage["cost_usd"]),
         "status" => get_in(envelope, ["result", "status"]),

@@ -2,8 +2,9 @@
 # dev-no-ci_test.sh — unit tests for dev-no-ci.sh
 #
 # Tests:
-#   1:    make ci ALLOWED (it's the loop's own gate command, do NOT deny)
-# Test 2:    make test DENIED (expensive full-suite target, unowned by per-cycle iteration)
+#   1:    make ci ALLOWED (never in a deny list; in a generated app it is the
+#         configured gate, in codegen's Makefile `ci: test` is a pure alias)
+# Test 2:    make test DENIED when the project declares no gate command
 #   3-9:  gate commands / bare mix test / flags-only mix test → deny (2)
 #   10-12: mix test with specific file path → allow (0)
 #   13:   non-Bash tool → allow (0)
@@ -21,19 +22,69 @@
 #   32-35: narrow targeted checks (hook-parity, enforce-registry-parity,
 #          harness-parity, test-generator, rule-render-freshness) → allow (0)
 #   37:   make ci-fast → deny (2)
+#   38-49: the configured gate command (<project>/.claude/gate-config.sh
+#          GATE_COMMAND, resolved through lib/gate-select.sh) is ALLOWED, the
+#          expensive superset around it stays denied, and an absent/empty/
+#          malformed config allows nothing extra.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GUARD="$SCRIPT_DIR/dev-no-ci.sh"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+# The hook resolves the project's gate command from <cwd>/.claude/gate-config.sh,
+# so every case must pin an explicit cwd or it would silently depend on where
+# the suite happens to be invoked from. Cases that predate the gate allowance
+# run against NOGATE_DIR — a project that declares no gate at all — which is
+# exactly the "deny lists apply unchanged" baseline they were written for.
+FIXTURE_ROOT="$(mktemp -d)"
+trap 'rm -rf "$FIXTURE_ROOT"' EXIT
+
+mk_gate_fixture() {
+    # mk_gate_fixture <name> [<gate-config.sh body>]  → prints the dir
+    local dir="$FIXTURE_ROOT/$1"
+    mkdir -p "$dir/.claude"
+    if [ "$#" -ge 2 ]; then
+        printf '%s\n' "$2" >"$dir/.claude/gate-config.sh"
+    fi
+    printf '%s' "$dir"
+}
+
+NOGATE_DIR="$(mk_gate_fixture nogate)" # no .claude/gate-config.sh at all
+GATE_TEST_DIR="$(mk_gate_fixture gatetest 'GATE_COMMAND="make test"')"
+GATE_CI_DIR="$(mk_gate_fixture gateci 'GATE_COMMAND="make ci"')"
+GATE_EMPTY_DIR="$(mk_gate_fixture gateempty 'GATE_COMMAND=""')"
+GATE_BAD_DIR="$(mk_gate_fixture gatebad 'GATE_COMMAND="make test"
+GATE_MODE=fast')"
+rm -f "$NOGATE_DIR/.claude/gate-config.sh"
 
 pass=0
 fail=0
+
+# hook_payload <command> <agent_type> <tool_name> <cwd>
+hook_payload() {
+    printf '{"hook_event_name":"PreToolUse","tool_name":"%s","tool_input":{"command":%s},"agent_type":"%s","agent_id":"abc123","cwd":"%s"}' \
+        "$3" "$(printf '%s' "$1" | jq -Rs .)" "$2" "$4"
+}
+
+# run_gate_test <desc> <expected 0|2> <command> <cwd> [agent_type]
+run_gate_test() {
+    local desc="$1" expected="$2" cmd="$3" cwd="$4" agent="${5:-developer-phoenix-backend}"
+    run_test "$desc" "$expected" "$(hook_payload "$cmd" "$agent" "Bash" "$cwd")"
+}
 
 run_test() {
     local desc="$1"
     local expected="$2"
     local input="$3"
+
+    # Cases written before the gate allowance carry no "cwd" key; pin them to
+    # the gate-less fixture so the resolver finds nothing and the deny lists
+    # apply exactly as they did before.
+    if ! printf '%s' "$input" | grep -q '"cwd"'; then
+        input="${input%\}},\"cwd\":\"$NOGATE_DIR\"}"
+    fi
 
     # Capture stdout — the hook emits a permissionDecision JSON envelope
     # to stdout for deny outcomes (exit 0) instead of stderr + exit 2.
@@ -63,8 +114,10 @@ run_test() {
 run_test "make ci allowed for developer-phoenix-backend (loop gate command)" "0" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
-# Test 2: make test → DENY (full-suite target, unowned by per-cycle iteration)
-run_test "make test blocked (full-suite target)" "2" \
+# Test 2: make test → DENY when the project declares no gate command at all.
+# (When it IS the declared gate, it is allowed — tests 38/39. The point of the
+# deny list is cost the loop already owns, not the literal target name.)
+run_test "make test blocked when project declares no gate command" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make test"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
 # Test 3: make ci-cover → deny
@@ -211,6 +264,69 @@ run_test "make rule-render-freshness allowed for developer-phoenix-backend" "0" 
 # Test 37: make ci-fast → deny (restored; was in original deny list)
 run_test "make ci-fast blocked for developer-phoenix-backend" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make ci-fast"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+
+# ── The configured gate command is allowed; the superset around it is not ───
+# The loop threads GATE_COMMAND verbatim into the developer's prompt
+# (orchestration_loop.ex build_prompt/2, "Before handing back, run `<cmd>`
+# yourself"). Denying that exact command told the developer to run something
+# and then blocked it, burning a turn slot per attempt. These lock the two
+# together and prove nothing else was let through.
+
+# Test 38: gate is `make test` → `make test` ALLOWED (the reported bug)
+run_gate_test "configured gate command 'make test' allowed" "0" \
+    'make test' "$GATE_TEST_DIR"
+
+# Test 39: the same, resolved against codegen's real .claude/gate-config.sh —
+# guards the actual repo wiring, not just a synthetic fixture.
+run_gate_test "codegen's own declared gate command allowed in-repo" "0" \
+    'make test' "$REPO_ROOT"
+
+# Test 40: gate command with trailing argv/redirection → still the same target,
+# same cost, ALLOWED (a dev truncating gate output must not burn a turn).
+run_gate_test "configured gate command with redirection allowed" "0" \
+    'make test 2>&1 | tail -50' "$GATE_TEST_DIR"
+
+# Test 41: expensive superset still DENIED even though it shares the prefix.
+run_gate_test "make test-all still denied when gate is make test" "2" \
+    'make test-all' "$GATE_TEST_DIR"
+
+# Test 42: real-LLM pre-deploy gate still DENIED alongside a `make test` gate.
+run_gate_test "make test-stacks still denied when gate is make test" "2" \
+    'make test-stacks' "$GATE_TEST_DIR"
+
+# Test 43: the gate command must not become a smuggling prefix for the
+# expensive targets it sits next to in a shell chain.
+run_gate_test "gate command chained into make llm-all denied" "2" \
+    'make test && make llm-all' "$GATE_TEST_DIR"
+
+# Test 44: GATE_COMMAND is per-PROJECT — a generated app declaring `make ci`
+# (a strict superset there: credo/dialyzer/sobelow/audit) allows `make ci`…
+run_gate_test "generated-app gate 'make ci' allowed" "0" \
+    'make ci' "$GATE_CI_DIR"
+
+# Test 45: …and `make test` stays denied there, because it is not that app's
+# declared gate. Same hook, opposite verdict, driven only by the config.
+run_gate_test "make test denied in an app whose gate is make ci" "2" \
+    'make test' "$GATE_CI_DIR"
+
+# Test 46: no .claude/gate-config.sh → nothing is allowed by the gate route,
+# deny lists apply exactly as before (fail-safe, never fail-open).
+run_gate_test "absent gate-config.sh denies make test" "2" \
+    'make test' "$NOGATE_DIR"
+
+# Test 47: present but empty GATE_COMMAND → gate-select.sh returns the
+# __GATE_UNRESOLVED__ sentinel; treated as "no gate", not as "allow all".
+run_gate_test "empty GATE_COMMAND denies make test" "2" \
+    'make test' "$GATE_EMPTY_DIR"
+
+# Test 48: malformed GATE_MODE makes gate-select.sh fail loud — the hook must
+# inherit that failure as "unresolved", not silently allow the command.
+run_gate_test "malformed GATE_MODE denies make test" "2" \
+    'make test' "$GATE_BAD_DIR"
+
+# Test 49: a non-developer agent is untouched by any of this.
+run_gate_test "make test allowed for committer (non-developer-*)" "0" \
+    'make test' "$GATE_CI_DIR" "committer"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

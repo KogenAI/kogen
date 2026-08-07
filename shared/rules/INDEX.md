@@ -21,7 +21,7 @@ rules/
     no-role-spawn.md             leaf agent never spawns/delegates another role
   roles/                    ← universal role rules
     developer.md            workflow, completion, pre-completion
-    reviewer.md             15-step process + ast-grep
+    reviewer.md             15-step process
     context-curator.md      routing learnings, write surface, stale-line preference
   stacks/
     phoenix/

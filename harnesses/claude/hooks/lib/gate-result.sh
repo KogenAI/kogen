@@ -6,7 +6,8 @@
 #   write_gate_result <gate> <mode> <base_sha> <diff_files_count> \
 #       <runner_found> <exit_code> <execution_evidence> <expected_segments> \
 #       <render_verdict> <classification> <started> <ended> \
-#       <session_id> <log> <project_dir> [<witness>] [<graded_tree_sha>]
+#       <session_id> <log> <project_dir> [<witness>] [<graded_tree_sha>] \
+#       [<cycle_id>]
 #
 # Writes codegen/gate-pending/gate-result.json under <project_dir>.
 # Verdict derivation is fully deterministic — see table below.
@@ -200,7 +201,7 @@ extract_witness() {
 # write_gate_result <gate> <mode> <base_sha> <diff_files_count>
 #     <runner_found> <exit_code> <execution_evidence> <expected_segments>
 #     <render_verdict> <classification> <started> <ended>
-#     <session_id> <log> <project_dir> [<witness>] [<graded_tree_sha>]
+#     <session_id> <log> <project_dir> [<witness>] [<graded_tree_sha>] [<cycle_id>]
 write_gate_result() {
     local gate="$1"
     local mode="$2"
@@ -219,6 +220,13 @@ write_gate_result() {
     local project_dir="${15}"
     local witness="${16:-}"
     local graded_tree_sha="${17:-}"
+    # cycle_id binds this verdict to the BUILD that paid for it. Without it
+    # gate-verdicts.jsonl was unjoinable: `session_id` holds a role name, so
+    # two verdicts from different builds are indistinguishable, and
+    # "how much gate time did this build spend" had no answer. Optional and
+    # defaulted to "" so every existing caller (and every downstream app,
+    # which has no loop and no cycle) keeps working unchanged.
+    local cycle_id="${18:-}"
 
     # Derive verdict
     local verdict_out
@@ -269,6 +277,7 @@ write_gate_result() {
         --arg log "$log" \
         --arg witness "$witness" \
         --arg graded_tree_sha "$graded_tree_sha" \
+        --arg cycle_id "$cycle_id" \
         '($started | try fromdateiso8601 catch null) as $started_epoch
         | ($ended | try fromdateiso8601 catch null) as $ended_epoch
         | (if $started_epoch != null and $ended_epoch != null
@@ -292,7 +301,8 @@ write_gate_result() {
             session_id: $session_id,
             log: $log,
             witness: $witness,
-            graded_tree_sha: $graded_tree_sha
+            graded_tree_sha: $graded_tree_sha,
+            cycle_id: $cycle_id
         }' >"$result_file"
 
     # Durable codegen-local verdict history (no overwrite, append-only).

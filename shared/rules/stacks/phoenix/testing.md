@@ -2,13 +2,13 @@
 
 ## Sanctioned Commands
 
-| Role                 | Allowed                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| developer-phoenix-\* | `mix test test/specific_test.exs` (single, no `--cover`); `:42`; `--trace path/to/file.exs` |
-| reviewer-phoenix     | none                                                                                        |
-| Gate (auto)          | `make ci`, `make llm`, `make llm-phoenix`                                                   |
+| Role                 | Allowed                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| developer-phoenix-\* | `mix test test/specific_test.exs` (single, no `--cover`); `:42`; `--trace path/to/file.exs`; in loop mode, the delegated gate command |
+| reviewer-phoenix     | none                                                                                                                                  |
+| Gate (auto)          | the delegated gate command (declared per project in `.claude/gate-config.sh`), `make llm`, `make llm-phoenix`                         |
 
-`--trace` sets `--max-cases 1`, disables timeouts. Dev MUST NOT run `make ci`, bare `mix test`, `--cover`/`coveralls`. Zero Credo warnings, zero failures.
+`--trace` sets `--max-cases 1`, disables timeouts. Dev MUST NOT run bare `mix test`, `--cover`/`coveralls`. Zero Credo warnings, zero failures.
 
 ## Asset Paths in Phoenix 1.8.x — Nested Directories
 

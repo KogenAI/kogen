@@ -124,8 +124,21 @@ manifest_regenerate_prompts() {
         cat "${inputs[@]}" >"$tmp"
 
         # Byte-stable write: only overwrite if content changed.
+        #
+        # The overwrite is a rename, not a copy, so a concurrent reader sees
+        # either the whole old file or the whole new one — never a half-written
+        # prefix. `cp` here was a torn-read waiting to happen: these files are
+        # read by prompt-content-parity and by every `claude-*.sh` launcher,
+        # and a 137 KB `cp` is not close to atomic. The staging file is created
+        # in the DESTINATION directory (not $TMPDIR) because rename(2) is only
+        # atomic within one filesystem, and on macOS $TMPDIR is routinely a
+        # different volume than the repo.
         if [ ! -f "$dest" ] || ! cmp -s "$tmp" "$dest"; then
-            cp "$tmp" "$dest"
+            local stage
+            stage=$(mktemp "$(dirname "$dest")/.$(basename "$dest").XXXXXX")
+            cat "$tmp" >"$stage"
+            chmod 600 "$stage"
+            mv -f "$stage" "$dest"
             echo "   manifest-lib: regenerated $harness/$mode prompt → $(basename "$dest")"
         fi
         rm -f "$tmp"

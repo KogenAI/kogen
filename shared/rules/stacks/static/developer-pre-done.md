@@ -1,8 +1,6 @@
 ## Pre-Done Checklist
 
-**Build + render verification is AUTOMATIC — do NOT run it yourself.**
-After your turn, the loop's `LoopGate` runs `make ci`, the Tailwind
-invariants, and headless-Chromium render verification. Running
+**The build and render check belong to the gate, not to you.** Running
 `npm run build` / `npm run serve` yourself wastes minutes and risks
 port/state conflicts with the gate. **Never invoke the render check
 manually.**

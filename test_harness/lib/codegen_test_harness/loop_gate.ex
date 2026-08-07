@@ -349,6 +349,13 @@ defmodule CodegenTestHarness.LoopGate do
   def run_gate(project_dir, opts \\ []) do
     stack = Keyword.get(opts, :stack)
     session_id = Keyword.get(opts, :session_id, "")
+    # Which BUILD this gate run belongs to. `session_id` above holds a ROLE
+    # name, so it cannot separate two builds — every verdict in
+    # gate-verdicts.jsonl looked alike and gate time could not be summed per
+    # build. The loop is the only holder of the cycle id (it threads it in via
+    # `gate_opts/2`); "" for any caller outside a loop, which is every
+    # downstream app.
+    cycle_id = Keyword.get(opts, :cycle_id, "")
     run_fn = Keyword.get(opts, :run_fn, &default_run_fn/2)
     preflight_fn = Keyword.get(opts, :preflight_fn, &static_render_deps_preflight!/1)
     cycle_log = Keyword.get(opts, :cycle_log)
@@ -425,7 +432,7 @@ defmodule CodegenTestHarness.LoopGate do
       true #{exit_code} #{execution_evidence} #{expected_segments} #{shell_quote(render_verdict)} #{shell_quote(classification)} \
       #{shell_quote(started)} #{shell_quote(ended)} \
       #{shell_quote(session_id)} #{shell_quote(log_path)} #{shell_quote(project_dir)} \
-      #{shell_quote(witness)} #{shell_quote(tree_sha)}
+      #{shell_quote(witness)} #{shell_quote(tree_sha)} #{shell_quote(cycle_id)}
     """
 
     {_write_out, 0} = System.cmd("bash", ["-c", write_script], stderr_to_stdout: true)
@@ -624,6 +631,29 @@ defmodule CodegenTestHarness.LoopGate do
   """
   @spec graded_tree_sha_now(String.t()) :: String.t()
   def graded_tree_sha_now(project_dir), do: graded_tree_sha(project_dir)
+
+  @doc """
+  Writes the cycle-log `{"ev":"gate"}` record for a gate run that was NOT
+  performed because an existing `gate-result.json` already grades this exact
+  tree, in this exact build, under this exact gate command
+  (`OrchestrationLoop`'s cached-gate skip).
+
+  Deliberately the SAME writer as a real gate run's own verdict event
+  (`default_log_verdict/5`), with the same argv shape, so the cycle log
+  cannot end up with a developer step and a reviewer step and no gate event
+  between them — which would read as a bypass to any later auditor. The
+  caller distinguishes it by passing a `cached: ...` `detail`.
+
+  Nothing is appended to `gate-verdicts.jsonl`: that ledger is written only
+  by `gate-result.sh`'s `write_gate_result`, one row per gate that actually
+  ran, and each row carries a `duration_s`. A row for a run that consumed no
+  time would over-count exactly the number the `cycle_id` field was added to
+  make summable.
+  """
+  @spec log_cached_verdict(String.t() | nil, String.t(), String.t(), String.t(), String.t()) ::
+          :ok
+  def log_cached_verdict(cycle_log, gate, mode, marker, detail),
+    do: default_log_verdict(cycle_log, gate, mode, marker, detail)
 
   # Static-stack render-check dependency preflight. Runs BEFORE the gate
   # command when `:stack` is `"static"`. RAISES (crash loud) naming the

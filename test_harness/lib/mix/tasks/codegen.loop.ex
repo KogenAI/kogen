@@ -92,7 +92,10 @@ defmodule Mix.Tasks.Codegen.Loop do
           fallback_model: :string,
           max_budget_usd: :float,
           effort: :string,
-          commit_subject: :string
+          commit_subject: :string,
+          max_review_cycles: :integer,
+          max_review_coverage_cycles: :integer,
+          max_review_verdict_cycles: :integer
         ]
       )
 
@@ -120,6 +123,20 @@ defmodule Mix.Tasks.Codegen.Loop do
     # never a silent default (see pitch "committing is deterministic, not
     # a model call").
     commit_subject_flag = Keyword.get(opts, :commit_subject)
+
+    # The three review budgets (`handle_review/9`'s moduledoc-level comment
+    # explains why they are separate). Each was a bare hardcoded `1` with no
+    # way to change it short of editing the source — and between two of them
+    # they killed 5 of 14 cycles one night and every cycle the next. Only
+    # flags the caller ACTUALLY passed are forwarded, so an absent flag leaves
+    # `OrchestrationLoop.run/1`'s own default in force rather than this task
+    # re-declaring it in a second place.
+    review_budget_opts =
+      Keyword.take(opts, [
+        :max_review_cycles,
+        :max_review_coverage_cycles,
+        :max_review_verdict_cycles
+      ])
 
     # Move 2: install the SIGTERM handler for the solo path (SIGINT cannot
     # be caught at the BEAM level — see BuildSignalHandler moduledoc; the
@@ -165,7 +182,8 @@ defmodule Mix.Tasks.Codegen.Loop do
                 fallback_model,
                 max_budget_usd,
                 effort_override,
-                commit_subject_flag
+                commit_subject_flag,
+                review_budget_opts
               )
             end
           )
@@ -342,7 +360,8 @@ defmodule Mix.Tasks.Codegen.Loop do
          fallback_model,
          max_budget_usd,
          effort_override,
-         commit_subject_flag
+         commit_subject_flag,
+         review_budget_opts
        ) do
     pitch = resolve_pitch(pitch_arg, cwd)
     commit_subject = resolve_commit_subject!(source, commit_subject_flag)
@@ -371,21 +390,26 @@ defmodule Mix.Tasks.Codegen.Loop do
     result =
       run_loop_catching_infra_abort(fn ->
         OrchestrationLoop.run(
-          harness: harness,
-          stack: stack,
-          cwd: cwd,
-          pitch: pitch,
-          pitch_scope: pitch_scope,
-          cycle_id: cycle_id,
-          slug: slug,
-          stamp: stamp,
-          build_lock_held: true,
-          fallback_model_override: fallback_model,
-          max_budget_usd: max_budget_usd,
-          effort_override: effort_override,
-          recovery_mode: recovery_mode,
-          recovery_role: recovery_role,
-          commit_subject: commit_subject
+          Keyword.merge(
+            [
+              harness: harness,
+              stack: stack,
+              cwd: cwd,
+              pitch: pitch,
+              pitch_scope: pitch_scope,
+              cycle_id: cycle_id,
+              slug: slug,
+              stamp: stamp,
+              build_lock_held: true,
+              fallback_model_override: fallback_model,
+              max_budget_usd: max_budget_usd,
+              effort_override: effort_override,
+              recovery_mode: recovery_mode,
+              recovery_role: recovery_role,
+              commit_subject: commit_subject
+            ],
+            review_budget_opts
+          )
         )
       end)
 

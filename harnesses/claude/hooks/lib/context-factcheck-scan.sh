@@ -160,6 +160,24 @@ fi
 # Accumulate all violations.
 violations=""
 
+# ── Candidate pre-filter ───────────────────────────────────────────────────
+# The three claim classes below are each detected with a `printf | grep`
+# pipeline. Run per line, that is ~9 forks for every line of every doc — and
+# in whole-tree mode this scan reads 41 docs totalling ~820 KB, which is tens
+# of thousands of lines of ordinary prose that can match nothing. Measured
+# cost on this repo: 72s wall, 47s of it SYSTEM time, i.e. almost pure
+# fork/exec. It runs at turn 0 of every cycle, before a single role is paid
+# for, and it recorded no timing at all, so nobody had reason to look.
+#
+# This regex is the disjunction of the exact patterns the three claim classes
+# test for, so one `grep -nE` per document reduces the line set to only those
+# that could possibly produce a violation. Every surviving line then goes
+# through the identical per-line logic, unchanged — this filter can only skip
+# lines that all three tests would have rejected anyway. Keep it a strict
+# SUPERSET of the three patterns below: loosening a claim-class pattern
+# without loosening this one here would silently stop detecting that class.
+FACTCHECK_CANDIDATE_RE='`[a-zA-Z0-9_-]+/[a-zA-Z0-9_./-]+\.(sh|md|py|ts|js|json|yaml|exs|ex)`|<!--[[:space:]]*count:[[:space:]]*.+-->|[[:alnum:]]\*[[:alnum:]]'
+
 # Verb allowlist for count-anchor probes.
 ALLOWED_VERBS="ls grep wc find cat sort uniq head tail"
 
@@ -185,9 +203,20 @@ while IFS= read -r doc_path; do
         continue
     fi
 
-    linenum=0
-    while IFS= read -r line; do
-        linenum=$((linenum + 1))
+    # One grep per document instead of nine per line. `-n` carries the real
+    # line number through, so `${doc_path}:${linenum}` in every violation
+    # message below stays byte-identical to what the per-line walk produced.
+    candidates=$(printf '%s\n' "$blob" | grep -nE "$FACTCHECK_CANDIDATE_RE" 2>/dev/null || true)
+    if [ -z "$candidates" ]; then
+        continue
+    fi
+
+    while IFS= read -r candidate; do
+        [ -z "$candidate" ] && continue
+        # Split on the FIRST colon only — `grep -n` prefixes "N:", and the
+        # line content itself routinely contains colons.
+        linenum="${candidate%%:*}"
+        line="${candidate#*:}"
 
         # ── Claim class 1: named-path probes ────────────────────────────────
         path_claims=$(printf '%s\n' "$line" |
@@ -316,9 +345,9 @@ PATHS
             violations="${violations}${violations:+$nl}${msg}"
         fi
 
-    done <<BLOB
-$blob
-BLOB
+    done <<CANDIDATES
+$candidates
+CANDIDATES
 
 done <<DOCS
 $docs
