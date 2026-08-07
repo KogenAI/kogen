@@ -8310,6 +8310,60 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
     end
 
+    test "commit step deleting test blocks while its subject survives raises", %{
+      calls_agent: calls_agent,
+      dir: dir
+    } do
+      File.write!(Path.join(dir, "foo.ex"), "defmodule Foo do\n  def go, do: :ok\nend\n")
+
+      File.write!(
+        Path.join(dir, "foo_test.exs"),
+        "defmodule FooTest do\n  use ExUnit.Case\n  test \"one\", do: :ok\n  test \"two\", do: :ok\nend\n"
+      )
+
+      {_o, 0} = System.cmd("git", ["add", "-A"], cd: dir)
+      {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "seed covered feature"], cd: dir)
+      File.write!(Path.join(dir, "feature.txt"), "wip\n")
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        value = if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      commit_fn = fn cwd, _subject ->
+        File.write!(Path.join(cwd, "feature.txt"), "done\n")
+        File.write!(Path.join(cwd, "foo_test.exs"), "test \"one\", do: :ok\n")
+        {_o, 0} = System.cmd("git", ["add", "-A"], cd: cwd)
+        {_o, 0} = System.cmd("git", ["commit", "-q", "-m", "impl"], cd: cwd)
+        {:ok, "COMMITTED: impl"}
+      end
+
+      assert_raise RuntimeError, ~r/test-coverage-floor: foo_test\.exs lost test coverage/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: dir,
+          pitch: "do the thing",
+          invoke_fn: invoke_fn,
+          commit_fn: commit_fn,
+          commit_subject: "Test subject",
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: fn _state,
+                                     _step_log,
+                                     _session_id,
+                                     _verdict,
+                                     _project_dir,
+                                     _slug ->
+            :ok
+          end,
+          clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+        )
+      end
+    end
+
     test "commit step landing a defer-marker (\"not yet wired\") raises", %{
       calls_agent: calls_agent,
       dir: dir

@@ -12,7 +12,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   silent continue, no shim.
   """
 
-  alias CodegenTestHarness.{BornDeadDetector, BuildLock, LoopGate, LoopQueue, RoleResolver}
+  alias CodegenTestHarness.{
+    BornDeadDetector,
+    BuildLock,
+    LoopGate,
+    LoopQueue,
+    RoleResolver,
+    TestCoverageFloor
+  }
 
   # Role-call retry budget. A deterministic failure gets one retry (the
   # historical "failed twice" contract). A failure whose reason matches the
@@ -1797,6 +1804,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     assert_base_not_orphaned!(cwd, base_head)
     assert_commit_matches_gate!(cwd)
     assert_whole_pitch!(cwd, base_head)
+    assert_test_coverage_floor!(cwd, base_head)
 
     :ok
   end
@@ -1821,6 +1829,25 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         raise "OrchestrationLoop: #{reason}. A build implements the WHOLE pitch — " <>
                 "never a build-time slice, never deferred work. This is loop_failed, " <>
                 "never a false loop_committed."
+    end
+  end
+
+  # Test-coverage-floor backstop (fail-closed, pre-commit): a cycle diff
+  # that DECREASES an existing test file's assertion-block count while its
+  # subject module stays alive is a FAILED build — see
+  # `CodegenTestHarness.TestCoverageFloor` moduledoc for the full contract
+  # (the failure class `assert_whole_pitch!/2` above does not catch: a diff
+  # can delete test coverage without introducing any new born-dead entity).
+  # The drain twin (`LoopQueueDrain`'s `:coverage_floor_fn` seam) enforces
+  # the identical check on its own independent ship floor — both must move
+  # together or a drained build can bypass this raise.
+  defp assert_test_coverage_floor!(cwd, base_head) do
+    case TestCoverageFloor.check(cwd, base_head) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        raise "OrchestrationLoop: #{reason}. This is loop_failed, never a false loop_committed."
     end
   end
 

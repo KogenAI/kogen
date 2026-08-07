@@ -160,7 +160,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     BuildLock,
     InterruptedCycleRecovery,
     LoopGate,
-    LoopQueue
+    LoopQueue,
+    TestCoverageFloor
   }
 
   @type drain_opts :: keyword()
@@ -333,6 +334,15 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       to an unverified commit (routes to the false-0/failed park-and-continue
       path), never a silent ship. See moduledoc for why both this seam and
       `OrchestrationLoop.assert_work_produced!/2`'s raise must move together.
+    * `:coverage_floor_fn` — `(cwd, base_sha -> :ok | {:error, reason})`,
+      default `&CodegenTestHarness.TestCoverageFloor.check/2`. Evaluated as
+      its OWN verdict (not folded into `:born_dead_fn`'s boolean, so its
+      reason survives into the park-and-continue record) alongside
+      `:born_dead_fn` on both the exit-0 and nonzero-exit ship arms — a
+      `{:error, _}` result routes to the same false-0/failed park-and-continue
+      path. See `CodegenTestHarness.TestCoverageFloor` moduledoc and
+      `OrchestrationLoop.assert_test_coverage_floor!/2`, which both floors
+      must move together with.
     * `:gate_verdict_fn` — `(cwd -> String.t())`, default reads
       `codegen/gate-pending/gate-result.json` `.verdict`; `""` when absent
     * `:gate_base_sha_fn` — `(cwd -> String.t())`, default reads
@@ -533,6 +543,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           git_head_fn: Keyword.get(opts, :git_head_fn, &default_git_head_fn/1),
           git_ancestor_fn: Keyword.get(opts, :git_ancestor_fn, &default_git_ancestor_fn/3),
           born_dead_fn: Keyword.get(opts, :born_dead_fn, &BornDeadDetector.check/2),
+          coverage_floor_fn: Keyword.get(opts, :coverage_floor_fn, &TestCoverageFloor.check/2),
           gate_verdict_fn: Keyword.get(opts, :gate_verdict_fn, &default_gate_verdict_fn/1),
           gate_base_sha_fn: Keyword.get(opts, :gate_base_sha_fn, &default_gate_base_sha_fn/1),
           gate_mtime_fn: Keyword.get(opts, :gate_mtime_fn, &default_gate_mtime_fn/1),
@@ -1273,6 +1284,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     gate_verdict = state.gate_verdict_fn.(state.cwd)
     gate_clear? = gate_verdict == "clear" and gate_fresh?(state, head_before, ts)
     whole_pitch? = state.born_dead_fn.(state.cwd, head_before) == :ok
+    coverage_floor_result = state.coverage_floor_fn.(state.cwd, head_before)
+    coverage_floor_reason = coverage_floor_reason(coverage_floor_result)
+    coverage_floor_ok? = is_nil(coverage_floor_reason)
 
     cond do
       orphaned? ->
@@ -1283,7 +1297,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         {:error,
          "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
 
-      committed? and gate_clear? and whole_pitch? ->
+      committed? and gate_clear? and whole_pitch? and coverage_floor_ok? ->
         case publish_or_halt(state, slug, head_before, head_after) do
           {:ok, published_sha} ->
             ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, published_sha)
@@ -1304,15 +1318,23 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       true ->
         # False exit-0: no verified commit under a fresh clear gate, OR a
         # verified commit that failed the born-dead/defer-marker completeness
-        # check (whole_pitch? == false) — either way, treat as
-        # a deterministic failure — park whatever dirty tree is left on a
-        # named `queue-fail/<slug>/<ts>` branch (never auto-restored), skip
-        # and continue subject to the same consecutive-failure circuit
+        # check (whole_pitch? == false), OR a verified commit that failed the
+        # test-coverage floor (coverage_floor_ok? == false) — either way,
+        # treat as a deterministic failure — park whatever dirty tree is left
+        # on a named `queue-fail/<slug>/<ts>` branch (never auto-restored),
+        # skip and continue subject to the same consecutive-failure circuit
         # breaker.
+        coverage_floor_diagnostic =
+          if coverage_floor_reason,
+            do: " coverage_floor_reason=#{inspect(coverage_floor_reason)}",
+            else: ""
+
         IO.puts(
           :stderr,
           "[#{idx}/#{state.total}] #{slug} ... exit 0 but no verified commit under a fresh clear gate " <>
-            "(or a born-dead/deferred-work diff — whole_pitch?=#{whole_pitch?}) — treating as FAILED"
+            "(or a born-dead/deferred-work diff, whole_pitch?=#{whole_pitch?}, " <>
+            "or a test-coverage regression, coverage_floor_ok?=#{coverage_floor_ok?}" <>
+            "#{coverage_floor_diagnostic}) — treating as FAILED"
         )
 
         emit_failure_diagnostics(jsonl, idx, state.total, slug)
@@ -1324,17 +1346,21 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         cause =
           classify_drain_failure(%{
             transient?: state.transient_fn.(jsonl),
-            gate_clear?: gate_clear? and whole_pitch?,
+            gate_clear?: gate_clear? and whole_pitch? and coverage_floor_ok?,
             committed?: committed?,
             gate_verdict: gate_verdict,
-            retry_count: retry_count_for
+            retry_count: retry_count_for,
+            coverage_floor_reason: coverage_floor_reason
           })
 
         state = draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?})
 
         evidence_opts = [
           cause: cause,
-          owner_phase: failure_owner_phase(:ship_not_verified),
+          owner_phase:
+            failure_owner_phase(
+              if(coverage_floor_ok?, do: :ship_not_verified, else: :test_coverage_floor)
+            ),
           gate_clear?: gate_clear?,
           recovery: parked_branch
         ]
@@ -1492,8 +1518,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           gate_clear?: boolean(),
           committed?: boolean(),
           gate_verdict: String.t(),
-          retry_count: non_neg_integer()
+          retry_count: non_neg_integer(),
+          coverage_floor_reason: String.t() | nil
         }) :: {atom(), String.t()}
+  defp classify_drain_failure(%{coverage_floor_reason: reason})
+       when is_binary(reason) and reason != "" do
+    {:test_coverage_floor, reason}
+  end
+
   defp classify_drain_failure(%{transient?: true, retry_count: n}) do
     {:transient_exhausted,
      "retried #{n}× — child produced no result record (killed/crashed mid-flight)"}
@@ -1507,6 +1539,13 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
   defp classify_drain_failure(%{gate_verdict: v}) do
     {:gate_failed, "gate verdict=#{inspect(v)}"}
+  end
+
+  defp coverage_floor_reason(:ok), do: nil
+  defp coverage_floor_reason({:error, reason}) when is_binary(reason) and reason != "", do: reason
+
+  defp coverage_floor_reason(other) do
+    "test-coverage-floor returned an invalid verdict: #{inspect(other)}"
   end
 
   # Composes the two-line failure block stamped into the draft prompt:
@@ -1677,6 +1716,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   # through the drain's general gate-failure catch-all.
   @spec failure_owner_phase({atom(), String.t() | nil} | atom()) :: String.t()
   defp failure_owner_phase(:ship_not_verified), do: "drain/ship-verification"
+  defp failure_owner_phase(:test_coverage_floor), do: "drain/test-coverage-floor"
   defp failure_owner_phase({:terminal, owner}), do: owner || "unknown"
   defp failure_owner_phase(_), do: "drain/gate"
 
@@ -1957,6 +1997,9 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     gate_verdict = state.gate_verdict_fn.(state.cwd)
     gate_clear? = gate_verdict == "clear" and gate_fresh?(state, head_before, ts)
     whole_pitch? = state.born_dead_fn.(state.cwd, head_before) == :ok
+    coverage_floor_result = state.coverage_floor_fn.(state.cwd, head_before)
+    coverage_floor_reason = coverage_floor_reason(coverage_floor_result)
+    coverage_floor_ok? = is_nil(coverage_floor_reason)
 
     cond do
       orphaned? ->
@@ -1970,7 +2013,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         {:error,
          "queue: HALTED — #{slug} orphaned base #{head_before} (repo left untouched, see remediation above)"}
 
-      committed? and gate_clear? and whole_pitch? and
+      committed? and gate_clear? and whole_pitch? and coverage_floor_ok? and
           File.exists?(Path.join(state.shipped_dir, "#{slug}.md")) ->
         # post-commit hiccup: agent already shipped the pitch
         # (moved ready/<slug>.md -> shipped/<slug>.md) before the non-zero
@@ -1991,7 +2034,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             {:error, reason}
         end
 
-      committed? and gate_clear? and whole_pitch? and
+      committed? and gate_clear? and whole_pitch? and coverage_floor_ok? and
           File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
         # post-commit hiccup: commit landed, gate is clear, but the
         # pitch file is still sitting in ready/ (ship step never ran). Finish
@@ -2013,7 +2056,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             {:error, reason}
         end
 
-      match?({:terminal, _reason, _owner}, state.terminal_marker_fn.(state.cwd)) ->
+      coverage_floor_ok? and
+          match?({:terminal, _reason, _owner}, state.terminal_marker_fn.(state.cwd)) ->
         # A DETERMINISTIC exhaustion (owner genuinely could not fix it, or a
         # self-inflicted curator-doc/env exhaustion) — never a transient, so
         # NEVER retried, and pitch-specific, so never HALTs the whole queue
@@ -2070,7 +2114,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             end
         end
 
-      state.transient_fn.(jsonl) and not (gate_clear? and not committed?) ->
+      coverage_floor_ok? and state.transient_fn.(jsonl) and not (gate_clear? and not committed?) ->
         # Provider-classified transient failure (not the post-commit-hiccup
         # non-commit case above) — enter an OUTAGE PAUSE instead of consuming
         # a max_retries slot: probe provider liveness, hold without touching
@@ -2085,7 +2129,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
 
         run_outage_pause(state, slug, shipped_count, concluded_count, 0, 1)
 
-      retry_eligible?(state, slug, jsonl, committed?, gate_clear?) ->
+      coverage_floor_ok? and retry_eligible?(state, slug, jsonl, committed?, gate_clear?) ->
         retry_count = if state.last_slug == slug, do: state.retry_count, else: 0
         attempt = retry_count + 1
         delay = pick_delay(state.retry_delays, attempt)
@@ -2108,14 +2152,18 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             gate_clear?: gate_clear?,
             committed?: committed?,
             gate_verdict: gate_verdict,
-            retry_count: retry_count_for
+            retry_count: retry_count_for,
+            coverage_floor_reason: coverage_floor_reason
           })
 
         state = draft_failure(state, slug, jsonl, {cause, gate_verdict, gate_clear?})
 
         evidence_opts = [
           cause: cause,
-          owner_phase: failure_owner_phase(:gate_failed),
+          owner_phase:
+            failure_owner_phase(
+              if(coverage_floor_ok?, do: :gate_failed, else: :test_coverage_floor)
+            ),
           gate_clear?: gate_clear?,
           recovery: parked_branch
         ]

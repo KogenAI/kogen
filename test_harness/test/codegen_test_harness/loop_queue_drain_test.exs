@@ -62,6 +62,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       # this file's dedicated "N: whole-pitch completeness" tests below for
       # the cases that override this to `{:error, _}`.
       born_dead_fn: fn _cwd, _base_sha -> :ok end,
+      coverage_floor_fn: fn _cwd, _base_sha -> :ok end,
       gate_verdict_fn: fn _cwd -> "" end,
       gate_base_sha_fn: fn _cwd -> "" end,
       # Stale by default (older than any real spawn `ts`) — never-fresh,
@@ -238,6 +239,34 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     assert {:ok, 0} = quiet_drain(opts)
     assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
     refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+  end
+
+  test "N4: coverage_floor_fn returning an error on an otherwise-clear committed cycle refuses to ship",
+       ctx do
+    write_pitch(ctx.ready_dir, "solo")
+    spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 0} end
+
+    coverage_floor_fn = fn _cwd, _base_sha ->
+      {:error, "test-coverage-floor: test/foo_test.exs lost test coverage — 22 -> 2"}
+    end
+
+    output =
+      capture_io(:stderr, fn ->
+        assert {:ok, 0} =
+                 quiet_drain(
+                   shipped_opts(ctx, spawn_fn: spawn_fn, coverage_floor_fn: coverage_floor_fn)
+                 )
+      end)
+
+    assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+    refute File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    assert output =~ "coverage_floor_ok?=false"
+    assert output =~ "coverage_floor_reason="
+    assert output =~ "test-coverage-floor"
+
+    failure_history = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+    assert failure_history =~ "cause=test_coverage_floor; owner=drain/test-coverage-floor"
+    assert failure_history =~ "detail=test-coverage-floor: test/foo_test.exs lost test coverage"
   end
 
   test "1b: jsonl filename uses UTC YYYYMMDD_HHMMSS stamp, not raw epoch", ctx do
@@ -842,6 +871,77 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
 
       assert Agent.get(publish_calls, & &1) == 1
       assert File.exists?(Path.join(ctx.shipped_dir, "solo.md"))
+    end
+
+    test "nonzero child-already-shipped arm refuses a failed coverage floor", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        File.rename!(
+          Path.join(ctx.ready_dir, "#{slug}.md"),
+          Path.join(ctx.shipped_dir, "#{slug}.md")
+        )
+
+        {:exit_code, 1}
+      end
+
+      publish_calls = start_agent(0)
+
+      git_publish_fn = fn _cwd, _slug ->
+        Agent.update(publish_calls, &(&1 + 1))
+        {:ok, :unchanged}
+      end
+
+      coverage_floor_fn = fn _cwd, _base_sha -> {:error, "test coverage shrank"} end
+
+      assert {:ok, 0} =
+               quiet_drain(
+                 shipped_opts(ctx,
+                   spawn_fn: spawn_fn,
+                   git_publish_fn: git_publish_fn,
+                   coverage_floor_fn: coverage_floor_fn
+                 )
+               )
+
+      assert Agent.get(publish_calls, & &1) == 0
+    end
+
+    test "nonzero ready-dir fallback arm refuses a failed coverage floor", ctx do
+      write_pitch(ctx.ready_dir, "solo")
+      spawn_fn = fn _slug, _h, _s, _cwd, _jsonl -> {:exit_code, 1} end
+      publish_calls = start_agent(0)
+      failure_blocks = start_agent([])
+
+      git_publish_fn = fn _cwd, _slug ->
+        Agent.update(publish_calls, &(&1 + 1))
+        {:ok, :unchanged}
+      end
+
+      coverage_floor_fn = fn _cwd, _base_sha -> {:error, "test coverage shrank"} end
+
+      draft_fn = fn _cwd, _slug, _jsonl, failure_block ->
+        Agent.update(failure_blocks, &[failure_block | &1])
+        {:ok, "/dev/null"}
+      end
+
+      assert {:ok, 0} =
+               quiet_drain(
+                 shipped_opts(ctx,
+                   spawn_fn: spawn_fn,
+                   git_publish_fn: git_publish_fn,
+                   coverage_floor_fn: coverage_floor_fn,
+                   draft_fn: draft_fn
+                 )
+               )
+
+      assert Agent.get(publish_calls, & &1) == 0
+      assert File.exists?(Path.join(ctx.ready_dir, "solo.md"))
+      assert [failure_block] = Agent.get(failure_blocks, & &1)
+      assert failure_block =~ "Failure cause: test_coverage_floor — test coverage shrank"
+
+      failure_history = File.read!(Path.join(ctx.ready_dir, "solo.md"))
+      assert failure_history =~ "cause=test_coverage_floor; owner=drain/test-coverage-floor"
+      assert failure_history =~ "detail=test coverage shrank"
     end
   end
 

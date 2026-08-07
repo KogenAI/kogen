@@ -90,6 +90,21 @@ half of "one cycle builds the WHOLE pitch"; the prose half is `developer.md` § 
 Only (producer) and `reviewer.md` § Deliverable coverage + § No Born-Dead / Deferred Work
 (Rule N) (consumer).
 
+## Test-Coverage Deletion Floor
+
+`CodegenTestHarness.TestCoverageFloor.check/2` is a separate, fail-closed pre-commit floor for a
+different failure class: a cycle must not lower the assertion-bearing-block count of an existing
+test file while its inferred subject module survives. It compares `base_sha` and `HEAD` blobs for
+modified, renamed, and deleted `*_test.exs`, `*_test.sh`, `tests/test_*.py`, and `*.test.ts` paths.
+Git/diff/blob-read errors are failures, not a permissive zero count. A decrease is permitted only
+when the subject dies in the same diff or an added, reasoned
+`test-deletion-exempt: <path> — <reason>` marker names the affected file. As with the whole-pitch
+floor, BOTH ship paths enforce it: `OrchestrationLoop.assert_test_coverage_floor!/2` raises before
+the solo cycle can report `loop_committed`, while `LoopQueueDrain`'s injectable
+`:coverage_floor_fn` seam rejects exit-0 and committed-nonzero fallback ships into the existing
+park-and-continue path. The exit-4 ship-with-warning branch remains unchanged because its child has
+already passed the solo pre-commit floor.
+
 ## Per-Cycle Spend Cap
 
 `--max-budget-usd` (CLI) → `opts[:max_budget_usd]` → `OrchestrationLoop` private `check_budget/1`.
@@ -393,4 +408,4 @@ section for how a marked nonzero exit routes to park+skip+breaker instead of `re
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, recovery dossier, recoveries/<slug>/<txid>.json, schema_version, dossier stages, transaction identity, materialize, resume_role_for_recovery, recovery_mode, park_failure, recovery/interrupted branch, recovery/operator branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, same-harness advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`, born-dead detector, borndeaddetector, defer-marker, sub-slice forbidden, whole-pitch builds, whole-pitch completeness backstop, codegen-commit, deterministic commit step, run_commit_step
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, recovery dossier, recoveries/<slug>/<txid>.json, schema_version, dossier stages, transaction identity, materialize, resume_role_for_recovery, recovery_mode, park_failure, recovery/interrupted branch, recovery/operator branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, same-harness advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`, born-dead detector, borndeaddetector, defer-marker, test-coverage deletion floor, TestCoverageFloor, test-deletion-exempt, sub-slice forbidden, whole-pitch builds, whole-pitch completeness backstop, codegen-commit, deterministic commit step, run_commit_step
