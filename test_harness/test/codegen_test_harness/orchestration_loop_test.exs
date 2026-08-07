@@ -419,14 +419,30 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   # `:unknown` handling means a bare "did #{role}" reviewer output is no
   # longer silently treated as approved.
   defp always_ok_invoke_fn(calls_agent) do
-    fn role, _harness, _ctx, _opts ->
+    fn role, _harness, ctx, _opts ->
       Agent.update(calls_agent, fn calls -> calls ++ [role] end)
-      value = if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+      value = if reviewer_role?(role), do: approved_verdict_for(ctx), else: "did #{role}"
       {:ok, %{"status" => "success", "value" => value}}
     end
   end
 
   defp reviewer_role?(role), do: role == "reviewer-phoenix" or role == "reviewer-static"
+
+  # Builds a full `REVIEW_COVERAGE:` + terminal `REVIEW_VERDICT: APPROVED`
+  # body from whatever `ctx.artifacts.review_file_set` the loop already
+  # captured (empty in a mocked non-git cwd -> no coverage lines needed;
+  # real in a real git tree -> one `read` line per path) so test stubs
+  # never have to hardcode a path they don't otherwise care about.
+  defp approved_verdict_for(ctx) do
+    files = get_in(ctx, [:artifacts, :review_file_set]) || ""
+
+    coverage_lines =
+      files
+      |> String.split("\n", trim: true)
+      |> Enum.map(&"REVIEW_COVERAGE: #{&1} read")
+
+    Enum.join(coverage_lines ++ ["REVIEW_VERDICT: APPROVED"], "\n")
+  end
 
   defp always_clear_gate_fn do
     fn _cwd, _opts -> {:clear, "make test"} end
@@ -1838,6 +1854,271 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         assert "committer" not in calls
         assert "context-curator" not in calls
       end
+    end
+  end
+
+  describe "run/1 — review coverage (an APPROVED verdict names what it read)" do
+    test "coverage naming every ## Files Modified path proceeds normally", %{
+      calls_agent: calls_agent
+    } do
+      set_fn = fn _cwd -> "lib/a.ex\nlib/b.ex" end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            "REVIEW_COVERAGE: lib/a.ex read\n" <>
+              "REVIEW_COVERAGE: lib/b.ex skipped: unchanged lockfile\n" <>
+              "REVIEW_VERDICT: APPROVED"
+          else
+            "did #{role}"
+          end
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: set_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      # Exactly one reviewer call: coverage was total on the first pass, no
+      # coverage re-invocation burning a second review.
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
+    end
+
+    test "a missing REVIEW_COVERAGE path triggers one re-invocation naming the gap, then proceeds",
+         %{calls_agent: calls_agent} do
+      set_fn = fn _cwd -> "lib/a.ex\nlib/b.ex" end
+
+      {:ok, prompts_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> stop_agent(prompts_agent) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        if role == "reviewer-static" do
+          seen = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+          prompt = OrchestrationLoop.build_prompt(role, ctx)
+          Agent.update(prompts_agent, fn ps -> ps ++ [prompt] end)
+
+          value =
+            if seen <= 1,
+              # lib/b.ex is missing from this reviewer's coverage statement.
+              do: "REVIEW_COVERAGE: lib/a.ex read\nREVIEW_VERDICT: APPROVED",
+              else:
+                "REVIEW_COVERAGE: lib/a.ex read\nREVIEW_COVERAGE: lib/b.ex read\n" <>
+                  "REVIEW_VERDICT: APPROVED"
+
+          {:ok, %{"status" => "success", "value" => value}}
+        else
+          {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: set_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
+      # Developer never re-invoked — nothing about the code changed, only
+      # the reviewer's coverage statement was incomplete.
+      assert Enum.count(calls, &(&1 == "developer-static")) == 1
+
+      prompts = Agent.get(prompts_agent, & &1)
+      second_prompt = Enum.at(prompts, 1)
+      assert second_prompt =~ "## Coverage required (re-work)"
+      assert second_prompt =~ "lib/b.ex"
+    end
+
+    test "an invented REVIEW_COVERAGE path not in ## Files Modified is incomplete", %{
+      calls_agent: calls_agent
+    } do
+      set_fn = fn _cwd -> "lib/a.ex" end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            "REVIEW_COVERAGE: lib/a.ex read\n" <>
+              "REVIEW_COVERAGE: lib/nonexistent.ex read\n" <>
+              "REVIEW_VERDICT: APPROVED"
+          else
+            "did #{role}"
+          end
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: set_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_review_coverage_cycles: 0
+               )
+
+      assert reason =~ "reviewer coverage did not name the ## Files Modified set"
+      assert reason =~ "lib/nonexistent.ex"
+    end
+
+    test "zero REVIEW_COVERAGE lines when files were expected is incomplete", %{
+      calls_agent: calls_agent
+    } do
+      set_fn = fn _cwd -> "lib/a.ex" end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        value = if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: set_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_review_coverage_cycles: 0
+               )
+
+      assert reason =~ "no REVIEW_COVERAGE: lines found"
+      assert reason =~ "lib/a.ex"
+    end
+
+    test "a malformed REVIEW_COVERAGE line (empty skipped reason) is incomplete", %{
+      calls_agent: calls_agent
+    } do
+      set_fn = fn _cwd -> "lib/a.ex" end
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            "REVIEW_COVERAGE: lib/a.ex skipped:\nREVIEW_VERDICT: APPROVED"
+          else
+            "did #{role}"
+          end
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 review_file_set_fn: set_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_review_coverage_cycles: 0
+               )
+
+      assert reason =~ "malformed REVIEW_COVERAGE line"
+    end
+
+    test "empty ## Files Modified set is a coverage no-op (vacuous branch stated, not silent)",
+         %{calls_agent: calls_agent} do
+      # Default review_file_set_fn on a non-git cwd -> "" -> no coverage
+      # lines required; a bare REVIEW_VERDICT: APPROVED is still accepted.
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        value = if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 1
+    end
+
+    test "empty changed set in a real git tree still refuses to invoke the reviewer (coverage never masks it)" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("review-coverage-empty-set-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      {_out, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["config", "user.name", "T"], cd: tmp)
+      File.write!(Path.join(tmp, "README.md"), "init\n")
+      {_out, 0} = System.cmd("git", ["add", "-A"], cd: tmp)
+      {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "init"], cd: tmp)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        value = if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert reason =~ "cycle produced no changes — nothing for the reviewer to review"
     end
   end
 
@@ -4106,6 +4387,101 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
+  describe "parse_review_coverage/2" do
+    test "empty expected_files is a vacuous no-op regardless of value shape" do
+      assert OrchestrationLoop.parse_review_coverage(%{"value" => "REVIEW_VERDICT: APPROVED"}, "") ==
+               {:ok, %{read: [], skipped: []}}
+
+      assert OrchestrationLoop.parse_review_coverage(%{"value" => "anything at all"}, "  \n  ") ==
+               {:ok, %{read: [], skipped: []}}
+    end
+
+    test "every expected path named read -> :ok with the full read list" do
+      value =
+        "REVIEW_COVERAGE: lib/a.ex read\nREVIEW_COVERAGE: lib/b.ex read\n" <>
+          "REVIEW_VERDICT: APPROVED"
+
+      assert {:ok, %{read: read, skipped: []}} =
+               OrchestrationLoop.parse_review_coverage(%{"value" => value}, "lib/a.ex\nlib/b.ex")
+
+      assert Enum.sort(read) == ["lib/a.ex", "lib/b.ex"]
+    end
+
+    test "a mix of read and skipped entries -> :ok with both lists populated" do
+      value =
+        "REVIEW_COVERAGE: lib/a.ex read\n" <>
+          "REVIEW_COVERAGE: lib/b.ex skipped: unchanged lockfile\n" <>
+          "REVIEW_VERDICT: APPROVED"
+
+      assert {:ok, %{read: ["lib/a.ex"], skipped: [{"lib/b.ex", "unchanged lockfile"}]}} =
+               OrchestrationLoop.parse_review_coverage(%{"value" => value}, "lib/a.ex\nlib/b.ex")
+    end
+
+    test "a decorated coverage line (backticks) is tolerated the same as the verdict line" do
+      value = "`REVIEW_COVERAGE: lib/a.ex read`\nREVIEW_VERDICT: APPROVED"
+
+      assert {:ok, %{read: ["lib/a.ex"], skipped: []}} =
+               OrchestrationLoop.parse_review_coverage(%{"value" => value}, "lib/a.ex")
+    end
+
+    test "zero coverage lines when files were expected -> :incomplete naming the count" do
+      assert {:incomplete, reason} =
+               OrchestrationLoop.parse_review_coverage(
+                 %{"value" => "REVIEW_VERDICT: APPROVED"},
+                 "lib/a.ex\nlib/b.ex"
+               )
+
+      assert reason =~ "no REVIEW_COVERAGE: lines found"
+      assert reason =~ "2 path(s)"
+    end
+
+    test "a missing path -> :incomplete naming exactly the gap" do
+      value = "REVIEW_COVERAGE: lib/a.ex read\nREVIEW_VERDICT: APPROVED"
+
+      assert {:incomplete, reason} =
+               OrchestrationLoop.parse_review_coverage(%{"value" => value}, "lib/a.ex\nlib/b.ex")
+
+      assert reason =~ "missing"
+      assert reason =~ "lib/b.ex"
+      refute reason =~ "lib/a.ex missing"
+    end
+
+    test "an invented path not in the expected set -> :incomplete naming it" do
+      value =
+        "REVIEW_COVERAGE: lib/a.ex read\nREVIEW_COVERAGE: lib/ghost.ex read\n" <>
+          "REVIEW_VERDICT: APPROVED"
+
+      assert {:incomplete, reason} =
+               OrchestrationLoop.parse_review_coverage(%{"value" => value}, "lib/a.ex")
+
+      assert reason =~ "not in ## Files Modified"
+      assert reason =~ "lib/ghost.ex"
+    end
+
+    test "a skipped entry with an empty reason is malformed" do
+      value = "REVIEW_COVERAGE: lib/a.ex skipped:\nREVIEW_VERDICT: APPROVED"
+
+      assert {:incomplete, reason} =
+               OrchestrationLoop.parse_review_coverage(%{"value" => value}, "lib/a.ex")
+
+      assert reason =~ "malformed REVIEW_COVERAGE line"
+    end
+
+    test "a coverage line with an unrecognised state token is malformed" do
+      value = "REVIEW_COVERAGE: lib/a.ex glanced-at\nREVIEW_VERDICT: APPROVED"
+
+      assert {:incomplete, reason} =
+               OrchestrationLoop.parse_review_coverage(%{"value" => value}, "lib/a.ex")
+
+      assert reason =~ "malformed REVIEW_COVERAGE line"
+    end
+
+    test "a non-text value is incomplete without raising" do
+      assert {:incomplete, _reason} =
+               OrchestrationLoop.parse_review_coverage(%{"status" => "success"}, "lib/a.ex")
+    end
+  end
+
   describe "default_review_diff_fn/1" do
     test "non-git cwd returns empty block and empty digest/body maps" do
       assert OrchestrationLoop.default_review_diff_fn(
@@ -4195,7 +4571,12 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         if role == "reviewer-static" do
           prompt = OrchestrationLoop.build_prompt(role, ctx)
           Agent.update(prompt_agent, fn _ -> prompt end)
-          {:ok, %{"status" => "success", "value" => "REVIEW_VERDICT: APPROVED"}}
+
+          {:ok,
+           %{
+             "status" => "success",
+             "value" => "REVIEW_COVERAGE: lib/only_file.ex read\nREVIEW_VERDICT: APPROVED"
+           }}
         else
           {:ok, %{"status" => "success", "value" => "did #{role}"}}
         end
@@ -4244,8 +4625,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
           value =
             if seen <= 1,
-              do: "fix it\nREVIEW_VERDICT: CHANGES_REQUESTED",
-              else: "REVIEW_VERDICT: APPROVED"
+              do:
+                "REVIEW_COVERAGE: lib/pass_0.ex read\nfix it\nREVIEW_VERDICT: CHANGES_REQUESTED",
+              else: "REVIEW_COVERAGE: lib/pass_1.ex read\nREVIEW_VERDICT: APPROVED"
 
           {:ok, %{"status" => "success", "value" => value}}
         else
@@ -4303,8 +4685,9 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           value =
             if seen <= 1,
               do:
-                "the pitch-format-validator.sh gate is untested\nREVIEW_VERDICT: CHANGES_REQUESTED",
-              else: "REVIEW_VERDICT: APPROVED"
+                "REVIEW_COVERAGE: lib/foo.ex read\n" <>
+                  "the pitch-format-validator.sh gate is untested\nREVIEW_VERDICT: CHANGES_REQUESTED",
+              else: "REVIEW_COVERAGE: lib/foo.ex read\nREVIEW_VERDICT: APPROVED"
 
           {:ok, %{"status" => "success", "value" => value}}
         else
@@ -6932,11 +7315,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # without actually running `git commit`.
       File.write!(Path.join(dir, "uncommitted.txt"), "oops\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -6967,11 +7350,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # invoke_reviewer/4's empty-set refusal).
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7020,11 +7403,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # invoke_reviewer/4's empty-set refusal).
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7079,11 +7462,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # (see invoke_reviewer/4's empty-set refusal).
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7128,11 +7511,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       calls_agent: calls_agent,
       dir: dir
     } do
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7172,11 +7555,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # Simulate the developer's own work landing before the reviewer runs.
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7226,11 +7609,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     } do
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7285,11 +7668,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # invoke_reviewer/4's empty-set refusal).
       File.write!(Path.join(dir, "wip.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7376,11 +7759,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7439,7 +7822,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     } do
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         if role == "context-curator" do
@@ -7449,7 +7832,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         end
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7521,7 +7904,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       File.write!(Path.join(dir, "feature.txt"), "wip\n")
 
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         seen = Agent.get_and_update(calls_agent, fn calls -> {calls, calls ++ [role]} end)
         attempt_count = Enum.count(seen, &(&1 == role))
 
@@ -7531,7 +7914,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
             {:error, "transient failure, please retry"}
 
           role == "reviewer-static" ->
-            {:ok, %{"status" => "success", "value" => "REVIEW_VERDICT: APPROVED"}}
+            {:ok, %{"status" => "success", "value" => approved_verdict_for(ctx)}}
 
           true ->
             {:ok, %{"status" => "success", "value" => "did #{role}"}}
@@ -7603,11 +7986,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
 
     defp committing_invoke_fn(calls_agent, _dir) do
-      fn role, _harness, _ctx, _opts ->
+      fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7898,7 +8281,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         end
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -7946,11 +8329,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # commit step itself still diverges from the stamped graded_tree_sha
       # (simulating a codegen-commit bug, or a race). assert_commit_matches_gate!
       # must catch this independently of the pre-commit re-gate.
-      invoke_fn = fn role, _harness, _ctx, _opts ->
+      invoke_fn = fn role, _harness, ctx, _opts ->
         Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
         value =
-          if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+          if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
         {:ok, %{"status" => "success", "value" => value}}
       end
@@ -8097,11 +8480,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
           File.write!(Path.join(ctx.cwd, "feature.txt"), "wip\n")
           {:ok, %{"status" => "success", "value" => "did developer-static"}}
 
-        role, _harness, _ctx, _opts ->
+        role, _harness, ctx, _opts ->
           Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
           value =
-            if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+            if role == "reviewer-static", do: approved_verdict_for(ctx), else: "did #{role}"
 
           {:ok, %{"status" => "success", "value" => value}}
       end
@@ -8601,11 +8984,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
         cwd: dir,
         pitch: "do the thing",
         log_init_fn: log_init_fn_for(resume_checkpoint_cycle_log!(dir)),
-        invoke_fn: fn role, _harness, _ctx, _opts ->
+        invoke_fn: fn role, _harness, ctx, _opts ->
           Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
           value =
-            if reviewer_role?(role), do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+            if reviewer_role?(role), do: approved_verdict_for(ctx), else: "did #{role}"
 
           {:ok, %{"status" => "success", "value" => value}}
         end,

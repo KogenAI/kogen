@@ -1842,7 +1842,101 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # to the SAME fail-loud posture — a review that still requested changes
   # when the retry budget ran out is not the same thing as an approval
   # either, and silently proceeding used to treat the two identically.
+  #
+  # Coverage is checked BEFORE the verdict is parsed at all (pitch "review
+  # verdicts name the surface they read") — an APPROVED (or
+  # CHANGES_REQUESTED) that does not name what it read is not yet a
+  # reviewed result. `coverage_cycle` is a SEPARATE budget
+  # (`:max_review_coverage_cycles`, default 1) from `cycle`/`max_review_cycles`
+  # — a coverage restatement changes no code, so it must not consume the
+  # rework budget. It resets to 0 on every fresh reviewer pass (a rework or
+  # an :unknown-verdict re-invocation both hand back a NEW review to
+  # re-check) and only increments across a same-pass coverage retry.
   defp handle_review(reviewer_role, review_result, rest, harness, ctx, opts, cycle) do
+    handle_review(reviewer_role, review_result, rest, harness, ctx, opts, cycle, 0)
+  end
+
+  defp handle_review(
+         reviewer_role,
+         review_result,
+         rest,
+         harness,
+         ctx,
+         opts,
+         cycle,
+         coverage_cycle
+       ) do
+    max_coverage_cycles = Keyword.get(opts, :max_review_coverage_cycles, 1)
+    expected_files = get_in(ctx, [:artifacts, :review_file_set]) || ""
+
+    case parse_review_coverage(review_result, expected_files) do
+      {:incomplete, reason} when coverage_cycle < max_coverage_cycles ->
+        handle_incomplete_coverage(
+          reviewer_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          cycle,
+          coverage_cycle,
+          reason
+        )
+
+      {:incomplete, reason} ->
+        {:error,
+         "reviewer coverage did not name the ## Files Modified set after " <>
+           "#{coverage_cycle + 1} attempt(s): #{reason}"}
+
+      {:ok, _coverage} ->
+        do_handle_review_verdict(reviewer_role, review_result, rest, harness, ctx, opts, cycle)
+    end
+  end
+
+  # Coverage re-work path: re-invoke the SAME reviewer once (per
+  # `:max_review_coverage_cycles`), explicitly naming the exact
+  # missing/invented/malformed entries so the reviewer does not have to
+  # re-derive what was wrong — no developer re-work, no gate re-run,
+  # mirroring `handle_unparseable_review/6`'s reasoning: nothing about the
+  # code changed, only the reviewer's statement of what it covered was
+  # incomplete.
+  defp handle_incomplete_coverage(
+         reviewer_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         cycle,
+         coverage_cycle,
+         reason
+       ) do
+    ctx =
+      put_in(
+        ctx,
+        [:artifacts, :review_coverage_incomplete],
+        "Your previous response's REVIEW_COVERAGE: lines did not fully name the " <>
+          "## Files Modified set: #{reason}. Before your terminal REVIEW_VERDICT: line, " <>
+          "emit exactly one `REVIEW_COVERAGE: <path> read` or " <>
+          "`REVIEW_COVERAGE: <path> skipped: <reason>` line for EVERY path listed under " <>
+          "## Files Modified — no more, no fewer."
+      )
+
+    with {:ok, review2} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
+      ctx = put_in(ctx, [:artifacts, reviewer_role], review2)
+
+      handle_review(
+        reviewer_role,
+        review2,
+        rest,
+        harness,
+        ctx,
+        opts,
+        cycle,
+        coverage_cycle + 1
+      )
+    end
+  end
+
+  defp do_handle_review_verdict(reviewer_role, review_result, rest, harness, ctx, opts, cycle) do
     max_cycles = Keyword.get(opts, :max_review_cycles, 1)
 
     case parse_review_verdict(review_result) do
@@ -2623,6 +2717,121 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     (ctx[:artifacts] || %{})
     |> Map.keys()
     |> Enum.find(fn k -> is_binary(k) and String.starts_with?(k, "developer-") end)
+  end
+
+  # An APPROVED verdict asserts nothing about a known surface unless it is
+  # paired with a statement of what was read. Before the terminal
+  # `REVIEW_VERDICT:` line, the reviewer must emit one `REVIEW_COVERAGE:`
+  # line per path in the loop-derived `## Files Modified` set (see pitch
+  # "review verdicts name the surface they read") — `<path> read` or
+  # `<path> skipped: <reason>`. This checks TOTALITY against the set the
+  # loop itself computed, never truth: a reviewer may still legitimately
+  # skip a file (a `skipped:` line is a valid, non-blocking answer), but it
+  # may not leave the surface unstated. Two independent reviewer passes
+  # over the same unchanged tree produced disjoint tool-call sets with no
+  # detectable difference in verdict shape — this makes the difference
+  # visible and refusable.
+  #
+  # `expected_files` is the SAME newline-joined value already rendered
+  # under `## Files Modified` (`ctx.artifacts.review_file_set`) — no second
+  # file walk, no new git call. An empty/blank `expected_files` (nothing
+  # changed, or a non-git cwd in mocked tests) is a no-op: `{:ok, %{read:
+  # [], skipped: []}}` with no coverage lines required. A real git tree
+  # with nothing changed already fails loud one layer up in
+  # `invoke_reviewer/4`'s empty-set refusal, so this vacuous branch is
+  # unreachable in production — it exists only for the mocked non-git test
+  # cwds that make up the bulk of this module's test suite.
+  #
+  # `{:incomplete, reason}` on: zero coverage lines found while files were
+  # expected; a marker-bearing line that fails the anchored per-line match
+  # (malformed path, malformed state, or a `skipped:` with an empty
+  # reason); a MISSING path (in `expected_files`, absent from the parsed
+  # set); or an INVENTED path (present in the parsed set, absent from
+  # `expected_files`). The reason names every gap so the re-invocation
+  # prompt can quote it verbatim rather than making the reviewer re-derive
+  # what was wrong.
+  @coverage_line ~r/^REVIEW_COVERAGE:[ \t]*(?<path>\S+)[ \t]+(?<state>read|skipped:.*)$/
+
+  @spec parse_review_coverage(map(), String.t()) ::
+          {:ok, %{read: [String.t()], skipped: [{String.t(), String.t()}]}}
+          | {:incomplete, String.t()}
+  def parse_review_coverage(%{"value" => value}, expected_files)
+      when is_binary(value) and is_binary(expected_files) do
+    expected =
+      expected_files
+      |> String.split("\n", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> MapSet.new()
+
+    if MapSet.size(expected) == 0 do
+      {:ok, %{read: [], skipped: []}}
+    else
+      lines = String.split(value, "\n", trim: true)
+      coverage_lines = Enum.filter(lines, &String.contains?(&1, "REVIEW_COVERAGE:"))
+
+      if coverage_lines == [] do
+        {:incomplete,
+         "no REVIEW_COVERAGE: lines found, but ## Files Modified named " <>
+           "#{MapSet.size(expected)} path(s): #{Enum.join(Enum.sort(expected), ", ")}"}
+      else
+        classify_coverage_lines(coverage_lines, expected)
+      end
+    end
+  end
+
+  def parse_review_coverage(_, _), do: {:incomplete, "reviewer output was not a text value"}
+
+  defp classify_coverage_lines(coverage_lines, expected) do
+    {parsed, malformed} =
+      Enum.reduce(coverage_lines, {[], []}, fn line, {parsed_acc, malformed_acc} ->
+        case classify_coverage_line(line) do
+          {:ok, entry} -> {[entry | parsed_acc], malformed_acc}
+          :malformed -> {parsed_acc, [line | malformed_acc]}
+        end
+      end)
+
+    parsed = Enum.reverse(parsed)
+    malformed = Enum.reverse(malformed)
+
+    if malformed != [] do
+      {:incomplete, "malformed REVIEW_COVERAGE line(s): #{Enum.join(malformed, " | ")}"}
+    else
+      parsed_paths = parsed |> Enum.map(&elem(&1, 0)) |> MapSet.new()
+      missing = MapSet.difference(expected, parsed_paths)
+      invented = MapSet.difference(parsed_paths, expected)
+
+      cond do
+        MapSet.size(missing) > 0 ->
+          {:incomplete,
+           "REVIEW_COVERAGE missing #{MapSet.size(missing)} path(s) from ## Files Modified: " <>
+             Enum.join(Enum.sort(missing), ", ")}
+
+        MapSet.size(invented) > 0 ->
+          {:incomplete,
+           "REVIEW_COVERAGE named #{MapSet.size(invented)} path(s) not in ## Files Modified: " <>
+             Enum.join(Enum.sort(invented), ", ")}
+
+        true ->
+          read = for {path, :read} <- parsed, do: path
+          skipped = for {path, {:skipped, reason}} <- parsed, do: {path, reason}
+          {:ok, %{read: read, skipped: skipped}}
+      end
+    end
+  end
+
+  defp classify_coverage_line(line) do
+    case Regex.named_captures(@coverage_line, strip_verdict_decoration(line)) do
+      %{"path" => path, "state" => "read"} ->
+        {:ok, {path, :read}}
+
+      %{"path" => path, "state" => "skipped:" <> reason} ->
+        reason = String.trim(reason)
+        if reason == "", do: :malformed, else: {:ok, {path, {:skipped, reason}}}
+
+      _ ->
+        :malformed
+    end
   end
 
   # Runs the gate once (developer already ran) and returns the verdict atom.
@@ -4866,6 +5075,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base
       end
 
+    # On an incomplete-coverage re-work pass, ask the reviewer to re-state
+    # its REVIEW_COVERAGE: lines to fully name the ## Files Modified set.
+    rci = get_in(ctx, [:artifacts, :review_coverage_incomplete])
+
+    base =
+      if (role == "reviewer-phoenix" or role == "reviewer-static") and is_binary(rci) and
+           String.trim(rci) != "" do
+        base <> "\n\n## Coverage required (re-work)\n\n" <> rci
+      else
+        base
+      end
+
     # On an env-var re-work pass, thread the undocumented-var list to the developer.
     ev = get_in(ctx, [:artifacts, :env_var_violation])
 
@@ -4929,13 +5150,27 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
         verifier_notice = verifier_surface_notice(files)
 
+        coverage_instruction =
+          if String.trim(files) != "" do
+            "\n\nBefore your terminal verdict line, emit one `REVIEW_COVERAGE:` line per " <>
+              "path listed under ## Files Modified above — no more, no fewer: " <>
+              "`REVIEW_COVERAGE: <path> read` for a path you actually read, or " <>
+              "`REVIEW_COVERAGE: <path> skipped: <reason>` for one you intentionally did " <>
+              "not (a non-blocking, legitimate answer — state why). An APPROVED verdict " <>
+              "must state what surface it covers."
+          else
+            ""
+          end
+
         base <>
           file_section <>
           diff_section <>
           since_last_section <>
           verifier_notice <>
           "\n\nReview these changes against normal reviewer checks (quality, security, " <>
-          "silent-failure/Rule S, test coverage).\n\nEND your response with exactly one terminal line: " <>
+          "silent-failure/Rule S, test coverage)." <>
+          coverage_instruction <>
+          "\n\nEND your response with exactly one terminal line: " <>
           "`REVIEW_VERDICT: APPROVED` when acceptable; otherwise put required changes before " <>
           "the terminal line `REVIEW_VERDICT: CHANGES_REQUESTED`."
       else
