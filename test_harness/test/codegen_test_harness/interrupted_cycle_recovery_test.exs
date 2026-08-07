@@ -464,7 +464,9 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
 
       # Rewrite the on-disk dossier the way an older build would have.
       [dossier_file] =
-        Path.wildcard(Path.join([cwd, "codegen", "gate-pending", "recoveries", "probe", "*.json"]))
+        Path.wildcard(
+          Path.join([cwd, "codegen", "gate-pending", "recoveries", "probe", "*.json"])
+        )
 
       File.write!(dossier_file, Jason.encode!(Map.put(dossier, "ownership", "mismatch")))
 
@@ -755,6 +757,62 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
                )
 
       assert reason =~ "multiple active recovery dossiers"
+    end
+
+    test "park_failure/1 clears a stale checkpoint before a recovery can resume", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      base_head = git_head!(cwd)
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      pending = Path.join([cwd, "codegen", "gate-pending"])
+      File.mkdir_p!(pending)
+      {_add_out, 0} = System.cmd("git", ["-C", cwd, "add", "-A"])
+      {tree_out, 0} = System.cmd("git", ["-C", cwd, "write-tree"])
+
+      File.write!(
+        Path.join(pending, "gate-result.json"),
+        Jason.encode!(%{
+          "verdict" => "clear",
+          "graded_tree_sha" => String.trim(tree_out),
+          "base_sha" => base_head
+        })
+      )
+
+      File.write!(
+        Path.join(pending, "cycle-state.json"),
+        Jason.encode!(%{"state" => "GATED", "slug" => "probe"})
+      )
+
+      roles = ["developer-phoenix-backend", "reviewer-phoenix", "context-curator"]
+
+      resume_opts = [
+        cycle_state_get_fn: fn _ -> "GATED" end,
+        cycle_state_slug_fn: fn _ -> "probe" end,
+        read_verdict_fn: fn _ -> :clear end,
+        gate_tree_match_fn: fn _ -> true end,
+        gate_result_base_sha_fn: fn _ -> base_head end,
+        slug: "probe"
+      ]
+
+      assert {:resume, "reviewer-phoenix", "GATED"} =
+               OrchestrationLoop.resume_checkpoint(cwd, roles, resume_opts)
+
+      assert {:ok, _dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "gate died mid-cycle"
+               )
+
+      refute File.exists?(Path.join(pending, "gate-result.json"))
+      refute File.exists?(Path.join(pending, "cycle-state.json"))
+      assert :full = OrchestrationLoop.resume_checkpoint(cwd, roles, resume_opts)
     end
   end
 

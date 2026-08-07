@@ -486,7 +486,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
   end
 
   # Real default_advisor_fn/3 shells out to the codegen-advise binary, which
-  # calls a REAL opposite-provider LLM. Any test whose gate_fn reaches the
+  # calls a REAL stronger-model advisor. Any test whose gate_fn reaches the
   # give-up boundary (final_attempt? true) without stubbing :advisor_fn would
   # otherwise trigger a real, paid LLM call from what must be a hermetic,
   # no-LLM test suite. Use for any run/1 call whose gate_fn always fails.
@@ -1851,6 +1851,120 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       # Absence is not approval, plus the budget.
       assert re_ask =~ "NOT AN APPROVAL"
       assert re_ask =~ "attempt(s) remain"
+    end
+  end
+
+  describe "run/1 — review recovery and non-blocking findings" do
+    test "all Non-blocking CHANGES_REQUESTED findings advance to curator without developer rework",
+         %{calls_agent: calls_agent} do
+      {:ok, curator_findings} = Agent.start_link(fn -> nil end)
+      on_exit(fn -> stop_agent(curator_findings) end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, &(&1 ++ [role]))
+
+        if role == "context-curator" do
+          Agent.update(curator_findings, fn _ ->
+            get_in(ctx, [:artifacts, :review_non_blocking_findings])
+          end)
+        end
+
+        value =
+          if reviewer_role?(role) do
+            "Non-blocking: wording in context/loop.md could be clearer\n" <>
+              "REVIEW_VERDICT: CHANGES_REQUESTED"
+          else
+            "did #{role}"
+          end
+
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_review_cycles: 0
+               )
+
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 1
+      assert Agent.get(curator_findings, & &1) =~ "Non-blocking: wording"
+    end
+
+    test "final re-review receives reviewer escalation and advisor plan, not the developer",
+         %{calls_agent: calls_agent} do
+      {:ok, reviewer_contexts} = Agent.start_link(fn -> [] end)
+      {:ok, developer_contexts} = Agent.start_link(fn -> [] end)
+
+      on_exit(fn ->
+        stop_agent(reviewer_contexts)
+        stop_agent(developer_contexts)
+      end)
+
+      invoke_fn = fn role, _harness, ctx, _opts ->
+        Agent.update(calls_agent, &(&1 ++ [role]))
+
+        case role do
+          "reviewer-static" ->
+            Agent.update(
+              reviewer_contexts,
+              &(&1 ++
+                  [
+                    {get_in(ctx, [:artifacts, :escalated_model]),
+                     get_in(ctx, [:artifacts, :advisor_plan])}
+                  ])
+            )
+
+            {:ok,
+             %{
+               "status" => "success",
+               "value" => "blocking defect\nREVIEW_VERDICT: CHANGES_REQUESTED"
+             }}
+
+          "developer-static" ->
+            Agent.update(
+              developer_contexts,
+              &(&1 ++ [get_in(ctx, [:artifacts, :escalated_model])])
+            )
+
+            {:ok, %{"status" => "success", "value" => "did developer-static"}}
+
+          _ ->
+            {:ok, %{"status" => "success", "value" => "did #{role}"}}
+        end
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn(),
+                 max_review_cycles: 1,
+                 resolve_escalation_fn: fn "reviewer-static", _harness -> {"opus", "high"} end,
+                 advisor_fn: fn _harness, _context, _opts -> {:ok, "audit the review finding"} end
+               )
+
+      assert reason =~ "review re-work budget (1)"
+
+      assert Agent.get(reviewer_contexts, & &1) == [
+               {nil, nil},
+               {{"opus", "high"}, "audit the review finding"}
+             ]
+
+      assert Agent.get(developer_contexts, & &1) == [nil, nil]
     end
   end
 
@@ -5840,7 +5954,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
     end
   end
 
-  describe "run/1 — gate-retry give-up-boundary opposite-provider advisor (maybe_advise/5)" do
+  describe "run/1 — gate-retry give-up-boundary advisor (maybe_advise/5)" do
     # Mirrors the escalation describe block's count-bound path: non-git cwd ->
     # tree_signature/1 unavailable -> falls back to the legacy count bound
     # (:max_gate_retries, default 1) -> the one allowed retry is also final.
@@ -5943,7 +6057,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       end
 
       resolve_escalation_fn = fn "developer-static", _harness -> {"opus", "high"} end
-      advisor_fn = fn _harness, _context_text, _opts -> {:ok, "cross-provider plan"} end
+      advisor_fn = fn _harness, _context_text, _opts -> {:ok, "advisor recovery plan"} end
 
       assert {:error, _reason} =
                OrchestrationLoop.run(
@@ -5961,7 +6075,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert Agent.get(seen_ctx_agent, & &1) == [
                {nil, nil},
-               {{"opus", "high"}, "cross-provider plan"}
+               {{"opus", "high"}, "advisor recovery plan"}
              ]
     end
 
@@ -6074,7 +6188,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert Agent.get(seen_ctx_agent, & &1) == [nil, nil]
     end
 
-    test "build_prompt/2 renders the advisor plan under ## Advisor for the developer role" do
+    test "build_prompt/2 renders the advisor plan under ## Advisor for developer and reviewer roles" do
       ctx = %{
         pitch: "fix the thing",
         artifacts: %{advisor_plan: "Try reindexing the query instead of adding a cache layer."}
@@ -6082,8 +6196,21 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       prompt = OrchestrationLoop.build_prompt("developer-static", ctx)
 
-      assert prompt =~ "## Advisor — opposite-provider second opinion"
+      assert prompt =~ "## Advisor — recovery second opinion"
       assert prompt =~ "Try reindexing the query instead of adding a cache layer."
+
+      reviewer_prompt = OrchestrationLoop.build_prompt("reviewer-static", ctx)
+      assert reviewer_prompt =~ "## Advisor — recovery second opinion"
+    end
+
+    test "build_prompt/2 hands non-blocking reviewer findings to context-curator" do
+      findings = "Non-blocking: stale wording\nREVIEW_VERDICT: CHANGES_REQUESTED"
+      ctx = %{pitch: "fix the thing", artifacts: %{review_non_blocking_findings: findings}}
+
+      prompt = OrchestrationLoop.build_prompt("context-curator", ctx)
+
+      assert prompt =~ "## Reviewer non-blocking findings"
+      assert prompt =~ findings
     end
 
     test "build_prompt/2 renders nothing when advisor_plan is absent" do
@@ -9632,14 +9759,29 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       assert calls == ["reviewer-static", "context-curator"]
     end
 
-    # Regression: the resume branch seeds `artifacts: %{resume_state: state}`
-    # only, so `dev_role_from_ctx/1` (which finds a developer ONLY via a
-    # `"developer-"`-prefixed artifacts key) returns nil on EVERY resumed
-    # cycle. That nil arm used to advance "REVIEWED" and run on to the commit
-    # step — i.e. every blocking verdict on a resumed cycle was silently
-    # discarded and the loop committed anyway. A blocking verdict with nowhere
-    # to route rework must fail the cycle, never commit.
-    test "CHANGES_REQUESTED on a resumed cycle fails loud and commits nothing", %{
+    test "recovery_role takes precedence over a stale checkpoint", %{
+      dir: dir,
+      calls_agent: calls_agent
+    } do
+      File.write!(Path.join(dir, "feature.txt"), "recovered work\n")
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   cycle_state_get_fn: fn _cwd -> "" end,
+                   recovery_mode: :exact,
+                   recovery_role: "reviewer-static",
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) == ["reviewer-static", "context-curator"]
+    end
+
+    # A resumed GATED cycle carries only :resume_state in artifacts, but a
+    # blocking reviewer result still has a developer available in the stack.
+    # Prove the positive path: rework runs, gets re-reviewed, then commits.
+    test "CHANGES_REQUESTED on a resumed GATED cycle invokes developer rework and re-review", %{
       dir: dir,
       base_head: base_head,
       calls_agent: calls_agent
@@ -9648,7 +9790,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       write_gate_result!(dir, "clear", tree_sha, base_head)
       write_cycle_state!(dir, "GATED", "matching-slug")
 
-      assert {:error, reason} =
+      assert :ok ==
                OrchestrationLoop.run(
                  resume_run_opts(dir, calls_agent,
                    slug: "matching-slug",
@@ -9656,9 +9798,15 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                      Agent.update(calls_agent, fn calls -> calls ++ [role] end)
 
                      value =
-                       if reviewer_role?(role),
-                         do: changes_requested_verdict_for(ctx),
-                         else: "did #{role}"
+                       if reviewer_role?(role) do
+                         reviews = Enum.count(Agent.get(calls_agent, & &1), &reviewer_role?/1)
+
+                         if reviews == 1,
+                           do: changes_requested_verdict_for(ctx),
+                           else: approved_verdict_for(ctx)
+                       else
+                         "did #{role}"
+                       end
 
                      {:ok, %{"status" => "success", "value" => value}}
                    end,
@@ -9671,17 +9819,60 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  )
                )
 
-      assert reason =~ "no developer role is present"
-      assert reason =~ "never a false loop_committed"
-
-      # The cycle must NOT have proceeded past the reviewer: no curator, and
-      # HEAD is still the base commit (the deterministic commit step never ran).
       calls = Agent.get(calls_agent, & &1)
-      assert calls == ["reviewer-static"]
-      refute "context-curator" in calls
+
+      assert calls == [
+               "reviewer-static",
+               "developer-static",
+               "reviewer-static",
+               "context-curator"
+             ]
 
       {head, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: dir)
-      assert String.trim(head) == base_head
+      refute String.trim(head) == base_head
+    end
+
+    test "a resumed GATED cycle resolves developer rework when its final re-gate fails", %{
+      dir: dir,
+      base_head: base_head,
+      calls_agent: calls_agent
+    } do
+      tree_sha = real_tree_sha_after_write!(dir, "feature.txt", "wip\n")
+      write_gate_result!(dir, "clear", tree_sha, base_head)
+      write_cycle_state!(dir, "GATED", "matching-slug")
+      matches = :counters.new(1, [])
+
+      match_fn = fn _cwd ->
+        :counters.add(matches, 1, 1)
+
+        case :counters.get(matches, 1) do
+          1 -> true
+          2 -> false
+          _ -> true
+        end
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 resume_run_opts(dir, calls_agent,
+                   slug: "matching-slug",
+                   cycle_state_get_fn: fn _cwd -> "GATED" end,
+                   cycle_state_slug_fn: fn _cwd -> "matching-slug" end,
+                   read_verdict_fn: fn _cwd -> :clear end,
+                   gate_result_base_sha_fn: fn _cwd -> base_head end,
+                   gate_tree_match_fn: match_fn,
+                   gate_fn: fn _cwd, _opts -> {:failed, "make test"} end,
+                   max_final_gate_cycles: 1,
+                   clean_tree_preflight_fn: no_op_clean_tree_preflight_fn(),
+                   advisor_fn: no_op_advisor_fn()
+                 )
+               )
+
+      assert Agent.get(calls_agent, & &1) == [
+               "reviewer-static",
+               "context-curator",
+               "developer-static"
+             ]
     end
 
     test "valid REVIEWED checkpoint resumes at context-curator, skipping developer+reviewer", %{

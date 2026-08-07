@@ -786,6 +786,11 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
          :ok <- write_dossier!(cwd, slug, transaction_id, history_dossier),
          ready_dossier = Map.merge(history_dossier, %{"stage" => "ready", "updated_at" => now()}),
          :ok <- write_dossier!(cwd, slug, transaction_id, ready_dossier) do
+      # Parking replaces this failed cycle's live continuation with the
+      # recovery dossier. Its checkpoint can no longer describe work that is
+      # safe to resume, so remove it before the next loop invocation can let
+      # a stale GATED/clear pair override the dossier's recovery role.
+      clear_checkpoint!(cwd)
       {:ok, ready_dossier}
     end
   end

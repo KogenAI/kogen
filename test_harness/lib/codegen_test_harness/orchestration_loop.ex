@@ -356,7 +356,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # the guard meant for foreign uncommitted changes at a true cycle start.
     # An invalid/absent checkpoint (the overwhelmingly common case: no prior
     # death, or a death before the gate) falls straight through unchanged.
-    case resume_checkpoint(cwd, all_roles, opts) do
+    # A materialized recovery dossier is newer than the old on-disk
+    # checkpoint it replaced, so its start role has unconditional precedence.
+    resume =
+      case Keyword.get(opts, :recovery_role) do
+        nil -> resume_checkpoint(cwd, all_roles, opts)
+        role -> {:resume, role, "RECOVERED"}
+      end
+
+    case resume do
       {:resume, resume_role, state} ->
         roles = resume_suffix(all_roles, resume_role)
 
@@ -1247,42 +1255,37 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         run_commit_step(ctx, rest, opts)
 
       {:failed, _gate_cmd} ->
-        dev_role = dev_role_from_ctx(ctx)
+        # GATED resume artifacts start at reviewer, not developer. The stack
+        # is therefore the authoritative developer source for rework.
+        dev_role = resolve_developer_role(role_sequence(Keyword.fetch!(opts, :stack)))
+        owner_fn = Keyword.get(opts, :gate_owner_fn, &resolve_gate_owner/2)
+        rework_role = owner_fn.(ctx.cwd, dev_role)
 
-        if is_nil(dev_role) do
-          {:error,
-           "pre-commit re-gate failed and no developer role is present in this cycle's " <>
-             "artifacts to route rework to (loop_failed, never a false loop_committed)."}
-        else
-          owner_fn = Keyword.get(opts, :gate_owner_fn, &resolve_gate_owner/2)
-          rework_role = owner_fn.(ctx.cwd, dev_role)
+        reason = gate_failure_reason(ctx.cwd)
+        brief = capture_rework_brief(ctx.cwd, opts)
 
-          reason = gate_failure_reason(ctx.cwd)
-          brief = capture_rework_brief(ctx.cwd, opts)
+        # Mirrors `do_gate_loop_rework/9`'s give-up-boundary escalation:
+        # this rework is the FINAL one `ensure_gate_graded_this_tree!/5`
+        # will allow when the next cycle (cycle + 1) would already meet or
+        # exceed `max_final_gate_cycles` and be refused.
+        final_attempt? = cycle + 1 >= max_cycles
 
-          # Mirrors `do_gate_loop_rework/9`'s give-up-boundary escalation:
-          # this rework is the FINAL one `ensure_gate_graded_this_tree!/5`
-          # will allow when the next cycle (cycle + 1) would already meet or
-          # exceed `max_final_gate_cycles` and be refused.
-          final_attempt? = cycle + 1 >= max_cycles
+        retry_ctx =
+          ctx
+          |> put_in([:artifacts, :last_failure_reason], reason)
+          |> put_in([:artifacts, :rework_brief], brief)
+          |> maybe_escalate_model(rework_role, harness, opts, final_attempt?)
+          |> maybe_advise(rework_role, harness, opts, final_attempt?)
 
-          retry_ctx =
-            ctx
-            |> put_in([:artifacts, :last_failure_reason], reason)
-            |> put_in([:artifacts, :rework_brief], brief)
-            |> maybe_escalate_model(rework_role, harness, opts, final_attempt?)
-            |> maybe_advise(rework_role, harness, opts, final_attempt?)
+        with {:ok, result} <- invoke_with_retry(rework_role, harness, retry_ctx, opts) do
+          ctx =
+            retry_ctx
+            |> put_in([:artifacts, rework_role], result)
+            |> update_in([:artifacts], &Map.delete(&1, :escalated_model))
+            |> update_in([:artifacts], &Map.delete(&1, :advisor_plan))
 
-          with {:ok, result} <- invoke_with_retry(rework_role, harness, retry_ctx, opts) do
-            ctx =
-              retry_ctx
-              |> put_in([:artifacts, rework_role], result)
-              |> update_in([:artifacts], &Map.delete(&1, :escalated_model))
-              |> update_in([:artifacts], &Map.delete(&1, :advisor_plan))
-
-            run_format_step(ctx.cwd, opts)
-            ensure_gate_graded_this_tree!(ctx, rest, harness, opts, cycle + 1)
-          end
+          run_format_step(ctx.cwd, opts)
+          ensure_gate_graded_this_tree!(ctx, rest, harness, opts, cycle + 1)
         end
 
       {other, _gate_cmd} ->
@@ -2098,56 +2101,50 @@ defmodule CodegenTestHarness.OrchestrationLoop do
        ) do
     max_cycles = Keyword.get(opts, :max_review_cycles, 3)
     max_verdict_cycles = Keyword.get(opts, :max_review_verdict_cycles, 1)
-    {verdict, review_result} = resolve_review(review_result)
+    {_verdict, review_result} = resolve_review(review_result)
 
-    case verdict do
+    case classify_verdict_severity(review_result) do
       :changes_requested when cycle < max_cycles ->
-        dev_role = dev_role_from_ctx(ctx)
+        # A resumed GATED cycle has only :resume_state in artifacts. Resolve
+        # from the configured stack so its blocking review reaches the
+        # developer that can actually repair it.
+        dev_role = resolve_developer_role(role_sequence(Keyword.fetch!(opts, :stack)))
+        feedback = review_result["value"] || "changes requested"
+        brief = capture_rework_brief(ctx.cwd, opts)
 
-        if is_nil(dev_role) do
-          # Mirrors `rework_final_gate/5`'s nil-dev_role arm: a BLOCKING
-          # verdict with nowhere to route the rework is a failed cycle, never
-          # a silent advance. This arm used to `advance_cycle_state_step
-          # ("REVIEWED")` and proceed — i.e. treat CHANGES_REQUESTED as
-          # APPROVED — and `dev_role_from_ctx/1` finds a developer ONLY via a
-          # `"developer-"`-prefixed key in `ctx.artifacts`, which the resume
-          # branch (`artifacts: %{resume_state: state}`) never seeds. So on
-          # EVERY resumed (GATED) cycle, EVERY blocking verdict was discarded
-          # and the loop committed anyway.
-          {:error,
-           "reviewer requested changes and no developer role is present in this cycle's " <>
-             "artifacts to route rework to (loop_failed, never a false loop_committed): " <>
-             "#{review_result["value"] || "changes requested"}"}
-        else
-          feedback = review_result["value"] || "changes requested"
-          brief = capture_rework_brief(ctx.cwd, opts)
+        rework_ctx =
+          ctx
+          |> put_in([:artifacts, :review_feedback], feedback)
+          |> put_in([:artifacts, :rework_brief], brief)
 
-          rework_ctx =
-            ctx
-            |> put_in([:artifacts, :review_feedback], feedback)
-            |> put_in([:artifacts, :rework_brief], brief)
+        with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
+          ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
+          run_format_step(ctx.cwd, opts)
 
-          with {:ok, dev_result} <- invoke_with_retry(dev_role, harness, rework_ctx, opts) do
-            ctx = put_in(rework_ctx, [:artifacts, dev_role], dev_result)
-            run_format_step(ctx.cwd, opts)
+          case run_gate_once(ctx, opts) do
+            :clear ->
+              advance_cycle_state_step("GATED", ctx, opts)
+              review_final_attempt? = cycle + 1 >= max_cycles
 
-            case run_gate_once(ctx, opts) do
-              :clear ->
-                advance_cycle_state_step("GATED", ctx, opts)
+              ctx =
+                ctx
+                |> put_in([:artifacts, :review_pass_number], cycle + 2)
+                |> put_in([:artifacts, :review_max_passes], max_cycles + 1)
+                |> maybe_escalate_model(reviewer_role, harness, opts, review_final_attempt?)
+                |> maybe_advise(reviewer_role, harness, opts, review_final_attempt?)
 
+              with {:ok, review2, ctx} <- invoke_reviewer(reviewer_role, harness, ctx, opts) do
                 ctx =
                   ctx
-                  |> put_in([:artifacts, :review_pass_number], cycle + 2)
-                  |> put_in([:artifacts, :review_max_passes], max_cycles + 1)
+                  |> put_in([:artifacts, reviewer_role], review2)
+                  |> update_in([:artifacts], &Map.delete(&1, :escalated_model))
+                  |> update_in([:artifacts], &Map.delete(&1, :advisor_plan))
 
-                with {:ok, review2, ctx} <- invoke_reviewer(reviewer_role, harness, ctx, opts) do
-                  ctx = put_in(ctx, [:artifacts, reviewer_role], review2)
-                  handle_review(reviewer_role, review2, rest, harness, ctx, opts, cycle + 1)
-                end
+                handle_review(reviewer_role, review2, rest, harness, ctx, opts, cycle + 1)
+              end
 
-              verdict ->
-                {:error, "gate verdict=#{verdict} after review re-work (cycle #{cycle + 1})"}
-            end
+            verdict ->
+              {:error, "gate verdict=#{verdict} after review re-work (cycle #{cycle + 1})"}
           end
         end
 
@@ -2158,6 +2155,15 @@ defmodule CodegenTestHarness.OrchestrationLoop do
            "exhausted: #{review_result["value"] || "changes requested"}"}
 
       :approved ->
+        advance_cycle_state_step("REVIEWED", ctx, opts)
+        run_roles(rest, harness, ctx, opts)
+
+      :approved_with_findings ->
+        # Every finding explicitly opted into the Non-blocking convention.
+        # Preserve it for the post-review curator rather than dropping it.
+        ctx =
+          put_in(ctx, [:artifacts, :review_non_blocking_findings], review_result["value"] || "")
+
         advance_cycle_state_step("REVIEWED", ctx, opts)
         run_roles(rest, harness, ctx, opts)
 
@@ -2917,6 +2923,39 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   end
 
   defp parse_review_verdict(_), do: :unknown
+
+  # Severity is a loop-side interpretation of an already-valid verdict, not
+  # a new wire token. A reviewer can mark every finding `Non-blocking:`; that
+  # explicitly permits the build to continue while retaining the findings for
+  # post-review curation. Any unprefixed finding remains blocking.
+  @spec classify_verdict_severity(map()) ::
+          :approved | :approved_with_findings | :changes_requested | :unknown
+  defp classify_verdict_severity(review_result) do
+    case parse_review_verdict(review_result) do
+      :changes_requested ->
+        if all_findings_non_blocking?(review_result["value"]) do
+          :approved_with_findings
+        else
+          :changes_requested
+        end
+
+      verdict ->
+        verdict
+    end
+  end
+
+  defp all_findings_non_blocking?(value) when is_binary(value) do
+    findings =
+      value
+      |> String.split("\n", trim: true)
+      |> Enum.reject(&String.contains?(&1, "REVIEW_VERDICT:"))
+      |> Enum.reject(&String.contains?(&1, "REVIEW_COVERAGE:"))
+
+    findings != [] and
+      Enum.all?(findings, &(String.trim_leading(&1) |> String.starts_with?("Non-blocking:")))
+  end
+
+  defp all_findings_non_blocking?(_), do: false
 
   defp parse_verdict_text(text) when is_binary(text) do
     text
@@ -4007,23 +4046,22 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  # Calls the opposite-provider advisor (`codegen-advise`) exactly once, at
+  # Calls the advisor (`codegen-advise`) exactly once, at
   # the SAME give-up boundary `maybe_escalate_model/5` already fires at
   # (`final_attempt?` true), and stashes the returned plan at
   # `ctx.artifacts.advisor_plan` for `build_prompt/2` to render under
   # `## Advisor`. Composes with escalation: the final attempt can carry BOTH
   # a stronger same-provider model (`:escalated_model`) AND an
-  # opposite-provider recovery plan (`:advisor_plan`) — orthogonal artifact
+  # advisor recovery plan (`:advisor_plan`) — orthogonal artifact
   # keys, both cleared by the caller after the attempt resolves.
   #
   # Suppressed under a fixed campaign binding (mirrors
   # `maybe_escalate_model/5`'s `resolve_fixed_binding` guard) — a
   # role-model-sweep arm measuring a fixed binding must not have its
-  # evidence perturbed by cross-provider advice either.
+  # evidence perturbed by advisor guidance either.
   #
   # A failed/unavailable advisor call is ADDITIVE-failure: ctx passes
-  # through unchanged. Advice is help, never a gate — see pitch "a stuck
-  # build asks the other provider" § Interaction Audit.
+  # through unchanged. Advice is help, never a gate.
   @spec maybe_advise(map(), String.t(), harness(), run_opts(), boolean()) :: map()
   defp maybe_advise(ctx, dev_role, harness, opts, final_attempt?)
 
@@ -4045,15 +4083,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   defp do_maybe_advise(ctx, harness, opts) do
     advisor_fn = Keyword.get(opts, :advisor_fn, &default_advisor_fn/3)
 
-    reason = get_in(ctx, [:artifacts, :last_failure_reason]) || ""
+    reason =
+      get_in(ctx, [:artifacts, :last_failure_reason]) ||
+        get_in(ctx, [:artifacts, :review_feedback]) || ""
+
     brief = get_in(ctx, [:artifacts, :rework_brief]) || ""
 
     context_text =
-      "Build harness: #{harness}\n\n## Gate failure reason\n\n#{reason}\n\n## Rework brief\n\n#{brief}"
+      "Build harness: #{harness}\n\n## Rework reason\n\n#{reason}\n\n## Rework brief\n\n#{brief}"
 
     case advisor_fn.(harness, context_text, opts) do
       {:ok, plan} when is_binary(plan) and plan != "" ->
-        operator_note("advisor: opposite-provider plan captured at give-up boundary")
+        operator_note("advisor: recovery plan captured at give-up boundary")
         put_in(ctx, [:artifacts, :advisor_plan], plan)
 
       _ ->
@@ -4073,7 +4114,7 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   #
   # Unlike `default_rework_brief_fn/1` (shells `git`, free/local/hermetic)
   # or `RoleResolver.resolve_escalation/2` (a pure `config.yaml` read, also
-  # free), this default shells a REAL opposite-provider LLM call — a
+  # free), this default shells a REAL advisor LLM call — a
   # genuinely costly, non-hermetic side effect. `mix test --exclude slow` is
   # the hermetic gate and must never place a real LLM call; the ~40+
   # pre-existing give-up-boundary tests in `orchestration_loop_test.exs`
@@ -5505,22 +5546,21 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         base
       end
 
-    # On the FINAL rework attempt before give-up, thread the opposite-provider
-    # advisor's recovery plan (`ctx.artifacts.advisor_plan` — set by
+    # On the FINAL rework attempt before give-up, thread the advisor's
+    # recovery plan (`ctx.artifacts.advisor_plan` — set by
     # `maybe_advise/5`, the SAME give-up boundary `maybe_escalate_model/5`
-    # already fires at). A DIFFERENT model, from a DIFFERENT provider, looked
-    # at this same stuck build — see pitch "a stuck build asks the other
-    # provider".
+    # already fires at). A separate, stronger-model advisor call examined
+    # this same stuck build.
     advisor_plan = get_in(ctx, [:artifacts, :advisor_plan])
 
     base =
-      if developer_role?(role) and is_binary(advisor_plan) and String.trim(advisor_plan) != "" do
+      if (developer_role?(role) or reviewer_role?(role)) and is_binary(advisor_plan) and
+           String.trim(advisor_plan) != "" do
         base <>
-          "\n\n## Advisor — opposite-provider second opinion\n\n" <>
-          "A different model, from a different provider than the one that has been stuck " <>
-          "on this build, was given the gate failure and your uncommitted diff and asked for " <>
-          "a recovery plan. It may be wrong — read it, don't blindly follow it — but it is a " <>
-          "genuinely different angle than retrying the same approach again.\n\n" <> advisor_plan
+          "\n\n## Advisor — recovery second opinion\n\n" <>
+          "A separate advisor call supplied a recovery plan for this " <>
+          "final attempt. It may be wrong — read it, do not blindly follow it — but it is a " <>
+          "genuinely different angle before the loop gives up.\n\n" <> advisor_plan
       else
         base
       end
@@ -5565,6 +5605,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           "within your curator write surface. MUST NOT run the full gate or test command. " <>
           "Targeted curator routing and factcheck checks are allowed. The loop owns formatting " <>
           "and curator scans, and will re-run the gate if your edits change the tree."
+      else
+        base
+      end
+
+    non_blocking_findings = get_in(ctx, [:artifacts, :review_non_blocking_findings])
+
+    base =
+      if role == "context-curator" and is_binary(non_blocking_findings) and
+           String.trim(non_blocking_findings) != "" do
+        base <>
+          "\n\n## Reviewer non-blocking findings\n\n" <>
+          "These findings did not require developer rework. Preserve any durable context " <>
+          "learning within your write surface; do not turn them into a gate rerun.\n\n" <>
+          non_blocking_findings
       else
         base
       end

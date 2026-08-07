@@ -116,21 +116,24 @@ owned Claude process group before orphaned tools can mutate the checkout.
 
 ## Model Escalation Ladder
 
-`maybe_escalate_model/5` fires ONLY on the FINAL gate-retry attempt (not every retry) for a dev role,
+`maybe_escalate_model/5` fires ONLY on a FINAL rework attempt (not every retry): the gate-rework
+owner, or the reviewer on the final allowed re-review after `CHANGES_REQUESTED`,
 via `RoleResolver.resolve_escalation/2` (test-seam override: `opts[:resolve_escalation_fn]`). Returns
 `{model, effort}` to escalate to, or `:none`. On escalation, logs an operator note and stashes
 `{model, effort}` at `ctx.artifacts.escalated_model` for the retry's `codegen-call` invocation. See the
 role-config owner file for the ladder's actual rung values.
 
-## Opposite-Provider Advisor
+## Same-Harness Advisor
 
 `maybe_advise/5` fires at the SAME give-up boundary as `maybe_escalate_model/5` (both
-`do_gate_loop_rework/9` and `rework_final_gate/5`, `final_attempt?` true), immediately after
+`do_gate_loop_rework/9`, `rework_final_gate/5`, and the final reviewer re-review after
+`CHANGES_REQUESTED` (`final_attempt?` true), immediately after
 escalation. Shells `codegen-advise --harness=<current build harness>` (test-seam: `opts[:advisor_fn]`,
-default `default_advisor_fn/3`) with the gate failure reason + rework brief. `codegen-advise` flips to
-the OPPOSITE provider via a FIXED mapping. DORMANT today: only one provider is installed, so `codegen-advise` reports that and exits 1; `maybe_advise/5` maps any non-zero exit to no-op. (`claude_code` →
-`claude_code`/`opus`; not configurable) and returns `{plan, confidence}` JSON, stashed at
-`ctx.artifacts.advisor_plan` and rendered under `## Advisor` for the reworked developer role. Composes
+default `default_advisor_fn/3`) with the rework reason + brief. `codegen-advise` uses a FIXED,
+stronger-model mapping in the SAME harness (`claude_code` → `claude_code`/`opus`; not configurable)
+and returns `{plan, confidence}` JSON, stashed at
+`ctx.artifacts.advisor_plan` and rendered under `## Advisor` for the reworked developer or final
+reviewer role. Composes
 with escalation (both `:escalated_model` and `:advisor_plan` can coexist; both cleared once resolved).
 Suppressed under a fixed campaign binding (mirrors `maybe_escalate_model/5`). Failed/unavailable call
 is ADDITIVE-failure — `ctx` passes through unchanged; advice is help, never a gate. Reach paths: (1)
@@ -240,8 +243,10 @@ source base, tree byte-identical) resumes at the earliest trustworthy role
 preserved and recorded as `operator_ownership`/`operator_scope_expansion`, never refused) reconcile at
 the stack's developer (`resolve_developer_role/1`
 — the first `developer-*` role in the sequence, both stacks); a missing/moved ref, non-descendant HEAD,
-conflicting apply, or an already-materialized dossier refuses non-zero, ref/checkout untouched. `run/1`'s `:recovery_mode` opt
-bypasses `preflight_clean_tree!/1` ONLY for a materialized run. `complete_transaction!/2` retires the
+conflicting apply, or an already-materialized dossier refuses non-zero, ref/checkout untouched. A
+dossier-derived `:recovery_role` wins over any on-disk checkpoint because materialization is newer;
+`park_failure/1` clears retired checkpoint files before its dossier becomes ready. `run/1`'s
+`:recovery_mode` opt bypasses `preflight_clean_tree!/1` ONLY for a materialized run. `complete_transaction!/2` retires the
 dossier after the ordinary post-commit-step commit/tree/gate verification — the recovery commit stays
 backup evidence, never a second publish.
 
@@ -388,4 +393,4 @@ section for how a marked nonzero exit routes to park+skip+breaker instead of `re
 
 ## Trigger Keywords
 
-orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, recovery dossier, recoveries/<slug>/<txid>.json, schema_version, dossier stages, transaction identity, materialize, resume_role_for_recovery, recovery_mode, park_failure, recovery/interrupted branch, recovery/operator branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, opposite-provider advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`, born-dead detector, borndeaddetector, defer-marker, sub-slice forbidden, whole-pitch builds, whole-pitch completeness backstop, codegen-commit, deterministic commit step, run_commit_step
+orchestration loop, OrchestrationLoop, mix codegen.loop, BuildLock, BuildSignalHandler, warm-resume, resume checkpoint, escalate_model, maybe_escalate_model, max-budget-usd, spend cap, per-cycle budget, decider map, infra abort, LoopGate, gate verdict, deterministic engine, LLM vs deterministic, curator doc check, curator consumption scan, index-parity, factcheck, learnings consumed, ev:learned routing, cycle-summary timing, duration_ms, latency_ms, t_opt_int, gate session_id, duration_s, telemetry, terminal marker, terminal-state.json, owner routing, BEAM OS PID, CODEGEN_CALL_OWNER_OS_PID, CODEGEN_BUILD_INVOCATION_ID, gate failure owner, flake check, load flake, resolve_fixed_binding, role-model-binding.json, fixed campaign binding, dispatch provenance, accumulate_telemetry, dispatches, fallback suppressed, escalation suppressed, InterruptedCycleRecovery, interrupted-recovery.json, build-result.json, with_startup_guard, park_worktree, recovery journal, recovery dossier, recoveries/<slug>/<txid>.json, schema_version, dossier stages, transaction identity, materialize, resume_role_for_recovery, recovery_mode, park_failure, recovery/interrupted branch, recovery/operator branch, stranded building claim, run_orientation_preflight, run_orientation_repair, classify_orientation_violations, orientation-doc violations to fix, curator-writable doc, turn0_repair_exhausted, orientation-preflight-routes-to-curator, post-review curator gate ownership, maybe_advise, advisor_plan, codegen-advise, same-harness advisor, stuck build second opinion, advise tool, `mcp__codegen__advise`, born-dead detector, borndeaddetector, defer-marker, sub-slice forbidden, whole-pitch builds, whole-pitch completeness backstop, codegen-commit, deterministic commit step, run_commit_step
