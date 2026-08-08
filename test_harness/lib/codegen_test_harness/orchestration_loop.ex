@@ -76,6 +76,19 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   @codegen_commit_bin Path.expand("../../../codegen-commit", __DIR__)
   @codegen_dir Path.expand("../../..", __DIR__)
 
+  # Reviewer-only typed decision transport (pitch "reviewer verdict typed
+  # transport"). `{"verdict": "APPROVED"|"CHANGES_REQUESTED", "body": <full
+  # review text>}` — requested ONLY for `reviewer_role?/1` calls, via
+  # `invoke_role/4`'s closure-captured `json_schema_path` local (never
+  # threaded through the 6-arity `codegen_call_fn` seam itself, so the 42+
+  # existing test mocks that substitute that closure wholesale are
+  # unaffected). See `resolve_review/1` for how the typed field and the
+  # legacy `REVIEW_VERDICT:` text sentinel are cross-checked.
+  @review_verdict_schema_path Path.expand(
+                                "../../../harnesses/claude/review-verdict.schema.json",
+                                __DIR__
+                              )
+
   @factcheck_scan_lib Path.expand(
                         "../../../harnesses/claude/hooks/lib/context-factcheck-scan.sh",
                         __DIR__
@@ -2920,6 +2933,62 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
+  # Boundary normalization for a reviewer role's typed transport (pitch
+  # "reviewer verdict typed transport"). Runs ONCE, immediately after
+  # invoke_role/4 decodes a "success" envelope — before the result is handed
+  # to ANY of `parse_review_coverage/2`, `all_findings_non_blocking?/1`, the
+  # rework-feedback text, or `resolve_review/1` itself, every one of which
+  # treats `result["value"]` as a raw markdown STRING.
+  #
+  # `json_schema_path` non-nil (i.e. `reviewer_role?(role)` was true for
+  # THIS call) is what schema-validated `result["value"]` into
+  # `%{"verdict" => ..., "body" => ...}` in the first place (see
+  # `review-verdict.schema.json`) — `additionalProperties: false` +
+  # `required: [verdict, body]` means a "success" status GUARANTEES this
+  # shape; call-dispatch.sh's own schema-validate.js step already rejected
+  # anything else before the envelope could report "success". So a
+  # non-conforming map here is a contract break in the transport itself, not
+  # a model formatting slip — fail loud rather than silently falling back to
+  # `:unknown` and paying for a re-ask the schema was supposed to make
+  # unnecessary.
+  #
+  # Rewrites `"value"` back to the plain body string (byte-identical to what
+  # a non-schema call would have returned) and stashes the typed decision
+  # under `"typed_verdict"` — a NEW key no pre-existing consumer reads, so
+  # every downstream string-consumer keeps working unchanged.
+  #
+  # A non-reviewer call (`json_schema_path` nil) or a reviewer call whose
+  # value came back as a plain string (schema validator unavailable — see
+  # call-dispatch.sh's `VALIDATE_CODE == 2` branch, which reports "failed"
+  # rather than "success", so this clause should be unreachable in
+  # practice, but the guard costs nothing) passes through unchanged.
+  @spec normalize_reviewer_result(map(), String.t(), String.t() | nil) :: map()
+  defp normalize_reviewer_result(result, role, json_schema_path)
+       when is_binary(json_schema_path) and json_schema_path != "" do
+    case result do
+      %{"value" => %{"verdict" => verdict, "body" => body}}
+      when is_binary(verdict) and is_binary(body) and verdict in ["APPROVED", "CHANGES_REQUESTED"] ->
+        result
+        |> Map.put("value", body)
+        |> Map.put("typed_verdict", schema_token_to_verdict(verdict))
+
+      %{"value" => other} ->
+        raise "OrchestrationLoop: reviewer #{role} requested with " <>
+                "#{json_schema_path} but returned a non-conforming value: #{inspect(other)}"
+
+      other ->
+        raise "OrchestrationLoop: reviewer #{role} requested with " <>
+                "#{json_schema_path} but returned a result with no \"value\" key at all: " <>
+                inspect(other)
+    end
+  end
+
+  defp normalize_reviewer_result(result, _role, _json_schema_path), do: result
+
+  @spec schema_token_to_verdict(String.t()) :: :approved | :changes_requested
+  defp schema_token_to_verdict("APPROVED"), do: :approved
+  defp schema_token_to_verdict("CHANGES_REQUESTED"), do: :changes_requested
+
   # Verdict recognition is UNANIMITY-based, not position-based.
   #
   # The old rule demanded exactly one marker-bearing line AND that it be the
@@ -2952,6 +3021,35 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # Zero conflicts and zero non-enum verdict words occurred in the 180-session
   # sample, so this recovers the discardable placement failures and changes no
   # verdict that already parsed.
+
+  # Typed transport is the PRIMARY channel when present (`"typed_verdict"`,
+  # stashed by `normalize_reviewer_result/3` from the schema-validated
+  # `verdict` field — see `review-verdict.schema.json`). The legacy
+  # `REVIEW_VERDICT:` text sentinel inside `"value"` is still parsed and
+  # cross-checked: the reviewer's prompt (`shared/rules/roles/reviewer.md`)
+  # keeps instructing it to state the line inside the body regardless of
+  # transport, and a call made before this pitch shipped (or one whose
+  # `json_schema_path` was nil for a non-reviewer role that somehow still
+  # carries a `typed_verdict`, which cannot happen via the one writer this
+  # module has) has no typed field at all — falls through to the unchanged
+  # text-only path. Disagreement between a valid typed field and a valid
+  # text sentinel is a transport contract break, not a preference call —
+  # fail loud rather than silently choosing either channel.
+  defp parse_review_verdict(%{"typed_verdict" => typed} = review_result)
+       when typed in [:approved, :changes_requested] do
+    case parse_review_verdict(Map.delete(review_result, "typed_verdict")) do
+      :unknown ->
+        typed
+
+      ^typed ->
+        typed
+
+      text_verdict ->
+        raise "OrchestrationLoop: reviewer verdict transport disagreement — typed " <>
+                "field said #{inspect(typed)}, REVIEW_VERDICT: text sentinel said " <>
+                "#{inspect(text_verdict)}. Value: #{inspect(review_result["value"])}"
+    end
+  end
 
   defp parse_review_verdict(%{"value" => value}) when is_binary(value) do
     parse_verdict_text(value)
@@ -5484,7 +5582,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     # into the closure and threaded to default_codegen_call as the new
     # trailing `agent` arg — native `claude --agent <role>` invocation.
     # session_id/resume ride the CLOSURE (not the /6 seam) — same pattern
-    # already used for role/transcript.
+    # already used for role/transcript. `json_schema_path` rides the same
+    # way: reviewer-only, resolved here off `reviewer_role?/1` so no other
+    # role's call is affected and no existing test mock (which replaces the
+    # whole 6-arity closure) needs to change.
+    json_schema_path = if reviewer_role?(role), do: @review_verdict_schema_path, else: nil
+
     codegen_call_fn =
       Keyword.get(opts, :codegen_call_fn, fn h, m, e, sp, tools, pr ->
         default_codegen_call(
@@ -5499,7 +5602,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           role,
           resume_session_id,
           cold_session_id,
-          ctx.base_head
+          ctx.base_head,
+          json_schema_path
         )
       end)
 
@@ -5559,14 +5663,17 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       %{"result" => %{"status" => "success"} = result} ->
         # `"transcript"` rides along for the same reason `"session_id"` does:
         # the caller cannot recompute it (seq lives in a process key that has
-        # already advanced by the time a result is inspected). Its one
-        # consumer today is `resolve_review/1`, which reads this stream-json
-        # to recover a verdict the returned value dropped instead of paying
-        # for a second reviewer call.
+        # already advanced by the time a result is inspected). It remains a
+        # consumer of last resort for `resolve_review/1` — the typed
+        # `@review_verdict_schema_path` result normalized below is the
+        # PRIMARY channel; transcript recovery only fires when a call was
+        # made with no schema (json_schema_path nil) or somehow still
+        # returned an unparseable value.
         case check_budget(opts) do
           :ok ->
             {:ok,
              result
+             |> normalize_reviewer_result(role, json_schema_path)
              |> Map.put("session_id", envelope["session_id"])
              |> Map.put("transcript", transcript)}
 
@@ -5576,6 +5683,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
       %{"result" => %{"status" => "failed"} = result} ->
         {:error, result["reason"] || "role #{role} failed with no reason given"}
+
+      # Reviewer-only (json_schema_path is set only via reviewer_role?/1
+      # above): the model could not satisfy `@review_verdict_schema_path`
+      # within claude's own structured-output retry budget. Treated as an
+      # ordinary retryable transport error — same shape as "failed" — so it
+      # takes the existing invoke_with_retry/do_invoke_attempt path instead
+      # of the raise catch-all below, which exists for envelope shapes this
+      # loop has never seen before, not for a named, expected status.
+      %{"result" => %{"status" => "schema_retry_exhausted"} = result} ->
+        {:error,
+         result["reason"] ||
+           "role #{role}: structured output retries exhausted with no reason given"}
 
       other ->
         raise "OrchestrationLoop: unexpected codegen-call envelope for role #{role}: #{inspect(other)}"
@@ -6065,7 +6184,8 @@ defmodule CodegenTestHarness.OrchestrationLoop do
          agent,
          resume_session_id,
          cold_session_id,
-         base_head
+         base_head,
+         json_schema_path
        ) do
     unless File.exists?(@codegen_call_bin) do
       raise "OrchestrationLoop: codegen-call not found at #{@codegen_call_bin}"
@@ -6073,7 +6193,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
     # --resume (warm-resume a transient-retry attempt) and --session-id
     # (pin a NEW cold call's id up front) are mutually exclusive per
-    # attempt — resume wins when both are somehow present.
+    # attempt — resume wins when both are somehow present. --json-schema
+    # (reviewer-only, see `@review_verdict_schema_path`) coexists fine with
+    # --agent — both are independent flags on the same codegen-call/claude
+    # invocation.
     args =
       [
         "--harness=#{harness}",
@@ -6098,6 +6221,10 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         guard_bundle_flag!(harness) ++
         if(allowed_tools && allowed_tools != "",
           do: ["--allowed-tools=#{allowed_tools}"],
+          else: []
+        ) ++
+        if(json_schema_path && json_schema_path != "",
+          do: ["--json-schema=@#{json_schema_path}"],
           else: []
         ) ++ prompt_tail(prompt)
 

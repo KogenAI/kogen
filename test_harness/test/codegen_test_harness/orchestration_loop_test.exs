@@ -3411,7 +3411,10 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
     # No role carries a `.harness.<role>.harness` key in the real config.yaml
     # any more, so every role takes this passthrough path. The point of the
-    # test is the passthrough default, not the identity of the role.
+    # test is the passthrough default, not the identity of the role — a
+    # non-reviewer role keeps that indifference true without also having to
+    # satisfy the reviewer-only typed-verdict schema shape (see
+    # normalize_reviewer_result/3).
     test "no per-role harness override (default resolve_harness_fn against real config.yaml) -> build harness unchanged" do
       codegen_call_fn = fn harness, _model, _effort, _sp, _tools, _prompt ->
         assert harness == "claude_code"
@@ -3425,7 +3428,7 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert {:ok, _result} =
                OrchestrationLoop.invoke_role(
-                 "reviewer-static",
+                 "developer-static",
                  "claude_code",
                  %{cwd: "/tmp", pitch: "x", artifacts: %{}},
                  resolve_fn: resolve_fn,
@@ -3602,7 +3605,14 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       codegen_call_fn = fn h, m, e, _sp, _t, _pr ->
         Agent.update(seen_agent, fn seen -> seen ++ [{h, m, e}] end)
-        %{"result" => %{"status" => "success", "value" => "x"}, "usage" => %{"cost_usd" => 0.1}}
+
+        %{
+          "result" => %{
+            "status" => "success",
+            "value" => %{"verdict" => "APPROVED", "body" => "x"}
+          },
+          "usage" => %{"cost_usd" => 0.1}
+        }
       end
 
       assert {:ok, _} =
@@ -3778,6 +3788,251 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                source: :campaign,
                native_effort: "--effort high"
              }
+    end
+  end
+
+  describe "invoke_role/4 — reviewer typed-verdict transport (normalize_reviewer_result/3)" do
+    test "reviewer-role success with schema-shaped value: 'value' rewritten to body string" do
+      codegen_call_fn = fn _h, _m, _e, _sp, _t, _pr ->
+        %{
+          "result" => %{
+            "status" => "success",
+            "value" => %{"verdict" => "APPROVED", "body" => "findings\nREVIEW_VERDICT: APPROVED"}
+          },
+          "usage" => %{"cost_usd" => 0.1}
+        }
+      end
+
+      assert {:ok, result} =
+               OrchestrationLoop.invoke_role(
+                 "reviewer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+                 codegen_call_fn: codegen_call_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      assert result["value"] == "findings\nREVIEW_VERDICT: APPROVED"
+      assert result["typed_verdict"] == :approved
+    end
+
+    test "reviewer-role success with a bare-string value (no schema shape) raises loud" do
+      codegen_call_fn = fn _h, _m, _e, _sp, _t, _pr ->
+        %{"result" => %{"status" => "success", "value" => "plain text"}, "usage" => %{}}
+      end
+
+      assert_raise RuntimeError, ~r/non-conforming value/, fn ->
+        OrchestrationLoop.invoke_role(
+          "reviewer-static",
+          "claude_code",
+          %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+          resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+          codegen_call_fn: codegen_call_fn,
+          git_head_fn: fn -> "deadbeef" end,
+          git_dirty_fn: fn -> false end
+        )
+      end
+    end
+
+    test "non-reviewer role: bare-string value passes through unchanged (no schema requested)" do
+      codegen_call_fn = fn _h, _m, _e, _sp, _t, _pr ->
+        %{"result" => %{"status" => "success", "value" => "did the work"}, "usage" => %{}}
+      end
+
+      assert {:ok, result} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+                 codegen_call_fn: codegen_call_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      assert result["value"] == "did the work"
+      refute Map.has_key?(result, "typed_verdict")
+    end
+
+    test "reviewer-role schema_retry_exhausted status is a retryable error, not a raise" do
+      codegen_call_fn = fn _h, _m, _e, _sp, _t, _pr ->
+        %{
+          "result" => %{
+            "status" => "schema_retry_exhausted",
+            "reason" => "max structured output retries exceeded"
+          }
+        }
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.invoke_role(
+                 "reviewer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: fn _r, _h -> {"sonnet", "medium"} end,
+                 codegen_call_fn: codegen_call_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end
+               )
+
+      assert reason =~ "max structured output retries exceeded"
+    end
+  end
+
+  describe "run/1 — reviewer typed-verdict transport reaches resolve_review/1 end-to-end" do
+    setup do
+      {:ok, calls_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> stop_agent(calls_agent) end)
+      {:ok, calls_agent: calls_agent}
+    end
+
+    # Acceptance criterion 1: a substantive reviewer body ending in prose
+    # ("Review section logged. Verdict: **APPROVED**.") that carries NO
+    # parseable REVIEW_VERDICT: sentinel must still resolve APPROVED, and
+    # in exactly ONE reviewer call, when the same result carries a valid
+    # typed "verdict" field (the schema-shaped transport). Before this
+    # pitch, this exact shape drove a second re-invocation demanding the
+    # sentinel and then failed loud on `rules-grants-and-guards-match-reality`.
+    test "typed APPROVED with no REVIEW_VERDICT: sentinel reaches commit in a single reviewer call",
+         %{calls_agent: calls_agent} do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, prompt ->
+        role = if prompt =~ "REVIEW_VERDICT: APPROVED", do: "reviewer-static", else: "other"
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            %{
+              "verdict" => "APPROVED",
+              "body" => "findings all fine.\nReview section logged. Verdict: **APPROVED**."
+            }
+          else
+            "did the work"
+          end
+
+        %{"result" => %{"status" => "success", "value" => value}, "usage" => %{"cost_usd" => 0.1}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 resolve_fn: fn _role, _harness -> {"sonnet", "medium"} end,
+                 codegen_call_fn: codegen_call_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static")) == 1
+    end
+
+    test "typed CHANGES_REQUESTED drives the developer rework path and preserves the review body as feedback",
+         %{calls_agent: calls_agent} do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, prompt ->
+        role =
+          if prompt =~ "REVIEW_VERDICT: APPROVED", do: "reviewer-static", else: "developer-static"
+
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        seen_reviewer = Enum.count(Agent.get(calls_agent, & &1), &(&1 == "reviewer-static"))
+
+        value =
+          cond do
+            role == "reviewer-static" and seen_reviewer <= 1 ->
+              %{
+                "verdict" => "CHANGES_REQUESTED",
+                "body" => "fix the nav link.\nReview section logged. Verdict: CHANGES_REQUESTED."
+              }
+
+            role == "reviewer-static" ->
+              %{"verdict" => "APPROVED", "body" => "looks good now.\nREVIEW_VERDICT: APPROVED"}
+
+            true ->
+              "did the work"
+          end
+
+        %{"result" => %{"status" => "success", "value" => value}, "usage" => %{"cost_usd" => 0.1}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 resolve_fn: fn _role, _harness -> {"sonnet", "medium"} end,
+                 codegen_call_fn: codegen_call_fn,
+                 git_head_fn: fn -> "deadbeef" end,
+                 git_dirty_fn: fn -> false end,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      calls = Agent.get(calls_agent, & &1)
+      # Exactly 2 reviewer calls: pass 1 (typed CHANGES_REQUESTED) drives
+      # rework, pass 2 (typed APPROVED) resolves via the typed channel —
+      # neither pass needed a 3rd re-invocation to recover a sentinel.
+      assert Enum.count(calls, &(&1 == "reviewer-static")) == 2
+      # At least one additional developer-static call happened after the
+      # CHANGES_REQUESTED verdict — the review body reached the rework path.
+      assert Enum.count(calls, &(&1 == "developer-static")) >= 2
+    end
+
+    # A valid typed field disagreeing with a valid REVIEW_VERDICT: text
+    # sentinel is a transport contract break — it must fail the whole
+    # build loud, never silently prefer one channel over the other.
+    test "typed APPROVED disagreeing with a REVIEW_VERDICT: CHANGES_REQUESTED text sentinel fails the build loud",
+         %{calls_agent: calls_agent} do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, prompt ->
+        role =
+          if prompt =~ "REVIEW_VERDICT: APPROVED", do: "reviewer-static", else: "developer-static"
+
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+
+        value =
+          if role == "reviewer-static" do
+            %{
+              "verdict" => "APPROVED",
+              "body" => "still not right.\nREVIEW_VERDICT: CHANGES_REQUESTED"
+            }
+          else
+            "did the work"
+          end
+
+        %{"result" => %{"status" => "success", "value" => value}, "usage" => %{"cost_usd" => 0.1}}
+      end
+
+      # A transport contract break is a raised error, not a returned
+      # {:error, reason} tuple — it must never be silently absorbed into
+      # the normal review-rework control flow (which resolve_review/1
+      # itself is part of).
+      assert_raise RuntimeError, ~r/reviewer verdict transport disagreement/, fn ->
+        OrchestrationLoop.run(
+          harness: "claude_code",
+          stack: "static",
+          cwd: "/tmp/irrelevant",
+          pitch: "do the thing",
+          resolve_fn: fn _role, _harness -> {"sonnet", "medium"} end,
+          codegen_call_fn: codegen_call_fn,
+          git_head_fn: fn -> "deadbeef" end,
+          git_dirty_fn: fn -> false end,
+          gate_fn: always_clear_gate_fn(),
+          gate_preflight_fn: no_op_gate_preflight_fn(),
+          preflight_probe_fn: all_present_preflight_probe_fn(),
+          advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+        )
+      end
+
+      assert "committer" not in Agent.get(calls_agent, & &1)
     end
   end
 

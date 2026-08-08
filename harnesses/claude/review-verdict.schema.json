@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "reviewer role typed decision envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "body"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["APPROVED", "CHANGES_REQUESTED"],
+      "description": "The reviewer's machine-readable decision. Must match the REVIEW_VERDICT: line stated in the body."
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The full free-text review — findings, REVIEW_COVERAGE: lines, and the terminal REVIEW_VERDICT: line — byte-identical to what would have been returned without a schema."
+    }
+  }
+}

@@ -24,6 +24,29 @@ early-exit variants).
 }
 ```
 
+**`result.status` values**: `"success"`, `"failed"`, and `"schema_retry_exhausted"` (Claude only —
+`error_max_structured_output_retries` subtype: claude's own structured-output tool-call retry budget
+ran out before a schema-conforming response landed). `OrchestrationLoop.invoke_role/4` treats
+`schema_retry_exhausted` as an ordinary retryable transport error — same `{:error, reason}` shape as
+`"failed"` — routed through the existing `invoke_with_retry`/fallback-rung machinery, never the
+unexpected-envelope raise reserved for shapes this loop has never seen.
+
+**Reviewer-only typed verdict transport** (pitch "reviewer verdict typed transport"): every
+`reviewer-*` role call additionally requests `harnesses/claude/review-verdict.schema.json`
+(`{"verdict": "APPROVED"|"CHANGES_REQUESTED", "body": <full review text>}`) via
+`--json-schema=@<path>`, gated on `reviewer_role?/1` inside `invoke_role/4` — no other role's call is
+affected, and the flag coexists fine with `--agent` (independent argv entries; see
+`call-dispatch.sh`'s COMMON_FLAGS assembly). When this schema is active, `result.value` on a
+`"success"` envelope is the SCHEMA OBJECT (not a plain string) coming out of `call-dispatch.sh` —
+`OrchestrationLoop.normalize_reviewer_result/3` runs immediately on that envelope, before any other
+consumer sees it: rewrites `result["value"]` back to the plain `body` string (byte-identical to what a
+non-schema call would have returned) and stashes the decision under a NEW `result["typed_verdict"]`
+key. A non-conforming value on a schema-requested "success" call is a transport contract break
+(call-dispatch.sh's own `schema-validate.js` step should have already turned that into a `"failed"`
+status) — raises loud rather than degrading silently. See `context/loop.md` § LLM vs Deterministic for
+how `parse_review_verdict/1` then prefers the typed field, cross-checks it against the legacy
+`REVIEW_VERDICT:` text sentinel, and raises on disagreement between two valid channels.
+
 **Model-vs-local split + hook-denial + cache signals** (`duration_ms`, `duration_api_ms`, `ttft_ms`,
 `permission_denials`, `stop_reason`) — lifted from the `result` event on Claude's success path (see
 pitch `build-cycle-accounts-for-its-own-time` Move 2); absent on the 3 abnormal Claude exit paths and on
@@ -94,7 +117,7 @@ descendant plumbing are excluded by ancestry. `CODEGEN_CALL_OWNER_OS_PID`,
 ## Reading the Envelope: Stdout Only, Stderr Captured Separately
 
 The envelope is decoded from `codegen-call`'s **stdout alone** — never a merged stdout+stderr stream.
-Both reader sites (`OrchestrationLoop.default_codegen_call/12` via the private `run_call_split/4` +
+Both reader sites (`OrchestrationLoop.default_codegen_call/13` via the private `run_call_split/4` +
 `decode_envelope!/3` helpers, and `Fixtures.run_codegen_call/3`) invoke `codegen-call` through a
 `sh -c 'exec "$@" 2>"$CG_ERR"'` wrapper: `exec` replaces the shell in place (no extra process layer, no
 altered pgid/kill semantics), stdout stays clean for the JSON parse, and stderr is redirected to a temp

@@ -609,6 +609,43 @@ assert_log_contains_line "$BASE_TMP/argv_i2.log" "probe-agent" "(i2) --agents ca
 )
 assert_log_absent_line "$BASE_TMP/argv_i3.log" "--agents" "(i3) CODEGEN_CALL_AGENTS_PATH unset: --agents flag absent"
 
+# (i5) reviewer typed-verdict transport: CODEGEN_CALL_AGENT + CODEGEN_CALL_JSON_SCHEMA
+# both set (mirrors OrchestrationLoop.invoke_role/4's reviewer-only json_schema_path —
+# see review-verdict.schema.json) → --agent and --json-schema coexist in argv, neither
+# flag suppresses the other (pitch "reviewer verdict typed transport").
+REVIEW_VERDICT_SCHEMA="$(cd "$HOOKS_DIR/.." && pwd)/review-verdict.schema.json"
+(
+    export PATH="$ARGV_STUB_DIR:$PATH"
+    export ARGV_LOG="$BASE_TMP/argv_i5.log"
+    export FIXTURE_PATH="$FIXTURE"
+    export CODEGEN_CALL_AGENT="reviewer-static"
+    export CODEGEN_CALL_MODEL="claude-haiku-4-5"
+    export CODEGEN_CALL_EFFORT="low"
+    export CODEGEN_CALL_PROMPT="Review the thing."
+    unset CODEGEN_CALL_SYSTEM_PROMPT 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS_SET 2>/dev/null || true
+    unset CODEGEN_CALL_ALLOWED_TOOLS 2>/dev/null || true
+    export CODEGEN_CALL_JSON_SCHEMA="$(cat "$REVIEW_VERDICT_SCHEMA")"
+    unset CODEGEN_CALL_JSON_SCHEMA_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_SETTINGS_PATH 2>/dev/null || true
+    unset CODEGEN_CALL_AGENTS_PATH 2>/dev/null || true
+    bash "$DISPATCH_SCRIPT" >/dev/null 2>"$BASE_TMP/argv_i5_stderr.log" || true
+)
+assert_log_contains_line "$BASE_TMP/argv_i5.log" "--agent" \
+    "(i5) agent + json-schema: --agent flag present"
+assert_log_contains_line "$BASE_TMP/argv_i5.log" "reviewer-static" \
+    "(i5) agent + json-schema: agent name present"
+assert_log_contains_line "$BASE_TMP/argv_i5.log" "--json-schema" \
+    "(i5) agent + json-schema: --json-schema flag present"
+if grep -qF "reviewer role typed decision envelope" "$BASE_TMP/argv_i5.log" 2>/dev/null; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: (i5) agent + json-schema: schema content present verbatim\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: (i5) agent + json-schema: schema content present verbatim — log:\n%s\n' \
+        "$(cat "$BASE_TMP/argv_i5.log" 2>/dev/null || true)"
+    fail=$((fail + 1))
+fi
+
 # (i4) CODEGEN_CALL_PRINT_ARGV=1 → argv printed to stdout, exit 0, claude never touched
 PRINT_ARGV_MARKER="$BASE_TMP/print_argv_never_called"
 rm -f "$PRINT_ARGV_MARKER"
