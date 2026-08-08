@@ -2,6 +2,7 @@ defmodule Mix.Tasks.Codegen.LoopTest do
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.InfraAbort
+  alias CodegenTestHarness.LoopQueue
   alias CodegenTestHarness.OrchestrationLoop
   alias Mix.Tasks.Codegen.Loop
 
@@ -138,6 +139,136 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert_raise InfraAbort, ~r/pitch-scope-preflight/, fn ->
         Loop.resolve_pitch_scope!({:file, abs}, "claimed")
       end
+    end
+  end
+
+  # ── resolve_pitch_source/2 follows possession across the live states ──────
+  # A pitch is in building/ for its whole cycle (claim_pitch!/2) and back in
+  # ready/ after a restore or an InterruptedCycleRecovery.reconcile/1, so the
+  # state dir an argument NAMES is only a snapshot. Degrading a miss to
+  # :literal reclassifies a real pitch build as an ad-hoc prompt — every
+  # downstream consumer (resolve_commit_subject!/2, claim_pitch!/2,
+  # resolve_pitch_scope!/2, park_and_restore_claim/5) then does the wrong
+  # thing, which is how the 20260808 queue relaunch of
+  # `rules-grants-and-guards-match-reality` died on "no commit subject
+  # available" with its own commit_subject: unread in the file.
+
+  describe "resolve_pitch_source/2" do
+    test "an existing path resolves to itself", ctx do
+      abs = Path.join(ctx.ready_dir, "x.md")
+      File.write!(abs, "# Pitch: x\n")
+
+      assert Loop.resolve_pitch_source("@" <> abs, "/nonexistent") == {:file, abs}
+      assert Loop.resolve_pitch_source("codegen/pitches/ready/x.md", ctx.tmp) == {:file, abs}
+    end
+
+    test "a ready/ path whose pitch is CLAIMED resolves to the building/ file", ctx do
+      File.mkdir_p!(ctx.building_dir)
+      claimed = Path.join(ctx.building_dir, "x.md")
+      File.write!(claimed, "# Pitch: x\n")
+
+      assert Loop.resolve_pitch_source("@codegen/pitches/ready/x.md", ctx.tmp) ==
+               {:file, claimed}
+    end
+
+    test "a building/ path whose claim was restored resolves to the ready/ file", ctx do
+      restored = Path.join(ctx.ready_dir, "x.md")
+      File.write!(restored, "# Pitch: x\n")
+
+      assert Loop.resolve_pitch_source("@codegen/pitches/building/x.md", ctx.tmp) ==
+               {:file, restored}
+    end
+
+    test "a live-state path held by neither state stays literal", ctx do
+      assert Loop.resolve_pitch_source("@codegen/pitches/ready/gone.md", ctx.tmp) == :literal
+    end
+
+    test "a shipped/ path is never redirected into a live state", ctx do
+      File.write!(Path.join(ctx.ready_dir, "x.md"), "# Pitch: x\n")
+
+      assert Loop.resolve_pitch_source("@codegen/pitches/shipped/x.md", ctx.tmp) == :literal
+    end
+
+    test "a non-pitch missing path is still an ordinary literal prompt", ctx do
+      assert Loop.resolve_pitch_source("make the drain relaunch survive a claim", ctx.tmp) ==
+               :literal
+
+      assert Loop.resolve_pitch_source("@lib/nope.ex", ctx.tmp) == :literal
+    end
+  end
+
+  # ── claim_source_after_reconcile/3 — the cycle's ONE resolution point ─────
+  # `InterruptedCycleRecovery.reconcile/1` moves a pitch between live states
+  # before a cycle may start, so a source resolved before it can be stale.
+  # These tests pin the observable consequence of resolving at the wrong
+  # moment: the pre-reconcile answer cannot find the pitch's own
+  # `commit_subject:`, which is verbatim how the 20260808 queue relaunch of
+  # `rules-grants-and-guards-match-reality` refused.
+
+  describe "claim_source_after_reconcile/3" do
+    setup ctx do
+      File.mkdir_p!(ctx.building_dir)
+
+      body = "---\nstatus: SHAPED\ncommit_subject: Make the relaunch find its pitch\n---\n# x\n"
+      File.write!(Path.join(ctx.building_dir, "x.md"), body)
+
+      # The argv the drain hands a relaunched child, and what reconcile does
+      # to the pitch before the cycle starts: restore the stranded claim.
+      restore = fn ->
+        File.rename!(
+          Path.join(ctx.building_dir, "x.md"),
+          Path.join(ctx.ready_dir, "x.md")
+        )
+      end
+
+      {:ok, restore: restore}
+    end
+
+    test "resolves a stranded building/ claim that reconcile has NOT yet moved", ctx do
+      assert {{:file, abs}, "x"} =
+               Loop.claim_source_after_reconcile("@codegen/pitches/ready/x.md", ctx.tmp)
+
+      assert abs == Path.join(ctx.building_dir, "x.md")
+      assert {:ok, "Make the relaunch find its pitch"} = LoopQueue.parse_commit_subject("x", abs)
+    end
+
+    test "resolves to ready/ once reconcile has restored the claim", ctx do
+      ctx.restore.()
+
+      assert {{:file, abs}, "x"} =
+               Loop.claim_source_after_reconcile("@codegen/pitches/building/x.md", ctx.tmp)
+
+      assert abs == Path.join(ctx.ready_dir, "x.md")
+      assert {:ok, "Make the relaunch find its pitch"} = LoopQueue.parse_commit_subject("x", abs)
+    end
+
+    # The defect itself: a source captured BEFORE reconcile ran, used AFTER.
+    # Both stale answers lose the commit subject the pitch plainly declares —
+    # `:literal` because a literal has no frontmatter at all, and the vacated
+    # building/ path because the file is no longer there.
+    test "a source captured before reconcile loses the pitch's own commit_subject", ctx do
+      argv = "@codegen/pitches/ready/x.md"
+
+      # Snapshot taken while the claim is still stranded, then reconcile runs.
+      {stale_source, _} = Loop.claim_source_after_reconcile(argv, ctx.tmp)
+      ctx.restore.()
+
+      {:file, stale_abs} = stale_source
+      refute File.exists?(stale_abs)
+      assert {:ok, nil} = LoopQueue.parse_commit_subject("x", stale_abs)
+
+      # Resolving at the correct moment finds it.
+      assert {{:file, fresh_abs}, "x"} = Loop.claim_source_after_reconcile(argv, ctx.tmp)
+      assert {:ok, "Make the relaunch find its pitch"} = LoopQueue.parse_commit_subject("x", fresh_abs)
+    end
+
+    test "a pitch present in NEITHER live state still reports the slug argv asked for", ctx do
+      assert {:literal, "gone"} =
+               Loop.claim_source_after_reconcile("@codegen/pitches/ready/gone.md", ctx.tmp)
+    end
+
+    test "an ad-hoc literal prompt has no slug", ctx do
+      assert {:literal, nil} = Loop.claim_source_after_reconcile("just do the thing", ctx.tmp)
     end
   end
 

@@ -1571,6 +1571,53 @@ defmodule CodegenTestHarness.LoopQueueTest do
 
       assert length(rows) == 2
     end
+
+    # `Regex.run(..., return: :index)` reports BYTE offsets; `String.slice/2,3`
+    # counts GRAPHEMES. Every multi-byte character before the marker drifts the
+    # two scales apart, so the splice landed short of the heading and DELETED
+    # the bytes in between — measured at 698 characters on the real pitch
+    # `rules-grants-and-guards-match-reality.md`, taking the recorded recovery
+    # ref/commit/tree sha of a previously parked WIP with it. A pitch body is
+    # dense with em dashes, arrows and ✅, so this fires on ordinary content,
+    # not an edge case.
+    test "multi-byte characters before the marker do not shift the splice or eat content",
+         %{dir: dir} do
+      path = Path.join(dir, "a.md")
+
+      preserved = "WIP parked at ref `recovery/interrupted/a/20260808_020339` — do not lose me."
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nbuild_failures: 1\n---\n# a\n\n" <>
+          "## Problem\n\n" <>
+          String.duplicate("Prose — with an em dash, an arrow → and a ✅ tick.\n", 40) <>
+          "\n" <>
+          preserved <>
+          "\n\n## Build failure history\n\n" <>
+          "| run | when | cost | terminal reason |\n|---|---|---|---|\n" <>
+          "| queue drain | ROW1 |\n"
+      )
+
+      assert :ok = LoopQueue.write_build_failures!(path, 2, "| queue drain | ROW2 |")
+
+      updated = File.read!(path)
+
+      # Nothing before the heading may be destroyed or displaced...
+      assert updated =~ preserved
+      assert updated =~ "## Problem"
+
+      # ...the heading still occupies its own line (never spliced mid-prose)...
+      assert updated =~ "\n\n## Build failure history\n"
+      refute updated =~ "me.## Build failure history"
+
+      # ...and both rows survive inside the one real section.
+      [before_heading, after_heading] =
+        String.split(updated, "## Build failure history", parts: 2)
+
+      assert before_heading =~ preserved
+      assert after_heading =~ "| queue drain | ROW1 |"
+      assert after_heading =~ "| queue drain | ROW2 |"
+    end
   end
 
   # ── record_counted_history!/3 — the context-free counted write M6/M8 wire

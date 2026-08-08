@@ -20,8 +20,10 @@ never silently double-building. A pitch is in `building/` only for the duration 
 - **Verified landing** (HEAD advanced, ancestor-extended) → the retire is UNCONDITIONAL: the pitch
   moves to `shipped/` regardless of whether the working tree is clean at that instant (a dirty tree
   fires a loud, non-fatal exit code, `4`, rather than stranding the pitch — see `context/loop.md`).
-- **Infra abort** or a **crash** mid-cycle → the pitch stays in `building/`, deliberately never
-  auto-reconciled; `codegen-drain status` surfaces the count, the operator decides.
+- **Infra abort** or a **crash** mid-cycle → the pitch stays in `building/` for the rest of that run
+  (`codegen-drain status` surfaces the count); the NEXT `mix codegen.loop` or drain startup hands the
+  stranded claim to `InterruptedCycleRecovery.reconcile/1`, which resumes it or parks-and-requeues it
+  to `ready/`. Two or more stranded claims at once refuse loud and wait for the operator.
 
 `building/` is gitignored, inheriting the existing `/codegen/` rule — machine-local queue state, never
 committed.
@@ -86,10 +88,10 @@ counterpart.
 
 ## Pitch Design — Checking for Hardcoded Readers
 
-When a pitch adds a new lifecycle directory or queue-state transition, the solution sketch typically names a few writer functions (the paths that CREATE the directory or transition files into it). However, every reader that checks for the OLD directory must ALSO be updated — a hardcoded reader of the old path is a certain-blocking defect if missed. Example: a pitch that adds a `building/` claim directory names `maybe_ship_pitch/4` as the only `ready/`-matching site needing widening, but a grep of the codebase reveals two more readers already in flight: `LoopQueueDrain.ship/6` (raises `"in neither ready/ nor shipped/"` on the missing path) and `LoopQueue.write_frontmatter!/4` (attempts `File.read` on a not-yet-existing path). Both are CERTAIN-BLOCKING failures on every claimed pitch — both invisible from the pitch's own reference list.
+When a pitch adds a new lifecycle directory or queue-state transition, the solution sketch typically names a few writer functions (the paths that CREATE the directory or transition files into it). However, every reader that checks for the OLD directory must ALSO be updated — a hardcoded reader of the old path is a certain-blocking defect if missed. Example: a pitch that adds a `building/` claim directory names `maybe_ship_pitch/4` as the only `ready/`-matching site needing widening, but a grep of the codebase reveals two more readers already in flight: `LoopQueueDrain.ship/6` (raises `"in neither ready/ nor shipped/"` on the missing path) and `LoopQueue.write_frontmatter!/4` (attempts `File.read` on a not-yet-existing path). Both are CERTAIN-BLOCKING failures on every claimed pitch — both invisible from the pitch's own reference list. The complete inventory is larger than either list: `Mix.Tasks.Codegen.Loop.resolve_pitch_source/2`, `LoopQueueDrain.pitch_arg_for/3`, `LoopQueueDrain.record_queue_park_dossier/2` and `handle_nonzero_exit/8`'s post-commit-hiccup ship arm all read a pitch path too (`context/loop.md` § Possession by Rename is where it is maintained) — a reader list is only ever complete for the readers that existed when the grep ran, which is why the inventory lives with the mechanism rather than with the pitch that introduced it.
 
 **Pitch-design discipline**: Before writing the solution sketch, grep the literal old directory path across `lib/`, `test/`, and `shared/` to enumerate ALL hardcoded readers, not just the writer named in the problem statement. Document the full list in the sketch's Files-to-Touch or Integration Points sections. A reader you discover during implementation but didn't forecast is a plan defect — it should have been visible from the static proof (the grep). A missing reader causes a red-test failure at first run and adds rework cycles.
 
 ## Trigger Keywords
 
-pitch lifecycle, pitch frontmatter, blocks_on, Blocks-on legacy, pitch-format-validator, draft ready building shipped archive studio transcripts, Kahn topological sort, ordered_slugs, ship mv, File.rename!, claim_pitch, possession, building directory, dirty_tree_exit_code, pitch design hardcoded readers, grep reader scope, handoffs, handoff_receipt, bilateral deferral record, cross-pitch ownership, reconcile_handoffs, write_handoff_receipt, archive preserves recovery dossier, recovery ref retention
+pitch lifecycle, pitch frontmatter, blocks_on, Blocks-on legacy, pitch-format-validator, draft ready building shipped archive studio transcripts, Kahn topological sort, ordered_slugs, ship mv, File.rename!, claim_pitch, possession, building directory, dirty_tree_exit_code, pitch design hardcoded readers, grep reader scope, handoffs, handoff_receipt, bilateral deferral record, cross-pitch ownership, reconcile_handoffs, write_handoff_receipt, archive preserves recovery dossier, recovery ref retention, reader inventory, resolve_pitch_source, pitch_arg_for, stranded claim reconciled at startup

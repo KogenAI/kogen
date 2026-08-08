@@ -1779,15 +1779,27 @@ defmodule CodegenTestHarness.LoopQueue do
     # Line-start anchor: `\A` (string start) or a literal `\n` immediately
     # before the marker, with a mandatory trailing `\n` — so the marker only
     # counts when it is the ENTIRE content of a line. `Regex.run/3` with
-    # `return: :index` gives the byte range of the WHOLE match (group 0,
+    # `return: :index` gives the BYTE range of the WHOLE match (group 0,
     # first tuple) — used to slice `before`/`after_marker` around exactly
     # the matched marker text, never the surrounding `\A|\n` anchor bytes.
+    #
+    # Those offsets are BYTES, so the slices must be taken in bytes too.
+    # `String.slice/2,3` counts GRAPHEMES, and a pitch body is full of
+    # multi-byte characters (em dashes, arrows, ✅) — every one of them
+    # drifts the two scales further apart, so the grapheme-indexed slice cut
+    # the prefix short and the section splice landed mid-sentence, silently
+    # DESTROYING everything between the two positions. Measured on
+    # `rules-grants-and-guards-match-reality.md`: 102_927 bytes of prefix but
+    # 102_229 graphemes — a 698-character hole punched through the durable
+    # recovery evidence (the parked WIP's own recovery ref, commit and tree
+    # sha) the row was being appended to record.
     anchored_marker = Regex.compile!("(?:\\A|\\n)(#{Regex.escape(marker)})\\n")
 
     case Regex.run(anchored_marker, normalized, return: :index) do
       [_whole, {marker_start, marker_len}] ->
-        before = String.slice(normalized, 0, marker_start)
-        after_marker = String.slice(normalized, (marker_start + marker_len)..-1//1)
+        marker_end = marker_start + marker_len
+        before = binary_part(normalized, 0, marker_start)
+        after_marker = binary_part(normalized, marker_end, byte_size(normalized) - marker_end)
 
         case String.split(after_marker, "\n## ", parts: 2) do
           [section_only] ->

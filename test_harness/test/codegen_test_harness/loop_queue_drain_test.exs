@@ -3813,6 +3813,86 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert LoopQueueDrain.pitch_arg_for("x", "claude", "/repo") ==
                "@/repo/codegen/pitches/ready/x.md"
     end
+
+    test "an unclaimed pitch resolves to its ready/ path", ctx do
+      write_pitch(ctx.ready_dir, "x")
+
+      assert LoopQueueDrain.pitch_arg_for("x", "claude", ctx.dir) ==
+               "@" <> Path.join(ctx.ready_dir, "x.md")
+    end
+
+    # The regression: `claim_pitch!/2` moves a selected pitch to building/ for
+    # the whole cycle, so a killed/crashed child strands it there. A relaunch
+    # (retry arm, outage resume, timeout retry) that still names ready/ hands
+    # the child a path that does not exist.
+    test "a CLAIMED pitch stranded in building/ resolves to its building/ path", ctx do
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+      File.write!(Path.join(building_dir, "x.md"), "# Pitch: x\n")
+
+      assert LoopQueueDrain.pitch_arg_for("x", "claude", ctx.dir) ==
+               "@" <> Path.join(building_dir, "x.md")
+    end
+
+    test "ready/ wins when both states somehow hold the slug", ctx do
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+      write_pitch(ctx.ready_dir, "x")
+      File.write!(Path.join(building_dir, "x.md"), "# Pitch: x\n")
+
+      assert LoopQueueDrain.pitch_arg_for("x", "claude", ctx.dir) ==
+               "@" <> Path.join(ctx.ready_dir, "x.md")
+    end
+
+    test "neither state holds the slug -> the canonical ready/ path is named", ctx do
+      assert LoopQueueDrain.pitch_arg_for("x", "claude", ctx.dir) ==
+               "@" <> Path.join(ctx.ready_dir, "x.md")
+    end
+  end
+
+  # ── A relaunch must follow possession, not the vacated ready/ path ────────
+  # A child claims ready/ -> building/ and a killed one never restores it, so
+  # the drain's SECOND spawn for the same slug has to name building/. Naming
+  # the vacated ready/ path is what made the 20260808 relaunch of
+  # `rules-grants-and-guards-match-reality` refuse with "no commit subject
+  # available": the child could not read the pitch it was told to build.
+
+  describe "relaunching a claimed slug" do
+    test "the resumed spawn names building/<slug>.md, not the vacated ready/ path", ctx do
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+      write_pitch(ctx.ready_dir, "solo")
+
+      seen = start_agent([])
+      attempts = start_agent(0)
+
+      spawn_fn = fn slug, harness, _stack, cwd, _jsonl ->
+        Agent.update(seen, &(&1 ++ [LoopQueueDrain.pitch_arg_for(slug, harness, cwd)]))
+
+        # Emulate Mix.Tasks.Codegen.Loop.claim_pitch!/2 followed by a child
+        # that dies without restoring the claim.
+        src = Path.join(ctx.ready_dir, "#{slug}.md")
+        if File.exists?(src), do: File.rename!(src, Path.join(building_dir, "#{slug}.md"))
+
+        {:exit_code, 1}
+      end
+
+      # Transient on the first attempt only: that routes through the outage
+      # pause, which resumes the SAME slug via a second spawn. The second
+      # attempt is non-transient so the drain concludes instead of looping.
+      transient_fn = fn _jsonl ->
+        Agent.get_and_update(attempts, fn n -> {n == 0, n + 1} end)
+      end
+
+      capture_io(:stderr, fn ->
+        quiet_drain(base_opts(ctx, spawn_fn: spawn_fn, transient_fn: transient_fn))
+      end)
+
+      assert Agent.get(seen, & &1) == [
+               "@" <> Path.join(ctx.ready_dir, "solo.md"),
+               "@" <> Path.join(building_dir, "solo.md")
+             ]
+    end
   end
 
   # ── Env-mutating tests above use System.put_env/delete_env (process-global) —
@@ -4362,6 +4442,57 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
       assert dossier["namespace"] == "queue-fail"
       assert dossier["stage"] == "ready"
       assert {"", 0} = System.cmd("git", ["status", "--porcelain"], cd: ctx.dir)
+    end
+
+    # A terminal failure is normally reached with the pitch still CLAIMED in
+    # building/. A dossier built from `ready_dir` names a file that is not
+    # there: `pitch_path` points at nothing, and `classify_scope/3` reads no
+    # `scope:` at all and silently records ownership "ok" with no expansion —
+    # WIP parked to a branch that no later materialization can tie back to
+    # the pitch.
+    test "a CLAIMED pitch's dossier names its building/ path and reads its real scope", ctx do
+      System.cmd("git", ["init", "-q"], cd: ctx.dir)
+      System.cmd("git", ["config", "user.email", "test@example.com"], cd: ctx.dir)
+      System.cmd("git", ["config", "user.name", "Test"], cd: ctx.dir)
+      File.write!(Path.join(ctx.dir, ".gitignore"), "codegen/\n")
+      File.write!(Path.join(ctx.dir, "tracked.txt"), "base\n")
+      File.write!(Path.join(ctx.dir, "elsewhere.txt"), "base\n")
+      System.cmd("git", ["add", "-A"], cd: ctx.dir)
+      System.cmd("git", ["commit", "-qm", "base"], cd: ctx.dir)
+
+      building_dir = Path.join([ctx.dir, "codegen", "pitches", "building"])
+      File.mkdir_p!(building_dir)
+      write_pitch(ctx.ready_dir, "solo", "---\nscope: [tracked.txt]\n---\n# Pitch: solo\n")
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        # Claim (ready/ -> building/), then fail with work OUTSIDE the pitch's
+        # declared scope — the dossier must report that expansion, which it
+        # can only do by reading the pitch at its claimed path.
+        File.rename!(
+          Path.join(ctx.ready_dir, "#{slug}.md"),
+          Path.join(building_dir, "#{slug}.md")
+        )
+
+        File.write!(Path.join(ctx.dir, "elsewhere.txt"), "dirty, undeclared\n")
+        {:exit_code, 1}
+      end
+
+      capture_io(:stderr, fn ->
+        quiet_drain(
+          base_opts(ctx,
+            spawn_fn: spawn_fn,
+            transient_fn: fn _jsonl -> false end,
+            git_stash_fn: &LoopQueueDrain.default_git_stash_fn/3
+          )
+        )
+      end)
+
+      assert {:ok, dossier} =
+               CodegenTestHarness.InterruptedCycleRecovery.active_dossier(ctx.dir, "solo")
+
+      assert dossier["pitch_path"] == Path.join(building_dir, "solo.md")
+      assert dossier["ownership"] == "expanded"
+      assert dossier["scope_expansion"] == ["elsewhere.txt"]
     end
   end
 

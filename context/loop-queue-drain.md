@@ -23,6 +23,22 @@ cycle. A pitch whose dependency is unsatisfied (dep still in `draft/` or absent)
 gate — never selected, stays physically in `ready_dir`, skipped every scan, surfaced in a distinct
 SKIPPED (unmet dep) bucket. This is NOT a failure; drain still returns `{:ok, shipped_count}`.
 
+## The Child's Pitch Argument — `pitch_arg_for/3`
+
+The pitch argument handed to each spawned `codegen-build` child names the pitch's CURRENT live state,
+never a fixed `ready/` guess. `pitch_arg_for(slug, harness, cwd)` probes `ready/<slug>.md` first (an
+unclaimed pitch, or one whose claim was restored), then `building/<slug>.md` (a claimed or
+crash-stranded cycle), and names the canonical `ready/` path when neither holds it — so the child's own
+fail-closed "pitch file not found" refusal reports the location the drain selected from. Probe order
+mirrors `resolve_pitch_path/2` and `LoopQueue.write_frontmatter!/4`.
+
+It is re-evaluated on EVERY spawn, not once per slug. All three relaunch legs — transient retry,
+outage-pause resume, timeout retry — re-enter `do_run_slug/4` and re-spawn through here, and by then
+the first attempt has already claimed the pitch into `building/` (`context/loop.md` § Possession by
+Rename). A hardcoded `ready/` path there names a file that does not exist, so `codegen-build` leaves
+its own `_expected_slug` at `adhoc` and rejects the child's `build-result.json` as mismatched even when
+the cycle itself succeeded.
+
 ## Ship Verification — exit 0 is Necessary, Not Sufficient
 
 A child's exit code 0 alone does NOT mean shipped. `handle_exit_zero/7` additionally requires:
@@ -37,7 +53,11 @@ failure — same skip-and-continue path as a genuine nonzero exit.
 
 **Committer-post-commit hiccup recovery** (ported from legacy `build-queue.sh`): a child exiting
 non-zero AFTER HEAD already moved, with a fresh clear gate verdict, still counts as shipped rather than
-halting the whole queue.
+halting the whole queue. That arm's presence check is `File.exists?(resolve_pitch_path(state, slug))`,
+never `ready_dir` alone — a child that commits and is then killed before its own `maybe_ship_pitch/4`
+leaves the pitch claimed in `building/`, and a `ready/`-only guard drops that landed commit into the
+retry ladder, which consults `transient?` and never `committed?`. `ship/6` already accepts a
+`building/` source; this guard is what lets it be reached.
 
 ## Exit 4 — Committed AND Retired, Dirty Tree (Ship-With-Warning)
 
@@ -157,6 +177,15 @@ normal shape — a failed cycle already restored its claim via `restore_claim/2`
 crashed child that never restored its claim, stranding the slug there — see § Ship Verification). A
 demotion never targets `shipped_dir` — a pitch that reached `shipped/` was never a failure.
 
+**The history-row splice is BYTE-indexed, end to end.** `LoopQueue.append_history_row/3` finds the
+`## Build failure history` heading with `Regex.run(..., return: :index)`, whose offsets are BYTES, and
+must slice around it with `binary_part/3`. `String.slice/2,3` counts GRAPHEMES, so mixing the two
+scales drifts them apart by one position per multi-byte character in the pitch body — em dashes,
+arrows, ✅ — and the splice then lands short of the heading and DESTROYS every byte in between.
+Measured on `rules-grants-and-guards-match-reality.md`: 102_927 bytes of prefix against 102_229
+graphemes, a 698-character hole punched through the durable evidence the row was being appended to
+record, taking a parked WIP's recovery ref, commit and tree sha with it.
+
 **Cascade is named, not silent.** `LoopQueue.dependents_of/2` scans `ready_dir` for every pitch whose
 `blocks_on:` edges name the just-demoted slug, and the demotion stderr line lists them
 (`queue: DEMOTED <slug> after 2 deterministic failures -> draft/<slug>.md (blocked: <dependents>)`) — the
@@ -185,7 +214,14 @@ decides independently whether a row is warranted:
 - `record_queue_park_dossier/2` (this module, called from `park_failed_tree/2`, which itself runs
   immediately before `record_build_failure/4` for the SAME terminal failure, in all three
   deterministic-failure `cond` arms) deliberately does NOT call any row-writer — `record_build_failure/4`
-  already writes the counted evidence row moments later for the same attempt. Before this fix,
+  already writes the counted evidence row moments later for the same attempt. Its dossier `pitch_path`
+  comes from `resolve_pitch_path/2`, not `ready_dir`: a CONTROLLED terminal failure restores its claim
+  on the way out (`park_and_restore_claim/5`), but a killed, crashed or infra-aborted child never does,
+  and its pitch is still in `building/` when the drain parks the tree. A `ready_dir` path that is not
+  there makes `classify_scope/3` parse no `scope:` and silently record `ownership: ok` with an empty
+  expansion — the one field that says WHAT the abandoned work reached, reported as clean. Only
+  classification is at stake: materialization finds a dossier by SLUG, so the parked bytes stay
+  recoverable either way. Before this fix,
   `finish_park!/5` wrote a row unconditionally and this call site produced a SILENT DUPLICATE write on
   every real-git-repo drain failure (never caught because every pre-existing drain test used a
   non-git `cwd`, where `park_failure/1`'s `git rev-parse HEAD` fails and the write never runs).
@@ -429,4 +465,4 @@ there never changes `park_failed_tree/2`'s own returned branch name or the pre-e
 
 ## Trigger Keywords
 
-LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, terminal_cause, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, gate_never_ran_this_cycle, stale clear verdict cause, failure cause, contradiction warn, failure block, InterruptedCycleRecovery, reconciliation_required, recovery preflight, queue startup recovery, prioritize_recovered_slug, reconcile_opts, state.recovery, stranded building claim, park_failure, record_park_history_row, finish_park, duplicate history row, recovery dossier, queue-fail dossier, startup parks stranded claim, ordinary order precedence, recovery informational, record_counted_history, context-free counted write, crash-looping drain, uncounted interrupted attempt, max_pitch_fails_from_env
+LoopQueueDrain, queue drain, codegen.loop.queue, --queue, build-queue.sh, ordered_slugs, blocks_on, transient?, watchdog timeout, pitch_budget_secs, CODEGEN_BUILD_QUEUE_BUDGET_USD, CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS, CODEGEN_BUILD_QUEUE_MAX_CONSECUTIVE_FAILS, circuit breaker, queue-fail branch, handle_exit_zero, false-0, ship verification, terminal marker, terminal-state.json, terminal_marker_fn, blind retry, deterministic exhaustion, draft_fn, skeleton draft, document-system-prompt, drafted_count, publish, git_publish_fn, publish_preflight_fn, publish_or_halt, recovery branch, park_published_commit, unpublished commit, git push, git rebase, babysit push, watched node, exit 4, dirty_tree_exit_code, handle_exit_dirty_retired, building/, claim_pitch, possession, ship-with-warning, auto-demotion, build_failures, demoted_from, demote_reason, status SHAPING, Build failure history, record_build_failure, write_demotion, write_build_failures, build_failure_evidence, format_failure_row, failure_owner_phase, escape_history_cell, truncate_summary, resolve_pitch_path, dependents_of, CODEGEN_BUILD_QUEUE_MAX_PITCH_FAILS, max_pitch_fails, demote pitch back to draft, load_deps_fn, ensure_decode_deps, Jason unloaded, UndefinedFunctionError, boot-time force-load, Code.ensure_loaded, decode dep, resident module, beam churn, stale \_build queue crash, failure_summary, terminal_reason fallback, terminal_cause, empty result evidence, undiagnosable exhaustion, gate clear result empty, classify_drain_failure, format_failure_block, ship_not_verified, transient_exhausted, gate_failed, gate_never_ran_this_cycle, stale clear verdict cause, failure cause, contradiction warn, failure block, InterruptedCycleRecovery, reconciliation_required, recovery preflight, queue startup recovery, prioritize_recovered_slug, reconcile_opts, state.recovery, stranded building claim, park_failure, record_park_history_row, finish_park, duplicate history row, recovery dossier, queue-fail dossier, startup parks stranded claim, ordinary order precedence, recovery informational, record_counted_history, context-free counted write, crash-looping drain, uncounted interrupted attempt, max_pitch_fails_from_env, pitch_arg_for, child pitch argument, relaunch names building, expected_slug adhoc, build-result mismatch, append_history_row, byte offset grapheme slice, binary_part, history row corruption, queue-fail dossier pitch_path

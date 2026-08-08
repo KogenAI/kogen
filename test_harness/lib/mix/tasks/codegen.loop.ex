@@ -160,8 +160,10 @@ defmodule Mix.Tasks.Codegen.Loop do
         [] -> missing_flag!("<pitch>")
       end
 
-    requested_source = resolve_pitch_source(pitch_arg, cwd)
-    requested_slug = source_slug(requested_source)
+    # Derived from the ARGV text alone, never from the filesystem — see
+    # `claim_source_after_reconcile/2` for why this must not be a resolved
+    # source.
+    requested_slug = argv_slug(pitch_arg, cwd)
 
     result =
       OrchestrationLoop.with_startup_guard(
@@ -173,9 +175,11 @@ defmodule Mix.Tasks.Codegen.Loop do
             InterruptedCycleRecovery.reconcile(cwd: cwd, roles: roles),
             requested_slug,
             fn ->
-              with :ok <- recovery_claimable(requested_source, cwd, requested_slug) do
+              {source, slug} = claim_source_after_reconcile(pitch_arg, cwd)
+
+              with :ok <- recovery_claimable(source, cwd, slug) do
                 run_claimed_cycle(
-                  requested_source,
+                  source,
                   pitch_arg,
                   cwd,
                   harness,
@@ -228,6 +232,54 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   defp source_slug({:file, abs}), do: Path.basename(abs, ".md")
   defp source_slug(:literal), do: nil
+
+  # The cycle's ONE pitch-source resolution, taken strictly AFTER
+  # `InterruptedCycleRecovery.reconcile/1` has run.
+  #
+  # Ordering is the whole point. `reconcile/1` MOVES a pitch between live
+  # state dirs — a `building/` claim stranded by a killed prior cycle is
+  # parked and restored to `ready/` before a cycle may start — so any source
+  # resolved BEFORE it is a snapshot that reconcile can invalidate. `run/1`
+  # used to take exactly that snapshot, and a stale one is silent: every
+  # downstream consumer (`resolve_commit_subject!/2`, `claim_pitch!/2`,
+  # `resolve_pitch_scope!/2`, `park_and_restore_claim/5`) then treats a real
+  # pitch as an ad-hoc literal. That is how the 20260808 queue relaunch of
+  # `rules-grants-and-guards-match-reality` refused with "no commit subject
+  # available" while the pitch's own `commit_subject:` sat unread in the
+  # file, and why its parked WIP got no dossier — `:literal` parks nothing.
+  #
+  # `run/1` therefore holds NO resolved source of its own: the slug it hands
+  # `route_reconcile_result/3` comes from `argv_slug/2`, read off the argv
+  # text with no filesystem access, so there is nothing there to go stale.
+  # This is the only site that produces a `{:file, _}`, and it derives its
+  # own fallback slug rather than accepting one — re-introducing the defect
+  # means re-introducing a second resolution site, not just reordering two
+  # lines.
+  @doc false
+  @spec claim_source_after_reconcile(String.t(), String.t()) ::
+          {{:file, String.t()} | :literal, String.t() | nil}
+  def claim_source_after_reconcile(pitch_arg, cwd) do
+    source = resolve_pitch_source(pitch_arg, cwd)
+    {source, source_slug(source) || argv_slug(pitch_arg, cwd)}
+  end
+
+  # The slug an ARGV string names, read from its text alone — never from the
+  # filesystem, so a pitch that reconcile is about to move cannot make this
+  # answer stale (and a pitch present in NEITHER live state still reports the
+  # slug it asked for). `nil` for anything that is not a pitch path: an
+  # ad-hoc literal prompt has no slug.
+  @spec argv_slug(String.t(), String.t()) :: String.t() | nil
+  defp argv_slug("@" <> path, cwd), do: argv_slug(path, cwd)
+
+  defp argv_slug(arg, cwd) do
+    abs = Path.expand(arg, cwd)
+
+    if queue_pitch_path?(abs) and Path.extname(abs) == ".md" do
+      Path.basename(abs, ".md")
+    else
+      nil
+    end
+  end
 
   # Reject a known quarantined recovery BEFORE claiming ready/ -> building/.
   # This is the normal path after a prior incompatible replay; the narrow
@@ -386,7 +438,7 @@ defmodule Mix.Tasks.Codegen.Loop do
          commit_subject_flag,
          review_budget_opts
        ) do
-    pitch = resolve_pitch(pitch_arg, cwd)
+    pitch = resolve_pitch_body(source, pitch_arg, cwd)
     commit_subject = resolve_commit_subject!(source, commit_subject_flag)
     source = claim_pitch!(source, cwd)
     slug = source_slug(source) || "adhoc"
@@ -666,6 +718,13 @@ defmodule Mix.Tasks.Codegen.Loop do
                   "#{inspect(reason)}"
       end
     else
+      # Not the ready/ path — nothing to claim, so neither the double-claim
+      # refusal nor the receipt backstop above runs. A source already in
+      # `building/` is an ADOPTED claim: possession was taken (and its
+      # `handoff_receipt:` verified) by the cycle that originally renamed it
+      # there, and `reconcile/1` restores any single stranded claim to
+      # `ready/` before a cycle starts, so re-verifying here would re-check a
+      # decision that was already made once, correctly.
       {:file, abs}
     end
   end
@@ -1018,6 +1077,18 @@ defmodule Mix.Tasks.Codegen.Loop do
   defp terminal_cause({:error, reason}) when is_binary(reason) and reason != "", do: reason
   defp terminal_cause({:error, _reason}), do: "loop failed without a supplied cause"
 
+  # Reads the cycle's prompt body from the RESOLVED source, not from the raw
+  # argv the caller typed — `pitch_source_at/1` may have redirected a
+  # live-state miss to its sibling, and re-reading the stale argv here would
+  # exit 2 with "pitch file not found" on exactly the relaunch
+  # `resolve_pitch_source/2` just repaired. A `:literal` source has no file
+  # to read, so its argv IS the prompt and goes through unchanged (that
+  # clause also keeps `resolve_pitch/2`'s own fail-closed `@`-miss refusal
+  # reachable for an argument that names no pitch at all).
+  @spec resolve_pitch_body({:file, String.t()} | :literal, String.t(), String.t()) :: String.t()
+  defp resolve_pitch_body({:file, abs}, _pitch_arg, cwd), do: resolve_pitch("@" <> abs, cwd)
+  defp resolve_pitch_body(:literal, pitch_arg, cwd), do: resolve_pitch(pitch_arg, cwd)
+
   @doc false
   @spec resolve_pitch(String.t(), String.t()) :: String.t()
   def resolve_pitch("@" <> path, cwd) do
@@ -1047,14 +1118,50 @@ defmodule Mix.Tasks.Codegen.Loop do
 
   @doc false
   @spec resolve_pitch_source(String.t(), String.t()) :: {:file, String.t()} | :literal
-  def resolve_pitch_source("@" <> path, cwd) do
-    abs = Path.expand(path, cwd)
-    if File.exists?(abs), do: {:file, abs}, else: :literal
+  def resolve_pitch_source("@" <> path, cwd), do: pitch_source_at(Path.expand(path, cwd))
+  def resolve_pitch_source(literal, cwd), do: pitch_source_at(Path.expand(literal, cwd))
+
+  # Resolves an absolute candidate to the pitch file it names. The exact path
+  # wins; a MISS on a live-state pitch path falls back to the sibling live
+  # state before it is allowed to become a literal prompt.
+  #
+  # A pitch is physically in `building/` for its WHOLE cycle (`claim_pitch!/2`)
+  # and back in `ready/` after a `restore_claim/2` or an
+  # `InterruptedCycleRecovery.reconcile/1`, so whichever state dir a caller
+  # NAMES is only a snapshot. Both directions of the desync are real:
+  # `LoopQueueDrain.pitch_arg_for/3` relaunches an already-claimed slug, and
+  # `reconcile/1` restores a stranded claim mid-run. Degrading either miss to
+  # `:literal` is what turned the 20260808 relaunch of
+  # `rules-grants-and-guards-match-reality` into "no commit subject available"
+  # — a pitch build silently reclassified as an ad-hoc prompt, with the
+  # pitch's own `commit_subject:` sitting unread in the file.
+  @spec pitch_source_at(String.t()) :: {:file, String.t()} | :literal
+  defp pitch_source_at(abs) do
+    if File.exists?(abs), do: {:file, abs}, else: sibling_live_state_source(abs)
   end
 
-  def resolve_pitch_source(literal, cwd) do
-    abs = Path.expand(literal, cwd)
-    if File.exists?(abs), do: {:file, abs}, else: :literal
+  # `shipped/`, `draft/` and `archive/` are deliberately NOT probed, and a
+  # path naming one of them is never redirected into a live state: a landed
+  # pitch must never be handed out again (pitch "a landed pitch cannot be
+  # handed out again"), and an unshaped one was never dispatchable.
+  @live_pitch_states ~w(ready building)
+
+  @spec sibling_live_state_source(String.t()) :: {:file, String.t()} | :literal
+  defp sibling_live_state_source(abs) do
+    state_dir = Path.dirname(abs)
+    pitches_dir = Path.dirname(state_dir)
+
+    if Path.basename(state_dir) in @live_pitch_states and queue_pitch_path?(abs) do
+      @live_pitch_states
+      |> Enum.map(&Path.join([pitches_dir, &1, Path.basename(abs)]))
+      |> Enum.find(&File.exists?/1)
+      |> case do
+        nil -> :literal
+        found -> {:file, found}
+      end
+    else
+      :literal
+    end
   end
 
   # Extracts the sha string from git_head/1's {:ok, sha} | :unborn shape for

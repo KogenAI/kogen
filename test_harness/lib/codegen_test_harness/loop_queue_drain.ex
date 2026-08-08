@@ -1550,7 +1550,21 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   end
 
   defp record_queue_park_dossier(state, slug) do
-    pitch_path = Path.join(state.ready_dir, "#{slug}.md")
+    # The pitch's CURRENT path, not a `ready/` guess. A CONTROLLED terminal
+    # failure restores the claim on its way out (`park_and_restore_claim/5`),
+    # so `ready/` is the right answer for it — but a KILLED, crashed or
+    # infra-aborted child never restores, and its pitch is still in
+    # `building/` when the drain parks the tree. That is the 20260808 shape,
+    # and the one this park exists to record.
+    #
+    # A dossier built from `ready_dir` then names a file that is not there,
+    # so `classify_scope/3` parses no `scope:` and silently records ownership
+    # "ok" with an empty expansion — the one field that says WHAT the
+    # abandoned work reached, reported as clean. Scope is the stake here:
+    # materialization finds a dossier by SLUG, so the parked bytes stay
+    # recoverable either way, and `pitch_path` is read only to classify
+    # (`InterruptedCycleRecovery.park_and_apply_over_operator_edits/7`).
+    pitch_path = resolve_pitch_path(state, slug)
 
     case InterruptedCycleRecovery.park_failure(
            cwd: state.cwd,
@@ -2130,10 +2144,21 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         end
 
       committed? and gate_clear? and whole_pitch? and coverage_floor_ok? and
-          File.exists?(Path.join(state.ready_dir, "#{slug}.md")) ->
-        # post-commit hiccup: commit landed, gate is clear, but the
-        # pitch file is still sitting in ready/ (ship step never ran). Finish
-        # the ship ourselves rather than halting the whole queue.
+          File.exists?(resolve_pitch_path(state, slug)) ->
+        # post-commit hiccup: commit landed, gate is clear, but the pitch file
+        # never left the live states (ship step never ran). Finish the ship
+        # ourselves rather than halting the whole queue.
+        #
+        # `building/` counts here, not just `ready/`. A child that COMMITS and
+        # is then killed before its own `maybe_ship_pitch/4` leaves the pitch
+        # claimed, and a `ready/`-only guard misses it: the landed commit goes
+        # unpublished and the slug falls through to the retry ladder, which
+        # consults `transient?`, never `committed?`. That used to be caught by
+        # accident — the relaunch died on a `ready/` path that no longer
+        # existed — and `pitch_arg_for/3` now (correctly) resolves that path,
+        # so the accident is gone and the case must be handled on purpose.
+        # `ship/6` already accepts a `building/` source; this guard is what
+        # lets it be reached.
         case publish_or_halt(state, slug, head_before, head_after) do
           {:ok, published_sha} ->
             ship(state.cwd, state.ready_dir, state.shipped_dir, slug, head_before, published_sha)
@@ -2763,9 +2788,29 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   def mention_prefix(other), do: raise("LoopQueueDrain: unknown harness #{inspect(other)}")
 
   @doc false
+  # Names the pitch's CURRENT physical location, never a fixed `ready/` guess.
+  # `mix codegen.loop` claims a selected pitch by renaming
+  # `ready/<slug>.md` -> `building/<slug>.md` for the whole cycle, so a child
+  # that is KILLED or crashes strands the file in `building/`. Every relaunch
+  # of that same slug — the transient-retry arm, the outage-pause resume, the
+  # timeout retry — re-enters `do_run_slug/4` and re-spawns through here; a
+  # hardcoded `ready/` path then names a file that does not exist, and
+  # `codegen-build` degrades its own `_expected_slug` to `adhoc` and rejects
+  # the child's build-result as mismatched even when the cycle itself
+  # succeeded. Probe order mirrors `resolve_pitch_path/2` and
+  # `LoopQueue.write_frontmatter!/4`: ready first (unclaimed, or a restored
+  # claim), then building (a claimed or stranded cycle). With neither present
+  # the canonical `ready/` path is named, so the child's own fail-closed
+  # "pitch file not found" refusal reports the location the drain selected
+  # from.
   @spec pitch_arg_for(String.t(), String.t(), String.t()) :: String.t()
   def pitch_arg_for(slug, harness, cwd) do
-    mention_prefix(harness) <> Path.join(cwd, "codegen/pitches/ready/#{slug}.md")
+    ready = Path.join(cwd, "codegen/pitches/ready/#{slug}.md")
+    building = Path.join(cwd, "codegen/pitches/building/#{slug}.md")
+
+    path = if not File.exists?(ready) and File.exists?(building), do: building, else: ready
+
+    mention_prefix(harness) <> path
   end
 
   # ── Real spawn_fn: fresh codegen-build child, budget-bounded, JSONL capture ──
