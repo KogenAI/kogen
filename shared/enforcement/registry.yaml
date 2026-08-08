@@ -135,6 +135,27 @@
   role: "reviewer-phoenix|reviewer-static"
   harnesses: all
 
+# SCHEMA: session-log.md — reviewer may not write files via in-place sed or
+# shell output redirection. reviewer-bash-allowlist's allowlist deliberately
+# keeps sed/awk (text-filter verbs narrowing read-only output), but `sed -i`/
+# `sed --in-place` and `>`/`>>` redirection convert those same allowed verbs
+# into a WRITE — a reviewer edit lands in the tree under a gate verdict that
+# never covered it, since codegen-commit stages with `git add -A`. Denied as
+# a distinct rule (not folded into the allowlist regex) because it is a
+# write-FORM check across an otherwise-allowed verb, not a verb allow/deny.
+- id: reviewer-no-file-mutation
+  generated: true
+  description: "reviewer may not write files via sed -i or shell output redirection, including combined fd+stdout redirects (&>, &>>) (ignore_quoted: true — a `>` inside a quoted jq/awk filter string is a mention, not a redirection; a redirect targeting exactly /dev/null is a discard, never a file write, so it is excluded from the redirect branch)"
+  event: PreToolUse
+  tool_guard: Bash
+  ignore_quoted: true
+  match: "\\bsed\\b[^|;&]*(-i\\b|--in-place\\b)|>>?\\s*([^/&[:space:]]|/[^d]|/d[^e]|/de[^v]|/dev[^/]|/dev/[^n]|/dev/n[^u]|/dev/nu[^l]|/dev/nul[^l]|/dev/null[^&[:space:]])"
+  message: "BLOCKED by reviewer-no-file-mutation: reviewer is read-only — do not write files via `sed -i`/`sed --in-place` or shell output redirection (>, >>). Report the finding instead; the developer role fixes it."
+  surface: user_global
+  signal: AGENT_TYPE
+  role: "reviewer-phoenix|reviewer-static"
+  harnesses: all
+
 # SCHEMA: rules-stacks.md — developer-static may not run static build/verify commands manually
 - id: developer-static-no-manual-build
   generated: true

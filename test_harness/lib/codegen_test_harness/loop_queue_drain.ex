@@ -170,6 +170,23 @@ defmodule CodegenTestHarness.LoopQueueDrain do
   @default_retry_delays [30, 120, 300]
   @default_max_consecutive_fails 3
   @default_max_pitch_fails 2
+
+  # Fault 3 / Move 4 — the engine's own source: the drain, the loop,
+  # recovery, the gate, and the queue itself. A pitch whose `scope:` names
+  # any of these is refused UNATTENDED dispatch (`engine_migration?/2`) —
+  # the drain must never be handed a pitch that edits the running engine's
+  # own body while it is running. Pinned, not derived, so this list cannot
+  # silently drift with a refactor; extend it deliberately when the engine
+  # gains a new home file.
+  @engine_source_paths [
+    "test_harness/lib/codegen_test_harness/orchestration_loop.ex",
+    "test_harness/lib/codegen_test_harness/loop_queue_drain.ex",
+    "test_harness/lib/codegen_test_harness/loop_queue.ex",
+    "test_harness/lib/codegen_test_harness/interrupted_cycle_recovery.ex",
+    "test_harness/lib/codegen_test_harness/loop_gate.ex",
+    "test_harness/lib/mix/tasks/codegen.loop.ex",
+    "test_harness/lib/mix/tasks/codegen.loop.queue.ex"
+  ]
   # Ceiling on total outage-pause duration (secs) before the drain gives up
   # and HALTs with a distinct "provider outage" reason — see
   # `run_outage_pause/6` and `outage_pause_from_env/0`.
@@ -566,6 +583,7 @@ defmodule CodegenTestHarness.LoopQueueDrain do
           timed_out_slugs: MapSet.new(),
           failed_slugs: MapSet.new(),
           reconciliation_slugs: MapSet.new(),
+          engine_migration_slugs: MapSet.new(),
           parked_branches: %{},
           consecutive_fails: 0,
           drafted_count: 0,
@@ -1027,7 +1045,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
     # InterruptedCycleRecovery and remains in ready/ for an operator; it
     # must never consume retries or cause an unrelated pitch to wait.
     case quarantine_recoveries(state, selectable) do
-      {:ok, state, _selectable} ->
+      {:ok, state, selectable} ->
+        {state, _selectable} = quarantine_engine_migrations(state, selectable)
         run_ordered_loop(state, ordered, exclude, shipped_count, concluded_count)
 
       {:error, reason} ->
@@ -1044,7 +1063,8 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       Enum.reject(ordered, fn slug ->
         MapSet.member?(state.timed_out_slugs, slug) or
           MapSet.member?(state.failed_slugs, slug) or
-          MapSet.member?(state.reconciliation_slugs, slug) or Map.has_key?(blocked, slug)
+          MapSet.member?(state.reconciliation_slugs, slug) or
+          MapSet.member?(state.engine_migration_slugs, slug) or Map.has_key?(blocked, slug)
       end)
 
     case remaining do
@@ -1075,6 +1095,14 @@ defmodule CodegenTestHarness.LoopQueueDrain do
             :stderr,
             "queue: SKIPPED (reconciliation required) bucket: " <>
               Enum.join(state.reconciliation_slugs, ", ")
+          )
+        end
+
+        if MapSet.size(state.engine_migration_slugs) > 0 do
+          IO.puts(
+            :stderr,
+            "queue: SKIPPED (engine-migration, attended dispatch required) bucket: " <>
+              Enum.join(state.engine_migration_slugs, ", ")
           )
         end
 
@@ -1132,6 +1160,64 @@ defmodule CodegenTestHarness.LoopQueueDrain do
       {:ok, state, eligible} -> {:ok, state, Enum.reverse(eligible)}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # Fault 3 / Move 4 — classifies a pitch's `scope:` against the engine's
+  # own source (the drain, the loop, recovery, the gate, or the queue).
+  # Returns the LIST of matching engine paths (empty list = ordinary, safe
+  # to dispatch unattended) so the caller never re-parses `scope:` a second
+  # time to build its refusal message. Fails CLOSED: an unreadable/
+  # malformed `scope:` (a raise from `LoopQueue.parse_scope/2`, e.g. an
+  # absent pitch file or a non-flow-list value) is ALSO engine-migration —
+  # returns `:unreadable`, never an empty list — a pitch that cannot prove
+  # it is safe is treated as unsafe, never silently ordinary.
+  @spec engine_migration_paths(map(), CodegenTestHarness.LoopQueue.slug()) ::
+          [String.t()] | :unreadable
+  defp engine_migration_paths(state, slug) do
+    pitch_path = resolve_pitch_path(state, slug)
+
+    try do
+      case LoopQueue.parse_scope(slug, pitch_path) do
+        {:ok, paths} -> Enum.filter(paths || [], &(&1 in @engine_source_paths))
+      end
+    rescue
+      _ -> :unreadable
+    end
+  end
+
+  # Refuses UNATTENDED dispatch of a pitch whose `scope:` names the
+  # engine's own source. Runs at the SAME choke point as
+  # `quarantine_recoveries/2` (before any child is selected/spawned this
+  # scan) but is a DISTINCT state (`engine_migration_slugs`, never folded
+  # into `reconciliation_slugs`) — a skip-forever poisoned slug and an
+  # attended-migration refusal must stay distinguishable in the log;
+  # conflating them would make naming discipline and engine safety
+  # indistinguishable (see `context/loop.md`).
+  defp quarantine_engine_migrations(state, ordered) do
+    Enum.reduce(ordered, {state, []}, fn slug, {state, eligible} ->
+      case engine_migration_paths(state, slug) do
+        [] ->
+          {state, [slug | eligible]}
+
+        matching ->
+          unless MapSet.member?(state.engine_migration_slugs, slug) do
+            named =
+              if matching == :unreadable, do: "unreadable scope:", else: Enum.join(matching, ", ")
+
+            IO.puts(
+              :stderr,
+              "queue: #{slug} scope: names the engine's own source " <>
+                "(#{named}) — refusing unattended dispatch. " <>
+                "Run this pitch attended: mix codegen.loop --harness=#{state.harness} " <>
+                "--stack=#{state.stack} --cwd=#{state.cwd}"
+            )
+          end
+
+          {%{state | engine_migration_slugs: MapSet.put(state.engine_migration_slugs, slug)},
+           eligible}
+      end
+    end)
+    |> then(fn {state, eligible} -> {state, Enum.reverse(eligible)} end)
   end
 
   # `--watch` terminal continuation: `ready/` is empty THIS scan, but the
@@ -2893,21 +2979,35 @@ defmodule CodegenTestHarness.LoopQueueDrain do
         :ok
     end
 
-    collect_spawn_output(port, [], budget_secs * 1000, jsonl_path)
+    # Fault 9 / Move 11e — a monotonic DEADLINE, computed once, not a
+    # re-armed relative timer. The prior implementation passed the same
+    # `budget_ms` to every recursive call, so each `receive/after` re-armed
+    # a fresh `budget_ms`-long window on every chunk — a busy pitch that
+    # prints ANYTHING within any 7200s window never tripped it; a two-hour
+    # BUDGET was actually a two-hour SILENCE timeout. Computing
+    # `System.monotonic_time(:millisecond) + budget_secs * 1000` once here
+    # and passing `max(deadline - now, 0)` as the `after` clause on each
+    # recursion makes the ceiling fire on ELAPSED time regardless of
+    # progress, matching call-dispatch.sh's Trigger (4) (Move 11a-11d) at
+    # the drain's own layer.
+    deadline_ms = System.monotonic_time(:millisecond) + budget_secs * 1000
+    collect_spawn_output(port, [], deadline_ms, jsonl_path)
   end
 
-  defp collect_spawn_output(port, acc, budget_ms, jsonl_path) do
+  defp collect_spawn_output(port, acc, deadline_ms, jsonl_path) do
+    remaining_ms = max(deadline_ms - System.monotonic_time(:millisecond), 0)
+
     receive do
       {^port, {:data, chunk}} ->
         IO.binwrite(:stderr, chunk)
-        collect_spawn_output(port, [chunk | acc], budget_ms, jsonl_path)
+        collect_spawn_output(port, [chunk | acc], deadline_ms, jsonl_path)
 
       {^port, {:exit_status, code}} ->
         :persistent_term.erase(@in_flight_os_pid_key)
         File.write!(jsonl_path, IO.iodata_to_binary(Enum.reverse(acc)))
         {:exit_code, code}
     after
-      budget_ms ->
+      remaining_ms ->
         do_spawn_timeout(port, acc, jsonl_path)
     end
   end

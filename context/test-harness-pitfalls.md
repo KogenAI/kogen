@@ -40,6 +40,7 @@ proof patterns, PATH-stub, `git show HEAD` pre-fix fixtures) live in
 - **`Task.shutdown(:brutal_kill)` doesn't kill OS children** — Use `Port.open` + process-group kill instead.
 - Round-trip tests fail loud on missing tools — require claude, jq, yq, rg, node on PATH; fail explicitly if absent.
 - Gate-failure-path tests are `:slow` — verdict != "clear" tests require real hooks; tag `:slow`, run only `make test-stacks`.
+- **A static `ordered_fn` fixture livelocks the drain — it does not "hang", it re-ships forever.** `LoopQueueDrain.run_loop/3` re-invokes `state.ordered_fn` on EVERY iteration, against the CURRENT `ready_dir`. A fixture like `ordered_fn: fn _ -> ["bad", "good"] end` keeps returning `good` after `good` has moved to `shipped/`, so the drain selects it, ships it, loops, and selects it again — an unbounded loop that ExUnit reports only as `** (ExUnit.TimeoutError) test timed out after 60000ms`. **The reported stack frame is a red herring**: it is wherever the timeout happened to land (in one real case `File.mkdir_p!` inside `do_run_slug/4`), not the blocking operation — there is no blocking operation. Tells that separate this from a load flake: it reproduces at every timeout setting (60s and 300s alike) and at every `--max-cases`, and a fresh `MIX_BUILD_PATH` does not change it. **Fix**: delegate to the real computation — `ordered_fn: fn ready_dir -> CodegenTestHarness.LoopQueue.ordered_slugs(ready_dir) end` — so a shipped slug naturally disappears from the order. Only pin a static list for a single-pass assertion that cannot reach a second iteration. Raising the timeout or tagging the test is papering over a production-shaped loop.
 
 ## Ecto / Port / Timestamp Gotchas
 
@@ -69,7 +70,7 @@ Check for pre-existing assertions by RUNNING the full test file (not just the ne
 
 ## Trigger Keywords
 
-test harness pitfall, exunit fixture, seam override, flake triage, event-hardened fixture, owned PID/PGID cleanup, empty BSD xargs, clean scaffold baseline, ecto timestamp, port env charlist, npm extension race, role resolver ripple, seam threading, test-seam bypass coverage gap, invoke_fn codegen_call_fn, acceptance bar integration fixture, build path isolation, mix build path, Mix.shell, capture_io stdout, arity beam stale, capture_io return value, exit-code assertion, state-machine exit constant, test refactoring state change, engine build isolation, spawn env clear, UndefinedFunctionError phantom
+test harness pitfall, exunit fixture, seam override, flake triage, event-hardened fixture, owned PID/PGID cleanup, empty BSD xargs, clean scaffold baseline, ecto timestamp, port env charlist, npm extension race, role resolver ripple, seam threading, test-seam bypass coverage gap, invoke_fn codegen_call_fn, acceptance bar integration fixture, build path isolation, mix build path, Mix.shell, capture_io stdout, arity beam stale, capture_io return value, exit-code assertion, state-machine exit constant, test refactoring state change, engine build isolation, spawn env clear, UndefinedFunctionError phantom, static ordered_fn livelock, drain re-ships forever, ExUnit.TimeoutError red herring
 
 ## Update When Changing
 

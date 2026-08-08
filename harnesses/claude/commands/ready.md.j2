@@ -18,7 +18,7 @@ This gate VERIFIES; it does not investigate, decide, or edit the pitch. Shaping 
 - Every `## Related pitches` / cross-reference resolves to a file on disk in `codegen/pitches/{draft,ready,shipped}/` (the same-motivation Rabbit-hole/No-go carve-out is exempt — it deliberately carries no draft reference).
 - A spike brief (when the pitch's core value is a novel cross-system mechanism) has every row naming a measurement and carrying an embedded transcript, with the negative control ordered first.
 
-Any gap → **refuse**: name the specific gap and the pitch section that owns it, stop, leave the file in `draft/`. Do not edit the pitch to close the gap.
+Any gap → **refuse**: name the specific gap and the pitch section that owns it as a structured `{gap, owning_section}` pair, leave the file in `draft/`. Do not edit the pitch to close the gap — this gate still never repairs. Hand the refusal back per the **Refusal hand-off** contract below rather than stopping here.
 
 **2. Staleness re-run** — for every ledger row, re-execute its recorded probe command VERBATIM (delegate read-only re-runs through `codegen-call` per the delegated-enumeration rule when the re-run set spans more than one file; transcribe, never interpret) and diff the fresh output against the row's recorded Outcome.
 
@@ -40,8 +40,10 @@ Any gap → **refuse**: name the specific gap and the pitch section that owns it
 
 Report: "READY. Moved to ready/."
 
-**If not ready**: report `NOT READY: <gap> — <owning section>.` and stop. The file stays in `draft/`. Do not investigate the gap, do not edit the pitch, do not raise `AskUserQuestion` — return control so a fresh shaping session (which DOES run the full investigation/auto-decide loop) can close it.
+**If not ready**: report `NOT READY: <gap> — <owning section>.` The file stays in `draft/`. Do not investigate the gap, do not edit the pitch, do not raise `AskUserQuestion` — this gate never repairs.
 
-**ASK-GATE: product forks only** — this gate raises no questions and makes no product-fork decisions; the ASK-GATE governs shaping, not verification. If a gap found here genuinely needs a product-fork decision to close, that decision belongs to a shaping session, not to `/ready`.
+**Refusal hand-off**: when `/ready` is invoked BY the shaper itself (the normal case — shaping invokes `/ready` on its own completion, never stops and waits to be told per `shape.txt`), a refusal is the input to a NEW shaping-loop iteration on the SAME gap, closed there, then `/ready` is re-invoked. Three stop conditions end the loop and surface to the operator instead of looping further: the SAME gap reported twice in a row; a genuine product-fork decision (routes to the ASK-GATE below, never auto-decided here); a 3-round ceiling on `/ready` invocations for one pitch. When `/ready` is invoked directly by the operator (not via a live shaping session), report the refusal and stop — there is no shaping loop to hand back to.
+
+**ASK-GATE: product forks only** — this gate raises no questions and makes no product-fork decisions; the ASK-GATE governs shaping, not verification. A gap needing a product-fork decision is one of the three stop conditions above, not something this gate resolves.
 
 {% include 'prompt-fragments/_probing.txt' %}

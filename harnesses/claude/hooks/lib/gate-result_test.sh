@@ -82,6 +82,14 @@ assert_eq "exit≠0 seed-missing → marker=INCONCLUSIVE ⚠️" \
 assert_eq "exit≠0 pool-exhaustion → verdict=inconclusive" \
     "inconclusive" "$(write_and_get_verdict 'make ci' short true 1 1 1 '' 'pool-exhaustion')"
 
+# Row 5b: exit≠0, classification=flake-isolated:<file> → inconclusive
+# (Fault 1 / Move 2a: the gate's ONLY failing test file passed when re-run
+# alone, in isolation — a load-starvation signature, not a code defect.)
+assert_eq "exit≠0 flake-isolated → verdict=inconclusive" \
+    "inconclusive" "$(write_and_get_verdict 'make test' short true 1 1 1 '' 'flake-isolated:test/codegen_test_harness/born_dead_detector_test.exs')"
+assert_eq "exit≠0 flake-isolated → marker=INCONCLUSIVE ⚠️" \
+    "INCONCLUSIVE ⚠️" "$(write_and_get_marker 'make test' short true 1 1 1 '' 'flake-isolated:test/codegen_test_harness/born_dead_detector_test.exs')"
+
 # Row 6: exit≠0 (other) → failed
 assert_eq "exit≠0 other → verdict=failed" \
     "failed" "$(write_and_get_verdict 'make ci' short true 1 2 2 '' '')"
@@ -479,6 +487,36 @@ assert_eq "write_gate_result 15-arg legacy → .graded_tree_sha empty (default)"
 assert_eq "gate_result_graded_tree_sha missing file → empty" \
     "" "$(gate_result_graded_tree_sha "$(mktemp -d)")"
 rm -rf "$DIR_15"
+
+# ── transaction_id (19th positional, Move 14 predicate 3) ──────────────────
+
+DIR_TXN=$(mktemp -d)
+write_gate_result "make test" "short" "abc1234" 3 \
+    "true" 0 2 2 "PASS" "" \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "sesstxn" "/tmp/gate.log" "$DIR_TXN" "" "deadbeef1234567890" "" \
+    "prepare-for-rewrite:20260808_100830-4038"
+assert_eq "write_gate_result .transaction_id field equals arg" \
+    "prepare-for-rewrite:20260808_100830-4038" \
+    "$(jq -r '.transaction_id' "$DIR_TXN/codegen/gate-pending/gate-result.json")"
+assert_eq "gate_result_transaction_id reads back the same value" \
+    "prepare-for-rewrite:20260808_100830-4038" \
+    "$(gate_result_transaction_id "$DIR_TXN")"
+rm -rf "$DIR_TXN"
+
+# Legacy 17-arg caller (no cycle_id, no transaction_id) → field present, empty
+DIR_TXN_LEGACY=$(mktemp -d)
+write_gate_result "make test" "short" "abc1234" 3 \
+    "true" 0 2 2 "PASS" "" \
+    "2026-06-07T12:00:00Z" "2026-06-07T12:03:00Z" \
+    "sesstxnleg" "/tmp/gate.log" "$DIR_TXN_LEGACY" "" "deadbeef1234567890"
+assert_eq "write_gate_result 17-arg legacy → .transaction_id empty (default)" \
+    "" "$(jq -r '.transaction_id' "$DIR_TXN_LEGACY/codegen/gate-pending/gate-result.json")"
+rm -rf "$DIR_TXN_LEGACY"
+
+# gate_result_transaction_id on a missing result file → ""
+assert_eq "gate_result_transaction_id missing file → empty" \
+    "" "$(gate_result_transaction_id "$(mktemp -d)")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -458,10 +458,19 @@ Before selecting a ready slug, the drain performs a recovery compatibility prefl
 **Queue terminal failures share the same dossier authority** as a direct terminal failure
 (`context/loop.md` § Interrupted-Cycle Recovery): `park_failed_tree/2` (both the general catch-all arm
 and the terminal-marker arm) calls `InterruptedCycleRecovery.park_failure/1` — namespace `"queue-fail"` —
-BEFORE the existing `git_stash_fn`-based branch parking runs (dossier recording observes the still-dirty
-tree; the stash push that follows cleans it). Dossier recording is best-effort/non-blocking — a failure
-there never changes `park_failed_tree/2`'s own returned branch name or the pre-existing
+BEFORE the existing `git_stash_fn`-based branch parking runs. Dossier recording is best-effort/non-blocking
+— a failure there never changes `park_failed_tree/2`'s own returned branch name or the pre-existing
 `queue-fail/<slug>/<UTC>` branch contract every existing test exercises.
+
+**Racing writers (Move 12)**: the cycle's own park and the queue's terminal park can both call
+`park_failure/1` for the same slug within milliseconds — the second reads a clean tree BECAUSE the first's
+recovery already committed. `supersede_active!/3` refuses an empty/lossy successor over a predecessor with
+real evidence — the predecessor stays immutable; the racing park errors instead of silently going active.
+
+**Fresh-build exit (Move 13)**: `quarantine_recoveries/2`'s permanent `reconciliation_required` skip has an
+audited exit — `InterruptedCycleRecovery.supersede_for_fresh_build!/2` closes a stale dossier terminally
+(evidence preserved), unblocking a fresh `park_failure/1`. Fails closed on anything but an EXACT
+`reconciliation_required` stage. Not auto-applied by the drain — operator-facing.
 
 ## Trigger Keywords
 

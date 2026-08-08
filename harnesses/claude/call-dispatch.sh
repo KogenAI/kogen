@@ -83,14 +83,58 @@ else
     SYSTEM_PROMPT="${CODEGEN_CALL_SYSTEM_PROMPT:-}"
 fi
 
+# Move 17a — read into a shell local BEFORE the family is scrubbed from the
+# environment (below, right before each `claude` spawn). `_capture_transcript`
+# reads this local, never the env var directly, so the destination still
+# works for THIS dispatcher after the scrub removes it from the environment
+# the spawned `claude` child (and anything it runs) would otherwise inherit.
+TRANSCRIPT_PATH="${CODEGEN_CALL_TRANSCRIPT_PATH:-}"
+
 _capture_transcript() {
-    [ -n "${CODEGEN_CALL_TRANSCRIPT_PATH:-}" ] || return 0
+    [ -n "$TRANSCRIPT_PATH" ] || return 0
     [ -n "${TMP_OUT:-}" ] && [ -f "$TMP_OUT" ] || return 0
-    local dest="$CODEGEN_CALL_TRANSCRIPT_PATH"
+    local dest="$TRANSCRIPT_PATH"
     if ! mkdir -p "$(dirname "$dest")" 2>/dev/null || ! cp "$TMP_OUT" "$dest" 2>/dev/null; then
         printf 'codegen-call: transcript copy failed: could not write %s\n' "$dest" >&2
     fi
 }
+
+# Move 17a — the full CODEGEN_CALL_* family, scrubbed from the environment
+# immediately before each `claude` spawn (both spawn sites below). Every
+# value this dispatcher itself needs is ALREADY captured into a shell local
+# above (MODEL, EFFORT, PROMPT, TRANSCRIPT_PATH, ...) before this point, so
+# the scrub costs the dispatcher nothing. Without it, a nested
+# `codegen-call`/`call-dispatch.sh` invocation the spawned role's Bash tool
+# runs (e.g. its own gate's `call-dispatch_test.sh`) inherits
+# CODEGEN_CALL_TRANSCRIPT_PATH and silently overwrites the transcript of the
+# role that spawned it (Fault 12). Listed explicitly (not derived) so a
+# future new CODEGEN_CALL_* var is scrubbed only once it is added here too —
+# see harnesses/claude/hooks/call-dispatch_test.sh for the parity assertion.
+_CODEGEN_CALL_ENV_SCRUB=(
+    -u CODEGEN_CALL_AGENT
+    -u CODEGEN_CALL_AGENTS_PATH
+    -u CODEGEN_CALL_ALLOWED_TOOLS
+    -u CODEGEN_CALL_ALLOWED_TOOLS_SET
+    -u CODEGEN_CALL_EFFORT
+    -u CODEGEN_CALL_GUARD_POLL_SECS
+    -u CODEGEN_CALL_IDLE_CAP_SECS
+    -u CODEGEN_CALL_JSON_SCHEMA
+    -u CODEGEN_CALL_JSON_SCHEMA_PATH
+    -u CODEGEN_CALL_MAX_WALL_SECS
+    -u CODEGEN_CALL_MODEL
+    -u CODEGEN_CALL_OWNER_OS_PID
+    -u CODEGEN_CALL_POLL_SECS
+    -u CODEGEN_CALL_PRINT_ARGV
+    -u CODEGEN_CALL_PROMPT
+    -u CODEGEN_CALL_RESULT_GRACE_SECS
+    -u CODEGEN_CALL_RESUME
+    -u CODEGEN_CALL_SESSION_ID
+    -u CODEGEN_CALL_SETTINGS_PATH
+    -u CODEGEN_CALL_STREAM_IDLE_SECS
+    -u CODEGEN_CALL_SYSTEM_PROMPT
+    -u CODEGEN_CALL_TERM_GRACE_SECS
+    -u CODEGEN_CALL_TRANSCRIPT_PATH
+)
 
 # --setting-sources: user-scope (~/.claude/agents/) is where role agents
 # install; a loop-invoked --agent call needs it. Non-agent one-shot calls
@@ -250,6 +294,7 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
     IDLE_CAP_SECS="${CODEGEN_CALL_IDLE_CAP_SECS:-900}"
     STREAM_IDLE_SECS="${CODEGEN_CALL_STREAM_IDLE_SECS:-300}"
     POLL_SECS="${CODEGEN_CALL_POLL_SECS:-5}"
+    CALL_MAX_WALL_SECS="${CODEGEN_CALL_MAX_WALL_SECS:-4500}"
 
     set +e
     env \
@@ -260,6 +305,7 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
         -u CLAUDE_CODE_EXECPATH \
         -u AI_AGENT \
         -u SECRET_KEY_BASE \
+        "${_CODEGEN_CALL_ENV_SCRUB[@]}" \
         ENABLE_PROMPT_CACHING_1H=1 \
         MAX_THINKING_TOKENS=0 \
         MCP_CONNECTION_NONBLOCKING=true \
@@ -356,6 +402,31 @@ if [[ "${CODEGEN_LOOP:-}" == "1" ]]; then
             WATCHDOG_CAUSE="Stream idle timeout: claude process produced no output growth for ${STREAM_IDLE_SECS}s and no tool subprocess was live"
             break
         fi
+
+        # Trigger (4): absolute wall-clock ceiling (Fault 9 / Move 11) — the
+        # ONLY trigger measuring elapsed time since START_TS_MS rather than
+        # idle/silence. Triggers (1)-(3) all measure SILENCE: a call that
+        # keeps emitting (edits, tool calls) never trips them no matter how
+        # long it runs — the incident this closes ran 2h47m30s, $103.00,
+        # continuously editing files to the very end, and was killed only by
+        # an unrelated final idle window. CALL_MAX_WALL_SECS fires
+        # unconditionally on elapsed time — a ceiling a busy call can
+        # postpone is not a ceiling. Default 4500s (75min) calibrated on
+        # observed developer calls: 1.32x the largest legitimate call
+        # observed (56.9min), 3x the largest call in any committing cycle
+        # (25.3min). See context/call-contract.md.
+        if (((NOW_MS - START_TS_MS) / 1000 >= CALL_MAX_WALL_SECS)); then
+            printf 'codegen-call: watchdog killing claude (pid %s) — wall-clock ceiling %ss exceeded\n' "$CHILD_PID" "$CALL_MAX_WALL_SECS" >&2
+            WATCHDOG_KILLED=1
+            # Distinct token — must match NEITHER retryable_regex
+            # (harnesses/shared/retryable-errors.sh) NOR its hand-synced
+            # Elixir mirror (@retryable_regex in loop_queue.ex). A warm
+            # `--resume` re-entering the session that just burned the
+            # ceiling would burn it again; an exhausted ceiling must be
+            # deterministic, never retried automatically.
+            WATCHDOG_CAUSE="Call ceiling exceeded: ${CALL_MAX_WALL_SECS}s"
+            break
+        fi
     done
 
     if [[ -n "$WATCHDOG_KILLED" ]]; then
@@ -380,6 +451,7 @@ else
         -u CLAUDE_CODE_EXECPATH \
         -u AI_AGENT \
         -u SECRET_KEY_BASE \
+        "${_CODEGEN_CALL_ENV_SCRUB[@]}" \
         ENABLE_PROMPT_CACHING_1H=1 \
         MAX_THINKING_TOKENS=0 \
         MCP_CONNECTION_NONBLOCKING=true \

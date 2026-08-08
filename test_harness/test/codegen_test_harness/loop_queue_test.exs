@@ -336,7 +336,6 @@ defmodule CodegenTestHarness.LoopQueueTest do
         [
           lib/foo.ex,
         ]
-      appetite: small
       ---
       # Problem
       """)
@@ -351,6 +350,134 @@ defmodule CodegenTestHarness.LoopQueueTest do
       assert_raise RuntimeError, ~r/c has a scope: value that is not a parseable/, fn ->
         LoopQueue.parse_scope("c", path)
       end
+    end
+  end
+
+  describe "scope_entry_finding/2 (Fault 8 / Move 9a)" do
+    test "a literal existing repo-relative path is :ok", %{dir: dir} do
+      File.write!(Path.join(dir, "real.ex"), "# real\n")
+      assert LoopQueue.scope_entry_finding("real.ex", dir) == :ok
+    end
+
+    test "a glob metacharacter is :malformed" do
+      assert {:malformed, reason} = LoopQueue.scope_entry_finding("test_harness/lib/**", "/tmp")
+      assert reason =~ "glob metacharacter"
+    end
+
+    test "each glob metacharacter (*, ?, [, ]) is individually detected" do
+      for entry <- ["a/*.ex", "a/?.ex", "a/[b].ex", "a/b]"] do
+        assert {:malformed, _reason} = LoopQueue.scope_entry_finding(entry, "/tmp")
+      end
+    end
+
+    test "a leading-/ absolute path is :malformed" do
+      assert {:malformed, reason} =
+               LoopQueue.scope_entry_finding("/Users/somewhere/outside/repo.md", "/tmp")
+
+      assert reason =~ "absolute path"
+    end
+
+    test "a \"..\" path segment is :malformed" do
+      assert {:malformed, reason} = LoopQueue.scope_entry_finding("../outside/repo.md", "/tmp")
+      assert reason =~ "\"..\" segment"
+    end
+
+    test "a well-formed path that does not exist yet is :not_found (weaker, not denied the same way)",
+         %{dir: dir} do
+      assert {:not_found, reason} =
+               LoopQueue.scope_entry_finding("this/path/does/not/exist.ex", dir)
+
+      assert reason =~ "does not exist yet"
+      assert reason =~ "OK if this pitch creates it"
+    end
+  end
+
+  describe "validate_scope_entries/2 (Fault 8 / Move 9a)" do
+    test "partitions a mixed batch into {malformed, not_found}, both empty when everything is clean",
+         %{dir: dir} do
+      File.write!(Path.join(dir, "real.ex"), "# real\n")
+
+      assert LoopQueue.validate_scope_entries(["real.ex"], dir) == {[], []}
+    end
+
+    test "the exact glob+missing+absolute matrix from the pitch's Fault 8 probe", %{dir: dir} do
+      paths = [
+        "test_harness/lib/**",
+        "this/path/does/not/exist.ex",
+        "/Users/somewhere/outside/repo.md"
+      ]
+
+      {malformed, not_found} = LoopQueue.validate_scope_entries(paths, dir)
+
+      malformed_entries = Enum.map(malformed, fn {entry, _reason} -> entry end)
+      not_found_entries = Enum.map(not_found, fn {entry, _reason} -> entry end)
+
+      assert "test_harness/lib/**" in malformed_entries
+      assert "/Users/somewhere/outside/repo.md" in malformed_entries
+      assert not_found_entries == ["this/path/does/not/exist.ex"]
+    end
+  end
+
+  describe "pitch_scope_findings/1 (Fault 8 / Move 9b)" do
+    test "a batch with zero malformed pitches returns every slug in clean, findings empty",
+         %{dir: dir} do
+      File.write!(Path.join(dir, "a.md"), "---\nscope: [lib/a.ex]\n---\n# a\n")
+      File.write!(Path.join(dir, "b.md"), "---\nscope: [lib/b.ex]\n---\n# b\n")
+
+      {clean, findings} = LoopQueue.pitch_scope_findings(dir)
+
+      assert findings == []
+      assert clean == %{"a" => ["lib/a.ex"], "b" => ["lib/b.ex"]}
+    end
+
+    test "one malformed pitch is reported WITHOUT hiding the others (the report, not one parser, must not abort)",
+         %{dir: dir} do
+      File.write!(Path.join(dir, "bad.md"), "---\nscope: not-a-list\n---\n# bad\n")
+      File.write!(Path.join(dir, "good.md"), "---\nscope: [lib/good.ex]\n---\n# good\n")
+
+      {clean, findings} = LoopQueue.pitch_scope_findings(dir)
+
+      assert clean == %{"good" => ["lib/good.ex"]}
+      assert [{"bad", reason}] = findings
+      assert reason =~ "not a parseable"
+    end
+
+    test "a malformed split_subject: is ALSO caught (not just scope: — the report wraps every parser)",
+         %{dir: dir} do
+      File.write!(
+        Path.join(dir, "bad.md"),
+        "---\nscope: [lib/a.ex]\nsplit_subject: one-clause-only\n---\n# bad\n"
+      )
+
+      File.write!(Path.join(dir, "good.md"), "---\nscope: [lib/good.ex]\n---\n# good\n")
+
+      {clean, findings} = LoopQueue.pitch_scope_findings(dir)
+
+      assert clean == %{"good" => ["lib/good.ex"]}
+      assert [{"bad", reason}] = findings
+      assert reason =~ "not two clauses"
+    end
+
+    test "multiple malformed pitches each produce their OWN finding row", %{dir: dir} do
+      File.write!(Path.join(dir, "bad1.md"), "---\nscope: not-a-list\n---\n# bad1\n")
+      File.write!(Path.join(dir, "bad2.md"), "---\nscope: also-not-a-list\n---\n# bad2\n")
+      File.write!(Path.join(dir, "good.md"), "---\nscope: [lib/good.ex]\n---\n# good\n")
+
+      {clean, findings} = LoopQueue.pitch_scope_findings(dir)
+
+      assert clean == %{"good" => ["lib/good.ex"]}
+      assert length(findings) == 2
+      assert Enum.map(findings, fn {slug, _} -> slug end) |> Enum.sort() == ["bad1", "bad2"]
+    end
+
+    test "an unrouted (no scope: key) pitch is clean with an empty path list, not a finding",
+         %{dir: dir} do
+      File.write!(Path.join(dir, "unrouted.md"), "---\nstatus: SHAPED\n---\n# unrouted\n")
+
+      {clean, findings} = LoopQueue.pitch_scope_findings(dir)
+
+      assert findings == []
+      assert clean == %{"unrouted" => []}
     end
   end
 
@@ -766,6 +893,16 @@ defmodule CodegenTestHarness.LoopQueueTest do
       refute LoopQueue.retryable_reason?(:some_atom)
       refute LoopQueue.retryable_reason?(%{reason: "API Error: 529"})
     end
+
+    # Fault 9 / Move 11c-11d — the wall-clock ceiling's envelope reason must
+    # match NEITHER this regex NOR switch_model_regex: a warm `--resume`
+    # re-entering the session that just burned the ceiling would burn it
+    # again, so an exhausted ceiling must be deterministic (never
+    # auto-retried), unlike a genuine transport blip.
+    test "wall-clock ceiling token is deterministic (not transient), never auto-retried" do
+      refute LoopQueue.retryable_reason?("Call ceiling exceeded: 4500s")
+      refute LoopQueue.switch_model_reason?("Call ceiling exceeded: 4500s")
+    end
   end
 
   describe "switch_model_reason?/1" do
@@ -1111,6 +1248,30 @@ defmodule CodegenTestHarness.LoopQueueTest do
       assert_raise RuntimeError, ~r/c has a split_subject: value that is not two clauses/, fn ->
         LoopQueue.parse_split_subject("c", path)
       end
+    end
+
+    test "strips a YAML-quoted value's own embedded escaped quotes before validating (ledger 56)",
+         %{dir: dir} do
+      # Reproduces the exact reported fault: a correctly two-clause-authored
+      # split_subject: value, written as a YAML double-quoted string whose
+      # own content is ALSO wrapped in escaped double-quotes, must not fail
+      # its own separator rule on the delimiters it was authored with.
+      path = Path.join(dir, "c.md")
+
+      File.write!(
+        path,
+        "---\nstatus: SHAPED\nsplit_subject: \"\\\"Give the codebase an enforced border; give the loop a durable owner\\\"\"\n---\n# c\n"
+      )
+
+      assert LoopQueue.parse_split_subject("c", path) ==
+               {:ok, "Give the codebase an enforced border; give the loop a durable owner"}
+    end
+
+    test "leaves an ordinary unquoted two-clause value unchanged", %{dir: dir} do
+      path = Path.join(dir, "c.md")
+      File.write!(path, "---\nstatus: SHAPED\nsplit_subject: 'first clause; second clause'\n---\n# c\n")
+
+      assert LoopQueue.parse_split_subject("c", path) == {:ok, "first clause; second clause"}
     end
   end
 

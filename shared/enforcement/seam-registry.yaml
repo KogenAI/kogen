@@ -101,6 +101,13 @@ seams:
     guard_time: make-test
     pattern: checked-mirror
 
+  - id: reviewer-json-schema-flag-to-tools-grant
+    declares: "test_harness/lib/codegen_test_harness/orchestration_loop.ex (reviewer_role?/1 — every reviewer-* role is invoked with --json-schema)"
+    reflects: "shared/subagents/{phoenix,static}/reviewer-*.md.j2 tools: frontmatter (must grant StructuredOutput, the only tool that satisfies --json-schema; --allowed-tools does NOT gate it) — mirrored into ~/.claude/agents/reviewer-*.md by make install"
+    guard: harnesses/claude/hooks/reviewer-schema-grant-parity_test.sh
+    guard_time: make-test
+    pattern: checked-mirror
+
   - id: codegen-build-to-dispatch-stubs
     declares: codegen-build (argv contract)
     reflects: harnesses/claude/dispatch.sh (stub consumption)

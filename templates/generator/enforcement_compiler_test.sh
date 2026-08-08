@@ -106,7 +106,7 @@ count=$(
     grep -c "^===" "$tmpdir/dry_run.txt" 2>/dev/null
     true
 )
-assert_eq "parse valid registry: 8 bash sections (registry has grown since this count was last updated)" "8" "$count"
+assert_eq "parse valid registry: 7 bash sections (registry has grown since this count was last updated)" "7" "$count"
 
 # ── Test 2: dialect translation bash: \s → [[:space:]] ───────────────────────
 

@@ -3716,6 +3716,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                 "#{reason}"
             )
 
+          :load_starvation ->
+            do_gate_loop_load_starvation(
+              dev_role,
+              rest,
+              harness,
+              ctx,
+              opts,
+              gate_fn,
+              gate_cmd,
+              max_retries,
+              attempt,
+              prev_signature
+            )
+
           :stale_build ->
             do_gate_loop_stale_build_flake_check(
               dev_role,
@@ -3805,6 +3819,78 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           ctx,
           opts,
           gate_fn,
+          max_retries,
+          attempt,
+          prev_signature
+        )
+    end
+  end
+
+  # Fault 1 / Move 2b — the load-starvation attempt-budget arm. Mirrors
+  # `do_gate_loop_stale_build_heal/10`'s own shape exactly (calls `gate_fn`
+  # DIRECTLY, once — never recurses back through `do_gate_loop/9`'s own
+  # `classify_fn` dispatch): `LoopGate.run_gate/2` has ALREADY proved the
+  # isolated single-file rerun passed (that is precisely what stamped
+  # `classification=flake-isolated:<file>` — see `single_failing_test_file/1`
+  # and `default_isolated_rerun_fn/2`), so a fresh full-gate re-run here
+  # either confirms it (clear -> re-enter `do_gate_loop/9`, attempt NOT
+  # consumed) or it does not. A repeat failure is NEVER re-routed back into
+  # THIS leg — recursing into `do_gate_loop/9` would re-classify via
+  # `classify_fn` and, on a misbehaving/stubbed classifier that always
+  # returns `:load_starvation`, loop forever with `attempt` never
+  # incrementing (the exact class of bug Fault 9 exists to name: a ceiling a
+  # busy call can postpone is not a ceiling). A second consecutive red
+  # instead routes through `do_gate_loop_flake_check/10`'s ordinary owner-
+  # resolution + rework path — the isolated proof is a ONE-TIME grace per
+  # gate-failure occurrence, not a standing amnesty.
+  defp do_gate_loop_load_starvation(
+         dev_role,
+         rest,
+         harness,
+         ctx,
+         opts,
+         gate_fn,
+         gate_cmd,
+         max_retries,
+         attempt,
+         prev_signature
+       ) do
+    operator_note(
+      "gate #{inspect(gate_cmd)}: load-starvation classification (isolated single-file " <>
+        "rerun already passed) — treating as INCONCLUSIVE, re-running gate (attempt not " <>
+        "consumed)"
+    )
+
+    case gate_fn.(ctx.cwd, gate_opts(opts, dev_role)) do
+      {:clear, _cmd} ->
+        operator_note(
+          "gate #{inspect(gate_cmd)}: passed after load-starvation re-run — re-running gate " <>
+            "(attempt not consumed)"
+        )
+
+        do_gate_loop(
+          dev_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          max_retries,
+          attempt,
+          prev_signature
+        )
+
+      {_verdict, _cmd} ->
+        owner_role = resolve_gate_owner(ctx.cwd, dev_role)
+
+        do_gate_loop_flake_check(
+          owner_role,
+          rest,
+          harness,
+          ctx,
+          opts,
+          gate_fn,
+          gate_cmd,
           max_retries,
           attempt,
           prev_signature
@@ -4433,29 +4519,41 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # a `:code` verdict to its OWNING role: a context-doc-shaped witness ->
   # `context-curator`, everything else -> `dev_role` (the cycle's own
   # developer — today's behavior, preserved for every unmapped check).
+  #
+  # `:load_starvation` (Fault 1 / Move 2b) is checked FIRST, ahead of
+  # `:stale_build` and the infra/code split — `LoopGate.run_gate/2` has
+  # ALREADY re-run the single named failing file in isolation and it
+  # ALREADY passed (that is what stamped `flake-isolated:<file>` into
+  # `gate-result.json`'s `classification` field); nothing left to classify
+  # against the raw log, and nothing left to re-run standalone — the
+  # isolated proof already happened once, inside the gate step itself.
   @spec default_gate_classify_fn(String.t(), String.t()) ::
-          LoopGate.owner_class() | :stale_build
+          LoopGate.owner_class() | :stale_build | :load_starvation
   defp default_gate_classify_fn(cwd, dev_role) do
-    log_path = Path.join([cwd, "codegen", "gate-pending", "gate-run.log"])
+    if String.starts_with?(LoopGate.gate_classification(cwd), "flake-isolated:") do
+      :load_starvation
+    else
+      log_path = Path.join([cwd, "codegen", "gate-pending", "gate-run.log"])
 
-    content =
-      case File.read(log_path) do
-        {:ok, content} -> content
-        {:error, _reason} -> ""
-      end
-
-    cond do
-      LoopGate.stale_build?(content) ->
-        :stale_build
-
-      true ->
-        case LoopGate.classify_failure(content) do
-          :infra ->
-            :infra
-
-          :code ->
-            {:owner, resolve_gate_owner(cwd, dev_role)}
+      content =
+        case File.read(log_path) do
+          {:ok, content} -> content
+          {:error, _reason} -> ""
         end
+
+      cond do
+        LoopGate.stale_build?(content) ->
+          :stale_build
+
+        true ->
+          case LoopGate.classify_failure(content) do
+            :infra ->
+              :infra
+
+            :code ->
+              {:owner, resolve_gate_owner(cwd, dev_role)}
+          end
+      end
     end
   end
 
@@ -4926,32 +5024,72 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     set_fn = Keyword.get(opts, :review_file_set_fn, &default_review_file_set_fn/1)
     files = set_fn.(ctx.cwd)
 
-    if files == "" and git_work_tree?(ctx.cwd) do
-      {:error, "cycle produced no changes — nothing for the reviewer to review"}
+    cond do
+      files == "" and git_work_tree?(ctx.cwd) ->
+        {:error, "cycle produced no changes — nothing for the reviewer to review"}
+
+      # Move 15 — a developer that silently no-ops a SHAPED scope claim (a
+      # declared file the pitch said would change, left untouched with no
+      # recorded disagreement) has taken an action outside its two legal
+      # moves: implement the claim, or emit a typed contradiction naming it
+      # for shaper/operator adjudication. The gate-to-review advance is
+      # blocked while an unresolved contradiction marker exists — resolving
+      # it (or removing it, once addressed) is a shaper/operator action, not
+      # a developer self-clear.
+      match?({:ok, _}, pitch_contradiction_pending(ctx.cwd)) ->
+        {:ok, {:pending, reason}} = pitch_contradiction_pending(ctx.cwd)
+        {:error, "pitch contradiction pending resolution: #{reason}"}
+
+      true ->
+        do_invoke_reviewer(reviewer_role, harness, ctx, opts, files)
+    end
+  end
+
+  # Reads `codegen/gate-pending/pitch-contradiction.json` (Move 15) — a
+  # developer-written, shaper/operator-resolved marker recording a claim
+  # from the SHAPED pitch the developer disagreed with, the evidence it
+  # inspected, its proposed disposition, and the affected paths. Presence of
+  # this file (any content) means resolution is still pending; the shaper or
+  # operator resolves it by DELETING the file once the contradiction is
+  # adjudicated (implement the claim after all, or the pitch is corrected).
+  # Absent file -> `{:error, :absent}` (nothing pending, the common case).
+  @spec pitch_contradiction_pending(String.t()) ::
+          {:ok, {:pending, String.t()}} | {:error, atom()}
+  defp pitch_contradiction_pending(cwd) do
+    path = Path.join([cwd, "codegen", "gate-pending", "pitch-contradiction.json"])
+
+    with {:ok, body} <- File.read(path),
+         {:ok, %{"claim" => claim} = decoded} <- Jason.decode(body) do
+      paths = decoded["affected_paths"] || []
+      {:ok, {:pending, "#{claim} (affected: #{Enum.join(paths, ", ")})"}}
     else
-      diff_fn = Keyword.get(opts, :review_diff_fn, &default_review_diff_fn/1)
-      {diff_block, digests, bodies} = diff_fn.(ctx.cwd)
+      _ -> {:error, :absent}
+    end
+  end
 
-      prior_digests = get_in(ctx, [:artifacts, :review_diff_digests])
+  defp do_invoke_reviewer(reviewer_role, harness, ctx, opts, files) do
+    diff_fn = Keyword.get(opts, :review_diff_fn, &default_review_diff_fn/1)
+    {diff_block, digests, bodies} = diff_fn.(ctx.cwd)
 
-      ctx =
-        ctx
-        |> put_in([:artifacts, :review_file_set], files)
-        |> put_in([:artifacts, :review_diff], diff_block)
-        |> put_in([:artifacts, :review_diff_digests], digests)
-        |> put_in([:artifacts, :review_diff_bodies], bodies)
-        |> then(fn c ->
-          if is_map(prior_digests) do
-            changed_paths = diff_delta(prior_digests, digests)
-            put_in(c, [:artifacts, :review_diff_delta], changed_paths)
-          else
-            c
-          end
-        end)
+    prior_digests = get_in(ctx, [:artifacts, :review_diff_digests])
 
-      with {:ok, result} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
-        {:ok, result, ctx}
-      end
+    ctx =
+      ctx
+      |> put_in([:artifacts, :review_file_set], files)
+      |> put_in([:artifacts, :review_diff], diff_block)
+      |> put_in([:artifacts, :review_diff_digests], digests)
+      |> put_in([:artifacts, :review_diff_bodies], bodies)
+      |> then(fn c ->
+        if is_map(prior_digests) do
+          changed_paths = diff_delta(prior_digests, digests)
+          put_in(c, [:artifacts, :review_diff_delta], changed_paths)
+        else
+          c
+        end
+      end)
+
+    with {:ok, result} <- invoke_with_retry(reviewer_role, harness, ctx, opts) do
+      {:ok, result, ctx}
     end
   end
 
@@ -5682,7 +5820,14 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         end
 
       %{"result" => %{"status" => "failed"} = result} ->
-        {:error, result["reason"] || "role #{role} failed with no reason given"}
+        reviewer_schema_envelope_failure(
+          role,
+          json_schema_path,
+          result,
+          transcript,
+          envelope,
+          opts
+        )
 
       # Reviewer-only (json_schema_path is set only via reviewer_role?/1
       # above): the model could not satisfy `@review_verdict_schema_path`
@@ -5700,6 +5845,100 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         raise "OrchestrationLoop: unexpected codegen-call envelope for role #{role}: #{inspect(other)}"
     end
   end
+
+  # Fault 13 / Move 16a-16b — a reviewer envelope that failed SCHEMA
+  # validation still carries the full prose reply in `result["value"]`
+  # (call-dispatch.sh sets STATUS="failed" on a schema mismatch but never
+  # clears VALUE_JSON — see harnesses/claude/call-dispatch.sh's schema-
+  # validation block). Discarding a complete, substantive review because its
+  # JSON WRAPPER was malformed is strictness with no floor: reject the
+  # wrapper, keep the payload. Reuses `parse_verdict_text/1` — the SAME
+  # free-text parser `parse_review_verdict/1` already falls back to for a
+  # non-schema call — rather than a second implementation of the reviewer's
+  # verdict grammar (that would drift; see the module note on
+  # `parse_review_verdict/1`).
+  #
+  # Scoped narrowly: only reviewer_role?/1 roles (json_schema_path
+  # non-nil), only a "schema validation failed" reason (never a plain
+  # transport/auth/budget failure — those still fail through unchanged),
+  # and only when `result["value"]` is a non-empty binary. Anything outside
+  # that intersection falls through to the original bare-reason error,
+  # unchanged from before this fix.
+  #
+  # A parseable verdict recovers as an ordinary `{:ok, result}` — shaped
+  # exactly like the "success" clause above (transcript/session_id
+  # attached) so every downstream consumer of invoke_with_retry/4's return
+  # is unaffected. An UNPARSEABLE value (16b) records an explicit
+  # unusable-verdict outcome — naming the role, the failed reason, and the
+  # decoded value's type — rather than letting the schema error's own
+  # generic text stand in for "no verdict could be obtained". The two are
+  # different outcomes and must not share a representation (see
+  # context/call-contract.md).
+  @spec reviewer_schema_envelope_failure(
+          String.t(),
+          String.t() | nil,
+          map(),
+          String.t(),
+          map(),
+          run_opts()
+        ) :: {:ok, map()} | {:error, String.t()}
+  defp reviewer_schema_envelope_failure(
+         role,
+         json_schema_path,
+         result,
+         transcript,
+         envelope,
+         opts
+       ) do
+    reason = result["reason"] || "role #{role} failed with no reason given"
+    value = result["value"]
+
+    schema_failure? =
+      is_binary(json_schema_path) and json_schema_path != "" and
+        is_binary(reason) and String.starts_with?(reason, "schema validation failed")
+
+    cond do
+      schema_failure? and is_binary(value) and String.trim(value) != "" ->
+        case parse_verdict_text(value) do
+          verdict when verdict in [:approved, :changes_requested] ->
+            # Same budget-cap discipline as the ordinary "success" clause
+            # above — a fallback recovery must not bypass --max-budget-usd.
+            case check_budget(opts) do
+              :ok ->
+                {:ok,
+                 result
+                 |> Map.put("session_id", envelope["session_id"])
+                 |> Map.put("transcript", transcript)}
+
+              {:error, budget_reason} ->
+                {:error, budget_reason}
+            end
+
+          :unknown ->
+            {:error,
+             "role #{role}: unusable reviewer verdict — schema envelope failed " <>
+               "(#{reason}) and the fallback text parser found no parseable " <>
+               "REVIEW_VERDICT: sentinel either. value_type=#{inspect(reviewer_value_type(value))}"}
+        end
+
+      schema_failure? ->
+        {:error,
+         "role #{role}: unusable reviewer verdict — schema envelope failed " <>
+           "(#{reason}) and result[\"value\"] carried no usable text " <>
+           "(value_type=#{inspect(reviewer_value_type(value))})"}
+
+      true ->
+        {:error, reason}
+    end
+  end
+
+  @spec reviewer_value_type(term()) :: atom()
+  defp reviewer_value_type(v) when is_binary(v), do: :string
+  defp reviewer_value_type(v) when is_map(v), do: :object
+  defp reviewer_value_type(v) when is_list(v), do: :array
+  defp reviewer_value_type(v) when is_nil(v), do: :null
+  defp reviewer_value_type(v) when is_boolean(v), do: :boolean
+  defp reviewer_value_type(v) when is_number(v), do: :number
 
   # Names the adapter-realized native control for a canonical effort value —
   # telemetry-only description of what call-dispatch.sh actually emits, never

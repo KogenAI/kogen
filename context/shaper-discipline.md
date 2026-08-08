@@ -130,9 +130,9 @@ In any case: shaper SPLITS into N pitches. Does NOT ask the user "should I split
 
 **Grammar**: `blocks_on:` is a YAML frontmatter flow-list of bare slugs, e.g. `blocks_on: [dep-one, dep-two]`; empty/independent is `blocks_on: []`. **Dual-read**: no-frontmatter pitches fall back to legacy prose — a `## Dependencies` body of `Blocks-on: <slug>` lines, also accepted inside `## Related pitches`.
 
-**`scope:`** (sibling field, machine-readable edit surface) is a flow-list of repo-relative paths this pitch will edit — inline (`scope: [a, b]`) or multiline (key alone, `[`/items/`]` on following lines — the only hand-written form in the corpus). Shaper writes it alongside `status: SHAPED`. Read by `mix codegen.pitches.scope` (`LoopQueue.parse_scope/2`) — a report AND (via `--check` gate leg) the `make test` enforcer on `ready/` pitches: a `ready/` pitch with no `scope:` field fails the `pitch-scope-parity` gate leg, naming the slug.
+**`scope:`** (sibling field, machine-readable edit surface) is a flow-list of repo-relative paths this pitch will edit — inline (`scope: [a, b]`) or multiline. Shaper writes it alongside `status: SHAPED`. Read by `mix codegen.pitches.scope` (`LoopQueue.parse_scope/2`) — a report AND (via `--check`) the `make test` enforcer on `ready/`: no `scope:` fails `pitch-scope-parity`, naming the slug.
 
-**Multi-pitch orchestrator enforcement**: `Blocks-on:` edges are validated BEFORE any building starts. `claude-build a b c` pre-checks argv order against declared edges; a violation STOPS with a report — no auto-reorder, no silent mis-sequencing.
+**Multi-pitch orchestrator enforcement**: `Blocks-on:` edges validated BEFORE building starts. `claude-build a b c` pre-checks argv order; a violation STOPS with a report — no auto-reorder.
 
 **Premature single-mechanism DEFER / over-split** (blocker in `shape.txt`): before DEFER-ing a residual or splitting work, classify it. **Same invariant** → sweep sibling mechanisms (hook events/stages/roles/placements) for one erasing the residual — found → dissolve, one pitch; not found → keep split, embed justification. **Different invariant** → run rule H outcome **(e) Collapse**: name the ONE PURPOSE both serve (≤50 chars, the same `commit_subject:` test the shaper runs when sealing a pitch's own commit message — `shape.txt`'s "On completion" step). One clause → COLLAPSE. Two clauses → split stands, record invariant + `split_subject: A; B` per sibling. `blocks_on: []` ≠ independence. A scope-collision pair recording no `split_subject:` is itself a blocker. Inconclusive → ask.
 
@@ -165,7 +165,7 @@ When a pitch **establishes or strengthens a cross-cutting contract or invariant*
 - Producers: `shared/prompt-fragments/_authoring-spine.txt` (Phase-0 auto-cover rule) + `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker + option template).
 - Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`CONTRACT-DECLARATION-SITE COMPLETENESS:`) asserting the baked prompts and `/ready` all carry the rule.
 
-**Motivating incident**: `session-log-uniform-across-surfaces` reached READY with `shared/apps/AGENTS-phoenix.md.j2`/`AGENTS-static.md.j2` `## Session Logging` sections left out of scope — both declared the pre-strengthening contract and were never updated, leaving downstream docs teaching a stale rule.
+**Incident**: `session-log-uniform-across-surfaces` reached READY with both `AGENTS-*.md.j2` `## Session Logging` sections out of scope — stale-rule docs left uncorrected.
 
 ## Completeness Contract for Dead-Code Retention Pitches
 
@@ -181,7 +181,7 @@ When a pitch **adds or strengthens a full-surface deny** that closes an existing
 
 **Producer/verifier**: `shape.txt` (blocker) + `_probing.txt` (probe) + `ready.md.j2` (gate) + `prompt-content-parity_test.sh` sentinel (`CAPABILITY-REMOVAL REACHABILITY:`).
 
-**Motivating incident**: `session-log-uniform-across-surfaces` reached SHAPED with an 11-row ledger proving `codegen-log` works, but never checked every role denied `Edit`/`Write`/`MultiEdit` on `codegen/logging/*.md` could reach it — `reviewer-phoenix` lacked `Bash` and was locked out (patched in `aa6ea00`).
+**Incident**: `session-log-uniform-across-surfaces` reached SHAPED without checking every denied role could reach the substitute — `reviewer-phoenix` lacked `Bash`, locked out (patched `aa6ea00`).
 
 ## Completeness Contract for Replacement Pitches
 
@@ -208,7 +208,7 @@ Any one of the three missing → blocker.
 - Producers: `harnesses/shared/prompt-bodies/shape.txt` (readiness blocker) + `shared/prompt-fragments/_probing.txt` (inline probe bullet).
 - Verifiers: `harnesses/claude/commands/ready.md.j2` (promotion-gate scan) + the `prompt-content-parity_test.sh` sentinel (`Incomplete replacement (dropped functionality / unwired new code)`) asserting both baked shape prompts and `/ready` carry the rule.
 
-**Motivating incident**: commit `ee88926` shipped `LoopQueue` born-dead while deleting `--queue`/`build-queue.sh`, backed by a false "translate then delete ✅" ledger row — a proxy proving old code was read, never that new code was called. `af87ad1` corrected it.
+**Incident**: `ee88926` shipped `LoopQueue` born-dead deleting `--queue`/`build-queue.sh`, backed by a false "translate then delete ✅" proxy row. `af87ad1` corrected it.
 
 **Sibling-section pattern**: "Completeness Contract for X Pitches" sections share a six-part shape — invariant, detector, carve-out, sub-rule, resolution template, producer/verifier+incident. New contract sections should follow it.
 
@@ -240,7 +240,15 @@ Probing is a tree exhausted to its leaves, not one pass. Every probe RESULT and 
 
 ## Completeness Contract for Delegated-Enumeration Pitches
 
-**Invariant**: a Phase-0 map spanning >1 file is delegated through `codegen-call --model=<family> --effort=off`, never the `Agent` tool — `--model`/`--effort` are required per-invocation flags there, so a spawn inherits no session thinking/model. **Detector**: multi-file enumeration/grep-sweep/naming-cross-reference with no explicit `Fanning out N codegen-call probes` / `Probing inline` line. **Carve-out**: single-grep answers and every execute-probe (feasibility spike, `claude --print` runtime probe) stay inline — never delegated. **Sub-rule**: transcribe, never interpret — a delegated prose summary/diagnosis is a LEAD, not a ledger row; `metrics.bash_count` vs returned `$ ` lines catches silent partial completion arithmetically. **Resolution**: AUTO — state the fan-out/inline decision in one line before the first probe; two consecutive partial delegations → drop to inline, say so. **Producer/verifier**: `_authoring-spine.txt` (rule) + `_probing.txt` (leads-vs-transcripts cut) + `prompt-content-parity_test.sh` sentinel (`Delegated enumeration`). **Sandbox sibling**: the mandated feasibility-spike sandbox (absolute `/tmp/`, built by `spike-builder`) is SEPARATE — see `shape.txt` § Feasibility spikes / § Spike SETS for negative-control-first design.
+**Invariant**: a Phase-0 map spanning >1 file is delegated through `codegen-call --model=<family> --effort=off`, never `Agent` (last resort, open-ended search only) — no session thinking/model inherited. **Detector**: multi-file enumeration with no `Fanning out N codegen-call probes` / `Probing inline` line. **Carve-out**: single-grep + state-changing execute-probes stay inline. Spike BUILD delegates via `codegen-call --agent=spike-builder`. **Batching**: every delegated spawn in a turn backgrounded + parallel. **Sub-rule**: transcribe never interpret — prose summary is a LEAD not a ledger row. **Resolution**: AUTO, one-line decision before first probe. **Producer/verifier**: `_authoring-spine.txt` + `_probing.txt` + parity sentinel.
+
+## `/ready` Self-Check and Auto Hand-Off
+
+`/ready` VERIFIES only, never repairs. Shaper self-checks structurally (frontmatter, ledger, `## Decisions`, no open `## Questions`/fork phrasing, cross-refs resolve, `--check-subject` passes) then invokes `/ready` itself. Refusal re-enters shaping with the gap as input, re-invokes. Stops: same gap twice, genuine fork (ASK-GATE), 3-round ceiling.
+
+## Shape-Mode Orchestration Discipline
+
+`shape.txt` rules: delegate-by-default trigger; batches backgrounded+parallel; `ls` target dir before minting a pitch file; never write an unexecuted transcript; `mv` (never `rm`) to deprecate.
 
 ## Integration with `/ready` Command
 
@@ -256,7 +264,7 @@ Probing is a tree exhausted to its leaves, not one pass. Every probe RESULT and 
 
 ## Trigger Keywords
 
-shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rules A–J, shape mode discipline, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, keep-vs-remove fork, BREAKING disposition, closed vocabulary, split tripwire, standalone-promise test, THESIS-DEFEATING DEFERRAL, delegated enumeration, codegen-call, spike-builder, spike SETS, negative control, contract-declaration-site completeness, capability-removal reachability, incomplete replacement, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, empirical-usage-grounding, format/syntax-change consumer completeness, opaque reader, probe-completeness, recursive ledger, sub-surface
+shaper rules, ask-vs-decide, deferral-with-draft, decompose-then-split, derive-and-write edges, Rules A–J, shape mode discipline, sweep-class, completeness contract, full-vocabulary sweep, producer/verifier reconciliation, operator-owned surface, user-facing surface removal, keep-vs-remove fork, BREAKING disposition, closed vocabulary, split tripwire, standalone-promise test, THESIS-DEFEATING DEFERRAL, delegated enumeration, codegen-call, spike-builder, spike SETS, negative control, contract-declaration-site completeness, capability-removal reachability, incomplete replacement, WIRED RECONCILED PRESERVED, born-dead code, proxy probe, empirical-usage-grounding, format/syntax-change consumer completeness, opaque reader, probe-completeness, recursive ledger, sub-surface, ready hand-off, ready auto-loop, orchestrate not investigate, round ceiling
 
 ## See Also
 

@@ -121,6 +121,16 @@ Every spawn-prompt code fence in `shared/apps/AGENTS-{phoenix,static}.md.j2` mus
 
 Session logs are append-only JSONL, not markdown with H2 sections — there is no scan-window or header-boundary concept. The `role-retrospective-before-stop.sh` Stop hook (blocking) asserts, for the currently-stopping role, that the cycle log carries BOTH a non-empty `{"ev":"role","role":<role>,"body":<prose>}` event AND EITHER a `{"ev":"learned","role":<role>,"text":<t>}` event OR an explicit `{"ev":"no_learning","role":<role>,"text":<t>}` event (the legal exit for a turn that genuinely produced nothing to learn). Substance — not text length — is enforced at the writer: `codegen-log` refuses a whole-text placeholder or compliance-echo payload for `--learned`/`--no-learning`/section bodies (exit 2, nothing written), so presence of the event is sufficient once written. The compliant path is one call: `printf '%s' "$body" | codegen-log section <role> --learned "<text>" --slug <slug>` — see `shared/rules/_core/session-log.md` § Ownership and § Enforcement for the full CLI contract.
 
+## Flag→Tool Grant Parity (Move 18)
+
+An agent's `tools:` frontmatter allowlist is the ONLY grant site for a role call the loop makes — `invoke_role/4` never passes `--allowed-tools` (it passes `nil` for `tools`, so the flag is omitted entirely), and even when present the flag cannot RAISE a capability past the frontmatter list (the list is a floor, not a ceiling — probed both directions). Consequence: when the loop invokes a role with a flag that REQUIRES a tool to satisfy (today: `--json-schema` requires `StructuredOutput`, gated on `reviewer_role?/1` — every `reviewer-*` role), that role's template AND its installed `~/.claude/agents/<role>.md` must BOTH carry the tool in `tools:`, or the invocation is unsatisfiable — the model cannot call the tool that would produce the schema-conforming object, so it emits prose instead and the envelope reads as `data must be object` on the transport's own text→JSON fallback path.
+
+**Guard**: `harnesses/claude/hooks/reviewer-schema-grant-parity_test.sh` asserts `StructuredOutput` is present in `tools:` on both `shared/subagents/{phoenix,static}/reviewer-*.md.j2` (repo-source) and `~/.claude/agents/reviewer-*.md` (installed; absent-on-fresh-checkout is not a failure — installation state is machine-local). `*_test.sh` naming auto-discovers it under `run-tests.sh` with zero Makefile edit (see `context/development.md` § Make Targets), so it runs inside both `make test` and `make build-ready` transitively.
+
+**Ordering this forces inside one cycle**: template edit → `make install` re-bakes `~/.claude/agents/` → the gate (which now checks BOTH sides) stays red until the install runs → the reviewer invoked later in the SAME cycle reads the freshly-installed grant. A developer that edits the template and skips `make install` cannot reach a clear gate — this is deliberate: it forces the grant to actually take effect before any reviewer call trusts it, without needing an operator to pre-apply anything by hand.
+
+**Extending to a new typed transport**: registering a new flag→tool relationship is a new `assert_has_structured_output`-shaped check in the same guard file, keyed to the new flag's gating predicate (mirroring `reviewer_role?/1`) — an unrecognized flag is explicitly out of scope for the existing guard, never silently tolerated as covered.
+
 ## Pitfalls
 
 - **Rule changes don't auto-update running agents** — must run `make install` to regenerate and reinstall
@@ -134,4 +144,4 @@ Session logs are append-only JSONL, not markdown with H2 sections — there is n
 
 ## Trigger Keywords
 
-developer-phoenix-backend, developer-phoenix-frontend, developer-static, reviewer, codegen-commit, .md.j2 template, agent rendering, include-order contract, rule adjacency
+developer-phoenix-backend, developer-phoenix-frontend, developer-static, reviewer, codegen-commit, .md.j2 template, agent rendering, include-order contract, rule adjacency, StructuredOutput grant, flag-to-tool parity, reviewer-schema-grant-parity, json-schema unsatisfiable

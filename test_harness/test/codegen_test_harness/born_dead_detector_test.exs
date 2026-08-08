@@ -3,7 +3,18 @@ defmodule CodegenTestHarness.BornDeadDetectorTest do
   # pre-commit backstop behind "a build implements the WHOLE pitch". Both
   # loop floors (solo assert_work_produced!/2, drain born_dead_fn) call
   # into this same check/2.
-  use ExUnit.Case, async: true
+  # async: false (Fault 1 / Move 3) — shells real git init/add/commit per
+  # test into a unique temp dir. The dir is genuinely unique
+  # (:erlang.unique_integer, not a path collision), but real git I/O run
+  # concurrently at --max-cases 24 is load/order-sensitive: this file
+  # observed 2/2 failures inside the full suite and 8/8 passes standalone,
+  # with and without commit.gpgsign=false. Follows the repo's own existing
+  # convention (14 of 39 test files already async: false for the same
+  # shells-real-I/O reason) rather than inventing a new one. Move 2's
+  # gate-level isolated-rerun classification survives an instance like this
+  # slipping back in; this fix removes the KNOWN instance directly. See
+  # `context/test-harness-pitfalls.md` for the sibling drain-livelock note.
+  use ExUnit.Case, async: false
 
   alias CodegenTestHarness.BornDeadDetector
 

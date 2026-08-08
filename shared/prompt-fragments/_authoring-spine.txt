@@ -6,7 +6,7 @@ When pitch is loaded, ALWAYS run Phase 0 first. Do NOT skip to readiness check u
 
 **Delegated enumeration** (MANDATORY when the map spans more than one file): fan out read-only probes through `codegen-call`, never the `Agent` tool. Eight clauses:
 - **Trigger: decide before the first probe.** Open Phase 0 with an explicit inline-vs-delegate call, stated in one line before any probe runs: `Fanning out N codegen-call probes: <angles>.` or `Probing inline: <reason>.`
-- **Delegate reads; keep executes.** Enumeration, grep sweeps, cross-referencing naming conventions, reading files for their shape — delegate via `codegen-call --harness=claude_code --model=<family> --effort=off --allowed-tools=<read-only list> "<prompt>"` (system prompt via `--system-prompt @<abs-path>` or the cheaper `--agent=<v>`, which waives that requirement). Anything that creates, writes, redirects, or otherwise changes state — every feasibility spike, every `claude --print` runtime probe — stays with the shaper, run directly. `codegen-call` invocations launched via Bash are never subagent spawns in the harness's own accounting.
+- **Delegate reads; keep executes.** Enumeration, grep sweeps, cross-referencing naming conventions, reading files for their shape — delegate via `codegen-call --harness=claude_code --model=<family> --effort=off --allowed-tools=<read-only list> "<prompt>"` (system prompt via `--system-prompt @<abs-path>` or the cheaper `--agent=<v>`, which waives that requirement). Anything that creates, writes, redirects, or otherwise changes state stays with the shaper, run directly, run in the shaper's own session — EXCEPT a feasibility-spike BUILD, which is the one write-capable action still delegated: route it through the same channel via `codegen-call --agent=spike-builder` (confined to `codegen/pitches/` + absolute `/tmp/`), never built inline by the shaper itself. Every other state-changing action — every `claude --print` runtime probe — stays with the shaper, run directly. `codegen-call` invocations launched via Bash are never subagent spawns in the harness's own accounting.
 - **Transcribe, never interpret.** Delegation prompts demand the verbatim `$ command` line plus raw output for EVERY numbered command, including any that could not run (`(NOT RUN: <reason>)`) — never diagnosis, root cause, or interpretation. A returned prose summary/diagnosis/judgement is a LEAD, never fills a `## Claim ledger` row.
 - **`--model` and `--effort=off` are MANDATORY on every spawn — never omitted.** Absent an explicit reason recorded in the fan-out line, default `--model` is `haiku`. Omission silently inherits the session model.
 - **Route by model FAMILY, never a versioned id.** Enumeration and grep sweeps → `haiku`. Reading-and-synthesis across many files → `sonnet`. Adversarial deep-reading → `opus`.
@@ -131,7 +131,7 @@ NEVER write `Side wins`, `Optional`, `While we're here`, `Bonus`, `Adjacent impr
 
 The pitch path is ALWAYS `<cwd>/codegen/pitches/draft/<slug>.md`. The hook strips the cwd prefix and matches `^codegen/pitches/`. Verify the correct pitch path by checking where existing pitches are located in your repo (e.g., `ls codegen/pitches/` or check recent git log) — the exact on-disk path depends on your project layout. Write the correct absolute form on the FIRST attempt. If rejected with `BLOCKED by orchestrator-no-source-edit`, the path was wrong.
 
-Propose the slug; user can override. The file opens with a YAML frontmatter block (`status:`/`appetite:`/`blocks_on:`/`summary:` — see Status stamping) BEFORE the `## Problem` heading; the body below the closing `---` follows the section order below unchanged.
+Propose the slug; user can override. The file opens with a YAML frontmatter block (`status:`/`blocks_on:`/`summary:` — see Status stamping) BEFORE the `## Problem` heading; the body below the closing `---` follows the section order below unchanged. Never emit `appetite:` or `ship_note:` — neither is a valid frontmatter field.
 
 1. **Problem** — 2–4 sentences, user's wording where it matters.
 
@@ -168,7 +168,7 @@ If the user's prompt references an existing draft (`codegen/pitches/draft/<slug>
 Output: caveman ultra. Fragments OK. Arrows for causality (X → Y). Drop articles/filler/hedging.
 Preserve verbatim: MUST/NEVER/FORBIDDEN, file paths, error strings, code identifiers.
 Phase 0 MUST complete before any file write.
-Once all blockers are resolved and `Ready.` is emitted, offer: "Run `/ready` to move this pitch to ready/ and gate it for development."
+Once all blockers are resolved and `Ready.` is emitted, invoke `/ready` yourself in the same session (see the self-check + hand-off loop in the shape prompt body) — never stop and wait to be told to run it.
 
 ## Anti-patterns to refuse
 

@@ -191,15 +191,18 @@ if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]])--cover([[:space:]]|$)'; th
     fi
 fi
 
-# Deny: bare `mix test` (no path argument, no flags)
-if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*mix[[:space:]]+test[[:space:]]*$'; then
+# Deny: bare `mix test` (no path argument, no flags) — command-position aware
+# via command_invokes so an env-prefixed form (`MIX_ENV=test mix test`) is
+# still caught: command_word_of_segment already skips leading VAR=val
+# assignments before resolving the command word to `mix`.
+if command_invokes "$COMMAND" '^mix$' '^test[[:space:]]*$'; then
     deny "Bare \`mix test\` runs full suite — dev MUST NOT. Use \`mix test test/path/file.exs\` for specific files."
     exit 0
 fi
 
 # Deny: `mix test` with only flags (no path) — e.g. `mix test --trace --max-cases 1`
 # A test file path contains "/" or ends with ".exs". If no such token exists, it's a full-suite run.
-if printf '%s' "$COMMAND" | grep -qE '^[[:space:]]*mix[[:space:]]+test[[:space:]]+--'; then
+if command_invokes "$COMMAND" '^mix$' '^test[[:space:]]+--'; then
     has_path=$(printf '%s' "$COMMAND" | grep -oE '[^[:space:]]+' | grep -E '(/|\.exs$)' | head -1 || true)
     if [ -z "$has_path" ]; then
         deny "\`mix test\` with only flags (no path) runs full suite — dev MUST NOT. Specify a test file path, e.g. \`mix test test/path/file.exs\`."

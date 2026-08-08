@@ -2588,6 +2588,73 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       assert reason =~ "cycle produced no changes — nothing for the reviewer to review"
     end
+
+    test "Move 15 — an unresolved pitch-contradiction marker blocks the gate-to-review advance" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("pitch-contradiction-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(Path.join([tmp, "codegen", "gate-pending"]))
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      File.write!(
+        Path.join([tmp, "codegen", "gate-pending", "pitch-contradiction.json"]),
+        Jason.encode!(%{
+          "claim" => "pitch says shared/rules/STYLE_GUIDE.md needs updating",
+          "evidence" => "inspected file, ratchet move does not change its content",
+          "proposed_disposition" => "no-op is correct, pitch overstates drift",
+          "affected_paths" => ["shared/rules/STYLE_GUIDE.md"]
+        })
+      )
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        value = if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      assert reason =~ "pitch contradiction pending resolution"
+      assert reason =~ "STYLE_GUIDE.md"
+    end
+
+    test "Move 15 — no pitch-contradiction marker present, review proceeds normally" do
+      tmp =
+        System.tmp_dir!()
+        |> Path.join("pitch-contradiction-absent-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      on_exit(fn -> File.rm_rf!(tmp) end)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        value = if role == "reviewer-static", do: "REVIEW_VERDICT: APPROVED", else: "did #{role}"
+        {:ok, %{"status" => "success", "value" => value}}
+      end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: tmp,
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: always_clear_gate_fn(),
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+    end
   end
 
   # Writes a codegen-call stream-json transcript whose ASSISTANT turns carry
@@ -3353,6 +3420,180 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                )
 
       assert reason =~ "developer-static failed with no reason given"
+    end
+
+    # Fault 13 / Move 16a-16b — a reviewer envelope that failed SCHEMA
+    # validation still carries the reviewer's full prose in
+    # result["value"] (call-dispatch.sh never clears VALUE_JSON on a
+    # schema mismatch). A parseable REVIEW_VERDICT: sentinel inside that
+    # prose recovers the call as an ordinary {:ok, result} instead of
+    # discarding a complete, substantive review over a malformed wrapper.
+    test "reviewer schema-validation failure with a parseable verdict recovers as {:ok, result} (Move 16a)" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{
+          "session_id" => "sess-schema-1",
+          "result" => %{
+            "status" => "failed",
+            "reason" => "schema validation failed: data must be object",
+            "value" => "Review complete.\n\n**REVIEW_VERDICT: APPROVED**\n\nAll clear."
+          }
+        }
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:ok, result} =
+               OrchestrationLoop.invoke_role(
+                 "reviewer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
+
+      assert result["value"] =~ "REVIEW_VERDICT: APPROVED"
+      assert result["session_id"] == "sess-schema-1"
+    end
+
+    # Non-reviewer roles never carry json_schema_path, so the schema-failure
+    # fallback must never fire for them — a plain "failed" status stays a
+    # plain {:error, reason} regardless of what text happens to be in
+    # result["value"].
+    test "non-reviewer schema-shaped failure text is NOT recovered (fallback is reviewer-only)" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{
+          "result" => %{
+            "status" => "failed",
+            "reason" => "schema validation failed: data must be object",
+            "value" => "**REVIEW_VERDICT: APPROVED**"
+          }
+        }
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.invoke_role(
+                 "developer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
+
+      assert reason =~ "schema validation failed"
+    end
+
+    # An unusable reply (schema failed AND no parseable verdict inside the
+    # prose either) must record an EXPLICIT unusable-verdict outcome, never
+    # a generic reason string that reads as "the gate said nothing".
+    test "reviewer schema-validation failure with NO parseable verdict records an explicit unusable-verdict outcome (Move 16b)" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{
+          "result" => %{
+            "status" => "failed",
+            "reason" => "schema validation failed: data must be object",
+            "value" => "The user's request is ambiguous. I need more context."
+          }
+        }
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.invoke_role(
+                 "reviewer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
+
+      assert reason =~ "unusable reviewer verdict"
+      assert reason =~ "reviewer-static"
+      assert reason =~ "value_type=:string"
+    end
+
+    # A schema failure whose value is nil/non-binary (never happens via the
+    # real call-dispatch.sh envelope shape, but the loop must still fail
+    # closed rather than crash) also records the explicit unusable outcome.
+    test "reviewer schema-validation failure with a nil value records an explicit unusable-verdict outcome (Move 16b)" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{
+          "result" => %{
+            "status" => "failed",
+            "reason" => "schema validation failed: data must be object",
+            "value" => nil
+          }
+        }
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:error, reason} =
+               OrchestrationLoop.invoke_role(
+                 "reviewer-phoenix",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
+
+      assert reason =~ "unusable reviewer verdict"
+      assert reason =~ "value_type=:null"
+    end
+
+    # A reviewer failure for a DIFFERENT reason (not schema validation) must
+    # never be swept into the fallback path — only the exact "schema
+    # validation failed" prefix triggers it.
+    test "reviewer failure for a non-schema reason is unaffected by the fallback (Move 16a scoping)" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{
+          "result" => %{
+            "status" => "failed",
+            "reason" => "API Error: 401 authentication_error",
+            "value" => "**REVIEW_VERDICT: APPROVED**"
+          }
+        }
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:error, "API Error: 401 authentication_error"} =
+               OrchestrationLoop.invoke_role(
+                 "reviewer-static",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
+    end
+
+    # CHANGES_REQUESTED must recover through the same fallback path as
+    # APPROVED — the fix is verdict-agnostic, not approval-only.
+    test "reviewer schema-validation failure with a parseable CHANGES_REQUESTED verdict recovers as {:ok, result} (Move 16a)" do
+      codegen_call_fn = fn _harness, _model, _effort, _sp, _tools, _prompt ->
+        %{
+          "result" => %{
+            "status" => "failed",
+            "reason" => "schema validation failed: data must be object",
+            "value" => "REVIEW_VERDICT: CHANGES_REQUESTED\n\n- Fix the root cause."
+          }
+        }
+      end
+
+      resolve_fn = fn _role, _harness -> {"sonnet", "medium"} end
+
+      assert {:ok, result} =
+               OrchestrationLoop.invoke_role(
+                 "reviewer-phoenix",
+                 "claude_code",
+                 %{cwd: "/tmp", pitch: "x", artifacts: %{}},
+                 resolve_fn: resolve_fn,
+                 codegen_call_fn: codegen_call_fn
+               )
+
+      assert result["value"] =~ "REVIEW_VERDICT: CHANGES_REQUESTED"
     end
 
     test "codegen-call unexpected envelope shape raises (crash loud)" do
@@ -4645,6 +4886,75 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
                  pitch: "do the thing",
                  invoke_fn: always_ok_invoke_fn(calls_agent),
                  gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: no_op_advisor_fn()
+               )
+
+      assert reason =~ "gate verdict=failed"
+    end
+  end
+
+  describe "run/1 — gate load-starvation leg (Fault 1 / Move 2b)" do
+    test "a :load_starvation classification re-runs the gate once WITHOUT consuming a rework attempt",
+         %{calls_agent: calls_agent} do
+      {:ok, gate_calls_agent} = Agent.start_link(fn -> 0 end)
+      on_exit(fn -> stop_agent(gate_calls_agent) end)
+
+      # Call 0: initial gate -> failed (classified :load_starvation below —
+      # LoopGate.run_gate/2's isolated single-file rerun already proved this
+      # is a load-sensitivity flake, not a code defect). Call 1: the
+      # load-starvation leg's own re-run -> CLEAR. Since
+      # do_gate_loop_load_starvation re-enters do_gate_loop (not the rework
+      # path), the developer must never be re-invoked for this gate failure.
+      gate_fn = fn _cwd, _opts ->
+        n = Agent.get_and_update(gate_calls_agent, fn n -> {n, n + 1} end)
+        if n == 0, do: {:failed, "make test"}, else: {:clear, "make test"}
+      end
+
+      gate_classify_fn = fn _cwd, _dev_role -> :load_starvation end
+
+      assert :ok ==
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: gate_classify_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advance_cycle_state_fn: no_op_advance_cycle_state_fn()
+               )
+
+      # developer-static invoked exactly ONCE — the load-starvation
+      # classification absorbed the failure without spending a rework
+      # attempt.
+      assert Enum.count(Agent.get(calls_agent, & &1), &(&1 == "developer-static")) == 1
+    end
+
+    test "a second consecutive red after the load-starvation re-run is treated as genuinely red (no infinite grace loop)",
+         %{calls_agent: calls_agent} do
+      # Every call stays :failed AND every call re-classifies as
+      # :load_starvation — asserts termination (bounded by the rework
+      # budget, once ordinary classification takes over), not an infinite
+      # grace loop. The ONE-TIME grace is per gate-failure OCCURRENCE, not
+      # a standing amnesty: this proves the loop still terminates even if a
+      # test's own classify_fn stub misbehaves and returns
+      # :load_starvation forever.
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+      gate_classify_fn = fn _cwd, _dev_role -> :load_starvation end
+
+      assert {:error, reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: always_ok_invoke_fn(calls_agent),
+                 gate_fn: gate_fn,
+                 gate_classify_fn: gate_classify_fn,
                  gate_preflight_fn: no_op_gate_preflight_fn(),
                  preflight_probe_fn: all_present_preflight_probe_fn(),
                  advisor_fn: no_op_advisor_fn()

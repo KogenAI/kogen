@@ -223,7 +223,7 @@ The case-arm body in `run_render_check` runs in the function's context but assig
 
 ## Test Discovery & Harness Parity Wiring
 
-**Auto-discovery scopes**: the `run-tests.sh` auto-discovery step scans `*_test.sh` files ONLY under `harnesses/claude/hooks/`. Files in `harnesses/shared/` or extension subdirs are NOT auto-discovered. A test outside hooks/ must be explicitly wired into the Makefile `harness-parity` target's `for t in` list. Example: `harnesses/shared/experiment-prune_test.sh` is registered via `"$(SCRIPT_DIR)/harnesses/shared/experiment-prune_test.sh"` in the list.
+**Auto-discovery scopes**: the `run-tests.sh` auto-discovery step scans `*_test.sh` files ONLY under `harnesses/claude/hooks/`. Files in `harnesses/shared/` or extension subdirs are NOT auto-discovered. A test outside hooks/ must be explicitly wired into the Makefile `harness-parity` target's `for t in` list. Example: `harnesses/shared/claude-experiment-settings_test.sh` is registered via `"$(SCRIPT_DIR)/harnesses/shared/claude-experiment-settings_test.sh"` in the list.
 
 **Manifest exemption for `_test.sh` files**: `hook_registrations.py` excludes files matching `*_test.sh` from HOOK-MANIFEST parity checks via the `--exclude-pattern=_test.sh` flag (set in the Makefile `harness-parity` target). A bash hook test does NOT require a `# HOOK-MANIFEST:` header block (unlike non-test hooks). Test files are auto-discovered and run as unit tests; they do not define hooks and are not registered in `settings.json`.
 
@@ -234,14 +234,14 @@ When a bash test compares two sets of file paths (e.g., "files on disk" vs. "fil
 **Collision risk**: The codebase has files with the same basename spread across different folders — for example:
 
 ```
-roles/developer.md
-stacks/phoenix/developer.md
-stacks/static/developer.md
+shared/rules/roles/developer.md
+shared/rules/stacks/phoenix/developer.md
+shared/rules/stacks/static/developer.md
 ```
 
-A basename-set comparison silently passes when one of two same-named files is deleted. The set `{developer.md}` appears unchanged even though `roles/developer.md` was deleted — the basename matcher still finds a `developer.md` match under a sibling stack folder.
+A basename-set comparison silently passes when one of two same-named files is deleted. The set `{developer.md}` appears unchanged even though `shared/rules/roles/developer.md` was deleted — the basename matcher still finds a `developer.md` match under a sibling stack folder.
 
-**Fix**: Reconstruct each file's relative path (e.g., `roles/developer.md` or `stacks/phoenix/developer.md`) and compare the relative-path sets via `comm`. Use a bidirectional comparison (`comm -23` for add-parity, `comm -13` for delete-parity) to detect files missing from INDEX and rows in INDEX with no file on disk.
+**Fix**: Reconstruct each file's relative path (e.g., `shared/rules/roles/developer.md` or `shared/rules/stacks/phoenix/developer.md`) and compare the relative-path sets via `comm`. Use a bidirectional comparison (`comm -23` for add-parity, `comm -13` for delete-parity) to detect files missing from INDEX and rows in INDEX with no file on disk.
 
 **Example**: When asserting INDEX↔filesystem parity (cf. session 20260625_022858), reconstruct each INDEX-listed path from indented tree structure (2 spaces per nesting level) into a sorted set, then compare against disk via `find ... | sed ... | sort`. A basename-only comparison would incorrectly pass when multiple same-named files exist in different folders.
 

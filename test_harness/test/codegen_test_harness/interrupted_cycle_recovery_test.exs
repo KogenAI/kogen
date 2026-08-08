@@ -501,6 +501,128 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
       assert worktree_tree_sha!(cwd) == materialized["recovery_tree_sha"]
     end
 
+    test "a repeat park of the SAME evidenced scope expansion is carried forward, uncounted", %{
+      cwd: cwd
+    } do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+      File.write!(Path.join(cwd, "unrelated.txt"), "beyond declared scope\n")
+
+      # First interruption — a genuinely new finding, counted normally.
+      assert {:ok, dossier1} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier1["ownership"] == "expanded"
+      assert dossier1["scope_expansion"] == ["unrelated.txt"]
+
+      assert :ok = InterruptedCycleRecovery.record_park_history_row!(pitch_path, cwd, dossier1)
+      assert File.read!(pitch_path) =~ "build_failures: 1"
+      refute File.read!(pitch_path) =~ "carried_forward=true"
+
+      # Materialize, then get interrupted again with the SAME dirty bytes
+      # (the exact shape the live incident describes: the same valid WIP,
+      # re-parked because the interruption cause repeats, not because the
+      # work itself is wrong).
+      assert {:ok, {:exact, _materialized}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert File.exists?(Path.join(cwd, "unrelated.txt"))
+
+      assert {:ok, dossier2} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier2["ownership"] == "expanded"
+      assert dossier2["scope_expansion"] == ["unrelated.txt"]
+
+      assert :ok = InterruptedCycleRecovery.record_park_history_row!(pitch_path, cwd, dossier2)
+
+      # The counter did NOT advance past the first genuine finding — the
+      # second park carried the same already-evidenced expansion forward.
+      updated = File.read!(pitch_path)
+      assert updated =~ "build_failures: 1"
+      refute updated =~ "build_failures: 2"
+      assert updated =~ "carried_forward=true"
+      # Both rows are still durably recorded — nothing is lost, only the
+      # counter stays put.
+      assert Enum.count(String.split(updated, "| interrupted recovery |")) - 1 == 2
+
+      # The evidenced work still materializes cleanly.
+      assert {:ok, {:exact, materialized}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+      assert File.read!(Path.join(cwd, "unrelated.txt")) == "beyond declared scope\n"
+      assert worktree_tree_sha!(cwd) == materialized["recovery_tree_sha"]
+    end
+
+    test "a DIFFERENT/growing scope expansion on a re-park still counts as a fresh finding", %{
+      cwd: cwd
+    } do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+      File.write!(Path.join(cwd, "unrelated.txt"), "beyond declared scope\n")
+
+      assert {:ok, dossier1} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert :ok = InterruptedCycleRecovery.record_park_history_row!(pitch_path, cwd, dossier1)
+      assert File.read!(pitch_path) =~ "build_failures: 1"
+
+      assert {:ok, {:exact, _materialized}} = InterruptedCycleRecovery.materialize(cwd, "probe")
+
+      # Second interruption reaches a genuinely NEW undeclared path, not a
+      # repeat of the first — an unexplained/growing expansion must still
+      # count (fail-closed default retained).
+      File.write!(Path.join(cwd, "dangerous.txt"), "a second, unexplained path\n")
+
+      assert {:ok, dossier2} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier2["ownership"] == "expanded"
+      assert "dangerous.txt" in dossier2["scope_expansion"]
+
+      assert :ok = InterruptedCycleRecovery.record_park_history_row!(pitch_path, cwd, dossier2)
+
+      # The second, genuinely NEW finding reaches the default threshold (2)
+      # and demotes the pitch to draft/ exactly like any other counted
+      # failure — the carry-forward exemption changes nothing here.
+      refute File.exists?(pitch_path)
+      draft_path = Path.join([cwd, "codegen", "pitches", "draft", "probe.md"])
+      updated = File.read!(draft_path)
+      assert updated =~ "build_failures: 2"
+      assert updated =~ "status: SHAPING"
+      refute updated =~ "carried_forward=true"
+    end
+
     test "an unparseable pitch records ownership unknown and still materializes", %{cwd: cwd} do
       init_repo!(cwd)
       File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
@@ -938,6 +1060,295 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
       refute File.exists?(Path.join(pending, "gate-result.json"))
       refute File.exists?(Path.join(pending, "cycle-state.json"))
       assert :full = OrchestrationLoop.resume_checkpoint(cwd, roles, resume_opts)
+    end
+  end
+
+  describe "supersede_active! (Move 12a) — refuses a lossy successor" do
+    test "an empty successor over a predecessor with real evidence is refused", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, first} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "first failure"
+               )
+
+      assert first["recovery_commit"] != nil
+      assert first["changed_paths"] != []
+
+      # Second failure, tree now clean (recovery already committed) — would
+      # previously write an empty successor dossier that silently became the
+      # "active" one, discarding the predecessor's evidence. Move 12a refuses.
+      assert {:error, reason} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "second failure, tree now clean"
+               )
+
+      assert reason =~ "refusing lossy supersede"
+
+      # The predecessor's evidence is untouched — still on disk, still
+      # readable, its recovery_commit/changed_paths unchanged. reconcile/1
+      # against a `building/` (not `ready/`) claim state is a no-op :none —
+      # the assertion here is simply that reading it does not raise.
+      assert {:ok, _recovery} =
+               InterruptedCycleRecovery.reconcile(cwd: cwd, roles: ["developer-phoenix-backend"])
+    end
+
+    test "a genuinely empty predecessor (nothing was ever parked) supersedes cleanly", %{
+      cwd: cwd
+    } do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+
+      # First park: nothing dirty at all -> parked_dossier with nil commit,
+      # empty changed_paths. This is the legitimate "nothing to park" case.
+      assert {:ok, first} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "first failure, nothing dirty"
+               )
+
+      assert first["recovery_commit"] == nil
+      assert first["changed_paths"] == []
+
+      # Second failure, still clean — superseding an equally-empty
+      # predecessor is NOT lossy (neither side ever had evidence).
+      assert {:ok, second} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "second failure, still clean"
+               )
+
+      assert second["transaction_id"] != first["transaction_id"]
+    end
+  end
+
+  describe "supersede_for_fresh_build!/2 (Move 13)" do
+    test "closes a reconciliation_required dossier terminally, preserving its evidence", %{
+      cwd: cwd
+    } do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      # Force the dossier into reconciliation_required directly (the normal
+      # path is check_materialization/3's require_reconciliation branch —
+      # exercising the terminal-close contract does not require driving the
+      # whole preflight machinery).
+      txn = dossier["transaction_id"]
+      forced = Map.put(dossier, "stage", "reconciliation_required")
+      # transaction_id contains `:`/`/` (namespace prefix) — sanitize the
+      # same way the module's own private dossier_path/3 does, to locate
+      # the file the module itself wrote.
+      safe_txn = String.replace(txn, ~r/[^A-Za-z0-9_.-]/, "_")
+
+      dossier_path =
+        Path.join([cwd, "codegen", "gate-pending", "recoveries", "probe", "#{safe_txn}.json"])
+
+      File.write!(dossier_path, Jason.encode!(forced))
+
+      assert :ok = InterruptedCycleRecovery.supersede_for_fresh_build!(cwd, "probe")
+
+      # Re-read: stage advanced, evidence untouched.
+      reread = dossier_path |> File.read!() |> Jason.decode!()
+      assert reread["stage"] == "superseded_for_fresh_build"
+      assert reread["recovery_commit"] == dossier["recovery_commit"]
+      assert reread["changed_paths"] == dossier["changed_paths"]
+    end
+
+    test "refuses on a LIVE (non-reconciliation_required) dossier", %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      assert {:ok, _dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert {:error, reason} = InterruptedCycleRecovery.supersede_for_fresh_build!(cwd, "probe")
+      assert reason =~ "refusing fresh-build supersede"
+    end
+
+    test "refuses when no active dossier exists for the slug", %{cwd: cwd} do
+      init_repo!(cwd)
+
+      assert {:error, reason} =
+               InterruptedCycleRecovery.supersede_for_fresh_build!(cwd, "no-such-slug")
+
+      assert reason =~ "nothing to supersede"
+    end
+  end
+
+  describe "auto_resumable?/4 (Move 14) — five conjunctive predicates" do
+    setup %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      {:ok, dossier} =
+        InterruptedCycleRecovery.park_failure(
+          cwd: cwd,
+          pitch_path: pitch_path,
+          slug: "probe",
+          namespace: "recovery/interrupted",
+          cause: "transport error: schema_validation failed"
+        )
+
+      # park_failure/1 commits the recovery branch and returns to source_base
+      # in the working tree — restore the recovery so predicate 2 (clean
+      # apply) has something real to check against a MOVED-forward HEAD.
+      %{cwd: cwd, dossier: dossier}
+    end
+
+    test "all five predicates satisfied -> :ok", %{cwd: cwd, dossier: dossier} do
+      gate_receipt = %{
+        "verdict" => "clear",
+        "graded_tree_sha" => dossier["recovery_tree_sha"],
+        "transaction_id" => dossier["transaction_id"]
+      }
+
+      assert :ok =
+               InterruptedCycleRecovery.auto_resumable?(
+                 cwd,
+                 dossier,
+                 gate_receipt,
+                 dossier["stage"]
+               )
+    end
+
+    test "predicate 3 fails on a transaction_id mismatch (stale green)", %{
+      cwd: cwd,
+      dossier: dossier
+    } do
+      gate_receipt = %{
+        "verdict" => "clear",
+        "graded_tree_sha" => dossier["recovery_tree_sha"],
+        "transaction_id" => "some-other-transaction"
+      }
+
+      assert {:refuse, reason} =
+               InterruptedCycleRecovery.auto_resumable?(
+                 cwd,
+                 dossier,
+                 gate_receipt,
+                 dossier["stage"]
+               )
+
+      assert reason =~ "predicate 3"
+    end
+
+    test "predicate 3 fails when the gate never ran clear", %{cwd: cwd, dossier: dossier} do
+      gate_receipt = %{
+        "verdict" => "failed",
+        "graded_tree_sha" => dossier["recovery_tree_sha"],
+        "transaction_id" => dossier["transaction_id"]
+      }
+
+      assert {:refuse, reason} =
+               InterruptedCycleRecovery.auto_resumable?(
+                 cwd,
+                 dossier,
+                 gate_receipt,
+                 dossier["stage"]
+               )
+
+      assert reason =~ "predicate 3"
+    end
+
+    test "predicate 4 fails on a code-caused death, not transport/schema", %{
+      cwd: cwd,
+      dossier: dossier
+    } do
+      code_caused = Map.put(dossier, "cause", "test assertion failure in foo_test.exs")
+
+      gate_receipt = %{
+        "verdict" => "clear",
+        "graded_tree_sha" => code_caused["recovery_tree_sha"],
+        "transaction_id" => code_caused["transaction_id"]
+      }
+
+      assert {:refuse, reason} =
+               InterruptedCycleRecovery.auto_resumable?(
+                 cwd,
+                 code_caused,
+                 gate_receipt,
+                 code_caused["stage"]
+               )
+
+      assert reason =~ "predicate 4"
+    end
+
+    test "predicate 5 fails when the expected stage does not match the dossier's own stage", %{
+      cwd: cwd,
+      dossier: dossier
+    } do
+      gate_receipt = %{
+        "verdict" => "clear",
+        "graded_tree_sha" => dossier["recovery_tree_sha"],
+        "transaction_id" => dossier["transaction_id"]
+      }
+
+      assert {:refuse, reason} =
+               InterruptedCycleRecovery.auto_resumable?(
+                 cwd,
+                 dossier,
+                 gate_receipt,
+                 :some_other_stage
+               )
+
+      assert reason =~ "predicate 5"
+    end
+
+    test "missing gate receipt fields fail closed (predicate 3)", %{cwd: cwd, dossier: dossier} do
+      assert {:refuse, reason} =
+               InterruptedCycleRecovery.auto_resumable?(cwd, dossier, %{}, dossier["stage"])
+
+      assert reason =~ "predicate 3"
     end
   end
 

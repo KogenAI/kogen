@@ -107,6 +107,26 @@ detection scans every member of the owned Claude PGID; the configured MCP execut
 descendant plumbing are excluded by ancestry. `CODEGEN_CALL_OWNER_OS_PID`,
 `CODEGEN_CALL_GUARD_POLL_SECS`, and `CODEGEN_CALL_TERM_GRACE_SECS` are intentionally Claude-only:
 
+## Env-Inheritance Boundary (Move 17, Fault 12)
+
+`call-dispatch.sh` reads the whole `CODEGEN_CALL_*` family (model, effort, prompt, schema, transcript
+path, watchdog tunables, ...) from its own environment at the top of the script, into shell locals.
+Before EITHER `claude` spawn site, the dispatcher scrubs the entire family from the environment it
+hands the child via `env -u CODEGEN_CALL_<NAME> ...` (the `_CODEGEN_CALL_ENV_SCRUB` array) — the spawned
+`claude` process, and anything its Bash tool subsequently runs, never sees these variables. This closes
+a real leak: `CODEGEN_CALL_TRANSCRIPT_PATH` is how the loop tells a role's `codegen-call` invocation
+where to durably copy its own transcript (`orchestration_loop.ex`); without the scrub, that variable was
+inherited by the spawned Claude process and by every nested `codegen-call`/`call-dispatch.sh` a role ran
+through its own Bash tool (e.g. its own gate's `call-dispatch_test.sh`) — a nested capture silently
+overwrote the transcript of the role that spawned it. `_capture_transcript` reads a shell local
+(`TRANSCRIPT_PATH`, captured before the scrub), never the env var directly, so the destination this
+dispatcher was told still works for ITS OWN capture after the scrub removes it from the child's
+environment. No depth heuristic and no `CODEGEN_LOOP` sniffing: after the scrub, an ambient
+`CODEGEN_CALL_TRANSCRIPT_PATH` can only reach a nested dispatcher from a caller that explicitly re-sets
+it — nothing is silently ignored, the accidental inheritance channel is simply removed.
+`call-dispatch_test.sh` mirrors the same discipline at file scope (scrubs the family before deriving its
+own paths) so a suite run cannot be steered by whatever env invoked it.
+
 ## Consumers
 
 - `OrchestrationLoop` — reads `result.status`, `usage.cost_usd` (accumulated for the per-cycle budget

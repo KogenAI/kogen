@@ -362,6 +362,7 @@ defmodule CodegenTestHarness.LoopGate do
     log_verdict_fn = Keyword.get(opts, :log_verdict_fn, &default_log_verdict/5)
     evidence_fn = Keyword.get(opts, :evidence_fn, &default_evidence/2)
     canary_fn = Keyword.get(opts, :canary_fn, &default_canary/2)
+    isolated_rerun_fn = Keyword.get(opts, :isolated_rerun_fn, &default_isolated_rerun_fn/2)
 
     # Unlink any stale gate-result.json FIRST — before anything else in this
     # function can raise (canary, preflight, a crash). Every abort path
@@ -418,8 +419,41 @@ defmodule CodegenTestHarness.LoopGate do
     # contract (ledger #6): callers that need the infra/code distinction
     # read it back via `classify_failure/1` on the gate log themselves
     # (see `OrchestrationLoop.do_gate_loop/9`), not from this return value.
+    infra_tag = if exit_code != 0, do: infra_classification_tag(output), else: ""
+
+    # Fault 1 / Move 2a — load-starvation classification: when the gate's
+    # ONLY failing test is attributable to exactly one ExUnit test file (a
+    # single-file classification, see `single_failing_test_file/1`), and no
+    # infra signature already classified the failure, re-run THAT ONE FILE
+    # ALONE, once — never a retry loop, never the whole suite. If the
+    # isolated run passes, the failure is a load/order-sensitivity signature
+    # (the `born_dead_detector_test.exs` incident: 2/2 fails inside the full
+    # suite at --max-cases 24, 8/8 passes alone), not a code defect — tag it
+    # `flake-isolated:<file>` so `gate-result.sh`'s `_derive_verdict` scores
+    # `inconclusive` instead of `failed` (see `context/loop.md`). A gate with
+    # more than one distinct failing file, or no parseable file at all, is
+    # never eligible — the classifier stays `:code` (untagged) and today's
+    # `failed` stands unchanged.
     classification =
-      if exit_code != 0, do: infra_classification_tag(output), else: ""
+      cond do
+        infra_tag != "" ->
+          infra_tag
+
+        exit_code != 0 and exit_code != "timeout" ->
+          case single_failing_test_file(output) do
+            {:ok, file} ->
+              case isolated_rerun_fn.(file, project_dir) do
+                {_isolated_output, 0} -> "flake-isolated:" <> file
+                {_isolated_output, _nonzero} -> ""
+              end
+
+            :ineligible ->
+              ""
+          end
+
+        true ->
+          ""
+      end
 
     {execution_evidence, expected_segments} = evidence_fn.(gate, output)
 
@@ -616,6 +650,32 @@ defmodule CodegenTestHarness.LoopGate do
          {:ok, %{"witness" => witness}} <- Jason.decode(contents),
          true <- is_binary(witness) do
       witness
+    else
+      _ -> ""
+    end
+  end
+
+  @doc """
+  Reads the `classification` field the last `run_gate/2` call stamped into
+  `<project_dir>/codegen/gate-pending/gate-result.json` — the same tag
+  `write_gate_result` threads through to `gate-result.sh`'s
+  `_derive_verdict` (`seed-missing*` / `pool-exhaustion*` /
+  `flake-isolated:*`). Returns `""` when the file/field is absent,
+  unreadable, or no classification applied.
+
+  Used by `OrchestrationLoop.default_gate_classify_fn/2` to detect the
+  `flake-isolated:` load-starvation case (Fault 1 / Move 2b) — a distinct
+  attempt-budget arm from ordinary rework, mirroring the existing
+  `:stale_build` classification's own heal-without-charging shape.
+  """
+  @spec gate_classification(String.t()) :: String.t()
+  def gate_classification(project_dir) do
+    path = gate_result_path(project_dir)
+
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{"classification" => classification}} <- Jason.decode(contents),
+         true <- is_binary(classification) do
+      classification
     else
       _ -> ""
     end
@@ -1143,6 +1203,50 @@ defmodule CodegenTestHarness.LoopGate do
       :infra -> "pool-exhaustion:generic-infra-fault"
       :code -> ""
     end
+  end
+
+  # ExUnit failure-block anchor: "  N) test ..." headline, requiring a bare
+  # `file:line` on the very next non-blank line — mirrors the same
+  # false-positive guard `gate-result.sh`'s `extract_witness` already uses
+  # (a numbered list that is not an ExUnit failure block never matches).
+  @exunit_failure_location ~r/^[[:space:]]*\d+\)[[:space:]].*\n[[:space:]]*([A-Za-z0-9_.\/-]+\.exs?):\d+[[:space:]]*$/m
+
+  @doc """
+  Fault 1 / Move 2a helper: parses `gate_output` for ExUnit failure blocks
+  and returns `{:ok, file}` ONLY when every failure block names the SAME
+  single test file — the shape a load-starvation flake produces (one file's
+  tests fail under `--max-cases` concurrency, nothing else in the suite is
+  touched). Returns `:ineligible` when zero failure blocks are parseable, or
+  when two or more DISTINCT files are named — a multi-file failure is never
+  isolated-rerun-eligible; the ordinary `failed` classification stands.
+  """
+  @spec single_failing_test_file(String.t()) :: {:ok, String.t()} | :ineligible
+  def single_failing_test_file(gate_output) when is_binary(gate_output) do
+    files =
+      @exunit_failure_location
+      |> Regex.scan(gate_output, capture: :all_but_first)
+      |> List.flatten()
+      |> Enum.uniq()
+
+    case files do
+      [file] -> {:ok, file}
+      _ -> :ineligible
+    end
+  end
+
+  # Default `:isolated_rerun_fn` — re-runs the single named test file ALONE
+  # via `mix test <file>` in `project_dir`. Bounded to one file, once: the
+  # caller (`run_gate/2`) invokes this at most once per gate run, never in a
+  # retry loop. Uses `MIX_BUILD_PATH=_build/isolated_rerun` so this probe
+  # compile never races the gate's own already-completed build (see
+  # `context/development.md` § Mix build-path assignment).
+  @spec default_isolated_rerun_fn(String.t(), String.t()) :: {String.t(), non_neg_integer()}
+  defp default_isolated_rerun_fn(file, project_dir) do
+    System.cmd("mix", ["test", file],
+      cd: project_dir,
+      stderr_to_stdout: true,
+      env: [{"MIX_BUILD_PATH", "_build/isolated_rerun"}]
+    )
   end
 
   defp write_gate_log!(project_dir, output) do

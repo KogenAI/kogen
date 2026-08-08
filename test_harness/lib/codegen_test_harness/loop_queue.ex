@@ -128,6 +128,108 @@ defmodule CodegenTestHarness.LoopQueue do
       `[...]` flow-list (e.g. a bare scalar). A confidently-wrong empty
       partition is worse than a loud crash naming the slug.
   """
+  # Fault 8 / Move 9a — a `scope:` entry must be a repo-relative path: no
+  # glob metacharacter, no leading `/`, no `..` segment. Two DISTINCT
+  # findings, never collapsed to one: `:malformed` (unwritable nonsense —
+  # a glob never string-matches a literal path, so collision/subsumption
+  # detection silently reports disjoint; an absolute path passes as
+  # repo-relative) vs `:not_found` (the entry names a path that does not
+  # exist YET — legitimate for a file the pitch is about to CREATE, so
+  # this is reported as a weaker finding, never denied the same way).
+  @glob_metachars ~w(* ? [ ])
+
+  @spec scope_entry_finding(String.t(), String.t()) ::
+          :ok | {:malformed, String.t()} | {:not_found, String.t()}
+  def scope_entry_finding(entry, pitches_root) do
+    cond do
+      Enum.any?(@glob_metachars, &String.contains?(entry, &1)) ->
+        {:malformed,
+         "glob metacharacter in #{inspect(entry)} — scope: entries are literal paths, never patterns"}
+
+      String.starts_with?(entry, "/") ->
+        {:malformed, "absolute path #{inspect(entry)} — scope: entries must be repo-relative"}
+
+      entry
+      |> String.split("/")
+      |> Enum.any?(&(&1 == "..")) ->
+        {:malformed,
+         "\"..\" segment in #{inspect(entry)} — scope: entries must stay inside the repo"}
+
+      not File.exists?(Path.join(pitches_root, entry)) ->
+        {:not_found, "#{inspect(entry)} does not exist yet (OK if this pitch creates it)"}
+
+      true ->
+        :ok
+    end
+  end
+
+  @doc """
+  Fault 8 / Move 9a — validates every entry of a pitch's ALREADY-PARSED
+  `scope:` list (see `parse_scope/2`) against `scope_entry_finding/2`.
+  Returns `{malformed, not_found}` — two SEPARATE lists, each
+  `{entry, reason}`, because the two finding classes are not
+  interchangeable (see `scope_entry_finding/2` doc): a malformed entry is
+  unwritable nonsense; a not-found entry may simply not exist yet.
+  """
+  @spec validate_scope_entries([String.t()], String.t()) ::
+          {malformed :: [{String.t(), String.t()}], not_found :: [{String.t(), String.t()}]}
+  def validate_scope_entries(paths, pitches_root) do
+    Enum.reduce(paths, {[], []}, fn entry, {malformed, not_found} ->
+      case scope_entry_finding(entry, pitches_root) do
+        :ok -> {malformed, not_found}
+        {:malformed, reason} -> {[{entry, reason} | malformed], not_found}
+        {:not_found, reason} -> {malformed, [{entry, reason} | not_found]}
+      end
+    end)
+    |> then(fn {malformed, not_found} -> {Enum.reverse(malformed), Enum.reverse(not_found)} end)
+  end
+
+  @doc """
+  Fault 8 / Move 9b — walks every `.md` slug under `pitches_dir` and
+  parses its `scope:` and `split_subject:` fields WITHOUT letting a
+  single malformed pitch's raise abort evaluation of the rest (the
+  defect: `parse_scope/2`/`parse_split_subject/2` raise loud BY DESIGN —
+  correct in isolation — but a report iterating many pitches must not
+  let the FIRST raise hide every other pitch's findings; this is a
+  property of the REPORT, not of one parser, so both parsers are
+  wrapped here, not just `scope:`).
+
+  Returns `{clean, findings}`:
+
+    - `clean` — `%{slug => paths}` for every pitch whose `scope:` AND
+      `split_subject:` parsed without raising (paths from `scope:`,
+      `[]` when `scope:` is absent/unrouted)
+    - `findings` — `[{slug, reason}, ...]` for every pitch where either
+      parse raised — the exception message, verbatim, prefixed with the
+      slug so a batch of N malformed pitches produces N rows, not one
+      abort
+
+  `clean` is exactly the safe input `scope_report/1`/`subsumed_report/1`
+  need — every pitch in it is guaranteed not to raise when re-parsed.
+  """
+  @spec pitch_scope_findings(String.t()) ::
+          {clean :: %{slug() => [String.t()]}, findings :: [{slug(), String.t()}]}
+  def pitch_scope_findings(pitches_dir) do
+    slugs =
+      pitches_dir
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.map(&Path.basename(&1, ".md"))
+      |> Enum.sort()
+
+    Enum.reduce(slugs, {%{}, []}, fn slug, {clean, findings} ->
+      pitch_path = Path.join(pitches_dir, "#{slug}.md")
+
+      try do
+        {:ok, paths} = parse_scope(slug, pitch_path)
+        {:ok, _split_subject} = parse_split_subject(slug, pitch_path)
+        {Map.put(clean, slug, paths || []), findings}
+      rescue
+        e -> {clean, findings ++ [{slug, Exception.message(e)}]}
+      end
+    end)
+  end
+
   @spec parse_scope(slug(), String.t()) :: {:ok, [String.t()] | nil}
   def parse_scope(slug, pitch_path) do
     if File.exists?(pitch_path) do
@@ -196,7 +298,7 @@ defmodule CodegenTestHarness.LoopQueue do
               {:ok, nil}
 
             raw ->
-              trimmed = String.trim(raw)
+              trimmed = raw |> String.trim() |> strip_yaml_quoting()
 
               if String.contains?(trimmed, ";") or String.contains?(trimmed, " and ") do
                 {:ok, trimmed}
@@ -208,6 +310,36 @@ defmodule CodegenTestHarness.LoopQueue do
       end
     else
       {:ok, nil}
+    end
+  end
+
+  # strip_yaml_quoting/1 — `extract_frontmatter_key/2` does raw line-based
+  # text extraction, never real YAML parsing, so a value the shaper wrote as
+  # a YAML double-quoted string with its own embedded escaped quotes (e.g.
+  # `split_subject: "\"clause A; clause B\""`) reaches here still carrying
+  # both the outer YAML quote pair AND the literal backslash-escaped inner
+  # pair as characters. A correctly two-clause-authored value can then fail
+  # its own separator check because the delimiters, not the content, are
+  # what's malformed. Strips one matched outer pair of `"..."` or `'...'`;
+  # if what remains is itself wrapped in a literal escaped-quote pair
+  # (`\"..\"`), strips that pair too — mirrors what a real YAML parser
+  # would have produced. A value with no surrounding quoting at all (the
+  # ordinary case) passes through unchanged.
+  @spec strip_yaml_quoting(String.t()) :: String.t()
+  defp strip_yaml_quoting(value) do
+    value
+    |> strip_outer_pair("\"", "\"")
+    |> strip_outer_pair("'", "'")
+    |> strip_outer_pair("\\\"", "\\\"")
+  end
+
+  defp strip_outer_pair(value, lead, trail) do
+    if String.starts_with?(value, lead) and String.ends_with?(value, trail) and
+         byte_size(value) >= byte_size(lead) + byte_size(trail) do
+      inner_size = byte_size(value) - byte_size(lead) - byte_size(trail)
+      binary_part(value, byte_size(lead), inner_size)
+    else
+      value
     end
   end
 
@@ -1591,7 +1723,20 @@ defmodule CodegenTestHarness.LoopQueue do
     end
   end
 
-  @doc false
+  @doc """
+  Appends `row` under `header` without touching `build_failures:` or moving
+  the pitch — the UNCOUNTED sibling of `write_build_failures!/3`. Used by
+  `InterruptedCycleRecovery.record_park_history_row!/3` for a
+  carried-forward evidenced scope expansion (the same already-reported
+  undeclared paths re-parked by a repeat interruption, not a new finding):
+  the durable row still lands so the history stays complete, but the
+  attempt does not consume a strike toward `max_pitch_fails_from_env/0`'s
+  threshold.
+
+  Raises on a read/write failure (mirrors `write_build_failures!/3`) — a
+  pitch file proven present moments earlier disappearing is a genuine
+  anomaly, not a documented sentinel.
+  """
   @spec write_history_row!(String.t(), String.t(), String.t()) :: :ok
   def write_history_row!(pitch_path, header, row) do
     content = File.read!(pitch_path)

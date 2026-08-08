@@ -10,6 +10,18 @@
 
 set -euo pipefail
 
+# Move 17c — scrub the whole CODEGEN_CALL_* family at FILE scope so a suite
+# run cannot be steered by whatever env invoked it (e.g. an ambient
+# CODEGEN_CALL_TRANSCRIPT_PATH exported by a caller several frames up — the
+# exact class of leak Fault 12 names). Individual tests below still `export`
+# the specific vars they need inside their own subshell/case — that is the
+# tested contract and is unchanged; this only removes AMBIENT values this
+# file did not set itself.
+for _v in $(compgen -v CODEGEN_CALL_ 2>/dev/null || true); do
+    unset "$_v" 2>/dev/null || true
+done
+unset _v 2>/dev/null || true
+
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISPATCH_SCRIPT="$(cd "$HOOKS_DIR/.." && pwd)/call-dispatch.sh"
 
@@ -1444,6 +1456,98 @@ fi
 rm -f "$PRE_METRICS_SCRIPT"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Move 17d — assert call-dispatch.sh unsets the CODEGEN_CALL_* family before
+# EACH `claude` spawn, anchored on the unset itself (never a line number) so
+# a future edit that reorders the spawn cannot silently restore inheritance
+# (Fault 12 — a nested caller inheriting CODEGEN_CALL_TRANSCRIPT_PATH
+# overwrites the transcript of the role that spawned it).
+SCRUB_ARRAY_REF_COUNT="$(grep -c '"\${_CODEGEN_CALL_ENV_SCRUB\[@\]}"' "$DISPATCH_SCRIPT" || true)"
+if [[ "$SCRUB_ARRAY_REF_COUNT" -ge 2 ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: both claude spawn sites reference the CODEGEN_CALL_* env scrub array\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: expected >=2 references to _CODEGEN_CALL_ENV_SCRUB (one per spawn site), found %s\n' \
+        "$SCRUB_ARRAY_REF_COUNT"
+    fail=$((fail + 1))
+fi
+
+if grep -q '^_CODEGEN_CALL_ENV_SCRUB=(' "$DISPATCH_SCRIPT" &&
+    grep -q -- '-u CODEGEN_CALL_TRANSCRIPT_PATH' "$DISPATCH_SCRIPT"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: CODEGEN_CALL_TRANSCRIPT_PATH is in the scrub array\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: CODEGEN_CALL_TRANSCRIPT_PATH missing from the CODEGEN_CALL_* env scrub array\n'
+    fail=$((fail + 1))
+fi
+
+# Move 11d — the wall-clock ceiling's envelope reason token must match
+# NEITHER the shared retryable_regex NOR switch_model_regex (sourced from
+# harnesses/shared/retryable-errors.sh, the same file loop_queue.ex's
+# @retryable_regex/@switch_model_regex hand-sync from) — an exhausted
+# ceiling must be deterministic, never auto-retried by a warm --resume.
+# shellcheck source=/dev/null
+source "$HOOKS_DIR/../../shared/retryable-errors.sh"
+CEILING_TOKEN="Call ceiling exceeded: 4500s"
+if printf '%s' "$CEILING_TOKEN" | grep -qE "$retryable_regex"; then
+    printf 'FAIL: wall-clock ceiling token %q unexpectedly matches retryable_regex\n' "$CEILING_TOKEN"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: wall-clock ceiling token does not match retryable_regex\n'
+    pass=$((pass + 1))
+fi
+if printf '%s' "$CEILING_TOKEN" | grep -qE "$switch_model_regex"; then
+    printf 'FAIL: wall-clock ceiling token %q unexpectedly matches switch_model_regex\n' "$CEILING_TOKEN"
+    fail=$((fail + 1))
+else
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: wall-clock ceiling token does not match switch_model_regex\n'
+    pass=$((pass + 1))
+fi
+
+if grep -q 'CALL_MAX_WALL_SECS=' "$DISPATCH_SCRIPT" && grep -q 'Call ceiling exceeded' "$DISPATCH_SCRIPT"; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: call-dispatch.sh defines the wall-clock ceiling trigger\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: call-dispatch.sh missing the wall-clock ceiling trigger (CALL_MAX_WALL_SECS / Call ceiling exceeded)\n'
+    fail=$((fail + 1))
+fi
+
+# Move 17c self-check — this test file's own file-scope scrub must precede
+# any HOOKS_DIR/DISPATCH_SCRIPT derivation, so an ambient
+# CODEGEN_CALL_TRANSCRIPT_PATH exported by whatever invoked THIS suite can
+# never steer a capture inside it.
+SELF_SCRUB_LINE="$(grep -n 'compgen -v CODEGEN_CALL_' "$0" | head -1 | cut -d: -f1)"
+HOOKS_DIR_LINE="$(grep -n '^HOOKS_DIR=' "$0" | head -1 | cut -d: -f1)"
+if [[ -n "$SELF_SCRUB_LINE" ]] && [[ -n "$HOOKS_DIR_LINE" ]] && [[ "$SELF_SCRUB_LINE" -lt "$HOOKS_DIR_LINE" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: this test file scrubs CODEGEN_CALL_* before deriving HOOKS_DIR\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: this test file must scrub CODEGEN_CALL_* at file scope before HOOKS_DIR derivation\n'
+    fail=$((fail + 1))
+fi
+
+# Move 17c runtime reproduction — the pitch's own stated behavioral test:
+# "with an ambient CODEGEN_CALL_TRANSCRIPT_PATH exported, a full run of the
+# suite leaves that path untouched." The two checks above are structural
+# (line-ordering) proxies; this one actually exercises the file-scope scrub
+# at runtime WITHOUT re-invoking the whole (subprocess-heavy) suite file —
+# it extracts and runs only this file's own scrub prelude (the same
+# `compgen -v CODEGEN_CALL_` loop defined above, lines bounded by
+# $SELF_SCRUB_LINE and $HOOKS_DIR_LINE) in a fresh bash subshell that starts
+# with the variable exported, then asserts the target path is never touched.
+AMBIENT_LEAK_TARGET="$(mktemp -u)"
+rm -f "$AMBIENT_LEAK_TARGET" 2>/dev/null || true
+SCRUB_PRELUDE="$(sed -n "${SELF_SCRUB_LINE},${HOOKS_DIR_LINE}p" "$0" | sed '$d')"
+CODEGEN_CALL_TRANSCRIPT_PATH="$AMBIENT_LEAK_TARGET" bash -c "$SCRUB_PRELUDE"$'\n''[ -z "${CODEGEN_CALL_TRANSCRIPT_PATH:-}" ]' >/dev/null 2>&1
+SCRUB_RC=$?
+if [[ "$SCRUB_RC" -eq 0 ]] && [[ ! -e "$AMBIENT_LEAK_TARGET" ]]; then
+    [ -n "${VERBOSE:-}" ] && printf 'PASS: this file'\''s scrub prelude unsets an ambient CODEGEN_CALL_TRANSCRIPT_PATH before any write can occur\n'
+    pass=$((pass + 1))
+else
+    printf 'FAIL: this file'\''s scrub prelude did not remove an ambient CODEGEN_CALL_TRANSCRIPT_PATH (rc=%s, leaked target exists=%s)\n' "$SCRUB_RC" "$([[ -e "$AMBIENT_LEAK_TARGET" ]] && echo yes || echo no)"
+    fail=$((fail + 1))
+fi
+rm -f "$AMBIENT_LEAK_TARGET" 2>/dev/null || true
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 

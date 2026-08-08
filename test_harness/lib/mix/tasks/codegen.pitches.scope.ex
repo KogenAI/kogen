@@ -243,6 +243,70 @@ defmodule Mix.Tasks.Codegen.Pitches.Scope do
       exit(:normal)
     end
 
+    # Fault 8 / Move 9b — a malformed scope:/split_subject: field must be
+    # REPORTED per-pitch, never allowed to raise-abort `scope_report/1`/
+    # `subsumed_report/1` and hide every OTHER pitch's findings behind the
+    # first offender. `pitch_scope_findings/1` walks every slug and
+    # catches the raise per-pitch; malformed pitches are printed (and, in
+    # --check mode, fail the gate) but never stop the batch.
+    {clean, malformed_findings} = LoopQueue.pitch_scope_findings(pitches_dir)
+
+    if malformed_findings != [] do
+      Enum.each(malformed_findings, fn {slug, reason} ->
+        Mix.shell().error("codegen.pitches.scope: #{slug}: #{reason}")
+      end)
+
+      if check? do
+        exit({:shutdown, 2})
+      end
+
+      # Non---check report mode: a malformed pitch was found and printed
+      # above, but `scope_report/1`/`subsumed_report/1` re-scan the SAME
+      # directory and would raise on the exact same offender — exit here
+      # rather than let the raise abort with a stacktrace and hide every
+      # OTHER pitch's report. The findings above are the report; there is
+      # nothing further to print until the malformed pitch is fixed.
+      exit({:shutdown, 1})
+    end
+
+    # Fault 8 / Move 9a — every entry of an already-PARSEABLE scope: list
+    # (the `clean` map from `pitch_scope_findings/1` above) is validated
+    # against `scope_entry_finding/2`: a glob, an absolute path, or a `..`
+    # segment is `:malformed` (unwritable nonsense — reported and, under
+    # --check, denied); a path that does not exist YET is `:not_found` (a
+    # weaker finding — a pitch may legitimately name a file it is about to
+    # create, so this is printed but never denies the gate). Confined to
+    # `check?` — the plain report/`--json`/`--lanes` paths must stay
+    # byte-identical to their pre-Move-9a output (regression contract
+    # tested at the mix-task level).
+    if check? do
+      entry_malformed =
+        for {slug, paths} <- clean,
+            {entry, reason} <- elem(LoopQueue.validate_scope_entries(paths, cwd), 0) do
+          {slug, entry, reason}
+        end
+
+      entry_not_found =
+        for {slug, paths} <- clean,
+            {entry, reason} <- elem(LoopQueue.validate_scope_entries(paths, cwd), 1) do
+          {slug, entry, reason}
+        end
+
+      if entry_not_found != [] do
+        Enum.each(entry_not_found, fn {slug, entry, reason} ->
+          Mix.shell().info("codegen.pitches.scope: #{slug}: scope: #{entry}: #{reason}")
+        end)
+      end
+
+      if entry_malformed != [] do
+        Enum.each(entry_malformed, fn {slug, entry, reason} ->
+          Mix.shell().error("codegen.pitches.scope: #{slug}: scope: #{entry}: #{reason}")
+        end)
+
+        exit({:shutdown, 2})
+      end
+    end
+
     {disjoint, collisions, unrouted} = LoopQueue.scope_report(pitches_dir)
 
     if check? and unrouted != [] do

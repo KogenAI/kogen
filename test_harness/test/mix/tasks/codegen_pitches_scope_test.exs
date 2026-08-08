@@ -103,15 +103,22 @@ defmodule Mix.Tasks.Codegen.Pitches.ScopeTest do
     assert out =~ "no pitches in"
   end
 
-  test "scope: present but unparseable raises loud, naming the slug", ctx do
+  test "scope: present but unparseable is reported per-pitch, naming the slug, never raises",
+       ctx do
     File.write!(
       Path.join(ctx.ready_dir, "a.md"),
       "---\nstatus: SHAPED\nscope: not-a-list\n---\n# a\n"
     )
 
-    assert_raise RuntimeError, ~r/a has a scope: value that is not a parseable/, fn ->
-      capture_io(fn -> Scope.run(["--cwd=#{ctx.tmp}"]) end)
-    end
+    {out, err} =
+      with_io(:stderr, fn ->
+        capture_io(fn -> catch_exit(Scope.run(["--cwd=#{ctx.tmp}"])) end)
+      end)
+
+    assert err =~
+             "codegen.pitches.scope: a: LoopQueue.parse_scope: a has a scope: value that is not a parseable"
+
+    assert out == ""
   end
 
   # (Mix.shell()-mutating tests live in the async: false

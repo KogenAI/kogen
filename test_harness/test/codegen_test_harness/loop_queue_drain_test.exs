@@ -574,8 +574,7 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
           "type" => "result",
           "subtype" => "error",
           "terminal_reason" => "loop_failed",
-          "terminal_cause" =>
-            "the review re-work budget (3) is exhausted: changes requested",
+          "terminal_cause" => "the review re-work budget (3) is exhausted: changes requested",
           "session_id" => "sess-cause"
         }) <> "\n"
       )
@@ -1966,7 +1965,11 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     transient_fn = fn _jsonl -> false end
     gate_verdict_fn = fn _cwd -> "clear" end
     head_calls = start_agent(0)
-    git_head_fn = fn _cwd -> Agent.get_and_update(head_calls, fn n -> {"head-#{n}", n + 1} end) end
+
+    git_head_fn = fn _cwd ->
+      Agent.get_and_update(head_calls, fn n -> {"head-#{n}", n + 1} end)
+    end
+
     git_ancestor_fn = fn _cwd, _ancestor, _descendant -> true end
 
     calls = start_agent([])
@@ -4394,6 +4397,109 @@ defmodule CodegenTestHarness.LoopQueueDrainTest do
     end
   end
 
+  describe "drain/1 engine-migration refusal (Fault 3 / Move 4)" do
+    test "a pitch whose scope: names the engine's own source is refused unattended dispatch, unrelated ready work still ships",
+         ctx do
+      engine_pitch = Path.join(ctx.ready_dir, "engine.md")
+
+      File.write!(
+        engine_pitch,
+        "---\nscope:\n  [\n    test_harness/lib/codegen_test_harness/loop_queue_drain.ex\n  ]\n---\n# Pitch: engine\n"
+      )
+
+      write_pitch(ctx.ready_dir, "good")
+
+      spawned = start_agent([])
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        Agent.update(spawned, &(&1 ++ [slug]))
+        {:exit_code, 0}
+      end
+
+      assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+
+      # Only "good" was ever spawned — the engine pitch never reached
+      # spawn_fn, and its file is untouched (still in ready/, not building/
+      # or shipped/).
+      assert Agent.get(spawned, & &1) == ["good"]
+      assert File.exists?(engine_pitch)
+    end
+
+    test "a pitch whose scope: does NOT name the engine dispatches normally", ctx do
+      write_pitch(
+        ctx.ready_dir,
+        "ordinary",
+        "---\nscope: [lib/some_other_file.ex]\n---\n# Pitch: ordinary\n"
+      )
+
+      spawned = start_agent([])
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        Agent.update(spawned, &(&1 ++ [slug]))
+        {:exit_code, 0}
+      end
+
+      assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+      assert Agent.get(spawned, & &1) == ["ordinary"]
+    end
+
+    test "an unreadable/malformed scope: fails CLOSED as engine-migration (never silently ordinary)",
+         ctx do
+      malformed_pitch = Path.join(ctx.ready_dir, "malformed.md")
+      File.write!(malformed_pitch, "---\nscope: not-a-flow-list\n---\n# Pitch: malformed\n")
+
+      write_pitch(ctx.ready_dir, "good")
+
+      spawned = start_agent([])
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        Agent.update(spawned, &(&1 ++ [slug]))
+        {:exit_code, 0}
+      end
+
+      assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+
+      # The malformed-scope pitch never dispatched — only "good" ran.
+      assert Agent.get(spawned, & &1) == ["good"]
+      assert File.exists?(malformed_pitch)
+    end
+
+    test "a pitch with no scope: at all (unrouted) dispatches normally — absence is not engine-migration",
+         ctx do
+      write_pitch(ctx.ready_dir, "unrouted")
+
+      spawned = start_agent([])
+
+      spawn_fn = fn slug, _h, _s, _cwd, _jsonl ->
+        Agent.update(spawned, &(&1 ++ [slug]))
+        {:exit_code, 0}
+      end
+
+      assert {:ok, 1} = quiet_drain(shipped_opts(ctx, spawn_fn: spawn_fn))
+      assert Agent.get(spawned, & &1) == ["unrouted"]
+    end
+
+    test "the engine-migration refusal is a DISTINCT bucket from reconciliation — never conflated in the report",
+         ctx do
+      engine_pitch = Path.join(ctx.ready_dir, "engine.md")
+
+      File.write!(
+        engine_pitch,
+        "---\nscope:\n  [\n    test_harness/lib/codegen_test_harness/loop_gate.ex\n  ]\n---\n# Pitch: engine\n"
+      )
+
+      {_result, output} =
+        ExUnit.CaptureIO.with_io(:stderr, fn ->
+          LoopQueueDrain.drain(
+            shipped_opts(ctx, spawn_fn: fn _s, _h, _st, _c, _j -> {:exit_code, 0} end)
+          )
+        end)
+
+      assert output =~ "engine-migration"
+      refute output =~ "reconciliation required) bucket: engine"
+    end
+  end
+
   # ── Queue terminal failures share strict parking (dossier recording) ──────
   # See pitch "restarted builds resume owned work": a queue terminal failure
   # (the `true ->` catch-all arm) records a recovery dossier via
@@ -5326,6 +5432,63 @@ defmodule CodegenTestHarness.LoopQueueDrainEnvSerialTest do
       assert length(recorded) == 1
       assert [os_pid] = recorded
       assert is_integer(os_pid)
+    end
+
+    # Fault 9 / Move 11e regression: the prior implementation passed the
+    # SAME `budget_ms` to every recursive `collect_spawn_output/4` call, so
+    # each `receive/after` re-armed a fresh budget-length window on every
+    # chunk of output. A process that keeps printing ANYTHING within any
+    # budget-length window never tripped it — a "budget" that was actually
+    # a silence timeout. This spawns a script that prints continuously
+    # (never silent) for LONGER than the budget, and asserts the ceiling
+    # still fires on ELAPSED time.
+    @tag timeout: 20_000
+    test "a continuously-emitting process still hits the deadline (budget is elapsed time, not idle time)",
+         ctx do
+      chatty =
+        write_script(ctx.dir, "chatty.sh", """
+        #!/usr/bin/env bash
+        for i in $(seq 1 100); do
+          echo "chunk $i"
+          sleep 0.1
+        done
+        """)
+
+      calls = start_agent([])
+      kill_fn = fn port -> Agent.update(calls, &(&1 ++ [port])) end
+
+      jsonl = Path.join(ctx.dir, "out.jsonl")
+
+      Process.put(:__queue_drain_build_bin__, chatty)
+      Process.put(:__queue_drain_kill_fn__, kill_fn)
+
+      on_exit(fn ->
+        Process.delete(:__queue_drain_build_bin__)
+        Process.delete(:__queue_drain_kill_fn__)
+      end)
+
+      # chatty.sh runs for ~10s (100 * 0.1s) continuously emitting; budget
+      # is 2s — the OLD re-arming bug would let this run to completion
+      # (:exit_code) since every chunk resets the window. The FIX must
+      # still time out at ~2s elapsed.
+      System.put_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS", "2")
+      on_exit(fn -> System.delete_env("CODEGEN_BUILD_QUEUE_PITCH_BUDGET_SECS") end)
+
+      capture_io(:stderr, fn ->
+        send(
+          self(),
+          {:result, LoopQueueDrain.default_spawn_fn("slug", "claude", "phoenix", ctx.dir, jsonl)}
+        )
+      end)
+
+      result =
+        receive do
+          {:result, r} -> r
+        end
+
+      assert result == :timeout
+      recorded = Agent.get(calls, & &1)
+      assert length(recorded) == 1
     end
   end
 

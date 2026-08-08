@@ -364,6 +364,143 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "run_gate/2 — isolated-rerun load-starvation classification (Fault 1 / Move 2a)" do
+    test "single failing file, isolated rerun passes -> classification=flake-isolated, verdict inconclusive-collapsed-to-failed",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+
+      failure_output = """
+        1) test check/2 flaky (CodegenTestHarness.BornDeadDetectorTest)
+           test/codegen_test_harness/born_dead_detector_test.exs:126
+
+      1 test, 1 failure
+      """
+
+      run_fn = fn _gate, _project_dir -> {failure_output, 1} end
+      isolated_rerun_fn = fn _file, _project_dir -> {"8 tests, 0 failures", 0} end
+
+      # run_gate/2's RETURNED verdict stays the binary :clear | :failed
+      # contract (ledger #6) — inconclusive collapses fail-closed to
+      # :failed here, same as every other inconclusive cause.
+      assert {:failed, "make test"} =
+               LoopGate.run_gate(dir,
+                 run_fn: run_fn,
+                 stack: "phoenix",
+                 isolated_rerun_fn: isolated_rerun_fn
+               )
+
+      result =
+        Path.join(dir, "codegen/gate-pending/gate-result.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert result["classification"] ==
+               "flake-isolated:test/codegen_test_harness/born_dead_detector_test.exs"
+
+      assert result["verdict"] == "inconclusive"
+      assert result["verdict_marker"] == "INCONCLUSIVE ⚠️"
+    end
+
+    test "single failing file, isolated rerun ALSO fails -> no classification, ordinary failed",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+
+      failure_output = """
+        1) test check/2 genuinely broken (CodegenTestHarness.BornDeadDetectorTest)
+           test/codegen_test_harness/born_dead_detector_test.exs:126
+
+      1 test, 1 failure
+      """
+
+      run_fn = fn _gate, _project_dir -> {failure_output, 1} end
+      isolated_rerun_fn = fn _file, _project_dir -> {"1 test, 1 failure", 1} end
+
+      assert {:failed, "make test"} =
+               LoopGate.run_gate(dir,
+                 run_fn: run_fn,
+                 stack: "phoenix",
+                 isolated_rerun_fn: isolated_rerun_fn
+               )
+
+      result =
+        Path.join(dir, "codegen/gate-pending/gate-result.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert result["classification"] == ""
+      assert result["verdict"] == "failed"
+    end
+
+    test "multiple failing files -> ineligible, isolated_rerun_fn never called", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+
+      failure_output = """
+        1) test one (Foo)
+           test/foo_test.exs:10
+
+        2) test two (Bar)
+           test/bar_test.exs:20
+
+      2 tests, 2 failures
+      """
+
+      run_fn = fn _gate, _project_dir -> {failure_output, 1} end
+
+      isolated_rerun_fn = fn _file, _project_dir ->
+        flunk("isolated_rerun_fn must not run when the gate names more than one failing file")
+      end
+
+      assert {:failed, "make test"} =
+               LoopGate.run_gate(dir,
+                 run_fn: run_fn,
+                 stack: "phoenix",
+                 isolated_rerun_fn: isolated_rerun_fn
+               )
+
+      result =
+        Path.join(dir, "codegen/gate-pending/gate-result.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert result["classification"] == ""
+      assert result["verdict"] == "failed"
+    end
+
+    test "an infra-signature failure is classified BEFORE the isolated rerun is attempted",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+
+      failure_output = """
+        1) test check/2 (CodegenTestHarness.BornDeadDetectorTest)
+           test/codegen_test_harness/born_dead_detector_test.exs:126
+           ** (Postgrex.Error) ERROR 42P07 (duplicate_table) relation "users" already exists
+
+      1 test, 1 failure
+      """
+
+      run_fn = fn _gate, _project_dir -> {failure_output, 1} end
+
+      isolated_rerun_fn = fn _file, _project_dir ->
+        flunk("isolated_rerun_fn must not run when an infra signature already classified it")
+      end
+
+      assert {:failed, "make test"} =
+               LoopGate.run_gate(dir,
+                 run_fn: run_fn,
+                 stack: "phoenix",
+                 isolated_rerun_fn: isolated_rerun_fn
+               )
+
+      result =
+        Path.join(dir, "codegen/gate-pending/gate-result.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert result["classification"] == "pool-exhaustion:generic-infra-fault"
+      assert result["verdict"] == "inconclusive"
+    end
+  end
+
   describe "run_gate/2 — canary (the gate must prove it can fail)" do
     test "canary returning :clear raises CanaryError and never certifies a verdict", %{dir: dir} do
       write_gate_config!(dir, "make test")
@@ -530,6 +667,46 @@ defmodule CodegenTestHarness.LoopGateTest do
     end
   end
 
+  describe "gate_classification/1" do
+    test "reads the flake-isolated: tag the last run_gate/2 call stamped into gate-result.json",
+         %{dir: dir} do
+      write_gate_config!(dir, "make test")
+
+      failure_output = """
+        1) test check/2 flaky (CodegenTestHarness.BornDeadDetectorTest)
+           test/codegen_test_harness/born_dead_detector_test.exs:126
+
+      1 test, 1 failure
+      """
+
+      run_fn = fn _gate, _project_dir -> {failure_output, 1} end
+      isolated_rerun_fn = fn _file, _project_dir -> {"8 tests, 0 failures", 0} end
+
+      assert {:failed, "make test"} =
+               LoopGate.run_gate(dir,
+                 run_fn: run_fn,
+                 stack: "phoenix",
+                 isolated_rerun_fn: isolated_rerun_fn
+               )
+
+      assert LoopGate.gate_classification(dir) ==
+               "flake-isolated:test/codegen_test_harness/born_dead_detector_test.exs"
+    end
+
+    test "empty when gate-result.json is absent (no gate has run yet)", %{dir: dir} do
+      assert LoopGate.gate_classification(dir) == ""
+    end
+
+    test "empty when the last gate was clear (no classification applied)", %{dir: dir} do
+      write_gate_config!(dir, "make test")
+      run_fn = fn _gate, _project_dir -> {"1 tests, 0 failures", 0} end
+
+      assert {:clear, "make test"} = LoopGate.run_gate(dir, run_fn: run_fn, stack: "phoenix")
+
+      assert LoopGate.gate_classification(dir) == ""
+    end
+  end
+
   describe "run_gate/2 — timeout enforcement" do
     test "a run_fn that never returns within the config-declared deadline yields INCONCLUSIVE (timeout)",
          %{dir: dir} do
@@ -668,6 +845,64 @@ defmodule CodegenTestHarness.LoopGateTest do
       text = "** (Postgrex.Error) ERROR 42P07 (duplicate_table) relation \"users\" already exists"
 
       assert LoopGate.stale_build?(text) == false
+    end
+  end
+
+  describe "single_failing_test_file/1" do
+    test "one failure block naming one file -> {:ok, file}" do
+      output = """
+        1) test check/2 new entity registered via a manifest reference ships clean (escape valve) (CodegenTestHarness.BornDeadDetectorTest)
+           test/codegen_test_harness/born_dead_detector_test.exs:126
+           ** (MatchError) no match of right hand side value: :error
+           stacktrace:
+             test/codegen_test_harness/born_dead_detector_test.exs:32: CodegenTestHarness.BornDeadDetectorTest.commit_all!/2
+
+
+      Finished in 45.2 seconds (30.1s async, 15.1s sync)
+      34 excluded, 1 failure
+      """
+
+      assert LoopGate.single_failing_test_file(output) ==
+               {:ok, "test/codegen_test_harness/born_dead_detector_test.exs"}
+    end
+
+    test "two failure blocks naming the SAME file -> {:ok, file} (dedup)" do
+      output = """
+        1) test check/2 first (CodegenTestHarness.BornDeadDetectorTest)
+           test/codegen_test_harness/born_dead_detector_test.exs:126
+
+        2) test check/2 second (CodegenTestHarness.BornDeadDetectorTest)
+           test/codegen_test_harness/born_dead_detector_test.exs:150
+      """
+
+      assert LoopGate.single_failing_test_file(output) ==
+               {:ok, "test/codegen_test_harness/born_dead_detector_test.exs"}
+    end
+
+    test "two failure blocks naming DIFFERENT files -> :ineligible" do
+      output = """
+        1) test one (Foo)
+           test/foo_test.exs:10
+
+        2) test two (Bar)
+           test/bar_test.exs:20
+      """
+
+      assert LoopGate.single_failing_test_file(output) == :ineligible
+    end
+
+    test "no parseable ExUnit failure block -> :ineligible" do
+      assert LoopGate.single_failing_test_file("** (RuntimeError) compile error\n") == :ineligible
+      assert LoopGate.single_failing_test_file("") == :ineligible
+    end
+
+    test "a non-ExUnit numbered list is not mistaken for a failure block -> :ineligible" do
+      output = """
+        1) First item in an unrelated list
+        2) Second item, still not ExUnit
+      """
+
+      assert LoopGate.single_failing_test_file(output) == :ineligible
     end
   end
 

@@ -580,6 +580,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   @dossier_schema_version 1
   @dossier_stages ~w(
     parking parked history_written ready materialized reconciliation_required superseded completed
+    superseded_for_fresh_build
   )a
 
   @type dossier_stage ::
@@ -591,6 +592,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
           | :reconciliation_required
           | :superseded
           | :completed
+          | :superseded_for_fresh_build
   @type disposition :: :exact | :advanced | :operator | :conflict
 
   @doc """
@@ -641,7 +643,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     # bug" for a reader that never sees the alternate shape).
     advisor_exchange = read_advisor_exchange(cwd)
 
-    with :ok <- refuse_if_active_dossier(cwd, slug),
+    with :ok <- refuse_if_active_dossier(cwd, slug, transaction_id),
          {:ok, source_base_sha} <- git(cwd, ["rev-parse", "HEAD"]),
          :ok <-
            write_dossier!(
@@ -661,25 +663,42 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
            ),
          {:ok, status} <- git(cwd, ["status", "--porcelain", "--untracked-files=all"]) do
       if String.trim(status) == "" do
-        # Nothing to park — dossier records a clean parking (no recovery
-        # commit possible); still legal, still fail-closed on identity.
-        dossier =
-          parked_dossier(
-            slug,
-            transaction_id,
-            namespace,
-            pitch_path,
-            source_base_sha,
-            cause,
-            cycle_state,
-            nil,
-            nil,
-            [],
-            advisor_exchange
-          )
+        # Nothing to park in THIS transaction's own working tree — but a
+        # sibling writer (the queue's terminal park, racing the cycle's own
+        # park) may have ALREADY superseded a predecessor dossier carrying
+        # real recovery evidence (a committed recovery branch, named
+        # changed_paths) mere milliseconds earlier — the tree reads clean
+        # here precisely BECAUSE that recovery already committed. Move 12a:
+        # refuse to finalize an empty/lossy successor over a predecessor
+        # that recorded more — the predecessor's evidence is preserved
+        # (still `superseded`, never deleted) and this transaction records
+        # its own true outcome (`:none` to park, nothing lost) instead of
+        # silently becoming the "active" dossier the next reconcile trusts.
+        case lossy_supersede?(cwd, slug, transaction_id) do
+          {:error, reason} ->
+            {:error, reason}
 
-        with :ok <- write_dossier!(cwd, slug, transaction_id, dossier) do
-          finish_park!(cwd, pitch_path, slug, transaction_id, dossier)
+          :ok ->
+            # Nothing to park — dossier records a clean parking (no recovery
+            # commit possible); still legal, still fail-closed on identity.
+            dossier =
+              parked_dossier(
+                slug,
+                transaction_id,
+                namespace,
+                pitch_path,
+                source_base_sha,
+                cause,
+                cycle_state,
+                nil,
+                nil,
+                [],
+                advisor_exchange
+              )
+
+            with :ok <- write_dossier!(cwd, slug, transaction_id, dossier) do
+              finish_park!(cwd, pitch_path, slug, transaction_id, dossier)
+            end
         end
       else
         do_park_dirty_tree(
@@ -886,20 +905,35 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   end
 
   @doc """
-  Writes ONE COUNTED `## Build failure history` row for a park dossier —
-  pitch `pitch_path`'s CURRENT physical location. `pitch_path` is a
+  Writes ONE `## Build failure history` row for a park dossier — pitch
+  `pitch_path`'s CURRENT physical location. `pitch_path` is a
   `park_failure/1` caller's own claim path (not re-resolved) since a
   single-pitch recovery already knows exactly which file the claim was
   restored to. `cwd` derives the `draft/` dir a threshold-reaching call
   demotes into (mirrors `LoopQueueDrain.record_build_failure/4`'s own
   `draft_dir/1`).
 
-  Counts via `LoopQueue.record_counted_history!/3` — single-pitch `mix
+  Counted via `LoopQueue.record_counted_history!/3` — single-pitch `mix
   codegen.loop` has no queue/drain `record_build_failure/4` counterpart to
   count this attempt, so this is the ONLY writer for it; leaving it
   uncounted would let a repeatedly-interrupted single-pitch run retry
   forever with `build_failures:` never advancing (see pitch
   "build-record-matches-what-happened" M6/M7).
+
+  **Carried-forward evidenced expansion is the one exception, and it is
+  narrow.** When THIS transaction's `ownership` is `"expanded"` and its
+  `scope_expansion` set is a non-empty SUBSET of the immediately-superseded
+  predecessor dossier's own `scope_expansion` set (also `"expanded"`) — see
+  `carried_forward_expansion?/2` — the interruption re-parked the SAME
+  already-evidenced work, not a NEW or GROWING set of undeclared paths. That
+  case writes the row via `LoopQueue.write_history_row!/3` (uncounted, marked
+  `carried_forward=true`) instead of `record_counted_history!/3`, so a valid
+  WIP that keeps getting interrupted for reasons unrelated to its own scope
+  is not strike-counted into demotion for evidence that was already recorded
+  once. A FIRST expansion, a DIFFERENT/GROWING expansion, or an expansion
+  with no superseded predecessor to compare against all fall through to the
+  ordinary counted path — fail-closed default preserved; only a REPEAT of
+  the identical, already-evidenced expansion is exempted.
 
   Non-blocking observability: returns `{:error, reason}` on a write failure
   (mirrors `park_failure/1`'s own non-blocking posture — see
@@ -929,16 +963,54 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
         do: "; advisor_consulted=#{dossier["transaction_id"]}",
         else: ""
 
+    carried_forward? = carried_forward_expansion?(cwd, dossier)
+    carry_note = if carried_forward?, do: "; carried_forward=true", else: ""
+
     row =
       "| interrupted recovery | #{utc_stamp()} | unaccountable | " <>
         "txn=#{dossier["transaction_id"]}; recovery=#{recovery_commit}; " <>
-        "ownership=#{dossier["ownership"] || "ok"}#{expansion}#{advisor_note} |"
+        "ownership=#{dossier["ownership"] || "ok"}#{expansion}#{advisor_note}#{carry_note} |"
 
-    LoopQueue.record_counted_history!(pitch_path, pitches_dir(cwd, "draft"), row)
+    if carried_forward? do
+      LoopQueue.write_history_row!(pitch_path, "Build failure history", row)
+    else
+      LoopQueue.record_counted_history!(pitch_path, pitches_dir(cwd, "draft"), row)
+    end
+
     :ok
   rescue
     e -> {:error, "history write failed: #{Exception.message(e)}"}
   end
+
+  # A NEW/GROWING/unexplained expansion always counts (fail-closed default —
+  # only a proven REPEAT of already-evidenced paths is exempted). Finds the
+  # dossier this transaction directly superseded (`stage == "superseded"` and
+  # `successor_transaction_id == dossier["transaction_id"]` — the same chain
+  # link `lossy_supersede?/3` walks) and compares scope-expansion sets.
+  # `slug` is read from the dossier itself (never re-derived) since the
+  # caller already knows which dossier it is describing.
+  @spec carried_forward_expansion?(String.t(), map()) :: boolean()
+  defp carried_forward_expansion?(cwd, %{
+         "slug" => slug,
+         "transaction_id" => transaction_id,
+         "ownership" => "expanded",
+         "scope_expansion" => expansion
+       })
+       when is_list(expansion) and expansion != [] do
+    with {:ok, dossiers} <- list_dossiers(cwd, slug),
+         predecessor when not is_nil(predecessor) <-
+           Enum.find(dossiers, fn d ->
+             dossier_stage_atom(d["stage"]) == :superseded and
+               d["successor_transaction_id"] == transaction_id
+           end) do
+      predecessor["ownership"] == "expanded" and
+        MapSet.subset?(MapSet.new(expansion), MapSet.new(predecessor["scope_expansion"] || []))
+    else
+      _ -> false
+    end
+  end
+
+  defp carried_forward_expansion?(_cwd, _dossier), do: false
 
   defp parking_dossier(
          transaction_id,
@@ -1020,9 +1092,13 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
   # of `superseded`/`completed`). Multiple active dossiers for one slug make
   # ownership ambiguous; the caller must resolve the prior transaction
   # first (mark it `superseded` via a successor, or let it reach
-  # `completed`).
-  @spec refuse_if_active_dossier(String.t(), String.t()) :: :ok | {:error, String.t()}
-  defp refuse_if_active_dossier(cwd, slug) do
+  # `completed`). `new_transaction_id` is the CALLER's about-to-be-written
+  # transaction (see `park_failure/1`'s `transaction_id`, generated before
+  # this call) — threaded through so a superseding dossier can bind
+  # `successor_transaction_id` to the transaction that actually superseded
+  # it (Move 12b), rather than leaving it permanently `nil`.
+  @spec refuse_if_active_dossier(String.t(), String.t(), String.t()) :: :ok | {:error, String.t()}
+  defp refuse_if_active_dossier(cwd, slug, new_transaction_id) do
     case list_dossiers(cwd, slug) do
       {:ok, dossiers} ->
         active =
@@ -1042,17 +1118,26 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
     end
     |> case do
       :ok -> :ok
-      {:ok, :chain} -> supersede_active!(cwd, slug)
+      {:ok, :chain} -> supersede_active!(cwd, slug, new_transaction_id)
       {:error, reason} -> {:error, reason}
     end
   end
 
   # A slug that already has exactly one active dossier and fails again gets
   # a NEW transaction chained to the old one: the predecessor is marked
-  # `superseded` (with `successor_transaction_id` set once the new
-  # transaction exists), never overwritten in place. The predecessor's ref
-  # never moves; only the dossier's `stage` changes.
-  defp supersede_active!(cwd, slug) do
+  # `superseded`, with `successor_transaction_id` bound to `new_transaction_id`
+  # (Move 12b — never left `nil`), never overwritten in place. The
+  # predecessor's ref never moves; only `stage`/`successor_transaction_id`
+  # change.
+  #
+  # Move 12a — REFUSE a lossy supersede: a successor dossier may not record
+  # STRICTLY LESS than the predecessor it replaces (no `recovery_commit`
+  # where the predecessor had one, empty `changed_paths` where the
+  # predecessor named files). Refusing loudly here — rather than silently
+  # merging `stage` + `updated_at` only — is what closes the terminal-park
+  # race regardless of which writer (the cycle's own park, or the queue's
+  # later terminal park re-reading a by-then-clean tree) runs last.
+  defp supersede_active!(cwd, slug, new_transaction_id) do
     with {:ok, dossiers} <- list_dossiers(cwd, slug) do
       case Enum.find(dossiers, fn d ->
              dossier_stage_atom(d["stage"]) not in [:superseded, :completed]
@@ -1061,8 +1146,49 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
           :ok
 
         predecessor ->
-          superseded = Map.merge(predecessor, %{"stage" => "superseded", "updated_at" => now()})
+          superseded =
+            Map.merge(predecessor, %{
+              "stage" => "superseded",
+              "successor_transaction_id" => new_transaction_id,
+              "updated_at" => now()
+            })
+
           write_dossier!(cwd, slug, predecessor["transaction_id"], superseded)
+      end
+    end
+  end
+
+  # Move 12a — the predecessor this `transaction_id` just superseded (via
+  # `refuse_if_active_dossier/3` -> `supersede_active!/3`, run earlier in
+  # `park_failure/1`) carried real recovery evidence (a non-nil
+  # `recovery_commit` or a non-empty `changed_paths`) — writing an empty
+  # dossier now would make THIS transaction the active one while silently
+  # discarding that evidence from the reconcile path. Refuse loudly instead
+  # of finalizing the empty write; the superseded predecessor stays on disk,
+  # unmodified, as the durable record.
+  @spec lossy_supersede?(String.t(), String.t(), String.t()) :: :ok | {:error, String.t()}
+  defp lossy_supersede?(cwd, slug, transaction_id) do
+    with {:ok, dossiers} <- list_dossiers(cwd, slug) do
+      predecessor =
+        Enum.find(dossiers, fn d ->
+          dossier_stage_atom(d["stage"]) == :superseded and
+            d["successor_transaction_id"] == transaction_id
+        end)
+
+      case predecessor do
+        nil ->
+          :ok
+
+        %{"recovery_commit" => commit, "changed_paths" => paths}
+        when not is_nil(commit) or paths != [] ->
+          {:error,
+           "InterruptedCycleRecovery: refusing lossy supersede for #{slug} — predecessor " <>
+             "transaction #{predecessor["transaction_id"]} recorded recovery_commit=" <>
+             "#{inspect(commit)} changed_paths=#{length(paths)}; new transaction " <>
+             "#{transaction_id} would record neither"}
+
+        _ ->
+          :ok
       end
     end
   end
@@ -1213,6 +1339,150 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
 
         %{} = dossier ->
           check_materialization(cwd, slug, dossier)
+      end
+    end
+  end
+
+  @transport_schema_causes ~w(transport schema_validation)a
+
+  @doc """
+  Move 14 — whether a parked/interrupted transaction is safe to auto-resume
+  ONCE, behind five CONJUNCTIVE predicates. Any one absent → NOT resumable;
+  surfacing for an explicit operator abandon-or-resume decision is the
+  default, resume is the narrow exception. `gate_receipt` is the caller's
+  already-read `gate-result.json` map (this function never reads files
+  itself, staying pure/testable — see `gate_result_transaction_id` in
+  `gate-result.sh` for the shell-side reader that produces it).
+
+  1. **Immutable recovery ref and tree** — the ref still points at the
+     recorded commit (`verify_recovery_ref/2`).
+  2. **Clean apply** — the recovery patch applies to current HEAD with zero
+     conflicts (delegates to the same `git apply --check` used by
+     `check_recovery_patch/5`, via `clean_apply?/3`).
+  3. **Fresh, transaction-bound gate receipt** — `gate_receipt["verdict"]` is
+     `"clear"`, its `graded_tree_sha` equals the dossier's `recovery_tree_sha`
+     AND its `transaction_id` equals the dossier's `transaction_id`. Tree
+     equality ALONE is not binding — two transactions can produce identical
+     trees — so both must agree.
+  4. **Transport/schema failure cause** — the dossier's `cause` classifies as
+     a transport or schema-validation failure (`@transport_schema_causes`),
+     never a gate red, test failure, or code fault. A code-caused death
+     resumed from its own state would re-enter the same failure.
+  5. **Exact prior stage** — `expected_stage` (the stage the caller is about
+     to re-enter) equals the dossier's own `stage`.
+
+  Once-only is NOT enforced here — a transaction gets at most ONE
+  auto-resume, tracked by the CALLER via the dossier's own `stage` history
+  (a transaction already past its one resume attempt has moved beyond the
+  stage `expected_stage` would match, so predicate 5 fails naturally on a
+  second attempt for the SAME stage; a resume into a DIFFERENT stage is a
+  new decision, not a repeat, and is out of scope for this predicate set).
+  """
+  @spec auto_resumable?(String.t(), map(), map(), atom() | String.t()) ::
+          :ok | {:refuse, String.t()}
+  def auto_resumable?(cwd, dossier, gate_receipt, expected_stage) do
+    expected_stage_str = to_string(expected_stage)
+
+    with {:ok, ref_ok} <- verify_recovery_ref(cwd, dossier),
+         true <- ref_ok || {:refuse, "predicate 1 (immutable ref/tree) failed"},
+         {:ok, apply_ok} <- clean_apply?(cwd, dossier),
+         true <- apply_ok || {:refuse, "predicate 2 (clean apply) failed"},
+         true <-
+           receipt_binds_transaction?(gate_receipt, dossier) ||
+             {:refuse, "predicate 3 (fresh transaction-bound gate receipt) failed"},
+         true <-
+           transport_or_schema_cause?(dossier["cause"]) ||
+             {:refuse,
+              "predicate 4 (transport/schema cause) failed — cause is #{inspect(dossier["cause"])}"},
+         true <-
+           dossier["stage"] == expected_stage_str ||
+             {:refuse,
+              "predicate 5 (exact prior stage) failed — dossier stage is " <>
+                "#{inspect(dossier["stage"])}, expected #{inspect(expected_stage_str)}"} do
+      :ok
+    else
+      {:refuse, reason} -> {:refuse, reason}
+      {:error, reason} -> {:refuse, "predicate check errored: #{reason}"}
+    end
+  end
+
+  defp receipt_binds_transaction?(gate_receipt, dossier) when is_map(gate_receipt) do
+    gate_receipt["verdict"] == "clear" and
+      is_binary(gate_receipt["graded_tree_sha"]) and gate_receipt["graded_tree_sha"] != "" and
+      gate_receipt["graded_tree_sha"] == dossier["recovery_tree_sha"] and
+      is_binary(gate_receipt["transaction_id"]) and gate_receipt["transaction_id"] != "" and
+      gate_receipt["transaction_id"] == dossier["transaction_id"]
+  end
+
+  defp receipt_binds_transaction?(_gate_receipt, _dossier), do: false
+
+  defp transport_or_schema_cause?(cause) when is_binary(cause) do
+    Enum.any?(@transport_schema_causes, fn c ->
+      String.contains?(String.downcase(cause), Atom.to_string(c) |> String.replace("_", " "))
+    end)
+  end
+
+  defp transport_or_schema_cause?(_), do: false
+
+  defp clean_apply?(cwd, %{"source_base_sha" => source_base, "recovery_commit" => recovery_commit})
+       when is_binary(source_base) and is_binary(recovery_commit) do
+    patch =
+      Path.join(System.tmp_dir!(), ".ohms-auto-resume-#{System.unique_integer([:positive])}")
+
+    result =
+      with {:ok, diff} <- git_raw_diff(cwd, source_base, recovery_commit),
+           :ok <- File.write(patch, diff),
+           {:ok, _} <- git(cwd, ["apply", "--check", patch]) do
+        {:ok, true}
+      else
+        {:error, _reason} -> {:ok, false}
+      end
+
+    File.rm(patch)
+    result
+  end
+
+  defp clean_apply?(_cwd, _dossier), do: {:ok, false}
+
+  @doc """
+  Move 13 — an explicit, audited exit for a STALE `reconciliation_required`
+  dossier that is neither a silent replay nor a permanent scheduling veto
+  (Fault 11). The old dossier, its recovery ref, commit, and tree are
+  PRESERVED IMMUTABLY — this writes a new terminal stage
+  (`superseded_for_fresh_build`) onto the SAME dossier record; nothing is
+  deleted or rewritten out from under it. The caller is then free to start a
+  genuinely fresh transaction (new transaction id, current HEAD/tree
+  identity, empty retry budget, no inherited role/session/checkpoint) — this
+  function does not start that transaction itself, only closes the stale one
+  so a fresh `park_failure/1` for the same slug is no longer refused by
+  `refuse_if_active_dossier/3`.
+
+  Fails CLOSED, never an escape hatch for missing evidence: refuses unless
+  the active dossier's stage is EXACTLY `reconciliation_required` — a LIVE
+  recovery (`parking`/`parked`/`materialized`/etc.) or an already-terminal
+  dossier (`superseded`/`completed`/`superseded_for_fresh_build`) is left
+  untouched and returns an error naming the actual stage, so a caller cannot
+  accidentally fresh-build over live or already-resolved work.
+  """
+  @spec supersede_for_fresh_build!(String.t(), String.t()) :: :ok | {:error, String.t()}
+  def supersede_for_fresh_build!(cwd, slug) do
+    with {:ok, dossier} <- active_dossier(cwd, slug) do
+      case dossier do
+        nil ->
+          {:error,
+           "InterruptedCycleRecovery: no active dossier for #{slug} — nothing to supersede"}
+
+        %{"stage" => "reconciliation_required"} = dossier ->
+          superseded =
+            Map.merge(dossier, %{"stage" => "superseded_for_fresh_build", "updated_at" => now()})
+
+          write_dossier!(cwd, slug, dossier["transaction_id"], superseded)
+
+        %{"stage" => other} ->
+          {:error,
+           "InterruptedCycleRecovery: refusing fresh-build supersede for #{slug} — active " <>
+             "dossier stage is #{inspect(other)}, not reconciliation_required (live recovery " <>
+             "or already-terminal dossier stays fail-closed)"}
       end
     end
   end

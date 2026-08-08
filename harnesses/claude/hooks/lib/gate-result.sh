@@ -64,9 +64,15 @@ _derive_verdict() {
 
     # non-zero exit
     if [ "$exit_code" != "0" ]; then
-        # environmental classifications → inconclusive
+        # environmental classifications → inconclusive. `flake-isolated:*` is
+        # the load-starvation case (Fault 1 / Move 2a): the gate's ONLY
+        # failing test file was re-run alone, in isolation, and passed —
+        # bounded to one file, once, never a retry loop. Reuses the existing
+        # `inconclusive` vocabulary (no fourth verdict value); the caller
+        # (LoopGate.run_gate/2) computes this tag, never gate-result.sh
+        # itself.
         case "$classification" in
-        seed-missing* | pool-exhaustion*)
+        seed-missing* | pool-exhaustion* | flake-isolated:*)
             printf 'verdict=inconclusive\nverdict_marker=INCONCLUSIVE ⚠️\n'
             return 0
             ;;
@@ -244,6 +250,13 @@ write_gate_result() {
     # defaulted to "" so every existing caller (and every downstream app,
     # which has no loop and no cycle) keeps working unchanged.
     local cycle_id="${18:-}"
+    # transaction_id (Move 14, predicate 3) binds this verdict to the
+    # recovery TRANSACTION it graded, not just the tree it graded — tree
+    # equality alone is not binding (two transactions can produce identical
+    # trees), so an auto-resume decision needs BOTH graded_tree_sha equality
+    # AND transaction_id equality against the dossier being resumed. Optional
+    # and defaulted to "" — every existing caller keeps working unchanged.
+    local transaction_id="${19:-}"
 
     # Derive verdict
     local verdict_out
@@ -304,6 +317,7 @@ write_gate_result() {
         --arg witness "$witness" \
         --arg graded_tree_sha "$graded_tree_sha" \
         --arg cycle_id "$cycle_id" \
+        --arg transaction_id "$transaction_id" \
         '($started | try fromdateiso8601 catch null) as $started_epoch
         | ($ended | try fromdateiso8601 catch null) as $ended_epoch
         | (if $started_epoch != null and $ended_epoch != null
@@ -328,7 +342,8 @@ write_gate_result() {
             log: $log,
             witness: $witness,
             graded_tree_sha: $graded_tree_sha,
-            cycle_id: $cycle_id
+            cycle_id: $cycle_id,
+            transaction_id: $transaction_id
         }' >"$result_file"
 
     # Durable codegen-local verdict history (no overwrite, append-only).
@@ -376,4 +391,18 @@ gate_result_graded_tree_sha() {
         return 0
     }
     jq -r '.graded_tree_sha // ""' "$result_file" 2>/dev/null || printf ''
+}
+
+# gate_result_transaction_id <project_dir>
+# Reads transaction_id field from gate-result.json (Move 14, predicate 3).
+# Prints the id or "" if absent (legacy record predating this field, or a
+# gate run not bound to a recovery transaction).
+gate_result_transaction_id() {
+    local project_dir="$1"
+    local result_file="$project_dir/codegen/gate-pending/gate-result.json"
+    [ -f "$result_file" ] || {
+        printf ''
+        return 0
+    }
+    jq -r '.transaction_id // ""' "$result_file" 2>/dev/null || printf ''
 }

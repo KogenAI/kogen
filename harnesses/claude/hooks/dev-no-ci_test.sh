@@ -16,6 +16,10 @@
 #   19:   mix test --trace flag-only → deny (2)
 #   20:   mix test --trace with path → allow (0)
 #   21:   bare mix test --cover (no path) → deny (2)
+#   22:   MIX_ENV=test mix test --exclude slow (env-prefixed bare) → deny (2)
+#   23:   MIX_ENV=test mix test --exclude slow test/path.exs (env-prefixed
+#         with path) → allow (0)
+#   24:   MIX_ENV=test mix test (env-prefixed, no args at all) → deny (2)
 #   24-30: unowned expensive full-suite targets (test-stacks*, test-all,
 #          test-coverage, test-hermetic, bench) → deny (2)
 #   31:   make install ALLOWED
@@ -202,6 +206,22 @@ run_test "mix test --trace with path allowed" "0" \
 # Test 21: bare mix test --cover (no path) → deny
 run_test "bare mix test --cover (no path) blocked for developer" "2" \
     '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"mix test --cover"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+
+# Fault 2 regression — the env-prefixed bypass (`command_word_of_segment`
+# skips leading VAR=val assignments, so `MIX_ENV=test mix test ...` must be
+# denied identically to the unprefixed form).
+# Test 22: MIX_ENV=test mix test --exclude slow (env-prefixed, flags-only) → deny
+run_test "env-prefixed flags-only mix test blocked for developer" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"MIX_ENV=test mix test --exclude slow"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+
+# Test 23: MIX_ENV=test mix test --exclude slow test/path.exs (env-prefixed,
+# path present) → allow
+run_test "env-prefixed mix test with path allowed for developer" "0" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"MIX_ENV=test mix test --exclude slow test/foo_test.exs"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
+
+# Test 24: MIX_ENV=test mix test (env-prefixed, bare, no args at all) → deny
+run_test "env-prefixed bare mix test blocked for developer" "2" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"MIX_ENV=test mix test"},"agent_type":"developer-phoenix-backend","agent_id":"abc123"}'
 
 # Test 22: codegen-log write narrating "make ci" in heredoc body → allow
 run_test "codegen-log write narrating gated phrase allowed" "0" \
