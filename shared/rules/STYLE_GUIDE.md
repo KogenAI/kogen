@@ -29,7 +29,7 @@ Rules are loaded into LLM context windows. Every token counts. Write for machine
 
 File exceeds target → split or compress. Don't loosen the target.
 
-**Enforcement**: `make prompt-size-budget` (component of `make test`) fails when a rule file or rendered agent prompt exceeds its committed ceiling in `templates/generator/prompt-budgets.txt` — this table is the TARGET new files should hit; the budget file is the ENFORCED ceiling, frozen at current measured size for files that pre-date this gate. The ceiling is operator-owned, not the writer's to move — a red verdict means shrink or evict, never raise. A red verdict routes to context-curator's retire/compact action.
+**Enforcement**: `make prompt-size-budget` (component of `make test`) fails when a rule file or rendered agent prompt exceeds its committed ceiling in `templates/generator/prompt-budgets.txt` — this table is the TARGET new files should hit; the budget file is the ENFORCED ceiling, frozen at current measured size for files that pre-date this gate. One-way ratchet: once a `shared/rules/` fragment shrinks to at-or-under its STYLE_GUIDE-derived target (50/150 lines above), its enforced ceiling drops to that target too — a grandfathered row never lets a shrunk file silently regrow back toward its old, larger committed size. A file still over target keeps its grandfathered row untouched. The ceiling is operator-owned, not the writer's to move — a red verdict means shrink or evict, never raise. A red verdict routes to context-curator's retire/compact action.
 
 **Cross-role deduplication:**
 

@@ -4,17 +4,17 @@ Core discipline rules that apply to ALL agents regardless of role or stack. Thes
 
 ## Components
 
-| File                                              | Purpose                                                                |
-| ------------------------------------------------- | ---------------------------------------------------------------------- |
-| `shared/rules/INDEX.md`                           | Registry — file → trigger keywords; loaded by the orchestrator         |
-| `shared/rules/STYLE_GUIDE.md`                     | Cross-cutting style rules for all agents                               |
-| `shared/rules/_core/bash-discipline.md`           | Forbidden bash patterns, token-budget rules, safe alternatives         |
-| `shared/rules/_core/output-style.md`              | Caveman Ultra output compression rules                                 |
-| `shared/rules/_core/session-log.md`               | Session log format, ownership, section headers, subagent body template |
-| `shared/rules/_core/cwd-discipline.md`            | Working-directory rules — no /tmp writes, absolute paths only          |
-| `shared/rules/_core/fail-fast-required-values.md` | Masking-default detection: 3-part test for required-value defaults     |
-| `shared/rules/_core/fail-loud.md`                 | Universal fail-loud posture: forbidden swallows/silent-defaults        |
-| `shared/rules/_core/witness-discipline.md`        | FAILED-gate witness requirement (file:line + verbatim cause)           |
+| File                                              | Purpose                                                                                                                                            |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shared/rules/INDEX.md`                           | Registry — file → trigger keywords; loaded by the orchestrator                                                                                     |
+| `shared/rules/STYLE_GUIDE.md`                     | Cross-cutting style rules for all agents                                                                                                           |
+| `shared/rules/_core/bash-discipline.md`           | Forbidden bash patterns, token-budget rules, safe alternatives — pointer to `context/bash-patterns.md` for codegen-repo bash lore                  |
+| `shared/rules/_core/output-style.md`              | Caveman Ultra output compression rules                                                                                                             |
+| `shared/rules/_core/session-log.md`               | Session log format, ownership, section headers, subagent body template — pointer to `context/cycle-record.md` for non-role `codegen-log` mechanics |
+| `shared/rules/_core/cwd-discipline.md`            | Working-directory rules — no /tmp writes, absolute paths only                                                                                      |
+| `shared/rules/_core/fail-fast-required-values.md` | Masking-default detection: 3-part test for required-value defaults                                                                                 |
+| `shared/rules/_core/fail-loud.md`                 | Universal fail-loud posture: forbidden swallows/silent-defaults                                                                                    |
+| `shared/rules/_core/witness-discipline.md`        | FAILED-gate witness requirement (file:line + verbatim cause)                                                                                       |
 
 ## Key Paths
 
@@ -39,6 +39,7 @@ shared/rules/
 - **hooks**: some hooks enforce these rules at runtime (e.g. `no-python-json.sh` enforces `bash-discipline.md`; `no-cat-pipe.sh` enforces pipe patterns) — see `context/hooks.md`
 - **rules-roles**: role rules are layered on top of these core rules; core rules define the floor
 - **INDEX.md must stay in sync** — each rule file must have an INDEX row or orchestrators won't load it on demand
+- **satellite context files**: `bash-discipline.md` and `session-log.md` each hold only the MUST-obey rule text baked into prompts; codegen-repo-specific lore and non-role mechanics were relocated to `context/bash-patterns.md` (bash stub/test isolation patterns) and `context/cycle-record.md` (`codegen-log` init/verdict/exit/committed/show, gate-pending artifacts) respectively — each rule file leaves a one-line `context/` pointer behind. A role reads the satellite only when the loop's `files_to_touch` grants the path.
 
 ## Trigger Keywords
 

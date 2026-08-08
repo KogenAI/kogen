@@ -80,6 +80,15 @@ an operator, "no row" must never be a verdict whose sole remedy is a write the a
   operator prunes it, any file later taking that name is governed by the derived ceiling above, which
   is stricter than the orphaned row.
 
+**One-way ratchet on an already-shrunk file** — `effective_ceiling(relpath, current, budgets)` binds
+the effective ceiling to `min(committed_row, derived_ceiling)` ONLY for a rule file already at or
+under its derived STYLE_GUIDE target. A grandfathered committed row (e.g. 225 lines) otherwise leaves
+a shrunk file (e.g. 48 lines) with the full original headroom, silently evaporating the saving on the
+next regrowth. A file still OVER target keeps its grandfathered row untouched — nothing green today
+turns red. Both `--check` and `--report --path` route through this ONE helper (no ceiling logic
+duplicated between the gate and the pre-edit advisory) — see `templates/generator/prompt_size_budget.py`
+`effective_ceiling/3`.
+
 ## Curator Retire/Compact Action
 
 The one place the curator's normal no-re-sectioning ban is lifted — scoped to the named over-budget

@@ -1,12 +1,12 @@
 # Reviewer — Phoenix
 
-Phoenix-specific checks layered onto reviewer's Review Steps table (19 rows).
+Phoenix-specific checks layered onto reviewer's Review Steps table.
 
 ## Per-Step Additions
 
 - **5 Redundant Files**: also flag empty migrations
 - **9 Type/Spec Duplication**: type 2+ times in `@spec` → `@type`. Test modules explicit `async: true/false`.
-- **10 Cleanliness**: `assert.*!= nil` (use `assert .id`), `@spec` on `defp`
+- **10 Cleanliness**: `assert.*!= nil` (use `assert .id`)
 - **11 Stack Patterns**: verified routes `~p"/path/#{id}"`. Component attrs alphabetical.
 - **11a LiveView Correctness** (changed `.heex` / `*_live.ex`):
   1. **Form events** — `phx-change`, `phx-submit`, `phx-keyup`/`phx-keydown` INTENDED as form input: require a `<.form>`/`<form>` ancestor. Carve-out: bare `phx-keyup`+`phx-key` (deliberate keystroke binding outside a form) is LEGITIMATE — flag intent-mismatch, not mere ancestor absence.

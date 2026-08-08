@@ -154,6 +154,42 @@ class DerivedCeilingTest(unittest.TestCase):
         self.assertLessEqual(psb.derived_ceiling("shared/rules/roles/x.md"), 150)
 
 
+class EffectiveCeilingTest(unittest.TestCase):
+    """The one-way ratchet: once a rule file reaches its derived STYLE_GUIDE
+    target, hold it there forever so a shrink doesn't quietly regrow back up
+    to its grandfathered committed row. A file still over target keeps its
+    grandfathered row untouched — nothing green today turns red."""
+
+    def test_file_at_or_under_target_is_capped_to_the_tighter_of_row_and_target(self):
+        # bash-discipline.md shrunk to 48 lines (target 50); its grandfathered
+        # committed row of 225 must NOT still grant 177 lines of headroom.
+        budgets = {"shared/rules/_core/bash-discipline.md": 225}
+        self.assertEqual(
+            psb.effective_ceiling("shared/rules/_core/bash-discipline.md", 48, budgets),
+            50,
+        )
+
+    def test_file_still_over_target_keeps_its_grandfathered_row(self):
+        budgets = {"shared/rules/stacks/phoenix/testing.md": 247}
+        self.assertEqual(
+            psb.effective_ceiling("shared/rules/stacks/phoenix/testing.md", 247, budgets),
+            247,
+        )
+
+    def test_row_already_below_target_is_unaffected_by_the_ratchet(self):
+        budgets = {"shared/rules/roles/reviewer.md": 113}
+        self.assertEqual(
+            psb.effective_ceiling("shared/rules/roles/reviewer.md", 107, budgets),
+            113,
+        )
+
+    def test_no_committed_row_falls_back_to_derived_ceiling(self):
+        self.assertEqual(
+            psb.effective_ceiling("shared/rules/_core/new-file.md", 10, {}),
+            50,
+        )
+
+
 class IncludeGraphTest(unittest.TestCase):
     """Transitive {% include %} walk against the REAL repo tree — no fixtures,
     since build_include_graph() reads from CODEGEN_DIR directly (module-level

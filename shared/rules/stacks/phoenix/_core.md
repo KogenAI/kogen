@@ -68,17 +68,14 @@ Required env var in prod: `System.get_env("VAR") || raise "missing VAR"`. Compil
 
 ## then/2 for Conditional Pipelines
 
-`then/2` for conditional branching at pipeline tail — avoids Credo `VariableReDeclaration` from double socket-binding.
+Credo `Refactor.VariableRebinding`: same var bound in two sequential `=` (even a conditional 2nd)
+→ fail. Fix: single `|>` pipeline, `then/2` at the tail, rename the inner param to avoid shadowing.
 
 ```elixir
 socket =
   socket
   |> assign(:search_query, query)
-  |> then(fn s ->
-    if connected?(s) do assign_drops(s)
-    else s |> stream(:drops, [], reset: true) |> assign(:drops_empty?, true)
-    end
-  end)
+  |> then(fn s -> if connected?(s), do: assign_drops(s), else: s |> stream(:drops, [], reset: true) |> assign(:drops_empty?, true) end)
 ```
 
 ## Compile-Time Config

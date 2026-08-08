@@ -113,6 +113,28 @@ def derived_ceiling(relpath):
             return ceiling
     return DERIVED_CEILING_FALLBACK_LINES
 
+
+def effective_ceiling(relpath, current, budgets):
+    """One-way ratchet: once a rule file reaches its STYLE_GUIDE-derived
+    target, hold it there forever — never let a shrunk file silently regrow
+    back up to its grandfathered committed row.
+
+    A committed row is a grandfathered ceiling (operator-owned, never lowered
+    by an agent) — a file that shrinks from 225 to 48 lines still has 177
+    lines of headroom until an operator re-runs --write. This binds ONLY when
+    the file is already AT OR UNDER its derived ceiling: a file still over
+    target keeps its grandfathered row untouched (nothing green today turns
+    red). Agent prompts (no derivable ceiling) are untouched by this — only
+    rule fragments under shared/rules/ have a derived_ceiling.
+    """
+    committed = budgets.get(relpath)
+    if committed is None:
+        return derived_ceiling(relpath)
+    target = derived_ceiling(relpath)
+    if current <= target:
+        return min(committed, target)
+    return committed
+
 AGENT_SUBAGENT_DIRS = [
     CODEGEN_DIR / "shared" / "subagents" / "shared",
     CODEGEN_DIR / "shared" / "subagents" / "phoenix",
@@ -334,7 +356,7 @@ def report_path(relpath, added_bytes, rule_sizes, agent_sizes, budgets, fanout, 
     # rule-fragment edit actually threatens.
     if relpath in rule_sizes:
         current = rule_sizes[relpath]
-        budget = budgets.get(relpath, derived_ceiling(relpath))
+        budget = effective_ceiling(relpath, current, budgets)
         headroom = budget - current
         row_kind = "committed row" if relpath in budgets else "derived STYLE_GUIDE ceiling (no committed row)"
         lines.append(
@@ -512,7 +534,7 @@ def main():
                     "STYLE_GUIDE target, not to a grandfathered ceiling). Shrink it."
                 )
             continue
-        budget = budgets[relpath]
+        budget = budgets[relpath] if relpath in agent_sizes else effective_ceiling(relpath, actual, budgets)
         if actual > budget:
             unit = "bytes" if relpath in agent_sizes else "lines"
             attribution = ""

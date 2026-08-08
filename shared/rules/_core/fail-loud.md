@@ -5,7 +5,7 @@ Codegen values failing loud. Language-agnostic across Elixir, TS/JS, Bash, Pytho
 ## Forbidden
 
 - **NEVER swallow** — `catch {}` / `except: pass` / `rescue _` / `2>/dev/null || true` that drops an error you did not enumerate. An unexpected condition MUST surface (raise, return error, non-zero exit), never vanish.
-- **NEVER silent-default a required input** — a value the op needs to be CORRECT (model, credential, mode/env switch, routing key, target id) MUST fail when absent, never fall back to `""` / `nil` / `0` / `"unknown"` / a plausible-but-wrong constant.
+- **NEVER silent-default a required input** — a value the op needs to be CORRECT (model, credential, mode/env switch, routing key, target id) MUST fail when absent, never fall back to `""` / `nil` / `0` / `"unknown"` / a plausible-but-wrong constant. **See**: fail-fast-required-values.md for the 3-part masking-default test, grep tells, and fix mechanisms.
 - **NEVER fail open by default** — when an operation cannot determine the safe answer, the default is to STOP/deny/error, not proceed permissively. (Carve-out below for hook fail-open.)
 - **NEVER green-on-red** — a check/gate/test reporting success while the underlying thing failed. Exit code, verdict, and log MUST agree. No `|| true` on a command whose failure is the signal.
 - **NEVER catch wider than expected** — catch the specific error you handle; let everything else propagate. Bare/`Exception`/`*` catches that include bugs are forbidden.

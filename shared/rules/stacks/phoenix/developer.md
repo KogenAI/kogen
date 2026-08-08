@@ -54,33 +54,7 @@ Then targeted test file(s). Dead modules → Credo warnings → wire via `grep -
 - **GenServer.call/3 timeout exit shape**: `GenServer.call/3` timeout exits as `{:timeout, {mod, fun, args}}`, never the bare atom `:timeout`. A `try/catch` arm like `catch :exit, :timeout` is always dead code. Use bare `case` on function return values or pattern-match on the full `{:timeout, ...}` tuple in exception handlers.
 - **Oban plugin `max_age` unit trap**: `Oban.Plugins.Lifeline.rescue_after` takes MILLISECONDS (e.g., `:timer.hours(2)` from `:timer` module). `Oban.Plugins.Pruner.max_age` takes SECONDS as a bare integer. Reusing `:timer.hours/1` in Pruner config makes retention 1000× too long. Always use the bare integer literal for Pruner: `max_age: 604_800` (7 days), never `:timer.hours(168)`.
 
-## Credo VariableRebinding — Double-Binding Fix Pattern
-
-Credo's `Refactor.VariableRebinding` (formerly `VariableReDeclaration`) fires when the same variable is bound in two sequential `=` assignments within the same function clause, even if the second is a conditional:
-
-```elixir
-# ❌ Credo violation: socket bound twice (in a non-LiveView module)
-socket = socket |> assign(:foo, bar)
-socket = if connected?(socket) do ... else ... end
-```
-
-**In regular (non-LiveView) modules**, fix by merging both assignments into a single `|>` pipeline using `then/2`, renaming the inner anonymous parameter to avoid shadowing:
-
-```elixir
-# ✅ Single binding; then/2 for conditional branching
-socket =
-  socket
-  |> assign(:foo, bar)
-  |> then(fn s ->
-    if connected?(s) do
-      load_data(s)
-    else
-      s |> stream(:items, []) |> assign(:empty?, true)
-    end
-  end)
-```
-
-This pattern is already idiomatic in the codebase and preserves full readability.
+`_core.md` § then/2 for Conditional Pipelines covers the Credo `VariableRebinding` double-binding fix.
 
 **Event Handlers Must WIRE The Action, Not Just Display It.**
 A handler (`handle_event`, `handle_call`, `handle_cast`, `handle_info`) that puts the system into a new VISIBLE state MUST also invoke the work that PRODUCES it. Anti-patterns: a reconcile/loader that fills a `queue` assign but never calls start-next; a `draft` handler that only `File.write`s and closes; a `build` handler that only `Logger.info`s. When the criterion is "X happens," grep the handler for the `start`/`spawn`/`run`/`enqueue` that MAKES X happen, not just the assign that SHOWS X. Pair every "shows state Y" with a test asserting the SIDE EFFECT (process started, file written, message sent), not just the rendered label. Applies to backend GenServers and frontend LiveViews alike.

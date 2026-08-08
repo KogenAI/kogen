@@ -23,7 +23,7 @@ html = view |> element("button#load-more") |> render_click()
 - `render_async/1` to wait for `handle_info`
 
 **A LiveView Test Per Interactive Handler (MUST).**
-Every `phx-click`/`phx-submit`/`phx-change`/`phx-keyup`/`phx-window-keydown` handler MUST have a LiveView test that drives it through the REAL rendered element and asserts the observable outcome. Reviewer-applied by manual inspection — `wiring-check.js` exists (WIRING_VERDICT=PASS/FAIL) but has no caller in the gate today, so this is not yet machine-checked; treat "MUST" as the review rubric, not an automated block.
+Every `phx-click`/`phx-submit`/`phx-change`/`phx-keyup`/`phx-window-keydown` handler MUST have a LiveView test driving it through the REAL rendered element, asserting the observable outcome. Reviewer-applied by manual inspection — not yet machine-checked (`wiring-check.js` has no gate caller today); treat "MUST" as the review rubric.
 
 ```elixir
 {:ok, view, _html} = live(conn, "/")

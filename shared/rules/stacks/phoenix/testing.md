@@ -95,7 +95,7 @@ Simplest first. One at a time. Test behavior, not impl.
 
 ## Per-File Credo (MANDATORY)
 
-`mix credo --strict path/to/file.ex` after each file. Common fails: single-fn pipelines, missing `@type` aliases in `@spec`, `@spec` on `defp`. Sweep: `grep -rn " |> " lib/ test/support/`. Final: `mix format --check-formatted && mix credo --strict`.
+`mix credo --strict path/to/file.ex` after each file. Common fails: single-fn pipelines, missing `@type` aliases in `@spec` (`_core.md` `PrivateFunctionSpec`/`TypeDuplication` covers this). Sweep: `grep -rn " |> " lib/ test/support/`. Final: `mix format --check-formatted && mix credo --strict`.
 
 ## Tests Assert Spec, Not Bug
 
