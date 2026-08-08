@@ -85,12 +85,37 @@ pins HEAD, not content (a post-gate revert leaves `base_sha` unchanged but chang
 macOS/Linux) — `null` when either timestamp is unparseable/empty, never a fabricated `0` (see pitch
 `build-cycle-accounts-for-its-own-time`). `session_id` is now populated by the loop's `gate_opts/2` with
 the acting developer role (`dev_role_from_ctx/1` fallback) rather than left at `LoopGate.run_gate/2`'s
-own anonymous `""` default — see `context/loop.md` § Timing/Metrics Telemetry.
+own anonymous `""` default — see § Timing/Metrics Telemetry below.
 
 For a non-clear result, `write_gate_result` also falls back to
 `extract_witness "$log"` when a caller omits the optional witness argument.
 This keeps direct/legacy callers actionable without inspecting logs for clear
 results, where a warning location would be misleading.
+
+## Timing/Metrics Telemetry
+
+Three durable, `cycle_id`-keyed timing ledgers exist independently — `cycle-summary.jsonl` (per-role
+call, `latency_ms`/`duration_ms`/`duration_api_ms`/`ttft_ms`), `preflight-timings.jsonl` (turn-0
+`gate`/`roles`/`orientation` preflight steps), `gate-verdicts.jsonl` (`duration_s` per gate run) — but
+nothing joined them into a total or named the residual. `Mix.Tasks.Codegen.Loop.emit_loop_telemetry/3`
+(pitch `cycle-records-where-its-time-went`) closes that: the result envelope's `"timeline"` block joins
+all three by `cycle_id`:
+
+- `roles` — per-role-call duration fields, read from in-process telemetry (no file read; already
+  retained by `accumulate_telemetry/3`).
+- `preflight` / `gate` — this cycle's rows from the two sibling ledgers, matched on `cycle_id`.
+- `wall_ms` — now minus the cycle's start, decoded from `cycle_id`'s `<stamp>_<slug>` prefix.
+- `unaccounted_ms` — `wall_ms` minus every known stage duration. A large residual names what this
+  repo cannot yet see; it is a finding, not a defect.
+
+Fail-open, unknown-is-`null` throughout (`build_timeline/3`, `timeline_ledger_rows/3`,
+`cycle_wall_ms/1`): a `nil`/unresolvable `cycle_id`, an absent/malformed sibling ledger, or a
+`gate-verdicts.jsonl` row predating the `cycle_id` field are all excluded rather than counted as a
+zero-duration stage — an unjoinable row widens the residual, never shrinks it. A role call with no
+captured duration projects `null` for that field, never a fabricated `0`. Additive-only: no existing
+envelope key changes shape, and the one opaque whole-artifact reader
+(`LoopQueue.transient?/1`'s `String.contains?(content, ~s("type":"result"))`) is unaffected by new
+nested keys.
 
 ## Witness Extraction
 
@@ -154,4 +179,4 @@ Cross-reference `shared/rules/_core/session-log.md` § Enforcement for the full 
 
 ## Trigger Keywords
 
-codegen-log, cycle log, gate-pending, gate-result.json, cycle-state.json, write_gate_result, derive_verdict, verdict truth table, extract_witness, witness fallback, doc-shaped witness, context-index-parity witness, witness discipline, gate-verdicts.jsonl, graded_tree_sha, ev kinds, .active sentinel, no git-tracked logs, no cross-box log transport, recovery dossier, dossier stages, machine-local gitignored ephemeral artifact, recoveries/<slug>/<txid>.json, schema_version, transaction identity
+codegen-log, cycle log, gate-pending, gate-result.json, cycle-state.json, write_gate_result, derive_verdict, verdict truth table, extract_witness, witness fallback, doc-shaped witness, context-index-parity witness, witness discipline, gate-verdicts.jsonl, graded_tree_sha, ev kinds, .active sentinel, no git-tracked logs, no cross-box log transport, recovery dossier, dossier stages, machine-local gitignored ephemeral artifact, recoveries/<slug>/<txid>.json, schema_version, transaction identity, timeline, wall_ms, unaccounted_ms, preflight-timings.jsonl, cycle-summary.jsonl, emit_loop_telemetry, build_timeline, where did the time go

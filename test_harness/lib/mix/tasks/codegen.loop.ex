@@ -412,7 +412,7 @@ defmodule Mix.Tasks.Codegen.Loop do
         # original dossier: return possession to ready/ and let its newly
         # persisted reconciliation-required state block future claims.
         restore_claim(source, cwd)
-        emit_loop_telemetry({:error, reason})
+        emit_loop_telemetry({:error, reason}, cwd, nil)
         {:error, reason}
 
       {recovery_mode, recovery_role} ->
@@ -503,7 +503,7 @@ defmodule Mix.Tasks.Codegen.Loop do
 
     # Emit after post-loop commit verification. A terminal record must name
     # what THIS invocation finally did, rather than a pre-verification :ok.
-    emit_loop_telemetry(terminal_result)
+    emit_loop_telemetry(terminal_result, cwd, cycle_id)
     terminal_result
   end
 
@@ -789,9 +789,16 @@ defmodule Mix.Tasks.Codegen.Loop do
     end
   end
 
+  # `cwd`/`cycle_id` are optional (default `nil`) so the pre-existing
+  # arity-1 test caller (`codegen_loop_test.exs` "terminal telemetry
+  # preserves an actionable failure cause") keeps compiling unchanged — a
+  # `nil` cycle_id joins nothing and the `timeline` block degrades to
+  # `wall_ms: nil`, empty stage lists, `unaccounted_ms: nil` (see
+  # `build_timeline/3`).
   @doc false
-  @spec emit_loop_telemetry(:ok | {:error, String.t()}) :: :ok
-  def emit_loop_telemetry(result) do
+  @spec emit_loop_telemetry(:ok | {:error, String.t()}, String.t() | nil, String.t() | nil) ::
+          :ok
+  def emit_loop_telemetry(result, cwd \\ nil, cycle_id \\ nil) do
     t = OrchestrationLoop.get_telemetry()
 
     subtype = if result == :ok, do: "success", else: "error"
@@ -851,11 +858,160 @@ defmodule Mix.Tasks.Codegen.Loop do
           "cache_read_input_tokens" => t.cache_read_tokens,
           "cache_creation_input_tokens" => t.cache_creation_tokens
         },
-        "per_role" => per_role
+        "per_role" => per_role,
+        # See pitch "cycle-records-where-its-time-went": joins the three
+        # already-durable, cycle_id-keyed timing ledgers
+        # (cycle-summary.jsonl per-role durations, preflight-timings.jsonl,
+        # gate-verdicts.jsonl) into one block on the record a reader already
+        # has. Additive-only key; see `build_timeline/3`.
+        "timeline" => build_timeline(t.per_role, cwd, cycle_id)
       })
 
     IO.puts(line)
     :ok
+  end
+
+  # Joins the three durable, cycle_id-keyed timing ledgers into one block:
+  #
+  #   - `roles` — per-role-call duration fields already retained in-process
+  #     telemetry (`t.per_role`, populated by
+  #     `OrchestrationLoop.accumulate_telemetry/3`); no file read needed.
+  #   - `preflight` — this cycle's rows from `preflight-timings.jsonl`.
+  #   - `gate` — this cycle's rows from `gate-verdicts.jsonl`.
+  #   - `wall_ms` — now minus the cycle's own start (decoded from
+  #     `cycle_id`'s `<stamp>_<slug>` prefix, the SAME stamp
+  #     `run_materialized_cycle/14` used to name the cycle).
+  #   - `unaccounted_ms` — `wall_ms` minus every known stage duration. A
+  #     large residual is a finding, not a defect (see pitch M2) — it names
+  #     exactly what this repo cannot yet see.
+  #
+  # Fail-open by construction (pitch M4): a `nil`/unresolvable cycle_id, an
+  # absent or malformed sibling ledger, all yield an empty stage list and
+  # correspondingly larger/`nil` `unaccounted_ms` — never a crash, and never
+  # a silently smaller residual than the truth (pitch M3: unjoinable never
+  # contributes a fabricated 0).
+  @spec build_timeline(map(), String.t() | nil, String.t() | nil) :: map()
+  defp build_timeline(per_role_entries, cwd, cycle_id) do
+    roles =
+      Map.new(per_role_entries, fn {role, entries} ->
+        {role,
+         Enum.map(entries, fn e ->
+           %{
+             latency_ms: e.latency_ms,
+             duration_ms: e.duration_ms,
+             duration_api_ms: e.duration_api_ms,
+             ttft_ms: e.ttft_ms
+           }
+         end)}
+      end)
+
+    preflight = timeline_ledger_rows(cwd, "preflight-timings.jsonl", cycle_id)
+    gate = timeline_ledger_rows(cwd, "gate-verdicts.jsonl", cycle_id)
+
+    wall_ms = cycle_wall_ms(cycle_id)
+    known_ms = sum_known_stage_ms(roles, preflight, gate)
+
+    unaccounted_ms =
+      case wall_ms do
+        nil -> nil
+        w -> w - known_ms
+      end
+
+    %{
+      "roles" => roles,
+      "preflight" => preflight,
+      "gate" => gate,
+      "wall_ms" => wall_ms,
+      "unaccounted_ms" => unaccounted_ms
+    }
+  end
+
+  # Sums every duration this cycle's ledgers actually know about.
+  # `duration_ms` (not `latency_ms`) is the per-role wall-clock figure —
+  # `latency_ms` is a distinct client-observed round-trip figure and
+  # summing both would double-count the same call. A `nil` field (unknown,
+  # per pitch M3) contributes 0 to the sum but does NOT make the cycle look
+  # more accounted-for than it is: it stays absent from the per-entry
+  # record, so a reader auditing the raw `roles`/`preflight`/`gate` block
+  # can always see which entries were unknown.
+  @spec sum_known_stage_ms([map()], [map()], [map()]) :: non_neg_integer()
+  defp sum_known_stage_ms(roles, preflight, gate) do
+    role_ms =
+      roles
+      |> Map.values()
+      |> List.flatten()
+      |> Enum.map(& &1.duration_ms)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.sum()
+
+    preflight_ms =
+      preflight
+      |> Enum.map(&Map.get(&1, "elapsed_ms"))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.sum()
+
+    gate_ms =
+      gate
+      |> Enum.map(&Map.get(&1, "duration_s"))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&(&1 * 1000))
+      |> Enum.sum()
+
+    role_ms + preflight_ms + gate_ms
+  end
+
+  # Reads `<cwd>/codegen/logging/<file>`, decodes JSONL, keeps only rows
+  # whose own `cycle_id` matches this cycle. Fail-open: a `nil` cwd/cycle_id,
+  # a missing file, or a malformed line all yield `[]` — this is
+  # observability, never a build-stopper (pitch M4). Rows predating the
+  # `cycle_id` field (see `gate-verdicts.jsonl`'s pre-pitch history) are
+  # UNJOINABLE, not zero-duration — they are correctly excluded here rather
+  # than counted as an instant stage (pitch M3).
+  @spec timeline_ledger_rows(String.t() | nil, String.t(), String.t() | nil) :: [map()]
+  defp timeline_ledger_rows(_cwd, _file, nil), do: []
+  defp timeline_ledger_rows(nil, _file, _cycle_id), do: []
+
+  defp timeline_ledger_rows(cwd, file, cycle_id) do
+    path = Path.join([cwd, "codegen", "logging", file])
+
+    case File.read(path) do
+      {:ok, content} ->
+        content
+        |> String.split("\n", trim: true)
+        |> Enum.map(&Jason.decode/1)
+        |> Enum.filter(&match?({:ok, %{"cycle_id" => ^cycle_id}}, &1))
+        |> Enum.map(fn {:ok, row} -> row end)
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  # Decodes `cycle_id`'s `<stamp>_<slug>` prefix (stamp format
+  # `%Y%m%d_%H%M%S` UTC, minted once in `run_materialized_cycle/14`) back to
+  # a UTC DateTime, and returns milliseconds elapsed since then. `nil` on any
+  # unresolvable cycle_id (absent, or a slug containing no leading
+  # 15-char stamp) — never a fabricated 0 (pitch M3).
+  @spec cycle_wall_ms(String.t() | nil) :: integer() | nil
+  defp cycle_wall_ms(nil), do: nil
+
+  defp cycle_wall_ms(cycle_id) do
+    with [_, y, mo, d, h, mi, s] <-
+           Regex.run(~r/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_/, cycle_id),
+         {:ok, naive} <-
+           NaiveDateTime.new(
+             String.to_integer(y),
+             String.to_integer(mo),
+             String.to_integer(d),
+             String.to_integer(h),
+             String.to_integer(mi),
+             String.to_integer(s)
+           ) do
+      started = DateTime.from_naive!(naive, "Etc/UTC")
+      DateTime.diff(DateTime.utc_now(), started, :millisecond)
+    else
+      _ -> nil
+    end
   end
 
   defp terminal_cause(:ok), do: nil

@@ -174,7 +174,7 @@ additive suppression scoped to one `{role, harness}` pair per campaign arm, neve
 
 `accumulate_telemetry/3`'s third argument carries the ACTUAL resolved `{harness, model, effort}` for
 each invocation (whichever of the three sources above supplied it) into an additive `dispatch` field
-per `per_role` entry — `emit_loop_telemetry/1` projects these as an ordered `dispatches` list;
+per `per_role` entry — `emit_loop_telemetry/3` projects these as an ordered `dispatches` list;
 `UsageParser.parse_dispatches/1` reads it back from raw `codegen-build` stdout. This is how a campaign
 proves a role's binding was truly honored end-to-end, not just requested.
 
@@ -232,7 +232,7 @@ curator-writable-only repair path that replaced the prior unconditional abort.
 
 ## Terminal Reason & Cause
 
-`terminal_reason` (`loop_committed`/`loop_failed`) is stable; `terminal_cause` is the concrete failure reason (when applicable) — consumed by `failure_summary/1` (`context/loop-queue-drain.md`). Emission after commit verification. Gate verdict and telemetry carry `:session_id` attributed to the invoking developer role (fallback: `dev_role_from_ctx/1`), never anonymous `""`. `gate-result.sh` derives `duration_s` from ISO8601 timestamps (portable via `jq`'s `fromdateiso8601`), recording `null` when unparseable.
+`terminal_reason` (`loop_committed`/`loop_failed`) is stable; `terminal_cause` is the concrete failure reason (when applicable) — consumed by `failure_summary/1` (`context/loop-queue-drain.md`). Emission after commit verification. Gate verdict and telemetry carry `:session_id` attributed to the invoking developer role (fallback: `dev_role_from_ctx/1`), never anonymous `""`. `gate-result.sh` derives `duration_s` from ISO8601 timestamps (portable via `jq`'s `fromdateiso8601`), recording `null` when unparseable. Same emission (`emit_loop_telemetry/3`) carries a `"timeline"` block joining the three ledgers into `roles`/`preflight`/`gate`/`wall_ms`/`unaccounted_ms` — schema: `context/cycle-record.md` § Timing/Metrics Telemetry.
 
 ## Terminal Marker — Deterministic Exhaustion
 

@@ -2,6 +2,7 @@ defmodule Mix.Tasks.Codegen.LoopTest do
   use ExUnit.Case, async: true
 
   alias CodegenTestHarness.InfraAbort
+  alias CodegenTestHarness.OrchestrationLoop
   alias Mix.Tasks.Codegen.Loop
 
   setup do
@@ -354,6 +355,153 @@ defmodule Mix.Tasks.Codegen.LoopTest do
       assert_raise RuntimeError, "unrelated crash", fn ->
         Loop.run_loop_catching_infra_abort(fn -> raise "unrelated crash" end)
       end
+    end
+  end
+
+  describe "emit_loop_telemetry/3 — timeline joins the three cycle_id-keyed ledgers" do
+    test "no cwd/cycle_id (arity-1 legacy call): timeline present, everything nil/empty", ctx do
+      _ = ctx
+
+      output =
+        ExUnit.CaptureIO.capture_io(fn ->
+          assert :ok = Loop.emit_loop_telemetry({:error, "boom"})
+        end)
+
+      telemetry = output |> String.trim() |> Jason.decode!()
+
+      assert %{
+               "roles" => %{},
+               "preflight" => [],
+               "gate" => [],
+               "wall_ms" => nil,
+               "unaccounted_ms" => nil
+             } = telemetry["timeline"]
+    end
+
+    test "per-role duration fields are projected from in-process telemetry", ctx do
+      :ok =
+        OrchestrationLoop.accumulate_telemetry("developer-phoenix-backend", %{
+          "usage" => %{
+            "cost_usd" => 0.1,
+            "input_tokens" => 1,
+            "output_tokens" => 1,
+            "num_turns" => 1,
+            "latency_ms" => 1000,
+            "duration_ms" => 5000,
+            "duration_api_ms" => 4000,
+            "ttft_ms" => 200
+          }
+        })
+
+      output =
+        ExUnit.CaptureIO.capture_io(fn ->
+          assert :ok = Loop.emit_loop_telemetry(:ok, ctx.tmp, nil)
+        end)
+
+      telemetry = output |> String.trim() |> Jason.decode!()
+
+      assert [
+               %{
+                 "latency_ms" => 1000,
+                 "duration_ms" => 5000,
+                 "duration_api_ms" => 4000,
+                 "ttft_ms" => 200
+               }
+             ] = telemetry["timeline"]["roles"]["developer-phoenix-backend"]
+    end
+
+    test "a role call with no usage duration fields projects null, never a fabricated 0", ctx do
+      :ok =
+        OrchestrationLoop.accumulate_telemetry("reviewer-phoenix", %{
+          "usage" => %{
+            "cost_usd" => 0.1,
+            "input_tokens" => 1,
+            "output_tokens" => 1,
+            "num_turns" => 1
+          }
+        })
+
+      output =
+        ExUnit.CaptureIO.capture_io(fn ->
+          assert :ok = Loop.emit_loop_telemetry(:ok, ctx.tmp, nil)
+        end)
+
+      telemetry = output |> String.trim() |> Jason.decode!()
+
+      assert [%{"duration_ms" => nil, "latency_ms" => nil}] =
+               telemetry["timeline"]["roles"]["reviewer-phoenix"]
+    end
+
+    test "preflight and gate ledgers are joined by cycle_id, and a foreign cycle_id's rows are excluded",
+         ctx do
+      cycle_id = "20260101_000000_probe-slug"
+      logging_dir = Path.join([ctx.tmp, "codegen", "logging"])
+      File.mkdir_p!(logging_dir)
+
+      File.write!(
+        Path.join(logging_dir, "preflight-timings.jsonl"),
+        Jason.encode!(%{"cycle_id" => cycle_id, "step" => "gate", "elapsed_ms" => 6000}) <>
+          "\n" <>
+          Jason.encode!(%{
+            "cycle_id" => "some-other-cycle",
+            "step" => "gate",
+            "elapsed_ms" => 999_999
+          }) <> "\n"
+      )
+
+      File.write!(
+        Path.join(logging_dir, "gate-verdicts.jsonl"),
+        Jason.encode!(%{"cycle_id" => cycle_id, "verdict" => "clear", "duration_s" => 30}) <>
+          "\n" <>
+          Jason.encode!(%{"cycle_id" => "", "verdict" => "clear", "duration_s" => 999_999}) <>
+          "\n"
+      )
+
+      output =
+        ExUnit.CaptureIO.capture_io(fn ->
+          assert :ok = Loop.emit_loop_telemetry(:ok, ctx.tmp, cycle_id)
+        end)
+
+      telemetry = output |> String.trim() |> Jason.decode!()
+
+      assert [%{"elapsed_ms" => 6000}] = telemetry["timeline"]["preflight"]
+      assert [%{"duration_s" => 30}] = telemetry["timeline"]["gate"]
+    end
+
+    test "wall_ms is derived from cycle_id's own stamp, and unaccounted_ms is non-negative when known stages are small",
+         ctx do
+      # A stamp several seconds in the past — wall clock must exceed the tiny
+      # known-stage sum below, proving unaccounted_ms is the true residual,
+      # not a fabricated/negative number.
+      past = DateTime.add(DateTime.utc_now(), -30, :second)
+      stamp = Calendar.strftime(past, "%Y%m%d_%H%M%S")
+      cycle_id = "#{stamp}_wall-probe"
+
+      output =
+        ExUnit.CaptureIO.capture_io(fn ->
+          assert :ok = Loop.emit_loop_telemetry(:ok, ctx.tmp, cycle_id)
+        end)
+
+      telemetry = output |> String.trim() |> Jason.decode!()
+      timeline = telemetry["timeline"]
+
+      assert is_integer(timeline["wall_ms"])
+      assert timeline["wall_ms"] >= 29_000
+      assert is_integer(timeline["unaccounted_ms"])
+      assert timeline["unaccounted_ms"] >= 0
+      assert timeline["unaccounted_ms"] <= timeline["wall_ms"]
+    end
+
+    test "an unresolvable cycle_id (no leading stamp) yields wall_ms nil, never a crash", ctx do
+      output =
+        ExUnit.CaptureIO.capture_io(fn ->
+          assert :ok = Loop.emit_loop_telemetry(:ok, ctx.tmp, "not-a-stamp")
+        end)
+
+      telemetry = output |> String.trim() |> Jason.decode!()
+
+      assert telemetry["timeline"]["wall_ms"] == nil
+      assert telemetry["timeline"]["unaccounted_ms"] == nil
     end
   end
 end
