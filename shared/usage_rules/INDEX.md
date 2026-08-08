@@ -212,7 +212,7 @@ Use when: writing LiveView modules, hooks, forms, navigation, uploads, or LiveVi
 
 Use when: debugging PostgreSQL wire protocol issues, type extensions, or connection pool configuration.
 
-- `postgrex-0.22.0.md`
+- `postgrex-0.22.4.md`
 
 ## remote_ip
 
