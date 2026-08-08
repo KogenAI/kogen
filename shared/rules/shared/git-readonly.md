@@ -2,7 +2,8 @@
 
 For orchestrator, reviewers, devs (non-staging).
 
-- ❌ `git push`, `pull`, `fetch`
+- ❌ `pull`, `fetch`
+- `git push`: role-scoped, not universal ❌. Denied for debug/shape/spike-builder (sandboxed); allowed for ops/babysit (post-ship publish). `--force`/`-f` denied for ALL roles
 - ❌ `git stash` — hides changes → breaks reproduction
 - ❌ `git add`, `git rm`, `git mv`, `git restore` (with or without `--staged`) — staging/index writes AND working-tree discards → no agent stages; `codegen-commit` does it
 - ❌ `git checkout`, `git switch` — checkout of a path can DISCARD another role's uncommitted working-tree edits; no agent switches branches

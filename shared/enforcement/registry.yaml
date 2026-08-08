@@ -73,7 +73,7 @@
 
 - id: no-cat-pipe
   generated: true
-  description: "deny `cat FILE | head|tail|grep|less|more`"
+  description: "deny `cat FILE | head|tail|grep|less|more` for every role except ops; unquoted commands only (ignore_quoted: true — quoted/ssh-wrapped forms are not caught)"
   event: PreToolUse
   tool_guard: Bash
   match: "cat\\s+[^|]*\\|\\s*(head|tail|grep|less|more)\\b"

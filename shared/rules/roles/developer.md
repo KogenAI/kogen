@@ -47,7 +47,7 @@ Unknown CLI/flag/env → `--help` or docs first. New external API → hit real e
 
 **FORBIDDEN**: `assumed:` for path derivation, env-var resolution, config-key presence, fallback-default behavior, version-dependent behavior, or the error-path behavior of any mechanism you did not run. These MUST be `ran:` or `read:`. Cannot reach `ran:` or `read:`? That is a blocker, not a licence — do not write the line and then defend it in a comment.
 
-**FORBIDDEN for edit-target provenance**: `assumed:` AND `read:`-of-a-context-doc are BOTH forbidden when the claim is about an edit target's provenance (generated vs hand-authored, symlink vs file, what renders it). A context doc is a hint, not evidence — only `ran:` against git/fs counts (`git ls-files --stage <path>` for mode 120000=symlink / `readlink` / a grep of the generator-build wiring).
+**FORBIDDEN for edit-target provenance**: `assumed:` AND `read:`-of-a-context-doc are BOTH forbidden for an edit target's provenance (generated vs hand-authored, symlink vs file, what renders it). A context doc is a hint, not evidence — only `ran:` against git/fs counts (`git ls-files --stage <path>` for mode 120000=symlink / `readlink` / a grep of the generator-build wiring).
 
 ## AskUserQuestion
 
@@ -65,7 +65,7 @@ Disallowed in build-runtime. Elsewhere ≤4 options per call.
 
 ## Existing-Entity Sweep (MANDATORY before you create any NEW module / file / fn)
 
-This is YOUR obligation — no upstream role runs it for you, and the reviewer cannot re-run it (its bash allowlist denies `grep`).
+This is YOUR obligation — no upstream role runs it for you. The reviewer cannot re-run it: its Read grant is scoped to `## Files Modified`, not the rest of the source tree — even though shell `grep` is in its Bash allowlist, it has nothing outside that scope to grep.
 
 Before you create any new module, file, or function, grep the architectural slice — the owning source dir (per `repo-structure.md`) plus any `context/*.md` the loop's `files_to_touch` granted you — for an existing entity that already provides the same capability. This is the INVERSE of verify-before-naming: verify-before-naming stops a PHANTOM name (does X exist before I name it); this stops a NEW entity that DUPLICATES a real existing one.
 
@@ -98,8 +98,8 @@ Pure fns → unit tests. New public fns → tests. Bug fix → regression test. 
 - Cleanup: removing test files → grep source first. Target specific files; never blast build dirs.
 - No unprompted backward compat. Pitch says replace → remove old, implement new. Legacy fallback branch when old format is gone = dead code = scope creep. ❌ `cond do: legacy -> ...; new -> ...` ✅ new format only.
 - **Re-read target file before editing** — when applying a fix from reviewer feedback or from a retrospective, re-read the exact current state of the file before using the Edit tool. Avoids stale-context edits that miss intervening changes from other steps.
-- **Scope completeness — grep for parallel occurrences** — `## Declared Scope` is a starting point, not exhaustive. When a pattern (regex, constant, schema) appears in multiple files (hand-authored hooks, registry-driven generated files, schema docs), grep the full pattern across `harnesses/`, `shared/enforcement/`, and `shared/rules/_core/` to catch all siblings. Example: session-log slug class lived in 9 places (4 hook bodies, 2 registry fields → 3 generated files, 1 schema doc); pitch listed 6 but grep found 9. After edit, re-run the grep to confirm zero stray hits in the old pattern.
-- **Dual-read test cleanup must cover both old and new var names** — When a hook uses fallback syntax like `${NEW_VAR:-${OLD_VAR:-}}` and test setups are migrated from old to new name, cleanup/unset paths (beforeEach, finally, `env -u` flags) must delete/unset BOTH names. Deleting only the new name leaves the old-name fallback active across tests, silently passing the unset-case test against the wrong variable. Test isolation requires capturing environment state at test-body scope, and cleanup must be exhaustive across both names.
+- **Scope completeness — grep for parallel occurrences** — `## Declared Scope` is a starting point, not exhaustive. When a pattern (regex, constant, schema) appears in multiple files (hand-authored hooks, registry-driven generated files, schema docs), grep the full pattern across `harnesses/`, `shared/enforcement/`, `shared/rules/_core/` to catch all siblings. Example: session-log slug class lived in 9 places, pitch listed 6; grep found the rest. Re-run the grep after editing to confirm zero stray hits in the old pattern.
+- **Dual-read test cleanup must cover both old and new var names** — When a hook uses fallback syntax like `${NEW_VAR:-${OLD_VAR:-}}` and test setups migrate old name to new, cleanup/unset paths (beforeEach, finally, `env -u` flags) must delete/unset BOTH names. Deleting only the new name leaves the old-name fallback active, silently passing the unset-case test against the wrong variable. Capture environment state at test-body scope; cleanup must be exhaustive across both names.
 
 ## Rule K — Red-Green: Show the Test Failing First
 

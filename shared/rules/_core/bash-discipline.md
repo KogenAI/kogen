@@ -4,7 +4,7 @@
 
 `/context` startup ≤22K. Mid-session ≤80K. Auto-compact 167K. Every Read = tokens.
 
-- Delegate "where is X" to an `Explore` subagent — ~100 tokens vs 5K
+- Where available (orchestrator/shape/debug/ops — a leaf agent never spawns another role/subagent): delegate "where is X" to an `Explore` subagent — ~100 tokens vs 5K. Leaf roles (developer/reviewer) lack this tool; use Grep/Glob directly.
 - Read with `offset`/`limit` for large files. ✅ Grep tool, not `Bash(grep)`
 
 ## Forbidden Bash Tokens (hard list)
@@ -22,7 +22,7 @@
 | `time <cmd>`                           | Wrapping a test/build command | Run bare — `time` swallows the output you need                                                                 |
 | Bare `mix test` (or any test runner)   | Test loop                     | Filter — file, `--only` tag, or line number                                                                    |
 
-SSH-chain loophole: `ssh host "cmd | head/grep/tail"` and `ssh host "cat file"` are **all still forbidden**. Required pattern: (1) `ssh host "cmd 2>&1 > /tmp/<slug>.log"`, (2) `scp host:/tmp/<slug>.log /tmp/<slug>.log`, (3) Read tool on the local file.
+SSH-chain loophole: `ssh host "cmd | head/grep/tail"` and `ssh host "cat file"` **still forbidden** (discipline only — `no-cat-pipe`'s `ignore_quoted: true` doesn't catch this). Required: (1) `ssh host "cmd 2>&1 > /tmp/<slug>.log"`, (2) `scp host:/tmp/<slug>.log /tmp/<slug>.log`, (3) Read tool locally.
 
 ## Bash Tool
 
@@ -36,15 +36,15 @@ Never hardcode. Use `$PORT` or `PROJECT_CONTEXT.md`. Example: `curl http://local
 
 All git commands use relative paths (workspace root is cwd). NEVER hardcode `/Users/<user>/...` in git operations.
 
-## Git mv
+## Moving/Renaming a File
 
-`git mv <src> <dst>` — parent of `<dst>` must exist first. Use `mkdir -p <dst-parent>` before `git mv`.
+`git mv` is denied for every agent (`pre-commit-guard.sh`) — it stages, and no agent stages; `codegen-commit` does that after you. Use plain `mv <src> <dst>` (parent of `<dst>` must exist first: `mkdir -p <dst-parent>`) and leave the rename unstaged in the working tree.
 
 ## Session-Log Bash Constraints
 
 **Bash redirects to session logs are FORBIDDEN** (all forms: heredocs, `>`, `>>`, brace-group redirects to `codegen/logging/`). `codegen-log` is the sole writer — route every log write through it.
 
-**Read tool blocks on rule files** (developer.md, testing-liveview.md, testing.md, reviewer.md). Use Grep tool with `-B`/`-A` context to locate anchor text instead; quote verbatim anchors when you need to name one.
+Nothing denies Read on rule files — `rule-edit-reach` only advises on Edit/Write/MultiEdit to `shared/rules/**`, never blocks. Prefer Grep with `-B`/`-A` for locating an anchor over a wide Read anyway (token cost, not a hook).
 
 ## Newline-List Membership Testing
 
@@ -214,12 +214,12 @@ Pattern: `local witness="${16:-}"` in function body (defaults to empty string wh
 
 ## Stub-Heredoc Exit-Code Control
 
-When a test stub uses a heredoc (e.g., a heredoc-based mock CLI binary emitting JSONL fixture bytes), the stub's trailing statements are reachable only if the heredoc is NOT wrapped in `exec`. Pattern: `exec cat "$FIXTURE_PATH"` replaces the shell process, making a subsequent `exit $N` unreachable — stub always exits with the exit code of `cat`, not the forced code. **Fix**: drop `exec`, then append the exit statement on a new line: `cat "$FIXTURE_PATH"` newline `exit "${STUB_EXIT:-0}"`. This allows the stub to emit fixture bytes AND force a non-zero exit code for failure-path testing. The stub's exit code becomes configurable via env var passed through the test harness (e.g., `STUB_EXIT=3 run_dispatch ...`), enabling single-stub-script multi-case testing without per-case stub duplication.
+A test stub's trailing statements after a heredoc are reachable only if the heredoc is NOT wrapped in `exec` — `exec cat "$FIXTURE_PATH"` replaces the shell process, so a later `exit $N` never runs. Fix: drop `exec`; put `cat "$FIXTURE_PATH"` then `exit "${STUB_EXIT:-0}"` on separate lines. Makes exit code configurable per test (`STUB_EXIT=3 run_dispatch ...`) without per-case stub duplication.
 
 ## Printf Format Strings: Hyphen-Prefix Escape Requirement
 
-`printf` format strings that start with a literal hyphen (e.g., `"- item: %s\n"` or `"--flag %s\n"`) are misparsed as option flags by `printf` (runtime error: "invalid option"). **Always use `printf --` when the format string itself begins with `-`** to signal end-of-options. Pattern: `printf -- "- item: %s\n" "$value"` rather than `printf "- item: %s\n" "$value"`. This escapes the format string's leading `-` and prevents misparse. Syntax validation via `bash -n` passes (the format string is syntactically valid); the bug is runtime-only, revealed only when `printf` executes the format string and sees a leading `-` character.
+A `printf` format string starting with `-` (e.g. `"- item: %s\n"`) misparses as an option flag ("invalid option"). Use `printf -- "- item: %s\n" "$value"` — `bash -n` won't catch this; it's runtime-only.
 
 ## jq Filter Rebinding in select()
 
-Inside `select(EXPR)`, piping a literal array constant into a filter rebinds `.` to that array BEFORE the filter runs. Example: `select(known_kinds | index(.ev))` where `known_kinds` is an array — the pipe rebinds `.` to the array, so `.ev` tries to index an array (not the original item). **Fix**: capture the item via `. as $item`, then use `$item.ev` to reference it: `select(. as $item | known_kinds | index($item.ev))`. Also: `--slurpfile VAR file` already produces the array itself as `$VAR` — using `$VAR[0]` treats the array as a single-element array (common double-wrap mistake). Use `$VAR` directly, or iterate `$VAR[]` to project elements.
+`select(known_kinds | index(.ev))` — piping an array literal into the filter rebinds `.` to that array, so `.ev` indexes the array, not the original item. Fix: `select(. as $item | known_kinds | index($item.ev))`. Also: `--slurpfile VAR file` already gives `$VAR` as the array — `$VAR[0]` double-wraps; use `$VAR` or `$VAR[]` directly.

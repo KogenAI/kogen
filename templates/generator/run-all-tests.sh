@@ -249,6 +249,7 @@ tmp_prompt_size_budget=$(mktemp)
 tmp_pitch_scope_parity=$(mktemp)
 tmp_context_index_parity=$(mktemp)
 tmp_mix_build_path_parity=$(mktemp)
+tmp_rule_anchor_check=$(mktemp)
 tmp_shell_syntax=$(mktemp)
 # The three tail-population tmp files are mktemp'd unconditionally here (not
 # inside the phase-2 block below) so cleanup at the end of the script is
@@ -320,6 +321,10 @@ tmps+=("$tmp_context_index_parity")
 pids+=($!)
 labels+=(mix-build-path-parity)
 tmps+=("$tmp_mix_build_path_parity")
+{ _timed rule-anchor-check make --no-print-directory rule-anchor-check; } >"$tmp_rule_anchor_check" 2>&1 &
+pids+=($!)
+labels+=(rule-anchor-check)
+tmps+=("$tmp_rule_anchor_check")
 { _timed shell-syntax make --no-print-directory shell-syntax; } >"$tmp_shell_syntax" 2>&1 &
 pids+=($!)
 labels+=(shell-syntax)
@@ -544,5 +549,5 @@ rm -f "$tmp_hooks" "$tmp_scaffold" "$tmp_install" "$tmp_mcp_server" \
     "$tmp_enforce_registry_parity" "$tmp_enforce_hook_rationale" "$tmp_test_hermetic" \
     "$tmp_prompt_content_parity" "$tmp_rule_render_freshness" \
     "$tmp_usage_rules_index_parity" "$tmp_prompt_size_budget" "$tmp_pitch_scope_parity" \
-    "$tmp_context_index_parity" "$tmp_mix_build_path_parity" "$tmp_shell_syntax"
+    "$tmp_context_index_parity" "$tmp_mix_build_path_parity" "$tmp_rule_anchor_check" "$tmp_shell_syntax"
 exit "$fail"

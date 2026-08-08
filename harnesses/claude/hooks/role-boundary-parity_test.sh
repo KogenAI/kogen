@@ -282,6 +282,34 @@ EOF
     fi
 }
 
+# ── Test 14 (live): reviewer.md must not FALSELY NARROW the real allowlist ──
+# The incident this guards: reviewer.md once said "Nothing else — grep is out
+# of scope" while the registry's match: line already permitted grep (and 19
+# other read-only verbs). A reviewer that believes the false narrower prose
+# misreads its own harness. Extract every bare-word verb token from the
+# registry's match: alternation and require each to appear in reviewer.md's
+# prose (word-boundary) — this is a STRICTER, FULLER check than Test 2's
+# fixed REVIEWER_TOKENS subset, and catches drift Test 2 cannot: a NEW verb
+# added to the registry that never makes it into the prose.
+{
+    line=$(match_line "$REGISTRY" "reviewer-bash-allowlist")
+    # Extract bare alternation tokens: word chars only, each followed by \b
+    # in the regex source (e.g. "grep\\b" -> "grep"). Skip multi-word/group
+    # constructs (git\s+(...)) — those are covered by REVIEWER_TOKENS above.
+    verbs=$(printf '%s' "$line" | grep -oE '[a-z_]+\\\\b' | sed 's/\\\\b$//' | sort -u)
+    missing=()
+    while IFS= read -r v; do
+        [ -z "$v" ] && continue
+        token_in_prose "$REVIEWER_MD" "$v" || missing+=("$v")
+    done <<<"$verbs"
+    if [ "${#missing[@]}" -eq 0 ]; then
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: Test 14 — reviewer.md prose is missing registry-permitted verb(s): %s (false narrowing — the prose claims a smaller surface than the hook actually allows)\n' "${missing[*]}"
+        fail=$((fail + 1))
+    fi
+}
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass passed, $fail failed"

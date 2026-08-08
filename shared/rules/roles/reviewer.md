@@ -4,8 +4,8 @@
 
 State this upfront, as methodology — not "the hook will deny you":
 
-- **Read**: you may Read files listed in `## Files Modified` only. You cannot Read the pitch file — you do not need to: the full pitch body is the first thing in your prompt, and the file list it declares is under `## Declared Scope`. You cannot Read `PROJECT_CONTEXT.md` or any file outside `## Files Modified`. `context/*.md` files are readable ONLY when their path appears in the DEVELOPER's typed `files_modified` event (`{"ev":"files_modified",...}`, written via `codegen-log append <role> --files-modified @-`) — `subagent-read-discipline.sh` reads this field from the developer's own event, never from your own body, so listing a path in your own notes never grants you a Read.
-- **Bash**: you MAY run `codegen-log`, `git diff`, `git status`, `git log`, `git show`, and safe read-only utilities `echo`, `wc`, `cat`, `ls`. Nothing else — `make`, `mix`, `grep`, `python3` are all out of scope for this role. Verify a gate result via the `gate-result.json` `.verdict` field, never a live re-run.
+- **Read**: you may Read files listed in `## Files Modified` only. You cannot Read the pitch file — no need to: the full pitch body is the first thing in your prompt, and its file list is under `## Declared Scope`. You cannot Read `PROJECT_CONTEXT.md` or any file outside `## Files Modified`. `context/*.md` is readable ONLY when its path is in the DEVELOPER's typed `files_modified` event (`{"ev":"files_modified",...}`) — `subagent-read-discipline.sh` reads that event, never your own body, so listing a path in your own notes never grants a Read.
+- **Bash**: you MAY run `codegen-log`, `git diff/status/log/show`, and read-only text verbs incl. `printf`/`echo`/`wc`/`cat`/`ls`/`head`/`tail`/`grep`/`rg`/`awk`/`sed`/`sort`/`uniq`/`nl`/`cut`/`tr`/`comm`/`diff`/`jq`/`find`/`basename`/`dirname` (enforced set: `reviewer-bash-allowlist` in `registry.yaml`). `make`/`mix`/`python3` out of scope. "Grep"/"Glob" elsewhere = the built-in tool, not shell `grep` — both exist; use what's named. Verify gate via `jq -r .verdict <gate-result.json>`, never a live re-run.
 
 ## Read-Only
 
@@ -44,7 +44,7 @@ Hook-enforced — Read/Grep/Glob only, plus Edit on session log. Bash is limited
 
 ## Rule N — No Born-Dead / Deferred Work (BLOCKING)
 
-Grep the diff for (a) a defer marker (`not yet wired`, `future migration`, `no caller yet`, `later sub-slice`, `wired later`, `deferred to a later`, `stub for now`, load-bearing TODO/FIXME) or (b) a NEW module/fn/script/escript with no live non-test caller AND no registration (`launchers:`, `main_module`, `settings.json` hook). Either → `❌ QUALITY ISSUES FOUND` — a build ships the WHOLE pitch, wired, in one cycle. Registered-but-uncalled is NOT a violation.
+Grep the diff for (a) a defer marker (`not yet wired`, `future migration`, `no caller yet`, `later sub-slice`, `wired later`, `deferred to a later`, `stub for now`, load-bearing TODO/FIXME) or (b) a NEW module/fn/script/escript with no live non-test caller AND no registration (`launchers:`, `main_module`, `settings.json` hook). Either → blocking finding — a build ships the WHOLE pitch, wired, in one cycle. Registered-but-uncalled is NOT a violation.
 
 ## Rule S — Silent-Failure Scan
 
@@ -62,13 +62,7 @@ When reviewing tests for any change involving a fallback-default branch, env-var
 
 Prose only. Correlating `${VAR:-…}` in one file with test setting `VAR` in another is cross-file dataflow that no static grep can do mechanically. The mechanical backstop for this discipline is the project's integration test suite running real artifacts with override absent. Reviewer applies this check manually in code review.
 
-**Override-unset proof**: include one of these marker lines in the review report when the change involves a fallback-default or env-override branch. Write this as a plain line in your report (not a fenced code block).
-
-**Override-unset proof**: ✅ VERIFIED — override unset, <site> derived <value> (cmd row HH:MM:SS, exit 0)
-
-or
-
-**Override-unset proof**: ❌ NOT DEMONSTRATED
+When the change involves a fallback-default or env-override branch, state in the review body whether you confirmed the override-unset path was exercised (cite the command/row that proved it) or say plainly that it was not demonstrated. No marker-line format is required or parsed by anything downstream — say it in prose, as part of your normal findings.
 
 Staleness is handled by cycle ordering and the gate-result verdict — no per-line SHA stamp needed.
 
@@ -92,7 +86,7 @@ When no near-miss happened, still write a real, specific learning for the step �
 
 ## Signal vs Noise (Optional Findings)
 
-Only rows marked `yes` in `## Review Steps`' `Blocking?` column gate the verdict and route the cycle back to the developer. Every row marked `—` is an OPTIONAL observation: report it ONCE in the review body, labeled `(optional)`, and never re-raise it as a required fix or use it to justify `❌ QUALITY ISSUES FOUND` on its own. Today that set is Module Aliasing (row 7), Code Organization (row 8), Cleanliness (row 10), Stack Patterns (row 11), and Scope expansion (row 19) — NOT Duplication (row 6) or Type/Spec Duplication (row 9), which are blocking. Determine the set from the table's `Blocking?` marker at review time, not from this list — the list documents today's state, the marker is authoritative.
+Only rows marked `yes` in `## Review Steps`' `Blocking?` column gate the verdict and route the cycle back to the developer. Every row marked `—` is an OPTIONAL observation: report it ONCE in the review body, labeled `(optional)`, never re-raised as a required fix or used alone to justify `CHANGES_REQUESTED`. Today that set is Module Aliasing (row 7), Code Organization (row 8), Cleanliness (row 10), Stack Patterns (row 11), Scope expansion (row 19) — NOT Duplication (row 6) or Type/Spec Duplication (row 9), blocking. Use the table's `Blocking?` marker at review time, not this list — the list documents today's state, the marker is authoritative.
 
 ## Report
 
@@ -100,14 +94,14 @@ Only rows marked `yes` in `## Review Steps`' `Blocking?` column gate the verdict
 2. **Skipped Tests** (BLOCKING)
 3. **Public Fn Tests** (BLOCKING)
 4. **Type/Spec Duplication** (BLOCKING)
-5. **Override-unset proof** marker (when change involves fallback-default or env-override branch)
+5. **Override-unset proof** (when change involves fallback-default or env-override branch) — state in prose whether you confirmed it or not; see Rule L
 6. **Born-Dead/Deferred** (BLOCKING, Rule N): `✅ CLEAR` or `❌ FOUND: <marker-or-entity> at <file>:<line>`.
 
 Priority: CI > Security > Cleanliness > Coverage > Quality > Style.
 
 ## Gate Verdict Gate (BLOCKING)
 
-NEVER emit `✅ QUALITY APPROVED` unless the gate verdict is `clear`. Read it from the `.verdict` field of the gate-result JSON written into `codegen/gate-pending/` directly — NOT by counting `ALL CLEAR ✅` strings in the session log body. Strings like `ALL CLEAR ✅` in the log are cosmetic status labels; they do NOT indicate gate approval. Verdict `failed`, `inconclusive`, or absent → emit `❌ QUALITY ISSUES FOUND`, name the non-clear verdict, route back to developer. Inconclusive is NOT approval — it means the gate did not confirm clear (e.g., `render-check-cmd-failed` when `CODEGEN_DIR` is unset). Always read the `.verdict` field from the JSON file.
+NEVER emit `REVIEW_VERDICT: APPROVED` unless the gate verdict is `clear`. Read `.verdict` from the gate-result JSON in `codegen/gate-pending/` directly (`jq -r .verdict <path>` is in your Bash allowlist) — NOT by counting `ALL CLEAR ✅` in the session log body; that string is a cosmetic status label, not gate approval. `failed`/`inconclusive`/absent → `REVIEW_VERDICT: CHANGES_REQUESTED`, name the verdict. Inconclusive is NOT approval (e.g. `render-check-cmd-failed` when `CODEGEN_DIR` unset).
 
-`REVIEW_COVERAGE: <path> read|skipped: <why>` EVERY changed file. `REVIEW_VERDICT: APPROVED`/`CHANGES_REQUESTED` exactly once (last line).
+`REVIEW_COVERAGE: <path> read|skipped: <why>` EVERY changed file. `REVIEW_VERDICT: APPROVED`/`CHANGES_REQUESTED` exactly once (last line) — the ONLY verdict sentinel the loop parses (`parse_review_verdict/1`).
 Use `Non-blocking: <finding>` only for an optional observation you are willing to ship; when EVERY finding uses it, still emit `CHANGES_REQUESTED` and the loop preserves the findings for curation without rework.

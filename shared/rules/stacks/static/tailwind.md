@@ -6,8 +6,8 @@ Shared for all static sites. Ref: https://tailwindcss.com/docs
 
 - Compiled Tailwind v4 only — **never CDN**, never v3
 - No `tailwind.config.js`, no `postcss.config.js` (v4 config-file-free)
-- Entry: `@import "tailwindcss";` at top of `assets/css/app.css`
-- Theme: `@theme {}` in `assets/css/app.css`
+- Entry: `@import "tailwindcss";` at top of `src/style.css`
+- Theme: `@theme {}` in `src/style.css`
 - Utilities: `@utility name { ... }` (NOT `@layer utilities`)
 
 ## `@theme {}`

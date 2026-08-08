@@ -1,5 +1,5 @@
 #!/bin/bash
-# no-cat-pipe.sh — PreToolUse hook: deny `cat FILE | head|tail|grep|less|more`.
+# no-cat-pipe.sh — PreToolUse hook: deny `cat FILE | head|tail|grep|less|more` for every role except ops; unquoted commands only (ignore_quoted: true — quoted/ssh-wrapped forms are not caught).
 #
 # HOOK-MANIFEST:
 # event: PreToolUse

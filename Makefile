@@ -562,6 +562,21 @@ context-index-sync:
 	@python3 "$(SCRIPT_DIR)/templates/generator/context_index_sync.py" \
 		--repo-root "$(SCRIPT_DIR)" --write
 
+# rule-anchor-check: a rule paragraph that ASSERTS a machine behaviour (a
+# reviewer verdict sentinel a parser reads, a hook that disclaims a class of
+# check, a detector wired into the gate) must still contain the anchor text
+# registered for it in shared/enforcement/seam-registry.yaml. Deleting or
+# rewording that paragraph away reddens here instead of silently removing
+# the only durable record of what enforces it. See rule_anchor_check.py
+# docstring for the full contract; ANCHOR_TEXT there is the source of truth
+# for which seam ids this gate covers.
+.PHONY: rule-anchor-check
+rule-anchor-check:
+	@python3 "$(SCRIPT_DIR)/templates/generator/rule_anchor_check.py" \
+		--repo-root "$(SCRIPT_DIR)" --check; rc=$$?; \
+	if [ $$rc -eq 0 ] && [ -n "$$VERBOSE" ]; then echo "rule-anchor-check: PASS"; fi; \
+	exit $$rc
+
 # shell-syntax: every tracked shell script parses (`bash -n`, `zsh -n` for
 # zsh). Its own stage, deliberately: an unparseable script does not fail once
 # — `codegen-build` with a missing `fi` produced thirteen red assertions in
