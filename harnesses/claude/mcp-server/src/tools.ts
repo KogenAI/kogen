@@ -232,21 +232,28 @@ function registerReaders(server: McpServer) {
         "or about to depart from a numbered decision in the pitch you were handed. Also use " +
         "it on repeated gate failures or a rework attempt that keeps failing the same way. " +
         "Shells codegen-advise, which asks a stronger model of the SAME harness, with clean " +
-        "context, for a recovery plan. This is a full LLM call — expect it to take tens of " +
-        "seconds.",
+        "context, for a diagnosis grounded in a machine-assembled evidence packet (gate " +
+        "result, base attribution, source slices, diff, process artifacts) collected from " +
+        "cwd — not just the text you type. This is a full LLM call — expect it to take tens " +
+        "of seconds.",
       inputSchema: {
+        cwd: z
+          .string()
+          .describe(
+            "Absolute cwd of the active build (the packet is assembled from git/gate state at this path).",
+          ),
         context: z
           .string()
           .min(1)
           .describe(
             "Describe what you are unsure about — the mechanism you assumed, the choice " +
               "you're weighing, or a failure, if there is one — but there does not need to " +
-              "be one. The more concrete, the better the plan.",
+              "be one. The more concrete, the better the diagnosis.",
           ),
       },
     },
-    async ({ context }) => {
-      const result = runCodegenAdvise("claude_code", context);
+    async ({ cwd, context }) => {
+      const result = runCodegenAdvise("claude_code", cwd, context);
       if (!result.ok) {
         return errorResult(result.stderr || "codegen-advise failed");
       }

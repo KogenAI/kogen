@@ -557,6 +557,17 @@ defmodule Mix.Tasks.Codegen.Loop do
   # "build-record-matches-what-happened" M6/M7. At
   # `LoopQueue.max_pitch_fails_from_env/0`'s threshold this demotes the
   # pitch to `draft/`, exactly like the queue drain's own counted path.
+  #
+  # `park_failure/1` ALSO folds in the give-up-boundary advisor exchange
+  # (question digest + diagnosis/falsifier/next_probe), when one was
+  # consulted this cycle — read directly from the
+  # `codegen/gate-pending/advisor-exchange.json` sidecar
+  # `OrchestrationLoop.persist_advisor_exchange/4` writes, NOT threaded
+  # through `reason` (a bare `String.t()` — see `run/1`'s
+  # `@spec :: :ok | {:error, String.t()}` — with ~40+ existing
+  # pattern-match sites on that exact shape). This function passes no new
+  # argument for it; the sidecar is `cwd`-scoped and `park_failure/1` reads
+  # it itself (see pitch "the advisor is handed a paragraph" Move 3).
   @doc false
   @spec park_and_restore_claim(
           {:file, String.t()} | :literal,

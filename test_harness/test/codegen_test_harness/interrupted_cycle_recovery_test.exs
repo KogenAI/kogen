@@ -385,6 +385,81 @@ defmodule CodegenTestHarness.InterruptedCycleRecoveryTest do
       assert dossier["schema_version"] == 1
       assert git_status!(cwd) == ""
       assert {"base\n", 0} = System.cmd("git", ["-C", cwd, "show", "HEAD:tracked.txt"])
+
+      # No advisor was consulted this cycle (no sidecar written) -> the key
+      # is ALWAYS PRESENT with an explicit nil, never silently omitted (pitch
+      # "the advisor is handed a paragraph" Move 3).
+      assert Map.has_key?(dossier, "advisor_exchange")
+      assert dossier["advisor_exchange"] == nil
+    end
+
+    test "an advisor exchange sidecar (when present) is folded into the dossier and referenced from the history row",
+         %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      gate_pending_dir = Path.join([cwd, "codegen", "gate-pending"])
+      File.mkdir_p!(gate_pending_dir)
+
+      exchange = %{
+        "packet_digest" => "abc123",
+        "failure_signature" => "make test failed",
+        "diagnosis" => "the fixture sets the variable under test",
+        "falsifier" => "removing the override still passes",
+        "next_probe" => %{"action" => "rerun without override"},
+        "confidence" => "high"
+      }
+
+      File.write!(
+        Path.join(gate_pending_dir, "advisor-exchange.json"),
+        Jason.encode!(exchange)
+      )
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier["advisor_exchange"]["diagnosis"] =~ "sets the variable under test"
+      assert dossier["advisor_exchange"]["falsifier"] =~ "removing the override"
+
+      assert :ok = InterruptedCycleRecovery.record_park_history_row!(pitch_path, cwd, dossier)
+      assert File.read!(pitch_path) =~ "advisor_consulted=#{dossier["transaction_id"]}"
+      # Reference only — never a copy of the diagnosis text itself.
+      refute File.read!(pitch_path) =~ "sets the variable under test"
+    end
+
+    test "an unparseable/absent advisor-exchange.json is a best-effort nil, never a park failure",
+         %{cwd: cwd} do
+      init_repo!(cwd)
+      File.write!(Path.join(cwd, ".gitignore"), "codegen/\n")
+      pitch_path = seeded_pitch!(cwd, "probe", "tracked.txt")
+      File.write!(Path.join(cwd, "tracked.txt"), "base\n")
+      commit!(cwd, "base")
+      File.write!(Path.join(cwd, "tracked.txt"), "changed\n")
+
+      gate_pending_dir = Path.join([cwd, "codegen", "gate-pending"])
+      File.mkdir_p!(gate_pending_dir)
+      File.write!(Path.join(gate_pending_dir, "advisor-exchange.json"), "not json{{{")
+
+      assert {:ok, dossier} =
+               InterruptedCycleRecovery.park_failure(
+                 cwd: cwd,
+                 pitch_path: pitch_path,
+                 slug: "probe",
+                 namespace: "recovery/interrupted",
+                 cause: "test"
+               )
+
+      assert dossier["advisor_exchange"] == nil
     end
 
     test "scope expansion parks bytes, REPORTS the undeclared paths, and still materializes", %{

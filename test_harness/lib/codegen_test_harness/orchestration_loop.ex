@@ -1282,7 +1282,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
           |> put_in([:artifacts, :last_failure_reason], reason)
           |> put_in([:artifacts, :rework_brief], brief)
           |> maybe_escalate_model(rework_role, harness, opts, final_attempt?)
-          |> maybe_advise(rework_role, harness, opts, final_attempt?)
+          |> maybe_advise(rework_role, harness, opts, final_attempt?, %{
+            stage: "final_gate_rework",
+            attempt: cycle + 1,
+            ceiling: max_cycles
+          })
 
         with {:ok, result} <- invoke_with_retry(rework_role, harness, retry_ctx, opts) do
           ctx =
@@ -2158,7 +2162,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
                 |> put_in([:artifacts, :review_pass_number], cycle + 2)
                 |> put_in([:artifacts, :review_max_passes], max_cycles + 1)
                 |> maybe_escalate_model(reviewer_role, harness, opts, review_final_attempt?)
-                |> maybe_advise(reviewer_role, harness, opts, review_final_attempt?)
+                |> maybe_advise(reviewer_role, harness, opts, review_final_attempt?, %{
+                  stage: "review_rework",
+                  attempt: cycle + 1,
+                  ceiling: max_cycles
+                })
 
               with {:ok, review2, ctx} <- invoke_reviewer(reviewer_role, harness, ctx, opts) do
                 ctx =
@@ -3941,7 +3949,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
         |> put_in([:artifacts, :last_failure_reason], reason)
         |> put_in([:artifacts, :rework_brief], brief)
         |> maybe_escalate_model(dev_role, harness, opts, final_attempt?)
-        |> maybe_advise(dev_role, harness, opts, final_attempt?)
+        |> maybe_advise(dev_role, harness, opts, final_attempt?, %{
+          stage: "gate_loop_rework",
+          attempt: attempt + 1,
+          ceiling: @gate_progress_ceiling,
+          repro_count: attempt + 1
+        })
 
       with {:ok, result} <- invoke_with_retry(dev_role, harness, retry_ctx, opts) do
         ctx =
@@ -4075,12 +4088,20 @@ defmodule CodegenTestHarness.OrchestrationLoop do
 
   # Calls the advisor (`codegen-advise`) exactly once, at
   # the SAME give-up boundary `maybe_escalate_model/5` already fires at
-  # (`final_attempt?` true), and stashes the returned plan at
+  # (`final_attempt?` true), and stashes the returned diagnosis object at
   # `ctx.artifacts.advisor_plan` for `build_prompt/2` to render under
   # `## Advisor`. Composes with escalation: the final attempt can carry BOTH
   # a stronger same-provider model (`:escalated_model`) AND an
-  # advisor recovery plan (`:advisor_plan`) — orthogonal artifact
+  # advisor diagnosis (`:advisor_plan`) — orthogonal artifact
   # keys, both cleared by the caller after the attempt resolves.
+  #
+  # `advise_meta` (attempt/ceiling/stage) rides in `opts` under
+  # `:advise_meta`, NOT as a new positional arg to `advisor_fn/3` — the
+  # `advisor_fn` seam's arity stays fixed (18 pre-existing
+  # `no_op_advisor_fn()` test stubs depend on it; see pitch "the advisor is
+  # handed a paragraph" D-10). `default_advisor_fn/3` reads it back out of
+  # `opts` to fill packet section 4 (attempt/stage) via env vars passed to
+  # `codegen-advise`.
   #
   # Suppressed under a fixed campaign binding (mirrors
   # `maybe_escalate_model/5`'s `resolve_fixed_binding` guard) — a
@@ -4089,12 +4110,18 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   #
   # A failed/unavailable advisor call is ADDITIVE-failure: ctx passes
   # through unchanged. Advice is help, never a gate.
-  @spec maybe_advise(map(), String.t(), harness(), run_opts(), boolean()) :: map()
-  defp maybe_advise(ctx, dev_role, harness, opts, final_attempt?)
+  @type advise_meta :: %{
+          optional(:stage) => String.t(),
+          optional(:attempt) => pos_integer(),
+          optional(:ceiling) => pos_integer(),
+          optional(:repro_count) => non_neg_integer()
+        }
+  @spec maybe_advise(map(), String.t(), harness(), run_opts(), boolean(), advise_meta()) :: map()
+  defp maybe_advise(ctx, dev_role, harness, opts, final_attempt?, advise_meta)
 
-  defp maybe_advise(ctx, _dev_role, _harness, _opts, false), do: ctx
+  defp maybe_advise(ctx, _dev_role, _harness, _opts, false, _advise_meta), do: ctx
 
-  defp maybe_advise(ctx, dev_role, build_harness, opts, true) do
+  defp maybe_advise(ctx, dev_role, build_harness, opts, true, advise_meta) do
     resolve_harness_fn =
       Keyword.get(opts, :resolve_harness_fn, &RoleResolver.resolve_harness/2)
 
@@ -4103,11 +4130,11 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     if resolve_fixed_binding(dev_role, harness, opts) != :none do
       ctx
     else
-      do_maybe_advise(ctx, harness, opts)
+      do_maybe_advise(ctx, harness, opts, advise_meta)
     end
   end
 
-  defp do_maybe_advise(ctx, harness, opts) do
+  defp do_maybe_advise(ctx, harness, opts, advise_meta) do
     advisor_fn = Keyword.get(opts, :advisor_fn, &default_advisor_fn/3)
 
     reason =
@@ -4119,13 +4146,81 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     context_text =
       "Build harness: #{harness}\n\n## Rework reason\n\n#{reason}\n\n## Rework brief\n\n#{brief}"
 
-    case advisor_fn.(harness, context_text, opts) do
+    call_opts = Keyword.put(opts, :advise_meta, Map.put(advise_meta, :final_attempt, true))
+
+    case advisor_fn.(harness, context_text, call_opts) do
       {:ok, plan} when is_binary(plan) and plan != "" ->
-        operator_note("advisor: recovery plan captured at give-up boundary")
+        operator_note("advisor: diagnosis captured at give-up boundary")
+
+        persist_advisor_exchange(ctx.cwd, context_text, plan, advise_meta)
+
         put_in(ctx, [:artifacts, :advisor_plan], plan)
 
       _ ->
         ctx
+    end
+  end
+
+  # Writes `codegen/gate-pending/advisor-exchange.json` — a durable sidecar
+  # recording the LATEST advisor question+answer pair, at the moment the
+  # advisor returns (not routed through `run/1`'s `{:error, String.t()}`
+  # return, which is a bare string with no room for a side payload and
+  # whose shape ~40+ existing callers pattern-match on — see pitch "the
+  # advisor is handed a paragraph" D-9/D-11 discussion). `park_failure/1`
+  # reads this file (best-effort, optional) when parking a terminal failure
+  # so the recovery dossier can carry the exchange without threading it
+  # through the error value. Mirrors `write_terminal_marker/3`'s
+  # write-to-disk-immediately idiom, but is BEST-EFFORT (a write failure
+  # here never blocks or aborts the cycle — advice is additive, and losing
+  # the sidecar loses only the dossier's copy of it, not the advisor call
+  # itself, which already succeeded and is already in ctx.artifacts).
+  @spec persist_advisor_exchange(String.t(), String.t(), String.t(), advise_meta()) :: :ok
+  defp persist_advisor_exchange(cwd, context_text, plan_json, advise_meta) do
+    dir = Path.join([cwd, "codegen", "gate-pending"])
+    path = Path.join(dir, "advisor-exchange.json")
+
+    diagnosis = decode_advisor_value(plan_json)
+
+    payload =
+      Jason.encode!(%{
+        packet_digest: packet_digest(context_text),
+        failure_signature: String.slice(context_text, 0, 500),
+        stage: Map.get(advise_meta, :stage),
+        attempt: Map.get(advise_meta, :attempt),
+        ceiling: Map.get(advise_meta, :ceiling),
+        diagnosis: diagnosis["diagnosis"],
+        falsifier: diagnosis["falsifier"],
+        next_probe: diagnosis["next_probe"],
+        confidence: diagnosis["confidence"],
+        recorded_at: DateTime.utc_now() |> DateTime.to_iso8601()
+      })
+
+    with :ok <- File.mkdir_p(dir),
+         :ok <- File.write(path, payload) do
+      :ok
+    else
+      _ -> :ok
+    end
+  rescue
+    _ -> :ok
+  end
+
+  @spec packet_digest(String.t()) :: String.t()
+  defp packet_digest(text) do
+    :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
+  end
+
+  # Best-effort JSON decode of the advisor's returned value — `plan_json` is
+  # ALREADY schema-validated by `codegen-call`'s `--json-schema` enforcement
+  # before it ever reaches this function, so a decode failure here means the
+  # advisor call's own guarantee was violated somewhere between processes;
+  # treat as "no structured fields available" rather than crash the cycle
+  # over an observability sidecar.
+  @spec decode_advisor_value(String.t()) :: map()
+  defp decode_advisor_value(plan_json) do
+    case Jason.decode(plan_json) do
+      {:ok, decoded} when is_map(decoded) -> decoded
+      _ -> %{}
     end
   end
 
@@ -4134,6 +4229,12 @@ defmodule CodegenTestHarness.OrchestrationLoop do
   # `System.cmd/3` has no stdin-piping option, so the context is written to a
   # temp file and passed as `--context @<path>` (the same `@`-path
   # convention `codegen-call`/`codegen-advise` already use elsewhere).
+  # `--cwd=<ctx-cwd>` is REQUIRED by `codegen-advise` (see pitch D-9) so the
+  # packet assembler collects git/gate state from the ACTUAL project being
+  # built, not this repo's own `test_harness/` (the loop's own shell cwd —
+  # see pitch ledger probe #17). Attempt/ceiling/stage metadata rides as env
+  # vars (`CODEGEN_ADVISE_ATTEMPT`/`_CEILING`/`_STAGE`/`_FINAL_ATTEMPT`/
+  # `_REPRO_COUNT`) which `codegen-advise`'s packet section 4 reads.
   # Returns `{:ok, plan_json}` on a clean advisor call, `:error` on ANY
   # non-zero exit, unreadable stdout, or temp-file write failure — the
   # caller (`do_maybe_advise/2`) treats `:error` as a no-op, never a crash:
@@ -4160,18 +4261,26 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   end
 
-  defp do_default_advisor_fn(harness, context_text, _opts) do
+  defp do_default_advisor_fn(harness, context_text, opts) do
+    cwd = Keyword.fetch!(opts, :cwd)
+    advise_meta = Keyword.get(opts, :advise_meta, %{})
+
     tmp_path =
       Path.join(
         System.tmp_dir!(),
         "codegen-advise-context-#{System.unique_integer([:positive])}.txt"
       )
 
+    env = advise_meta_env(advise_meta)
+
     try do
       case File.write(tmp_path, context_text) do
         :ok ->
-          case System.cmd(@codegen_advise_bin, ["--harness=#{harness}", "--context=@#{tmp_path}"],
-                 stderr_to_stdout: false
+          case System.cmd(
+                 @codegen_advise_bin,
+                 ["--harness=#{harness}", "--cwd=#{cwd}", "--context=@#{tmp_path}"],
+                 stderr_to_stdout: false,
+                 env: env
                ) do
             {out, 0} ->
               trimmed = String.trim(out)
@@ -4189,6 +4298,23 @@ defmodule CodegenTestHarness.OrchestrationLoop do
     end
   rescue
     _ -> :error
+  end
+
+  # Translates `advise_meta` into the `CODEGEN_ADVISE_*` env vars
+  # `codegen-advise`'s packet section 4 reads. Absent keys are simply
+  # omitted (the packet renders "unavailable" for them, per its own
+  # explicit-absence contract) — never a fabricated 0/false default.
+  @spec advise_meta_env(advise_meta()) :: [{String.t(), String.t()}]
+  defp advise_meta_env(advise_meta) do
+    [
+      {"CODEGEN_ADVISE_STAGE", Map.get(advise_meta, :stage)},
+      {"CODEGEN_ADVISE_ATTEMPT", Map.get(advise_meta, :attempt)},
+      {"CODEGEN_ADVISE_CEILING", Map.get(advise_meta, :ceiling)},
+      {"CODEGEN_ADVISE_FINAL_ATTEMPT", Map.get(advise_meta, :final_attempt)},
+      {"CODEGEN_ADVISE_REPRO_COUNT", Map.get(advise_meta, :repro_count)}
+    ]
+    |> Enum.filter(fn {_k, v} -> not is_nil(v) end)
+    |> Enum.map(fn {k, v} -> {k, to_string(v)} end)
   end
 
   # A witness (or, absent that, the raw gate log) naming a path under
@@ -5574,19 +5700,23 @@ defmodule CodegenTestHarness.OrchestrationLoop do
       end
 
     # On the FINAL rework attempt before give-up, thread the advisor's
-    # recovery plan (`ctx.artifacts.advisor_plan` — set by
+    # diagnosis (`ctx.artifacts.advisor_plan` — set by
     # `maybe_advise/5`, the SAME give-up boundary `maybe_escalate_model/5`
-    # already fires at). A separate, stronger-model advisor call examined
-    # this same stuck build.
+    # already fires at). A separate, stronger-model advisor call examined a
+    # machine-assembled evidence packet from this same stuck build and
+    # returned a structured `{diagnosis, falsifier, next_probe, ...}`
+    # object (raw JSON — the schema's fields ARE the render; no
+    # re-summarization here).
     advisor_plan = get_in(ctx, [:artifacts, :advisor_plan])
 
     base =
       if (developer_role?(role) or reviewer_role?(role)) and is_binary(advisor_plan) and
            String.trim(advisor_plan) != "" do
         base <>
-          "\n\n## Advisor — recovery second opinion\n\n" <>
-          "A separate advisor call supplied a recovery plan for this " <>
-          "final attempt. It may be wrong — read it, do not blindly follow it — but it is a " <>
+          "\n\n## Advisor — second opinion\n\n" <>
+          "A separate advisor call examined a machine-assembled evidence packet for this " <>
+          "final attempt and returned a diagnosis with a falsifier and a discriminating next " <>
+          "probe. It may be wrong — read it, do not blindly follow it — but it is a " <>
           "genuinely different angle before the loop gives up.\n\n" <> advisor_plan
       else
         base

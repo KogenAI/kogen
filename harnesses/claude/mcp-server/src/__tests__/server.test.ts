@@ -28,7 +28,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { ROLES, sectionToolName, appendToolName, findRole } from "../roles";
-import { runCodegenLog } from "../exec";
+import { runCodegenLog, runCodegenAdvise } from "../exec";
 import { readGateStatus, readLogWithEnv } from "../readers";
 import { registerAllTools } from "../tools";
 
@@ -141,6 +141,36 @@ describe(
           const result = runCodegenLog(["section", "reviewer-phoenix"], "body");
           assert.equal(result.ok, false);
           assert.match(result.stderr, /boom: something failed/);
+        } finally {
+          process.env.PATH = oldPath;
+        }
+      });
+    });
+
+    test("runCodegenAdvise passes --cwd=<path> as an explicit argv entry and as the spawn cwd, never an inherited default (pitch D-9)", async () => {
+      await withTmpDir((dir) => {
+        const targetCwd = join(dir, "target-repo");
+        mkdirSync(targetCwd, { recursive: true });
+        const fakeBin = join(dir, "codegen-advise");
+        writeFileSync(
+          fakeBin,
+          "#!/usr/bin/env bash\nprintf 'ARGV:%s\\n' \"$*\"\nprintf 'SPAWN_CWD:%s\\n' \"$PWD\"\n",
+          { mode: 0o755 },
+        );
+        const oldPath = process.env.PATH;
+        process.env.PATH = `${dir}:${oldPath}`;
+        try {
+          const result = runCodegenAdvise(
+            "claude_code",
+            targetCwd,
+            "what I am unsure about",
+          );
+          assert.equal(result.ok, true);
+          assert.match(
+            result.stdout,
+            /^ARGV:--harness=claude_code --cwd=.*target-repo$/m,
+          );
+          assert.match(result.stdout, /SPAWN_CWD:.*target-repo/);
         } finally {
           process.env.PATH = oldPath;
         }
@@ -324,5 +354,20 @@ describe("tools.ts — advise registration semantics", { concurrency: 1 }, () =>
     )?.description;
     assert.ok(contextDesc, "advise context param has no description");
     assert.match(contextDesc, /does not need to\s+be one|need not be one/);
+  });
+
+  test("advise requires an explicit cwd input (packet assembly reads git/gate state from it)", async () => {
+    const tools = await listRegisteredTools();
+    const advise = tools.find((t) => t.name === "advise")!;
+    const props = advise.inputSchema?.properties as
+      | Record<string, { description?: string }>
+      | undefined;
+    assert.ok(props?.cwd, "advise tool missing cwd input field");
+    assert.match(props!.cwd!.description ?? "", /assembled from|active build/);
+    const required = advise.inputSchema?.required as string[] | undefined;
+    assert.ok(
+      required?.includes("cwd"),
+      "advise cwd input must be required, not optional",
+    );
   });
 });

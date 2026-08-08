@@ -632,6 +632,15 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
 
     transaction_id = "#{namespace}:#{slug}:#{utc_stamp()}-#{System.unique_integer([:positive])}"
 
+    # Best-effort read of the sidecar the loop's `persist_advisor_exchange/4`
+    # wrote (if an advisor was consulted this cycle) — see pitch "the advisor
+    # is handed a paragraph" Move 3. Always present in the dossier, with an
+    # explicit `nil` when no advisor was consulted: this keeps the parking
+    # dossier's key set genuinely fixed (a field silently omitted on the
+    # common no-advisor path would be indistinguishable from "dropped by a
+    # bug" for a reader that never sees the alternate shape).
+    advisor_exchange = read_advisor_exchange(cwd)
+
     with :ok <- refuse_if_active_dossier(cwd, slug),
          {:ok, source_base_sha} <- git(cwd, ["rev-parse", "HEAD"]),
          :ok <-
@@ -646,7 +655,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
                pitch_path,
                source_base_sha,
                cause,
-               cycle_state
+               cycle_state,
+               advisor_exchange
              )
            ),
          {:ok, status} <- git(cwd, ["status", "--porcelain", "--untracked-files=all"]) do
@@ -664,7 +674,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
             cycle_state,
             nil,
             nil,
-            []
+            [],
+            advisor_exchange
           )
 
         with :ok <- write_dossier!(cwd, slug, transaction_id, dossier) do
@@ -679,10 +690,36 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
           transaction_id,
           source_base_sha,
           cause,
-          cycle_state
+          cycle_state,
+          advisor_exchange
         )
       end
     end
+  end
+
+  # Reads `codegen/gate-pending/advisor-exchange.json`, written by
+  # `OrchestrationLoop.persist_advisor_exchange/4` the moment an advisor
+  # call at the give-up boundary returns. Best-effort: absent file (no
+  # advisor consulted this cycle — the common case), unreadable, or
+  # unparseable content all return `nil`, never raise. The dossier's
+  # `advisor_exchange` field is set to this value UNCONDITIONALLY (nil or a
+  # map), never omitted.
+  @spec read_advisor_exchange(String.t()) :: map() | nil
+  defp read_advisor_exchange(cwd) do
+    path = Path.join([cwd, "codegen", "gate-pending", "advisor-exchange.json"])
+
+    case File.read(path) do
+      {:ok, content} ->
+        case Jason.decode(content) do
+          {:ok, decoded} when is_map(decoded) -> decoded
+          _ -> nil
+        end
+
+      {:error, _reason} ->
+        nil
+    end
+  rescue
+    _ -> nil
   end
 
   defp do_park_dirty_tree(
@@ -693,7 +730,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
          transaction_id,
          source_base_sha,
          cause,
-         cycle_state
+         cycle_state,
+         advisor_exchange
        ) do
     # `System.unique_integer([:positive])` disambiguator: `utc_stamp/0` is
     # second-granularity, so two failures for the SAME slug within one
@@ -742,7 +780,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
           cycle_state,
           branch,
           recovery_commit,
-          paths
+          paths,
+          advisor_exchange
         )
         |> Map.put("recovery_tree_sha", recovery_tree_sha)
         |> Map.put("ownership", scope_verdict)
@@ -880,10 +919,20 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
         paths -> "; scope_expansion=#{Enum.join(paths, ", ")}"
       end
 
+    # References the dossier's transaction id when an advisor was consulted
+    # this cycle — never copies the diagnosis into the row (pitch "the
+    # advisor is handed a paragraph" D-6: one record, one writer; the row
+    # points at `codegen/gate-pending/recoveries/<slug>/<txn>.json`, which
+    # already carries the full exchange).
+    advisor_note =
+      if is_map(dossier["advisor_exchange"]),
+        do: "; advisor_consulted=#{dossier["transaction_id"]}",
+        else: ""
+
     row =
       "| interrupted recovery | #{utc_stamp()} | unaccountable | " <>
         "txn=#{dossier["transaction_id"]}; recovery=#{recovery_commit}; " <>
-        "ownership=#{dossier["ownership"] || "ok"}#{expansion} |"
+        "ownership=#{dossier["ownership"] || "ok"}#{expansion}#{advisor_note} |"
 
     LoopQueue.record_counted_history!(pitch_path, pitches_dir(cwd, "draft"), row)
     :ok
@@ -898,7 +947,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
          pitch_path,
          source_base_sha,
          cause,
-         cycle_state
+         cycle_state,
+         advisor_exchange
        ) do
     %{
       "schema_version" => @dossier_schema_version,
@@ -917,6 +967,13 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
       "operator_ref" => nil,
       "operator_tree_sha" => nil,
       "successor_transaction_id" => nil,
+      # Additive field (pitch "the advisor is handed a paragraph" Move 3):
+      # the advisor exchange (question digest + diagnosis/falsifier/
+      # next_probe) that preceded THIS failure, when one was consulted.
+      # Always present, `nil` when no advisor was consulted this cycle —
+      # never silently omitted, so a reader can distinguish "no advisor" from
+      # "field dropped by a bug".
+      "advisor_exchange" => advisor_exchange,
       "stage" => "parking",
       "updated_at" => now()
     }
@@ -932,7 +989,8 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
          cycle_state,
          branch,
          recovery_commit,
-         paths
+         paths,
+         advisor_exchange
        ) do
     %{
       "schema_version" => @dossier_schema_version,
@@ -951,6 +1009,7 @@ defmodule CodegenTestHarness.InterruptedCycleRecovery do
       "operator_ref" => nil,
       "operator_tree_sha" => nil,
       "successor_transaction_id" => nil,
+      "advisor_exchange" => advisor_exchange,
       "stage" => "parked",
       "updated_at" => now()
     }

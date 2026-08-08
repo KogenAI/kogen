@@ -6196,11 +6196,11 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
 
       prompt = OrchestrationLoop.build_prompt("developer-static", ctx)
 
-      assert prompt =~ "## Advisor — recovery second opinion"
+      assert prompt =~ "## Advisor — second opinion"
       assert prompt =~ "Try reindexing the query instead of adding a cache layer."
 
       reviewer_prompt = OrchestrationLoop.build_prompt("reviewer-static", ctx)
-      assert reviewer_prompt =~ "## Advisor — recovery second opinion"
+      assert reviewer_prompt =~ "## Advisor — second opinion"
     end
 
     test "build_prompt/2 hands non-blocking reviewer findings to context-curator" do
@@ -6219,6 +6219,55 @@ defmodule CodegenTestHarness.OrchestrationLoopTest do
       prompt = OrchestrationLoop.build_prompt("developer-static", ctx)
 
       refute prompt =~ "## Advisor"
+    end
+
+    # Pitch "the advisor is handed a paragraph" D-10: `advisor_fn/3`'s arity
+    # stays fixed — attempt/ceiling/stage metadata rides in `opts` under
+    # `:advise_meta`, not as a new positional arg. Assert the seam actually
+    # carries it through from the gate-loop-rework give-up boundary.
+    test "gate-loop-rework advisor call receives :advise_meta in opts (attempt/ceiling/stage)",
+         %{calls_agent: calls_agent} do
+      gate_fn = fn _cwd, _opts -> {:failed, "make test"} end
+
+      {:ok, seen_meta_agent} = Agent.start_link(fn -> [] end)
+      on_exit(fn -> stop_agent(seen_meta_agent) end)
+
+      invoke_fn = fn role, _harness, _ctx, _opts ->
+        Agent.update(calls_agent, fn calls -> calls ++ [role] end)
+        {:ok, %{"status" => "success", "value" => "did #{role}"}}
+      end
+
+      advisor_fn = fn _harness, _context_text, opts ->
+        Agent.update(seen_meta_agent, fn seen -> seen ++ [Keyword.get(opts, :advise_meta)] end)
+        {:ok, "a diagnosis"}
+      end
+
+      assert {:error, _reason} =
+               OrchestrationLoop.run(
+                 harness: "claude_code",
+                 stack: "static",
+                 cwd: "/tmp/irrelevant",
+                 pitch: "do the thing",
+                 invoke_fn: invoke_fn,
+                 gate_fn: gate_fn,
+                 gate_preflight_fn: no_op_gate_preflight_fn(),
+                 preflight_probe_fn: all_present_preflight_probe_fn(),
+                 advisor_fn: advisor_fn
+               )
+
+      [meta] = Agent.get(seen_meta_agent, & &1)
+      assert meta[:stage] == "gate_loop_rework"
+      assert is_integer(meta[:attempt])
+      assert is_integer(meta[:ceiling])
+      assert meta[:final_attempt] == true
+    end
+
+    # All 18 pre-existing `no_op_advisor_fn()` stub sites (elsewhere in this
+    # file) depend on `advisor_fn/3` keeping its 3-arity shape — this is a
+    # smoke assertion that the shared stub still compiles/works unchanged.
+    test "no_op_advisor_fn/0 stub still satisfies the (harness, context_text, opts) arity" do
+      stub = no_op_advisor_fn()
+      assert stub.("claude_code", "some context", advise_meta: %{stage: "x"}) == :error
     end
   end
 

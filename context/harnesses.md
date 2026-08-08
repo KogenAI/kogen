@@ -179,17 +179,52 @@ The create hook is idempotent: a re-run re-attaches an already-registered worktr
 
 **Loop-child exit record**: `dispatch.sh` job-controls the spawn through the shared `harnesses/shared/loop-signal-bridge.sh` helper (`run_supervised_loop`; non-exec, `set -m` internally, traps INT/TERM and forwards a group SIGTERM to the child — see `build_signal_handler.ex`), tees child stderr to a bounded (~8 KB) temp file through a named FIFO (never `/dev/fd` process substitution), keeps loop stdout byte-transparent, preserves the loop's own status explicitly, and after the helper returns (`run_supervised_loop ... || exit_code=$?`, never bare — `set -e` would abort on a bare non-zero return) writes ONE `{"ev":"exit","status":<n>,"signal":<n-or-null>,"stderr_tail":<text>}` event via `codegen-log exit`, pinned to whichever log `.active` names if it changed during the spawn; otherwise one stderr note, nothing written. Fail-loud-non-blocking: a `codegen-log exit` failure never changes the propagated `exit_code`. The SAME helper supervises the `--queue` leg of the build launcher (`claude-build.sh`) — see `context/loop-queue-drain.md`.
 
-## Opposite-Provider Advisor
+## Same-Harness Advisor
 
-`codegen-advise` wraps `codegen-call` and flips to the OPPOSITE provider (fixed mapping), returning
-`{plan, confidence}`. Registered in the manifest's `launchers:`. Reach: loop's `maybe_advise/5` at
-give-up (`context/loop.md` § Opposite-Provider Advisor) + role-less `advise`/`mcp__codegen__advise`
-tool. Failure additive, never a gate.
+`codegen-advise` wraps `codegen-call`, mapping the CURRENT build harness to a STRONGER tier of the
+SAME harness (`claude_code` → `claude_code`/`opus`/`high`; fixed, not configurable — a cross-vendor
+flip is unbuildable while only one provider is installed; restoring one later = add a second row and
+resolve it instead of the fixed mapping). Registered in the manifest's `launchers:`. Reach: loop's
+`maybe_advise/6` at give-up (`context/loop.md` § Same-Harness Advisor) + role-less
+`advise`/`mcp__codegen__advise` tool, both REQUIRING an explicit `--cwd`/`cwd` (never the process's
+own inherited cwd — the loop's own shell cwd is `test_harness/`, not the project being built).
+Failure additive, never a gate.
 
-**DORMANT**: only one provider is installed, so there is no opposite row to flip to. Every
-invocation reports that and exits 1 without a model call. Both callers already treat a non-zero
-exit as additive-failure, so the build is unaffected. Restoring it = add the second provider's row
-to the mapping in `codegen-advise` and drop the guard.
+**Evidence packet** (`codegen-advise`, before calling `codegen-call`): assembles a bounded
+(65,536-byte) packet from git/gate state at `--cwd`, 8 numbered sections — (1) the caller's question,
+(2) failure signature (`gate-result.json`), (3) base attribution (`HEAD` + last commit touching the
+witness file — surfaces a bug INTRODUCED earlier, not just the commit `HEAD` sits on), (4)
+attempt/stage (from `CODEGEN_ADVISE_*` env vars the loop sets via `opts[:advise_meta]`), (5)
+source/test slices (±40 lines around the witness), (6) exact failure output (`gate-run.log` tail),
+(7) current diff (`git diff`, 200 lines/file), (8) process/gate artifacts (`terminal-state.json`,
+active recovery dossiers). Sections 1-4 NEVER truncate — alone over ceiling is exit 2, never a
+silently-shrunk question. Sections 5-8 shrink (diff → failure-output → source-slices → gate-artifacts
+order) with `[truncated: N of M]` markers when over ceiling. Absence always explicit
+(`[unavailable: <reason>]`), never silent. Ceiling grounding: the packet crosses argv twice
+(`codegen-advise` → `codegen-call -- "$PROMPT"` → the harness CLI) and is exported as
+`CODEGEN_CALL_PROMPT`; Linux's `MAX_ARG_STRLEN` = 131,072-byte single-argv/env cap (hardcoded) sets
+64 KiB at 2× headroom.
+
+**Diagnosis contract** (`harnesses/claude/advise.schema.json`): `{diagnosis, falsifier, next_probe:
+{action, expected_outcomes: [{if_hypothesis, then_observe}] minItems:2 uniqueItems:true},
+evidence_used, missing_evidence, confidence: high|medium|low}` — replaces the old free-text `{plan,
+confidence}` (breaking; zero code parsed `.plan`, no consumer stranded). Schema enforces STRUCTURAL
+discrimination only (≥2 outcomes, no byte-identical pair); a probe of ANY kind (rerun, source read,
+instrumented run) passes as long as its outcomes are distinct — semantic-duplicate detection is
+system-prompt-taught, not schema-enforced. Stashed whole at `ctx.artifacts.advisor_plan`, rendered
+under `## Advisor — second opinion`.
+
+**Persistence**: `OrchestrationLoop.persist_advisor_exchange/4` writes
+`codegen/gate-pending/advisor-exchange.json` (packet digest, failure signature, stage/attempt,
+diagnosis/falsifier/next_probe) the moment the advisor returns — best-effort, mirrors
+`write_terminal_marker/3`'s write-immediately idiom. `InterruptedCycleRecovery.park_failure/1` reads
+it (best-effort, `nil` on absent/unparseable) into the recovery dossier's `advisor_exchange` field —
+ALWAYS present (explicit `nil`, never omitted). The `## Build failure history` row references the
+dossier's `transaction_id` (`advisor_consulted=<txn>`), never copies the diagnosis text — one record,
+one writer. This sidecar (not `run/1`'s bare `{:error, String.t()}` return, ~40+ existing
+pattern-match sites) is what threads the exchange to the dossier writer. MCP-path exchanges (the
+`advise` tool, no transaction/pitch claim) are NOT persisted — they remain in the role transcript
+only, same as before this mechanism existed.
 
 ## Mode → Declared Context
 

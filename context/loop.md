@@ -140,20 +140,16 @@ role-config owner file for the ladder's actual rung values.
 
 ## Same-Harness Advisor
 
-`maybe_advise/5` fires at the SAME give-up boundary as `maybe_escalate_model/5` (both
-`do_gate_loop_rework/9`, `rework_final_gate/5`, and the final reviewer re-review after
-`CHANGES_REQUESTED` (`final_attempt?` true), immediately after
-escalation. Shells `codegen-advise --harness=<current build harness>` (test-seam: `opts[:advisor_fn]`,
-default `default_advisor_fn/3`) with the rework reason + brief. `codegen-advise` uses a FIXED,
-stronger-model mapping in the SAME harness (`claude_code` → `claude_code`/`opus`; not configurable)
-and returns `{plan, confidence}` JSON, stashed at
-`ctx.artifacts.advisor_plan` and rendered under `## Advisor` for the reworked developer or final
-reviewer role. Composes
-with escalation (both `:escalated_model` and `:advisor_plan` can coexist; both cleared once resolved).
-Suppressed under a fixed campaign binding (mirrors `maybe_escalate_model/5`). Failed/unavailable call
-is ADDITIVE-failure — `ctx` passes through unchanged; advice is help, never a gate. Reach paths: (1)
-this auto-wiring; (2) the `advise`/`mcp__codegen__advise` tool on developer roles for self-invoke —
-same binary/mapping, harness-specific `current` baked at the tool layer.
+`maybe_advise/6` fires at the give-up boundary (`do_gate_loop_rework/9`, `rework_final_gate/5`, final
+reviewer re-review, `final_attempt?` true). Shells `codegen-advise --harness=<h> --cwd=<ctx.cwd>`
+(seam `opts[:advisor_fn]`, arity fixed — 18 test stubs depend on it; `--cwd` REQUIRED, loop's shell
+cwd is `test_harness/`). FIXED stronger-model mapping. Assembles a bounded, machine-built evidence
+packet from git/gate state at `--cwd` (not the caller's text alone), returns `{diagnosis, falsifier,
+next_probe, evidence_used, missing_evidence, confidence}` — packet/schema detail: `context/harnesses.md`
+§ Same-Harness Advisor. Stashed at `ctx.artifacts.advisor_plan`, rendered under `## Advisor — second
+opinion`. Attempt/stage rides in `opts[:advise_meta]`, never positional. Composes with escalation;
+suppressed under fixed binding; failed call is ADDITIVE. Reach: auto-wiring + `advise`/
+`mcp__codegen__advise` (`cwd` REQUIRED, never inherited).
 
 ## Fixed Campaign Binding (RoleModelSweep) — Overrides Escalation and Fallback
 

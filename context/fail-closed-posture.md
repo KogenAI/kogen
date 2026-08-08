@@ -20,6 +20,12 @@ Intentional, commented, justified (fail-loud-rule exemption):
 
 This is not a contradiction of the fail-closed ruling — it is a deliberate, narrow carve-out with an explicit justification comment. Future fail-closed sweeps must preserve it. (The `stop-cycle-guard.sh` retry-cap release, a second former survivor, was retired along with the legacy self-orchestrating harness engine it guarded.)
 
+## Best-Effort Sidecar Pattern (Persistence + Optional Observability)
+
+A best-effort sidecar helper that writes a convenience cache or auxiliary record (e.g., a dossier reference written immediately, read best-effort later) and is read best-effort by downstream consumers may use error-swallowing broad exception handlers in Elixir/TypeScript — BUT ONLY when:
+
+**Precondition**: the primary artifact (the record whose cache/reference you are writing) is already durably stored ELSEWHERE, fully independent of the sidecar write succeeding. Verify this precondition explicitly before approving a broad swallow in new persistence code. The sidecar is pure convenience for downstream readers; it is never the sole record. Silent failure of the sidecar is acceptable only when the primary durability is guaranteed.
+
 ## Allowlist Defense-in-Depth: Verb-Level vs Flag-Level Safety
 
 A verb-level allowlist (`reviewer-bash-allowlist` via `registry.yaml`) assumes defense-in-depth: the allowlist blocks write-capable verbs, and a secondary layer (`build-agent-app-confinement`) denies writes outside `CODEGEN_BUILD_CWD`. When widening the allowlist to include a new verb (e.g., adding `sed` for stream editing), the widening is unsafe if the verb has write-capable flags (e.g., `sed -i` for in-place edits) that the assumed backstop does not catch.
@@ -73,4 +79,4 @@ Sibling and pitch `orientation-preflight-routes-to-curator`.
 
 ## Trigger Keywords
 
-INCONCLUSIVE classification, two-signal pre-commit-guard, anti-wedge fail-open survivor, test comment drift, confinement guard scope, fail-loud exemptions, static-site-build-check, classify_orientation_violations, all-or-nothing partition, mixed violation set, orientation-doc repair routing
+INCONCLUSIVE classification, two-signal pre-commit-guard, anti-wedge fail-open survivor, best-effort sidecar pattern, test comment drift, confinement guard scope, fail-loud exemptions, static-site-build-check, classify_orientation_violations, all-or-nothing partition, mixed violation set, orientation-doc repair routing

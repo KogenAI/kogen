@@ -43,20 +43,31 @@ export function runCodegenLog(args: string[], stdinBody?: string): ExecResult {
  * Run codegen-advise for the CURRENT build harness, piping the context text
  * on stdin (codegen-advise reads stdin when --context is omitted). The
  * stronger-model tier of the SAME harness is chosen internally by
- * codegen-advise itself — this server never picks it. Sibling of
- * runCodegenLog; a distinct helper (not a reuse) since it wraps a different
- * binary with a different argv shape.
+ * codegen-advise itself — this server never picks it. `cwd` is REQUIRED and
+ * passed explicitly as `--cwd=<path>`: codegen-advise assembles a packet
+ * (git HEAD/diff/base-attribution/gate artifacts) from that path, and an
+ * inherited process cwd would silently collect the wrong repo's state when
+ * this server's own working directory differs from the active build (see
+ * pitch "the advisor is handed a paragraph" D-9). Sibling of runCodegenLog;
+ * a distinct helper (not a reuse) since it wraps a different binary with a
+ * different argv shape.
  */
 export function runCodegenAdvise(
   current: "claude_code",
+  cwd: string,
   context: string,
 ): ExecResult {
   try {
-    const stdout = execFileSync("codegen-advise", [`--harness=${current}`], {
-      input: context,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const stdout = execFileSync(
+      "codegen-advise",
+      [`--harness=${current}`, `--cwd=${cwd}`],
+      {
+        input: context,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+        cwd,
+      },
+    );
     return { ok: true, stdout, stderr: "" };
   } catch (err: unknown) {
     const e = err as {
