@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "codegen": {
-      "command": "node",
-      "args": ["__CODEGEN_MCP_SERVER_DIST__/index.js"]
-    }
-  }
-}

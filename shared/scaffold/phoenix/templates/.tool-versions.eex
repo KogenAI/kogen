@@ -1,3 +1,0 @@
-elixir <%= elixir_version %>-otp-<%= otp_major_version %>
-erlang <%= otp_version %>
-nodejs <%= node_version %>

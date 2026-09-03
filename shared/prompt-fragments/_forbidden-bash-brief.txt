@@ -1,7 +1,0 @@
-## Forbidden Bash Patterns (Quick Reference)
-
-These Bash patterns are denied by hooks and waste a turn. Use the listed tool instead — do not attempt, get denied, then retry with the correct tool.
-
-- **`cat FILE | head`/`tail`/`grep`/`less`/`more`** — denied by no-cat-pipe. Use the Read tool (with `offset`/`limit`) instead of `cat | head/tail`. Use the Grep tool instead of `cat | grep`. Truncation via pipe hides relevant lines; Read/Grep don't.
-- **`python3 -c 'import json ...'` / inline JSON parsing** — denied by no-python-json. Use the Read tool — JSON files render readably. Inline python parsing is a thrash anti-pattern.
-- **`git stash`** — denied by no-git-stash. Commit WIP to a scratch branch or use a worktree instead. Stash hides work from the orchestrator and reviewer.

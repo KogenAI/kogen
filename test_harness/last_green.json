@@ -1,8 +1,0 @@
-{
-  "codegen_sha": "50600522345f1447025eb99fdb573006aae29550",
-  "harness_versions": {
-    "claude": "2.1.152 (Claude Code)"
-  },
-  "test_passed_at": "2026-05-27T08:40:46Z",
-  "test_command": "make test-all"
-}

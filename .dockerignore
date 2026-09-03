@@ -1,8 +1,0 @@
-# Optimum Codegen
-/.vscode/
-/codegen/
-/AGENTS.md
-/CLAUDE.md
-.mcp.json
-*.code-workspace
-.env
