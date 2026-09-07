@@ -1,0 +1,14 @@
+/_build/
+/deps/
+/cover/
+/doc/
+*.ez
+erl_crash.dump
+*.beam
+.elixir_ls/
+
+.kogen/build.lock
+.kogen/runtime/
+.kogen/intents/drafts/
+.kogen/intents/approved/
+.kogen/intents/**/evidence/*-raw/

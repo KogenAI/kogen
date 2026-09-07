@@ -1,0 +1,9 @@
+id: 01a071fd-7bf0-7eb9-87b4-044f5b3cefac
+slug: bootstrap-core
+title: Bootstrap the core
+shaped_against:
+  head: 3f5af338533580658e1069e21091d63d93e96f79
+may_change_guarded_paths:
+  - "**"
+  - ".codex/**"
+  - ".kogen/**"

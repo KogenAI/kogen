@@ -1,0 +1,8 @@
+#!/bin/sh
+# PATH shim: if anything ever resolves a literal `codex` on PATH instead of
+# respecting KOGEN_HARNESS, this runs instead of the real CLI. It records
+# that it was invoked and fails loudly so the offline lifecycle test can
+# assert no real (or ambiguous) `codex` binary was ever executed.
+mkdir -p .kogen/runtime
+echo "PATH-SHIM-CODEX-INVOKED: $*" >>.kogen/runtime/path-shim-invoked
+exit 1

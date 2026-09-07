@@ -1,0 +1,5 @@
+harness: codex
+shaping:   {model: gpt-5.6-sol, effort: high}
+developer: {model: gpt-5.6-terra, effort: high}
+reviewer:  {model: gpt-5.6-sol, effort: high}
+outer_resumptions: 2

@@ -1,0 +1,17 @@
+{
+  "description": "Kogen records a provider-free Verification Record from Developer Stop.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/check.sh\"",
+            "timeout": 600,
+            "statusMessage": "Running Kogen provider-free check"
+          }
+        ]
+      }
+    ]
+  }
+}

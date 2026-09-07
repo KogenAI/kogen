@@ -1,0 +1,43 @@
+#!/bin/sh
+# Interactive Codex replacement for the public Shape fixture. The last
+# argument is Kogen's rendered prompt, containing the minted identity.
+set -eu
+prompt=; for arg in "$@"; do prompt="$arg"; done
+id="$(printf '%s\n' "$prompt" | sed -n 's/.*Intent id: `\([0-9a-f-]*\)`.*/\1/p' | head -n 1)"
+[ -n "$id" ]
+branch="$(printf '%s\n' "$prompt" | sed -n 's/.*Shaped against branch: `\([^`]*\)`.*/\1/p' | head -n 1)"
+head="$(printf '%s\n' "$prompt" | sed -n 's/.*Shaped against head commit: `\([^`]*\)`.*/\1/p' | head -n 1)"
+model=; effort=; previous=
+for arg in "$@"; do
+  [ "$previous" = --model ] && model="$arg"
+  case "$arg" in model_reasoning_effort=*) effort="$(printf '%s' "$arg" | cut -d= -f2- | tr -d '\"')" ;; esac
+  previous="$arg"
+done
+[ -n "$branch" ] && [ -n "$head" ] && [ -n "$model" ] && [ -n "$effort" ]
+dir=.kogen/intents/drafts/fake-shaped-intent
+mkdir -p "$dir"
+cat >"$dir/intent.yaml" <<EOF
+id: $id
+slug: fake-shaped-intent
+title: Fake shaped intent
+shaped_against:
+  branch: "$branch"
+  head: "$head"
+shaping:
+  harness: codex
+  model: "$model"
+  effort: "$effort"
+  started: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+may_change_guarded_paths:
+  - dummy.txt
+  - reviewer-rework-marker.txt
+EOF
+cat >"$dir/scenarios.yaml" <<'EOF'
+- id: shaped-scenario
+  given: a freshly shaped Draft
+  when: the fixture approves it
+  then: public Build commits dummy.txt containing reviewed fixture value and reviewer-rework-marker.txt
+  wrong_result: Shape does not persist an Intent or Build commits the initial unreviewed value
+  verified_by: [check]
+  evidence: public mix kogen.shape against fake interactive Codex
+EOF

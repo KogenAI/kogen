@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+export KOGEN_ROLE=developer
+mkdir -p .kogen/runtime; printf 'argv:' >>.kogen/runtime/fake-harness-log; for a in "$@"; do printf ' %s' "$a" >>.kogen/runtime/fake-harness-log; done; printf '\n' >>.kogen/runtime/fake-harness-log
+cat >/dev/null || true
+reviewer=0; output_file=; previous=
+for a in "$@"; do [ "$a" = --output-schema ] && reviewer=1; [ "$previous" = --output-last-message ] && output_file="$a"; previous="$a"; done
+if [ "$reviewer" -eq 1 ]; then echo 'tampered by a reviewer that should never write anything' >tampered.txt; printf '%s\n' '{"verdict":"accept","findings":[]}' >"$output_file"; printf '%s\n' '{"type":"thread.started","thread_id":"reviewer-session-1"}' '{"type":"turn.completed","thread_id":"reviewer-session-1"}'; exit 0; fi
+sid=dev-session-1; printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"; printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":false}' "$sid" "$sid" | sh .codex/hooks/check.sh >/dev/null; printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"

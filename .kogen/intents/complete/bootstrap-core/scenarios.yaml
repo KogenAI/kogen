@@ -1,0 +1,84 @@
+- id: shape-and-explicit-approval
+  given: a configured attached repository and a human shaping one feature
+  when: mix kogen.shape launches the interactive Codex Shaping Controller
+  then: one printed UUIDv7 and repository revision are preserved in a coherent Draft, and only explicit same-conversation approval moves that exact package to Approved
+  wrong_result: approval is inferred, identity is replaced, or product and UX decisions are silently invented
+  verified_by: [check, live]
+  evidence: Public Shape fixture tests and real terminal transcript showing Draft before explicit fixture approval and the same identity afterward.
+- id: build-preconditions
+  given: an Approved package and repository-local configuration
+  when: Build encounters dirty or detached state, an existing Complete package, a held lock, missing configuration or invalid verification targets
+  then: it stops clearly before launching a provider and releases any lock it acquired
+  wrong_result: Build invents defaults, launches before checking, or leaves an acquired lock after an ordinary failure
+  verified_by: [check]
+  evidence: Configuration, Build precondition and target validation tests with fake-provider invocation assertions.
+- id: stop-owned-check
+  given: a Developer candidate including one that fails compilation
+  when: Codex reaches a Developer Stop
+  then: the tracked hook runs make check, writes the actual candidate and session result, and blocks failure for correction within the same turn; other roles do not run this gate
+  wrong_result: the coordinator reruns the gate, the hook depends on successful candidate compilation, or a Shaping Controller or Reviewer stop invokes it
+  verified_by: [check, live]
+  evidence: Hook role and broken-candidate tests plus ordered live failed-then-passed candidate records for one actual Developer thread, proving Codex loaded the tracked hooks configuration rather than manually invoking its command.
+- id: exact-verification-and-rework
+  given: a missing, stale or failed Check, a failed declared target, or actionable Reviewer findings
+  when: Build settles the Developer and applies rework
+  then: it resumes the exact Developer thread within the configured budget, invalidates stale records and requires a new matching Check and fresh Review; exhaustion makes no completion commit
+  wrong_result: a different session or candidate inherits a pass, rework starts a replacement Developer, or retry limits are exceeded
+  verified_by: [check, live]
+  evidence: Offline settlement and bounded-resumption cases plus actual Sol high rework findings, exact Terra high Developer resume, new matching Check and a different fresh Sol high Accept reviewer; in-turn hook correction is distinguished from outer rework.
+- id: independent-review
+  given: a checked candidate and its unchanged Approved package
+  when: Review runs
+  then: a fresh Codex session assesses that exact tree and scenarios and returns a schema-valid accept or rework verdict; malformed review or source mutation stops publication
+  wrong_result: Developer self-approval, reused Developer context, malformed acceptance or reviewer edits are accepted
+  verified_by: [check, live]
+  evidence: Harness role, verdict, reviewer mutation tests and distinct live Developer and Reviewer session IDs.
+- id: approved-input-integrity
+  given: an Approved package including ignored evidence and other entries
+  when: a Developer, Reviewer or verification target changes its entries or bytes during Build
+  then: Build stops without publishing the altered package as approved
+  wrong_result: ignored approval inputs can silently change the feature or acceptance criteria
+  verified_by: [check]
+  evidence: Approved package mutation tests covering lifecycle checkpoints.
+- id: candidate-integrity
+  given: source files including tracked or staged files matching ignore rules
+  when: Check, Review and final staging identify the candidate
+  then: all source to be committed participates in identity and mismatches stop before publication except the expected Complete bookkeeping
+  wrong_result: ignored tracked or staged source escapes checks or review
+  verified_by: [check]
+  evidence: Git integrity and final staged-tree verification tests.
+- id: paths-with-spaces
+  given: a checkout path containing spaces
+  when: Codex launches and the configured Developer Stop hook runs
+  then: command arguments and hook paths resolve correctly and the record identifies the actual candidate and Developer session
+  wrong_result: shell splitting changes arguments or prevents the hook from executing
+  verified_by: [check]
+  evidence: Harness argument and hook execution cases using checkout paths with spaces.
+- id: fake-full-lifecycle
+  given: a disposable repository using only a fake Codex executable
+  when: public Shape drafts a package, explicit fixture approval moves it, and public Build executes that same package
+  then: Stop Check, fresh Review and bounded rework lead to one commit containing the implementation and Complete package with the original identity trailers
+  wrong_result: coverage stops at approval, substitutes a prewritten package, bypasses public Build, or calls a real provider
+  verified_by: [check]
+  evidence: One connected offline Shape-to-Commit test preserving the shaped package and minted identity, including reviewer-directed rework, exact Developer resume, renewed Check and fresh Accept review.
+- id: live-full-lifecycle
+  given: authenticated Codex with Sol high shaping, Terra high development and Sol high review in an isolated fixture
+  when: real public Shape receives explicit scripted fixture approval and real public Build runs on that exact package
+  then: actual Stop failure and correction, independent Review and the resulting Complete commit are proven by preserved records, with real reviewer-directed rework covered by live lifecycle evidence
+  wrong_result: Claude runs, unrelated prewritten approval substitutes for shaping, or intended transitions are reported as observed
+  verified_by: [live]
+  evidence: Real terminal transcript, raw Codex streams, ordered failed-then-passed Check records, distinct role sessions and resulting Git commit for the exact shaped package; genuine Reviewer rework through a new Check and fresh Accept review may share this fixture or use a separately identified real Build-only fixture.
+- id: publication-and-failure
+  given: an unchanged accepted candidate and its Approved package
+  when: Build attempts publication
+  then: one commit contains source and preserved Complete package with factual evidence and Intent trailers; a failed attempt restores Approved and removes tentative Complete
+  wrong_result: Complete survives a failed commit, user evidence is overwritten, or unreviewed source enters publication
+  verified_by: [check]
+  evidence: Lifecycle, commit provenance and commit-failure restoration tests.
+- id: core-release-boundary
+  given: the clean-slate commit 3f5af338533580658e1069e21091d63d93e96f79
+  when: this coordinator-led bootstrap is recorded
+  then: its sole direct child is Bootstrap the core with the retained Intent identity trailers and honest evidence; runtime roles use Codex and only Shape and Build are public commands
+  wrong_result: extra history or public UX is introduced, a version command or Claude runtime remains, or coordinator work is called self-hosted
+  verified_by: [check]
+  evidence: Frozen-source offline and live gates, fresh independent source and evidence review, scenario results and truthful coordinator provenance; exact release Git parent, subject and trailers plus fresh-checkout verification are checked after the single commit and cannot be established by this target before publication.

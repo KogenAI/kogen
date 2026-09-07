@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+export KOGEN_ROLE=developer
+mkdir -p .kogen/runtime; log=.kogen/runtime/fake-harness-log
+printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
+cat >/dev/null || true
+is_reviewer=0; resume_id=; output_file=; previous=; is_resume=0; penultimate=; last=
+for a in "$@"; do
+ [ "$a" = --output-schema ] && is_reviewer=1
+ [ "$a" = resume ] && is_resume=1
+ [ "$previous" = --output-last-message ] && output_file="$a"
+ previous="$a"; penultimate="$last"; last="$a"
+done
+[ "$is_resume" -eq 1 ] && resume_id="$penultimate"
+if [ "$is_reviewer" -eq 1 ]; then
+  printf '%s\n' '{"verdict":"accept","findings":[]}' >"$output_file"
+  printf '%s\n' '{"type":"thread.started","thread_id":"reviewer-session-1"}' '{"type":"turn.completed","thread_id":"reviewer-session-1"}'
+  exit 0
+fi
+sid="${resume_id:-dev-session-1}"; printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"; printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":false}' "$sid" "$sid" | sh .codex/hooks/check.sh >/dev/null; printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"
