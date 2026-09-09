@@ -1,0 +1,20 @@
+id: 01a0865c-9d03-75b7-a830-d1b093daeee5
+slug: fast-reliable-offline-checks
+title: Make the complete offline check fast and reliable
+status: approved
+shaped_against:
+  branch: main
+  head: 6403ebd8139b8add5e071f52a43179c885aad9f7
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-09T13:30:53Z'
+may_change_guarded_paths:
+  - README.md
+  - Makefile
+  - mix.exs
+  - lib/kogen/**
+  - test/**
+  - scripts/check/**
+  - .codex/hooks/**

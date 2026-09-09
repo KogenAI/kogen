@@ -3,6 +3,17 @@
 # and real tracked stop-hook invocations.
 set -eu
 export KOGEN_ROLE=developer
+stop_check() {
+ expected="$1"; active="$2"
+ response="$(printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":%s}' "$sid" "$sid" "$active" | sh .codex/hooks/check.sh)"
+ printf '%s\n' "$response" >> .kogen/runtime/fake-hook-responses
+ case "$expected:$response" in
+  block:*'"decision":"block"'*|pass:*'"continue":true'*) return 0 ;;
+ esac
+ printf 'Unexpected Stop response (expected %s): %s\n' "$expected" "$response" >&2
+ cat .kogen/runtime/verification.json >&2
+ exit 1 # unexpected-stop-response
+}
 state_dir=.kogen/runtime; mkdir -p "$state_dir"
 log="$state_dir/fake-harness-log"; dev_state="$state_dir/fake-dev-calls"; rev_state="$state_dir/fake-reviewer-calls"
 printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
@@ -32,7 +43,7 @@ if [ -n "$resume_id" ]; then
  # Developer thread applies it before its fresh Stop Check.
  printf 'reviewed fixture value\n' > dummy.txt
  printf 'Reviewer-directed rework applied\n' > reviewer-rework-marker.txt
- printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":false}' "$sid" "$sid" | sh .codex/hooks/check.sh >/dev/null
+ stop_check pass false
  printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"
  exit 0
 fi
@@ -41,7 +52,7 @@ printf '%s' "$input" > "$state_dir/developer-launch-prompt"
 printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
 printf 'initial fixture value\n' > dummy.txt
 printf 'defmodule Kogen.FakeBreak do\n  this is not valid elixir(((\nend\n' > lib/kogen_fake_break.ex
-printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":false}' "$sid" "$sid" | sh .codex/hooks/check.sh >/dev/null
+stop_check block false
 rm -f lib/kogen_fake_break.ex
-printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":true}' "$sid" "$sid" | sh .codex/hooks/check.sh >/dev/null
+stop_check pass true
 printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"

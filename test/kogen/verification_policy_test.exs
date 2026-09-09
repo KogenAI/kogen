@@ -1,5 +1,5 @@
 defmodule Kogen.VerificationPolicyTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Kogen.VerificationPolicy
 
@@ -70,13 +70,13 @@ defmodule Kogen.VerificationPolicyTest do
              ["check", "live", "fixture_gate"]
 
     in_policy_fixture!(fn dir ->
-      assert File.cd!(dir, fn -> VerificationPolicy.preflight(["check", "fixture_gate"]) end) ==
+      assert VerificationPolicy.preflight(["check", "fixture_gate"], dir) ==
                :ok
 
       File.rm!(Path.join(dir, ".codex/hooks/verification_policy.py"))
 
       assert {:error, reason} =
-               File.cd!(dir, fn -> VerificationPolicy.preflight(["check"]) end)
+               VerificationPolicy.preflight(["check"], dir)
 
       assert reason =~ "required verification policy file"
 
@@ -91,7 +91,7 @@ defmodule Kogen.VerificationPolicyTest do
       )
 
       assert {:error, registration_reason} =
-               File.cd!(dir, fn -> VerificationPolicy.preflight(["check"]) end)
+               VerificationPolicy.preflight(["check"], dir)
 
       assert registration_reason =~ "verification-policy hook is not registered"
     end)
@@ -141,7 +141,12 @@ defmodule Kogen.VerificationPolicyTest do
   end
 
   defp in_policy_fixture!(fun) do
-    dir = Path.join(System.tmp_dir!(), "kogen-policy-#{System.unique_integer([:positive])}")
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-policy-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(Path.join(dir, ".codex/hooks"))
     on_exit(fn -> File.rm_rf(dir) end)
     root = root_for_test()

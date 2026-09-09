@@ -1,5 +1,5 @@
 defmodule Kogen.HarnessVerdictTest do
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   test "Reviewer rejects rework without actionable findings and blank findings" do
     dir =

@@ -1,5 +1,5 @@
 defmodule Kogen.StopHookTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @session_id "developer-thread-123"
 
@@ -111,7 +111,12 @@ defmodule Kogen.StopHookTest do
   end
 
   defp in_fixture!(fun) do
-    dir = Path.join(System.tmp_dir!(), "kogen stop hook #{System.unique_integer([:positive])}")
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen stop hook #{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(Path.join(dir, ".codex/hooks"))
     on_exit(fn -> File.rm_rf(dir) end)
 

@@ -1,0 +1,76 @@
+{
+  "wall_seconds": 8.175,
+  "shards": [
+    {
+      "shard": 0,
+      "seconds": 8.168,
+      "exit": 0,
+      "files": [
+        "approved_mutation",
+        "harness_args",
+        "intent"
+      ],
+      "tail": [
+        ".............................",
+        "Finished in 7.6 seconds (0.08s async, 7.5s sync)",
+        "",
+        "Result: 29 passed"
+      ]
+    },
+    {
+      "shard": 1,
+      "seconds": 7.255,
+      "exit": 0,
+      "files": [
+        "core_integrity",
+        "git_integrity",
+        "check",
+        "harness_role"
+      ],
+      "tail": [
+        ".......................",
+        "Finished in 6.7 seconds (0.00s async, 6.7s sync)",
+        "",
+        "Result: 23 passed"
+      ]
+    },
+    {
+      "shard": 2,
+      "seconds": 6.14,
+      "exit": 0,
+      "files": [
+        "build_preconditions",
+        "git",
+        "harness_verdict",
+        "boundary_negative_control"
+      ],
+      "tail": [
+        "............................",
+        "Finished in 5.5 seconds (0.00s async, 5.5s sync)",
+        "",
+        "Result: 28 passed"
+      ]
+    },
+    {
+      "shard": 3,
+      "seconds": 7.997,
+      "exit": 0,
+      "files": [
+        "commit_failure_rollback",
+        "commit_provenance",
+        "reviewer_mutation",
+        "stop_hook",
+        "two_outer_resumptions",
+        "verification_ownership_lifecycle",
+        "verification_policy"
+      ],
+      "tail": [
+        ".............",
+        "Finished in 7.4 seconds (0.00s async, 7.4s sync)",
+        "",
+        "Result: 13 passed"
+      ]
+    }
+  ],
+  "limitations": "Ordinary suite only, four OS processes, existing compiled code, separate TMPDIR, stdin EOF; excludes live and two lifecycle modules; not async implementation or full make check"
+}

@@ -8,7 +8,7 @@ defmodule Kogen.LiveTest do
   Shape-to-Commit lifecycle in `test/kogen/live_shape_to_build_test.exs`
   builds on.
   """
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   @moduletag :live
   @moduletag timeout: 600_000
@@ -71,7 +71,7 @@ defmodule Kogen.LiveTest do
     dir =
       Path.join(
         project_root,
-        ".kogen/runtime/live-evidence/primitives-#{System.system_time(:nanosecond)}"
+        ".kogen/runtime/live-evidence/primitives-#{System.pid()}-#{System.unique_integer([:positive])}-#{System.system_time(:nanosecond)}"
       )
 
     File.mkdir_p!(dir)
@@ -81,7 +81,11 @@ defmodule Kogen.LiveTest do
   defp primitive_fixture(project_root) do
     runtime_root = Path.join(project_root, ".kogen/runtime/live-primitives")
     File.mkdir_p!(runtime_root)
-    Path.join(runtime_root, "fixture-#{System.system_time(:nanosecond)}")
+
+    Path.join(
+      runtime_root,
+      "fixture-#{System.pid()}-#{System.unique_integer([:positive])}-#{System.system_time(:nanosecond)}"
+    )
   end
 
   defp setup_fixture(project_root, fixture) do

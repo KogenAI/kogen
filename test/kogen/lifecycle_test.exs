@@ -1,14 +1,17 @@
+Code.require_file("../support/compiled_fixture.exs", __DIR__)
+
 defmodule Kogen.LifecycleTest do
   @moduledoc """
   The fake full lifecycle test required by `make check`: public Shape creates
   a Draft, explicit fixture approval moves that exact package to Approved,
   and public Build drives it through a failing Stop Check, independent Review
   rework, exact Developer resume, fresh accept, and Commit. It runs only the
-  fake `codex` executable in a disposable clone. The nested Stop-hook
-  `make check` uses `KOGEN_INNER_CHECK=1`, so it cannot recurse into this
-  lifecycle test.
+  fake `codex` executable in a disposable fixture.
+  The fixture's `check` target is deliberately small: it detects the broken
+  source that the fake Developer first creates, then passes after that same
+  Developer corrects it. The tracked Stop hook still owns both invocations.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @moduletag :lifecycle
   @moduletag timeout: 300_000
@@ -17,11 +20,11 @@ defmodule Kogen.LifecycleTest do
 
   test "public Shape, explicit fixture approval, and public Build form one offline lifecycle" do
     src = File.cwd!()
-    dest = Path.join(System.tmp_dir!(), "kogen-lifecycle-#{System.unique_integer([:positive])}")
+    dest = Kogen.CompiledFixture.create!(src, "lifecycle")
 
     on_exit(fn -> File.rm_rf(dest) end)
 
-    setup_clone(src, dest)
+    init_fixture_git!(dest)
     original_parent = git!(dest, ["rev-parse", "HEAD"])
     {intent_id, original_intent, original_scenarios} = shape_and_explicitly_approve!(dest)
 
@@ -38,13 +41,11 @@ defmodule Kogen.LifecycleTest do
 
     env = [
       {"KOGEN_HARNESS", fake_harness},
-      {"KOGEN_INNER_CHECK", "1"},
       {"KOGEN_RAW_LOG_DIR", raw_log_dir},
       {"PATH", shim_dir <> ":" <> System.get_env("PATH", "")}
     ]
 
-    {output, exit_code} =
-      System.cmd("mix", ["kogen.build", @slug], cd: dest, env: env, stderr_to_stdout: true)
+    {output, exit_code} = Kogen.CompiledFixture.mix_task!(dest, ["kogen.build", @slug], env)
 
     assert exit_code == 0, "mix kogen.build failed:\n#{output}"
 
@@ -97,6 +98,12 @@ defmodule Kogen.LifecycleTest do
                String.ends_with?(line, " dev-session-1 -")
            end)
 
+    resume_feedback = File.read!(Path.join(dest, ".kogen/runtime/developer-resume-prompts"))
+    assert resume_feedback =~ "Reviewer findings: fake finding: try again"
+
+    refute resume_feedback =~ "settled Check failure:",
+           "a failed Check settlement would consume a second outer resumption"
+
     assert Enum.all?(log_lines, fn line ->
              line =~ "--model gpt-6-astra" and line =~ "model_reasoning_effort=\"low\""
            end)
@@ -130,29 +137,14 @@ defmodule Kogen.LifecycleTest do
 
     assert failed_check_index < passed_check_index,
            "the failed Stop Check must precede the passing Check in one Developer thread"
+
+    failed_reason = check_records |> Enum.at(failed_check_index) |> Map.fetch!("reason")
+
+    assert failed_reason =~ "lib/kogen_fake_break.ex",
+           "the retained failed settlement reason must identify the bounded fixture check"
   end
 
-  defp setup_clone(src, dest) do
-    File.mkdir_p!(dest)
-
-    {_out, 0} =
-      System.cmd(
-        "rsync",
-        [
-          "-a",
-          "--exclude=_build",
-          "--exclude=deps",
-          "--exclude=.git",
-          "--exclude=.kogen/runtime",
-          "--exclude=.kogen/build.lock",
-          src <> "/",
-          dest <> "/"
-        ]
-      )
-
-    File.rm(Path.join(dest, "deps"))
-    File.ln_s!(Path.join(src, "deps"), Path.join(dest, "deps"))
-
+  defp init_fixture_git!(dest) do
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},
       {"GIT_AUTHOR_EMAIL", "kogen-fixture@example.invalid"},
@@ -168,8 +160,7 @@ defmodule Kogen.LifecycleTest do
   defp shape_and_explicitly_approve!(dest) do
     env = [{"KOGEN_HARNESS", Path.join(dest, "test/support/fake_codex_shaper")}]
 
-    {output, 0} =
-      System.cmd("mix", ["kogen.shape"], cd: dest, env: env, stderr_to_stdout: true)
+    {output, 0} = Kogen.CompiledFixture.mix_task!(dest, "kogen.shape", env)
 
     [intent_id] =
       Regex.run(~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/, output)

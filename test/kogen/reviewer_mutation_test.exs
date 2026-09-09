@@ -6,7 +6,7 @@ defmodule Kogen.ReviewerMutationTest do
   matches, and abort the Build with a mutation reason instead of
   committing whatever the Reviewer left behind.
   """
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   @slug "reviewer-mutates-intent"
 

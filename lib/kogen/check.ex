@@ -40,9 +40,9 @@ defmodule Kogen.Check do
   end
 
   @doc "Reads and parses the Verification Record, or `:error` if absent/invalid JSON."
-  @spec read_record() :: {:ok, map()} | :error
-  def read_record do
-    with {:ok, content} <- File.read(@record_path),
+  @spec read_record(Path.t()) :: {:ok, map()} | :error
+  def read_record(root \\ ".") do
+    with {:ok, content} <- File.read(Path.join(root, @record_path)),
          {:ok, json} when is_map(json) <- Jason.decode(content) do
       {:ok, json}
     else
@@ -56,9 +56,9 @@ defmodule Kogen.Check do
   candidate or session), wrong target, nonzero Check exit, or failed record
   is not a pass.
   """
-  @spec settled_pass?(String.t(), String.t()) :: boolean()
-  def settled_pass?(candidate_id, session_id) do
-    case read_record() do
+  @spec settled_pass?(String.t(), String.t(), Path.t()) :: boolean()
+  def settled_pass?(candidate_id, session_id, root \\ ".") do
+    case read_record(root) do
       {:ok,
        %{
          "candidate" => ^candidate_id,
@@ -75,9 +75,9 @@ defmodule Kogen.Check do
   end
 
   @doc "A short, human reason describing why the current record does not settle a pass."
-  @spec settlement_failure_reason(String.t(), String.t()) :: String.t()
-  def settlement_failure_reason(candidate_id, session_id) do
-    case read_record() do
+  @spec settlement_failure_reason(String.t(), String.t(), Path.t()) :: String.t()
+  def settlement_failure_reason(candidate_id, session_id, root \\ ".") do
+    case read_record(root) do
       :error ->
         "no Verification Record was written"
 
@@ -133,9 +133,10 @@ defmodule Kogen.Check do
   end
 
   @doc "Runs `make <name>`, returning captured combined output either way."
-  @spec run_target(String.t()) :: {:ok, String.t()} | {:error, {non_neg_integer(), String.t()}}
-  def run_target(name) do
-    case System.cmd("make", [name], stderr_to_stdout: true) do
+  @spec run_target(String.t(), Path.t()) ::
+          {:ok, String.t()} | {:error, {non_neg_integer(), String.t()}}
+  def run_target(name, root \\ ".") do
+    case System.cmd("make", [name], cd: root, stderr_to_stdout: true) do
       {out, 0} -> {:ok, out}
       {out, code} -> {:error, {code, out}}
     end

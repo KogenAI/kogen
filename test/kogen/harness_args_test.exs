@@ -29,7 +29,12 @@ defmodule Kogen.HarnessArgsTest do
   end
 
   test "Shaping Controller passes the rendered prompt as Codex's interactive initial prompt" do
-    path = Path.join(System.tmp_dir!(), "kogen-shaper-#{System.unique_integer([:positive])}.md")
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-shaper-#{System.pid()}-#{System.unique_integer([:positive])}.md"
+      )
+
     on_exit(fn -> File.rm(path) end)
     File.write!(path, "Shape one Intent.")
     args = Harness.shaper_args("gpt-5.6", "medium", path)

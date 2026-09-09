@@ -1,33 +1,18 @@
+Code.require_file("../support/compiled_fixture.exs", __DIR__)
+
 defmodule Kogen.ShapeTaskTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @moduletag :lifecycle
 
   test "public Shape mints an identity and persists a Draft for explicit fixture approval" do
     source = File.cwd!()
-    fixture = Path.join(System.tmp_dir!(), "kogen-shape-#{System.unique_integer([:positive])}")
+    fixture = Kogen.CompiledFixture.create!(source, "shape")
     on_exit(fn -> File.rm_rf(fixture) end)
-    File.mkdir_p!(fixture)
-
-    {_out, 0} =
-      System.cmd("rsync", [
-        "-a",
-        "--exclude=_build",
-        "--exclude=deps",
-        "--exclude=.git",
-        "--exclude=.kogen/runtime",
-        "--exclude=.kogen/build.lock",
-        source <> "/",
-        fixture <> "/"
-      ])
-
-    File.rm(Path.join(fixture, "deps"))
-    File.ln_s!(Path.join(source, "deps"), Path.join(fixture, "deps"))
     init_fixture_git!(fixture)
     env = [{"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")}]
 
-    {output, 0} =
-      System.cmd("mix", ["kogen.shape"], cd: fixture, env: env, stderr_to_stdout: true)
+    {output, 0} = Kogen.CompiledFixture.mix_task!(fixture, "kogen.shape", env)
 
     draft = Path.join(fixture, ".kogen/intents/drafts/fake-shaped-intent")
     assert File.dir?(draft)

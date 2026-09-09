@@ -1,8 +1,17 @@
 defmodule Kogen.ApprovedMutationTest do
   @moduledoc "Ignored Approved bytes and entries remain approval inputs throughout Build."
-  use ExUnit.Case, async: false
 
   @slug "reviewer-mutates-intent"
+  @project_root Path.expand("../..", __DIR__)
+
+  use Kogen.IsolatedCase,
+    async: true,
+    parameterize:
+      for(
+        phase <- [:check, :target, :reviewer],
+        mutation <- [:modify, :add, :remove],
+        do: %{phase: phase, mutation: mutation}
+      )
 
   @intent_yaml """
   id: 01960000-0000-7000-8000-00000000bea7
@@ -34,32 +43,32 @@ defmodule Kogen.ApprovedMutationTest do
   outer_resumptions: 2
   """
 
-  for phase <- [:check, :target, :reviewer], mutation <- [:modify, :add, :remove] do
-    @phase phase
-    @mutation mutation
-    test "rejects ignored Approved #{@mutation} during #{@phase}" do
-      assert_mutation_stops(@phase, @mutation)
-    end
+  test "rejects ignored Approved mutation during phase", %{phase: phase, mutation: mutation} do
+    assert_mutation_stops(phase, mutation)
   end
 
   defp assert_mutation_stops(phase, mutation) do
-    project_root = File.cwd!()
-    dest = Path.join(System.tmp_dir!(), "kogen-revmut-#{System.unique_integer([:positive])}")
+    dest =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-revmut-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(dest)
     on_exit(fn -> File.rm_rf(dest) end)
 
     File.mkdir_p!(Path.join(dest, ".codex/hooks"))
 
     File.cp!(
-      Path.join(project_root, ".codex/hooks/check.sh"),
+      Path.join(@project_root, ".codex/hooks/check.sh"),
       Path.join(dest, ".codex/hooks/check.sh")
     )
 
     File.chmod!(Path.join(dest, ".codex/hooks/check.sh"), 0o755)
-    File.cp!(Path.join(project_root, ".codex/hooks.json"), Path.join(dest, ".codex/hooks.json"))
+    File.cp!(Path.join(@project_root, ".codex/hooks.json"), Path.join(dest, ".codex/hooks.json"))
 
     File.cp!(
-      Path.join(project_root, ".codex/hooks/verification_policy.py"),
+      Path.join(@project_root, ".codex/hooks/verification_policy.py"),
       Path.join(dest, ".codex/hooks/verification_policy.py")
     )
 
@@ -67,7 +76,7 @@ defmodule Kogen.ApprovedMutationTest do
 
     for prompt <- ["developer.md", "reviewer.md"] do
       File.cp!(
-        Path.join(project_root, "priv/kogen/prompts/#{prompt}"),
+        Path.join(@project_root, "priv/kogen/prompts/#{prompt}"),
         Path.join(dest, "priv/kogen/prompts/#{prompt}")
       )
     end
@@ -113,7 +122,7 @@ defmodule Kogen.ApprovedMutationTest do
 
     fake_harness = Path.join(dest, ".kogen/runtime/provider")
     File.mkdir_p!(Path.dirname(fake_harness))
-    provider = File.read!(Path.join(project_root, "test/support/fake_codex_simple_accept"))
+    provider = File.read!(Path.join(@project_root, "test/support/fake_codex_simple_accept"))
 
     provider =
       if phase == :reviewer,

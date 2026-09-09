@@ -11,7 +11,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
   counting, not about `make check` itself, which the full lifecycle test
   in test/kogen/lifecycle_test.exs already exercises for real).
   """
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   @slug "always-rework-intent"
 

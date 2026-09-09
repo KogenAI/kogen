@@ -1,0 +1,4 @@
+#!/bin/sh
+# The offline recipe resolves the actual installed Git once. Preserve every
+# argument and exit code without changing resolution of Python or other tools.
+exec "${KOGEN_CHECK_GIT:?offline recipe did not resolve Git}" "$@"

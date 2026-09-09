@@ -11,7 +11,7 @@ defmodule Kogen.CommitFailureRollbackTest do
   general recovery machinery, just restoring the two directories from
   data already on disk.
   """
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   @slug "commit-fails-intent"
 

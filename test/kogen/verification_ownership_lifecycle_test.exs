@@ -1,5 +1,5 @@
 defmodule Kogen.VerificationOwnershipLifecycleTest do
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   alias Kogen.Build
 

@@ -7,7 +7,10 @@ defmodule Kogen.IntentTest do
 
   defp tmp_dir! do
     path =
-      Path.join(System.tmp_dir!(), "kogen-intent-test-#{System.unique_integer([:positive])}")
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-intent-test-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
 
     File.mkdir_p!(path)
     on_exit(fn -> File.rm_rf!(path) end)

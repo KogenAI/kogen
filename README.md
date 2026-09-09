@@ -74,9 +74,23 @@ make check     # Offline checks and the complete fake-harness lifecycle
 make live      # Real public shaping, approval, build, review, and fixture commit
 ```
 
-Fetch dependencies first. `make check` then runs formatting, warnings-as-errors compilation, strict Credo, Boundary enforcement, ordinary tests, and fake lifecycle tests without provider requests.
+Fetch dependencies first. Python 3, `rsync`, and the macOS Command Line Tools (`xcrun clang`)
+are also required for the offline gate and bounded subprocess probes.
+`make check` runs formatting, forced warnings-as-errors compilation,
+strict Credo, Boundary enforcement (including its compiler negative control), ordinary
+tests, and the complete fake lifecycle without provider requests. No dependency
+fetching or cached test results are used. The recipe reports each stage and the
+whole gate's elapsed time, including failures; roughly ten seconds is a warm-cache
+guideline, with no elapsed-time failure cutoff.
 
-`make live` requires network access, Codex authentication, `expect`, and `rsync`. It creates a disposable fixture under this checkout, uses scripted approval only for that test fixture, and retains run evidence under `.kogen/runtime/`. It tests real failed-check correction in one Developer session and reviewer-directed rework with an exact Developer resume and a fresh accepting Reviewer. Set `KOGEN_LIVE_LOG_DIR` to retain that evidence elsewhere.
+All test modules run asynchronously. Cases that mutate cwd or environment execute
+in private OS processes using the current compiled application and dependency code;
+fixtures, temporary roots, and writable build caches stay private. The fake public
+Shape/Build fixture uses a small real check through the tracked Stop hook, including
+failed Check correction and independent Reviewer rework. It never nests this suite.
+See [the check workflow](scripts/check/README.md) for maintenance and timing conditions.
+
+`make live` requires network access, Codex authentication, `expect`, and `rsync`. It creates a disposable fixture under this checkout, uses scripted approval only for that test fixture, and retains run evidence under `.kogen/runtime/`. It tests real failed-check correction in one Developer session and reviewer-directed rework with an exact Developer resume and a fresh accepting Reviewer. Its outer driver also runs the complete offline check in a disposable copy with an initially empty private build cache and installed dependencies. Set `KOGEN_LIVE_LOG_DIR` to retain that evidence elsewhere.
 
 ## Project and contact
 

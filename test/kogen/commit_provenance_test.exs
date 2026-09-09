@@ -1,6 +1,6 @@
 defmodule Kogen.CommitProvenanceTest do
   @moduledoc "Automated first and subsequent Builds must never claim manual bootstrap provenance."
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   @makefile """
   .PHONY: check

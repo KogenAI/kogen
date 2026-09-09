@@ -10,6 +10,7 @@ defmodule Kogen.MixProject do
       start_permanent: Mix.env() == :prod,
       compilers: [:boundary] ++ Mix.compilers(),
       boundary: [default: [check: [apps: [{:mix, :runtime}]]]],
+      test_ignore_filters: [~r"/support/"],
       deps: deps()
     ]
   end

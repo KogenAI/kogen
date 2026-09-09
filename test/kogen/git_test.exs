@@ -6,9 +6,18 @@ defmodule Kogen.GitTest do
 
   `Kogen.Git` shells out to `git` against the process's current working
   directory, so every test uses `File.cd!/2` into its own disposable temp
-  repo and the module is `async: false`.
+  repo and each case runs in an isolated OS process.
   """
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase,
+    async: true,
+    parameterize: [
+      %{scenario: :untracked_candidate},
+      %{scenario: :ignored_candidate},
+      %{scenario: :commit_with_trailers},
+      %{scenario: :commit_staged_with_trailers},
+      %{scenario: :allowed_commit_diff},
+      %{scenario: :outside_commit_diff}
+    ]
 
   alias Kogen.Git
 
@@ -19,140 +28,136 @@ defmodule Kogen.GitTest do
     {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
   ]
 
-  describe "candidate_id/0" do
-    test "changes when an untracked file is added and reverts when it is removed" do
-      dir = tmp_repo!()
-
-      File.cd!(dir, fn ->
-        assert {:ok, id_before} = Git.candidate_id()
-
-        File.write!("untracked.txt", "hello\n")
-        assert {:ok, id_with_file} = Git.candidate_id()
-        assert id_with_file != id_before
-
-        File.rm!("untracked.txt")
-        assert {:ok, id_after_removal} = Git.candidate_id()
-        assert id_after_removal == id_before
-      end)
-    end
-
-    test "a file matching .gitignore does not change the candidate id" do
-      dir = tmp_repo!()
-
-      File.cd!(dir, fn ->
-        File.write!(".gitignore", "ignored.txt\n")
-        commit_all!("track gitignore")
-
-        assert {:ok, id_before} = Git.candidate_id()
-
-        File.write!("ignored.txt", "should be invisible\n")
-        assert {:ok, id_after} = Git.candidate_id()
-
-        assert id_after == id_before
-      end)
-    end
+  test "preserves Git behavior for each scenario", %{scenario: scenario} do
+    run_scenario(scenario)
   end
 
-  describe "commit/3" do
-    test "produces a commit with the given subject and trailers" do
-      dir = tmp_repo!()
+  defp run_scenario(:untracked_candidate) do
+    dir = tmp_repo!()
 
-      File.cd!(dir, fn ->
-        File.write!("payload.txt", "candidate content\n")
+    File.cd!(dir, fn ->
+      assert {:ok, id_before} = Git.candidate_id()
 
-        assert {:ok, head_sha} =
-                 Git.commit("A sample subject line", "Some explanatory body text.", [
-                   {"Kogen-Intent-Id", "01960000-0000-7000-8000-00000000feed"},
-                   {"Kogen-Intent", "sample-slug"}
-                 ])
+      File.write!("untracked.txt", "hello\n")
+      assert {:ok, id_with_file} = Git.candidate_id()
+      assert id_with_file != id_before
 
-        assert is_binary(head_sha)
-        assert {out, 0} = System.cmd("git", ["rev-parse", "HEAD"])
-        assert String.trim(out) == head_sha
-
-        subject = git!(["log", "-1", "--format=%s"])
-        assert subject == "A sample subject line"
-
-        {trailer_out, 0} =
-          System.cmd("sh", ["-c", "git log -1 --format=%B | git interpret-trailers --parse"])
-
-        assert trailer_out =~ "Kogen-Intent-Id: 01960000-0000-7000-8000-00000000feed"
-        assert trailer_out =~ "Kogen-Intent: sample-slug"
-      end)
-    end
+      File.rm!("untracked.txt")
+      assert {:ok, id_after_removal} = Git.candidate_id()
+      assert id_after_removal == id_before
+    end)
   end
 
-  describe "commit_staged/2" do
-    test "publishes only the subject and supplied trailers without rewriting its parent" do
-      dir = tmp_repo!()
+  defp run_scenario(:ignored_candidate) do
+    dir = tmp_repo!()
 
-      File.cd!(dir, fn ->
-        parent = git!(["rev-parse", "HEAD"])
-        File.write!("payload.txt", "candidate content\n")
-        assert {_, 0} = System.cmd("git", ["add", "-A"])
+    File.cd!(dir, fn ->
+      File.write!(".gitignore", "ignored.txt\n")
+      commit_all!("track gitignore")
 
-        trailers = [
-          {"Kogen-Intent-ID", "01960000-0000-7000-8000-00000000feed"},
-          {"Kogen-Intent", "sample-slug"}
-        ]
+      assert {:ok, id_before} = Git.candidate_id()
 
-        assert {:ok, _head_sha} = Git.commit_staged("A sample subject line", trailers)
+      File.write!("ignored.txt", "should be invisible\n")
+      assert {:ok, id_after} = Git.candidate_id()
 
-        message = raw_commit_message!()
-
-        assert message ==
-                 "A sample subject line\n\nKogen-Intent-ID: 01960000-0000-7000-8000-00000000feed\nKogen-Intent: sample-slug\n"
-
-        assert parsed_trailers!(message) ==
-                 [
-                   "Kogen-Intent-ID: 01960000-0000-7000-8000-00000000feed",
-                   "Kogen-Intent: sample-slug"
-                 ]
-
-        assert git!(["rev-parse", "HEAD^"]) == parent
-      end)
-    end
+      assert id_after == id_before
+    end)
   end
 
-  describe "assert_commit_diff_only/2" do
-    test "returns :ok when the only diff between the candidate tree and HEAD is under the allowed prefix" do
-      dir = tmp_repo!()
+  defp run_scenario(:commit_with_trailers) do
+    dir = tmp_repo!()
 
-      File.cd!(dir, fn ->
-        File.mkdir_p!("allowed")
-        File.write!("allowed/one.txt", "v1\n")
-        commit_all!("baseline with allowed dir")
+    File.cd!(dir, fn ->
+      File.write!("payload.txt", "candidate content\n")
 
-        assert {:ok, candidate_tree} = Git.candidate_id()
+      assert {:ok, head_sha} =
+               Git.commit("A sample subject line", "Some explanatory body text.", [
+                 {"Kogen-Intent-Id", "01960000-0000-7000-8000-00000000feed"},
+                 {"Kogen-Intent", "sample-slug"}
+               ])
 
-        File.write!("allowed/one.txt", "v2\n")
-        commit_all!("change only under allowed/")
+      assert is_binary(head_sha)
+      assert {out, 0} = System.cmd("git", ["rev-parse", "HEAD"])
+      assert String.trim(out) == head_sha
 
-        assert Git.assert_commit_diff_only(candidate_tree, "allowed/") == :ok
-      end)
-    end
+      subject = git!(["log", "-1", "--format=%s"])
+      assert subject == "A sample subject line"
 
-    test "returns an error naming paths outside the allowed prefix when one changed too" do
-      dir = tmp_repo!()
+      {trailer_out, 0} =
+        System.cmd("sh", ["-c", "git log -1 --format=%B | git interpret-trailers --parse"])
 
-      File.cd!(dir, fn ->
-        File.mkdir_p!("allowed")
-        File.write!("allowed/one.txt", "v1\n")
-        File.write!("outside.txt", "v1\n")
-        commit_all!("baseline with allowed dir and outside file")
+      assert trailer_out =~ "Kogen-Intent-Id: 01960000-0000-7000-8000-00000000feed"
+      assert trailer_out =~ "Kogen-Intent: sample-slug"
+    end)
+  end
 
-        assert {:ok, candidate_tree} = Git.candidate_id()
+  defp run_scenario(:commit_staged_with_trailers) do
+    dir = tmp_repo!()
 
-        File.write!("allowed/one.txt", "v2\n")
-        File.write!("outside.txt", "v2\n")
-        commit_all!("change both allowed/ and an outside file")
+    File.cd!(dir, fn ->
+      parent = git!(["rev-parse", "HEAD"])
+      File.write!("payload.txt", "candidate content\n")
+      assert {_, 0} = System.cmd("git", ["add", "-A"])
 
-        assert {:error, {:paths_outside_allowed, bad_paths}} =
-                 Git.assert_commit_diff_only(candidate_tree, "allowed/")
+      trailers = [
+        {"Kogen-Intent-ID", "01960000-0000-7000-8000-00000000feed"},
+        {"Kogen-Intent", "sample-slug"}
+      ]
 
-        assert bad_paths == ["outside.txt"]
-      end)
-    end
+      assert {:ok, _head_sha} = Git.commit_staged("A sample subject line", trailers)
+
+      message = raw_commit_message!()
+
+      assert message ==
+               "A sample subject line\n\nKogen-Intent-ID: 01960000-0000-7000-8000-00000000feed\nKogen-Intent: sample-slug\n"
+
+      assert parsed_trailers!(message) ==
+               [
+                 "Kogen-Intent-ID: 01960000-0000-7000-8000-00000000feed",
+                 "Kogen-Intent: sample-slug"
+               ]
+
+      assert git!(["rev-parse", "HEAD^"]) == parent
+    end)
+  end
+
+  defp run_scenario(:allowed_commit_diff) do
+    dir = tmp_repo!()
+
+    File.cd!(dir, fn ->
+      File.mkdir_p!("allowed")
+      File.write!("allowed/one.txt", "v1\n")
+      commit_all!("baseline with allowed dir")
+
+      assert {:ok, candidate_tree} = Git.candidate_id()
+
+      File.write!("allowed/one.txt", "v2\n")
+      commit_all!("change only under allowed/")
+
+      assert Git.assert_commit_diff_only(candidate_tree, "allowed/") == :ok
+    end)
+  end
+
+  defp run_scenario(:outside_commit_diff) do
+    dir = tmp_repo!()
+
+    File.cd!(dir, fn ->
+      File.mkdir_p!("allowed")
+      File.write!("allowed/one.txt", "v1\n")
+      File.write!("outside.txt", "v1\n")
+      commit_all!("baseline with allowed dir and outside file")
+
+      assert {:ok, candidate_tree} = Git.candidate_id()
+
+      File.write!("allowed/one.txt", "v2\n")
+      File.write!("outside.txt", "v2\n")
+      commit_all!("change both allowed/ and an outside file")
+
+      assert {:error, {:paths_outside_allowed, bad_paths}} =
+               Git.assert_commit_diff_only(candidate_tree, "allowed/")
+
+      assert bad_paths == ["outside.txt"]
+    end)
   end
 
   # -- helpers -------------------------------------------------------------

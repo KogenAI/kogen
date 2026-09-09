@@ -1,5 +1,5 @@
 defmodule Kogen.HarnessRoleTest do
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   test "every Codex launch overrides a hostile inherited role" do
     dir = Path.join(System.tmp_dir!(), "kogen roles-#{System.unique_integer([:positive])}")
@@ -24,12 +24,12 @@ defmodule Kogen.HarnessRoleTest do
     File.write!(executable, """
     #!/bin/sh
     printf '%s\\n' "$KOGEN_ROLE" >> "$ROLE_LOG"
-    cat >/dev/null || true
     out=; prev=
     for a in "$@"; do [ "$prev" = --output-last-message ] && out="$a"; prev="$a"; done
     case "$KOGEN_ROLE" in
-      developer) printf '%s\\n' '{"type":"thread.started","thread_id":"dev"}' '{"type":"turn.completed","thread_id":"dev"}' ;;
-      reviewer) printf '%s\\n' '{"verdict":"accept","findings":[]}' > "$out"; printf '%s\\n' '{"type":"thread.started","thread_id":"review"}' '{"type":"turn.completed","thread_id":"review"}' ;;
+      developer) cat >/dev/null || true; printf '%s\\n' '{"type":"thread.started","thread_id":"dev"}' '{"type":"turn.completed","thread_id":"dev"}' ;;
+      reviewer) cat >/dev/null || true; printf '%s\\n' '{"verdict":"accept","findings":[]}' > "$out"; printf '%s\\n' '{"type":"thread.started","thread_id":"review"}' '{"type":"turn.completed","thread_id":"review"}' ;;
+      shaper) [ "$KOGEN_REQUIRE_TTY" != 1 ] || test -t 0 ;;
     esac
     """)
 
@@ -42,15 +42,51 @@ defmodule Kogen.HarnessRoleTest do
     assert {:ok, _} = Kogen.Harness.resume_developer("dev", "test", "fake", "low")
     System.put_env("KOGEN_ROLE", "developer")
     assert {:ok, _} = Kogen.Harness.launch_reviewer("test", "fake", "low")
-    prompt = Path.join(dir, "prompt")
-    File.write!(prompt, "shape")
-    assert 0 == Kogen.Harness.exec_shaper("fake", "low", prompt)
-    assert File.read!(log) == "developer\ndeveloper\nreviewer\nshaper\n"
-
     assert [verdict_path] = Path.wildcard(Path.join(raw_log_dir, "reviewer-verdict-*.json"))
     assert File.read!(verdict_path) == "{\"verdict\":\"accept\",\"findings\":[]}\n"
 
     assert File.read!(Path.join(raw_log_dir, "reviewer-verdicts.jsonl")) ==
              "{\"findings\":[],\"session_id\":\"review\",\"verdict\":\"accept\"}\n"
+
+    prompt = Path.join(dir, "prompt")
+    File.write!(prompt, "shape")
+    probe = Path.expand("../support/terminal_probe.py", __DIR__)
+    elixir = System.find_executable("elixir") || raise "elixir executable not found"
+
+    code_paths =
+      :code.get_path()
+      |> Enum.map(&List.to_string/1)
+      |> Enum.flat_map(&["-pa", &1])
+
+    expression =
+      "System.halt(Kogen.Harness.exec_shaper(\"fake\", \"low\", #{inspect(prompt)}))"
+
+    for mode <- ["pipe", "pty"] do
+      assert {"", 0} =
+               System.cmd(
+                 "python3",
+                 [
+                   probe,
+                   "--mode",
+                   mode,
+                   "--",
+                   elixir,
+                   "--erl",
+                   "+S 2:2 +SDcpu 1 +SDio 1" | code_paths
+                 ] ++
+                   [
+                     "-e",
+                     expression
+                   ],
+                 env: [
+                   {"KOGEN_HARNESS", executable},
+                   {"ROLE_LOG", log},
+                   {"KOGEN_REQUIRE_TTY", if(mode == "pty", do: "1", else: "0")}
+                 ],
+                 stderr_to_stdout: true
+               )
+    end
+
+    assert File.read!(log) == "developer\ndeveloper\nreviewer\nshaper\nshaper\n"
   end
 end

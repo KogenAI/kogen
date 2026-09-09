@@ -1,0 +1,50 @@
+- id: terminal-safe-role-test
+  given: the offline role-override regression runs with an open terminal or piped stdin
+  when: it launches the fake Shaper without user input or EOF
+  then: it completes promptly and verifies all role overrides while real interactive Shaping retains terminal access
+  wrong_result: the fake waits for Ctrl-D until ExUnit times out, or production terminal access is removed to make the test pass
+  verified_by: [check]
+  evidence: bounded PTY and pipe regression probes with no input; existing role assertions retained
+- id: bounded-real-lifecycle-check
+  given: the complete offline gate exercises public Shape and Build in a disposable fake-harness fixture
+  when: the Developer fails its initial Stop Check, corrects it, and later responds to Reviewer rework
+  then: real bounded fixture checks and the tracked hook demonstrate failure then success, exact Developer resume, fresh Review, and the expected committed result without nested aggregate suites
+  wrong_result: the fixture reruns the full Kogen suite or fakes success records instead of exercising the hook and verification lifecycle
+  verified_by: [check]
+  evidence: lifecycle assertions for check history, session identities, launch counts, commit contents, and provenance
+- id: deterministic-resumption-count
+  given: the fake lifecycle has an in-conversation Check correction followed by one independent Reviewer rework request
+  when: Build settles checks and completes the fixture across the reported and additional fixed seeds
+  then: exactly one outer resumption is used for Reviewer rework and no spurious settlement failure consumes another
+  wrong_result: evidence intermittently reports two resumptions, the expectation is loosened, or automatic retries hide the failure
+  verified_by: [check]
+  evidence: captured causal settlement diagnosis, targeted regression, and repeated focused lifecycle runs with seed and count receipts
+- id: independent-tests-run-concurrently
+  given: expensive suites currently serialize because they change VM-global cwd or environment
+  when: the complete offline suite executes independent fixture cases concurrently
+  then: all existing and new test modules explicitly use async true, fixtures and subprocess state remain isolated, and independent work overlaps without hidden global serialization
+  wrong_result: any synchronous test module remains, async flags hide races or global locks, or environment and cwd leak between cases
+  verified_by: [check, live]
+  evidence: complete module inventory, overlapping-execution and state-isolation probes, fixed-seed stress runs, retained failure propagation, and both converted live modules; outer driver owns temporal protocol audit
+- id: complete-check-performance
+  given: the shaping macOS machine has installed dependencies and warm local build caches
+  when: the normal verification owner runs the entire make check command
+  then: all retained offline checks pass and report whole-command wall time including formatting, compilation, Credo, and tests, aiming for roughly 10 seconds without failing solely for elapsed time
+  wrong_result: an otherwise-correct check fails on a timing cutoff, only a reduced subtotal is reported, or speed comes from omitted coverage
+  verified_by: [check]
+  evidence: whole-gate elapsed time with toolchain and cache conditions plus before-and-after coverage accounting
+- id: offline-and-failure-preserving
+  given: real provider execution is denied and dependencies are already installed
+  when: the full offline verification path runs with warm and initially empty local build caches and focused negative controls are exercised
+  then: it needs no external API or downloads, preserves all existing categories of coverage, and reliably propagates failures without leaked children or shared-state races
+  wrong_result: a real provider launches, cached green results hide changed code, failed subprocesses are ignored, or concurrency corrupts cwd or environment
+  verified_by: [check]
+  evidence: provider-denial sentinel, retained compiler/Boundary and lifecycle negative controls, and child failure/cleanup probes if a process runner is introduced
+
+- id: live-rework-evidence-ownership
+  given: the real reviewer-rework fixture retains protocol records outside the nested working tree
+  when: the initial Reviewer requests the missing notes file and the same Developer resumes
+  then: a fresh Reviewer assesses the resulting candidate and fresh Check while the outer test proves initial omission, actionable rework, exact thread resume, two passing same-session Checks, distinct accepting Reviewer, exactly one resumption and Commit provenance
+  wrong_result: the nested Reviewer rejects inaccessible history, the Developer manufactures evidence, or correct final files pass without the actual required sequence
+  verified_by: [check, live]
+  evidence: focused offline negative controls for missing or misordered audit evidence plus retained real streams, archived Checks and ordered structured Reviewer receipts

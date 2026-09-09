@@ -1,0 +1,11 @@
+{
+  "shape_seconds": 0.987,
+  "build_seconds": 1.454,
+  "build_exit": 0,
+  "output": "",
+  "evidence_resume_lines": [
+    "- Outer resumptions used: 1",
+    "- Reviewer verdict: accept"
+  ],
+  "limitations": "Disposable minimal fixture, existing compiled task modules loaded with elixir -pa; real mix task dispatch and tracked Stop hook, bounded check; not unchanged mix command discovery or final suite regression"
+}

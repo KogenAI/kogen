@@ -1,5 +1,16 @@
 defmodule Kogen.CoreIntegrityTest do
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase,
+    async: true,
+    parameterize: [
+      %{scenario: :archives_hook_history},
+      %{scenario: :same_reviewer_session},
+      %{scenario: :stale_verification_record},
+      %{scenario: :symlinked_approved_entry},
+      %{scenario: :late_dangling_complete},
+      %{scenario: :malformed_reviewer_verdict},
+      %{scenario: :reviewer_exits_nonzero},
+      %{scenario: :empty_rework_findings}
+    ]
 
   alias Kogen.{Build, Check}
 
@@ -44,7 +55,11 @@ defmodule Kogen.CoreIntegrityTest do
     {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
   ]
 
-  test "outer invalidation archives hook history only to the requested private log directory" do
+  test "preserves core integrity for each scenario", %{scenario: scenario} do
+    run_scenario(scenario)
+  end
+
+  defp run_scenario(:archives_hook_history) do
     in_tmp_cwd(fn ->
       raw_dir = Path.join(File.cwd!(), "private-raw")
       prior_raw_dir = System.get_env("KOGEN_RAW_LOG_DIR")
@@ -66,7 +81,7 @@ defmodule Kogen.CoreIntegrityTest do
     end)
   end
 
-  test "Build stops when a Reviewer reuses the Developer session" do
+  defp run_scenario(:same_reviewer_session) do
     fixture = setup_fixture!(:same_reviewer_session)
 
     assert {:error, "Reviewer session must differ from the Developer session"} =
@@ -76,7 +91,7 @@ defmodule Kogen.CoreIntegrityTest do
     assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
   end
 
-  test "Build stops before launching a provider when it cannot remove a stale Verification Record" do
+  defp run_scenario(:stale_verification_record) do
     fixture = setup_fixture!(:same_reviewer_session)
     record_path = Path.join(fixture, Check.record_path())
     File.mkdir_p!(record_path)
@@ -87,7 +102,7 @@ defmodule Kogen.CoreIntegrityTest do
     refute File.exists?(Path.join(fixture, ".kogen/build.lock"))
   end
 
-  test "Build refuses a symlinked Approved package entry before launching a provider" do
+  defp run_scenario(:symlinked_approved_entry) do
     fixture = setup_fixture!(:same_reviewer_session)
     approved = Path.join(fixture, ".kogen/intents/approved/#{@slug}")
     scenarios = Path.join(approved, "scenarios.yaml")
@@ -102,7 +117,7 @@ defmodule Kogen.CoreIntegrityTest do
     refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log"))
   end
 
-  test "Build rechecks a dangling Complete path created by the Candidate before publication" do
+  defp run_scenario(:late_dangling_complete) do
     fixture = setup_fixture!(:late_dangling_complete)
 
     assert {:error, "Complete Intent already exists: #{@slug}"} =
@@ -113,7 +128,7 @@ defmodule Kogen.CoreIntegrityTest do
     assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
   end
 
-  test "Build aborts without publication when the Reviewer verdict is malformed" do
+  defp run_scenario(:malformed_reviewer_verdict) do
     fixture = setup_fixture!(:malformed_reviewer)
     head_before = git!(fixture, ["rev-parse", "HEAD"])
 
@@ -122,7 +137,7 @@ defmodule Kogen.CoreIntegrityTest do
     assert_unpublished!(fixture, head_before)
   end
 
-  test "Build aborts without publication when the Reviewer process exits nonzero" do
+  defp run_scenario(:reviewer_exits_nonzero) do
     fixture = setup_fixture!(:reviewer_exits_nonzero)
     head_before = git!(fixture, ["rev-parse", "HEAD"])
 
@@ -131,7 +146,7 @@ defmodule Kogen.CoreIntegrityTest do
     assert_unpublished!(fixture, head_before)
   end
 
-  test "Build aborts without publication when Reviewer rework findings are empty" do
+  defp run_scenario(:empty_rework_findings) do
     fixture = setup_fixture!(:empty_rework_findings)
     head_before = git!(fixture, ["rev-parse", "HEAD"])
 

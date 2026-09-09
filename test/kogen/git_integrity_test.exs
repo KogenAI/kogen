@@ -1,5 +1,5 @@
 defmodule Kogen.GitIntegrityTest do
-  use ExUnit.Case, async: false
+  use Kogen.IsolatedCase, async: true
 
   alias Kogen.Git
 

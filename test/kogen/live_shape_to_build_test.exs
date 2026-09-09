@@ -1,3 +1,6 @@
+Code.require_file("../support/live_rework_audit.ex", __DIR__)
+Code.require_file("../support/dependency_fixture.ex", __DIR__)
+
 defmodule Kogen.LiveShapeToBuildTest do
   @moduledoc """
   The real, public, end-to-end lifecycle in bounded, disposable
@@ -32,7 +35,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   `rework`, after which the same real Developer thread resumes and a fresh
   real Reviewer accepts. It does not substitute for the connected Shape proof.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @moduletag :live
   @moduletag timeout: 900_000
@@ -51,7 +54,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   .PHONY: check
   check:
   \t@test -f dummy.txt || (echo "dummy.txt is missing. Required exact content: reviewer-rework-k4q9z" && exit 1)
-  \t@grep -qx reviewer-rework-k4q9z dummy.txt || (echo "dummy.txt content is wrong. Required exact content: reviewer-rework-k4q9z" && exit 1)
+  \t@printf 'reviewer-rework-k4q9z\\n' | cmp -s - dummy.txt || (echo "dummy.txt must contain reviewer-rework-k4q9z followed by exactly one LF newline" && exit 1)
   """
 
   @review_rework_intent """
@@ -67,7 +70,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   - id: reviewer-directed-rework
     given: an isolated provider-backed fixture with no dummy.txt or reviewer-notes.md
     when: the first Developer turn implements this test protocol
-    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z only after that Reviewer returns actionable rework in the exact same Developer conversation; a fresh second Reviewer must then accept the final Candidate
+    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation; the fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, and resume sequence from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
     wrong_result: the first Reviewer accepts without inspecting the intentionally deferred companion file, a replacement Developer session performs rework, or the final Candidate lacks the companion file
     verified_by: [check]
     evidence: provider-backed Build-only fixture preserves both structured reviewer receipts, Developer raw streams, Stop records, and the resulting Commit
@@ -79,8 +82,15 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     runtime_root = Path.join(project_root, ".kogen/runtime/live-shape2build")
     File.mkdir_p!(runtime_root)
-    fixture = Path.join(runtime_root, "fixture-#{System.system_time(:nanosecond)}")
+
+    fixture =
+      Path.join(
+        runtime_root,
+        "fixture-#{System.pid()}-#{System.unique_integer([:positive])}-#{System.system_time(:nanosecond)}"
+      )
+
     File.mkdir_p!(fixture)
+    on_exit(fn -> File.rm_rf!(fixture) end)
 
     File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
     setup_fixture(project_root, fixture)
@@ -99,6 +109,7 @@ defmodule Kogen.LiveShapeToBuildTest do
           pty_log,
           @slug
         ],
+        env: [{"MIX_BUILD_PATH", Path.join(fixture, "_build")}],
         stderr_to_stdout: true
       )
 
@@ -149,7 +160,10 @@ defmodule Kogen.LiveShapeToBuildTest do
     {build_out, build_exit} =
       System.cmd("mix", ["kogen.build", @slug],
         cd: fixture,
-        env: [{"KOGEN_RAW_LOG_DIR", raw_stream_dir}],
+        env: [
+          {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
+          {"MIX_BUILD_PATH", Path.join(fixture, "_build")}
+        ],
         stderr_to_stdout: true
       )
 
@@ -239,8 +253,15 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     runtime_root = Path.join(project_root, ".kogen/runtime/live-reviewer-rework")
     File.mkdir_p!(runtime_root)
-    fixture = Path.join(runtime_root, "fixture-#{System.system_time(:nanosecond)}")
+
+    fixture =
+      Path.join(
+        runtime_root,
+        "fixture-#{System.pid()}-#{System.unique_integer([:positive])}-#{System.system_time(:nanosecond)}"
+      )
+
     File.mkdir_p!(fixture)
+    on_exit(fn -> File.rm_rf!(fixture) end)
 
     File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
     setup_fixture(project_root, fixture, @review_rework_makefile)
@@ -252,7 +273,10 @@ defmodule Kogen.LiveShapeToBuildTest do
     {build_out, build_exit} =
       System.cmd("mix", ["kogen.build", @review_rework_slug],
         cd: fixture,
-        env: [{"KOGEN_RAW_LOG_DIR", raw_stream_dir}],
+        env: [
+          {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
+          {"MIX_BUILD_PATH", Path.join(fixture, "_build")}
+        ],
         stderr_to_stdout: true
       )
 
@@ -273,59 +297,11 @@ defmodule Kogen.LiveShapeToBuildTest do
     """
 
     assert File.dir?(complete_dir)
-    assert File.read!(Path.join(fixture, "dummy.txt")) == "reviewer-rework-k4q9z\n"
-    assert File.read!(Path.join(fixture, "reviewer-notes.md")) == "reviewer-confirmed-k4q9z\n"
 
-    evidence = File.read!(evidence_path)
-    assert evidence =~ "Outer resumptions used: 1"
-
-    developer_session_id =
-      Regex.run(~r/Developer session id: `([^`]+)`/, evidence) |> List.last()
-
-    assert developer_session_id
-
-    assert File.exists?(history_path), "the real Stop hook must record both Developer turns"
-
-    same_session_records =
-      verification_records(history_path, raw_stream_dir)
-      |> Enum.filter(&(&1["session_id"] == developer_session_id))
-
-    assert Enum.count(same_session_records, &(&1["status"] == "passed")) >= 2,
-           "initial development and reviewer-directed rework must both settle through the same real Stop hook"
-
-    assert File.exists?(Path.join(raw_stream_dir, "reviewer-verdicts.jsonl")),
-           "the Harness must preserve actual structured reviewer receipts for live audit"
-
-    reviewer_receipts =
-      raw_stream_dir
-      |> Path.join("reviewer-verdicts.jsonl")
-      |> File.read!()
-      |> String.split("\n", trim: true)
-      |> Enum.map(&Jason.decode!/1)
-
-    assert [
-             %{"verdict" => "rework", "findings" => findings, "session_id" => first_reviewer},
-             %{"verdict" => "accept", "session_id" => second_reviewer}
-           ] = reviewer_receipts
-
-    assert is_list(findings) and findings != []
-    assert first_reviewer != second_reviewer
-
-    raw_events = raw_stream_events(raw_stream_dir)
-
-    assert Enum.count(
-             raw_events,
-             &(&1["type"] == "thread.started" and &1["thread_id"] == developer_session_id)
-           ) >= 2,
-           "the provider stream must show the exact original Developer thread started again for rework"
-
-    {trailer_out, 0} =
-      System.cmd("sh", ["-c", "git log -1 --format=%B | git interpret-trailers --parse"],
-        cd: fixture
-      )
-
-    assert trailer_out =~ "Kogen-Intent-ID: 01960000-0000-7000-8000-00000000beef"
-    assert trailer_out =~ "Kogen-Intent: #{@review_rework_slug}"
+    Kogen.LiveReworkAudit.audit!(fixture, raw_stream_dir,
+      slug: @review_rework_slug,
+      intent_id: "01960000-0000-7000-8000-00000000beef"
+    )
 
     File.rm_rf!(fixture)
   end
@@ -335,7 +311,12 @@ defmodule Kogen.LiveShapeToBuildTest do
       System.get_env("KOGEN_LIVE_LOG_DIR") ||
         Path.join(project_root, ".kogen/runtime/live-evidence")
 
-    dir = Path.join(base, "shape-to-build-#{System.system_time(:nanosecond)}")
+    dir =
+      Path.join(
+        base,
+        "shape-to-build-#{System.pid()}-#{System.unique_integer([:positive])}-#{System.system_time(:nanosecond)}"
+      )
+
     File.mkdir_p!(dir)
     dir
   end
@@ -357,8 +338,7 @@ defmodule Kogen.LiveShapeToBuildTest do
         ]
       )
 
-    File.rm(Path.join(fixture, "deps"))
-    File.ln_s!(Path.join(project_root, "deps"), Path.join(fixture, "deps"))
+    Kogen.DependencyFixture.copy!(Path.join(project_root, "deps"), Path.join(fixture, "deps"))
 
     File.write!(Path.join(fixture, "Makefile"), makefile)
 
@@ -378,7 +358,11 @@ defmodule Kogen.LiveShapeToBuildTest do
 
   defp precompile!(fixture, log_dir) do
     {out, exit_code} =
-      System.cmd("mix", ["compile", "--warnings-as-errors"], cd: fixture, stderr_to_stdout: true)
+      System.cmd("mix", ["compile", "--warnings-as-errors"],
+        cd: fixture,
+        env: [{"MIX_BUILD_PATH", Path.join(fixture, "_build")}],
+        stderr_to_stdout: true
+      )
 
     File.write!(Path.join(log_dir, "fixture-precompile.log"), out)
 
@@ -394,42 +378,6 @@ defmodule Kogen.LiveShapeToBuildTest do
 
   defp preserve_if_present(source, destination) do
     if File.exists?(source), do: File.cp!(source, destination)
-  end
-
-  defp verification_records(current_history_path, raw_stream_dir) do
-    archived_paths =
-      raw_stream_dir
-      |> Path.join("verification-history-*.jsonl")
-      |> Path.wildcard()
-
-    [current_history_path | archived_paths]
-    |> Enum.filter(&File.exists?/1)
-    |> Enum.flat_map(&json_lines/1)
-  end
-
-  defp raw_stream_events(raw_stream_dir) do
-    raw_stream_dir
-    |> Path.join("raw-stream-*.jsonl")
-    |> Path.wildcard()
-    |> Enum.flat_map(&events_from_stream/1)
-  end
-
-  defp events_from_stream(path) do
-    json_lines(path)
-  end
-
-  defp json_lines(path) do
-    path
-    |> File.read!()
-    |> String.split("\n", trim: true)
-    |> Enum.flat_map(&decode_event/1)
-  end
-
-  defp decode_event(line) do
-    case Jason.decode(line) do
-      {:ok, event} -> [event]
-      _ -> []
-    end
   end
 
   defp git!(dir, args) do

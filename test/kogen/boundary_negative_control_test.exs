@@ -18,7 +18,7 @@ defmodule Kogen.BoundaryNegativeControlTest do
   application code) actually enforces `Kogen.Git`/`Kogen.Check` not
   depending on `Kogen.Harness`.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @moduletag timeout: 120_000
 
@@ -27,7 +27,10 @@ defmodule Kogen.BoundaryNegativeControlTest do
     assert File.dir?(boundary_path), "expected #{boundary_path} to exist (already-fetched dep)"
 
     fixture_dir =
-      Path.join(System.tmp_dir!(), "kogen-boundary-fixture-#{System.unique_integer([:positive])}")
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-boundary-fixture-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
 
     on_exit(fn -> File.rm_rf(fixture_dir) end)
 
@@ -37,7 +40,14 @@ defmodule Kogen.BoundaryNegativeControlTest do
     # the forbidden-reference warning at all, independent of whether the
     # installed Elixir/boundary version treats it as fatal by default.
     {plain_output, _plain_exit} =
-      System.cmd("mix", ["compile"], cd: fixture_dir, stderr_to_stdout: true)
+      System.cmd("mix", ["compile"],
+        cd: fixture_dir,
+        env: [
+          {"MIX_BUILD_PATH", Path.join(fixture_dir, "_build")},
+          {"ERL_FLAGS", "+S 2:2 +SDcpu 1 +SDio 1"}
+        ],
+        stderr_to_stdout: true
+      )
 
     assert plain_output =~ "forbidden reference to A",
            "expected a plain `mix compile` to report the forbidden reference; got:\n#{plain_output}"
@@ -46,6 +56,10 @@ defmodule Kogen.BoundaryNegativeControlTest do
     {output, exit_code} =
       System.cmd("mix", ["compile", "--warnings-as-errors", "--force"],
         cd: fixture_dir,
+        env: [
+          {"MIX_BUILD_PATH", Path.join(fixture_dir, "_build")},
+          {"ERL_FLAGS", "+S 2:2 +SDcpu 1 +SDio 1"}
+        ],
         stderr_to_stdout: true
       )
 
