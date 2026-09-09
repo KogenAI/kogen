@@ -45,7 +45,9 @@ Start Build on a clean branch with a commit at HEAD. Kogen implements the approv
 - **Build** implements, checks, independently reviews, and reworks when necessary.
 - **Commit** records the checked and accepted implementation of one Intent.
 
-The Developer's Stop hook owns `make check`. Failed checks are corrected within the same conversation. By default, at most two outer resumptions are available for later verification or review failures. An exhausted Build stops rather than claiming success.
+The Developer's Stop hook owns `make check`; the outer Build owns each distinct declared non-check target, in first scenario occurrence order, after matching Check settlement. Failed checks are corrected within the same conversation. A failed outer target or Review finding resumes the same Developer within the existing budget and requires a fresh Stop Check before the full non-check sequence starts again. An exhausted Build stops rather than claiming success.
+
+Developers and their delegated helpers must not run `make check`, `make live`, any target declared by the selected Intent, or `.codex/hooks/check.sh`, including for early signal; focused non-gate tests remain allowed. A tracked PreToolUse hook blocks the explicit Make, command-list, and Stop-script forms before Bash dispatch. This bounded guard deliberately does not inspect indirect execution through non-gate Make dependencies, wrappers, shell expansion, `sh -c`, or later stdin; the Developer contract still forbids those routes.
 
 Every scenario's `verified_by` is a YAML list of Make target names, such as `[check]`. The real lifecycle fixture has a bounded check target; it never invokes the full live suite recursively.
 

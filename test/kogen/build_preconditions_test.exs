@@ -131,6 +131,28 @@ defmodule Kogen.BuildPreconditionsTest do
       )
     end
 
+    test "missing verification policy file stops before Developer launch" do
+      run_precondition_case(
+        fn dir ->
+          write_intent(dir, @valid_intent)
+          File.rm!(Path.join(dir, ".codex/hooks/verification_policy.py"))
+          commit_fixture!(dir)
+        end,
+        fn reason -> assert reason =~ "required verification policy file" end
+      )
+    end
+
+    test "missing verification hook registration stops before Developer launch" do
+      run_precondition_case(
+        fn dir ->
+          write_intent(dir, @valid_intent)
+          File.write!(Path.join(dir, ".codex/hooks.json"), ~s({"hooks":{"Stop":[]}}))
+          commit_fixture!(dir)
+        end,
+        fn reason -> assert reason =~ "verification-policy hook is not registered" end
+      )
+    end
+
     for {target, expected} <- [
           {"not-declared", "undeclared make target"},
           {"--eval=bad", "refused unsafe target name"}
@@ -277,6 +299,7 @@ defmodule Kogen.BuildPreconditionsTest do
 
   defp tmp_repo! do
     dir = Path.join(System.tmp_dir!(), "kogen-precond-#{System.unique_integer([:positive])}")
+    project_root = Path.expand("../..", __DIR__)
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf(dir) end)
 
@@ -286,6 +309,18 @@ defmodule Kogen.BuildPreconditionsTest do
     File.write!(Path.join(dir, ".gitignore"), @gitignore)
     File.mkdir_p!(Path.join(dir, ".kogen"))
     File.write!(Path.join(dir, ".kogen/config.yaml"), @config_yaml)
+    File.mkdir_p!(Path.join(dir, ".codex/hooks"))
+    File.cp!(Path.join(project_root, ".codex/hooks.json"), Path.join(dir, ".codex/hooks.json"))
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/verification_policy.py"),
+      Path.join(dir, ".codex/hooks/verification_policy.py")
+    )
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/check.sh"),
+      Path.join(dir, ".codex/hooks/check.sh")
+    )
 
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
 

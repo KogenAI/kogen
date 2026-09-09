@@ -94,6 +94,12 @@ defmodule Kogen.LiveTest do
     )
 
     File.cp!(Path.join(project_root, ".codex/hooks/check.sh"), Path.join(hooks_dir, "check.sh"))
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/verification_policy.py"),
+      Path.join(hooks_dir, "verification_policy.py")
+    )
+
     File.chmod!(Path.join(hooks_dir, "check.sh"), 0o755)
     File.write!(Path.join(fixture, "Makefile"), ".PHONY: check\ncheck:\n\t@true\n")
     File.write!(Path.join(fixture, "README.md"), "Live primitive fixture\n")

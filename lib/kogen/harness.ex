@@ -24,13 +24,13 @@ defmodule Kogen.Harness do
   ]
 
   @doc "Launches a fresh Developer turn with the prompt on stdin."
-  def launch_developer(prompt, model, effort) do
-    run_turn(developer_args(model, effort), prompt)
+  def launch_developer(prompt, model, effort, policy_environment \\ []) do
+    run_turn(developer_args(model, effort), prompt, policy_environment)
   end
 
   @doc "Resumes the exact Developer thread with the prompt on stdin."
-  def resume_developer(session_id, text, model, effort) do
-    run_turn(developer_args(model, effort, session_id), text)
+  def resume_developer(session_id, text, model, effort, policy_environment \\ []) do
+    run_turn(developer_args(model, effort, session_id), text, policy_environment)
   end
 
   @doc false
@@ -150,9 +150,14 @@ defmodule Kogen.Harness do
       else: System.find_executable(name) || raise("harness executable not found on PATH: #{name}")
   end
 
-  defp run_turn(args, stdin_text) do
+  defp run_turn(args, stdin_text, policy_environment) do
     {output, exit_code} =
-      run_with_stdin(resolve_executable(), args, stdin_text, [{"KOGEN_ROLE", "developer"}])
+      run_with_stdin(
+        resolve_executable(),
+        args,
+        stdin_text,
+        [{"KOGEN_ROLE", "developer"} | policy_environment]
+      )
 
     parse_turn(decode_events(output), exit_code, output)
   end

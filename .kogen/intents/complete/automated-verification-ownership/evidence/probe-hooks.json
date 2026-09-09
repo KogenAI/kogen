@@ -1,0 +1,1 @@
+{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 /var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-gate-probe-17xc9k58/.codex/hooks/block.py"}]}]}}

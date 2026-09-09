@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"01a085a4-cdf1-7252-80c3-9be9340c9fcb"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"item.completed","item":{"id":"item_1","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"I’ll run the requested check once and report its result."}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"Tool blocked before execution: “Kogen probe: gate command blocked before execution. Do not retry.”"}}
+{"type":"turn.completed","usage":{"input_tokens":36597,"cached_input_tokens":24064,"cache_write_input_tokens":0,"output_tokens":163,"reasoning_output_tokens":31}}

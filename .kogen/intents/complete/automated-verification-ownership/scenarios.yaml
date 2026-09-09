@@ -1,0 +1,63 @@
+- id: developer-contract
+  given: "An Approved Intent repeats check and declares live and a custom fixture gate."
+  when: "Kogen launches or resumes its Developer."
+  then: "The prompt forbids check, live, every declared gate and the Stop script, including early signal and delegated execution, and explicitly permits focused non-gate tests."
+  wrong_result: "The early-signal exception survives, a custom gate is omitted, or resume feedback weakens the rule."
+  verified_by: [check]
+  evidence: "Captured launch and resume prompts assert the normalized ban and focused-test permission."
+- id: block-gate-request
+  given: "The approved runtime coverage policy is active for a Developer and its covered helper calls."
+  when: "The fake tool dispatcher attempts each covered prohibited gate or Stop-script invocation."
+  then: "The production policy denies before dispatch; no gate marker or passing record is created; feedback identifies automated ownership."
+  wrong_result: "A test only asserts prompt wording, fabricates denial, or discovers execution after its side effect."
+  verified_by: [check]
+  evidence: "Production policy invoked by fake dispatcher; marker negative controls for check, undeclared live, custom declared target and Stop script. Table-driven covered forms from INTENT.md include quoting, options, multiple goals, command lists, path-qualified make and shell-invoked Stop script."
+- id: allow-focused-test
+  given: "A Developer is working under the same runtime policy."
+  when: "It invokes a focused non-gate test command."
+  then: "The command executes successfully without running any verification gate."
+  wrong_result: "All shell or test commands are blocked, or focused tests are counted as gate evidence."
+  verified_by: [check]
+  evidence: "Harmless focused-test marker through the same policy and dispatcher."
+- id: stop-owner
+  given: "A fake Developer has a failing Check followed by a passing Check within one turn."
+  when: "The harness emits both Stop events and outer Build settles."
+  then: "Only Stop runs check twice; non-check gates do not run during blocked Stops; outer Build runs them only after matching Check evidence."
+  wrong_result: "A Developer or outer Build runs check, or expensive gates run at each Stop."
+  verified_by: [check]
+  evidence: "Ordered owner-tagged fixture log and invocation counts; missing or stale Check evidence negative control."
+- id: distinct-outer-gates
+  given: "Multiple scenarios repeat non-check targets in a known first-occurrence order."
+  when: "Check settles successfully."
+  then: "Outer Build runs each distinct non-check target once in that order before Review."
+  wrong_result: "Repeated scenarios duplicate a gate, gates run before settlement, or Review precedes a gate."
+  verified_by: [check]
+  evidence: "Deterministic fixture counters and ordered invocation log."
+- id: gate-failure-and-rework
+  given: "The non-check sequence contains a failing target and later targets."
+  when: "The gate fails, then the resumed Developer reaches fresh passing Check evidence."
+  then: "No later gate or Review runs in the failed attempt; the next attempt starts the full non-check sequence again under the existing resumption budget."
+  wrong_result: "Build skips the failed gate, continues to Review, reuses old Check evidence, or only retries a suffix."
+  verified_by: [check]
+  evidence: "Fake lifecycle with one gate failure and exact-session resume; counters demonstrate order across attempts."
+- id: reviewer-rework
+  given: "All gates pass but the first Reviewer requests rework."
+  when: "The same Developer resumes and reaches another settled Check pass."
+  then: "The runtime policy still applies, Stop owns fresh check and outer Build reruns all distinct non-check gates before the next Review."
+  wrong_result: "Gate restrictions disappear on resume or previous target results are reused."
+  verified_by: [check]
+  evidence: "Fake lifecycle ordered owner log and resumed prohibited-command negative control."
+- id: policy-failure
+  given: "A Developer Bash request reaches the policy with missing or invalid required policy data or command input."
+  when: "The production policy evaluates the request."
+  then: "It denies before dispatch with a useful diagnostic; absent required hook registration or policy files instead prevent Build from launching the Developer."
+  wrong_result: "An internal policy error allows the command or Build silently launches without the guard."
+  verified_by: [check]
+  evidence: "Malformed-input and policy-error fixtures assert no dispatch marker; preflight fixtures assert no Developer launch."
+- id: allowed-lookalikes
+  given: "The bounded guard is active."
+  when: "A Developer reads a gate name, echoes the literal text make check, or invokes a non-gate Make target."
+  then: "The request is permitted; documentation states that indirect invocation through that non-gate target is outside runtime coverage and remains forbidden by the prompt."
+  wrong_result: "Substring matching blocks harmless text or documentation promises universal indirect-execution prevention."
+  verified_by: [check]
+  evidence: "Production classifier cases for literal text, focused tests and harmless non-gate fixture targets."

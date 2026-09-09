@@ -150,6 +150,12 @@ defmodule Kogen.CoreIntegrityTest do
     hook = Path.join(hook_dir, "check.sh")
     File.cp!(Path.join(project_root, ".codex/hooks/check.sh"), hook)
     File.chmod!(hook, 0o755)
+    File.cp!(Path.join(project_root, ".codex/hooks.json"), Path.join(dir, ".codex/hooks.json"))
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/verification_policy.py"),
+      Path.join(hook_dir, "verification_policy.py")
+    )
 
     prompt_dir = Path.join(dir, "priv/kogen/prompts")
     File.mkdir_p!(prompt_dir)

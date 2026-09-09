@@ -1,0 +1,23 @@
+id: 01a08579-3342-7032-bc4c-77496db9594e
+slug: automated-verification-ownership
+title: Enforce automated ownership of verification gates
+status: approved
+shaped_against:
+  branch: main
+  head: fdfaea11cdb2c1403974dc32737f78a818bf344b
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-09T09:21:48.503Z'
+may_change_guarded_paths:
+  - README.md
+  - priv/kogen/prompts/developer.md
+  - lib/kogen/build.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/check.ex
+  - lib/kogen/verification_policy.ex
+  - .codex/hooks.json
+  - .codex/hooks/**
+  - test/kogen/**
+  - test/support/**

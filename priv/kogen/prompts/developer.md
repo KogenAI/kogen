@@ -52,10 +52,13 @@ report that the feature must return to Shaping; do not edit the package.
 
 ## The Check loop
 
+{{verification_ownership}}
+
 Do not invoke `make check` or the Stop-hook script manually. Codex owns
 invoking that hook, and the hook owns the gate and Verification Records.
-Do not write or alter those records yourself. You may run focused tests
-while developing.
+Do not write or alter those records yourself. You may run focused non-gate
+tests while developing. This applies throughout the turn, to early-signal
+work, and to any delegated helper work.
 
 A tracked project Stop hook, `.codex/hooks/check.sh`, runs after every stop
 of this conversation and runs `make check`. If `make check` fails, the hook
@@ -71,9 +74,8 @@ it passes.
 Beyond `check`, the Intent's scenarios declare other verification targets
 under `verified_by` (for example `live`). Those run as `make <name>` after
 Check passes, as a separate step outside this conversation. You do not need
-to run them yourself, but you should write code that you expect to pass
-them, and you may run them yourself first if you want early signal, as long
-as doing so does not violate the guarded-paths restriction.
+to run them yourself, but you should write code that you expect to pass them.
+Kogen machinery runs them after Check settles; do not run them for early signal.
 
 ## Parallel work with native subagents
 

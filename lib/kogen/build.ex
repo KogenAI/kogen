@@ -5,7 +5,8 @@ defmodule Kogen.Build do
   Rework (at most `outer_resumptions` resumes of the exact Developer
   thread), and one ordinary Git Commit carrying the Intent identity.
   """
-  use Boundary, deps: [Kogen.Intent, Kogen.Harness, Kogen.Check, Kogen.Git]
+  use Boundary,
+    deps: [Kogen.Intent, Kogen.Harness, Kogen.Check, Kogen.Git, Kogen.VerificationPolicy]
 
   @lock_path ".kogen/build.lock"
   @approved_base ".kogen/intents/approved"
@@ -142,14 +143,16 @@ defmodule Kogen.Build do
     with {:ok, config} <- Kogen.Intent.read_config(),
          {:ok, scenarios_text, targets} <- load_scenarios(slug),
          :ok <- Kogen.Check.validate_targets(targets),
+         :ok <- Kogen.VerificationPolicy.preflight(targets),
          :ok <- Kogen.Check.invalidate!() do
-      developer_prompt = render_developer_prompt(intent, scenarios_text)
+      developer_prompt = render_developer_prompt(intent, scenarios_text, targets)
 
       ctx = %{
         slug: slug,
         intent: intent,
         config: config,
         targets: targets,
+        policy_environment: Kogen.VerificationPolicy.environment(targets),
         approved_entries: approved_entries
       }
 
@@ -158,11 +161,13 @@ defmodule Kogen.Build do
   end
 
   defp launch(ctx, developer_prompt) do
-    with :ok <- approved_unchanged(ctx) do
+    with :ok <- approved_unchanged(ctx),
+         :ok <- Kogen.VerificationPolicy.preflight(ctx.targets) do
       case Kogen.Harness.launch_developer(
              developer_prompt,
              ctx.config.developer.model,
-             ctx.config.developer.effort
+             ctx.config.developer.effort,
+             ctx.policy_environment
            ) do
         {:ok, %{session_id: session_id, result: dev_result}} ->
           settle(ctx, session_id, 0, dev_result)
@@ -342,7 +347,8 @@ defmodule Kogen.Build do
     if resumptions_used >= max do
       {:error, "stopped after #{max} outer resumptions without an accepting Review: #{reason}"}
     else
-      with :ok <- Kogen.Check.invalidate!() do
+      with :ok <- Kogen.VerificationPolicy.preflight(ctx.targets),
+           :ok <- Kogen.Check.invalidate!() do
         resume_developer_turn(ctx, session_id, resumptions_used, reason)
       end
     end
@@ -351,9 +357,10 @@ defmodule Kogen.Build do
   defp resume_developer_turn(ctx, session_id, resumptions_used, reason) do
     case Kogen.Harness.resume_developer(
            session_id,
-           reason,
+           resume_feedback(ctx, reason),
            ctx.config.developer.model,
-           ctx.config.developer.effort
+           ctx.config.developer.effort,
+           ctx.policy_environment
          ) do
       {:ok, %{session_id: ^session_id, result: dev_result}} ->
         settle(ctx, session_id, resumptions_used + 1, dev_result)
@@ -560,7 +567,7 @@ defmodule Kogen.Build do
     """
   end
 
-  defp render_developer_prompt(intent, scenarios_text) do
+  defp render_developer_prompt(intent, scenarios_text, targets) do
     intent_yaml = File.read!(Path.join([@approved_base, intent.slug, "intent.yaml"]))
 
     "priv/kogen/prompts/developer.md"
@@ -574,6 +581,14 @@ defmodule Kogen.Build do
       "{{may_change_guarded_paths}}",
       Enum.join(intent.may_change_guarded_paths, ", ")
     )
+    |> String.replace(
+      "{{verification_ownership}}",
+      Kogen.VerificationPolicy.developer_instruction(targets)
+    )
+  end
+
+  defp resume_feedback(ctx, reason) do
+    "#{reason}\n\n#{Kogen.VerificationPolicy.developer_instruction(ctx.targets)}"
   end
 
   defp render_reviewer_prompt(intent, candidate_id) do
