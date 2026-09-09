@@ -25,6 +25,11 @@ defmodule Kogen.LifecycleTest do
     original_parent = git!(dest, ["rev-parse", "HEAD"])
     {intent_id, original_intent, original_scenarios} = shape_and_explicitly_approve!(dest)
 
+    assert_delegation_prompt!(
+      File.read!(Path.join(dest, ".kogen/runtime/shaping-prompt")),
+      :shaping
+    )
+
     assert git!(dest, ["status", "--porcelain"]) == ""
 
     fake_harness = Path.join(dest, "test/support/fake_codex")
@@ -91,6 +96,20 @@ defmodule Kogen.LifecycleTest do
              String.contains?(line, "exec resume ") and
                String.ends_with?(line, " dev-session-1 -")
            end)
+
+    assert Enum.all?(log_lines, fn line ->
+             line =~ "--model gpt-6-astra" and line =~ "model_reasoning_effort=\"low\""
+           end)
+
+    assert_delegation_prompt!(
+      File.read!(Path.join(dest, ".kogen/runtime/developer-launch-prompt")),
+      :developer
+    )
+
+    assert_delegation_prompt!(
+      File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-1")),
+      :reviewer
+    )
 
     check_records =
       (verification_history_archives(raw_log_dir) ++
@@ -187,6 +206,41 @@ defmodule Kogen.LifecycleTest do
   defp git!(dir, args) do
     {out, 0} = System.cmd("git", args, cd: dir)
     String.trim(out)
+  end
+
+  defp assert_delegation_prompt!(prompt, role) do
+    prompt = String.replace(prompt, ~r/\s+/, " ")
+
+    assert prompt =~ "explicitly authorized to proactively use"
+    assert prompt =~ "gpt-5.6-luna` at `low"
+    assert prompt =~ "gpt-5.6-terra` at `medium"
+    assert prompt =~ "gpt-6-astra` at `medium"
+    assert prompt =~ "fresh or minimal context"
+    assert prompt =~ "smallest sufficient task packet"
+    assert prompt =~ "native harness's current capacity"
+    assert prompt =~ "automatic scout-to-worker-to-expert escalation chain"
+    assert prompt =~ "profile unavailable, surface that failure"
+    refute prompt =~ "{{scout_model}}"
+    refute prompt =~ "{{worker_model}}"
+    refute prompt =~ "{{expert_model}}"
+
+    case role do
+      :shaping ->
+        assert prompt =~ "continue accepting the Shaper's steering while helpers work"
+        assert prompt =~ "Draft authorship, and approval handling"
+
+      :developer ->
+        assert prompt =~ "non-overlapping paths within `may_change_guarded_paths`"
+        assert prompt =~ "No helper may edit either of those protected inputs"
+        assert prompt =~ "Wait for every child before Candidate capture"
+        assert prompt =~ "run or delegate a declared verification gate"
+        assert prompt =~ "exact Developer session"
+
+      :reviewer ->
+        assert prompt =~ "Every child is read-only and receives no Developer conversation"
+        assert prompt =~ "Wait for every child before deciding"
+        assert prompt =~ "schema-valid final verdict yourself"
+    end
   end
 
   defp raw_commit_message!(dir) do

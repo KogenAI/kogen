@@ -18,6 +18,11 @@ defmodule Kogen.Intent do
           shaping: role_config(),
           developer: role_config(),
           reviewer: role_config(),
+          helpers: %{
+            scout: role_config(),
+            worker: role_config(),
+            expert: role_config()
+          },
           outer_resumptions: integer()
         }
 
@@ -120,6 +125,7 @@ defmodule Kogen.Intent do
          {:ok, shaping} <- require_role(data, "shaping"),
          {:ok, developer} <- require_role(data, "developer"),
          {:ok, reviewer} <- require_role(data, "reviewer"),
+         {:ok, helpers} <- require_helpers(data),
          {:ok, outer_resumptions} <- require_integer(data, "outer_resumptions") do
       {:ok,
        %{
@@ -127,6 +133,7 @@ defmodule Kogen.Intent do
          shaping: shaping,
          developer: developer,
          reviewer: reviewer,
+         helpers: helpers,
          outer_resumptions: outer_resumptions
        }}
     else
@@ -163,6 +170,18 @@ defmodule Kogen.Intent do
 
       _ ->
         {:error, role}
+    end
+  end
+
+  defp require_helpers(data) do
+    with {:ok, helpers} when is_map(helpers) <- fetch(data, "helpers"),
+         {:ok, scout} <- require_role(helpers, "scout"),
+         {:ok, worker} <- require_role(helpers, "worker"),
+         {:ok, expert} <- require_role(helpers, "expert") do
+      {:ok, %{scout: scout, worker: worker, expert: expert}}
+    else
+      {:error, key} -> {:error, "helpers.#{key}"}
+      _ -> {:error, "helpers"}
     end
   end
 

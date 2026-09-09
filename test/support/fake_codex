@@ -6,7 +6,7 @@ export KOGEN_ROLE=developer
 state_dir=.kogen/runtime; mkdir -p "$state_dir"
 log="$state_dir/fake-harness-log"; dev_state="$state_dir/fake-dev-calls"; rev_state="$state_dir/fake-reviewer-calls"
 printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
-cat >/dev/null || true
+input="$(cat)"
 reviewer=0; resume_id=; output_file=; previous=; is_resume=0; penultimate=; last=
 for a in "$@"; do
  [ "$a" = --output-schema ] && reviewer=1
@@ -19,11 +19,13 @@ done
 [ "$is_resume" -eq 1 ] && resume_id="$penultimate"
 if [ "$reviewer" -eq 1 ]; then
  n=0; [ -f "$rev_state" ] && n="$(cat "$rev_state")"; n=$((n+1)); echo "$n" >"$rev_state"
+ printf '%s' "$input" > "$state_dir/reviewer-prompt-$n"
  if [ "$n" -eq 1 ]; then verdict='{"verdict":"rework","findings":["fake finding: try again"]}'; else verdict='{"verdict":"accept","findings":[]}' ; fi
  printf '%s\n' "$verdict" >"$output_file"
  printf '{"type":"thread.started","thread_id":"reviewer-session-%s"}\n{"type":"turn.completed","thread_id":"reviewer-session-%s"}\n' "$n" "$n"; exit 0
 fi
 if [ -n "$resume_id" ]; then
+ printf '%s' "$input" >> "$state_dir/developer-resume-prompts"
  sid="$resume_id"
  printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
  # The first independent Reviewer asks for this concrete rework. The resumed
@@ -35,6 +37,7 @@ if [ -n "$resume_id" ]; then
  exit 0
 fi
 n=0; [ -f "$dev_state" ] && n="$(cat "$dev_state")"; n=$((n+1)); echo "$n" >"$dev_state"; sid="dev-session-$n"
+printf '%s' "$input" > "$state_dir/developer-launch-prompt"
 printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
 printf 'initial fixture value\n' > dummy.txt
 printf 'defmodule Kogen.FakeBreak do\n  this is not valid elixir(((\nend\n' > lib/kogen_fake_break.ex

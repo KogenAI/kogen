@@ -26,6 +26,10 @@ defmodule Kogen.IntentTest do
   shaping:   {model: fable, effort: medium}
   developer: {model: sonnet, effort: high}
   reviewer:  {model: sonnet, effort: high}
+  helpers:
+    scout:  {model: scout, effort: low}
+    worker: {model: worker, effort: medium}
+    expert: {model: expert, effort: medium}
   outer_resumptions: 2
   """
 
@@ -49,6 +53,11 @@ defmodule Kogen.IntentTest do
                shaping: %{model: shaping_model, effort: shaping_effort},
                developer: %{model: developer_model, effort: developer_effort},
                reviewer: %{model: reviewer_model, effort: reviewer_effort},
+               helpers: %{
+                 scout: %{model: scout_model, effort: scout_effort},
+                 worker: %{model: worker_model, effort: worker_effort},
+                 expert: %{model: expert_model, effort: expert_effort}
+               },
                outer_resumptions: outer_resumptions
              } = config
 
@@ -59,7 +68,23 @@ defmodule Kogen.IntentTest do
       assert is_binary(developer_effort)
       assert is_binary(reviewer_model)
       assert is_binary(reviewer_effort)
+      assert is_binary(scout_model)
+      assert is_binary(scout_effort)
+      assert is_binary(worker_model)
+      assert is_binary(worker_effort)
+      assert is_binary(expert_model)
+      assert is_binary(expert_effort)
       assert is_integer(outer_resumptions)
+
+      assert config.shaping == %{model: "gpt-6-astra", effort: "low"}
+      assert config.developer == %{model: "gpt-6-astra", effort: "low"}
+      assert config.reviewer == %{model: "gpt-6-astra", effort: "low"}
+
+      assert config.helpers == %{
+               scout: %{model: "gpt-5.6-luna", effort: "low"},
+               worker: %{model: "gpt-5.6-terra", effort: "medium"},
+               expert: %{model: "gpt-6-astra", effort: "medium"}
+             }
     end
 
     test "parses an explicit valid config path" do
@@ -72,6 +97,11 @@ defmodule Kogen.IntentTest do
                 shaping: %{model: "fable", effort: "medium"},
                 developer: %{model: "sonnet", effort: "high"},
                 reviewer: %{model: "sonnet", effort: "high"},
+                helpers: %{
+                  scout: %{model: "scout", effort: "low"},
+                  worker: %{model: "worker", effort: "medium"},
+                  expert: %{model: "expert", effort: "medium"}
+                },
                 outer_resumptions: 2
               }} = Intent.read_config(path)
     end
@@ -107,11 +137,46 @@ defmodule Kogen.IntentTest do
         shaping:   {model: fable}
         developer: {model: sonnet, effort: high}
         reviewer:  {model: sonnet, effort: high}
+        helpers:
+          scout:  {model: scout, effort: low}
+          worker: {model: worker, effort: medium}
+          expert: {model: expert, effort: medium}
         outer_resumptions: 2
         """)
 
       assert {:error, "config.yaml missing required key: shaping.effort"} =
                Intent.read_config(path)
+    end
+
+    test "refuses to start when required helper configuration is absent or incomplete" do
+      dir = tmp_dir!()
+
+      missing_helpers =
+        write_yaml!(dir, "missing-helpers.yaml", """
+        harness: codex
+        shaping: {model: fable, effort: low}
+        developer: {model: fable, effort: low}
+        reviewer: {model: fable, effort: low}
+        outer_resumptions: 2
+        """)
+
+      incomplete_helper =
+        write_yaml!(dir, "incomplete-helper.yaml", """
+        harness: codex
+        shaping: {model: fable, effort: low}
+        developer: {model: fable, effort: low}
+        reviewer: {model: fable, effort: low}
+        helpers:
+          scout: {model: scout, effort: low}
+          worker: {model: worker, effort: medium}
+        outer_resumptions: 2
+        """)
+
+      assert {:error, "config.yaml missing required key: helpers"} =
+               Intent.read_config(missing_helpers)
+
+      assert {:error, "config.yaml missing required key: helpers.expert"} =
+               Intent.read_config(incomplete_helper)
     end
 
     test "refuses to start when outer_resumptions is absent" do
@@ -123,6 +188,10 @@ defmodule Kogen.IntentTest do
         shaping:   {model: fable, effort: medium}
         developer: {model: sonnet, effort: high}
         reviewer:  {model: sonnet, effort: high}
+        helpers:
+          scout:  {model: scout, effort: low}
+          worker: {model: worker, effort: medium}
+          expert: {model: expert, effort: medium}
         """)
 
       assert {:error, "config.yaml missing required key: outer_resumptions"} =
@@ -138,6 +207,10 @@ defmodule Kogen.IntentTest do
         shaping:   {model: fable, effort: medium}
         developer: {model: sonnet, effort: high}
         reviewer:  {model: sonnet, effort: high}
+        helpers:
+          scout:  {model: scout, effort: low}
+          worker: {model: worker, effort: medium}
+          expert: {model: expert, effort: medium}
         outer_resumptions: "two"
         """)
 

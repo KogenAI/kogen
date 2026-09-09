@@ -1,0 +1,71 @@
+id: 01a08288-056c-7802-984d-c34d4b618873
+slug: role-aware-native-delegation
+title: Route native delegation by role
+status: draft
+shaped_against:
+  branch: main
+  head: fdfaea11cdb2c1403974dc32737f78a818bf344b
+reshaped_against:
+  branch: main
+  head: 75e11a1044b14c5698b9d939e25ab335637f3b3b
+  date: 2026-09-09
+shaping:
+  harness: codex
+  model: gpt-5.6-sol
+  effort: high
+  started: 2026-09-08T19:39:07Z
+may_change_guarded_paths:
+  - .kogen/config.yaml
+  - README.md
+  - lib/kogen/build.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/intent.ex
+  - lib/mix/tasks/kogen.shape.ex
+  - priv/kogen/prompts/**
+  - test/**
+problem: >-
+  Kogen's Shaping, Developer, and Reviewer prompts only encourage native
+  subagents. Codex may also apply an explicit-request-only delegation policy,
+  so that soft wording does not reliably authorize proactive delegation. Real
+  Kogen sessions consequently perform substantial repository reads and
+  independent work serially in the root context, increasing human wait time,
+  root-context growth, and cost.
+outcome: >-
+  Every Kogen role receives an explicit proactive-delegation contract and
+  configured helper profiles, and routes worthwhile bounded work to the
+  smallest sufficient native helper when doing so improves latency, context
+  isolation, cost, or independent challenge. The root remains accountable for
+  decisions, integration, lifecycle invariants, and final output.
+appetite: >-
+  One Build: update the tracked role and helper model defaults, render a common
+  delegation contract into all three role prompts, add role-specific safety
+  rules, and extend offline configuration, prompt, argument, and lifecycle
+  tests. Keep native Codex orchestration rather than building a Kogen
+  scheduler or a provider-rollout parser.
+model_routing:
+  roots:
+    shaping: {model: gpt-6-astra, effort: low}
+    developer: {model: gpt-6-astra, effort: low}
+    reviewer: {model: gpt-6-astra, effort: low}
+  helpers:
+    scout: {model: gpt-5.6-luna, effort: low}
+    worker: {model: gpt-5.6-terra, effort: medium}
+    expert: {model: gpt-6-astra, effort: medium}
+helper_configuration: required
+delegation_policy:
+  always_spawn: false
+  concurrency: adaptive_to_independent_work_and_harness_capacity
+  nesting: shallow_by_default
+  default_context: fresh
+non_goals:
+  - Build a Kogen-owned scheduler, agent graph, IPC layer, or worktree merger.
+  - Guarantee a fixed number of subagents or delegate trivial work whose startup cost exceeds the work.
+  - Automatically cascade every task through Luna, Terra, and Astra.
+  - Add high, xhigh, max, Ultra, or dynamic effort escalation without evaluation evidence.
+  - Prove absolute monetary savings or latency improvements from one live fixture.
+  - Add or change provider-backed live-test coverage; bounded live verification is a separate Intent.
+  - Parse Codex rollout event schemas or repair the known function_call/custom_tool_call compatibility gap.
+  - Change who owns declared verification gates; automated-verification-ownership already settled that contract.
+  - Change target-failure diagnostics, failed-Build recovery, or optional MCP isolation.
+  - Support non-Codex helper routing in this Intent.
+  - Let helpers approve Intents, run declared verification gates, or issue the Reviewer's final verdict.

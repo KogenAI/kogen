@@ -145,7 +145,7 @@ defmodule Kogen.Build do
          :ok <- Kogen.Check.validate_targets(targets),
          :ok <- Kogen.VerificationPolicy.preflight(targets),
          :ok <- Kogen.Check.invalidate!() do
-      developer_prompt = render_developer_prompt(intent, scenarios_text, targets)
+      developer_prompt = render_developer_prompt(intent, scenarios_text, targets, config)
 
       ctx = %{
         slug: slug,
@@ -290,7 +290,7 @@ defmodule Kogen.Build do
          target_results,
          dev_result
        ) do
-    prompt = render_reviewer_prompt(ctx.intent, candidate_id)
+    prompt = render_reviewer_prompt(ctx.intent, candidate_id, ctx.config)
 
     case Kogen.Harness.launch_reviewer(
            prompt,
@@ -558,7 +558,7 @@ defmodule Kogen.Build do
     """
   end
 
-  defp render_developer_prompt(intent, scenarios_text, targets) do
+  defp render_developer_prompt(intent, scenarios_text, targets, config) do
     intent_yaml = File.read!(Path.join([@approved_base, intent.slug, "intent.yaml"]))
 
     "priv/kogen/prompts/developer.md"
@@ -576,19 +576,31 @@ defmodule Kogen.Build do
       "{{verification_ownership}}",
       Kogen.VerificationPolicy.developer_instruction(targets)
     )
+    |> render_helper_profiles(config)
   end
 
   defp resume_feedback(ctx, reason) do
     "#{reason}\n\n#{Kogen.VerificationPolicy.developer_instruction(ctx.targets)}"
   end
 
-  defp render_reviewer_prompt(intent, candidate_id) do
+  defp render_reviewer_prompt(intent, candidate_id, config) do
     "priv/kogen/prompts/reviewer.md"
     |> File.read!()
     |> String.replace("{{intent_title}}", intent.title)
     |> String.replace("{{intent_id}}", intent.id)
     |> String.replace("{{approved_path}}", Path.join(@approved_base, intent.slug))
     |> String.replace("{{candidate_id}}", candidate_id)
+    |> render_helper_profiles(config)
+  end
+
+  defp render_helper_profiles(prompt, config) do
+    prompt
+    |> String.replace("{{scout_model}}", config.helpers.scout.model)
+    |> String.replace("{{scout_effort}}", config.helpers.scout.effort)
+    |> String.replace("{{worker_model}}", config.helpers.worker.model)
+    |> String.replace("{{worker_effort}}", config.helpers.worker.effort)
+    |> String.replace("{{expert_model}}", config.helpers.expert.model)
+    |> String.replace("{{expert_effort}}", config.helpers.expert.effort)
   end
 
   defp tail_of(str, n) do

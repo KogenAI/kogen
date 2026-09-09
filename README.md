@@ -53,7 +53,15 @@ Every scenario's `verified_by` is a YAML list of Make target names, such as `[ch
 
 ## Configuration and local data
 
-Edit the tracked `.kogen/config.yaml` to select the available model and effort for each role. The defaults are Sol high for shaping and review, and Terra high for development.
+Edit the tracked `.kogen/config.yaml` to select the available model and effort
+for each root role and required native helper profile. The defaults are
+Astra-low for Shaping, Development, and Review; Luna-low for read-only scouts;
+Terra-medium for bounded workers; and Astra-medium for a named consequential
+expert question. Kogen passes each root profile directly to Codex and renders
+the helper profiles into every role prompt; it does not silently inherit or
+substitute a missing or unavailable profile. All three helper profiles are
+required, though a role delegates only when bounded independent work justifies
+the startup and integration cost.
 
 Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
 

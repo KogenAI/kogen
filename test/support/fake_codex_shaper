@@ -3,6 +3,8 @@
 # argument is Kogen's rendered prompt, containing the minted identity.
 set -eu
 prompt=; for arg in "$@"; do prompt="$arg"; done
+mkdir -p .kogen/runtime
+printf '%s' "$prompt" > .kogen/runtime/shaping-prompt
 id="$(printf '%s\n' "$prompt" | sed -n 's/.*Intent id: `\([0-9a-f-]*\)`.*/\1/p' | head -n 1)"
 [ -n "$id" ]
 branch="$(printf '%s\n' "$prompt" | sed -n 's/.*Shaped against branch: `\([^`]*\)`.*/\1/p' | head -n 1)"

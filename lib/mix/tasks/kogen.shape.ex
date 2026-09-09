@@ -39,6 +39,7 @@ defmodule Mix.Tasks.Kogen.Shape do
     |> String.replace("{{id}}", id)
     |> String.replace("{{branch}}", branch)
     |> String.replace("{{head}}", head)
+    |> render_helper_profiles(config)
     |> then(&File.write!(prompt_file, &1))
 
     status = Kogen.Harness.exec_shaper(config.shaping.model, config.shaping.effort, prompt_file)
@@ -49,5 +50,15 @@ defmodule Mix.Tasks.Kogen.Shape do
   defp fail(reason) do
     IO.puts(:stderr, reason)
     System.halt(1)
+  end
+
+  defp render_helper_profiles(prompt, config) do
+    prompt
+    |> String.replace("{{scout_model}}", config.helpers.scout.model)
+    |> String.replace("{{scout_effort}}", config.helpers.scout.effort)
+    |> String.replace("{{worker_model}}", config.helpers.worker.model)
+    |> String.replace("{{worker_effort}}", config.helpers.worker.effort)
+    |> String.replace("{{expert_model}}", config.helpers.expert.model)
+    |> String.replace("{{expert_effort}}", config.helpers.expert.effort)
   end
 end

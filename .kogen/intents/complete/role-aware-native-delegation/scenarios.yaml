@@ -1,0 +1,127 @@
+- id: configured-role-routing
+  given: >-
+    Kogen's tracked configuration with required top-level scout, worker, and
+    expert helper profiles, plus the three role prompt templates
+  when: Kogen launches a Shaping Controller, Developer, or Reviewer
+  then: >-
+    Shaping, Development, and Review use Astra at low effort, and every
+    rendered role prompt explicitly names the Luna-low scout, Terra-medium
+    worker, and Astra-medium expert profiles with concrete routing guidance;
+    Sol-high is no longer an active default; missing helper configuration and
+    unavailable configured models fail visibly rather than silently inheriting
+    or substituting another model
+  wrong_result: >-
+    helper models are hardcoded outside config, prompts merely encourage
+    delegation, children inherit the root, one helper model is used for every
+    task, or documented defaults differ from what Kogen actually requests
+  verified_by: [check]
+  evidence: >-
+    config/parser, launch-argument, and prompt-rendering tests; the shaping
+    package's native-agent probe independently records actual root and child
+    model and effort metadata
+
+- id: responsive-shaping-delegation
+  given: >-
+    a shaping request that requires substantial repository investigation or
+    has independent questions that can be researched concurrently
+  when: the Shaping Controller has enough information to expose a useful human decision
+  then: >-
+    it asks the Shaper that question before waiting, delegates bounded research
+    with fresh or minimal context, continues accepting steering while helpers
+    work, consumes concise evidence summaries instead of repeating bulk reads,
+    and retains all product decisions, Draft authorship, and approval handling
+  wrong_result: >-
+    the Shaper watches minutes of serial root inspection, must explicitly nudge
+    the controller to spawn, delegated source is reread into the root without a
+    disputed finding, or a helper silently decides scope or approval
+  verified_by: [check]
+  evidence: >-
+    shaping prompt contract tests require early human questions, concurrent
+    bounded delegation, continued steering, concise returns, and root-owned
+    decisions; prior session forensics and native-agent probes remain attached
+
+- id: owned-developer-delegation
+  given: >-
+    an Approved Intent with substantial independent reconnaissance, test, or
+    implementation slices inside its guarded paths
+  when: the Astra-low Developer delegates work
+  then: >-
+    Luna-low scouts handle clear read-only discovery, Terra-medium workers may
+    edit only explicitly assigned non-overlapping paths, and an Astra-medium
+    expert is reserved for a separate demanding question; the root owns the plan and
+    integration, waits for every child, reviews their diffs and evidence, never
+    delegates or manually runs a declared verification gate, and remains the
+    exact session resumed for rework
+  wrong_result: >-
+    helpers receive full history by default, edit overlapping or unguarded
+    paths, alter the Approved package or Verification Records, run any declared
+    verification gate, remain active after candidate capture, or replace the
+    root Developer session during rework
+  verified_by: [check]
+  evidence: >-
+    Developer prompt-rendering and fake-harness lifecycle tests cover assignment,
+    guarded-path ownership, completion, root integration, verification policy,
+    and exact-session resume; the attached disposable-clone probe demonstrates
+    actual writable-child and root-only Stop behavior
+
+- id: independent-review-delegation
+  given: >-
+    a fixed Candidate and Approved Intent with independent scenarios or review
+    questions
+  when: the fresh Astra-low Reviewer delegates inspection
+  then: >-
+    Luna-low scouts gather factual diff/test/evidence inventories, Terra-medium
+    helpers perform bounded semantic scenario traces, and an Astra-medium
+    expert is used only for a separate demanding risk question; every child is
+    explicitly read-only, receives no Developer conversation, finishes before
+    the root decides, and only the root emits the schema-valid verdict
+  wrong_result: >-
+    a helper mutates the Candidate, trusts Developer claims, sees Developer
+    conversation history, returns the final verdict in place of the root, or
+    the root serially repeats all independent review work without delegation
+  verified_by: [check]
+  evidence: >-
+    Reviewer prompt-rendering plus existing fake-harness mutation, session,
+    verdict-schema, and unchanged-Candidate tests
+
+- id: consequential-expert-routing
+  given: >-
+    a Kogen root identifies a named difficult uncertainty whose answer could
+    materially change scope, architecture, correctness, or acceptance
+  when: >-
+    the uncertainty can be investigated in separate context or benefits from
+    an independent challenge rather than remaining inseparable from the root's
+    current synthesis
+  then: >-
+    the root directly assigns one bounded question to the Astra-medium expert,
+    requiring a concise conclusion, evidence references, uncertainty, and any
+    remaining human decision; it does not use the expert for routine second
+    opinions or automatically escalate through Luna and Terra first
+  wrong_result: >-
+    the expert is spawned for every role, asked to review everything, repeats
+    the root's work without independence, or is reached through an automatic
+    Luna-to-Terra-to-Astra retry ladder
+  verified_by: [check]
+  evidence: >-
+    shared and role-specific prompt-contract tests plus the attached
+    Astra-medium independent routing review and native profile probe
+
+- id: economical-delegation-threshold
+  given: a task that is trivial, inseparable from current root reasoning, or unsafe to isolate
+  when: a Kogen role evaluates whether to delegate it
+  then: >-
+    the root keeps the task when helper startup, duplicated instructions, or
+    integration risk would outweigh useful latency, context, cost, or quality
+    gains; otherwise it uses the smallest sufficient set of helpers to cover
+    the worthwhile independent workstreams within the native harness's current
+    capacity, gives each the smallest sufficient task packet, keeps nesting
+    shallow unless a delegated task itself genuinely splits, and never creates
+    an automatic model-escalation chain
+  wrong_result: >-
+    an arbitrary fixed cap serializes valuable independent work, every lookup
+    spawns a child, helpers speculatively fan out, full conversation history is
+    copied routinely, or model routing becomes an unbounded cascade
+  verified_by: [check]
+  evidence: >-
+    prompt contract tests cover the threshold, adaptive concurrency, shallow
+    nesting, minimal context, and no-cascade rules

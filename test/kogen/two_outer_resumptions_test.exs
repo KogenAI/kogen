@@ -38,6 +38,10 @@ defmodule Kogen.TwoOuterResumptionsTest do
   shaping:   {model: fake, effort: low}
   developer: {model: fake, effort: low}
   reviewer:  {model: fake, effort: low}
+  helpers:
+    scout:  {model: fake, effort: low}
+    worker: {model: fake, effort: medium}
+    expert: {model: fake, effort: medium}
   outer_resumptions: 2
   """
 

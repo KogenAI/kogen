@@ -67,9 +67,12 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     assert denied =~ "focused non-gate tests"
     refute File.exists?(Path.join(dir, ".kogen/runtime/prohibited-dispatch-marker"))
 
+    archive_paths =
+      Path.wildcard(Path.join(dir, ".kogen/runtime/archives/verification-history-*.jsonl"))
+      |> Enum.sort_by(&history_sequence!/1)
+
     history =
-      (Path.wildcard(Path.join(dir, ".kogen/runtime/archives/verification-history-*.jsonl")) ++
-         [Path.join(dir, ".kogen/runtime/verification-history.jsonl")])
+      (archive_paths ++ [Path.join(dir, ".kogen/runtime/verification-history.jsonl")])
       |> Enum.filter(&File.regular?/1)
       |> Enum.flat_map(fn path ->
         path
@@ -79,6 +82,15 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
 
     assert Enum.map(history, & &1["status"]) == ["failed", "passed", "passed", "passed"]
     refute Enum.any?(history, &(&1["candidate"] == "stale-candidate"))
+  end
+
+  defp history_sequence!(path) do
+    [sequence] =
+      Regex.run(~r/verification-history-\d+-(\d+)\.jsonl$/, Path.basename(path),
+        capture: :all_but_first
+      )
+
+    String.to_integer(sequence)
   end
 
   defp fixture! do
@@ -157,6 +169,10 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     shaping:   {model: fake, effort: low}
     developer: {model: fake, effort: low}
     reviewer:  {model: fake, effort: low}
+    helpers:
+      scout:  {model: fake, effort: low}
+      worker: {model: fake, effort: medium}
+      expert: {model: fake, effort: medium}
     outer_resumptions: 4
     """
   end

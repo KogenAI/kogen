@@ -1,0 +1,43 @@
+- id: openai-model-selection
+  title: Choosing Astra, Sol, Terra, and Luna
+  url: https://learn.chatgpt.com/docs/models#choosing-sol-terra-and-luna
+  relevance: Official model roles and reasoning-effort guidance for Codex and ChatGPT Work.
+- id: openai-agent-model-choice
+  title: Building agents - choosing the right model
+  url: https://developers.openai.com/tracks/building-agents#how-to-choose
+  relevance: Official recommendation to use Terra for conversational interfaces and delegate demanding work to Astra.
+- id: openai-astra
+  title: GPT-6 Astra
+  url: https://developers.openai.com/api/docs/models/gpt-6-astra
+  relevance: Astra is the most capable model for the hardest end-to-end workflows and supports low effort.
+- id: openai-sol
+  title: GPT-5.6 Sol
+  url: https://developers.openai.com/api/docs/models/gpt-5.6-sol
+  relevance: Sol is a GPT-5.6 flagship for complex professional work but is not retained in Kogen's proposed defaults.
+- id: openai-terra
+  title: GPT-5.6 Terra
+  url: https://developers.openai.com/api/docs/models/gpt-5.6-terra
+  relevance: Terra balances intelligence and cost for everyday reasoning and tool use.
+- id: openai-luna
+  title: GPT-5.6 Luna
+  url: https://developers.openai.com/api/docs/models/gpt-5.6-luna
+  relevance: Luna is optimized for clear, repeatable, cost-sensitive workloads.
+- id: openai-subagent-prompting
+  title: Subagent delegation guidance
+  url: https://developers.openai.com/api/docs/guides/latest-model#subagent-delegation
+  relevance: Official guidance says the harness should specify when and how much to delegate.
+- id: employee-astra-effort-guidance
+  title: OpenAI employee guidance supplied by the Shaper
+  type: conversation-image
+  relevance: >-
+    Tibo states that Astra low performs better than Sol high and recommends
+    moving Sol-high workloads to Astra low or medium; treated as Shaper-supplied
+    provenance rather than an official documentation claim.
+- id: automated-verification-ownership
+  title: Enforce automated ownership of verification gates
+  type: completed-intent
+  path: .kogen/intents/complete/automated-verification-ownership/
+  commit: 17f2f7e2
+  relevance: >-
+    Owns the Developer/helper gate prohibition, Stop-hook check ownership, and
+    outer-Build non-check target execution that this Intent must preserve.
