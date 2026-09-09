@@ -1,0 +1,43 @@
+id: 01a08621-f017-7a59-9655-f571192ef9b8
+slug: remove-commit-prose
+title: Remove redundant commit prose
+status: draft
+shaped_against:
+  branch: main
+  head: 17f2f7e2098990934688a9f217fc1dc671190c3f
+shaping:
+  harness: codex
+  model: gpt-5.6-sol
+  effort: high
+  started: 2026-09-09T15:26:06+03:00
+may_change_guarded_paths:
+  - lib/kogen/build.ex
+  - lib/kogen/git.ex
+  - test/kogen/**
+problem: >-
+  Build duplicates Candidate, Developer session, Reviewer verdict, and evidence
+  location details into every generated Git commit message even though the
+  Complete Intent shipped in that same commit already owns the detailed Build
+  evidence. The duplication makes ordinary project history noisy without
+  adding authoritative information.
+outcome: >-
+  Every future commit published by Kogen contains exactly the Intent title as
+  its subject and the two required Intent identity trailers, with no generated
+  prose between them. Detailed Build provenance remains in the Complete
+  Intent's evidence files shipped in the commit.
+appetite: >-
+  One small Build: remove the Build-generated commit body, make the staged
+  commit path render only the subject and required trailers, and update focused
+  offline and lifecycle assertions for the exact message and retained Complete
+  evidence.
+commit_message:
+  subject: intent title
+  body: none
+  required_trailers:
+    - Kogen-Intent-ID
+    - Kogen-Intent
+non_goals:
+  - Rewrite, amend, or otherwise change any existing commit, including the shaped-against commit.
+  - Remove, rename, or make optional either required Intent identity trailer.
+  - Reduce or relocate the detailed provenance written into the Complete Intent evidence.
+  - Change candidate identity, verification, review, rollback, or publication behavior beyond commit-message rendering.

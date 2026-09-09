@@ -1,0 +1,36 @@
+- id: concise-future-commit
+  given: >-
+    An Approved Intent with a title and identity is accepted after Kogen's
+    existing Build, verification, and Review lifecycle.
+  when: Kogen publishes the accepted Candidate as a new Git commit.
+  then: >-
+    The raw commit message contains the Intent title as its subject, followed
+    by exactly the required Kogen-Intent-ID and Kogen-Intent trailers, with no
+    generated prose or other provenance paragraph; the new commit descends
+    from the existing HEAD without rewriting earlier commits.
+  wrong_result: >-
+    Kogen writes Built by Kogen, Candidate, session, verdict, evidence-location,
+    or similar generated prose into the message; drops or changes a required
+    trailer; or amends existing history.
+  verified_by: [check]
+  evidence: >-
+    Commit publication tests in a disposable repository assert the exact raw
+    message, parse both required trailers, and assert that the original parent
+    commit remains unchanged.
+
+- id: complete-evidence-remains-authoritative
+  given: >-
+    An accepted Build has Candidate, Developer, Reviewer, Check, declared-target,
+    and resumption details available for completion evidence.
+  when: Kogen writes the Complete Intent and publishes the concise commit.
+  then: >-
+    The Complete Intent evidence retains those detailed provenance fields while
+    the Git commit message contains only the subject and required identity
+    trailers.
+  wrong_result: >-
+    Removing commit prose also removes detailed evidence, or provenance remains
+    duplicated between the Complete Intent and the commit message.
+  verified_by: [check]
+  evidence: >-
+    The commit provenance lifecycle test inspects both the exact Git message
+    and the generated Complete evidence file from the same Build.

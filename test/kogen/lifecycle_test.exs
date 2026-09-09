@@ -22,6 +22,7 @@ defmodule Kogen.LifecycleTest do
     on_exit(fn -> File.rm_rf(dest) end)
 
     setup_clone(src, dest)
+    original_parent = git!(dest, ["rev-parse", "HEAD"])
     {intent_id, original_intent, original_scenarios} = shape_and_explicitly_approve!(dest)
 
     assert git!(dest, ["status", "--porcelain"]) == ""
@@ -63,6 +64,11 @@ defmodule Kogen.LifecycleTest do
 
     subject = git!(dest, ["log", "-1", "--format=%s"])
     assert subject == "Fake shaped intent"
+
+    assert raw_commit_message!(dest) ==
+             "Fake shaped intent\n\nKogen-Intent-ID: #{intent_id}\nKogen-Intent: #{@slug}\n"
+
+    assert git!(dest, ["rev-parse", "HEAD^"]) == original_parent
 
     {trailer_out, 0} =
       System.cmd("sh", ["-c", "git log -1 --format=%B | git interpret-trailers --parse"],
@@ -181,6 +187,12 @@ defmodule Kogen.LifecycleTest do
   defp git!(dir, args) do
     {out, 0} = System.cmd("git", args, cd: dir)
     String.trim(out)
+  end
+
+  defp raw_commit_message!(dir) do
+    {commit, 0} = System.cmd("git", ["cat-file", "commit", "HEAD"], cd: dir)
+    [_headers, message] = String.split(commit, "\n\n", parts: 2)
+    message
   end
 
   defp verification_history_archives(raw_log_dir) do

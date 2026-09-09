@@ -82,6 +82,38 @@ defmodule Kogen.GitTest do
     end
   end
 
+  describe "commit_staged/2" do
+    test "publishes only the subject and supplied trailers without rewriting its parent" do
+      dir = tmp_repo!()
+
+      File.cd!(dir, fn ->
+        parent = git!(["rev-parse", "HEAD"])
+        File.write!("payload.txt", "candidate content\n")
+        assert {_, 0} = System.cmd("git", ["add", "-A"])
+
+        trailers = [
+          {"Kogen-Intent-ID", "01960000-0000-7000-8000-00000000feed"},
+          {"Kogen-Intent", "sample-slug"}
+        ]
+
+        assert {:ok, _head_sha} = Git.commit_staged("A sample subject line", trailers)
+
+        message = raw_commit_message!()
+
+        assert message ==
+                 "A sample subject line\n\nKogen-Intent-ID: 01960000-0000-7000-8000-00000000feed\nKogen-Intent: sample-slug\n"
+
+        assert parsed_trailers!(message) ==
+                 [
+                   "Kogen-Intent-ID: 01960000-0000-7000-8000-00000000feed",
+                   "Kogen-Intent: sample-slug"
+                 ]
+
+        assert git!(["rev-parse", "HEAD^"]) == parent
+      end)
+    end
+  end
+
   describe "assert_commit_diff_only/2" do
     test "returns :ok when the only diff between the candidate tree and HEAD is under the allowed prefix" do
       dir = tmp_repo!()
@@ -149,5 +181,23 @@ defmodule Kogen.GitTest do
   defp git!(args) do
     {out, 0} = System.cmd("git", args)
     String.trim(out)
+  end
+
+  defp raw_commit_message! do
+    {commit, 0} = System.cmd("git", ["cat-file", "commit", "HEAD"])
+    [_headers, message] = String.split(commit, "\n\n", parts: 2)
+    message
+  end
+
+  defp parsed_trailers!(message) do
+    path = Path.join(System.tmp_dir!(), "kogen-trailers-#{System.unique_integer([:positive])}")
+
+    try do
+      File.write!(path, message)
+      {out, 0} = System.cmd("git", ["interpret-trailers", "--parse", path])
+      String.split(out, "\n", trim: true)
+    after
+      File.rm(path)
+    end
   end
 end

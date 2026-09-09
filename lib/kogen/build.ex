@@ -442,13 +442,12 @@ defmodule Kogen.Build do
     File.rm_rf!(approved_dir)
 
     trailers = [{"Kogen-Intent-ID", intent.id}, {"Kogen-Intent", slug}]
-    body = commit_body(candidate_id, session_id, verdict, evidence_name)
 
     allowed_paths = [complete_dir <> "/", approved_dir <> "/"]
 
     case Kogen.Git.stage_and_verify_candidate(candidate_id, allowed_paths) do
       :ok ->
-        case Kogen.Git.commit_staged(intent.title, body, trailers) do
+        case Kogen.Git.commit_staged(intent.title, trailers) do
           {:ok, _head} ->
             verify_committed_candidate(candidate_id, allowed_paths)
 
@@ -486,14 +485,6 @@ defmodule Kogen.Build do
       name = if index == 0, do: "evidence.md", else: "build-evidence-#{index}.md"
       if not File.exists?(Path.join(dir, name)), do: name
     end)
-  end
-
-  # This path always follows a Developer launched by Kogen, even in a new repository.
-  defp commit_body(candidate_id, session_id, verdict, evidence_name) do
-    "Built by Kogen. Candidate #{candidate_id}, Developer session #{session_id}, " <>
-      "Reviewer verdict #{verdict.verdict} (session #{verdict.session_id}). " <>
-      "See #{evidence_name} in this Intent's own directory for the Check result " <>
-      "and declared-target outcomes."
   end
 
   defp evidence_markdown(

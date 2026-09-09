@@ -103,12 +103,17 @@ defmodule Kogen.Git do
     end
   end
 
-  @doc "Commits an index already staged and verified by `stage_and_verify_candidate/2`."
-  @spec commit_staged(String.t(), String.t(), [{String.t(), String.t()}]) ::
+  @doc """
+  Commits an index already staged and verified by `stage_and_verify_candidate/2`.
+
+  The message contains only the subject and its trailers; publication evidence
+  belongs in the Complete Intent rather than a generated commit body.
+  """
+  @spec commit_staged(String.t(), [{String.t(), String.t()}]) ::
           {:ok, String.t()} | {:error, String.t()}
-  def commit_staged(subject, body, trailers) do
+  def commit_staged(subject, trailers) do
     trailer_lines = Enum.map_join(trailers, "\n", fn {k, v} -> "#{k}: #{v}" end)
-    message = Enum.join([subject, "", body, "", trailer_lines], "\n")
+    message = Enum.join([subject, trailer_lines], "\n\n")
     tmp_dir = tmp_directory!("commit-msg")
     msg_file = Path.join(tmp_dir, "message")
 

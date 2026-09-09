@@ -226,8 +226,9 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     assert trailer_out =~ "Kogen-Intent-ID: #{minted_uuid}"
     assert trailer_out =~ "Kogen-Intent: #{@slug}"
-    assert git_log =~ "Built by Kogen"
-    refute git_log =~ "manual Developer invocation"
+
+    assert git!(fixture, ["log", "-1", "--format=%B"]) ==
+             "Shape to build probe\n\nKogen-Intent-ID: #{minted_uuid}\nKogen-Intent: #{@slug}"
 
     File.rm_rf!(fixture)
   end

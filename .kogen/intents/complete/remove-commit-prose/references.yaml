@@ -1,0 +1,10 @@
+- kind: accepted-decision
+  path: .kogen/intents/complete/bootstrap-core/INTENT.md
+  note: >-
+    Requires the Intent title and identity trailers on the commit and assigns
+    detailed completion provenance to the Complete Intent evidence.
+- kind: introducing-commit
+  commit: fdfaea11cdb2c1403974dc32737f78a818bf344b
+  note: >-
+    Introduced the unrequested commit_body prose and the tests that later made
+    it visible in the first Kogen-built project commit.
