@@ -32,8 +32,15 @@ defmodule Kogen.LiveReworkAuditTest do
 
     File.write!(
       Path.join(logs, "reviewer-verdicts.jsonl"),
-      receipt!("accept", [], "review-2") <>
-        "\n" <> receipt!("rework", ["reviewer-notes.md is missing"], "review-1") <> "\n"
+      receipt!("accept", [], "review-2", "final-tree", "attempt-1") <>
+        "\n" <>
+        receipt!(
+          "rework",
+          ["reviewer-notes.md is missing"],
+          "review-1",
+          "final-tree",
+          "attempt-1"
+        ) <> "\n"
     )
 
     assert_raise ArgumentError, ~r/first Reviewer receipt must be rework/, fn ->
@@ -184,8 +191,14 @@ defmodule Kogen.LiveReworkAuditTest do
 
     File.write!(
       Path.join(logs, "reviewer-verdicts.jsonl"),
-      receipt!("rework", ["reviewer-notes.md is missing"], "review-1") <>
-        "\n" <> receipt!("accept", [], "review-2") <> "\n"
+      receipt!(
+        "rework",
+        ["reviewer-notes.md is missing"],
+        "review-1",
+        initial_candidate,
+        "attempt-1"
+      ) <>
+        "\n" <> receipt!("accept", [], "review-2", final_candidate, "attempt-2") <> "\n"
     )
 
     File.write!(
@@ -227,8 +240,37 @@ defmodule Kogen.LiveReworkAuditTest do
         "finished_at" => finished_at
       })
 
-  defp receipt!(verdict, findings, session),
-    do: Jason.encode!(%{"verdict" => verdict, "findings" => findings, "session_id" => session})
+  defp receipt!(verdict, findings, session, candidate, attempt_token) do
+    scenario_status = if verdict == "accept", do: "satisfied", else: "needs_rework"
+
+    Jason.encode!(%{
+      "candidate_id" => candidate,
+      "attempt_token" => attempt_token,
+      "verdict" => verdict,
+      "session_id" => session,
+      "scenarios" => [
+        %{
+          "id" => "reviewer-directed-rework",
+          "status" => scenario_status,
+          "reason" =>
+            if(verdict == "accept",
+              do: "final bytes include reviewer-notes.md",
+              else: "reviewer-notes.md is missing"
+            ),
+          "evidence" => [%{"path" => "reviewer-notes.md", "locator" => "entire file"}]
+        }
+      ],
+      "dispositions" => [],
+      "findings" =>
+        Enum.map(findings, fn finding ->
+          %{
+            "scenario_ids" => ["reviewer-directed-rework"],
+            "reason" => finding,
+            "evidence" => [%{"path" => "reviewer-notes.md", "locator" => "missing"}]
+          }
+        end)
+    })
+  end
 
   defp git_baseline!(root) do
     env = [

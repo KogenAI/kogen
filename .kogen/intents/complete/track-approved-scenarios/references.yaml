@@ -1,0 +1,25 @@
+- kind: motivating-parked-intent
+  path: .kogen/intents/drafts/external-repository-cli/
+  relevance: Read-only complete outcome and two failure reviews; remains parked and unchanged.
+- kind: failed-candidate
+  commit: 27e46532f2703aef470f076637de2e5d754791e4
+  relevance: First preserved Candidate incorrectly keeps configuration as immutable integration.
+- kind: failed-candidate
+  commit: 44abfb6946605b7aa3585171d6d5e8a3db5cfa13
+  relevance: Second preserved Candidate has copied-source live proof, incomplete setting assertions, and status-only
+    readiness.
+- kind: baseline-intent
+  path: .kogen/intents/complete/role-aware-native-delegation/
+  relevance: Committed routing/delegation baseline; preserve its actual implementation and policy.
+- kind: baseline-intent
+  path: .kogen/intents/complete/automated-verification-ownership/
+  relevance: Owns Stop/Build gate execution and existing bounded rework behavior.
+- kind: baseline-intent
+  path: .kogen/intents/complete/fast-reliable-offline-checks/
+  relevance: Owns isolated async fixture conventions and complete offline/cold verification.
+- kind: baseline-intent
+  path: .kogen/intents/complete/continue-shaping-drafts/
+  relevance: Current fresh-session continuation and original-provenance preservation must remain intact.
+- kind: shaping-evidence
+  path: evidence/shaping-investigation.md
+  relevance: Current lifecycle trace, real Git probe, delegation findings, and scope provenance.

@@ -122,6 +122,12 @@ defmodule Kogen.ApprovedMutationTest do
 
     fake_harness = Path.join(dest, ".kogen/runtime/provider")
     File.mkdir_p!(Path.dirname(fake_harness))
+
+    File.cp!(
+      Path.join(@project_root, "test/support/scenario_response.py"),
+      Path.join(Path.dirname(fake_harness), "scenario_response.py")
+    )
+
     provider = File.read!(Path.join(@project_root, "test/support/fake_codex_simple_accept"))
 
     provider =

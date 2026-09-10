@@ -71,10 +71,16 @@ defmodule Kogen.LiveShapeToBuildTest do
   - id: reviewer-directed-rework
     given: an isolated provider-backed fixture with no dummy.txt or reviewer-notes.md
     when: the first Developer turn implements this test protocol
-    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation; the fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, and resume sequence from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
+    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation. For the first controlled phase, submit the full structured handoff with status ready for the mandated independent Review, explicitly disclosing the intentionally absent reviewer-notes.md in the claim and referencing existing files; do not fabricate the missing file or gate receipts. The fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, and resume sequence from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
     wrong_result: the first Reviewer accepts without inspecting the intentionally deferred companion file, a replacement Developer session performs rework, or the final Candidate lacks the companion file
     verified_by: [check]
     evidence: provider-backed Build-only fixture preserves both structured reviewer receipts, Developer raw streams, Stop records, and the resulting Commit
+  """
+
+  @review_rework_risks """
+  - id: seeded-fixture-is-not-user-ownership
+    scenario_ids: [reviewer-directed-rework]
+    description: The fixture seed establishes a reproducible starting state only; the Developer must distinguish that seed from user-owned acceptance evidence in its structured handoff.
   """
 
   test "real Shape continues a saved draft in a fresh session, then approval and Build complete the same Intent" do
@@ -180,8 +186,11 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     assert minted_uuid, "expected a freshly minted UUIDv7 printed in the transcript"
 
+    # Retain the shaped contract even when a schema assertion fails before Build.
+    File.cp_r!(approved_dir, Path.join(log_dir, "approved-package"))
     approved_intent_content = File.read!(approved_intent_path)
     approved_scenarios_content = File.read!(Path.join(approved_dir, "scenarios.yaml"))
+    {:ok, approved_risks} = YamlElixir.read_from_file(Path.join(approved_dir, "risks.yaml"))
 
     assert approved_intent_content =~ minted_uuid,
            "the real minted identity (#{minted_uuid}) must be preserved into the Approved intent.yaml"
@@ -192,6 +201,13 @@ defmodule Kogen.LiveShapeToBuildTest do
     # in-turn hook correction.
     refute approved_intent_content =~ "shape2build-k4q9z"
     refute approved_scenarios_content =~ "shape2build-k4q9z"
+
+    assert [%{"scenario_ids" => [scenario_id], "ownership" => [ownership]}] = approved_risks
+    assert is_binary(scenario_id) and scenario_id != ""
+    assert ownership["paths"] =~ "dummy.txt"
+    assert ownership["owner_after_creation"] != ownership["owner_during_operation"]
+    assert ownership["owner_after_creation"] =~ ~r/fixture|seed/i
+    assert ownership["owner_during_operation"] =~ ~r/human|user/i
 
     # Real public Build, against the exact package the real Shaping Controller wrote
     # and the real scripted approval moved -- not a hand-written stand-in.
@@ -221,6 +237,8 @@ defmodule Kogen.LiveShapeToBuildTest do
     if File.exists?(evidence_path) do
       File.cp!(evidence_path, Path.join(log_dir, "evidence.md"))
     end
+
+    preserve_tracking(fixture, complete_dir, log_dir)
 
     {git_log, _} =
       System.cmd("git", ["log", "--format=%H%n%B", "-3"], cd: fixture, stderr_to_stdout: true)
@@ -328,6 +346,7 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     preserve_if_present(history_path, Path.join(log_dir, "verification-history.jsonl"))
     preserve_if_present(evidence_path, Path.join(log_dir, "evidence.md"))
+    preserve_tracking(fixture, complete_dir, log_dir)
 
     assert build_exit == 0, """
     real reviewer-rework Build failed (exit #{build_exit}); no provider result is inferred.
@@ -414,6 +433,19 @@ defmodule Kogen.LiveShapeToBuildTest do
     File.mkdir_p!(dir)
     File.write!(Path.join(dir, "intent.yaml"), @review_rework_intent)
     File.write!(Path.join(dir, "scenarios.yaml"), @review_rework_scenarios)
+    File.write!(Path.join(dir, "risks.yaml"), @review_rework_risks)
+  end
+
+  defp preserve_tracking(fixture, complete_dir, log_dir) do
+    for path <- Path.wildcard(Path.join(complete_dir, "scenario-tracking*.json")) do
+      File.cp!(path, Path.join(log_dir, Path.basename(path)))
+    end
+
+    for path <-
+          Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*/record.json")) do
+      build_id = path |> Path.dirname() |> Path.basename()
+      File.cp!(path, Path.join(log_dir, "runtime-tracking-#{build_id}.json"))
+    end
   end
 
   defp preserve_if_present(source, destination) do

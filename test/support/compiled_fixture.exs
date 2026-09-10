@@ -15,6 +15,7 @@ defmodule Kogen.CompiledFixture do
     "priv/kogen/prompts/shaping-continuation.md",
     "test/support/codex",
     "test/support/fake_codex",
+    "test/support/scenario_response.py",
     "test/support/fake_codex_shaper"
   ]
 

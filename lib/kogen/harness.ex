@@ -6,13 +6,87 @@ defmodule Kogen.Harness do
   """
   use Boundary, deps: []
 
+  @evidence_schema %{
+    "type" => "array",
+    "items" => %{
+      "type" => "object",
+      "properties" => %{
+        "path" => %{
+          "type" => "string",
+          "minLength" => 1,
+          "description" =>
+            "Existing regular repository-relative file. For a missing-file defect cite an existing requirement/test/evidence file; describe the absent file in reason and locator, never here."
+        },
+        "locator" => %{"type" => "string", "minLength" => 1}
+      },
+      "required" => ["path", "locator"],
+      "additionalProperties" => false
+    }
+  }
+
   @verdict_schema Jason.encode!(%{
                     "type" => "object",
                     "properties" => %{
+                      "candidate_id" => %{"type" => "string", "minLength" => 1},
+                      "attempt_token" => %{"type" => "string", "minLength" => 1},
                       "verdict" => %{"type" => "string", "enum" => ["accept", "rework"]},
-                      "findings" => %{"type" => "array", "items" => %{"type" => "string"}}
+                      "scenarios" => %{
+                        "type" => "array",
+                        "items" => %{
+                          "type" => "object",
+                          "properties" => %{
+                            "id" => %{"type" => "string", "minLength" => 1},
+                            "status" => %{
+                              "type" => "string",
+                              "enum" => ["satisfied", "needs_rework"]
+                            },
+                            "reason" => %{"type" => "string", "minLength" => 1},
+                            "evidence" => @evidence_schema
+                          },
+                          "required" => ["id", "status", "reason", "evidence"],
+                          "additionalProperties" => false
+                        }
+                      },
+                      "dispositions" => %{
+                        "type" => "array",
+                        "items" => %{
+                          "type" => "object",
+                          "properties" => %{
+                            "id" => %{"type" => "string", "minLength" => 1},
+                            "status" => %{"type" => "string", "enum" => ["closed", "open"]},
+                            "reason" => %{"type" => "string", "minLength" => 1},
+                            "evidence" => @evidence_schema
+                          },
+                          "required" => ["id", "status", "reason", "evidence"],
+                          "additionalProperties" => false
+                        }
+                      },
+                      "findings" => %{
+                        "type" => "array",
+                        "items" => %{
+                          "type" => "object",
+                          "properties" => %{
+                            "scenario_ids" => %{
+                              "type" => "array",
+                              "minItems" => 1,
+                              "items" => %{"type" => "string", "minLength" => 1}
+                            },
+                            "reason" => %{"type" => "string", "minLength" => 1},
+                            "evidence" => @evidence_schema
+                          },
+                          "required" => ["scenario_ids", "reason", "evidence"],
+                          "additionalProperties" => false
+                        }
+                      }
                     },
-                    "required" => ["verdict", "findings"],
+                    "required" => [
+                      "candidate_id",
+                      "attempt_token",
+                      "verdict",
+                      "scenarios",
+                      "dispositions",
+                      "findings"
+                    ],
                     "additionalProperties" => false
                   })
 
@@ -55,16 +129,27 @@ defmodule Kogen.Harness do
       {output, exit_code} =
         run_with_stdin(resolve_executable(), args, prompt, [{"KOGEN_ROLE", "reviewer"}])
 
-      with {:ok, turn} <- parse_turn(decode_events(output), exit_code, output),
-           message = reviewer_message(message_path, turn.events),
-           {:ok, verdict} <- parse_verdict(message) do
-        persist_reviewer_verdict(message, turn.session_id)
-        {:ok, Map.put(verdict, :session_id, turn.session_id)}
-      else
+      case parse_turn(decode_events(output), exit_code, output) do
+        {:ok, turn} -> reviewer_response(turn, message_path)
         _ -> {:error, {:malformed_verdict, exit_code, String.slice(output, 0, 4000)}}
       end
     after
       File.rm_rf(dir)
+    end
+  end
+
+  defp reviewer_response(turn, message_path) do
+    message = reviewer_message(message_path, turn.events)
+
+    case parse_verdict(message) do
+      {:ok, verdict} ->
+        persist_reviewer_verdict(message, turn.session_id)
+        {:ok, Map.put(verdict, :session_id, turn.session_id)}
+
+      _ ->
+        {:error,
+         {:malformed_verdict, 0,
+          %{"reviewer_session_id" => turn.session_id, "message" => message}}}
     end
   end
 
@@ -98,28 +183,91 @@ defmodule Kogen.Harness do
   end
 
   defp parse_verdict(output) do
-    with {:ok, %{"verdict" => verdict, "findings" => findings} = json} <-
-           Jason.decode(String.trim(output)),
-         true <- Map.keys(json) |> Enum.sort() == ["findings", "verdict"],
-         true <- verdict in ["accept", "rework"],
-         true <- valid_findings?(verdict, findings) do
-      {:ok, %{verdict: verdict, findings: findings}}
+    with {:ok, json} <- Jason.decode(String.trim(output)),
+         true <- valid_verdict?(json) do
+      {:ok,
+       %{
+         verdict: json["verdict"],
+         findings: json["findings"],
+         response: json
+       }}
     else
       _ -> :error
     end
   end
 
-  defp valid_findings?("rework", findings) do
-    nonblank_findings?(findings) and findings != []
+  defp valid_verdict?(json) when is_map(json) do
+    Map.keys(json) |> Enum.sort() == verdict_keys() and
+      nonblank?(json["candidate_id"]) and
+      nonblank?(json["attempt_token"]) and
+      json["verdict"] in ["accept", "rework"] and
+      valid_scenarios?(json["scenarios"]) and
+      valid_dispositions?(json["dispositions"]) and
+      valid_findings?(json["findings"])
   end
 
-  defp valid_findings?("accept", findings), do: nonblank_findings?(findings)
+  defp valid_verdict?(_json), do: false
 
-  defp nonblank_findings?(findings) when is_list(findings) do
-    Enum.all?(findings, &(is_binary(&1) and String.trim(&1) != ""))
+  defp valid_scenarios?(scenarios) when is_list(scenarios) do
+    Enum.all?(scenarios, fn
+      %{"id" => id, "status" => status, "reason" => reason, "evidence" => evidence} = scenario ->
+        Map.keys(scenario) |> Enum.sort() == ["evidence", "id", "reason", "status"] and
+          nonblank?(id) and status in ["satisfied", "needs_rework"] and nonblank?(reason) and
+          valid_evidence?(evidence)
+
+      _ ->
+        false
+    end)
   end
 
-  defp nonblank_findings?(_findings), do: false
+  defp valid_scenarios?(_scenarios), do: false
+
+  defp valid_dispositions?(dispositions) when is_list(dispositions) do
+    Enum.all?(dispositions, fn
+      %{"id" => id, "status" => status, "reason" => reason, "evidence" => evidence} = disposition ->
+        Map.keys(disposition) |> Enum.sort() == ["evidence", "id", "reason", "status"] and
+          nonblank?(id) and status in ["closed", "open"] and nonblank?(reason) and
+          valid_evidence?(evidence)
+
+      _ ->
+        false
+    end)
+  end
+
+  defp valid_dispositions?(_dispositions), do: false
+
+  defp valid_findings?(findings) when is_list(findings) do
+    Enum.all?(findings, fn
+      %{"scenario_ids" => scenario_ids, "reason" => reason, "evidence" => evidence} = finding ->
+        Map.keys(finding) |> Enum.sort() == ["evidence", "reason", "scenario_ids"] and
+          is_list(scenario_ids) and scenario_ids != [] and Enum.all?(scenario_ids, &nonblank?/1) and
+          nonblank?(reason) and valid_evidence?(evidence)
+
+      _ ->
+        false
+    end)
+  end
+
+  defp valid_findings?(_findings), do: false
+
+  defp valid_evidence?(evidence) when is_list(evidence) do
+    Enum.all?(evidence, fn
+      %{"path" => path, "locator" => locator} = reference ->
+        Map.keys(reference) |> Enum.sort() == ["locator", "path"] and nonblank?(path) and
+          nonblank?(locator)
+
+      _ ->
+        false
+    end)
+  end
+
+  defp valid_evidence?(_evidence), do: false
+
+  defp nonblank?(value), do: is_binary(value) and String.trim(value) != ""
+
+  defp verdict_keys do
+    ["attempt_token", "candidate_id", "dispositions", "findings", "scenarios", "verdict"]
+  end
 
   @doc "Launches the interactive Codex Shaping Controller with the caller's real terminal."
   def exec_shaper(model, effort, prompt_file) do
@@ -185,7 +333,29 @@ defmodule Kogen.Harness do
          {:ok, session_id} <- session_id(init, exit_code, output),
          :ok <- turn_completed(last, exit_code, output),
          :ok <- consistent_session_id(events, session_id) do
-      {:ok, %{session_id: session_id, result: last, events: events}}
+      {:ok,
+       %{
+         session_id: session_id,
+         result: last,
+         message: final_agent_message(events),
+         events: events
+       }}
+    end
+  end
+
+  # `turn.completed` proves that the provider settled, but its payload is not
+  # the Developer's handoff. The final completed agent message is. Absence is
+  # represented as an empty handoff while retaining the validated session so
+  # Build can request correction in the exact same Developer conversation.
+  defp final_agent_message(events) do
+    events
+    |> Enum.filter(
+      &(&1["type"] == "item.completed" && get_in(&1, ["item", "type"]) == "agent_message")
+    )
+    |> List.last()
+    |> case do
+      nil -> ""
+      event -> get_in(event, ["item", "text"]) || ""
     end
   end
 

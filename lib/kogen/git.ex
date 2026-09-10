@@ -13,7 +13,7 @@ defmodule Kogen.Git do
 
   @doc "Raw `git status --porcelain` output."
   def status_porcelain! do
-    {out, 0} = System.cmd("git", ["status", "--porcelain"])
+    {out, 0} = System.cmd("git", ["--no-optional-locks", "status", "--porcelain"])
     out
   end
 
@@ -38,23 +38,25 @@ defmodule Kogen.Git do
   """
   @spec candidate_id() :: {:ok, String.t()} | {:error, String.t()}
   def candidate_id do
-    tmp_dir = tmp_directory!("index")
-    tmp_index = Path.join(tmp_dir, "index")
-    env = [{"GIT_INDEX_FILE", tmp_index}]
+    with :ok <- reject_candidate_blinding_index_flags() do
+      tmp_dir = tmp_directory!("index")
+      tmp_index = Path.join(tmp_dir, "index")
+      env = [{"GIT_INDEX_FILE", tmp_index}]
 
-    try do
-      with {index_path, 0} <-
-             System.cmd("git", ["rev-parse", "--git-path", "index"], stderr_to_stdout: true),
-           :ok <- File.cp(String.trim(index_path), tmp_index),
-           {_out, 0} <- System.cmd("git", ["add", "-A"], env: env, stderr_to_stdout: true),
-           {tree, 0} <- System.cmd("git", ["write-tree"], env: env, stderr_to_stdout: true) do
-        {:ok, String.trim(tree)}
-      else
-        {:error, reason} -> {:error, "could not copy Git index: #{:file.format_error(reason)}"}
-        {out, code} when is_binary(out) and is_integer(code) -> {:error, String.trim(out)}
+      try do
+        with {index_path, 0} <-
+               System.cmd("git", ["rev-parse", "--git-path", "index"], stderr_to_stdout: true),
+             :ok <- File.cp(String.trim(index_path), tmp_index),
+             {_out, 0} <- System.cmd("git", ["add", "-A"], env: env, stderr_to_stdout: true),
+             {tree, 0} <- System.cmd("git", ["write-tree"], env: env, stderr_to_stdout: true) do
+          {:ok, String.trim(tree)}
+        else
+          {:error, reason} -> {:error, "could not copy Git index: #{:file.format_error(reason)}"}
+          {out, code} when is_binary(out) and is_integer(code) -> {:error, String.trim(out)}
+        end
+      after
+        File.rm_rf(tmp_dir)
       end
-    after
-      File.rm_rf(tmp_dir)
     end
   end
 
@@ -62,11 +64,37 @@ defmodule Kogen.Git do
   @spec stage_and_verify_candidate(String.t(), String.t() | [String.t()]) ::
           :ok | {:error, term()}
   def stage_and_verify_candidate(candidate_tree, allowed_prefixes) do
-    with {_out, 0} <- System.cmd("git", ["add", "-A"], stderr_to_stdout: true),
+    with :ok <- reject_candidate_blinding_index_flags(),
+         {_out, 0} <- System.cmd("git", ["add", "-A"], stderr_to_stdout: true),
          {staged_tree, 0} <- System.cmd("git", ["write-tree"], stderr_to_stdout: true) do
       assert_tree_diff_only(candidate_tree, String.trim(staged_tree), allowed_prefixes)
     else
+      {:error, _reason} = error -> error
       {out, _code} -> {:error, String.trim(out)}
+    end
+  end
+
+  @doc "Confirms the current staged tree exactly matches the expected Candidate tree."
+  @spec assert_staged_tree(String.t()) :: :ok | {:error, String.t()}
+  def assert_staged_tree(expected_tree) do
+    with :ok <- reject_candidate_blinding_index_flags(),
+         {staged_tree, 0} <- System.cmd("git", ["write-tree"], stderr_to_stdout: true) do
+      assert_expected_tree("staged", expected_tree, String.trim(staged_tree))
+    else
+      {:error, _reason} = error -> error
+      {out, _code} -> {:error, "could not read staged Git tree: #{String.trim(out)}"}
+    end
+  end
+
+  @doc "Confirms the current HEAD tree exactly matches the expected Candidate tree."
+  @spec assert_head_tree(String.t()) :: :ok | {:error, String.t()}
+  def assert_head_tree(expected_tree) do
+    with :ok <- reject_candidate_blinding_index_flags(),
+         {head_tree, 0} <- System.cmd("git", ["rev-parse", "HEAD^{tree}"], stderr_to_stdout: true) do
+      assert_expected_tree("HEAD", expected_tree, String.trim(head_tree))
+    else
+      {:error, _reason} = error -> error
+      {out, _code} -> {:error, "could not read HEAD Git tree: #{String.trim(out)}"}
     end
   end
 
@@ -79,27 +107,14 @@ defmodule Kogen.Git do
   @spec commit(String.t(), String.t(), [{String.t(), String.t()}]) ::
           {:ok, String.t()} | {:error, String.t()}
   def commit(subject, body, trailers) do
-    case System.cmd("git", ["add", "-A"], stderr_to_stdout: true) do
-      {_out, 0} ->
-        trailer_lines = Enum.map_join(trailers, "\n", fn {k, v} -> "#{k}: #{v}" end)
-        message = Enum.join([subject, "", body, "", trailer_lines], "\n")
-        tmp_dir = tmp_directory!("commit-msg")
-        msg_file = Path.join(tmp_dir, "message")
+    with :ok <- reject_candidate_blinding_index_flags() do
+      case System.cmd("git", ["add", "-A"], stderr_to_stdout: true) do
+        {_out, 0} ->
+          commit_message!(render_commit_message(subject, body, trailers))
 
-        try do
-          File.write!(msg_file, message)
-          result = System.cmd("git", ["commit", "-F", msg_file], stderr_to_stdout: true)
-
-          case result do
-            {_out, 0} -> head_sha()
-            {out, _code} -> {:error, String.trim(out)}
-          end
-        after
-          File.rm_rf(tmp_dir)
-        end
-
-      {out, _code} ->
-        {:error, String.trim(out)}
+        {out, _code} ->
+          {:error, String.trim(out)}
+      end
     end
   end
 
@@ -112,24 +127,26 @@ defmodule Kogen.Git do
   @spec commit_staged(String.t(), [{String.t(), String.t()}]) ::
           {:ok, String.t()} | {:error, String.t()}
   def commit_staged(subject, trailers) do
-    trailer_lines = Enum.map_join(trailers, "\n", fn {k, v} -> "#{k}: #{v}" end)
-    message = Enum.join([subject, trailer_lines], "\n\n")
-    tmp_dir = tmp_directory!("commit-msg")
-    msg_file = Path.join(tmp_dir, "message")
+    with :ok <- reject_candidate_blinding_index_flags() do
+      trailer_lines = Enum.map_join(trailers, "\n", fn {k, v} -> "#{k}: #{v}" end)
+      message = Enum.join([subject, trailer_lines], "\n\n")
+      tmp_dir = tmp_directory!("commit-msg")
+      msg_file = Path.join(tmp_dir, "message")
 
-    try do
-      with :ok <- File.write(msg_file, message),
-           result <- System.cmd("git", ["commit", "-F", msg_file], stderr_to_stdout: true) do
-        case result do
-          {_out, 0} -> head_sha()
-          {out, _code} -> {:error, String.trim(out)}
+      try do
+        with :ok <- File.write(msg_file, message),
+             result <- System.cmd("git", ["commit", "-F", msg_file], stderr_to_stdout: true) do
+          case result do
+            {_out, 0} -> head_sha()
+            {out, _code} -> {:error, String.trim(out)}
+          end
+        else
+          {:error, reason} ->
+            {:error, "could not write commit message: #{:file.format_error(reason)}"}
         end
-      else
-        {:error, reason} ->
-          {:error, "could not write commit message: #{:file.format_error(reason)}"}
+      after
+        File.rm_rf(tmp_dir)
       end
-    after
-      File.rm_rf(tmp_dir)
     end
   end
 
@@ -182,6 +199,72 @@ defmodule Kogen.Git do
   end
 
   defp allowed_path?(path, prefixes), do: Enum.any?(prefixes, &String.starts_with?(path, &1))
+
+  defp assert_expected_tree(_location, expected_tree, expected_tree), do: :ok
+
+  defp assert_expected_tree(location, expected_tree, actual_tree) do
+    {:error,
+     "#{location} Git tree differs from expected Candidate (#{expected_tree} -> #{actual_tree})"}
+  end
+
+  defp commit_message!(message) do
+    tmp_dir = tmp_directory!("commit-msg")
+    msg_file = Path.join(tmp_dir, "message")
+
+    try do
+      File.write!(msg_file, message)
+
+      case System.cmd("git", ["commit", "-F", msg_file], stderr_to_stdout: true) do
+        {_out, 0} -> head_sha()
+        {out, _code} -> {:error, String.trim(out)}
+      end
+    after
+      File.rm_rf(tmp_dir)
+    end
+  end
+
+  defp render_commit_message(subject, body, trailers) do
+    trailer_lines = Enum.map_join(trailers, "\n", fn {k, v} -> "#{k}: #{v}" end)
+    Enum.join([subject, "", body, "", trailer_lines], "\n")
+  end
+
+  @doc """
+  Refuses Candidate-sensitive work when the real index has assume-unchanged or
+  skip-worktree entries, without clearing those flags or changing the index.
+  """
+  @spec reject_candidate_blinding_index_flags() :: :ok | {:error, String.t()}
+  def reject_candidate_blinding_index_flags do
+    case System.cmd("git", ["ls-files", "-v", "-z"], stderr_to_stdout: true) do
+      {out, 0} ->
+        flagged =
+          out
+          |> String.split(<<0>>, trim: true)
+          |> Enum.filter(&candidate_blinding_index_flag?/1)
+          |> Enum.map(&format_candidate_blinding_index_flag/1)
+
+        if flagged == [] do
+          :ok
+        else
+          {:error,
+           "Candidate identity refused: Git index contains assume-unchanged or skip-worktree flags: " <>
+             Enum.join(flagged, ", ")}
+        end
+
+      {out, _code} ->
+        {:error, "could not inspect Git index flags: #{String.trim(out)}"}
+    end
+  end
+
+  defp candidate_blinding_index_flag?(<<flag, ?\s, _path::binary>>)
+       when flag in ?a..?z or flag == ?S,
+       do: true
+
+  defp candidate_blinding_index_flag?(_entry), do: false
+
+  defp format_candidate_blinding_index_flag(<<flag, ?\s, path::binary>>) do
+    kind = if flag == ?S, do: "skip-worktree", else: "assume-unchanged"
+    "#{kind}: #{path}"
+  end
 
   # `unique_integer/1` is unique only inside this BEAM VM. Put every temporary
   # Git artifact in an atomically-created, PID-qualified private directory so

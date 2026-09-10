@@ -63,6 +63,43 @@ Developers and their delegated helpers must not run `make check`, `make live`, a
 
 Every scenario's `verified_by` is a YAML list of Make target names, such as `[check]`. The real lifecycle fixture has a bounded check target; it never invokes the full live suite recursively.
 
+Build validates the full Approved scenario contract before launching a provider.
+Each scenario needs a unique nonblank `id`, `given`, `when`, `then`,
+`wrong_result`, `evidence`, and a nonempty `verified_by` list of existing targets.
+Optional `risks.yaml` entries have unique `id`, `scenario_ids`, and `description`;
+file-ownership entries describe existing-path behavior, immediate and later owners,
+permitted mutation, validation, Git state, and upgrades. An absent risk file is
+recorded as “not supplied.” Shaping leaves unresolved ownership decisions to the
+Shaper, including when a protected seed becomes user-owned configuration.
+
+After Stop Check settles, Build validates the final Developer message against a
+fresh attempt token. The handoff covers every scenario, supplied risk, and open
+finding with claims and existing file references. Build attaches its owned gate
+receipts; claims never count as gate results. A fresh Reviewer assesses every
+scenario and explicitly closes or retains every open finding with inspected
+counterevidence or repair evidence. Acceptance requires all scenarios satisfied
+and no open blocking findings for the current Candidate. Invalid handoffs share
+the existing rework budget; malformed Review stops without partial closures.
+
+To inspect a stopped Build, start with the record path and unresolved scenario IDs
+in its error. Read `.kogen/runtime/scenario-tracking/<build-id>/record.json`:
+`scenarios` and `risks` preserve requirements, `attempts` separate claims, receipts,
+and verdicts, and `findings` retain stable IDs, origins, and dispositions. Each
+Build gets a new versioned record even with raw logging disabled. Records are
+inspection evidence, not restart checkpoints; review the worktree and Approved
+package before any new Build. Do not edit these controller-owned records.
+Citations retain separate Developer and Reviewer versions of the exact inspected
+bytes in each attempt's `developer_reference_snapshots` and
+`reviewer_reference_snapshots`; a later citation cannot replace an earlier role's
+version. Subsequent controller updates
+are checked against Build's latest owned bytes. External edits still stop Build.
+Successful publication links a self-contained copy from Complete evidence,
+including referenced bytes and concise attempt history; generated names never
+replace supplied evidence. Failed publication restores the frozen Approved input.
+Build refuses Git assume-unchanged and skip-worktree flags wherever it relies on
+Candidate identity, including Stop and publication, without clearing those flags.
+
+
 ## Configuration and local data
 
 Edit the tracked `.kogen/config.yaml` to select the available model and effort

@@ -89,6 +89,38 @@ defmodule Kogen.StopHookTest do
     end)
   end
 
+  for {flag, label} <- [
+        {"--assume-unchanged", "assume-unchanged"},
+        {"--skip-worktree", "skip-worktree"}
+      ] do
+    test "production Stop hook refuses a #{label} index flag without changing the real index" do
+      in_fixture!(fn dir ->
+        hook = Path.join(dir, ".codex/hooks/check.sh")
+        readme = Path.join(dir, "README.md")
+        File.write!(readme, "changed behind the flag\n")
+        File.write!(Path.join(dir, "Makefile"), "check:\n\t@touch check-ran\n")
+
+        assert {_output, 0} =
+                 System.cmd("git", ["update-index", unquote(flag), "README.md"], cd: dir)
+
+        assert {index_before, 0} = System.cmd("git", ["write-tree"], cd: dir)
+        assert {flag_before, 0} = System.cmd("git", ["ls-files", "-v", "README.md"], cd: dir)
+
+        assert {block, 0} = run_hook(hook, dir)
+        assert block =~ ~s("decision":"block")
+
+        failed = verification(dir)
+        assert failed["status"] == "failed"
+        assert failed["candidate"] == ""
+        assert failed["reason"] =~ "Candidate identity refused"
+        assert failed["reason"] =~ unquote(label)
+        refute File.exists?(Path.join(dir, "check-ran"))
+        assert {^index_before, 0} = System.cmd("git", ["write-tree"], cd: dir)
+        assert {^flag_before, 0} = System.cmd("git", ["ls-files", "-v", "README.md"], cd: dir)
+      end)
+    end
+  end
+
   defp run_hook(_hook, dir, session_id \\ @session_id, role \\ "developer") do
     input_path = Path.join(dir, "hook-input.json")
     input = if session_id, do: Jason.encode!(%{"session_id" => session_id}), else: "{}"

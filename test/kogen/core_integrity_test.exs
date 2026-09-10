@@ -84,8 +84,9 @@ defmodule Kogen.CoreIntegrityTest do
   defp run_scenario(:same_reviewer_session) do
     fixture = setup_fixture!(:same_reviewer_session)
 
-    assert {:error, "Reviewer session must differ from the Developer session"} =
-             run_build_with_fixture_harness(fixture)
+    assert {:error, reason} = run_build_with_fixture_harness(fixture)
+    assert reason =~ "Reviewer session must differ from the Developer session"
+    assert reason =~ "tracking record:"
 
     refute match?({:ok, _}, File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}")))
     assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
@@ -120,8 +121,9 @@ defmodule Kogen.CoreIntegrityTest do
   defp run_scenario(:late_dangling_complete) do
     fixture = setup_fixture!(:late_dangling_complete)
 
-    assert {:error, "Complete Intent already exists: #{@slug}"} =
-             run_build_with_fixture_harness(fixture)
+    assert {:error, reason} = run_build_with_fixture_harness(fixture)
+    assert reason =~ "Complete Intent already exists: #{@slug}"
+    assert reason =~ "tracking record:"
 
     assert {:ok, stat} = File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
     assert stat.type == :symlink
@@ -201,6 +203,12 @@ defmodule Kogen.CoreIntegrityTest do
     File.write!(Path.join(approved, "scenarios.yaml"), @scenarios_yaml)
 
     harness = Path.join(dir, "fake-codex")
+
+    File.cp!(
+      Path.join(project_root, "test/support/scenario_response.py"),
+      Path.join(dir, "scenario_response.py")
+    )
+
     File.write!(harness, fake_harness(mode))
     File.chmod!(harness, 0o755)
 
@@ -238,7 +246,7 @@ defmodule Kogen.CoreIntegrityTest do
     fake_harness_body(
       "",
       "reviewer-session-1",
-      "printf '%s\\n' '{\"verdict\":\"rework\",\"findings\":[]}' > \"$output_file\""
+      "printf '%s' \"$input\" | python3 \"$response_helper\" reviewer rework | python3 -c 'import json,sys; value=json.load(sys.stdin); value[\"findings\"]=[]; print(json.dumps(value))' > \"$output_file\""
     )
   end
 
@@ -252,12 +260,14 @@ defmodule Kogen.CoreIntegrityTest do
   defp fake_harness_body(
          developer_setup,
          reviewer_session,
-         reviewer_response \\ "printf '%s\\n' '{\"verdict\":\"accept\",\"findings\":[]}' > \"$output_file\""
+         reviewer_response \\ "printf '%s' \"$input\" | python3 \"$response_helper\" reviewer accept > \"$output_file\""
        ) do
     """
     #!/bin/sh
     set -eu
-    cat >/dev/null || true
+    script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    response_helper="$script_dir/scenario_response.py"
+    input="$(cat)"
     reviewer=0
     output_file=
     previous=
@@ -273,6 +283,8 @@ defmodule Kogen.CoreIntegrityTest do
     fi
     #{developer_setup}printf '%s\\n' '{"type":"thread.started","thread_id":"dev-session-1"}'
     printf '%s' '{"session_id":"dev-session-1"}' | sh .codex/hooks/check.sh >/dev/null
+    response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
+    printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
     printf '%s\\n' '{"type":"turn.completed","thread_id":"dev-session-1"}'
     """
   end

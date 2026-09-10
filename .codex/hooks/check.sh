@@ -75,7 +75,24 @@ check_log="$runtime_dir/stop-check.log"
 
 candidate=""
 candidate_error=""
-tmp_index="$(mktemp "${TMPDIR:-/tmp}/kogen-hook-index.XXXXXX")" || candidate_error="could not create private Git index"
+tmp_index=""
+
+index_listing="$(git ls-files -v 2>&1)" || candidate_error="could not inspect Git index flags: $index_listing"
+
+if [ -z "$candidate_error" ]; then
+  flagged_index="$(printf '%s\n' "$index_listing" | awk '
+    substr($0, 1, 1) == "S" { print "skip-worktree: " substr($0, 3) }
+    substr($0, 1, 1) ~ /^[a-z]$/ { print "assume-unchanged: " substr($0, 3) }
+  ')"
+
+  if [ -n "$flagged_index" ]; then
+    candidate_error="Candidate identity refused: Git index contains assume-unchanged or skip-worktree flags: $flagged_index"
+  fi
+fi
+
+if [ -z "$candidate_error" ]; then
+  tmp_index="$(mktemp "${TMPDIR:-/tmp}/kogen-hook-index.XXXXXX")" || candidate_error="could not create private Git index"
+fi
 
 if [ -z "$candidate_error" ]; then
   rm -f "$tmp_index"

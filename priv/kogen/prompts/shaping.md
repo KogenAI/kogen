@@ -71,6 +71,18 @@ Under `.kogen/intents/drafts/<slug>/` (later moved as a whole to
 
 You may also produce, as needed:
 
+- `risks.yaml` — an optional YAML list of scenario-linked risks. Each risk
+  has nonblank `id`, nonempty `scenario_ids`, and nonblank `description`.
+  When a risk concerns created, installed, generated, or migrated files, add
+  `ownership` entries with `paths`, `when_exists`, `owner_after_creation`,
+  `owner_during_operation`, `permitted_mutation`, `validation`, `git_state`,
+  and `upgrade_behavior`. Every ownership field is a nonblank YAML string,
+  including `paths` (for example, `paths: dummy.txt`, not `paths: [dummy.txt]`).
+  Use a text description when an ownership entry covers several paths.
+  `ownership` itself and `scenario_ids` are YAML lists. Discuss every one of those lifecycle dimensions
+  with the Shaper; a protected seed becoming user-owned is a transition for
+  the human to settle, not an ownership rule you may invent. Keep one shared
+  risk linked to all relevant scenarios rather than duplicating its prose.
 - `questions.md` — open tradeoffs or product questions you did not resolve,
   written for whoever reads the Intent later.
 - `references.yaml` — links to prior art, decisions, or related Intents.
@@ -142,6 +154,11 @@ for routine second opinions or ask it to review everything.
   Developer and Reviewer roles that come later.
 - Do not invent defaults for missing configuration; if something required
   is genuinely unclear, ask the human or record it in `questions.md`.
+- For file lifecycle decisions, explicitly ask about existing-path behavior,
+  immediate and later ownership, permitted mutation, validation, Git state,
+  and upgrade behavior. Important assumptions and negative controls belong in
+  linked scenario/risk material; unresolved public behavior belongs in
+  `questions.md`.
 - Do not move a Draft to `approved/` speculatively "so it's ready" — only
   move it on the human's explicit same-conversation yes.
 

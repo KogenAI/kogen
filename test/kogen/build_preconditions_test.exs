@@ -144,6 +144,16 @@ defmodule Kogen.BuildPreconditionsTest do
                           expected: "refused unsafe target name"
                         },
                         %{
+                          case: "assume-unchanged tracked Makefile is refused before launch",
+                          operation: {:index_flag, "--assume-unchanged"},
+                          expected: "assume-unchanged"
+                        },
+                        %{
+                          case: "skip-worktree tracked Makefile is refused before launch",
+                          operation: {:index_flag, "--skip-worktree"},
+                          expected: "skip-worktree"
+                        },
+                        %{
                           case: "scalar scenarios",
                           operation: {:scenarios, "- scalar\n"},
                           expected: "scenarios.yaml missing or invalid"
@@ -162,6 +172,112 @@ defmodule Kogen.BuildPreconditionsTest do
                           case: "empty verified_by",
                           operation: {:scenarios, "- verified_by: []\n"},
                           expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "duplicate scenario IDs",
+                          operation: {:scenarios, @scenarios_yaml <> @scenarios_yaml},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "blank scenario id",
+                          operation: {:scenario_replacement, "id: fixture-scenario", "id: "},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "blank scenario given",
+                          operation:
+                            {:scenario_replacement, "given: a fixture Candidate", "given: "},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "blank scenario when",
+                          operation:
+                            {:scenario_replacement, "when: the fixture Developer stops", "when: "},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "blank scenario then",
+                          operation:
+                            {:scenario_replacement,
+                             "then: nothing, this fixture never launches a Developer", "then: "},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "blank scenario wrong result",
+                          operation:
+                            {:scenario_replacement, "wrong_result: the harness gets invoked",
+                             "wrong_result: "},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "blank scenario evidence",
+                          operation:
+                            {:scenario_replacement, "evidence: fixture only", "evidence: "},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "scenario missing given",
+                          operation: {:scenario_remove_line, "given: a fixture Candidate"},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "scenario missing id",
+                          operation: {:scenario_remove_line, "id: fixture-scenario"},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "scenario missing when",
+                          operation: {:scenario_remove_line, "when: the fixture Developer stops"},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "scenario missing then",
+                          operation:
+                            {:scenario_remove_line,
+                             "then: nothing, this fixture never launches a Developer"},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "scenario missing wrong result",
+                          operation:
+                            {:scenario_remove_line, "wrong_result: the harness gets invoked"},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "scenario missing evidence",
+                          operation: {:scenario_remove_line, "evidence: fixture only"},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "scenario missing verification targets",
+                          operation: {:scenario_remove_line, "verified_by: [check]"},
+                          expected: "scenarios.yaml missing or invalid"
+                        },
+                        %{
+                          case: "risks scalar list element",
+                          operation: {:risks, "- scalar\n"},
+                          expected: "risks.yaml missing or invalid"
+                        },
+                        %{
+                          case: "risk points at a missing scenario",
+                          operation:
+                            {:risks,
+                             "- id: risk-one\n  scenario_ids: [missing]\n  description: fixture risk\n"},
+                          expected: "risks.yaml missing or invalid"
+                        },
+                        %{
+                          case: "duplicate risk IDs",
+                          operation:
+                            {:risks,
+                             "- id: risk-one\n  scenario_ids: [fixture-scenario]\n  description: first\n- id: risk-one\n  scenario_ids: [fixture-scenario]\n  description: second\n"},
+                          expected: "risks.yaml missing or invalid"
+                        },
+                        %{
+                          case: "risk ownership omits a required dimension",
+                          operation:
+                            {:risks,
+                             "- id: risk-one\n  scenario_ids: [fixture-scenario]\n  description: fixture risk\n  ownership:\n    - paths: dummy.txt\n      when_exists: always\n      owner_after_creation: Build\n      owner_during_operation: Build\n      permitted_mutation: none\n      validation: check\n      upgrade_behavior: none\n"},
+                          expected: "risks.yaml missing or invalid"
                         },
                         %{
                           case: "non-string title",
@@ -213,6 +329,8 @@ defmodule Kogen.BuildPreconditionsTest do
   defp run_precondition_case(operation, expected) do
     dir = tmp_repo!()
     setup_case!(dir, operation)
+    approved_before = approved_bytes(dir)
+    index_before = real_index_bytes(dir)
 
     # The fake harness and its marker live entirely outside the git repo
     # under test, so writing/invoking it can never itself dirty the
@@ -248,6 +366,9 @@ defmodule Kogen.BuildPreconditionsTest do
     assert reason =~ expected
     assert File.exists?(Path.join(dir, ".kogen/build.lock")) == lock_was_present
     refute File.exists?(marker), "the fake harness marker exists: the harness was invoked"
+    assert approved_bytes(dir) == approved_before
+    assert {"", 0} = System.cmd("git", ["diff", "--cached", "--"], cd: dir)
+    assert real_index_bytes(dir) == index_before
   end
 
   defp setup_case!(dir, :missing_title), do: write_intent(dir, @intent_missing_title)
@@ -302,9 +423,44 @@ defmodule Kogen.BuildPreconditionsTest do
     commit_fixture!(dir)
   end
 
+  defp setup_case!(dir, {:index_flag, flag}) do
+    write_intent(dir, @valid_intent)
+    makefile = Path.join(dir, "Makefile")
+    assert {_out, 0} = System.cmd("git", ["update-index", flag, "Makefile"], cd: dir)
+    File.write!(makefile, @makefile <> "# hidden behind #{flag}\n")
+  end
+
   defp setup_case!(dir, {:scenarios, scenarios}) do
     write_intent(dir, @valid_intent)
     File.write!(Path.join(dir, ".kogen/intents/approved/#{@slug}/scenarios.yaml"), scenarios)
+    commit_fixture!(dir)
+  end
+
+  defp setup_case!(dir, {:scenario_replacement, old, replacement}) do
+    write_intent(dir, @valid_intent)
+
+    File.write!(
+      Path.join(dir, ".kogen/intents/approved/#{@slug}/scenarios.yaml"),
+      String.replace(@scenarios_yaml, old, replacement)
+    )
+
+    commit_fixture!(dir)
+  end
+
+  defp setup_case!(dir, {:scenario_remove_line, line}) do
+    write_intent(dir, @valid_intent)
+
+    File.write!(
+      Path.join(dir, ".kogen/intents/approved/#{@slug}/scenarios.yaml"),
+      @scenarios_yaml |> String.replace("  #{line}\n", "") |> String.replace("- #{line}\n", "-\n")
+    )
+
+    commit_fixture!(dir)
+  end
+
+  defp setup_case!(dir, {:risks, risks}) do
+    write_intent(dir, @valid_intent)
+    File.write!(Path.join(dir, ".kogen/intents/approved/#{@slug}/risks.yaml"), risks)
     commit_fixture!(dir)
   end
 
@@ -386,5 +542,21 @@ defmodule Kogen.BuildPreconditionsTest do
 
     File.chmod!(path, 0o755)
     path
+  end
+
+  defp approved_bytes(dir) do
+    root = Path.join(dir, ".kogen/intents/approved/#{@slug}")
+
+    root
+    |> Path.join("**/*")
+    |> Path.wildcard()
+    |> Enum.filter(&File.regular?/1)
+    |> Enum.map(fn path -> {Path.relative_to(path, root), File.read!(path)} end)
+    |> Enum.sort()
+  end
+
+  defp real_index_bytes(dir) do
+    {path, 0} = System.cmd("git", ["rev-parse", "--git-path", "index"], cd: dir)
+    path |> String.trim() |> Path.expand(dir) |> File.read!()
   end
 end

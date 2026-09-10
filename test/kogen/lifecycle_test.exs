@@ -99,7 +99,17 @@ defmodule Kogen.LifecycleTest do
            end)
 
     resume_feedback = File.read!(Path.join(dest, ".kogen/runtime/developer-resume-prompts"))
-    assert resume_feedback =~ "Reviewer findings: fake finding: try again"
+
+    [_, reviewer_json_and_policy] = String.split(resume_feedback, "Reviewer findings: ", parts: 2)
+    [reviewer_json | _] = String.split(reviewer_json_and_policy, "\n\n", parts: 2)
+    reviewer_feedback = Jason.decode!(reviewer_json)
+
+    assert reviewer_feedback["verdict"] == "rework"
+
+    assert [%{"id" => "shaped-scenario", "status" => "needs_rework"}] =
+             reviewer_feedback["scenarios"]
+
+    assert [%{"scenario_ids" => ["shaped-scenario"]}] = reviewer_feedback["findings"]
 
     refute resume_feedback =~ "settled Check failure:",
            "a failed Check settlement would consume a second outer resumption"

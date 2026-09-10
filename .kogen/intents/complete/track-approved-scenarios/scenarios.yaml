@@ -1,0 +1,125 @@
+- id: shape-scenario-risks
+  given: a feature that creates, installs, generates, or migrates files, including a protected seed that becomes
+    user-owned
+  when: the Shaping Controller prepares or continues its Draft
+  then: the controller records important risks against scenario IDs and explicitly surfaces existing-path behavior,
+    immediate and later ownership, permitted mutation, validation, tracked or ignored state, and upgrade behavior;
+    unresolved product decisions remain questions for the Shaper
+  wrong_result: the controller silently treats a seed as permanently immutable, invents ownership decisions,
+    or puts unlinked generic risk prose outside the scenario contract
+  verified_by:
+  - check
+  - live
+  evidence: Prompt/contract tests plus the real Shape fixture demonstrate a seed-to-user ownership transition
+    and a scenario-linked risk without implementing external-repository-cli.
+- id: validate-approved-contract
+  given: an Approved package with scenario definitions and optional scenario-linked risks
+  when: Build loads the immutable contract before any provider launch
+  then: scenario IDs are unique nonblank strings, required behavior/evidence fields are nonblank, target lists
+    are valid existing Make targets, and supplied risks reference existing scenarios; existing valid packages
+    without risks remain usable with risks recorded as not supplied
+  wrong_result: Build flattens targets and loses scenario identities, accepts duplicate IDs or dangling risk
+    links, invents missing risk analysis, or rewrites the Approved package
+  verified_by: &id001
+  - check
+  evidence: Precondition matrix asserts no provider calls or Approved-byte changes for malformed contracts
+    and verifies legacy packages without risks.
+- id: require-current-handoff
+  given: a Developer turn whose Stop Check passes, including an exact-session rework turn
+  when: Build receives the final Developer response
+  then: Build requires a fresh structured handoff covering exactly every scenario, supplied risk, and open
+    finding with claims and concrete evidence references; missing, duplicate, unknown, malformed, explicitly
+    incomplete, or stale entries prevent Review and produce actionable feedback within the existing outer budget
+  wrong_result: free-form completion or an earlier turn handoff counts as full coverage, a malformed handoff
+    loses the Developer session, or Developer output fabricates a passing gate
+  verified_by:
+  - check
+  - live
+  evidence: Fake lifecycle negatives cover each contract failure despite passing Check, no Reviewer launch
+    for incomplete handoffs, and exact-session correction; real lifecycle exercises initial and resumed structured
+    messages.
+- id: independent-scenario-review
+  given: a structurally complete handoff and owned passing verification for a fixed Candidate
+  when: a fresh independent Reviewer assesses the Approved package, code, tests, evidence, and retained findings
+  then: the verdict covers every scenario exactly once and explicitly disposes of every finding open at review
+    start; acceptance requires all scenarios satisfied, no open findings, and evidence-based reasoning; Build
+    validates the whole verdict and unchanged bound inputs before atomically applying it
+  wrong_result: a top-level accept, omitted finding, duplicate scenario, Developer assertion, or a partial
+    valid portion of a malformed verdict closes a scenario
+  verified_by:
+  - check
+  - live
+  evidence: Strict verdict/transition tests reject omissions, contradictions, unknown IDs, stale Candidate
+    binding and partial updates; real Reviewer rejects a plausible but incomplete Candidate.
+- id: preserve-findings-across-rework
+  given: a Reviewer opened multiple findings, followed by Developer rework or a Check/declared-target failure
+  when: Build resumes the original Developer and later launches another fresh Reviewer
+  then: all unresolved findings retain stable Build-assigned identities and origin, every rework includes complete
+    open state plus the latest cause, Developer addressed/disputed responses cannot close findings, and every
+    new Candidate requires all scenarios reassessed; an independently disproved finding may close with counterevidence
+    without changing the Approved requirement
+  wrong_result: only the latest finding is resent, a target failure erases Review history, a Developer marks
+    its own finding resolved, or acceptance from an earlier Candidate survives a regression
+  verified_by:
+  - check
+  - live
+  evidence: Multi-round fake lifecycle asserts cumulative findings across a target failure, partial repair,
+    disagreement and regression; real lifecycle retains finding identity through exact Developer resume and
+    distinct Reviewer sessions.
+- id: bind-evidence-to-candidate
+  given: Developer claims, verification outputs and Review results may originate from different attempts or
+    hidden working-file changes
+  when: Build joins evidence and assesses or publishes the Candidate
+  then: Build supplies Candidate/session/attempt identity, projects actual owned target receipts onto scenarios,
+    rejects stale or mutated evidence and bound inputs, and rejects assume-unchanged or skip-worktree index
+    flags wherever they could hide Candidate changes, including the Stop hook and final publication boundary
+  wrong_result: matching status or private-index hashes conceal changed files, stale receipts or self-declared
+    results satisfy a scenario, or a Reviewer verdict for another Candidate is accepted
+  verified_by: *id001
+  evidence: Isolated Git negatives for both flags plus existing mutation/session/Check/target/publication tests;
+    real index remains unchanged on refusal.
+- id: retain-inspectable-tracking
+  given: a Build accumulates claims, gate outcomes, Reviewer findings, and closures
+  when: it reaches another attempt, stops without acceptance, or successfully publishes
+  then: one versioned Build-owned record preserves scenario requirements and risk links, Candidate-bound attempt
+    history and finding dispositions without requiring raw logging; an orderly stop leaves Approved and Candidate
+    in place and reports the record path and unresolved scenario IDs; Complete contains a self-contained copy
+    of final closure and concise history, with no overwrite of user evidence
+  wrong_result: exhaustion discards findings, a later run overwrites prior history, runtime-only links make
+    Complete evidence unreadable, a model edits authoritative tracking unnoticed, or a tracking record implies
+    restart support
+  verified_by: *id001
+  evidence: Offline persistence tests disable KOGEN_RAW_LOG_DIR, exhaust the budget, inspect records from a
+    separate reader, detect record mutation, exercise evidence-name collisions and commit-failure rollback,
+    and verify Complete evidence is self-contained.
+- id: reject-motivating-incomplete-evidence
+  given: small controlled Candidates reproduce the parked feature failures while their own make check passes
+  when: their structurally complete claims are evaluated against the actual required evidence
+  then: the process refuses acceptance for copied-source/legacy-command proof presented as installed-command
+    proof, partial role/model/effort assertions or missing invalid-config evidence, and a status-only readiness
+    claim vulnerable to hidden index changes; the refusal identifies the affected scenarios and concrete missing
+    proof
+  wrong_result: only intentionally absent JSON fields are tested, fake Reviewers alone are presented as semantic
+    proof, fixture defects are concealed by altering requirements, or the parked external feature is implemented
+    to build this test
+  verified_by:
+  - check
+  - live
+  evidence: Deterministic fixture controls exercise all three failure patterns using focused stand-ins derived
+    from the preserved candidates; at least one real Reviewer independently rejects a complete-looking handoff
+    for such a fixture without an instruction or canned verdict telling it to reject. A passing corrected counterpart
+    is also demonstrated.
+- id: preserve-existing-lifecycle
+  given: the current committed routing, fresh-session Draft continuation, verification ownership, and publication
+    controls
+  when: scenario tracking is integrated into the existing lifecycle
+  then: root/helper routing and ownership remain unchanged, Stop owns check, Build owns the ordered distinct
+    non-check targets, all rework shares the configured budget and exact Developer session, Review remains
+    fresh and read-only, and no acceptance or recovery is inferred from retained records
+  wrong_result: tracking adds a parallel gate runner, model self-certification, extra budget or Review retries,
+    a recovery command, or a second lifecycle implementation
+  verified_by:
+  - check
+  - live
+  evidence: Existing offline/live lifecycle controls remain active alongside tracking assertions; public Shape-to-Commit
+    uses the newly shaped package and real provider sessions.

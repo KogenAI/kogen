@@ -1,3 +1,5 @@
+Code.require_file("../support/scenario_semantic.ex", __DIR__)
+
 defmodule Kogen.LiveTest do
   @moduledoc """
   Real-provider `make live` only (never part of `make check`): direct
@@ -9,6 +11,8 @@ defmodule Kogen.LiveTest do
   builds on.
   """
   use Kogen.IsolatedCase, async: true
+
+  alias Kogen.Build.Contract
 
   @moduletag :live
   @moduletag timeout: 600_000
@@ -52,19 +56,209 @@ defmodule Kogen.LiveTest do
                  config.developer.effort
                )
 
-      assert {:ok, %{verdict: verdict, findings: findings, session_id: reviewer_session_id}} =
+      assert {:ok,
+              %{
+                verdict: verdict,
+                findings: findings,
+                response: response,
+                session_id: reviewer_session_id
+              }} =
                Kogen.Harness.launch_reviewer(
-                 "This is a schema probe, not a real review. Answer with verdict=accept and " <>
-                   "findings=[\"ok\"]. Do not use any tools.",
+                 "This is a schema probe, not a real review. Return only this valid structured " <>
+                   "Reviewer response with no tools: {\"candidate_id\":\"primitive-candidate\",\"attempt_token\":\"primitive-attempt\",\"verdict\":\"accept\",\"scenarios\":[],\"dispositions\":[],\"findings\":[]}.",
                  config.reviewer.model,
                  config.reviewer.effort
                )
 
       assert verdict in ["accept", "rework"]
       assert is_list(findings)
+      assert response["candidate_id"] == "primitive-candidate"
+      assert response["attempt_token"] == "primitive-attempt"
       assert is_binary(reviewer_session_id)
       assert reviewer_session_id != session_id
     end)
+  end
+
+  test "independent real Reviewer catches semantic fixture defects and accepts their corrected counterpart" do
+    {:ok, config} = Kogen.Intent.read_config()
+    project_root = File.cwd!()
+    log_dir = primitive_log_dir(project_root)
+    fixture = primitive_fixture(project_root)
+    setup_fixture(project_root, fixture)
+
+    on_exit(fn -> File.rm_rf!(fixture) end)
+
+    File.cd!(fixture, fn ->
+      Kogen.ScenarioSemantic.write_fixture!(fixture, :incomplete)
+      stage_readiness_baseline!(fixture)
+      incomplete_probes = probe_outcomes!(fixture)
+      assert Enum.all?(incomplete_probes, &(&1.status != 0))
+      write_probe_receipts!(fixture, :incomplete, incomplete_probes)
+      incomplete_candidate = candidate_id!(fixture)
+
+      incomplete =
+        review_semantic_candidate!(config, incomplete_candidate, "semantic-attempt-incomplete")
+
+      assert incomplete["verdict"] == "rework",
+             "the Reviewer must independently reject the incomplete Candidate; response: #{inspect(incomplete)}"
+
+      Kogen.ScenarioSemantic.review_response!(incomplete, %{
+        candidate_id: incomplete_candidate,
+        attempt_token: "semantic-attempt-incomplete",
+        scenario_ids: semantic_scenario_ids()
+      })
+
+      Kogen.ScenarioSemantic.write_fixture!(fixture, :corrected)
+      stage_readiness_baseline!(fixture)
+      corrected_probes = probe_outcomes!(fixture)
+      assert Enum.all?(corrected_probes, &(&1.status == 0))
+      write_probe_receipts!(fixture, :corrected, corrected_probes)
+      corrected_candidate = candidate_id!(fixture)
+
+      corrected =
+        review_semantic_candidate!(config, corrected_candidate, "semantic-attempt-corrected")
+
+      assert corrected["verdict"] == "accept",
+             "the Reviewer must independently accept the corrected Candidate; response: #{inspect(corrected)}"
+
+      Kogen.ScenarioSemantic.review_response!(corrected, %{
+        candidate_id: corrected_candidate,
+        attempt_token: "semantic-attempt-corrected",
+        scenario_ids: semantic_scenario_ids()
+      })
+
+      File.write!(
+        Path.join(log_dir, "semantic-incomplete-review.json"),
+        Jason.encode!(incomplete)
+      )
+
+      File.write!(Path.join(log_dir, "semantic-corrected-review.json"), Jason.encode!(corrected))
+    end)
+  end
+
+  # This is a read-only Reviewer challenge, never a Build run. The deliberately
+  # incomplete Candidate looks plausible at a glance: source code has the new
+  # command, a happy-path route, and a documented flag. Its installed command,
+  # invalid configuration route, and actual flag readiness are each wrong.
+  defp review_semantic_candidate!(config, candidate_id, attempt_token) do
+    handoff = Kogen.ScenarioSemantic.handoff(attempt_token, attempt_state(attempt_token))
+    contract = %{scenarios: semantic_contract(), risks: []}
+
+    assert {:ok, ^handoff} =
+             Contract.handoff(Jason.encode!(handoff), contract, attempt_token, [])
+
+    tracking_context = %{
+      "attempt_token" => attempt_token,
+      "candidate_id" => candidate_id,
+      "scenarios" => semantic_contract(),
+      "risks" => [],
+      "open_findings" => [],
+      "developer_handoff" => handoff,
+      "observed_focused_probes" =>
+        Enum.map(semantic_scenario_ids(), fn id ->
+          path = ".semantic-evidence/#{attempt_state(attempt_token)}-#{id}.json"
+          %{path: path, receipt: Jason.decode!(File.read!(path))}
+        end)
+    }
+
+    prompt = """
+    Independently assess this Candidate against the full contract and supplied handoff below. Inspect the files yourself, use the focused probes as evidence where useful, and make your own verdict. Do not modify anything and do not run a gate. Use the exact supplied Candidate and attempt token. Every scenario needs one independent assessment; every evidence reference must use an existing repository-relative file path and a useful locator. Retained earlier receipts are history; assess the current Candidate and current supplied observations.
+
+    Scenarios:
+    #{Jason.encode!(semantic_contract())}
+
+    KOGEN_TRACKING_CONTEXT
+    #{Jason.encode!(tracking_context)}
+    """
+
+    assert {:ok,
+            %{session_id: session_id, response: response, verdict: verdict, findings: findings}} =
+             Kogen.Harness.launch_reviewer(prompt, config.reviewer.model, config.reviewer.effort)
+
+    assert session_id != ""
+    assert verdict == response["verdict"]
+    assert findings == response["findings"]
+
+    assert {:ok, ^response} =
+             Contract.verdict(
+               response,
+               contract,
+               %{candidate_id: candidate_id, attempt_token: attempt_token},
+               []
+             )
+
+    response
+  end
+
+  defp semantic_scenario_ids, do: Kogen.ScenarioSemantic.scenario_ids()
+
+  defp candidate_id!(fixture) do
+    {_out, 0} = System.cmd("git", ["add", "-A"], cd: fixture)
+    {candidate, 0} = System.cmd("git", ["write-tree"], cd: fixture)
+    String.trim(candidate)
+  end
+
+  defp stage_readiness_baseline!(fixture) do
+    flags = Path.join(fixture, "config/flags.json")
+    File.write!(flags, "{\"feature\": false}\n")
+    {_out, 0} = System.cmd("git", ["add", "-A"], cd: fixture)
+    File.write!(flags, "{\"feature\": true}\n")
+  end
+
+  defp probe_outcomes!(fixture) do
+    Enum.map(semantic_scenario_ids(), fn id ->
+      {output, status} = Kogen.ScenarioSemantic.focused_probe!(fixture, id)
+      %{scenario_id: id, status: status, output: output}
+    end)
+  end
+
+  defp write_probe_receipts!(fixture, state, outcomes) do
+    dir = Path.join(fixture, ".semantic-evidence")
+    File.mkdir_p!(dir)
+
+    Enum.each(outcomes, fn outcome ->
+      File.write!(
+        Path.join(dir, "#{state}-#{outcome.scenario_id}.json"),
+        Jason.encode!(outcome) <> "\n"
+      )
+    end)
+  end
+
+  defp attempt_state(token),
+    do: if(String.ends_with?(token, "incomplete"), do: :incomplete, else: :corrected)
+
+  defp semantic_contract do
+    [
+      %{
+        "id" => "installed-artifact",
+        "given" => "a copied source implementation and an installed artifact",
+        "when" => "the installed artifact is invoked",
+        "then" => "the artifact itself reports installed artifact ready",
+        "wrong_result" => "a source copy is cited while the installed command remains legacy",
+        "verified_by" => ["check"],
+        "evidence" => "probes/installed_artifact.py"
+      },
+      %{
+        "id" => "role-routing",
+        "given" => "configured Developer, Reviewer, and Shaper profiles",
+        "when" =>
+          "each role is routed with its declared model and effort or invalid configuration",
+        "then" =>
+          "all three valid combinations route and every invalid configuration is rejected",
+        "wrong_result" => "only one role routes or invalid configuration succeeds",
+        "verified_by" => ["check"],
+        "evidence" => "probes/role_routing.py"
+      },
+      %{
+        "id" => "git-status-readiness",
+        "given" => "a tracked readiness flag marked assume-unchanged",
+        "when" => "readiness is evaluated",
+        "then" => "content divergence is detected despite clean git status",
+        "wrong_result" => "status-only readiness treats hidden flag changes as ready",
+        "verified_by" => ["check"],
+        "evidence" => "probes/git_status_readiness.py"
+      }
+    ]
   end
 
   defp primitive_log_dir(project_root) do

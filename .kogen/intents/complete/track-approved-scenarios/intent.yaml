@@ -1,0 +1,46 @@
+id: 01a084f6-0f8a-7f32-9e9a-4fd9c0769930
+slug: track-approved-scenarios
+title: Track Approved scenarios through independent Review
+status: approved
+shaped_against:
+  branch: main
+  head: fdfaea11cdb2c1403974dc32737f78a818bf344b
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-09T06:58:33.482Z'
+current_baseline:
+  branch: main
+  head: 4d7a2402eb9b5941a2993a502e7ea1c6abac407b
+  note: Original minted identity and baseline are preserved. Investigation and this Draft use the current
+    committed baseline; see evidence/shaping-investigation.md for provenance and intervening changes.
+may_change_guarded_paths:
+- README.md
+- lib/**
+- priv/kogen/prompts/**
+- .codex/hooks/check.sh
+- test/**
+problem: Passing checks and prose handoffs do not demonstrate that every Approved scenario was implemented.
+  Reviewer findings are flattened into the latest rework message and can disappear across attempts.
+outcome: Every Approved scenario has a Candidate-bound record connecting its requirements and shaped risks,
+  Developer claims and evidence, owned verification receipts, and independent Reviewer assessments. Acceptance
+  requires every scenario assessed as satisfied and all blocking findings explicitly closed for the current
+  Candidate.
+appetite: One Developer conversation with the configured two outer resumptions. Extend the existing lifecycle
+  with a bounded handoff/verdict contract and one Build-owned record; no scheduler, recovery engine, or
+  general planning framework.
+non_goals:
+- Build resumption after process exit or exhausted budget, checkpoint loading, or new recovery commands;
+  the Shaper explicitly separated these into another Intent.
+- Automatic worktrees, arbitrary crash recovery, or retaining a separate controller runtime.
+- Implementing, approving, weakening, or splitting external-repository-cli, including its provider-backed
+  installed-command outcome.
+- Changing model profiles, helper routing, native delegation policy, or verification ownership.
+- Replacing make verification or independent Review; increasing budgets, infinite retries, or an extra
+  automatic Reviewer retry loop.
+- Automatically changing an Approved package or moving a failed Intent to Draft.
+- A general planning framework, correctness prover, exhaustive risk discovery, or a guarantee that models
+  never miss defects.
+- Automatically trusting a Developer claim or a Reviewer finding without current-Candidate evidence.
+- Retroactively rewriting historical Complete packages or migrating parked Drafts.

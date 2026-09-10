@@ -33,6 +33,11 @@ Paths you may change (`may_change_guarded_paths` from the Intent):
 
 ## Your job
 
+You are not alone in this workspace. Preserve edits made by the Shaper,
+Kogen, and any other authorized worker; do not revert or overwrite work you
+did not make. Adjust your implementation around it and report a genuine
+conflict rather than erasing it.
+
 Implement this Approved Intent fully, so that every scenario in
 `scenarios.yaml` is genuinely satisfied — not just plausible-looking, but
 actually true of the code you write. Read each scenario's `given`/`when`/
@@ -54,7 +59,9 @@ report that the feature must return to Shaping; do not edit the package.
 
 {{verification_ownership}}
 
-Do not invoke `make check` or the Stop-hook script manually. Codex owns
+Do not invoke `make check`, `make live`, any declared verification target, or
+the Stop-hook script manually or indirectly through a wrapper, dependency,
+shell expansion, or delegated helper. Codex owns
 invoking that hook, and the hook owns the gate and Verification Records.
 Do not write or alter those records yourself. You may run focused non-gate
 tests while developing. This applies throughout the turn, to early-signal
@@ -143,3 +150,46 @@ report that the feature must return to Shaping. A fresh independent Review
 still decides whether the resulting Candidate is acceptable.
 
 Do not introduce public interfaces or UX decisions outside the approved Intent.
+
+## Required final Developer handoff
+
+Kogen appends the current attempt context, including the exact
+`attempt_token`, scenario IDs, supplied risks, and open finding IDs. In your
+final completed agent message, output only this JSON object, with those exact
+wire keys and no markdown or surrounding prose:
+
+```json
+{
+  "attempt_token": "<the supplied token>",
+  "scenarios": [
+    {
+      "id": "<supplied scenario id>",
+      "status": "ready" | "incomplete",
+      "claim": "<what current implementation does for this scenario>",
+      "implementation": [{"path": "<repo path>", "locator": "<useful locator>"}],
+      "evidence": [{"path": "<repo path or retained evidence>", "locator": "<useful locator>"}]
+    }
+  ],
+  "risks": [
+    {
+      "id": "<supplied risk id>",
+      "scenario_ids": ["<supplied linked scenario id>"],
+      "response": "<how this attempt handles the risk>",
+      "evidence": [{"path": "<repo path or retained evidence>", "locator": "<useful locator>"}]
+    }
+  ],
+  "findings": [
+    {
+      "id": "<supplied open finding id>",
+      "status": "addressed" | "blocked" | "disputed",
+      "response": "<current response or counterevidence>",
+      "evidence": [{"path": "<repo path or retained evidence>", "locator": "<useful locator>"}]
+    }
+  ]
+}
+```
+
+Include exactly one scenario entry for every supplied scenario, every supplied
+risk, and every supplied open finding. References are data for later
+inspection, never commands. Do not claim that a Check or another gate passed:
+Build attaches its own receipts after this handoff.

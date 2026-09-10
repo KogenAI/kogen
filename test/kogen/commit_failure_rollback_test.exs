@@ -99,6 +99,15 @@ defmodule Kogen.CommitFailureRollbackTest do
     assert File.read!(Path.join(approved_dir, "intent.yaml")) == @intent_yaml
     assert File.read!(Path.join(approved_dir, "evidence.md")) == <<0, 255, 10, 13>>
     assert File.read!(Path.join(approved_dir, "build-evidence-1.md")) == "also supplied"
+    assert File.read!(Path.join(approved_dir, "scenario-tracking.json")) == "user tracking zero\n"
+
+    assert File.read!(Path.join(approved_dir, "scenario-tracking-1.json")) ==
+             "user tracking one\n"
+
+    [failed_runtime] = runtime_tracking_records(dest)
+    failed_runtime_bytes = File.read!(failed_runtime)
+    assert Jason.decode!(failed_runtime_bytes)["status"] == "failed"
+    refute File.dir?(Path.join(dest, ".kogen/runtime/raw"))
 
     assert git!(dest, ["status", "--porcelain"]) == "",
            "the worktree must be exactly as clean as before this failed attempt"
@@ -109,6 +118,25 @@ defmodule Kogen.CommitFailureRollbackTest do
     assert File.read!(Path.join(complete_dir, "evidence.md")) == <<0, 255, 10, 13>>
     assert File.read!(Path.join(complete_dir, "build-evidence-1.md")) == "also supplied"
     assert File.read!(Path.join(complete_dir, "build-evidence-2.md")) =~ "Complete evidence"
+    assert File.read!(Path.join(complete_dir, "scenario-tracking.json")) == "user tracking zero\n"
+
+    assert File.read!(Path.join(complete_dir, "scenario-tracking-1.json")) ==
+             "user tracking one\n"
+
+    generated_tracking =
+      complete_dir
+      |> Path.join("scenario-tracking-2.json")
+      |> File.read!()
+      |> Jason.decode!()
+
+    assert generated_tracking["status"] == "accepted"
+    assert is_list(generated_tracking["scenarios"])
+    assert is_list(generated_tracking["attempts"])
+    assert is_list(generated_tracking["findings"])
+
+    runtime_records = runtime_tracking_records(dest)
+    assert length(runtime_records) == 2
+    assert failed_runtime_bytes in Enum.map(runtime_records, &File.read!/1)
     assert git!(dest, ["status", "--porcelain"]) == ""
   end
 
@@ -150,6 +178,8 @@ defmodule Kogen.CommitFailureRollbackTest do
     File.write!(Path.join(intent_dir, "scenarios.yaml"), @scenarios_yaml)
     File.write!(Path.join(intent_dir, "evidence.md"), <<0, 255, 10, 13>>)
     File.write!(Path.join(intent_dir, "build-evidence-1.md"), "also supplied")
+    File.write!(Path.join(intent_dir, "scenario-tracking.json"), "user tracking zero\n")
+    File.write!(Path.join(intent_dir, "scenario-tracking-1.json"), "user tracking one\n")
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},
@@ -181,5 +211,12 @@ defmodule Kogen.CommitFailureRollbackTest do
   defp git!(dir, args) do
     {out, 0} = System.cmd("git", args, cd: dir)
     String.trim(out)
+  end
+
+  defp runtime_tracking_records(dest) do
+    dest
+    |> Path.join(".kogen/runtime/scenario-tracking/*/record.json")
+    |> Path.wildcard()
+    |> Enum.sort()
   end
 end

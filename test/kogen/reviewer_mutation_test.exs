@@ -114,7 +114,7 @@ defmodule Kogen.ReviewerMutationTest do
     result = File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
 
     assert {:error, reason} = result
-    assert reason =~ "Candidate mutated during Review"
+    assert reason =~ "Candidate mutated during verification or Review"
 
     head_after = git!(dest, ["rev-parse", "HEAD"])
     assert head_after == head_before, "no Commit should have been made"

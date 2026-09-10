@@ -28,7 +28,7 @@ defmodule Kogen.HarnessRoleTest do
     for a in "$@"; do [ "$prev" = --output-last-message ] && out="$a"; prev="$a"; done
     case "$KOGEN_ROLE" in
       developer) cat >/dev/null || true; printf '%s\\n' '{"type":"thread.started","thread_id":"dev"}' '{"type":"turn.completed","thread_id":"dev"}' ;;
-      reviewer) cat >/dev/null || true; printf '%s\\n' '{"verdict":"accept","findings":[]}' > "$out"; printf '%s\\n' '{"type":"thread.started","thread_id":"review"}' '{"type":"turn.completed","thread_id":"review"}' ;;
+      reviewer) cat >/dev/null || true; printf '%s\\n' '{"candidate_id":"fixture-candidate","attempt_token":"fixture-attempt","verdict":"accept","scenarios":[],"dispositions":[],"findings":[]}' > "$out"; printf '%s\\n' '{"type":"thread.started","thread_id":"review"}' '{"type":"turn.completed","thread_id":"review"}' ;;
       shaper) [ "$KOGEN_REQUIRE_TTY" != 1 ] || test -t 0 ;;
     esac
     """)
@@ -43,10 +43,12 @@ defmodule Kogen.HarnessRoleTest do
     System.put_env("KOGEN_ROLE", "developer")
     assert {:ok, _} = Kogen.Harness.launch_reviewer("test", "fake", "low")
     assert [verdict_path] = Path.wildcard(Path.join(raw_log_dir, "reviewer-verdict-*.json"))
-    assert File.read!(verdict_path) == "{\"verdict\":\"accept\",\"findings\":[]}\n"
+
+    assert File.read!(verdict_path) ==
+             "{\"candidate_id\":\"fixture-candidate\",\"attempt_token\":\"fixture-attempt\",\"verdict\":\"accept\",\"scenarios\":[],\"dispositions\":[],\"findings\":[]}\n"
 
     assert File.read!(Path.join(raw_log_dir, "reviewer-verdicts.jsonl")) ==
-             "{\"findings\":[],\"session_id\":\"review\",\"verdict\":\"accept\"}\n"
+             "{\"attempt_token\":\"fixture-attempt\",\"candidate_id\":\"fixture-candidate\",\"dispositions\":[],\"findings\":[],\"scenarios\":[],\"session_id\":\"review\",\"verdict\":\"accept\"}\n"
 
     prompt = Path.join(dir, "prompt")
     File.write!(prompt, "shape")

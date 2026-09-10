@@ -120,6 +120,12 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     )
 
     File.write!(Path.join(dir, "Makefile"), makefile())
+
+    File.cp!(
+      Path.join(root, "test/support/scenario_response.py"),
+      Path.join(dir, "scenario_response.py")
+    )
+
     File.write!(Path.join(dir, "fake-codex"), harness())
     File.chmod!(Path.join(dir, "fake-codex"), 0o755)
 
@@ -198,6 +204,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     #!/bin/sh
     set -eu
     mkdir -p .kogen/runtime
+    response_helper="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/scenario_response.py"
     input="$(cat)"
     reviewer=0; resume=0; previous=; output_file=
     for arg in "$@"; do
@@ -209,9 +216,9 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     if [ "$reviewer" -eq 1 ]; then
       n=0; test -f .kogen/runtime/reviews && n=$(cat .kogen/runtime/reviews); n=$((n + 1)); echo $n > .kogen/runtime/reviews
       echo review:$n >> .kogen/runtime/owner.log
-      if [ "$n" -eq 1 ]; then verdict='{"verdict":"rework","findings":["fixture rework"]}'; else verdict='{"verdict":"accept","findings":[]}'; fi
-      printf '%s\n' "$verdict" > "$output_file"
-      printf '%s\n' '{"type":"thread.started","thread_id":"review"}' '{"type":"turn.completed","thread_id":"review"}'
+      if [ "$n" -eq 1 ]; then verdict=rework; else verdict=accept; fi
+      printf '%s' "$input" | python3 "$response_helper" reviewer "$verdict" > "$output_file"
+      printf '{"type":"thread.started","thread_id":"review-%s"}\n{"type":"turn.completed","thread_id":"review-%s"}\n' "$n" "$n"
       exit 0
     fi
     if [ "$resume" -eq 1 ]; then
@@ -244,6 +251,8 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
       fi
       printf '%s' '{"session_id":"dev-1"}' | sh .codex/hooks/check.sh >/dev/null
     fi
+    response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
+    printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
     printf '%s\n' '{"type":"turn.completed","thread_id":"dev-1"}'
     """
   end

@@ -10,6 +10,18 @@ defmodule Kogen.GitIntegrityTest do
     {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
   ]
 
+  test "readiness status does not refresh or rewrite the real index" do
+    in_repo!(fn ->
+      File.write!("stat-refresh.txt", "unchanged bytes")
+      commit_all!("track stat fixture")
+      File.rm!("stat-refresh.txt")
+      File.write!("stat-refresh.txt", "unchanged bytes")
+      before = File.read!(".git/index")
+      assert Git.clean_worktree?()
+      assert File.read!(".git/index") == before
+    end)
+  end
+
   test "Candidate retains a deliberately staged ignored path" do
     in_repo!(fn ->
       File.write!(".gitignore", "generated/\n")
@@ -58,6 +70,52 @@ defmodule Kogen.GitIntegrityTest do
       assert {:error, {:paths_outside_allowed, ["outside with space.txt"]}} =
                Git.stage_and_verify_candidate(candidate, "complete/")
     end)
+  end
+
+  test "exact publication assertions require the staged and committed Candidate tree" do
+    in_repo!(fn ->
+      File.write!("candidate.txt", "reviewed\n")
+      assert {:ok, candidate} = Git.candidate_id()
+
+      assert {:error, staged_error} = Git.assert_staged_tree(candidate)
+      assert staged_error =~ "staged Git tree differs"
+
+      assert {_out, 0} = System.cmd("git", ["add", "-A"])
+      assert :ok = Git.assert_staged_tree(candidate)
+      assert {:error, head_error} = Git.assert_head_tree(candidate)
+      assert head_error =~ "HEAD Git tree differs"
+
+      commit_all!("publish candidate")
+      assert :ok = Git.assert_head_tree(candidate)
+    end)
+  end
+
+  for {flag, label} <- [
+        {"--assume-unchanged", "assume-unchanged"},
+        {"--skip-worktree", "skip-worktree"}
+      ] do
+    test "Candidate capture and publication refuse a #{label} index flag without changing the index" do
+      in_repo!(fn ->
+        File.write!("README.md", "changed behind the flag\n")
+        assert {_out, 0} = System.cmd("git", ["update-index", unquote(flag), "README.md"])
+        assert {index_before, 0} = System.cmd("git", ["write-tree"])
+        assert {head_before, 0} = System.cmd("git", ["rev-parse", "HEAD"])
+        assert {flag_before, 0} = System.cmd("git", ["ls-files", "-v", "README.md"])
+
+        assert {:error, reason} = Git.candidate_id()
+        assert reason =~ "Candidate identity refused"
+        assert reason =~ unquote(label)
+
+        assert {:error, ^reason} = Git.stage_and_verify_candidate(index_before, "complete/")
+        assert {:error, ^reason} = Git.assert_staged_tree(index_before)
+        assert {:error, ^reason} = Git.assert_head_tree(index_before)
+        assert {:error, ^reason} = Git.commit("blocked publication", "", [])
+        assert {:error, ^reason} = Git.commit_staged("blocked publication", [])
+        assert {^index_before, 0} = System.cmd("git", ["write-tree"])
+        assert {^head_before, 0} = System.cmd("git", ["rev-parse", "HEAD"])
+        assert {^flag_before, 0} = System.cmd("git", ["ls-files", "-v", "README.md"])
+      end)
+    end
   end
 
   defp in_repo!(fun) do

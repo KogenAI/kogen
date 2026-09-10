@@ -1,5 +1,6 @@
 defmodule Kogen.LiveReworkAudit do
   @moduledoc false
+  Code.require_file("scenario_semantic.ex", __DIR__)
 
   # The live fixture deliberately retains these records outside its disposable
   # working tree. This module is intentionally test support: Build remains the
@@ -39,7 +40,23 @@ defmodule Kogen.LiveReworkAudit do
 
     receipts = reviewer_receipts!(raw_log_dir)
     {rework_receipt, accept_receipt} = ordered_receipts!(receipts, accepting_reviewer, developer)
-    require_actionable_omission!(rework_receipt)
+    rework_token = rework_receipt["attempt_token"]
+    accept_token = accept_receipt["attempt_token"]
+
+    require!(
+      is_binary(rework_token) and rework_token != "",
+      "Reviewer rework receipt needs an attempt token"
+    )
+
+    require!(
+      is_binary(accept_token) and accept_token != "",
+      "accepting Reviewer receipt needs an attempt token"
+    )
+
+    require!(
+      rework_token != accept_token,
+      "Reviewer rework and acceptance must bind distinct attempts"
+    )
 
     {archived_records, current_records} = check_records!(raw_log_dir, current_history)
     current = json_file!(current_record, "current Verification Record")
@@ -54,6 +71,10 @@ defmodule Kogen.LiveReworkAudit do
 
     initial_candidate =
       passing_check_sequence!(archived_records, current_records, candidate, developer)
+
+    reviewer_semantics!(rework_receipt, initial_candidate, rework_token, "rework")
+    reviewer_semantics!(accept_receipt, candidate, accept_token, "accept")
+    require_actionable_omission!(rework_receipt)
 
     initial_omission!(fixture, initial_candidate)
 
@@ -123,12 +144,27 @@ defmodule Kogen.LiveReworkAudit do
       "first Reviewer rework must have actionable findings"
     )
 
-    text = findings |> Enum.filter(&is_binary/1) |> Enum.join(" ") |> String.downcase()
+    text =
+      findings
+      |> Enum.map(& &1["reason"])
+      |> Enum.filter(&is_binary/1)
+      |> Enum.join(" ")
+      |> String.downcase()
 
     require!(
       String.contains?(text, "reviewer-notes.md"),
       "first Reviewer findings must identify reviewer-notes.md"
     )
+  end
+
+  defp reviewer_semantics!(receipt, candidate, attempt_token, verdict) do
+    Kogen.ScenarioSemantic.review_response!(receipt, %{
+      candidate_id: candidate,
+      attempt_token: attempt_token,
+      scenario_ids: ["reviewer-directed-rework"]
+    })
+
+    require!(receipt["verdict"] == verdict, "Reviewer receipt has the wrong semantic verdict")
   end
 
   defp check_records!(raw_log_dir, current_history) do

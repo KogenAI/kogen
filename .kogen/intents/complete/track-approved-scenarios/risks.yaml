@@ -1,0 +1,44 @@
+- id: tracking-file-ownership
+  scenario_ids:
+  - retain-inspectable-tracking
+  - bind-evidence-to-candidate
+  description: Ignored runtime records and published evidence have different lifetimes. Model-written claims
+    must never become authoritative state by overwriting either.
+  ownership:
+  - paths: .kogen/runtime/scenario-tracking/<build-id>/ (proposed internal location; exact basename is implementation-owned)
+    when_exists: Create a fresh unique Build directory exclusively; never reuse or overwrite another run.
+    owner_after_creation: Build controller.
+    owner_during_operation: Build controller; roles can read the supplied snapshot, not mutate authoritative
+      files.
+    permitted_mutation: Controller-only atomic record updates, preserving attempt/finding history; reader or
+      role changes fail closed.
+    validation: Recognized schema, fixed Intent/Approved identity, current attempt and Candidate bindings;
+      compare persisted bytes with controller-owned state at external execution boundaries.
+    git_state: Ignored under the existing runtime ignore rule.
+    upgrade_behavior: No loading or migration into a new Build in this Intent. Preserve old records as evidence;
+      version the format.
+  - paths: .kogen/intents/complete/<slug>/ generated scenario evidence
+    when_exists: Existing Complete blocks publication; within copied Approved evidence choose a noncolliding
+      generated name.
+    owner_after_creation: Build until publication succeeds.
+    owner_during_operation: Committed historical evidence owned by the project.
+    permitted_mutation: Build may add generated evidence only during existing publication; ordinary failed
+      publication restores the original Approved package and removes only its generated additions.
+    validation: Self-contained final Candidate closure and history match the accepted receipts; existing publication
+      tree checks remain effective.
+    git_state: Tracked in the successful implementation commit.
+    upgrade_behavior: Do not rewrite historical Complete evidence; future readers can identify its schema version.
+- id: claims-are-not-proof
+  scenario_ids:
+  - require-current-handoff
+  - independent-scenario-review
+  - reject-motivating-incomplete-evidence
+  description: Populated records can still describe incomplete or misleading tests. Structural validation establishes
+    coverage of the handoff, while a fresh Reviewer must verify the full behavior and negative case against
+    actual implementation and receipts.
+- id: ownership-transition-omission
+  scenario_ids:
+  - shape-scenario-risks
+  description: A creation-time overwrite rule does not establish runtime ownership. The protected-seed versus
+    target-owned configuration failure is the concrete negative example; Shaping must surface all lifecycle
+    dimensions instead of silently extending one rule.
