@@ -1,6 +1,10 @@
 #!/usr/bin/expect -f
 # Drives the real, public `mix kogen.shape` under a genuine pty for one
-# bounded fixture. Tolerates either trust state (the workspace-trust
+# bounded fixture. It deliberately ends the first conversation after it
+# creates a Draft, then starts `mix kogen.shape <slug>` in a fresh pty. It
+# retains pre-approval snapshots outside the disposable fixture so the test
+# can prove the continuation read its saved evidence, preserved provenance,
+# and saved exactly one visit before a new explicit approval. Tolerates either trust state (the workspace-trust
 # dialog only appears in a not-yet-trusted directory). Every readiness
 # signal is real disk state (Draft files existing, then Approved files
 # existing and Draft gone), not fragile text pattern matching -- exactly
@@ -8,10 +12,12 @@
 # distinct non-zero exit code, logged) on a timeout or an early process
 # exit instead of silently reporting success.
 #
-# args: fixture_dir log_path slug
+# args: fixture_dir log_path slug continuation_state_dir marker
 set fixture_dir [lindex $argv 0]
 set log_path [lindex $argv 1]
 set slug [lindex $argv 2]
+set continuation_state_dir [lindex $argv 3]
+set marker [lindex $argv 4]
 
 set timeout 30
 set env(TERM) "xterm-256color"
@@ -47,38 +53,64 @@ proc wait_for_path {path max_seconds} {
   return 0
 }
 
-cd $fixture_dir
+proc wait_for_file {path max_seconds} {
+  set waited 0
+  while {$waited < $max_seconds} {
+    if {[file exists $path]} { return 1 }
+    pump 1
+    incr waited 1
+  }
+  return 0
+}
 
-spawn mix kogen.shape
-catch { stty rows 40 columns 120 < $spawn_out(slave,name) }
+proc handle_trust_dialog {} {
+  global spawn_id
+  set saw_trust 0
+  catch {
+    expect {
+      -timeout 20
+      -re {Yes, continue|Press enter to continue} {
+        set saw_trust 1
+        puts "PROBE: saw the fully-rendered workspace trust dialog"
+      }
+      timeout {
+        puts "PROBE: no trust dialog within 20s (already trusted)"
+      }
+    }
+  }
 
-set saw_trust 0
-catch {
-  expect {
-    -timeout 20
-    -re {Yes, continue|Press enter to continue} {
-      set saw_trust 1
-      puts "PROBE: saw the fully-rendered workspace trust dialog"
-    }
-    timeout {
-      puts "PROBE: no trust dialog within 20s (already trusted)"
-    }
+  if {$saw_trust} {
+    pump 2
+    safe_send "\r"
+    pump 3
   }
 }
 
-if {$saw_trust} {
-  # Codex selects the trusted/continue option first; wait for its input loop.
+proc close_shape_session {} {
+  global spawn_id
+  catch { safe_send "\x03" }
+  pump 1
+  catch { safe_send "\x03" }
   pump 2
-  safe_send "\r"
-  pump 3
+  catch { close }
+  catch { wait }
 }
+
+cd $fixture_dir
+file mkdir $continuation_state_dir
+
+spawn mix kogen.shape
+catch { stty rows 40 columns 120 < $spawn_out(slave,name) }
+handle_trust_dialog
 
 set draft_intent "$fixture_dir/.kogen/intents/drafts/$slug/intent.yaml"
 set draft_dir "$fixture_dir/.kogen/intents/drafts/$slug"
 set approved_intent "$fixture_dir/.kogen/intents/approved/$slug/intent.yaml"
+set draft_evidence "$fixture_dir/.kogen/intents/drafts/$slug/evidence/continuation-proof.md"
+set continuation_read "$fixture_dir/.kogen/intents/drafts/$slug/evidence/continuation-read.md"
 
 puts "PROBE: sending directive shaping message"
-set directive "For this bounded, single fixture probe: shape exactly one tiny Intent with slug $slug. Title: Shape to build probe. may_change_guarded_paths: only dummy.txt. Exactly one scenario, verified_by check, whose then clause requires dummy.txt to exist at the repo root containing a specific exact value that this scenario text must NOT state -- the future Developer must learn the exact required value only from the check log named by a genuine Stop-hook block, then fix it, then stop again; do not let the Developer discover it before that initial blocked Stop. The existing hook directs the Developer to .kogen/runtime/stop-check.log rather than embedding the value in its block message. The test driver owns retention and auditing of provider transcripts outside the fixture; do not require the Developer to create transcript artifacts or edit the Approved package. The independent Reviewer can inspect .kogen/runtime/verification-history.jsonl for failed then passed Check records from the same session; the outer test independently verifies this sequence and the retained provider evidence. Write the Draft to disk now using your tools. Do not ask me anything else and do not move anything to approved until I explicitly say the single word yes in this conversation."
+set directive "For this bounded, single fixture probe: shape exactly one tiny Intent with slug $slug. Title: Shape to build probe. may_change_guarded_paths: only dummy.txt. Exactly one scenario, verified_by check, whose then clause requires dummy.txt to exist at the repo root containing a specific exact value that this scenario text must NOT state -- the future Developer must learn the exact required value only from the check log named by a genuine Stop-hook block, then fix it, then stop again; do not let the Developer discover it before that initial blocked Stop. The existing hook directs the Developer to .kogen/runtime/stop-check.log rather than embedding the value in its block message. Write evidence/continuation-proof.md in this Draft containing the unique marker: $marker. The test driver owns retention and auditing of provider transcripts outside the fixture; do not require the Developer to create transcript artifacts or edit the Approved package. The independent Reviewer can inspect .kogen/runtime/verification-history.jsonl for failed then passed Check records from the same session; the outer test independently verifies this sequence and the retained provider evidence. Write the Draft to disk now using your tools. Do not ask me anything else and do not move anything to approved until I explicitly say the single word yes in this conversation."
 
 if {![safe_send $directive]} {
   puts "PROBE: initial send failed"
@@ -94,8 +126,66 @@ if {![wait_for_path $draft_intent 150]} {
 }
 puts "PROBE: draft intent.yaml exists on disk"
 
+puts "PROBE: waiting for saved draft evidence (up to 60s)"
+if {![wait_for_file $draft_evidence 60]} {
+  puts "PROBE: TIMEOUT waiting for draft evidence at $draft_evidence"
+  exit 7
+}
+
 pump 3
-puts "PROBE: sending scripted test approval (test data only, not approval of a real feature)"
+puts "PROBE: closing first shaping conversation and retaining original draft state"
+close_shape_session
+file copy -force $draft_intent [file join $continuation_state_dir original-intent.yaml]
+file copy -force $draft_evidence [file join $continuation_state_dir continuation-proof.md]
+
+puts "PROBE: launching fresh continuation conversation"
+spawn mix kogen.shape $slug
+catch { stty rows 40 columns 120 < $spawn_out(slave,name) }
+handle_trust_dialog
+
+set continuation_directive "For this bounded fixture continuation, first read the saved Draft for $slug, including evidence/continuation-proof.md. Preserve the existing Intent identity, original shaping provenance, and original shaped-against baseline. Demonstrate that you read the saved evidence by writing evidence/continuation-read.md containing the exact unique marker found in that file. Save this fresh shaping visit now so intent.yaml records exactly one shaping_continuations entry. Do not move the Draft to approved and do not treat any earlier conversation as approval. Wait for a new explicit single-word yes from me in this conversation."
+
+puts "PROBE: sending fresh-session continuation directive"
+if {![safe_send $continuation_directive]} {
+  puts "PROBE: continuation send failed"
+  exit 8
+}
+pump 1
+safe_send "\r"
+
+puts "PROBE: waiting for saved continuation and evidence readback (up to 150s)"
+if {![wait_for_file $continuation_read 150]} {
+  puts "PROBE: TIMEOUT waiting for continuation readback at $continuation_read"
+  exit 9
+}
+
+set continuation_saved 0
+set waited 0
+while {$waited < 150} {
+  if {[file exists $draft_intent] && ![file exists $approved_intent]} {
+    set intent_handle [open $draft_intent r]
+    set intent_text [read $intent_handle]
+    close $intent_handle
+    if {[regexp {shaping_continuations:} $intent_text]} {
+      set continuation_saved 1
+      break
+    }
+  }
+  pump 1
+  incr waited 1
+}
+
+if {!$continuation_saved} {
+  puts "PROBE: TIMEOUT waiting for saved shaping_continuations before approval"
+  exit 10
+}
+
+file copy -force $draft_intent [file join $continuation_state_dir continued-intent.yaml]
+file copy -force $continuation_read [file join $continuation_state_dir continuation-read.md]
+puts "PROBE: continuation saved while Draft remains unapproved"
+
+pump 3
+puts "PROBE: sending new scripted test approval in the fresh conversation (test data only, not approval of a real feature)"
 if {![safe_send "yes"]} {
   puts "PROBE: send of approval failed"
   exit 5
@@ -121,11 +211,6 @@ if {!$approved_ok} {
 }
 puts "PROBE: approval confirmed on disk (approved present, draft gone)"
 
-catch { safe_send "\x03" }
-pump 1
-catch { safe_send "\x03" }
-pump 2
-catch { close }
-catch { wait }
+close_shape_session
 puts "PROBE: done"
 exit 0

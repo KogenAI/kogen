@@ -5,6 +5,8 @@ set -eu
 prompt=; for arg in "$@"; do prompt="$arg"; done
 mkdir -p .kogen/runtime
 printf '%s' "$prompt" > .kogen/runtime/shaping-prompt
+printf '%s\n' "$@" > .kogen/runtime/shaping-args
+[ "${KOGEN_SHAPE_CAPTURE_ONLY:-0}" = 1 ] && exit 0
 id="$(printf '%s\n' "$prompt" | sed -n 's/.*Intent id: `\([0-9a-f-]*\)`.*/\1/p' | head -n 1)"
 [ -n "$id" ]
 branch="$(printf '%s\n' "$prompt" | sed -n 's/.*Shaped against branch: `\([^`]*\)`.*/\1/p' | head -n 1)"

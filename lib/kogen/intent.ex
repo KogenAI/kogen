@@ -70,6 +70,58 @@ defmodule Kogen.Intent do
     end
   end
 
+  @doc "Reads only the identity and original provenance needed to continue an unfinished draft."
+  def read_draft(slug) do
+    path = Path.join([".kogen/intents/drafts", slug, "intent.yaml"])
+
+    with :ok <- valid_slug(slug),
+         :ok <- draft_path_safe(slug),
+         {:ok, data} <- load_yaml(path, "draft intent.yaml missing or unreadable: #{path}"),
+         {:ok, id} <- require_string(data, "id", "id"),
+         {:ok, ^slug} <- require_string(data, "slug", "slug"),
+         {:ok, baseline} <- require_fields(data, "shaped_against", ~w(branch head)),
+         {:ok, shaping} <- require_fields(data, "shaping", ~w(harness model effort started)) do
+      {:ok, %{id: id, slug: slug, baseline: baseline, shaping: shaping}}
+    else
+      {:ok, _other_slug} ->
+        {:error, "draft intent.yaml slug does not match selected slug: #{slug}"}
+
+      {:error, reason} ->
+        {:error, "cannot continue draft: #{reason}"}
+    end
+  end
+
+  defp draft_path_safe(slug) do
+    paths = [
+      ".kogen",
+      ".kogen/intents",
+      ".kogen/intents/drafts",
+      ".kogen/intents/drafts/#{slug}",
+      ".kogen/intents/drafts/#{slug}/intent.yaml"
+    ]
+
+    if Enum.any?(paths, &match?({:ok, %{type: :symlink}}, File.lstat(&1))),
+      do: {:error, "draft selection must not follow symbolic links"},
+      else: :ok
+  end
+
+  defp require_fields(data, key, fields) do
+    case fetch(data, key) do
+      {:ok, sub} when is_map(sub) ->
+        Enum.reduce_while(fields, {:ok, %{}}, &collect_field(&1, &2, sub, key))
+
+      _ ->
+        {:error, "intent.yaml missing required key: #{key}"}
+    end
+  end
+
+  defp collect_field(field, {:ok, acc}, sub, key) do
+    case require_string(sub, field, "#{key}.#{field}") do
+      {:ok, value} -> {:cont, {:ok, Map.put(acc, field, value)}}
+      {:error, label} -> {:halt, {:error, "intent.yaml missing required key: #{label}"}}
+    end
+  end
+
   @doc """
   Mints a UUIDv7 (RFC 9562 section 5.7): a 48-bit big-endian millisecond
   Unix timestamp, a 4-bit version nibble (`0111`), 12 random bits, a 2-bit

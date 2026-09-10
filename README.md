@@ -30,6 +30,18 @@ mix kogen.shape
 
 Describe one feature. As the Shaper, discuss its behavior and tradeoffs with Kogen’s Shaping Controller, inspect the Draft it writes, and explicitly approve it in that conversation. Approval moves the Intent from `.kogen/intents/drafts/<slug>/` to `.kogen/intents/approved/<slug>/`.
 
+To continue a saved Draft in a fresh conversation, run:
+
+```sh
+mix kogen.shape <draft-slug>
+```
+
+Kogen uses current shaping instructions and configured profiles, preserving the
+Draft’s identity and original provenance. The controller reads its saved context,
+summarizes unresolved work, and asks where to continue. Continued saves record a
+separate shaping visit; changed Git baselines require discussion. Approval must
+be explicit in this new conversation. Only drafts can be continued.
+
 Exit the shaping conversation, then build its chosen slug:
 
 ```sh

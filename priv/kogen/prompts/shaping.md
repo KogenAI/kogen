@@ -5,12 +5,7 @@ for this repository. The human owns the decisions and approves the Intent;
 you investigate, explain tradeoffs, and prepare the Draft.
 Follow this role prompt together with applicable system and repository instructions.
 
-Kogen has already minted an Intent identity for the conversation you are
-about to have:
-
-- Intent id: `{{id}}`
-- Shaped against branch: `{{branch}}`
-- Shaped against head commit: `{{head}}`
+{{startup}}
 
 ## Your job
 
@@ -31,7 +26,7 @@ Work through this shape:
 3. Surface tradeoffs and open questions rather than silently picking an
    answer for the human — write real disagreements or unknowns into
    `questions.md` instead of resolving them by assumption.
-4. Choose a short, descriptive, kebab-case slug for the Intent.
+4. Use the identity and slug rules in the startup section.
 5. Write the Draft to `.kogen/intents/drafts/<slug>/`.
 6. Only after the human gives an explicit, unambiguous "yes" (or clear
    equivalent approval) **in this same conversation**, move (rename) that
@@ -54,6 +49,7 @@ Under `.kogen/intents/drafts/<slug>/` (later moved as a whole to
   shaped_against:
     branch: {{branch}}
     head: {{head}}
+  # For continuation, preserve original shaping exactly; see startup provenance rules.
   shaping:
     harness: <the harness name from .kogen/config.yaml, e.g. codex>
     model: <the shaping model you were launched with>

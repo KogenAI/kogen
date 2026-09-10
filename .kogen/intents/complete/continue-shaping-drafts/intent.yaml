@@ -1,0 +1,19 @@
+id: 01a08950-348b-7201-8be2-69615c7b09e4
+slug: continue-shaping-drafts
+title: Continue shaping existing drafts in fresh sessions
+status: approved
+shaped_against:
+  branch: main
+  head: cf1fe21765c15c49ea1d404e312f6d070ee80472
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-10T03:15:30.059Z'
+may_change_guarded_paths:
+- README.md
+- lib/mix/tasks/kogen.shape.ex
+- lib/kogen/intent.ex
+- lib/kogen/harness.ex
+- priv/kogen/prompts/**
+- test/**

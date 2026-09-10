@@ -1,0 +1,81 @@
+- id: fresh-shaping
+  given: A configured repository with a committed HEAD
+  when: The Shaper runs mix kogen.shape without arguments
+  then: The existing fresh interactive shaping flow mints a new Intent and uses current configuration
+    and shared role instructions
+  wrong_result: The new continuation mode breaks fresh shaping or reuses an existing identity
+  verified_by:
+  - check
+  evidence: Existing public Shape fixture and harness argument assertions.
+- id: continue-draft
+  given: An existing draft with identity, provenance, scenarios, decisions and unresolved questions, without
+    any Codex session ID
+  when: The Shaper runs mix kogen.shape <draft-slug>
+  then: A fresh interactive session receives the current shared shaping role and continuation instructions
+    naming the existing draft; it retains the Intent id and slug, reads the draft and linked relevant
+    evidence, summarizes state and asks where to continue
+  wrong_result: The task ignores the slug, mints another Intent, calls codex resume, or requires old conversation
+    history
+  verified_by:
+  - check
+  - live
+  evidence: Public task fake captures arguments and rendered prompt; bounded real continuation in the
+    existing live fixture demonstrates reading a pre-existing draft and continuing the same Intent in
+    a new conversation.
+- id: current-process
+  given: A draft was created with older prompt text and model settings
+  when: Current prompt and valid shaping/helper configuration change before continuation
+  then: The new session uses the current configured model and effort and current shared role text, with
+    continuation-specific startup instructions instead of claims that a new identity was minted
+  wrong_result: The task restores old role text or old model settings from the draft
+  verified_by:
+  - check
+  evidence: Fixture changes a shared prompt marker and configured profiles, then inspects the actual launch
+    arguments and prompt.
+- id: preserve-context
+  given: The selected draft contains original shaping metadata, a recorded baseline different from current
+    HEAD, and parked-work conditions
+  when: Continuation starts and the controller updates the draft
+  then: Startup leaves draft files intact; the prompt distinguishes original baseline from current branch
+    and HEAD, preserves original provenance, requires recording the new shaping visit separately, and
+    surfaces parked conditions and conflicts for human resolution
+  wrong_result: Launching overwrites metadata, silently rebases shaped_against, treats parked work as
+    approved backlog, or discards prior decisions
+  verified_by:
+  - check
+  evidence: Task fixture snapshots input files and captures both baselines; prompt assertions cover provenance,
+    parked conditions, conflict handling and durable decisions.
+- id: approval-boundary
+  given: The resumed draft or its evidence mentions prior approval or a prior conversation
+  when: A fresh continuation starts without approval in that conversation
+  then: The role explicitly requires a new unambiguous approval in this conversation before moving the
+    reviewed draft to approved; launch itself never moves it
+  wrong_result: Historic approval, opening the draft, or a partial answer moves it to approved
+  verified_by:
+  - check
+  - live
+  evidence: Offline launch checks draft remains in place; live continuation fixture verifies it remains
+    draft before scripted explicit fixture approval and then follows the existing Build lifecycle.
+- id: invalid-selection
+  given: The caller supplies an invalid slug, extra arguments, a missing draft, or unreadable/malformed
+    identity metadata
+  when: mix kogen.shape is invoked
+  then: The task exits nonzero with a specific diagnostic before launching a harness or mutating drafts;
+    a slug available only under approved or complete is not reopened
+  wrong_result: The task silently starts a fresh Intent, follows an arbitrary path, or opens approved/completed
+    work
+  verified_by:
+  - check
+  evidence: Table-driven public-task fixtures cover traversal, extra args, missing draft, malformed YAML,
+    mismatched slug and missing required identity/baseline/provenance fields; fake launch sentinel remains
+    absent.
+- id: unfinished-draft
+  given: A draft has usable identity, original baseline and provenance but incomplete or absent scenarios
+    and unresolved shaping work
+  when: The Shaper continues it by slug
+  then: The session can open the unfinished draft and is instructed to complete its missing shaping content
+  wrong_result: The task applies Build readiness or scenario verification requirements before allowing
+    shaping
+  verified_by:
+  - check
+  evidence: Public task fixture with minimal identity metadata and missing scenarios launches successfully.

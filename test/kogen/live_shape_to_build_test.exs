@@ -41,6 +41,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   @moduletag timeout: 900_000
 
   @slug "shape-to-build-probe"
+  @continuation_marker "continuation-evidence-k4q9z"
   @review_rework_slug "live-reviewer-rework-probe"
 
   @makefile """
@@ -76,7 +77,7 @@ defmodule Kogen.LiveShapeToBuildTest do
     evidence: provider-backed Build-only fixture preserves both structured reviewer receipts, Developer raw streams, Stop records, and the resulting Commit
   """
 
-  test "real Shape drafts and is approved, then real Build corrects a real Stop-Check failure in one session and completes Review/Commit" do
+  test "real Shape continues a saved draft in a fresh session, then approval and Build complete the same Intent" do
     project_root = File.cwd!()
     log_dir = owned_log_dir(project_root)
 
@@ -99,6 +100,8 @@ defmodule Kogen.LiveShapeToBuildTest do
     pty_log =
       Path.join(log_dir, "shape-pty-transcript-#{System.system_time(:second)}.log")
 
+    continuation_state_dir = Path.join(log_dir, "continuation-state")
+
     {diagnostics, shape_exit} =
       System.cmd(
         "expect",
@@ -107,7 +110,9 @@ defmodule Kogen.LiveShapeToBuildTest do
           Path.join(project_root, "test/support/shape_to_build_probe.exp"),
           fixture,
           pty_log,
-          @slug
+          @slug,
+          continuation_state_dir,
+          @continuation_marker
         ],
         env: [{"MIX_BUILD_PATH", Path.join(fixture, "_build")}],
         stderr_to_stdout: true
@@ -128,6 +133,41 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     refute File.dir?(draft_dir), "the Draft directory must be gone after real approval"
     assert File.exists?(approved_intent_path), "the real Approved intent.yaml must exist"
+
+    original_intent =
+      continuation_state_dir
+      |> Path.join("original-intent.yaml")
+      |> read_yaml!()
+
+    continued_intent =
+      continuation_state_dir
+      |> Path.join("continued-intent.yaml")
+      |> read_yaml!()
+
+    continuation_read =
+      continuation_state_dir
+      |> Path.join("continuation-read.md")
+      |> File.read!()
+
+    assert continuation_read =~ @continuation_marker,
+           "the fresh continuation must read saved draft evidence containing the unique marker"
+
+    assert continued_intent["id"] == original_intent["id"]
+    assert continued_intent["slug"] == original_intent["slug"]
+    assert continued_intent["shaping"] == original_intent["shaping"]
+    assert continued_intent["shaped_against"] == original_intent["shaped_against"]
+
+    assert [continuation] = continued_intent["shaping_continuations"],
+           "one continuation visit must be saved before the new conversation approves the draft"
+
+    assert is_map(continuation)
+    assert continuation["harness"]
+    assert continuation["model"]
+    assert continuation["effort"]
+    assert continuation["started"]
+    assert is_map(continuation["checkout"])
+    assert continuation["checkout"]["branch"]
+    assert continuation["checkout"]["head"]
 
     transcript = File.read!(pty_log)
 
@@ -378,6 +418,12 @@ defmodule Kogen.LiveShapeToBuildTest do
 
   defp preserve_if_present(source, destination) do
     if File.exists?(source), do: File.cp!(source, destination)
+  end
+
+  defp read_yaml!(path) do
+    assert File.exists?(path), "expected retained continuation state at #{path}"
+    {:ok, yaml} = YamlElixir.read_from_file(path)
+    yaml
   end
 
   defp git!(dir, args) do

@@ -11,6 +11,8 @@ defmodule Kogen.CompiledFixture do
     "priv/kogen/prompts/developer.md",
     "priv/kogen/prompts/reviewer.md",
     "priv/kogen/prompts/shaping.md",
+    "priv/kogen/prompts/shaping-fresh.md",
+    "priv/kogen/prompts/shaping-continuation.md",
     "test/support/codex",
     "test/support/fake_codex",
     "test/support/fake_codex_shaper"
