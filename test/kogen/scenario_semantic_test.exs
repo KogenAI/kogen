@@ -74,6 +74,30 @@ defmodule Kogen.ScenarioSemanticTest do
     end)
   end
 
+  test "corrected route fixture accepts only exact configured three-field profiles" do
+    root = Path.join(System.tmp_dir!(), "kogen-route-arity-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+    Kogen.ScenarioSemantic.write_fixture!(root, :corrected)
+
+    File.cd!(root, fn ->
+      assert {_, 0} = System.cmd("sh", ["bin/route", "developer", "astra", "low"])
+
+      for arguments <- [
+            ["developer", "astra", "low", "unexpected"],
+            [],
+            ["developer"],
+            ["developer", "astra"],
+            ["invalid-role", "astra", "low"],
+            ["developer", "invalid-model", "low"],
+            ["developer", "astra", "invalid-effort"]
+          ] do
+        assert {_, status} = System.cmd("sh", ["bin/route" | arguments])
+        assert status != 0, "route must reject #{inspect(arguments)}"
+      end
+    end)
+  end
+
   defp review_response(verdict, needs_rework, findings) do
     %{
       "candidate_id" => "tree-corrected",

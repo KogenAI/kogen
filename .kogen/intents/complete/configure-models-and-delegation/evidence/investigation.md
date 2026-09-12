@@ -1,0 +1,11 @@
+# Current baseline investigation — 2026-09-12
+
+Baseline: main at bf68fd708a3faef0ef80883f47671f560b81a973; clean tracked worktree when Shaping started. Config currently uses Astra-low roots, Luna-low scout, Terra-medium worker and Astra-medium expert, with outer_resumptions: 2. Makefile declares check and live.
+
+A Luna-low read-only scout inspected public route/coverage, and the root inspected the consequential error boundary. Shape fresh/continuation select startup sources in lib/mix/tasks/kogen.shape.ex and independently render helper replacements. Build independently renders Developer/Reviewer helper values in lib/kogen/build.ex around lines 939–980. Delegation prose is duplicated in the three role templates. Existing target-specific Kogen.VerificationPolicy is a Developer gate-ownership mechanism; it must not be replaced by a generic shared policy or granted to other roles as execution authority.
+
+Existing Shape continuation tests cover current profile/provenance preservation. The fake lifecycle captures default argv and helper text; extend it with distinct non-default profiles to catch hardcoding across public consumers. Existing live primitive and public lifecycle tests cover launch/resume, continued Shape, failed Check correction, independent Review/rework and publication. They do not establish all three native helper profiles. Add only a compact routing/receipt fixture for that gap, not a new quality evaluation campaign.
+
+Root-confirmed defect: lib/kogen/harness.ex launch_reviewer, lines 131–136 at this baseline, maps every parse_turn error into malformed_verdict. Preserve existing execution errors; keep completed invalid verdict validation in reviewer_response. This is the old combined Intent's already stated profile/provider-failure distinction, not a new diagnostic subsystem.
+
+Retained V7 demonstrates native explorer/worker kinds and Luna low/medium profiles, selected Sol/Terra roots and full lifecycle. Separate helper evidence uses runner-owned native turn_context for exact profile authority. The raw V7 postflight exists in the private archive; its SHA-256 matches the sanitized receipt. No unchanged successful paid campaign was rerun. No new production source was changed, no earlier serial slice was imported, and no claim is made that the proposed renderer changes already passed live.

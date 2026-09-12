@@ -1,0 +1,53 @@
+id: "01a0969e-8a7f-75c5-8636-8f71a4a9f513"
+slug: "configure-models-and-delegation"
+title: "Configure role models and unify delegation guidance"
+status: "approved"
+shaped_against:
+  branch: "main"
+  head: "bf68fd708a3faef0ef80883f47671f560b81a973"
+shaping:
+  harness: "codex"
+  model: "gpt-6-astra"
+  effort: "low"
+  started: "2026-09-12T17:16:07.682465Z"
+may_change_guarded_paths:
+  - ".kogen/config.yaml"
+  - "priv/kogen/prompts/**"
+  - "lib/kogen/execution_policy.ex"
+  - "lib/kogen/intent.ex"
+  - "lib/kogen/build.ex"
+  - "lib/kogen/harness.ex"
+  - "lib/mix/tasks/kogen.shape.ex"
+  - "test/**"
+  - "README.md"
+problem: "Root/helper profile choices and delegation guidance are duplicated across role renderers; current tracked defaults do not implement the previously accepted role table."
+outcome: "Each role receives one consistent execution/delegation policy and the configured profiles, preserving role authority and existing Build lifecycle."
+appetite: "One Developer conversation, one Build, two outer resumptions. Factor existing guidance, apply the accepted six-profile table, and verify plumbing plus real lifecycle/native dispatch."
+selected_profiles:
+  shaping:
+    model: "gpt-6-astra"
+    effort: "low"
+  developer:
+    model: "gpt-5.6-sol"
+    effort: "low"
+  reviewer:
+    model: "gpt-5.6-terra"
+    effort: "medium"
+  helpers:
+    scout:
+      model: "gpt-5.6-luna"
+      effort: "low"
+    worker:
+      model: "gpt-5.6-luna"
+      effort: "medium"
+    expert:
+      model: "gpt-5.6-sol"
+      effort: "medium"
+non_goals:
+  - "Python editing preferences, hook parsing changes, bytecode or Finder ignore hygiene."
+  - "File-discovered role context, tracking projection, evidence-retention machinery or handoff redesign."
+  - "Shaping-quality changes or the five-case Shaping evaluation."
+  - "Suite parallelization, test-runner optimization, benchmarks, model ranking or savings claims."
+  - "New model providers, commands, routing configuration schema, fallback models, adaptive routing, mandatory production fanout or automatic escalation."
+  - "Changing gate ownership, Developer continuity, Review independence, Candidate protection, output schemas, retry limits, recovery or compaction policy."
+  - "Importing or accepting the original combined dirty Candidate."

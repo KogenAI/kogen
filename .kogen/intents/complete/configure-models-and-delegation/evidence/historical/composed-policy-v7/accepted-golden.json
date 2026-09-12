@@ -1,0 +1,31 @@
+{
+  "outcome": "accepted",
+  "build_exit_code": 0,
+  "elapsed_seconds": 484.8037950992584,
+  "strict_postflight": true,
+  "semantic_oracle": true,
+  "published": true,
+  "complete_exists": true,
+  "clean_git": true,
+  "native_calls": 4,
+  "profiles_match": true,
+  "usage_valid": true,
+  "descendant_audit": true,
+  "helper_spawn_attempts": 5,
+  "complete_directory": "release-manifest-lifecycle-v2",
+  "complete_file_sha256": {
+    "evidence.md": "3c41c7326bcaf25ba941e9e7a5898942b5ba0ec1f8951fb658ae6f0fd6df534d",
+    "intent.yaml": "ef8c90eeea4f2b6612b8aba00efab98c0afd9582e1ddd84b66437dc259001d83",
+    "risks.yaml": "bc304180a7876bcb26a19f25a757ed0eca27f5db372dc1dc24e7708762473f77",
+    "scenario-tracking.json": "40fe0462eac65015c731848dd28a6518abe35ab0d81a6d75d4e35982f91dd25c",
+    "scenarios.yaml": "7048d8fd6c08400c9768715df486cf4805b07296d0fe6d34a97520be2ac9858a"
+  },
+  "source_receipts": [
+    "arm/evidence/arm-receipt.json",
+    "arm/evidence/postflight.json",
+    "arm/evidence/descendant-audit.json",
+    "arm/evidence/native-invocations.jsonl",
+    "arm/evidence/prompt-delta.json"
+  ],
+  "ignored_cache_preservation_observation": "Unobserved: frozen baseline contained no __pycache__/*.pyc/*.pyo, and Developer removed its own generated cache before Candidate capture. Reviews caused no Git-visible mutation, but the run did not include a preexisting ignored-cache sentinel, so it cannot prove preservation of such a file."
+}

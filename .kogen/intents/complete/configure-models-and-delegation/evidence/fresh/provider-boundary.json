@@ -1,0 +1,27 @@
+[
+  {
+    "mode": "exit",
+    "developer": "{:error, {:provider_exit, 23, \"requested profile unavailable\\n\"}}",
+    "reviewer": "{:error, {:malformed_verdict, 23, \"requested profile unavailable\\n\"}}"
+  },
+  {
+    "mode": "provider-error",
+    "developer": "{:error, {:provider_error, %{\"message\" => \"requested profile unavailable\", \"type\" => \"error\"}}}",
+    "reviewer": "{:error, {:malformed_verdict, 0, \"{\\\"type\\\": \\\"thread.started\\\", \\\"thread_id\\\": \\\"boundary-probe\\\"}\\n{\\\"type\\\": \\\"error\\\", \\\"message\\\": \\\"requested profile unavailable\\\"}\\n\"}}"
+  },
+  {
+    "mode": "incomplete",
+    "developer": "{:error, {:no_result_event, 0, \"{\\\"type\\\": \\\"thread.started\\\", \\\"thread_id\\\": \\\"boundary-probe\\\"}\\n\"}}",
+    "reviewer": "{:error, {:malformed_verdict, 0, \"{\\\"type\\\": \\\"thread.started\\\", \\\"thread_id\\\": \\\"boundary-probe\\\"}\\n\"}}"
+  },
+  {
+    "mode": "malformed",
+    "developer": "{:ok, %{message: \"not JSON\", events: [%{\"thread_id\" => \"boundary-probe\", \"type\" => \"thread.started\"}, %{\"item\" => %{\"text\" => \"not JSON\", \"type\" => \"agent_message\"}, \"type\" => \"item.completed\"}, %{\"type\" => \"turn.completed\", \"usage\" => %{\"input_tokens\" => 1, \"output_tokens\" => 1}}], result: %{\"type\" => \"turn.completed\", \"usage\" => %{\"input_tokens\" => 1, \"output_tokens\" => 1}}, session_id: \"boundary-probe\"}}",
+    "reviewer": "{:error, {:malformed_verdict, 0, %{\"message\" => \"not JSON\", \"reviewer_session_id\" => \"boundary-probe\"}}}"
+  },
+  {
+    "mode": "valid",
+    "developer": "{:ok, %{message: \"{\\\"candidate_id\\\": \\\"probe\\\", \\\"attempt_token\\\": \\\"probe\\\", \\\"verdict\\\": \\\"accept\\\", \\\"scenarios\\\": [], \\\"dispositions\\\": [], \\\"findings\\\": []}\", events: [%{\"thread_id\" => \"boundary-probe\", \"type\" => \"thread.started\"}, %{\"item\" => %{\"text\" => \"{\\\"candidate_id\\\": \\\"probe\\\", \\\"attempt_token\\\": \\\"probe\\\", \\\"verdict\\\": \\\"accept\\\", \\\"scenarios\\\": [], \\\"dispositions\\\": [], \\\"findings\\\": []}\", \"type\" => \"agent_message\"}, \"type\" => \"item.completed\"}, %{\"type\" => \"turn.completed\", \"usage\" => %{\"input_tokens\" => 1, \"output_tokens\" => 1}}], result: %{\"type\" => \"turn.completed\", \"usage\" => %{\"input_tokens\" => 1, \"output_tokens\" => 1}}, session_id: \"boundary-probe\"}}",
+    "reviewer": "{:ok, %{response: %{\"attempt_token\" => \"probe\", \"candidate_id\" => \"probe\", \"dispositions\" => [], \"findings\" => [], \"scenarios\" => [], \"verdict\" => \"accept\"}, session_id: \"boundary-probe\", findings: [], verdict: \"accept\"}}"
+  }
+]

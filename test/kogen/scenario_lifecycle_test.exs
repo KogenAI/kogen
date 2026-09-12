@@ -201,6 +201,7 @@ defmodule Kogen.ScenarioLifecycleTest do
           ".codex/hooks/check.sh",
           ".codex/hooks/verification_policy.py",
           ".codex/hooks.json",
+          "priv/kogen/prompts/execution-policy.md",
           "priv/kogen/prompts/developer.md",
           "priv/kogen/prompts/reviewer.md"
         ] do

@@ -1,0 +1,56 @@
+-
+  id: "shared-policy"
+  given: "Fresh Shape, continued Shape, Developer and Reviewer use the maintained prompt sources."
+  when: "Their public launch routes render instructions."
+  then: "Exactly one expanded shared execution/delegation policy appears in each initial prompt, with no unresolved placeholders or superseded routing copies. Configured profile rendering has one maintained owner. Role-specific permissions, gate instructions and output contracts remain authoritative."
+  wrong_result: "Only a helper renderer is tested, one public route retains old routing, or shared prose grants Reviewer helpers write authority."
+  verified_by:
+    - "check"
+  evidence: "Public Shape fresh/continuation captures and fake Build Developer/Reviewer captures, including duplicate/missing policy and unresolved-placeholder assertions; independent semantic inspection of full emitted prompts."
+-
+  id: "configured-profiles"
+  given: "The selected table in intent.yaml is installed, or a fixture configures distinct non-default values for all six profiles."
+  when: "Kogen starts fresh/continued Shape, launches/resumes Developer and launches each fresh Reviewer."
+  then: "Tracked defaults match the selected table. Root CLI arguments and displayed configured root/helper model and effort values match current configuration without hardcoding or inheritance. Continuation preserves original shaping metadata and records the current visit separately. Helper labels map to supported native kinds: scout explorer, worker worker, expert default, always with explicit model/effort."
+  wrong_result: "It renders new text while root CLI uses old defaults, resumes with another model, rewrites original provenance, or passes scout/expert as native agent-kind enums."
+  verified_by:
+    - "check"
+  evidence: "Public fake-harness argv and complete prompt captures with deliberately distinct fixture profiles across all routes; invalid/missing/blank required configuration fails before dispatch. Update old default assertions in intent_test.exs and lifecycle_test.exs to the selected table while retaining distinct non-default coverage."
+-
+  id: "bounded-delegation"
+  given: "A role has both short coupled work and potentially worthwhile independent work."
+  when: "The role reads shared guidance and delegates when justified."
+  then: "policy.md obligations are present: complete-task accounting, small sufficient packets, appropriate local work and helper reuse, useful concurrency, explicit ownership and stopping conditions, concise cited advisory returns, targeted contradiction checks, and root responsibility. No production spawn quota, mandatory fanout or automatic escalation is introduced."
+  wrong_result: "A nominally faster policy creates a child for every command, repeats bulk investigation, substitutes helper judgment for root authority, or equates token price with complete-task savings."
+  verified_by:
+    - "check"
+  evidence: "Cross-role rendering regressions plus independent inspection of packet/authority instructions; historical local/delegated comparison remains explicitly workload-specific."
+-
+  id: "profile-failures"
+  given: "Required configuration is invalid, or the provider rejects/fails a requested profile."
+  when: "Configuration parsing or actual harness response handling runs."
+  then: "Invalid required configuration prevents launch. Provider execution errors remain visible as execution errors with their original available diagnostic, with no profile fallback or hidden rerun. In particular Reviewer execution failure is not rewritten into a malformed completed verdict; a completed invalid verdict still takes the existing malformed-verdict path. Helpers are instructed to report native unavailability rather than substitute or infer identity from self-report."
+  wrong_result: "An unavailable Reviewer is reported only as malformed JSON, a missing helper inherits root settings, or a completed malformed verdict is accepted as transport success."
+  verified_by:
+    - "check"
+  evidence: "Fake executable exercises actual launch_reviewer boundary for nonzero exit, provider-error event, incomplete turn and completed malformed verdict; assert preserved existing parser error and no second substituted invocation. No live unavailable-model campaign."
+-
+  id: "native-helper-dispatch"
+  given: "The configured helper profiles and shared policy are rendered through a production role renderer into an isolated live fixture."
+  when: "One compact test-only native dispatch probe runs bounded scout, worker and expert tasks against deterministic fixture facts."
+  then: "All three children use explicit configured model/effort and supported kinds, return the expected task-specific facts, and preserve assigned read-only fixture boundaries. Runner-owned native metadata ties each child to the parent and confirms actual profile and completion; missing or contradictory evidence fails. The fixture may require dispatch to test routing; general product policy remains selective."
+  wrong_result: "The probe passes from prompt strings or a helper saying its own model name, uses invented native kinds, or silently accepts absent/mismatched child evidence."
+  verified_by:
+    - "check"
+    - "live"
+  evidence: "Focused existing live-test infrastructure extended with one compact three-profile routing fixture, not a quality evaluation suite. Offline receipt controls reject missing, wrong-profile, unrelated-child and incomplete native records; live captures actual native child execution. Historical V7/helper results establish feasibility only."
+-
+  id: "live-continuity"
+  given: "Selected profiles and shared policy are applied to the existing live public Shape/Build fixtures."
+  when: "The existing live lifecycle performs fresh Shape, continued Shape, approved fixture Build, failed Stop correction and Reviewer-directed rework."
+  then: "The fixture reaches accepted publication with exact Developer continuity, fresh independent Review, unchanged Candidate/gate/output contracts and two outer resumptions. Current native root routing matches configured profiles. Prior evidence is not substituted for the new Build-owned live receipt."
+  wrong_result: "Primitive provider calls pass but public lifecycle output is unusable, a fresh Developer replaces resume, gates are weakened, or an old V7 receipt is called current acceptance."
+  verified_by:
+    - "check"
+    - "live"
+  evidence: "Retain existing real public lifecycle tests and correlate launch/resume/review profile/session evidence; fake lifecycle guards route and negative controls. Repair the existing semantic fixture to enforce exact argument count and reject generic extra/missing arguments and invalid role/model/effort; preserve independent bad/good Reviewer judgments and the original contract. No timing threshold, repeated benchmark campaign or new evaluation framework."

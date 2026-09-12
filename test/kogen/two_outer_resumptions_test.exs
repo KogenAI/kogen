@@ -74,7 +74,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     File.mkdir_p!(Path.join(dest, "priv/kogen/prompts"))
 
-    for prompt <- ["developer.md", "reviewer.md"] do
+    for prompt <- ["developer.md", "reviewer.md", "execution-policy.md"] do
       File.cp!(
         Path.join(project_root, "priv/kogen/prompts/#{prompt}"),
         Path.join(dest, "priv/kogen/prompts/#{prompt}")

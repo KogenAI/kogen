@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "make",
+    "live"
+  ],
+  "exit_code": -15,
+  "timed_out": false,
+  "elapsed_seconds": 496.9800678330066,
+  "finished": "2026-09-12T17:55:06.252535+00:00",
+  "log": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/model-delegation-proof-20260912/raw/live.log",
+  "scope": "isolated POC with selected config, appended draft policy and updated fake profile expectations; not production acceptance"
+}

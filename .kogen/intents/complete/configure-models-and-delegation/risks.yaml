@@ -1,0 +1,61 @@
+-
+  id: "authority-drift"
+  scenario_ids:
+    - "shared-policy"
+    - "bounded-delegation"
+    - "live-continuity"
+  description: "Shared factoring can erase role restrictions. Keep human Shaping decisions/approval, Developer gate restrictions, read-only Review/children, current output schemas and independent root judgment intact. Do not import unrelated combined-policy obligations."
+-
+  id: "evidence-and-measurement-limits"
+  scenario_ids:
+    - "bounded-delegation"
+    - "native-helper-dispatch"
+    - "live-continuity"
+  description: "Historical small experiments support reversible profile choices only. Scout facts passed while exact citations and one read-only boundary failed; keep qualifications and corrections. Validate current native identity from runner metadata rather than self-report. Include whole-task work before making performance comparisons; this Intent promises no savings."
+-
+  id: "maintained-source-lifecycle"
+  scenario_ids:
+    - "shared-policy"
+    - "configured-profiles"
+    - "bounded-delegation"
+    - "profile-failures"
+    - "native-helper-dispatch"
+    - "live-continuity"
+  description: "Ordinary carryover lifecycle rules approved with this package. No installer, protected-seed transition, runtime migration or new persistent evidence service."
+  ownership:
+    -
+      paths: ".kogen/config.yaml, priv/kogen/prompts sources, scoped renderers/parser, test sources and README.md"
+      when_exists: "Inspect and edit maintained source in place, reconcile one shared owner, and preserve unrelated work."
+      owner_after_creation: "Repository maintainers own new policy, renderer and test sources immediately."
+      owner_during_operation: "Maintainers retain ownership; runtime reads maintained sources without rewriting them."
+      permitted_mutation: "Reviewed Git edits within approved guarded paths; no runtime self-modification or automatic profile substitution."
+      validation: "check validates public rendering, config, error paths and receipt controls; live proves native dispatch and existing lifecycle; independent Review assesses authority."
+      git_state: "Maintained sources are tracked in the Build commit; this Draft remains ignored until normal approval and completion flow."
+      upgrade_behavior: "Ordinary reviewed Git changes update canonical source and tests; no migration service or ownership transition."
+    -
+      paths: "Existing live runner private fixtures extended for native dispatch, their generated native receipts and owned processes"
+      when_exists: "Preserve maintained fixture inputs and earlier runs; use unique private runs without overwriting existing evidence."
+      owner_after_creation: "The test runner owns its new disposable fixture, processes and receipts immediately."
+      owner_during_operation: "Runner controls only its own fixture and descendants; repository maintainers own maintained test inputs."
+      permitted_mutation: "Create/update private fixture files, capture native evidence and clean only owned data/processes using existing live runner conventions; read-only probe children preserve fixture inputs."
+      validation: "Offline missing/mismatched/unrelated/incomplete receipt controls and current live profile/session/fact assertions; preserve existing cleanup checks."
+      git_state: "Test sources are tracked; raw account rollouts and disposable repositories remain ignored runtime data. Curated evidence follows existing Complete rules."
+      upgrade_behavior: "Reviewed test updates; fresh runs recreate transient fixtures, preserve earlier evidence and add no replay/retry service."
+-
+  id: "historical-evidence-lifecycle"
+  scenario_ids:
+    - "configured-profiles"
+    - "bounded-delegation"
+    - "native-helper-dispatch"
+    - "live-continuity"
+  description: "Selected reports/receipts are copied evidence with original source hashes, not current acceptance. Preserve historical failures, qualifications and private archive locators."
+  ownership:
+    -
+      paths: "This Intent evidence/historical copies, source-manifest.json, recheck.json and evidence index; original combined Draft/private archives"
+      when_exists: "Do not overwrite original evidence or earlier archives; verify selected source/destination bytes. A conflicting new Draft path requires inspection rather than replacement."
+      owner_after_creation: "Maintainers retain evidence copied under the human authorization; original evidence ownership is unchanged."
+      owner_during_operation: "Reports and receipts are historical inputs. Controller and Reviewer inspect relevant evidence without automatically replaying campaigns."
+      permitted_mutation: "Append corrections/provenance and update the index while drafting; preserve copied original bytes and leave originals/private archives untouched."
+      validation: "Source/copy SHA-256 equality, preserved V7 raw-postflight hash, document/YAML/link checks and independent assessment of limitations."
+      git_state: "Concise curated copies accompany eventual Complete publication. Raw native account payloads and private archives remain ignored outside this package."
+      upgrade_behavior: "Historical evidence does not upgrade or rerun; later observations retain original dates/outcomes and cannot replace the current Build-owned gates."

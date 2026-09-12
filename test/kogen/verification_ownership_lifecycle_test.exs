@@ -105,7 +105,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
 
     File.cp!(Path.join(root, ".codex/hooks.json"), Path.join(dir, ".codex/hooks.json"))
 
-    for file <- ["developer.md", "reviewer.md"] do
+    for file <- ["developer.md", "reviewer.md", "execution-policy.md"] do
       File.cp!(
         Path.join(root, "priv/kogen/prompts/#{file}"),
         Path.join(dir, "priv/kogen/prompts/#{file}")

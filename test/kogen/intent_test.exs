@@ -80,13 +80,13 @@ defmodule Kogen.IntentTest do
       assert is_integer(outer_resumptions)
 
       assert config.shaping == %{model: "gpt-6-astra", effort: "low"}
-      assert config.developer == %{model: "gpt-6-astra", effort: "low"}
-      assert config.reviewer == %{model: "gpt-6-astra", effort: "low"}
+      assert config.developer == %{model: "gpt-5.6-sol", effort: "low"}
+      assert config.reviewer == %{model: "gpt-5.6-terra", effort: "medium"}
 
       assert config.helpers == %{
                scout: %{model: "gpt-5.6-luna", effort: "low"},
-               worker: %{model: "gpt-5.6-terra", effort: "medium"},
-               expert: %{model: "gpt-6-astra", effort: "medium"}
+               worker: %{model: "gpt-5.6-luna", effort: "medium"},
+               expert: %{model: "gpt-5.6-sol", effort: "medium"}
              }
     end
 
@@ -182,6 +182,27 @@ defmodule Kogen.IntentTest do
                Intent.read_config(incomplete_helper)
     end
 
+    test "refuses missing, blank, and wrong-typed model and effort for every configured profile" do
+      profiles = [
+        "shaping",
+        "developer",
+        "reviewer",
+        "helpers.scout",
+        "helpers.worker",
+        "helpers.expert"
+      ]
+
+      for profile <- profiles,
+          field <- ["model", "effort"],
+          kind <- [:missing, :blank, :wrong_type] do
+        dir = tmp_dir!()
+        path = write_yaml!(dir, "config.yaml", config_with_invalid_profile(profile, field, kind))
+        expected = "config.yaml missing required key: #{profile}.#{field}"
+
+        assert {:error, ^expected} = Intent.read_config(path)
+      end
+    end
+
     test "refuses to start when outer_resumptions is absent" do
       dir = tmp_dir!()
 
@@ -221,6 +242,52 @@ defmodule Kogen.IntentTest do
                Intent.read_config(path)
     end
   end
+
+  defp config_with_invalid_profile(profile, field, kind) do
+    roles = ["shaping", "developer", "reviewer"]
+    helpers = ["scout", "worker", "expert"]
+
+    role_lines =
+      Enum.map_join(roles, "\n", fn role ->
+        "#{role}: #{profile_mapping(role, profile, field, kind)}"
+      end)
+
+    helper_lines =
+      Enum.map_join(helpers, "\n", fn helper ->
+        "  #{helper}: #{profile_mapping("helpers.#{helper}", profile, field, kind)}"
+      end)
+
+    """
+    harness: codex
+    #{role_lines}
+    helpers:
+    #{helper_lines}
+    outer_resumptions: 2
+    """
+  end
+
+  defp profile_mapping(current, profile, field, kind) do
+    values = %{model: "model-#{current}", effort: "effort-#{current}"}
+
+    values =
+      if current == profile do
+        Map.put(values, String.to_existing_atom(field), invalid_value(kind))
+      else
+        values
+      end
+
+    values
+    |> Enum.reject(fn {_field, value} -> value == :missing end)
+    |> Enum.map_join(", ", fn {name, value} -> "#{name}: #{yaml_value(value)}" end)
+    |> then(&"{#{&1}}")
+  end
+
+  defp invalid_value(:missing), do: :missing
+  defp invalid_value(:blank), do: ""
+  defp invalid_value(:wrong_type), do: 42
+
+  defp yaml_value(value) when is_binary(value), do: inspect(value)
+  defp yaml_value(value), do: to_string(value)
 
   # -- read/2 ------------------------------------------------------------
 

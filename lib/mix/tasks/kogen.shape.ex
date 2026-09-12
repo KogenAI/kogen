@@ -1,6 +1,6 @@
 defmodule Mix.Tasks.Kogen.Shape do
   use Mix.Task
-  use Boundary, deps: [Kogen.Intent, Kogen.Harness, Kogen.Git, Mix]
+  use Boundary, deps: [Kogen.Intent, Kogen.Harness, Kogen.Git, Kogen.ExecutionPolicy, Mix]
 
   @shortdoc "Starts fresh shaping or continues an existing draft in a new conversation"
   @moduledoc """
@@ -65,7 +65,15 @@ defmodule Mix.Tasks.Kogen.Shape do
         String.replace(text, "{{#{key}}}", value)
       end)
 
-    File.write!(prompt_file, render_helper_profiles(prompt, config))
+    File.write!(
+      prompt_file,
+      String.replace(
+        prompt,
+        "{{execution_policy}}",
+        Kogen.ExecutionPolicy.render(config, "shaping")
+      )
+    )
+
     status = Kogen.Harness.exec_shaper(config.shaping.model, config.shaping.effort, prompt_file)
     File.rm(prompt_file)
     System.halt(status)
@@ -74,15 +82,5 @@ defmodule Mix.Tasks.Kogen.Shape do
   defp fail(reason) do
     IO.puts(:stderr, reason)
     System.halt(1)
-  end
-
-  defp render_helper_profiles(prompt, config) do
-    prompt
-    |> String.replace("{{scout_model}}", config.helpers.scout.model)
-    |> String.replace("{{scout_effort}}", config.helpers.scout.effort)
-    |> String.replace("{{worker_model}}", config.helpers.worker.model)
-    |> String.replace("{{worker_effort}}", config.helpers.worker.effort)
-    |> String.replace("{{expert_model}}", config.helpers.expert.model)
-    |> String.replace("{{expert_effort}}", config.helpers.expert.effort)
   end
 end

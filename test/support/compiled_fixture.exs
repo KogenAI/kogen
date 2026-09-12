@@ -8,6 +8,7 @@ defmodule Kogen.CompiledFixture do
     ".codex/hooks.json",
     ".codex/hooks/check.sh",
     ".codex/hooks/verification_policy.py",
+    "priv/kogen/prompts/execution-policy.md",
     "priv/kogen/prompts/developer.md",
     "priv/kogen/prompts/reviewer.md",
     "priv/kogen/prompts/shaping.md",

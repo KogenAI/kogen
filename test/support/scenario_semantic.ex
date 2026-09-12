@@ -27,7 +27,20 @@ defmodule Kogen.ScenarioSemantic do
     failed = False
     for role, profile in json.load(open("config/profiles.json")).items():
       command = ["./bin/route", role, profile["model"], profile["effort"]]
-      failed |= subprocess.call(command) != 0 or subprocess.call(command + ["--invalid-config"]) == 0
+      # A route is a three-field profile tuple, not a permissive prefix.  Check
+      # every valid tuple and generic malformed call classes independently so a
+      # passing Developer claim cannot hide an accepting extra argument or a
+      # missing/invalid profile field.
+      invalid = [
+        command + ["unexpected"],
+        ["./bin/route"],
+        ["./bin/route", role],
+        ["./bin/route", role, profile["model"]],
+        ["./bin/route", "invalid-role", profile["model"], profile["effort"]],
+        ["./bin/route", role, "invalid-model", profile["effort"]],
+        ["./bin/route", role, profile["model"], "invalid-effort"],
+      ]
+      failed |= subprocess.call(command) != 0 or any(subprocess.call(bad) == 0 for bad in invalid)
     sys.exit(1 if failed else 0)
     """)
 
@@ -178,7 +191,7 @@ defmodule Kogen.ScenarioSemantic do
 
     File.write!(
       Path.join(root, "bin/route"),
-      "#!/bin/sh\n[ \"$4\" = \"--invalid-config\" ] && exit 0\n[ \"$1:$2:$3\" = developer:astra:low ] && exit 0\nexit 1\n"
+      "#!/bin/sh\n[ \"$#\" -eq 3 ] || exit 1\n[ \"$1:$2:$3\" = developer:astra:low ] && exit 0\nexit 1\n"
     )
 
     File.write!(
@@ -195,7 +208,7 @@ defmodule Kogen.ScenarioSemantic do
 
     File.write!(
       Path.join(root, "bin/route"),
-      "#!/bin/sh\n[ \"$4\" = \"--invalid-config\" ] && exit 1\ncase \"$1:$2:$3\" in developer:astra:low|reviewer:terra:medium|shaper:luna:high) exit 0 ;; *) exit 1 ;; esac\n"
+      "#!/bin/sh\n[ \"$#\" -eq 3 ] || exit 1\ncase \"$1:$2:$3\" in developer:astra:low|reviewer:terra:medium|shaper:luna:high) exit 0 ;; *) exit 1 ;; esac\n"
     )
 
     File.write!(

@@ -40,12 +40,12 @@ defmodule Kogen.BuildPreconditionsTest do
   @config_yaml """
   harness: codex
   shaping:   {model: gpt-6-astra, effort: low}
-  developer: {model: gpt-6-astra, effort: low}
-  reviewer:  {model: gpt-6-astra, effort: low}
+  developer: {model: gpt-5.6-sol, effort: low}
+  reviewer:  {model: gpt-5.6-terra, effort: medium}
   helpers:
     scout:  {model: gpt-5.6-luna, effort: low}
-    worker: {model: gpt-5.6-terra, effort: medium}
-    expert: {model: gpt-6-astra, effort: medium}
+    worker: {model: gpt-5.6-luna, effort: medium}
+    expert: {model: gpt-5.6-sol, effort: medium}
   outer_resumptions: 2
   """
 
@@ -117,6 +117,27 @@ defmodule Kogen.BuildPreconditionsTest do
                           case: "missing configuration",
                           operation: :missing_config,
                           expected: "missing .kogen/config.yaml"
+                        },
+                        %{
+                          case: "missing required helper profile",
+                          operation:
+                            {:config_replacement,
+                             "  expert: {model: gpt-5.6-sol, effort: medium}\n", ""},
+                          expected: "helpers.expert"
+                        },
+                        %{
+                          case: "blank configured root model",
+                          operation:
+                            {:config_replacement, "developer: {model: gpt-5.6-sol, effort: low}",
+                             "developer: {model: \"\", effort: low}"},
+                          expected: "developer.model"
+                        },
+                        %{
+                          case: "wrong-typed configured helper effort",
+                          operation:
+                            {:config_replacement, "worker: {model: gpt-5.6-luna, effort: medium}",
+                             "worker: {model: gpt-5.6-luna, effort: 42}"},
+                          expected: "helpers.worker.effort"
                         },
                         %{
                           case: "missing check target",
@@ -395,6 +416,17 @@ defmodule Kogen.BuildPreconditionsTest do
   defp setup_case!(dir, :missing_config) do
     write_intent(dir, @valid_intent)
     File.rm!(Path.join(dir, ".kogen/config.yaml"))
+    commit_fixture!(dir)
+  end
+
+  defp setup_case!(dir, {:config_replacement, old, replacement}) do
+    write_intent(dir, @valid_intent)
+
+    File.write!(
+      Path.join(dir, ".kogen/config.yaml"),
+      String.replace(@config_yaml, old, replacement)
+    )
+
     commit_fixture!(dir)
   end
 

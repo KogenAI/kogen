@@ -1,0 +1,72 @@
+{
+  "parent_id": "01a0969e-8c61-7971-9162-ed81f9d4078a",
+  "parent_profile": {
+    "model": "gpt-6-astra",
+    "effort": "low"
+  },
+  "parent_snapshot_sha256": "4ebeefb35602eba8fd711dc04967a9ba121e64b90cf82c3b3ad869ba3b3e043e",
+  "children": [
+    {
+      "name": "fresh_expert_route",
+      "parent_id": "01a0969e-8c61-7971-9162-ed81f9d4078a",
+      "child_id": "01a096b6-9944-7ba1-b069-0810dfa1b295",
+      "requested_kind": "default",
+      "requested_model": "gpt-5.6-sol",
+      "requested_effort": "medium",
+      "observed_profiles": [
+        [
+          "gpt-5.6-sol",
+          "medium"
+        ]
+      ],
+      "complete": true,
+      "source_sha256": "f867d38e9091eddd85adec80378e7f7bffccab0b1fe46305b0819d8466410d6b",
+      "answer": "`review_boundary.py:2-3` is the exact wrong branch: provider failure returns `malformed_verdict` but must return `provider_error`.\n\nExpected outcomes:\n\n- Provider failure, regardless of verdict validity \u2192 `provider_error`\n- Completed execution with invalid verdict \u2192 `malformed_verdict`\n- Completed execution with valid verdict \u2192 `accept`\n\nLines 4\u20136 already implement the latter two outcomes correctly."
+    },
+    {
+      "name": "fresh_scout_route",
+      "parent_id": "01a0969e-8c61-7971-9162-ed81f9d4078a",
+      "child_id": "01a096b6-4d36-7c91-a740-ea68ec46b3a5",
+      "requested_kind": "explorer",
+      "requested_model": "gpt-5.6-luna",
+      "requested_effort": "low",
+      "observed_profiles": [
+        [
+          "gpt-5.6-luna",
+          "low"
+        ]
+      ],
+      "complete": true,
+      "source_sha256": "4c3a1b67a135f4e7f36736e851844f6b532773dc061a9500653703cc5ff1e1e0",
+      "answer": "Current: release `r17`, channel `stable`, enabled `true` \u2014 [scout.json](/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/model-delegation-proof-20260912/fixture/scout.json:2).\n\nHistorical: release `r16`, channel `preview`, enabled `false` \u2014 [scout.json](/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/model-delegation-proof-20260912/fixture/scout.json:7)."
+    },
+    {
+      "name": "fresh_worker_route",
+      "parent_id": "01a0969e-8c61-7971-9162-ed81f9d4078a",
+      "child_id": "01a096b6-73f5-7c63-830c-b8fa56c1aa50",
+      "requested_kind": "worker",
+      "requested_model": "gpt-5.6-luna",
+      "requested_effort": "medium",
+      "observed_profiles": [
+        [
+          "gpt-5.6-luna",
+          "medium"
+        ]
+      ],
+      "complete": true,
+      "source_sha256": "a1b0fb39b1c7d89396bddb79c0eccebed81bccff01eada0a4114fe986bf7b05e",
+      "answer": "Read-only proof result:\n\n- Inputs: `worker.json:2-14`; rules: `worker.json:16-20`.\n- Normalize IDs to lowercase: `B \u2192 b`, `a \u2192 a`, `b \u2192 b`.\n- `B` (`worker.json:4-5`) and `b` (`worker.json:12-13`) collapse because both normalize to `b` and both have value `2`.\n- Sorted normalized output: `[{\"id\":\"a\",\"value\":1},{\"id\":\"b\",\"value\":2}]`.\n- If `B` changes to value `3` while `b` remains value `2`, the normalized `b` records conflict, so the merge must be rejected under the conflicting-duplicate rule (`worker.json:18-20`)."
+    }
+  ],
+  "fixture_unchanged": true,
+  "native_validation_passed": true,
+  "negative_controls_rejected": {
+    "missing-child": true,
+    "wrong-profile": true,
+    "unrelated-child": true,
+    "incomplete-child": true,
+    "changed-fixture": true,
+    "wrong-native-kind": true,
+    "missing-answer": true
+  }
+}

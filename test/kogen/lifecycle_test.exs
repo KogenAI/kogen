@@ -24,6 +24,7 @@ defmodule Kogen.LifecycleTest do
 
     on_exit(fn -> File.rm_rf(dest) end)
 
+    install_distinct_profiles!(dest)
     init_fixture_git!(dest)
     original_parent = git!(dest, ["rev-parse", "HEAD"])
     {intent_id, original_intent, original_scenarios} = shape_and_explicitly_approve!(dest)
@@ -114,9 +115,14 @@ defmodule Kogen.LifecycleTest do
     refute resume_feedback =~ "settled Check failure:",
            "a failed Check settlement would consume a second outer resumption"
 
-    assert Enum.all?(log_lines, fn line ->
-             line =~ "--model gpt-6-astra" and line =~ "model_reasoning_effort=\"low\""
-           end)
+    assert Enum.at(log_lines, 0) =~ "--model fixture-developer"
+    assert Enum.at(log_lines, 0) =~ "model_reasoning_effort=\"developer-effort\""
+    assert Enum.at(log_lines, 1) =~ "--model fixture-reviewer"
+    assert Enum.at(log_lines, 1) =~ "model_reasoning_effort=\"reviewer-effort\""
+    assert Enum.at(log_lines, 2) =~ "--model fixture-developer"
+    assert Enum.at(log_lines, 2) =~ "model_reasoning_effort=\"developer-effort\""
+    assert Enum.at(log_lines, 3) =~ "--model fixture-reviewer"
+    assert Enum.at(log_lines, 3) =~ "model_reasoning_effort=\"reviewer-effort\""
 
     assert_delegation_prompt!(
       File.read!(Path.join(dest, ".kogen/runtime/developer-launch-prompt")),
@@ -167,6 +173,20 @@ defmodule Kogen.LifecycleTest do
     {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "fixture baseline"], cd: dest, env: env)
   end
 
+  defp install_distinct_profiles!(dest) do
+    File.write!(Path.join(dest, ".kogen/config.yaml"), """
+    harness: codex
+    shaping: {model: fixture-shaper, effort: shaping-effort}
+    developer: {model: fixture-developer, effort: developer-effort}
+    reviewer: {model: fixture-reviewer, effort: reviewer-effort}
+    helpers:
+      scout: {model: fixture-scout, effort: scout-effort}
+      worker: {model: fixture-worker, effort: worker-effort}
+      expert: {model: fixture-expert, effort: expert-effort}
+    outer_resumptions: 2
+    """)
+  end
+
   defp shape_and_explicitly_approve!(dest) do
     env = [{"KOGEN_HARNESS", Path.join(dest, "test/support/fake_codex_shaper")}]
 
@@ -193,6 +213,10 @@ defmodule Kogen.LifecycleTest do
     assert shaped["shaping"]["model"] == config.shaping.model
     assert shaped["shaping"]["effort"] == config.shaping.effort
 
+    shaping_args = File.read!(Path.join(dest, ".kogen/runtime/shaping-args"))
+    assert shaping_args =~ "--model\nfixture-shaper\n"
+    assert shaping_args =~ ~s(model_reasoning_effort="shaping-effort")
+
     # This rename is the fixture's explicit same-conversation approval. The
     # fake Shaping Controller itself deliberately writes only a Draft.
     File.mkdir_p!(Path.dirname(approved_dir))
@@ -210,25 +234,27 @@ defmodule Kogen.LifecycleTest do
   end
 
   defp assert_delegation_prompt!(prompt, role) do
+    refute prompt =~ "{{"
     prompt = String.replace(prompt, ~r/\s+/, " ")
 
-    assert prompt =~ "explicitly authorized to proactively use"
-    assert prompt =~ "gpt-5.6-luna` at `low"
-    assert prompt =~ "gpt-5.6-terra` at `medium"
-    assert prompt =~ "gpt-6-astra` at `medium"
+    assert length(String.split(prompt, "## Shared execution and delegation policy")) == 2
+
+    assert prompt =~
+             "Configured root (#{role}): `fixture-#{root_name(role)}` at `#{root_effort(role)}`."
+
+    assert prompt =~ "**scout:** `fixture-scout` at `scout-effort`; native kind `explorer`."
+    assert prompt =~ "**worker:** `fixture-worker` at `worker-effort`; native kind `worker`."
+    assert prompt =~ "**expert:** `fixture-expert` at `expert-effort`; native kind `default`."
+    assert prompt =~ "small sufficient packet"
     assert prompt =~ "fresh or minimal context"
-    assert prompt =~ "smallest sufficient task packet"
-    assert prompt =~ "native harness's current capacity"
-    assert prompt =~ "automatic scout-to-worker-to-expert escalation chain"
-    assert prompt =~ "profile unavailable, surface that failure"
-    refute prompt =~ "{{scout_model}}"
-    refute prompt =~ "{{worker_model}}"
-    refute prompt =~ "{{expert_model}}"
+    assert prompt =~ "automatic escalation chain"
+    assert prompt =~ "Report native unavailability and execution failures"
 
     case role do
       :shaping ->
-        assert prompt =~ "continue accepting the Shaper's steering while helpers work"
-        assert prompt =~ "Draft authorship, and approval handling"
+        assert prompt =~ "The human retains product and scope decisions"
+        assert prompt =~ "You retain Draft authorship and approval handling"
+        assert prompt =~ "continue accepting steering while helpers work"
 
       :developer ->
         assert prompt =~ "non-overlapping paths within `may_change_guarded_paths`"
@@ -238,11 +264,20 @@ defmodule Kogen.LifecycleTest do
         assert prompt =~ "exact Developer session"
 
       :reviewer ->
-        assert prompt =~ "Every child is read-only and receives no Developer conversation"
+        assert prompt =~ "Reviewer and every child are read-only, preserve the Candidate"
+        assert prompt =~ "receive no Developer conversation as evidence"
         assert prompt =~ "Wait for every child before deciding"
         assert prompt =~ "schema-valid final verdict yourself"
     end
   end
+
+  defp root_name(:shaping), do: "shaper"
+  defp root_name(:developer), do: "developer"
+  defp root_name(:reviewer), do: "reviewer"
+
+  defp root_effort(:shaping), do: "shaping-effort"
+  defp root_effort(:developer), do: "developer-effort"
+  defp root_effort(:reviewer), do: "reviewer-effort"
 
   defp raw_commit_message!(dir) do
     {commit, 0} = System.cmd("git", ["cat-file", "commit", "HEAD"], cd: dir)

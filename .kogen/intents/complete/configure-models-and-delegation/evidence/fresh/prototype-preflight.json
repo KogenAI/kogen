@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "mix",
+    "test",
+    "test/kogen/lifecycle_test.exs",
+    "test/kogen/shape_task_test.exs"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 7.8988973750092555
+}

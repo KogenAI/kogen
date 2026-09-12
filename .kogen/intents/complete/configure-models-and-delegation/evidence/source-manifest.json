@@ -1,0 +1,98 @@
+[
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/composed-policy-v7/results.md",
+    "copy": "evidence/historical/composed-policy-v7/results.md",
+    "sha256": "7cb03cf1a06c95e9dc77ed48533bc3813754e80ce9f442e32663a0df00f33b1f",
+    "bytes": 2855
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/composed-policy-v7/strict-postflight-summary.json",
+    "copy": "evidence/historical/composed-policy-v7/strict-postflight-summary.json",
+    "sha256": "06acdf913b876bdcd18c579ee6df4ff0a5246818fed92e70d41c254242295428",
+    "bytes": 768
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/composed-policy-v7/accepted-golden.json",
+    "copy": "evidence/historical/composed-policy-v7/accepted-golden.json",
+    "sha256": "4f45e79c5cacff6e6fdccbc406cc96c1d6ddbdcd52a0d408097150c663446923",
+    "bytes": 1446
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/composed-policy-v7/ARCHIVE.md",
+    "copy": "evidence/historical/composed-policy-v7/ARCHIVE.md",
+    "sha256": "eb6f668c45e85f524c5ac8d0981fd2000a99f8cd4a6f5d543ee342a995eb969f",
+    "bytes": 632
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/composed-policy-v6/results.md",
+    "copy": "evidence/historical/composed-policy-v6/results.md",
+    "sha256": "4f1c83afdbbd92f522018dd4636f4a42d7f9caa1151f651eeda0242969b06fc3",
+    "bytes": 3837
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/helper-candidates-v2/results.md",
+    "copy": "evidence/historical/helper-candidates-v2/results.md",
+    "sha256": "a9b177b95a197782abc3b2a3d1801d92ff3d8944eb90ade1cd3d49a8e1e7b319",
+    "bytes": 3095
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/helper-candidates-v2/semantic-adjudication.md",
+    "copy": "evidence/historical/helper-candidates-v2/semantic-adjudication.md",
+    "sha256": "f7d8519ffbb15fe3f58ffed37ffd056aa5024a2f00280bf636b8a280dc1bce99",
+    "bytes": 4237
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/helper-candidates-v2/self-report-gate-amendment.md",
+    "copy": "evidence/historical/helper-candidates-v2/self-report-gate-amendment.md",
+    "sha256": "f7b4672e03e0c767a3d6cd6461b1a3ce68a633d83d5231ee40b3f92db14d7fc8",
+    "bytes": 867
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/helper-candidates-v2/cache-attribution.md",
+    "copy": "evidence/historical/helper-candidates-v2/cache-attribution.md",
+    "sha256": "19d2c09488270183d4b3a6a166d9b482693f4302c40c25a47336e7311b46a085",
+    "bytes": 1828
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/helper-candidates-v2/ARCHIVE.md",
+    "copy": "evidence/historical/helper-candidates-v2/ARCHIVE.md",
+    "sha256": "91add45826b1b9adaef849dc406d34548ed8263bf8fe36e8f77fc738f8c3528d",
+    "bytes": 634
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/helper-candidates-v2/expert-astra-low-extension/results.md",
+    "copy": "evidence/historical/helper-candidates-v2/expert-astra-low-extension/results.md",
+    "sha256": "bb7d8fbc72f75d6c4ca5ba99490f43a0f086116601d6f7d626f137bdfb7228d3",
+    "bytes": 2473
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/model-lifecycle-probe-v2/results.md",
+    "copy": "evidence/historical/model-lifecycle-probe-v2/results.md",
+    "sha256": "ec6426806b5611f2216fa67b669631359d79608a340fe2aaebfefc599e8ac155",
+    "bytes": 4925
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/reviewer-candidates-v2/semantic-adjudication.md",
+    "copy": "evidence/historical/reviewer-candidates-v2/semantic-adjudication.md",
+    "sha256": "edaca83121f2b9fbc65564fc5b22efb454c11a4d97677f82a8ec3d43ec8c4386",
+    "bytes": 2436
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/shaping-model-v2/prompt-intervention/results.md",
+    "copy": "evidence/historical/shaping-model-v2/prompt-intervention/results.md",
+    "sha256": "e5d0235bf16523dc19c1223fc6ab81652975412ac4e8078d01e91240ce216ebf",
+    "bytes": 3513
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/parallel-v2/results.md",
+    "copy": "evidence/historical/parallel-v2/results.md",
+    "sha256": "deb434fdd3b95650494d3eb0370eada3e381b82cc321162765e7cfb67194670b",
+    "bytes": 4828
+  },
+  {
+    "source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/rework-v2/results.md",
+    "copy": "evidence/historical/rework-v2/results.md",
+    "sha256": "6a8786e8e73832dc95410d863c68a5e7071af8f4c0d8dc2e47b45136fc8412b0",
+    "bytes": 6666
+  }
+]

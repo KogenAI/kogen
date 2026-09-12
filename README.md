@@ -104,13 +104,28 @@ Candidate identity, including Stop and publication, without clearing those flags
 
 Edit the tracked `.kogen/config.yaml` to select the available model and effort
 for each root role and required native helper profile. The defaults are
-Astra-low for Shaping, Development, and Review; Luna-low for read-only scouts;
-Terra-medium for bounded workers; and Astra-medium for a named consequential
+Astra-low for Shaping, Sol-low for Development, Terra-medium for Review;
+Luna-low for read-only scouts; Luna-medium for bounded workers; and Sol-medium for a named consequential
 expert question. Kogen passes each root profile directly to Codex and renders
 the helper profiles into every role prompt; it does not silently inherit or
 substitute a missing or unavailable profile. All three helper profiles are
 required, though a role delegates only when bounded independent work justifies
 the startup and integration cost.
+
+[Shared execution guidance](priv/kogen/prompts/execution-policy.md) has one
+[renderer](lib/kogen/execution_policy.ex), expanded by fresh/continued Shape
+and the Developer/Reviewer launch routes. Role templates retain approval, gate,
+Candidate and output authority. Maintain profile values in config and shared
+guidance in that source; update public-route regressions when changing either.
+The [live native-helper fixture](test/kogen/native_helper_live_test.exs) checks
+transport and deterministic facts, not model quality or savings; historical
+measurements remain workload-specific. Its
+[receipt controls](test/kogen/native_helper_fixture_test.exs) reject missing or
+contradictory native evidence. The existing live lifecycle also audits actual
+[root session profiles](test/support/root_profile_audit.ex). Regenerate evidence
+through the Build-owned `live` target using the prerequisites below; inspect the
+new run’s retained receipts and raw snapshots on failure, without substituting
+a prior passing run.
 
 Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
 

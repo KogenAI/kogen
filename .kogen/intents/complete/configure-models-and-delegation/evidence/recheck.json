@@ -1,0 +1,11 @@
+{
+  "date": "2026-09-12",
+  "kind": "read-only retained-evidence integrity check; no paid rerun",
+  "raw_source": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/shaping-evidence/01a08eb1-38c0-7bbd-bd23-9a61e84480a2-v2/composed-policy-v7/arm/evidence/postflight.json",
+  "expected_raw_sha256": "05e8a773fe8319d58dbe96e455ae6223402bc7e2b6d7486e631df0449baac91c",
+  "observed_raw_sha256": "05e8a773fe8319d58dbe96e455ae6223402bc7e2b6d7486e631df0449baac91c",
+  "raw_hash_matches": true,
+  "copied_file_count": 16,
+  "all_copies_match_sources": true,
+  "limitation": "Verifies selected bytes and V7 sanitized-summary source binding; does not replay historical semantic oracles or establish current Build acceptance."
+}

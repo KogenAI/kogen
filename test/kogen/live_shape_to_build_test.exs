@@ -1,5 +1,6 @@
 Code.require_file("../support/live_rework_audit.ex", __DIR__)
 Code.require_file("../support/dependency_fixture.ex", __DIR__)
+Code.require_file("../support/root_profile_audit.ex", __DIR__)
 
 defmodule Kogen.LiveShapeToBuildTest do
   @moduledoc """
@@ -43,6 +44,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   @slug "shape-to-build-probe"
   @continuation_marker "continuation-evidence-k4q9z"
   @review_rework_slug "live-reviewer-rework-probe"
+  @selected_shaping_profile %{model: "gpt-6-astra", effort: "low"}
 
   @makefile """
   .PHONY: check
@@ -85,6 +87,9 @@ defmodule Kogen.LiveShapeToBuildTest do
 
   test "real Shape continues a saved draft in a fresh session, then approval and Build complete the same Intent" do
     project_root = File.cwd!()
+    {:ok, config} = Kogen.Intent.read_config()
+    assert config.shaping.model == @selected_shaping_profile.model
+    assert config.shaping.effort == @selected_shaping_profile.effort
     log_dir = owned_log_dir(project_root)
 
     runtime_root = Path.join(project_root, ".kogen/runtime/live-shape2build")
@@ -168,12 +173,18 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     assert is_map(continuation)
     assert continuation["harness"]
-    assert continuation["model"]
-    assert continuation["effort"]
+    assert continuation["model"] == config.shaping.model
+    assert continuation["effort"] == config.shaping.effort
     assert continuation["started"]
     assert is_map(continuation["checkout"])
     assert continuation["checkout"]["branch"]
     assert continuation["checkout"]["head"]
+
+    Kogen.RootProfileAudit.audit_shape!(
+      Path.join(log_dir, "shape-root-profile-audit"),
+      fixture,
+      %{model: config.shaping.model, effort: config.shaping.effort}
+    )
 
     transcript = File.read!(pty_log)
 
@@ -261,7 +272,19 @@ defmodule Kogen.LiveShapeToBuildTest do
     developer_session_id =
       Regex.run(~r/Developer session id: `([^`]+)`/, evidence) |> List.last()
 
+    reviewer_session_id =
+      Regex.run(~r/Reviewer session id: `([^`]+)`/, evidence) |> List.last()
+
     assert developer_session_id, "expected a Developer session id in evidence.md"
+    assert reviewer_session_id, "expected a Reviewer session id in evidence.md"
+
+    Kogen.RootProfileAudit.audit!(
+      Path.join(log_dir, "build-root-profile-audit"),
+      %{
+        developer_session_id => Map.put(config.developer, :role, "developer"),
+        reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
+      }
+    )
 
     assert File.exists?(history_path),
            "the Verification Record history must exist -- the real Stop hook must have fired"
@@ -307,6 +330,7 @@ defmodule Kogen.LiveShapeToBuildTest do
 
   test "real reviewer rework resumes the same Developer and a fresh Reviewer accepts in a Build-only fixture" do
     project_root = File.cwd!()
+    {:ok, config} = Kogen.Intent.read_config()
     log_dir = owned_log_dir(project_root)
 
     runtime_root = Path.join(project_root, ".kogen/runtime/live-reviewer-rework")
@@ -357,9 +381,19 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     assert File.dir?(complete_dir)
 
-    Kogen.LiveReworkAudit.audit!(fixture, raw_stream_dir,
-      slug: @review_rework_slug,
-      intent_id: "01960000-0000-7000-8000-00000000beef"
+    audit =
+      Kogen.LiveReworkAudit.audit!(fixture, raw_stream_dir,
+        slug: @review_rework_slug,
+        intent_id: "01960000-0000-7000-8000-00000000beef"
+      )
+
+    Kogen.RootProfileAudit.audit!(
+      Path.join(log_dir, "build-root-profile-audit"),
+      %{
+        audit.developer_session_id => Map.put(config.developer, :role, "developer"),
+        audit.rework_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer"),
+        audit.accepting_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
+      }
     )
 
     File.rm_rf!(fixture)

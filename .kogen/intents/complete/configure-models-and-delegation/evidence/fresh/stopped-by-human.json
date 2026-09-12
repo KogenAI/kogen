@@ -1,0 +1,20 @@
+{
+  "reason": "Human stopped broad live/build probing during Shaping",
+  "owned_roots": [
+    76725
+  ],
+  "terminated_pids": [
+    3821,
+    3822,
+    3823,
+    3954,
+    3955,
+    4142,
+    76725,
+    76731,
+    76748,
+    92049,
+    92070
+  ],
+  "production_changes": false
+}

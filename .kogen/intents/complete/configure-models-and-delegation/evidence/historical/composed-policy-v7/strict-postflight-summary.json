@@ -1,0 +1,10 @@
+{
+  "derivative_of": "arm/evidence/postflight.json",
+  "raw_sha256": "05e8a773fe8319d58dbe96e455ae6223402bc7e2b6d7486e631df0449baac91c",
+  "outcome": "accepted",
+  "gates": {"strict_postflight": true, "clean_git": true, "complete_exists": true, "published": true, "semantic_oracle": true, "process_cleanup_all_reaped": true, "usage_valid": true},
+  "native_roots": [{"model":"gpt-5.6-sol","effort":"low","count":2},{"model":"gpt-5.6-terra","effort":"medium","count":2}],
+  "helpers": {"spawn_attempt_count":5,"configured_model":"gpt-5.6-luna","kinds":{"explorer":3,"worker":2},"efforts":{"low":3,"medium":2}},
+  "review_verdicts": ["rework", "accept"],
+  "note": "Sanitized derivative omits all native payloads, messages, call IDs, thread IDs, and account context."
+}

@@ -1,0 +1,12 @@
+# Astra-low expert extension results
+
+The single arm completed in 103.68 seconds with exit 0, no timeout, and no surviving process. Runner-owned rollouts establish a Sol-low root (`01a08fd4-6876-74a2-b0de-4f305ad98f51`) and its native Astra-low child (`01a08fd4-932a-7b42-8c25-38fe1062677f`). The child metadata reports `gpt-6-astra`, not `gpt-5.6-astra`. Final cumulative usage was 57,279 input / 1,657 output tokens for the root and 79,111 input / 1,580 output tokens for the child; cached input was 43,264 and 58,624 respectively, with zero observed cache-write input tokens.
+
+Semantic result: pass. “not_fit_to_support_routing_or_compaction_decisions” is an ordinary-language rejection even though the legacy automated screen accepts only `reject` or `not_fit`. The answer correctly diagnoses all three supplied categories, gives source-backed expected-versus-actual counterexamples, repairs each defect, preserves independent schema/output validation, accepts valid zero-compaction observations without a threshold override, and invents no profile failure. It also correctly qualifies that the line-3 token value is assigned before the line-5 assertion aborts and that cleanup behavior is conditional on reaching that branch.
+
+Compared with the preserved Sol-medium answer, Astra-low changes no actionable diagnosis or minimal repair. Both support the same correct implementation and core tests. Astra-low adds useful test coverage for unrelated lifecycles and unmatched compaction starts/completions and consistently qualifies execution-order masking. Those additions improve diagnostic precision and negative-test completeness, but they do not change the repair's correctness on this fixture. This quality is similar to the previously observed Astra-medium precision advantage over Sol-medium, so this one task supplies no evidence that medium effort was necessary for that advantage.
+
+The corrected edit pair ended at 09:36:49.474Z and had reaped all owned processes before this arm began at 09:37:37.305Z, leaving about 47.8 seconds between campaigns. There was no paid-provider overlap.
+
+This is a noncontemporaneous single-run comparison. Sol-medium completed earlier in 80.69 seconds with different provider conditions, so elapsed time and usage are descriptive rather than a controlled causal estimate. The prompt supplied all three suspected categories; the result tests diagnosis and repair reasoning, not blind discovery or general expert reliability.
+

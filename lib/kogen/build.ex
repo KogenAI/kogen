@@ -6,7 +6,14 @@ defmodule Kogen.Build do
   thread), and one ordinary Git Commit carrying the Intent identity.
   """
   use Boundary,
-    deps: [Kogen.Intent, Kogen.Harness, Kogen.Check, Kogen.Git, Kogen.VerificationPolicy]
+    deps: [
+      Kogen.Intent,
+      Kogen.Harness,
+      Kogen.Check,
+      Kogen.Git,
+      Kogen.VerificationPolicy,
+      Kogen.ExecutionPolicy
+    ]
 
   alias Kogen.Build.{Contract, Tracking}
 
@@ -954,7 +961,7 @@ defmodule Kogen.Build do
       "{{verification_ownership}}",
       Kogen.VerificationPolicy.developer_instruction(targets)
     )
-    |> render_helper_profiles(config)
+    |> String.replace("{{execution_policy}}", Kogen.ExecutionPolicy.render(config, "developer"))
   end
 
   defp resume_feedback(ctx, reason) do
@@ -968,17 +975,7 @@ defmodule Kogen.Build do
     |> String.replace("{{intent_id}}", intent.id)
     |> String.replace("{{approved_path}}", Path.join(@approved_base, intent.slug))
     |> String.replace("{{candidate_id}}", candidate_id)
-    |> render_helper_profiles(config)
-  end
-
-  defp render_helper_profiles(prompt, config) do
-    prompt
-    |> String.replace("{{scout_model}}", config.helpers.scout.model)
-    |> String.replace("{{scout_effort}}", config.helpers.scout.effort)
-    |> String.replace("{{worker_model}}", config.helpers.worker.model)
-    |> String.replace("{{worker_effort}}", config.helpers.worker.effort)
-    |> String.replace("{{expert_model}}", config.helpers.expert.model)
-    |> String.replace("{{expert_effort}}", config.helpers.expert.effort)
+    |> String.replace("{{execution_policy}}", Kogen.ExecutionPolicy.render(config, "reviewer"))
   end
 
   defp tail_of(str, n) do

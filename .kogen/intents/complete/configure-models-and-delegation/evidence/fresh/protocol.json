@@ -1,0 +1,51 @@
+{
+  "purpose": "Fresh bounded profile/native-kind dispatch and policy comprehension, not model ranking or whole-feature acceptance",
+  "profiles": {
+    "scout": [
+      "explorer",
+      "gpt-5.6-luna",
+      "low"
+    ],
+    "worker": [
+      "worker",
+      "gpt-5.6-luna",
+      "medium"
+    ],
+    "expert": [
+      "default",
+      "gpt-5.6-sol",
+      "medium"
+    ]
+  },
+  "rules": "One attempt per profile, fresh context, no nested agents, read-only fixture, no fallback/retry-to-success; exact native turn_context and parent relation required. Root does independent lifecycle preflight while helpers run.",
+  "expected": {
+    "scout": {
+      "release": "r17",
+      "channel": "stable",
+      "enabled": true
+    },
+    "worker": [
+      {
+        "id": "a",
+        "value": 1
+      },
+      {
+        "id": "b",
+        "value": 2
+      }
+    ],
+    "expert": [
+      "provider failure currently returns malformed_verdict incorrectly",
+      "completed invalid verdict remains malformed_verdict",
+      "completed valid verdict remains accept"
+    ]
+  },
+  "fixture_sha256": {
+    "README.md": "4aed3a5778914c70c8b9e2f67e1760fd59ce6a7e1cf67c25779e8affd1a123f2",
+    "scout.json": "879de4c603fc5c6b487f1adc8cfa367edb9b54e555e221bfaa8e739b690c22df",
+    "worker.json": "4de5d133cc5a4160e2ab76c08a4e009f5dca02d542b72d8a5b7d13445e744209",
+    "review_boundary.py": "ab16e99687ed30fd882472e11d2cf0e9ba07fcbb9fda1e1a4bce812220b4812a",
+    "contract.md": "b5dc0e69b6f6f393f114d55b81065ba03142d9000119be032a4262a1fbb74d21",
+    "policy.md": "da74eb40814f00a6a572d1f0a7ab08b9b19d233749a51cb8cc0d778502b9c690"
+  }
+}

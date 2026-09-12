@@ -1,0 +1,16 @@
+-
+  kind: "shaping-input"
+  path: "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/shaping-followups/serial-optimization/04-models-and-delegation.md"
+  note: "Provisional source proposal; this Draft owns the selected scope."
+-
+  kind: "prior-decisions"
+  path: "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/INTENT.md"
+  note: "Accepted six-profile table and bounded delegation; only transferred obligations in this Draft are normative."
+-
+  kind: "prior-policy"
+  path: "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/execution-policy.md"
+  note: "Source for the narrow shared-policy extraction; excluded obligations are not imported."
+-
+  kind: "decision-inventory"
+  path: "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/build-diagnostics/ruW964DBmWc93caTGSZUxOzG/serial-intent-plan/work/pc-decision-inventory.md"
+  note: "Advisory provenance, including profile choice and provider-error preservation."

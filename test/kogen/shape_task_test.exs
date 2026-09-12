@@ -29,6 +29,11 @@ defmodule Kogen.ShapeTaskTest do
     assert shaped["shaping"]["harness"] == "codex"
     assert shaped["shaping"]["model"] == config.shaping.model
     assert shaped["shaping"]["effort"] == config.shaping.effort
+    args = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
+    prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+    assert args =~ "--model\n#{config.shaping.model}\n"
+    assert args =~ ~s(model_reasoning_effort="#{config.shaping.effort}")
+    assert_shared_execution_policy!(prompt, :shaping, config)
     approved = Path.join(fixture, ".kogen/intents/approved/fake-shaped-intent")
     File.mkdir_p!(Path.dirname(approved))
     File.rename!(draft, approved)
@@ -64,13 +69,7 @@ defmodule Kogen.ShapeTaskTest do
     File.write!(prompt_path, File.read!(prompt_path) <> "\nCURRENT_SHARED_ROLE_MARKER\n")
     config_path = Path.join(fixture, ".kogen/config.yaml")
 
-    config =
-      File.read!(config_path)
-      |> String.replace("gpt-6-astra", "current-root")
-      |> String.replace("gpt-5.6-luna", "current-scout")
-      |> String.replace("low", "medium")
-
-    File.write!(config_path, config)
+    File.write!(config_path, distinct_config())
     before = snapshot(draft)
 
     {output, 0} = capture(fixture, ["unfinished"])
@@ -79,8 +78,8 @@ defmodule Kogen.ShapeTaskTest do
     refute File.exists?(Path.join(fixture, ".kogen/intents/approved/unfinished"))
     prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
     args = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
-    assert args =~ "--model\ncurrent-root\n"
-    assert args =~ ~s(model_reasoning_effort="medium")
+    assert args =~ "--model\ncurrent-shaper\n"
+    assert args =~ ~s(model_reasoning_effort="shaping-effort")
     refute args =~ "\nresume\n"
 
     for text <- [
@@ -106,6 +105,8 @@ defmodule Kogen.ShapeTaskTest do
     assert prompt =~ String.trim(head)
     refute prompt =~ "already minted"
     refute prompt =~ "{{"
+    {:ok, config} = Kogen.Intent.read_config(config_path)
+    assert_shared_execution_policy!(prompt, :shaping, config)
   end
 
   test "invalid selections fail before harness launch" do
@@ -177,6 +178,42 @@ defmodule Kogen.ShapeTaskTest do
     refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
   end
 
+  test "fresh and continued Shape reject invalid required profiles before harness dispatch" do
+    fixture = shape_fixture()
+    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
+    File.mkdir_p!(draft)
+    File.write!(Path.join(draft, "intent.yaml"), @draft)
+    config_path = Path.join(fixture, ".kogen/config.yaml")
+
+    invalid_configs = [
+      {"missing helper",
+       String.replace(
+         distinct_config(),
+         "  expert: {model: current-expert, effort: expert-effort}\n",
+         ""
+       ), "helpers.expert"},
+      {"blank root model",
+       String.replace(distinct_config(), "model: current-developer", "model: \"\""),
+       "developer.model"},
+      {"wrong-typed helper effort",
+       String.replace(distinct_config(), "effort: scout-effort", "effort: 42"),
+       "helpers.scout.effort"}
+    ]
+
+    for {args, route} <- [{[], "fresh"}, {["unfinished"], "continuation"}],
+        {_case, config, diagnostic} <- invalid_configs do
+      File.write!(config_path, config)
+      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
+
+      {output, status} = capture(fixture, args)
+
+      assert status != 0, "#{route} Shape launched with invalid #{diagnostic}"
+      assert output =~ "config.yaml missing required key: #{diagnostic}"
+      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-args"))
+    end
+  end
+
   defp shape_fixture do
     fixture = Kogen.CompiledFixture.create!(File.cwd!(), "continue-shape")
     on_exit(fn -> File.rm_rf(fixture) end)
@@ -193,6 +230,39 @@ defmodule Kogen.ShapeTaskTest do
 
   defp snapshot(dir) do
     Map.new(Path.wildcard(Path.join(dir, "**/*")), &{&1, File.read!(&1)})
+  end
+
+  defp distinct_config do
+    """
+    harness: codex
+    shaping: {model: current-shaper, effort: shaping-effort}
+    developer: {model: current-developer, effort: developer-effort}
+    reviewer: {model: current-reviewer, effort: reviewer-effort}
+    helpers:
+      scout: {model: current-scout, effort: scout-effort}
+      worker: {model: current-worker, effort: worker-effort}
+      expert: {model: current-expert, effort: expert-effort}
+    outer_resumptions: 2
+    """
+  end
+
+  defp assert_shared_execution_policy!(prompt, role, config) do
+    assert length(String.split(prompt, "## Shared execution and delegation policy")) == 2
+
+    root = Map.fetch!(config, role)
+
+    assert prompt =~ "Configured root (#{role}): `#{root.model}` at `#{root.effort}`."
+
+    assert prompt =~
+             "- **scout:** `#{config.helpers.scout.model}` at `#{config.helpers.scout.effort}`; native kind `explorer`."
+
+    assert prompt =~
+             "- **worker:** `#{config.helpers.worker.model}` at `#{config.helpers.worker.effort}`; native kind `worker`."
+
+    assert prompt =~
+             "- **expert:** `#{config.helpers.expert.model}` at `#{config.helpers.expert.effort}`; native kind `default`."
+
+    refute prompt =~ "{{execution_policy}}"
   end
 
   defp init_fixture_git!(fixture) do

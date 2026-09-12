@@ -1,4 +1,5 @@
 Code.require_file("../support/scenario_semantic.ex", __DIR__)
+Code.require_file("../support/root_profile_audit.ex", __DIR__)
 
 defmodule Kogen.LiveTest do
   @moduledoc """
@@ -17,8 +18,15 @@ defmodule Kogen.LiveTest do
   @moduletag :live
   @moduletag timeout: 600_000
 
+  @selected_root_profiles %{
+    shaping: %{model: "gpt-6-astra", effort: "low"},
+    developer: %{model: "gpt-5.6-sol", effort: "low"},
+    reviewer: %{model: "gpt-5.6-terra", effort: "medium"}
+  }
+
   test "developer session identity, exact resume, and a schema-valid reviewer verdict" do
     {:ok, config} = Kogen.Intent.read_config()
+    assert_selected_root_profiles!(config)
     project_root = File.cwd!()
     log_dir = primitive_log_dir(project_root)
     fixture = primitive_fixture(project_root)
@@ -76,17 +84,29 @@ defmodule Kogen.LiveTest do
       assert response["attempt_token"] == "primitive-attempt"
       assert is_binary(reviewer_session_id)
       assert reviewer_session_id != session_id
+
+      audit_root_profiles!(log_dir, %{
+        session_id => Map.put(config.developer, :role, "developer"),
+        reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
+      })
     end)
   end
 
   test "independent real Reviewer catches semantic fixture defects and accepts their corrected counterpart" do
     {:ok, config} = Kogen.Intent.read_config()
+    assert_selected_root_profiles!(config)
     project_root = File.cwd!()
     log_dir = primitive_log_dir(project_root)
     fixture = primitive_fixture(project_root)
     setup_fixture(project_root, fixture)
 
-    on_exit(fn -> File.rm_rf!(fixture) end)
+    previous_raw_log_dir = System.get_env("KOGEN_RAW_LOG_DIR")
+    System.put_env("KOGEN_RAW_LOG_DIR", log_dir)
+
+    on_exit(fn ->
+      restore_env("KOGEN_RAW_LOG_DIR", previous_raw_log_dir)
+      File.rm_rf!(fixture)
+    end)
 
     File.cd!(fixture, fn ->
       Kogen.ScenarioSemantic.write_fixture!(fixture, :incomplete)
@@ -96,7 +116,7 @@ defmodule Kogen.LiveTest do
       write_probe_receipts!(fixture, :incomplete, incomplete_probes)
       incomplete_candidate = candidate_id!(fixture)
 
-      incomplete =
+      %{response: incomplete, session_id: incomplete_reviewer} =
         review_semantic_candidate!(config, incomplete_candidate, "semantic-attempt-incomplete")
 
       assert incomplete["verdict"] == "rework",
@@ -115,7 +135,7 @@ defmodule Kogen.LiveTest do
       write_probe_receipts!(fixture, :corrected, corrected_probes)
       corrected_candidate = candidate_id!(fixture)
 
-      corrected =
+      %{response: corrected, session_id: corrected_reviewer} =
         review_semantic_candidate!(config, corrected_candidate, "semantic-attempt-corrected")
 
       assert corrected["verdict"] == "accept",
@@ -133,6 +153,11 @@ defmodule Kogen.LiveTest do
       )
 
       File.write!(Path.join(log_dir, "semantic-corrected-review.json"), Jason.encode!(corrected))
+
+      audit_root_profiles!(Path.join(log_dir, "root-profile-audit"), %{
+        incomplete_reviewer => Map.put(config.reviewer, :role, "reviewer"),
+        corrected_reviewer => Map.put(config.reviewer, :role, "reviewer")
+      })
     end)
   end
 
@@ -162,7 +187,7 @@ defmodule Kogen.LiveTest do
     }
 
     prompt = """
-    Independently assess this Candidate against the full contract and supplied handoff below. Inspect the files yourself, use the focused probes as evidence where useful, and make your own verdict. Do not modify anything and do not run a gate. Use the exact supplied Candidate and attempt token. Every scenario needs one independent assessment; every evidence reference must use an existing repository-relative file path and a useful locator. Retained earlier receipts are history; assess the current Candidate and current supplied observations.
+    Independently assess this Candidate against the full contract and supplied handoff below. Inspect the files yourself, use the focused probes as evidence where useful, and make your own verdict. Do not modify anything and do not run a gate. Use the exact supplied Candidate and attempt token. Assess every listed scenario exactly once: use no extra, duplicate, or empty scenario IDs. Every evidence reference must use an existing repository-relative file path and a useful locator. There are no prior open findings in this review, so `dispositions` must be exactly an empty list. For rework, create new actionable findings only for listed scenario IDs; for acceptance, use no findings. Retained earlier receipts are history; assess the current Candidate and current supplied observations.
 
     Scenarios:
     #{Jason.encode!(semantic_contract())}
@@ -187,10 +212,25 @@ defmodule Kogen.LiveTest do
                []
              )
 
-    response
+    %{response: response, session_id: session_id}
   end
 
   defp semantic_scenario_ids, do: Kogen.ScenarioSemantic.scenario_ids()
+
+  defp assert_selected_root_profiles!(config) do
+    assert config.outer_resumptions == 2,
+           "the live routing fixture must retain the approved two-resumption budget"
+
+    for {role, expected} <- @selected_root_profiles do
+      actual = Map.fetch!(config, role)
+      assert actual.model == expected.model, "#{role} must use its selected model"
+      assert actual.effort == expected.effort, "#{role} must use its selected effort"
+    end
+  end
+
+  defp audit_root_profiles!(evidence_dir, expected) do
+    Kogen.RootProfileAudit.audit!(evidence_dir, expected)
+  end
 
   defp candidate_id!(fixture) do
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: fixture)

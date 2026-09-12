@@ -181,7 +181,7 @@ defmodule Kogen.CoreIntegrityTest do
     prompt_dir = Path.join(dir, "priv/kogen/prompts")
     File.mkdir_p!(prompt_dir)
 
-    for name <- ["developer.md", "reviewer.md"] do
+    for name <- ["developer.md", "reviewer.md", "execution-policy.md"] do
       File.cp!(Path.join(project_root, "priv/kogen/prompts/#{name}"), Path.join(prompt_dir, name))
     end
 

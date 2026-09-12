@@ -1,0 +1,6 @@
+{
+  "cause": "Terra correctly rejected supposedly corrected fixture: token-specific invalid fourth-argument check violates every-invalid-configuration contract. Independent Sol-medium source review agrees.",
+  "change": "Exact arity guard plus generic extra/missing/unknown role/model/effort controls in synthetic fixture only.",
+  "patch_sha256": "2de3e6b641c3764f72abc3288e46dc28985bd8bf34dc0011d56b82fce197671d",
+  "paid_rerun_policy": "Only the materially corrected counterpart receives one new fresh Reviewer. Unchanged successful primitive or incomplete-candidate evidence is not rerun."
+}

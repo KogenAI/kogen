@@ -131,7 +131,7 @@ defmodule Kogen.Harness do
 
       case parse_turn(decode_events(output), exit_code, output) do
         {:ok, turn} -> reviewer_response(turn, message_path)
-        _ -> {:error, {:malformed_verdict, exit_code, String.slice(output, 0, 4000)}}
+        {:error, _reason} = error -> error
       end
     after
       File.rm_rf(dir)

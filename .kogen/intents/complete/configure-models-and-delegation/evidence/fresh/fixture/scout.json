@@ -1,0 +1,12 @@
+{
+  "current": {
+    "release": "r17",
+    "channel": "stable",
+    "enabled": true
+  },
+  "historical": {
+    "release": "r16",
+    "channel": "preview",
+    "enabled": false
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "records": [
+    {
+      "id": "B",
+      "value": 2
+    },
+    {
+      "id": "a",
+      "value": 1
+    },
+    {
+      "id": "b",
+      "value": 2
+    }
+  ],
+  "rules": [
+    "lowercase IDs",
+    "collapse equal normalized duplicates",
+    "reject conflicting normalized duplicates",
+    "sort by normalized ID"
+  ]
+}

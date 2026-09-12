@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "mix",
+    "test",
+    "--only",
+    "live",
+    "test/kogen/cold_offline_test.exs"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 44.80836704198737,
+  "scope": "Corrected POC full offline gate in an empty private cache; no providers"
+}

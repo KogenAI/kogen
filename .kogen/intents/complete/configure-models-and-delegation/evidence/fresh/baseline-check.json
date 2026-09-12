@@ -1,0 +1,11 @@
+{
+  "command": [
+    "make",
+    "check"
+  ],
+  "cwd": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/model-delegation-proof-20260912/checkout",
+  "profile_config": "unchanged accepted baseline",
+  "exit_code": 0,
+  "elapsed_seconds": 49.16612087498652,
+  "finished": "2026-09-12T17:43:41.041222+00:00"
+}
