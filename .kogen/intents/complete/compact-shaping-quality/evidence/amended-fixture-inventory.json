@@ -1,0 +1,15 @@
+{
+  "CORRECTION.md": "3ffc53326c7ac67624ad32647e2f4d4d492155416ada1ba9db9d8147499b8da5",
+  "scope-correction-results.json": "0d6b5db69ba7a7889c107e9ebcb546998fe5d84d1b4aca5d224f75e95b0e56c5",
+  "naive_reader.py": "7829543c2d603751507595d19b6c94aac4fe76fe3adf8795bbf2e5476e646685",
+  "bom.csv": "458e8505cf2c7a61efdfa259315bf54fa00f3a5024acf4deb6b2dfeed94b10e5",
+  "invalid-date.csv": "2ac80d82be9620e4bca59cad542f6fbb6ebb0259ebf881a515cec814359ba8e3",
+  "plain.csv": "03782bb6a655a0dad97881f4bb85cd819cf6c149861337e45ed6b0a60519d94a",
+  "capability-seed.json": "a966d4702eaef87f8db338e2fc5d83e4dce76b321d3767a287532bca2aca1046",
+  "calendar_adapter.py": "9e35e19379ed1784b8afcd7e50b181b0bb9bc6ff3390dcb0414f3f8f8e6b5ded",
+  "protocol.json": "f8dbda9731795f6667479ec1ad10ad4c6b966cd7d2cf2d929c84dd7a800b9982",
+  "facts.json": "f3018f8f4fb4654026d2643331dbe4a50b816446d9c23f71092e361a29ed4f93",
+  "AMENDMENT.md": "df62a83c2689169a880f553c0df8de452032eb99ac9dcabd09b72679902f8a67",
+  "reader_control.py": "4e8872a066228646cb15ad6cd3c58b72e499981722b2dba31907a0b168cf18fd",
+  "prerequisite-results.json": "908757638e0c47ac88325f232a3ff1b8cdc7b4c7be1435f738ff991b15d29b49"
+}

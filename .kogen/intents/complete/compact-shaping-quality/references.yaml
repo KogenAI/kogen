@@ -1,0 +1,34 @@
+[
+  {
+    "path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/shaping-followups/serial-optimization/08-shaping-quality-with-small-live-cases.md",
+    "role": "Scope authority explicitly selected by the Shaper in this conversation."
+  },
+  {
+    "path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/shaping-followups/serial-optimization/06-target-evidence-delivery-and-retention.md",
+    "role": "Accepted separately as target-evidence-retention; historical prerequisite proposal, not implementation scope."
+  },
+  {
+    "path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evaluation.md",
+    "role": "Later compact-case decisions supporting note 08; broader infrastructure obligations are not transferred."
+  },
+  {
+    "path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v2/facts.json",
+    "role": "Exact compact synthetic facts for later self-contained fixture contract."
+  },
+  {
+    "path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/outcome-complete-shaping/decisions.md",
+    "role": "Historical quality decisions; old application examples and historical approval do not authorize this Draft."
+  },
+  {
+    "path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/complete/target-evidence-retention/INTENT.md",
+    "role": "Accepted 06 evidence interface and lifecycle; current implementation is the dependency owner."
+  },
+  {
+    "path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/complete/target-evidence-retention/evidence.md",
+    "role": "Accepted verification provenance; do not rerun unchanged successful routes merely for new receipts."
+  },
+  {
+    "path": "fixtures/facts.json",
+    "role": "Self-contained compact evaluation facts; this Draft evaluation.md defines visibility, sequence and current acceptance."
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "executor": "root",
+  "purpose": "Correct malformed scopes fixture prerequisite before relying on new compact inputs",
+  "source_hashes": {
+    "naive_reader.py": "7829543c2d603751507595d19b6c94aac4fe76fe3adf8795bbf2e5476e646685",
+    "bom.csv": "458e8505cf2c7a61efdfa259315bf54fa00f3a5024acf4deb6b2dfeed94b10e5",
+    "invalid-date.csv": "2ac80d82be9620e4bca59cad542f6fbb6ebb0259ebf881a515cec814359ba8e3",
+    "plain.csv": "03782bb6a655a0dad97881f4bb85cd819cf6c149861337e45ed6b0a60519d94a",
+    "capability-seed.json": "a966d4702eaef87f8db338e2fc5d83e4dce76b321d3767a287532bca2aca1046",
+    "calendar_adapter.py": "9e35e19379ed1784b8afcd7e50b181b0bb9bc6ff3390dcb0414f3f8f8e6b5ded",
+    "facts.json": "26d490e70ed322034b2d2d152d21a1f658e59dca3fc29cd0a2fc04ea4df103ca",
+    "reader_control.py": "4e8872a066228646cb15ad6cd3c58b72e499981722b2dba31907a0b168cf18fd",
+    "prerequisite-results.json": "908757638e0c47ac88325f232a3ff1b8cdc7b4c7be1435f738ff991b15d29b49"
+  },
+  "criteria": [
+    "valid seed success",
+    "string scope rejected",
+    "empty list permission denied",
+    "source input unchanged"
+  ],
+  "prior": "compact-fixtures-v1 retained; scope-type acceptance is fixture defect, not model failure"
+}

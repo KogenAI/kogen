@@ -34,8 +34,10 @@ defmodule Kogen.IsolationCleanupTest do
 
     assert {:error, :timeout, output} =
              Kogen.IsolatedCase.run(@probe, "test timeout with child",
+               readiness: "PROBE_READY",
+               startup_timeout: 10_000,
                collection_timeout: 2_000,
-               env: [{"PROBE_PID", marker}]
+               env: [{"PROBE_PID", marker}, {"PROBE_START_DELAY_MS", "3500"}]
              )
 
     pid = File.read!(marker) |> String.trim()
@@ -43,6 +45,22 @@ defmodule Kogen.IsolationCleanupTest do
     assert status != 0, "collection returned before subprocess termination"
     assert output =~ "isolated children terminated; private fixture still present"
     refute File.exists?(File.read!(marker <> ".root"))
+  end
+
+  test "never-ready cleanup fails distinctly without assuming descendant markers exist" do
+    marker = Path.join(tmp_dir!(), "never-created-child.pid")
+
+    assert {:error, :readiness_timeout, output} =
+             Kogen.IsolatedCase.run(@probe, "test missing readiness",
+               readiness: "PROBE_READY",
+               startup_timeout: 100,
+               collection_timeout: 2_000,
+               env: [{"PROBE_PID", marker}]
+             )
+
+    assert output =~ "isolated children terminated"
+    refute File.exists?(marker)
+    refute File.exists?(marker <> ".root")
   end
 
   test "prelaunch setup failures remove the unowned private directory" do

@@ -1,0 +1,24 @@
+[
+  {
+    "argv": [
+      "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+      "-B",
+      ".kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v2/calendar_adapter.py",
+      ".kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v2/capability-seed.json"
+    ],
+    "exit": 0,
+    "stdout": "[[\"s1\", \"2026-09-14T09:00:00Z\"], [\"s2\", \"2026-09-14T09:30:00Z\"]]\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+      "-B",
+      ".kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v2/calendar_adapter.py",
+      ".kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-malformed-scope/malformed-scope.json"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "unavailable: reconnect or contact operator: malformed connection\n"
+  }
+]

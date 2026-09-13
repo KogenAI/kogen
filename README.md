@@ -29,6 +29,10 @@ mix kogen.shape
 ```
 
 Describe one feature. As the Shaper, discuss its behavior and tradeoffs with Kogen’s Shaping Controller, inspect the Draft it writes, and explicitly approve it in that conversation. Approval moves the Intent from `.kogen/intents/drafts/<slug>/` to `.kogen/intents/approved/<slug>/`.
+The controller may also reconcile narrow current approval bookkeeping inside the
+package at that point. It preserves agreed requirements, identity, provenance and
+historical evidence; a legacy `status: draft` field is harmless once the package is
+selected from `approved/`, but a genuine current pending-approval contradiction is not.
 
 To continue a saved Draft in a fresh conversation, run:
 
@@ -151,6 +155,15 @@ overlap when scheduler capacity permits. Both audit their own current native
 streams; the former three-call primitive probe is consolidated into those
 owners and offline corruption controls. Semantic Review, native-helper, and
 cold-offline proof remain separate cases.
+
+Shaping quality is also exercised by a maintained
+[five-case evaluation](test/support/shaping_evaluation/README.md): flawed and complete
+CSV/availability pairs plus a frozen-seed continuation run as isolated concurrent
+public Shape sessions. Its offline rehearsal covers the real orchestration and
+consumer route; the live owner emits one required-artifact manifest, while ordinary
+independent Review assesses the retained conversation and Draft semantics. Target
+selection follows affected workflows and evidence sufficiency, not whether a live
+test file changed.
 
 Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
 

@@ -1,0 +1,97 @@
+[
+  {
+    "id": "autonomous-csv-investigation",
+    "given": "The flawed compact CSV brief supplies source/data and authority for local probes, but relies on a plain UTF-8 reader and leaves BOM, invalid-row and output replacement policy unsettled.",
+    "when": "A real public Shaping session investigates and then receives only the prescribed format/source-preservation choice.",
+    "then": "Before any permission-to-investigate exchange, it executes a relevant bounded source-linked probe with a valid-file control, exposes the BOM discrepancy, incorporates the chosen format policy and preserves both unanswered recovery choices. It neither invents exporter restrictions nor leaves a contradicted proposal unchanged.",
+    "wrong_result": "It merely plans a probe, stalls for permission already supplied, or uses a later scripted answer to disguise missing investigation or unchosen policy.",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "csv-flawed native visible sequence, actual tool/probe receipts and Draft; offline scripts refuse permission rescue; independent Review compares the sequence with the negative controls."
+  },
+  {
+    "id": "usable-availability-and-verification",
+    "given": "The compact read-only availability proposal starts with an unconnected organizer, excludes setup, and cites an old receipt whose connection material is absent.",
+    "when": "Real Shaping inspects the stated starting conditions and then receives the prescribed connected-organizer and maintained synthetic setup choice.",
+    "then": "It traces that exact receipt to the setup gap, exposes the audience contradiction and obtains the explicit narrower choice. The resulting Draft preserves empty-versus-unavailable behavior and executable per-run setup/lifetime, without claiming synthetic controls prove real OAuth.",
+    "wrong_result": "An unrelated successful adapter control is treated as repair of the missing setup, the audience is silently narrowed or unavailable authority becomes successful empty output.",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "booking-flawed receipt/source inventory, actual conversation, selected decision and saved verification plan, with stale-receipt and authority counterexamples assessed by independent Review."
+  },
+  {
+    "id": "complete-case-restraint",
+    "given": "Complete CSV and availability briefs supply settled scope, policies, normal file conventions and sufficient current source-bound prerequisite evidence.",
+    "when": "Two independent real Shaping sessions read those inputs and prepare Drafts.",
+    "then": "Both advance to reviewable unapproved packages preserving the supported outcome and evidence limits without reconfirming settled scope/lifecycle, asking routine verification choices, repeating unchanged sufficient probes, or requiring helpers. A real new contradiction is distinguished from redundant questioning. The fixture supplies its explicit output_contract before launch; judge questions against then-available facts. Unexpected consequential omissions are fixture issues, not automatic model failures. General production instructions do not embed fixture-specific output answers.",
+    "wrong_result": "A needless confirmation stalls work even though later answers yield a correct Draft; alternatively the controller suppresses a necessary question merely to meet a zero-question metric.",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "csv-complete and booking-complete visible conversations, tool observations and saved contracts; frozen script and semantic controls distinguish supplied answers, unnecessary rescue and actual fixture omissions."
+  },
+  {
+    "id": "partial-answer-continuation",
+    "given": "A separate frozen synthetic unfinished CSV Draft records accepted BOM/source policy, open invalid-row/replacement choices, original identity/baseline/provenance and source-bound evidence.",
+    "when": "Public fresh continuation receives supplied direction, only the invalid-row decision, and later the explicit replacement decision after the remaining choice is exposed.",
+    "then": "It acts on supplied direction, saves an intermediate state with replacement still open, then incorporates the explicit recovery choice. Original identity/provenance/baseline persist, exactly one continuation visit is recorded and both saved versions remain unapproved.",
+    "wrong_result": "It asks again where to continue, silently settles adjacent replacement behavior after the partial answer, invents a live visit for the seed, or hides premature approval behind a corrected final Draft.",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Frozen seed and actual completed-turn intermediate/final snapshots bound to one current native root, plus original-versus-visit metadata and directory checks; independent semantic assessment of each state."
+  },
+  {
+    "id": "five-case-evidence-delivery",
+    "given": "Accepted 06 provides one manifest per target, and five compact cases have unique fixture, session and retained evidence ownership.",
+    "when": "The live suite owner runs all five cases concurrently, preserving each conversation order, and collects their outputs.",
+    "then": "Exactly one complete required-artifact manifest reaches Review through required isolated forwarding and the current Build receipt. It includes the seed/intermediate/final evidence; every case is bound to native identity, current sources and actual visible turns. Failures preserve their cause and partial evidence, stop owned dispatch and never emit a passing suite. Ordinary independent Review assesses meaning from the retained content. Current request, slug and save-without-approval constraint are ordinary frozen fixture inputs before the first substantive turn; no late-initial-message rescue or retroactive instruction grading.",
+    "wrong_result": "Five individual frames collide, case sessions cross-talk, discarded child output hides required evidence, or valid hashes/process exits are presented as proof of semantic quality.",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Production producer-to-consumer rehearsal and live collector receipts; existing accepted 06 regression owners protect uncited exact-byte Complete retention; independent Review cites actual artifacts for semantic claims."
+  },
+  {
+    "id": "offline-rehearsal-and-preserved-routes",
+    "given": "The new evaluation introduces case routing, concurrent execution and intermediate-state capture alongside existing fresh/continued Shape and regression suites.",
+    "when": "Before paid dispatch, check rehearses actual orchestration with realistic fake native discovery/events at the external boundary and exercises targeted faults.",
+    "then": "The five-party barrier establishes overlap with stable assembly; parser/source/seed prerequisites and invalid captures fail without provider launch. Controls catch permission rescue, partial-choice corruption, cross-talk, reused completion, missing artifacts and process/cleanup failure. Existing fresh/continuation rendering, approval and full offline regression owners remain exercised; live retains all distinct current live owners. Shaping verification guidance selects targets by affected existing workflows and evidence sufficiency, even with no changed live-test files; existing preservation scenarios express that requirement without a new schema field. Include missing/late-input and fair-question controls through the changed real driver, and source mutation rejection.",
+    "wrong_result": "A toy scheduler, file-presence or prompt-keyword test passes while the actual driver/consumer fails, bad intermediate behavior is hidden, or existing tests are dropped to make the new suite green.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Actual driver rehearsal with barrier and completion permutations; focused negative controls and unchanged gate recipes, existing shape_task regressions and full offline gate evidence. Live preservation is also assessed with the other declared live scenarios."
+  },
+  {
+    "id": "cleanup-timeout-after-readiness",
+    "given": "The existing cleanup fixture may start slowly enough that its PID/root markers do not exist within the old two-second collection bound.",
+    "when": "The test exercises collection timeout through existing isolated-process readiness handling.",
+    "then": "Readiness follows creation of the dependent markers; startup is separately bounded. A slow-start control still reaches the cleanup assertion and confirms descendants terminated and owned root removed. A never-ready control fails distinctly without assuming a marker exists.",
+    "wrong_result": "The test reads a marker that could not yet exist, weakens cleanup assertions, lengthens arbitrary sleeps as the only correction, or skips the cold/live gate.",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Deterministic slow-start and never-ready tests in the two added guarded test files, existing offline gate and cold-offline live owner; amendment probe demonstrates feasibility only."
+  },
+  {
+    "id": "coherent-approval-to-build",
+    "given": "A real fresh and continued Draft contains pending-approval statements, and no previous conversation can approve this visit.",
+    "when": "The human gives explicit approval in the current conversation and the existing lifecycle fixture proceeds through public Build.",
+    "then": "Shaping reconciles only current approval bookkeeping and moves the unchanged agreed contract; Review distinguishes legacy Draft metadata from current contradictory claims. Actual in-turn Stop recovery is demonstrated before initial handoff; ordinary independent Review rework remains bounded and eventual acceptance is required.",
+    "wrong_result": "Stale pending-approval prose blocks a genuinely approved package; historical status alone is rejected; missing assent is invented; driver silently repairs generated content; or outer rework substitutes for the required initial in-turn recovery.",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Existing lifecycle pre/post-approval captures and chronological provider evidence, immutable requirements comparison, retained Check history, offline positive/negative controls and fresh independent Review."
+  }
+]

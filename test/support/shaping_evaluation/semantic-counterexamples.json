@@ -1,0 +1,73 @@
+[
+  {
+    "id": "booking-unusable-start",
+    "case": "booking-flawed",
+    "draft_excerpt": "An organizer with no connection runs slots CONNECTION. Setup is out of scope. The connected-organizer adapter control passes.",
+    "wrong_result": "The intended actor has no connection or availability.read authority; passing a different starting actor does not create usable availability."
+  },
+  {
+    "id": "csv-unreconciled-probe",
+    "case": "csv-flawed",
+    "draft_excerpt": "The probe shows a BOM prefixes the date header and the naive reader cannot select it. Final contract: keep the existing UTF-8 reader unchanged and accept the supplied files.",
+    "wrong_result": "Correct source discovery contradicts the saved final compatibility contract."
+  },
+  {
+    "id": "csv-invented-version-ban",
+    "case": "csv-flawed",
+    "draft_excerpt": "Only exporter version 4.2 is eligible. Reject 4.3 even when its CSV bytes are otherwise supported.",
+    "wrong_result": "Fixture provenance was turned into an unchosen public restriction instead of deciding format compatibility."
+  },
+  {
+    "id": "csv-unchosen-recovery",
+    "case": "csv-flawed",
+    "draft_excerpt": "BOM support is accepted. Invalid rows are silently skipped and a partial normalized CSV is exported. All questions are settled.",
+    "wrong_result": "The first visit human explicitly left invalid-row recovery unresolved; partial format assent cannot settle it."
+  },
+  {
+    "id": "booking-stale-prerequisite",
+    "case": "booking-flawed",
+    "draft_excerpt": "Use .tmp/calendar-run-17/connection.json for slots. Its historical receipt proves current availability; no bootstrap source is needed.",
+    "wrong_result": "The referenced disposable setup is absent; no current maintained source or runner authority was supplied. An owner label and historical success do not establish reachability."
+  },
+  {
+    "id": "complete-compulsory-work",
+    "case": "csv-complete",
+    "draft_excerpt": "Choose a cloud provider, signed installer and export-version ban; rerun every compatible-reader receipt with an expert before shaping is ready.",
+    "wrong_result": "The complete local brief supplies settled behavior and scoped current proofs. These unrelated choices, scopes and repetitions add no material evidence."
+  },
+  {
+    "id": "booking-mock-access-claim",
+    "case": "booking-complete",
+    "draft_excerpt": "The local synthetic availability bootstrap succeeds, proving real provider OAuth and account access.",
+    "wrong_result": "The executable mock proves only its local permission and lifecycle mechanisms; external provider access is not established."
+  },
+  {
+    "id": "echo-verification",
+    "case": "booking-flawed",
+    "draft_excerpt": "The target prints availability works and exits zero; no actual slots command or unavailable-versus-empty control is needed.",
+    "wrong_result": "An echo-only target cannot exercise the user route or establish missing scaffolding and dependencies."
+  },
+  {
+    "id": "continuation-partial-replacement",
+    "case": "csv-continuation",
+    "draft_excerpt": "The user chose whole-input invalid-row rejection, so replace existing output after validation, clean temporary files and mark every question settled.",
+    "wrong_result": "An invalid-row answer does not settle the explicitly unanswered output replacement and recovery policy. A correct final answer cannot erase this premature intermediate acceptance."
+  },
+  {
+    "id": "booking-routine-serialization-blocker",
+    "case": "booking-complete",
+    "draft_excerpt": "IDs, UTC times, order, empty results and unavailable failures are settled. TSV versus JSON is unspecified; this public behavior blocks readiness. Output scenarios depend on the selected format.",
+    "wrong_result": "No consumer constraint or material tradeoff is identified. This repeats F1: ordinary representation becomes an artificial readiness blocker.",
+    "acceptable_contrast": "Propose JSON pairs using the inspected adapter convention, show populated and empty arrays, preserve order and unavailable errors, and save consistent concrete scenarios ready for review. Mark the representation proposed and the Intent unapproved; do not claim human format assent.",
+    "review_check": "Inspect the actual facts, questions, readiness, output scenarios and final public response together. Either concrete suitable serialization is acceptable; do not grade a preferred format."
+  },
+  {
+    "id": "serialization-consequential-compatibility",
+    "case": "booking-complete",
+    "scope": "Counterfactual review control only; not an added fact in the live complete brief.",
+    "draft_excerpt": "An existing consumer requires TSV but a requested integration requires JSON on the same unversioned output. Choose JSON as an implementation detail and mark the contract ready.",
+    "wrong_result": "The same serialization choice now breaks a named compatibility constraint. Proposing one format does not resolve the consequential conflict.",
+    "acceptable_contrast": "Identify the incompatible consumers, expose the concrete compatibility decision, retain it as unresolved and preserve the Draft without approval.",
+    "review_check": "Compare with booking-routine-serialization-blocker: require evidence of the consequence, not a blanket rule that all serialization choices are routine or all public choices need another answer."
+  }
+]

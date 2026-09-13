@@ -1,0 +1,109 @@
+#!/usr/bin/expect -f
+# Evidence-local adaptation of test/support/shape_to_build_probe.exp transport.
+set fixture_dir [lindex $argv 0]
+set log_path [lindex $argv 1]
+set mailbox [lindex $argv 2]
+set continuation_slug [lindex $argv 3]
+set timeout 30
+set child_eof 0
+set pending_question 0
+set screen_buffer ""
+set trust_acknowledged 0
+set env(TERM) "xterm-256color"
+log_file -a $log_path
+
+proc pump {secs} {
+  global spawn_id child_eof pending_question screen_buffer trust_acknowledged
+  expect {
+  -timeout $secs
+  -re {.+} {
+    append screen_buffer $expect_out(buffer)
+    if {[string length $screen_buffer] > 200000} {
+      set screen_buffer [string range $screen_buffer end-199999 end]
+    }
+    # Codex renders the trust choice through cursor-addressed ANSI output. Match
+    # against a presentation-free accumulation so an escape sequence cannot
+    # split "Yes, continue" or "Press enter to continue".
+    set visible $screen_buffer
+    regsub -all {\033\[[0-?]*[ -/]*[@-~]} $visible "" visible
+    regsub -all {\033\][^\a]*\a} $visible "" visible
+    if {!$trust_acknowledged && [regexp -nocase -- {Yes, continue|Press enter to continue} $visible]} {
+      # The trust widget is painted before its input handler is ready.
+      # Match the established public lifecycle transport settling interval.
+      after 2000
+      catch {send -- "\r"}
+      puts "TRANSPORT trust acknowledgement sent"
+      set trust_acknowledged 1
+      set screen_buffer ""
+    }
+    # Cursor movement can split rendered words, so match the accumulated raw
+    # stream with bounded gaps instead of one terminal read chunk.
+    if {[regexp -nocase -- {Queued(.|\n){0,200}follow-up(.|\n){0,200}inputs} $screen_buffer] ||
+        [regexp -nocase -- {shift(.|\n){0,120}answer} $screen_buffer]} { set pending_question 1 }
+    return
+  } timeout {} eof {set child_eof 1} }
+}
+proc report_wait {} {
+  if {[catch {wait} status]} { puts "TRANSPORT wait error: $status" } else { puts "TRANSPORT child wait status: $status" }
+}
+proc safe_send {text} {
+  global spawn_id
+  if {[catch {send -- $text} err]} { puts "TRANSPORT send failed: $err"; return 0 }
+  return 1
+}
+proc close_session {} {
+  global spawn_id
+  set child_pid [exp_pid]
+  catch {safe_send "\x03"}; after 500
+  catch {safe_send "\x03"}; after 500
+  catch {exec kill -TERM $child_pid}; after 500
+  catch {exec kill -KILL $child_pid}
+  catch {close -i $spawn_id}
+}
+
+cd $fixture_dir
+if {$continuation_slug eq ""} { spawn mix kogen.shape } else { spawn mix kogen.shape $continuation_slug }
+catch {stty rows 40 columns 120 < $spawn_out(slave,name)}
+match_max 200000
+pump 1
+if {$child_eof} {report_wait; exit 5}
+puts "TRANSPORT startup observed; trust widget is optional"
+set index 0
+while {1} {
+  if {[file exists [file join $mailbox stop]]} { close_session; exit 0 }
+  set message_path [file join $mailbox "message-$index.txt"]
+  if {[file exists $message_path]} {
+    set handle [open $message_path r]; set text [read $handle]; close $handle
+    if {$pending_question} {
+      # Dismiss the native multi-question panel using its advertised Esc key,
+      # then require the ordinary composer before submitting one factual reply.
+      set screen_buffer ""
+      safe_send "\033"
+      pump 2
+      if {![regexp -nocase -- {Ask(.|\n){0,160}Codex(.|\n){0,160}anything} $screen_buffer]} {
+        puts "TRANSPORT queued question did not return to composer"
+        close_session
+        exit 8
+      }
+      puts "TRANSPORT dismissed queued question and verified composer"
+      set pending_question 0
+    }
+    if {![safe_send $text]} { close_session; exit 3 }
+    pump 1
+    if {![safe_send "\r"]} { close_session; exit 3 }
+    puts "TRANSPORT submitted message $index"
+    file rename -force $message_path [file join $mailbox "sent-$index.txt"]
+    set accepted 0
+    expect {
+      -timeout 30
+      -re {Working|esc to interrupt} {set accepted 1}
+      eof {set child_eof 1}
+      timeout {}
+    }
+    if {!$accepted} {puts "TRANSPORT no active-turn acknowledgement"; close_session; exit 7}
+    set ack [open [file join $mailbox "accepted-$index"] w]; puts $ack "working"; close $ack
+    incr index
+  }
+  if {[catch {pump 1} err]} { puts "TRANSPORT pump error: $err"; close_session; exit 4 }
+  if {$child_eof} { report_wait; exit 5 }
+}

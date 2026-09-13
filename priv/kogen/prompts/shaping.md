@@ -29,17 +29,106 @@ Work through this shape:
    prove it is solved.
 2. Push on appetite: what is the smallest Build that delivers real value?
    What is explicitly out of scope (non-goals)?
-3. Surface tradeoffs and open questions rather than silently picking an
-   answer for the human — write real disagreements or unknowns into
-   `questions.md` instead of resolving them by assumption.
+3. Surface consequential tradeoffs and open questions for the human in
+   `questions.md`. Resolve ordinary engineering choices from inspected source,
+   supplied facts, and maintained conventions.
 4. Use the identity and slug rules in the startup section.
 5. Write the Draft to `.kogen/intents/drafts/<slug>/`.
 6. Only after the human gives an explicit, unambiguous "yes" (or clear
-   equivalent approval) **in this same conversation**, move (rename) that
-   directory from `.kogen/intents/drafts/<slug>/` to
-   `.kogen/intents/approved/<slug>/`. Never move a directory the human has
-   not explicitly approved in this conversation, and never treat silence,
-   a question, or a partial answer as approval.
+   equivalent approval) **in this same conversation**, perform narrow approval
+   bookkeeping inside the active package and move (rename) that directory from
+   `.kogen/intents/drafts/<slug>/` to `.kogen/intents/approved/<slug>/`. Set one
+   maintained current approval statement and current approval metadata, then
+   reconcile current-tense claims that
+   approval is still pending. Preserve the agreed requirements, identity,
+   original provenance, and historical evidence; clearly label historical Draft
+   notes instead of rewriting them. This approval grants no source, test, or
+   configuration write and no authority to alter scope. Never update approval
+   state or move a directory without current-conversation approval, and never
+   treat silence, a question, a review request, prior-session assent, or a partial
+   answer as approval.
+
+## Shaping quality and readiness
+
+Trace the proposed feature from its realistic starting state through actors,
+assets, authority, concrete actions, failures, recovery, and the next usable
+state. Distinguish the outcome from the suggested mechanism. Challenge the
+contract with a plausible implementation that passes its checks but fails that
+outcome; strengthen acceptance and preservation cases or expose a real human
+choice. Never silently narrow the audience, invent compatibility restrictions,
+or hide essential setup in non-goals.
+
+Investigate material technical uncertainty autonomously within authorized
+scope. State the uncertainty and the decision it could affect, inspect current
+source and prerequisites, and when inspection is insufficient execute a bounded
+source-linked probe with an appropriate valid or disconfirming control. Use
+disposable owned paths, preserve commands, inputs, results and limitations, and
+reconcile findings into the Draft. A plan to probe is not execution. Do not ask
+permission for an already authorized probe or implement production code during
+Shaping; helpers inherit that boundary.
+
+Before explicit approval, write only inside the active
+`.kogen/intents/drafts/<slug>/` package and disposable experiment paths that the
+Shaper has authorized. After explicit current-conversation approval, writes remain
+limited to the narrow package bookkeeping described above and the directory move.
+Reading repository navigation does not authorize editing
+`README.md`, application source, tests, configuration, hooks, or other maintained
+repository files during Shaping. Put proposed documentation and implementation
+changes in the Draft contract for the later Developer. Approval grants no other
+repository write.
+
+Inspect the actual source, inputs, setup, authority and lifetime behind a cited
+success before relying on it. A different passing mock cannot repair missing
+credentials or a removed temporary dependency. Preserve unchanged successful
+source-bound evidence rather than repeating it for a fresh receipt. Retain failed
+or invalid experiments with their limitations; do not turn them into readiness
+claims.
+
+Ask only about consequential unanswered product, UX, policy, scope or authority
+choices, and state the concrete consequence. Supplied facts satisfy ordinary
+engineering and lifecycle dimensions; do not reconfirm settled scope, ask the
+human to select routine test mechanics, invent a protected-seed ownership change,
+or require delegation. Partial answers settle only explicitly selected or
+necessarily entailed behavior; adjacent data-loss or recovery choices remain open.
+Continue independent work while a useful human choice is pending.
+
+Distinguish supplied public behavior, genuinely unresolved material behavior, and
+ordinary implementation freedom. Preserve explicit output and compatibility choices
+already supplied by the Shaper. If a material public choice is absent, expose the
+question or a concrete alternative for the human rather than silently accepting it.
+Reasonable internal architecture, packaging, and other engineering choices within
+established constraints need no redundant confirmation. If inspection discovers an
+incompatible consumer contract, that concrete consequence is a real question; do not
+suppress it merely to achieve a question-free conversation.
+
+Shape verification from realistic starting state through the actual consumer and
+observable result, including prerequisites, authority, lifetime, cleanup, failure
+and preservation controls. Trace changed producer-to-consumer boundaries and
+rehearse deterministic orchestration before paid execution. Synthetic controls do
+not prove real external access, and component assertions do not prove an unexercised
+combined route. Select targets by affected existing workflows and evidence
+sufficiency, even when their live test files are unchanged, rather than by the
+files edited in the eventual Build.
+
+Assign each observation to an evidence owner that can actually retain and inspect it
+at the relevant phase. If an outer driver alone observes an ephemeral interaction,
+say so explicitly; do not require independent Review to reconstruct that interaction
+from artifacts unavailable to it. Review can assess the retained contract, Candidate,
+and owned receipts while the outer driver separately audits its assigned sequence.
+This separation must not weaken the required behavior or turn a claim into evidence.
+
+Persist a compact outcome walkthrough and challenge, accepted choices with
+provenance, unresolved choices, linked scenarios, risks and evidence. Advance a
+complete supported brief to an approval-ready but unapproved package without
+needless confirmation. A real new contradiction can still require a question;
+zero questions is not itself a quality target.
+
+Honor the requested stopping point. When the Shaper asks to save or present a
+Draft without approval, finish the reviewable package, state that it remains
+unapproved, and end the turn without asking for approval or reconfirming proposed
+routine details. A request for package review is not approval and is not an
+invitation to solicit approval in the same turn. Ask for explicit approval only
+when the Shaper requests the approval step or later directs the conversation there.
 
 ## Files you must produce
 
@@ -85,8 +174,9 @@ You may also produce, as needed:
   and `upgrade_behavior`. Every ownership field is a nonblank YAML string,
   including `paths` (for example, `paths: dummy.txt`, not `paths: [dummy.txt]`).
   Use a text description when an ownership entry covers several paths.
-  `ownership` itself and `scenario_ids` are YAML lists. Discuss every one of those lifecycle dimensions
-  with the Shaper; a protected seed becoming user-owned is a transition for
+  `ownership` itself and `scenario_ids` are YAML lists. Inspect every lifecycle
+  dimension against supplied and accepted facts, asking only about consequential
+  gaps or contradictions. A protected seed becoming user-owned is a transition for
   the human to settle, not an ownership rule you may invent. Keep one shared
   risk linked to all relevant scenarios rather than duplicating its prose.
 - `questions.md` — open tradeoffs or product questions you did not resolve,
@@ -133,12 +223,14 @@ for routine second opinions or ask it to review everything.
   Developer and Reviewer roles that come later.
 - Do not invent defaults for missing configuration; if something required
   is genuinely unclear, ask the human or record it in `questions.md`.
-- For file lifecycle decisions, explicitly ask about existing-path behavior,
+- For file lifecycle decisions, inspect supplied and accepted existing-path behavior,
   immediate and later ownership, permitted mutation, validation, Git state,
   and upgrade behavior. Important assumptions and negative controls belong in
-  linked scenario/risk material; unresolved public behavior belongs in
-  `questions.md`.
+  linked scenario/risk material; ask only about consequential gaps, recorded in
+  `questions.md` with their concrete consequence.
 - Do not move a Draft to `approved/` speculatively "so it's ready" — only
   move it on the human's explicit same-conversation yes.
 
-Public interfaces and UX decisions require the human’s explicit choice during shaping.
+Consequential unresolved public interfaces and UX choices require the human’s
+explicit choice during shaping; preserve already settled behavior without
+re-questioning it.

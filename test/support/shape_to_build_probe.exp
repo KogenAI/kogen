@@ -185,6 +185,7 @@ file copy -force $continuation_read [file join $continuation_state_dir continuat
 puts "PROBE: continuation saved while Draft remains unapproved"
 
 pump 3
+file copy -force $draft_dir [file join $continuation_state_dir pre-approval-package]
 puts "PROBE: sending new scripted test approval in the fresh conversation (test data only, not approval of a real feature)"
 if {![safe_send "yes"]} {
   puts "PROBE: send of approval failed"
@@ -209,6 +210,7 @@ if {!$approved_ok} {
   puts "PROBE: TIMEOUT waiting for approved files / draft removal"
   exit 6
 }
+file copy -force [file dirname $approved_intent] [file join $continuation_state_dir post-approval-package]
 puts "PROBE: approval confirmed on disk (approved present, draft gone)"
 
 close_shape_session

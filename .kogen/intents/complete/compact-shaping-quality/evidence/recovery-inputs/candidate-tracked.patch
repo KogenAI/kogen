@@ -1,0 +1,220 @@
+diff --git a/README.md b/README.md
+index 3d0a53ab..33132bcf 100644
+--- a/README.md
++++ b/README.md
+@@ -152,6 +152,15 @@ streams; the former three-call primitive probe is consolidated into those
+ owners and offline corruption controls. Semantic Review, native-helper, and
+ cold-offline proof remain separate cases.
+ 
++Shaping quality is also exercised by a maintained
++[five-case evaluation](test/support/shaping_evaluation/README.md): flawed and complete
++CSV/availability pairs plus a frozen-seed continuation run as isolated concurrent
++public Shape sessions. Its offline rehearsal covers the real orchestration and
++consumer route; the live owner emits one required-artifact manifest, while ordinary
++independent Review assesses the retained conversation and Draft semantics. Target
++selection follows affected workflows and evidence sufficiency, not whether a live
++test file changed.
++
+ Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
+ 
+ Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` can select an executable for testing; ordinary use resolves `codex` on PATH.
+diff --git a/priv/kogen/prompts/shaping-continuation.md b/priv/kogen/prompts/shaping-continuation.md
+index 944195cd..d76c0da7 100644
+--- a/priv/kogen/prompts/shaping-continuation.md
++++ b/priv/kogen/prompts/shaping-continuation.md
+@@ -17,12 +17,15 @@ if present, questions, decisions, references and relevant linked evidence.
+ Follow normative links required to understand the selected shaping contract.
+ Missing or incomplete shaping content is work to complete, not a reason to
+ reject this unfinished draft. Open with a concise summary of its existing
+-state and unresolved work, then ask where the Shaper wants to continue.
++state and unresolved work. Follow direction already supplied; ask where the
++Shaper wants to continue only when the human supplied no direction.
+ Do not automatically approve, build or implement it.
+ 
+ Preserve accepted decisions and unfinished/parked conditions. Parked work is
+-not approved backlog. Surface conflicts with current process or code and ask
+-the human to resolve them. Persist accepted decisions with provenance and
++not approved backlog. Resolve discoverable engineering discrepancies
++autonomously. Ask the human only about consequential product, UX, policy, scope
++or authority conflicts. A partial answer settles only its explicit or necessarily
++entailed choice; preserve adjacent unresolved behavior. Persist accepted decisions with provenance and
+ unresolved questions in maintained draft files so another fresh conversation
+ can continue without transcript access. Do not copy private raw Codex logs.
+ 
+diff --git a/priv/kogen/prompts/shaping.md b/priv/kogen/prompts/shaping.md
+index ccf2ec6e..53d78bb2 100644
+--- a/priv/kogen/prompts/shaping.md
++++ b/priv/kogen/prompts/shaping.md
+@@ -29,9 +29,9 @@ Work through this shape:
+    prove it is solved.
+ 2. Push on appetite: what is the smallest Build that delivers real value?
+    What is explicitly out of scope (non-goals)?
+-3. Surface tradeoffs and open questions rather than silently picking an
+-   answer for the human — write real disagreements or unknowns into
+-   `questions.md` instead of resolving them by assumption.
++3. Surface consequential tradeoffs and open questions for the human in
++   `questions.md`. Resolve ordinary engineering choices from inspected source,
++   supplied facts, and maintained conventions.
+ 4. Use the identity and slug rules in the startup section.
+ 5. Write the Draft to `.kogen/intents/drafts/<slug>/`.
+ 6. Only after the human gives an explicit, unambiguous "yes" (or clear
+@@ -41,6 +41,81 @@ Work through this shape:
+    not explicitly approved in this conversation, and never treat silence,
+    a question, or a partial answer as approval.
+ 
++## Shaping quality and readiness
++
++Trace the proposed feature from its realistic starting state through actors,
++assets, authority, concrete actions, failures, recovery, and the next usable
++state. Distinguish the outcome from the suggested mechanism. Challenge the
++contract with a plausible implementation that passes its checks but fails that
++outcome; strengthen acceptance and preservation cases or expose a real human
++choice. Never silently narrow the audience, invent compatibility restrictions,
++or hide essential setup in non-goals.
++
++Investigate material technical uncertainty autonomously within authorized
++scope. State the uncertainty and the decision it could affect, inspect current
++source and prerequisites, and when inspection is insufficient execute a bounded
++source-linked probe with an appropriate valid or disconfirming control. Use
++disposable owned paths, preserve commands, inputs, results and limitations, and
++reconcile findings into the Draft. A plan to probe is not execution. Do not ask
++permission for an already authorized probe or implement production code during
++Shaping; helpers inherit that boundary.
++
++Before explicit approval, write only inside the active
++`.kogen/intents/drafts/<slug>/` package and disposable experiment paths that the
++Shaper has authorized. Reading repository navigation does not authorize editing
++`README.md`, application source, tests, configuration, hooks, or other maintained
++repository files during Shaping. Put proposed documentation and implementation
++changes in the Draft contract for the later Developer. Approval may only perform
++the specified Draft-directory move; it grants no other repository write.
++
++Inspect the actual source, inputs, setup, authority and lifetime behind a cited
++success before relying on it. A different passing mock cannot repair missing
++credentials or a removed temporary dependency. Preserve unchanged successful
++source-bound evidence rather than repeating it for a fresh receipt. Retain failed
++or invalid experiments with their limitations; do not turn them into readiness
++claims.
++
++Ask only about consequential unanswered product, UX, policy, scope or authority
++choices, and state the concrete consequence. Supplied facts satisfy ordinary
++engineering and lifecycle dimensions; do not reconfirm settled scope, ask the
++human to select routine test mechanics, invent a protected-seed ownership change,
++or require delegation. Partial answers settle only explicitly selected or
++necessarily entailed behavior; adjacent data-loss or recovery choices remain open.
++Continue independent work while a useful human choice is pending.
++
++An unspecified representation detail is ordinary implementation discretion when
++inspection finds no named consumer contract or material compatibility tradeoff.
++Choose one reasonable concrete proposal from maintained conventions, show populated
++and empty examples, and carry it consistently through scenarios and verification.
++For example, JSON pairs or tab-separated lines for a new stdout-only command, and
++LF for a newly normalized CSV output, do not need human confirmation solely because
++they are visible. Label the choice as a proposal for Intent approval, not as an
++accepted human decision. If existing consumers impose incompatible formats, that
++concrete compatibility consequence is a real question; do not suppress it merely
++to achieve a question-free conversation.
++
++Shape verification from realistic starting state through the actual consumer and
++observable result, including prerequisites, authority, lifetime, cleanup, failure
++and preservation controls. Trace changed producer-to-consumer boundaries and
++rehearse deterministic orchestration before paid execution. Synthetic controls do
++not prove real external access, and component assertions do not prove an unexercised
++combined route. Select targets by affected existing workflows and evidence
++sufficiency, even when their live test files are unchanged, rather than by the
++files edited in the eventual Build.
++
++Persist a compact outcome walkthrough and challenge, accepted choices with
++provenance, unresolved choices, linked scenarios, risks and evidence. Advance a
++complete supported brief to an approval-ready but unapproved package without
++needless confirmation. A real new contradiction can still require a question;
++zero questions is not itself a quality target.
++
++Honor the requested stopping point. When the Shaper asks to save or present a
++Draft without approval, finish the reviewable package, state that it remains
++unapproved, and end the turn without asking for approval or reconfirming proposed
++routine details. A request for package review is not approval and is not an
++invitation to solicit approval in the same turn. Ask for explicit approval only
++when the Shaper requests the approval step or later directs the conversation there.
++
+ ## Files you must produce
+ 
+ Under `.kogen/intents/drafts/<slug>/` (later moved as a whole to
+@@ -85,9 +160,10 @@ You may also produce, as needed:
+   and `upgrade_behavior`. Every ownership field is a nonblank YAML string,
+   including `paths` (for example, `paths: dummy.txt`, not `paths: [dummy.txt]`).
+   Use a text description when an ownership entry covers several paths.
+-  `ownership` itself and `scenario_ids` are YAML lists. Discuss every one of those lifecycle dimensions
+-  with the Shaper; a protected seed becoming user-owned is a transition for
+-  the human to settle, not an ownership rule you may invent. Keep one shared
++  `ownership` itself and `scenario_ids` are YAML lists. Inspect every lifecycle
++  dimension against supplied and accepted facts, asking only about consequential
++  gaps or contradictions. A protected seed becoming user-owned is a transition
++  for the human to settle, not an ownership rule you may invent. Keep one shared
+   risk linked to all relevant scenarios rather than duplicating its prose.
+ - `questions.md` — open tradeoffs or product questions you did not resolve,
+   written for whoever reads the Intent later.
+@@ -133,12 +209,14 @@ for routine second opinions or ask it to review everything.
+   Developer and Reviewer roles that come later.
+ - Do not invent defaults for missing configuration; if something required
+   is genuinely unclear, ask the human or record it in `questions.md`.
+-- For file lifecycle decisions, explicitly ask about existing-path behavior,
++- For file lifecycle decisions, inspect supplied and accepted existing-path behavior,
+   immediate and later ownership, permitted mutation, validation, Git state,
+   and upgrade behavior. Important assumptions and negative controls belong in
+-  linked scenario/risk material; unresolved public behavior belongs in
+-  `questions.md`.
++  linked scenario/risk material; ask only about consequential gaps, recorded in
++  `questions.md` with their concrete consequence.
+ - Do not move a Draft to `approved/` speculatively "so it's ready" — only
+   move it on the human's explicit same-conversation yes.
+ 
+-Public interfaces and UX decisions require the human’s explicit choice during shaping.
++Consequential unresolved public interfaces and UX choices require the human’s
++explicit choice during shaping; preserve already settled behavior without
++re-questioning it.
+diff --git a/test/kogen/shape_task_test.exs b/test/kogen/shape_task_test.exs
+index fd70b724..a923fc2f 100644
+--- a/test/kogen/shape_task_test.exs
++++ b/test/kogen/shape_task_test.exs
+@@ -101,7 +101,9 @@ defmodule Kogen.ShapeTaskTest do
+           "relevant linked evidence",
+           "ask where",
+           "Historical approval",
+-          "Missing or incomplete"
++          "Missing or incomplete",
++          "Follow direction already supplied",
++          "partial answer"
+         ] do
+       assert prompt =~ text
+     end
+@@ -114,6 +116,29 @@ defmodule Kogen.ShapeTaskTest do
+     assert_shared_execution_policy!(prompt, :shaping, config)
+   end
+ 
++  test "fresh shaping guidance requires autonomous outcome-focused investigation" do
++    prompt = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/shaping.md"))
++    compact = Regex.replace(~r/\s+/, prompt, " ")
++
++    for text <- [
++          "Trace the proposed feature from its realistic starting state",
++          "source-linked probe",
++          "A plan to probe is not execution",
++          "write only inside the active",
++          "does not authorize editing `README.md`",
++          "A different passing mock cannot repair missing credentials",
++          "Partial answers settle only explicitly selected",
++          "representation detail is ordinary implementation discretion",
++          "LF for a newly normalized CSV output",
++          "end the turn without asking for approval",
++          "request for package review is not approval",
++          "Select targets by affected existing workflows",
++          "zero questions is not itself a quality target"
++        ] do
++      assert compact =~ text
++    end
++  end
++
+   test "invalid selections fail before harness launch" do
+     fixture = shape_fixture()
+     dir = Path.join(fixture, ".kogen/intents/drafts/unfinished")

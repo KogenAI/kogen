@@ -80,12 +80,27 @@ defmodule Kogen.IsolationProbe do
     marker = System.fetch_env!("PROBE_PID")
     File.write!(marker <> ".root", System.tmp_dir!())
 
-    System.cmd("sh", [
-      "-c",
-      "echo $$ > \"$1.tmp\"; mv \"$1.tmp\" \"$1\"; exec sleep 60",
-      "--",
-      marker
-    ])
+    Task.start(fn ->
+      System.cmd("sh", [
+        "-c",
+        "echo $$ > \"$1.tmp\"; mv \"$1.tmp\" \"$1\"; exec sleep 60",
+        "--",
+        marker
+      ])
+    end)
+
+    assert Enum.any?(1..200, fn _ ->
+             if File.exists?(marker) do
+               true
+             else
+               Process.sleep(10)
+               false
+             end
+           end)
+
+    Process.sleep(String.to_integer(System.get_env("PROBE_START_DELAY_MS", "0")))
+    File.write!(System.fetch_env!("PROBE_READY"), "ready\n")
+    Process.sleep(60_000)
   end
 
   test "passing test with undeletable directory" do

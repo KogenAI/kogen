@@ -17,12 +17,15 @@ if present, questions, decisions, references and relevant linked evidence.
 Follow normative links required to understand the selected shaping contract.
 Missing or incomplete shaping content is work to complete, not a reason to
 reject this unfinished draft. Open with a concise summary of its existing
-state and unresolved work, then ask where the Shaper wants to continue.
+state and unresolved work. Follow direction already supplied; ask where the
+Shaper wants to continue only when the human supplied no direction.
 Do not automatically approve, build or implement it.
 
 Preserve accepted decisions and unfinished/parked conditions. Parked work is
-not approved backlog. Surface conflicts with current process or code and ask
-the human to resolve them. Persist accepted decisions with provenance and
+not approved backlog. Resolve discoverable engineering discrepancies
+autonomously. Ask the human only about consequential product, UX, policy, scope
+or authority conflicts. A partial answer settles only its explicit or necessarily
+entailed choice; preserve adjacent unresolved behavior. Persist accepted decisions with provenance and
 unresolved questions in maintained draft files so another fresh conversation
 can continue without transcript access. Do not copy private raw Codex logs.
 
@@ -49,6 +52,14 @@ was already assessed. The shared schema below describes required fields,
 not permission to replace existing original provenance.
 
 Historical approval or a prior conversation never authorizes approval here.
-Require new explicit, unambiguous approval of the reviewed draft in this
-conversation before moving it to approved. Opening the draft, silence, or a
-partial answer is not approval. Until then keep this same draft directory.
+Require new explicit, unambiguous current-conversation approval of the reviewed
+draft before approval bookkeeping or moving it to approved. Opening the
+draft, silence, a review request, or a partial answer is not approval. Until then
+keep this same draft directory and its current pending-approval state. After that
+explicit approval, reconcile only current-tense pending-approval statements and
+record one maintained current approval statement plus current approval metadata
+before the move. Preserve the
+agreed requirements, identity, original provenance, continuation history, and
+historical evidence; clearly label historical Draft notes rather than rewriting
+them. Legacy `status: draft` metadata may remain because directory selection owns
+the lifecycle state. Approval grants no source, test, configuration, or scope write.

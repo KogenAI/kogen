@@ -18,10 +18,11 @@ defmodule Kogen.LiveShapeToBuildTest do
   files must exist and Draft must be gone afterward, carrying the same
   minted UUIDv7 identity that was printed at the start; the real Stop
   hook's Verification Record history must show an actual `failed` record
-  followed by an actual `passed` record for the *same* Developer session,
-  with zero outer resumptions (a higher `num_turns` alone is not treated
-  as proof, since ordinary tool use also produces multiple turns); Review
-  must accept; the resulting Commit must carry the Intent's trailers.
+  followed by an actual `passed` record for the *same* Developer session
+  before its first handoff (a higher `num_turns` alone is not proof, since
+  ordinary tool use also produces multiple turns). Ordinary independent
+  Review/rework may then use the configured outer budget; eventual Review
+  must accept and the resulting Commit must carry the Intent's trailers.
 
   Runs in an isolated, disposable fixture: a fresh clone with its own git
   history, cleaned up at the end -- placed under this checkout's own
@@ -156,6 +157,12 @@ defmodule Kogen.LiveShapeToBuildTest do
       |> Path.join("continued-intent.yaml")
       |> read_yaml!()
 
+    pre_approval_dir = Path.join(continuation_state_dir, "pre-approval-package")
+    post_approval_dir = Path.join(continuation_state_dir, "post-approval-package")
+
+    assert File.dir?(pre_approval_dir), "pre-approval package snapshot must be retained"
+    assert File.dir?(post_approval_dir), "post-approval package snapshot must be retained"
+
     continuation_read =
       continuation_state_dir
       |> Path.join("continuation-read.md")
@@ -180,6 +187,20 @@ defmodule Kogen.LiveShapeToBuildTest do
     assert is_map(continuation["checkout"])
     assert continuation["checkout"]["branch"]
     assert continuation["checkout"]["head"]
+
+    pre_approval_intent = read_yaml!(Path.join(pre_approval_dir, "intent.yaml"))
+    post_approval_intent = read_yaml!(Path.join(post_approval_dir, "intent.yaml"))
+
+    for key <- ["id", "slug", "shaped_against", "shaping", "shaping_continuations"] do
+      assert post_approval_intent[key] == pre_approval_intent[key],
+             "approval changed protected intent field #{key}"
+    end
+
+    for file <- ["scenarios.yaml", "risks.yaml"] do
+      assert File.read!(Path.join(post_approval_dir, file)) ==
+               File.read!(Path.join(pre_approval_dir, file)),
+             "approval changed agreed requirements in #{file}"
+    end
 
     Kogen.RootProfileAudit.audit_shape!(
       Path.join(log_dir, "shape-root-profile-audit"),
@@ -268,7 +289,9 @@ defmodule Kogen.LiveShapeToBuildTest do
     refute File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
 
     evidence = File.read!(evidence_path)
-    assert evidence =~ "Outer resumptions used: 0"
+    [_, resumptions_text] = Regex.run(~r/^- Outer resumptions used: (\d+)$/m, evidence)
+    resumptions = String.to_integer(resumptions_text)
+    assert resumptions <= config.outer_resumptions
 
     developer_session_id =
       Regex.run(~r/Developer session id: `([^`]+)`/, evidence) |> List.last()
@@ -326,6 +349,25 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     assert first_failed_index < first_passed_index,
            "the failed record must precede the passed record within the same session"
+
+    tracking = read_tracking!(fixture, complete_dir)
+    [initial_attempt | _] = tracking["attempts"]
+
+    assert initial_attempt["developer_session_id"] == developer_session_id
+    assert is_map(initial_attempt["handoff"]), "initial attempt must contain the first handoff"
+
+    {:ok, initial_check_finished, 0} =
+      DateTime.from_iso8601(initial_attempt["check"]["finished_at"])
+
+    before_initial_handoff =
+      Enum.filter(same_session, fn record ->
+        {:ok, finished, 0} = DateTime.from_iso8601(record["finished_at"])
+        DateTime.compare(finished, initial_check_finished) != :gt
+      end)
+
+    assert Enum.map(before_initial_handoff, & &1["status"]) |> Enum.take(-2) ==
+             ["failed", "passed"],
+           "outer driver must observe failed-then-passed Stop history before the initial handoff"
 
     subject = git!(fixture, ["log", "-1", "--format=%s"])
     assert subject == "Shape to build probe"
@@ -502,6 +544,12 @@ defmodule Kogen.LiveShapeToBuildTest do
       build_id = path |> Path.dirname() |> Path.basename()
       File.cp!(path, Path.join(log_dir, "runtime-tracking-#{build_id}.json"))
     end
+  end
+
+  defp read_tracking!(fixture, _complete_dir) do
+    paths = Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*/record.json"))
+    assert [path] = paths, "expected exactly one lifecycle scenario-tracking record"
+    path |> File.read!() |> Jason.decode!()
   end
 
   defp preserve_if_present(source, destination) do

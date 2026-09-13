@@ -1,0 +1,59 @@
+[
+  {
+    "id": "meaning-and-authority",
+    "scenario_ids": [
+      "autonomous-csv-investigation",
+      "usable-availability-and-verification",
+      "complete-case-restraint",
+      "partial-answer-continuation"
+    ],
+    "description": "A script can rescue a bad conversation or an integrity validator can mistake complete bytes for correct Shaping. Preserve actual visible sequence and intermediate choices, use separate hidden rubrics, distinguish fixture/routing failure from model failure, and require ordinary independent semantic Review. No automatic approval, compulsory delegation or invented missing policy. Evaluate every action against the request/facts actually delivered by then. Original approval and verdict remain historical; no retroactive correction of receipts."
+  },
+  {
+    "id": "evaluation-source-and-runtime-ownership",
+    "scenario_ids": [
+      "autonomous-csv-investigation",
+      "usable-availability-and-verification",
+      "complete-case-restraint",
+      "partial-answer-continuation",
+      "five-case-evidence-delivery",
+      "offline-rehearsal-and-preserved-routes",
+      "cleanup-timeout-after-readiness"
+    ],
+    "description": "Five concurrent cases must remain isolated and required sources must survive until target capture and publication; follow accepted repository ownership instead of reopening unchanged lifecycle choices.",
+    "ownership": [
+      {
+        "paths": "Tracked shaping prompt files, root navigation, and maintained test/support/shaping_evaluation fixtures, rubrics, driver and refresh instructions. Also the two explicitly named cleanup test/fixture files in amendment.md.",
+        "when_exists": "Read and narrowly update owned maintained sources; preserve unrelated files and user configuration. Refuse source-copy destination collisions.",
+        "owner_after_creation": "Repository maintainers own all new maintained sources immediately.",
+        "owner_during_operation": "Maintainers retain source ownership; evaluation sessions may change only disposable copies and their assigned evidence paths.",
+        "permitted_mutation": "Developer edits only declared paths; the Shaping session prototypes only inside this Draft evidence area. Runtime execution never rewrites maintained sources.",
+        "validation": "Source/input digests, offline full-driver controls and existing check regressions; live plus independent Review validate the resulting behavior.",
+        "git_state": "Maintained implementation and fixture sources are tracked with the accepted implementation commit; this local Draft remains ignored until ordinary publication.",
+        "upgrade_behavior": "Review source changes explicitly for future executions, refresh source-bound fixture evidence when changed, retain previous results as historical and never rewrite old evidence to match new expectations."
+      },
+      {
+        "paths": "Unique case fixtures and private retained runtime artifacts, including the frozen continuation seed, actual turns, probe results, saved Draft versions, aggregate manifest and private native originals.",
+        "when_exists": "Allocate a fresh unique run; never adopt or overwrite another run. Preserve maintained capability seeds and unrelated user files.",
+        "owner_after_creation": "The suite runner owns each new run and synthetic seed; evaluated controllers receive bounded write ownership of their assigned disposable Draft/evidence copies.",
+        "owner_during_operation": "The collector alone owns aggregate artifacts and manifest; each case owns its separate outputs. Build owns retained snapshots through the accepted 06 mechanism, separately from Reviewer citations.",
+        "permitted_mutation": "Write current-case outputs and invocation-owned temporary files; freeze required source bytes before emission and keep them unchanged through publication. Reap and remove only owned disposable processes/roots; retain failure evidence.",
+        "validation": "Five-case coverage, native session/turn binding, source digests, real YAML parsing, overlap and cleanup controls; accepted 06 validates containment, hashes, snapshots and publication.",
+        "git_state": "Runtime sources/raw streams remain ignored and private. Only concise required artifacts reach committed Complete snapshots under the existing evidence contract; private reasoning and unrelated streams are excluded.",
+        "upgrade_behavior": "New attempts use fresh directories and current frozen inputs; old raw/curated evidence remains historical. No migration, pruning, new storage policy or fabricated continuation history."
+      }
+    ]
+  },
+  {
+    "id": "bounded-live-execution",
+    "scenario_ids": [
+      "autonomous-csv-investigation",
+      "usable-availability-and-verification",
+      "complete-case-restraint",
+      "partial-answer-continuation",
+      "five-case-evidence-delivery",
+      "offline-rehearsal-and-preserved-routes"
+    ],
+    "description": "Five concurrent roots can still consume substantial total provider work. Each case has a ten-minute envelope including helpers and six-reply maximum; no automatic case retries or paid grader. Existing outer Build retries are unchanged and recorded separately. Preserve original failures, available root/helper usage and evidence limits; no universal quality, quota or cost-savings claims."
+  }
+]

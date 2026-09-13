@@ -1,0 +1,14 @@
+{
+  "observed_events": [
+    [
+      "approval_question",
+      "2026-09-13T11:36:16.459Z"
+    ],
+    [
+      "save_instruction",
+      "2026-09-13T11:36:24.519Z"
+    ]
+  ],
+  "retroactive_violation_claim_supported": false,
+  "rule": "A later instruction cannot establish an earlier instruction-following violation. This does not grade other aspects of the question."
+}

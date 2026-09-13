@@ -1,0 +1,147 @@
+{
+  "executor": "root Python subprocesses",
+  "cases": [
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/naive_reader.py",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/plain.csv"
+      ],
+      "exit": 0,
+      "stdout": "[[\"date\", \"value\"], [\"2026-09-01\", \"12\"], [\"2026-09-01\", \"12\"]]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/naive_reader.py",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/bom.csv"
+      ],
+      "exit": 0,
+      "stdout": "[[\"\\ufeffdate\", \"value\"], [\"2026-09-01\", \"12\"], [\"2026-09-01\", \"12\"]]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/reader_control.py",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/plain.csv"
+      ],
+      "exit": 0,
+      "stdout": "[[\"date\", \"value\"], [\"2026-09-01\", \"12\"], [\"2026-09-01\", \"12\"]]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/reader_control.py",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/bom.csv"
+      ],
+      "exit": 0,
+      "stdout": "[[\"date\", \"value\"], [\"2026-09-01\", \"12\"], [\"2026-09-01\", \"12\"]]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/reader_control.py",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/invalid-date.csv"
+      ],
+      "exit": 2,
+      "stdout": "",
+      "stderr": "day 31 must be in range 1..30 for month 9 in year 2026\n"
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/reader_control.py",
+        ".kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/missing.csv"
+      ],
+      "exit": 2,
+      "stdout": "",
+      "stderr": "[Errno 2] No such file or directory: '.kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/missing.csv'\n"
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/calendar_adapter.py",
+        ".kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/connection.json"
+      ],
+      "exit": 0,
+      "stdout": "[[\"s1\", \"2026-09-14T09:00:00Z\"], [\"s2\", \"2026-09-14T09:30:00Z\"]]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/calendar_adapter.py",
+        ".kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/missing-scope.json"
+      ],
+      "exit": 2,
+      "stdout": "",
+      "stderr": "unavailable: reconnect or contact operator: unavailable: reconnect or contact operator\n"
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/calendar_adapter.py",
+        ".kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/wrong-organizer.json"
+      ],
+      "exit": 2,
+      "stdout": "",
+      "stderr": "unavailable: reconnect or contact operator: unavailable: reconnect or contact operator\n"
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/calendar_adapter.py",
+        ".kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/empty.json"
+      ],
+      "exit": 0,
+      "stdout": "[]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/calendar_adapter.py",
+        ".kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/malformed.json"
+      ],
+      "exit": 2,
+      "stdout": "",
+      "stderr": "unavailable: reconnect or contact operator: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)\n"
+    },
+    {
+      "argv": [
+        "/Users/almirsarajcic/.local/share/mise/installs/python/latest/bin/python3",
+        "-B",
+        "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/optimize-kogen-execution/evidence/compact-fixtures-v1/calendar_adapter.py",
+        ".kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/connection.json"
+      ],
+      "exit": 2,
+      "stdout": "",
+      "stderr": "unavailable: reconnect or contact operator: [Errno 2] No such file or directory: '.kogen/runtime/build-diagnostics/FOlOSNjl0j389DkqHqVodKlP/compact-prerequisites-v1/connection.json'\n"
+    }
+  ],
+  "control_assertions": [
+    "naive BOM discrepancy",
+    "compatible plain/BOM parity",
+    "duplicate row preservation",
+    "invalid input/missing input failure",
+    "scoped connection, empty result, unavailable and malformed differentiation",
+    "exclusive creation refuses collision",
+    "owned cleanup preserves maintained seed"
+  ],
+  "limits": "No complete normalization/export feature, real external access or model quality claimed."
+}

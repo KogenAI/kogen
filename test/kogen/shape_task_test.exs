@@ -101,7 +101,9 @@ defmodule Kogen.ShapeTaskTest do
           "relevant linked evidence",
           "ask where",
           "Historical approval",
-          "Missing or incomplete"
+          "Missing or incomplete",
+          "Follow direction already supplied",
+          "partial answer"
         ] do
       assert prompt =~ text
     end
@@ -112,6 +114,59 @@ defmodule Kogen.ShapeTaskTest do
     refute prompt =~ "{{"
     {:ok, config} = Kogen.Intent.read_config(config_path)
     assert_shared_execution_policy!(prompt, :shaping, config)
+  end
+
+  test "fresh shaping guidance requires autonomous outcome-focused investigation" do
+    prompt = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/shaping.md"))
+    compact = Regex.replace(~r/\s+/, prompt, " ")
+
+    for text <- [
+          "Trace the proposed feature from its realistic starting state",
+          "source-linked probe",
+          "A plan to probe is not execution",
+          "write only inside the active",
+          "does not authorize editing `README.md`",
+          "A different passing mock cannot repair missing credentials",
+          "Partial answers settle only explicitly selected",
+          "Distinguish supplied public behavior",
+          "material public choice is absent",
+          "end the turn without asking for approval",
+          "request for package review is not approval",
+          "Select targets by affected existing workflows",
+          "outer driver alone observes an ephemeral interaction",
+          "zero questions is not itself a quality target"
+        ] do
+      assert compact =~ text
+    end
+
+    refute compact =~ "JSON pairs or tab-separated lines"
+    refute compact =~ "LF for a newly normalized CSV output"
+  end
+
+  test "rendered shaping roles keep approval explicit and bookkeeping narrow" do
+    fresh = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/shaping.md"))
+    continued = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/shaping-continuation.md"))
+    reviewer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+
+    for prompt <- [fresh, continued] do
+      compact = Regex.replace(~r/\s+/, prompt, " ")
+      assert compact =~ "explicit"
+      assert compact =~ "current-conversation"
+      assert compact =~ "current approval statement"
+      assert compact =~ "current approval metadata"
+      assert compact =~ "current-tense"
+      assert compact =~ "agreed requirements"
+      assert compact =~ "original provenance"
+      assert compact =~ "historical evidence"
+      assert compact =~ "partial answer"
+      assert compact =~ "review request"
+      assert compact =~ "no source, test"
+    end
+
+    assert reviewer =~ "selected `approved/` directory is the lifecycle state owner"
+    assert reviewer =~ "legacy `status: draft`"
+    assert reviewer =~ "genuine current contradictions"
+    assert reviewer =~ "current claim that approval is still pending"
   end
 
   test "invalid selections fail before harness launch" do

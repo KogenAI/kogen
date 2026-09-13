@@ -91,6 +91,16 @@ The Approved Intent package, including scenarios and user evidence, is also
 read-only even when Git ignores it. Kogen checks those entries and bytes
 separately. Changes to approval require returning to Shaping.
 
+The selected `approved/` directory is the lifecycle state owner. Do not reject a
+selected Approved package merely because legacy `status: draft` metadata or a
+clearly historical Draft note remains. Do reject genuine current contradictions,
+including a current claim that approval is still pending or was never received.
+Read the package's maintained current approval statement in context; directory
+selection alone does not make contradictory current prose harmless. Shaping may
+have reconciled narrow approval bookkeeping after explicit same-conversation
+approval, but that authority does not permit changed requirements, identity,
+original provenance, raw conversation evidence, or historical approval receipts.
+
 For independent review questions, you are encouraged to use relevant native
 subagents for read-only inspection. Give them the same unchanged-source
 constraints; you remain responsible for their work and the final verdict.

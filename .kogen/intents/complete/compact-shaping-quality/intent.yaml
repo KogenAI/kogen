@@ -1,0 +1,47 @@
+{
+  "id": "01a099bb-cc01-76ca-b8cd-c8d3a83900b2",
+  "slug": "compact-shaping-quality",
+  "title": "Improve shaping quality with five compact live cases",
+  "status": "approved",
+  "shaped_against": {
+    "branch": "main",
+    "head": "6072c0f550183a3dd6c5153e97154ec10653df27"
+  },
+  "shaping": {
+    "harness": "codex",
+    "model": "gpt-6-astra",
+    "effort": "low",
+    "started": "2026-09-13T07:46:56.644509Z"
+  },
+  "may_change_guarded_paths": [
+    "priv/kogen/prompts/shaping.md",
+    "priv/kogen/prompts/shaping-continuation.md",
+    "README.md",
+    "test/support/shaping_evaluation/**",
+    "test/kogen/live_shaping_evaluation_test.exs",
+    "test/kogen/shaping_evaluation_test.exs",
+    "test/kogen/shape_task_test.exs",
+    "test/kogen/isolation_cleanup_test.exs",
+    "test/support/isolation_probe.exs",
+    "priv/kogen/prompts/reviewer.md",
+    "test/kogen/live_shape_to_build_test.exs",
+    "test/support/shape_to_build_probe.exp"
+  ],
+  "reassessed_against": {
+    "branch": "main",
+    "head": "56af370a39719ed6aca378c1974bea918800049d",
+    "reason": "Shaper reports 06 complete and directs continuing 08 in the same conversation; accepted implementation and interface inspected on 2026-09-13."
+  },
+  "amendment": {
+    "supersedes_approval_for_next_build": true,
+    "failed_build": "gEELGTWs_StA0ZFraHgiWw64",
+    "approval": "Explicit same-conversation approval: I approve. So how do I start build?",
+    "reason": "Correct fixture delivery, completeness and semantic evaluation after stopped Build."
+  },
+  "repair_amendment": {
+    "status": "approved",
+    "failed_build": "kAfKaNC689pHu20swxOivqvi",
+    "contract": "approval-transition-amendment.md",
+    "approval": "Explicit same-conversation approval: Ok I approve"
+  }
+}

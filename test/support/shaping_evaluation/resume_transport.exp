@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+# Bounded transport repair for one already-public Shape root.
+set fixture [lindex $argv 0]
+set session_id [lindex $argv 1]
+set prompt_path [lindex $argv 2]
+set stop_path [lindex $argv 3]
+set log_path [lindex $argv 4]
+set model [lindex $argv 5]
+set effort [lindex $argv 6]
+set handle [open $prompt_path r]; set prompt [read $handle]; close $handle
+set timeout 30
+set env(TERM) "xterm-256color"
+set env(KOGEN_ROLE) "shaper"
+cd $fixture
+log_file -a $log_path
+spawn codex resume --model $model -c model_reasoning_effort="$effort" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox -C $fixture $session_id $prompt
+catch {stty rows 40 columns 120 < $spawn_out(slave,name)}
+match_max 200000
+set screen_buffer ""
+set trust_acknowledged 0
+while {![file exists $stop_path]} {
+  expect {
+    -timeout 1
+    -re {.+} {
+      append screen_buffer $expect_out(buffer)
+      if {[string length $screen_buffer] > 200000} { set screen_buffer [string range $screen_buffer end-199999 end] }
+      set visible $screen_buffer
+      regsub -all {\033\[[0-?]*[ -/]*[@-~]} $visible "" visible
+      regsub -all {\033\][^\a]*\a} $visible "" visible
+      if {!$trust_acknowledged && [regexp -nocase -- {Yes, continue|Press enter to continue} $visible]} {
+        # The trust widget is painted before its input handler is ready.
+        # Match the established public lifecycle transport settling interval.
+        after 2000
+        send -- "\r"
+        puts "RESUME trust acknowledgement sent"
+        set trust_acknowledged 1
+        set screen_buffer ""
+      }
+    }
+    eof {catch {wait} status; puts "RESUME child exited: $status"; exit 5}
+    timeout {}
+  }
+}
+catch {send -- "\003"}
+catch {expect { -timeout 2 -re {.+} {exp_continue -continue_timer} timeout {} eof {} }}
+catch {send -- "\003"}
+catch {expect { -timeout 3 -re {.+} {exp_continue -continue_timer} timeout {} eof {} }}
+catch {close}
+catch {wait} status
+puts "RESUME stopped: $status"
+exit 0

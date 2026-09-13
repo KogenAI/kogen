@@ -1,0 +1,36 @@
+{
+  "attempt_token": "shaping-probe",
+  "manifest": {
+    "content_base64": "eyJzY2hlbWFfdmVyc2lvbiI6MSwicmVxdWlyZWRfZXZpZGVuY2UiOlt7InBhdGgiOiIua29nZW4vaW50ZW50cy9kcmFmdHMvY29tcGFjdC1zaGFwaW5nLXF1YWxpdHkvZXZpZGVuY2UvYWdncmVnYXRpb24tb3V0cHV0L2Nzdi1mbGF3ZWQuanNvbiIsInNoYTI1NiI6IjJmNzcyMjRkYTEyMDU5MWZmNTBmOTU4OGNmNTAwOGJhM2RhNjA0NGI5NjBlYjc3Nzg2MDk3NzczZTBlMjA5ZTcifSx7InBhdGgiOiIua29nZW4vaW50ZW50cy9kcmFmdHMvY29tcGFjdC1zaGFwaW5nLXF1YWxpdHkvZXZpZGVuY2UvYWdncmVnYXRpb24tb3V0cHV0L2Nzdi1jb21wbGV0ZS5qc29uIiwic2hhMjU2IjoiMjJmMGNlMWVjNTU2OTNjMDBkN2ZlZDVkMDAxZmVmMDM1ZGQ3NmUyMjEwNmUzOGY0YzI4NjU2MDQ0MjEzOTQ5OCJ9LHsicGF0aCI6Ii5rb2dlbi9pbnRlbnRzL2RyYWZ0cy9jb21wYWN0LXNoYXBpbmctcXVhbGl0eS9ldmlkZW5jZS9hZ2dyZWdhdGlvbi1vdXRwdXQvYm9va2luZy1mbGF3ZWQuanNvbiIsInNoYTI1NiI6Ijg4MDg1ZWJmZDgzZmEyNjg2YjA1OTBlYWVjODBjZmUzODVjZWMyZWY5MDVmNDE1YTExMDBhZDc2MjIwYTFjNjgifSx7InBhdGgiOiIua29nZW4vaW50ZW50cy9kcmFmdHMvY29tcGFjdC1zaGFwaW5nLXF1YWxpdHkvZXZpZGVuY2UvYWdncmVnYXRpb24tb3V0cHV0L2Jvb2tpbmctY29tcGxldGUuanNvbiIsInNoYTI1NiI6IjcxM2ZhYmM1OWRmODQ5ODVkN2VmZWI4ZTAyOTM4YWUxYmI0NDM4YjIxMWU0NTdlYTVkODE0ZWYxOWZhMDM5ZGIifSx7InBhdGgiOiIua29nZW4vaW50ZW50cy9kcmFmdHMvY29tcGFjdC1zaGFwaW5nLXF1YWxpdHkvZXZpZGVuY2UvYWdncmVnYXRpb24tb3V0cHV0L2Nzdi1jb250aW51YXRpb24uanNvbiIsInNoYTI1NiI6ImJhZmVlODA2MzliMTBkMDhiOTE3MjMzN2IzYmEyYjE4OGNlYThlODRiN2MzYzJhOWUzYTg1MDU4NzZlMWJlN2MifV19",
+    "path": ".kogen/intents/drafts/compact-shaping-quality/evidence/aggregation-output/manifest.json",
+    "sha256": "cbc649df80df1bdd3929efbcfcd5623b43bfb1c5984bf610e4f6b0800eafbdf1"
+  },
+  "required_evidence": [
+    {
+      "content_base64": "eyJpZCI6ImNzdi1mbGF3ZWQiLCJzZWVkIjp7ImlkIjoiZnJvemVuLXRlc3Qtc2VlZCIsInF1ZXN0aW9ucyI6WyJyZXBsYWNlbWVudCJdfSwic3ludGhldGljIjp0cnVlfQ==",
+      "path": ".kogen/intents/drafts/compact-shaping-quality/evidence/aggregation-output/csv-flawed.json",
+      "sha256": "2f77224da120591ff50f9588cf5008ba3da6044b960eb77786097773e0e209e7"
+    },
+    {
+      "content_base64": "eyJpZCI6ImNzdi1jb21wbGV0ZSIsInNlZWQiOnsiaWQiOiJmcm96ZW4tdGVzdC1zZWVkIiwicXVlc3Rpb25zIjpbInJlcGxhY2VtZW50Il19LCJzeW50aGV0aWMiOnRydWV9",
+      "path": ".kogen/intents/drafts/compact-shaping-quality/evidence/aggregation-output/csv-complete.json",
+      "sha256": "22f0ce1ec55693c00d7fed5d001fef035dd76e22106e38f4c286560442139498"
+    },
+    {
+      "content_base64": "eyJpZCI6ImJvb2tpbmctZmxhd2VkIiwic2VlZCI6eyJpZCI6ImZyb3plbi10ZXN0LXNlZWQiLCJxdWVzdGlvbnMiOlsicmVwbGFjZW1lbnQiXX0sInN5bnRoZXRpYyI6dHJ1ZX0=",
+      "path": ".kogen/intents/drafts/compact-shaping-quality/evidence/aggregation-output/booking-flawed.json",
+      "sha256": "88085ebfd83fa2686b0590eaec80cfe385cec2ef905f415a1100ad76220a1c68"
+    },
+    {
+      "content_base64": "eyJpZCI6ImJvb2tpbmctY29tcGxldGUiLCJzZWVkIjp7ImlkIjoiZnJvemVuLXRlc3Qtc2VlZCIsInF1ZXN0aW9ucyI6WyJyZXBsYWNlbWVudCJdfSwic3ludGhldGljIjp0cnVlfQ==",
+      "path": ".kogen/intents/drafts/compact-shaping-quality/evidence/aggregation-output/booking-complete.json",
+      "sha256": "713fabc59df84985d7efeb8e02938ae1bb4438b211e457ea5d814ef19fa039db"
+    },
+    {
+      "content_base64": "eyJpZCI6ImNzdi1jb250aW51YXRpb24iLCJzZWVkIjp7ImlkIjoiZnJvemVuLXRlc3Qtc2VlZCIsInF1ZXN0aW9ucyI6WyJyZXBsYWNlbWVudCJdfSwic3ludGhldGljIjp0cnVlfQ==",
+      "path": ".kogen/intents/drafts/compact-shaping-quality/evidence/aggregation-output/csv-continuation.json",
+      "sha256": "bafee80639b10d08b9172337b3ba2b188cea8e84b7c3c2a9e3a8505876e1be7c"
+    }
+  ],
+  "target": "live"
+}
