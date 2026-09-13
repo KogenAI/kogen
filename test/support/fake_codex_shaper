@@ -45,3 +45,10 @@ cat >"$dir/scenarios.yaml" <<'EOF'
   verified_by: [check]
   evidence: public mix kogen.shape against fake interactive Codex
 EOF
+cat >"$dir/requirement.json" <<'EOF'
+{"path":"dummy.txt","expected":"reviewed fixture value"}
+EOF
+cat >"$dir/references.yaml" <<'EOF'
+- path: requirement.json
+  description: Normative fixture requirement read independently by Review
+EOF

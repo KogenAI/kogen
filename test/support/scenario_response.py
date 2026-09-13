@@ -5,24 +5,43 @@ The fixture providers deliberately share this small parser so an old tracking
 block earlier in a rendered prompt cannot accidentally satisfy a new attempt.
 """
 import json
+import os
+import pathlib
 import sys
 
-MARKER = "KOGEN_TRACKING_CONTEXT"
+MARKER = "KOGEN_TASK_CONTEXT"
+LEGACY_MARKER = "KOGEN_TRACKING_CONTEXT"
 
 
 def snapshot(prompt):
     lines = prompt.splitlines()
     values = []
     for index, line in enumerate(lines[:-1]):
-        if line == MARKER:
+        if line in (MARKER, LEGACY_MARKER):
             try:
                 values.append(json.loads(lines[index + 1]))
             except json.JSONDecodeError:
                 pass
-    return values[-1] if values else {}
+    context = values[-1] if values else {}
+    if context.get("tracking_path"):
+        try:
+            record = json.loads(pathlib.Path(context["tracking_path"]).read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError(f"unreadable tracking record: {context['tracking_path']}") from error
+        attempts = record.get("attempts", [])
+        attempt = attempts[-1] if attempts else {}
+        if context.get("attempt_token") != attempt.get("attempt_token"):
+            raise ValueError("task context attempt token does not match current record attempt")
+        if context.get("candidate_id") and context["candidate_id"] != attempt.get("candidate_id"):
+            raise ValueError("task context candidate does not match current record attempt")
+        context = {**context, **record}
+        context["open_findings"] = [f for f in record.get("findings", []) if f.get("status") == "open"]
+        context["attempt"] = attempt
+    return context
 
 
 def evidence(path="Makefile", locator="check"):
+    path = os.environ.get("KOGEN_SCENARIO_EVIDENCE_PATH", path)
     return [{"path": path, "locator": locator}]
 
 

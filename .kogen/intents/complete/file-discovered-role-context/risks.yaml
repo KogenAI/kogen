@@ -1,0 +1,15 @@
+- id: discovery-and-history
+  scenario_ids: [all-role-dispatch, discovered-contract, rework-and-history, integrity-preserved]
+  description: "Removing inline content must not omit normative requirements, current findings or exact-byte history. Read selected current fields and inspect retained historical bytes for material provenance questions. Preserve existing record validation and Complete retention; no new storage or migration is introduced."
+- id: fixture-oracle
+  scenario_ids: [discovered-contract, rework-and-history, integrity-preserved]
+  description: "A provider that logs reads but chooses verdicts by call count proves no source dependence. Discovery controls must derive verdicts from actual linked requirements and current source, retain the stale-version negative, and preserve failed probe evidence. Follow existing repository file conventions under the updated source proposal."
+  ownership:
+    - paths: "Maintained test sources under test/ and their private temporary fixture outputs"
+      when_exists: "Edit maintained sources in place within approved scope; preserve preexisting user files and evidence; create private runs without overwriting earlier outputs."
+      owner_after_creation: "Repository maintainers own authored test sources; the creating test runner owns its private outputs."
+      owner_during_operation: "Maintainers retain source ownership; each runner controls only its own private fixture outputs."
+      permitted_mutation: "Reviewed source edits and runner-owned fixture writes/cleanup only; no mutation of unrelated user files or controller evidence."
+      validation: "Existing check plus source-derived lifecycle and negative controls; independent Review assesses the final Candidate."
+      git_state: "Maintained test sources are tracked; temporary outputs remain private and untracked under existing conventions."
+      upgrade_behavior: "Reviewed Git changes update maintained tests; new runs create private outputs; no migration or automatic historical evidence rewrite."

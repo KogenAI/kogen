@@ -10,6 +10,8 @@ defmodule Kogen.ShapeTaskTest do
     fixture = Kogen.CompiledFixture.create!(source, "shape")
     on_exit(fn -> File.rm_rf(fixture) end)
     init_fixture_git!(fixture)
+    bulk_sentinel = "SHAPING_FILE_BODY_SENTINEL"
+    File.write!(Path.join(fixture, "README.md"), String.duplicate(bulk_sentinel, 50_000))
     env = [{"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")}]
 
     {output, 0} = Kogen.CompiledFixture.mix_task!(fixture, "kogen.shape", env)
@@ -31,6 +33,7 @@ defmodule Kogen.ShapeTaskTest do
     assert shaped["shaping"]["effort"] == config.shaping.effort
     args = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
     prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+    refute prompt =~ bulk_sentinel
     assert args =~ "--model\n#{config.shaping.model}\n"
     assert args =~ ~s(model_reasoning_effort="#{config.shaping.effort}")
     assert_shared_execution_policy!(prompt, :shaping, config)
@@ -62,7 +65,8 @@ defmodule Kogen.ShapeTaskTest do
 
     File.write!(
       Path.join(draft, "questions.md"),
-      "Parked until process reassessment. Historical yes."
+      "Parked until process reassessment. Historical yes.\n" <>
+        String.duplicate("CONTINUED_SHAPING_BODY_SENTINEL", 40_000)
     )
 
     prompt_path = Path.join(fixture, "priv/kogen/prompts/shaping.md")
@@ -77,6 +81,7 @@ defmodule Kogen.ShapeTaskTest do
     assert snapshot(draft) == before
     refute File.exists?(Path.join(fixture, ".kogen/intents/approved/unfinished"))
     prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+    refute prompt =~ "CONTINUED_SHAPING_BODY_SENTINEL"
     args = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
     assert args =~ "--model\ncurrent-shaper\n"
     assert args =~ ~s(model_reasoning_effort="shaping-effort")

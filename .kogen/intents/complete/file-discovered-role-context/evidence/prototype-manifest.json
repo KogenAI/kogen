@@ -1,0 +1,15 @@
+{
+  "baseline": "1843dcfaf8b0b7c9d9f91d5c3e8ca92f41633fcb",
+  "patch_sha256": "cca8746579cb337ec109d6ef57a6af2f4d571165c6a0277baf32a8a538280d35",
+  "paths": [
+    "lib/kogen/build.ex",
+    "priv/kogen/prompts/developer.md",
+    "priv/kogen/prompts/reviewer.md",
+    "test/kogen/lifecycle_test.exs",
+    "test/kogen/scenario_response_test.exs",
+    "test/kogen/settlement_regression_test.exs",
+    "test/support/scenario_lifecycle_harness.py",
+    "test/support/scenario_response.py"
+  ],
+  "focused_checks": "Worker reports 18 passed after root-requested correction; full real Stop gate follows."
+}

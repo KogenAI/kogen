@@ -6,7 +6,8 @@ import pathlib
 import subprocess
 import sys
 
-MARKER = "KOGEN_TRACKING_CONTEXT"
+MARKER = "KOGEN_TASK_CONTEXT"
+LEGACY_MARKER = "KOGEN_TRACKING_CONTEXT"
 ROOT = pathlib.Path.cwd()
 RUNTIME = ROOT / ".kogen/runtime"
 
@@ -15,12 +16,28 @@ def context(prompt):
     lines = prompt.splitlines()
     snapshots = []
     for index, line in enumerate(lines[:-1]):
-        if line == MARKER:
+        if line in (MARKER, LEGACY_MARKER):
             try:
                 snapshots.append(json.loads(lines[index + 1]))
             except json.JSONDecodeError:
                 pass
-    return snapshots[-1] if snapshots else {}
+    value = snapshots[-1] if snapshots else {}
+    path = value.get("tracking_path")
+    if path:
+        try:
+            record = json.loads(pathlib.Path(path).read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError(f"unreadable tracking record: {path}") from error
+        attempts = record.get("attempts", [])
+        attempt = attempts[-1] if attempts else {}
+        if value.get("attempt_token") != attempt.get("attempt_token"):
+            raise ValueError("task context attempt token does not match current record attempt")
+        if value.get("candidate_id") and value["candidate_id"] != attempt.get("candidate_id"):
+            raise ValueError("task context candidate does not match current record attempt")
+        value = {**value, **record}
+        value["open_findings"] = [f for f in record.get("findings", []) if f.get("status") == "open"]
+        value["attempt"] = attempt
+    return value
 
 
 def refs():

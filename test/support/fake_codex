@@ -33,7 +33,20 @@ done
 if [ "$reviewer" -eq 1 ]; then
  n=0; [ -f "$rev_state" ] && n="$(cat "$rev_state")"; n=$((n+1)); echo "$n" >"$rev_state"
  printf '%s' "$input" > "$state_dir/reviewer-prompt-$n"
- if [ "$n" -eq 1 ]; then
+ task_context="$(printf '%s' "$input" | python3 -c 'import json,sys; lines=sys.stdin.read().splitlines(); i=max(i for i,v in enumerate(lines) if v=="KOGEN_TASK_CONTEXT"); print(lines[i+1])')"
+ approved_path="$(printf '%s' "$task_context" | python3 -c 'import json,sys; print(json.load(sys.stdin)["approved_path"])')"
+ if [ -f "$approved_path/requirement.json" ]; then
+  source_matches=0
+  python3 - "$approved_path/requirement.json" <<'PY' || source_matches=$?
+import json, pathlib, sys
+requirement = json.loads(pathlib.Path(sys.argv[1]).read_text())
+actual = pathlib.Path(requirement["path"]).read_text().rstrip("\n")
+raise SystemExit(0 if actual == requirement["expected"] else 1)
+PY
+ else
+  if [ "$n" -gt 1 ]; then source_matches=0; else source_matches=1; fi
+ fi
+ if [ "$source_matches" -ne 0 ]; then
   verdict="$(printf '%s' "$input" | python3 "$response_helper" reviewer rework)"
  else
   verdict="$(printf '%s' "$input" | python3 "$response_helper" reviewer accept)"

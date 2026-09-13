@@ -14,6 +14,7 @@ choose another slug, restore an old conversation, or use `codex resume`.
 
 Read the entire maintained draft first: intent.yaml, INTENT.md, scenarios.yaml
 if present, questions, decisions, references and relevant linked evidence.
+Follow normative links required to understand the selected shaping contract.
 Missing or incomplete shaping content is work to complete, not a reason to
 reject this unfinished draft. Open with a concise summary of its existing
 state and unresolved work, then ask where the Shaper wants to continue.

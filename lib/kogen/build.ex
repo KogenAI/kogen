@@ -358,7 +358,7 @@ defmodule Kogen.Build do
            }) do
       prompt =
         render_reviewer_prompt(ctx.intent, candidate_id, ctx.config) <>
-          tracking_context(ctx, candidate_id)
+          task_context(ctx, candidate_id, "reviewer")
 
       result =
         Kogen.Harness.launch_reviewer(
@@ -558,59 +558,30 @@ defmodule Kogen.Build do
 
   defp developer_prompt(ctx, nil) do
     render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config) <>
-      tracking_context(ctx, nil)
+      task_context(ctx, nil, "developer")
   end
 
-  defp developer_prompt(ctx, reason),
-    do: resume_feedback(ctx, reason) <> tracking_context(ctx, nil)
+  defp developer_prompt(ctx, reason) do
+    render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config) <>
+      "\n\n" <> resume_feedback(ctx, reason) <> task_context(ctx, nil, "developer")
+  end
 
-  defp tracking_context(ctx, candidate_id) do
-    snapshot = %{
+  defp task_context(ctx, candidate_id, role) do
+    context = %{
+      "version" => 1,
+      "role" => role,
+      "working_directory" => File.cwd!(),
+      "approved_path" => Path.join(@approved_base, ctx.slug),
+      "tracking_path" => ctx.tracking.path,
+      "tracking_sections" => ["attempts", "findings", "scenarios", "risks"],
       "attempt_token" => ctx.token,
       "candidate_id" => candidate_id,
       "intent_id" => ctx.intent.id,
-      "approved_package_digest" => ctx.tracking.record["approved_package_digest"],
-      "scenarios" => ctx.contract.scenarios,
-      "risks" => ctx.contract.risks,
-      "risks_supplied" => ctx.contract.risks_supplied,
-      "open_findings" => Tracking.open_findings(ctx.tracking),
-      "developer_session_id" => current_attempt(ctx)["developer_session_id"],
-      "handoff" => current_attempt(ctx)["handoff"],
-      "developer_reference_snapshots" => current_attempt(ctx)["developer_reference_snapshots"],
-      "verification_receipts" => current_attempt(ctx)["scenario_receipts"],
-      "history" =>
-        Enum.map(
-          ctx.tracking.record["attempts"],
-          &Map.take(
-            &1,
-            ~w(attempt_token candidate_id developer_session_id number status failure verdict reviewer_session)
-          )
-        ),
-      "findings" => ctx.tracking.record["findings"],
-      "retained_finding_evidence" => retained_finding_evidence(ctx)
+      "developer_session_id" => current_attempt(ctx)["developer_session_id"]
     }
 
-    "\nRead-only Build-supplied snapshot. Never edit authoritative tracking files.\n" <>
-      "KOGEN_TRACKING_CONTEXT\n" <> Jason.encode!(snapshot) <> "\n"
-  end
-
-  defp retained_finding_evidence(ctx) do
-    paths =
-      ctx.tracking.record["findings"]
-      |> collect_references()
-      |> Enum.map(&Path.relative_to(Path.expand(&1), File.cwd!()))
-
-    Enum.map(ctx.tracking.record["attempts"], fn attempt ->
-      %{
-        "attempt_token" => attempt["attempt_token"],
-        "candidate_id" => attempt["candidate_id"],
-        "references" => Map.take(Map.get(attempt, "reference_snapshots", %{}), paths),
-        "developer_references" =>
-          Map.take(Map.get(attempt, "developer_reference_snapshots", %{}), paths),
-        "reviewer_references" =>
-          Map.take(Map.get(attempt, "reviewer_reference_snapshots", %{}), paths)
-      }
-    end)
+    "\nRead-only locator packet. Never edit authoritative tracking files.\n" <>
+      "KOGEN_TASK_CONTEXT\n" <> Jason.encode!(context) <> "\n"
   end
 
   defp snapshot_references(value, tracking) do
@@ -943,16 +914,13 @@ defmodule Kogen.Build do
     """
   end
 
-  defp render_developer_prompt(intent, scenarios_text, targets, config) do
-    intent_yaml = File.read!(Path.join([@approved_base, intent.slug, "intent.yaml"]))
-
+  @doc false
+  def render_developer_prompt(intent, _scenarios_text, targets, config) do
     "priv/kogen/prompts/developer.md"
     |> File.read!()
     |> String.replace("{{intent_title}}", intent.title)
     |> String.replace("{{intent_id}}", intent.id)
     |> String.replace("{{approved_path}}", Path.join(@approved_base, intent.slug))
-    |> String.replace("{{intent_yaml}}", intent_yaml)
-    |> String.replace("{{scenarios_yaml}}", scenarios_text)
     |> String.replace(
       "{{may_change_guarded_paths}}",
       Enum.join(intent.may_change_guarded_paths, ", ")
@@ -965,10 +933,23 @@ defmodule Kogen.Build do
   end
 
   defp resume_feedback(ctx, reason) do
-    "#{reason}\n\n#{Kogen.VerificationPolicy.developer_instruction(ctx.targets)}"
+    "Rework required (category: #{failure_category(reason)}; record: #{ctx.tracking.path}).\n" <>
+      "Read the preceding failed attempt's `failure` field for full details; " <>
+      "select the current attempt by its supplied token for the new handoff.\n"
   end
 
-  defp render_reviewer_prompt(intent, candidate_id, config) do
+  defp failure_category(reason) do
+    cond do
+      String.starts_with?(reason, "settled Check failure:") -> "check_settlement"
+      String.starts_with?(reason, "declared-target failure:") -> "declared_target"
+      String.starts_with?(reason, "Reviewer findings:") -> "review_rework"
+      String.starts_with?(reason, "Developer handoff invalid:") -> "handoff_invalid"
+      true -> "rework"
+    end
+  end
+
+  @doc false
+  def render_reviewer_prompt(intent, candidate_id, config) do
     "priv/kogen/prompts/reviewer.md"
     |> File.read!()
     |> String.replace("{{intent_title}}", intent.title)

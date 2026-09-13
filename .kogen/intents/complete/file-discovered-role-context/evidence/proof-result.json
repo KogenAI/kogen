@@ -1,0 +1,127 @@
+{
+  "accepted-engine": {
+    "result": "passed",
+    "stop_gates": 3,
+    "outer_resumptions": 2,
+    "review_verdicts": [
+      "rework",
+      "accept"
+    ],
+    "record_sha256": "78ae57b858ad6fb070046d326a2f0286696f80501933f444d22d70074f1e9130",
+    "retained_evidence_bytes": 1215000,
+    "prompt_bytes": {
+      "developer-1-prompt.txt": 13104,
+      "developer-2-prompt.txt": 1998,
+      "developer-3-prompt.txt": 4989403,
+      "reviewer-1-prompt.txt": 1677758,
+      "reviewer-2-prompt.txt": 9986641
+    },
+    "engine_identity": {
+      "result": ":ok",
+      "before_disk": "1CE7759CD47177F97E018DB278F03A72",
+      "before_memory": "1CE7759CD47177F97E018DB278F03A72",
+      "after_disk": "9F2A9617400315C2D86DCC96981E4BBA",
+      "after_memory": "1CE7759CD47177F97E018DB278F03A72"
+    },
+    "earlier_and_repaired_bytes_retained": true
+  },
+  "prototype-engine": {
+    "result": "passed",
+    "stop_gates": 3,
+    "outer_resumptions": 2,
+    "review_verdicts": [
+      "rework",
+      "accept"
+    ],
+    "record_sha256": "e7e056edfeedec02b8ed037132ed7ed1c150c3d54f30a10b7f8128a635e80694",
+    "retained_evidence_bytes": 1215000,
+    "prompt_bytes": {
+      "developer-1-prompt.txt": 12061,
+      "developer-2-prompt.txt": 1076,
+      "developer-3-prompt.txt": 1074,
+      "reviewer-1-prompt.txt": 11855,
+      "reviewer-2-prompt.txt": 11855
+    },
+    "engine_identity": {
+      "result": ":ok",
+      "before_disk": "9F2A9617400315C2D86DCC96981E4BBA",
+      "before_memory": "9F2A9617400315C2D86DCC96981E4BBA",
+      "after_disk": "9F2A9617400315C2D86DCC96981E4BBA",
+      "after_memory": "9F2A9617400315C2D86DCC96981E4BBA"
+    },
+    "earlier_and_repaired_bytes_retained": true
+  },
+  "shape_dispatch": [
+    {
+      "route": "fresh",
+      "prompt_bytes": [
+        11777,
+        11777
+      ],
+      "source_read_bytes": [
+        22,
+        990000
+      ],
+      "normalized_prompt_unchanged": true
+    },
+    {
+      "route": "continued",
+      "prompt_bytes": [
+        13967,
+        13967
+      ],
+      "source_read_bytes": [
+        22,
+        990000
+      ],
+      "normalized_prompt_unchanged": true
+    }
+  ],
+  "reader_controls": [
+    {
+      "case": "valid",
+      "result": "read actual record"
+    },
+    {
+      "case": "stale-attempt",
+      "result": "rejected",
+      "reason": "task context attempt token does not match current record attempt"
+    },
+    {
+      "case": "wrong-candidate",
+      "result": "rejected",
+      "reason": "task context candidate does not match current record attempt"
+    },
+    {
+      "case": "missing-record",
+      "result": "rejected",
+      "reason": "unreadable tracking record: /var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-role-context-proof-bng81d7u/reader-controls/missing.json"
+    },
+    {
+      "case": "malformed-record",
+      "result": "rejected",
+      "reason": "unreadable tracking record: /var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-role-context-proof-bng81d7u/reader-controls/record.json"
+    }
+  ],
+  "isolated_commits": [
+    "be74bde Verify disposable context prototype",
+    "b8d267c Verify disposable context prototype",
+    "769951b Frozen accepted baseline"
+  ],
+  "linked_oracle_controls": [
+    {
+      "case": "matching",
+      "source_value": "ready",
+      "linked_expected": "ready",
+      "verdict": "accept"
+    },
+    {
+      "case": "changed-requirement",
+      "source_value": "ready",
+      "linked_expected": "different",
+      "verdict": "rework"
+    }
+  ],
+  "retained_raw_evidence": ".kogen/runtime/shaping-evidence/file-discovered-role-context/bootstrap-20260913-bng81d7u",
+  "raw_manifest_sha256": "7edf4f0af56ba6ac385e24caa737947525d731b86998e137e3188c9644c358fa"
+}

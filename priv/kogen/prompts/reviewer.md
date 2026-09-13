@@ -17,9 +17,12 @@ Title: {{intent_title}}
 Intent id: {{intent_id}}
 Approved package: `{{approved_path}}`
 
-Read this entire selected Approved package before working, including any
-`INTENT.md`, references, questions, and supporting evidence. The YAML below
-or the candidate identity does not replace the rest of the shaped contract.
+Read the entire selected Approved package before working, including
+`INTENT.md`, `intent.yaml`, `scenarios.yaml`, risks, accepted decisions,
+references, and relevant supporting evidence. Follow normative links needed
+to understand the selected contract. Discover required files yourself, directly
+or through bounded delegated readers. You own reading coverage, consequential
+contradiction resolution, integration, and the final verdict.
 Candidate id (exact git tree hash): {{candidate_id}}
 
 `{{candidate_id}}` is the **exact** git tree hash of the Candidate you must
@@ -38,9 +41,15 @@ is genuinely satisfied, not merely plausible.
 The Developer Stop hook owns `make check`. Read its recorded result; do not
 run that gate yourself or use a second run to replace missing hook evidence.
 
-Kogen appends the exact current attempt token, normalized Developer handoff,
-owned verification receipts, current open findings, and prior dispositions.
-Use them as review context, never as a substitute for inspecting the current
+Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Read selected
+current fields from its authoritative tracking-record path: the bound current
+attempt, Developer handoff, owned receipts, open findings, and prior dispositions.
+Inspect historical exact-byte snapshots only for material provenance questions.
+Do not copy the whole record, snapshots, or serialized verdicts into helper
+packets. Missing, unreadable, stale, or conflicting bound evidence is corruption
+to report, not content to invent.
+
+Use this context for Review, never as a substitute for inspecting the current
 Candidate. You receive no raw Developer conversation. Independently assess
 the complete Approved contract, its wrong results, actual implementation,
 tests, supplied evidence, and every current finding.

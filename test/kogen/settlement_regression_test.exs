@@ -70,12 +70,17 @@ defmodule Kogen.SettlementRegressionTest do
 
     if legacy do
       assert status == 0, output
-      feedback = File.read!(Path.join(fixture, ".kogen/runtime/developer-resume-prompts"))
-      assert feedback =~ "settled Check failure: make check failed:"
-      assert feedback =~ @sentinel
-      assert feedback =~ "Reviewer findings:"
       evidence = File.read!(Path.join(fixture, ".kogen/intents/complete/#{@slug}/evidence.md"))
       assert evidence =~ "Outer resumptions used: 2"
+
+      record =
+        fixture
+        |> Path.join(".kogen/intents/complete/#{@slug}/scenario-tracking.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert Enum.any?(record["attempts"], &(&1["failure"] =~ @sentinel))
+      assert record["status"] == "accepted"
     else
       assert status != 0
       assert output =~ @sentinel
@@ -94,6 +99,16 @@ defmodule Kogen.SettlementRegressionTest do
 
       assert record["status"] == "failed"
       assert record["reason"] =~ @sentinel
+
+      [tracking_path] =
+        Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*/record.json"))
+
+      tracking = tracking_path |> File.read!() |> Jason.decode!()
+
+      assert Enum.any?(
+               tracking["attempts"],
+               &(&1["failure"] =~ "harness failure during Developer turn")
+             )
     end
   end
 

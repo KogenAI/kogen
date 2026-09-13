@@ -1,0 +1,23 @@
+id: "01a09909-f5c2-70a9-a544-3765c1da51a9"
+slug: "file-discovered-role-context"
+title: "Discover role context from files across all phases"
+status: "approved"
+shaped_against:
+  branch: "main"
+  head: "1843dcfaf8b0b7c9d9f91d5c3e8ca92f41633fcb"
+shaping:
+  harness: "codex"
+  model: "gpt-6-astra"
+  effort: "low"
+  started: "2026-09-13T04:32:41.925905Z"
+may_change_guarded_paths:
+  - "README.md"
+  - "lib/kogen/build.ex"
+  - "lib/mix/tasks/kogen.shape.ex"
+  - "priv/kogen/prompts/shaping.md"
+  - "priv/kogen/prompts/shaping-fresh.md"
+  - "priv/kogen/prompts/shaping-continuation.md"
+  - "priv/kogen/prompts/developer.md"
+  - "priv/kogen/prompts/reviewer.md"
+  - "test/kogen/*test.exs"
+  - "test/support/**"

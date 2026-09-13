@@ -1,0 +1,417 @@
+diff --git a/lib/kogen/build.ex b/lib/kogen/build.ex
+index e7cc9dd..bb2c3a7 100644
+--- a/lib/kogen/build.ex
++++ b/lib/kogen/build.ex
+@@ -358,7 +358,7 @@ defmodule Kogen.Build do
+            }) do
+       prompt =
+         render_reviewer_prompt(ctx.intent, candidate_id, ctx.config) <>
+-          tracking_context(ctx, candidate_id)
++          task_context(ctx, candidate_id, "reviewer")
+ 
+       result =
+         Kogen.Harness.launch_reviewer(
+@@ -558,59 +558,31 @@ defmodule Kogen.Build do
+ 
+   defp developer_prompt(ctx, nil) do
+     render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config) <>
+-      tracking_context(ctx, nil)
++      task_context(ctx, nil, "developer")
+   end
+ 
+   defp developer_prompt(ctx, reason),
+-    do: resume_feedback(ctx, reason) <> tracking_context(ctx, nil)
+-
+-  defp tracking_context(ctx, candidate_id) do
+-    snapshot = %{
++    do: resume_feedback(ctx, reason) <> task_context(ctx, nil, "developer")
++
++  # Deliver only locators and controller identities. The authoritative package,
++  # current record, receipts, findings, and retained snapshots stay on disk.
++  # This keeps input size independent of task-file and history growth while
++  # preserving the existing record as the single source of lifecycle truth.
++  defp task_context(ctx, candidate_id, role) do
++    context = %{
++      "version" => 1,
++      "role" => role,
++      "working_directory" => File.cwd!(),
++      "approved_path" => Path.join(@approved_base, ctx.slug),
++      "tracking_path" => ctx.tracking.path,
++      "tracking_sections" => ["attempts", "findings", "scenarios", "risks"],
+       "attempt_token" => ctx.token,
+       "candidate_id" => candidate_id,
+       "intent_id" => ctx.intent.id,
+-      "approved_package_digest" => ctx.tracking.record["approved_package_digest"],
+-      "scenarios" => ctx.contract.scenarios,
+-      "risks" => ctx.contract.risks,
+-      "risks_supplied" => ctx.contract.risks_supplied,
+-      "open_findings" => Tracking.open_findings(ctx.tracking),
+-      "developer_session_id" => current_attempt(ctx)["developer_session_id"],
+-      "handoff" => current_attempt(ctx)["handoff"],
+-      "developer_reference_snapshots" => current_attempt(ctx)["developer_reference_snapshots"],
+-      "verification_receipts" => current_attempt(ctx)["scenario_receipts"],
+-      "history" =>
+-        Enum.map(
+-          ctx.tracking.record["attempts"],
+-          &Map.take(
+-            &1,
+-            ~w(attempt_token candidate_id developer_session_id number status failure verdict reviewer_session)
+-          )
+-        ),
+-      "findings" => ctx.tracking.record["findings"],
+-      "retained_finding_evidence" => retained_finding_evidence(ctx)
++      "developer_session_id" => current_attempt(ctx)["developer_session_id"]
+     }
+ 
+-    "\nRead-only Build-supplied snapshot. Never edit authoritative tracking files.\n" <>
+-      "KOGEN_TRACKING_CONTEXT\n" <> Jason.encode!(snapshot) <> "\n"
+-  end
+-
+-  defp retained_finding_evidence(ctx) do
+-    paths =
+-      ctx.tracking.record["findings"]
+-      |> collect_references()
+-      |> Enum.map(&Path.relative_to(Path.expand(&1), File.cwd!()))
+-
+-    Enum.map(ctx.tracking.record["attempts"], fn attempt ->
+-      %{
+-        "attempt_token" => attempt["attempt_token"],
+-        "candidate_id" => attempt["candidate_id"],
+-        "references" => Map.take(Map.get(attempt, "reference_snapshots", %{}), paths),
+-        "developer_references" =>
+-          Map.take(Map.get(attempt, "developer_reference_snapshots", %{}), paths),
+-        "reviewer_references" =>
+-          Map.take(Map.get(attempt, "reviewer_reference_snapshots", %{}), paths)
+-      }
+-    end)
++    "\nKOGEN_TASK_CONTEXT\n" <> Jason.encode!(context) <> "\n"
+   end
+ 
+   defp snapshot_references(value, tracking) do
+@@ -943,16 +915,13 @@ defmodule Kogen.Build do
+     """
+   end
+ 
+-  defp render_developer_prompt(intent, scenarios_text, targets, config) do
+-    intent_yaml = File.read!(Path.join([@approved_base, intent.slug, "intent.yaml"]))
+-
++  @doc false
++  def render_developer_prompt(intent, _scenarios_text, targets, config) do
+     "priv/kogen/prompts/developer.md"
+     |> File.read!()
+     |> String.replace("{{intent_title}}", intent.title)
+     |> String.replace("{{intent_id}}", intent.id)
+     |> String.replace("{{approved_path}}", Path.join(@approved_base, intent.slug))
+-    |> String.replace("{{intent_yaml}}", intent_yaml)
+-    |> String.replace("{{scenarios_yaml}}", scenarios_text)
+     |> String.replace(
+       "{{may_change_guarded_paths}}",
+       Enum.join(intent.may_change_guarded_paths, ", ")
+@@ -965,10 +934,24 @@ defmodule Kogen.Build do
+   end
+ 
+   defp resume_feedback(ctx, reason) do
+-    "#{reason}\n\n#{Kogen.VerificationPolicy.developer_instruction(ctx.targets)}"
++    "rework required (category: #{failure_category(reason)}; record: #{ctx.tracking.path})\n" <>
++      "Read failure details from the preceding attempt in the supplied record (attempts[-2]); " <>
++      "the final handoff must use the new current attempt token.\n\n" <>
++      Kogen.VerificationPolicy.developer_instruction(ctx.targets)
++  end
++
++  defp failure_category(reason) do
++    cond do
++      String.starts_with?(reason, "settled Check failure:") -> "check_settlement"
++      String.starts_with?(reason, "declared-target failure:") -> "declared_target"
++      String.starts_with?(reason, "Reviewer findings:") -> "review_rework"
++      String.starts_with?(reason, "Developer handoff invalid:") -> "handoff_invalid"
++      true -> "rework"
++    end
+   end
+ 
+-  defp render_reviewer_prompt(intent, candidate_id, config) do
++  @doc false
++  def render_reviewer_prompt(intent, candidate_id, config) do
+     "priv/kogen/prompts/reviewer.md"
+     |> File.read!()
+     |> String.replace("{{intent_title}}", intent.title)
+diff --git a/priv/kogen/prompts/developer.md b/priv/kogen/prompts/developer.md
+index 373ece6..202ed37 100644
+--- a/priv/kogen/prompts/developer.md
++++ b/priv/kogen/prompts/developer.md
+@@ -9,21 +9,10 @@ Title: {{intent_title}}
+ Intent id: {{intent_id}}
+ Approved package: `{{approved_path}}`
+ 
+-Read this entire selected Approved package before working, including any
+-`INTENT.md`, references, questions, and supporting evidence. The YAML below
+-or the candidate identity does not replace the rest of the shaped contract.
+-
+-Full `intent.yaml`:
+-
+-```yaml
+-{{intent_yaml}}
+-```
+-
+-Full `scenarios.yaml`:
+-
+-```yaml
+-{{scenarios_yaml}}
+-```
++Read the entire selected Approved package before working, including
++`INTENT.md`, `intent.yaml`, `scenarios.yaml`, risks, accepted decisions,
++references, and relevant supporting evidence. The controller supplies only
++paths and execution identities; discover the required files yourself.
+ 
+ Paths you may change (`may_change_guarded_paths` from the Intent):
+ 
+@@ -124,9 +113,13 @@ Do not introduce public interfaces or UX decisions outside the approved Intent.
+ 
+ ## Required final Developer handoff
+ 
+-Kogen appends the current attempt context, including the exact
+-`attempt_token`, scenario IDs, supplied risks, and open finding IDs. In your
+-final completed agent message, output only this JSON object, with those exact
++Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Read the current
++attempt, handoff, receipts, findings, and any relevant retained evidence from its
++authoritative tracking-record path. Do not print or copy the whole record into a
++helper packet. Missing or conflicting required evidence is a failure to report,
++not content to invent.
++
++In your final completed agent message, output only this JSON object, with those exact
+ wire keys and no markdown or surrounding prose:
+ 
+ ```json
+diff --git a/priv/kogen/prompts/reviewer.md b/priv/kogen/prompts/reviewer.md
+index a672ac5..f0a06aa 100644
+--- a/priv/kogen/prompts/reviewer.md
++++ b/priv/kogen/prompts/reviewer.md
+@@ -17,9 +17,10 @@ Title: {{intent_title}}
+ Intent id: {{intent_id}}
+ Approved package: `{{approved_path}}`
+ 
+-Read this entire selected Approved package before working, including any
+-`INTENT.md`, references, questions, and supporting evidence. The YAML below
+-or the candidate identity does not replace the rest of the shaped contract.
++Read the entire selected Approved package before working, including
++`INTENT.md`, `intent.yaml`, `scenarios.yaml`, risks, accepted decisions,
++references, and relevant supporting evidence. The controller supplies only
++paths and execution identities; discover the required files yourself.
+ Candidate id (exact git tree hash): {{candidate_id}}
+ 
+ `{{candidate_id}}` is the **exact** git tree hash of the Candidate you must
+@@ -38,12 +39,17 @@ is genuinely satisfied, not merely plausible.
+ The Developer Stop hook owns `make check`. Read its recorded result; do not
+ run that gate yourself or use a second run to replace missing hook evidence.
+ 
+-Kogen appends the exact current attempt token, normalized Developer handoff,
+-owned verification receipts, current open findings, and prior dispositions.
+-Use them as review context, never as a substitute for inspecting the current
+-Candidate. You receive no raw Developer conversation. Independently assess
+-the complete Approved contract, its wrong results, actual implementation,
+-tests, supplied evidence, and every current finding.
++Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Read selected
++current fields from its authoritative tracking-record path: the current attempt,
++Developer handoff, owned receipts and open findings. Historical snapshots remain
++on disk for material provenance questions only. Do not copy record data or
++serialized verdicts into helper packets. Report missing, unreadable, or
++conflicting bound evidence as corruption.
++
++Use this context for Review, never as a substitute for inspecting the current
++Candidate. You receive no raw Developer conversation. Independently assess the
++complete Approved contract, its wrong results, actual implementation, tests,
++supplied evidence, and every current finding.
+ 
+ {{execution_policy}}
+ 
+diff --git a/test/kogen/lifecycle_test.exs b/test/kogen/lifecycle_test.exs
+index 60b7ec3..09f0743 100644
+--- a/test/kogen/lifecycle_test.exs
++++ b/test/kogen/lifecycle_test.exs
+@@ -100,20 +100,18 @@ defmodule Kogen.LifecycleTest do
+            end)
+ 
+     resume_feedback = File.read!(Path.join(dest, ".kogen/runtime/developer-resume-prompts"))
+-
+-    [_, reviewer_json_and_policy] = String.split(resume_feedback, "Reviewer findings: ", parts: 2)
+-    [reviewer_json | _] = String.split(reviewer_json_and_policy, "\n\n", parts: 2)
+-    reviewer_feedback = Jason.decode!(reviewer_json)
+-
+-    assert reviewer_feedback["verdict"] == "rework"
+-
+-    assert [%{"id" => "shaped-scenario", "status" => "needs_rework"}] =
+-             reviewer_feedback["scenarios"]
+-
+-    assert [%{"scenario_ids" => ["shaped-scenario"]}] = reviewer_feedback["findings"]
+-
+-    refute resume_feedback =~ "settled Check failure:",
+-           "a failed Check settlement would consume a second outer resumption"
++    assert resume_feedback =~ "category: review_rework"
++    assert resume_feedback =~ "record: "
++    refute resume_feedback =~ "\"verdict\":\"rework\""
++
++    tracking_path =
++      Path.wildcard(Path.join(dest, ".kogen/runtime/scenario-tracking/*/record.json"))
++      |> List.first()
++
++    tracking = tracking_path |> File.read!() |> Jason.decode!()
++    assert tracking["status"] == "accepted"
++    assert Enum.any?(tracking["findings"], &(&1["status"] == "closed"))
++    assert Enum.any?(tracking["attempts"], &(&1["failure"] =~ "Reviewer findings:"))
+ 
+     assert Enum.at(log_lines, 0) =~ "--model fixture-developer"
+     assert Enum.at(log_lines, 0) =~ "model_reasoning_effort=\"developer-effort\""
+diff --git a/test/kogen/scenario_response_test.exs b/test/kogen/scenario_response_test.exs
+index 88d14b5..1f8bd47 100644
+--- a/test/kogen/scenario_response_test.exs
++++ b/test/kogen/scenario_response_test.exs
+@@ -3,13 +3,13 @@ defmodule Kogen.ScenarioResponseTest do
+ 
+   @helper Path.expand("../support/scenario_response.py", __DIR__)
+ 
+-  test "uses only the last tracking context for developer and reviewer fixture responses" do
++  test "uses only the last task context for developer and reviewer fixture responses" do
+     prompt = """
+     stale text
+-    KOGEN_TRACKING_CONTEXT
++    KOGEN_TASK_CONTEXT
+     {"attempt_token":"stale-attempt","candidate_id":"stale-candidate","scenarios":[{"id":"stale","then":"stale claim"}]}
+     current text
+-    KOGEN_TRACKING_CONTEXT
++    KOGEN_TASK_CONTEXT
+     {"attempt_token":"attempt-2","candidate_id":"candidate-2","scenarios":[{"id":"current","then":"current claim"}]}
+     """
+ 
+diff --git a/test/kogen/settlement_regression_test.exs b/test/kogen/settlement_regression_test.exs
+index f4bdb9c..d8d36a7 100644
+--- a/test/kogen/settlement_regression_test.exs
++++ b/test/kogen/settlement_regression_test.exs
+@@ -70,12 +70,17 @@ defmodule Kogen.SettlementRegressionTest do
+ 
+     if legacy do
+       assert status == 0, output
+-      feedback = File.read!(Path.join(fixture, ".kogen/runtime/developer-resume-prompts"))
+-      assert feedback =~ "settled Check failure: make check failed:"
+-      assert feedback =~ @sentinel
+-      assert feedback =~ "Reviewer findings:"
+       evidence = File.read!(Path.join(fixture, ".kogen/intents/complete/#{@slug}/evidence.md"))
+       assert evidence =~ "Outer resumptions used: 2"
++
++      record =
++        fixture
++        |> Path.join(".kogen/intents/complete/#{@slug}/scenario-tracking.json")
++        |> File.read!()
++        |> Jason.decode!()
++
++      assert Enum.any?(record["attempts"], &(&1["failure"] =~ @sentinel))
++      assert record["status"] == "accepted"
+     else
+       assert status != 0
+       assert output =~ @sentinel
+@@ -94,6 +99,16 @@ defmodule Kogen.SettlementRegressionTest do
+ 
+       assert record["status"] == "failed"
+       assert record["reason"] =~ @sentinel
++
++      [tracking_path] =
++        Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*/record.json"))
++
++      tracking = tracking_path |> File.read!() |> Jason.decode!()
++
++      assert Enum.any?(
++               tracking["attempts"],
++               &(&1["failure"] =~ "harness failure during Developer turn")
++             )
+     end
+   end
+ 
+diff --git a/test/support/scenario_lifecycle_harness.py b/test/support/scenario_lifecycle_harness.py
+index 31f59da..2190848 100644
+--- a/test/support/scenario_lifecycle_harness.py
++++ b/test/support/scenario_lifecycle_harness.py
+@@ -6,7 +6,8 @@ import pathlib
+ import subprocess
+ import sys
+ 
+-MARKER = "KOGEN_TRACKING_CONTEXT"
++MARKER = "KOGEN_TASK_CONTEXT"
++LEGACY_MARKER = "KOGEN_TRACKING_CONTEXT"
+ ROOT = pathlib.Path.cwd()
+ RUNTIME = ROOT / ".kogen/runtime"
+ 
+@@ -15,12 +16,28 @@ def context(prompt):
+     lines = prompt.splitlines()
+     snapshots = []
+     for index, line in enumerate(lines[:-1]):
+-        if line == MARKER:
++        if line in (MARKER, LEGACY_MARKER):
+             try:
+                 snapshots.append(json.loads(lines[index + 1]))
+             except json.JSONDecodeError:
+                 pass
+-    return snapshots[-1] if snapshots else {}
++    value = snapshots[-1] if snapshots else {}
++    path = value.get("tracking_path")
++    if path:
++        try:
++            record = json.loads(pathlib.Path(path).read_text())
++        except (OSError, json.JSONDecodeError) as error:
++            raise ValueError(f"unreadable tracking record: {path}") from error
++        attempts = record.get("attempts", [])
++        attempt = attempts[-1] if attempts else {}
++        if value.get("attempt_token") != attempt.get("attempt_token"):
++            raise ValueError("task context attempt token does not match current record attempt")
++        if value.get("candidate_id") and value["candidate_id"] != attempt.get("candidate_id"):
++            raise ValueError("task context candidate does not match current record attempt")
++        value = {**value, **record}
++        value["open_findings"] = [f for f in record.get("findings", []) if f.get("status") == "open"]
++        value["attempt"] = attempt
++    return value
+ 
+ 
+ def refs():
+diff --git a/test/support/scenario_response.py b/test/support/scenario_response.py
+index e8f4bb4..e5ebaa6 100644
+--- a/test/support/scenario_response.py
++++ b/test/support/scenario_response.py
+@@ -5,21 +5,38 @@ The fixture providers deliberately share this small parser so an old tracking
+ block earlier in a rendered prompt cannot accidentally satisfy a new attempt.
+ """
+ import json
++import pathlib
+ import sys
+ 
+-MARKER = "KOGEN_TRACKING_CONTEXT"
++MARKER = "KOGEN_TASK_CONTEXT"
++LEGACY_MARKER = "KOGEN_TRACKING_CONTEXT"
+ 
+ 
+ def snapshot(prompt):
+     lines = prompt.splitlines()
+     values = []
+     for index, line in enumerate(lines[:-1]):
+-        if line == MARKER:
++        if line in (MARKER, LEGACY_MARKER):
+             try:
+                 values.append(json.loads(lines[index + 1]))
+             except json.JSONDecodeError:
+                 pass
+-    return values[-1] if values else {}
++    context = values[-1] if values else {}
++    if context.get("tracking_path"):
++        try:
++            record = json.loads(pathlib.Path(context["tracking_path"]).read_text())
++        except (OSError, json.JSONDecodeError) as error:
++            raise ValueError(f"unreadable tracking record: {context['tracking_path']}") from error
++        attempts = record.get("attempts", [])
++        attempt = attempts[-1] if attempts else {}
++        if context.get("attempt_token") != attempt.get("attempt_token"):
++            raise ValueError("task context attempt token does not match current record attempt")
++        if context.get("candidate_id") and context["candidate_id"] != attempt.get("candidate_id"):
++            raise ValueError("task context candidate does not match current record attempt")
++        context = {**context, **record}
++        context["open_findings"] = [f for f in record.get("findings", []) if f.get("status") == "open"]
++        context["attempt"] = attempt
++    return context
+ 
+ 
+ def evidence(path="Makefile", locator="check"):

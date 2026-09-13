@@ -72,6 +72,15 @@ permitted mutation, validation, Git state, and upgrades. An absent risk file is
 recorded as “not supplied.” Shaping leaves unresolved ownership decisions to the
 Shaper, including when a protected seed becomes user-owned configuration.
 
+Role launches carry concise file and identity locators rather than task bodies.
+Shaping starts from this README and maintained relevant context; Developer and
+Reviewer read the complete selected Approved package and selected current fields
+from the authoritative scenario-tracking record in their actual child working
+directory. Rework names its failure category and record location while full
+verdicts, findings, receipts, source snapshots, and historical exact bytes stay
+in that record. Missing or conflicting required evidence is an integrity failure;
+unfinished optional Draft files remain valid shaping work.
+
 After Stop Check settles, Build validates the final Developer message against a
 fresh attempt token. The handoff covers every scenario, supplied risk, and open
 finding with claims and existing file references. Build attaches its owned gate

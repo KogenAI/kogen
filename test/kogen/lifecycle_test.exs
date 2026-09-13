@@ -29,6 +29,13 @@ defmodule Kogen.LifecycleTest do
     original_parent = git!(dest, ["rev-parse", "HEAD"])
     {intent_id, original_intent, original_scenarios} = shape_and_explicitly_approve!(dest)
 
+    bulk_sentinel = "ROLE_CONTEXT_BULK_SENTINEL"
+
+    File.write!(
+      Path.join(dest, ".kogen/intents/approved/#{@slug}/supporting-evidence.txt"),
+      String.duplicate(bulk_sentinel, 50_000)
+    )
+
     assert_delegation_prompt!(
       File.read!(Path.join(dest, ".kogen/runtime/shaping-prompt")),
       :shaping
@@ -43,6 +50,8 @@ defmodule Kogen.LifecycleTest do
     env = [
       {"KOGEN_HARNESS", fake_harness},
       {"KOGEN_RAW_LOG_DIR", raw_log_dir},
+      {"KOGEN_SCENARIO_EVIDENCE_PATH",
+       ".kogen/intents/approved/#{@slug}/supporting-evidence.txt"},
       {"PATH", shim_dir <> ":" <> System.get_env("PATH", "")}
     ]
 
@@ -101,16 +110,29 @@ defmodule Kogen.LifecycleTest do
 
     resume_feedback = File.read!(Path.join(dest, ".kogen/runtime/developer-resume-prompts"))
 
-    [_, reviewer_json_and_policy] = String.split(resume_feedback, "Reviewer findings: ", parts: 2)
-    [reviewer_json | _] = String.split(reviewer_json_and_policy, "\n\n", parts: 2)
-    reviewer_feedback = Jason.decode!(reviewer_json)
+    assert_delegation_prompt!(resume_feedback, :developer)
+    assert resume_feedback =~ "# Developer Role"
+    assert resume_feedback =~ "## Required final Developer handoff"
+    assert resume_feedback =~ ~s("attempt_token": "<the supplied token>")
 
-    assert reviewer_feedback["verdict"] == "rework"
+    assert resume_feedback =~ "category: review_rework"
+    assert resume_feedback =~ "record: "
+    refute resume_feedback =~ ~s("verdict":"rework")
+    refute resume_feedback =~ bulk_sentinel
 
-    assert [%{"id" => "shaped-scenario", "status" => "needs_rework"}] =
-             reviewer_feedback["scenarios"]
+    tracking_path =
+      Path.wildcard(Path.join(dest, ".kogen/runtime/scenario-tracking/*/record.json"))
+      |> List.first()
 
-    assert [%{"scenario_ids" => ["shaped-scenario"]}] = reviewer_feedback["findings"]
+    tracking = tracking_path |> File.read!() |> Jason.decode!()
+    assert tracking["status"] == "accepted"
+    assert File.stat!(tracking_path).size > 1_048_576
+    assert Enum.any?(tracking["findings"], &(&1["status"] == "closed"))
+
+    assert Enum.any?(
+             tracking["attempts"],
+             &String.starts_with?(&1["failure"], "Reviewer findings:")
+           )
 
     refute resume_feedback =~ "settled Check failure:",
            "a failed Check settlement would consume a second outer resumption"
@@ -129,10 +151,15 @@ defmodule Kogen.LifecycleTest do
       :developer
     )
 
+    refute File.read!(Path.join(dest, ".kogen/runtime/developer-launch-prompt")) =~ bulk_sentinel
+
     assert_delegation_prompt!(
       File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-1")),
       :reviewer
     )
+
+    refute File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-1")) =~ bulk_sentinel
+    refute File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-2")) =~ bulk_sentinel
 
     check_records =
       (verification_history_archives(raw_log_dir) ++

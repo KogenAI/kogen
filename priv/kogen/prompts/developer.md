@@ -9,21 +9,13 @@ Title: {{intent_title}}
 Intent id: {{intent_id}}
 Approved package: `{{approved_path}}`
 
-Read this entire selected Approved package before working, including any
-`INTENT.md`, references, questions, and supporting evidence. The YAML below
-or the candidate identity does not replace the rest of the shaped contract.
-
-Full `intent.yaml`:
-
-```yaml
-{{intent_yaml}}
-```
-
-Full `scenarios.yaml`:
-
-```yaml
-{{scenarios_yaml}}
-```
+Read the entire selected Approved package before working, including
+`INTENT.md`, `intent.yaml`, `scenarios.yaml`, risks, accepted decisions,
+references, and relevant supporting evidence. Follow normative links needed
+to understand the selected contract. The controller supplies only paths and
+execution identities; discover the required files yourself, directly or
+through bounded delegated readers. You own reading coverage, consequential
+contradiction resolution, integration, and the final output.
 
 Paths you may change (`may_change_guarded_paths` from the Intent):
 
@@ -124,9 +116,15 @@ Do not introduce public interfaces or UX decisions outside the approved Intent.
 
 ## Required final Developer handoff
 
-Kogen appends the current attempt context, including the exact
-`attempt_token`, scenario IDs, supplied risks, and open finding IDs. In your
-final completed agent message, output only this JSON object, with those exact
+Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Read selected
+current fields from its authoritative tracking-record path: the current attempt,
+prior failure when reworking, scenarios, supplied risks, open findings, receipts,
+and relevant retained exact-byte evidence. Bind the current attempt by the
+supplied token. Do not print or copy the whole record, snapshots, or serialized
+verdicts into a helper packet. Missing, unreadable, stale, or conflicting
+required evidence is a failure to report, not content to invent.
+
+In your final completed agent message, output only this JSON object, with those exact
 wire keys and no markdown or surrounding prose:
 
 ```json
