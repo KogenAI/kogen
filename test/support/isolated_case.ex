@@ -6,6 +6,7 @@ defmodule Kogen.IsolatedCase do
   # the original test source is loaded again in a fresh VM, where this module
   # becomes a normal ExUnit.Case.
   @child_marker "KOGEN_ISOLATED_CASE_CHILD"
+  @ready_message "KOGEN_ISOLATED_READY\n"
   @default_timeout 120_000
 
   defmacro __using__(options) do
@@ -46,9 +47,10 @@ defmodule Kogen.IsolatedCase do
             if false do
               unquote(body)
             else
-              Kogen.IsolatedCase.run!(unquote(source), isolated_context.test,
-                timeout: Map.get(isolated_context, :timeout, unquote(@default_timeout)),
-                parameters: isolated_context
+              Kogen.IsolatedCase.run!(
+                unquote(source),
+                isolated_context.test,
+                Kogen.IsolatedCase.dispatch_options(isolated_context, unquote(@default_timeout))
               )
             end
         end
@@ -71,30 +73,16 @@ defmodule Kogen.IsolatedCase do
     root = Path.expand(System.fetch_env!("KOGEN_TEST_ROOT"))
     working_dir = Path.expand(Keyword.get(options, :cd, root))
     timeout = Keyword.get(options, :timeout, @default_timeout)
+    readiness = readiness_config(options, timeout)
     tmpdir = private_tmpdir(options)
+    readiness = if readiness, do: Map.put(readiness, :path, Path.join(tmpdir, "readiness"))
 
-    # Until Port.open/2 succeeds, no supervisor can clean this root. Keep the
-    # setup in a separate ownership phase so failed argument or environment
-    # preparation does not retain a private fixture.
     port =
-      try do
-        args = child_args(root, source, selector)
-        env = child_env(options, tmpdir)
-        open_supervisor(args, working_dir, env, timeout)
-      rescue
-        exception ->
-          cleanup_unowned_tmpdir(tmpdir)
-          reraise exception, __STACKTRACE__
-      catch
-        kind, reason ->
-          cleanup_unowned_tmpdir(tmpdir)
-          :erlang.raise(kind, reason, __STACKTRACE__)
-      end
+      start_supervisor(root, source, selector, options, tmpdir, working_dir, timeout, readiness)
 
     collection_timeout = Keyword.get(options, :collection_timeout, timeout + 2_000)
 
-    {status, output} =
-      collect_port(port, [], System.monotonic_time(:millisecond) + collection_timeout)
+    {status, output} = collect_with_readiness(port, readiness, collection_timeout)
 
     # Port.open can return before the OS launcher rejects its cwd. Only after
     # confirmed exit may we reclaim a root whose supervisor never started.
@@ -104,13 +92,35 @@ defmodule Kogen.IsolatedCase do
 
     # The supervisor alone removes its temporary root, after reaping children.
     # In particular, cancellation must never race parent-side fixture removal.
-    case status do
-      0 -> {:ok, output}
-      124 -> {:error, :timeout, output}
-      :timeout -> {:error, :timeout, output}
-      status -> {:error, {:exit_status, status}, output}
-    end
+    isolated_result(status, output)
   end
+
+  defp start_supervisor(root, source, selector, options, tmpdir, working_dir, timeout, readiness) do
+    # Until Port.open/2 succeeds, no supervisor can clean this root. Keep the
+    # setup in a separate ownership phase so failed argument or environment
+    # preparation does not retain a private fixture.
+    args = child_args(root, source, selector)
+    env = child_env(options, tmpdir, readiness)
+    open_supervisor(args, working_dir, env, timeout, readiness)
+  rescue
+    exception ->
+      cleanup_unowned_tmpdir(tmpdir)
+      reraise exception, __STACKTRACE__
+  catch
+    kind, reason ->
+      cleanup_unowned_tmpdir(tmpdir)
+      :erlang.raise(kind, reason, __STACKTRACE__)
+  end
+
+  defp isolated_result(0, output), do: {:ok, output}
+  defp isolated_result(124, output), do: {:error, :timeout, output}
+  defp isolated_result(126, output), do: {:error, :readiness_timeout, output}
+  defp isolated_result(:timeout, output), do: {:error, :timeout, output}
+
+  defp isolated_result({:readiness_exit, status}, output),
+    do: {:error, {:readiness_exit, status}, output}
+
+  defp isolated_result(status, output), do: {:error, {:exit_status, status}, output}
 
   @doc false
   def child_case_options(options) do
@@ -131,6 +141,18 @@ defmodule Kogen.IsolatedCase do
 
         Keyword.put(options, :parameterize, parameters)
     end
+  end
+
+  @doc false
+  def dispatch_options(context, default_timeout) do
+    [:timeout, :collection_timeout, :readiness, :startup_timeout]
+    |> Enum.reduce([parameters: context], fn key, options ->
+      case Map.fetch(context, key) do
+        {:ok, value} -> Keyword.put(options, key, value)
+        :error -> options
+      end
+    end)
+    |> Keyword.put_new(:timeout, default_timeout)
   end
 
   defp matches_parameters?(parameter, expected) do
@@ -207,11 +229,20 @@ defmodule Kogen.IsolatedCase do
     |> Enum.uniq()
   end
 
-  defp child_env(options, tmpdir) do
+  defp child_env(options, tmpdir, readiness) do
     configured =
       options
       |> Keyword.get(:env, [])
       |> Enum.map(fn {key, value} -> {to_string(key), to_string(value)} end)
+
+    configured =
+      case readiness do
+        nil ->
+          configured
+
+        %{env: readiness_env} ->
+          Enum.reject(configured, fn {key, _value} -> key == readiness_env end)
+      end
 
     parameter_env =
       case Keyword.get(options, :parameters) do
@@ -223,6 +254,12 @@ defmodule Kogen.IsolatedCase do
 
         _ ->
           []
+      end
+
+    readiness_env =
+      case readiness do
+        nil -> []
+        %{env: key, path: path} -> [{key, path}]
       end
 
     [
@@ -238,19 +275,33 @@ defmodule Kogen.IsolatedCase do
       {"MIX_BUILD_PATH", Path.join(tmpdir, "_build")},
       {"ERL_CRASH_DUMP", Path.join(tmpdir, "erl_crash.dump")},
       {"KOGEN_ISOLATED_RESULT", Path.join(tmpdir, "result")}
-      | parameter_env ++ configured
+      | parameter_env ++ configured ++ readiness_env
     ]
     |> Enum.map(fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
   end
 
-  defp open_supervisor(args, cd, env, timeout) do
+  defp open_supervisor(args, cd, env, timeout, readiness) do
     executable = System.find_executable("python3") || raise "python3 executable was not found"
     elixir = Path.join(erts_bin(), "erlexec")
 
     supervisor =
       Path.join(System.fetch_env!("KOGEN_TEST_ROOT"), "test/support/isolated_process.py")
 
-    args = [supervisor, to_string(timeout / 1_000), elixir | args]
+    {startup_timeout, ready_path} =
+      case readiness do
+        nil -> {0, "-"}
+        %{timeout: startup_timeout, path: path} -> {startup_timeout, path}
+      end
+
+    args =
+      [
+        supervisor,
+        to_string(timeout / 1_000),
+        to_string(startup_timeout / 1_000),
+        ready_path,
+        elixir
+        | args
+      ]
 
     Port.open({:spawn_executable, String.to_charlist(executable)}, [
       :binary,
@@ -260,6 +311,57 @@ defmodule Kogen.IsolatedCase do
       cd: String.to_charlist(cd),
       env: env
     ])
+  end
+
+  defp collect_with_readiness(port, nil, collection_timeout) do
+    collect_port(port, [], System.monotonic_time(:millisecond) + collection_timeout)
+  end
+
+  defp collect_with_readiness(port, readiness, collection_timeout) do
+    startup_deadline = System.monotonic_time(:millisecond) + readiness.timeout + 2_000
+
+    case collect_readiness(port, [], startup_deadline) do
+      {:ready, output} ->
+        collect_port(
+          port,
+          [output],
+          System.monotonic_time(:millisecond) + collection_timeout
+        )
+
+      {:exit, 126, output} ->
+        {126, output}
+
+      {:exit, status, output} ->
+        {{:readiness_exit, status}, output}
+
+      {:timeout, output} ->
+        Port.command(port, "cancel")
+
+        {_status, final_output} =
+          await_termination(port, [output], System.monotonic_time(:millisecond) + 5_000)
+
+        {126, final_output}
+    end
+  end
+
+  defp collect_readiness(port, output, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {^port, {:data, data}} ->
+        accumulated = [data | output] |> Enum.reverse() |> IO.iodata_to_binary()
+
+        if String.contains?(accumulated, @ready_message) do
+          {:ready, String.replace(accumulated, @ready_message, "", global: false)}
+        else
+          collect_readiness(port, [accumulated], deadline)
+        end
+
+      {^port, {:exit_status, status}} ->
+        {:exit, status, output |> Enum.reverse() |> IO.iodata_to_binary()}
+    after
+      remaining -> {:timeout, output |> Enum.reverse() |> IO.iodata_to_binary()}
+    end
   end
 
   defp erts_bin do
@@ -316,6 +418,22 @@ defmodule Kogen.IsolatedCase do
 
     File.mkdir!(path)
     path
+  end
+
+  defp readiness_config(options, timeout) do
+    case Keyword.get(options, :readiness) do
+      nil ->
+        nil
+
+      env when is_binary(env) ->
+        startup_timeout = Keyword.get(options, :startup_timeout, timeout)
+
+        unless is_number(startup_timeout) and startup_timeout > 0 do
+          raise ArgumentError, "startup_timeout must be a positive number"
+        end
+
+        %{env: env, timeout: startup_timeout}
+    end
   end
 
   # Cleanup is best-effort here because setup is already failing. In particular,

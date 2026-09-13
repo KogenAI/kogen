@@ -105,6 +105,57 @@ defmodule Kogen.IsolationTest do
            "cancelled subprocess #{pid} survived cleanup"
   end
 
+  test "readiness starts collection timing only after startup and diagnoses each phase" do
+    stale_marker = Path.join(tmp_dir!(), "foreign-ready")
+    File.write!(stale_marker, "foreign\n")
+
+    assert {:ok, output} =
+             Kogen.IsolatedCase.run(@probe, "test delayed readiness",
+               readiness: "PROBE_READY",
+               startup_timeout: 15_000,
+               collection_timeout: 500,
+               env: [{"PROBE_DELAY_MS", "800"}, {"PROBE_READY", stale_marker}]
+             )
+
+    assert output =~ "Result: 1 passed"
+    assert File.read!(stale_marker) == "foreign\n"
+
+    assert {:error, :readiness_timeout, output} =
+             Kogen.IsolatedCase.run(@probe, "test missing readiness",
+               readiness: "PROBE_READY",
+               startup_timeout: 100,
+               collection_timeout: 1_000
+             )
+
+    assert output =~ "isolated children terminated"
+
+    assert {:error, {:readiness_exit, 19}, output} =
+             Kogen.IsolatedCase.run(@probe, "test exit before readiness",
+               readiness: "PROBE_READY",
+               startup_timeout: 15_000
+             )
+
+    assert output =~ "exited before readiness marker"
+
+    assert {:error, :timeout, output} =
+             Kogen.IsolatedCase.run(@probe, "test delayed readiness",
+               readiness: "PROBE_READY",
+               startup_timeout: 15_000,
+               collection_timeout: 250,
+               env: [{"PROBE_AFTER_READY_MS", "1000"}]
+             )
+
+    assert output =~ "isolated children terminated"
+  end
+
+  test "callers without readiness retain launch-relative collection timing" do
+    assert {:error, :timeout, _output} =
+             Kogen.IsolatedCase.run(@probe, "test delayed readiness",
+               collection_timeout: 100,
+               env: [{"PROBE_DELAY_MS", "500"}, {"PROBE_READY", Path.join(tmp_dir!(), "unused")}]
+             )
+  end
+
   test "every maintained test module explicitly enables async execution" do
     for source <- Path.wildcard(Path.expand("*_test.exs", __DIR__)) do
       text = File.read!(source)
@@ -132,5 +183,15 @@ defmodule Kogen.IsolationTest do
     File.mkdir_p!(path)
     on_exit(fn -> File.rm_rf!(path) end)
     path
+  end
+end
+
+defmodule Kogen.IsolatedMacroReadinessTest do
+  use Kogen.IsolatedCase, async: true
+
+  @tag readiness: "PROBE_READY", startup_timeout: 15_000, collection_timeout: 1_000
+  test "macro dispatch observes child readiness" do
+    Process.sleep(200)
+    File.write!(System.fetch_env!("PROBE_READY"), "ready\n")
   end
 end

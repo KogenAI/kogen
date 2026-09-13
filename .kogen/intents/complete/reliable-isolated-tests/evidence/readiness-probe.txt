@@ -1,0 +1,13 @@
+Running ExUnit with seed: 61460, max_cases: 12
+Excluding tags: [:live]
+
+delayed child result: {:error, :timeout,
+ "Running ExUnit with seed: 890369, max_cases: 2\nExcluding tags: [:test]\nIncluding tags: [test: :\"test delayed startup\"]\n\n\n09:41:58.128 [notice] SIGTERM received - shutting down\n\nisolated children terminated; private fixture still present\n"}
+ready marker exists: false
+.
+Slowest individual offline cases (includes isolated process startup):
+
+Finished in 2.0 seconds (2.0s async, 0.00s sync)
+
+Result: 1 passed
+  2.074s Kogen.ShapingReadinessTest test collection deadline can expire before readiness

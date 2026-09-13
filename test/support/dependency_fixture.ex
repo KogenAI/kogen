@@ -18,16 +18,40 @@ defmodule Kogen.DependencyFixture do
       raise ArgumentError, "dependency source directory does not exist: #{source_deps}"
     end
 
-    File.mkdir_p!(destination_deps)
+    case File.lstat(destination_deps) do
+      {:error, :enoent} ->
+        :ok
 
+      {:ok, _stat} ->
+        raise ArgumentError, "dependency destination already exists: #{destination_deps}"
+
+      {:error, reason} ->
+        raise File.Error, reason: reason, action: "inspect", path: destination_deps
+    end
+
+    File.mkdir_p!(Path.dirname(destination_deps))
+    File.mkdir!(destination_deps)
+
+    # Materialize linked source data. Dependency tools write into their source
+    # trees, so preserving a symlink would alias fixture writes back into the
+    # installed dependency or another fixture.
     args =
-      ["-a"] ++
+      ["-a", "--copy-links"] ++
         Enum.flat_map(@excluded_paths, &["--exclude", &1]) ++
         [source_deps <> "/", destination_deps <> "/"]
 
-    case System.cmd("rsync", args, stderr_to_stdout: true) do
-      {_output, 0} -> destination_deps
-      {output, status} -> raise "dependency source copy failed (exit #{status}): #{output}"
+    try do
+      case System.cmd("rsync", args, stderr_to_stdout: true) do
+        {_output, 0} ->
+          destination_deps
+
+        {output, status} ->
+          raise "dependency source copy failed (exit #{status}): #{output}"
+      end
+    rescue
+      exception ->
+        File.rm_rf(destination_deps)
+        reraise exception, __STACKTRACE__
     end
   end
 end

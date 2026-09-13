@@ -161,6 +161,10 @@ in private OS processes using the current compiled application and dependency co
 fixtures, temporary roots, and writable build caches stay private. The fake public
 Shape/Build fixture uses a small real check through the tracked Stop hook, including
 failed Check correction and independent Reviewer rework. It never nests this suite.
+Readiness-aware process probes give startup and post-readiness behavior separate
+monotonic bounds, reject stale markers, and settle owned descendants before cleanup.
+Dependency fixtures reject destination collisions and materialize linked sources
+instead of retaining writable aliases to installed dependencies.
 See [the check workflow](scripts/check/README.md) for maintenance and timing conditions.
 
 `make live` requires network access, Codex authentication, `expect`, and `rsync`. It creates a disposable fixture under this checkout, uses scripted approval only for that test fixture, and retains run evidence under `.kogen/runtime/`. It tests real failed-check correction in one Developer session and reviewer-directed rework with an exact Developer resume and a fresh accepting Reviewer. Its outer driver also runs the complete offline check in a disposable copy with an initially empty private build cache and installed dependencies. Set `KOGEN_LIVE_LOG_DIR` to retain that evidence elsewhere.

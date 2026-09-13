@@ -97,4 +97,19 @@ defmodule Kogen.IsolationProbe do
     File.chmod!(blocked, 0o500)
     assert File.regular?(Path.join(blocked, "retained.txt"))
   end
+
+  test "delayed readiness" do
+    Process.sleep(String.to_integer(System.get_env("PROBE_DELAY_MS", "200")))
+    File.write!(System.fetch_env!("PROBE_READY"), "ready\n")
+    Process.sleep(String.to_integer(System.get_env("PROBE_AFTER_READY_MS", "0")))
+  end
+
+  test "missing readiness" do
+    Process.sleep(60_000)
+  end
+
+  test "exit before readiness" do
+    IO.puts("exited before readiness marker")
+    System.halt(19)
+  end
 end

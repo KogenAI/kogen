@@ -1,0 +1,12 @@
+- id: fixture-ownership
+  scenario_ids: [private-dependency-sources, copy-refuses-collisions, isolated-readiness, terminal-readiness, cleanup-integrity]
+  description: Shared source aliases, stale readiness, or premature cleanup can make parallel tests corrupt one another or falsely pass. Apply the proposal's existing preserve-and-own policy to every temporary boundary.
+  ownership:
+    - paths: Disposable dependency copies, test roots, readiness/result markers and child-process scratch files created by these helpers.
+      when_exists: Reject dependency destination collisions including dangling symlinks; use fresh fixture-owned marker locations, never interpret preexisting foreign state as readiness or delete it.
+      owner_after_creation: The creating test/helper owns its fresh output; the existing isolated supervisor assumes its established cleanup responsibility after startup.
+      owner_during_operation: Each fixture and supervisor owns only its own writable state and launched processes; installed source dependencies and sibling fixtures remain outside that ownership.
+      permitted_mutation: Mutate private copies and owned markers only; preserve preexisting files and controller evidence; remove owned output only after owned children are settled, retaining failed-cleanup remnants and diagnostics under the existing policy.
+      validation: Compare source and sibling sentinels, exercise actual compile and dispatch consumers, require fresh readiness and verify process termination plus cleanup error propagation.
+      git_state: Disposable test outputs stay outside tracked source state; maintained helper and test source changes are tracked; the Draft remains ignored until normal completion publication.
+      upgrade_behavior: Recreate disposable state for each run without migration, cache reuse, or retention change; preserve behavior of callers that do not request readiness.

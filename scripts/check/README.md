@@ -66,6 +66,21 @@ Directory-deletion errors propagate with the path and filesystem error even when
 the child test passed. A real permission-denied negative control exercises this
 case and restores permissions only in the outer test's teardown.
 
+Readiness-aware isolated cases opt in with a child environment-variable name.
+The helper assigns that variable to a fresh marker inside its private root. The
+child creates the marker only when its measured workload is running. A monotonic
+startup deadline covers marker creation; the collection deadline begins after the
+supervisor observes it. Exit before readiness, absent readiness, and timeout after
+readiness remain distinct failures. Callers without readiness keep the established
+launch-relative collection behavior. In every phase the supervisor settles owned
+descendants before successful removal or retains the root with cleanup diagnostics.
+
+The terminal probe applies the same two-phase timing to the actual
+`Harness.exec_shaper` fake route in both pipe and PTY modes. Its writer side stays
+open while observing completion, so a fake that waits for EOF fails after readiness.
+Focused Python controls are reached through `terminal_probe_test.exs`; they also
+assert cleanup of real background descendants on successful and exceptional exits.
+
 The outer-owned `make live` suite also runs `ColdOfflineTest`: it copies current
 sources into a disposable tree, copies installed dependency sources, and invokes the
 complete offline gate with an initially absent private `MIX_BUILD_PATH`.
@@ -79,6 +94,10 @@ Both the cold and provider-backed compiling fixtures own private dependency
 copies as well as private build paths. Rebar writes into dependency source trees,
 so sharing a dependency-directory symlink can race even with separate build paths.
 The copy helper excludes dependency build caches while retaining source headers.
+It rejects every preexisting destination kind before mutation and materializes
+valid source links as private regular files and directories. Broken or cyclic
+links and other copy errors fail the fixture and remove only the newly created
+partial destination.
 The cold driver sets a fixture-relative `MIX_BUILD_PATH=_build/cold`, explicitly
 overriding inherited build state. This lets Rebar resolve paths from the child's
 physical cwd without mixing macOS `/var` and `/private/var` aliases.

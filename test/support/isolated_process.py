@@ -79,25 +79,39 @@ def reap_descendants(pid):
 
 def main():
     timeout = float(sys.argv[1])
+    startup_timeout = float(sys.argv[2])
+    readiness = None if sys.argv[3] == "-" else Path(sys.argv[3])
     result = Path(os.environ["KOGEN_ISOLATED_RESULT"])
     # Establish ownership before creating any child. The parent checks this
     # marker only after confirmed launcher exit, never while we are running.
     (result.parent / "supervisor-started").touch()
     try:
-        process = subprocess.Popen(sys.argv[2:], stdin=subprocess.DEVNULL, start_new_session=True)
+        process = subprocess.Popen(sys.argv[4:], stdin=subprocess.DEVNULL, start_new_session=True)
     except OSError:
         shutil.rmtree(result.parent)
         raise
-    deadline = time.monotonic() + timeout
+    deadline = None if readiness else time.monotonic() + timeout
+    startup_deadline = time.monotonic() + startup_timeout if readiness else None
     status = 124
     completed = False
     try:
         while process.poll() is None:
+            if readiness and deadline is None:
+                if readiness.is_file():
+                    print("KOGEN_ISOLATED_READY", flush=True)
+                    deadline = time.monotonic() + timeout
+                elif time.monotonic() >= startup_deadline:
+                    status = 126
+                    break
+
             if result.exists():
                 status = int(result.read_text())
                 completed = True
                 break
-            remaining = deadline - time.monotonic()
+            if deadline is None:
+                remaining = startup_deadline - time.monotonic()
+            else:
+                remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
             # Port closure (including an ExUnit timeout) cancels this owner too.

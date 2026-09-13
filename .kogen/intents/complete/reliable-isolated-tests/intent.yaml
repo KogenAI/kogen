@@ -1,0 +1,28 @@
+id: 01a0997c-3c0b-753e-a9cd-e219f9e97115
+slug: reliable-isolated-tests
+title: Make isolated test fixtures and child readiness reliable
+status: approved
+shaped_against:
+  branch: main
+  head: 0b76607a8a53131a16f02874bc248f52c6578a80
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-13T06:37:31.022589Z'
+may_change_guarded_paths:
+  - test/support/dependency_fixture.ex
+  - test/support/isolated_case.ex
+  - test/support/isolated_process.py
+  - test/support/isolation_probe.exs
+  - test/support/terminal_probe.py
+  - test/support/terminal_probe_test.py
+  - test/kogen/dependency_fixture_test.exs
+  - test/kogen/isolation_test.exs
+  - test/kogen/isolation_cleanup_test.exs
+  - test/kogen/harness_role_test.exs
+  - test/kogen/terminal_probe_test.exs
+  - test/kogen/cold_offline_test.exs
+  - test/kogen/live_shape_to_build_test.exs
+  - scripts/check/README.md
+  - README.md

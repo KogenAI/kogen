@@ -1,0 +1,2 @@
+terminal probe failed: command waited for stdin instead of completing
+probe exit status: 1

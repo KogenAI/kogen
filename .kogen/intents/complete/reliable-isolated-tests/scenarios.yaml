@@ -1,0 +1,35 @@
+- id: private-dependency-sources
+  given: Installed dependency sources include linked files and directories and existing build caches.
+  when: Two fresh fixtures copy those sources and compile concurrently using private build paths.
+  then: Copies contain independently writable regular source data and required headers, omit dependency build caches, and produce usable compiled dependencies without changing sources or each other.
+  wrong_result: Copies preserve links to shared writable data, lose yamerl headers, or pass a copy assertion while the compiler consumer fails.
+  verified_by: [check]
+  evidence: Extend the real concurrent yamerl compilation regression with linked inputs and source/peer before-and-after checks.
+- id: copy-refuses-collisions
+  given: A destination is an existing directory, file, valid symlink, or dangling symlink; alternatively a fresh copy encounters a broken or cyclic source link or copy failure.
+  when: The dependency fixture helper attempts the copy.
+  then: Existing destinations and their targets remain untouched and are rejected; invalid fresh copies fail visibly and are never returned as usable, with cleanup confined to newly owned output.
+  wrong_result: Merge into a stale directory, follow a destination link, silently skip broken input, or remove preexisting data after failure.
+  verified_by: [check]
+  evidence: Real temporary files and symlinks with sentinel comparisons; broken/cyclic link and copy-failure negative controls.
+- id: isolated-readiness
+  given: An isolated child starts later than the short collection window but within its separate startup bound.
+  when: A readiness-aware caller waits for a fresh marker from the running workload and then starts collection timing.
+  then: Startup delay does not consume the post-readiness window; missing readiness, early child exit, and post-readiness timeout produce distinct actionable failures, with bounded waits and owned children terminated before confirmed cleanup.
+  wrong_result: Start collection at process launch, accept stale readiness, wait indefinitely, hide an early exit as a timeout, or return while an owned child survives.
+  verified_by: [check]
+  evidence: Real delayed/absent readiness, early nonzero exit and running-descendant timeout controls through IsolatedCase.run and the macro/run! parent consumer; include no-readiness compatibility.
+- id: terminal-readiness
+  given: The existing fake Shaper route uses open pipe or PTY stdin and can delay startup, wait for EOF, fail, or leave background work.
+  when: The terminal probe waits for child readiness and observes bounded completion through Harness.exec_shaper.
+  then: Valid delayed startup passes in both modes, waiting for EOF still fails after readiness, early failure and missing readiness are diagnosed, and owned process cleanup occurs on success and failure without replacing the original failure with a false pass.
+  wrong_result: Classify slow startup as waiting for stdin, close stdin to make a defective fake pass, test only a stand-in consumer, or leak children on an exceptional path.
+  verified_by: [check]
+  evidence: Extend HarnessRoleTest and check-reachable terminal controls with real child processes, pipe/PTY behavior and descendant liveness assertions.
+- id: cleanup-integrity
+  given: Isolated tests execute concurrently, fail assertions, exit abruptly, time out, lose their parent, or encounter a genuine directory deletion failure.
+  when: Their owners settle results and clean private state.
+  then: Parent cwd/environment and unrelated files stay unchanged; selected tests execute once; owned children terminate before successful removal; cleanup failure remains a failing result with the retained path and cause.
+  wrong_result: Report success despite failed cleanup, erase failure evidence, remove another fixture, or regress existing cancellation and setup-failure cleanup.
+  verified_by: [check]
+  evidence: Preserve and run existing isolation and cleanup regressions, including real permission-denied deletion, overlap, assertion failure, abrupt exit and parent cancellation; adapt timing controls to observed readiness.
