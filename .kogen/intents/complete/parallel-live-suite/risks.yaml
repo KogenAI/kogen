@@ -1,0 +1,26 @@
+- id: lost-proof
+  scenario_ids: [native-proof-consolidation, audit-failure-reaches-owner, retain-distinct-lifecycle-proof]
+  description: Removing redundant invocations can delete distinct assertions or leave an audit disconnected from the suite owner. Require explicit assertion mapping, composed corruption negatives and current live evidence before claiming replacement; historical incomplete streams never establish acceptance.
+- id: fixture-isolation
+  scenario_ids: [independent-live-overlap, audit-failure-reaches-owner, retain-distinct-lifecycle-proof]
+  description: Greater overlap can expose shared mutable state or cleanup races. Preserve accepted source and fixture lifecycle conventions; no new ownership transition or retention policy is proposed.
+  ownership:
+    - paths: Maintained live tests, test-support auditors and scheduling fixtures, and linked README documentation within the declared paths.
+      when_exists: Inspect and amend maintained sources in place, preserving unrelated work; do not copy the broad historical Candidate.
+      owner_after_creation: Repository maintainers own any new source files immediately.
+      owner_during_operation: Maintainers retain source ownership; executing tests read maintained inputs.
+      permitted_mutation: Reviewed source edits within this Intent; running fixtures cannot rewrite maintained sources.
+      validation: check verifies audit, selection, orchestration and corruption controls; live and independent Review establish preserved behavior.
+      git_state: Maintained sources and concise approved evidence accompany the normal successful Build commit.
+      upgrade_behavior: Normal reviewed Git changes update source and tests together; no migration or automatic source update.
+    - paths: Existing private live fixture repositories, writable dependency copies, child processes and per-run runtime evidence.
+      when_exists: Preserve preexisting paths and earlier evidence; use existing unique run creation and collision-safe fixture conventions.
+      owner_after_creation: The creating test runner owns only its new private fixture, processes and generated evidence.
+      owner_during_operation: Each test retains exclusive control of its mutable run state; other cases cannot mutate or clean it.
+      permitted_mutation: Mutate and remove only run-owned disposable fixtures and processes; retain diagnostic evidence under existing conventions, including failures.
+      validation: Offline isolation, failure propagation and cleanup controls plus live receipts verify private state and completed cleanup.
+      git_state: Raw provider streams and disposable data remain ignored runtime material; concise evidence uses existing Complete publication rules.
+      upgrade_behavior: New runs create fresh state without upgrading or reusing past receipts; no new storage or retention mechanism.
+- id: measurement-limits
+  scenario_ids: [independent-live-overlap, native-proof-consolidation, retain-distinct-lifecycle-proof]
+  description: Fewer standalone calls and barrier-proven overlap do not guarantee lower complete cost or wall time. Include root and child provider work where available, identify cache subsets and missing usage, preserve failures, and avoid comparisons lacking equivalent workload and cache conditions.

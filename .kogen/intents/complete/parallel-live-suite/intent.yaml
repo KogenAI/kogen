@@ -1,0 +1,21 @@
+id: 01a099a0-2fe2-7242-abe8-662abb35fee2
+slug: parallel-live-suite
+title: Parallelize independent live cases and consolidate primitive probes
+status: approved
+shaped_against:
+  branch: main
+  head: d8daec8a9e572ab4dd916cc6efe1d1cdfccc21e7
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-13T07:16:47.206369Z'
+may_change_guarded_paths:
+  - test/kogen/live*_test.exs
+  - test/support/live_*.ex
+  - test/support/scheduling_*.ex
+  - test/support/scheduling_*.exs
+  - test/support/live_suite/**
+  - test/support/timing_formatter.ex
+  - README.md
+  - scripts/check/README.md

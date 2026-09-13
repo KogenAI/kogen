@@ -102,10 +102,36 @@ The cold driver sets a fixture-relative `MIX_BUILD_PATH=_build/cold`, explicitly
 overriding inherited build state. This lets Rebar resolve paths from the child's
 physical cwd without mixing macOS `/var` and `/private/var` aliases.
 
+The connected public lifecycle and Build-only Reviewer-rework lifecycle live in
+separate async modules. `live_scheduling_test.exs` launches two real
+`Kogen.IsolatedCase` dispatchers behind a bounded rendezvous, proves ordered and
+distinct outputs, propagates an owner failure, checks cleanup, and inspects the
+live source layout so a generic concurrency probe cannot mask same-module
+serialization.
+
 The live rework fixture's nested Reviewer assesses final bytes and current Check.
 The outer test audits prior omission, actionable rework, exact thread resume,
 ordered Checks and distinct Reviewers using retained streams and receipts.
 Offline negative controls exercise that audit without provider requests.
+
+The former three-call primitive live probe has these replacement owners:
+
+| Former assertion | Current owner |
+| --- | --- |
+| `turn.completed` and a usage map for every required invocation | `LiveNativeReceiptAudit`, called by both retained lifecycle owners |
+| Exact Developer session on resume | Build-only rework lifecycle plus `LiveReworkAudit` stream-order and two-capture checks |
+| Developer/Reviewer identity separation and fresh Reviewers | Connected profile/receipt audit and rework receipt identity checks |
+| Structured Reviewer candidate, attempt, scenarios, dispositions and findings | Existing Build contract validation plus `LiveReworkAudit` semantic validation |
+| Selected profiles and two-resumption configuration | Retained connected, rework, semantic and root-profile audits |
+
+Each live owner writes `native-receipt-summary.json` beside its retained evidence.
+It reports invocation count and per-capture usage maps, including captured native
+descendants. Usage is not summed across resumed captures because Codex counters
+can include prior work; cached input is only a subset and missing usage is
+unavailable rather than zero. The suite formatter reports current case and
+whole-suite elapsed time. Three standalone provider invocations are structurally
+removed, but elapsed improvement is not promised: provider contention and
+non-equivalent historical cache conditions prevent an honest speedup claim.
 
 After edits, use focused tests for the affected behavior. Let the normal owner
 capture complete Check timing and run declared live verification. On failure,

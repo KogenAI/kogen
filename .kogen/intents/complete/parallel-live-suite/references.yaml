@@ -1,0 +1,16 @@
+- path: .kogen/runtime/shaping-followups/serial-optimization/07-parallel-live-suite.md
+  role: User-supplied provisional slice and routine fixture-handling direction.
+- path: .kogen/runtime/shaping-followups/serial-optimization/README.md
+  role: Serial scope supersedes the former broad plan; use actual accepted predecessor.
+- path: .kogen/intents/drafts/optimize-kogen-execution/suite-optimization.md
+  role: Original proof-preservation and primitive-assertion migration requirements; no approval inherited.
+- path: .kogen/intents/drafts/optimize-kogen-execution/decisions.md
+  role: Historical smaller parallel tests and soft-budget decisions, dated 2026-09-12.
+- path: .kogen/intents/drafts/optimize-kogen-execution/risks.yaml
+  role: Existing source and private-fixture ownership conventions, narrowed to this slice.
+- path: .kogen/runtime/build-diagnostics/ruW964DBmWc93caTGSZUxOzG/serial-intent-plan/work/pa-file-partition.md
+  role: Advisory source partition; no implementation or acceptance inherited.
+- path: .kogen/runtime/build-diagnostics/ruW964DBmWc93caTGSZUxOzG/serial-intent-plan/work/pc-decision-inventory.md
+  role: Advisory R-125 through R-129 mapping checked against original suite proposal.
+- path: scripts/check/README.md
+  role: Maintained gate and fixture workflow.

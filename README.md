@@ -136,6 +136,13 @@ through the Build-owned `live` target using the prerequisites below; inspect the
 new run’s retained receipts and raw snapshots on failure, without substituting
 a prior passing run.
 
+The connected Shape-to-Commit and Build-only Reviewer-rework live cases are
+separate async modules, allowing their private ordered lifecycle chains to
+overlap when scheduler capacity permits. Both audit their own current native
+streams; the former three-call primitive probe is consolidated into those
+owners and offline corruption controls. Semantic Review, native-helper, and
+cold-offline proof remain separate cases.
+
 Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
 
 Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` can select an executable for testing; ordinary use resolves `codex` on PATH.

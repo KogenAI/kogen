@@ -1,0 +1,28 @@
+- id: independent-live-overlap
+  given: Independent connected-lifecycle and Reviewer-rework cases with private fixtures and at least two ExUnit scheduling slots.
+  when: The live selection schedules them and each performs its dependent lifecycle steps.
+  then: The cases can overlap as separate async modules; each causal chain remains ordered, with private mutable paths, separate evidence and owned cleanup.
+  wrong_result: Async annotations hide same-module serialization, steps within one lifecycle race, or fixtures share writable dependencies or evidence.
+  verified_by: [check, live]
+  evidence: Actual isolated-dispatch rendezvous regression, live module-selection control, ordered-step and failure/cleanup controls, and current live case timings.
+- id: native-proof-consolidation
+  given: Existing real lifecycle streams and the unique assertions formerly owned by the three-call primitive probe.
+  when: Retained live owners audit their own current invocations and the standalone probe is removed.
+  then: Every former assertion has a mapped owner; successful turn completion and usage maps, exact Developer resume, distinct Reviewers, structured verdict and identity bindings remain enforced without three extra standalone calls.
+  wrong_result: A test disappears with its unique assertions, accepts a completion from another session, treats missing usage as zero, or accepts malformed or incomplete native output.
+  verified_by: [check, live]
+  evidence: Assertion migration table plus positive and missing/wrong-session/event/usage/schema controls; current native streams from retained lifecycle cases.
+- id: audit-failure-reaches-owner
+  given: The same native receipt audit invoked by a retained live owner receives missing, incomplete, mismatched or malformed required evidence.
+  when: The owner consumes the audit result.
+  then: The owning case fails and the suite reports failure, preserving owned diagnostics and settling owned work; unrelated passing evidence cannot substitute.
+  wrong_result: A helper detects bad output but its caller ignores it, audits stale evidence, or reports success after cleanup failure.
+  verified_by: [check, live]
+  evidence: Composed offline corruption control through the live owner's audit call and suite exit path, including incomplete completion and wrong identity; fresh live positive route.
+- id: retain-distinct-lifecycle-proof
+  given: The consolidated suite runs against the current Candidate.
+  when: The normal owners run check and live.
+  then: Public fresh Shape, continuation, approval, failed Stop correction, Build and Commit; separate Reviewer rework and exact Developer resume with fresh Review; semantic bad/good Review; native-helper routing; and cold offline validation all remain exercised with existing profile and gate constraints.
+  wrong_result: Fewer calls are achieved by deleting a distinct proof, merging away causal controls, skipping cold validation, or reusing prior passing receipts.
+  verified_by: [check, live]
+  evidence: Maintained before/after proof-owner map, complete current live results and lifecycle/native/profile/cold receipts; whole-suite elapsed and available cumulative provider work reported with limitations.

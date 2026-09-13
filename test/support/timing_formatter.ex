@@ -10,7 +10,7 @@ defmodule Kogen.TimingFormatter do
   end
 
   def handle_cast({:suite_finished, _times}, timings) do
-    IO.puts("\nSlowest individual offline cases (includes isolated process startup):")
+    IO.puts("\nSlowest individual cases (includes isolated process startup):")
 
     timings
     |> Enum.sort(:desc)

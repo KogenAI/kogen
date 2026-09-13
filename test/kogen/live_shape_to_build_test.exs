@@ -1,4 +1,5 @@
 Code.require_file("../support/live_rework_audit.ex", __DIR__)
+Code.require_file("../support/live_native_receipt_audit.ex", __DIR__)
 Code.require_file("../support/dependency_fixture.ex", __DIR__)
 Code.require_file("../support/root_profile_audit.ex", __DIR__)
 
@@ -286,6 +287,21 @@ defmodule Kogen.LiveShapeToBuildTest do
       }
     )
 
+    native_summary =
+      Kogen.LiveNativeReceiptAudit.audit!(
+        raw_stream_dir,
+        %{
+          developer_session_id => 1,
+          reviewer_session_id => 1
+        },
+        [reviewer_session_id]
+      )
+
+    File.write!(
+      Path.join(log_dir, "native-receipt-summary.json"),
+      Jason.encode!(native_summary) <> "\n"
+    )
+
     assert File.exists?(history_path),
            "the Verification Record history must exist -- the real Stop hook must have fired"
 
@@ -328,7 +344,8 @@ defmodule Kogen.LiveShapeToBuildTest do
     File.rm_rf!(fixture)
   end
 
-  test "real reviewer rework resumes the same Developer and a fresh Reviewer accepts in a Build-only fixture" do
+  @doc false
+  def run_reviewer_rework_case do
     project_root = File.cwd!()
     {:ok, config} = Kogen.Intent.read_config()
     log_dir = owned_log_dir(project_root)
@@ -394,6 +411,11 @@ defmodule Kogen.LiveShapeToBuildTest do
         audit.rework_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer"),
         audit.accepting_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
       }
+    )
+
+    File.write!(
+      Path.join(log_dir, "native-receipt-summary.json"),
+      Jason.encode!(audit.native_summary) <> "\n"
     )
 
     File.rm_rf!(fixture)
@@ -495,5 +517,21 @@ defmodule Kogen.LiveShapeToBuildTest do
   defp git!(dir, args) do
     {out, 0} = System.cmd("git", args, cd: dir)
     String.trim(out)
+  end
+end
+
+defmodule Kogen.LiveReviewerReworkTest do
+  @moduledoc """
+  Independent live owner for the Build-only Reviewer-rework lifecycle. Keeping
+  this case in a separate async module lets ExUnit overlap it with the connected
+  Shape-to-Commit lifecycle without changing either causal chain.
+  """
+  use ExUnit.Case, async: true
+
+  @moduletag :live
+  @moduletag timeout: 900_000
+
+  test "real reviewer rework resumes the same Developer and a fresh Reviewer accepts in a Build-only fixture" do
+    Kogen.LiveShapeToBuildTest.run_reviewer_rework_case()
   end
 end

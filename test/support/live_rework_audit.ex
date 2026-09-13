@@ -1,6 +1,7 @@
 defmodule Kogen.LiveReworkAudit do
   @moduledoc false
   Code.require_file("scenario_semantic.ex", __DIR__)
+  Code.require_file("live_native_receipt_audit.ex", __DIR__)
 
   # The live fixture deliberately retains these records outside its disposable
   # working tree. This module is intentionally test support: Build remains the
@@ -85,6 +86,17 @@ defmodule Kogen.LiveReworkAudit do
       accept_receipt["session_id"]
     )
 
+    native_summary =
+      Kogen.LiveNativeReceiptAudit.audit!(
+        raw_log_dir,
+        %{
+          developer => 2,
+          rework_receipt["session_id"] => 1,
+          accept_receipt["session_id"] => 1
+        },
+        [rework_receipt["session_id"], accept_receipt["session_id"]]
+      )
+
     commit_provenance!(fixture, slug, intent_id)
 
     %{
@@ -93,7 +105,8 @@ defmodule Kogen.LiveReworkAudit do
       rework_reviewer_session_id: rework_receipt["session_id"],
       accepting_reviewer_session_id: accept_receipt["session_id"],
       archived_check_count: length(archived_records),
-      current_check_count: length(current_records)
+      current_check_count: length(current_records),
+      native_summary: native_summary
     }
   end
 

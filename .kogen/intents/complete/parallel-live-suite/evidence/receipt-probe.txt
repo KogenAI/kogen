@@ -1,0 +1,8 @@
+source=.kogen/runtime/model-delegation-proof-20260912/raw/live/shape-to-build-76731-1547-1789235209991299583/build-raw-streams
+{"file": "raw-stream-89678-2.jsonl", "threads": ["01a096bd-14d0-7963-a6b9-614fd5389b22"], "completed_count": 1, "usage_maps": [true], "reviewer_keys": []}
+{"file": "raw-stream-89678-8.jsonl", "threads": ["01a096bd-e7eb-7533-b311-ea8087f14ada"], "completed_count": 1, "usage_maps": [true], "reviewer_keys": [["attempt_token", "candidate_id", "dispositions", "findings", "scenarios", "verdict"]]}
+source=.kogen/runtime/model-delegation-proof-20260912/raw/live/shape-to-build-76731-1987-1789235535839655859/build-raw-streams
+{"file": "raw-stream-92049-14.jsonl", "threads": ["01a096bf-b258-70e2-a5f9-c7c82cad0642"], "completed_count": 1, "usage_maps": [true], "reviewer_keys": []}
+{"file": "raw-stream-92049-2.jsonl", "threads": ["01a096bf-b258-70e2-a5f9-c7c82cad0642"], "completed_count": 1, "usage_maps": [true], "reviewer_keys": []}
+{"file": "raw-stream-92049-20.jsonl", "threads": ["01a096c1-fb7a-7550-b18f-60affe52b164"], "completed_count": 0, "usage_maps": [], "reviewer_keys": []}
+{"file": "raw-stream-92049-8.jsonl", "threads": ["01a096c0-5ba4-7701-a0eb-43a170b49f19"], "completed_count": 1, "usage_maps": [true], "reviewer_keys": [["attempt_token", "candidate_id", "dispositions", "findings", "scenarios", "verdict"]]}

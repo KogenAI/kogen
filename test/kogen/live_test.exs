@@ -3,13 +3,9 @@ Code.require_file("../support/root_profile_audit.ex", __DIR__)
 
 defmodule Kogen.LiveTest do
   @moduledoc """
-  Real-provider `make live` only (never part of `make check`): direct
-  `Kogen.Harness` probes against the real `codex` CLI (session identity,
-  exact `Codex resume`, a schema-valid Reviewer Verdict), using the configured
-  real models from the tracked `.kogen/config.yaml`. Cheap, fast,
-  infrastructure-level evidence for the primitives the full real
-  Shape-to-Commit lifecycle in `test/kogen/live_shape_to_build_test.exs`
-  builds on.
+  Real-provider semantic Review challenge. Native session, completion, usage,
+  resume, and structured-verdict proof is owned by the retained lifecycle cases
+  and their shared receipt audit.
   """
   use Kogen.IsolatedCase, async: true
 
@@ -23,74 +19,6 @@ defmodule Kogen.LiveTest do
     developer: %{model: "gpt-5.6-sol", effort: "low"},
     reviewer: %{model: "gpt-5.6-terra", effort: "medium"}
   }
-
-  test "developer session identity, exact resume, and a schema-valid reviewer verdict" do
-    {:ok, config} = Kogen.Intent.read_config()
-    assert_selected_root_profiles!(config)
-    project_root = File.cwd!()
-    log_dir = primitive_log_dir(project_root)
-    fixture = primitive_fixture(project_root)
-
-    setup_fixture(project_root, fixture)
-    File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
-
-    previous_raw_log_dir = System.get_env("KOGEN_RAW_LOG_DIR")
-    System.put_env("KOGEN_RAW_LOG_DIR", log_dir)
-
-    on_exit(fn ->
-      restore_env("KOGEN_RAW_LOG_DIR", previous_raw_log_dir)
-      File.rm_rf!(fixture)
-    end)
-
-    File.cd!(fixture, fn ->
-      assert {:ok, %{session_id: session_id, result: result}} =
-               Kogen.Harness.launch_developer(
-                 "Reply with exactly the word PROBEOK and nothing else. Do not use any tools.",
-                 config.developer.model,
-                 config.developer.effort
-               )
-
-      # `codex exec --json` settles a turn with `turn.completed`; it does not
-      # emit the legacy Claude-style `result` event. Keep this primitive probe
-      # tied to the event that the Harness actually uses to establish settlement.
-      assert result["type"] == "turn.completed"
-      assert is_map(result["usage"])
-
-      assert {:ok, %{session_id: ^session_id}} =
-               Kogen.Harness.resume_developer(
-                 session_id,
-                 "Reply with exactly the word RESUMEOK and nothing else. Do not use any tools.",
-                 config.developer.model,
-                 config.developer.effort
-               )
-
-      assert {:ok,
-              %{
-                verdict: verdict,
-                findings: findings,
-                response: response,
-                session_id: reviewer_session_id
-              }} =
-               Kogen.Harness.launch_reviewer(
-                 "This is a schema probe, not a real review. Return only this valid structured " <>
-                   "Reviewer response with no tools: {\"candidate_id\":\"primitive-candidate\",\"attempt_token\":\"primitive-attempt\",\"verdict\":\"accept\",\"scenarios\":[],\"dispositions\":[],\"findings\":[]}.",
-                 config.reviewer.model,
-                 config.reviewer.effort
-               )
-
-      assert verdict in ["accept", "rework"]
-      assert is_list(findings)
-      assert response["candidate_id"] == "primitive-candidate"
-      assert response["attempt_token"] == "primitive-attempt"
-      assert is_binary(reviewer_session_id)
-      assert reviewer_session_id != session_id
-
-      audit_root_profiles!(log_dir, %{
-        session_id => Map.put(config.developer, :role, "developer"),
-        reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
-      })
-    end)
-  end
 
   test "independent real Reviewer catches semantic fixture defects and accepts their corrected counterpart" do
     {:ok, config} = Kogen.Intent.read_config()

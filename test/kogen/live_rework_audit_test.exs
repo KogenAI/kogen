@@ -152,6 +152,43 @@ defmodule Kogen.LiveReworkAuditTest do
     end
   end
 
+  test "owner audit rejects an incomplete required native completion" do
+    {fixture, logs} = audit_fixture!()
+    on_exit(fn -> File.rm_rf!(fixture) end)
+
+    File.write!(
+      Path.join(logs, "raw-stream-100-3.jsonl"),
+      Jason.encode!(%{"type" => "thread.started", "thread_id" => "developer-1"}) <> "\n"
+    )
+
+    assert_raise ArgumentError, ~r/one turn.completed event/, fn ->
+      Kogen.LiveReworkAudit.audit!(fixture, logs, slug: @slug, intent_id: @intent)
+    end
+  end
+
+  test "owner audit rejects a required capture bound to the wrong identity" do
+    {fixture, logs} = audit_fixture!()
+    on_exit(fn -> File.rm_rf!(fixture) end)
+    write_stream!(logs, 3, "replacement-developer")
+
+    assert_raise ArgumentError, ~r/exact Developer thread launched and resumed/, fn ->
+      Kogen.LiveReworkAudit.audit!(fixture, logs, slug: @slug, intent_id: @intent)
+    end
+  end
+
+  test "owner audit rejects malformed structured Reviewer evidence" do
+    {fixture, logs} = audit_fixture!()
+    on_exit(fn -> File.rm_rf!(fixture) end)
+    receipts = Path.join(logs, "reviewer-verdicts.jsonl")
+    [first, second] = receipts |> File.read!() |> String.split("\n", trim: true)
+    malformed = second |> Jason.decode!() |> Map.delete("scenarios") |> Jason.encode!()
+    File.write!(receipts, first <> "\n" <> malformed <> "\n")
+
+    assert_raise ArgumentError, fn ->
+      Kogen.LiveReworkAudit.audit!(fixture, logs, slug: @slug, intent_id: @intent)
+    end
+  end
+
   defp audit_fixture!(options \\ []) do
     root =
       Path.join(
@@ -201,25 +238,10 @@ defmodule Kogen.LiveReworkAuditTest do
         "\n" <> receipt!("accept", [], "review-2", final_candidate, "attempt-2") <> "\n"
     )
 
-    File.write!(
-      Path.join(logs, "raw-stream-100-1.jsonl"),
-      Jason.encode!(%{"type" => "thread.started", "thread_id" => "developer-1"}) <> "\n"
-    )
-
-    File.write!(
-      Path.join(logs, "raw-stream-100-2.jsonl"),
-      Jason.encode!(%{"type" => "thread.started", "thread_id" => "review-1"}) <> "\n"
-    )
-
-    File.write!(
-      Path.join(logs, "raw-stream-100-3.jsonl"),
-      Jason.encode!(%{"type" => "thread.started", "thread_id" => "developer-1"}) <> "\n"
-    )
-
-    File.write!(
-      Path.join(logs, "raw-stream-100-4.jsonl"),
-      Jason.encode!(%{"type" => "thread.started", "thread_id" => "review-2"}) <> "\n"
-    )
+    write_stream!(logs, 1, "developer-1")
+    write_stream!(logs, 2, "review-1")
+    write_stream!(logs, 3, "developer-1")
+    write_stream!(logs, 4, "review-2")
 
     git_commit!(root)
     {root, logs}
@@ -228,6 +250,17 @@ defmodule Kogen.LiveReworkAuditTest do
   defp evidence!(candidate),
     do:
       "- Candidate id: `#{candidate}`\n- Developer session id: `developer-1`\n- Reviewer session id: `review-2`\n- Outer resumptions used: 1\n"
+
+  defp write_stream!(logs, sequence, session) do
+    body =
+      [
+        %{"type" => "thread.started", "thread_id" => session},
+        %{"type" => "turn.completed", "usage" => %{"input_tokens" => 1}}
+      ]
+      |> Enum.map_join("\n", &Jason.encode!/1)
+
+    File.write!(Path.join(logs, "raw-stream-100-#{sequence}.jsonl"), body <> "\n")
+  end
 
   defp check!(candidate, finished_at),
     do:
