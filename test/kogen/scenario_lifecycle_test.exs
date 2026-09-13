@@ -205,6 +205,57 @@ defmodule Kogen.ScenarioLifecycleTest do
     assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
   end
 
+  test "declared target evidence retains all artifacts separately from Reviewer citations" do
+    dir = fixture!()
+    on_exit(fn -> File.rm_rf(dir) end)
+    assert :ok = run(dir, "target_evidence")
+
+    record = record!(dir)
+    receipt = record["attempts"] |> List.last() |> Map.fetch!("targets") |> List.first()
+    retained = receipt["target_evidence"]
+    assert retained["target"] == "verify"
+    assert retained["attempt_token"] == List.last(record["attempts"])["attempt_token"]
+    refute receipt["output"] =~ "PRIVATE_TARGET_SENTINEL"
+
+    for snapshot <- [retained["manifest"] | retained["required_evidence"]] do
+      decoded = Base.decode64!(snapshot["content_base64"])
+      assert snapshot["sha256"] == Base.encode16(:crypto.hash(:sha256, decoded), case: :lower)
+    end
+
+    assert Enum.map(retained["required_evidence"], fn snapshot ->
+             {snapshot["path"], Base.decode64!(snapshot["content_base64"])}
+           end) == [
+             {".kogen/runtime/target-evidence/semantic.txt", "reviewed behavior\n"},
+             {".kogen/runtime/target-evidence/uncited.bin", <<0, 7, 255>>}
+           ]
+
+    reviewer = List.last(record["attempts"])["reviewer_reference_snapshots"]
+    assert Map.has_key?(reviewer, ".kogen/runtime/target-evidence/semantic.txt")
+    refute Map.has_key?(reviewer, ".kogen/runtime/target-evidence/uncited.bin")
+
+    File.rm_rf!(Path.join(dir, ".kogen/runtime/target-evidence"))
+    complete = Path.join(dir, ".kogen/intents/complete/#{@slug}/scenario-tracking.json")
+    complete_record = complete |> File.read!() |> Jason.decode!()
+
+    complete_retained =
+      complete_record["attempts"]
+      |> List.last()
+      |> Map.fetch!("targets")
+      |> List.first()
+      |> Map.fetch!("target_evidence")
+
+    assert complete_retained == retained
+  end
+
+  test "target evidence source mutation after Review prevents publication" do
+    dir = fixture!()
+    on_exit(fn -> File.rm_rf(dir) end)
+    assert {:error, reason} = run(dir, "target_evidence_mutation")
+    assert reason =~ "bound target evidence changed"
+    assert File.dir?(Path.join(dir, ".kogen/intents/approved/#{@slug}"))
+    refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+  end
+
   defp run(dir, mode) do
     previous_harness = System.get_env("KOGEN_HARNESS")
     previous_mode = System.get_env("SCENARIO_LIFECYCLE_MODE")
@@ -251,6 +302,9 @@ defmodule Kogen.ScenarioLifecycleTest do
     File.chmod!(Path.join(dir, ".codex/hooks/check.sh"), 0o755)
     File.chmod!(Path.join(dir, "scenario-lifecycle-harness.py"), 0o755)
 
+    File.write!(Path.join(dir, "target-evidence-producer.py"), target_evidence_producer())
+    File.chmod!(Path.join(dir, "target-evidence-producer.py"), 0o755)
+
     File.write!(
       Path.join(dir, ".gitignore"),
       ".kogen/runtime/\n.kogen/build.lock\n.kogen/intents/approved/\n"
@@ -263,7 +317,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
     File.write!(
       Path.join(dir, "Makefile"),
-      "check:\n\t@true\nverify:\n\t@test ! -f .kogen/runtime/fail-target\n"
+      "check:\n\t@true\nverify:\n\t@if echo \"$$SCENARIO_LIFECYCLE_MODE\" | grep -q '^target_evidence'; then ./target-evidence-producer.py; else test ! -f .kogen/runtime/fail-target; fi\n"
     )
 
     File.write!(Path.join(dir, "dummy.txt"), "baseline\n")
@@ -295,6 +349,26 @@ defmodule Kogen.ScenarioLifecycleTest do
   defp config,
     do:
       "harness: codex\nshaping: {model: fake, effort: low}\ndeveloper: {model: fake, effort: low}\nreviewer: {model: fake, effort: low}\nhelpers:\n  scout: {model: fake, effort: low}\n  worker: {model: fake, effort: medium}\n  expert: {model: fake, effort: medium}\nouter_resumptions: 2\n"
+
+  defp target_evidence_producer do
+    ~S'''
+    #!/usr/bin/env python3
+    import hashlib, json, pathlib
+    root = pathlib.Path(".kogen/runtime/target-evidence")
+    root.mkdir(parents=True, exist_ok=False)
+    items = [("semantic.txt", b"reviewed behavior\n"), ("uncited.bin", bytes([0, 7, 255]))]
+    required = []
+    for name, content in items:
+        path = root / name
+        path.write_bytes(content)
+        required.append({"path": str(path), "sha256": hashlib.sha256(content).hexdigest()})
+    manifest = root / "manifest.json"
+    manifest.write_bytes(json.dumps({"schema_version": 1, "required_evidence": required}, separators=(",", ":")).encode())
+    locator = {"manifest_path": str(manifest), "sha256": hashlib.sha256(manifest.read_bytes()).hexdigest()}
+    print("unterminated progress", end="")
+    print("KOGEN_TARGET_EVIDENCE_MANIFEST\t" + json.dumps(locator, separators=(",", ":")))
+    '''
+  end
 
   defp record!(dir), do: records(dir) |> List.last() |> File.read!() |> Jason.decode!()
 

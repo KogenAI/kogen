@@ -1,0 +1,11 @@
+Running ExUnit with seed: 545425, max_cases: 12
+Excluding tags: [:live]
+
+OBSERVED: run/3 captures marker; successful run!/3 discards marker
+.
+Slowest individual cases (includes isolated process startup):
+
+Finished in 1.1 seconds (0.00s async, 1.1s sync)
+
+Result: 1 passed
+  1.112s ShapingEvidenceBoundaryTest test observes current successful child output boundary

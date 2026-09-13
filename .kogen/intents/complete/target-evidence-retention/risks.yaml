@@ -1,0 +1,36 @@
+[
+  {
+    "id": "evidence-ownership",
+    "scenario_ids": [
+      "isolated-delivery",
+      "mixed-retention",
+      "invalid-evidence",
+      "frozen-evidence",
+      "semantic-rework",
+      "compatibility-cleanup"
+    ],
+    "description": "Automatic retention can silently lose exact bytes or conflate controller custody with Reviewer inspection. Preserve existing ownership and storage while retaining all required bytes independently of citations.",
+    "ownership": [
+      {
+        "paths": "Target manifest and required source artifacts in existing target-owned retained runtime output locations",
+        "when_exists": "Preserve preexisting user files; use target-owned unique run locations and fail unsafe collisions. Sources must survive isolated supervisor cleanup.",
+        "owner_after_creation": "The producing target owns source files; no ownership transfer to a Developer or Reviewer.",
+        "owner_during_operation": "The target remains source owner; Build reads and binds exact validated versions through publication.",
+        "permitted_mutation": "Creation before validation is allowed; mutation or deletion of bound sources before publication prevents publication.",
+        "validation": "Strict schema, framing, repository containment including symlinks, regular files and SHA-256 of exact bytes at capture and publication.",
+        "git_state": "Existing runtime output remains ignored; raw account streams remain private and outside required evidence.",
+        "upgrade_behavior": "No historical rewrite, migration or new source cleanup policy."
+      },
+      {
+        "paths": "Controller-retained target snapshots in existing scenario-tracking runtime records and their self-contained Complete copies",
+        "when_exists": "Follow existing exclusive Build record creation, integrity checks and Complete collision/rollback rules; never overwrite external changes or user-owned files.",
+        "owner_after_creation": "Build controller owns retained bytes immediately after capture.",
+        "owner_during_operation": "Build controller owns current records; published Complete preserves immutable historical evidence. Reviewer citations retain separate role provenance.",
+        "permitted_mutation": "Only existing verified controller updates may append current-attempt evidence; later attempts cannot replace prior exact-byte versions.",
+        "validation": "Recompute digests from decoded bytes, preserve source path and target/attempt provenance, and verify sources unchanged before publication.",
+        "git_state": "Runtime records remain ignored; Complete copy is committed by the existing publication flow.",
+        "upgrade_behavior": "Old receipts remain valid without manifests and are not backfilled; no retention service or storage migration."
+      }
+    ]
+  }
+]

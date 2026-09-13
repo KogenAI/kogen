@@ -25,6 +25,7 @@ defmodule Kogen.LifecycleTest do
     on_exit(fn -> File.rm_rf(dest) end)
 
     install_distinct_profiles!(dest)
+    install_target_evidence_fixture!(dest)
     init_fixture_git!(dest)
     original_parent = git!(dest, ["rev-parse", "HEAD"])
     {intent_id, original_intent, original_scenarios} = shape_and_explicitly_approve!(dest)
@@ -75,7 +76,7 @@ defmodule Kogen.LifecycleTest do
              "Reviewer-directed rework applied"
 
     evidence = File.read!(Path.join(complete_dir, "evidence.md"))
-    assert evidence =~ "Outer resumptions used: 1"
+    assert evidence =~ "Outer resumptions used: 2"
     assert evidence =~ "Reviewer verdict: accept"
 
     subject = git!(dest, ["log", "-1", "--format=%s"])
@@ -99,23 +100,34 @@ defmodule Kogen.LifecycleTest do
       |> File.read!()
       |> String.split("\n", trim: true)
 
-    assert length(log_lines) == 4
+    assert length(log_lines) == 5
     assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 2
-    assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 1
+    assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 2
 
     assert Enum.any?(log_lines, fn line ->
              String.contains?(line, "exec resume ") and
                String.ends_with?(line, " dev-session-1 -")
            end)
 
+    resume_lines = Enum.filter(log_lines, &String.contains?(&1, "exec resume "))
+    assert length(resume_lines) == 2
+    assert Enum.all?(resume_lines, &String.ends_with?(&1, " dev-session-1 -"))
+
     resume_feedback = File.read!(Path.join(dest, ".kogen/runtime/developer-resume-prompts"))
 
-    assert_delegation_prompt!(resume_feedback, :developer)
+    resumed_prompts =
+      resume_feedback
+      |> String.split("# Developer Role", trim: true)
+      |> Enum.map(&("# Developer Role" <> &1))
+
+    assert length(resumed_prompts) == 2
+    Enum.each(resumed_prompts, &assert_delegation_prompt!(&1, :developer))
     assert resume_feedback =~ "# Developer Role"
     assert resume_feedback =~ "## Required final Developer handoff"
     assert resume_feedback =~ ~s("attempt_token": "<the supplied token>")
 
     assert resume_feedback =~ "category: review_rework"
+    assert resume_feedback =~ "category: declared_target"
     assert resume_feedback =~ "record: "
     refute resume_feedback =~ ~s("verdict":"rework")
     refute resume_feedback =~ bulk_sentinel
@@ -134,17 +146,55 @@ defmodule Kogen.LifecycleTest do
              &String.starts_with?(&1["failure"], "Reviewer findings:")
            )
 
+    [invalid_attempt, initial_attempt, accepted_attempt] = tracking["attempts"]
+
+    assert Enum.uniq(Enum.map(tracking["attempts"], & &1["developer_session_id"])) == [
+             "dev-session-1"
+           ]
+
+    refute initial_attempt["reviewer_session"] == accepted_attempt["reviewer_session"]
+    invalid_receipt = List.first(invalid_attempt["targets"])
+    assert invalid_receipt["target_evidence_error"] =~ "duplicate evidence manifest frames"
+    assert invalid_attempt["failure"] =~ "declared-target failure"
+
+    for {attempt, expected} <- [
+          {initial_attempt, "behavior still violates scenario\n"},
+          {accepted_attempt, "reviewed behavior\n"}
+        ] do
+      receipt = List.first(attempt["targets"])
+      assert receipt["target"] == "target_evidence"
+      refute receipt["output"] =~ "PRIVATE_TARGET_SENTINEL"
+      retained = receipt["target_evidence"]
+      assert retained["attempt_token"] == attempt["attempt_token"]
+      semantic = List.first(retained["required_evidence"])
+      assert Base.decode64!(semantic["content_base64"]) == expected
+
+      assert semantic["sha256"] ==
+               Base.encode16(:crypto.hash(:sha256, expected), case: :lower)
+    end
+
+    assert Map.has_key?(
+             initial_attempt["reviewer_reference_snapshots"],
+             ".kogen/runtime/target-evidence/2-initial/semantic.txt"
+           )
+
+    accepted_refs = accepted_attempt["reviewer_reference_snapshots"]
+    assert Map.has_key?(accepted_refs, ".kogen/runtime/target-evidence/3-reviewed/semantic.txt")
+    refute Map.has_key?(accepted_refs, ".kogen/runtime/target-evidence/3-reviewed/uncited.bin")
+
     refute resume_feedback =~ "settled Check failure:",
            "a failed Check settlement would consume a second outer resumption"
 
     assert Enum.at(log_lines, 0) =~ "--model fixture-developer"
     assert Enum.at(log_lines, 0) =~ "model_reasoning_effort=\"developer-effort\""
-    assert Enum.at(log_lines, 1) =~ "--model fixture-reviewer"
-    assert Enum.at(log_lines, 1) =~ "model_reasoning_effort=\"reviewer-effort\""
-    assert Enum.at(log_lines, 2) =~ "--model fixture-developer"
-    assert Enum.at(log_lines, 2) =~ "model_reasoning_effort=\"developer-effort\""
-    assert Enum.at(log_lines, 3) =~ "--model fixture-reviewer"
-    assert Enum.at(log_lines, 3) =~ "model_reasoning_effort=\"reviewer-effort\""
+    assert Enum.at(log_lines, 1) =~ "--model fixture-developer"
+    assert Enum.at(log_lines, 1) =~ "model_reasoning_effort=\"developer-effort\""
+    assert Enum.at(log_lines, 2) =~ "--model fixture-reviewer"
+    assert Enum.at(log_lines, 2) =~ "model_reasoning_effort=\"reviewer-effort\""
+    assert Enum.at(log_lines, 3) =~ "--model fixture-developer"
+    assert Enum.at(log_lines, 3) =~ "model_reasoning_effort=\"developer-effort\""
+    assert Enum.at(log_lines, 4) =~ "--model fixture-reviewer"
+    assert Enum.at(log_lines, 4) =~ "model_reasoning_effort=\"reviewer-effort\""
 
     assert_delegation_prompt!(
       File.read!(Path.join(dest, ".kogen/runtime/developer-launch-prompt")),
@@ -161,19 +211,26 @@ defmodule Kogen.LifecycleTest do
     refute File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-1")) =~ bulk_sentinel
     refute File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-2")) =~ bulk_sentinel
 
-    check_records =
+    check_histories =
       (verification_history_archives(raw_log_dir) ++
          [Path.join(dest, ".kogen/runtime/verification-history.jsonl")])
       |> Enum.filter(&File.regular?/1)
-      |> Enum.flat_map(fn path ->
+      |> Enum.map(fn path ->
         path
         |> File.stream!()
         |> Enum.map(&(String.trim(&1) |> Jason.decode!()))
+        |> Enum.filter(&(&1["session_id"] == "dev-session-1"))
       end)
-      |> Enum.filter(&(&1["session_id"] == "dev-session-1"))
 
-    failed_check_index = Enum.find_index(check_records, &(&1["status"] == "failed"))
-    passed_check_index = Enum.find_index(check_records, &(&1["status"] == "passed"))
+    initial_history =
+      Enum.find(check_histories, fn records ->
+        Enum.any?(records, &String.contains?(&1["reason"] || "", "lib/kogen_fake_break.ex"))
+      end)
+
+    assert is_list(initial_history), "the initial Developer Check history must be retained"
+
+    failed_check_index = Enum.find_index(initial_history, &(&1["status"] == "failed"))
+    passed_check_index = Enum.find_index(initial_history, &(&1["status"] == "passed"))
 
     assert is_integer(failed_check_index), "the initial Developer Stop must record a failed Check"
     assert is_integer(passed_check_index), "the same Developer must later record a passed Check"
@@ -181,7 +238,7 @@ defmodule Kogen.LifecycleTest do
     assert failed_check_index < passed_check_index,
            "the failed Stop Check must precede the passing Check in one Developer thread"
 
-    failed_reason = check_records |> Enum.at(failed_check_index) |> Map.fetch!("reason")
+    failed_reason = initial_history |> Enum.at(failed_check_index) |> Map.fetch!("reason")
 
     assert failed_reason =~ "lib/kogen_fake_break.ex",
            "the retained failed settlement reason must identify the bounded fixture check"
@@ -212,6 +269,80 @@ defmodule Kogen.LifecycleTest do
       expert: {model: fixture-expert, effort: expert-effort}
     outer_resumptions: 2
     """)
+  end
+
+  defp install_target_evidence_fixture!(dest) do
+    source = File.cwd!()
+
+    for relative <- [
+          "test/test_helper.exs",
+          "test/support/isolated_case.ex",
+          "test/support/isolated_process.py",
+          "test/support/timing_formatter.ex"
+        ] do
+      destination = Path.join(dest, relative)
+      File.mkdir_p!(Path.dirname(destination))
+      File.cp!(Path.join(source, relative), destination)
+    end
+
+    File.write!(Path.join(dest, "test/support/target_evidence_lifecycle_producer.exs"), ~S'''
+    defmodule Kogen.TargetEvidenceLifecycleProducer do
+      use Kogen.IsolatedCase, async: true, target_evidence: :required
+
+      test "publishes retained scenario evidence through isolation" do
+        counter_path = ".kogen/runtime/target-evidence-invocations"
+        invocation = if File.exists?(counter_path), do: File.read!(counter_path) |> String.to_integer(), else: 0
+        invocation = invocation + 1
+        File.write!(counter_path, Integer.to_string(invocation))
+        reviewed? = File.read!("dummy.txt") == "reviewed fixture value\n"
+        state = cond do
+          invocation == 1 -> "invalid"
+          reviewed? -> "reviewed"
+          true -> "initial"
+        end
+        run = "#{invocation}-#{state}"
+        semantic = if reviewed?, do: "reviewed behavior\n", else: "behavior still violates scenario\n"
+        root = Path.join(".kogen/runtime/target-evidence", run)
+        File.mkdir_p!(root)
+        File.write!(Path.join(root, "semantic.txt"), semantic, [:exclusive])
+        File.write!(Path.join(root, "uncited.bin"), <<0, 7, 255>>, [:exclusive])
+
+        required =
+          for {name, bytes} <- [{"semantic.txt", semantic}, {"uncited.bin", <<0, 7, 255>>}] do
+            %{"path" => Path.join(root, name), "sha256" => sha256(bytes)}
+          end
+
+        manifest_path = Path.join(root, "manifest.json")
+        entries =
+          Enum.map_join(required, ",", fn entry ->
+            ~s({"path":"#{entry["path"]}","sha256":"#{entry["sha256"]}"})
+          end)
+        manifest = ~s({"schema_version":1,"required_evidence":[#{entries}]})
+        File.write!(manifest_path, manifest, [:exclusive])
+        locator = ~s({"manifest_path":"#{manifest_path}","sha256":"#{sha256(manifest)}"})
+        IO.write("progress without newline")
+        if invocation == 1, do: IO.puts("KOGEN_TARGET_EVIDENCE_MANIFEST\t{malformed}")
+        IO.puts("KOGEN_TARGET_EVIDENCE_MANIFEST\t" <> locator)
+        IO.write(String.duplicate("PRIVATE_TARGET_SENTINEL", 500))
+      end
+
+      defp sha256(bytes),
+        do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+    end
+    ''')
+
+    code_paths =
+      :code.get_path()
+      |> Enum.map(&List.to_string/1)
+      |> Enum.filter(&(Path.type(&1) == :absolute and Path.basename(&1) == "ebin"))
+      |> Enum.uniq()
+      |> Enum.map_join(" ", &("-pa " <> &1))
+
+    File.write!(
+      Path.join(dest, "Makefile"),
+      File.read!(Path.join(dest, "Makefile")) <>
+        "\ntarget_evidence:\n\t@KOGEN_TEST_ROOT=$$(pwd) elixir --erl \"+S 2:2 +SDcpu 1 +SDio 1\" #{code_paths} -S mix test test/support/target_evidence_lifecycle_producer.exs --no-start --no-deps-check --no-compile\n"
+    )
   end
 
   defp shape_and_explicitly_approve!(dest) do

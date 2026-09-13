@@ -54,6 +54,13 @@ Candidate. You receive no raw Developer conversation. Independently assess
 the complete Approved contract, its wrong results, actual implementation,
 tests, supplied evidence, and every current finding.
 
+Declared-target receipts may contain controller-retained `target_evidence`.
+Inspect the decoded content of consequential retained artifacts when assessing
+scenario behavior, and cite the actual artifact path that supports each semantic
+claim. A mechanically valid manifest is not evidence that the artifact behavior
+is correct. You need not cite every retained artifact merely to preserve it, and
+controller retention must never be described as Reviewer inspection.
+
 {{execution_policy}}
 
 ## Role authority when delegating

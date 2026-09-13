@@ -34,22 +34,43 @@ if [ "$reviewer" -eq 1 ]; then
  n=0; [ -f "$rev_state" ] && n="$(cat "$rev_state")"; n=$((n+1)); echo "$n" >"$rev_state"
  printf '%s' "$input" > "$state_dir/reviewer-prompt-$n"
  task_context="$(printf '%s' "$input" | python3 -c 'import json,sys; lines=sys.stdin.read().splitlines(); i=max(i for i,v in enumerate(lines) if v=="KOGEN_TASK_CONTEXT"); print(lines[i+1])')"
+ tracking_path="$(printf '%s' "$task_context" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tracking_path"])')"
  approved_path="$(printf '%s' "$task_context" | python3 -c 'import json,sys; print(json.load(sys.stdin)["approved_path"])')"
- if [ -f "$approved_path/requirement.json" ]; then
-  source_matches=0
+ source_matches=0
+ semantic_path="$(python3 - "$tracking_path" <<'PY'
+import json, pathlib, sys
+record = json.loads(pathlib.Path(sys.argv[1]).read_text())
+attempt = record["attempts"][-1]
+targets = attempt.get("targets", [])
+if targets and "target_evidence" in targets[0]:
+    print(targets[0]["target_evidence"]["required_evidence"][0]["path"])
+PY
+)"
+ if [ -n "$semantic_path" ]; then
+  python3 - "$tracking_path" <<'PY' || source_matches=$?
+import base64, json, pathlib, sys
+record = json.loads(pathlib.Path(sys.argv[1]).read_text())
+entry = record["attempts"][-1]["targets"][0]["target_evidence"]["required_evidence"][0]
+actual = base64.b64decode(entry["content_base64"])
+raise SystemExit(0 if actual == b"reviewed behavior\n" else 1)
+PY
+ elif [ -f "$approved_path/requirement.json" ]; then
   python3 - "$approved_path/requirement.json" <<'PY' || source_matches=$?
 import json, pathlib, sys
 requirement = json.loads(pathlib.Path(sys.argv[1]).read_text())
 actual = pathlib.Path(requirement["path"]).read_text().rstrip("\n")
 raise SystemExit(0 if actual == requirement["expected"] else 1)
 PY
- else
-  if [ "$n" -gt 1 ]; then source_matches=0; else source_matches=1; fi
+ elif [ "$n" -le 1 ]; then
+  source_matches=1
  fi
  if [ "$source_matches" -ne 0 ]; then
   verdict="$(printf '%s' "$input" | python3 "$response_helper" reviewer rework)"
  else
   verdict="$(printf '%s' "$input" | python3 "$response_helper" reviewer accept)"
+ fi
+ if [ -n "$semantic_path" ]; then
+  verdict="$(printf '%s' "$verdict" | python3 -c 'import json,sys; value=json.load(sys.stdin); evidence=[{"path":sys.argv[1],"locator":"retained semantic behavior bytes"}]; value["scenarios"][0]["evidence"]=evidence; [item.__setitem__("evidence", evidence) for item in value["findings"]]; print(json.dumps(value))' "$semantic_path")"
  fi
  printf '%s\n' "$verdict" >"$output_file"
  printf '{"type":"thread.started","thread_id":"reviewer-session-%s"}\n{"type":"turn.completed","thread_id":"reviewer-session-%s"}\n' "$n" "$n"; exit 0
@@ -58,10 +79,15 @@ if [ -n "$resume_id" ]; then
  printf '%s' "$input" >> "$state_dir/developer-resume-prompts"
  sid="$resume_id"
  printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
- # The first independent Reviewer asks for this concrete rework. The resumed
- # Developer thread applies it before its fresh Stop Check.
- printf 'reviewed fixture value\n' > dummy.txt
- printf 'Reviewer-directed rework applied\n' > reviewer-rework-marker.txt
+ # A declared-target protocol failure resumes first without changing the
+ # Candidate. The later semantic Reviewer finding drives the real repair.
+ case "$input" in
+  *'Rework required (category: declared_target;'*) ;;
+  *)
+   printf 'reviewed fixture value\n' > dummy.txt
+   printf 'Reviewer-directed rework applied\n' > reviewer-rework-marker.txt
+   ;;
+ esac
  stop_check pass false
  response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
  printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Controlled offline provider for scenario-tracking lifecycle fixtures."""
+import base64
 import json
 import os
 import pathlib
@@ -42,6 +43,22 @@ def context(prompt):
 
 def refs():
     return [{"path": "Makefile", "locator": "check"}]
+
+
+def review_refs(snapshot, mode):
+    if mode.startswith("target_evidence"):
+        target = snapshot.get("attempt", {}).get("targets", [])[0]
+        retained = target.get("target_evidence", {})
+        entries = retained.get("required_evidence", [])
+        if len(entries) != 2:
+            raise ValueError("Reviewer did not receive two retained target artifacts")
+        semantic = entries[0]
+        if semantic.get("path") != ".kogen/runtime/target-evidence/semantic.txt":
+            raise ValueError("Reviewer did not inspect the semantic target artifact")
+        if base64.b64decode(semantic.get("content_base64", "")) != b"reviewed behavior\n":
+            raise ValueError("retained semantic target artifact has wrong behavior")
+        return [{"path": semantic["path"], "locator": "exact retained semantic behavior"}]
+    return refs()
 
 
 def count(name):
@@ -108,14 +125,18 @@ def verdict(snapshot, review, mode):
     if mode == "regression" and review == 2:
         dispositions = [{"id": finding, "status": "closed", "reason": "fixed", "evidence": refs()} for finding in open_ids]
         findings = [{"scenario_ids": ids, "reason": "regression found", "evidence": refs()}]
-    return {
+    evidence = review_refs(snapshot, mode)
+    response = {
         "candidate_id": snapshot.get("candidate_id", "missing-candidate"),
         "attempt_token": snapshot.get("attempt_token", "missing-token"),
         "verdict": "rework" if rework else "accept",
-        "scenarios": [{"id": scenario, "status": status, "reason": "fixture review", "evidence": refs()} for scenario in ids],
+        "scenarios": [{"id": scenario, "status": status, "reason": "fixture review", "evidence": evidence} for scenario in ids],
         "dispositions": dispositions,
         "findings": findings,
     }
+    if mode == "target_evidence_mutation":
+        (RUNTIME / "target-evidence" / "semantic.txt").write_text("mutated after inspection\n")
+    return response
 
 
 def main():

@@ -1,0 +1,25 @@
+{
+  "id": "01a099c1-66c5-7fcb-a972-4a62e3e42a13",
+  "slug": "target-evidence-retention",
+  "title": "Retain required target evidence independently of Reviewer citations",
+  "status": "approved",
+  "shaped_against": {
+    "branch": "main",
+    "head": "6072c0f550183a3dd6c5153e97154ec10653df27"
+  },
+  "shaping": {
+    "harness": "codex",
+    "model": "gpt-6-astra",
+    "effort": "low",
+    "started": "2026-09-13T07:53:03.944667Z"
+  },
+  "may_change_guarded_paths": [
+    "lib/kogen/build.ex",
+    "lib/kogen/build/**",
+    "test/kogen/**",
+    "test/support/**",
+    "priv/kogen/prompts/reviewer.md",
+    "README.md",
+    "scripts/check/README.md"
+  ]
+}

@@ -15,7 +15,7 @@ defmodule Kogen.Build do
       Kogen.ExecutionPolicy
     ]
 
-  alias Kogen.Build.{Contract, Tracking}
+  alias Kogen.Build.{Contract, TargetEvidence, Tracking}
 
   @lock_path ".kogen/build.lock"
   @approved_base ".kogen/intents/approved"
@@ -308,8 +308,11 @@ defmodule Kogen.Build do
   end
 
   defp run_declared_targets(ctx, candidate_id, session_id, number, [name | rest]) do
-    outcome = Kogen.Check.run_target(name)
-    receipt = target_receipt(name, outcome, candidate_id, session_id, ctx.token)
+    original_outcome = Kogen.Check.run_target(name)
+
+    {outcome, receipt} =
+      target_receipt(name, original_outcome, candidate_id, session_id, ctx.token)
+
     receipts = Map.get(current_attempt(ctx), "targets", []) ++ [receipt]
 
     with :ok <- bound_inputs_unchanged(ctx, candidate_id, session_id),
@@ -338,7 +341,7 @@ defmodule Kogen.Build do
         {:error, {code, out}} -> {"failed", code, out}
       end
 
-    %{
+    base = %{
       "target" => name,
       "status" => status,
       "exit_code" => code,
@@ -347,6 +350,27 @@ defmodule Kogen.Build do
       "developer_session_id" => session_id,
       "attempt_token" => token
     }
+
+    case TargetEvidence.capture(output, name, token) do
+      {:ok, nil} ->
+        {result, base}
+
+      {:ok, snapshot} ->
+        {result, Map.put(base, "target_evidence", snapshot)}
+
+      {:error, reason} ->
+        failed_output = output <> "\nKogen target evidence validation failed: #{reason}\n"
+
+        failed = %{
+          base
+          | "status" => "failed",
+            "exit_code" => max(code, 1),
+            "output" => tail_of(failed_output, 4000)
+        }
+
+        {{:error, {max(code, 1), failed_output}},
+         Map.put(failed, "target_evidence_error", reason)}
+    end
   end
 
   defp review(ctx, candidate_id, session_id, number) do
@@ -467,8 +491,9 @@ defmodule Kogen.Build do
 
   defp inputs_unchanged(ctx) do
     with :ok <- Tracking.verify(ctx.tracking),
-         :ok <- approved_unchanged(ctx) do
-      references_unchanged(ctx.references, ctx.tracking)
+         :ok <- approved_unchanged(ctx),
+         :ok <- references_unchanged(ctx.references, ctx.tracking) do
+      target_evidence_unchanged(ctx.tracking)
     end
   end
 
@@ -635,6 +660,23 @@ defmodule Kogen.Build do
     end)
   end
 
+  defp target_evidence_unchanged(tracking) do
+    tracking.record["attempts"]
+    |> Enum.flat_map(&Map.get(&1, "targets", []))
+    |> Enum.flat_map(fn receipt ->
+      case Map.fetch(receipt, "target_evidence") do
+        {:ok, snapshot} -> [snapshot]
+        :error -> []
+      end
+    end)
+    |> Enum.reduce_while(:ok, fn snapshot, :ok ->
+      case TargetEvidence.verify(snapshot) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, "bound target evidence changed: #{reason}"}}
+      end
+    end)
+  end
+
   # Publication copies frozen inputs and adds noncolliding generated evidence.
   # A failed stage/commit restores Approved bytes from controller memory, never
   # from a Complete copy that an external Git hook might have changed.
@@ -771,7 +813,8 @@ defmodule Kogen.Build do
       end)
 
     with :ok <- Tracking.verify(ctx.tracking),
-         :ok <- references_unchanged(references, ctx.tracking) do
+         :ok <- references_unchanged(references, ctx.tracking),
+         :ok <- target_evidence_unchanged(ctx.tracking) do
       cond do
         File.exists?(publication.approved_dir) ->
           {:error, "Approved package reappeared during publication"}

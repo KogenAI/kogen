@@ -42,7 +42,7 @@ cat >"$dir/scenarios.yaml" <<'EOF'
   when: the fixture approves it
   then: public Build commits dummy.txt containing reviewed fixture value and reviewer-rework-marker.txt
   wrong_result: Shape does not persist an Intent or Build commits the initial unreviewed value
-  verified_by: [check]
+  verified_by: [check, target_evidence]
   evidence: public mix kogen.shape against fake interactive Codex
 EOF
 cat >"$dir/requirement.json" <<'EOF'

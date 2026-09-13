@@ -7,18 +7,22 @@ defmodule Kogen.IsolatedCase do
   # becomes a normal ExUnit.Case.
   @child_marker "KOGEN_ISOLATED_CASE_CHILD"
   @ready_message "KOGEN_ISOLATED_READY\n"
+  @target_evidence_prefix "KOGEN_TARGET_EVIDENCE_MANIFEST\t"
   @default_timeout 120_000
 
   defmacro __using__(options) do
     options = Keyword.put(options, :async, true)
+    target_evidence = Keyword.get(options, :target_evidence)
+    exunit_options = Keyword.delete(options, :target_evidence)
 
     if System.get_env(@child_marker) == "1" do
       quote do
-        use ExUnit.Case, Kogen.IsolatedCase.child_case_options(unquote(options))
+        use ExUnit.Case, Kogen.IsolatedCase.child_case_options(unquote(exunit_options))
       end
     else
       quote do
-        use ExUnit.Case, unquote(options)
+        @kogen_isolated_target_evidence unquote(target_evidence)
+        use ExUnit.Case, unquote(exunit_options)
         import ExUnit.Case, except: [test: 2, test: 3]
         import Kogen.IsolatedCase, only: [test: 2, test: 3]
       end
@@ -36,6 +40,7 @@ defmodule Kogen.IsolatedCase do
   defp dispatch_test(message, context, contents, caller) do
     source = Path.expand(caller.file)
     body = Keyword.fetch!(contents, :do)
+    target_evidence = Module.get_attribute(caller.module, :kogen_isolated_target_evidence)
 
     quote do
       ExUnit.Case.test unquote(message), isolated_context do
@@ -50,7 +55,11 @@ defmodule Kogen.IsolatedCase do
               Kogen.IsolatedCase.run!(
                 unquote(source),
                 isolated_context.test,
-                Kogen.IsolatedCase.dispatch_options(isolated_context, unquote(@default_timeout))
+                Kogen.IsolatedCase.dispatch_options(
+                  isolated_context,
+                  unquote(@default_timeout),
+                  unquote(target_evidence)
+                )
               )
             end
         end
@@ -145,7 +154,12 @@ defmodule Kogen.IsolatedCase do
 
   @doc false
   def dispatch_options(context, default_timeout) do
-    [:timeout, :collection_timeout, :readiness, :startup_timeout]
+    dispatch_options(context, default_timeout, nil)
+  end
+
+  @doc false
+  def dispatch_options(context, default_timeout, target_evidence) do
+    [:timeout, :collection_timeout, :readiness, :startup_timeout, :target_evidence]
     |> Enum.reduce([parameters: context], fn key, options ->
       case Map.fetch(context, key) do
         {:ok, value} -> Keyword.put(options, key, value)
@@ -153,7 +167,13 @@ defmodule Kogen.IsolatedCase do
       end
     end)
     |> Keyword.put_new(:timeout, default_timeout)
+    |> maybe_put_target_evidence(target_evidence)
   end
+
+  defp maybe_put_target_evidence(options, nil), do: options
+
+  defp maybe_put_target_evidence(options, value),
+    do: Keyword.put_new(options, :target_evidence, value)
 
   defp matches_parameters?(parameter, expected) do
     Enum.all?(parameter, fn {key, value} -> Map.get(expected, key) == value end)
@@ -161,14 +181,58 @@ defmodule Kogen.IsolatedCase do
 
   @doc false
   def run!(source, selector, options \\ []) do
+    options = normalize_options(options)
+    required? = Keyword.get(options, :target_evidence) == :required
+
     case run(source, selector, options) do
-      {:ok, _output} ->
+      {:ok, output} ->
+        frames = target_evidence_frames(output)
+        forward_target_evidence(frames)
+
+        if required? and frames == [] do
+          raise ExUnit.AssertionError,
+            message: "isolated test #{source}:#{selector} produced no target evidence manifest"
+        end
+
         :ok
 
       {:error, reason, output} ->
+        # Forwarding is best-effort and happens before raising only so a
+        # successful child can expose its structured evidence. It must never
+        # replace the child's status or cleanup error.
+        output |> target_evidence_frames() |> forward_target_evidence()
+
         raise ExUnit.AssertionError,
           message: "isolated test #{source}:#{selector} failed (#{inspect(reason)})\n#{output}"
     end
+  end
+
+  defp target_evidence_frames(output) do
+    lines = :binary.split(output, "\n", [:global])
+    complete_lines = if String.ends_with?(output, "\n"), do: lines, else: Enum.drop(lines, -1)
+
+    complete_lines
+    |> Enum.flat_map(fn line ->
+      case :binary.match(line, @target_evidence_prefix) do
+        {offset, _length} ->
+          [binary_part(line, offset, byte_size(line) - offset) <> "\n"]
+
+        :nomatch ->
+          []
+      end
+    end)
+  end
+
+  defp forward_target_evidence(frames) do
+    Enum.each(frames, fn frame ->
+      try do
+        IO.write(frame)
+      rescue
+        _ -> :ok
+      catch
+        _, _ -> :ok
+      end
+    end)
   end
 
   @doc false

@@ -63,6 +63,15 @@ Developers and their delegated helpers must not run `make check`, `make live`, a
 
 Every scenario's `verified_by` is a YAML list of Make target names, such as `[check]`. The real lifecycle fixture has a bounded check target; it never invokes the full live suite recursively.
 
+An opted-in isolated test can require forwarding of target evidence with
+`target_evidence: :required`. A declared target may emit one
+`KOGEN_TARGET_EVIDENCE_MANIFEST<TAB>{...}` line naming a repository-relative,
+SHA-256-bound manifest. Build validates and snapshots that manifest and every
+required artifact in the target receipt before Review. These controller-owned
+snapshots preserve uncited required bytes; Reviewer citations remain separate
+evidence of semantic inspection. Targets without a frame keep their existing
+behavior.
+
 Build validates the full Approved scenario contract before launching a provider.
 Each scenario needs a unique nonblank `id`, `given`, `when`, `then`,
 `wrong_result`, `evidence`, and a nonempty `verified_by` list of existing targets.

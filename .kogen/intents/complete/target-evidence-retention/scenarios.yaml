@@ -1,0 +1,68 @@
+[
+  {
+    "id": "isolated-delivery",
+    "given": "An opted-in isolated child emits a valid evidence locator with preceding unterminated progress and more than 4,000 trailing output bytes",
+    "when": "The actual macro/run! dispatcher feeds a target run by the production Build driver",
+    "then": "The validated manifest and required entries reach the current target receipt before Review, without bulk private child output",
+    "wrong_result": "Tests call run/3 or hand-assemble receipts and pass while run!/3 still drops output",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Composed offline lifecycle fixture through child dispatch, Check.run_target, Build, provider fake and Complete; assert receipt and absence of private sentinel"
+  },
+  {
+    "id": "mixed-retention",
+    "given": "A target manifest lists two different required artifacts and Review directly cites only the artifact supporting its semantic claim",
+    "when": "The public Build driver accepts and publishes the Candidate",
+    "then": "Complete retains the exact manifest and both decoded artifact byte sequences with source hashes and target/attempt provenance; controller retention and Reviewer citations remain distinct",
+    "wrong_result": "Publication requires every file to be cited, loses the uncited file, or labels controller snapshots as Reviewer inspection",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Public-driver mixed-citation fixture; inspect persisted Complete after removing only fixture-owned runtime sources; recompute decoded-byte hashes"
+  },
+  {
+    "id": "invalid-evidence",
+    "given": "A required evidence producer or manifest has a missing frame, duplicate/malformed frame, invalid schema, duplicate path, unsafe path, absent/nonregular artifact or mismatched digest",
+    "when": "The evidence crosses the real isolated output boundary and Build validates it",
+    "then": "Expected missing output fails the opted-in producer; invalid emitted evidence fails the target and uses existing rework limits, never yielding accepted publication",
+    "wrong_result": "Forwarding drops bad frames or Build treats invalid evidence as optional absence",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Parameterized focused validation and composed producer/consumer negative controls including symlink escape, malformed/duplicate frames and a valid locator beyond the diagnostic tail"
+  },
+  {
+    "id": "frozen-evidence",
+    "given": "Build has validated a manifest and retained its required artifacts",
+    "when": "A bound manifest/artifact changes or disappears before publication, or a snapshot claims a digest inconsistent with its decoded bytes",
+    "then": "Publication is prevented by evidence integrity checks; historical attempt snapshots and Approved input remain protected",
+    "wrong_result": "Only claimed hashes are checked, or a later version replaces earlier evidence",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Public-driver mutation controls plus decoded-byte forgery control at the publication boundary; existing rollback assertions"
+  },
+  {
+    "id": "semantic-rework",
+    "given": "Required artifacts are mechanically valid but contain behavior that violates the scenario",
+    "when": "The independent Reviewer assesses the actual artifact content and returns a blocking finding",
+    "then": "Build resumes the same Developer within its existing budget and requires fresh gates and fresh independent Review before acceptance",
+    "wrong_result": "A valid manifest or automatic retention is treated as semantic success",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Existing public lifecycle provider fake emits content-derived rework then acceptance; assert same Developer and fresh Reviewer, and substantive prompt guidance against manifest-only semantic claims"
+  },
+  {
+    "id": "compatibility-cleanup",
+    "given": "An unrelated target emits no frame, or an evidence-producing isolated child fails or cannot complete cleanup",
+    "when": "The target runs through normal production and isolation paths",
+    "then": "No-frame unrelated targets continue to work; child/cleanup failure cannot be masked by a valid frame; historical receipts remain usable",
+    "wrong_result": "Manifests become globally mandatory or forwarded evidence hides child/cleanup failure",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "No-frame public lifecycle positive control, focused child/cleanup failure controls, and existing receipt/publication regressions"
+  }
+]
