@@ -19,6 +19,37 @@ defmodule Kogen.ScenarioLifecycleTest do
     end
   end
 
+  test "handoff diagnostics reach the resumed Developer through the retained attempt" do
+    dir = fixture!()
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    assert :ok = run(dir, "handoff_diagnostics")
+    assert File.regular?(Path.join(dir, ".kogen/runtime/developer-verified-diagnostics"))
+    [failed, _corrected] = record!(dir)["attempts"]
+    assert failed["failure"] =~ "path \"lib\""
+    assert failed["failure"] =~ "found directory"
+    assert failed["failure"] =~ "field response must be nonblank text"
+    assert File.read!(Path.join(dir, ".kogen/runtime/resume-sessions")) == "developer-session\n"
+    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+  end
+
+  test "invalid Review retains all entry diagnoses and stops without publication" do
+    dir = fixture!()
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    assert {:error, reason} = run(dir, "verdict_diagnostics")
+    assert reason =~ "Reviewer failure"
+    assert reason =~ "path \"lib\""
+    assert reason =~ "found directory"
+    assert reason =~ "path \"/etc/hosts\""
+    assert reason =~ "unsafe path"
+    record = record!(dir)
+    assert List.last(record["attempts"])["failure"] =~ "found directory"
+    assert [%{"id" => "F1", "status" => "open", "disposition_history" => []}] = record["findings"]
+    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "2"
+    refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+  end
+
   test "target failure preserves cumulative findings through the last allowed rework" do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
@@ -112,6 +143,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     on_exit(fn -> File.rm_rf(dir) end)
     assert {:error, reason} = run(dir, "omitted_disposition")
     assert reason =~ "Reviewer failure"
+    assert reason =~ "finding dispositions: missing expected ID \"F1\""
     record = record!(dir)
     assert [%{"id" => "F1", "status" => "open", "disposition_history" => []}] = record["findings"]
     assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "2"
@@ -196,6 +228,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
     File.mkdir_p!(Path.join(dir, ".codex/hooks"))
     File.mkdir_p!(Path.join(dir, "priv/kogen/prompts"))
+    File.mkdir_p!(Path.join(dir, "lib"))
 
     for path <- [
           ".codex/hooks/check.sh",

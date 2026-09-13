@@ -356,6 +356,120 @@ defmodule Kogen.ScenarioContractTest do
     assert {:error, _} = Contract.verdict(unknown_disposition, @contract, binding, old)
   end
 
+  test "coverage diagnostics distinguish missing, duplicate, unexpected, blank, and malformed entries" do
+    contract = %{@contract | scenarios: [@scenario, Map.put(@scenario, "id", "two")]}
+    base = valid_handoff()
+    second = base["scenarios"] |> hd() |> Map.put("id", "two")
+    base = %{base | "scenarios" => base["scenarios"] ++ [second]}
+
+    cases = [
+      {[hd(base["scenarios"])], ["missing expected ID \"two\""]},
+      {base["scenarios"] ++ [second], ["duplicate ID \"two\" at positions 2, 3"]},
+      {[hd(base["scenarios"]), %{second | "id" => "other"}],
+       ["missing expected ID \"two\"", "unexpected ID \"other\" at position 2"]},
+      {[hd(base["scenarios"]), %{second | "id" => " "}],
+       ["position 2: field id must be nonblank text", "missing expected ID \"two\""]},
+      {[hd(base["scenarios"]), "bad"],
+       ["entry at position 2: expected an object", "missing expected ID \"two\""]}
+    ]
+
+    for {entries, details} <- cases do
+      assert {:error, reason} =
+               Contract.handoff(
+                 Jason.encode!(%{base | "scenarios" => entries}),
+                 contract,
+                 "attempt-1",
+                 [%{"id" => "old", "scenario_ids" => ["one"]}]
+               )
+
+      Enum.each(details, &assert(reason =~ &1))
+      refute reason =~ "coverage is missing, duplicate, or invalid"
+    end
+  end
+
+  test "aggregates independent handoff field and reference causes without malformed-reference cascades" do
+    handoff = valid_handoff()
+    scenario = hd(handoff["scenarios"])
+    risk = hd(handoff["risks"])
+    finding = hd(handoff["findings"])
+
+    scenario = %{
+      scenario
+      | "status" => "incomplete",
+        "claim" => "",
+        "implementation" => [],
+        "evidence" => [%{"path" => "lib", "locator" => "directory"}, "bad"]
+    }
+
+    risk = %{risk | "scenario_ids" => [], "response" => "", "evidence" => "bad"}
+
+    finding = %{
+      finding
+      | "status" => "invalid",
+        "response" => "",
+        "evidence" => [%{"path" => "not-here", "locator" => "missing"}]
+    }
+
+    invalid = %{handoff | "scenarios" => [scenario], "risks" => [risk], "findings" => [finding]}
+
+    assert {:error, reason} =
+             Contract.handoff(Jason.encode!(invalid), @contract, "attempt-1", [
+               %{"id" => "old", "scenario_ids" => ["one"]}
+             ])
+
+    expected = [
+      "field status expected",
+      "field claim must be nonblank",
+      "field implementation expected a nonempty list",
+      "evidence[1], path \"lib\": expected a regular file; found directory",
+      "evidence[2] expected an object",
+      "field response must be nonblank",
+      "field evidence expected a nonempty list",
+      "must exactly match the approved risk links",
+      "expected addressed, blocked, or disputed",
+      "path \"not-here\": file does not exist"
+    ]
+
+    Enum.each(expected, &assert(reason =~ &1))
+  end
+
+  test "verdict entry diagnostics aggregate while valid reordered coverage remains accepted" do
+    second = Map.put(@scenario, "id", "two")
+    contract = %{@contract | scenarios: [@scenario, second]}
+    binding = %{candidate_id: "candidate-1", attempt_token: "attempt-1"}
+    verdict = valid_verdict()
+    first = hd(verdict.scenarios)
+    reordered = %{verdict | scenarios: [%{first | id: "two"}, first]}
+
+    assert {:ok, _} =
+             Contract.verdict(reordered, contract, binding, [
+               %{"id" => "old", "scenario_ids" => ["one"]}
+             ])
+
+    invalid =
+      put_in(reordered, [:scenarios, Access.at(0)], %{
+        first
+        | id: "two",
+          reason: "",
+          evidence: [%{"path" => "lib", "locator" => "directory"}]
+      })
+
+    invalid = put_in(invalid, [:dispositions, Access.at(0), :status], "invalid")
+
+    assert {:error, reason} =
+             Contract.verdict(invalid, contract, binding, [
+               %{"id" => "old", "scenario_ids" => ["one"]}
+             ])
+
+    assert reason =~
+             "verdict scenarios: entry \"two\" at position 1: field reason must be nonblank text"
+
+    assert reason =~ "evidence[1], path \"lib\": expected a regular file; found directory"
+
+    assert reason =~
+             "finding dispositions: entry \"old\" at position 1: field status expected closed or open"
+  end
+
   defp valid_handoff do
     %{
       "attempt_token" => "attempt-1",

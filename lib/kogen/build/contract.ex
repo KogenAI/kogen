@@ -53,9 +53,7 @@ defmodule Kogen.Build.Contract do
              "Developer handoff attempt_token"
            ),
          {:ok, findings} <- normalized_open_findings(open_findings),
-         :ok <- validate_handoff_scenarios(Map.get(message, "scenarios"), contract),
-         :ok <- validate_handoff_risks(Map.get(message, "risks"), contract),
-         :ok <- validate_handoff_findings(Map.get(message, "findings"), findings) do
+         :ok <- validate_handoff_collections(message, contract, findings) do
       {:ok, message}
     else
       {:error, _reason} = error -> error
@@ -90,8 +88,7 @@ defmodule Kogen.Build.Contract do
            ),
          true <- Map.get(message, "verdict") in ["accept", "rework"],
          {:ok, old_findings} <- normalized_open_findings(open_findings),
-         :ok <- validate_verdict_scenarios(Map.get(message, "scenarios"), contract),
-         :ok <- validate_dispositions(Map.get(message, "dispositions"), old_findings),
+         :ok <- validate_verdict_collections(message, contract, old_findings),
          :ok <- validate_new_findings(Map.get(message, "findings"), contract),
          :ok <- validate_verdict_whole(message, old_findings) do
       {:ok, message}
@@ -195,65 +192,120 @@ defmodule Kogen.Build.Contract do
 
   defp ownership?(_), do: false
 
-  defp validate_handoff_scenarios(entries, contract) when is_list(entries) do
-    validate_exact(entries, scenario_ids(contract.scenarios), fn entry ->
-      exact_keys(entry, ~w(id status claim implementation evidence), "handoff scenario") and
-        Map.get(entry, "status") == "ready" and nonblank?(entry["claim"]) and
-        refs?(entry["implementation"]) and refs?(entry["evidence"])
-    end)
-  end
-
-  defp validate_handoff_scenarios(_, _), do: {:error, "handoff scenarios are invalid"}
-
-  defp validate_handoff_risks(entries, contract) when is_list(entries) do
-    validate_exact(entries, Enum.map(contract.risks, & &1["id"]), fn entry ->
-      exact_keys(entry, ~w(id scenario_ids response evidence), "handoff risk") and
-        nonblank?(entry["response"]) and refs?(entry["evidence"]) and
-        case Enum.find(contract.risks, &(&1["id"] == entry["id"])) do
-          nil -> false
-          risk -> entry["scenario_ids"] == risk["scenario_ids"]
+  defp validate_handoff_collections(message, contract, findings) do
+    errors =
+      validate_collection(
+        message["scenarios"],
+        scenario_ids(contract.scenarios),
+        "handoff scenarios",
+        fn entry, at ->
+          entry_errors(
+            entry,
+            at,
+            "handoff scenarios",
+            ~w(id status claim implementation evidence),
+            [
+              value_check("status", &(&1 == "ready"), "expected \"ready\""),
+              value_check("claim", &nonblank?/1, "must be nonblank text"),
+              refs_check("implementation"),
+              refs_check("evidence")
+            ]
+          )
         end
-    end)
+      ) ++
+        validate_collection(
+          message["risks"],
+          Enum.map(contract.risks, & &1["id"]),
+          "handoff risks",
+          fn entry, at ->
+            checks = [
+              value_check("response", &nonblank?/1, "must be nonblank text"),
+              refs_check("evidence")
+            ]
+
+            errors =
+              entry_errors(
+                entry,
+                at,
+                "handoff risks",
+                ~w(id scenario_ids response evidence),
+                checks
+              )
+
+            case Enum.find(contract.risks, &(&1["id"] == entry["id"])) do
+              nil ->
+                errors
+
+              risk ->
+                errors ++
+                  field_error(
+                    entry,
+                    at,
+                    "handoff risks",
+                    "scenario_ids",
+                    &(&1 == risk["scenario_ids"]),
+                    "must exactly match the approved risk links"
+                  )
+            end
+          end
+        ) ++
+        validate_collection(
+          message["findings"],
+          Enum.map(findings, & &1["id"]),
+          "handoff findings",
+          fn entry, at ->
+            entry_errors(entry, at, "handoff findings", ~w(id status response evidence), [
+              value_check(
+                "status",
+                &(&1 in ["addressed", "blocked", "disputed"]),
+                "expected addressed, blocked, or disputed"
+              ),
+              value_check("response", &nonblank?/1, "must be nonblank text"),
+              refs_check("evidence")
+            ]) ++
+              if(entry["status"] == "blocked",
+                do: ["handoff finding remains blocked: #{entry["id"]}"],
+                else: []
+              )
+          end
+        )
+
+    errors_result(errors)
   end
 
-  defp validate_handoff_risks(_, _), do: {:error, "handoff risks are invalid"}
+  defp validate_verdict_collections(message, contract, old_findings) do
+    errors =
+      validate_collection(
+        message["scenarios"],
+        scenario_ids(contract.scenarios),
+        "verdict scenarios",
+        fn entry, at ->
+          entry_errors(entry, at, "verdict scenarios", ~w(id status reason evidence), [
+            value_check(
+              "status",
+              &(&1 in ["satisfied", "needs_rework"]),
+              "expected satisfied or needs_rework"
+            ),
+            value_check("reason", &nonblank?/1, "must be nonblank text"),
+            refs_check("evidence")
+          ])
+        end
+      ) ++
+        validate_collection(
+          message["dispositions"],
+          Enum.map(old_findings, & &1["id"]),
+          "finding dispositions",
+          fn entry, at ->
+            entry_errors(entry, at, "finding dispositions", ~w(id status reason evidence), [
+              value_check("status", &(&1 in ["closed", "open"]), "expected closed or open"),
+              value_check("reason", &nonblank?/1, "must be nonblank text"),
+              refs_check("evidence")
+            ])
+          end
+        )
 
-  defp validate_handoff_findings(entries, findings) when is_list(entries) do
-    with :ok <-
-           validate_exact(entries, Enum.map(findings, & &1["id"]), fn entry ->
-             exact_keys(entry, ~w(id status response evidence), "handoff finding") and
-               Map.get(entry, "status") in ["addressed", "blocked", "disputed"] and
-               nonblank?(entry["response"]) and refs?(entry["evidence"])
-           end),
-         nil <- Enum.find(entries, &(Map.get(&1, "status") == "blocked")) do
-      :ok
-    else
-      %{"id" => id} -> {:error, "handoff finding remains blocked: #{id}"}
-      {:error, _reason} = error -> error
-    end
+    errors_result(errors)
   end
-
-  defp validate_handoff_findings(_, _), do: {:error, "handoff findings are invalid"}
-
-  defp validate_verdict_scenarios(entries, contract) when is_list(entries) do
-    validate_exact(entries, scenario_ids(contract.scenarios), fn entry ->
-      exact_keys(entry, ~w(id status reason evidence), "verdict scenario") and
-        Map.get(entry, "status") in ["satisfied", "needs_rework"] and
-        nonblank?(entry["reason"]) and refs?(entry["evidence"])
-    end)
-  end
-
-  defp validate_verdict_scenarios(_, _), do: {:error, "verdict scenarios are invalid"}
-
-  defp validate_dispositions(entries, old_findings) when is_list(entries) do
-    validate_exact(entries, Enum.map(old_findings, & &1["id"]), fn entry ->
-      exact_keys(entry, ~w(id status reason evidence), "finding disposition") and
-        Map.get(entry, "status") in ["closed", "open"] and nonblank?(entry["reason"]) and
-        refs?(entry["evidence"])
-    end)
-  end
-
-  defp validate_dispositions(_, _), do: {:error, "finding dispositions are invalid"}
 
   defp validate_new_findings(entries, contract) when is_list(entries) do
     ids = scenario_ids(contract.scenarios)
@@ -346,16 +398,169 @@ defmodule Kogen.Build.Contract do
 
   defp normalized_open_findings(_), do: {:error, "open findings are invalid"}
 
-  defp validate_exact(entries, expected_ids, valid?) do
-    ids = Enum.map(entries, &if(is_map(&1), do: Map.get(&1, "id"), else: nil))
+  defp validate_collection(entries, _expected_ids, label, _validate) when not is_list(entries),
+    do: ["#{label}: expected a list"]
 
-    if Enum.sort(ids) == Enum.sort(expected_ids) and length(ids) == MapSet.size(MapSet.new(ids)) and
-         Enum.all?(entries, valid?),
-       do: :ok,
-       else:
-         {:error,
-          "coverage is missing, duplicate, or invalid for IDs: #{Enum.join(expected_ids, ", ")}"}
+  defp validate_collection(entries, expected_ids, label, validate) do
+    positioned = Enum.with_index(entries, 1)
+
+    structural =
+      for {entry, position} <- positioned,
+          not is_map(entry),
+          do: "#{label}: entry at position #{position}: expected an object"
+
+    usable = for {entry, position} <- positioned, is_map(entry), do: {entry, position}
+    ids = Enum.map(usable, fn {entry, _position} -> entry["id"] end)
+
+    blank_ids =
+      for {entry, position} <- usable,
+          not nonblank?(entry["id"]),
+          do: "#{label}: entry at position #{position}: field id must be nonblank text"
+
+    missing =
+      for id <- expected_ids, id not in ids, do: "#{label}: missing expected ID #{inspect(id)}"
+
+    unexpected =
+      for {entry, position} <- usable,
+          nonblank?(entry["id"]) and entry["id"] not in expected_ids,
+          do: "#{label}: unexpected ID #{inspect(entry["id"])} at position #{position}"
+
+    duplicates =
+      usable
+      |> Enum.filter(fn {entry, _position} -> nonblank?(entry["id"]) end)
+      |> Enum.group_by(fn {entry, _position} -> entry["id"] end, fn {_entry, position} ->
+        position
+      end)
+      |> Enum.filter(fn {_id, positions} -> length(positions) > 1 end)
+      |> Enum.sort_by(fn {_id, positions} -> hd(positions) end)
+      |> Enum.map(fn {id, positions} ->
+        "#{label}: duplicate ID #{inspect(id)} at positions #{Enum.join(positions, ", ")}"
+      end)
+
+    entry_errors = Enum.flat_map(usable, fn {entry, position} -> validate.(entry, position) end)
+    structural ++ blank_ids ++ missing ++ unexpected ++ duplicates ++ entry_errors
   end
+
+  defp entry_errors(entry, position, label, keys, checks) do
+    key_errors =
+      if exact_keys(entry, keys, label),
+        do: [],
+        else: [
+          entry_label(label, entry, position) <>
+            ": keys are invalid; expected #{Enum.join(keys, ", ")}"
+        ]
+
+    key_errors ++ Enum.flat_map(checks, fn check -> check.(entry, position, label) end)
+  end
+
+  defp value_check(field, predicate, reason) do
+    fn entry, position, label -> field_error(entry, position, label, field, predicate, reason) end
+  end
+
+  defp field_error(entry, position, label, field, predicate, reason) do
+    if predicate.(entry[field]),
+      do: [],
+      else: [entry_label(label, entry, position) <> ": field #{field} #{reason}"]
+  end
+
+  defp refs_check(field) do
+    fn entry, position, label -> reference_errors(entry[field], entry, position, label, field) end
+  end
+
+  defp reference_errors(refs, entry, position, label, field) when not is_list(refs),
+    do: [entry_label(label, entry, position) <> ": field #{field} expected a nonempty list"]
+
+  defp reference_errors([], entry, position, label, field),
+    do: [entry_label(label, entry, position) <> ": field #{field} expected a nonempty list"]
+
+  defp reference_errors(refs, entry, position, label, field) do
+    refs
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn
+      {ref, ref_position} when not is_map(ref) ->
+        [entry_label(label, entry, position) <> ": #{field}[#{ref_position}] expected an object"]
+
+      {ref, ref_position} ->
+        prefix = entry_label(label, entry, position) <> ": #{field}[#{ref_position}]"
+
+        key_errors =
+          if exact_keys(ref, ~w(path locator), "reference"),
+            do: [],
+            else: [prefix <> ": keys are invalid; expected path, locator"]
+
+        locator_errors =
+          if nonblank?(ref["locator"]),
+            do: [],
+            else: [prefix <> ": field locator must be nonblank text"]
+
+        key_errors ++ locator_errors ++ reference_path_errors(ref["path"], prefix)
+    end)
+  end
+
+  defp reference_path_errors(path, prefix) when not is_binary(path) or path == "",
+    do: [prefix <> ": field path must be nonblank text"]
+
+  defp reference_path_errors(path, prefix) do
+    if String.trim(path) == "" do
+      [prefix <> ": field path must be nonblank text"]
+    else
+      path_prefix = prefix <> ", path #{inspect(path)}"
+
+      case local_path_components(path) do
+        :error ->
+          [path_prefix <> ": unsafe path; expected a relative path without traversal or NUL"]
+
+        {:ok, components} ->
+          regular_path_errors(path, components, path_prefix)
+      end
+    end
+  end
+
+  defp regular_path_errors(path, components, prefix) do
+    case first_bad_component(components) do
+      {:symlink, _component} ->
+        [prefix <> ": symlink components are not allowed"]
+
+      {:missing, _component} ->
+        [prefix <> ": file does not exist"]
+
+      :ok ->
+        case File.lstat(path) do
+          {:ok, %{type: :regular}} -> []
+          {:ok, %{type: :directory}} -> [prefix <> ": expected a regular file; found directory"]
+          {:ok, %{type: type}} -> [prefix <> ": expected a regular file; found #{type}"]
+          {:error, :enoent} -> [prefix <> ": file does not exist"]
+          {:error, reason} -> [prefix <> ": could not inspect file: #{inspect(reason)}"]
+        end
+    end
+  end
+
+  defp first_bad_component(components) do
+    components
+    |> Enum.reduce_while({:ok, []}, fn component, {:ok, prefix} ->
+      current = prefix ++ [component]
+
+      case File.lstat(Path.join(current)) do
+        {:ok, %{type: :symlink}} -> {:halt, {:symlink, component}}
+        {:ok, _} -> {:cont, {:ok, current}}
+        {:error, :enoent} -> {:halt, {:missing, component}}
+        {:error, _} -> {:halt, {:missing, component}}
+      end
+    end)
+    |> case do
+      {:ok, _} -> :ok
+      error -> error
+    end
+  end
+
+  defp entry_label(label, entry, position) do
+    if nonblank?(entry["id"]),
+      do: "#{label}: entry #{inspect(entry["id"])} at position #{position}",
+      else: "#{label}: entry at position #{position}"
+  end
+
+  defp errors_result([]), do: :ok
+  defp errors_result(errors), do: {:error, Enum.join(errors, "; ")}
 
   defp refs?(refs) when is_list(refs) and refs != [], do: Enum.all?(refs, &ref?/1)
   defp refs?(_), do: false

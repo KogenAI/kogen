@@ -1,0 +1,14 @@
+[
+  {
+    "id": "diagnostic-compatibility",
+    "scenario_ids": [
+      "coverage-errors",
+      "entry-reference-errors",
+      "aggregate-independent-errors",
+      "validity-unchanged",
+      "handoff-error-delivery",
+      "verdict-error-delivery"
+    ],
+    "description": "Refactoring boolean validation can accidentally change accepted inputs or lose errors at the Build boundary. Preserve the baseline predicates and routes, compare paired positive/negative cases, and require actual fake-consumer inspection of the stored failure. This risk introduces no created/installed/migrated product files or ownership transition. Aggregation must not cascade from malformed parents or stop before independent siblings; multi-defect and malformed-structure controls verify both completeness and restraint."
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "id": "01a0993c-eda3-788a-a2f7-e9ab6d17d071",
+  "slug": "actionable-contract-errors",
+  "title": "Identify invalid Build handoff and Review entries",
+  "status": "approved",
+  "shaped_against": {
+    "branch": "main",
+    "head": "139add42e159614d7aec053146d45954b202ac87"
+  },
+  "shaping": {
+    "harness": "codex",
+    "model": "gpt-6-astra",
+    "effort": "low",
+    "started": "2026-09-13T05:28:22.182781Z"
+  },
+  "may_change_guarded_paths": [
+    "lib/kogen/build/contract.ex",
+    "lib/kogen/build.ex",
+    "test/kogen/scenario_contract_test.exs",
+    "test/kogen/scenario_lifecycle_test.exs",
+    "test/support/scenario_lifecycle_harness.py"
+  ],
+  "appetite": "One Developer conversation with two outer resumptions; offline verification through check.",
+  "non_goals": [
+    "No schema or accepted-input changes, new commands, storage, retention changes, recovery, or increased attempt limits.",
+    "No gate ownership changes or weakened checks; no provider, model, delegation, scheduler, benchmark, or accounting changes.",
+    "No redesign of Approved YAML diagnostics, binding errors, new Reviewer findings without IDs, or whole-verdict consistency diagnostics.",
+    "No copying or approving the older combined Candidate; no unrelated serial slices."
+  ]
+}

@@ -1,0 +1,7 @@
+valid: {:ok, %{"attempt_token" => "probe", "findings" => [], "risks" => [], "scenarios" => [%{"claim" => "Implemented", "evidence" => [%{"locator" => "Kogen", "path" => "README.md"}], "id" => "one", "implementation" => [%{"locator" => "Kogen", "path" => "README.md"}], "status" => "ready"}, %{"claim" => "Implemented", "evidence" => [%{"locator" => "Kogen", "path" => "README.md"}], "id" => "two", "implementation" => [%{"locator" => "Kogen", "path" => "README.md"}], "status" => "ready"}]}}
+directory: {:error, "coverage is missing, duplicate, or invalid for IDs: one, two"}
+missing: {:error, "coverage is missing, duplicate, or invalid for IDs: one, two"}
+duplicate: {:error, "coverage is missing, duplicate, or invalid for IDs: one, two"}
+unexpected: {:error, "coverage is missing, duplicate, or invalid for IDs: one, two"}
+valid verdict: {:ok, %{"attempt_token" => "probe", "candidate_id" => "candidate", "dispositions" => [], "findings" => [], "scenarios" => [%{"evidence" => [%{"locator" => "Kogen", "path" => "README.md"}], "id" => "one", "reason" => "Inspected", "status" => "satisfied"}, %{"evidence" => [%{"locator" => "Kogen", "path" => "README.md"}], "id" => "two", "reason" => "Inspected", "status" => "satisfied"}], "verdict" => "accept"}}
+directory verdict: {:error, "coverage is missing, duplicate, or invalid for IDs: one, two"}

@@ -1,0 +1,68 @@
+[
+  {
+    "id": "coverage-errors",
+    "given": "Each of the five ID-based collections has multiple expected IDs and otherwise valid entries.",
+    "when": "A handoff or verdict has a missing, duplicate, unexpected, absent/blank ID, or non-object entry.",
+    "then": "Reject it with the affected collection and a specific discrepancy; name the offending ID when available, otherwise an unambiguous entry position. Missing, duplicate and unexpected are distinguishable. Use one-based positions, including duplicate-entry positions.",
+    "wrong_result": "Print the entire expected roster as though every entry were invalid, conflate error categories, or crash on malformed entries.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Table-driven Contract.handoff/4 and Contract.verdict/4 cases covering handoff scenarios, risks, findings, verdict scenarios and dispositions; include valid siblings."
+  },
+  {
+    "id": "entry-reference-errors",
+    "given": "Coverage is valid and exactly one ID-based entry has an invalid field or reference among valid siblings.",
+    "when": "Real handoff or verdict validation inspects it.",
+    "then": "Reject with collection, entry ID, failing field and reason. For a bad reference identify its position and supplied path when present. Distinguish a directory from a missing file, unsafe path, symlink, or malformed reference; retain current local regular-file rules.",
+    "wrong_result": "Report only generic invalid coverage, blame valid siblings, discard the reference cause, or weaken reference validation.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Contract regression matrix: invalid keys/status/nonblank text/risk links; empty or malformed reference lists, blank locator, missing path, directory, absolute/traversal/NUL path and symlink components."
+  },
+  {
+    "id": "aggregate-independent-errors",
+    "given": "A handoff or verdict contains several independent defects across in-scope collections, entries, fields and references, including malformed structure alongside valid siblings.",
+    "when": "Contract validation inspects the response.",
+    "then": "Return all independently detectable in-scope errors together in deterministic order, using one-based positions and IDs where available. Explain structural blockers, suppress dependent speculative errors, and continue independent checks. Preserve existing envelope and binding preconditions.",
+    "wrong_result": "Stop at the first collection, entry, field or reference; silently truncate the error list; crash on malformed structure; or fabricate cascades from unusable values.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Multi-defect handoff and verdict matrices spanning all five collections, multiple bad fields/references in one entry, duplicate positions, malformed entry/list plus valid siblings; assert the complete expected diagnostic set and absence of cascading errors."
+  },
+  {
+    "id": "validity-unchanged",
+    "given": "A message is valid under the baseline, including atom-key verdict normalization, optional empty collections and reordered complete ID coverage.",
+    "when": "The new diagnostics run, alongside existing invalid-input controls.",
+    "then": "Accept the same valid messages with the same normalized values and reject the same invalid inputs; retain bindings, blocked finding behavior and whole-verdict consistency.",
+    "wrong_result": "Improve messages by accepting an unsafe reference, imposing new ordering/schema constraints, or changing acceptance/rework semantics.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Existing contract tests plus valid controls paired with new diagnostic cases; baseline-probe.exs documents the current positive controls."
+  },
+  {
+    "id": "handoff-error-delivery",
+    "given": "An offline public Build fixture produces a directory evidence reference and a separate invalid field in another handoff entry or collection.",
+    "when": "Build rejects the handoff and resumes its Developer.",
+    "then": "The preceding attempt failure contains both actionable diagnoses, including the precise scenario, reference path and directory cause; the resumed fake Developer follows the supplied record locator and verifies these details before correcting the handoff in the same session. Review occurs only after valid correction and fresh Check.",
+    "wrong_result": "Component diagnostics pass but the consumer sees a generic error, reads the wrong attempt, or corrects blindly without receiving the diagnosis.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Extend scenario lifecycle harness and test; assert actual record consumption, same session, retained failure and successful correction. Negative control must reject missing or generic diagnostic details at the fake consumer. The consumer negative control must fail if either independent diagnosis is removed or replaced with a generic message."
+  },
+  {
+    "id": "verdict-error-delivery",
+    "given": "An offline public Build fixture receives a verdict with an invalid directory reference and a separate invalid entry field; another case omits a disposition for an existing finding.",
+    "when": "The real Review validation route rejects it.",
+    "then": "Returned Build error and retained attempt failure preserve all independently detectable entry diagnoses; Build stops without publication, a new rework route, or partial finding closure.",
+    "wrong_result": "The validator improves but Build discards the reason, publishes, retries malformed Review, or partially closes a finding.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Extend lifecycle directory-reference case and existing omitted_disposition case; inspect returned error, tracking failure, finding state and absence of Complete."
+  }
+]
