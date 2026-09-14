@@ -76,7 +76,7 @@ defmodule Kogen.LifecycleTest do
              "Reviewer-directed rework applied"
 
     evidence = File.read!(Path.join(complete_dir, "evidence.md"))
-    assert evidence =~ "Outer resumptions used: 2"
+    assert evidence =~ "Outer resumptions used: 1"
     assert evidence =~ "Reviewer verdict: accept"
 
     subject = git!(dest, ["log", "-1", "--format=%s"])
@@ -100,10 +100,10 @@ defmodule Kogen.LifecycleTest do
       |> File.read!()
       |> String.split("\n", trim: true)
 
-    assert length(log_lines) == 5
-    assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 5
+    assert length(log_lines) == 4
+    assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 4
     assert File.read!(Path.join(dest, ".kogen/runtime/fake-reviewer-calls")) == "2\n"
-    assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 2
+    assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 1
 
     assert Enum.any?(log_lines, fn line ->
              String.contains?(line, "exec resume ") and
@@ -111,7 +111,7 @@ defmodule Kogen.LifecycleTest do
            end)
 
     resume_lines = Enum.filter(log_lines, &String.contains?(&1, "exec resume "))
-    assert length(resume_lines) == 2
+    assert length(resume_lines) == 1
     assert Enum.all?(resume_lines, &String.ends_with?(&1, " dev-session-1 -"))
 
     resume_feedback = File.read!(Path.join(dest, ".kogen/runtime/developer-resume-prompts"))
@@ -121,14 +121,13 @@ defmodule Kogen.LifecycleTest do
       |> String.split("# Developer Role", trim: true)
       |> Enum.map(&("# Developer Role" <> &1))
 
-    assert length(resumed_prompts) == 2
+    assert length(resumed_prompts) == 1
     Enum.each(resumed_prompts, &assert_delegation_prompt!(&1, :developer))
     assert resume_feedback =~ "# Developer Role"
     assert resume_feedback =~ "## Required final Developer handoff"
     assert resume_feedback =~ ~s("attempt_token": "<the supplied token>")
 
     assert resume_feedback =~ "category: review_rework"
-    assert resume_feedback =~ "category: declared_target"
     assert resume_feedback =~ "record: "
     refute resume_feedback =~ ~s("verdict":"rework")
     refute resume_feedback =~ bulk_sentinel
@@ -147,16 +146,20 @@ defmodule Kogen.LifecycleTest do
              &String.starts_with?(&1["failure"], "Reviewer findings:")
            )
 
-    [invalid_attempt, initial_attempt, accepted_attempt] = tracking["attempts"]
+    [initial_attempt, accepted_attempt] = tracking["attempts"]
 
     assert Enum.uniq(Enum.map(tracking["attempts"], & &1["developer_session_id"])) == [
              "dev-session-1"
            ]
 
     refute initial_attempt["reviewer_session"] == accepted_attempt["reviewer_session"]
-    invalid_receipt = List.first(invalid_attempt["targets"])
-    assert invalid_receipt["target_evidence_error"] =~ "duplicate evidence manifest frames"
-    assert invalid_attempt["failure"] =~ "declared-target failure"
+
+    invalid_receipt =
+      initial_attempt["verification"]["cycles"]
+      |> Enum.flat_map(& &1["receipts"])
+      |> Enum.find(&(&1["status"] == "failed" and &1["target"] == "target_evidence"))
+
+    assert invalid_receipt["output"] =~ "duplicate evidence manifest frames"
 
     for {attempt, expected} <- [
           {initial_attempt, "behavior still violates scenario\n"},
@@ -188,14 +191,12 @@ defmodule Kogen.LifecycleTest do
 
     assert Enum.at(log_lines, 0) =~ "--model fixture-developer"
     assert Enum.at(log_lines, 0) =~ "model_reasoning_effort=\"developer-effort\""
-    assert Enum.at(log_lines, 1) =~ "--model fixture-developer"
-    assert Enum.at(log_lines, 1) =~ "model_reasoning_effort=\"developer-effort\""
-    assert Enum.at(log_lines, 2) =~ "--model fixture-reviewer"
-    assert Enum.at(log_lines, 2) =~ "model_reasoning_effort=\"reviewer-effort\""
-    assert Enum.at(log_lines, 3) =~ "--model fixture-developer"
-    assert Enum.at(log_lines, 3) =~ "model_reasoning_effort=\"developer-effort\""
-    assert Enum.at(log_lines, 4) =~ "--model fixture-reviewer"
-    assert Enum.at(log_lines, 4) =~ "model_reasoning_effort=\"reviewer-effort\""
+    assert Enum.at(log_lines, 1) =~ "--model fixture-reviewer"
+    assert Enum.at(log_lines, 1) =~ "model_reasoning_effort=\"reviewer-effort\""
+    assert Enum.at(log_lines, 2) =~ "--model fixture-developer"
+    assert Enum.at(log_lines, 2) =~ "model_reasoning_effort=\"developer-effort\""
+    assert Enum.at(log_lines, 3) =~ "--model fixture-reviewer"
+    assert Enum.at(log_lines, 3) =~ "model_reasoning_effort=\"reviewer-effort\""
 
     assert_delegation_prompt!(
       File.read!(Path.join(dest, ".kogen/runtime/developer-launch-prompt")),
@@ -269,6 +270,7 @@ defmodule Kogen.LifecycleTest do
       worker: {model: fixture-worker, effort: worker-effort}
       expert: {model: fixture-expert, effort: expert-effort}
     outer_resumptions: 2
+    verification_retries: 2
     """)
   end
 

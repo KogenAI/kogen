@@ -1,0 +1,1 @@
+{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "python3 /Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/stage-aware-rework-budgets/evidence/native-pass-third/probe_hook.py", "timeout": 30}]}]}}

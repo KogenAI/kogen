@@ -44,6 +44,7 @@ defmodule Kogen.CoreIntegrityTest do
     worker: {model: fake, effort: medium}
     expert: {model: fake, effort: medium}
   outer_resumptions: 2
+  verification_retries: 2
   """
 
   @makefile ".PHONY: check\ncheck:\n\t@true\n"
@@ -170,6 +171,12 @@ defmodule Kogen.CoreIntegrityTest do
     File.mkdir_p!(hook_dir)
     hook = Path.join(hook_dir, "check.sh")
     File.cp!(Path.join(project_root, ".codex/hooks/check.sh"), hook)
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/stop_runner.py"),
+      Path.join(hook_dir, "stop_runner.py")
+    )
+
     File.chmod!(hook, 0o755)
     File.cp!(Path.join(project_root, ".codex/hooks.json"), Path.join(dir, ".codex/hooks.json"))
 

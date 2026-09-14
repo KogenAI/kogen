@@ -1,0 +1,16 @@
+[
+  {
+    "exit": 0,
+    "stdout": "{\"decision\":\"block\",\"reason\":\"Kogen verification failed. Fix the Candidate and stop again.\"}\n",
+    "stderr": "",
+    "state": "{\"schema_version\":1,\"context_sha256\":\"3b78111a404f228829be2b8160316f9c516d1fe8e3ac3ec57cd3d16a800816f9\",\"attempt_token\":\"probe-token\",\"outer_attempt\":0,\"developer_session_id\":\"probe-developer\",\"candidate_id\":\"7c31b9ae948edda7ef9ee2d6d4ec6f2c32bef1e7\",\"cycles\":[{\"sequence\":1,\"attempt_token\":\"probe-token\",\"outer_attempt\":0,\"developer_session_id\":\"probe-developer\",\"candidate_id\":\"7c31b9ae948edda7ef9ee2d6d4ec6f2c32bef1e7\",\"failures_before\":0,\"failures_after\":1,\"status\":\"failed\",\"finished_at\":\"2026-09-14T11:19:46Z\",\"receipts\":[{\"target\":\"check\",\"status\":\"failed\",\"exit_code\":2,\"output\":\"make: *** [check] Error 1\\n\",\"finished_at\":\"2026-09-14T11:19:46Z\",\"candidate_id\":\"7c31b9ae948edda7ef9ee2d6d4ec6f2c32bef1e7\",\"developer_session_id\":\"probe-developer\",\"attempt_token\":\"probe-token\",\"cycle_sequence\":1}]}],\"failures_since_pass\":1,\"terminal_state\":\"pending\"}\n",
+    "dispatch_count": 1
+  },
+  {
+    "exit": 0,
+    "stdout": "{\"continue\":true}\n",
+    "stderr": "",
+    "state": "{\"schema_version\":1,\"context_sha256\":\"3b78111a404f228829be2b8160316f9c516d1fe8e3ac3ec57cd3d16a800816f9\",\"attempt_token\":\"probe-token\",\"outer_attempt\":0,\"developer_session_id\":\"probe-developer\",\"candidate_id\":\"7c31b9ae948edda7ef9ee2d6d4ec6f2c32bef1e7\",\"cycles\":[{\"sequence\":1,\"attempt_token\":\"probe-token\",\"outer_attempt\":0,\"developer_session_id\":\"probe-developer\",\"candidate_id\":\"7c31b9ae948edda7ef9ee2d6d4ec6f2c32bef1e7\",\"failures_before\":0,\"failures_after\":1,\"status\":\"failed\",\"finished_at\":\"2026-09-14T11:19:46Z\",\"receipts\":[{\"target\":\"check\",\"status\":\"failed\",\"exit_code\":2,\"output\":\"make: *** [check] Error 1\\n\",\"finished_at\":\"2026-09-14T11:19:46Z\",\"candidate_id\":\"7c31b9ae948edda7ef9ee2d6d4ec6f2c32bef1e7\",\"developer_session_id\":\"probe-developer\",\"attempt_token\":\"probe-token\",\"cycle_sequence\":1}]},{\"sequence\":2,\"attempt_token\":\"probe-token\",\"outer_attempt\":0,\"developer_session_id\":\"probe-developer\",\"candidate_id\":\"7c31b9ae948edda7ef9ee2d6d4ec6f2c32bef1e7\",\"failures_before\":1,\"failures_after\":0,\"status\":\"passed\",\"finished_at\":\"2026-09-14T11:19:46Z\",\"receipts\":[{\"target\":\"check\",\"status\":\"passed\",\"exit_code\":0,\"output\":\"\",\"finished_at\":\"2026-09-14T11:19:46Z\",\"candidate_id\":\"7c31b9ae948edda7ef9ee2d6d4ec6f2c32bef1e7\",\"developer_session_id\":\"probe-developer\",\"attempt_token\":\"probe-token\",\"cycle_sequence\":2}]}],\"failures_since_pass\":0,\"terminal_state\":\"passed\"}\n",
+    "dispatch_count": 2
+  }
+]

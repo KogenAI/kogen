@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-14T11:22:43.370575+00:00",
+  "status": "draft",
+  "yaml": "valid YAML: .kogen/intents/drafts/unify-verification/intent.yaml\nvalid YAML: .kogen/intents/drafts/unify-verification/scenarios.yaml\nvalid YAML: .kogen/intents/drafts/unify-verification/risks.yaml\nvalid YAML: .kogen/intents/drafts/unify-verification/references.yaml\n",
+  "scenario_count": 15,
+  "risk_count": 3,
+  "declared_targets": [
+    "check",
+    "live"
+  ],
+  "record_sha256_unchanged": true,
+  "probed_candidate_source_unchanged": true,
+  "git_status_unchanged": true,
+  "limitations": "Shaping probes only; no repaired implementation or full acceptance gate execution."
+}

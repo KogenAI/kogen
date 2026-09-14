@@ -1,0 +1,77 @@
+{
+  "record": ".kogen/runtime/scenario-tracking/m0nviywjh4fw3HrB8P3K6HaG/record.json",
+  "sha256": "abb3992464a6e334c9645dbcfe577e545acf3a9fec9567dfd3d1c297d2f5e4ef",
+  "status": "failed",
+  "attempts": [
+    {
+      "number": 0,
+      "status": "failed",
+      "failure": "declared-target failure: make live exited 2: hing in Calendar.ISO.parse_utc_datetime/2\n\n     The following arguments were given to Calendar.ISO.parse_utc_datetime/2:\n\n         # 1\n         nil\n\n         # 2\n         :extended\n\n     Attempted function clauses (showing 1 out of 1):\n\n         def parse_utc_datetime(string, format) when -is_binary(string)- and (-format === :basic- or format === :extended)\n\n     code: DateTime.from_iso8601(initial_attempt[\"check\"][\"finished_at\"])\n     stacktrace:\n       (elixir 1.20.2) lib/calendar/iso.ex:609: Calendar.ISO.parse_utc_datetime/2\n       (elixir 1.20.2) lib/calendar/datetime.ex:1277: DateTime.from_iso8601/3\n       test/kogen/live_shape_to_build_test.exs:361: (test)\n\n\nFinished in 337.0 seconds (337.0s async, 0.00s sync)\n\nResult: 5/6 passed, 257 excluded\nFailed: 1 test\nmake: *** [live] Error 2\n",
+      "check": "passed",
+      "targets": [
+        {
+          "target": "live",
+          "status": "failed"
+        }
+      ],
+      "verdict": null
+    },
+    {
+      "number": 1,
+      "status": "failed",
+      "failure": "Developer handoff semantic invalid: handoff scenarios: entry \"evidence-forwarding\" at position 8: evidence[1], path \"test/kogen/live_shape_to_build_test.exs:361\": file does not exist",
+      "check": "passed",
+      "targets": [],
+      "verdict": null
+    },
+    {
+      "number": 2,
+      "status": "failed",
+      "failure": "stopped after 2 outer resumptions without an accepting Review: Reviewer findings: {\"attempt_token\":\"pApGsbqcMT8IZAhAxQ_xXVt8mzJLQAzv\",\"candidate_id\":\"2d755f32b932fc631f0f562638a54417b194dbe3\",\"dispositions\":[],\"findings\":[{\"evidence\":[{\"locator\":\"lines 149-150 replace any unreadable or malformed prior state with an empty cycle history; lines 151-164 then execute and settle a new cycle\",\"path\":\".codex/hooks/stop_runner.py\"},{\"locator\":\"binding-integrity requires corrupt/replayed receipts not to grant acceptance, an allowance, or extra dispatch\",\"path\":\".kogen/intents/approved/unify-verification/scenarios.yaml\"}],\"reason\":\"Corrupting or deleting the hook state after failed cycles silently resets failures_since_pass and sequence. This can grant additional verification repairs; after terminal exhaustion it can also permit another gate dispatch. Reject malformed/missing prior state once an attempt is active and preserve the terminal latch instead of treating it as a fresh state.\",\"scenario_ids\":[\"shared-failures\",\"regression-bound\",\"native-exhaustion\",\"binding-integrity\"]}],\"scenarios\":[{\"evidence\":[{\"locator\":\"main executes deduplicated configured targets, always placing check first, and Build settles imported verification receipts\",\"path\":\".codex/hooks/stop_runner.py\"},{\"locator\":\"candidate gate receipt records passed check and live for this attempt\",\"path\":\".kogen/runtime/scenario-tracking/m0nviywjh4fw3HrB8P3K6HaG/record.json\"}],\"id\":\"hook-ownership\",\"reason\":\"The hook owns ordered target execution and the recorded candidate receipts show both declared gates passed.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"malformed prior state is reset to empty history before failures_before/failures_after are calculated\",\"path\":\".codex/hooks/stop_runner.py\"}],\"id\":\"shared-failures\",\"reason\":\"A corrupt or missing state file resets the shared counter, allowing more than the configured two repairs.\",\"status\":\"needs_rework\"},{\"evidence\":[{\"locator\":\"complete passing cycles set failures_after to zero and Build validates the state before review\",\"path\":\".codex/hooks/stop_runner.py\"},{\"locator\":\"settlement requires a complete passed cycle with failures_since_pass zero\",\"path\":\"lib/kogen/build/verification.ex\"}],\"id\":\"third-pass\",\"reason\":\"Complete-pass reset and post-settlement review flow are implemented.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"outer rework remains handled by Build's existing rework path after unified verification settlement\",\"path\":\"lib/kogen/build.ex\"},{\"locator\":\"outer-resumption configuration remains explicit\",\"path\":\".kogen/config.yaml\"}],\"id\":\"outer-limit\",\"reason\":\"The separate outer allowance remains configured and is not reset by the verification state.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"structure errors settle verification before routing to rework, and exhausted settlement stops rather than parses/reworks handoff\",\"path\":\"lib/kogen/build.ex\"},{\"locator\":\"candidate receipt contains the bound Developer schema/message hashes and passed declared-target receipts\",\"path\":\".kogen/runtime/scenario-tracking/m0nviywjh4fw3HrB8P3K6HaG/record.json\"}],\"id\":\"handoff-preservation\",\"reason\":\"Handoff schema handling is retained and terminal settlement is checked first.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"any malformed prior state resets cycles and failures_since_pass, defeating the finite verification bound\",\"path\":\".codex/hooks/stop_runner.py\"}],\"id\":\"regression-bound\",\"reason\":\"State corruption can erase failed-cycle history and allow more cycles than the bounded policy permits.\",\"status\":\"needs_rework\"},{\"evidence\":[{\"locator\":\"a malformed or deleted exhausted state is replaced with an empty state before the exhausted latch check, allowing another target dispatch\",\"path\":\".codex/hooks/stop_runner.py\"}],\"id\":\"native-exhaustion\",\"reason\":\"The exhaustion latch is bypassable through malformed/missing state recovery, contrary to terminal no-replay behavior.\",\"status\":\"needs_rework\"},{\"evidence\":[{\"locator\":\"target evidence is captured immediately after each target and embedded in the cycle receipt before continuation\",\"path\":\".codex/hooks/stop_runner.py\"},{\"locator\":\"settlement validates retained target evidence\",\"path\":\"lib/kogen/build/verification.ex\"}],\"id\":\"evidence-forwarding\",\"reason\":\"Target evidence is captured at target completion and validated on settlement.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"malformed prior state is silently replaced with empty cycles rather than rejected; subsequent dispatch can then settle a new state\",\"path\":\".codex/hooks/stop_runner.py\"}],\"id\":\"binding-integrity\",\"reason\":\"Corrupt cycle state is not rejected as an integrity failure and can reset sequence/counter history.\",\"status\":\"needs_rework\"},{\"evidence\":[{\"locator\":\"settlement records verification state bytes in tracking and checks them unchanged for later lifecycle stages\",\"path\":\"lib/kogen/build.ex\"},{\"locator\":\"candidate attempt retains Developer invocation/schema/message hashes and reference snapshots\",\"path\":\".kogen/runtime/scenario-tracking/m0nviywjh4fw3HrB8P3K6HaG/record.json\"}],\"id\":\"preserved-authority\",\"reason\":\"The controller retains settled state and handoff evidence independently of Developer claims.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"verification_retries is explicitly configured as 2\",\"path\":\".kogen/config.yaml\"},{\"locator\":\"config parser requires verification_retries alongside outer_resumptions\",\"path\":\"lib/kogen/intent.ex\"}],\"id\":\"config-contract\",\"reason\":\"Both allowances are explicit and the new setting is parsed as required configuration.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"unified context is supplied only from Build's verification initialization and includes version, targets, attempt, and root bindings\",\"path\":\"lib/kogen/build/verification.ex\"},{\"locator\":\"legacy context route remains distinct in the Stop runner\",\"path\":\".codex/hooks/stop_runner.py\"}],\"id\":\"self-build-transition\",\"reason\":\"The new context is explicit while the legacy route remains separately handled.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"state is scoped under the tracking record, candidate identity is checked after every target, and the hook lock serializes callbacks\",\"path\":\".codex/hooks/stop_runner.py\"}],\"id\":\"lifetime-isolation\",\"reason\":\"Execution state is per-attempt and callback handling is lock-protected.\",\"status\":\"satisfied\"},{\"evidence\":[{\"locator\":\"the execution-policy prompt retains the prohibition on Developer/helper manual gate execution\",\"path\":\"priv/kogen/prompts/execution-policy.md\"},{\"locator\":\"the hook, not the Developer, invokes make targets\",\"path\":\".codex/hooks/stop_runner.py\"}],\"id\":\"gate-guard\",\"reason\":\"Manual gate prohibition remains documented while the owned hook dispatches gates.\",\"status\":\"satisfied\"}],\"verdict\":\"rework\"}",
+      "check": "passed",
+      "targets": [
+        {
+          "target": "live",
+          "status": "passed"
+        }
+      ],
+      "verdict": "rework"
+    }
+  ],
+  "findings": [
+    {
+      "disposition_history": [],
+      "id": "F1",
+      "origin": {
+        "attempt_token": "pApGsbqcMT8IZAhAxQ_xXVt8mzJLQAzv",
+        "candidate_id": "2d755f32b932fc631f0f562638a54417b194dbe3",
+        "evidence": [
+          {
+            "locator": "lines 149-150 replace any unreadable or malformed prior state with an empty cycle history; lines 151-164 then execute and settle a new cycle",
+            "path": ".codex/hooks/stop_runner.py"
+          },
+          {
+            "locator": "binding-integrity requires corrupt/replayed receipts not to grant acceptance, an allowance, or extra dispatch",
+            "path": ".kogen/intents/approved/unify-verification/scenarios.yaml"
+          }
+        ],
+        "reason": "Corrupting or deleting the hook state after failed cycles silently resets failures_since_pass and sequence. This can grant additional verification repairs; after terminal exhaustion it can also permit another gate dispatch. Reject malformed/missing prior state once an attempt is active and preserve the terminal latch instead of treating it as a fresh state.",
+        "reviewer_session": "01a09f9a-966b-7bb1-aaf1-845193d67991",
+        "scenario_ids": [
+          "shared-failures",
+          "regression-bound",
+          "native-exhaustion",
+          "binding-integrity"
+        ]
+      },
+      "scenario_ids": [
+        "shared-failures",
+        "regression-bound",
+        "native-exhaustion",
+        "binding-integrity"
+      ],
+      "status": "open"
+    }
+  ],
+  "candidate_preservation": " M .codex/hooks.json\n M .codex/hooks/check.sh\n M .kogen/config.yaml\n M README.md\n M lib/kogen/build.ex\n M lib/kogen/intent.ex\n M priv/kogen/prompts/developer.md\n M priv/kogen/prompts/execution-policy.md\n M priv/kogen/prompts/reviewer.md\n M priv/kogen/prompts/shaping.md\n M scripts/check/README.md\n M test/kogen/approved_mutation_test.exs\n M test/kogen/build_preconditions_test.exs\n M test/kogen/commit_failure_rollback_test.exs\n M test/kogen/commit_provenance_test.exs\n M test/kogen/core_integrity_test.exs\n M test/kogen/intent_test.exs\n M test/kogen/lifecycle_test.exs\n M test/kogen/live_test.exs\n M test/kogen/reviewer_mutation_test.exs\n M test/kogen/scenario_lifecycle_test.exs\n M test/kogen/settlement_regression_test.exs\n M test/kogen/shape_task_test.exs\n M test/kogen/stop_hook_test.exs\n M test/kogen/two_outer_resumptions_test.exs\n M test/kogen/verification_ownership_lifecycle_test.exs\n M test/support/compiled_fixture.exs\n M test/support/fake_codex\n M test/support/isolated_case.ex\n M test/support/precondition_fixture.ex\n M test/support/scenario_lifecycle_harness.py\n?? .codex/hooks/stop_runner.py\n?? lib/kogen/build/verification.ex\n"
+}

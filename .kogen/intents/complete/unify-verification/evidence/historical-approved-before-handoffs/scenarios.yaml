@@ -1,0 +1,162 @@
+[
+  {
+    "id": "hook-ownership",
+    "given": "a new-controller Build declares check and ordered non-check targets with duplicates",
+    "when": "the root Developer attempts to stop",
+    "then": "Stop alone runs check then distinct declared targets in first occurrence order; Build imports receipts and does not rerun them; check-only Intents never run undeclared live",
+    "wrong_result": "the prohibited-target list is executed or Build duplicates live",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Production-hook public fixture asserts executable owner and exact sequence; native public Build driver retains calls."
+  },
+  {
+    "id": "shared-failures",
+    "given": "verification_retries is 2 and check fails once followed by live failing after check passes",
+    "when": "the next complete cycle also fails any required target",
+    "then": "V progresses 1,2,3 without an intermediate reset and Build terminates with no fourth callback/resume/Review",
+    "wrong_result": "each target has its own allowance or passing check resets live failures",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Mixed-target deterministic hook/Build history and negative fourth-call marker."
+  },
+  {
+    "id": "third-pass",
+    "given": "two cycles have failed before the first Review",
+    "when": "the third cycle passes every gate and Review requests repair",
+    "then": "V resets to zero, outer repair 1 resumes the same Developer, and another two verification failures followed by complete pass are allowed",
+    "wrong_result": "the old total counter rejects the first Review repair",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Combined public Build fixture and native live route retain per-cycle receipts, same session and fresh Review."
+  },
+  {
+    "id": "outer-limit",
+    "given": "all handoffs are valid and full verification passes between Review verdicts",
+    "when": "Review returns rework three times",
+    "then": "the first two verdicts resume the Developer and the third ends Build, preserving findings; V resets never reset the outer counter",
+    "wrong_result": "Review retries are renewed by each passing verification",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Deterministic three-Review trace, no fourth Reviewer/Developer resume and no publication; accepting-third control."
+  },
+  {
+    "id": "handoff-preservation",
+    "given": "verification passes but the final Developer response lacks required contract fields or has the wrong token",
+    "when": "Build validates the handoff",
+    "then": "invalid handoff corrections remain charged to outer_resumptions, never reach Review as valid claims, never create a third allowance, and exhaust after two repairs at value 2",
+    "wrong_result": "successful tests are treated as proof the handoff must be valid or malformed messages retry forever",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Real Contract.handoff public fixture: repeated malformed and mixed malformed/Review rework controls."
+  },
+  {
+    "id": "regression-bound",
+    "given": "Review-directed changes regress check or a later target",
+    "when": "repeated repairs alternate targets and Review",
+    "then": "every Stop starts all gates afresh, partial target success never resets V, and both allowances enforce the finite bound even with unchanged Candidate",
+    "wrong_result": "the loop skips previously passing targets or refreshes outer budget",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Table-driven actual-controller sequences include nine-cycle upper-bound case and unchanged-Candidate failures."
+  },
+  {
+    "id": "native-exhaustion",
+    "given": "the native Developer receives two Stop blocks followed by a third verification failure",
+    "when": "the hook writes terminal exhaustion then returns continue:false",
+    "then": "the invocation ends and Build reports exhaustion even if Codex exits 0 with turn.completed; no additional development/Review occurs",
+    "wrong_result": "Build interprets native successful exit as verification success or generic resumable failure",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "New production-hook native fixture and owner-retained invocation trace; shaping probe supplies only callback prerequisite evidence."
+  },
+  {
+    "id": "evidence-forwarding",
+    "given": "a hook-owned target emits a valid required manifest and artifact",
+    "when": "it completes and a later target fails before a subsequent repair cycle",
+    "then": "manifest and required bytes were captured before continuation, retained across failures and forwarded through Build/Review/Complete; missing/changed/invalid sources fail existing evidence validation",
+    "wrong_result": "artifact collection waits until after Developer continuation or loses uncited bytes",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Actual TargetEvidence controls and real required-evidence fixture through the new consumer chain."
+  },
+  {
+    "id": "binding-integrity",
+    "given": "current and stale/wrong-session/corrupt/replayed cycle receipts exist as separate controls",
+    "when": "Build settles the invocation or a callback repeats after exhaustion",
+    "then": "only complete ordered fresh bound evidence settles; chronology/counters are checked, exhaustion is latched, and replay cannot rerun gates or charge twice",
+    "wrong_result": "a stale pass, missing cycle or overwritten failed record grants acceptance or allowance",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Public fixture with receipt corruption, Candidate mutation during gates, repeat callback and no-extra-dispatch markers."
+  },
+  {
+    "id": "preserved-authority",
+    "given": "Build reworks and later accepts a verified Candidate",
+    "when": "history and Complete evidence are produced",
+    "then": "same Developer, fresh independent Review, finding origins/closures, role-specific snapshots and all failed-cycle history remain inspectable even without raw logs",
+    "wrong_result": "new counters erase failed attempts or grant the Developer control of authoritative records",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Tracking and publication fixtures plus native lifecycle audit of exact sessions."
+  },
+  {
+    "id": "config-contract",
+    "given": "explicit verification_retries and outer_resumptions are supplied or invalid/missing",
+    "when": "Build preflights configuration",
+    "then": "both accept nonnegative integers, invalid config fails before provider dispatch, 0 stops first failure and 2 permits two repairs; unrelated profile settings remain unchanged",
+    "wrong_result": "a missing allowance is silently invented or interpreted as total attempts",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Config/parser and public precondition tests, config producer audit, zero/two allowance controls."
+  },
+  {
+    "id": "self-build-transition",
+    "given": "the accepted old controller launches a Candidate containing the new hook, or the new controller launches it",
+    "when": "verification runs",
+    "then": "valid legacy launch retains check-only hook and old outer targets, while versioned new launch runs all targets only in Stop; corrupted new context cannot downgrade",
+    "wrong_result": "the first self-build fails for absent new context or runs live twice",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Bounded actual old-controller/new-hook and new-controller/new-hook fixtures with ordered dispatch receipts."
+  },
+  {
+    "id": "lifetime-isolation",
+    "given": "live runs inside Stop and starts nested private fixtures under inherited environment",
+    "when": "fixtures execute, or a scaled timeout interrupts their owned processes",
+    "then": "live keeps its existing time envelopes, nested counters/roots stay private, descendants settle, incomplete hooks cannot pass, and no full live recursion occurs",
+    "wrong_result": "600-second cutoff truncates supported live work or nested Build rewrites parent state",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Production timeout/cleanup controls with short deadlines and actual native/cold-offline/live workflow evidence."
+  },
+  {
+    "id": "gate-guard",
+    "given": "Developer or delegated helper attempts a protected explicit Make/Stop invocation",
+    "when": "PreToolUse dispatches the request",
+    "then": "existing covered forms remain denied before execution while focused non-gate work and genuine root Stop callbacks work",
+    "wrong_result": "moving ownership grants manual gate permission or helper Stops run parent gates",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Production guard regression plus public root/helper-context fixture with forbidden execution markers."
+  }
+]

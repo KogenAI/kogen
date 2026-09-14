@@ -8,6 +8,10 @@ stop_check() {
  expected="$1"; active="$2"
  response="$(printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":%s}' "$sid" "$sid" "$active" | sh .codex/hooks/check.sh)"
  printf '%s\n' "$response" >> .kogen/runtime/fake-hook-responses
+ if [ "$expected" = pass ] && printf '%s' "$response" | grep -q '"decision":"block"'; then
+  stop_check pass true
+  return
+ fi
  case "$expected:$response" in
   block:*'"decision":"block"'*|pass:*'"continue":true'*) return 0 ;;
  esac

@@ -43,6 +43,7 @@ defmodule Kogen.CommitFailureRollbackTest do
     worker: {model: fake, effort: medium}
     expert: {model: fake, effort: medium}
   outer_resumptions: 2
+  verification_retries: 2
   """
 
   @makefile """
@@ -146,6 +147,11 @@ defmodule Kogen.CommitFailureRollbackTest do
     File.cp!(
       Path.join(project_root, ".codex/hooks/check.sh"),
       Path.join(dest, ".codex/hooks/check.sh")
+    )
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/stop_runner.py"),
+      Path.join(dest, ".codex/hooks/stop_runner.py")
     )
 
     File.chmod!(Path.join(dest, ".codex/hooks/check.sh"), 0o755)

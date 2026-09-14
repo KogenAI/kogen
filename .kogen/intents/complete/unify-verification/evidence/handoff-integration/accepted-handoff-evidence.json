@@ -1,0 +1,87 @@
+{
+  "source": ".kogen/intents/complete/structured-developer-handoffs/scenario-tracking.json",
+  "sha256": "b925a11a8ce182a0e6891aefa40a8f7d6c1c4e64b4b545efc21f439ee8817d03",
+  "status": "accepted",
+  "attempts": [
+    {
+      "number": 0,
+      "status": "failed",
+      "check": "passed",
+      "targets": [
+        {
+          "name": "live",
+          "status": "passed"
+        }
+      ],
+      "verdict": "rework"
+    },
+    {
+      "number": 1,
+      "status": "failed",
+      "check": "passed",
+      "targets": [
+        {
+          "name": "live",
+          "status": "passed"
+        }
+      ],
+      "verdict": "rework"
+    },
+    {
+      "number": 2,
+      "status": "accepted",
+      "check": "passed",
+      "targets": [
+        {
+          "name": "live",
+          "status": "passed"
+        }
+      ],
+      "verdict": "accept"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "status": "closed"
+    }
+  ],
+  "nested_native_records": [
+    {
+      "source_locator": ".kogen/runtime/live-evidence/shape-to-build-42284-13253-1789374424260444833/scenario-tracking.json",
+      "sha256": "85B86C7DB6F8F396D199124A52B9AEF58BC640BDBBDCFA8983EC65CA018AFE37",
+      "status": "accepted",
+      "attempts": [
+        {
+          "number": 0,
+          "status": "accepted",
+          "developer_session_id": "01a09f09-a653-79a2-ba7b-9bb3097e8713",
+          "has_retained_schema": true,
+          "has_retained_message": true
+        }
+      ]
+    },
+    {
+      "source_locator": ".kogen/runtime/live-evidence/shape-to-build-42284-5259-1789374424260444833/scenario-tracking.json",
+      "sha256": "FFBE489A62F17E8F842B705055DD43F44A9E04136A768EA81B850BE07A1EB0F1",
+      "status": "accepted",
+      "attempts": [
+        {
+          "number": 0,
+          "status": "failed",
+          "developer_session_id": "01a09f07-0790-7a02-9f5c-c130b8eda1c1",
+          "has_retained_schema": true,
+          "has_retained_message": true
+        },
+        {
+          "number": 1,
+          "status": "accepted",
+          "developer_session_id": "01a09f07-0790-7a02-9f5c-c130b8eda1c1",
+          "has_retained_schema": true,
+          "has_retained_message": true
+        }
+      ]
+    }
+  ],
+  "limitation": "Top-level Build used its old loaded controller and lacks developer_invocation; nested current-code native fixture snapshots establish the new producer/consumer behavior."
+}

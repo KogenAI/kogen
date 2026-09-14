@@ -30,7 +30,8 @@ second opinions or to review everything.
 Each packet includes objective, necessary facts, constraints, allowed operations
 or exclusive write ownership, interfaces, expected evidence and stopping
 conditions. Helpers share the workspace: preserve others' work. Propagate the
-role's restrictions, including protected inputs and gate ownership. Require
+role's restrictions, including protected inputs and unified Stop verification
+ownership. Require
 concise advisory conclusions, source locators, observed evidence, uncertainty,
 failures and remaining human decisions. Integrate without repeating bulk
 investigation; check consequential contradictions and questionable citations
@@ -39,7 +40,11 @@ against actual source bytes. Never reconstruct prose as an exact quote.
 The root owns integration and final output. Helpers cannot extend role authority:
 Shaping retains human product/UX decisions and explicit same-conversation
 approval; helpers cannot author the final Draft or approve it. Developer owns
-implementation and handoff within approved paths and propagates gate restrictions.
+implementation and handoff within approved paths and propagates the prohibition
+on manual or helper-run gates. Stop owns verification retries; the outer
+allowance is reserved for settled verification, handoff, and Review rework.
+Exhaustion stops the role and takes precedence over a misleading handoff or
+verdict.
 Reviewer and every child are read-only, preserve the Candidate, and receive no
 Developer conversation as evidence. Reviewer independently assesses evidence,
 resolves all helper work, and emits the final schema-valid verdict itself.

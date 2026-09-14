@@ -1,0 +1,22 @@
+[
+  {
+    "path": "../../../runtime/shaping-followups/serial-optimization/12-stage-aware-rework-budgets.md",
+    "description": "Initiating local follow-up; historical input, not approval."
+  },
+  {
+    "path": "../../complete/automated-verification-ownership/INTENT.md",
+    "description": "Prior owner split and preserved bounded gate guard; new-controller split is superseded by this Intent."
+  },
+  {
+    "path": "../../complete/target-evidence-retention/intent.yaml",
+    "description": "Required-artifact evidence preservation contract."
+  },
+  {
+    "url": "https://learn.chatgpt.com/docs/hooks",
+    "description": "Official Stop response and timeout documentation; native probe confirms installed-client behavior."
+  },
+  {
+    "path": "../../complete/structured-developer-handoffs/README.md",
+    "description": "Completed prerequisite at c1c9d137; owns installed schema and explicitly accepted handoff correction policy."
+  }
+]

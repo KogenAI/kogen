@@ -1,0 +1,20 @@
+id: 01a09eaf-f767-75ee-8c37-a31ca9b70cb0
+slug: stage-aware-rework-budgets
+title: Preserve bounded rework allowance after verification progress
+status: draft
+shaped_against:
+  branch: main
+  head: 2890d86f16c8819cfad12cbd98dbbdc8ee068b1c
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-14T06:52:07.403177Z'
+may_change_guarded_paths:
+  - lib/kogen/build.ex
+  - lib/kogen/build/**
+  - lib/kogen/intent.ex
+  - .kogen/config.yaml
+  - README.md
+  - test/kogen/**
+  - test/support/**

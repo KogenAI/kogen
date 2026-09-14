@@ -62,7 +62,6 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
              "[\"check\",\"live\",\"gate_one\",\"gate_two\",\"gate_three\"]\n"
 
     denied = File.read!(Path.join(dir, ".kogen/runtime/policy-denials"))
-    assert denied =~ ~r/helper:.*Kogen machinery owns verification gates/
     assert denied =~ ~r/post-review:.*Kogen machinery owns verification gates/
     assert denied =~ "focused non-gate tests"
     refute File.exists?(Path.join(dir, ".kogen/runtime/prohibited-dispatch-marker"))
@@ -80,7 +79,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
         |> Enum.map(&(String.trim(&1) |> Jason.decode!()))
       end)
 
-    assert Enum.map(history, & &1["status"]) == ["failed", "passed", "passed", "passed"]
+    assert Enum.map(history, & &1["status"]) == ["failed", "failed", "passed", "passed"]
     refute Enum.any?(history, &(&1["candidate"] == "stale-candidate"))
   end
 
@@ -99,7 +98,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     File.mkdir_p!(Path.join(dir, ".codex/hooks"))
     File.mkdir_p!(Path.join(dir, "priv/kogen/prompts"))
 
-    for file <- ["check.sh", "verification_policy.py"] do
+    for file <- ["check.sh", "stop_runner.py", "verification_policy.py"] do
       File.cp!(Path.join(root, ".codex/hooks/#{file}"), Path.join(dir, ".codex/hooks/#{file}"))
     end
 
@@ -180,6 +179,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
       worker: {model: fake, effort: medium}
       expert: {model: fake, effort: medium}
     outer_resumptions: 4
+    verification_retries: 2
     """
   end
 
@@ -240,8 +240,9 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
       printf '%s' '{"session_id":"dev-1"}' | sh .codex/hooks/check.sh >/dev/null
       rm .kogen/runtime/fail-check
       printf '%s' '{"session_id":"dev-1"}' | sh .codex/hooks/check.sh >/dev/null
-    elif [ "$n" -gt 2 ]; then
-      context=helper; [ "$n" -ge 4 ] && context=post-review
+      printf '%s' '{"session_id":"dev-1"}' | sh .codex/hooks/check.sh >/dev/null
+    else
+      context=post-review
       printf '%s' '{"tool_name":"Bash","tool_input":{"command":"make gate_one"}}' | python3 .codex/hooks/verification_policy.py > .kogen/runtime/policy-output
       if grep -q permissionDecision .kogen/runtime/policy-output; then
         printf '%s:' "$context" >> .kogen/runtime/policy-denials

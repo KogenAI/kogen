@@ -19,6 +19,7 @@ defmodule Kogen.PreconditionFixture do
     copy!(source, template, ".codex/hooks.json")
     copy!(source, template, ".codex/hooks/verification_policy.py")
     copy!(source, template, ".codex/hooks/check.sh")
+    copy!(source, template, ".codex/hooks/stop_runner.py")
 
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: template)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: template)

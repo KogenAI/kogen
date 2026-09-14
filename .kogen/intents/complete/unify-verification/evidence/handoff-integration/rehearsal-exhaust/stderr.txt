@@ -1,0 +1,16 @@
+    warning: redefining module Kogen.Harness (current version loaded from _build/dev/lib/kogen/ebin/Elixir.Kogen.Harness.beam)
+    │
+  1 │ defmodule Kogen.Harness do
+    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/kogen/harness.ex:1: Kogen.Harness (module)
+
+** (exit) exited in: GenServer.call(Mix.ProjectStack, {:get_stack, #Function<14.59740435/1 in Mix.ProjectStack.peek/0>}, :infinity)
+    ** (EXIT) no process: the process is not alive or there's no process currently associated with the given name, possibly because its application isn't started
+    (elixir 1.20.2) lib/gen_server.ex:1176: GenServer.call/3
+    lib/mix/project.ex:390: Mix.Project.config/0
+    lib/boundary/definition.ex:26: Boundary.Definition.generate/2
+    expanding macro: Boundary.__using__/1
+    lib/kogen/harness.ex:7: Kogen.Harness (module)
+    (elixir 1.20.2) expanding macro: Kernel.use/2
+    lib/kogen/harness.ex:7: Kogen.Harness (module)

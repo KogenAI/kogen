@@ -34,6 +34,7 @@ defmodule Kogen.IntentTest do
     worker: {model: worker, effort: medium}
     expert: {model: expert, effort: medium}
   outer_resumptions: 2
+  verification_retries: 2
   """
 
   @valid_intent """
@@ -61,7 +62,8 @@ defmodule Kogen.IntentTest do
                  worker: %{model: worker_model, effort: worker_effort},
                  expert: %{model: expert_model, effort: expert_effort}
                },
-               outer_resumptions: outer_resumptions
+               outer_resumptions: outer_resumptions,
+               verification_retries: verification_retries
              } = config
 
       assert is_binary(harness)
@@ -78,6 +80,8 @@ defmodule Kogen.IntentTest do
       assert is_binary(expert_model)
       assert is_binary(expert_effort)
       assert is_integer(outer_resumptions)
+      assert is_integer(verification_retries)
+      assert verification_retries == 2
 
       assert config.shaping == %{model: "gpt-6-astra", effort: "low"}
       assert config.developer == %{model: "gpt-5.6-sol", effort: "low"}
@@ -105,7 +109,8 @@ defmodule Kogen.IntentTest do
                   worker: %{model: "worker", effort: "medium"},
                   expert: %{model: "expert", effort: "medium"}
                 },
-                outer_resumptions: 2
+                outer_resumptions: 2,
+                verification_retries: 2
               }} = Intent.read_config(path)
     end
 
@@ -240,6 +245,51 @@ defmodule Kogen.IntentTest do
 
       assert {:error, "config.yaml missing required key: outer_resumptions"} =
                Intent.read_config(path)
+    end
+
+    test "refuses to start when verification_retries is absent" do
+      dir = tmp_dir!()
+      path = String.replace(@valid_config, "verification_retries: 2", "")
+      path = write_yaml!(dir, "config.yaml", path)
+
+      assert {:error, "config.yaml missing required key: verification_retries"} =
+               Intent.read_config(path)
+    end
+
+    test "refuses negative and noninteger verification_retries" do
+      for value <- ["-1", "two", "1.5"] do
+        dir = tmp_dir!()
+
+        yaml =
+          String.replace(
+            @valid_config,
+            "verification_retries: 2",
+            "verification_retries: #{value}"
+          )
+
+        path = write_yaml!(dir, "config.yaml", yaml)
+
+        assert {:error, "config.yaml missing required key: verification_retries"} =
+                 Intent.read_config(path)
+      end
+    end
+
+    test "accepts zero and two verification retries" do
+      for retries <- [0, 2] do
+        dir = tmp_dir!()
+
+        yaml =
+          String.replace(
+            @valid_config,
+            "verification_retries: 2",
+            "verification_retries: #{retries}"
+          )
+
+        path = write_yaml!(dir, "config.yaml", yaml)
+
+        assert {:ok, config} = Intent.read_config(path)
+        assert config.verification_retries == retries
+      end
     end
   end
 

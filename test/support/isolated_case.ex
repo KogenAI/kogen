@@ -86,22 +86,26 @@ defmodule Kogen.IsolatedCase do
     tmpdir = private_tmpdir(options)
     readiness = if readiness, do: Map.put(readiness, :path, Path.join(tmpdir, "readiness"))
 
-    port =
-      start_supervisor(root, source, selector, options, tmpdir, working_dir, timeout, readiness)
+    if File.dir?(working_dir) do
+      port =
+        start_supervisor(root, source, selector, options, tmpdir, working_dir, timeout, readiness)
 
-    collection_timeout = Keyword.get(options, :collection_timeout, timeout + 2_000)
+      collection_timeout = Keyword.get(options, :collection_timeout, timeout + 2_000)
 
-    {status, output} = collect_with_readiness(port, readiness, collection_timeout)
+      {status, output} = collect_with_readiness(port, readiness, collection_timeout)
 
-    # Port.open can return before the OS launcher rejects its cwd. Only after
-    # confirmed exit may we reclaim a root whose supervisor never started.
-    if File.dir?(tmpdir) and not File.exists?(Path.join(tmpdir, "supervisor-started")) do
+      # Only after confirmed exit may we reclaim a root whose supervisor never started.
+      if File.dir?(tmpdir) and not File.exists?(Path.join(tmpdir, "supervisor-started")) do
+        cleanup_unowned_tmpdir(tmpdir)
+      end
+
+      # The supervisor alone removes its temporary root, after reaping children.
+      # In particular, cancellation must never race parent-side fixture removal.
+      isolated_result(status, output)
+    else
       cleanup_unowned_tmpdir(tmpdir)
+      {:error, {:exit_status, 1}, "working directory does not exist: #{working_dir}"}
     end
-
-    # The supervisor alone removes its temporary root, after reaping children.
-    # In particular, cancellation must never race parent-side fixture removal.
-    isolated_result(status, output)
   end
 
   defp start_supervisor(root, source, selector, options, tmpdir, working_dir, timeout, readiness) do

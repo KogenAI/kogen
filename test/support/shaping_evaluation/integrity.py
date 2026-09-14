@@ -3,7 +3,8 @@
 import argparse, hashlib, json, re, shutil, tempfile
 from pathlib import Path
 
-CASES = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation")
+CASES = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation",
+         "stateful-flawed", "stateful-complete")
 MAX_SECONDS = 600
 MAX_SCRIPTED_REPLIES = 6
 
@@ -251,6 +252,28 @@ def validate_case(evaluation_root, case):
         if case == 'booking-flawed':
             observation = json.loads((run / 'booking-setup-observation.json').read_text())
             validate_booking_setup(old_receipt, inventory, observation)
+    if case.startswith('stateful-'):
+        control_path = run / 'stateful-control-result.json'
+        reject(control_path.is_file(), 'stateful deterministic control result missing')
+        control = json.loads(control_path.read_text())
+        reject(control.get('mode') == ('complete' if case.endswith('complete') else 'flawed'),
+               'stateful control mode mismatch')
+        reject(control.get('source_sha256'), 'stateful source identity missing from control')
+        cycles = control.get('cycles', [])
+        reject(len(cycles) == 2 and all(item.get('dispatched') is True for item in cycles),
+               'stateful failed cycles did not dispatch')
+        corrupted, exhausted, repair = (control.get(key, {}) for key in ('corrupt_state', 'exhausted_replay', 'repair'))
+        if case.endswith('flawed'):
+            reject(corrupted.get('dispatched') is True and exhausted.get('dispatched') is True,
+                   'flawed stateful route did not expose unsafe dispatch')
+        else:
+            reject(corrupted.get('dispatched') is False and exhausted.get('dispatched') is False,
+                   'complete stateful route dispatched on invalid or exhausted state')
+        reject(repair.get('ok') is True and repair.get('dispatched') is True,
+               'stateful valid repair did not succeed')
+        consumer = control.get('receipt_consumer', {})
+        reject(consumer.get('accepted') is (case.endswith('complete')),
+               'stateful receipt consumer result mismatch')
     return identity
 
 def validate_public_receipt(run, receipt):
@@ -324,6 +347,7 @@ def validate_manifest(root, manifest_path):
             required.extend(str(path.relative_to(root)) for path in partial.rglob('*') if path.is_file())
         if case == 'csv-flawed': required.append(f'{relative_root}/runs/{case}/csv-probe-result.json')
         if case == 'booking-flawed': required.append(f'{relative_root}/runs/{case}/booking-setup-observation.json')
+        if case.startswith('stateful-'): required.append(f'{relative_root}/runs/{case}/stateful-control-result.json')
         reject(all(path in seen for path in required), f'manifest omits required {case} evidence')
         validate_public_receipt(run, json.loads((run / 'receipt.json').read_text()))
     ids={case:validate_case(evaluation_root,case) for case in CASES}
@@ -411,6 +435,15 @@ def make_positive(root):
                 'old_receipt_path':'evidence/old-receipt.md','missing_connection':'.tmp/calendar-run-17/connection.json',
                 'old_receipt_sha256':digest(old),'old_receipt':old.read_text(),
                 'inventory_path':'evidence/inventory.txt','inventory_sha256':digest(inventory),'inventory':inventory.read_text()}))
+        if case.startswith('stateful-'):
+            complete = case.endswith('complete')
+            result = {'mode': 'complete' if complete else 'flawed', 'source_sha256': 'a' * 64,
+                      'cycles': [{'dispatched': True}, {'dispatched': True}],
+                      'corrupt_state': {'dispatched': not complete},
+                      'exhausted_replay': {'dispatched': not complete},
+                      'repair': {'ok': True, 'dispatched': True},
+                      'receipt_consumer': {'accepted': complete}}
+            write(run/'stateful-control-result.json', json.dumps(result))
         receipt={'case':case,'slug':case,'started':1,'ended':2,'elapsed_seconds':1,'configured_profiles':{},'transport_exit':0,'initial_messages':1,'scripted_replies':len(messages),'initial_terminal_event':{'turn_id':'startup'},'outcome':'completed','failure':None,'cleanup':[],'terminal_events':[{'turn_id':f't{i+1}'} for i in range(len(messages))],'git_status':{'baseline_unchanged':True,'draft_exists':True},'source_identity':{'baseline':source,'after':source,'unchanged':True},'terminal_turn_bindings': [f't{i+1}' for i in range(len(messages))], 'intermediate_draft_sha256': digest(run/'drafts-by-turn/0/questions.md') if case == 'csv-continuation' else None, 'correlation':{'exactly_one_root':True,'all_owned_terminal':True,'all_profiles_match':True,'roots':['root'],'owned':[],'requested_profiles':{'root':['gpt-6-astra','low']}}}
         write(run/'receipt.json',json.dumps(receipt))
         public={key:receipt.get(key) for key in ('case','slug','started','ended','elapsed_seconds','configured_profiles','transport_exit','initial_messages','scripted_replies','initial_terminal_event','outcome','failure','terminal_turn_bindings','intermediate_draft_sha256')}

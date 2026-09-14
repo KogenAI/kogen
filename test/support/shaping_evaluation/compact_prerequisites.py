@@ -20,7 +20,12 @@ def run(evidence, mode):
         assert result.returncode == expected, (argv, result.returncode, result.stderr)
         cases.append({"argv": argv, "exit": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
         return result.stdout
-    names = ["plain.csv", "bom.csv", "invalid-date.csv", "naive_reader.py", "reader_control.py"] if mode.startswith("csv") else ["calendar_adapter.py", "capability-seed.json"]
+    if mode.startswith("csv"):
+        names = ["plain.csv", "bom.csv", "invalid-date.csv", "naive_reader.py", "reader_control.py"]
+    elif mode.startswith("stateful"):
+        names = ["stateful_guardrail.py", "stateful_guardrail_control.py", "stateful-mode.txt"]
+    else:
+        names = ["calendar_adapter.py", "capability-seed.json"]
     before = {name: digest(evidence / name) for name in names}
     if mode == "csv-flawed":
         invoke("naive_reader.py", evidence / "plain.csv", 0)
@@ -28,6 +33,18 @@ def run(evidence, mode):
         plain = invoke("reader_control.py", evidence / "plain.csv", 0)
         assert invoke("reader_control.py", evidence / "bom.csv", 0) == plain
         invoke("reader_control.py", evidence / "invalid-date.csv", 2)
+    elif mode.startswith("stateful"):
+        control_mode = (evidence / "stateful-mode.txt").read_text().strip()
+        observed = json.loads(invoke("stateful_guardrail_control.py", control_mode, 0))
+        assert observed["mode"] == control_mode
+        if control_mode == "complete":
+            assert observed["corrupt_state"]["dispatched"] is False
+            assert observed["exhausted_replay"]["dispatched"] is False
+            assert observed["receipt_consumer"]["accepted"] is True
+        else:
+            assert observed["corrupt_state"]["dispatched"] is True
+            assert observed["exhausted_replay"]["dispatched"] is True
+            assert observed["receipt_consumer"]["accepted"] is False
     else:
         seed = json.loads((evidence / "capability-seed.json").read_text())
         with tempfile.TemporaryDirectory(prefix="kogen-availability-control-") as directory:
@@ -52,7 +69,7 @@ def run(evidence, mode):
             invoke("calendar_adapter.py", connection, 2)
     assert before == {name: digest(evidence / name) for name in names}
     return {"executor": "local Python CLI subprocesses", "mode": mode, "source_sha256": before,
-            "cases": cases, "controls": "source preservation; availability additionally tests collision refusal and owned cleanup",
+            "cases": cases, "controls": "source preservation; availability additionally tests collision refusal and owned cleanup; stateful cases exercise corruption, exhaustion, repair, action, and receipt consumption",
             "limits": "Reader/adapter prerequisites only, no normalized export feature or real provider credentials."}
 
 

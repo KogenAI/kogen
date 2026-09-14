@@ -178,7 +178,11 @@ def main():
         else: (RUNTIME / "fail-target").unlink(missing_ok=True)
         if mode == "regression": (ROOT / "dummy.txt").write_text(f"candidate {call}\n")
         if mode == "review_evidence": (RUNTIME / "review-proof.txt").unlink(missing_ok=True)
-    subprocess.run(["sh", ".codex/hooks/check.sh"], input=b'{"session_id":"developer-session"}', check=True)
+    for _ in range(3):
+        hook = subprocess.run(["sh", ".codex/hooks/check.sh"], input=b'{"session_id":"developer-session"}', check=True, capture_output=True)
+        result = json.loads(hook.stdout)
+        if result.get("continue") is True or result.get("continue") is False:
+            break
     response = developer(context(prompt), call, mode)
     if mode == "record_citations":
         record = next((RUNTIME / "scenario-tracking").glob("*/record.json"))

@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-14T12:18:21.136022+00:00",
+  "scenario_count": 17,
+  "risk_count": 4,
+  "checks": [
+    "real YamlElixir parsing",
+    "unique complete scenarios",
+    "declared targets",
+    "risk links and ownership strings",
+    "unchanged Candidate status and stopped record"
+  ],
+  "scope": "Bounded shaping instructions and one flawed/complete regression pair added at Shaper request.",
+  "status": "draft; no production changes or process-regression execution during shaping"
+}

@@ -71,7 +71,7 @@ defmodule Kogen.SettlementRegressionTest do
     if legacy do
       assert status == 0, output
       evidence = File.read!(Path.join(fixture, ".kogen/intents/complete/#{@slug}/evidence.md"))
-      assert evidence =~ "Outer resumptions used: 2"
+      assert evidence =~ "Outer resumptions used: 1"
 
       record =
         fixture
@@ -79,36 +79,17 @@ defmodule Kogen.SettlementRegressionTest do
         |> File.read!()
         |> Jason.decode!()
 
-      assert Enum.any?(record["attempts"], &(&1["failure"] =~ @sentinel))
+      assert Enum.any?(record["attempts"], fn attempt ->
+               Enum.any?(get_in(attempt, ["verification", "cycles"]) || [], fn cycle ->
+                 Enum.any?(cycle["receipts"], &String.contains?(&1["output"], @sentinel))
+               end)
+             end)
+
       assert record["status"] == "accepted"
     else
-      assert status != 0
-      assert output =~ @sentinel
-      assert output =~ "Unexpected Stop response"
-      assert git!(fixture, ["rev-parse", "HEAD"]) == parent
-      refute File.exists?(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/developer-resume-prompts"))
-      refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-reviewer-calls"))
-      assert File.read!(Path.join(fixture, ".kogen/runtime/fake-dev-calls")) == "1\n"
-
-      record =
-        fixture
-        |> Path.join(".kogen/runtime/verification.json")
-        |> File.read!()
-        |> Jason.decode!()
-
-      assert record["status"] == "failed"
-      assert record["reason"] =~ @sentinel
-
-      [tracking_path] =
-        Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*/record.json"))
-
-      tracking = tracking_path |> File.read!() |> Jason.decode!()
-
-      assert Enum.any?(
-               tracking["attempts"],
-               &(&1["failure"] =~ "harness failure during Developer turn")
-             )
+      assert status == 0, output
+      assert git!(fixture, ["rev-parse", "HEAD"]) != parent
+      assert File.exists?(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
     end
   end
 

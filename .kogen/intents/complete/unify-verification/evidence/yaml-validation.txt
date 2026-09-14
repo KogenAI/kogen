@@ -1,0 +1,4 @@
+valid YAML: .kogen/intents/drafts/stage-aware-rework-budgets/intent.yaml
+valid YAML: .kogen/intents/drafts/stage-aware-rework-budgets/scenarios.yaml
+valid YAML: .kogen/intents/drafts/stage-aware-rework-budgets/risks.yaml
+valid YAML: .kogen/intents/drafts/stage-aware-rework-budgets/references.yaml

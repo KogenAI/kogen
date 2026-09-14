@@ -1,0 +1,76 @@
+{
+  "record_path": ".kogen/runtime/scenario-tracking/w67S8G8_0CycmVcYgTaZdIC1/record.json",
+  "record_sha256": "99909a29b220aed5d5bb53bed7d6d6caade4eb15be08f6c32ac5bc126399eb1d",
+  "attempts": [
+    {
+      "number": 0,
+      "status": "failed",
+      "verification_context": {
+        "content_base64": "eyJhdHRlbXB0X3Rva2VuIjoidGJpTVB0N20wZ2RacXFCU3R1cjlJUS1rd3d1UTVHOG8iLCJidWlsZF9pZCI6Inc2N1M4RzhfMEN5Y21WY1lnVGFaZElDMSIsImxvZ19yb290IjoiL1VzZXJzL2FsbWlyc2FyYWpjaWMvUHJvamVjdHMvQXBwQnVpbGRlci9rb2dlbi8ua29nZW4vcnVudGltZS9zY2VuYXJpby10cmFja2luZy93NjdTOEc4XzBDeWNtVmNZZ1RhWmRJQzEvdmVyaWZpY2F0aW9uL2F0dGVtcHQtMC10YmlNUHQ3bTBnZFpxcUJTdHVyOUlRLWt3d3VRNUc4by9sb2dzIiwibW9kZSI6InVuaWZpZWQiLCJvdXRlcl9hdHRlbXB0IjowLCJwcm9qZWN0X3Jvb3QiOiIvVXNlcnMvYWxtaXJzYXJhamNpYy9Qcm9qZWN0cy9BcHBCdWlsZGVyL2tvZ2VuIiwic2NoZW1hX3ZlcnNpb24iOjEsInN0YXRlX3BhdGgiOiIvVXNlcnMvYWxtaXJzYXJhamNpYy9Qcm9qZWN0cy9BcHBCdWlsZGVyL2tvZ2VuLy5rb2dlbi9ydW50aW1lL3NjZW5hcmlvLXRyYWNraW5nL3c2N1M4RzhfMEN5Y21WY1lnVGFaZElDMS92ZXJpZmljYXRpb24vYXR0ZW1wdC0wLXRiaU1QdDdtMGdkWnFxQlN0dXI5SVEta3d3dVE1RzhvL3N0YXRlLmpzb24iLCJ0YXJnZXRzIjpbImNoZWNrIiwibGl2ZSJdLCJ2ZXJpZmljYXRpb25fcmV0cmllcyI6Mn0K",
+        "path": ".kogen/runtime/scenario-tracking/w67S8G8_0CycmVcYgTaZdIC1/verification/attempt-0-tbiMPt7m0gdZqqBStur9IQ-kwwuQ5G8o/context.json",
+        "sha256": "19f6bfae3f0ef0a7874cc5c1231e4bbe5a37b6e276853a2f0976595cb1786e80"
+      },
+      "observed_directory_entries": [
+        "context.json",
+        "logs",
+        "state.json"
+      ],
+      "context": {
+        "attempt_token": "tbiMPt7m0gdZqqBStur9IQ-kwwuQ5G8o",
+        "build_id": "w67S8G8_0CycmVcYgTaZdIC1",
+        "log_root": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/scenario-tracking/w67S8G8_0CycmVcYgTaZdIC1/verification/attempt-0-tbiMPt7m0gdZqqBStur9IQ-kwwuQ5G8o/logs",
+        "mode": "unified",
+        "outer_attempt": 0,
+        "project_root": "/Users/almirsarajcic/Projects/AppBuilder/kogen",
+        "schema_version": 1,
+        "state_path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/scenario-tracking/w67S8G8_0CycmVcYgTaZdIC1/verification/attempt-0-tbiMPt7m0gdZqqBStur9IQ-kwwuQ5G8o/state.json",
+        "targets": [
+          "check",
+          "live"
+        ],
+        "verification_retries": 2
+      }
+    },
+    {
+      "number": 1,
+      "status": "failed",
+      "verification_context": {
+        "content_base64": "eyJhdHRlbXB0X3Rva2VuIjoiRzZqRnprNFBJTjRwckdVdzZZNDZuSlQwTU95aDJOUHMiLCJidWlsZF9pZCI6Inc2N1M4RzhfMEN5Y21WY1lnVGFaZElDMSIsImxvZ19yb290IjoiL1VzZXJzL2FsbWlyc2FyYWpjaWMvUHJvamVjdHMvQXBwQnVpbGRlci9rb2dlbi8ua29nZW4vcnVudGltZS9zY2VuYXJpby10cmFja2luZy93NjdTOEc4XzBDeWNtVmNZZ1RhWmRJQzEvdmVyaWZpY2F0aW9uL2F0dGVtcHQtMS1HNmpGems0UElONHByR1V3Nlk0Nm5KVDBNT3loMk5Qcy9sb2dzIiwibW9kZSI6InVuaWZpZWQiLCJvdXRlcl9hdHRlbXB0IjoxLCJwcm9qZWN0X3Jvb3QiOiIvVXNlcnMvYWxtaXJzYXJhamNpYy9Qcm9qZWN0cy9BcHBCdWlsZGVyL2tvZ2VuIiwic2NoZW1hX3ZlcnNpb24iOjEsInN0YXRlX3BhdGgiOiIvVXNlcnMvYWxtaXJzYXJhamNpYy9Qcm9qZWN0cy9BcHBCdWlsZGVyL2tvZ2VuLy5rb2dlbi9ydW50aW1lL3NjZW5hcmlvLXRyYWNraW5nL3c2N1M4RzhfMEN5Y21WY1lnVGFaZElDMS92ZXJpZmljYXRpb24vYXR0ZW1wdC0xLUc2akZ6azRQSU40cHJHVXc2WTQ2bkpUME1PeWgyTlBzL3N0YXRlLmpzb24iLCJ0YXJnZXRzIjpbImNoZWNrIiwibGl2ZSJdLCJ2ZXJpZmljYXRpb25fcmV0cmllcyI6Mn0K",
+        "path": ".kogen/runtime/scenario-tracking/w67S8G8_0CycmVcYgTaZdIC1/verification/attempt-1-G6jFzk4PIN4prGUw6Y46nJT0MOyh2NPs/context.json",
+        "sha256": "b7e9dfe48b0d0270866ca1935938ae6e1fe24caccb744377f1004e78602f59cc"
+      },
+      "failure": "verification settlement integrity failure: unified verification produced no bound settlement",
+      "observed_directory_entries": [
+        "context.json",
+        "logs"
+      ],
+      "context": {
+        "attempt_token": "G6jFzk4PIN4prGUw6Y46nJT0MOyh2NPs",
+        "build_id": "w67S8G8_0CycmVcYgTaZdIC1",
+        "log_root": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/scenario-tracking/w67S8G8_0CycmVcYgTaZdIC1/verification/attempt-1-G6jFzk4PIN4prGUw6Y46nJT0MOyh2NPs/logs",
+        "mode": "unified",
+        "outer_attempt": 1,
+        "project_root": "/Users/almirsarajcic/Projects/AppBuilder/kogen",
+        "schema_version": 1,
+        "state_path": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/runtime/scenario-tracking/w67S8G8_0CycmVcYgTaZdIC1/verification/attempt-1-G6jFzk4PIN4prGUw6Y46nJT0MOyh2NPs/state.json",
+        "targets": [
+          "check",
+          "live"
+        ],
+        "verification_retries": 2
+      }
+    }
+  ],
+  "source_snapshots": {
+    "lib/kogen/build/verification.ex": {
+      "file": "verification.ex",
+      "sha256": "7549ab830effaebdf1a9b7c896ab9706cddea3475311292e354191d38d466004",
+      "provenance": "Unaccepted worktree at diagnosis; not an in-memory module dump."
+    },
+    ".codex/hooks/stop_runner.py": {
+      "file": "stop_runner.py",
+      "sha256": "50642e18c9b0a0a7802251c1f7bfa384858fc8596092f565f91dfcac28563c54",
+      "provenance": "Unaccepted worktree at diagnosis; not an in-memory module dump."
+    }
+  }
+}

@@ -18,6 +18,7 @@ defmodule Kogen.CommitProvenanceTest do
     worker: {model: fake, effort: medium}
     expert: {model: fake, effort: medium}
   outer_resumptions: 2
+  verification_retries: 2
   """
 
   test "first and subsequent Builds record truthful automated provenance" do
@@ -80,6 +81,11 @@ defmodule Kogen.CommitProvenanceTest do
     File.cp!(
       Path.join(project_root, ".codex/hooks/check.sh"),
       Path.join(dest, ".codex/hooks/check.sh")
+    )
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/stop_runner.py"),
+      Path.join(dest, ".codex/hooks/stop_runner.py")
     )
 
     File.chmod!(Path.join(dest, ".codex/hooks/check.sh"), 0o755)

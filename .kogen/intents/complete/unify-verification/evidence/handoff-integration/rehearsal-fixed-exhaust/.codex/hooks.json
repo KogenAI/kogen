@@ -1,0 +1,1 @@
+{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "python3 /Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/unify-verification/evidence/handoff-integration/rehearsal-fixed-exhaust/stop.py", "timeout": 30}]}]}}

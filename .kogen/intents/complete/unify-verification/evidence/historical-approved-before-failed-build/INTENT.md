@@ -1,0 +1,78 @@
+# Unify verification
+
+Current identity and approval metadata are maintained in [intent.yaml](intent.yaml). The current contract incorporates the completed structured-handoff baseline. Decisions and their provenance are in [decisions.md](decisions.md).
+
+## Outcome and appetite
+
+A Build that needs two verification repairs can still receive independent Review and repair its findings. Make all declared verification one hook-driven loop, and bound that loop separately from outer rework. One Developer conversation, with same-session outer resumes. The current runner used to implement this Intent still has its configured two outer resumptions; this Intent does not grant extra attempts to its own Build.
+
+This replaces the previously accepted Stop-check/outer-target ownership split. It does not merely add counters while retaining outer execution of live. Scope includes the hook/controller boundary, counters, evidence, config and prompt/documentation alignment, and affected deterministic and native lifecycle verification. Do not implement transport recovery, parser fixes, authentication, arbitrary scheduling, stopped-Build continuation, redesign of the now-installed schema-constrained Developer output, or general process sandboxing. Do not restart or rewrite the exhausted historical Build.
+
+## Authoritative behavior
+
+### One verification cycle
+
+Build preflights the frozen Approved contract and safe declared Make targets before launching the Developer. A cycle is one root Developer Stop callback: run check first, then each distinct declared non-check target in first scenario occurrence order. Stop at the first failure. Always run check, even if omitted from scenario lists. Run live only when declared; the guard's prohibited-command set always contains live and is not the executable target list.
+
+All gate execution belongs to the Stop path under the new controller. Build consumes receipts and does not run any gate again. A failed cycle returns repair feedback within the current Developer invocation. The next Stop starts the entire sequence again, without cross-cycle caching, including when the Candidate is unchanged. A passing earlier target never grants a reset while a later required target fails.
+
+After a complete passing cycle, Build validates matching evidence and the Developer handoff, then launches a fresh independent Reviewer. A valid accepting Review publishes by the existing commit protocol. A rework verdict resumes the exact Developer session; its next Stop runs the full sequence again. Delegated helpers do not gain gate ownership. Preserve the existing bounded PreToolUse guard and prohibition on indirect/manual gate execution.
+
+### Two counters
+
+1. Verification failures count failed cycles since the last complete pass. Either check or any later target failing charges exactly one. At configured allowance 2, failures 1 and 2 block Stop with corrective feedback; failure 3 records terminal exhaustion and ends the Developer invocation. Build returns failure without a fourth cycle, an outer Developer resume, Review, or publication. A complete passing cycle resets this counter to zero, even on the third cycle. Do not reset on a partial pass, a provider completion, or a new hook process.
+2. Outer rework retains the existing outer_resumptions allowance (2 in this repository). With valid handoffs this is the cumulative Review-rework allowance: first and second rework verdicts resume the Developer; third stops Build. Verification progress never resets it. Preserve the correction policy explicitly selected by the Shaper in the completed structured-developer-handoffs Intent under this same outer allowance; a malformed handoff does not get a new pool or unlimited corrections. Therefore malformed handoffs can consume an outer repair before Review. Retain the charge category so this is visible rather than described as a Review verdict.
+
+These are allowances for repairs, not failure thresholds: allowance N permits N repairs and stops on failure N+1. With allowance 0, the first failure stops. Keep global outer-attempt numbering monotonic; hook cycle sequence is separately retained. With both allowances 2 and well-formed handoffs, at most three verification intervals and nine cycles occur: up to two failed cycles followed by a pass per interval, with at most three Review verdicts. Alternating check/live/Review failures cannot extend this bound. An invalid handoff consumes one of the same bounded outer transitions.
+
+Malformed Reviewer output, cancellation, protected-input corruption, and other integrity failures do not become progress or new retry opportunities. A terminal verification-exhaustion receipt takes precedence over the provider's exit status or final prose. Provider transport recovery, if separately installed later, must neither charge nor reset these quality counters; no recovery schedule is implemented here.
+
+### Preserve the completed handoff guardrails
+
+The current baseline is c1c9d13747d7287a7e23f02aca02d67f0467b010, which installs controller-derived schemas and private final-output files for fresh and resumed Build Developers. Preserve that implementation, exact semantic validator, honest incomplete/blocked/disputed reporting, and structure-versus-semantic diagnostics. The handoff project separately and explicitly accepted retaining the existing outer correction allowance; there is no unresolved budget choice to re-ask here.
+
+Use the dedicated launch_build_developer/resume_build_developer route. Keep current schema/token and output location alive through all in-turn Stop repairs; each outer resume gets a fresh schema/token/output location in the same Developer session. Retain exact invocation/schema/message bytes before cleanup. Never reintroduce unconstrained output or fallback to an intermediate message. Preserve the separate native-helper transport route and role-based fake dispatch.
+
+At settlement, validate execution context and prioritize a fresh bound verification-exhaustion receipt before either successful handoff processing or structured-output correction. This includes missing/empty/malformed/truncated final-output branches, which the current Build routes directly to rework. Exhaustion is not an invalid-handoff repair and must not consume another outer attempt. A complete passing verification plus a genuinely invalid settled handoff still follows the accepted correction policy. Provider and integrity failures still stop, without fabricated sessions, receipts or resets.
+
+The updated source-bound native probe demonstrates that exhaustion can coexist with a current schema-constrained, semantically valid handoff. Gate receipts remain the authority. See [integration investigation](evidence/handoff-integration/README.md).
+
+### Configuration and rollout
+
+Retain outer_resumptions as the cap on outer Developer resumptions, now that target failures are handled inside Stop. Add required nonnegative integer verification_retries to config and set it to 2 in the tracked config. Use the existing validation style: missing, negative, noninteger or otherwise invalid values fail before provider launch with the offending field named; do not infer a missing value from outer_resumptions. Update every maintained fixture/config producer that participates in this change. Preserve model/helper settings. README explains the two allowances, threshold N+1, reset point and malformed-handoff accounting. Old config files need the explicit new field; no user file is silently rewritten by runtime.
+
+Kogen builds its own hook while the launching Build controller is already loaded. Preserve this first self-build: introduce explicit versioned unified execution context supplied by the new controller. When launched by the accepted handoff-capable controller at c1c9d137 (no unified marker, but valid legacy policy/root context), the candidate hook retains legacy check-only settlement; the old controller still owns non-check targets. The new controller must always supply the new context and validate unified receipt version, so missing/corrupt unified context cannot silently downgrade. No public mode switch or additional CLI command. Prove old-controller/new-hook and new-controller/new-hook routes, without doubling live. This is transition compatibility, not an alternate long-term workflow.
+
+### Termination and execution prerequisites
+
+The native probe confirms that Stop continue:false terminates the invocation after three calls, but Codex reports turn.completed and exit 0 even on exhaustion. Persist the bound terminal result first, use the supported Stop response, and make Build inspect exhaustion before handoff parsing or generic rework. On first and second failures, emit supported blocking feedback with the failing target, count, remaining allowance and log locator. Do not rely on instructions asking the Developer to stop or on the process exit code alone.
+
+The hook currently times out after 600 seconds; the existing live evaluation permits 5700 seconds. Set the unified Stop envelope to 7200 seconds so moving live does not truncate its existing fixture envelopes. A timeout, interruption, or incomplete execution never produces passing settlement. Settle owned descendants and retain failure evidence; test this with scaled short deadlines, not a two-hour test. Do not add retry or provider timeouts to unrelated routes.
+
+Keep existing real-live prerequisites: authenticated Codex, network, installed dependencies, Python, expect, rsync, and the documented macOS tools. Do not replace live targets with fake successes. Child fixtures must have private working directories and execution context; inherited parent hook/context/budget variables must not make a nested fixture update the parent's counter or recursively run the parent's live suite. Nested public Builds initialize their own bindings. Preserve existing bounded fixture check targets and cold-offline route.
+
+## Evidence and authority at the changed boundary
+
+Build owns the frozen Approved input, execution target list, outer attempt token and authoritative tracking record. The root Developer Stop machinery owns cycle execution, counter state and its ordered receipts while the provider invocation is active. Neither the Developer nor helpers may modify that state. Build validates and imports it at settlement, preserving all failed-cycle history even with raw logging disabled. Do not give the hook permission to edit Approved inputs or directly rewrite the Build tracking record while its in-memory owner is active.
+
+Bind every cycle and target receipt to the active Build/outer attempt, exact Developer session, cycle sequence and Candidate. Validate Candidate stability across gates and at settlement, target order/completeness, cycle chronology, counter increments/resets and terminal state. Missing, corrupt, stale, wrong-session or contradictory receipts cannot reach Review or publication or grant an extra allowance. Repeated callback/receipt replay cannot charge twice or execute gates after terminal exhaustion. Do not claim the shared filesystem is an adversarial security boundary; preserve the existing agent contract and runtime checks.
+
+Retain each target's exit status, diagnostic output and required manifest/artifact snapshots at target completion, before returning any hook continuation. Preserve TargetEvidence's path/digest/schema validation and existing source-stability checks; a later Developer turn cannot replace required bytes with an assertion or a different success. Invalid target evidence remains a verification failure. Historical evidence is immutable and current successful receipts remain bound through Review/publication. Targets without a manifest keep their current behavior. Keep receipt shape consumable by scenario receipts, handoff context, independent Review, finding closure, and Complete publication; update readers together.
+
+Logs and tracking must show failure category, both counter values/limits, each charge/reset reason, global attempt and local cycle, session/Candidate bindings and the terminal reason. Preserve finding IDs, origins, dispositions and role-specific inspected-byte snapshots. Older tracking records remain historical evidence with their original meanings; do not backfill new counters or relabel the stopped Build as recoverable/successful.
+
+## Walkthrough and adversarial challenge
+
+Start with a clean checkout, installed prerequisites, explicit config and an Approved Intent declaring check and live. First Stop fails check (V=1); second passes check but fails live (V=2); third passes both (V=0). Review requests repair (outer repairs used=1). That Developer repair may again fail check/live twice and pass on its third cycle. Second Review can request the second outer repair. A third accepting Review publishes; a third rework verdict stops. Every pass uses current evidence; no fourth failed cycle or fourth Review repair is available.
+
+A superficially plausible implementation resets V whenever check passes, hiding endless live failures. Another moves live into Stop but leaves Build's live call intact. Another treats Codex exit 0 as success after continue:false, or snapshots a manifest only after the Developer has resumed. Scenarios must reject all four. Passing component tests or the shaping native transport probe alone does not establish the combined route.
+
+## Verification workflow and completion
+
+Before paid acceptance, run focused deterministic tests through the actual public Build controller and production hook. The fake harness must honor block/continue:false and drive multiple Stop callbacks; a fake that always returns turn.completed without dispatching hook semantics is insufficient. Assert exact target invocations, first-failure short circuit, shared charging, reset, exhaustion, handoff handling, Review count, same Developer, fresh Reviewers, bindings, findings and publication. Use check-only, duplicate/multiple target, stale/corrupt receipt, schema-constrained handoff, missing/empty/malformed/truncated output, artifact mutation and current pre-unification-controller controls. Pair terminal-exhaustion-plus-invalid-output cases with complete-pass-plus-invalid-output cases to prove different accounting; also cover terminal exhaustion with a valid structured handoff. Rehearse timeout/descendant cleanup with short owned fixtures.
+
+The declared acceptance targets are check and live. The executing legacy Build retains its existing gate ownership while implementing this change; the Developer and helpers must not manually run either gate or the Stop script. Focused non-gate rehearsals remain allowed. The updated live target must exercise the new native hook-driven public Build route as well as affected existing Shape-to-Commit, Review-rework, required-evidence and cold-offline workflows. Do not recursively invoke the whole live suite from a live fixture.
+
+The outer test driver owns ephemeral native call/Stop/session observations and retains an inspectable sequence receipt plus raw snapshots. Independent Review owns assessment of contract, Candidate, retained gate/evidence receipts and finding closure, not reconstruction of unavailable interactions. Missing native observations fail the owner-run fixture; they cannot be substituted with model claims. Refresh required-evidence forwarding through the real new hook-to-Build-to-Review-to-Complete consumer route.
+
+Later Build completion means declared gates pass, independent Review accepts all scenarios with no blocking findings, sources/prompts and maintained workflow docs agree on ownership, and the resulting Complete package retains the evidence. No source, test, config, hook or root README was changed during shaping.

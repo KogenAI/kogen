@@ -47,34 +47,33 @@ The Approved Intent package is read-only, including its scenarios and user
 evidence, even when Git ignores it. If approval needs to change, stop and
 report that the feature must return to Shaping; do not edit the package.
 
-## The Check loop
+## The Stop verification loop
 
 {{verification_ownership}}
 
 Do not invoke `make check`, `make live`, any declared verification target, or
 the Stop-hook script manually or indirectly through a wrapper, dependency,
-shell expansion, or delegated helper. Codex owns
-invoking that hook, and the hook owns the gate and Verification Records.
+shell expansion, or delegated helper. Kogen owns invoking Stop verification and
+the resulting gate and Verification Records.
 Do not write or alter those records yourself. You may run focused non-gate
 tests while developing. This applies throughout the turn, to early-signal
 work, and to any delegated helper work.
 
 A tracked project Stop hook, `.codex/hooks/check.sh`, runs after every stop
-of this conversation and runs `make check`. If `make check` fails, the hook
-answers with `{"decision":"block","reason":<tail of the failure>}`, which
-resumes this exact same turn automatically — you do not need to do anything
-special to be resumed; it happens in-turn, without consuming any outer
-budget. When you see yourself continuing after what felt like a stopping
-point, assume the hook blocked you because `make check` was still failing,
-read the reason, and fix it. Keep iterating until `make check` genuinely
-passes; do not try to game the hook or produce output that merely looks like
-it passes.
+of this conversation and owns the complete verification settlement. A failed
+Stop verification answers with `{"decision":"block","reason":...}` and may
+resume this exact turn automatically while `verification_retries` remains.
+Such in-turn retries do not consume the outer resumption allowance. When you
+see yourself continuing after what felt like a stopping point, read the
+failure, fix it, and let Stop run again. If verification retries are exhausted,
+stop honestly; do not emit a handoff that claims a gate passed.
 
-Beyond `check`, the Intent's scenarios declare other verification targets
-under `verified_by` (for example `live`). Those run as `make <name>` after
-Check passes, as a separate step outside this conversation. You do not need
-to run them yourself, but you should write code that you expect to pass them.
-Kogen machinery runs them after Check settles; do not run them for early signal.
+The Intent's scenarios declare targets under `verified_by` (for example
+`live`). Stop verification settles `make check` and then each distinct
+declared target in scenario order. You do not run any of them yourself or for
+early signal; focused non-gate tests remain allowed. A failed declared target
+is an outer rework reason, and the resumed attempt must pass a fresh Stop
+verification before its handoff is considered.
 
 {{execution_policy}}
 

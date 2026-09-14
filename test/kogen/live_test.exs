@@ -262,6 +262,11 @@ defmodule Kogen.LiveTest do
     File.cp!(Path.join(project_root, ".codex/hooks/check.sh"), Path.join(hooks_dir, "check.sh"))
 
     File.cp!(
+      Path.join(project_root, ".codex/hooks/stop_runner.py"),
+      Path.join(hooks_dir, "stop_runner.py")
+    )
+
+    File.cp!(
       Path.join(project_root, ".codex/hooks/verification_policy.py"),
       Path.join(hooks_dir, "verification_policy.py")
     )

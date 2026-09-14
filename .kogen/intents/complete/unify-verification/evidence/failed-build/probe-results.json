@@ -1,0 +1,66 @@
+[
+  {
+    "case": "pass-control",
+    "dispatch_before": 1,
+    "dispatch_after": 2,
+    "extra_dispatch": 1,
+    "failures_after": 0,
+    "cycles_after": 2,
+    "terminal_after": "passed",
+    "response": {
+      "continue": true
+    }
+  },
+  {
+    "case": "corrupt-after-two",
+    "dispatch_before": 2,
+    "dispatch_after": 3,
+    "extra_dispatch": 1,
+    "failures_after": 1,
+    "cycles_after": 1,
+    "terminal_after": "pending",
+    "response": {
+      "decision": "block",
+      "reason": "Kogen verification failed. Fix the Candidate and stop again."
+    }
+  },
+  {
+    "case": "delete-after-two",
+    "dispatch_before": 2,
+    "dispatch_after": 3,
+    "extra_dispatch": 1,
+    "failures_after": 1,
+    "cycles_after": 1,
+    "terminal_after": "pending",
+    "response": {
+      "decision": "block",
+      "reason": "Kogen verification failed. Fix the Candidate and stop again."
+    }
+  },
+  {
+    "case": "intact-exhausted",
+    "dispatch_before": 3,
+    "dispatch_after": 4,
+    "extra_dispatch": 1,
+    "failures_after": 3,
+    "cycles_after": 3,
+    "terminal_after": "exhausted",
+    "response": {
+      "continue": false,
+      "stopReason": "verification retry budget exhausted"
+    }
+  },
+  {
+    "case": "delete-exhausted",
+    "dispatch_before": 3,
+    "dispatch_after": 4,
+    "extra_dispatch": 1,
+    "failures_after": 1,
+    "cycles_after": 1,
+    "terminal_after": "pending",
+    "response": {
+      "decision": "block",
+      "reason": "Kogen verification failed. Fix the Candidate and stop again."
+    }
+  }
+]

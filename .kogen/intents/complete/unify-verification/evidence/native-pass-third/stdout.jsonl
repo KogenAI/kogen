@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"01a09ecd-e8a9-70f1-bffc-9bdb262dfe7b"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"item.completed","item":{"id":"item_1","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"OK"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"OK"}}
+{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"OK"}}
+{"type":"turn.completed","usage":{"input_tokens":53184,"cached_input_tokens":34944,"cache_write_input_tokens":0,"output_tokens":15,"reasoning_output_tokens":0}}

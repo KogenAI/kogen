@@ -47,6 +47,7 @@ defmodule Kogen.BuildPreconditionsTest do
     worker: {model: gpt-5.6-luna, effort: medium}
     expert: {model: gpt-5.6-sol, effort: medium}
   outer_resumptions: 2
+  verification_retries: 2
   """
 
   @makefile """

@@ -1,0 +1,79 @@
+[
+  {
+    "id": "gate-state-lifetime",
+    "scenario_ids": [
+      "shared-failures",
+      "third-pass",
+      "native-exhaustion",
+      "binding-integrity",
+      "preserved-authority",
+      "lifetime-isolation"
+    ],
+    "description": "In-turn hook processes restart, while Build owns tracking in memory. Counter reset, concurrent nested access, or losing exhaustion can bypass the finite bound. Hooks must use scoped state and preserve every cycle; Build imports and validates rather than sharing its authoritative tracking writer.",
+    "ownership": [
+      {
+        "paths": ".kogen/runtime verification state, per-cycle logs/receipts and execution context for this Build",
+        "when_exists": "Fresh scoped state exists before the new-controller Developer launch; legacy state remains only on the legacy route. Existing conflicting or malformed active context is never silently adopted.",
+        "owner_after_creation": "Build machinery initializes context; root Stop machinery creates its execution receipts.",
+        "owner_during_operation": "Build owns frozen context; root Stop owns cycle state during invocation; Build owns validation and imported snapshots at settlement.",
+        "permitted_mutation": "Only owner initialization, ordered append/atomic settlement, and validated pass reset; no Developer/helper edits, no reset of Review budget.",
+        "validation": "Version, Build/attempt/session/Candidate binding, cycle order, target completeness, counter transitions, terminal latch, private root and cleanup controls.",
+        "git_state": "Ignored runtime state; retain concise owned evidence in tracked Complete output on success.",
+        "upgrade_behavior": "Old records remain historical; new runs create fresh state. Preserve legacy-controller handshake during self-build; never migrate a stopped record."
+      },
+      {
+        "paths": ".kogen/runtime/scenario-tracking/<build-id>/record.json and successful Complete evidence",
+        "when_exists": "Tracking is created exclusively per Build, as today; Complete output only on accepted publication.",
+        "owner_after_creation": "Build controller.",
+        "owner_during_operation": "Build controller; Reviewer and Developer are readers under existing snapshot rules.",
+        "permitted_mutation": "Append attempt/cycle evidence through Build updates, preserving prior findings, history and byte snapshots; normal publication only.",
+        "validation": "Existing exact-byte owner checks, current bindings, publication/failure restoration and new sequence assertions.",
+        "git_state": "Runtime ignored; Complete evidence tracked with accepted commit.",
+        "upgrade_behavior": "Retain old schema meaning and bytes; add versioned/unambiguous current budget evidence, not backfilled claims."
+      }
+    ]
+  },
+  {
+    "id": "target-artifact-lifetime",
+    "scenario_ids": [
+      "evidence-forwarding",
+      "binding-integrity",
+      "preserved-authority"
+    ],
+    "description": "Target artifacts can disappear or change before Build regains control. Snapshot inside the hook completion path and preserve the existing source-stability contract; retained bytes do not excuse source mutation.",
+    "ownership": [
+      {
+        "paths": "Required target manifests/artifacts and their per-cycle retained snapshots under existing target-owned runtime paths",
+        "when_exists": "Targets create outputs at execution; only regular, safe declared files with verified digest are eligible.",
+        "owner_after_creation": "Target creates its outputs; Stop machinery captures bound immutable evidence.",
+        "owner_during_operation": "Target owns production until binding; machinery owns frozen snapshots and requires bound source stability through the existing lifetime.",
+        "permitted_mutation": "No Developer replacement of bound artifacts; target reruns use noncolliding output paths when prior evidence is still bound.",
+        "validation": "Existing TargetEvidence frame/schema/path/digest validation plus new hook-to-controller consumer tests and mutation/deletion controls.",
+        "git_state": "Ignored target runtime artifacts; copied evidence tracked only through normal Complete publication.",
+        "upgrade_behavior": "Preserve existing manifest contract and no-frame behavior; do not reinterpret historical snapshots."
+      }
+    ]
+  },
+  {
+    "id": "configuration-and-self-build",
+    "scenario_ids": [
+      "config-contract",
+      "self-build-transition",
+      "hook-ownership",
+      "gate-guard"
+    ],
+    "description": "The launching controller predates hook edits and the prohibition set differs from the execution set. Explicit protocol selection and coordinated config producers prevent silent downgrade or duplicate live.",
+    "ownership": [
+      {
+        "paths": ".kogen/config.yaml, .codex/hooks.json and tracked hook helpers",
+        "when_exists": "Existing tracked files at baseline; Developer edits only during the authorized later Build.",
+        "owner_after_creation": "Repository maintainer through accepted Build.",
+        "owner_during_operation": "Repository-owned configuration and machinery; no transition to user-owned seed is introduced.",
+        "permitted_mutation": "Add explicit verification allowance and coordinated hook protocol/timeout changes; preserve other settings and bounded gate denial.",
+        "validation": "Required-field preflight, old/new controller handshake, declared target selection, direct dispatch guard and actual native route.",
+        "git_state": "Tracked source/config; no runtime rewrites or hidden migration.",
+        "upgrade_behavior": "Missing new config key gives actionable validation error; documented repository update adds it. Old running controller compatibility is explicit and bounded."
+      }
+    ]
+  }
+]

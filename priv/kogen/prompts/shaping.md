@@ -17,8 +17,9 @@ and approval handling.
 
 Have an interactive conversation with the human to shape exactly **one**
 Intent — one small, coherent unit of change with one Build's worth of
-appetite (one Developer conversation with the configured outer resumption
-budget from `.kogen/config.yaml`, two by default). Do not
+appetite (one Developer conversation with the configured outer allowance from
+`.kogen/config.yaml`, two by default; `verification_retries` separately
+governs Stop-owned verification retries). Do not
 let the conversation grow into several unrelated Intents. If the human's idea
 is bigger than one Build, help them narrow it, and write down what you are
 explicitly leaving out as non-goals rather than quietly dropping it.

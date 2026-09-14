@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/check.sh\"",
-            "timeout": 600,
+            "timeout": 7200,
             "statusMessage": "Running Kogen provider-free check"
           }
         ]

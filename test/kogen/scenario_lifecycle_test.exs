@@ -112,7 +112,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     on_exit(fn -> File.rm_rf(dir) end)
 
     assert {:error, reason} = run(dir, "target_history")
-    assert reason =~ "stopped after 2 outer resumptions"
+    assert reason =~ "verification retries exhausted"
 
     record = record!(dir)
     assert Enum.map(record["findings"], & &1["id"]) == ["F1", "F2"]
@@ -120,7 +120,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
     assert Enum.any?(
              record["attempts"],
-             &String.contains?(&1["failure"] || "", "declared-target failure")
+             &String.contains?(&1["failure"] || "", "verification retries exhausted")
            )
   end
 
@@ -340,6 +340,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
     for path <- [
           ".codex/hooks/check.sh",
+          ".codex/hooks/stop_runner.py",
           ".codex/hooks/verification_policy.py",
           ".codex/hooks.json",
           "priv/kogen/prompts/execution-policy.md",
@@ -405,7 +406,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
   defp config,
     do:
-      "harness: codex\nshaping: {model: fake, effort: low}\ndeveloper: {model: fake, effort: low}\nreviewer: {model: fake, effort: low}\nhelpers:\n  scout: {model: fake, effort: low}\n  worker: {model: fake, effort: medium}\n  expert: {model: fake, effort: medium}\nouter_resumptions: 2\n"
+      "harness: codex\nshaping: {model: fake, effort: low}\ndeveloper: {model: fake, effort: low}\nreviewer: {model: fake, effort: low}\nhelpers:\n  scout: {model: fake, effort: low}\n  worker: {model: fake, effort: medium}\n  expert: {model: fake, effort: medium}\nouter_resumptions: 2\nverification_retries: 2\n"
 
   defp target_evidence_producer do
     ~S'''

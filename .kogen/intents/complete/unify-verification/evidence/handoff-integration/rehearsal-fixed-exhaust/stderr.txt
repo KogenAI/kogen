@@ -1,0 +1,21 @@
+    warning: redefining module Kogen.Harness (current version loaded from _build/dev/lib/kogen/ebin/Elixir.Kogen.Harness.beam)
+    │
+  1 │ defmodule Kogen.Harness do
+    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/kogen/harness.ex:1: Kogen.Harness (module)
+
+    warning: redefining module Kogen.Build.DeveloperHandoff (current version loaded from _build/dev/lib/kogen/ebin/Elixir.Kogen.Build.DeveloperHandoff.beam)
+    │
+  1 │ defmodule Kogen.Build.DeveloperHandoff do
+    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/kogen/build/developer_handoff.ex:1: Kogen.Build.DeveloperHandoff (module)
+
+    warning: redefining module Kogen.Build.Contract (current version loaded from _build/dev/lib/kogen/ebin/Elixir.Kogen.Build.Contract.beam)
+    │
+  1 │ defmodule Kogen.Build.Contract do
+    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/kogen/build/contract.ex:1: Kogen.Build.Contract (module)
+

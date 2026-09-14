@@ -9,6 +9,8 @@ RUNTIME = Path(os.environ["KOGEN_SHAPING_EVALUATION_RUNTIME"]).resolve()
 SESSION_ROOT = Path.home() / ".codex" / "sessions"
 FIXTURES = HERE / "fixtures"
 COMPACT_FIXTURES = HERE / "compact-fixtures-v2"
+CASES = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation",
+         "stateful-flawed", "stateful-complete")
 MAX_SECONDS = 600
 PARSER_CODE_PATHS_ENV = "KOGEN_SHAPING_EVALUATION_ELIXIR_CODE_PATHS"
 PARSER_OUTPUT_LIMIT = 2_000
@@ -66,6 +68,8 @@ CURRENT_REQUESTS = {
     "booking-flawed": BOOKING_FLAWED,
     "booking-complete": BOOKING_COMPLETE,
     "csv-continuation": "Continue the saved eval-csv-seed Draft. Resolve the outstanding invalid-row policy first, preserve the separate output-replacement question until it is explicitly answered, and save each reviewable state without approval.",
+    "stateful-flawed": "Shape the stateful verification guardrail described in evidence/stateful-guardrail-flawed.md with exact slug eval-stateful-flawed. Save the Draft without approval.",
+    "stateful-complete": "Shape the stateful verification guardrail described in evidence/stateful-guardrail-complete.md with exact slug eval-stateful-complete. Save the Draft without approval.",
 }
 
 def canonical_case(label):
@@ -293,7 +297,8 @@ def setup_fixture(label, extra_files):
 
 
 def write_fixture_readme(fixture, label):
-    domain = "CSV normalization" if label.startswith("csv") else "calendar availability"
+    domain = ("CSV normalization" if label.startswith("csv") else
+              "calendar availability" if label.startswith("booking") else "stateful verification guardrail")
     fixture.joinpath("README.md").write_text(f"""# {domain}
 
 ## Current user request
@@ -301,9 +306,10 @@ def write_fixture_readme(fixture, label):
 {current_request(label)}
 
 Shape the feature specified in [the brief](evidence/fixture-contract.md) and
-[settled facts](evidence/facts.json). Inspect the linked prerequisite reader or
-adapter and receipts in evidence/. These sources establish parsing or synthetic
-access only; the requested CLI feature is not implemented. Proposed verification
+[settled facts](evidence/facts.json). Inspect the linked prerequisite reader,
+adapter, or stateful control and receipts in evidence/. These sources establish
+parsing, synthetic access, or fixture behavior only; the requested CLI feature
+is not implemented. Proposed verification
 must exercise the actual CLI output and failures. Current Kogen source under
 lib/ and priv/ supplies the public Shaping command. Add future feature sources
 under app/ and focused feature checks under test/; the verification target bodies
@@ -364,6 +370,24 @@ def booking_files(complete=False):
         + ("The audience is already connected organizers. Use the supplied maintained setup lifecycle and current adapter controls."
            if complete else "The proposed audience has no connection and setup is proposed a non-goal. A previous success receipt is linked in old-receipt.md; determine actual present reachability.")
         + " Missing authority is unavailable, not an empty success. Synthetic proof establishes no real credentials or OAuth.\n")
+    return files
+
+def stateful_files(complete=False):
+    brief = "stateful-guardrail-complete.md" if complete else "stateful-guardrail-flawed.md"
+    files = {f"evidence/{name}": (HERE / name).read_bytes() for name in
+             ("stateful_guardrail.py", "stateful_guardrail_control.py", brief)}
+    files["evidence/stateful-mode.txt"] = ("complete\n" if complete else "flawed\n").encode()
+    files["evidence/facts.json"] = (json.dumps({
+        "feature": "stateful verification admission before observable dispatch",
+        "mode": "complete" if complete else "flawed",
+        "ownership": "fixture sources are read-only; Shaping may write only its Draft",
+        "evidence_limit": "deterministic controls establish fixture behavior, not full-route correctness"
+    }, indent=2) + "\n").encode()
+    files["evidence/fixture-contract.md"] = (
+        "Use stateful_guardrail_control.py to run the deterministic two-failure, "
+        "corruption, exhaustion replay, valid repair, and receipt-consumer controls. "
+        "The source and action marker are fixture-owned and must remain unchanged.\n"
+    ).encode()
     return files
 
 def draft_dir(fixture, slug): return fixture/".kogen/intents/drafts"/slug
@@ -566,10 +590,19 @@ def write_booking_setup_observation(fixture,out):
              "missing_connection":".tmp/calendar-run-17/connection.json"}
     (out/"booking-setup-observation.json").write_text(json.dumps(payload,indent=2)+"\n")
 
+def write_stateful_control_result(fixture, out, case):
+    mode = "complete" if case.endswith("complete") else "flawed"
+    result = subprocess.run(
+        ["python3", "-B", "stateful_guardrail_control.py", mode,
+         "--output", str(out / "stateful-control-result.json")],
+        cwd=fixture / "evidence", capture_output=True, text=True, timeout=30)
+    if result.returncode not in (0, 1):
+        raise RuntimeError(f"{case}: stateful deterministic controls failed to run: {result.stderr}")
+
 def copy_fixture_sources(fixture,case,out):
     target=out/"fixture-source"; target.mkdir()
     shutil.copy2(fixture/"README.md",target/"README.md")
-    kind="csv" if case.startswith("csv") else "booking"
+    kind="csv" if case.startswith("csv") else "booking" if case.startswith("booking") else "stateful"
     for relative in (Path("app")/kind,Path("test")/kind):
         source=fixture/relative
         if source.is_dir(): shutil.copytree(source,target/relative,ignore=shutil.ignore_patterns("__pycache__","*.pyc","*.pyo",".DS_Store"))
@@ -606,6 +639,8 @@ def require_cleanup(fixture,case,receipt):
 def drive(case, fixture, slug, messages, triggers, continuation=False):
     profiles, profile_configuration = configured_profiles(fixture)
     out=RUNTIME/"runs"/case; out.mkdir(parents=True)
+    if case.startswith("stateful-"):
+        write_stateful_control_result(fixture, out, case)
     mailbox=out/"transport-mailbox"; mailbox.mkdir()
     baseline_status=subprocess.run(["git","status","--porcelain"],cwd=fixture,capture_output=True,text=True,check=True).stdout.splitlines()
     baseline_sources=source_snapshot(fixture)
@@ -812,10 +847,10 @@ def required_artifacts():
     # Detailed receipts, PTY/transport logs, and immutable native streams remain
     # private run data used by validate_case() and are never manifested.
     required = []
-    for case in ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation"):
+    for case in CASES:
         run = RUNTIME / "runs" / case
         public_names=("review-receipt.json","messages.json","input-delivery.json","owned-session-metadata.json","public-transcript.json","draft-state.json",
-                      "csv-probe-result.json","booking-setup-observation.json","fixture-cleanup.json")
+                      "csv-probe-result.json","booking-setup-observation.json","stateful-control-result.json","fixture-cleanup.json")
         for name in public_names:
             path=run/name
             if path.is_file(): required.append(path)
@@ -831,7 +866,8 @@ def required_artifacts():
             if path.is_file() and not path.is_symlink(): required.append(path)
         evidence_names=("facts.json","protocol.json","prerequisite-results.json","plain.csv","bom.csv","invalid-date.csv",
                         "naive_reader.py","reader_control.py","calendar_adapter.py","capability-seed.json","CORRECTION.md",
-                        "old-receipt.md","inventory.txt","fixture-contract.md","complete-input-receipt.json","current-prerequisite-receipt.json","prerequisite_control.py")
+                        "old-receipt.md","inventory.txt","fixture-contract.md","complete-input-receipt.json","current-prerequisite-receipt.json","prerequisite_control.py",
+                        "stateful_guardrail.py","stateful_guardrail_control.py","stateful-guardrail-flawed.md","stateful-guardrail-complete.md","stateful-mode.txt","stateful-control-result.json")
         for name in evidence_names:
             path=run/"evidence"/name
             if path.is_file(): required.append(path)
@@ -993,7 +1029,7 @@ def run_suite():
         return 1
     # Dispatch all independent roots first. Stream each child to its retained
     # log so a verbose native transport cannot deadlock a PIPE.
-    cases=("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation")
+    cases=CASES
     env={**os.environ, "KOGEN_SHAPING_EVALUATION_SUITE_BARRIER":"1"}
     children={}; logs={}; pending=set(cases); failure=None
     try:
@@ -1064,7 +1100,7 @@ def suite_barrier(case):
     (barrier/f"{case}.ready").write_text(str(wall_now()))
     deadline=monotonic_now()+60
     while monotonic_now()<deadline:
-        if len(list(barrier.glob("*.ready"))) == 5: return
+        if len(list(barrier.glob("*.ready"))) == len(CASES): return
         time.sleep(.05)
     raise TimeoutError(f"{case}: concurrent suite barrier timed out")
 
@@ -1081,7 +1117,7 @@ def case_succeeded(receipt):
             all(item.get("all_reaped") is True for item in receipt["cleanup"]))
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument("case",choices=["csv-flawed","csv-continuation","csv-complete","booking-flawed","booking-complete", "suite"]); args=ap.parse_args()
+    ap=argparse.ArgumentParser(); ap.add_argument("case",choices=[*CASES, "suite"]); args=ap.parse_args()
     if args.case == "suite":
         return run_suite()
     suite_barrier(args.case)
@@ -1098,7 +1134,13 @@ def main():
     elif args.case=="booking-flawed":
         f=setup_fixture("booking-flawed",booking_files()); msgs=[BOOKING_ANSWER]; tr=[booking_reachability_trigger]; r=drive(args.case,f,"eval-booking-flawed",msgs,tr); require_cleanup(f,args.case,r)
     else:
-        f=setup_fixture("booking-complete",booking_files(True)); r=drive(args.case,f,"eval-booking-complete",[],[lambda _t, _root: True]); require_cleanup(f,args.case,r)
+        if args.case == "booking-complete":
+            f=setup_fixture("booking-complete",booking_files(True)); r=drive(args.case,f,"eval-booking-complete",[],[lambda _t, _root: True])
+        elif args.case == "stateful-flawed":
+            f=setup_fixture("stateful-flawed",stateful_files(False)); r=drive(args.case,f,"eval-stateful-flawed",[],[lambda _t, _root: True])
+        else:
+            f=setup_fixture("stateful-complete",stateful_files(True)); r=drive(args.case,f,"eval-stateful-complete",[],[lambda _t, _root: True])
+        require_cleanup(f,args.case,r)
     # The driver deliberately stops an otherwise completed interactive root.
     # Depending on whether Codex still owns a background terminal, that bounded
     # stop may surface the TERM status even though the captured native turn and

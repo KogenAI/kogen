@@ -1,0 +1,100 @@
+{
+  "id": "01a09eaf-f767-75ee-8c37-a31ca9b70cb0",
+  "slug": "unify-verification",
+  "title": "Unify verification",
+  "status": "approved",
+  "shaped_against": {
+    "branch": "main",
+    "head": "c1c9d13747d7287a7e23f02aca02d67f0467b010"
+  },
+  "shaping": {
+    "harness": "codex",
+    "model": "gpt-6-astra",
+    "effort": "low",
+    "started": "2026-09-14T06:52:07.403177Z"
+  },
+  "may_change_guarded_paths": [
+    "README.md",
+    ".kogen/config.yaml",
+    ".codex/hooks.json",
+    ".codex/hooks/**",
+    "lib/kogen/build.ex",
+    "lib/kogen/build/**",
+    "lib/kogen/check.ex",
+    "lib/kogen/harness.ex",
+    "lib/kogen/intent.ex",
+    "lib/kogen/verification_policy.ex",
+    "priv/kogen/prompts/developer.md",
+    "priv/kogen/prompts/reviewer.md",
+    "priv/kogen/prompts/shaping.md",
+    "priv/kogen/prompts/execution-policy.md",
+    "scripts/check/README.md",
+    "test/kogen/**",
+    "test/support/**",
+    "lib/kogen/check/**"
+  ],
+  "approval_history": [
+    {
+      "historical": true,
+      "approval": {
+        "statement": "Approved by the human Shaper in this conversation.",
+        "source": "Ok, let's go. Finish shaping this. I approve.",
+        "bookkeeping_at": "2026-09-14T07:31:39.145964+00:00",
+        "scope": "Unified Stop verification and bounded counters as specified in INTENT.md; shaping approval does not perform or authorize source writes in this conversation."
+      },
+      "snapshot": "evidence/historical-approved-before-handoffs/intent.yaml"
+    },
+    {
+      "historical": true,
+      "approval": {
+        "statement": "Approved by the human Shaper in this conversation.",
+        "source": "approve",
+        "recorded_at": "2026-09-14T10:04:21.181527+00:00",
+        "shaped_against": {
+          "branch": "main",
+          "head": "c1c9d13747d7287a7e23f02aca02d67f0467b010"
+        },
+        "scope": "The reconciled Unify verification contract; approval bookkeeping only in this conversation."
+      },
+      "snapshot": "evidence/historical-approved-before-failed-build/intent.yaml"
+    }
+  ],
+  "shaping_visits": [
+    {
+      "started": "2026-09-14T09:57:06.985695+00:00",
+      "harness": "codex",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "reason": "Shaper reopened after structured Developer handoffs completed; reconcile saved unification contract.",
+      "previous_shaped_against": {
+        "branch": "main",
+        "head": "2890d86f16c8819cfad12cbd98dbbdc8ee068b1c"
+      },
+      "current_shaped_against": {
+        "branch": "main",
+        "head": "c1c9d13747d7287a7e23f02aca02d67f0467b010"
+      }
+    },
+    {
+      "started": "2026-09-14T11:19:20.193398+00:00",
+      "reason": "Shaper requested Fix Intent? after exhausted Build; repair evidence contract without modifying Candidate.",
+      "harness": "codex",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "shaped_against": {
+        "branch": "main",
+        "head": "c1c9d13747d7287a7e23f02aca02d67f0467b010"
+      }
+    }
+  ],
+  "approval": {
+    "statement": "Approved by the human Shaper in this conversation.",
+    "source": "approve idiot",
+    "recorded_at": "2026-09-14T12:24:40.462936+00:00",
+    "shaped_against": {
+      "branch": "main",
+      "head": "c1c9d13747d7287a7e23f02aca02d67f0467b010"
+    },
+    "scope": "Revised Unify verification contract, including failed-Build acceptance repairs and the bounded shaping-process improvement."
+  }
+}

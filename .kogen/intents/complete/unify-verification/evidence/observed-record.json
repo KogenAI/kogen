@@ -1,0 +1,49 @@
+{
+  "source": ".kogen/runtime/scenario-tracking/JyI1fj8Div-K_AhRogjm0iL1/record.json",
+  "sha256": "0770fa7f8b96b15313bc42496fd2e9d59e20caf69f241c571ac5a24741de95b0",
+  "limitations": "Retained controller record, not a new execution. Target output is truncated by its owner. Historical recovery Candidate is not current source.",
+  "attempts": [
+    {
+      "number": 0,
+      "candidate": "fa9ab5d98199f3f9c01f44bf7fd3948acc3fdc77",
+      "developer_session": "01a09e36-321e-7792-b657-5960c707f83a",
+      "check_exit": 0,
+      "targets": [
+        {
+          "target": "live",
+          "status": "failed"
+        }
+      ],
+      "has_verdict": false
+    },
+    {
+      "number": 1,
+      "candidate": "fa9ab5d98199f3f9c01f44bf7fd3948acc3fdc77",
+      "developer_session": "01a09e36-321e-7792-b657-5960c707f83a",
+      "check_exit": 0,
+      "targets": [
+        {
+          "target": "live",
+          "status": "failed"
+        }
+      ],
+      "has_verdict": false
+    },
+    {
+      "number": 2,
+      "candidate": "ed807574aafca1bb1ac59016ca71beabbf83dd3f",
+      "developer_session": "01a09e36-321e-7792-b657-5960c707f83a",
+      "check_exit": 0,
+      "targets": [
+        {
+          "target": "live",
+          "status": "passed"
+        }
+      ],
+      "has_verdict": true
+    }
+  ],
+  "open_findings": [
+    "F1"
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "cli": "codex-cli 0.154.0",
+  "results": [
+    {
+      "mode": "exhaust",
+      "argv": [
+        "codex",
+        "exec",
+        "--ephemeral",
+        "--json",
+        "--enable",
+        "hooks",
+        "--dangerously-bypass-hook-trust",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-sol",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        "Reply only OK. Do not use tools, read files, or edit anything. If a Stop hook requests another reply, reply OK again."
+      ],
+      "exit": 0,
+      "elapsed": 16.5,
+      "calls": 3,
+      "responses": [
+        {
+          "decision": "block",
+          "reason": "Fixture verification failed. Do not use tools or change files. Reply OK again."
+        },
+        {
+          "decision": "block",
+          "reason": "Fixture verification failed. Do not use tools or change files. Reply OK again."
+        },
+        {
+          "continue": false,
+          "stopReason": "Verification exhausted at third failure"
+        }
+      ],
+      "event_types": [
+        "thread.started",
+        "item.completed",
+        "item.completed",
+        "turn.started",
+        "item.completed",
+        "item.completed",
+        "item.completed",
+        "turn.completed"
+      ],
+      "source_sha256": "4c94c9b76c0d8ed650cb691c18a1fe30f5241f7b9b598f5a13db6cada4787ada"
+    },
+    {
+      "mode": "pass-third",
+      "argv": [
+        "codex",
+        "exec",
+        "--ephemeral",
+        "--json",
+        "--enable",
+        "hooks",
+        "--dangerously-bypass-hook-trust",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-sol",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        "Reply only OK. Do not use tools, read files, or edit anything. If a Stop hook requests another reply, reply OK again."
+      ],
+      "exit": 0,
+      "elapsed": 23.35,
+      "calls": 3,
+      "responses": [
+        {
+          "decision": "block",
+          "reason": "Fixture verification failed. Do not use tools or change files. Reply OK again."
+        },
+        {
+          "decision": "block",
+          "reason": "Fixture verification failed. Do not use tools or change files. Reply OK again."
+        },
+        {
+          "continue": true
+        }
+      ],
+      "event_types": [
+        "thread.started",
+        "item.completed",
+        "item.completed",
+        "turn.started",
+        "item.completed",
+        "item.completed",
+        "item.completed",
+        "turn.completed"
+      ],
+      "source_sha256": "4c94c9b76c0d8ed650cb691c18a1fe30f5241f7b9b598f5a13db6cada4787ada"
+    }
+  ]
+}

@@ -303,6 +303,7 @@ defmodule Kogen.ShapeTaskTest do
       worker: {model: current-worker, effort: worker-effort}
       expert: {model: current-expert, effort: expert-effort}
     outer_resumptions: 2
+    verification_retries: 2
     """
   end
 

@@ -52,7 +52,7 @@ Exit the shaping conversation, then build its chosen slug:
 mix kogen.build <slug>
 ```
 
-Start Build on a clean branch with a commit at HEAD. Kogen implements the approved feature, runs checks, obtains an independent review, and commits the accepted result with its completed Intent and evidence. A stopped Build returns an error and keeps its work available for inspection. Review the error and working tree before starting again; automatic recovery is not implemented yet.
+Start Build on a clean branch with a commit at HEAD. Kogen implements the approved feature, runs verification, obtains an independent review, and commits the accepted result with its completed Intent and evidence. A stopped Build returns an error and keeps its work available for inspection. Review the error and working tree before starting again.
 
 ## The loop
 
@@ -61,9 +61,9 @@ Start Build on a clean branch with a commit at HEAD. Kogen implements the approv
 - **Build** implements, checks, independently reviews, and reworks when necessary.
 - **Commit** records the checked and accepted implementation of one Intent.
 
-The Developer's Stop hook owns `make check`; the outer Build owns each distinct declared non-check target, in first scenario occurrence order, after matching Check settlement. Failed checks are corrected within the same conversation. A failed outer target or Review finding resumes the same Developer within the existing budget and requires a fresh Stop Check before the full non-check sequence starts again. An exhausted Build stops rather than claiming success.
+The Stop hook owns the complete verification settlement: `make check`, followed by each distinct target declared by the Approved Intent in first scenario occurrence order. `verification_retries` bounds failed Stop verification retries inside the same Developer conversation; those retries do not consume the outer allowance. A settled verification failure, invalid Developer handoff, failed declared target, or Review finding uses one outer resumption of the same Developer, when allowance remains, and a resumed attempt must settle a fresh Stop verification before handoff or Review. Handoff validation follows a passed Stop verification; a missing or invalid handoff never overrides a failed or exhausted verification. An exhausted verification or outer allowance stops the Build rather than claiming success.
 
-Developers and their delegated helpers must not run `make check`, `make live`, any target declared by the selected Intent, or `.codex/hooks/check.sh`, including for early signal; focused non-gate tests remain allowed. A tracked PreToolUse hook blocks the explicit Make, command-list, and Stop-script forms before Bash dispatch. This bounded guard deliberately does not inspect indirect execution through non-gate Make dependencies, wrappers, shell expansion, `sh -c`, or later stdin; the Developer contract still forbids those routes.
+Developers and their delegated helpers must not run `make check`, `make live`, any target declared by the selected Intent, or `.codex/hooks/check.sh`, including for early signal; focused non-gate tests remain allowed. A tracked PreToolUse hook blocks the explicit Make, command-list, and Stop-script forms before Bash dispatch. This bounded guard deliberately does not inspect indirect execution through non-gate Make dependencies, wrappers, shell expansion, `sh -c`, or later stdin; the Developer contract still forbids those routes. Existing configurations using legacy outer-resumption naming remain transition inputs; new documentation uses `verification_retries` for Stop verification and the outer allowance for Developer rework.
 
 Every scenario's `verified_by` is a YAML list of Make target names, such as `[check]`. The real lifecycle fixture has a bounded check target; it never invokes the full live suite recursively.
 
@@ -94,7 +94,7 @@ verdicts, findings, receipts, source snapshots, and historical exact bytes stay
 in that record. Missing or conflicting required evidence is an integrity failure;
 unfinished optional Draft files remain valid shaping work.
 
-After Stop Check settles, Build validates the final Developer message against a
+After Stop verification settles, Build validates the final Developer message against a
 controller-owned schema bound to the fresh attempt token, contract IDs, and
 collection sizes. Fresh and resumed attempts each use a distinct private schema
 and final-output file; Build retains their exact bytes before cleanup and never
@@ -106,7 +106,9 @@ gate receipts; claims never count as gate results. A fresh Reviewer assesses eve
 scenario and explicitly closes or retains every open finding with inspected
 counterevidence or repair evidence. Acceptance requires all scenarios satisfied
 and no open blocking findings for the current Candidate. Invalid handoffs share
-the existing rework budget; malformed Review stops without partial closures.
+the outer allowance; malformed Review stops without partial closures.
+Verification exhaustion takes precedence over handoff parsing, and
+outer-allowance exhaustion takes precedence over another launch.
 
 To inspect a stopped Build, start with the record path and unresolved scenario IDs
 in its error. Read `.kogen/runtime/scenario-tracking/<build-id>/record.json`:

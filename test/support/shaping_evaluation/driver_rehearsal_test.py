@@ -190,6 +190,9 @@ class DriverRehearsalTest(unittest.TestCase):
         def reaper(_fixture, _frozen=None):
             return {"roots":[],"before":[],"actions":[],"remaining_pids":[],"all_reaped":not cleanup_fails}
         profiles = ({"root":("fake-model","low"),"scout":("fake-model","low"),"worker":("fake-model","low"),"expert":("fake-model","low")}, {"normalized":{}})
+        def stateful_control(_fixture, out, case):
+            complete = case.endswith("complete")
+            (out / "stateful-control-result.json").write_text(json.dumps({"mode": "complete" if complete else "flawed", "source_sha256": "a" * 64, "cycles": [{"dispatched": True}, {"dispatched": True}], "corrupt_state": {"dispatched": not complete}, "exhausted_replay": {"dispatched": not complete}, "repair": {"ok": True, "dispatched": True}, "receipt_consumer": {"accepted": complete}}))
         with patch.object(self.driver.time, "time", clock.time), patch.object(self.driver.time, "monotonic", clock.monotonic), patch.object(self.driver.time, "sleep", clock.sleep), \
              patch.object(self.driver.subprocess, "Popen", popen), patch.object(self.driver.subprocess, "run", run), \
              patch.object(self.driver, "configured_profiles", lambda _fixture: profiles), \
@@ -409,9 +412,9 @@ class DriverRehearsalTest(unittest.TestCase):
         self.assertEqual([], launches)
         self.assertFalse((self.runtime / "evidence-manifest.json").exists())
 
-    def test_run_suite_dispatches_all_five_before_collection_and_reaps_after_child_failure(self):
+    def test_run_suite_dispatches_all_cases_before_collection_and_reaps_after_child_failure(self):
         launches, polls, reaped, signals = [], [], [], []
-        cases = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation")
+        cases = self.driver.CASES
 
         def parser(argv, **kwargs):
             class Result:
@@ -430,7 +433,7 @@ class DriverRehearsalTest(unittest.TestCase):
                 def poll(self):
                     if self.returncode is not None:
                         return self.returncode
-                    if case in ("booking-complete", "csv-continuation"):
+                    if case in ("booking-complete", "csv-continuation", "stateful-flawed", "stateful-complete"):
                         return None
                     polls.append(case)
                     if case == "booking-flawed":
@@ -461,7 +464,7 @@ class DriverRehearsalTest(unittest.TestCase):
         self.assertEqual(list(cases), [case for case, _kwargs in launches])
         self.assertEqual(set(cases), {case for case, kwargs in launches if kwargs["start_new_session"] is True})
         self.assertEqual("csv-flawed", polls[0])
-        self.assertEqual(5, len(launches), "collection began before all five independent children were dispatched")
+        self.assertEqual(len(cases), len(launches), "collection began before all independent children were dispatched")
         self.assertEqual(set(cases), set(reaped))
         self.assertTrue(signals, "pending child process groups were not cancelled")
         failure = json.loads((self.runtime / "suite-failure.json").read_text())
@@ -476,7 +479,7 @@ class DriverRehearsalTest(unittest.TestCase):
         self.assertFalse((self.runtime / "evidence-manifest.json").exists())
 
     def test_run_suite_real_children_overlap_at_the_actual_barrier_before_collection(self):
-        """Five cheap OS children exercise the production file barrier, offline."""
+        """Cheap OS children exercise the production file barrier, offline."""
         real_popen = self.driver.subprocess.Popen
         events = self.runtime / "barrier-events"
         child_script = r"""
@@ -511,7 +514,7 @@ events.mkdir(exist_ok=True)
         def capture(case):
             captures.append(case)
             ready = list((self.runtime / "barrier").glob("*.ready"))
-            self.assertEqual(5, len(ready), "a child was collected before every child reached the production barrier")
+            self.assertEqual(len(self.driver.CASES), len(ready), "a child was collected before every child reached the production barrier")
 
         with patch.object(self.driver, "preflight_yaml_parser", lambda: None), \
              patch.object(self.driver, "setup_continuation_seed", lambda: self.runtime / "continuation-seed"), \
@@ -521,12 +524,12 @@ events.mkdir(exist_ok=True)
              patch.object(self.driver.subprocess, "Popen", popen):
             self.assertEqual(0, self.driver.run_suite())
 
-        expected = ["csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation"]
+        expected = list(self.driver.CASES)
         self.assertEqual(expected, [case for case, _kwargs in launches])
         self.assertEqual(set(expected), set(captures))
         records = [json.loads(path.read_text()) for path in events.glob("*.json")]
-        self.assertEqual(5, len(records))
-        self.assertTrue(all(record["ready_count"] == 5 for record in records))
+        self.assertEqual(len(expected), len(records))
+        self.assertTrue(all(record["ready_count"] == len(expected) for record in records))
         self.assertLessEqual(max(record["entered"] for record in records), min(record["released"] for record in records))
         self.assertTrue(all(kwargs["start_new_session"] is True for _case, kwargs in launches))
         self.assertFalse((self.runtime / "suite-failure.json").exists())
@@ -562,14 +565,21 @@ events.mkdir(exist_ok=True)
 
         def setup(case, _files):
             slug = {"csv-flawed":"eval-csv-flawed", "csv-continuation":"eval-csv-seed", "csv-complete":"eval-csv-complete",
-                    "booking-flawed":"eval-booking-flawed", "booking-complete":"eval-booking-complete"}[case]
+                    "booking-flawed":"eval-booking-flawed", "booking-complete":"eval-booking-complete",
+                    "stateful-flawed":"eval-stateful-flawed", "stateful-complete":"eval-stateful-complete"}[case]
             fixture = self.fixture(str(self.runtime / case), "temporary-seed" if case == "csv-continuation" else slug, "original-csv" if case == "csv-flawed" else f"id-{case}")
             (fixture / "README.md").write_text("# Fixture\n\n## Current user request\n\n" + self.driver.current_request(case) + "\n")
+            for relative, content in _files.items():
+                path = fixture / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content if isinstance(content, bytes) else content.encode())
             intent = fixture / ".kogen/intents/drafts" / slug / "intent.yaml"
             if case == "csv-complete":
                 intent.write_text("id: id-csv-complete\nslug: eval-csv-complete\ntitle: Rehearsal Draft\nstatus: draft\nshaped_against: {branch: main, head: frozen-head}\nshaping: {harness: codex, model: fake-model, effort: low, started: original-visit}\nshaping_continuations: []\nmay_change_guarded_paths: [app/**, test/**]\n")
             elif case == "booking-flawed":
                 intent.write_text("{id: id-booking-flawed, slug: eval-booking-flawed, title: Rehearsal Draft, status: draft, description: historical .tmp/calendar-run-17/connection.json is missing and the audience choice remains open, shaped_against: {branch: main, head: frozen-head}, shaping: {harness: codex, model: fake-model, effort: low, started: original-visit}, shaping_continuations: [], may_change_guarded_paths: [app/**, test/**]}\n")
+            elif case.startswith("stateful-"):
+                intent.write_text(f"id: id-{case}\nslug: eval-{case}\ntitle: Rehearsal Draft\nstatus: draft\nshaped_against: {{branch: main, head: frozen-head}}\nshaping: {{harness: codex, model: fake-model, effort: low, started: original-visit}}\nshaping_continuations: []\nmay_change_guarded_paths: [test/**]\n")
             return fixture
 
         def popen(argv, **_kwargs):
@@ -651,7 +661,7 @@ events.mkdir(exist_ok=True)
             self.assertEqual(1, status)
             failure = json.loads((self.runtime / "suite-failure.json").read_text())
             self.assertIn("captured provenance differs from original Draft", failure["message"])
-            self.assertEqual(5, sum(Path(argv[1]).name == "shape_transport.exp" for argv in launches))
+            self.assertEqual(len(self.driver.CASES), sum(Path(argv[1]).name == "shape_transport.exp" for argv in launches))
             self.assertFalse((self.runtime / "evidence-manifest.json").exists())
             self.assertNotIn("KOGEN_TARGET_EVIDENCE_MANIFEST\t", self.output.getvalue())
             return
@@ -661,12 +671,12 @@ events.mkdir(exist_ok=True)
         state = json.loads((self.runtime / "runs/csv-continuation/draft-state.json").read_text())
         self.assertEqual("01990000-0000-7000-8000-00000000c501", state["intent_id"])
         self.assertEqual("csv-continuation", next(iter(continuation_fixtures)).name)
-        self.assertEqual(5, sum(1 for argv in launches if Path(argv[1]).name == "shape_transport.exp"))
-        cases = ["csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation"]
+        self.assertEqual(len(self.driver.CASES), sum(1 for argv in launches if Path(argv[1]).name == "shape_transport.exp"))
+        cases = list(self.driver.CASES)
         public = [argv for argv in launches if Path(argv[1]).name == "shape_transport.exp"]
-        self.assertEqual(["csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation"], [Path(argv[2]).name for argv in public])
+        self.assertEqual(cases, [Path(argv[2]).name for argv in public])
         root_ids=[]
-        for case, count in zip(cases, [1, 0, 1, 0, 2]):
+        for case, count in zip(cases, [1, 0, 1, 0, 2, 0, 0]):
             run = self.runtime / "runs" / case
             receipt = json.loads((run / "receipt.json").read_text())
             messages = json.loads((run / "messages.json").read_text())
@@ -681,7 +691,7 @@ events.mkdir(exist_ok=True)
                 self.assertTrue((run / "drafts-by-turn/0/questions.md").is_file())
             self.assertTrue(all(isinstance(event["root_rollout"], str) for event in receipt["terminal_events"]))
             root_ids.append(receipt["correlation"]["roots"][0])
-        self.assertEqual(5, len(set(root_ids)))
+        self.assertEqual(len(cases), len(set(root_ids)))
         first = json.loads((self.runtime / "runs/csv-flawed/draft/intent.yaml").read_text())
         seed = json.loads((self.runtime / "continuation-seed/intent.yaml").read_text())
         partial = json.loads((self.runtime / "runs/csv-continuation/drafts-by-turn/0/intent.yaml").read_text())
@@ -786,7 +796,9 @@ events.mkdir(exist_ok=True)
             with patch.object(sys, "argv", ["driver.py", "booking-flawed"]): self.assertEqual(0, self.driver.main())
             with patch.object(sys, "argv", ["driver.py", "booking-complete"]): self.assertEqual(0, self.driver.main())
             with patch.object(sys, "argv", ["driver.py", "csv-continuation"]): self.assertEqual(0, self.driver.main())
-        self.assertEqual(["csv-flawed", "csv-complete", "booking-flawed", "booking-complete"], [entry[1] for entry in routed if entry[0] == "setup"])
+            with patch.object(sys, "argv", ["driver.py", "stateful-flawed"]): self.assertEqual(0, self.driver.main())
+            with patch.object(sys, "argv", ["driver.py", "stateful-complete"]): self.assertEqual(0, self.driver.main())
+        self.assertEqual(["csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "stateful-flawed", "stateful-complete"], [entry[1] for entry in routed if entry[0] == "setup"])
         continuation = next(entry for entry in routed if entry[0] == "drive" and entry[1] == "csv-continuation")
         self.assertEqual((self.runtime / "csv-continuation").resolve(), continuation[2])
         self.assertTrue(continuation[-1])

@@ -1,0 +1,14 @@
+{
+  "checked_at": "2026-09-14T07:31:39.110800+00:00",
+  "yaml_parser": "Repository-installed YamlElixir via compiled dependency code paths",
+  "scenario_count": 14,
+  "risk_count": 3,
+  "checks": [
+    "YAML parses for all current YAML files",
+    "Unique complete scenarios; verified_by entries are declared check/live targets",
+    "Risk scenario references and required nonblank string ownership fields",
+    "Local reference paths exist",
+    "Current tracked working tree remains clean at original shaped head"
+  ],
+  "limits": "No production implementation, full make gate, or new combined public Build acceptance executed during shaping. Native callback prerequisite probe retained separately."
+}

@@ -1,0 +1,1 @@
+Return only the required structured handoff. Use attempt_token probe-token, one scenario s1 status ready, claim 'The probe source exists', implementation and evidence each [{path: source.txt, locator: line 1}], and empty risks/findings. Do not use tools or modify any file. If Stop blocks, return that same handoff again.

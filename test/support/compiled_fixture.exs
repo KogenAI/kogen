@@ -7,6 +7,7 @@ defmodule Kogen.CompiledFixture do
     ".kogen/config.yaml",
     ".codex/hooks.json",
     ".codex/hooks/check.sh",
+    ".codex/hooks/stop_runner.py",
     ".codex/hooks/verification_policy.py",
     "priv/kogen/prompts/execution-policy.md",
     "priv/kogen/prompts/developer.md",

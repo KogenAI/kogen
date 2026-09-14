@@ -1,0 +1,13 @@
+{
+  "format": "kogen-local-evidence-archive-receipt-v1",
+  "status": "full-record-archived-outside-git",
+  "original_commit": "8ec5495872e92b6e1313b1565221d170303e59e1",
+  "original_path": ".kogen/intents/complete/unify-verification/scenario-tracking.json",
+  "original_git_blob": "271edb7f7ea83a435b292e39026b7063eaafd3ab",
+  "original_bytes": 165683775,
+  "sha256": "365f6add4f9e18b0a01e6ce14e45bfdb9b1bf3df9fe62f7a6f401665bde46941",
+  "archive_id": "2026-09-14-pre-push",
+  "archive_relative_path": "unify-verification/scenario-tracking.json",
+  "reason": "Removed oversized embedded runtime evidence from unpublished history at the repository owner’s request on 2026-09-14. Implementation and original evidence remain preserved.",
+  "availability": "Full evidence is in the owner’s local kogen-evidence-archive, outside this repository. This receipt is not the tracking record and does not provide self-contained verification evidence. See evidence.md for the original concise Build report."
+}

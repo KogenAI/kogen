@@ -23,7 +23,8 @@ defmodule Kogen.Intent do
             worker: role_config(),
             expert: role_config()
           },
-          outer_resumptions: integer()
+          outer_resumptions: non_neg_integer(),
+          verification_retries: non_neg_integer()
         }
 
   @type intent :: %{
@@ -178,7 +179,8 @@ defmodule Kogen.Intent do
          {:ok, developer} <- require_role(data, "developer"),
          {:ok, reviewer} <- require_role(data, "reviewer"),
          {:ok, helpers} <- require_helpers(data),
-         {:ok, outer_resumptions} <- require_integer(data, "outer_resumptions") do
+         {:ok, outer_resumptions} <- require_integer(data, "outer_resumptions"),
+         {:ok, verification_retries} <- require_integer(data, "verification_retries") do
       {:ok,
        %{
          harness: harness,
@@ -186,7 +188,8 @@ defmodule Kogen.Intent do
          developer: developer,
          reviewer: reviewer,
          helpers: helpers,
-         outer_resumptions: outer_resumptions
+         outer_resumptions: outer_resumptions,
+         verification_retries: verification_retries
        }}
     else
       {:error, missing_key} -> {:error, "config.yaml missing required key: #{missing_key}"}

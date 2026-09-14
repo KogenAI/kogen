@@ -6,9 +6,13 @@ and dependencies already installed by `mix deps.get`. The supported timing machi
 is the shaping macOS machine; dependency installation is a prerequisite, not a
 verification step.
 
-The Developer Stop hook owns `make check`. Developers and helpers use focused
-non-gate tests, such as `mix test test/kogen/git_test.exs`, while editing. Do not
-invoke this directory's recipe as a bypass around gate ownership.
+The Stop hook owns verification settlement, including `make check` and the
+declared targets selected by the Approved Intent. Developers and helpers use
+focused non-gate tests, such as `mix test test/kogen/git_test.exs`, while editing.
+Do not invoke this directory's recipe as a bypass around gate ownership.
+Bounded `verification_retries` applies to failed Stop verification inside the
+same Developer conversation; it is distinct from the outer Developer-rework
+allowance. Legacy outer-resumption configuration is a transition input only.
 
 The owner invokes `make check`, which runs [offline.py](offline.py) in this order:
 
@@ -134,8 +138,11 @@ removed, but elapsed improvement is not promised: provider contention and
 non-equivalent historical cache conditions prevent an honest speedup claim.
 
 After edits, use focused tests for the affected behavior. Let the normal owner
-capture complete Check timing and run declared live verification. On failure,
+capture complete Stop verification timing and run declared targets. On failure,
 read the failing stage and child diagnostics, fix the cause in the same Developer
-session, and let the owner rerun. Completion requires a passing complete warm gate
+session, and let the owner retry while its verification allowance remains. Once
+verification settles, an invalid handoff or Review finding uses the separate
+outer allowance and requires fresh Stop verification on resume. Completion
+requires a passing complete warm gate
 with whole-command timing, cold offline success, retained coverage, and declared
 live verification.

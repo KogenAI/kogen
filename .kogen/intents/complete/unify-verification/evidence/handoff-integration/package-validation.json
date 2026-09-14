@@ -1,0 +1,24 @@
+{
+  "checked_at": "2026-09-14T10:02:31.689820+00:00",
+  "head": "c1c9d13747d7287a7e23f02aca02d67f0467b010",
+  "status": "draft",
+  "yaml_output": "valid YAML: .kogen/intents/drafts/unify-verification/intent.yaml\nvalid YAML: .kogen/intents/drafts/unify-verification/scenarios.yaml\nvalid YAML: .kogen/intents/drafts/unify-verification/risks.yaml\nvalid YAML: .kogen/intents/drafts/unify-verification/references.yaml\n",
+  "scenarios": 14,
+  "risk_count": 3,
+  "targets": [
+    "check",
+    "live"
+  ],
+  "tracked_worktree": "clean",
+  "approval": "Prior approval retained as historical; revised package unapproved.",
+  "checks": [
+    "real installed YAML parser",
+    "unique complete scenarios",
+    "declared Make targets",
+    "risk links and string ownership entries",
+    "current local references",
+    "original shaping identity/provenance",
+    "current accepted baseline"
+  ],
+  "limits": "No production implementation or full make check/live was run during shaping."
+}

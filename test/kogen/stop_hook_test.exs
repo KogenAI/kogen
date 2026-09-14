@@ -130,7 +130,14 @@ defmodule Kogen.StopHookTest do
 
     System.cmd("sh", ["-c", command <> " < \"$1\"", "--", input_path],
       cd: dir,
-      env: [{"KOGEN_ROLE", role}],
+      # The parent process may itself be a Build Developer with a bound unified
+      # context. This standalone fixture exercises the legacy/unbound hook path
+      # in its own repository, so do not leak the parent's binding into it.
+      env: [
+        {"KOGEN_ROLE", role},
+        {"KOGEN_VERIFICATION_CONTEXT", ""},
+        {"KOGEN_TRACKING_CONTEXT", ""}
+      ],
       stderr_to_stdout: true
     )
   end
@@ -155,6 +162,12 @@ defmodule Kogen.StopHookTest do
     source_hook = Path.join(__DIR__, "../../.codex/hooks/check.sh")
     destination_hook = Path.join(dir, ".codex/hooks/check.sh")
     File.copy!(source_hook, destination_hook)
+
+    File.copy!(
+      Path.join(__DIR__, "../../.codex/hooks/stop_runner.py"),
+      Path.join(dir, ".codex/hooks/stop_runner.py")
+    )
+
     File.copy!(Path.join(__DIR__, "../../.codex/hooks.json"), Path.join(dir, ".codex/hooks.json"))
     File.chmod!(destination_hook, 0o755)
 

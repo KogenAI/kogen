@@ -1,0 +1,34 @@
+{
+  "argv": [
+    "elixir",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/boundary/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/bunt/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/credo/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/file_system/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/jason/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/kogen/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/yamerl/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/yaml_elixir/ebin",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/unify-verification/evidence/handoff-integration/consumer.exs",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/unify-verification/evidence/handoff-integration/native-pass",
+    "native-pass"
+  ],
+  "exit": 0,
+  "elapsed": 23.973913875001017,
+  "head": "c1c9d13747d7287a7e23f02aca02d67f0467b010",
+  "source_hashes": {
+    "lib/kogen/harness.ex": "dd1f990023e77315e89aa6278eaa0db83fdedb23d6fca9368728da3fb6ffc8d2",
+    "lib/kogen/build/developer_handoff.ex": "d94a988ff0fb25d2e54ff0d49a084dc34a8909e8911496340315886ff8743524",
+    "lib/kogen/build/contract.ex": "e1eb2f8c37e279db2b5a5742bb5a887d096906b0777850f124d1274f7c0d5c69"
+  },
+  "cli": "codex-cli 0.154.0"
+}

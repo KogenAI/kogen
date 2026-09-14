@@ -38,8 +38,10 @@ code and tests yourself — and, if useful, running read-only commands such as
 focused tests — until you can state with confidence whether it
 is genuinely satisfied, not merely plausible.
 
-The Developer Stop hook owns `make check`. Read its recorded result; do not
-run that gate yourself or use a second run to replace missing hook evidence.
+Stop owns verification settlement, including `make check` and the declared
+targets. Read the recorded result; do not run any gate yourself or use a second
+run to replace missing Stop evidence. Failed or exhausted Stop verification
+precedes handoff and Review; never invent a verdict or retry a gate.
 
 Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Read selected
 current fields from its authoritative tracking-record path: the bound current

@@ -1,0 +1,59 @@
+[
+  {
+    "id": "review-opportunity",
+    "given": "two verification failures precede the first fully verified Candidate",
+    "when": "its first independent Review requests repair",
+    "then": "the selected bounded policy permits same-Developer repair and fresh accepting Review",
+    "wrong_result": "the old global counter prevents any Review repair",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Public Build deterministic fixture and controller-owned record; exact policy awaits questions.md resolution."
+  },
+  {
+    "id": "finite-rework",
+    "given": "a Build repeatedly fails or alternates verification and Review",
+    "when": "earlier gates pass again during repair",
+    "then": "the selected finite budget exhausts without renewed allowance from repeated progress",
+    "wrong_result": "passing Check or an already reached stage enables endless repair",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Public Build deterministic fixture and controller-owned record; exact policy awaits questions.md resolution."
+  },
+  {
+    "id": "regression",
+    "given": "Review-directed repair regresses Check or a declared target",
+    "when": "Build processes the new Candidate",
+    "then": "all required verification reruns and regression consumes the selected allowance",
+    "wrong_result": "Build bypasses a regressed gate or silently grants extra attempts",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Public Build deterministic fixture and controller-owned record; exact policy awaits questions.md resolution."
+  },
+  {
+    "id": "partial-verification",
+    "given": "multiple non-check targets are required",
+    "when": "one passes but a later target fails",
+    "then": "whole-verification progress is not recorded",
+    "wrong_result": "an individual passing target grants the Review allowance",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Public Build deterministic fixture and controller-owned record; exact policy awaits questions.md resolution."
+  },
+  {
+    "id": "preservation",
+    "given": "rework and budget transitions occur",
+    "when": "the controller retains attempts and seeks acceptance",
+    "then": "history, bindings, same Developer, fresh Review and evidence-based finding closure remain enforced",
+    "wrong_result": "a reset erases history or reuses stale evidence",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Public Build deterministic fixture and controller-owned record; exact policy awaits questions.md resolution."
+  }
+]
