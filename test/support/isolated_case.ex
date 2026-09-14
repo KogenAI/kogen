@@ -336,6 +336,10 @@ defmodule Kogen.IsolatedCase do
       {"BINDIR", erts_bin()},
       {"EMU", "beam"},
       {"PROGNAME", "erl"},
+      # Isolated children still use the repository's explicitly provisioned
+      # toolchain. Without PATH they fall back to the host /usr/bin/python3,
+      # which can be older than Kogen's declared Python 3.11 baseline.
+      {"PATH", System.fetch_env!("PATH")},
       {"DYLD_INSERT_LIBRARIES", System.fetch_env!("KOGEN_TEST_PROCESS_GUARD")},
       {"TMPDIR", tmpdir},
       {"TMP", tmpdir},

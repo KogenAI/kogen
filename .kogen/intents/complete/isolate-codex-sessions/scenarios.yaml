@@ -1,0 +1,95 @@
+- id: explicit-install
+  given: The user has no managed Kogen runtime and may have no personal Codex installation.
+  when: They run mix kogen.codex.install and then run it again.
+  then: Kogen explicitly installs and validates the selected official complete native runtime, reports progress, and reuses an intact installation on repetition without login, provider calls, personal installation changes or a Node runtime requirement.
+  wrong_result: Installation copies a mutable personal executable, requires personal Codex, drops companion resources, silently installs latest instead of the selected initial release, or resets existing state on repetition.
+  verified_by: [check, live]
+  evidence: Private installer fixtures cover absent/existing installation; one real exact platform distribution executes after promotion with personal Codex absent from the fixture PATH and Node excluded from native execution.
+
+- id: install-failure-preservation
+  given: Installation staging encounters a failed download, integrity mismatch, unsafe archive entry, incomplete native tree or unexpected existing occupant.
+  when: Install prepares the pinned runtime.
+  then: It reports the failed stage, does not activate incomplete state or overwrite unrelated files, preserves the working runtime and credentials, and permits a subsequent clean retry.
+  wrong_result: A failed setup publishes incomplete installed state, executes an unverified artifact, extracts outside owned staging, erases prior state or falls back to personal Codex.
+  verified_by: [check]
+  evidence: Synthetic archive/download/integrity negative controls, native-launch counters, byte preservation assertions and retry tests; no network in check.
+
+- id: readiness-before-work
+  given: A managed installation or the selected Kogen login is missing, including a project override whose credentials were removed or whose login was cancelled.
+  when: The user starts fresh Shaping, continued Shaping or Build.
+  then: Preflight stops before launching a model and names the appropriate explicit install or scoped login command; it neither installs nor opens login nor falls back to another account, and preserves ordinary Build preconditions.
+  wrong_result: A no-login user reaches an opaque provider failure, a project silently uses shared credentials, or shape is checked while build is not.
+  verified_by: [check, live]
+  evidence: Public Mix-task fake launch counters cover every entry path and prerequisite; the live fixture uses an explicitly installed/authenticated managed runtime for successful controls.
+
+- id: native-login-delegation
+  given: The managed runtime is installed and the selected Kogen credential scope may be empty.
+  when: The user invokes shared or project login, native help/arguments after the forwarding separator, or cancels the native interaction.
+  then: Kogen selects runtime and credential scope and delegates native login arguments, terminal interaction, stdin and result; it does not parse provider tokens, implement an authentication-method menu or modify personal Codex credentials.
+  wrong_result: Kogen owns an API-key or subscription selector, silently suppresses native login capabilities, loses stdin or interactive terminal behavior, calls personal PATH Codex, or reports cancellation as login success.
+  verified_by: [check, live]
+  evidence: Offline task-help checks prove browser, device-auth, API-key stdin, forwarding and project examples are discoverable before setup without starting login; argv controls cover device-auth and project forwarding with no Kogen chooser. PTY/argv/stdin/exit fixture exercises production delegation; real managed native login help and synthetic credential writes prove scoped delegation without forcing browser login or exposing real credentials.
+
+- id: scoped-accounts
+  given: A shared Kogen login exists and two projects independently choose shared or project-specific authentication.
+  when: A project selects its own login, changes it, cancels it, or explicitly selects use-default while the shared login also changes.
+  then: The recorded effective scope determines subsequent work; project login never changes shared or personal credentials, missing project credentials never fall back, and use-default explicitly selects shared scope without deleting retained credentials or initiating login.
+  wrong_result: Scope is inferred from whether an auth file happens to exist, a cancelled project login silently reverts, or an account change leaks into an unrelated scope.
+  verified_by: [check, live]
+  evidence: Synthetic account-source markers and private local preference fixtures cover selection and failures; live synthetic native login writes compare scope files without real token values.
+
+- id: runtime-status
+  given: Managed runtime and scoped authentication may be absent, configured, or in active use on different retained releases.
+  when: The user runs mix kogen.codex.status from a Kogen-enabled checkout.
+  then: Status reports the required pinned release, its installation state and actual active runtime information and effective scope/native login state without installing, authenticating, calling a model, exposing secrets or claiming remote entitlement and remaining allowance.
+  wrong_result: Status reports every retained version as active, claims that a cached token guarantees model access, or fails opaquely before setup.
+  verified_by: [check]
+  evidence: Structured fixture state plus native-status stubs cover missing/pinned/project/active cases and prove no mutating or provider commands were dispatched.
+
+- id: release-pinned-runtime
+  given: Kogen declares one exact Codex release and per-platform artifact integrity metadata, and upstream or personal Codex may be newer.
+  when: The user installs the required runtime or starts work after the Kogen pin changes.
+  then: Install acquires only the current Kogen pin without model calls; work requires that exact installed runtime, never selects upstream latest or another retained release, and retains prior runtimes and credentials. Future pin changes use the on-demand repository upgrade workflow and real candidate verification before release.
+  wrong_result: Install queries latest, exposes an arbitrary version selector, invokes paid compatibility tests, changes existing accounts, or the upgrade gate tests the active Build's old runtime instead of the candidate pin.
+  verified_by: [check, live]
+  evidence: Exact artifact/digest and no-model-call controls; two synthetic Kogen pins with separate immutable installations and wrong-version preflight rejection. The live owner explicitly exercises the selected real candidate distribution. Review inspects the conditional README link and workflows/codex-runtime-upgrade.md against upgrade-workflow-contract.md; no new paid shaping case or shared prompt boilerplate.
+
+- id: active-runtime-preservation
+  given: A Build has selected an installed runtime and a Kogen pin change selects a different runtime for new work, or personal Codex and PATH change.
+  when: The Build launches Review or exactly resumes its Developer and another new operation starts.
+  then: The active Build and its helpers retain their concrete original runtime and retained session state, while new work selects its Kogen checkout pin; old installations are retained and session format is not guessed by parsing private Codex logs.
+  wrong_result: Later turns resolve the changed checkout pin or personal PATH, old binaries are overwritten, a stale exact-version marker blocks all future work, or resume silently starts a replacement conversation.
+  verified_by: [check, live]
+  evidence: Offline two-runtime dispatch/active-use fixtures mutate checkout pin and PATH between turns; the live lifecycle proves exact resume with an immutable managed runtime. No exhaustive live version-pair matrix is required. Current fixture replies retain their original managed runtime/context across terminal stop and exact resume while checkout pin and PATH change; see evidence/current-main-reassessment.md.
+
+- id: every-role-discovery
+  given: Synthetic personal configuration contains settings, profiles, instructions, skills, rules, hooks, apps/plugins, session overrides and hostile MCP startup markers while the project has its own guidance and skill.
+  when: Fresh or continued Shaping, Developer, Reviewer and a configured native helper execute through the managed boundary.
+  then: Every role uses configured model and effort, excludes personal discovery and inherited account/provider overrides, and retains project context and tracked Kogen hooks without duplicated sources.
+  wrong_result: Only exec launches are isolated, an exec-only flag breaks interactive Shaping, restored HOME reintroduces personal skills, or a helper inherits a personal configuration/account.
+  verified_by: [check, live]
+  evidence: Hostile-home positive/negative controls, real PTY Shaping, effective root/child context and startup markers; fake argv and prompt instructions alone are insufficient. Preserve all five public shaping evaluation cases and native profile audits using operation-owned session locations and the managed exact-reply transport; see evidence/current-main-reassessment.md.
+
+- id: ordinary-tool-environment
+  given: Codex discovery uses private state and the caller has home/XDG-based ordinary tool settings with optional variables set or absent.
+  when: A root or helper runs a focused shell command and the tracked Stop hook runs its bounded check.
+  then: Ordinary tools and checks retain the caller HOME and set/unset XDG semantics and project cwd while Codex storage remains Kogen-owned; direct hook invocation behavior is preserved.
+  wrong_result: Tool caches/configuration silently move into private HOME, unset variables become set, or restoring tools restores personal Codex discovery.
+  verified_by: [check, live]
+  evidence: Root/helper/hook environment receipts in the native named stdio path plus direct-invocation tests; include login/non-login and explicit-shell controls, and reproduce the previous XDG absence defect as a negative control. See REPAIR.md.
+
+- id: verification-and-review
+  given: The managed Developer fixture has tracked hooks and a deliberately failing small check, followed by independent Reviewer-directed rework.
+  when: The Developer attempts an explicit gate, finishes, fixes the failed check and later resumes for rework.
+  then: PreToolUse blocks agent-run gates, Stop owns matching Check settlement, outer Build owns non-check targets, and fresh independent Review assesses the structured current handoff/findings within the existing budget.
+  wrong_result: Isolation or management commands bypass gate ownership, fresh resume reuses stale Check evidence, a nested fixture runs the full live suite, or scenario tracking is weakened to make the new launcher pass.
+  verified_by: [check, live]
+  evidence: Extend current fake/public live lifecycles and tracking controls; retain failed-check, exact-session and fresh-Reviewer receipts with bounded fixture checks. Include the current five-case driver rehearsal through real manifest forwarding before native execution. Outer owners audit ephemeral interactions and retain inspectable receipts for independent Review; native denial must be invocation/session-bound, never model prose or stale evidence. Preserve the single existing required-evidence collector; see evidence/current-main-reassessment.md.
+
+- id: regenerate-settings-preserve-state
+  given: Recognized Kogen settings, selected credentials and retained sessions exist from earlier work and Kogen configuration changes.
+  when: The next managed launch prepares settings, including while another invocation remains active.
+  then: It regenerates only its owned applicable settings, preserves credentials and resumable state, and cannot rewrite another active invocation's settings; ordinary shell commands do not regenerate settings.
+  wrong_result: Setup reuses stale settings, recreates the entire home, copies personal credentials, overwrites active settings or treats a new Codex version as invalid solely because of an old session marker.
+  verified_by: [check, live]
+  evidence: Repeated-launch and concurrent-preparation byte-preservation tests, including a static scope environments.toml with distinct immutable per-launch dispatchers and caller markers; real exact resume supplies the native state control. See REPAIR.md.

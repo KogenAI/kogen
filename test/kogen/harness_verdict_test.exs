@@ -109,6 +109,33 @@ defmodule Kogen.HarnessVerdictTest do
              Kogen.Harness.launch_developer("test", "fake", "low")
   end
 
+  test "a reconnect notification before terminal completion is recoverable" do
+    dir = Path.join(System.tmp_dir!(), "kogen-reconnect-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    executable = Path.join(dir, "provider")
+
+    File.write!(executable, """
+    #!/bin/sh
+    cat >/dev/null
+    printf '%s\n' '{"type":"thread.started","thread_id":"developer"}' '{"type":"error","message":"Reconnecting... 1/5"}' '{"type":"item.completed","item":{"type":"agent_message","text":"fresh handoff"}}' '{"type":"turn.completed","thread_id":"developer"}'
+    """)
+
+    File.chmod!(executable, 0o755)
+    previous = System.get_env("KOGEN_HARNESS")
+    System.put_env("KOGEN_HARNESS", executable)
+
+    on_exit(fn ->
+      if previous,
+        do: System.put_env("KOGEN_HARNESS", previous),
+        else: System.delete_env("KOGEN_HARNESS")
+
+      File.rm_rf!(dir)
+    end)
+
+    assert {:ok, %{session_id: "developer", message: "fresh handoff"}} =
+             Kogen.Harness.launch_developer("test", "fake", "low")
+  end
+
   test "structured Build Developer trusts only the fresh owned output file" do
     dir =
       Path.join(

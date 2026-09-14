@@ -1,0 +1,84 @@
+id: 01a0853e-d297-744b-9cd1-bd0ed3f523fe
+slug: isolate-codex-sessions
+title: Manage isolated Codex runtimes and logins
+status: approved
+shaped_against:
+  branch: main
+  head: fdfaea11cdb2c1403974dc32737f78a818bf344b
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-09T08:18:02.007Z'
+  started_source: Intent UUIDv7 mint timestamp; exact first-message timestamp unavailable
+shaping_continuations:
+  - harness: codex
+    model: gpt-6-astra
+    effort: low
+    started: '2026-09-10T05:57:04.107462Z'
+    checkout:
+      branch: main
+      head: bf68fd708a3faef0ef80883f47671f560b81a973
+  - harness: codex
+    model: gpt-6-astra
+    effort: low
+    started: '2026-09-10T09:50:00.754357Z'
+    checkout:
+      branch: main
+      head: bf68fd708a3faef0ef80883f47671f560b81a973
+  - harness: codex
+    model: gpt-6-astra
+    effort: low
+    started: '2026-09-13T16:00:55.892885Z'
+    checkout:
+      branch: main
+      head: 2890d86f16c8819cfad12cbd98dbbdc8ee068b1c
+  - harness: codex
+    model: gpt-6-astra
+    effort: low
+    started: '2026-09-14T18:59:54.112867Z'
+    checkout:
+      branch: main
+      head: 9a8e7eba8db4d5ff63ca90c60744c119821b5ad0
+investigation_checkout:
+  branch: main
+  head: 4d7a2402eb9b5941a2993a502e7ea1c6abac407b
+  observed: '2026-09-10T03:59:30Z'
+  baseline_update: superseded by the explicitly authorized reassessment below; historical observation retained
+reshaped_against:
+  branch: main
+  head: bf68fd708a3faef0ef80883f47671f560b81a973
+  decision_source: 'This continuation: Shaper answered "Yes. Don’t stop. Then approve." to reassessment against current main while preserving original baseline history.'
+revision:
+  reason: Reshape after the failed isolation Build and explicit managed-runtime and login decisions.
+  prior_contract: evidence/history/prior-approved-package.tar.gz
+  approval_source: 'Shaper reviewed the managed-runtime summary and replied "Ok, approved." in this same continuation.'
+may_change_guarded_paths:
+  - mise.toml
+  - README.md
+  - workflows/codex-runtime-upgrade.md
+  - .gitignore
+  - .kogen/config.yaml
+  - mix.exs
+  - lib/kogen/build.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/**
+  - lib/kogen/codex.ex
+  - lib/kogen/codex/**
+  - lib/kogen/verification_policy.ex
+  - lib/mix/tasks/kogen.shape.ex
+  - lib/mix/tasks/kogen.build.ex
+  - lib/mix/tasks/kogen.codex.*.ex
+  - .codex/hooks.json
+  - .codex/hooks/**
+  - priv/kogen/codex/**
+  - priv/kogen/prompts/**
+  - test/**
+historical_approval:
+  approved_at: '2026-09-13T16:57:56Z'
+  source: 'Shaper explicitly replied "approved" after reviewing the reconciled release-pinned summary in this conversation.'
+  statement: evidence/approval-2026-09-13.md
+approval:
+  approved_at: '2026-09-14T19:16:55Z'
+  source: 'Shaper explicitly said "I approve." in the current conversation after reviewing the draft findings and stash recommendation.'
+  statement: evidence/approval-2026-09-14.md

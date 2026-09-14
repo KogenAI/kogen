@@ -342,6 +342,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     for path <- [
           ".codex/hooks/check.sh",
           ".codex/hooks/stop_runner.py",
+          ".codex/hooks/environment.py",
           ".codex/hooks/verification_policy.py",
           ".codex/hooks.json",
           "priv/kogen/prompts/execution-policy.md",

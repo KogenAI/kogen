@@ -177,6 +177,11 @@ defmodule Kogen.CoreIntegrityTest do
       Path.join(hook_dir, "stop_runner.py")
     )
 
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/environment.py"),
+      Path.join(hook_dir, "environment.py")
+    )
+
     File.chmod!(hook, 0o755)
     File.cp!(Path.join(project_root, ".codex/hooks.json"), Path.join(dir, ".codex/hooks.json"))
 

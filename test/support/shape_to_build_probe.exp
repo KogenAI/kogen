@@ -43,6 +43,33 @@ proc safe_send {text} {
   return 1
 }
 
+# Native startup and large bracketed-paste rendering are asynchronous.  Wait
+# until the composer has acknowledged the complete paste before pressing Enter;
+# a successful write(2) only proves bytes reached the pty, not that Codex
+# submitted a user turn.
+proc submit_message {text label} {
+  global spawn_id
+  if {![safe_send "\x1b\[200~${text}\x1b\[201~"]} { return 0 }
+
+  set acknowledged 0
+  catch {
+    expect {
+      -timeout 30
+      -re {\[Pasted Content [0-9]+ chars\]} { set acknowledged 1 }
+      -re [string range $text end-48 end] { set acknowledged 1 }
+      eof { }
+      timeout { }
+    }
+  }
+  if {!$acknowledged} {
+    puts "PROBE: $label paste was not acknowledged by the native composer"
+    return 0
+  }
+  if {![safe_send "\r"]} { return 0 }
+  pump 2
+  return 1
+}
+
 proc wait_for_path {path max_seconds} {
   set waited 0
   while {$waited < $max_seconds} {
@@ -112,12 +139,10 @@ set continuation_read "$fixture_dir/.kogen/intents/drafts/$slug/evidence/continu
 puts "PROBE: sending directive shaping message"
 set directive "For this bounded, single fixture probe: shape exactly one tiny Intent with slug $slug. Title: Shape to build probe. may_change_guarded_paths: only dummy.txt. Exactly one scenario, verified_by check, whose then clause requires dummy.txt to exist at the repo root containing a specific exact value that this scenario text must NOT state -- the future Developer must learn the exact required value only from the check log named by a genuine Stop-hook block, then fix it, then stop again; do not let the Developer discover it before that initial blocked Stop. The existing hook directs the Developer to .kogen/runtime/stop-check.log rather than embedding the value in its block message. Add risks.yaml with one risk linked to that scenario. Its required ownership entry must state that dummy.txt is owned by the fixture seed immediately after creation and by the human user during operation; use nonblank YAML string values for every ownership field, including the scalar paths: dummy.txt (not a list), and make owner_after_creation and owner_during_operation different. Write evidence/continuation-proof.md in this Draft containing the unique marker: $marker. The test driver owns retention and auditing of provider transcripts outside the fixture; do not require the Developer to create transcript artifacts or edit the Approved package. The independent Reviewer can inspect .kogen/runtime/verification-history.jsonl for failed then passed Check records from the same session; the outer test independently verifies this sequence and the retained provider evidence. Write the Draft to disk now using your tools. Do not ask me anything else and do not move anything to approved until I explicitly say the single word yes in this conversation."
 
-if {![safe_send $directive]} {
-  puts "PROBE: initial send failed"
+if {![submit_message $directive "initial directive"]} {
+  puts "PROBE: initial submission failed"
   exit 3
 }
-pump 1
-safe_send "\r"
 
 puts "PROBE: waiting for real Draft files (up to 150s)"
 if {![wait_for_path $draft_intent 150]} {
@@ -146,12 +171,10 @@ handle_trust_dialog
 set continuation_directive "For this bounded fixture continuation, first read the saved Draft for $slug, including evidence/continuation-proof.md. Preserve the existing Intent identity, original shaping provenance, and original shaped-against baseline. Demonstrate that you read the saved evidence by writing evidence/continuation-read.md containing the exact unique marker found in that file. Save this fresh shaping visit now so intent.yaml records exactly one shaping_continuations entry. Do not move the Draft to approved and do not treat any earlier conversation as approval. Wait for a new explicit single-word yes from me in this conversation."
 
 puts "PROBE: sending fresh-session continuation directive"
-if {![safe_send $continuation_directive]} {
-  puts "PROBE: continuation send failed"
+if {![submit_message $continuation_directive "continuation directive"]} {
+  puts "PROBE: continuation submission failed"
   exit 8
 }
-pump 1
-safe_send "\r"
 
 puts "PROBE: waiting for saved continuation and evidence readback (up to 150s)"
 if {![wait_for_file $continuation_read 150]} {
@@ -187,12 +210,10 @@ puts "PROBE: continuation saved while Draft remains unapproved"
 pump 3
 file copy -force $draft_dir [file join $continuation_state_dir pre-approval-package]
 puts "PROBE: sending new scripted test approval in the fresh conversation (test data only, not approval of a real feature)"
-if {![safe_send "yes"]} {
+if {![submit_message "yes" "approval"]} {
   puts "PROBE: send of approval failed"
   exit 5
 }
-pump 1
-safe_send "\r"
 
 puts "PROBE: waiting for real Approved files and Draft removal (up to 90s)"
 set approved_ok 0

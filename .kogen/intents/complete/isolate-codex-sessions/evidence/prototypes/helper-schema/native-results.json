@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "context_source": ".kogen/runtime/shaping-evaluation-1789333004295-578/runs/csv-continuation/managed-launch-context.json",
+  "binary_sha256": "4f85982624b3898c8991cb80c0981b2aa71070e3537046c9a95950318a95afcc",
+  "events": [
+    "thread.started",
+    "turn.started",
+    "item.completed",
+    "turn.completed"
+  ],
+  "answers": [
+    "{\"agent_type_available\":false}"
+  ],
+  "native_calls": []
+}

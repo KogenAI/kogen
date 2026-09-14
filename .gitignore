@@ -5,10 +5,15 @@
 *.ez
 erl_crash.dump
 *.beam
+__pycache__/
+*.py[cod]
 .elixir_ls/
 
 .kogen/build.lock
 .kogen/runtime/
+.kogen/codex/
+.codex/auth.json
+.codex/sessions/
 .kogen/intents/drafts/
 .kogen/intents/approved/
 .kogen/intents/**/evidence/*-raw/

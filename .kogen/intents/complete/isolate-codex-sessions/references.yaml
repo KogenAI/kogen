@@ -1,0 +1,90 @@
+- kind: repository
+  path: ../../complete/role-aware-native-delegation/intent.yaml
+  note: Preserve configured native profiles and root accountability.
+- kind: evidence
+  path: evidence/repair-probes.md
+  note: Focused environment, exact-resume, PTY, YAML and Python probes with explicit limits and corrections.
+- kind: evidence
+  path: evidence/fourth-build-failure.md
+  note: Latest live run passed 7/8; final compatibility failure was denial evidence searched in the wrong output stream.
+- kind: proposed-repair
+  path: REPAIR.md
+  note: Same-Intent repair contract; Python provisioned and native named stdio execution selected with explicit evidence limits.
+- kind: repository
+  path: ../../complete/automated-verification-ownership/INTENT.md
+  note: Preserve PreToolUse, Stop and outer gate ownership.
+- kind: repository
+  path: ../../complete/continue-shaping-drafts/INTENT.md
+  note: Continued shaping remains a fresh conversation with preserved Intent identity.
+- kind: repository
+  path: ../../complete/track-approved-scenarios/INTENT.md
+  note: Preserve structured handoffs, scenario-linked risks, tracking integrity and independent Review.
+- kind: evidence
+  path: evidence/managed-install-probe.md
+  note: Real complete native-distribution acquisition and relocation on macOS arm64 0.154.0.
+- kind: evidence
+  path: evidence/synthetic-auth-probe.md
+  note: Synthetic file write/logout behavior only, not OAuth refresh proof.
+- kind: evidence
+  path: evidence/oauth-copy-investigation.md
+  note: Official token-copy/refresh evidence that informed separate login.
+- kind: evidence
+  path: evidence/login-status-probe.md
+  note: Empty-store local status controls; CLI version was not captured in that invocation.
+- kind: historical-evidence
+  path: evidence/shaping-probes.md
+  note: Earlier 0.153.4 private-home and hook-restoration findings remain relevant; personal-auth bridging is superseded.
+- kind: historical-contract
+  path: evidence/history/prior-approved-package.tar.gz
+  note: Byte-preserved package used by the failed Build; not the current contract.
+- kind: decision
+  path: evidence/approval.md
+  note: Historical September 10 approval and superseded decision provenance; no authority for the current visit.
+- kind: documentation
+  url: https://learn.chatgpt.com/docs/auth
+  note: Native login methods, local storage and status limits; Kogen delegates rather than reimplements.
+- kind: documentation
+  url: https://learn.chatgpt.com/docs/auth/ci-cd-auth
+  note: Copies share token lifecycle; concurrent rotation can cause refresh failure.
+- kind: documentation
+  url: https://learn.chatgpt.com/docs/config-file/config-reference
+  note: Native discovery and environment controls; actual launcher acceptance remains required.
+- kind: evidence
+  path: evidence/continuation-2026-09-13.md
+  note: Current startup, baseline difference, retained prototype limits and unresolved reassessment.
+- kind: current-contract
+  path: evidence/current-main-reassessment.md
+  note: Current-main consumer map, executed synthetic probe, combined acceptance and evidence ownership.
+- kind: current-contract
+  path: upgrade-workflow-contract.md
+  note: Accepted on-demand Kogen-specific maintainer workflow placement and requirements.
+- kind: historical-contract
+  path: evidence/history/pre-release-pin/README.md
+  note: Exact pre-pin active documents retained before reconciling the accepted release-pinning scope.
+- kind: repair-evidence
+  path: evidence/build-failure-2026-09-13.md
+  note: User-authorized in-scope repair amendment after Build 2n3r_14Dcx7ZSTplQ6PYvIkt; confirmed failures, remaining diagnostic and required focused proof.
+- kind: repair-evidence
+  path: evidence/plan-audit-2026-09-13.md
+  note: Current ordered repair plan; latest failed Build, unverified rework, source-bound controls and preserved acceptance.
+- kind: repair-evidence
+  path: evidence/build-audit-2026-09-14.md
+  note: Latest three-attempt audit, five failure paths, executed hook and native-correlation controls, unresolved helper capability.
+- kind: repair-evidence
+  path: evidence/helper-capability-2026-09-14.md
+  note: Native required-kind capability verified; production discovery integration remains mandatory.
+- kind: repair-evidence
+  path: evidence/reconnect-classification-2026-09-14.md
+  note: Latest Build passed Check then invalid handoff; resumed native completion rejected after reconnect notification; no live execution.
+- kind: current-visit
+  path: evidence/continuation-2026-09-14.md
+  note: Fresh unapproved continuation; current checkout discrepancies, preserved baseline and pending direction.
+- kind: investigation
+  path: evidence/stash-assessment-2026-09-14.md
+  note: Latest Isolation and separate Reconnect stash inspected; selective reuse recommendation remains unaccepted.
+- kind: approval
+  path: evidence/approval-2026-09-14.md
+  note: Current explicit same-conversation approval and narrow package move; no Build or implementation.
+- kind: repair-evidence
+  path: evidence/build-failure-9TbQ-2026-09-14.md
+  note: Explicitly requested current failed-Build amendment; preserve clean admission and focused fixture repairs.

@@ -44,6 +44,11 @@ checkout:
   head: {{checkout_head}}
 ```
 
+After every continuation save, parse `intent.yaml` with the repository's actual
+YAML reader before claiming it was saved. Preserve the original `shaping` and
+`shaped_against` blocks byte-for-byte where no approved change applies. If the
+save is malformed, repair that same visit entry rather than appending another.
+
 Preserve `shaped_against`; the original baseline above is distinct from the
 current checkout. If it changed, surface this and discuss reassessment with
 the Shaper. Any eventual baseline update requires an explicit shaping decision

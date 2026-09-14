@@ -18,12 +18,15 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
-Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and an authenticated Codex CLI on your PATH. The current verification target is macOS; other platforms are unverified. Codex CLI 0.153.4 is the current verification target. Provider-backed work uses your Codex account.
+Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages its own complete native Codex distribution; personal Codex and Node are not prerequisites. The pinned managed release is 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifact is selectable but has not been exercised on this host. Provider-backed work uses your selected Kogen login.
 
 From a checkout:
 
 ```sh
 mix deps.get
+mix kogen.codex.install
+mix kogen.codex.login
+mix kogen.codex.status
 make check
 mix kogen.shape
 ```
@@ -191,7 +194,29 @@ test file changed.
 
 Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
 
-Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` can select an executable for testing; ordinary use resolves `codex` on PATH.
+Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` remains an offline test override; ordinary work selects Kogen's pinned managed runtime, never PATH Codex.
+
+## Managed Codex runtime and login
+
+`mix kogen.codex.install` installs and validates the exact official native runtime pinned by this Kogen checkout. Repeating it verifies and reuses an intact installation. Failed staging preserves existing runtimes, accounts, and sessions.
+
+`mix kogen.codex.login` delegates browser login to native Codex in the shared Kogen scope. Kogen scope options precede `--`; native arguments follow it unchanged:
+
+```sh
+mix kogen.codex.login -- --device-auth
+mix kogen.codex.login --project -- --device-auth
+printenv OPENAI_API_KEY | mix kogen.codex.login -- --with-api-key
+printenv OPENAI_API_KEY | mix kogen.codex.login --project -- --with-api-key
+mix kogen.codex.login -- --help
+```
+
+Device authorization still requires a human. `--project` selects a private project scope before login, so cancellation never falls back to shared credentials. `mix kogen.codex.login --use-default` explicitly reselects shared login without authenticating or deleting retained project credentials. Native Codex owns credential formats and refresh; Kogen never imports personal credentials.
+
+`mix kogen.codex.status` reports the checkout pin, installation and actual active-use records, effective scope, and native local login state. It does not install, authenticate, call a model, expose secrets, or claim remote entitlement. Fresh/continued Shaping and Build stop before provider work when the pinned runtime or selected login is missing.
+
+Managed distributions, accounts, selectors, settings generations, sessions, and compatibility evidence live under `~/Library/Application Support/Kogen/codex`. Per-launch discovery homes exclude personal Codex settings while project guidance and tracked hooks remain available. Shell tools and hooks retain the caller's HOME and exact set/unset XDG semantics. Active operations retain their concrete runtime and session across Review and exact resume; new checkouts select their own pin.
+
+When upgrading Kogen's pinned Codex runtime, follow the [Codex runtime upgrade workflow](workflows/codex-runtime-upgrade.md).
 
 ## Run the checks
 
@@ -200,7 +225,7 @@ make check     # Offline checks and the complete fake-harness lifecycle
 make live      # Real public shaping, approval, build, review, and fixture commit
 ```
 
-Fetch dependencies first. Python 3, `rsync`, and the macOS Command Line Tools (`xcrun clang`)
+Fetch dependencies first. Python 3.11 or newer, `rsync`, and the macOS Command Line Tools (`xcrun clang`)
 are also required for the offline gate and bounded subprocess probes.
 `make check` runs formatting, forced warnings-as-errors compilation,
 strict Credo, Boundary enforcement (including its compiler negative control), ordinary

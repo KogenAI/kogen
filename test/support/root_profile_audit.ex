@@ -43,10 +43,21 @@ defmodule Kogen.RootProfileAudit do
   end
 
   def sessions_root do
-    Path.join(
-      System.get_env("CODEX_HOME") || Path.join(System.user_home!(), ".codex"),
-      "sessions"
-    )
+    codex_home =
+      System.get_env("CODEX_HOME") ||
+        managed_scope_home() ||
+        Path.join(System.user_home!(), ".codex")
+
+    Path.join(codex_home, "sessions")
+  end
+
+  defp managed_scope_home do
+    with {:ok, %{path: path}} <- Kogen.Codex.effective_scope(File.cwd!()),
+         true <- File.dir?(path) do
+      path
+    else
+      _ -> nil
+    end
   end
 
   defp session_index!(root, selected?) do

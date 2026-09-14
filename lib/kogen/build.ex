@@ -12,7 +12,8 @@ defmodule Kogen.Build do
       Kogen.Check,
       Kogen.Git,
       Kogen.VerificationPolicy,
-      Kogen.ExecutionPolicy
+      Kogen.ExecutionPolicy,
+      Kogen.Codex
     ]
 
   alias Kogen.Build.{Contract, DeveloperHandoff, TargetEvidence, Tracking, Verification}
@@ -178,6 +179,7 @@ defmodule Kogen.Build do
     with {:ok, config} <- Kogen.Intent.read_config(),
          {:ok, contract} <- Contract.load(Path.join(@approved_base, slug)),
          :ok <- Kogen.VerificationPolicy.preflight(contract.targets),
+         {:ok, runtime} <- Kogen.Codex.open(config),
          {:ok, tracking} <- Tracking.new(intent, contract, approved_entries) do
       ctx = %{
         slug: slug,
@@ -190,10 +192,15 @@ defmodule Kogen.Build do
         tracking: tracking,
         token: nil,
         reviewers: [],
-        references: %{}
+        references: %{},
+        runtime: runtime
       }
 
-      begin_attempt(ctx, nil, 0, nil)
+      try do
+        begin_attempt(ctx, nil, 0, nil)
+      after
+        Kogen.Codex.close(runtime)
+      end
     end
   end
 
@@ -272,7 +279,8 @@ defmodule Kogen.Build do
             ctx.config.developer.model,
             ctx.config.developer.effort,
             schema,
-            ctx.policy_environment ++ Verification.environment(ctx.execution)
+            ctx.policy_environment ++ Verification.environment(ctx.execution),
+            Kogen.Codex.launch_context(ctx.runtime)
           )
         else
           Kogen.Harness.launch_build_developer(
@@ -280,7 +288,8 @@ defmodule Kogen.Build do
             ctx.config.developer.model,
             ctx.config.developer.effort,
             schema,
-            ctx.policy_environment ++ Verification.environment(ctx.execution)
+            ctx.policy_environment ++ Verification.environment(ctx.execution),
+            Kogen.Codex.launch_context(ctx.runtime)
           )
         end
 
@@ -521,7 +530,8 @@ defmodule Kogen.Build do
         Kogen.Harness.launch_reviewer(
           prompt,
           ctx.config.reviewer.model,
-          ctx.config.reviewer.effort
+          ctx.config.reviewer.effort,
+          Kogen.Codex.launch_context(ctx.runtime)
         )
 
       receive_review(ctx, candidate_id, session_id, number, result)

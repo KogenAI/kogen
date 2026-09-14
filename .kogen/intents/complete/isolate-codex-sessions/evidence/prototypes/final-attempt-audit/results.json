@@ -1,0 +1,27 @@
+{
+  "provider_calls": 0,
+  "production_writes": 0,
+  "source_sha256": {
+    ".codex/hooks/check.sh": "500c6450ff7e44b99000132ba20d892a1e52161a0c227ddccb90bcbba53215a3",
+    ".codex/hooks/environment.py": "d53a8558c06315d038ffcd6e4244e329b7449d4ddbb9e8f5be765020e4ac2f15",
+    "test/support/shaping_evaluation/driver.py": "e5704d8882b3653ca42782f5ff064f635e32746c11f757267311fca3d72f1170",
+    "test/support/shaping_evaluation/integrity.py": "5cdf2a5bc945feb7d08f9616046f97e29d98e0698dc12d0d24d7d8e6d647f03c"
+  },
+  "hook_missing_dependency": {
+    "exit": 2,
+    "missing_file_error": true
+  },
+  "hook_complete_dependency": {
+    "exit": 0,
+    "output": "{\"continue\":true}"
+  },
+  "actual_correlation_error": "native user intervenes before completion",
+  "synthetic_without_environment_updates": [
+    {
+      "user_index": 79,
+      "turn_id": "01a09c91-ae8b-7122-9211-ca04e24e1502",
+      "completion_index": 98
+    }
+  ],
+  "limitations": "No native invocation. Removing environment messages is a diagnostic control, not an approved filtering algorithm. Hook probe uses Reviewer role and never runs Check. No raw conversation copied."
+}

@@ -7,13 +7,14 @@ set stop_path [lindex $argv 3]
 set log_path [lindex $argv 4]
 set model [lindex $argv 5]
 set effort [lindex $argv 6]
+set context_path [lindex $argv 7]
 set handle [open $prompt_path r]; set prompt [read $handle]; close $handle
 set timeout 30
 set env(TERM) "xterm-256color"
 set env(KOGEN_ROLE) "shaper"
 cd $fixture
 log_file -a $log_path
-spawn codex resume --model $model -c model_reasoning_effort="$effort" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox -C $fixture $session_id $prompt
+spawn python3 [file join [file dirname [info script]] managed_resume.py] $context_path resume --model $model -c model_reasoning_effort="$effort" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox -C $fixture $session_id $prompt
 catch {stty rows 40 columns 120 < $spawn_out(slave,name)}
 match_max 200000
 set screen_buffer ""

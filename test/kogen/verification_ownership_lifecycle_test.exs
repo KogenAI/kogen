@@ -98,7 +98,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     File.mkdir_p!(Path.join(dir, ".codex/hooks"))
     File.mkdir_p!(Path.join(dir, "priv/kogen/prompts"))
 
-    for file <- ["check.sh", "stop_runner.py", "verification_policy.py"] do
+    for file <- ["check.sh", "stop_runner.py", "environment.py", "verification_policy.py"] do
       File.cp!(Path.join(root, ".codex/hooks/#{file}"), Path.join(dir, ".codex/hooks/#{file}"))
     end
 

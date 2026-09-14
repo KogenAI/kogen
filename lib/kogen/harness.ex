@@ -4,7 +4,7 @@ defmodule Kogen.Harness do
   `KOGEN_HARNESS` can select an alternate executable for offline testing.
   Codex thread IDs are exposed as `session_id` to the build state machine.
   """
-  use Boundary, deps: []
+  use Boundary, deps: [Kogen.Codex, Kogen.Intent]
 
   @evidence_schema %{
     "type" => "array",
@@ -98,28 +98,60 @@ defmodule Kogen.Harness do
   ]
 
   @doc "Launches a fresh Developer turn with the prompt on stdin."
-  def launch_developer(prompt, model, effort, policy_environment \\ []) do
-    run_turn(developer_args(model, effort), prompt, policy_environment)
+  def launch_developer(prompt, model, effort, policy_environment \\ [], context \\ nil) do
+    with_context(
+      context,
+      &run_turn(developer_args(model, effort), prompt, policy_environment, &1)
+    )
   end
 
   @doc "Resumes the exact Developer thread with the prompt on stdin."
-  def resume_developer(session_id, text, model, effort, policy_environment \\ []) do
-    run_turn(developer_args(model, effort, session_id), text, policy_environment)
+  def resume_developer(session_id, text, model, effort, policy_environment \\ [], context \\ nil) do
+    with_context(
+      context,
+      &run_turn(developer_args(model, effort, session_id), text, policy_environment, &1)
+    )
   end
 
   @doc "Launches a fresh Developer turn using the controller-supplied output schema."
-  def launch_build_developer(prompt, model, effort, schema, policy_environment \\ []) do
-    run_structured_turn(developer_args(model, effort), prompt, schema, policy_environment)
+  def launch_build_developer(
+        prompt,
+        model,
+        effort,
+        schema,
+        policy_environment \\ [],
+        context \\ nil
+      ) do
+    with_context(context, fn resolved ->
+      run_structured_turn(
+        developer_args(model, effort),
+        prompt,
+        schema,
+        policy_environment,
+        resolved
+      )
+    end)
   end
 
   @doc "Resumes the exact Developer thread using the controller-supplied output schema."
-  def resume_build_developer(session_id, text, model, effort, schema, policy_environment \\ []) do
-    run_structured_turn(
-      developer_args(model, effort, session_id),
-      text,
-      schema,
-      policy_environment
-    )
+  def resume_build_developer(
+        session_id,
+        text,
+        model,
+        effort,
+        schema,
+        policy_environment \\ [],
+        context \\ nil
+      ) do
+    with_context(context, fn resolved ->
+      run_structured_turn(
+        developer_args(model, effort, session_id),
+        text,
+        schema,
+        policy_environment,
+        resolved
+      )
+    end)
   end
 
   @doc false
@@ -130,7 +162,11 @@ defmodule Kogen.Harness do
   end
 
   @doc "Launches an independent Reviewer and requires a schema-valid Verdict."
-  def launch_reviewer(prompt, model, effort) do
+  def launch_reviewer(prompt, model, effort, context \\ nil) do
+    with_context(context, &review(prompt, model, effort, &1))
+  end
+
+  defp review(prompt, model, effort, context) do
     dir = temporary_directory("review")
     schema_path = Path.join(dir, "verdict.schema.json")
     message_path = Path.join(dir, "verdict.json")
@@ -142,7 +178,12 @@ defmodule Kogen.Harness do
           ["--output-schema", schema_path, "--output-last-message", message_path, "-"]
 
       {output, exit_code} =
-        run_with_stdin(resolve_executable(), args, prompt, [{"KOGEN_ROLE", "reviewer"}])
+        run_with_stdin(
+          context.executable,
+          context.args ++ args,
+          prompt,
+          merge_environment(context.env, [{"KOGEN_ROLE", "reviewer"}])
+        )
 
       case parse_turn(decode_events(output), exit_code, output) do
         {:ok, turn} -> reviewer_response(turn, message_path)
@@ -285,18 +326,11 @@ defmodule Kogen.Harness do
   end
 
   @doc "Launches the interactive Codex Shaping Controller with the caller's real terminal."
-  def exec_shaper(model, effort, prompt_file) do
-    port =
-      Port.open({:spawn_executable, resolve_executable()}, [
-        :nouse_stdio,
-        :exit_status,
-        args: shaper_args(model, effort, prompt_file),
-        env: [{~c"KOGEN_ROLE", ~c"shaper"}]
-      ])
-
-    receive do
-      {^port, {:exit_status, status}} -> status
-    end
+  def exec_shaper(model, effort, prompt_file, context \\ nil) do
+    with_context(context, fn selected ->
+      selected = %{selected | env: merge_environment(selected.env, [{"KOGEN_ROLE", "shaper"}])}
+      Kogen.Codex.terminal(selected, shaper_args(model, effort, prompt_file))
+    end)
   end
 
   @doc false
@@ -306,20 +340,38 @@ defmodule Kogen.Harness do
 
   @doc false
   def resolve_executable do
-    name = System.get_env("KOGEN_HARNESS") || "codex"
-
-    if String.contains?(name, "/"),
-      do: Path.expand(name),
-      else: System.find_executable(name) || raise("harness executable not found on PATH: #{name}")
+    with_context(nil, & &1.executable)
   end
 
-  defp run_turn(args, stdin_text, policy_environment) do
+  defp with_context(context, function) when is_map(context), do: function.(context)
+
+  defp with_context(nil, function) do
+    {:ok, config} =
+      if System.get_env("KOGEN_HARNESS"), do: {:ok, %{}}, else: Kogen.Intent.read_config()
+
+    case Kogen.Codex.open(config) do
+      {:ok, selection} ->
+        try do
+          function.(Kogen.Codex.launch_context(selection))
+        after
+          Kogen.Codex.close(selection)
+        end
+
+      {:error, reason} ->
+        raise reason
+    end
+  end
+
+  defp merge_environment(base, overrides),
+    do: Map.merge(Map.new(base), Map.new(overrides)) |> Map.to_list()
+
+  defp run_turn(args, stdin_text, policy_environment, context) do
     {output, exit_code} =
       run_with_stdin(
-        resolve_executable(),
-        args,
+        context.executable,
+        context.args ++ args,
         stdin_text,
-        [{"KOGEN_ROLE", "developer"} | policy_environment]
+        merge_environment(context.env, [{"KOGEN_ROLE", "developer"} | policy_environment])
       )
 
     parse_turn(decode_events(output), exit_code, output)
@@ -327,11 +379,11 @@ defmodule Kogen.Harness do
 
   # Build's structured handoff is deliberately a separate transport. Never adopt
   # an agent_message event when the designated output file is absent or corrupt.
-  defp run_structured_turn(_args, _stdin_text, schema, _policy_environment)
+  defp run_structured_turn(_args, _stdin_text, schema, _policy_environment, _context)
        when not is_binary(schema),
        do: {:error, {:invalid_output_schema, "schema must be a binary"}}
 
-  defp run_structured_turn(args, stdin_text, schema, policy_environment) do
+  defp run_structured_turn(args, stdin_text, schema, policy_environment, context) do
     dir = temporary_directory("build-developer")
     schema_path = Path.join(dir, "developer-output.schema.json")
     message_path = Path.join(dir, "developer-output.last-message.json")
@@ -350,9 +402,12 @@ defmodule Kogen.Harness do
         end
 
       {output, exit_code} =
-        run_with_stdin(resolve_executable(), structured_args, stdin_text, [
-          {"KOGEN_ROLE", "developer"} | policy_environment
-        ])
+        run_with_stdin(
+          context.executable,
+          context.args ++ structured_args,
+          stdin_text,
+          merge_environment(context.env, [{"KOGEN_ROLE", "developer"} | policy_environment])
+        )
 
       case parse_turn(decode_events(output), exit_code, output) do
         {:ok, turn} ->
@@ -448,7 +503,14 @@ defmodule Kogen.Harness do
   defp parse_turn(events, exit_code, output) do
     init = Enum.find(events, &(&1["type"] == "thread.started"))
     last = List.last(events)
-    failure = Enum.find(events, &(&1["type"] in ["turn.failed", "error"]))
+    # Native Codex may emit recoverable reconnect notifications as `error`
+    # events before a successful terminal completion. Only a terminal failure
+    # overrides a completed turn.
+    failure =
+      Enum.find(events, fn event ->
+        event["type"] == "turn.failed" or
+          (event["type"] == "error" and not reconnect_notification?(event, last))
+      end)
 
     with :ok <- no_provider_failure(failure),
          {:ok, session_id} <- session_id(init, exit_code, output),
@@ -482,6 +544,13 @@ defmodule Kogen.Harness do
 
   defp no_provider_failure(nil), do: :ok
   defp no_provider_failure(failure), do: {:error, {:provider_error, failure}}
+
+  defp reconnect_notification?(%{"message" => "Reconnecting..." <> _}, %{
+         "type" => "turn.completed"
+       }),
+       do: true
+
+  defp reconnect_notification?(_event, _last), do: false
 
   defp session_id(nil, exit_code, output),
     do: {:error, {:no_init_event, exit_code, String.slice(output, 0, 4000)}}

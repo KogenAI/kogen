@@ -1,0 +1,39 @@
+{
+  "exit": 0,
+  "context_source": ".kogen/runtime/shaping-evaluation-1789333004295-578/runs/csv-continuation/managed-launch-context.json",
+  "binary_sha256": "4f85982624b3898c8991cb80c0981b2aa71070e3537046c9a95950318a95afcc",
+  "events": [
+    "thread.started",
+    "turn.started",
+    "item.started",
+    "item.completed",
+    "item.completed",
+    "turn.completed"
+  ],
+  "answers": [
+    "{\"agent_type_available\":true,\"children\":[{\"task\":\"scout_probe\",\"agent_type\":\"explorer\",\"completed\":true,\"result\":\"OK\"},{\"task\":\"worker_probe\",\"agent_type\":\"worker\",\"completed\":true,\"result\":\"OK\"},{\"task\":\"expert_probe\",\"agent_type\":\"default\",\"completed\":true,\"result\":\"OK\"}]}"
+  ],
+  "native_calls": [
+    {
+      "task_name": "scout_probe",
+      "fork_turns": "none",
+      "agent_type": "explorer",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low"
+    },
+    {
+      "task_name": "worker_probe",
+      "fork_turns": "none",
+      "agent_type": "worker",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium"
+    },
+    {
+      "task_name": "expert_probe",
+      "fork_turns": "none",
+      "agent_type": "default",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "medium"
+    }
+  ]
+}

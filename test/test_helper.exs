@@ -1,6 +1,15 @@
 # Test modules that need VM-global cwd/environment state are reloaded in a
 # private child VM by Kogen.IsolatedCase.  Loading this support module before
 # the tests makes the replacement available to every test source.
+{python, python_status} = System.cmd("mise", ["which", "python3"], stderr_to_stdout: true)
+
+if python_status != 0 do
+  raise "project Python is unavailable through mise: #{String.trim(python)}"
+end
+
+python_bin = python |> String.trim() |> Path.dirname()
+System.put_env("PATH", python_bin <> ":" <> System.fetch_env!("PATH"))
+
 if System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1" do
   Code.ensure_loaded!(Kogen.IsolatedCase)
 else

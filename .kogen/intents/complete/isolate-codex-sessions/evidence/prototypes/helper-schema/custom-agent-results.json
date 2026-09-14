@@ -1,0 +1,41 @@
+{
+  "exit": 0,
+  "context_source": ".kogen/runtime/shaping-evaluation-1789333004295-578/runs/csv-continuation/managed-launch-context.json",
+  "binary_sha256": "4f85982624b3898c8991cb80c0981b2aa71070e3537046c9a95950318a95afcc",
+  "events": [
+    "thread.started",
+    "turn.started",
+    "item.started",
+    "item.completed",
+    "item.started",
+    "item.completed",
+    "item.completed",
+    "turn.completed"
+  ],
+  "answers": [
+    "{\n  \"agent_type_available\": true,\n  \"children\": [\n    {\"name\": \"scout_probe\", \"kind\": \"explorer\", \"completed\": true, \"result\": \"OK\"},\n    {\"name\": \"worker_probe\", \"kind\": \"worker\", \"completed\": true, \"result\": \"OK\"},\n    {\"name\": \"expert_probe\", \"kind\": \"default\", \"completed\": true, \"result\": \"OK\"}\n  ]\n}"
+  ],
+  "native_calls": [
+    {
+      "agent_type": "explorer",
+      "fork_turns": "none",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "task_name": "scout_probe"
+    },
+    {
+      "agent_type": "worker",
+      "fork_turns": "none",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "medium",
+      "task_name": "worker_probe"
+    },
+    {
+      "agent_type": "default",
+      "fork_turns": "none",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "medium",
+      "task_name": "expert_probe"
+    }
+  ]
+}

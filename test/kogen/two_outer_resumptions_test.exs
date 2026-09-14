@@ -71,6 +71,12 @@ defmodule Kogen.TwoOuterResumptionsTest do
     )
 
     File.chmod!(Path.join(dest, ".codex/hooks/check.sh"), 0o755)
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/environment.py"),
+      Path.join(dest, ".codex/hooks/environment.py")
+    )
+
     File.cp!(Path.join(project_root, ".codex/hooks.json"), Path.join(dest, ".codex/hooks.json"))
 
     File.cp!(

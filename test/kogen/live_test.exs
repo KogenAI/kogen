@@ -31,7 +31,10 @@ defmodule Kogen.LiveTest do
     previous_raw_log_dir = System.get_env("KOGEN_RAW_LOG_DIR")
     System.put_env("KOGEN_RAW_LOG_DIR", log_dir)
 
+    assert {:ok, managed} = Kogen.Codex.open(config, project_root)
+
     on_exit(fn ->
+      Kogen.Codex.close(managed)
       restore_env("KOGEN_RAW_LOG_DIR", previous_raw_log_dir)
       File.rm_rf!(fixture)
     end)
@@ -45,7 +48,12 @@ defmodule Kogen.LiveTest do
       incomplete_candidate = candidate_id!(fixture)
 
       %{response: incomplete, session_id: incomplete_reviewer} =
-        review_semantic_candidate!(config, incomplete_candidate, "semantic-attempt-incomplete")
+        review_semantic_candidate!(
+          config,
+          incomplete_candidate,
+          "semantic-attempt-incomplete",
+          managed_context(managed, fixture)
+        )
 
       assert incomplete["verdict"] == "rework",
              "the Reviewer must independently reject the incomplete Candidate; response: #{inspect(incomplete)}"
@@ -64,7 +72,12 @@ defmodule Kogen.LiveTest do
       corrected_candidate = candidate_id!(fixture)
 
       %{response: corrected, session_id: corrected_reviewer} =
-        review_semantic_candidate!(config, corrected_candidate, "semantic-attempt-corrected")
+        review_semantic_candidate!(
+          config,
+          corrected_candidate,
+          "semantic-attempt-corrected",
+          managed_context(managed, fixture)
+        )
 
       assert corrected["verdict"] == "accept",
              "the Reviewer must independently accept the corrected Candidate; response: #{inspect(corrected)}"
@@ -93,7 +106,7 @@ defmodule Kogen.LiveTest do
   # incomplete Candidate looks plausible at a glance: source code has the new
   # command, a happy-path route, and a documented flag. Its installed command,
   # invalid configuration route, and actual flag readiness are each wrong.
-  defp review_semantic_candidate!(config, candidate_id, attempt_token) do
+  defp review_semantic_candidate!(config, candidate_id, attempt_token, managed_context) do
     handoff = Kogen.ScenarioSemantic.handoff(attempt_token, attempt_state(attempt_token))
     contract = %{scenarios: semantic_contract(), risks: []}
 
@@ -126,7 +139,12 @@ defmodule Kogen.LiveTest do
 
     assert {:ok,
             %{session_id: session_id, response: response, verdict: verdict, findings: findings}} =
-             Kogen.Harness.launch_reviewer(prompt, config.reviewer.model, config.reviewer.effort)
+             Kogen.Harness.launch_reviewer(
+               prompt,
+               config.reviewer.model,
+               config.reviewer.effort,
+               managed_context
+             )
 
     assert session_id != ""
     assert verdict == response["verdict"]
@@ -141,6 +159,12 @@ defmodule Kogen.LiveTest do
              )
 
     %{response: response, session_id: session_id}
+  end
+
+  defp managed_context(selection, fixture) do
+    selection
+    |> Map.put(:project, fixture)
+    |> Kogen.Codex.launch_context()
   end
 
   defp semantic_scenario_ids, do: Kogen.ScenarioSemantic.scenario_ids()
@@ -264,6 +288,11 @@ defmodule Kogen.LiveTest do
     File.cp!(
       Path.join(project_root, ".codex/hooks/stop_runner.py"),
       Path.join(hooks_dir, "stop_runner.py")
+    )
+
+    File.cp!(
+      Path.join(project_root, ".codex/hooks/environment.py"),
+      Path.join(hooks_dir, "environment.py")
     )
 
     File.cp!(

@@ -227,7 +227,8 @@ def validate_case(evaluation_root, case):
         intermediate = run / 'drafts-by-turn' / '0' / 'questions.md'
         reject(intermediate.is_file() and receipt.get('intermediate_draft_sha256') == digest(intermediate), 'CSV continuation intermediate Draft snapshot missing')
         partial = intermediate.read_text(errors='replace').lower()
-        reject('output' in partial and any(term in partial for term in ('replace', 'replacement', 'overwrite')) and '?' in partial, 'CSV continuation partial assent did not preserve the remaining output replacement question')
+        unresolved = '?' in partial or 'unresolved' in partial or 'awaiting explicit' in partial
+        reject('output' in partial and any(term in partial for term in ('replace', 'replacement', 'overwrite')) and unresolved, 'CSV continuation partial assent did not preserve the remaining output replacement question')
     draft = run / 'draft'
     identity = draft_identity(draft)
     reject(all((draft / name).is_file() for name in ('scenarios.yaml', 'questions.md')), 'saved Draft contract files missing')

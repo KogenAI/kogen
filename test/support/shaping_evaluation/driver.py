@@ -6,7 +6,41 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parents[2]
 RUNTIME = Path(os.environ["KOGEN_SHAPING_EVALUATION_RUNTIME"]).resolve()
-SESSION_ROOT = Path.home() / ".codex" / "sessions"
+def managed_root():
+    return Path(os.environ.get("KOGEN_CODEX_ROOT", Path.home() / "Library/Application Support/Kogen/codex"))
+
+
+def managed_runtime_context():
+    root = managed_root()
+    selected = json.loads((root / "default.json").read_text())["version"]
+    matches = sorted((root / "runtimes").glob(selected + "-*/vendor/*/bin/codex"))
+    if len(matches) != 1:
+        raise RuntimeError("expected exactly one selected managed native runtime")
+    return matches[0], root / "accounts/shared"
+
+
+def managed_launch_context(fixture, output):
+    code = '''
+    {:ok, config} = Kogen.Intent.read_config()
+    {:ok, runtime} = Kogen.Codex.installed()
+    {:ok, scope} = Kogen.Codex.effective_scope(File.cwd!())
+    operation = Kogen.Codex.State.operation!(Kogen.Codex.root())
+    context = Kogen.Codex.Environment.prepare(runtime, scope, config, File.cwd!(), operation)
+    IO.write(Jason.encode!(context))
+    '''
+    result = subprocess.run(
+        ["mix", "run", "--no-compile", "--no-start", "-e", code], cwd=fixture,
+        capture_output=True, text=True, timeout=30,
+        env={**os.environ, "MIX_BUILD_PATH": str(fixture / "_build")},
+    )
+    if result.returncode:
+        raise RuntimeError("could not prepare managed exact-resume context: " + result.stderr.strip())
+    output.write_text(result.stdout)
+    return output
+
+
+DEFAULT_SESSION_ROOT = managed_root() / "accounts/shared/sessions"
+SESSION_ROOT = DEFAULT_SESSION_ROOT
 FIXTURES = HERE / "fixtures"
 COMPACT_FIXTURES = HERE / "compact-fixtures-v2"
 CASES = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation",
@@ -95,16 +129,34 @@ the question in your final text and end the turn.
 def transport_message(text):
     return text + TRANSPORT_COMPLETION_SUFFIX
 
-def inventory():
-    return {str(p) for p in SESSION_ROOT.rglob("rollout-*.jsonl")} if SESSION_ROOT.exists() else set()
+def selected_session_root(fixture):
+    if SESSION_ROOT != DEFAULT_SESSION_ROOT:
+        return SESSION_ROOT
+    root = managed_root()
+    project_id = hashlib.sha256(str(Path(fixture).resolve()).encode()).hexdigest()
+    selector = root / "preferences" / project_id
+    if selector.exists():
+        selected = selector.read_text()
+        if selected not in {"shared\n", "project\n"}:
+            raise RuntimeError(f"unrecognized Kogen account selector: {selector}")
+        scope = selected.strip()
+    else:
+        scope = "shared"
+    account = root / "accounts/shared" if scope == "shared" else root / "accounts/projects" / project_id
+    return account / "sessions"
+
+
+def inventory(session_root=None):
+    root = Path(session_root or SESSION_ROOT)
+    return {str(p) for p in root.rglob("rollout-*.jsonl")} if root.exists() else set()
 
 def first_json(path):
     with open(path, encoding="utf-8") as handle:
         return json.loads(handle.readline())
 
-def exact_root_rollout(before, fixture):
+def exact_root_rollout(before, fixture, session_root=None):
     matches=[]
-    for name in inventory()-before:
+    for name in inventory(session_root)-before:
         try: meta=first_json(name).get("payload",{})
         except Exception: continue
         if meta.get("cwd")==str(fixture): matches.append(name)
@@ -655,11 +707,13 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
     (out/"input-delivery.json").write_text(json.dumps(input_delivery,indent=2)+"\n")
     if case.startswith("csv"): write_csv_probe_result(fixture,out)
     if case=="booking-flawed": write_booking_setup_observation(fixture,out)
-    before=inventory(); start_wall=wall_now(); start_monotonic=monotonic_now(); sent=[]; terminal_observed=[]; outcome="inconclusive"; failure=None
+    session_root=selected_session_root(fixture)
+    before=inventory(session_root); start_wall=wall_now(); start_monotonic=monotonic_now(); sent=[]; terminal_observed=[]; outcome="inconclusive"; failure=None
     transport_log=(out/"transport.log").open("w")
     cmd=["expect",str(HERE/"shape_transport.exp"),str(fixture),str(out/"pty.log"),str(mailbox),slug if continuation else ""]
     transport_argv=[cmd]; cleanup_receipts=[]
-    proc=subprocess.Popen(cmd,cwd=fixture,stdout=transport_log,stderr=subprocess.STDOUT,text=True,env={**os.environ,"MIX_BUILD_PATH":str(fixture/"_build")})
+    launch_context_path = out / "managed-launch-context.json"
+    proc=subprocess.Popen(cmd,cwd=fixture,stdout=transport_log,stderr=subprocess.STDOUT,text=True,env={**os.environ,"MIX_BUILD_PATH":str(fixture/"_build"),"KOGEN_CODEX_CONTEXT_RECEIPT":str(launch_context_path)})
     active_stop=mailbox/"stop"; active_kind="public-shape"
     def send(text):
         index=len(sent); temporary=mailbox/f"message-{index}.tmp"; final=mailbox/f"message-{index}.txt"
@@ -680,7 +734,10 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
         submitted_text=transport_message(text)
         prompt=out/f"resume-{index}.txt"; prompt.write_text(submitted_text)
         active_stop=out/f"resume-stop-{index}"
-        resume_cmd=["expect",str(HERE/"resume_transport.exp"),str(fixture),root_id,str(prompt),str(active_stop),str(out/f"resume-{index}-pty.log"),profiles["root"][0],profiles["root"][1]]
+        context_path = launch_context_path
+        if not context_path.is_file():
+            raise RuntimeError("managed public Shape did not retain its immutable launch context")
+        resume_cmd=["expect",str(HERE/"resume_transport.exp"),str(fixture),root_id,str(prompt),str(active_stop),str(out/f"resume-{index}-pty.log"),profiles["root"][0],profiles["root"][1],str(context_path)]
         transport_argv.append(resume_cmd)
         proc=subprocess.Popen(resume_cmd,cwd=fixture,stdout=transport_log,stderr=subprocess.STDOUT,text=True)
         active_kind="native-exact-resume"
@@ -689,12 +746,12 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
     try:
         startup_deadline=start_monotonic+MAX_SECONDS
         while monotonic_now()<startup_deadline:
-            roots=exact_root_rollout(before,fixture)
+            roots=exact_root_rollout(before,fixture,session_root)
             if len(roots)==1 and task_complete_count(roots[0])>=1: break
             if proc.poll() is not None: raise RuntimeError(f"Expect transport exited {proc.returncode} before startup terminal")
             time.sleep(1)
         else: raise TimeoutError("native startup turn")
-        roots=exact_root_rollout(before,fixture); startup_summary=rollout_summary(roots[0]); root_id=startup_summary["id"]
+        roots=exact_root_rollout(before,fixture,session_root); startup_summary=rollout_summary(roots[0]); root_id=startup_summary["id"]
         startup_turn_id=next((event.get("payload", {}).get("turn_id") for event in json.loads("[" + ",".join(Path(roots[0]).read_text().splitlines()) + "]") if event.get("type")=="turn_context"), None)
         last_digest=None; stable_since=None; intermediate_draft_sha256=None
         completed_without_draft=False; uncorrelated_user_event=False
@@ -720,7 +777,7 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
                 break
             text=read_draft(fixture,slug); digest=hashlib.sha256(text.encode()).hexdigest()
             if digest != last_digest: last_digest=digest; stable_since=monotonic_now()
-            roots=exact_root_rollout(before,fixture)
+            roots=exact_root_rollout(before,fixture,session_root)
             if len(roots) != 1:
                 raise RuntimeError(f"{case}: expected exactly one native root rollout after startup")
             turn_id, complete=user_turn_terminal(roots[0], [{"text": entry["submitted_text"]} for entry in sent])

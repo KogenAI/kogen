@@ -1,0 +1,32 @@
+{
+  "kind": "shaping-prototype-not-build-acceptance",
+  "offline_tests_passed": 17,
+  "offline_live_excluded": 1,
+  "native_compatibility_tests_passed": 1,
+  "native_seconds": 212.1,
+  "blocked_gate": true,
+  "shaping": {
+    "status": 0,
+    "marker": true,
+    "cleanup": true
+  },
+  "exact_resume": true,
+  "initial_review": "rework",
+  "final_review": "accept",
+  "hostile_discovery": {
+    "helper_context": true,
+    "helper_environment": true,
+    "helper_receipt": true,
+    "hook_receipt": true,
+    "personal_marker": false,
+    "project_marker": true,
+    "resume_rework": true,
+    "root_receipt": true,
+    "shell_modes": true
+  },
+  "discovery_controls_ok": true,
+  "restored_source_sha256": {
+    "lib/kogen/codex/compatibility.ex": "31e2c5f382f8d2a375a71a8446b34ba066ceac48c77364e3f8b829e7c1c26802",
+    "priv/kogen/codex/compatibility/bounded_exec.py": "0e37e03fc37f291df01d58d4babab02b6fc20a1624b00d03c138c89e2824b73a"
+  }
+}

@@ -1,0 +1,42 @@
+- id: managed-runtime-lifecycle
+  scenario_ids: [explicit-install, install-failure-preservation, runtime-status, verified-update, active-runtime-preservation]
+  description: A managed installation must be independent of mutable personal tooling, preserve companion resources, and activate only complete verified state. Atomic staging and active use matter more than a version string.
+  ownership:
+    - paths: User-local Kogen managed native distributions, installation manifests, staging and active/default selection records outside the repository and iCloud
+      when_exists: Reuse intact recognized immutable distributions; refuse unexpected occupants or integrity mismatch without overwriting them. Repeated install does not upgrade or reset state.
+      owner_after_creation: Kogen owns installation metadata and complete runtime placement; upstream owns executable/resource contents.
+      owner_during_operation: Kogen owns staging and default selection; selected runtime bytes remain immutable while used by Shaping, Build and helpers.
+      permitted_mutation: Create private staging, validate and promote complete distributions atomically, and activate a verified default. Never mutate personal installations or active runtime bytes. Clean only invocation-owned incomplete staging.
+      validation: Exact artifact integrity and safe extraction plus native launch/resource checks, candidate compatibility runner, failed-stage controls and active-runtime dispatch tests.
+      git_state: Distributions and runtime records remain local and untracked; only release-selection code/metadata and concise nonsecret verification evidence are tracked.
+      upgrade_behavior: Explicit update stages beside the working runtime and activates for new work only on verification success. Retain prior installations and active selections; automatic garbage collection, downgrade UI and session migration are out of scope.
+
+- id: scoped-authentication-lifecycle
+  scenario_ids: [readiness-before-work, native-login-delegation, scoped-accounts, runtime-status, verified-update]
+  description: Credential scope must not change silently when login fails or a credential file disappears. Copying personal OAuth tokens does not issue an independent login; native login and storage own provider semantics.
+  ownership:
+    - paths: Shared and project-specific Kogen credential stores and the private project authentication-scope preference
+      when_exists: Preserve the chosen scope and credentials unless the user explicitly invokes native login or changes scope. Missing selected project credentials remain a project-login error, never implicit shared fallback.
+      owner_after_creation: The user chooses scope; Kogen owns scope routing and private placement. Native Codex owns credential format and persistence.
+      owner_during_operation: Native Codex manages login and refresh in the selected Kogen scope; Kogen neither parses token internals nor copies/synchronizes personal authentication.
+      permitted_mutation: Explicit delegated login and native refresh may write only the selected credential scope. Explicit use-default changes the local project selector but retains credentials. Installation/update cannot erase credentials or switch selected accounts.
+      validation: Native delegation with synthetic credential writes, source-byte isolation assertions, cancellation and missing-source controls. Local status is not proof of remote entitlement or token validity; no forced real refresh in tests.
+      git_state: Credentials and private local preferences are never committed or printed; ignore any project-local preference/storage paths, including from initialization. Session cleanup cannot remove the authoritative selector.
+      upgrade_behavior: Keep selected authentication scope across runtime updates; delegate credential compatibility to native Codex and surface failures. No migration of personal logins, token copies, keychain reimplementation or fallback billing method.
+
+- id: session-and-settings-lifecycle
+  scenario_ids: [every-role-discovery, ordinary-tool-environment, active-runtime-preservation, verification-and-review, regenerate-settings-preserve-state]
+  description: Regenerating owned settings and changing runtime defaults must preserve active configurations and resumable conversations without letting personal context back into roots or helpers.
+  ownership:
+    - paths: Kogen-owned private discovery homes, static account environments.toml registries, immutable per-launch executable dispatcher snapshots, generated settings, project conversation storage and disposable compatibility fixtures
+      when_exists: Reuse recognized retained state without resetting it; replace only recognized generated settings applicable to the invocation and refuse unexpected path types or occupants.
+      owner_after_creation: Kogen owns paths/settings/fixture lifecycle; Codex owns native conversation contents and format.
+      owner_during_operation: Kogen preserves active runtime and settings identity while Codex writes its native state; root/helper/Review roles do not own authoritative Kogen verification records.
+      permitted_mutation: Regenerate settings on launch, allow normal native session writes, and remove only invocation-owned disposable fixtures. Do not mutate active settings, import personal sessions or parse private session files to invent compatibility policy. Fixture owners retain immutable managed launch context across scripted terminal stop and exact reply resume until final capture and cleanup; session discovery must use the selected operation location.
+      validation: Effective discovery controls, root/helper/hook environment receipts, settings preservation, real exact resume and current gate/Review integrity tests. Extend current five-case rehearsal and native session/profile consumers with wrong-root, stale-context and concurrent caller controls; preserve required evidence through the existing manifest owner.
+      git_state: Runtime homes, sessions, raw output and fixture credentials remain ignored/private. Only concise credential-free acceptance evidence may enter Complete.
+      upgrade_behavior: New work can use a verified new runtime while active work retains its selected distribution and compatible state. Retain old sessions; no automatic destructive migration or broad lockout because old state exists.
+
+- id: native-compatibility-evidence
+  scenario_ids: [native-login-delegation, verified-update, every-role-discovery, verification-and-review]
+  description: CLI help, package relocation, synthetic API-key file writes and documentation establish different facts. None proves OAuth refresh, all native login menus, every platform or future release compatibility. Use one bounded real compatibility runner shared by update and live tests; keep failure/permutation matrices offline. Do not equate tested version with the only permissible future version, silently remove native login capability, or promise isolation from account-wide/provider policies.

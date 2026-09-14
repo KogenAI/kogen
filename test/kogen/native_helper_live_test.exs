@@ -16,7 +16,10 @@ defmodule Kogen.NativeHelperLiveTest do
     fixture = fixture_dir!(project_root)
     previous_raw_log_dir = System.get_env("KOGEN_RAW_LOG_DIR")
 
+    assert {:ok, managed} = Kogen.Codex.open(config, project_root)
+
     on_exit(fn -> File.rm_rf!(fixture) end)
+    on_exit(fn -> Kogen.Codex.close(managed) end)
     on_exit(fn -> restore_env("KOGEN_RAW_LOG_DIR", previous_raw_log_dir) end)
 
     fixture = setup_fixture!(fixture)
@@ -27,20 +30,20 @@ defmodule Kogen.NativeHelperLiveTest do
     System.put_env("KOGEN_RAW_LOG_DIR", log_dir)
 
     File.cd!(Path.dirname(fixture), fn ->
+      context = managed |> Map.put(:project, fixture) |> Kogen.Codex.launch_context()
+
       assert {:ok, %{session_id: parent_id}} =
                Kogen.Harness.launch_developer(
                  prompt,
                  config.developer.model,
                  config.developer.effort,
-                 []
+                 [],
+                 context
                )
 
       receipt =
         NativeHelperFixture.collect_receipt!(
-          Path.join(
-            System.get_env("CODEX_HOME") || Path.join(System.user_home!(), ".codex"),
-            "sessions"
-          ),
+          Path.join(managed.scope.path, "sessions"),
           Path.join(log_dir, "raw"),
           parent_id,
           fixture,

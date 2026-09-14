@@ -1,6 +1,8 @@
 defmodule Mix.Tasks.Kogen.Shape do
   use Mix.Task
-  use Boundary, deps: [Kogen.Intent, Kogen.Harness, Kogen.Git, Kogen.ExecutionPolicy, Mix]
+
+  use Boundary,
+    deps: [Kogen.Intent, Kogen.Harness, Kogen.Git, Kogen.ExecutionPolicy, Kogen.Codex, Mix]
 
   @shortdoc "Starts fresh shaping or continues an existing draft in a new conversation"
   @moduledoc """
@@ -27,14 +29,19 @@ defmodule Mix.Tasks.Kogen.Shape do
 
   defp shape(config, selection) do
     with {:ok, branch} <- Kogen.Git.current_branch(),
-         {:ok, head} <- Kogen.Git.head_sha() do
-      launch(config, selection, branch, head)
+         {:ok, head} <- Kogen.Git.head_sha(),
+         {:ok, runtime} <- Kogen.Codex.open(config) do
+      try do
+        launch(config, selection, branch, head, runtime)
+      after
+        Kogen.Codex.close(runtime)
+      end
     else
       {:error, reason} -> fail(reason)
     end
   end
 
-  defp launch(config, selection, branch, head) do
+  defp launch(config, selection, branch, head, runtime) do
     id = if selection, do: selection.id, else: Kogen.Intent.mint_uuid7()
     IO.puts(id)
     started = DateTime.utc_now() |> DateTime.to_iso8601()
@@ -74,7 +81,14 @@ defmodule Mix.Tasks.Kogen.Shape do
       )
     )
 
-    status = Kogen.Harness.exec_shaper(config.shaping.model, config.shaping.effort, prompt_file)
+    status =
+      Kogen.Harness.exec_shaper(
+        config.shaping.model,
+        config.shaping.effort,
+        prompt_file,
+        Kogen.Codex.launch_context(runtime)
+      )
+
     File.rm(prompt_file)
     System.halt(status)
   end

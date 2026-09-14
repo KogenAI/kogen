@@ -1,0 +1,179 @@
+[
+  {
+    "id": "01a09caa-e468-7d70-a96c-69617fb6a02d",
+    "parent": "01a09caa-b248-7f53-b3cf-0b3a5df18686",
+    "source": {
+      "subagent": {
+        "thread_spawn": {
+          "parent_thread_id": "01a09caa-b248-7f53-b3cf-0b3a5df18686",
+          "depth": 1,
+          "agent_path": "/root/expert_probe",
+          "agent_nickname": "Boyle",
+          "agent_role": "default"
+        }
+      }
+    },
+    "profiles": [
+      [
+        "gpt-5.6-sol",
+        "medium"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "9a7e218d65f7a1d423a28ce9ab2c61b506bff4cde77d484cdb5d1b1121313f31"
+  },
+  {
+    "id": "01a09cab-d3df-79c3-87ac-c6db03f16294",
+    "parent": "01a09cab-a72a-7741-a593-4e0f8179331a",
+    "source": {
+      "subagent": {
+        "thread_spawn": {
+          "parent_thread_id": "01a09cab-a72a-7741-a593-4e0f8179331a",
+          "depth": 1,
+          "agent_path": "/root/expert_probe",
+          "agent_nickname": "Heisenberg",
+          "agent_role": "default"
+        }
+      }
+    },
+    "profiles": [
+      [
+        "gpt-5.6-sol",
+        "medium"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "861b772c1a1e7406d75017ae6958eedb7589a78e5feb3c26bc6da2741724b64b"
+  },
+  {
+    "id": "01a09caa-d5dd-7461-9ea2-1103eebb70ba",
+    "parent": "01a09caa-b248-7f53-b3cf-0b3a5df18686",
+    "source": {
+      "subagent": {
+        "thread_spawn": {
+          "parent_thread_id": "01a09caa-b248-7f53-b3cf-0b3a5df18686",
+          "depth": 1,
+          "agent_path": "/root/worker_probe",
+          "agent_nickname": "Hypatia",
+          "agent_role": "worker"
+        }
+      }
+    },
+    "profiles": [
+      [
+        "gpt-5.6-luna",
+        "medium"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "c760b4145e70c7ad6c30b9355177fe767d8e83fba746ebd4071857a94b4a582f"
+  },
+  {
+    "id": "01a09cab-a72a-7741-a593-4e0f8179331a",
+    "parent": null,
+    "source": "exec",
+    "profiles": [
+      [
+        "gpt-5.6-sol",
+        "low"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "69c401f07442e71e7e8fe9f373e58b2203d303d4df20c9c85e9e5df0246c35dd"
+  },
+  {
+    "id": "01a09caa-b248-7f53-b3cf-0b3a5df18686",
+    "parent": null,
+    "source": "exec",
+    "profiles": [
+      [
+        "gpt-5.6-sol",
+        "low"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "c448d9b7356b9e4d59ad679a8c7d062ff0e6a059e2f0bb0e78f1dcd13ed8761e"
+  },
+  {
+    "id": "01a09cab-bf46-7040-866c-da7634415353",
+    "parent": "01a09cab-a72a-7741-a593-4e0f8179331a",
+    "source": {
+      "subagent": {
+        "thread_spawn": {
+          "parent_thread_id": "01a09cab-a72a-7741-a593-4e0f8179331a",
+          "depth": 1,
+          "agent_path": "/root/scout_probe",
+          "agent_nickname": "Rawls",
+          "agent_role": "explorer"
+        }
+      }
+    },
+    "profiles": [
+      [
+        "gpt-5.6-luna",
+        "low"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "d408bfbb7aad23d2c1bb9dbdd77fcbf5a86a55d89a3b2555d37d8ea245deaffe"
+  },
+  {
+    "id": "01a09caa-183e-74b1-b64d-f9b778bf8652",
+    "parent": null,
+    "source": "exec",
+    "profiles": [
+      [
+        "gpt-5.6-sol",
+        "low"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "ff2dcc726ffb8de9a8e56897b0e3692bdfd10a5bfa1fae585542c2cea37deaa5"
+  },
+  {
+    "id": "01a09cab-c97c-7e20-99e4-81d20014cfea",
+    "parent": "01a09cab-a72a-7741-a593-4e0f8179331a",
+    "source": {
+      "subagent": {
+        "thread_spawn": {
+          "parent_thread_id": "01a09cab-a72a-7741-a593-4e0f8179331a",
+          "depth": 1,
+          "agent_path": "/root/worker_probe",
+          "agent_nickname": "Pasteur",
+          "agent_role": "worker"
+        }
+      }
+    },
+    "profiles": [
+      [
+        "gpt-5.6-luna",
+        "medium"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "b5f5a99e7bfa519f9bf41c0984b87e9a676e3f0bd8fec1ff0992e66e73baa251"
+  },
+  {
+    "id": "01a09caa-cafe-7a90-ac48-84b11bfca629",
+    "parent": "01a09caa-b248-7f53-b3cf-0b3a5df18686",
+    "source": {
+      "subagent": {
+        "thread_spawn": {
+          "parent_thread_id": "01a09caa-b248-7f53-b3cf-0b3a5df18686",
+          "depth": 1,
+          "agent_path": "/root/scout_probe",
+          "agent_nickname": "Descartes",
+          "agent_role": "explorer"
+        }
+      }
+    },
+    "profiles": [
+      [
+        "gpt-5.6-luna",
+        "low"
+      ]
+    ],
+    "completed": true,
+    "source_sha256": "66e1117f1a96d14fc7bc544134a17bf728609984e57415c3962dc135c4f4da68"
+  }
+]

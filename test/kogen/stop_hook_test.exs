@@ -168,6 +168,11 @@ defmodule Kogen.StopHookTest do
       Path.join(dir, ".codex/hooks/stop_runner.py")
     )
 
+    File.cp!(
+      Path.join(__DIR__, "../../.codex/hooks/environment.py"),
+      Path.join(dir, ".codex/hooks/environment.py")
+    )
+
     File.copy!(Path.join(__DIR__, "../../.codex/hooks.json"), Path.join(dir, ".codex/hooks.json"))
     File.chmod!(destination_hook, 0o755)
 

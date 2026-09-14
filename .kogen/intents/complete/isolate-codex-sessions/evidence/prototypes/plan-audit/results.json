@@ -1,0 +1,23 @@
+{
+  "provider_calls": 0,
+  "production_writes": 0,
+  "source_sha256": {
+    "test/support/shaping_evaluation/managed_resume.py": "729060c60278b2b8173c90af459df0551083330119271548ee07eeb4440b99cc"
+  },
+  "limitations": "Focused retained-receipt validation and resume consumer controls only; not a full public lifecycle or a repaired native run.",
+  "baseline_validator_sha256": "2a7e038528966180b56a2421ca051a61602dede5d0ad2f9ddfaa865eac423a02",
+  "native_helper_receipt_control": {
+    "actual_rejected": true,
+    "synthetic_kind_control_accepted": true
+  },
+  "stale_role": {
+    "role": "developer",
+    "unset": null,
+    "empty": ""
+  },
+  "correct_role": {
+    "role": "shaper",
+    "unset": null,
+    "empty": ""
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "kind": "source-bound-synthetic-consumer-probe",
+  "source": "test/support/shaping_evaluation/driver.py",
+  "source_sha256": "6b195f78a77790153012855ab0eea67d6596df9aea1935a2feab789cd4920019",
+  "managed_session_missed_by_current_default": true,
+  "personal_location_positive_control": true,
+  "explicit_managed_root_positive_control": true,
+  "provider_calls": 0,
+  "production_writes": 0,
+  "limits": "Session discovery only; no native launch, authentication, resume, full rehearsal or Build acceptance."
+}

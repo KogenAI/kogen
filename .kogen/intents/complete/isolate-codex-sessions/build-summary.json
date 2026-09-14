@@ -1,0 +1,250 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "hBzaRzb_HUrTbCnJKL7XcT10CmQsfMSA",
+      "candidate_id": "4e293ca1b6e223affe78400596912e1bfbe579be",
+      "developer_session_id": "01a0a181-6158-72e3-a4ac-942e4d14f46a",
+      "number": 0,
+      "reviewer_session_id": "01a0a18c-18e5-7571-b581-66b028a78a8a",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "hBzaRzb_HUrTbCnJKL7XcT10CmQsfMSA",
+          "candidate_id": "4e293ca1b6e223affe78400596912e1bfbe579be",
+          "exit_code": 0,
+          "finished_at": "2026-09-14T20:06:23Z",
+          "session_id": "01a0a181-6158-72e3-a4ac-942e4d14f46a",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "hBzaRzb_HUrTbCnJKL7XcT10CmQsfMSA",
+          "candidate_id": "4e293ca1b6e223affe78400596912e1bfbe579be",
+          "exit_code": 0,
+          "finished_at": "2026-09-14T20:11:44Z",
+          "session_id": "01a0a181-6158-72e3-a4ac-942e4d14f46a",
+          "status": "passed",
+          "target": "live"
+        }
+      ]
+    }
+  ],
+  "build_id": "BHLaTqYZXPHEDq13Ttjx88pa",
+  "candidate_id": "4e293ca1b6e223affe78400596912e1bfbe579be",
+  "developer_session_id": "01a0a181-6158-72e3-a4ac-942e4d14f46a",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 124726130,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/BHLaTqYZXPHEDq13Ttjx88pa/record.json",
+    "schema_version": 1,
+    "sha256": "03b9687275d168768f4d4337df6f09a2587c9045fb267de0b1f2bfcebe236cd4"
+  },
+  "intent": {
+    "id": "01a0853e-d297-744b-9cd1-bd0ed3f523fe",
+    "slug": "isolate-codex-sessions",
+    "title": "Manage isolated Codex runtimes and logins"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0a18c-18e5-7571-b581-66b028a78a8a"
+  },
+  "risks": [
+    {
+      "id": "managed-runtime-lifecycle"
+    },
+    {
+      "id": "scoped-authentication-lifecycle"
+    },
+    {
+      "id": "session-and-settings-lifecycle"
+    },
+    {
+      "id": "native-compatibility-evidence"
+    }
+  ],
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "`install` performs pinned archive acquisition, validation, safe staging, and promotion.",
+          "path": "priv/kogen/codex/install.py"
+        },
+        {
+          "locator": "Bound attempt verification records passed `check` and `live` receipts for this Candidate.",
+          "path": ".kogen/runtime/scenario-tracking/BHLaTqYZXPHEDq13Ttjx88pa/record.json"
+        }
+      ],
+      "id": "explicit-install",
+      "reason": "The pinned installer validates and atomically promotes a complete native distribution; the settled declared verification passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Safe-member checks, integrity validation, staging, promotion, and failure paths preserve the existing destination.",
+          "path": "priv/kogen/codex/install.py"
+        },
+        {
+          "locator": "Synthetic installer negative-control coverage.",
+          "path": "test/support/codex_installer_test.py"
+        }
+      ],
+      "id": "install-failure-preservation",
+      "reason": "Installer staging and validation refuse unsafe, mismatched, incomplete, and unexpected state before promotion, with focused preservation/retry coverage.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Managed runtime/scope selection and scoped native-login preflight.",
+          "path": "lib/kogen/codex.ex"
+        },
+        {
+          "locator": "Shape and Build entry paths integrate managed preflight.",
+          "path": "lib/kogen/build.ex"
+        }
+      ],
+      "id": "readiness-before-work",
+      "reason": "Managed open requires the installed pinned runtime and selected-scope native local login before launch, and returns explicit install/login guidance without fallback.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Login parsing selects Kogen scope and forwards native arguments to the managed terminal process.",
+          "path": "lib/kogen/codex.ex"
+        },
+        {
+          "locator": "Public forwarding, cancellation, stdin, and terminal controls.",
+          "path": "test/kogen/codex_public_tasks_test.exs"
+        }
+      ],
+      "id": "native-login-delegation",
+      "reason": "The public task delegates login directly to the selected managed executable, forwards native arguments and terminal I/O, and propagates its exit status.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Explicit selector, per-project scope derivation, and native credential-scope validation.",
+          "path": "lib/kogen/codex/state.ex"
+        },
+        {
+          "locator": "Project/shared selection, cancellation, and no-fallback controls.",
+          "path": "test/kogen/codex_management_test.exs"
+        }
+      ],
+      "id": "scoped-accounts",
+      "reason": "Scope is recorded independently of credential presence; project and shared locations are separate, and use-default changes only the selector.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Read-only status aggregation reports required runtime, active leases, effective scope, and native local-login state.",
+          "path": "lib/kogen/codex.ex"
+        },
+        {
+          "locator": "Status command presentation does not claim remote entitlement.",
+          "path": "lib/kogen/codex/cli.ex"
+        }
+      ],
+      "id": "runtime-status",
+      "reason": "Status derives its output from local installer, lease, scope, and native-login-state inspection without provider execution or credential output.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Defines exact 0.154.0 platform artifacts and validates only the declared pin.",
+          "path": "priv/kogen/codex/install.py"
+        },
+        {
+          "locator": "On-demand candidate-pin upgrade requirements.",
+          "path": "workflows/codex-runtime-upgrade.md"
+        }
+      ],
+      "id": "release-pinned-runtime",
+      "reason": "The selected runtime is an exact release with platform integrity metadata; installer and workflow behavior retain prior distributions rather than resolving latest.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Operation leases bind concrete runtime records and active-use reporting validates live process identity.",
+          "path": "lib/kogen/codex/state.ex"
+        },
+        {
+          "locator": "Selection is retained in launch context rather than re-resolved on every turn.",
+          "path": "lib/kogen/codex.ex"
+        }
+      ],
+      "id": "active-runtime-preservation",
+      "reason": "A selected operation carries its concrete runtime, scope, operation, and lease through launch context, while new operations independently resolve the current pin.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Per-launch private discovery home, sanitizer, project trust, helper profiles, and generated managed definitions.",
+          "path": "lib/kogen/codex/environment.ex"
+        },
+        {
+          "locator": "Hostile-discovery and helper-profile controls.",
+          "path": "test/kogen/codex_environment_test.exs"
+        }
+      ],
+      "id": "every-role-discovery",
+      "reason": "Managed contexts remove inherited personal/provider discovery inputs while retaining explicit project trust, tracked hooks, configured profiles, and Kogen-owned helper definitions.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Caller HOME/XDG values are represented distinctly and restored for shell execution.",
+          "path": "lib/kogen/codex/environment.ex"
+        },
+        {
+          "locator": "Tracked hook restoration preserves caller variables before Stop behavior.",
+          "path": ".codex/hooks/environment.py"
+        }
+      ],
+      "id": "ordinary-tool-environment",
+      "reason": "The managed launcher keeps Codex storage private but captures and restores caller HOME and set/empty/unset XDG semantics for ordinary tools and hooks.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Compatibility lifecycle requires blocked developer gates, failed-then-corrected Check history, exact resume, and independent reviewer sequence.",
+          "path": "lib/kogen/codex/compatibility.ex"
+        },
+        {
+          "locator": "Bound attempt verification records passed `check` and `live` receipts for this Candidate.",
+          "path": ".kogen/runtime/scenario-tracking/BHLaTqYZXPHEDq13Ttjx88pa/record.json"
+        }
+      ],
+      "id": "verification-and-review",
+      "reason": "The lifecycle implementation retains gate-denial and same-session correction controls, exact resume, and fresh reviewer evidence; declared verification settled successfully.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Fresh immutable generation creation, static scope registry, foreign-occupant refusal, and immutable executor snapshots.",
+          "path": "lib/kogen/codex/environment.ex"
+        },
+        {
+          "locator": "Repeated/concurrent generation and retained-state controls.",
+          "path": "test/kogen/codex_environment_test.exs"
+        }
+      ],
+      "id": "regenerate-settings-preserve-state",
+      "reason": "Each launch writes a unique immutable generation while static scope-owned data is validated/refused on mismatch, preserving native credentials and retained sessions.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

@@ -161,6 +161,13 @@ class DriverRehearsalTest(unittest.TestCase):
 
         def popen(argv, **_kwargs):
             launches.append(argv)
+            receipt_path = _kwargs.get("env", {}).get("KOGEN_CODEX_CONTEXT_RECEIPT")
+            if receipt_path:
+                Path(receipt_path).write_text(json.dumps({
+                    "executable": sys.executable,
+                    "args": ["-c", "raise SystemExit('rehearsal context is not executed')"],
+                    "env": {},
+                }))
             # Only resumes submit a scripted reply.  The public startup is already
             # represented by the native startup completion above.
             if "resume_transport.exp" in argv[1] and not malformed:
@@ -598,6 +605,13 @@ events.mkdir(exist_ok=True)
                 return real_popen(argv, **_kwargs)
             fixture = Path(argv[2])
             if Path(argv[1]).name == "shape_transport.exp":
+                receipt_path = _kwargs.get("env", {}).get("KOGEN_CODEX_CONTEXT_RECEIPT")
+                if receipt_path:
+                    Path(receipt_path).write_text(json.dumps({
+                        "executable": sys.executable,
+                        "args": ["-c", "raise SystemExit('rehearsal context is not executed')"],
+                        "env": {},
+                    }))
                 continuation_fixtures.update([fixture] if argv[5] else [])
                 rollouts[str(fixture)] = self.rollout(fixture, f"root-{fixture.name}-{len(launches)}")
             else:
