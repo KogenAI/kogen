@@ -138,13 +138,31 @@ defmodule Kogen.TwoOuterResumptionsTest do
       |> String.split("\n", trim: true)
 
     resume_calls = Enum.count(log_lines, &String.contains?(&1, "exec resume"))
-    reviewer_calls = Enum.count(log_lines, &String.contains?(&1, "--output-schema"))
+
+    reviewer_calls =
+      dest
+      |> Path.join(".kogen/runtime/fake-reviewer-calls")
+      |> File.read!()
+      |> String.trim()
+      |> String.to_integer()
 
     assert resume_calls == 2,
            "expected exactly two Codex resume launches, log:\n#{Enum.join(log_lines, "\n")}"
 
     assert reviewer_calls == 3,
            "expected exactly three Reviewer launches (all rework), log:\n#{Enum.join(log_lines, "\n")}"
+
+    output_paths =
+      Enum.map(log_lines, fn line ->
+        [_before, path | _after] = String.split(line, " --output-last-message ")
+        path |> String.split(" ") |> List.first()
+      end)
+
+    assert Enum.uniq(output_paths) == output_paths,
+           "every Developer and Reviewer invocation must own a distinct output path"
+
+    assert Enum.all?(output_paths, &(not File.exists?(&1))),
+           "owned invocation output paths must be cleaned after handled completion"
   end
 
   defp git!(dir, args) do

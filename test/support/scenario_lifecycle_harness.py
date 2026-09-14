@@ -144,7 +144,7 @@ def main():
     args = sys.argv[1:]
     prompt = sys.stdin.read()
     mode = os.environ.get("SCENARIO_LIFECYCLE_MODE", "accept")
-    reviewer = "--output-schema" in args
+    reviewer = os.environ.get("KOGEN_ROLE") == "reviewer"
     resume = "resume" in args
     if reviewer:
         output = args[args.index("--output-last-message") + 1]
@@ -187,6 +187,27 @@ def main():
     if mode == "record_mutation":
         records = list((RUNTIME / "scenario-tracking").glob("*/record.json"))
         if records: records[0].write_text(records[0].read_text() + " tampered")
+    output = args[args.index("--output-last-message") + 1]
+    if mode == "developer_exit":
+        pathlib.Path(output).write_text('{"attempt_token":"stale"}')
+        print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
+        raise SystemExit(19)
+    if mode == "developer_error":
+        print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
+        print(json.dumps({"type": "error", "message": "injected provider error"}))
+        print(json.dumps({"type": "turn.completed", "thread_id": "developer-session"}))
+        return
+    if mode == "missing_settlement":
+        print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
+        return
+    if call == 1 and mode == "output_missing":
+        pass
+    elif call == 1 and mode == "output_empty":
+        pathlib.Path(output).write_text("")
+    elif call == 1 and mode == "output_truncated":
+        pathlib.Path(output).write_text('{"attempt_token":')
+    else:
+        pathlib.Path(output).write_text(json.dumps(response))
     print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
     print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(response)}}))
     print(json.dumps({"type": "turn.completed", "thread_id": "developer-session"}))

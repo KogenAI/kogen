@@ -1,0 +1,52 @@
+[
+  {
+    "id": "schema-is-not-truth",
+    "scenario_ids": [
+      "fresh-constraint",
+      "semantic-authority",
+      "bounded-correction",
+      "failed-or-stale-output"
+    ],
+    "description": "Supported schema constraints prevent only part of protocol invalidity. Duplicate IDs can satisfy array cardinality, whitespace can satisfy minLength, and claims can be false. Keep runtime checks and independent Review, including honest incomplete/blocked output. Existing shared budget remains authoritative."
+  },
+  {
+    "id": "invocation-file-lifetime",
+    "scenario_ids": [
+      "stop-and-resume",
+      "owned-evidence",
+      "failed-or-stale-output"
+    ],
+    "description": "CLI failure can leave existing output unchanged; premature cleanup or output reuse can lose evidence or accept stale claims. Private files are controller-owned runtime artifacts, not configuration.",
+    "ownership": [
+      {
+        "paths": "Private per-invocation Developer schema and final-output files under a newly owned temporary directory",
+        "when_exists": "Never adopt or overwrite an existing path; allocate a fresh exclusive directory or fail safely. Each concurrent invocation and outer resume owns a different directory.",
+        "owner_after_creation": "Harness owns the directory and schema; provider may write only its designated final-output file during that invocation.",
+        "owner_during_operation": "Harness retains lifetime across Stop continuation and reads the completed output only after valid provider settlement; Developer claims grant no ownership over schema or records.",
+        "permitted_mutation": "Harness creates schema once, provider writes final output, controller captures required bytes, and Harness deletes only its owned disposable directory on success or handled failure.",
+        "validation": "Require supported schema, fresh path, validated settlement/session and existing handoff authority; inspect collision, concurrency, stale-output and failure controls.",
+        "git_state": "Disposable and untracked outside tracked source; never committed or relied on as Candidate content.",
+        "upgrade_behavior": "Regenerate per invocation from current authoritative contract; never migrate or reuse old invocation files. Abrupt-death leftovers may remain disposable and must never become input."
+      },
+      {
+        "paths": "Existing scenario-tracking attempt records and self-contained Complete evidence, extended only for required schema and handoff diagnostics",
+        "when_exists": "Preserve owned existing record bytes under current integrity rules; append/update only the current controller-owned attempt and use the existing publication path.",
+        "owner_after_creation": "Build controller owns retained attempt evidence; native test driver separately owns callback/session receipts.",
+        "owner_during_operation": "Build maintains tracking and publication; Developer and independent Reviewer inspect retained evidence read-only; outer driver audits its ephemeral sequence.",
+        "permitted_mutation": "Only existing controller-authorized tracking updates and publication; capture exact required bytes before temp cleanup, including with optional raw logging disabled.",
+        "validation": "Verify token/session binding, exact-byte snapshots/digests, required receipts, survival after cleanup and immutable record controls; no arbitrary temporary citation is accepted.",
+        "git_state": "Runtime records remain ignored; successful Complete evidence follows existing tracked publication and rollback rules.",
+        "upgrade_behavior": "Preserve prior evidence and absent new fields in historical records as historical; generate current attempt evidence without rewriting old claims or requiring a schema-file migration."
+      }
+    ]
+  },
+  {
+    "id": "shared-transport-consumers",
+    "scenario_ids": [
+      "fresh-constraint",
+      "consumer-preservation",
+      "stop-and-resume"
+    ],
+    "description": "Existing fakes classify --output-schema as Reviewer, while native-helper live test calls launch_developer without a Build contract. Update actual consumers explicitly and retain the helper transport contract without an unconstrained fallback for real Build."
+  }
+]

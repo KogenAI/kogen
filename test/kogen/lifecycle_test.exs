@@ -101,7 +101,8 @@ defmodule Kogen.LifecycleTest do
       |> String.split("\n", trim: true)
 
     assert length(log_lines) == 5
-    assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 2
+    assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 5
+    assert File.read!(Path.join(dest, ".kogen/runtime/fake-reviewer-calls")) == "2\n"
     assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 2
 
     assert Enum.any?(log_lines, fn line ->

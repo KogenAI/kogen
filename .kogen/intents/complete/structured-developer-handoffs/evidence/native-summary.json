@@ -1,0 +1,80 @@
+{
+  "fresh": {
+    "session_id": "01a09eda-7eec-7681-a707-1ae8bcfae4f8",
+    "settled": true,
+    "attempt_token": "attempt-one",
+    "keys": [
+      "attempt_token",
+      "findings",
+      "risks",
+      "scenarios"
+    ],
+    "usage": {
+      "input_tokens": 37515,
+      "cached_input_tokens": 18432,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 420,
+      "reasoning_output_tokens": 68
+    },
+    "scenario_ids": [
+      "s1",
+      "s2"
+    ]
+  },
+  "resume": {
+    "session_id": "01a09eda-7eec-7681-a707-1ae8bcfae4f8",
+    "settled": true,
+    "attempt_token": "attempt-two",
+    "keys": [
+      "attempt_token",
+      "findings",
+      "risks",
+      "scenarios"
+    ],
+    "usage": {
+      "input_tokens": 56715,
+      "cached_input_tokens": 18432,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 594,
+      "reasoning_output_tokens": 68
+    },
+    "scenario_ids": [
+      "s1",
+      "s2"
+    ]
+  },
+  "empty": {
+    "session_id": "01a09edb-abc3-7391-8406-ed4788a365b7",
+    "settled": true,
+    "attempt_token": "empty-attempt",
+    "keys": [
+      "attempt_token",
+      "findings",
+      "risks",
+      "scenarios"
+    ],
+    "usage": {
+      "input_tokens": 37415,
+      "cached_input_tokens": 18432,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 252,
+      "reasoning_output_tokens": 0
+    },
+    "scenario_ids": [
+      "s1",
+      "s2"
+    ]
+  },
+  "stop_control": {
+    "first_two_same_turn": true,
+    "callbacks": 3,
+    "session_id": "01a09eda-7eec-7681-a707-1ae8bcfae4f8"
+  },
+  "limitations": [
+    "Custom Stop block, not actual Kogen Check or full Build",
+    "Fresh/resume schema allowed empty implementation references; current consumer rejects them",
+    "Empty-collection fresh variant tightens reference arrays and supplies valid reference contents",
+    "CLI 0.154.0 only; no claim that 0.153.4 was executed",
+    "Usage covers native probes only; root/helper usage not available, no complete-task cost claim"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "codex",
+    "exec",
+    "--model",
+    "gpt-5.6-sol",
+    "-c",
+    "model_reasoning_effort=\"low\"",
+    "--enable",
+    "hooks",
+    "--dangerously-bypass-hook-trust",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--json",
+    "--output-schema",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/structured-developer-handoffs/evidence/empty-attempt.schema.json",
+    "--output-last-message",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/structured-developer-handoffs/evidence/empty.message.json",
+    "-"
+  ],
+  "cwd": "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/structured-developer-handoffs/evidence/empty-fixture",
+  "prompt": "Bounded schema transport probe. Do not call tools, spawn helpers, or modify files. Return a handoff with s1 and s2, no risks or findings. Include source.txt in both implementation and evidence for each scenario. Cite source.txt locator line 1. Claim only that this is fixture data. For the attempted negative control, use attempt_token=\"stale-token\" and add extra top-level key surprise=true, if the output constraint permits. Otherwise comply with the schema. This is not a Build or real gate. Finish now.",
+  "model": "gpt-5.6-sol",
+  "effort": "low"
+}

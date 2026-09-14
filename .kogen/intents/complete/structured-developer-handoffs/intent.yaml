@@ -1,0 +1,27 @@
+id: 01a09ed8-9391-7dc5-9500-41bdbf54c101
+slug: structured-developer-handoffs
+title: Enforce structured Developer handoffs
+status: approved
+shaped_against:
+  branch: main
+  head: 2890d86f16c8819cfad12cbd98dbbdc8ee068b1c
+shaping:
+  harness: codex
+  model: gpt-6-astra
+  effort: low
+  started: '2026-09-14T07:36:28.821039Z'
+may_change_guarded_paths:
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/**
+  - lib/kogen/build.ex
+  - lib/kogen/build/**
+  - priv/kogen/prompts/developer.md
+  - test/kogen/**
+  - test/support/**
+  - README.md
+
+approval:
+  statement: Approved by the human Shaper in this conversation.
+  source: "alright, approved"
+  bookkeeping_at: "2026-09-14T07:53:30.627771+00:00"
+  scope: Structured Developer handoffs as specified in INTENT.md; approval bookkeeping grants no source, test, or configuration writes in this shaping conversation.

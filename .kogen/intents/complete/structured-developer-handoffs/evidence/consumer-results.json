@@ -1,0 +1,52 @@
+[
+  {
+    "case": "native-empty-references",
+    "result": "{:error, \"handoff scenarios: entry \\\"s1\\\" at position 1: field implementation expected a nonempty list; handoff scenarios: entry \\\"s2\\\" at position 2: field implementation expected a nonempty list\"}",
+    "accepted": false
+  },
+  {
+    "case": "valid-control",
+    "result": "{:ok, %{\"attempt_token\" => \"attempt-one\", \"findings\" => [%{\"evidence\" => [%{\"locator\" => \"line 1\", \"path\" => \"source.txt\"}], \"id\" => \"f1\", \"response\" => \"This is fixture data.\", \"status\" => \"addressed\"}], \"risks\" => [%{\"evidence\" => [%{\"locator\" => \"line 1\", \"path\" => \"source.txt\"}], \"id\" => \"r1\", \"response\" => \"This is fixture data.\", \"scenario_ids\" => [\"s1\", \"s2\"]}], \"scenarios\" => [%{\"claim\" => \"This is fixture data.\", \"evidence\" => [%{\"locator\" => \"line 1\", \"path\" => \"source.txt\"}], \"id\" => \"s1\", \"implementation\" => [%{\"locator\" => \"line 1\", \"path\" => \"source.txt\"}], \"status\" => \"ready\"}, %{\"claim\" => \"This is fixture data.\", \"evidence\" => [%{\"locator\" => \"line 1\", \"path\" => \"source.txt\"}], \"id\" => \"s2\", \"implementation\" => [%{\"locator\" => \"line 1\", \"path\" => \"source.txt\"}], \"status\" => \"ready\"}]}}",
+    "accepted": true
+  },
+  {
+    "case": "stale-token",
+    "result": "{:error, \"Developer handoff attempt_token does not match the current binding\"}",
+    "accepted": false
+  },
+  {
+    "case": "duplicate-scenario",
+    "result": "{:error, \"handoff scenarios: missing expected ID \\\"s2\\\"; handoff scenarios: duplicate ID \\\"s1\\\" at positions 1, 2\"}",
+    "accepted": false
+  },
+  {
+    "case": "missing-file",
+    "result": "{:error, \"handoff scenarios: entry \\\"s1\\\" at position 1: evidence[1], path \\\"absent.txt\\\": file does not exist\"}",
+    "accepted": false
+  },
+  {
+    "case": "incomplete",
+    "result": "{:error, \"handoff scenarios: entry \\\"s1\\\" at position 1: field status expected \\\"ready\\\"\"}",
+    "accepted": false
+  },
+  {
+    "case": "blocked",
+    "result": "{:error, \"handoff finding remains blocked: f1\"}",
+    "accepted": false
+  },
+  {
+    "case": "wrong-links",
+    "result": "{:error, \"handoff risks: entry \\\"r1\\\" at position 1: field scenario_ids must exactly match the approved risk links\"}",
+    "accepted": false
+  },
+  {
+    "case": "missing",
+    "result": "{:error, \"Developer handoff is not JSON object\"}",
+    "accepted": false
+  },
+  {
+    "case": "truncated",
+    "result": "{:error, \"Developer handoff is not JSON object\"}",
+    "accepted": false
+  }
+]

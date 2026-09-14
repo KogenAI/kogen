@@ -1,0 +1,11 @@
+{
+  "lib/kogen/harness.ex": "0b8f3717cfaa707fef8249973cd745e485a7fe8a8731d147e339ad8f5022fb31",
+  "lib/kogen/build/contract.ex": "e1eb2f8c37e279db2b5a5742bb5a887d096906b0777850f124d1274f7c0d5c69",
+  "lib/kogen/build.ex": "4221ccd581217a56641e8ffc50226eca42d1e84e26c1e56548ab5116faf4ca0a",
+  "priv/kogen/prompts/developer.md": "8b85fbbac42b489f6cff1aba3e5f03592a0e7a34ca9b7d7310aad0446d82d384",
+  "test/support/scenario_response.py": "b2c4d710e3ccb2f0dd193dd7e8743e9c3f52a4061f4dafc45b88dc9fcb287721",
+  "test/support/fake_codex": "99bb1d4ca3a5f0d5e993656ff2f169960d815e42c17951d42feed6c0a5889478",
+  "test/support/scenario_lifecycle_harness.py": "4d3dfef3ed93235c05ae8046ebd52c3a91bb5abea8b3c4241fc820cb89061bf9",
+  ".kogen/config.yaml": "a090e445b0e5cbc44fee3653a52bda34c04c35a80a47d28b6a1633ec0964a237",
+  "Makefile": "d67d470bc39b036ad63484c8be6df1a0f7f89e263737eef27ca6bcc13ed85d4d"
+}

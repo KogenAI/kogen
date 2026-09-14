@@ -207,8 +207,8 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     response_helper="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/scenario_response.py"
     input="$(cat)"
     reviewer=0; resume=0; previous=; output_file=
+    [ "${KOGEN_ROLE:-}" = reviewer ] && reviewer=1
     for arg in "$@"; do
-      [ "$arg" = --output-schema ] && reviewer=1
       [ "$arg" = resume ] && resume=1
       [ "$previous" = --output-last-message ] && output_file="$arg"
       previous="$arg"
@@ -252,6 +252,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
       printf '%s' '{"session_id":"dev-1"}' | sh .codex/hooks/check.sh >/dev/null
     fi
     response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
+    printf '%s\n' "$response" > "$output_file"
     printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
     printf '%s\n' '{"type":"turn.completed","thread_id":"dev-1"}'
     """

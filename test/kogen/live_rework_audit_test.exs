@@ -210,6 +210,7 @@ defmodule Kogen.LiveReworkAuditTest do
       candidate_trees!(root, Keyword.get(options, :initial_notes?, false))
 
     File.write!(Path.join(complete, "evidence.md"), evidence!(final_candidate))
+    File.write!(Path.join(complete, "scenario-tracking.json"), tracking_fixture!())
 
     File.write!(
       Path.join(runtime, "verification.json"),
@@ -250,6 +251,30 @@ defmodule Kogen.LiveReworkAuditTest do
   defp evidence!(candidate),
     do:
       "- Candidate id: `#{candidate}`\n- Developer session id: `developer-1`\n- Reviewer session id: `review-2`\n- Outer resumptions used: 1\n"
+
+  defp tracking_fixture! do
+    attempts =
+      for token <- ["attempt-1", "attempt-2"] do
+        message = Jason.encode!(%{"attempt_token" => token})
+
+        %{
+          "attempt_token" => token,
+          "developer_session_id" => "developer-1",
+          "developer_message" => message,
+          "developer_invocation" => %{
+            "outcome" => "settled",
+            "session_id" => "developer-1",
+            "message" => message,
+            "schema" =>
+              Jason.encode!(%{
+                "properties" => %{"attempt_token" => %{"enum" => [token]}}
+              })
+          }
+        }
+      end
+
+    Jason.encode!(%{"attempts" => attempts})
+  end
 
   defp write_stream!(logs, sequence, session) do
     body =

@@ -95,9 +95,14 @@ in that record. Missing or conflicting required evidence is an integrity failure
 unfinished optional Draft files remain valid shaping work.
 
 After Stop Check settles, Build validates the final Developer message against a
-fresh attempt token. The handoff covers every scenario, supplied risk, and open
-finding with claims and existing file references. Build attaches its owned gate
-receipts; claims never count as gate results. A fresh Reviewer assesses every
+controller-owned schema bound to the fresh attempt token, contract IDs, and
+collection sizes. Fresh and resumed attempts each use a distinct private schema
+and final-output file; Build retains their exact bytes before cleanup and never
+falls back to an earlier file or intermediate message. The handoff covers every
+scenario, supplied risk, and open finding with claims and existing file
+references. Runtime checks still enforce unique coverage and safe references;
+schema compliance is not evidence that a claim is true. Build attaches its owned
+gate receipts; claims never count as gate results. A fresh Reviewer assesses every
 scenario and explicitly closes or retains every open finding with inspected
 counterevidence or repair evidence. Acceptance requires all scenarios satisfied
 and no open blocking findings for the current Candidate. Invalid handoffs share

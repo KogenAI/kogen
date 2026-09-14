@@ -15,7 +15,7 @@ defmodule Kogen.Build do
       Kogen.ExecutionPolicy
     ]
 
-  alias Kogen.Build.{Contract, TargetEvidence, Tracking}
+  alias Kogen.Build.{Contract, DeveloperHandoff, TargetEvidence, Tracking}
 
   @lock_path ".kogen/build.lock"
   @approved_base ".kogen/intents/approved"
@@ -202,23 +202,27 @@ defmodule Kogen.Build do
   defp launch_attempt(ctx, session_id, number, reason) do
     with :ok <- inputs_unchanged(ctx),
          :ok <- Kogen.VerificationPolicy.preflight(ctx.targets),
-         :ok <- Kogen.Check.invalidate!() do
+         :ok <- Kogen.Check.invalidate!(),
+         {:ok, schema} <-
+           DeveloperHandoff.schema(ctx.contract, ctx.token, Tracking.open_findings(ctx.tracking)) do
       prompt = developer_prompt(ctx, reason)
 
       result =
         if session_id do
-          Kogen.Harness.resume_developer(
+          Kogen.Harness.resume_build_developer(
             session_id,
             prompt,
             ctx.config.developer.model,
             ctx.config.developer.effort,
+            schema,
             ctx.policy_environment
           )
         else
-          Kogen.Harness.launch_developer(
+          Kogen.Harness.launch_build_developer(
             prompt,
             ctx.config.developer.model,
             ctx.config.developer.effort,
+            schema,
             ctx.policy_environment
           )
         end
@@ -231,16 +235,70 @@ defmodule Kogen.Build do
 
   defp receive_developer(ctx, expected, number, {:ok, turn}) do
     if expected && turn.session_id != expected do
-      stop(ctx, "resume created a new session (expected #{expected}, got #{turn.session_id})")
+      stop(
+        ctx,
+        "resume created a new session (expected #{expected}, got #{turn.session_id})",
+        %{
+          "developer_session_id" => turn.session_id,
+          "developer_message" => turn.message,
+          "developer_invocation" => invocation_evidence(turn.invocation_evidence)
+        }
+      )
     else
-      settle(ctx, turn.session_id, number, Map.get(turn, :message, ""))
+      settle(
+        ctx,
+        turn.session_id,
+        number,
+        Map.fetch!(turn, :message),
+        invocation_evidence(turn.invocation_evidence)
+      )
     end
+  end
+
+  defp receive_developer(ctx, expected, number, {:error, {kind, evidence}})
+       when kind in [
+              :structured_output_missing,
+              :structured_output_empty,
+              :structured_output_malformed,
+              :structured_output_truncated
+            ] and is_map(evidence) do
+    session_id = evidence[:session_id]
+
+    if expected && session_id != expected do
+      stop(ctx, "resume created a new session (expected #{expected}, got #{session_id})", %{
+        "developer_session_id" => session_id,
+        "developer_message" => evidence[:message],
+        "developer_invocation" => invocation_evidence(evidence)
+      })
+    else
+      reason = "Developer handoff structure invalid: #{structure_diagnostic(kind)}"
+
+      case record_attempt(ctx, %{
+             "developer_session_id" => session_id,
+             "developer_invocation" => invocation_evidence(evidence),
+             "developer_message" => evidence[:message]
+           }) do
+        {:ok, ctx} -> rework(ctx, session_id, number, reason)
+        {:error, error} -> stop(ctx, error)
+      end
+    end
+  end
+
+  defp receive_developer(
+         ctx,
+         _expected,
+         _number,
+         {:error, {:structured_transport_failure, reason, evidence}}
+       ) do
+    stop(ctx, "harness failure during Developer turn: #{inspect(reason)}", %{
+      "developer_invocation" => invocation_evidence(evidence)
+    })
   end
 
   defp receive_developer(ctx, _expected, _number, {:error, reason}),
     do: stop(ctx, "harness failure during Developer turn: #{inspect(reason)}")
 
-  defp settle(ctx, session_id, number, message) do
+  defp settle(ctx, session_id, number, message, invocation) do
     # No controller update happens during the Developer turn. Preserve that
     # exact version before recording settlement or the parsed handoff.
     developer_tracking = ctx.tracking
@@ -252,6 +310,7 @@ defmodule Kogen.Build do
              "candidate_id" => candidate_id,
              "developer_session_id" => session_id,
              "developer_message" => message,
+             "developer_invocation" => invocation,
              "check" => read_check(),
              "check_bytes" => read_optional(Kogen.Check.record_path()),
              "check_history" => read_optional(Kogen.Check.history_path())
@@ -283,7 +342,7 @@ defmodule Kogen.Build do
         end
 
       {:error, reason} ->
-        rework(ctx, session_id, number, "Developer handoff invalid: #{reason}")
+        rework(ctx, session_id, number, "Developer handoff semantic invalid: #{reason}")
     end
   end
 
@@ -986,10 +1045,30 @@ defmodule Kogen.Build do
       String.starts_with?(reason, "settled Check failure:") -> "check_settlement"
       String.starts_with?(reason, "declared-target failure:") -> "declared_target"
       String.starts_with?(reason, "Reviewer findings:") -> "review_rework"
-      String.starts_with?(reason, "Developer handoff invalid:") -> "handoff_invalid"
+      String.starts_with?(reason, "Developer handoff structure invalid:") -> "handoff_structure"
+      String.starts_with?(reason, "Developer handoff semantic invalid:") -> "handoff_semantic"
       true -> "rework"
     end
   end
+
+  defp invocation_evidence(evidence) do
+    Map.new(evidence, fn {key, value} -> {to_string(key), invocation_value(value)} end)
+  end
+
+  defp invocation_value(value) when is_atom(value), do: Atom.to_string(value)
+  defp invocation_value(value), do: value
+
+  defp structure_diagnostic(:structured_output_missing),
+    do: "the current owned final-output file was not created"
+
+  defp structure_diagnostic(:structured_output_empty),
+    do: "the current owned final-output file was empty"
+
+  defp structure_diagnostic(:structured_output_truncated),
+    do: "the current owned final-output file contained truncated JSON"
+
+  defp structure_diagnostic(:structured_output_malformed),
+    do: "the current owned final-output file contained malformed JSON"
 
   @doc false
   def render_reviewer_prompt(intent, candidate_id, config) do

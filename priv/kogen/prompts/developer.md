@@ -124,6 +124,11 @@ supplied token. Do not print or copy the whole record, snapshots, or serialized
 verdicts into a helper packet. Missing, unreadable, stale, or conflicting
 required evidence is a failure to report, not content to invent.
 
+Build constrains this final message with a controller-owned schema bound to the
+current attempt. Schema compliance is only structural: report `incomplete`,
+`blocked`, or `disputed` honestly when applicable. Runtime validation and fresh
+independent Review remain authoritative for coverage, references, and truth.
+
 In your final completed agent message, output only this JSON object, with those exact
 wire keys and no markdown or surrounding prose:
 

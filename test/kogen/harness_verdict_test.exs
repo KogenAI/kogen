@@ -109,6 +109,74 @@ defmodule Kogen.HarnessVerdictTest do
              Kogen.Harness.launch_developer("test", "fake", "low")
   end
 
+  test "structured Build Developer trusts only the fresh owned output file" do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen structured developer #{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    executable = Path.join(dir, "provider")
+    stale = Path.join(dir, "stale.json")
+    File.write!(stale, ~s({"attempt_token":"stale"}))
+
+    original = Map.new(["KOGEN_HARNESS", "OUTPUT_MODE"], &{&1, System.get_env(&1)})
+
+    on_exit(fn ->
+      Enum.each(original, fn {key, value} ->
+        if value, do: System.put_env(key, value), else: System.delete_env(key)
+      end)
+
+      File.rm_rf!(dir)
+    end)
+
+    File.write!(executable, """
+    #!/bin/sh
+    cat >/dev/null || true
+    out=; prev=
+    for arg in "$@"; do [ "$prev" = --output-last-message ] && out="$arg"; prev="$arg"; done
+    case "$OUTPUT_MODE" in
+      valid) printf '%s' '{"attempt_token":"current"}' > "$out" ;;
+      empty) : > "$out" ;;
+      truncated) printf '%s' '{"attempt_token":' > "$out" ;;
+      provider_failure) printf '%s' '{"attempt_token":"stale"}' > "$out"; exit 19 ;;
+    esac
+    printf '%s\n' '{"type":"thread.started","thread_id":"developer"}' '{"type":"item.completed","item":{"type":"agent_message","text":"stale event"}}' '{"type":"turn.completed","thread_id":"developer"}'
+    """)
+
+    File.chmod!(executable, 0o755)
+    System.put_env("KOGEN_HARNESS", executable)
+
+    System.put_env("OUTPUT_MODE", "valid")
+
+    assert {:ok, %{session_id: "developer", message: message, invocation_evidence: evidence}} =
+             Kogen.Harness.launch_build_developer("test", "fake", "low", ~s({"type":"object"}))
+
+    assert message == ~s({"attempt_token":"current"})
+    assert evidence.message == message
+    assert evidence.schema == ~s({"type":"object"})
+
+    for {mode, kind} <- [
+          {"missing", :structured_output_missing},
+          {"empty", :structured_output_empty},
+          {"truncated", :structured_output_truncated}
+        ] do
+      System.put_env("OUTPUT_MODE", mode)
+
+      assert {:error, {^kind, %{session_id: "developer"}}} =
+               Kogen.Harness.launch_build_developer("test", "fake", "low", "{}")
+    end
+
+    System.put_env("OUTPUT_MODE", "provider_failure")
+
+    assert {:error, {:structured_transport_failure, {:provider_exit, 19, _}, evidence}} =
+             Kogen.Harness.launch_build_developer("test", "fake", "low", "{}")
+
+    assert evidence.outcome == :provider_failure
+    assert File.read!(stale) == ~s({"attempt_token":"stale"})
+  end
+
   defp valid_verdict do
     %{
       "candidate_id" => "candidate-1",

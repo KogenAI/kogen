@@ -1,0 +1,18 @@
+[
+  {
+    "path": ".kogen/runtime/shaping-followups/serial-optimization/13-structured-developer-handoffs.md",
+    "role": "Shaper-selected unapproved problem input; preserved copy in evidence/followup-input.md"
+  },
+  {
+    "path": ".kogen/intents/approved/unify-verification/",
+    "role": "Separately approved scope; handoff preservation remains consistent; no edit authority here"
+  },
+  {
+    "path": "evidence/source-hashes.json",
+    "role": "Inspected source identities at supplied HEAD"
+  },
+  {
+    "url": "https://learn.chatgpt.com/docs/developer-commands?surface=cli",
+    "role": "Official CLI reference consulted; local 0.154.0 help and retained execution establish actual tested route"
+  }
+]

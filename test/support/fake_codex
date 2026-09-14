@@ -2,7 +2,6 @@
 # Offline Codex fixture: developer NDJSON turns, reviewer structured output,
 # and real tracked stop-hook invocations.
 set -eu
-export KOGEN_ROLE=developer
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 response_helper="$script_dir/scenario_response.py"
 stop_check() {
@@ -21,8 +20,8 @@ log="$state_dir/fake-harness-log"; dev_state="$state_dir/fake-dev-calls"; rev_st
 printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
 input="$(cat)"
 reviewer=0; resume_id=; output_file=; previous=; is_resume=0; penultimate=; last=
+[ "${KOGEN_ROLE:-}" = reviewer ] && reviewer=1
 for a in "$@"; do
- [ "$a" = --output-schema ] && reviewer=1
  [ "$a" = resume ] && is_resume=1
  [ "$previous" = --output-last-message ] && output_file="$a"
  previous="$a"; penultimate="$last"; last="$a"
@@ -90,6 +89,7 @@ if [ -n "$resume_id" ]; then
  esac
  stop_check pass false
  response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
+ printf '%s\n' "$response" > "$output_file"
  printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
  printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"
  exit 0
@@ -103,5 +103,6 @@ stop_check block false
 rm -f lib/kogen_fake_break.ex
 stop_check pass true
 response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
+printf '%s\n' "$response" > "$output_file"
 printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
 printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"

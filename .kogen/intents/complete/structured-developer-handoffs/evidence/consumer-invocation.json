@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "elixir",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/yamerl/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/boundary/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/kogen/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/file_system/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/bunt/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/jason/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/yaml_elixir/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/credo/ebin",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/structured-developer-handoffs/evidence/consumer-probe.exs",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/structured-developer-handoffs/evidence"
+  ],
+  "exit": 0,
+  "stdout": "10 current-source consumer controls passed\n",
+  "stderr": "    warning: redefining module Kogen.Build.Contract (current version loaded from _build/test/lib/kogen/ebin/Elixir.Kogen.Build.Contract.beam)\n    \u2502\n  1 \u2502 defmodule Kogen.Build.Contract do\n    \u2502 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    \u2502\n    \u2514\u2500 lib/kogen/build/contract.ex:1: Kogen.Build.Contract (module)\n\n"
+}

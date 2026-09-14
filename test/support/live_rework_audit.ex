@@ -79,6 +79,8 @@ defmodule Kogen.LiveReworkAudit do
 
     initial_omission!(fixture, initial_candidate)
 
+    developer_invocations!(complete_dir, developer, rework_token, accept_token)
+
     developer_resume!(
       raw_log_dir,
       developer,
@@ -114,6 +116,40 @@ defmodule Kogen.LiveReworkAudit do
     path = Path.join(dir, "reviewer-verdicts.jsonl")
     require_file!(path, "ordered Reviewer receipt log")
     lines!(path, "ordered Reviewer receipt log")
+  end
+
+  defp developer_invocations!(complete_dir, session_id, first_token, second_token) do
+    [tracking_path] = Path.wildcard(Path.join(complete_dir, "scenario-tracking*.json"))
+    tracking = json_file!(tracking_path, "published scenario tracking")
+    [first, second] = tracking["attempts"]
+
+    require!(
+      Enum.map([first, second], & &1["attempt_token"]) == [first_token, second_token],
+      "Developer attempts must bind the Reviewer-observed tokens in order"
+    )
+
+    for attempt <- [first, second] do
+      invocation = attempt["developer_invocation"]
+      schema = Jason.decode!(invocation["schema"])
+
+      require!(invocation["outcome"] == "settled", "Developer invocation must settle")
+      require!(invocation["session_id"] == session_id, "Developer resume must keep its session")
+
+      require!(
+        invocation["message"] == attempt["developer_message"],
+        "retained final bytes differ"
+      )
+
+      require!(
+        schema["properties"]["attempt_token"]["enum"] == [attempt["attempt_token"]],
+        "Developer schema must bind its current attempt token"
+      )
+    end
+
+    require!(
+      first["developer_invocation"]["schema"] != second["developer_invocation"]["schema"],
+      "resumed Developer must receive a fresh attempt schema"
+    )
   end
 
   defp ordered_receipts!(receipts, accepting_reviewer, developer) do

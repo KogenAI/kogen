@@ -355,6 +355,7 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     assert initial_attempt["developer_session_id"] == developer_session_id
     assert is_map(initial_attempt["handoff"]), "initial attempt must contain the first handoff"
+    assert_developer_invocation!(initial_attempt, developer_session_id)
 
     {:ok, initial_check_finished, 0} =
       DateTime.from_iso8601(initial_attempt["check"]["finished_at"])
@@ -476,6 +477,22 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     File.mkdir_p!(dir)
     dir
+  end
+
+  defp assert_developer_invocation!(attempt, session_id) do
+    invocation = attempt["developer_invocation"]
+    schema = Jason.decode!(invocation["schema"])
+
+    assert invocation["outcome"] == "settled"
+    assert invocation["session_id"] == session_id
+    assert invocation["message"] == attempt["developer_message"]
+    assert schema["properties"]["attempt_token"]["enum"] == [attempt["attempt_token"]]
+
+    assert invocation["schema_sha256"] ==
+             Base.encode16(:crypto.hash(:sha256, invocation["schema"]), case: :lower)
+
+    assert invocation["message_sha256"] ==
+             Base.encode16(:crypto.hash(:sha256, invocation["message"]), case: :lower)
   end
 
   defp setup_fixture(project_root, fixture, makefile \\ @makefile) do

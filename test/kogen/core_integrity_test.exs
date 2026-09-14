@@ -269,10 +269,10 @@ defmodule Kogen.CoreIntegrityTest do
     response_helper="$script_dir/scenario_response.py"
     input="$(cat)"
     reviewer=0
+    [ "${KOGEN_ROLE:-}" = reviewer ] && reviewer=1
     output_file=
     previous=
     for arg in "$@"; do
-      [ "$arg" = --output-schema ] && reviewer=1
       [ "$previous" = --output-last-message ] && output_file="$arg"
       previous="$arg"
     done
@@ -284,6 +284,7 @@ defmodule Kogen.CoreIntegrityTest do
     #{developer_setup}printf '%s\\n' '{"type":"thread.started","thread_id":"dev-session-1"}'
     printf '%s' '{"session_id":"dev-session-1"}' | sh .codex/hooks/check.sh >/dev/null
     response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
+    printf '%s\n' "$response" > "$output_file"
     printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
     printf '%s\\n' '{"type":"turn.completed","thread_id":"dev-session-1"}'
     """

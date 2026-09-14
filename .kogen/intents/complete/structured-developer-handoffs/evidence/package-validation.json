@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "elixir",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/yamerl/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/boundary/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/kogen/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/file_system/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/bunt/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/jason/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/yaml_elixir/ebin",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/test/lib/credo/ebin",
+    "-e",
+    "[package] = System.argv()\nfor f <- [\"intent.yaml\", \"scenarios.yaml\", \"risks.yaml\", \"references.yaml\"] do\n {:ok, _} = YamlElixir.read_from_file(Path.join(package, f))\nend\n{:ok, contract} = Kogen.Build.Contract.load(package)\nIO.puts(\"Package YAML and scenario/risk contract valid: #{length(contract.scenarios)} scenarios; targets #{inspect(contract.targets)}\")\n",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/structured-developer-handoffs"
+  ],
+  "exit": 0,
+  "stdout": "Package YAML and scenario/risk contract valid: 7 scenarios; targets [\"check\", \"live\"]\n",
+  "stderr": ""
+}

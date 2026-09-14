@@ -19,6 +19,36 @@ defmodule Kogen.ScenarioLifecycleTest do
     end
   end
 
+  for mode <- ~w(output_missing output_empty output_truncated) do
+    test "settled #{mode} output is a bounded structural correction in the same session" do
+      dir = fixture!()
+      on_exit(fn -> File.rm_rf(dir) end)
+
+      assert :ok = run(dir, unquote(mode))
+      [failed, corrected] = record!(dir)["attempts"]
+      assert failed["failure"] =~ "Developer handoff structure invalid"
+      assert failed["developer_session_id"] == "developer-session"
+      assert corrected["developer_session_id"] == "developer-session"
+      assert File.read!(Path.join(dir, ".kogen/runtime/resume-sessions")) == "developer-session\n"
+      assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+    end
+  end
+
+  for mode <- ~w(developer_exit developer_error missing_settlement) do
+    test "#{mode} remains a provider failure and never reaches Review" do
+      dir = fixture!()
+      on_exit(fn -> File.rm_rf(dir) end)
+
+      assert {:error, reason} = run(dir, unquote(mode))
+      assert reason =~ "harness failure during Developer turn"
+      [attempt] = record!(dir)["attempts"]
+      assert attempt["developer_invocation"]["outcome"] == "provider_failure"
+      refute Map.has_key?(attempt["developer_invocation"], "message")
+      refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+      refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    end
+  end
+
   test "handoff diagnostics reach the resumed Developer through the retained attempt" do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
@@ -31,6 +61,33 @@ defmodule Kogen.ScenarioLifecycleTest do
     assert failed["failure"] =~ "field response must be nonblank text"
     assert File.read!(Path.join(dir, ".kogen/runtime/resume-sessions")) == "developer-session\n"
     assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+  end
+
+  test "Build retains each owned Developer schema and final message after invocation cleanup" do
+    dir = fixture!()
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    assert :ok = run(dir, "handoff_stale")
+    [first, corrected] = record!(dir)["attempts"]
+
+    for attempt <- [first, corrected] do
+      invocation = attempt["developer_invocation"]
+      schema = Jason.decode!(invocation["schema"])
+      assert invocation["outcome"] == "settled"
+      assert invocation["session_id"] == "developer-session"
+
+      assert invocation["schema_sha256"] ==
+               Base.encode16(:crypto.hash(:sha256, invocation["schema"]), case: :lower)
+
+      assert invocation["message_sha256"] ==
+               Base.encode16(:crypto.hash(:sha256, invocation["message"]), case: :lower)
+
+      assert schema["properties"]["attempt_token"]["enum"] == [attempt["attempt_token"]]
+      assert schema["properties"]["scenarios"]["minItems"] == 1
+      assert schema["properties"]["risks"]["minItems"] == 1
+    end
+
+    refute first["developer_invocation"]["schema"] == corrected["developer_invocation"]["schema"]
   end
 
   test "invalid Review retains all entry diagnoses and stops without publication" do

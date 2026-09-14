@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/structured-developer-handoffs/evidence/native-fixture/stop.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

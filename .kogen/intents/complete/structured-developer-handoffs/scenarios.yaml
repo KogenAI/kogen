@@ -1,0 +1,83 @@
+[
+  {
+    "id": "fresh-constraint",
+    "given": "A valid approved contract with multiple scenarios, supplied risks and a clean authenticated Build fixture",
+    "when": "Build launches its first Developer attempt",
+    "then": "The real invocation uses a controller-owned strict handoff schema bound to its token and collection sizes; current output passes the unchanged semantic validator before targets and Review; the final Candidate completes the existing publication route",
+    "wrong_result": "Only the prompt requests JSON, a fixed schema omits current bindings, or a valid-looking model claim replaces independent Review",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Offline argv/schema and full fake lifecycle assertions; current connected native Shape-to-Build run retains enforced schema, final output, token and actual committed result."
+  },
+  {
+    "id": "stop-and-resume",
+    "given": "A native Developer has a real failed Stop Check, then a passing Check and a Reviewer rework finding",
+    "when": "Stop continues the turn and outer Build later resumes the exact Developer session",
+    "then": "Schema/output lifetime spans Stop continuation; outer resume uses current token and findings with a new schema/output path, passes a fresh matching Check, then reaches a different independent Reviewer and publication",
+    "wrong_result": "Fresh launch alone is constrained, temporary files disappear during Stop, resume creates another Developer, or old Check/finding state is reused",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Existing connected failed-then-passed Stop and Build-only Reviewer-rework owners retain callback/check history, invocation evidence and current native session receipts; outer driver audits sequence before cleanup."
+  },
+  {
+    "id": "semantic-authority",
+    "given": "A schema-shaped handoff has the current token and expected lengths but duplicate IDs, bad risk links, blank text, nonexistent or unsafe references, incomplete scenarios or blocked findings",
+    "when": "The settled handoff reaches Contract.handoff and reference snapshotting",
+    "then": "Existing semantic, reference and integrity checks reject it before Review; a paired fully valid current handoff succeeds; disputed findings remain reportable for independent assessment",
+    "wrong_result": "Cardinality or schema compliance is treated as unique coverage or truthful evidence; forced ready status conceals inability",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Current Contract controls for duplicate/missing/extra IDs, risk links, whitespace, empty references, absolute/traversal/NUL/symlink/directory/missing paths, incomplete and blocked states; valid control and retained snapshots."
+  },
+  {
+    "id": "bounded-correction",
+    "given": "An otherwise settled invocation has malformed structure or a schema-valid semantic rejection and outer_resumptions is 2",
+    "when": "Build reports the handoff error and attempts correction",
+    "then": "Actionable diagnostics distinguish structure and semantics; each correction uses the same session with new token/schema, invalidates old Check, consumes the existing shared allowance and never creates Reviewer findings; exhaustion after two resumptions stops without acceptance",
+    "wrong_result": "A formatting error gains an unlimited or separate retry pool, skips a fresh Check, or is turned into a Review verdict",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Public fake lifecycle injects each failure class; verify recorded failure category, initial plus two attempts, current tokens, session identity, no premature Review and exhausted stop."
+  },
+  {
+    "id": "failed-or-stale-output",
+    "given": "An invocation has a previous successful handoff elsewhere and an injected nonzero exit, failed/error event, missing settlement, missing/empty/truncated output or wrong session",
+    "when": "Harness and Build receive the outcome",
+    "then": "Provider/transport failures stop without acceptance or fabricated continuation; otherwise settled bad final output is a structural handoff failure retaining the validated session; no previous file or intermediate event is accepted and no missing content is synthesized",
+    "wrong_result": "A stale output file or earlier final-message event masks provider failure or absent current output",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Harness failure matrix and actual Build consumer fixtures, each paired with valid settled output; assert no Review/publication and correct provider-versus-handoff classification. Native invalid-schema stale-file control is supporting evidence only."
+  },
+  {
+    "id": "owned-evidence",
+    "given": "Fresh and resumed invocations create schema and output files, with success, handled failure and concurrent invocation controls",
+    "when": "An invocation settles and its owned directory is cleaned",
+    "then": "Collision-safe private files survive the whole invocation, exact required schema/message/diagnostic bytes and binding survive in controller-owned evidence with raw logging disabled, other files remain unchanged and each later invocation uses a distinct path",
+    "wrong_result": "Cleanup destroys Review evidence, stale files are adopted, concurrent invocations share output, or cleanup deletes unowned paths",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Offline collision/concurrency/success/failure tests inspect retained attempt evidence after cleanup and publication; native driver retains schema/output and callback receipts before deleting fixtures."
+  },
+  {
+    "id": "consumer-preservation",
+    "given": "Fresh/resumed Build, Reviewer, native-helper transport and all injected fake harnesses share Harness",
+    "when": "Both Build roles receive output schemas",
+    "then": "Role detection uses actual role; empty optional collections work; non-Build helper transport still fulfills its existing routing contract; all current gates, configured profiles, evidence authority, finding closure, immutable inputs and publication controls remain enforced",
+    "wrong_result": "Every schema call is mistaken for Reviewer, helper fixture is forced into an invented Build contract, empty enums fail, or safety checks are weakened to pass the new fixtures",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Run full existing check and live targets, including native-helper fixture, connected lifecycle, Reviewer-rework and integrity controls; assert Build never takes an unconstrained fallback."
+  }
+]

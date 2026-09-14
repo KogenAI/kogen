@@ -107,6 +107,21 @@ defmodule Kogen.Harness do
     run_turn(developer_args(model, effort, session_id), text, policy_environment)
   end
 
+  @doc "Launches a fresh Developer turn using the controller-supplied output schema."
+  def launch_build_developer(prompt, model, effort, schema, policy_environment \\ []) do
+    run_structured_turn(developer_args(model, effort), prompt, schema, policy_environment)
+  end
+
+  @doc "Resumes the exact Developer thread using the controller-supplied output schema."
+  def resume_build_developer(session_id, text, model, effort, schema, policy_environment \\ []) do
+    run_structured_turn(
+      developer_args(model, effort, session_id),
+      text,
+      schema,
+      policy_environment
+    )
+  end
+
   @doc false
   def developer_args(model, effort, resume_session_id \\ nil) do
     prefix = if resume_session_id, do: ["exec", "resume"], else: ["exec"]
@@ -310,6 +325,112 @@ defmodule Kogen.Harness do
     parse_turn(decode_events(output), exit_code, output)
   end
 
+  # Build's structured handoff is deliberately a separate transport. Never adopt
+  # an agent_message event when the designated output file is absent or corrupt.
+  defp run_structured_turn(_args, _stdin_text, schema, _policy_environment)
+       when not is_binary(schema),
+       do: {:error, {:invalid_output_schema, "schema must be a binary"}}
+
+  defp run_structured_turn(args, stdin_text, schema, policy_environment) do
+    dir = temporary_directory("build-developer")
+    schema_path = Path.join(dir, "developer-output.schema.json")
+    message_path = Path.join(dir, "developer-output.last-message.json")
+    File.write!(schema_path, schema, [:binary])
+
+    try do
+      output_flags = ["--output-schema", schema_path, "--output-last-message", message_path]
+
+      structured_args =
+        case Enum.take(args, -2) do
+          [session_id, "-"] when session_id != "--json" ->
+            Enum.drop(args, -2) ++ output_flags ++ [session_id, "-"]
+
+          _ ->
+            Enum.drop(args, -1) ++ output_flags ++ ["-"]
+        end
+
+      {output, exit_code} =
+        run_with_stdin(resolve_executable(), structured_args, stdin_text, [
+          {"KOGEN_ROLE", "developer"} | policy_environment
+        ])
+
+      case parse_turn(decode_events(output), exit_code, output) do
+        {:ok, turn} ->
+          structured_response(turn, schema, message_path, output)
+
+        {:error, reason} ->
+          {:error,
+           {:structured_transport_failure, reason,
+            %{
+              schema: schema,
+              schema_sha256: digest(schema),
+              outcome: :provider_failure,
+              diagnostics: output
+            }}}
+      end
+    after
+      File.rm_rf(dir)
+    end
+  end
+
+  defp structured_response(turn, schema, message_path, diagnostics) do
+    evidence_base = %{
+      schema: schema,
+      schema_sha256: digest(schema),
+      outcome: :settled,
+      diagnostics: diagnostics,
+      session_id: turn.session_id
+    }
+
+    case File.read(message_path) do
+      {:ok, message} when byte_size(message) == 0 ->
+        evidence =
+          evidence_base
+          |> Map.put(:message, message)
+          |> Map.put(:message_sha256, digest(message))
+
+        {:error, {:structured_output_empty, evidence}}
+
+      {:ok, message} ->
+        evidence =
+          evidence_base
+          |> Map.put(:message, message)
+          |> Map.put(:message_sha256, digest(message))
+
+        case structured_message_status(message) do
+          :ok ->
+            {:ok, %{session_id: turn.session_id, message: message, invocation_evidence: evidence}}
+
+          status ->
+            {:error, {status, evidence}}
+        end
+
+      {:error, _reason} ->
+        {:error, {:structured_output_missing, Map.put(evidence_base, :message, nil)}}
+    end
+  end
+
+  defp structured_message_status(message) do
+    case Jason.decode(message) do
+      {:ok, _json} ->
+        :ok
+
+      {:error, _reason} ->
+        if truncated_json?(message),
+          do: :structured_output_truncated,
+          else: :structured_output_malformed
+    end
+  end
+
+  defp truncated_json?(message) do
+    trimmed = String.trim(message)
+
+    (String.starts_with?(trimmed, "{") and not String.ends_with?(trimmed, "}")) or
+      (String.starts_with?(trimmed, "[") and not String.ends_with?(trimmed, "]"))
+  end
+
+  defp digest(value), do: Base.encode16(:crypto.hash(:sha256, value), case: :lower)
+
   defp decode_events(output) do
     output
     |> String.split("\n", trim: true)
@@ -386,6 +507,10 @@ defmodule Kogen.Harness do
 
   defp different_thread?(%{"type" => "thread.started", "thread_id" => thread_id}, session_id),
     do: thread_id != session_id
+
+  defp different_thread?(%{"thread_id" => thread_id}, session_id)
+       when is_binary(thread_id),
+       do: thread_id != session_id
 
   defp different_thread?(_event, _session_id), do: false
 
