@@ -1,0 +1,68 @@
+[
+  {
+    "id": "evidence-availability",
+    "scenario_ids": [
+      "compact-success",
+      "exact-evidence",
+      "failure-preservation",
+      "retained-live-consumer",
+      "clone-and-corruption"
+    ],
+    "description": "Q1 changes the former self-contained-Git promise. Exact bytes must remain available to the right owner during Build and after disposable fixture cleanup; a local receipt is not a portable archive or semantic proof. Runtime growth remains a known non-goal.",
+    "ownership": [
+      {
+        "paths": ".kogen/runtime/scenario-tracking/<build-id>/record.json",
+        "when_exists": "Existing controller-created path unique to one Build; a new Build never overwrites a prior Build record.",
+        "owner_after_creation": "Build controller, retaining its exact last-written bytes and frozen contract.",
+        "owner_during_operation": "Build alone updates its active record; Developer and Reviewer only inspect; summary publication preserves final bytes.",
+        "permitted_mutation": "Existing validated controller updates during execution only; no compaction/truncation/pruning by publication. Later manual user deletion remains possible and must be reported as missing evidence.",
+        "validation": "Current byte-integrity rules plus summary SHA-256, byte count, identity and format checks before use/publication.",
+        "git_state": "Ignored and excluded from Kogen commits; reject added/modified runtime entries even if force-staged.",
+        "upgrade_behavior": "Keep existing runtime schema and exact historical records; no migration or automatic cleanup."
+      },
+      {
+        "paths": "Per-run live log copies under KOGEN_LIVE_LOG_DIR or .kogen/runtime/live-evidence",
+        "when_exists": "Outer fixture driver creates owned per-run destinations before deleting source fixtures; do not overwrite unrelated existing paths.",
+        "owner_after_creation": "Outer live driver owns retained evidence and copy receipts.",
+        "owner_during_operation": "Outer driver resolves/verifies/copies; independent Review reads retained copies after the ephemeral sequence.",
+        "permitted_mutation": "Create exact copies and copy-location metadata; do not rewrite original evidence to repair a digest mismatch or remove copies during fixture cleanup.",
+        "validation": "Check SHA-256/identity before copy and from retained destination after original fixture removal; retain failure receipt on mismatch.",
+        "git_state": "Ignored local runtime or external log destination, never copied into Complete or staged as publication artifacts.",
+        "upgrade_behavior": "Preserve existing log destination behavior and native sequence evidence; support new summary plus archive and existing full-record formats explicitly."
+      }
+    ]
+  },
+  {
+    "id": "publication-ownership",
+    "scenario_ids": [
+      "compact-success",
+      "size-boundary",
+      "staging-bypass",
+      "failure-preservation",
+      "clone-and-corruption"
+    ],
+    "description": "Projection and size failures must not mutate human approval or weaken Candidate integrity. The accepted Q2 policy intentionally covers legitimate assets too; Developer must preserve its agreed thresholds and scope.",
+    "ownership": [
+      {
+        "paths": ".kogen/intents/approved/<slug> and its frozen entries",
+        "when_exists": "Human-approved package exists before Build; supplied filenames may collide with generated output names.",
+        "owner_after_creation": "Human Shaper owns requirements and approval.",
+        "owner_during_operation": "Build reads/freeze-checks; Developer and Reviewer cannot alter it.",
+        "permitted_mutation": "Existing lifecycle copy/removal on success and exact restoration on publication failure only; oversized inputs require returning to Shaping rather than automatic deletion.",
+        "validation": "Preserve original bytes, modes, identity and approval entries through existing integrity checks and rollback controls.",
+        "git_state": "Approved remains ignored; unchanged frozen entries are copied into Complete only if the final publication passes policy.",
+        "upgrade_behavior": "No rewrite or migration of current/historical packages or protected seeds."
+      },
+      {
+        "paths": ".kogen/intents/complete/<slug> generated build-summary*.json and evidence navigation",
+        "when_exists": "Build creates a new Complete directory only when absent, with collision-safe names preserving supplied entries.",
+        "owner_after_creation": "Build controller owns generated summary and publication projection; commit records historical result.",
+        "owner_during_operation": "Build validates summary/archive bindings, staged sizes and immutable reviewed Candidate before commit.",
+        "permitted_mutation": "Create allowlisted compact output; roll back only owned incomplete publication. Do not overwrite supplied files or modify accepted contract to fit budget.",
+        "validation": "Distinct versioned summary, full row coverage, correct archive locator/digest/size, final staged-tree limits, legacy-format and corruption controls.",
+        "git_state": "Tracked only in the final accepted commit; raw records remain ignored; failed publication creates no commit.",
+        "upgrade_behavior": "New format applies to future Builds; existing full Complete records and historical cleanup receipts are not rewritten or misclassified."
+      }
+    ]
+  }
+]

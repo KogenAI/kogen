@@ -174,16 +174,18 @@ defmodule Kogen.ScenarioLifecycleTest do
     on_exit(fn -> File.rm_rf(complete) end)
     assert :ok = run(complete, "accept")
 
-    [closure] =
-      Path.wildcard(
-        Path.join(complete, ".kogen/intents/complete/#{@slug}/scenario-tracking*.json")
-      )
+    [closure] = records(complete)
+
+    [summary] =
+      Path.wildcard(Path.join(complete, ".kogen/intents/complete/#{@slug}/build-summary*.json"))
 
     closure_record = Jason.decode!(File.read!(closure))
+    summary_record = Jason.decode!(File.read!(summary))
     assert closure_record["status"] == "accepted"
+    assert summary_record["full_record"]["sha256"] == sha256(File.read!(closure))
 
     assert File.read!(Path.join(complete, ".kogen/intents/complete/#{@slug}/evidence.md")) =~
-             Path.basename(closure)
+             summary_record["full_record"]["path"]
   end
 
   test "tracking record mutation stops the Build without publishing" do
@@ -218,10 +220,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     assert Base.decode64!(snapshot["content_base64"]) ==
              "independently inspected first-candidate evidence"
 
-    closure =
-      Path.join(dir, ".kogen/intents/complete/#{@slug}/scenario-tracking.json")
-      |> File.read!()
-      |> Jason.decode!()
+    closure = record!(dir)
 
     assert hd(closure["attempts"])["reference_snapshots"] == first["reference_snapshots"]
   end
@@ -249,8 +248,11 @@ defmodule Kogen.ScenarioLifecycleTest do
                attempt["reviewer_reference_snapshots"][path]
     end
 
-    complete = Path.join(dir, ".kogen/intents/complete/#{@slug}/scenario-tracking.json")
-    assert Jason.decode!(File.read!(complete)) == record
+    [summary] =
+      Path.wildcard(Path.join(dir, ".kogen/intents/complete/#{@slug}/build-summary*.json"))
+
+    assert Jason.decode!(File.read!(summary))["full_record"]["sha256"] ==
+             sha256(File.read!(List.first(records(dir))))
   end
 
   test "citing the record never permits a Reviewer to change it" do
@@ -291,8 +293,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     refute Map.has_key?(reviewer, ".kogen/runtime/target-evidence/uncited.bin")
 
     File.rm_rf!(Path.join(dir, ".kogen/runtime/target-evidence"))
-    complete = Path.join(dir, ".kogen/intents/complete/#{@slug}/scenario-tracking.json")
-    complete_record = complete |> File.read!() |> Jason.decode!()
+    complete_record = record!(dir)
 
     complete_retained =
       complete_record["attempts"]
@@ -432,6 +433,9 @@ defmodule Kogen.ScenarioLifecycleTest do
 
   defp records(dir),
     do: Path.wildcard(Path.join(dir, ".kogen/runtime/scenario-tracking/*/record.json"))
+
+  defp sha256(bytes),
+    do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
 
   defp git!(dir, args), do: System.cmd("git", args, cd: dir, env: git_env())
 

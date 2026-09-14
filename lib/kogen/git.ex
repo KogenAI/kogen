@@ -11,6 +11,78 @@ defmodule Kogen.Git do
   """
   use Boundary, deps: []
 
+  @publication_file_limit 5_242_880
+  @publication_total_limit 10_485_760
+
+  @doc "Validates added/modified blobs in the real staged tree against Kogen's fixed publication budget."
+  @spec validate_staged_publication() :: :ok | {:error, String.t()}
+  def validate_staged_publication do
+    with :ok <- reject_candidate_blinding_index_flags(),
+         {paths, 0} <-
+           System.cmd("git", ["diff", "--cached", "--name-only", "-z", "HEAD"],
+             stderr_to_stdout: true
+           ) do
+      entries =
+        paths
+        |> String.split(<<0>>, trim: true)
+        |> Enum.flat_map(&staged_blob/1)
+
+      runtime =
+        Enum.filter(entries, fn {path, _size} -> String.starts_with?(path, ".kogen/runtime/") end)
+
+      oversized = Enum.filter(entries, fn {_path, size} -> size > @publication_file_limit end)
+      total = Enum.reduce(entries, 0, fn {_path, size}, sum -> sum + size end)
+
+      if runtime == [] and oversized == [] and total <= @publication_total_limit do
+        :ok
+      else
+        details =
+          [
+            if(runtime != [], do: "staged runtime paths: " <> format_sizes(runtime)),
+            if(oversized != [],
+              do: "files over #{@publication_file_limit} bytes: " <> format_sizes(oversized)
+            ),
+            if(total > @publication_total_limit,
+              do:
+                "changed blob total #{total} exceeds #{@publication_total_limit} bytes; largest: " <>
+                  format_sizes(Enum.take(Enum.sort_by(entries, &(-elem(&1, 1))), 8))
+            )
+          ]
+          |> Enum.reject(&is_nil/1)
+          |> Enum.join("; ")
+
+        {:error, "publication budget refused: " <> details}
+      end
+    else
+      {:error, _reason} = error -> error
+      {out, _code} -> {:error, "could not enumerate staged publication: #{String.trim(out)}"}
+    end
+  end
+
+  defp staged_blob(path) do
+    case System.cmd("git", ["ls-files", "--stage", "-z", "--", path], stderr_to_stdout: true) do
+      {"", 0} ->
+        []
+
+      {entry, 0} ->
+        [metadata | _] = String.split(entry, <<0>>, trim: true)
+        [mode, object | _] = String.split(metadata, " ", parts: 3)
+        [{path, staged_object_size!(path, mode, object)}]
+    end
+  end
+
+  defp staged_object_size!(_path, "160000", _object), do: 0
+
+  defp staged_object_size!(path, _mode, object) do
+    case System.cmd("git", ["cat-file", "-s", object], stderr_to_stdout: true) do
+      {size, 0} -> String.trim(size) |> String.to_integer()
+      {out, _code} -> raise "could not size staged blob #{inspect(path)}: #{String.trim(out)}"
+    end
+  end
+
+  defp format_sizes(entries),
+    do: Enum.map_join(entries, ", ", fn {path, size} -> "#{inspect(path)}=#{size}" end)
+
   @doc "Raw `git status --porcelain` output."
   def status_porcelain! do
     {out, 0} = System.cmd("git", ["--no-optional-locks", "status", "--porcelain"])

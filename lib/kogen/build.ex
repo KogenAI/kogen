@@ -20,11 +20,14 @@ defmodule Kogen.Build do
   @lock_path ".kogen/build.lock"
   @approved_base ".kogen/intents/approved"
   @complete_base ".kogen/intents/complete"
+  @publication_file_limit 5_242_880
+  @publication_total_limit 10_485_760
 
   @spec run(String.t()) :: :ok | {:error, String.t()}
   def run(slug) do
     with {:ok, intent} <- Kogen.Intent.read(slug, @approved_base),
          {:ok, approved_entries} <- read_approved_entries(slug),
+         :ok <- preflight_approved_budget(approved_entries),
          :ok <- Kogen.Git.reject_candidate_blinding_index_flags(),
          :ok <- check_clean_worktree(),
          :ok <- check_branch_attached(),
@@ -42,6 +45,28 @@ defmodule Kogen.Build do
         {:error, _reason} = error ->
           error
       end
+    end
+  end
+
+  defp preflight_approved_budget(entries) do
+    files = for {path, :regular, _mode, bytes} <- entries, do: {path, byte_size(bytes)}
+    oversized = Enum.filter(files, fn {_path, size} -> size > @publication_file_limit end)
+    total = Enum.reduce(files, 0, fn {_path, size}, sum -> sum + size end)
+
+    if oversized == [] and total <= @publication_total_limit do
+      :ok
+    else
+      offenders =
+        Enum.map_join(oversized, ", ", fn {path, size} -> "#{inspect(path)}=#{size}" end)
+
+      largest =
+        files
+        |> Enum.sort_by(fn {_path, size} -> -size end)
+        |> Enum.take(8)
+        |> Enum.map_join(", ", fn {path, size} -> "#{inspect(path)}=#{size}" end)
+
+      {:error,
+       "Approved Intent cannot fit publication budget before provider launch: files over #{@publication_file_limit} bytes: #{offenders}; package total #{total}/#{@publication_total_limit}; largest contributors: #{largest}. Return to Shaping to change the Approved package."}
     end
   end
 
@@ -833,13 +858,18 @@ defmodule Kogen.Build do
       )
 
     evidence_name = available_evidence_name(complete_dir)
-    tracking_name = available_tracking_name(complete_dir)
-    File.write!(Path.join(complete_dir, tracking_name), ctx.tracking.bytes)
+    summary_name = available_summary_name(complete_dir)
+    summary = build_summary(ctx, candidate_id, session_id, verdict)
+
+    File.write!(
+      Path.join(complete_dir, summary_name),
+      Jason.encode_to_iodata!(summary, pretty: true)
+    )
 
     File.write!(
       Path.join(complete_dir, evidence_name),
       evidence <>
-        "\n## Scenario closure\n\n[Self-contained scenario tracking](#{tracking_name}) contains requirements, claims, owned receipts, independent assessments and retained finding history. This evidence is not a recovery checkpoint.\n"
+        "\n## Exact evidence\n\n[Compact Build summary](#{summary_name}) contains concise results. The full controller record remains local at `#{ctx.tracking.path}` and is not committed. From the checkout root, verify it with `shasum -a 256 #{ctx.tracking.path}` and compare the digest and byte count in the summary. A fresh clone contains the contract and concise results only; if that archive was cleaned up, exact evidence is unavailable and must not be inferred from this summary or fetched from another Build. A digest identifies bytes; it does not prove semantic inspection.\n"
     )
 
     File.rm_rf!(approved_dir)
@@ -879,6 +909,7 @@ defmodule Kogen.Build do
          {:ok, publication_id} <- Kogen.Git.candidate_id(),
          :ok <- Kogen.Git.stage_and_verify_candidate(candidate_id, publication.allowed_paths),
          :ok <- Kogen.Git.assert_staged_tree(publication_id),
+         :ok <- Kogen.Git.validate_staged_publication(),
          :ok <- publication_unchanged(ctx, publication),
          {:ok, _head} <- Kogen.Git.commit_staged(ctx.intent.title, trailers) do
       with :ok <- Kogen.Git.assert_head_tree(publication_id),
@@ -960,16 +991,78 @@ defmodule Kogen.Build do
     end
   end
 
-  defp available_tracking_name(dir) do
+  defp available_summary_name(dir) do
     Stream.iterate(0, &(&1 + 1))
     |> Enum.find_value(fn index ->
-      name = if index == 0, do: "scenario-tracking.json", else: "scenario-tracking-#{index}.json"
+      name = if index == 0, do: "build-summary.json", else: "build-summary-#{index}.json"
 
       case File.lstat(Path.join(dir, name)) do
         {:error, :enoent} -> name
         _ -> nil
       end
     end)
+  end
+
+  defp build_summary(ctx, candidate_id, developer_session_id, verdict) do
+    record = ctx.tracking.record
+    attempts = Enum.map(record["attempts"], &summary_attempt/1)
+    final_verdict = record["attempts"] |> List.last() |> Map.fetch!("verdict")
+
+    %{
+      "format" => "kogen-build-summary",
+      "schema_version" => 1,
+      "intent" => Map.take(record["intent"], ["id", "slug", "title"]),
+      "build_id" => ctx.tracking.path |> Path.dirname() |> Path.basename(),
+      "candidate_id" => candidate_id,
+      "developer_session_id" => developer_session_id,
+      "attempts" => attempts,
+      "scenarios" => Map.get(final_verdict, "scenarios", []),
+      "risks" => Enum.map(record["risks"], &Map.take(&1, ["id"])),
+      "findings" => Enum.map(record["findings"], &summary_finding/1),
+      "review" => %{"outcome" => verdict.verdict, "session_id" => verdict.session_id},
+      "full_record" => %{
+        "format" => "kogen-scenario-tracking-record",
+        "schema_version" => record["schema_version"],
+        "path" => ctx.tracking.path,
+        "sha256" => Base.encode16(:crypto.hash(:sha256, ctx.tracking.bytes), case: :lower),
+        "byte_count" => byte_size(ctx.tracking.bytes)
+      }
+    }
+  end
+
+  defp summary_attempt(attempt) do
+    receipts = [attempt["check"] | Map.get(attempt, "targets", [])] |> Enum.reject(&is_nil/1)
+
+    %{
+      "number" => attempt["number"],
+      "attempt_token" => attempt["attempt_token"],
+      "status" => attempt["status"],
+      "developer_session_id" => attempt["developer_session_id"],
+      "reviewer_session_id" => attempt["reviewer_session"],
+      "candidate_id" => attempt["candidate_id"],
+      "targets" =>
+        Enum.map(
+          receipts,
+          &Map.take(&1, [
+            "target",
+            "status",
+            "exit_code",
+            "started_at",
+            "finished_at",
+            "candidate_id",
+            "attempt_token",
+            "session_id"
+          ])
+        )
+    }
+  end
+
+  defp summary_finding(finding) do
+    disposition = finding |> Map.get("disposition_history", []) |> List.last()
+
+    finding
+    |> Map.take(["id", "origin", "status"])
+    |> Map.put("current_disposition", disposition)
   end
 
   defp available_evidence_name(dir) do
@@ -990,13 +1083,8 @@ defmodule Kogen.Build do
          target_results,
          _dev_result
        ) do
-    findings_text =
-      case verdict.findings do
-        [] -> "(none)"
-        findings -> Jason.encode!(findings)
-      end
-
-    verdict_json = Jason.encode!(verdict.response)
+    findings_text = Enum.map_join(verdict.findings, ", ", &Map.get(&1, "id", "finding"))
+    findings_text = if findings_text == "", do: "(none)", else: findings_text
 
     check_section = """
     ## Check (Stop hook Verification Record, bound to this Candidate)
@@ -1005,10 +1093,6 @@ defmodule Kogen.Build do
     - exit_code: `#{Map.get(check_record, "exit_code")}`
     - finished_at: `#{Map.get(check_record, "finished_at")}`
     - session_id: `#{Map.get(check_record, "session_id")}`
-    - output tail:
-      ```
-      #{Map.get(check_record, "reason")}
-      ```
     """
 
     targets_section =
@@ -1018,14 +1102,8 @@ defmodule Kogen.Build do
 
         results ->
           bodies =
-            Enum.map_join(results, "\n", fn {name, out} ->
-              """
-              ### `make #{name}`
-
-              ```
-              #{out}
-              ```
-              """
+            Enum.map_join(results, "\n", fn {name, _out} ->
+              "- `make #{name}`: settled (exact output remains in the full local record)"
             end)
 
           "## Declared targets (beyond `check`)\n\n" <> bodies
@@ -1040,11 +1118,7 @@ defmodule Kogen.Build do
     - Outer resumptions used: #{resumptions_used}
     #{check_section}
     #{targets_section}
-    ## Reviewer Verdict (structured, schema-valid)
-
-    ```json
-    #{verdict_json}
-    ```
+    ## Reviewer Verdict
 
     - Reviewer verdict: #{verdict.verdict}
     - Reviewer findings: #{findings_text}

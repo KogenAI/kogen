@@ -186,6 +186,17 @@ defmodule Kogen.LifecycleTest do
     assert Map.has_key?(accepted_refs, ".kogen/runtime/target-evidence/3-reviewed/semantic.txt")
     refute Map.has_key?(accepted_refs, ".kogen/runtime/target-evidence/3-reviewed/uncited.bin")
 
+    uncited =
+      accepted_attempt["targets"]
+      |> List.first()
+      |> get_in(["target_evidence", "required_evidence"])
+      |> Enum.find(&String.ends_with?(&1["path"], "uncited.bin"))
+
+    assert byte_size(Base.decode64!(uncited["content_base64"])) > 5_242_880
+
+    refute git!(dest, ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]) =~
+             ".kogen/runtime/"
+
     refute resume_feedback =~ "settled Check failure:",
            "a failed Check settlement would consume a second outer resumption"
 
@@ -308,10 +319,11 @@ defmodule Kogen.LifecycleTest do
         root = Path.join(".kogen/runtime/target-evidence", run)
         File.mkdir_p!(root)
         File.write!(Path.join(root, "semantic.txt"), semantic, [:exclusive])
-        File.write!(Path.join(root, "uncited.bin"), <<0, 7, 255>>, [:exclusive])
+        uncited = :binary.copy(<<0, 7, 255>>, 1_747_627)
+        File.write!(Path.join(root, "uncited.bin"), uncited, [:exclusive])
 
         required =
-          for {name, bytes} <- [{"semantic.txt", semantic}, {"uncited.bin", <<0, 7, 255>>}] do
+          for {name, bytes} <- [{"semantic.txt", semantic}, {"uncited.bin", uncited}] do
             %{"path" => Path.join(root, name), "sha256" => sha256(bytes)}
           end
 

@@ -203,7 +203,7 @@ defmodule Kogen.ScenarioSemantic do
   defp corrected_fixture!(root) do
     File.write!(
       Path.join(root, "bin/kogen-tool"),
-      "#!/bin/sh\nexec python3 source/kogen_tool.py\n"
+      "#!/bin/sh\necho installed artifact ready\n"
     )
 
     File.write!(

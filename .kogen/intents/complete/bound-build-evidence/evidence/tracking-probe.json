@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "elixir",
+    "-pa",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/_build/dev/lib/jason/ebin",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/bound-build-evidence/evidence/probe.exs",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/lib/kogen/build/tracking.ex",
+    "/Users/almirsarajcic/Projects/AppBuilder/kogen/.kogen/intents/drafts/bound-build-evidence/evidence/probe-work/tracking"
+  ],
+  "cwd": "/Users/almirsarajcic/Projects/AppBuilder/kogen",
+  "source_sha256": "317cd1bc7b1bd0febeb3a785056bbb546d22083e9ab4f8134b0dae9b8ddcce07",
+  "exit_code": 0,
+  "stdout": "[{\"mode\":\"record_citation\",\"bytes_after_each_attempt\":[5772,71757,870914],\"tamper_rejected\":true},{\"mode\":\"fixed_artifact_control\",\"bytes_after_each_attempt\":[912,1501,2090],\"tamper_rejected\":true}]\n",
+  "stderr": ""
+}

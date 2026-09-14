@@ -1,0 +1,87 @@
+{
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "init",
+        "-q"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "git",
+        "add",
+        "-A"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "git",
+        "write-tree"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "git",
+        "ls-tree",
+        "-rlz",
+        "14a8bc43f5d67bf0fbc8aafb75907aa96da81676"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "git",
+        "add",
+        "-f",
+        ".kogen/runtime/raw.bin"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "git",
+        "write-tree"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "git",
+        "ls-tree",
+        "-rlz",
+        "35be794f0e88e9d09a6c54c6c5e666cafb7efbd3"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "ordinary_staged_tree": [
+    {
+      "path": ".gitignore",
+      "bytes": 16
+    },
+    {
+      "path": "source.txt",
+      "bytes": 16
+    }
+  ],
+  "forced_staged_tree": [
+    {
+      "path": ".gitignore",
+      "bytes": 16
+    },
+    {
+      "path": ".kogen/runtime/raw.bin",
+      "bytes": 4096
+    },
+    {
+      "path": "source.txt",
+      "bytes": 16
+    }
+  ],
+  "conclusion": "Ignore rules alone cannot prevent forced staging; the final Git tree exposes the raw file and its exact uncompressed size.",
+  "limitations": "Owned synthetic Git fixture only. No future Kogen publication implementation is exercised."
+}

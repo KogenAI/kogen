@@ -16,6 +16,55 @@ defmodule Kogen.LiveReworkAuditTest do
     assert is_binary(candidate)
   end
 
+  test "retained compact summary resolves its copied archive after the fixture is gone" do
+    root =
+      Path.join(System.tmp_dir!(), "kogen-retained-audit-#{System.unique_integer([:positive])}")
+
+    logs = Path.join(root, "logs")
+    archive = Path.join([logs, "scenario-tracking", "build-1", "record.json"])
+    on_exit(fn -> File.rm_rf!(root) end)
+    File.mkdir_p!(Path.dirname(archive))
+
+    attempt = %{
+      "number" => 0,
+      "attempt_token" => "token-1",
+      "status" => "accepted",
+      "developer_session_id" => "developer-1",
+      "reviewer_session" => "reviewer-1",
+      "candidate_id" => "candidate-1"
+    }
+
+    bytes =
+      Jason.encode!(%{
+        "schema_version" => 1,
+        "status" => "accepted",
+        "intent" => %{"id" => @intent},
+        "attempts" => [attempt]
+      })
+
+    File.write!(archive, bytes)
+
+    summary = %{
+      "format" => "kogen-build-summary",
+      "schema_version" => 1,
+      "intent" => %{"id" => @intent},
+      "build_id" => "build-1",
+      "candidate_id" => "candidate-1",
+      "developer_session_id" => "developer-1",
+      "attempts" => [Map.put(attempt, "reviewer_session_id", "reviewer-1")],
+      "full_record" => %{
+        "format" => "kogen-scenario-tracking-record",
+        "schema_version" => 1,
+        "path" => archive,
+        "sha256" => Base.encode16(:crypto.hash(:sha256, bytes), case: :lower),
+        "byte_count" => byte_size(bytes)
+      }
+    }
+
+    File.write!(Path.join(logs, "build-summary.json"), Jason.encode!(summary))
+    assert :ok = Kogen.LiveReworkAudit.audit_retained!(logs)
+  end
+
   test "rejects missing archived initial Check evidence" do
     {fixture, logs} = audit_fixture!()
     on_exit(fn -> File.rm_rf!(fixture) end)

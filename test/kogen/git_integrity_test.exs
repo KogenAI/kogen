@@ -90,6 +90,42 @@ defmodule Kogen.GitIntegrityTest do
     end)
   end
 
+  test "publication budget accepts equality and rejects one byte over each fixed limit" do
+    in_repo!(fn ->
+      File.write!("exact.bin", :binary.copy(<<0>>, 5_242_880))
+      File.write!("remainder.bin", :binary.copy(<<1>>, 5_242_880))
+      assert {_out, 0} = System.cmd("git", ["add", "-A"])
+      assert :ok = Git.validate_staged_publication()
+
+      File.write!("remainder.bin", :binary.copy(<<1>>, 5_242_881))
+      assert {_out, 0} = System.cmd("git", ["add", "-A"])
+      assert {:error, aggregate} = Git.validate_staged_publication()
+      assert aggregate =~ "changed blob total 10485761 exceeds 10485760"
+      assert aggregate =~ "remainder.bin"
+
+      File.rm!("exact.bin")
+      File.write!("remainder.bin", :binary.copy(<<1>>, 5_242_881))
+      assert {_out, 0} = System.cmd("git", ["add", "-A"])
+      assert {:error, per_file} = Git.validate_staged_publication()
+      assert per_file =~ "files over 5242880 bytes"
+      assert per_file =~ "remainder.bin"
+    end)
+  end
+
+  test "publication budget rejects force-staged runtime paths with unambiguous names" do
+    in_repo!(fn ->
+      File.write!(".gitignore", ".kogen/runtime/\n")
+      commit_all!("ignore runtime")
+      File.mkdir_p!(".kogen/runtime")
+      path = ".kogen/runtime/evidence with space\nand newline"
+      File.write!(path, "small")
+      assert {_out, 0} = System.cmd("git", ["add", "-f", "--", path])
+      assert {:error, reason} = Git.validate_staged_publication()
+      assert reason =~ "staged runtime paths"
+      assert reason =~ inspect(path)
+    end)
+  end
+
   for {flag, label} <- [
         {"--assume-unchanged", "assume-unchanged"},
         {"--skip-worktree", "skip-worktree"}

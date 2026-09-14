@@ -124,16 +124,17 @@ defmodule Kogen.CommitFailureRollbackTest do
     assert File.read!(Path.join(complete_dir, "scenario-tracking-1.json")) ==
              "user tracking one\n"
 
-    generated_tracking =
+    generated_summary =
       complete_dir
-      |> Path.join("scenario-tracking-2.json")
+      |> Path.join("build-summary.json")
       |> File.read!()
       |> Jason.decode!()
 
-    assert generated_tracking["status"] == "accepted"
-    assert is_list(generated_tracking["scenarios"])
-    assert is_list(generated_tracking["attempts"])
-    assert is_list(generated_tracking["findings"])
+    assert generated_summary["format"] == "kogen-build-summary"
+    assert is_list(generated_summary["scenarios"])
+    assert is_list(generated_summary["attempts"])
+    assert is_list(generated_summary["findings"])
+    assert generated_summary["full_record"]["byte_count"] > 0
 
     runtime_records = runtime_tracking_records(dest)
     assert length(runtime_records) == 2

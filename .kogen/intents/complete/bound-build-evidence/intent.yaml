@@ -1,0 +1,38 @@
+{
+  "id": "01a0a0f1-a058-764a-a8ab-b723584bca18",
+  "slug": "bound-build-evidence",
+  "title": "Keep Build evidence out of oversized commits",
+  "status": "approved",
+  "shaped_against": {
+    "branch": "main",
+    "head": "8ec5495872e92b6e1313b1565221d170303e59e1"
+  },
+  "shaping": {
+    "harness": "codex",
+    "model": "gpt-6-astra",
+    "effort": "low",
+    "started": "2026-09-14T17:23:04.923595Z"
+  },
+  "inspected_baseline": {
+    "branch": "main",
+    "head": "aef8b98a1c9356516f914bd649dd6ecdae956f4d",
+    "reason": "Same-conversation owner-directed repair of two unpublished commits; source, tests and configuration unchanged. Original shaping provenance remains above."
+  },
+  "may_change_guarded_paths": [
+    "lib/kogen/build.ex",
+    "lib/kogen/build/**",
+    "lib/kogen/git.ex",
+    "test/kogen/**",
+    "test/support/**",
+    "priv/kogen/prompts/developer.md",
+    "priv/kogen/prompts/reviewer.md",
+    "README.md",
+    "scripts/check/README.md"
+  ],
+  "approval": {
+    "statement": "Approved by the human Shaper in this conversation.",
+    "source": "I agree. Make that Intent. I approve it.",
+    "bookkeeping_at": "2026-09-14T17:44:23.786431+00:00",
+    "scope": "The existing bound-build-evidence contract, including compact results in Git, full local evidence without automatic deletion, 5 MiB per changed file and 10 MiB aggregate publication limits, and deferred runtime deduplication. Approval authorizes package bookkeeping and move only in this Shaping conversation."
+  }
+}

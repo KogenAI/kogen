@@ -1,0 +1,353 @@
+{
+  "format": "kogen-build-summary",
+  "schema_version": 1,
+  "intent": {
+    "id": "01a0a0f1-a058-764a-a8ab-b723584bca18",
+    "slug": "bound-build-evidence",
+    "title": "Keep Build evidence out of oversized commits"
+  },
+  "build_id": "HZU4sg___WucrVGC1djwh35g",
+  "candidate_id": "d1116f8c7bf6abb60575765f9727d5b5dbd20b6a",
+  "developer_session_id": "01a0a106-1320-7272-84ba-52de5a6b7227",
+  "attempts": [
+    {
+      "number": 0,
+      "attempt_token": "Xt5CQZ32Rekt1Eg7gYfmKX2zYhUf00va",
+      "status": "failed",
+      "developer_session_id": "01a0a106-1320-7272-84ba-52de5a6b7227",
+      "candidate_id": "68002498d7cfa312b98990da5456880b48dcd63e",
+      "reviewer_session_id": "01a0a117-c7d7-7ab3-a5b1-9d28d090ab56",
+      "targets": [
+        {
+          "target": "check",
+          "status": "passed",
+          "exit_code": 0,
+          "finished_at": "2026-09-14T17:59:04Z",
+          "candidate_id": "68002498d7cfa312b98990da5456880b48dcd63e",
+          "attempt_token": "Xt5CQZ32Rekt1Eg7gYfmKX2zYhUf00va",
+          "session_id": "01a0a106-1320-7272-84ba-52de5a6b7227"
+        },
+        {
+          "target": "live",
+          "status": "passed",
+          "exit_code": 0,
+          "finished_at": "2026-09-14T18:04:41Z",
+          "candidate_id": "68002498d7cfa312b98990da5456880b48dcd63e",
+          "attempt_token": "Xt5CQZ32Rekt1Eg7gYfmKX2zYhUf00va",
+          "session_id": "01a0a106-1320-7272-84ba-52de5a6b7227"
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "attempt_token": "YzcZ8BgGKPlqdXhCAr75e0NdI-kKOTTl",
+      "status": "failed",
+      "developer_session_id": "01a0a106-1320-7272-84ba-52de5a6b7227",
+      "candidate_id": "b7c1ba9277bd618d4e276dfbe9c6d62b1dbc8237",
+      "reviewer_session_id": "01a0a129-82d8-7651-83d8-4b47294cedb1",
+      "targets": [
+        {
+          "target": "check",
+          "status": "passed",
+          "exit_code": 0,
+          "finished_at": "2026-09-14T18:18:24Z",
+          "candidate_id": "b7c1ba9277bd618d4e276dfbe9c6d62b1dbc8237",
+          "attempt_token": "YzcZ8BgGKPlqdXhCAr75e0NdI-kKOTTl",
+          "session_id": "01a0a106-1320-7272-84ba-52de5a6b7227"
+        },
+        {
+          "target": "live",
+          "status": "passed",
+          "exit_code": 0,
+          "finished_at": "2026-09-14T18:24:02Z",
+          "candidate_id": "b7c1ba9277bd618d4e276dfbe9c6d62b1dbc8237",
+          "attempt_token": "YzcZ8BgGKPlqdXhCAr75e0NdI-kKOTTl",
+          "session_id": "01a0a106-1320-7272-84ba-52de5a6b7227"
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "attempt_token": "MaDj9WXcW3AAwedQ5tE2HQln-OjEgu5v",
+      "status": "accepted",
+      "developer_session_id": "01a0a106-1320-7272-84ba-52de5a6b7227",
+      "candidate_id": "d1116f8c7bf6abb60575765f9727d5b5dbd20b6a",
+      "reviewer_session_id": "01a0a134-0678-7250-b0d3-cb316b2635bd",
+      "targets": [
+        {
+          "target": "check",
+          "status": "passed",
+          "exit_code": 0,
+          "finished_at": "2026-09-14T18:29:11Z",
+          "candidate_id": "d1116f8c7bf6abb60575765f9727d5b5dbd20b6a",
+          "attempt_token": "MaDj9WXcW3AAwedQ5tE2HQln-OjEgu5v",
+          "session_id": "01a0a106-1320-7272-84ba-52de5a6b7227"
+        },
+        {
+          "target": "live",
+          "status": "passed",
+          "exit_code": 0,
+          "finished_at": "2026-09-14T18:35:31Z",
+          "candidate_id": "d1116f8c7bf6abb60575765f9727d5b5dbd20b6a",
+          "attempt_token": "MaDj9WXcW3AAwedQ5tE2HQln-OjEgu5v",
+          "session_id": "01a0a106-1320-7272-84ba-52de5a6b7227"
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "The public fake lifecycle retains an uncited required artifact larger than 5 MiB and asserts runtime paths are absent from the committed tree.",
+          "path": "test/kogen/lifecycle_test.exs"
+        },
+        {
+          "locator": "`build_summary/4` emits an allowlisted summary and `write_complete_package/5` keeps the full record at its runtime locator.",
+          "path": "lib/kogen/build.ex"
+        }
+      ],
+      "id": "compact-success",
+      "reason": "The implementation publishes compact summary/navigation while retaining the bound full record outside Git; recorded Stop verification passed for this Candidate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "The lifecycle assertions preserve distinct role snapshots, failed attempts, finding history, semantic cited evidence, and uncited binary target evidence in the runtime record.",
+          "path": "test/kogen/scenario_lifecycle_test.exs"
+        },
+        {
+          "locator": "`matching_identity/3` binds Intent, Build, accepted Candidate, Developer session, and ordered attempt identities to the decoded record.",
+          "path": "lib/kogen/build/evidence.ex"
+        }
+      ],
+      "id": "exact-evidence",
+      "reason": "Full tracking evidence remains authoritative and bound to compact results without conflating role citations or retention with semantic review.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "`validate_staged_publication/0` measures staged Git blob sizes, applies both fixed limits, excludes deletions, and reports aggregate largest contributors.",
+          "path": "lib/kogen/git.ex"
+        },
+        {
+          "locator": "Covers exact equality, aggregate one-byte overage, per-file one-byte overage, and runtime-path rejection.",
+          "path": "test/kogen/git_integrity_test.exs"
+        }
+      ],
+      "id": "size-boundary",
+      "reason": "Final publication validates actual staged blobs with the specified boundaries and actionable diagnostics; Approved-input preflight also covers aggregate-only impossibility.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Final publication invokes staged-tree identity assertion and staged publication validation immediately before commit.",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "NUL-delimited unusual runtime filename control verifies force-staged ignored runtime evidence is rejected.",
+          "path": "test/kogen/git_integrity_test.exs"
+        }
+      ],
+      "id": "staging-bypass",
+      "reason": "The final-tree guard covers all staged destinations, including force-staged runtime paths and newline-containing names, before commit.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Preflight occurs before branch/provider lifecycle work and names oversized files, aggregate total, and largest contributors.",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "Aggregate-only Approved-package overage preserves approval/index state and proves the harness was not invoked.",
+          "path": "test/kogen/build_preconditions_test.exs"
+        }
+      ],
+      "id": "failure-preservation",
+      "reason": "Known impossible Approved inputs fail before provider launch; publication code retains existing rollback and immutable-input checks for later failure paths.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Both connected live routes copy bound tracking archives, delete fixtures, then call `audit_retained!/1`.",
+          "path": "test/kogen/live_shape_to_build_test.exs"
+        },
+        {
+          "locator": "Retained compact-summary regression resolves the copied archive after fixture removal.",
+          "path": "test/kogen/live_rework_audit_test.exs"
+        },
+        {
+          "locator": "Stop's recorded `check` and `live` receipts both passed for this exact Candidate.",
+          "path": ".kogen/runtime/scenario-tracking/HZU4sg___WucrVGC1djwh35g/verification/attempt-2-MaDj9WXcW3AAwedQ5tE2HQln-OjEgu5v/state.json"
+        }
+      ],
+      "id": "retained-live-consumer",
+      "reason": "Live consumers retain and independently resolve digest-bound archive copies after cleanup, while the passed declared live receipt confirms the affected route settled.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Resolver rejects absent, byte-mismatched, unsupported, and identity-mismatched summaries/records and accepts only the exact bound record.",
+          "path": "lib/kogen/build/evidence.ex"
+        },
+        {
+          "locator": "Focused controls cover missing archive, corruption, summary-version, Intent, Candidate, Build, and Developer-session mismatches.",
+          "path": "test/kogen/build_evidence_test.exs"
+        },
+        {
+          "locator": "Documents concise clone results and explicit unavailability of cleaned local archives.",
+          "path": "README.md"
+        }
+      ],
+      "id": "clone-and-corruption",
+      "reason": "Compact evidence remains separately readable, while full inspection is bound to an available, digest-valid, identity-valid archive and rejects corrupt substitutes.",
+      "status": "satisfied"
+    }
+  ],
+  "risks": [
+    {
+      "id": "evidence-availability"
+    },
+    {
+      "id": "publication-ownership"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "origin": {
+        "attempt_token": "Xt5CQZ32Rekt1Eg7gYfmKX2zYhUf00va",
+        "candidate_id": "68002498d7cfa312b98990da5456880b48dcd63e",
+        "evidence": [
+          {
+            "locator": "The retained summaries rewrite the archive locator only in the log copy; the audit invocation still receives the disposable fixture before `File.rm_rf!(fixture)`.",
+            "path": "test/kogen/live_shape_to_build_test.exs"
+          },
+          {
+            "locator": "`resolve_tracking!/1` resolves the summary archive at audit time, but this consumer is not invoked on the retained summary after fixture cleanup.",
+            "path": "test/support/live_rework_audit.ex"
+          }
+        ],
+        "reason": "The live consumer does not verify retained summary/archive copies after the fixture is removed. It audits the original fixture before cleanup, leaving the required post-cleanup resolvability and digest-validity behavior unexercised.",
+        "reviewer_session": "01a0a117-c7d7-7ab3-a5b1-9d28d090ab56",
+        "scenario_ids": [
+          "retained-live-consumer"
+        ]
+      },
+      "status": "closed",
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "`preserve_tracking/3` copies archives, rewrites retained summary locators, and both live routes invoke `audit_retained!/1` after fixture removal.",
+            "path": "test/kogen/live_shape_to_build_test.exs"
+          },
+          {
+            "locator": "Post-cleanup retained-summary regression test resolves the copied archive.",
+            "path": "test/kogen/live_rework_audit_test.exs"
+          }
+        ],
+        "reason": "Closed: the retained-copy audit now runs after disposable fixture cleanup and resolves the copied archive.",
+        "reviewer_session": "01a0a129-82d8-7651-83d8-4b47294cedb1",
+        "status": "closed",
+        "verdict": "rework"
+      }
+    },
+    {
+      "id": "F2",
+      "origin": {
+        "attempt_token": "Xt5CQZ32Rekt1Eg7gYfmKX2zYhUf00va",
+        "candidate_id": "68002498d7cfa312b98990da5456880b48dcd63e",
+        "evidence": [
+          {
+            "locator": "`matching_identity/2` compares only `summary.intent.id` to `record.intent.id`; it does not bind summary candidate, Build, or session identity fields to the resolved record.",
+            "path": "lib/kogen/build/evidence.ex"
+          },
+          {
+            "locator": "The only wrong-identity control alters the Intent ID; it does not cover an altered accepted Candidate or Build/session binding in a digest-valid summary.",
+            "path": "test/kogen/build_evidence_test.exs"
+          }
+        ],
+        "reason": "The compact-summary resolver accepts a digest-valid archive even if summary identity fields such as `candidate_id` are altered. This does not meet the required accepted-Candidate and valid identity bindings or the full wrong-identity corruption control.",
+        "reviewer_session": "01a0a117-c7d7-7ab3-a5b1-9d28d090ab56",
+        "scenario_ids": [
+          "exact-evidence",
+          "clone-and-corruption"
+        ]
+      },
+      "status": "closed",
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "`matching_identity/3` validates Intent, Build, accepted Candidate, Developer session, and ordered attempt identities against the decoded record.",
+            "path": "lib/kogen/build/evidence.ex"
+          },
+          {
+            "locator": "Controls reject changed Candidate, Build, and Developer-session summary identities.",
+            "path": "test/kogen/build_evidence_test.exs"
+          }
+        ],
+        "reason": "Closed: resolver identity validation now binds the material summary identities to the exact decoded record.",
+        "reviewer_session": "01a0a129-82d8-7651-83d8-4b47294cedb1",
+        "status": "closed",
+        "verdict": "rework"
+      }
+    },
+    {
+      "id": "F3",
+      "origin": {
+        "attempt_token": "YzcZ8BgGKPlqdXhCAr75e0NdI-kKOTTl",
+        "candidate_id": "b7c1ba9277bd618d4e276dfbe9c6d62b1dbc8237",
+        "evidence": [
+          {
+            "locator": "`preflight_approved_budget/1` reports an empty over-file list and aggregate total only when many individually valid Approved files exceed the aggregate limit; it does not name largest contributors.",
+            "path": "lib/kogen/build.ex"
+          },
+          {
+            "locator": "Existing budget test combines aggregate excess with a per-file excess and has no control for many individually valid files exceeding the aggregate limit.",
+            "path": "test/kogen/git_integrity_test.exs"
+          }
+        ],
+        "reason": "Preflight aggregate-limit failures do not identify largest contributing paths and byte counts, despite the contract requiring enough contributors to explain an aggregate failure. Add the required individually-valid aggregate-overage control and actionable preflight diagnostics.",
+        "reviewer_session": "01a0a129-82d8-7651-83d8-4b47294cedb1",
+        "scenario_ids": [
+          "size-boundary",
+          "failure-preservation"
+        ]
+      },
+      "status": "closed",
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "`preflight_approved_budget/1` sorts and reports up to eight largest path/byte contributors on aggregate failure.",
+            "path": "lib/kogen/build.ex"
+          },
+          {
+            "locator": "`approved_aggregate_oversize` uses three individually-valid 4,000,000-byte files and asserts diagnostics plus no harness invocation.",
+            "path": "test/kogen/build_preconditions_test.exs"
+          }
+        ],
+        "reason": "Closed: aggregate-only Approved-package overage now produces actionable largest-contributor diagnostics and is covered before provider launch.",
+        "reviewer_session": "01a0a134-0678-7250-b0d3-cb316b2635bd",
+        "status": "closed",
+        "verdict": "accepted"
+      }
+    }
+  ],
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0a134-0678-7250-b0d3-cb316b2635bd"
+  },
+  "full_record": {
+    "format": "kogen-scenario-tracking-record",
+    "schema_version": 1,
+    "path": ".kogen/runtime/scenario-tracking/HZU4sg___WucrVGC1djwh35g/record.json",
+    "sha256": "bb1cc05d9fd3064588c95ef4fcf2ddd79407aa576412a6a7c3e22aaae847311c",
+    "byte_count": 83623869
+  }
+}

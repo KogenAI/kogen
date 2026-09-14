@@ -122,11 +122,28 @@ bytes in each attempt's `developer_reference_snapshots` and
 `reviewer_reference_snapshots`; a later citation cannot replace an earlier role's
 version. Subsequent controller updates
 are checked against Build's latest owned bytes. External edits still stop Build.
-Successful publication links a self-contained copy from Complete evidence,
-including referenced bytes and concise attempt history; generated names never
-replace supplied evidence. Failed publication restores the frozen Approved input.
+Successful publication links concise Complete evidence to the bound local full
+record; generated names never replace supplied evidence. Failed publication
+restores the frozen Approved input.
 Build refuses Git assume-unchanged and skip-worktree flags wherever it relies on
 Candidate identity, including Stop and publication, without clearing those flags.
+
+New Complete packages commit a versioned `build-summary*.json`, not the full
+scenario-tracking record. The exact record remains in its ignored
+`.kogen/runtime/scenario-tracking/<build-id>/record.json`; `evidence.md` explains
+how to resolve it from the checkout root and verify its SHA-256 and byte count.
+A clone retains the contract and concise result, but not those exact local bytes.
+If the archive has been cleaned up, report it unavailable—do not substitute a
+summary or another Build's record.
+
+Immediately before commit, Build measures every added or modified staged
+destination relative to the starting `HEAD` by its full uncompressed Git blob
+length. The fixed limit is 5 MiB (5,242,880 bytes) per path and 10 MiB
+(10,485,760 bytes) in aggregate; equality is allowed, deletions and unchanged
+historical blobs cost zero, and there is no override. Added or modified staged
+paths under `.kogen/runtime/` are always rejected, including force-staged ignored
+files. An Approved package already unable to meet these limits stops before a
+provider launch and must return to Shaping.
 
 
 ## Configuration and local data

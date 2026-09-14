@@ -1,0 +1,39 @@
+[
+  {
+    "path": ".kogen/runtime/shaping-followups/07-retained-evidence-storage.md",
+    "relationship": "Parked September 12 proposal; identifies duplication but assumes self-contained Complete. Q1 explicitly exposes the changed availability promise."
+  },
+  {
+    "path": ".kogen/runtime/shaping-followups/serial-optimization/09-intent-size-discipline.md",
+    "relationship": "Separate feature-appetite proposal; not a file-size guard and not part of this Intent."
+  },
+  {
+    "path": "lib/kogen/build.ex",
+    "locators": "snapshot_references/cited_bytes; do_accept/finish_publication; publication_unchanged; evidence_markdown",
+    "relationship": "Current inline evidence retention, whole-record publication and final integrity boundaries."
+  },
+  {
+    "path": "lib/kogen/build/tracking.ex",
+    "relationship": "Exact current-record authority and retained role-version semantics remain intact."
+  },
+  {
+    "path": "lib/kogen/git.ex",
+    "relationship": "Candidate/private-index and final stage/commit checks; actual staged tree is the policy input."
+  },
+  {
+    "path": "test/kogen/scenario_lifecycle_test.exs",
+    "relationship": "Exact retained citations, uncited target artifacts and rollback preservation controls."
+  },
+  {
+    "path": "test/support/live_rework_audit.ex",
+    "relationship": "Current consumer assumes Complete tracking has full attempts and schemas."
+  },
+  {
+    "path": "test/kogen/live_shape_to_build_test.exs",
+    "relationship": "preserve_tracking copies Complete and runtime evidence before fixture cleanup."
+  },
+  {
+    "path": "/Users/almirsarajcic/Projects/kogen-evidence-archive/2026-09-14-pre-push/README.md",
+    "relationship": "Local-only full historical archive; not required input to implementing or verifying this Draft."
+  }
+]

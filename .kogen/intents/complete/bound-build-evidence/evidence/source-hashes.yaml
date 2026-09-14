@@ -1,0 +1,10 @@
+{
+  "lib/kogen/build.ex": "c442bd4929805a8b668902b5064121a84ee72e3c483e41dcfe1c24c546157f11",
+  "lib/kogen/build/tracking.ex": "317cd1bc7b1bd0febeb3a785056bbb546d22083e9ab4f8134b0dae9b8ddcce07",
+  "lib/kogen/git.ex": "a3b8ca96e11a5c8d8a499919db909db91b05aec509698cd24873e489356475c2",
+  "test/kogen/scenario_lifecycle_test.exs": "8d5d9894781a3a26a2492d1a547e17af5478df5e8f17c1ecd7ef1d5ae46d87da",
+  "test/support/live_rework_audit.ex": "e5eafa813198f64cb752edc768cf34a1f8af889cca44805bee4597d494801279",
+  "test/kogen/live_shape_to_build_test.exs": "61bdb9dff475807f40ff33174d846ddca5719d2286f44d21d2edfc2c35b3adc8",
+  "Makefile": "d67d470bc39b036ad63484c8be6df1a0f7f89e263737eef27ca6bcc13ed85d4d",
+  ".kogen/config.yaml": "82016e2b5565a463589ef668609d024ca5ff688a11c839ef545ea79cb54f5fdc"
+}

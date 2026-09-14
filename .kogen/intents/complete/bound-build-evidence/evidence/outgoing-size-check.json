@@ -1,0 +1,38 @@
+{
+  "outgoing_blob_bytes": 3944833,
+  "outgoing_pack_bytes": 1158672,
+  "largest_outgoing_blobs": [
+    {
+      "bytes": 2641509,
+      "path": ".kogen/intents/complete/unify-verification/evidence/latest-build-handoff/attempts.json"
+    },
+    {
+      "bytes": 71764,
+      "path": "test/support/shaping_evaluation/driver.py"
+    },
+    {
+      "bytes": 54506,
+      "path": "test/support/shaping_evaluation/driver_rehearsal_test.py"
+    },
+    {
+      "bytes": 40126,
+      "path": "test/support/shaping_evaluation/integrity.py"
+    },
+    {
+      "bytes": 36697,
+      "path": "lib/kogen/build.ex"
+    },
+    {
+      "bytes": 34376,
+      "path": "lib/kogen/build.ex"
+    },
+    {
+      "bytes": 31486,
+      "path": ".kogen/intents/complete/unify-verification/evidence/finalize_draft.py"
+    },
+    {
+      "bytes": 27764,
+      "path": ".kogen/intents/complete/unify-verification/INTENT.md"
+    }
+  ]
+}

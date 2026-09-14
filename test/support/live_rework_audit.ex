@@ -1,5 +1,6 @@
 defmodule Kogen.LiveReworkAudit do
   @moduledoc false
+  alias Kogen.Build.Evidence
   Code.require_file("scenario_semantic.ex", __DIR__)
   Code.require_file("live_native_receipt_audit.ex", __DIR__)
 
@@ -112,6 +113,28 @@ defmodule Kogen.LiveReworkAudit do
     }
   end
 
+  @doc false
+  def audit_retained!(log_dir) do
+    case Path.wildcard(Path.join(log_dir, "build-summary*.json")) do
+      [summary_path] ->
+        case Evidence.resolve(summary_path, log_dir) do
+          {:ok, record} ->
+            require!(record["status"] == "accepted", "retained full tracking is not accepted")
+            :ok
+
+          {:error, reason} ->
+            raise ArgumentError,
+                  "retained Build evidence is not independently resolvable: #{reason}"
+        end
+
+      [] ->
+        :legacy
+
+      _ ->
+        raise ArgumentError, "retained Build evidence has ambiguous summaries"
+    end
+  end
+
   defp reviewer_receipts!(dir) do
     path = Path.join(dir, "reviewer-verdicts.jsonl")
     require_file!(path, "ordered Reviewer receipt log")
@@ -119,8 +142,7 @@ defmodule Kogen.LiveReworkAudit do
   end
 
   defp developer_invocations!(complete_dir, session_id, first_token, second_token) do
-    [tracking_path] = Path.wildcard(Path.join(complete_dir, "scenario-tracking*.json"))
-    tracking = json_file!(tracking_path, "published scenario tracking")
+    tracking = resolve_tracking!(complete_dir)
     [first, second] = tracking["attempts"]
 
     require!(
@@ -150,6 +172,27 @@ defmodule Kogen.LiveReworkAudit do
       first["developer_invocation"]["schema"] != second["developer_invocation"]["schema"],
       "resumed Developer must receive a fresh attempt schema"
     )
+  end
+
+  defp resolve_tracking!(complete_dir) do
+    case Path.wildcard(Path.join(complete_dir, "build-summary*.json")) do
+      [summary_path] ->
+        checkout_root = Path.expand("../../../..", complete_dir)
+
+        case Evidence.resolve(summary_path, checkout_root) do
+          {:ok, tracking} -> tracking
+          {:error, reason} -> raise ArgumentError, reason
+        end
+
+      [] ->
+        case Path.wildcard(Path.join(complete_dir, "scenario-tracking*.json")) do
+          [legacy_path] -> json_file!(legacy_path, "legacy published scenario tracking")
+          _ -> raise ArgumentError, "no supported Complete evidence format"
+        end
+
+      _ ->
+        raise ArgumentError, "ambiguous Build summaries"
+    end
   end
 
   defp ordered_receipts!(receipts, accepting_reviewer, developer) do

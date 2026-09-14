@@ -1,0 +1,43 @@
+{
+  "base": "2890d86f16c8819cfad12cbd98dbbdc8ee068b1c",
+  "commit_mapping": {
+    "c1c9d13747d7287a7e23f02aca02d67f0467b010": "04b6bbb9e4da76f77bb32cdb4b761f54d95f3364",
+    "8ec5495872e92b6e1313b1565221d170303e59e1": "aef8b98a1c9356516f914bd649dd6ecdae956f4d"
+  },
+  "records": [
+    {
+      "format": "kogen-local-evidence-archive-receipt-v1",
+      "status": "full-record-archived-outside-git",
+      "original_commit": "c1c9d13747d7287a7e23f02aca02d67f0467b010",
+      "original_path": ".kogen/intents/complete/structured-developer-handoffs/scenario-tracking.json",
+      "original_git_blob": "e2257bd9eda80fa4a68c429780cf038f861c6028",
+      "original_bytes": 1857665506,
+      "sha256": "b925a11a8ce182a0e6891aefa40a8f7d6c1c4e64b4b545efc21f439ee8817d03",
+      "archive_id": "2026-09-14-pre-push",
+      "archive_relative_path": "structured-developer-handoffs/scenario-tracking.json",
+      "reason": "Removed oversized embedded runtime evidence from unpublished history at the repository owner’s request on 2026-09-14. Implementation and original evidence remain preserved.",
+      "availability": "Full evidence is in the owner’s local kogen-evidence-archive, outside this repository. This receipt is not the tracking record and does not provide self-contained verification evidence. See evidence.md for the original concise Build report."
+    },
+    {
+      "format": "kogen-local-evidence-archive-receipt-v1",
+      "status": "full-record-archived-outside-git",
+      "original_commit": "8ec5495872e92b6e1313b1565221d170303e59e1",
+      "original_path": ".kogen/intents/complete/unify-verification/scenario-tracking.json",
+      "original_git_blob": "271edb7f7ea83a435b292e39026b7063eaafd3ab",
+      "original_bytes": 165683775,
+      "sha256": "365f6add4f9e18b0a01e6ce14e45bfdb9b1bf3df9fe62f7a6f401665bde46941",
+      "archive_id": "2026-09-14-pre-push",
+      "archive_relative_path": "unify-verification/scenario-tracking.json",
+      "reason": "Removed oversized embedded runtime evidence from unpublished history at the repository owner’s request on 2026-09-14. Implementation and original evidence remain preserved.",
+      "availability": "Full evidence is in the owner’s local kogen-evidence-archive, outside this repository. This receipt is not the tracking record and does not provide self-contained verification evidence. See evidence.md for the original concise Build report."
+    }
+  ],
+  "changed_paths": [
+    ".kogen/intents/complete/structured-developer-handoffs/scenario-tracking.json",
+    ".kogen/intents/complete/structured-developer-handoffs/evidence.md",
+    ".kogen/intents/complete/unify-verification/scenario-tracking.json",
+    ".kogen/intents/complete/unify-verification/evidence.md"
+  ],
+  "source_tests_configuration_unchanged": true,
+  "pushed": false
+}

@@ -385,6 +385,7 @@ defmodule Kogen.LiveShapeToBuildTest do
              "Shape to build probe\n\nKogen-Intent-ID: #{minted_uuid}\nKogen-Intent: #{@slug}"
 
     File.rm_rf!(fixture)
+    assert :ok = Kogen.LiveReworkAudit.audit_retained!(log_dir)
   end
 
   @doc false
@@ -462,6 +463,7 @@ defmodule Kogen.LiveShapeToBuildTest do
     )
 
     File.rm_rf!(fixture)
+    assert :ok = Kogen.LiveReworkAudit.audit_retained!(log_dir)
   end
 
   defp owned_log_dir(project_root) do
@@ -552,14 +554,27 @@ defmodule Kogen.LiveShapeToBuildTest do
   end
 
   defp preserve_tracking(fixture, complete_dir, log_dir) do
-    for path <- Path.wildcard(Path.join(complete_dir, "scenario-tracking*.json")) do
-      File.cp!(path, Path.join(log_dir, Path.basename(path)))
+    records = Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*/record.json"))
+
+    retained =
+      for path <- records do
+        build_id = path |> Path.dirname() |> Path.basename()
+        destination = Path.join([log_dir, "scenario-tracking", build_id, "record.json"])
+        File.mkdir_p!(Path.dirname(destination))
+        File.cp!(path, destination)
+        {Path.relative_to(path, fixture), destination}
+      end
+
+    for path <- Path.wildcard(Path.join(complete_dir, "build-summary*.json")) do
+      summary = path |> File.read!() |> Jason.decode!()
+      source = summary["full_record"]["path"]
+      destination = retained |> Map.new() |> Map.fetch!(source)
+      updated = put_in(summary, ["full_record", "path"], destination)
+      File.write!(Path.join(log_dir, Path.basename(path)), Jason.encode!(updated) <> "\n")
     end
 
-    for path <-
-          Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*/record.json")) do
-      build_id = path |> Path.dirname() |> Path.basename()
-      File.cp!(path, Path.join(log_dir, "runtime-tracking-#{build_id}.json"))
+    for path <- Path.wildcard(Path.join(complete_dir, "scenario-tracking*.json")) do
+      File.cp!(path, Path.join(log_dir, Path.basename(path)))
     end
   end
 

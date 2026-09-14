@@ -1,0 +1,80 @@
+[
+  {
+    "id": "compact-success",
+    "given": "A clean attached fixture, valid Approved package and a real required target artifact larger than the 5 MiB file limit, captured in the full record; Developer and independent Review satisfy the contract.",
+    "when": "The actual fake-harness Build completes its ordinary Stop, Review and publication route.",
+    "then": "Build commits the unchanged reviewed implementation and Approved contract plus compact allowlisted results; full bound evidence stays ignored and inspectable, no full record or raw body enters Git, and the final changed-tree bytes satisfy the accepted limits.",
+    "wrong_result": "Only a serializer looks small, Build simply blocks all large-runtime cases, or evidence.md/another path re-embeds the giant payload.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Production fake-harness lifecycle with a >5 MiB required artifact, actual HEAD tree/blob-size enumeration, digest resolution, and original Candidate comparison."
+  },
+  {
+    "id": "exact-evidence",
+    "given": "Two attempts include distinct Developer and Reviewer citations of record versions, a closed finding and a manifest containing a reviewed artifact and an uncited binary.",
+    "when": "Build publishes a compact summary and the original artifact sources are removed.",
+    "then": "The local full archive still provides exact role/attempt bytes, uncited required artifact and original failed attempt/finding history with valid bindings; Review authority is unchanged.",
+    "wrong_result": "Compaction deletes uncited evidence, conflates roles, erases failed attempts, or turns controller retention into a claim of semantic inspection.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Adapt scenario_lifecycle record_citations and target_evidence routes; resolve summary then compare decoded retained bytes and provenance against independently captured expected bytes."
+  },
+  {
+    "id": "size-boundary",
+    "given": "Accepted small fixtures and variants with changed files at and one byte above per-file/aggregate limits, many individually valid files, and an unchanged historical large blob.",
+    "when": "Kogen evaluates the actual staged publication immediately before commit.",
+    "then": "Equality and unchanged historical bytes pass; over-limit changed files or totals stop before commit with exact sizes/limits and offending paths; deletions do not consume the budget.",
+    "wrong_result": "Only compressed size, positive diff size, individual size, or current Complete directory is checked, or preexisting unchanged history blocks every Build.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Real Git-tree matrix plus public Build over-limit controls, verified unchanged HEAD and detailed failure output."
+  },
+  {
+    "id": "staging-bypass",
+    "given": "Evidence is misplaced outside Complete or force-staged inside ignored runtime; filenames include spaces/newlines and files can be renamed.",
+    "when": "The final publication tree is prepared, including generated content and a late change after an earlier check.",
+    "then": "The full changed tree receives the budget; newly changed runtime entries are rejected even if small; paths are unambiguous and existing staged-tree/Candidate integrity checks still stop late mutations without commit.",
+    "wrong_result": "The guard trusts .gitignore, scans only recognized filenames, follows symlinks outside the root, or validates an earlier tree while committing different bytes.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Owned Git fixtures and final-publication lifecycle mutation controls; assert no commit and no outside-file access."
+  },
+  {
+    "id": "failure-preservation",
+    "given": "An Approved package already exceeds the accepted limit, or an otherwise accepted Build encounters oversized generated output, a missing/tampered archive or commit failure.",
+    "when": "Preflight or final publication fails.",
+    "then": "Known oversized Approved inputs fail before provider launch; final failures preserve Candidate work, exact runtime evidence and original Approved bytes, remove only owned partial Complete output, follow established index rollback, and explain safe next steps without retries or success.",
+    "wrong_result": "Build pays for an already impossible package, trims approval, loses evidence, leaves a false Complete result, waives a limit, or launches an extra role.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Count fake provider calls; adapt commit_failure_rollback and target-evidence mutation controls; compare paths, bytes, modes, HEAD, index and retained archive before/after."
+  },
+  {
+    "id": "retained-live-consumer",
+    "given": "Connected and Reviewer-rework fixtures produce new compact summaries with full bound archives; legacy full-record fixtures remain available.",
+    "when": "The real consumers resolve/verify archives, and the outer driver copies the required evidence before removing fixture roots.",
+    "then": "Audits inspect actual attempt/schema/session/target evidence; retained copies remain independently resolvable and digest-valid after cleanup; legacy full records use explicit supported format handling.",
+    "wrong_result": "Audits pass from summary claims, retain only a dead locator, stop checking exact resume/schema facts, or parse a summary as a full record.",
+    "verified_by": [
+      "check",
+      "live"
+    ],
+    "evidence": "Offline orchestration rehearsal including cleanup and archive-copy tamper controls, then existing native Shape-to-Commit and Reviewer-rework receipts; outer driver owns ephemeral sequence evidence."
+  },
+  {
+    "id": "clone-and-corruption",
+    "given": "A new-format Complete summary is read from a fresh clone without runtime storage, or its supplied archive is missing, altered, mismatched or unknown-format; a valid archive is the control.",
+    "when": "A maintainer or audit follows documented evidence navigation.",
+    "then": "Concise results are readable without the archive, availability limits are explicit, full inspection fails actionably when evidence cannot be verified, and the valid exact archive restores full inspection.",
+    "wrong_result": "A hash is treated as available evidence, another Build record is silently used, a historical repair receipt is mistaken for a full record, or missing raw bytes produce a passing audit.",
+    "verified_by": [
+      "check"
+    ],
+    "evidence": "Clone/file-lifetime fixture and actual summary resolver consumer with valid, absent, wrong-hash, wrong-identity and unsupported-version controls."
+  }
+]

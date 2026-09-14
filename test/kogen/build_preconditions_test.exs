@@ -115,6 +115,12 @@ defmodule Kogen.BuildPreconditionsTest do
                           expected: "Complete Intent already exists"
                         },
                         %{
+                          case:
+                            "many individually valid Approved files exceed the aggregate budget",
+                          operation: :approved_aggregate_oversize,
+                          expected: "largest contributors: \"evidence-a.bin\"=4000000"
+                        },
+                        %{
                           case: "missing configuration",
                           operation: :missing_config,
                           expected: "missing .kogen/config.yaml"
@@ -394,6 +400,14 @@ defmodule Kogen.BuildPreconditionsTest do
   end
 
   defp setup_case!(dir, :missing_title), do: write_intent(dir, @intent_missing_title)
+
+  defp setup_case!(dir, :approved_aggregate_oversize) do
+    write_intent(dir, @valid_intent)
+    approved = Path.join(dir, ".kogen/intents/approved/#{@slug}")
+    File.write!(Path.join(approved, "evidence-a.bin"), :binary.copy(<<1>>, 4_000_000))
+    File.write!(Path.join(approved, "evidence-b.bin"), :binary.copy(<<2>>, 4_000_000))
+    File.write!(Path.join(approved, "evidence-c.bin"), :binary.copy(<<3>>, 4_000_000))
+  end
 
   defp setup_case!(dir, :dirty_worktree) do
     write_intent(dir, @valid_intent)

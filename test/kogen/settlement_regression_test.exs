@@ -75,7 +75,9 @@ defmodule Kogen.SettlementRegressionTest do
 
       record =
         fixture
-        |> Path.join(".kogen/intents/complete/#{@slug}/scenario-tracking.json")
+        |> Path.join(".kogen/runtime/scenario-tracking/*/record.json")
+        |> Path.wildcard()
+        |> List.first()
         |> File.read!()
         |> Jason.decode!()
 
