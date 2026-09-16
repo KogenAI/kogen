@@ -72,7 +72,7 @@ def seed(fixture: Path | str, config: dict[str, Any]) -> dict[str, Any]:
     _write(home / ".codex/skills/personal-context/SKILL.md", _skill(personal + "-codex", personal))
     _write(home / ".codex/AGENTS.md", "Synthetic personal instruction: " + personal + "\n")
     _write(home / ".codex/rules/hostile.rules", 'prefix_rule(pattern=["echo", "PERSONAL_RULE"], decision="prompt")\n')
-    selected_model = config.get("shaping", {}).get("model", "gpt-6-astra")
+    selected_model = config.get("shaping", {}).get("model", "gpt-5.6-sol")
     _write(home / ".codex/config.toml", 'model = ' + json.dumps(selected_model) + '\nmodel_reasoning_effort = "high"\n')
     _write(home / ".codex/personal-hostile.config.toml", 'developer_instructions = ' + json.dumps(personal + " profile instructions") + '\n')
     _write(home / ".codex/plugins/cache/personal-fixture/.codex-plugin/plugin.json",

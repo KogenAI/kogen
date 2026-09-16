@@ -46,7 +46,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   @slug "shape-to-build-probe"
   @continuation_marker "continuation-evidence-k4q9z"
   @review_rework_slug "live-reviewer-rework-probe"
-  @selected_shaping_profile %{model: "gpt-6-astra", effort: "low"}
+  @selected_shaping_profile %{model: "gpt-5.6-sol", effort: "low"}
 
   @makefile """
   .PHONY: check

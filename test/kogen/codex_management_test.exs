@@ -45,7 +45,7 @@ defmodule Kogen.Codex.ManagementTest do
     authenticate_shared!(ctx)
     {:ok, scope} = Codex.effective_scope()
     path = Path.join(scope.path, "config.toml")
-    bytes = "[tui.model_availability_nux]\ngpt-6-astra = 1\n"
+    bytes = "[tui.model_availability_nux]\ngpt-5.6-sol = 1\n"
     File.write!(path, bytes)
     assert {:ok, %{login: :configured}} = Codex.status(ctx.config)
     assert {:ok, selection} = Codex.open(ctx.config)
@@ -97,7 +97,7 @@ defmodule Kogen.Codex.ManagementTest do
     authenticate_shared!(ctx)
     {:ok, scope} = Codex.effective_scope()
     settings = Path.join(scope.path, "config.toml")
-    bytes = "[tui.model_availability_nux]\ngpt-6-astra = 1\n"
+    bytes = "[tui.model_availability_nux]\ngpt-5.6-sol = 1\n"
     File.write!(settings, bytes)
     python = System.find_executable("python3")
     bin = Path.join(ctx.root, "python-control")

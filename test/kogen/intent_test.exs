@@ -83,7 +83,7 @@ defmodule Kogen.IntentTest do
       assert is_integer(verification_retries)
       assert verification_retries == 2
 
-      assert config.shaping == %{model: "gpt-6-astra", effort: "low"}
+      assert config.shaping == %{model: "gpt-5.6-sol", effort: "low"}
       assert config.developer == %{model: "gpt-5.6-sol", effort: "low"}
       assert config.reviewer == %{model: "gpt-5.6-terra", effort: "medium"}
 

@@ -39,7 +39,7 @@ defmodule Kogen.BuildPreconditionsTest do
 
   @config_yaml """
   harness: codex
-  shaping:   {model: gpt-6-astra, effort: low}
+  shaping:   {model: gpt-5.6-sol, effort: low}
   developer: {model: gpt-5.6-sol, effort: low}
   reviewer:  {model: gpt-5.6-terra, effort: medium}
   helpers:

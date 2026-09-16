@@ -63,19 +63,19 @@ defmodule Kogen.RootProfileAuditTest do
 
     File.write!(
       Path.join(sessions, "shape-1.jsonl"),
-      session!("shape-one", "gpt-6-astra", "low", fixture)
+      session!("shape-one", "gpt-5.6-sol", "low", fixture)
     )
 
     File.write!(
       Path.join(sessions, "shape-2.jsonl"),
-      session!("shape-two", "gpt-6-astra", "low", fixture)
+      session!("shape-two", "gpt-5.6-sol", "low", fixture)
     )
 
     assert %{"sessions" => sessions_receipt} =
              Kogen.RootProfileAudit.audit_shape!(
                evidence,
                fixture,
-               %{model: "gpt-6-astra", effort: "low"},
+               %{model: "gpt-5.6-sol", effort: "low"},
                sessions
              )
 
@@ -87,7 +87,7 @@ defmodule Kogen.RootProfileAuditTest do
       Kogen.RootProfileAudit.audit_shape!(
         evidence,
         fixture,
-        %{model: "gpt-6-astra", effort: "low"},
+        %{model: "gpt-5.6-sol", effort: "low"},
         sessions
       )
     end
@@ -99,12 +99,12 @@ defmodule Kogen.RootProfileAuditTest do
 
     File.write!(
       Path.join(sessions, "shape-1.jsonl"),
-      session!("shape-one", "gpt-6-astra", "low", fixture)
+      session!("shape-one", "gpt-5.6-sol", "low", fixture)
     )
 
     File.write!(
       Path.join(sessions, "shape-2.jsonl"),
-      session!("shape-two", "gpt-6-astra", "low", fixture)
+      session!("shape-two", "gpt-5.6-sol", "low", fixture)
     )
 
     File.write!(
@@ -116,7 +116,7 @@ defmodule Kogen.RootProfileAuditTest do
              Kogen.RootProfileAudit.audit_shape!(
                evidence,
                fixture,
-               %{model: "gpt-6-astra", effort: "low"},
+               %{model: "gpt-5.6-sol", effort: "low"},
                sessions
              )
 

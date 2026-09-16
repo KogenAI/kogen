@@ -153,7 +153,7 @@ provider launch and must return to Shaping.
 
 Edit the tracked `.kogen/config.yaml` to select the available model and effort
 for each root role and required native helper profile. The defaults are
-Astra-low for Shaping, Sol-low for Development, Terra-medium for Review;
+Sol-low for Shaping and Development, Terra-medium for Review;
 Luna-low for read-only scouts; Luna-medium for bounded workers; and Sol-medium for a named consequential
 expert question. Kogen passes each root profile directly to Codex and renders
 the helper profiles into every role prompt; it does not silently inherit or
