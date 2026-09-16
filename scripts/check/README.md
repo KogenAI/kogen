@@ -47,7 +47,8 @@ Mutable cwd/environment cases use `test/support/isolated_case.ex`. Keep new modu
 explicitly async, preserve one execution per selected case, use unique fixtures,
 and do not add locks or shared writable build paths. The lifecycle fixture loads
 current compiled task code and retains its own bounded check; it must not copy the
-aggregate recipe. Both real-provider modules remain opt-in under `make live`.
+aggregate recipe. Provider-backed owners remain opt-in under `make live`,
+`make live-shaping-quality`, or `make live-native` according to their workflow.
 The isolation helper's BEAM code is compiled once into a private per-run directory;
 the precondition matrix copies an immutable committed template into private repos.
 Both preparations are rebuilt for each invocation and cleaned after the suite.
@@ -85,7 +86,7 @@ open while observing completion, so a fake that waits for EOF fails after readin
 Focused Python controls are reached through `terminal_probe_test.exs`; they also
 assert cleanup of real background descendants on successful and exceptional exits.
 
-The outer-owned `make live` suite also runs `ColdOfflineTest`: it copies current
+The outer-owned `make cold-offline` target runs `ColdOfflineTest`: it copies current
 sources into a disposable tree, copies installed dependency sources, and invokes the
 complete offline gate with an initially absent private `MIX_BUILD_PATH`.
 The offline recipe excludes every live-tagged case, including this cold driver,
@@ -93,7 +94,8 @@ so it cannot recurse. Provider denial stays active. The driver retains complete
 output and cache conditions under `KOGEN_LIVE_LOG_DIR` (default
 `.kogen/runtime/live-evidence`). This is separate from the bounded fake lifecycle
 and warm timing. Missing cold/stage receipts or nonzero exit fail the outer test.
-Developers must not invoke this test; it is an owner-run acceptance step.
+Developers must not invoke this test; it is an owner-run offline acceptance step and
+cannot dispatch a provider.
 Both the cold and provider-backed compiling fixtures own private dependency
 copies as well as private build paths. Rebar writes into dependency source trees,
 so sharing a dependency-directory symlink can race even with separate build paths.
@@ -142,7 +144,16 @@ capture complete Stop verification timing and run declared targets. On failure,
 read the failing stage and child diagnostics, fix the cause in the same Developer
 session, and let the owner retry while its verification allowance remains. Once
 verification settles, an invalid handoff or Review finding uses the separate
-outer allowance and requires fresh Stop verification on resume. Completion
-requires a passing complete warm gate
-with whole-command timing, cold offline success, retained coverage, and declared
-live verification.
+outer allowance and requires fresh Stop verification on resume. Completion requires
+the Stop-owned warm gate and every target declared by the Approved Intent. `live` is
+only configured-default integrated acceptance; `live-shaping-quality`, `live-native`,
+and `cold-offline` are separate selections, not components of an aggregate alias.
+
+The first three focused live targets are provider-backed. `check` and `cold-offline`
+are provider-denied. `live` needs network, configured Codex authentication, `expect`,
+and `rsync`; `live-shaping-quality` needs the provider route and maintained evaluation
+sources; `live-native` needs the pinned runtime and configured authentication; and
+`cold-offline` needs installed dependency sources, `rsync`, and the offline toolchain.
+Every Build begins with `check`; Stop then runs distinct selected targets in scenario
+order. The target-split Build is a bootstrap exception whose Approved contract could
+name only the formerly declared `check` and `live` targets.

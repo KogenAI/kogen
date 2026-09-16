@@ -1,0 +1,35 @@
+- id: selective-target-contract
+  given: The repository has only the broad check and live Make targets, while current live-tagged owners cover integrated lifecycle, shaping quality, native compatibility and helpers, and cold offline behavior
+  when: Verification entry points and the shaping selection guide are changed
+  then: check remains the complete provider-denied offline gate; live covers only integrated acceptance for the configured default role combination; live-shaping-quality, live-native, and cold-offline are separately declared with consistent documented prerequisites and paid/offline classification
+  wrong_result: live remains mix test --only live, a specialized target is merely an alias for the whole suite, cold-offline can dispatch a provider, or the documentation and recipes disagree
+  verified_by: [check, live]
+  evidence: Offline target-contract tests inspect declared recipes and selected owner files without provider dispatch; the bootstrap live run proves the repartitioned default integrated route
+- id: preserved-owner-coverage
+  given: Every pre-split live case owns distinct assertions, failure controls, prerequisites, cleanup, receipts, or retained artifacts
+  when: Those cases are assigned to focused targets
+  then: Every current owner is selected by exactly one documented target, with no deleted case, weakened assertion, flaky waiver, or implicit selection through a future live tag; connected failure/rework preservation remains in live, shaping evaluation remains in live-shaping-quality, runtime/helper compatibility remains in live-native, and the cold owner remains in cold-offline
+  wrong_result: The new commands are cheaper because a failing or expensive owner became unselected, duplicated unpredictably, or reachable only through the retired broad command
+  verified_by: [check, live]
+  evidence: A deterministic offline ownership matrix compares the maintained live owner modules with target recipes and fails for missing, duplicate, or broad tag-only selection; existing owner tests and assertions remain source-visible
+- id: behavior-based-selection
+  given: A future Shaper must choose verification from affected workflows and preservation cases rather than edited filenames
+  when: The Shaper consults the maintained selection guide and writes scenario verified_by lists
+  then: The guide distinguishes offline sufficiency, configured-default lifecycle, shaping-quality, native/provider boundary, and cold-cache claims; it requires a causal explanation for paid targets and permits check-only Intents when offline evidence is sufficient
+  wrong_result: Every change still receives live by habit, paid evidence is omitted whenever live test files are untouched, or file paths are presented as the selection algorithm
+  verified_by: [check]
+  evidence: Offline table-driven selection-guide contract tests cover representative positive and preservation cases, including check-only, native-required, shaping-quality-required, cold-only, lifecycle-required, and multi-target changes
+- id: verification-ownership-preserved
+  given: Build currently validates targets before launch and Stop owns ordered Candidate-bound execution, retries, receipts, required artifact retention, and the transition to independent Review
+  when: New targets become selectable by later Approved Intents
+  then: Existing pre-launch declaration and safety validation remains mandatory; Stop runs check then each distinct selected target in scenario order; failures use existing verification retries; receipts and required artifacts remain bound to the current Candidate, session, attempt and cycle; only settled verification reaches a fresh independent Reviewer
+  wrong_result: The bootstrap bypasses target existence checks, Developers run new gates directly, target splitting permits stale receipts, or a component pass reaches Review without the complete selected sequence
+  verified_by: [check, live]
+  evidence: Existing verification ownership lifecycle and target-evidence tests plus new target-name/preflight controls; connected live receipt and Review evidence for the current Candidate
+- id: offline-before-paid
+  given: Paid targets depend on fixture orchestration, source prerequisites, evidence forwarding and consumers that can fail deterministically before provider behavior is exercised
+  when: check precedes any selected provider-backed target in Stop verification
+  then: check rehearses target selection and the existing shaping/native receipt consumers with valid and disconfirming controls, while paid targets are reserved for claims that require the actual authenticated native or provider route
+  wrong_result: A paid target is used to discover recipe selection or evidence-forwarding defects that had no native dependency, or a passing mock is claimed as proof of real provider access
+  verified_by: [check, live]
+  evidence: Offline recipe-selection and existing shaping-driver/native-receipt corruption controls run before the bootstrap live target; live receipts remain distinct proof of actual configured-provider behavior

@@ -63,7 +63,7 @@ defmodule Kogen.Codex.EnvironmentTest do
     [projects."/another/project"]
     trust_level = "trusted"
     [tui.model_availability_nux]
-    gpt-5.6-sol = 1
+    "gpt-5.6-sol" = 1
     """
 
     File.write!(settings, bytes)

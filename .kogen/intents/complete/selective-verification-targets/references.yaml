@@ -1,0 +1,27 @@
+- id: selective-verification-priority
+  path: .kogen/intents/drafts/PRIORITIES.md
+  relevance: Identifies focused verification and documented selection as the next proposed slice and parks another recovery retry.
+- id: observed-broad-live-failure
+  path: .kogen/intents/drafts/FAILURES-AND-GUARDRAILS.md
+  relevance: Records Build bg8hmSElN9s464mhyHHL1aZX passing check in all three cycles while broad live failed different owners and exhausted verification.
+- id: cost-and-routing-direction
+  path: .kogen/intents/drafts/COST-AND-HARNESS-NOTES.md
+  relevance: Supplies the direction to avoid indiscriminate paid suites and leave future harness phases independently selectable.
+- id: latest-recovery-record
+  path: .kogen/runtime/scenario-tracking/bg8hmSElN9s464mhyHHL1aZX/record.json
+  relevance: Local controller-owned evidence for the latest stopped recovery Build; read-only evidence, not a restart checkpoint or stale gate pass.
+- id: target-validation
+  path: lib/kogen/check.ex
+  relevance: Declares safe-name and current-Makefile target validation performed before Developer launch.
+- id: scenario-contract-loading
+  path: lib/kogen/build/contract.ex
+  relevance: Extracts scenario verified_by targets and invokes target validation before Build proceeds.
+- id: stop-verification
+  path: lib/kogen/build/verification.ex
+  relevance: Owns ordered Candidate/session/attempt-bound receipts and verification retry settlement.
+- id: verification-selection-policy
+  path: lib/kogen/verification_policy.ex
+  relevance: Prevents Developer-owned gate execution and derives policy from selected targets.
+- id: current-live-owners
+  path: test/kogen
+  relevance: Contains the connected lifecycle, Reviewer, shaping evaluation, native compatibility/helper, and cold-offline owners partitioned by this Intent.

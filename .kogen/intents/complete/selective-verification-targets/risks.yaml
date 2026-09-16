@@ -1,0 +1,21 @@
+- id: coverage-stranding
+  scenario_ids: [selective-target-contract, preserved-owner-coverage]
+  description: Splitting a tag-selected suite can reduce cost by accidentally making an existing owner unreachable or by duplicating it across targets. Maintain an explicit source-bound owner matrix and fail offline controls for missing, duplicate, or broad implicit selection; do not change assertions to fit the partition.
+- id: paid-proof-confusion
+  scenario_ids: [behavior-based-selection, offline-before-paid]
+  description: Synthetic and offline rehearsal can prove orchestration and consumers but not authenticated native/provider behavior, while cold-cache work is expensive without being paid. Documentation and tests must preserve those distinctions so cost reduction does not become an unsupported compatibility claim.
+- id: gate-integrity-regression
+  scenario_ids: [verification-ownership-preserved, offline-before-paid]
+  description: More target names create opportunities to bypass pre-launch validation, Developer prohibitions, ordered Stop execution, Candidate binding, required evidence retention, or fresh Review. Reuse the existing machinery and exercise the new names through its offline controls rather than adding a parallel runner.
+- id: runtime-evidence-lifecycle
+  scenario_ids: [preserved-owner-coverage, verification-ownership-preserved, offline-before-paid]
+  description: Focused targets continue to create disposable fixtures and ignored runtime evidence under existing ownership and retention rules; target splitting must not let one owner clean another's evidence or turn a stale receipt into current proof.
+  ownership:
+    - paths: Existing per-run live, shaping-evaluation, native-helper, compatibility, cold-offline, verification, and scenario-tracking runtime paths described by their maintained owners.
+      when_exists: Preserve preexisting runs and failures; every execution creates or selects only its current uniquely owned runtime paths.
+      owner_after_creation: The existing outer test or Build controller that creates an artifact owns it immediately under its current contract.
+      owner_during_operation: The creating test owns disposable fixture state; Build owns verification receipts and retained target-evidence snapshots; Review remains read-only.
+      permitted_mutation: Current owners may append or update only current-run material and clean only their disposable fixtures; historical receipts, other runs, Approved inputs, and the recover-plugin-prevention stash are not mutated.
+      validation: Existing cleanup, collision, digest, Candidate/session/attempt binding, required-manifest, and failure-preservation controls remain active under the focused target that owns each workflow.
+      git_state: Raw runtime evidence and fixtures remain ignored local data; only existing concise Complete evidence rules may publish retained results.
+      upgrade_behavior: New runs use fresh state and current schemas; old receipts are historical evidence and are never upgraded or reused as a fresh gate pass.

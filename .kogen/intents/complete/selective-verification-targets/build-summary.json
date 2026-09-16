@@ -1,0 +1,161 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "qy7fhATkyn7P3TdbEx_zADSjKc5ibBDV",
+      "candidate_id": "79d595eaedd6c84cafbb3797b5ecb11c046da819",
+      "developer_session_id": "01a0aa3f-8d7e-7bb0-a717-c32e31566e64",
+      "number": 0,
+      "reviewer_session_id": "01a0aa49-1248-7a63-ac15-93670ea5023f",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "qy7fhATkyn7P3TdbEx_zADSjKc5ibBDV",
+          "candidate_id": "79d595eaedd6c84cafbb3797b5ecb11c046da819",
+          "exit_code": 0,
+          "finished_at": "2026-09-16T12:50:31Z",
+          "session_id": "01a0aa3f-8d7e-7bb0-a717-c32e31566e64",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "qy7fhATkyn7P3TdbEx_zADSjKc5ibBDV",
+          "candidate_id": "79d595eaedd6c84cafbb3797b5ecb11c046da819",
+          "exit_code": 0,
+          "finished_at": "2026-09-16T12:55:08Z",
+          "session_id": "01a0aa3f-8d7e-7bb0-a717-c32e31566e64",
+          "status": "passed",
+          "target": "live"
+        }
+      ]
+    }
+  ],
+  "build_id": "HcKwHqOqoG79Bz7j6keZUQHB",
+  "candidate_id": "79d595eaedd6c84cafbb3797b5ecb11c046da819",
+  "developer_session_id": "01a0aa3f-8d7e-7bb0-a717-c32e31566e64",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 725466,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/HcKwHqOqoG79Bz7j6keZUQHB/record.json",
+    "schema_version": 1,
+    "sha256": "21f03e4e34bc27e48bce5486854177ad8bb55b40eb2eb81a42cc0528bcca7779"
+  },
+  "intent": {
+    "id": "01a0a9ef-8042-7a28-a10f-5ef601e89fb3",
+    "slug": "selective-verification-targets",
+    "title": "Split verification into selective targets"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0aa49-1248-7a63-ac15-93670ea5023f"
+  },
+  "risks": [
+    {
+      "id": "coverage-stranding"
+    },
+    {
+      "id": "paid-proof-confusion"
+    },
+    {
+      "id": "gate-integrity-regression"
+    },
+    {
+      "id": "runtime-evidence-lifecycle"
+    }
+  ],
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "lines 1-21 declare the five targets; each focused target explicitly selects its owner files.",
+          "path": "Makefile"
+        },
+        {
+          "locator": "lines 197-221 document classification, prerequisites, selection, bootstrap constraint, and Stop ownership.",
+          "path": "README.md"
+        },
+        {
+          "locator": "cycle 2 has Candidate-bound passing check and live receipts; live command ran only the three integrated cases.",
+          "path": ".kogen/runtime/scenario-tracking/HcKwHqOqoG79Bz7j6keZUQHB/verification/attempt-0-qy7fhATkyn7P3TdbEx_zADSjKc5ibBDV/state.json"
+        }
+      ],
+      "id": "selective-target-contract",
+      "reason": "The complete offline gate is retained, live is explicitly limited to configured-default integrated acceptance, and the three specialized targets have distinct recipes and documented classifications.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "lines 7-52 enumerate seven live owner modules, expected nine cases, exact-once recipe assignment, and repository-wide live-owner comparison.",
+          "path": "test/kogen/selective_verification_targets_test.exs"
+        },
+        {
+          "locator": "lines 7-21 explicitly partition each owner module among exactly one focused target.",
+          "path": "Makefile"
+        },
+        {
+          "locator": "lines 89-98 retain the cold owner's private-cache, recursive-exclusion, receipt, and provider-denial behavior.",
+          "path": "scripts/check/README.md"
+        }
+      ],
+      "id": "preserved-owner-coverage",
+      "reason": "The maintained ownership matrix covers every current live-tagged owner exactly once, while recipes preserve the required lifecycle, shaping, native, and cold boundaries.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "lines 195-214 provide workflow-based selection, check-only sufficiency, multi-target ordering, causal paid-target reasons, and the offline-evidence limit.",
+          "path": "README.md"
+        },
+        {
+          "locator": "lines 70-90 exercise representative offline, lifecycle, shaping, native, cold, multi-target, causal-reason, and edited-filename guide claims.",
+          "path": "test/kogen/selective_verification_targets_test.exs"
+        }
+      ],
+      "id": "behavior-based-selection",
+      "reason": "The maintained guide selects by affected behavior and preservation risk, permits check-only work, and requires a causal reason for provider-backed verification.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "lines 15-33 load scenario targets and validate declared Make targets before Build proceeds.",
+          "path": "lib/kogen/build/contract.ex"
+        },
+        {
+          "locator": "lines 24-35 normalize check-first target order; lines 144-185 validate Candidate, session, attempt, cycle, order, and receipt integrity.",
+          "path": "lib/kogen/build/verification.ex"
+        },
+        {
+          "locator": "terminal_state is passed and cycle 2 binds ordered check then live receipts to the reviewed Candidate, session, and attempt.",
+          "path": ".kogen/runtime/scenario-tracking/HcKwHqOqoG79Bz7j6keZUQHB/verification/attempt-0-qy7fhATkyn7P3TdbEx_zADSjKc5ibBDV/state.json"
+        }
+      ],
+      "id": "verification-ownership-preserved",
+      "reason": "The implementation only adds declared recipes and reuses existing pre-launch validation and Stop settlement; recorded verification is settled and bound to this Candidate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "lines 197-214 classify check and cold-offline as provider-denied, provider-backed targets separately, and state that offline rehearsal is not provider proof.",
+          "path": "README.md"
+        },
+        {
+          "locator": "lines 55-68 assert recipe-level offline/provider partitioning; lines 21-52 make that contract part of the passing offline suite.",
+          "path": "test/kogen/selective_verification_targets_test.exs"
+        },
+        {
+          "locator": "cycle 2 records check passing before the distinct provider-backed live receipt for this Candidate.",
+          "path": ".kogen/runtime/scenario-tracking/HcKwHqOqoG79Bz7j6keZUQHB/verification/attempt-0-qy7fhATkyn7P3TdbEx_zADSjKc5ibBDV/state.json"
+        }
+      ],
+      "id": "offline-before-paid",
+      "reason": "Offline recipe and consumer controls remain in check, the documentation distinguishes them from actual provider evidence, and settled verification ran check before live.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

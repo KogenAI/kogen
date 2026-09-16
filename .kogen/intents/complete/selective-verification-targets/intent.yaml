@@ -1,0 +1,23 @@
+id: 01a0a9ef-8042-7a28-a10f-5ef601e89fb3
+slug: selective-verification-targets
+title: Split verification into selective targets
+status: approved
+shaped_against:
+  branch: main
+  head: 1ee89d659ae35303c500eb7e277cc5e1b4cc24f9
+shaping:
+  harness: codex
+  model: gpt-5.6-sol
+  effort: low
+  started: "2026-09-16T11:17:20.582359Z"
+may_change_guarded_paths:
+  - Makefile
+  - README.md
+  - scripts/check/README.md
+  - test/kogen/**
+  - test/support/**
+approval:
+  approved_at: "2026-09-16T12:28:19Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message: Approve"
+  statement: approval.md

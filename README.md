@@ -192,6 +192,34 @@ independent Review assesses the retained conversation and Draft semantics. Targe
 selection follows affected workflows and evidence sufficiency, not whether a live
 test file changed.
 
+### Verification target selection
+
+Every Build starts with `check`, the complete provider-denied offline gate. Select
+additional targets by affected behavior and preservation risk, not by edited filenames:
+
+| Target | Select when | Classification and prerequisites |
+| --- | --- | --- |
+| `check` | Offline sufficiency covers the behavior and failure controls; a later Intent may use check only. | Offline; installed dependencies and the tools below. Provider dispatch is denied. |
+| `live` | The configured-default lifecycle, public Shape/approval/Build flow, Developer resume, Stop settlement, Review, rework, or shared lifecycle fixtures can change. | Provider-backed; network, configured Codex authentication, `expect`, and `rsync`. |
+| `live-shaping-quality` | Shaping prompts, continuation, Draft quality, evaluation cases, prerequisites, or its evidence manifest can change. | Provider-backed; network, configured Codex authentication, and maintained evaluation sources. |
+| `live-native` | The authenticated native boundary, managed runtime/login/discovery, compatibility runner, helper routing, profiles, or native receipts can change. | Provider-backed; installed pinned Codex runtime and configured authentication. |
+| `cold-offline` | Cold-cache behavior, the offline recipe, dependency copying, toolchain setup, containment, or cold cleanup can change. | Offline, though expensive; installed dependency sources, `rsync`, and the offline toolchain. Provider dispatch is denied. |
+
+Use check only when deterministic offline evidence is sufficient. Select `live` for
+configured-default lifecycle preservation even if no live test file changed, and do
+not select it merely because such a file was edited. Select the specialized target
+whenever its workflow can materially change. For multiple affected boundaries, select
+each relevant target in scenario order; there is no aggregate target. Every
+provider-backed selection needs a causal reason in scenario evidence. Offline rehearsal
+proves recipes and evidence consumers, not real provider access.
+
+The initial target split is a bootstrap exception: its Approved scenarios could name
+only the previously declared `check` and `live` targets. Later Intents may name the
+focused targets because Build still validates every target against the Makefile before
+Developer launch. Stop alone runs `check` first and then distinct selected targets in
+first-occurrence order, preserving Candidate/session/attempt binding, verification
+retries, required artifacts, receipts, and the fresh-Review boundary.
+
 Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
 
 Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` remains an offline test override; ordinary work selects Kogen's pinned managed runtime, never PATH Codex.
@@ -221,8 +249,11 @@ When upgrading Kogen's pinned Codex runtime, follow the [Codex runtime upgrade w
 ## Run the checks
 
 ```sh
-make check     # Offline checks and the complete fake-harness lifecycle
-make live      # Real public shaping, approval, build, review, and fixture commit
+make check                 # Complete provider-denied offline gate
+make live                  # Configured-default integrated lifecycle acceptance
+make live-shaping-quality  # Provider-backed maintained Shaping evaluation
+make live-native           # Provider-backed native/runtime/helper compatibility
+make cold-offline          # Offline gate from an empty private build cache
 ```
 
 Fetch dependencies first. Python 3.11 or newer, `rsync`, and the macOS Command Line Tools (`xcrun clang`)
@@ -245,7 +276,12 @@ Dependency fixtures reject destination collisions and materialize linked sources
 instead of retaining writable aliases to installed dependencies.
 See [the check workflow](scripts/check/README.md) for maintenance and timing conditions.
 
-`make live` requires network access, Codex authentication, `expect`, and `rsync`. It creates a disposable fixture under this checkout, uses scripted approval only for that test fixture, and retains run evidence under `.kogen/runtime/`. It tests real failed-check correction in one Developer session and reviewer-directed rework with an exact Developer resume and a fresh accepting Reviewer. Its outer driver also runs the complete offline check in a disposable copy with an initially empty private build cache and installed dependencies. Set `KOGEN_LIVE_LOG_DIR` to retain that evidence elsewhere.
+`make live` is the configured-default integrated route, not a complete suite. It
+requires network access, Codex authentication, `expect`, and `rsync`; creates disposable
+fixtures; and retains evidence under `.kogen/runtime/`. It covers real failed-check
+correction, exact Developer resume, reviewer-directed rework, and fresh independent
+Review. Separately selected `make cold-offline` owns the empty-cache offline run. Set
+`KOGEN_LIVE_LOG_DIR` to retain lifecycle or cold evidence elsewhere.
 
 ## Project and contact
 

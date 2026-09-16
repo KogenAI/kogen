@@ -54,7 +54,7 @@ defmodule Kogen.ColdOfflineTest do
     MIX_BUILD_PATH: _build/cold (fixture-local, #{build_path})
     Cache initially absent: true
     Dependencies: installed sources copied privately without build caches; no downloads
-    Owner: outer live verification; nested recipe excludes all live cases
+    Owner: outer cold-offline verification; nested recipe excludes all live cases
     """)
 
     {output, status} =
