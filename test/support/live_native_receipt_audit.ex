@@ -1,8 +1,11 @@
 defmodule Kogen.LiveNativeReceiptAudit do
   @moduledoc false
+  alias Kogen.Build.VerificationPlan
 
   def audit!(raw_log_dir, expected_sessions, reviewer_sessions \\ [])
       when is_map(expected_sessions) and is_list(reviewer_sessions) do
+    VerificationPlan.trace("Kogen.LiveNativeReceiptAudit.audit!")
+
     streams =
       raw_log_dir
       |> Path.join("raw-stream-*.jsonl")

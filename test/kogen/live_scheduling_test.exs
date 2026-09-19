@@ -2,7 +2,8 @@ defmodule Kogen.LiveSchedulingTest do
   use ExUnit.Case, async: true
 
   @probe Path.expand("../support/scheduling_overlap_probe.exs", __DIR__)
-  @live_source Path.expand("live_shape_to_build_test.exs", __DIR__)
+  @connected_source Path.expand("live_shape_to_build_test.exs", __DIR__)
+  @rework_source Path.expand("live_reviewer_rework_test.exs", __DIR__)
 
   test "actual isolated dispatchers overlap across the two live owner modules" do
     {root, output, status} = run_probe()
@@ -29,13 +30,16 @@ defmodule Kogen.LiveSchedulingTest do
   end
 
   test "live selection keeps connected and rework owners in distinct async modules" do
-    source = File.read!(@live_source)
+    source = File.read!(@connected_source)
+    rework_source = File.read!(@rework_source)
 
     assert source =~ "defmodule Kogen.LiveShapeToBuildTest do"
-    assert source =~ "defmodule Kogen.LiveReviewerReworkTest do"
-    assert length(Regex.scan(~r/use ExUnit.Case, async: true/, source)) == 2
+    refute source =~ "defmodule Kogen.LiveReviewerReworkTest do"
+    assert rework_source =~ "defmodule Kogen.LiveReviewerReworkTest do"
+    assert length(Regex.scan(~r/use ExUnit.Case, async: true/, source)) == 1
+    assert length(Regex.scan(~r/use ExUnit.Case, async: true/, rework_source)) == 1
     assert source =~ "def run_reviewer_rework_case do"
-    assert source =~ "Kogen.LiveShapeToBuildTest.run_reviewer_rework_case()"
+    assert rework_source =~ "Kogen.LiveShapeToBuildTest.run_reviewer_rework_case()"
   end
 
   defp run_probe(failing_owner \\ "") do

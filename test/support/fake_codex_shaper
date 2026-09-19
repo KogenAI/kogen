@@ -44,6 +44,11 @@ cat >"$dir/scenarios.yaml" <<'EOF'
   wrong_result: Shape does not persist an Intent or Build commits the initial unreviewed value
   verified_by: [check, target_evidence]
   evidence: public mix kogen.shape against fake interactive Codex
+  proof:
+    offline: [test/kogen/focused_fixture_test.exs]
+    paid_target: target_evidence
+    paid_reason: "provider-required: target_evidence; observation: retained fixture artifact settlement; offline-limit: focused fixture cannot establish outer target dispatch"
+    affected_paths: [dummy.txt, reviewer-rework-marker.txt]
 EOF
 cat >"$dir/requirement.json" <<'EOF'
 {"path":"dummy.txt","expected":"reviewed fixture value"}

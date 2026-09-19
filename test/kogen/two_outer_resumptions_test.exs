@@ -31,6 +31,11 @@ defmodule Kogen.TwoOuterResumptionsTest do
     wrong_result: a third resume happens, or a Commit is made
     verified_by: [check]
     evidence: fake Reviewer scripted to answer rework three times
+    proof:
+      offline: [proof.txt]
+      paid_target: none
+      paid_reason: "offline-sufficient: scripted lifecycle fixture observes resumption accounting"
+      affected_paths: [dummy.txt]
   """
 
   @config_yaml """
@@ -94,6 +99,19 @@ defmodule Kogen.TwoOuterResumptionsTest do
     end
 
     File.write!(Path.join(dest, "Makefile"), @makefile)
+    File.write!(Path.join(dest, "proof.txt"), "focused fixture selector\n")
+    File.mkdir_p!(Path.join(dest, "priv/kogen"))
+
+    File.write!(Path.join(dest, "priv/kogen/verification_targets.yaml"), """
+    targets:
+      - name: check
+        cost_class: offline-complete
+        rank: 0
+        dependencies: []
+        provider_backed: false
+        owner: fixture
+    """)
+
     File.write!(Path.join(dest, ".gitignore"), ".kogen/build.lock\n.kogen/runtime/\n")
 
     File.write!(

@@ -9,6 +9,8 @@ defmodule Mix.Tasks.Kogen.Shape do
   `mix kogen.shape` mints a new Intent. `mix kogen.shape <draft-slug>` opens
   an existing draft in a fresh interactive conversation using current configuration.
   Launch never rewrites the selected draft or restores a previous session.
+  Both routes render the maintained Shaping producer contract, including the
+  required per-scenario proof map consumed by future Build readiness planning.
   """
 
   @prompt_path "priv/kogen/prompts/shaping.md"

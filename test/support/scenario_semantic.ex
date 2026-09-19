@@ -1,5 +1,6 @@
 defmodule Kogen.ScenarioSemantic do
   @moduledoc false
+  alias Kogen.Build.VerificationPlan
   @scenario_ids ["installed-artifact", "role-routing", "git-status-readiness"]
 
   def scenario_ids, do: @scenario_ids
@@ -7,6 +8,7 @@ defmodule Kogen.ScenarioSemantic do
   # The live Reviewer owns this tiny fixture. Its Python probes are focused
   # commands only; none invokes a Kogen target, Stop hook, or Build.
   def write_fixture!(root, state) when state in [:incomplete, :corrected] do
+    VerificationPlan.trace("Kogen.ScenarioSemantic.write_fixture!")
     Enum.each(~w(bin config probes source), &File.mkdir_p!(Path.join(root, &1)))
     File.write!(Path.join(root, "source/kogen_tool.py"), "print('installed artifact ready')\n")
     File.write!(Path.join(root, "config/flags.baseline.json"), "{\"feature\": false}\n")
@@ -88,6 +90,7 @@ defmodule Kogen.ScenarioSemantic do
   end
 
   def focused_probe!(root, name) when name in @scenario_ids do
+    VerificationPlan.trace("Kogen.ScenarioSemantic.focused_probe!")
     System.cmd("python3", ["probes/#{probe_name(name)}"], cd: root, stderr_to_stdout: true)
   end
 
@@ -116,6 +119,9 @@ defmodule Kogen.ScenarioSemantic do
   end
 
   def review_response!(response, expected) when is_map(response) do
+    VerificationPlan.trace("Kogen.ScenarioSemantic.review_response!")
+    VerificationPlan.trace("semantic-consumer-validated")
+
     require!(
       response["candidate_id"] == expected.candidate_id,
       "Reviewer response has the wrong candidate_id"

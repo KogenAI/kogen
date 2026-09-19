@@ -390,6 +390,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     )
 
     File.write!(Path.join(intent, "scenarios.yaml"), scenarios())
+    Kogen.VerificationFixture.install!(dir)
 
     File.write!(
       Path.join(intent, "risks.yaml"),

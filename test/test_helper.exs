@@ -15,7 +15,12 @@ if System.get_env("KOGEN_ISOLATED_CASE_CHILD") == "1" do
 else
   # Compile support once per invocation, never cache test results. Children only
   # read this private BEAM directory instead of recompiling the helper each time.
-  support = Code.require_file("support/isolated_case.ex", __DIR__)
+  fixture_support = Path.join(__DIR__, "support/verification_fixture.ex")
+
+  support =
+    Code.require_file("support/isolated_case.ex", __DIR__) ++
+      if(File.regular?(fixture_support), do: Code.require_file(fixture_support), else: [])
+
   Code.require_file("support/timing_formatter.ex", __DIR__)
 
   cache =

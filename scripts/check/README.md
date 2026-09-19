@@ -7,9 +7,10 @@ is the shaping macOS machine; dependency installation is a prerequisite, not a
 verification step.
 
 The Stop hook owns verification settlement, including `make check` and the
-declared targets selected by the Approved Intent. Developers and helpers use
-focused non-gate tests, such as `mix test test/kogen/git_test.exs`, while editing.
-Do not invoke this directory's recipe as a bypass around gate ownership.
+catalog-ordered targets selected by the Approved Intent. Developers and helpers
+use the controller-issued focused proof selectors and rehearsals as non-gate
+readiness work; they must not invoke this directory's recipe as a bypass around
+gate ownership.
 Bounded `verification_retries` applies to failed Stop verification inside the
 same Developer conversation; it is distinct from the outer Developer-rework
 allowance. Legacy outer-resumption configuration is a transition input only.
@@ -47,8 +48,9 @@ Mutable cwd/environment cases use `test/support/isolated_case.ex`. Keep new modu
 explicitly async, preserve one execution per selected case, use unique fixtures,
 and do not add locks or shared writable build paths. The lifecycle fixture loads
 current compiled task code and retains its own bounded check; it must not copy the
-aggregate recipe. Provider-backed owners remain opt-in under `make live`,
-`make live-shaping-quality`, or `make live-native` according to their workflow.
+aggregate recipe. Provider-backed owners remain opt-in under their narrow
+targets (`make live-shape-to-build`, `make live-reviewer-rework`,
+`make live-general`, `make live-shaping-quality`, or `make live-native`).
 The isolation helper's BEAM code is compiled once into a private per-run directory;
 the precondition matrix copies an immutable committed template into private repos.
 Both preparations are rebuilt for each invocation and cleaned after the suite.
@@ -145,15 +147,14 @@ read the failing stage and child diagnostics, fix the cause in the same Develope
 session, and let the owner retry while its verification allowance remains. Once
 verification settles, an invalid handoff or Review finding uses the separate
 outer allowance and requires fresh Stop verification on resume. Completion requires
-the Stop-owned warm gate and every target declared by the Approved Intent. `live` is
-only configured-default integrated acceptance; `live-shaping-quality`, `live-native`,
-and `cold-offline` are separate selections, not components of an aggregate alias.
+the Stop-owned warm gate and every target declared by the Approved Intent. The
+provider-backed lifecycle owners, `live-shaping-quality`, `live-native`, and
+`cold-offline` are separate selections, not components of an aggregate alias.
 
-The first three focused live targets are provider-backed. `check` and `cold-offline`
-are provider-denied. `live` needs network, configured Codex authentication, `expect`,
-and `rsync`; `live-shaping-quality` needs the provider route and maintained evaluation
-sources; `live-native` needs the pinned runtime and configured authentication; and
-`cold-offline` needs installed dependency sources, `rsync`, and the offline toolchain.
-Every Build begins with `check`; Stop then runs distinct selected targets in scenario
-order. The target-split Build is a bootstrap exception whose Approved contract could
-name only the formerly declared `check` and `live` targets.
+The lifecycle and first two specialized targets are provider-backed. `check` and
+`cold-offline` are provider-denied. The lifecycle targets need network, configured
+Codex authentication, `expect`, and `rsync`; `live-shaping-quality` needs the
+provider route and maintained evaluation sources; `live-native` needs the pinned
+runtime and configured authentication; and `cold-offline` needs installed dependency
+sources, `rsync`, and the offline toolchain. Every Build begins with `check`; Stop
+then runs distinct selected targets in dependency-valid catalog cost order.

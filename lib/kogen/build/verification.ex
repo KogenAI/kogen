@@ -2,10 +2,12 @@ defmodule Kogen.Build.Verification do
   @moduledoc false
 
   alias Kogen.Build.TargetEvidence
+  alias Kogen.Build.VerificationPlan
 
   @version 1
 
-  def initialize(tracking_path, token, outer_attempt, targets, retries) do
+  def initialize(tracking_path, token, outer_attempt, targets, retries, plan \\ nil) do
+    VerificationPlan.trace("Kogen.Build.Verification.initialize")
     root = project_root(tracking_path)
     build_id = tracking_path |> Path.dirname() |> Path.basename()
 
@@ -32,7 +34,8 @@ defmodule Kogen.Build.Verification do
       "verification_retries" => retries,
       "state_path" => Path.expand(state_path),
       "history_path" => Path.expand(history_path),
-      "log_root" => Path.expand(log_root)
+      "log_root" => Path.expand(log_root),
+      "plan" => plan_context(plan)
     }
 
     bytes = Jason.encode!(context) <> "\n"
@@ -73,6 +76,13 @@ defmodule Kogen.Build.Verification do
     end
   end
 
+  defp plan_context(nil), do: nil
+
+  defp plan_context(plan),
+    do:
+      Map.take(plan, [:catalog_sha256, :offline, :affected_paths, :rehearsals])
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+
   def environment(execution) do
     [
       {"KOGEN_VERIFICATION_CONTEXT", execution.context_path},
@@ -82,6 +92,7 @@ defmodule Kogen.Build.Verification do
   end
 
   def settle(execution, session_id, candidate_id) do
+    VerificationPlan.trace("Kogen.Build.Verification.settle")
     expected_context = execution.context_bytes
 
     with {:ok, ^expected_context} <- File.read(execution.context_path),

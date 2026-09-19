@@ -332,7 +332,7 @@ defmodule Kogen.Codex.Compatibility do
       prompt,
       config.developer.model,
       config.developer.effort,
-      Kogen.VerificationPolicy.environment(["check", "live"], fixture),
+      Kogen.VerificationPolicy.environment(["check", "live-native"], fixture),
       context
     ])
   end
@@ -366,7 +366,7 @@ defmodule Kogen.Codex.Compatibility do
       prompt,
       config.developer.model,
       config.developer.effort,
-      Kogen.VerificationPolicy.environment(["check", "live"], fixture),
+      Kogen.VerificationPolicy.environment(["check", "live-native"], fixture),
       context
     ])
   end
@@ -505,11 +505,20 @@ defmodule Kogen.Codex.Compatibility do
 
   @doc false
   def prepare_fixture(project_root, config) do
+    rehearsal_trace("Kogen.Codex.Compatibility.prepare_fixture")
+
     with {:ok, fixture, evidence} <- create_fixture(project_root) do
       case seed_discovery(fixture, config) do
         {:ok, discovery} -> {:ok, fixture, evidence, discovery}
         {:error, reason} -> failed_evidence(evidence, fixture, reason)
       end
+    end
+  end
+
+  defp rehearsal_trace(identity) do
+    case System.get_env("KOGEN_REHEARSAL_TRACE") do
+      nil -> :ok
+      path -> File.write!(path, identity <> "\n", [:append])
     end
   end
 

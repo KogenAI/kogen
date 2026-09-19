@@ -158,12 +158,31 @@ Under `.kogen/intents/drafts/<slug>/` (later moved as a whole to
   - `given` / `when` / `then`: the behavior in Given/When/Then form
   - `wrong_result`: what a plausible-but-wrong implementation would do instead
   - `verified_by`: a YAML list of **make target names** that must pass for
-    this scenario to count as verified — e.g. `[check]`, `[check, live]`, or
+    this scenario to count as verified — e.g. `[check]`, `[check, live-native]`, or
     other targets actually declared in the Makefile. This is a list of make
     targets, never the free word "review"; the Reviewer's verdict is a
     separate, always-run step and is not itself a `verified_by` entry.
   - `evidence`: a short note on how the scenario will be demonstrated (test
     name, probe, transcript, etc.)
+  - `proof`: a required map describing focused proof and any paid boundary:
+    ```yaml
+    proof:
+      offline: [test/kogen/focused_test.exs]
+      paid_target: none
+      paid_reason: "offline-sufficient: focused consumer and failure control"
+      affected_paths: [lib/kogen/example.ex, test/kogen/focused_test.exs]
+    ```
+    `offline` is a nonempty list of repository-relative maintained selectors
+    (a test file/directory, stable named test, or cataloged rehearsal), never a
+    line selector, repository root, whole-suite glob, absolute path, or `..`.
+    `paid_target` is `none` or one narrow catalog target. Use
+    `offline-sufficient: <consumer/control>` when it is `none`; otherwise use
+    `provider-required: <exact-target>; observation: <provider-only observable>; offline-limit: <why offline cannot establish it>`.
+    `affected_paths` is a nonempty list of implementation, assertion, and
+    fixture paths required by this scenario and must be covered by guarded
+    paths. Keep `verified_by` exactly `[check]` plus the selected paid target,
+    if any. Do not select every paid target by default or claim that offline
+    proof establishes provider semantics.
 
 You may also produce, as needed:
 

@@ -49,7 +49,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
 
     for prompt <- [launch, resume] do
       assert prompt =~ "make check"
-      assert prompt =~ "make live"
+      assert prompt =~ "make gate_three"
       assert prompt =~ "make gate_one"
       assert prompt =~ "make gate_two"
       assert prompt =~ ".codex/hooks/check.sh"
@@ -97,6 +97,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     dir = Path.join(System.tmp_dir!(), "kogen-owned-gates-#{System.unique_integer([:positive])}")
     File.mkdir_p!(Path.join(dir, ".codex/hooks"))
     File.mkdir_p!(Path.join(dir, "priv/kogen/prompts"))
+    File.mkdir_p!(Path.join(dir, "priv/kogen"))
 
     for file <- ["check.sh", "stop_runner.py", "environment.py", "verification_policy.py"] do
       File.cp!(Path.join(root, ".codex/hooks/#{file}"), Path.join(dir, ".codex/hooks/#{file}"))
@@ -119,6 +120,8 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     )
 
     File.write!(Path.join(dir, "Makefile"), makefile())
+    File.write!(Path.join(dir, "proof.txt"), "focused fixture selector\n")
+    File.write!(Path.join(dir, "priv/kogen/verification_targets.yaml"), catalog())
 
     File.cp!(
       Path.join(root, "test/support/scenario_response.py"),
@@ -158,14 +161,78 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
       wrong_result: no ownership
       verified_by: [check, gate_one]
       evidence: fixture
+      proof:
+        offline: [proof.txt]
+        paid_target: gate_one
+        paid_reason: "provider-required: gate_one; observation: first fixture gate; offline-limit: fake transport cannot establish dispatch"
+        affected_paths: [dummy.txt]
     - id: second
       given: a settled Check
       when: outer verification continues
       then: gate two runs once
       wrong_result: duplicate gate one
-      verified_by: [gate_two, gate_one, gate_three]
+      verified_by: [check, gate_two]
       evidence: fixture
+      proof:
+        offline: [proof.txt]
+        paid_target: gate_two
+        paid_reason: "provider-required: gate_two; observation: second fixture gate; offline-limit: fake transport cannot establish dispatch"
+        affected_paths: [dummy.txt]
+    - id: third
+      given: prior gates passed
+      when: outer verification continues
+      then: gate three runs
+      wrong_result: gate three is omitted
+      verified_by: [check, gate_three]
+      evidence: fixture
+      proof:
+        offline: [proof.txt]
+        paid_target: gate_three
+        paid_reason: "provider-required: gate_three; observation: third fixture gate; offline-limit: fake transport cannot establish dispatch"
+        affected_paths: [dummy.txt]
     """
+  end
+
+  defp catalog do
+    entries =
+      [
+        {"check", 0, false}
+        | Enum.with_index(~w(gate_one gate_two gate_three), 1)
+          |> Enum.map(fn {name, rank} -> {name, rank, true} end)
+      ]
+
+    Jason.encode!(%{
+      "targets" =>
+        Enum.map(entries, fn
+          {"check", rank, false} ->
+            %{
+              "name" => "check",
+              "cost_class" => "offline",
+              "rank" => rank,
+              "dependencies" => [],
+              "provider_backed" => false,
+              "owner" => "fixture"
+            }
+
+          {name, rank, true} ->
+            %{
+              "name" => name,
+              "cost_class" => "provider",
+              "rank" => rank,
+              "dependencies" => ["check"],
+              "provider_backed" => true,
+              "owner" => "fixture",
+              "rehearsal" => %{
+                "id" => "rehearse-#{name}",
+                "command" => "mix test --exclude live proof.txt",
+                "shared_entrypoints" => ["fixture.prepare", "fixture.consume"],
+                "correct_fixture" => "proof.txt",
+                "wrong_fixture" => "proof.txt:wrong",
+                "trace_assertions" => ["fixture-trace"]
+              }
+            }
+        end)
+    })
   end
 
   defp config do

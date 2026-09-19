@@ -33,6 +33,8 @@ defmodule Kogen.SettlementRegressionTest do
     \t@test ! -f lib/kogen_fake_break.ex
     """)
 
+    Kogen.VerificationFixture.install!(fixture)
+
     git!(fixture, ["init", "-q", "-b", "main"])
     git!(fixture, ["config", "user.name", "Kogen Fixture"])
     git!(fixture, ["config", "user.email", "fixture@example.invalid"])
@@ -61,6 +63,8 @@ defmodule Kogen.SettlementRegressionTest do
       verified_by: [check]
       evidence: retained hook response and exact launch counts
     """)
+
+    Kogen.VerificationFixture.install!(fixture)
 
     {output, status} =
       Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", @slug], [

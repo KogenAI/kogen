@@ -116,6 +116,7 @@ defmodule Kogen.ApprovedMutationTest do
     File.write!(Path.join(intent_dir, "intent.yaml"), @intent_yaml)
     File.write!(Path.join(intent_dir, "scenarios.yaml"), @scenarios_yaml)
     File.write!(Path.join(intent_dir, "evidence.md"), "original user evidence")
+    Kogen.VerificationFixture.install!(dest)
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},

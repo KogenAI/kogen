@@ -1,0 +1,63 @@
+- id: cost-ordered-plan
+  given: A Shaping-produced Approved Intent lists valid verification targets in arbitrary scenario order, every scenario has a mechanically valid proof map, and the repository declares exhaustive source-owned target cost, dependency, provider, and rehearsal metadata
+  when: Fresh or continued Shaping renders and validates the scenario contract and Build constructs the future-Build verification context
+  then: Shaping produces repository-relative focused selectors, at most one additional target or none, a grammar-valid target-bound causal rationale, and affected assertion/fixture paths; Build fails before launch for absolute/escaping/missing/broad selectors, target/rationale mismatch, aggregate or over-selection, or incomplete proof/metadata; otherwise it freezes check first and every selected narrow target in dependency-valid cost order and a fake lifecycle settles that order
+  wrong_result: README alone describes proof that Shaping does not produce, offline proof claims provider semantics, affected fixture paths are omitted, unknown targets fall to the end, scenario order remains execution order, a hidden live/live-all aggregate remains, or tests assert a computed list without exercising prompt-to-contract and context-to-Stop consumers
+  verified_by: [check]
+  evidence: Deterministic fresh/continued prompt rendering and shaping-quality fixtures cover omitted proof, broad selectors, automatic all-paid selection, unjustified paid targets, missing affected fixture paths, aggregate aliases, and false offline/provider claims; contract, catalog, consumer inventory, unified-context, and fake lifecycle tests cover the six named boundaries, retired-live migration, ordering, metadata mutation, and receipt settlement.
+  proof:
+    offline:
+      - test/kogen/scenario_contract_test.exs
+      - test/kogen/shape_task_test.exs
+      - test/kogen/shaping_evaluation_test.exs
+      - test/kogen/verification_ownership_lifecycle_test.exs
+      - test/kogen/selective_verification_targets_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: production-path contract, catalog, context, and fake-settlement consumers expose deterministic plan validation and ordering without provider semantics"
+    affected_paths: [Makefile, README.md, priv/kogen/prompts/shaping.md, priv/kogen/verification_targets.yaml, lib/kogen/build/contract.ex, lib/kogen/build/verification_plan.ex, test/kogen/**, test/support/**]
+- id: rehearsal-parity
+  given: Each provider-backed owner has one cataloged provider-denied rehearsal and mechanically decidable LLM-test quality declarations bound to its production preparation, selection, schema, consumer, audit, and settlement entry points
+  when: The complete offline gate audits and executes rehearsals with paired correct and plausible-wrong fake transport outputs and historical disconfirming fixtures
+  then: Every paid owner is covered exactly once through shared production paths, while missing, orphaned, empty, mismatched, bypassing, answer-leaking, schema-drifted, consumer-drifted, or guarded-path-incomplete rehearsals fail check for the specific defect
+  wrong_result: A copied mock and owner list pass while production preparation or consumers are broken, exact prose is asserted, expected answers leak into agent context, repair is coupled to one invocation, or a live assertion changed by the Candidate is omitted from guarded paths
+  verified_by: [check]
+  evidence: Source-derived owner/rehearsal coverage plus real-consumer wrong/correct controls reproduce capture-count drift, pre-dispatch control-root failure, empty/wrong selection, omitted live assertion paths, and superficially valid but semantically wrong fake output.
+  proof:
+    offline:
+      - test/kogen/selective_verification_targets_test.exs
+      - test/kogen/codex_compatibility_preparation_test.exs
+      - test/kogen/live_native_receipt_audit_test.exs
+      - test/kogen/shaping_evaluation_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: executable catalog rehearsals and real downstream consumers expose deterministic parity while authenticated provider quality is explicitly not claimed"
+    affected_paths: [priv/kogen/verification_targets.yaml, lib/kogen/codex/compatibility.ex, test/kogen/**, test/support/**]
+- id: bounded-developer-readiness
+  given: The Approved contract supplies safe focused proof selectors and the controller has computed guarded changed paths and selected paid-owner rehearsals
+  when: A future Developer edits the Candidate, runs readiness work, mutates it again, and attempts handoff
+  then: The rendered prompt requires immediate and final full formatting plus only exact controller-issued changed-file Credo, focused tests, and rehearsals; existing policy mechanically denies every catalog Make target and Stop while broader evasion remains a contractual prohibition; controller topology comparison rejects every out-of-guard change; only fresh loop-owned receipts admit Review
+  wrong_result: The Draft invents a Candidate-controlled enforcement hook, the prompt merely says test thoroughly, scoped commands are invented by the Developer, formatting or helper work widens guarded paths, rename/symlink/mode/ignored tracked changes escape comparison, or self-reported readiness overrides a path violation or becomes a gate receipt
+  verified_by: [check]
+  evidence: Prompt tables and real-hook controls distinguish mechanical from contractual denial; hardened Git-topology controls cover guarded formatting, unguarded topology/helper changes, Git config/ignore mutation, tracked/source-relevant ignored changes, and an admitted core.filemode=false fixture whose unguarded executable-bit-only change is rejected under forced core.filemode=true; handoff tests keep self-reported evidence non-authoritative.
+  proof:
+    offline:
+      - test/kogen/verification_policy_test.exs
+      - test/kogen/verification_ownership_lifecycle_test.exs
+      - test/kogen/developer_handoff_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: prompt rendering, gate denial, topology comparison, and receipt authority are deterministic controller boundaries"
+    affected_paths: [priv/kogen/prompts/developer.md, lib/kogen/build.ex, lib/kogen/build/guarded_paths.ex, lib/kogen/git.ex, lib/kogen/verification_policy.ex, test/kogen/**]
+- id: structured-deterministic-triage
+  given: A Build has one or more settled verification cycles with Candidate-bound target receipts, including failures before and after the first paid target
+  when: The controller records settlement and prepares bounded repair feedback
+  then: Tracking contains one signature for every settled cycle and the terminal stop reason contains the final failing signature with Candidate/cycle, target/cost, first failing command/test, bounded digest/head, before-paid and repeated status without changing lifecycle authority; in-turn Stop and outer-rework feedback are explicitly excluded
+  wrong_result: Error bodies grow without bound, unrelated failures collide, identical failures are not recognized, rehearsal results are treated as cycles, or the annotation skips/retries/passes work or consumes a different budget
+  verified_by: [check]
+  evidence: Multi-cycle offline lifecycle controls cover identical and distinct failures, check failure after a passing rehearsal, before/after-paid classification, bounded normalization, Candidate change, and invariance of receipts, counters, transitions, and feedback authority.
+  proof:
+    offline:
+      - test/kogen/scenario_tracking_test.exs
+      - test/kogen/verification_ownership_lifecycle_test.exs
+      - test/kogen/two_outer_resumptions_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: signatures are derived solely from retained deterministic receipts and make no provider semantic claim"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/failure_signature.ex, lib/kogen/build/tracking.ex, test/kogen/**]

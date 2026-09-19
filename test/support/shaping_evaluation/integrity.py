@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Offline integrity controls for the maintained five-session shaping evaluation."""
-import argparse, hashlib, json, re, shutil, tempfile
+import argparse, hashlib, json, os, re, shutil, tempfile
 from pathlib import Path
 
 CASES = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation",
@@ -303,6 +303,10 @@ def validate_public_receipt(run, receipt):
 
 
 def validate_manifest(root, manifest_path):
+    trace_path = os.environ.get("KOGEN_REHEARSAL_TRACE")
+    if trace_path:
+        with open(trace_path, "a", encoding="utf-8") as trace:
+            trace.write("Kogen.ShapingEvaluation.Integrity.validate_manifest\n")
     payload=json.loads(manifest_path.read_text())
     reject(set(payload) == {'schema_version','required_evidence'} and payload['schema_version'] == 1, 'manifest schema')
     entries=payload['required_evidence']; reject(isinstance(entries,list) and entries, 'required evidence is empty')

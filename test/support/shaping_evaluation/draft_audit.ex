@@ -1,10 +1,12 @@
 defmodule Kogen.ShapingDraftAudit do
   @moduledoc false
+  alias Kogen.Build.VerificationPlan
   import ExUnit.Assertions
 
   @cases ~w(csv-flawed csv-complete booking-flawed booking-complete csv-continuation)
 
   def audit!(root) do
+    VerificationPlan.trace("Kogen.ShapingDraftAudit.audit!")
     intents = Map.new(@cases, &{&1, read_intent!(root, &1)})
     seed = Path.join(root, "continuation-seed")
     first = read_intent_dir!(seed, "frozen continuation seed")

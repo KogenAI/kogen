@@ -1,0 +1,288 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "W_KcQgvBvEZZ8BJKP32QBx0s07DdsxNn",
+      "candidate_id": "c7e14bdb8036160b5bf6c3e80cc8b03266bdb5a7",
+      "developer_session_id": "01a0babb-17cb-7412-9623-31e4358fe6d0",
+      "number": 0,
+      "reviewer_session_id": "01a0bac0-6a89-7640-b681-b1c6a4bb5f7a",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "W_KcQgvBvEZZ8BJKP32QBx0s07DdsxNn",
+          "candidate_id": "c7e14bdb8036160b5bf6c3e80cc8b03266bdb5a7",
+          "exit_code": 0,
+          "finished_at": "2026-09-19T17:39:25Z",
+          "session_id": "01a0babb-17cb-7412-9623-31e4358fe6d0",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "9Te5H01ZE-9nbP8h6D5G7HAM_xIVchJC",
+      "candidate_id": "4cc9fd51c9fd9394e42989eba66e5d7028a7f5bf",
+      "developer_session_id": "01a0babb-17cb-7412-9623-31e4358fe6d0",
+      "number": 1,
+      "reviewer_session_id": "01a0bac6-e896-76f1-a139-5b15ab655750",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "9Te5H01ZE-9nbP8h6D5G7HAM_xIVchJC",
+          "candidate_id": "4cc9fd51c9fd9394e42989eba66e5d7028a7f5bf",
+          "exit_code": 0,
+          "finished_at": "2026-09-19T17:46:30Z",
+          "session_id": "01a0babb-17cb-7412-9623-31e4358fe6d0",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "UthB988w-2ld_FMEdv-_G0qGm9o30VKa",
+      "candidate_id": "b6fea28c803d8f3f7036dc7b5a887ecf1f958e22",
+      "developer_session_id": "01a0babb-17cb-7412-9623-31e4358fe6d0",
+      "number": 2,
+      "reviewer_session_id": "01a0bacb-dc76-7e11-87d5-78188cf27f23",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "UthB988w-2ld_FMEdv-_G0qGm9o30VKa",
+          "candidate_id": "b6fea28c803d8f3f7036dc7b5a887ecf1f958e22",
+          "exit_code": 0,
+          "finished_at": "2026-09-19T17:51:55Z",
+          "session_id": "01a0babb-17cb-7412-9623-31e4358fe6d0",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "cDBZM4SpaNJYRAQNsTIWj4vZ",
+  "candidate_id": "b6fea28c803d8f3f7036dc7b5a887ecf1f958e22",
+  "developer_session_id": "01a0babb-17cb-7412-9623-31e4358fe6d0",
+  "findings": [
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "validate_declared_targets/2 extracts Makefile targets and rejects catalog sets that differ.",
+            "path": "lib/kogen/build/verification_plan.ex"
+          }
+        ],
+        "reason": "Closed: catalog admission now rejects missing or extra declared Make targets before Build dispatch.",
+        "reviewer_session": "01a0bac6-e896-76f1-a139-5b15ab655750",
+        "status": "closed",
+        "verdict": "rework"
+      },
+      "id": "F1",
+      "origin": {
+        "attempt_token": "W_KcQgvBvEZZ8BJKP32QBx0s07DdsxNn",
+        "candidate_id": "c7e14bdb8036160b5bf6c3e80cc8b03266bdb5a7",
+        "evidence": [
+          {
+            "locator": "Target-catalog contract requires exhaustive declared-target validation before Developer dispatch.",
+            "path": ".kogen/intents/approved/rehearsed-verification-plan/INTENT.md"
+          },
+          {
+            "locator": "load/1 validates only decoded catalog entries and never inventories Makefile targets.",
+            "path": "lib/kogen/build/verification_plan.ex"
+          }
+        ],
+        "reason": "Build admission does not compare the catalog to declared Make targets. A missing catalog entry for a declared verification target can therefore pass before Developer dispatch, contrary to the required exhaustive source-owned catalog.",
+        "reviewer_session": "01a0bac0-6a89-7640-b681-b1c6a4bb5f7a",
+        "scenario_ids": [
+          "cost-ordered-plan"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "candidate_id/0 applies mode_aware/1 to temporary-index Git operations; the mode-only fixture asserts a changed Candidate id with core.filemode=false.",
+            "path": "test/kogen/git_test.exs"
+          }
+        ],
+        "reason": "Closed: Candidate identity and guarded topology Git queries force core.filemode=true, and the executable-bit regression control covers a false repository setting.",
+        "reviewer_session": "01a0bac6-e896-76f1-a139-5b15ab655750",
+        "status": "closed",
+        "verdict": "rework"
+      },
+      "id": "F2",
+      "origin": {
+        "attempt_token": "W_KcQgvBvEZZ8BJKP32QBx0s07DdsxNn",
+        "candidate_id": "c7e14bdb8036160b5bf6c3e80cc8b03266bdb5a7",
+        "evidence": [
+          {
+            "locator": "Guarded-path contract requires Candidate identity and comparison Git operations to force core.filemode=true.",
+            "path": ".kogen/intents/approved/rehearsed-verification-plan/INTENT.md"
+          },
+          {
+            "locator": "candidate_id/0 invokes git add -A and git write-tree without a core.filemode=true override; bound-input and publication checks reuse this identity.",
+            "path": "lib/kogen/git.ex"
+          }
+        ],
+        "reason": "Candidate identity is not forced to observe executable-bit changes when repository core.filemode=false. A mode-only mutation after the post-Developer guarded-path check can evade candidate-bound verification/review comparison.",
+        "reviewer_session": "01a0bac0-6a89-7640-b681-b1c6a4bb5f7a",
+        "scenario_ids": [
+          "bounded-developer-readiness"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "valid_reason?/3 accepts the cataloged cold-offline target with its exact target-bound rationale grammar.",
+            "path": "lib/kogen/build/verification_plan.ex"
+          },
+          {
+            "locator": "test \"proof admission accepts the cataloged cold-offline boundary\" verifies check-first selection and no provider rehearsal.",
+            "path": "test/kogen/selective_verification_targets_test.exs"
+          }
+        ],
+        "reason": "Closed: cold-offline is admitted as the contract-supported non-provider additional target and retains the required target-bound reason grammar.",
+        "reviewer_session": "01a0bacb-dc76-7e11-87d5-78188cf27f23",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F3",
+      "origin": {
+        "attempt_token": "9Te5H01ZE-9nbP8h6D5G7HAM_xIVchJC",
+        "candidate_id": "4cc9fd51c9fd9394e42989eba66e5d7028a7f5bf",
+        "evidence": [
+          {
+            "locator": "The proof contract permits cold-offline as the one narrow additional target alongside provider-backed targets.",
+            "path": ".kogen/intents/approved/rehearsed-verification-plan/INTENT.md"
+          },
+          {
+            "locator": "valid_reason?/3 rejects every non-provider-backed target, making a cold-offline proof map inadmissible.",
+            "path": "lib/kogen/build/verification_plan.ex"
+          }
+        ],
+        "reason": "Build cannot admit a scenario selecting the explicitly supported cold-offline target: non-none paid reasons are accepted only when the catalog entry is provider_backed. Implement the contract-valid cold-offline rationale/classification and add a focused admission/ordering control.",
+        "reviewer_session": "01a0bac6-e896-76f1-a139-5b15ab655750",
+        "scenario_ids": [
+          "cost-ordered-plan"
+        ]
+      },
+      "status": "closed"
+    }
+  ],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 9200212,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/cDBZM4SpaNJYRAQNsTIWj4vZ/record.json",
+    "schema_version": 1,
+    "sha256": "1a75849c287caff21943a2f303bd4ae65ab9ec86bbe9cb8ff026b6963fc62be2"
+  },
+  "intent": {
+    "id": "01a0b99a-796e-7b0b-ac19-ff2af78199c2",
+    "slug": "rehearsed-verification-plan",
+    "title": "Install rehearsed verification plans"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0bacb-dc76-7e11-87d5-78188cf27f23"
+  },
+  "risks": [
+    {
+      "id": "rehearsal-fidelity"
+    },
+    {
+      "id": "readiness-authority-leak"
+    },
+    {
+      "id": "mutable-plan-self-judgment"
+    },
+    {
+      "id": "readiness-enforcement-gap"
+    },
+    {
+      "id": "runtime-signature-evidence"
+    }
+  ],
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "load/1 inventories declared Make targets; build/4 validates proof maps and produces deduplicated dependency/rank/name ordering.",
+          "path": "lib/kogen/build/verification_plan.ex"
+        },
+        {
+          "locator": "Catalog declares check plus the six narrow boundaries with ranks, dependencies, owners, and provider status.",
+          "path": "priv/kogen/verification_targets.yaml"
+        },
+        {
+          "locator": "Bound attempt check receipt is passed with exit_code 0 and candidate binding.",
+          "path": ".kogen/runtime/scenario-tracking/cDBZM4SpaNJYRAQNsTIWj4vZ/record.json"
+        }
+      ],
+      "id": "cost-ordered-plan",
+      "reason": "Satisfied: the source catalog is exhaustive against Make targets, proof maps are admitted fail-closed, and future-build plans are check-first and deterministically ordered rather than scenario ordered.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Every provider-backed catalog target has one rehearsal with paired fixtures, entry points, and trace assertions.",
+          "path": "priv/kogen/verification_targets.yaml"
+        },
+        {
+          "locator": "Catalog-driven rehearsal runner executes each provider-backed rehearsal and rejects absent owners, fixtures, entry points, unsafe commands, and missing runtime traces.",
+          "path": "scripts/check/rehearsals.exs"
+        },
+        {
+          "locator": "Recorded passed check output includes all five provider-denied rehearsals.",
+          "path": ".kogen/runtime/scenario-tracking/cDBZM4SpaNJYRAQNsTIWj4vZ/record.json"
+        }
+      ],
+      "id": "rehearsal-parity",
+      "reason": "Satisfied: provider-backed targets are cataloged with executable provider-denied rehearsals and the offline control validates shared-route traces and paired fixtures.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Developer template requires controller-issued format/Credo/focused-test/rehearsal commands and explicitly preserves their non-authoritative status.",
+          "path": "priv/kogen/prompts/developer.md"
+        },
+        {
+          "locator": "capture/1 freezes topology and check/2 rejects changes outside guards using core.filemode=true Git queries.",
+          "path": "lib/kogen/build/guarded_paths.ex"
+        },
+        {
+          "locator": "test \"rejects an unguarded executable-bit change when core.filemode is false\" covers the mode-only escape control.",
+          "path": "test/kogen/guarded_paths_test.exs"
+        }
+      ],
+      "id": "bounded-developer-readiness",
+      "reason": "Satisfied: readiness instructions are exact and explicitly non-authoritative, while post-Developer guarded-path conformance rejects unguarded topology changes including executable-mode changes.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "derive/4 produces bounded receipt-derived Candidate/cycle/target/cost/error signatures with before-paid and repeat classification.",
+          "path": "lib/kogen/build/failure_signature.ex"
+        },
+        {
+          "locator": "settle_verification/3 records a signature for each settled cycle and terminal_exhaustion_reason/2 includes the final signature.",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "Passed bound verification state records the single settled check cycle separately from ordinary tracking data.",
+          "path": ".kogen/runtime/scenario-tracking/cDBZM4SpaNJYRAQNsTIWj4vZ/verification/attempt-2-UthB988w-2ld_FMEdv-_G0qGm9o30VKa/state.json"
+        }
+      ],
+      "id": "structured-deterministic-triage",
+      "reason": "Satisfied: settled-cycle signatures are bounded, receipt-derived tracking annotations and do not participate in verification or rework authority.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

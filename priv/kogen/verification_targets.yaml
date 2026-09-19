@@ -1,0 +1,111 @@
+# Controller-owned verification target catalog. Keep this file exhaustive with
+# the Make targets below; there is intentionally no aggregate live target.
+targets:
+  - name: check
+    cost_class: offline-complete
+    rank: 0
+    dependencies: []
+    provider_backed: false
+    owner: scripts/check/offline.py
+
+  - name: cold-offline
+    cost_class: offline-cold
+    rank: 50
+    dependencies: [check]
+    provider_backed: false
+    owner: test/kogen/cold_offline_test.exs
+
+  - name: live-general
+    cost_class: provider-focused
+    rank: 100
+    dependencies: [check]
+    provider_backed: true
+    owner: test/kogen/live_test.exs
+    rehearsal:
+      id: rehearse-live-general
+      command: mix test --exclude live test/kogen/scenario_semantic_test.exs
+      shared_entrypoints:
+        - Kogen.ScenarioSemantic.write_fixture!
+        - Kogen.ScenarioSemantic.review_response!
+      correct_fixture: test/support/scenario_semantic.ex:corrected
+      wrong_fixture: test/support/scenario_semantic.ex:incomplete
+      trace_assertions:
+        - Kogen.ScenarioSemantic.write_fixture!
+        - Kogen.ScenarioSemantic.review_response!
+
+  - name: live-shaping-quality
+    cost_class: provider-evaluation
+    rank: 200
+    dependencies: [check]
+    provider_backed: true
+    owner: test/kogen/live_shaping_evaluation_test.exs
+    rehearsal:
+      id: rehearse-live-shaping-quality
+      command: mix test --exclude live test/kogen/shaping_evaluation_test.exs
+      shared_entrypoints:
+        - Kogen.ShapingDraftAudit.audit!
+        - Kogen.ShapingEvaluation.Integrity.validate_manifest
+      correct_fixture: test/support/shaping_evaluation/compact-fixtures-v2
+      wrong_fixture: test/support/shaping_evaluation/semantic-counterexamples.json
+      trace_assertions:
+        - Kogen.ShapingDraftAudit.audit!
+        - Kogen.ShapingEvaluation.Integrity.validate_manifest
+
+  - name: live-native
+    cost_class: provider-native
+    rank: 300
+    dependencies: [check]
+    provider_backed: true
+    owner:
+      - test/kogen/codex_native_live_test.exs
+      - test/kogen/codex_compatibility_test.exs
+      - test/kogen/native_helper_live_test.exs
+    rehearsal:
+      id: rehearse-live-native
+      command: mix test --exclude live test/kogen/codex_compatibility_preparation_test.exs test/kogen/live_native_receipt_audit_test.exs
+      shared_entrypoints:
+        - Kogen.Codex.Compatibility.prepare_fixture
+        - Kogen.LiveNativeReceiptAudit.audit!
+      correct_fixture: test/support/native_helper_fixture.ex
+      wrong_fixture: test/support/live_native_receipt_audit.ex
+      trace_assertions:
+        - Kogen.Codex.Compatibility.prepare_fixture
+        - Kogen.LiveNativeReceiptAudit.audit!
+
+  - name: live-reviewer-rework
+    cost_class: provider-lifecycle
+    rank: 400
+    dependencies: [check]
+    provider_backed: true
+    owner: test/kogen/live_reviewer_rework_test.exs
+    rehearsal:
+      id: rehearse-live-reviewer-rework
+      command: mix test --exclude live test/kogen/two_outer_resumptions_test.exs
+      shared_entrypoints:
+        - Kogen.Build.Contract.handoff
+        - Kogen.Build.Contract.verdict
+      correct_fixture: test/support/live_rework_audit.ex
+      wrong_fixture: test/support/live_rework_audit.ex:missing-companion
+      trace_assertions:
+        - Kogen.Build.Contract.handoff
+        - Kogen.Build.Contract.verdict
+
+  - name: live-shape-to-build
+    cost_class: provider-end-to-end
+    rank: 500
+    dependencies: [check]
+    provider_backed: true
+    owner: test/kogen/live_shape_to_build_test.exs
+    rehearsal:
+      id: rehearse-live-shape-to-build
+      command: mix test --exclude live test/kogen/verification_ownership_lifecycle_test.exs
+      shared_entrypoints:
+        - Kogen.Build.Contract.load
+        - Kogen.Build.Verification.initialize
+        - Kogen.Build.Verification.settle
+      correct_fixture: test/support/isolated_case.ex
+      wrong_fixture: test/support/live_rework_audit.ex:single-capture
+      trace_assertions:
+        - Kogen.Build.Contract.load
+        - Kogen.Build.Verification.initialize
+        - Kogen.Build.Verification.settle

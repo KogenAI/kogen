@@ -112,6 +112,7 @@ defmodule Kogen.CommitProvenanceTest do
     end
 
     File.write!(Path.join(dest, "Makefile"), @makefile)
+    Kogen.VerificationFixture.install!(dest)
 
     File.write!(
       Path.join(dest, ".gitignore"),
@@ -153,6 +154,7 @@ defmodule Kogen.CommitProvenanceTest do
     File.mkdir_p!(intent_dir)
     File.write!(Path.join(intent_dir, "intent.yaml"), intent_yaml)
     File.write!(Path.join(intent_dir, "scenarios.yaml"), scenarios_yaml)
+    Kogen.VerificationFixture.install!(dest)
     File.write!(Path.join(intent_dir, "evidence.md"), "original evidence\n")
   end
 

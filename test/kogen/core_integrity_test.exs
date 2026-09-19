@@ -123,7 +123,7 @@ defmodule Kogen.CoreIntegrityTest do
     fixture = setup_fixture!(:late_dangling_complete)
 
     assert {:error, reason} = run_build_with_fixture_harness(fixture)
-    assert reason =~ "Complete Intent already exists: #{@slug}"
+    assert reason =~ "Candidate changed paths outside Approved guards"
     assert reason =~ "tracking record:"
 
     assert {:ok, stat} = File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
@@ -213,6 +213,7 @@ defmodule Kogen.CoreIntegrityTest do
     File.mkdir_p!(approved)
     File.write!(Path.join(approved, "intent.yaml"), @intent_yaml)
     File.write!(Path.join(approved, "scenarios.yaml"), @scenarios_yaml)
+    Kogen.VerificationFixture.install!(dir)
 
     harness = Path.join(dir, "fake-codex")
 

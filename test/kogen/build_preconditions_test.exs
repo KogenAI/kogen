@@ -35,6 +35,11 @@ defmodule Kogen.BuildPreconditionsTest do
     wrong_result: the harness gets invoked
     verified_by: [check]
     evidence: fixture only
+    proof:
+      offline: [test/kogen/focused_fixture_test.exs]
+      paid_target: none
+      paid_reason: "offline-sufficient: precondition fixture never dispatches"
+      affected_paths: [lib/**]
   """
 
   @config_yaml """
@@ -80,6 +85,20 @@ defmodule Kogen.BuildPreconditionsTest do
           {"Makefile", @makefile},
           {".gitignore", @gitignore},
           {".kogen/config.yaml", @config_yaml},
+          {"test/kogen/focused_fixture_test.exs", "# focused fixture\n"},
+          {"priv/kogen/verification_targets.yaml",
+           Jason.encode!(%{
+             "targets" => [
+               %{
+                 "name" => "check",
+                 "cost_class" => "offline",
+                 "rank" => 0,
+                 "dependencies" => [],
+                 "provider_backed" => false,
+                 "owner" => "fixture"
+               }
+             ]
+           })},
           {".kogen/intents/approved/#{@slug}/intent.yaml", @valid_intent},
           {".kogen/intents/approved/#{@slug}/scenarios.yaml", @scenarios_yaml}
         ],

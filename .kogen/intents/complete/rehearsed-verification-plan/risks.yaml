@@ -1,0 +1,24 @@
+- id: rehearsal-fidelity
+  scenario_ids: [rehearsal-parity]
+  description: A passing fake can reduce cost while failing to reproduce the production owner's preparation, selection, schema, consumer, audit, or post-transport settlement. Source-derived identity, shared entry-point controls, paired wrong/correct outputs, and historical disconfirming fixtures must fail when any deterministic segment diverges; offline success never claims real provider access.
+- id: readiness-authority-leak
+  scenario_ids: [bounded-developer-readiness, structured-deterministic-triage]
+  description: Developer readiness claims or descriptive triage could gain gate, retry, skip, Review-admission, or publication authority. Lifecycle controls keep self-reported claims and controller signatures separate from loop-owned receipts and prove counters and transitions unchanged.
+- id: mutable-plan-self-judgment
+  scenario_ids: [cost-ordered-plan, bounded-developer-readiness]
+  description: Candidate changes to target metadata or readiness policy could judge the installing Candidate or silently change an in-flight plan. The current Build uses the old controller; future Builds validate and freeze plan data before launch, recheck bound inputs, and exercise Candidate metadata mutation as a failing control without changing `.codex/hooks/**`.
+- id: readiness-enforcement-gap
+  scenario_ids: [bounded-developer-readiness]
+  description: Current Candidate-resident hooks cannot safely enforce the new scoped command allowlist. This Intent retains exact prompted obligations, bounded Make/Stop denial for every catalog target, and controller-owned post-turn guarded-path enforcement; it adds no structured readiness observations or false immutable-enforcement claim.
+- id: runtime-signature-evidence
+  scenario_ids: [structured-deterministic-triage]
+  description: Verification plans and failure signatures create ignored per-Build runtime data that must remain distinct from authoritative target receipts.
+  ownership:
+    - paths: Controller-owned verification-plan and failure-signature entries in the existing per-Build scenario-tracking runtime tree.
+      when_exists: Refuse conflicting plan identity; preserve historical records; each attempt uses its own bound entries.
+      owner_after_creation: The Build controller owns the frozen plan and derived signature immediately; ordinary Developer evidence remains a non-authoritative claim.
+      owner_during_operation: The controller alone freezes plan identity, derives signatures from settled receipts, and appends tracking.
+      permitted_mutation: Append settled-cycle signatures and bounded feedback references; never rewrite receipts, prior cycles, Approved inputs, budgets, or historical records.
+      validation: Bind entries to Build, attempt, Candidate, cycle, catalog identity and settled receipt; validate bounded size, receipt separation, and chronology.
+      git_state: Raw plan/signature data remain ignored runtime evidence; only existing concise Complete rules may summarize accepted results.
+      upgrade_behavior: New Builds use fresh plans; historical signatures are never upgraded, copied forward, or treated as gate proof.

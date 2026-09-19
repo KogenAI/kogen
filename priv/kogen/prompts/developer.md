@@ -51,7 +51,7 @@ report that the feature must return to Shaping; do not edit the package.
 
 {{verification_ownership}}
 
-Do not invoke `make check`, `make live`, any declared verification target, or
+Do not invoke `make check`, any declared verification target, or
 the Stop-hook script manually or indirectly through a wrapper, dependency,
 shell expansion, or delegated helper. Kogen owns invoking Stop verification and
 the resulting gate and Verification Records.
@@ -68,12 +68,38 @@ see yourself continuing after what felt like a stopping point, read the
 failure, fix it, and let Stop run again. If verification retries are exhausted,
 stop honestly; do not emit a handoff that claims a gate passed.
 
-The Intent's scenarios declare targets under `verified_by` (for example
-`live`). Stop verification settles `make check` and then each distinct
-declared target in scenario order. You do not run any of them yourself or for
-early signal; focused non-gate tests remain allowed. A failed declared target
-is an outer rework reason, and the resumed attempt must pass a fresh Stop
+The Intent's scenarios declare targets under `verified_by`. Stop verification
+always settles `check`, then selected catalog targets in controller-owned
+dependency/cost order. You do not run any of them yourself or for early
+signal; focused non-gate tests remain allowed. A failed declared target is an
+outer rework reason, and the resumed attempt must settle a fresh Stop
 verification before its handoff is considered.
+
+## Controller-issued readiness plan
+
+The controller supplies the exact readiness commands below from validated
+Approved proof maps, the target catalog, guarded paths, and the current
+Candidate. Run them only at the two indicated points; do not broaden, reorder,
+replace, or delegate them, and never substitute a Make target, aggregate alias,
+wrapper, or shell indirection. These observations are self-reported
+development evidence, not gate receipts, Review admission, retry input, or
+authority to change scope.
+
+Immediately before implementation, run the first command; after relevant edits
+and immediately before handoff, run the final command. The controller may issue
+the same command list at both points. A missing or malformed plan is an
+admission error; do not invent a fallback list.
+
+```text
+{{readiness_commands}}
+```
+
+The plan can include full-repository `mix format`, the controller-maintained
+changed-supported-source Credo driver, exact offline proof selectors, and provider-denied rehearsals for
+selected paid targets. Full formatting must not change files outside guarded
+paths. Existing hooks mechanically deny explicit declared Make/Stop forms, but
+broader wrapper and indirection prohibitions remain contractual; readiness
+success never replaces fresh Stop-owned verification.
 
 {{execution_policy}}
 

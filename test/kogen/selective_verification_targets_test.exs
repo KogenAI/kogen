@@ -1,14 +1,14 @@
 defmodule Kogen.SelectiveVerificationTargetsTest do
   use ExUnit.Case, async: true
 
+  alias Kogen.Build.VerificationPlan
   alias Kogen.Check
 
   @root Path.expand("../..", __DIR__)
   @owners %{
-    "live" => %{
-      "test/kogen/live_shape_to_build_test.exs" => 2,
-      "test/kogen/live_test.exs" => 1
-    },
+    "live-shape-to-build" => %{"test/kogen/live_shape_to_build_test.exs" => 1},
+    "live-reviewer-rework" => %{"test/kogen/live_reviewer_rework_test.exs" => 1},
+    "live-general" => %{"test/kogen/live_test.exs" => 1},
     "live-shaping-quality" => %{"test/kogen/live_shaping_evaluation_test.exs" => 1},
     "live-native" => %{
       "test/kogen/codex_native_live_test.exs" => 2,
@@ -24,8 +24,9 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
     declared = Check.declared_targets(makefile_path)
 
     assert Enum.all?(["check" | Map.keys(@owners)], &MapSet.member?(declared, &1))
+    refute MapSet.member?(declared, "live")
     assert :ok = Check.validate_targets(Map.keys(@owners), makefile_path)
-    refute recipe(makefile, "live") =~ "mix test --only live\n"
+    refute makefile =~ ~r/^live:\s*$/m
 
     selected =
       for {target, owners} <- @owners,
@@ -37,10 +38,10 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
         {path, target}
       end
 
-    assert length(selected) == 7
+    assert length(selected) == 8
 
     assert selected |> Enum.map(&elem(&1, 0)) |> Enum.frequencies() |> Map.values() ==
-             List.duplicate(1, 7)
+             List.duplicate(1, 8)
 
     all_live_owners =
       Path.wildcard(Path.join(@root, "test/kogen/*_test.exs"))
@@ -58,13 +59,91 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
     assert recipe(makefile, "check") =~ "scripts/check/offline.py"
     assert recipe(makefile, "cold-offline") =~ "test/kogen/cold_offline_test.exs"
 
-    for target <- ["live", "live-shaping-quality", "live-native"] do
+    for target <- [
+          "live-shape-to-build",
+          "live-reviewer-rework",
+          "live-general",
+          "live-shaping-quality",
+          "live-native"
+        ] do
       refute recipe(makefile, target) =~ "cold_offline_test.exs"
     end
 
-    refute recipe(makefile, "live") =~ "live_shaping_evaluation_test.exs"
-    refute recipe(makefile, "live") =~ "native_live_test.exs"
-    refute recipe(makefile, "live") =~ "native_helper_live_test.exs"
+    refute recipe(makefile, "live-shape-to-build") =~ "live_test.exs"
+    refute recipe(makefile, "live-general") =~ "live_shape_to_build_test.exs"
+    refute recipe(makefile, "live-native") =~ "live_shape_to_build_test.exs"
+  end
+
+  test "tracked catalog is exhaustive, ordered, and has executable rehearsals" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+
+    assert catalog.ordered_targets == [
+             "check",
+             "cold-offline",
+             "live-general",
+             "live-shaping-quality",
+             "live-native",
+             "live-reviewer-rework",
+             "live-shape-to-build"
+           ]
+
+    declared =
+      Check.declared_targets(Path.join(@root, "Makefile"))
+      |> MapSet.delete(".PHONY")
+
+    assert MapSet.equal?(declared, MapSet.new(catalog.ordered_targets))
+
+    for entry <- catalog.entries do
+      assert entry["owner"]
+
+      if entry["provider_backed"] do
+        rehearsal = entry["rehearsal"]
+        assert rehearsal["id"]
+        assert rehearsal["command"] =~ "mix test"
+        assert rehearsal["shared_entrypoints"] != []
+        assert rehearsal["trace_assertions"] != []
+      end
+    end
+  end
+
+  test "catalog admission rejects a declared Make target without metadata" do
+    root =
+      Path.join(System.tmp_dir!(), "kogen-target-catalog-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(Path.join(root, "priv/kogen"))
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    File.cp!(
+      Path.join(@root, "priv/kogen/verification_targets.yaml"),
+      Path.join(root, "priv/kogen/verification_targets.yaml")
+    )
+
+    makefile = File.read!(Path.join(@root, "Makefile")) <> "\nmissing-metadata:\n\t@true\n"
+    File.write!(Path.join(root, "Makefile"), makefile)
+
+    assert {:error, reason} = VerificationPlan.load(root)
+    assert reason =~ "does not match declared Make targets"
+  end
+
+  test "proof admission accepts the cataloged cold-offline boundary" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+
+    scenario = %{
+      "verified_by" => ["check", "cold-offline"],
+      "proof" => %{
+        "offline" => ["test/kogen/selective_verification_targets_test.exs"],
+        "paid_target" => "cold-offline",
+        "paid_reason" =>
+          "provider-required: cold-offline; observation: isolated empty-cache execution; offline-limit: focused warm-cache tests cannot establish cold dependency setup",
+        "affected_paths" => ["test/kogen/selective_verification_targets_test.exs"]
+      }
+    }
+
+    assert {:ok, plan} =
+             VerificationPlan.build([scenario], ["test/kogen/**"], catalog, @root)
+
+    assert plan.targets == ["check", "cold-offline"]
+    assert plan.rehearsals == []
   end
 
   test "selection guide chooses targets by behavior and explains paid evidence" do
@@ -72,7 +151,7 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
 
     cases = [
       {"Offline sufficiency", "check only"},
-      {"configured-default lifecycle", "`live`"},
+      {"configured-default lifecycle", "`live-shape-to-build`"},
       {"Shaping quality", "`live-shaping-quality`"},
       {"authenticated native boundary", "`live-native`"},
       {"Cold-cache behavior", "`cold-offline`"},

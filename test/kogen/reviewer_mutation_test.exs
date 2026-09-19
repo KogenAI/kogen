@@ -99,6 +99,7 @@ defmodule Kogen.ReviewerMutationTest do
     File.mkdir_p!(intent_dir)
     File.write!(Path.join(intent_dir, "intent.yaml"), @intent_yaml)
     File.write!(Path.join(intent_dir, "scenarios.yaml"), @scenarios_yaml)
+    Kogen.VerificationFixture.install!(dest)
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},

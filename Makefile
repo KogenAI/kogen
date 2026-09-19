@@ -1,12 +1,20 @@
-.PHONY: check live live-shaping-quality live-native cold-offline
+.PHONY: check live-shape-to-build live-reviewer-rework live-general live-shaping-quality live-native cold-offline
 
 # Complete offline gate. The normal Stop hook owns invoking this target.
 check:
 	/usr/bin/time -p python3 scripts/check/offline.py
 
-# Provider-backed integrated acceptance for the configured default role combination.
-live:
-	mix test --only live test/kogen/live_shape_to_build_test.exs test/kogen/live_test.exs
+# Provider-backed connected Shape-to-Build lifecycle.
+live-shape-to-build:
+	mix test --only live test/kogen/live_shape_to_build_test.exs
+
+# Provider-backed same-Developer Reviewer rework lifecycle.
+live-reviewer-rework:
+	mix test --only live test/kogen/live_reviewer_rework_test.exs
+
+# Provider-backed independent semantic Reviewer challenge.
+live-general:
+	mix test --only live test/kogen/live_test.exs
 
 # Provider-backed maintained public Shaping evaluation and evidence manifest.
 live-shaping-quality:

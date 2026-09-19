@@ -5,14 +5,16 @@ defmodule Kogen.Build.Contract do
   Build state machine owns all transitions and persistence.
   """
 
+  alias Kogen.Build.VerificationPlan
   alias Kogen.Check
 
   @approved_base ".kogen/intents/approved"
-  @scenario_fields ~w(id given when then wrong_result verified_by evidence)
+  @scenario_fields ~w(id given when then wrong_result verified_by evidence proof)
   @ownership_fields ~w(paths when_exists owner_after_creation owner_during_operation permitted_mutation validation git_state upgrade_behavior)
 
   @spec load(String.t()) :: {:ok, map()} | {:error, String.t()}
   def load(slug_or_path) when is_binary(slug_or_path) do
+    VerificationPlan.trace("Kogen.Build.Contract.load")
     path = approved_path(slug_or_path)
     scenarios_path = Path.join(path, "scenarios.yaml")
 
@@ -39,6 +41,8 @@ defmodule Kogen.Build.Contract do
   @spec handoff(String.t(), map(), String.t(), [map()]) :: {:ok, map()} | {:error, String.t()}
   def handoff(text, contract, attempt_token, open_findings)
       when is_binary(text) and is_binary(attempt_token) do
+    VerificationPlan.trace("Kogen.Build.Contract.handoff")
+
     with {:ok, message} <- json_map(text, "Developer handoff"),
          :ok <-
            require_exact_keys(
@@ -71,6 +75,8 @@ defmodule Kogen.Build.Contract do
         open_findings
       )
       when is_map(message) and is_binary(candidate_id) and is_binary(attempt_token) do
+    VerificationPlan.trace("Kogen.Build.Contract.verdict")
+
     with {:ok, message} <- stringify_map(message),
          :ok <-
            require_exact_keys(
@@ -143,12 +149,24 @@ defmodule Kogen.Build.Contract do
   end
 
   defp scenario?(scenario) when is_map(scenario) do
-    Enum.all?(@scenario_fields -- ["verified_by"], &nonblank?(scenario[&1])) and
+    Enum.all?(@scenario_fields -- ["verified_by", "proof"], &nonblank?(scenario[&1])) and
       is_list(scenario["verified_by"]) and scenario["verified_by"] != [] and
-      Enum.all?(scenario["verified_by"], &nonblank?/1)
+      Enum.all?(scenario["verified_by"], &nonblank?/1) and proof?(scenario["proof"])
   end
 
   defp scenario?(_), do: false
+
+  defp proof?(proof) when is_map(proof) do
+    Map.keys(proof) |> Enum.sort() ==
+      Enum.sort(~w(offline paid_target paid_reason affected_paths)) and
+      is_list(proof["offline"]) and proof["offline"] != [] and
+      Enum.all?(proof["offline"], &nonblank?/1) and nonblank?(proof["paid_target"]) and
+      nonblank?(proof["paid_reason"]) and is_list(proof["affected_paths"]) and
+      proof["affected_paths"] != [] and Enum.all?(proof["affected_paths"], &nonblank?/1)
+  end
+
+  defp proof?(_), do: false
+
   defp scenario_ids(scenarios), do: Enum.map(scenarios, & &1["id"])
 
   defp validate_risks(risks, ids) do

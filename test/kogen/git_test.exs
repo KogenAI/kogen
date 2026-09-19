@@ -13,6 +13,7 @@ defmodule Kogen.GitTest do
     parameterize: [
       %{scenario: :untracked_candidate},
       %{scenario: :ignored_candidate},
+      %{scenario: :mode_only_candidate},
       %{scenario: :commit_with_trailers},
       %{scenario: :commit_staged_with_trailers},
       %{scenario: :allowed_commit_diff},
@@ -61,6 +62,22 @@ defmodule Kogen.GitTest do
       assert {:ok, id_after} = Git.candidate_id()
 
       assert id_after == id_before
+    end)
+  end
+
+  defp run_scenario(:mode_only_candidate) do
+    dir = tmp_repo!()
+
+    File.cd!(dir, fn ->
+      File.write!("script.sh", "#!/bin/sh\n")
+      File.chmod!("script.sh", 0o644)
+      commit_all!("add script")
+      git!(["config", "core.filemode", "false"])
+
+      assert {:ok, before} = Git.candidate_id()
+      File.chmod!("script.sh", 0o755)
+      assert {:ok, after_mode_change} = Git.candidate_id()
+      assert after_mode_change != before
     end)
   end
 

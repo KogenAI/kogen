@@ -117,6 +117,7 @@ defmodule Kogen.CodexPublicTasksTest do
   defp fixture!(label) do
     fixture = Kogen.CompiledFixture.create!(@source, label)
     File.write!(Path.join(fixture, ".gitignore"), "\n/managed/\n/native.jsonl\n", [:append])
+    Kogen.VerificationFixture.install!(fixture)
     fixture
   end
 
@@ -232,7 +233,14 @@ defmodule Kogen.CodexPublicTasksTest do
       wrong_result: Build launches a provider
       verified_by: [check]
       evidence: offline public-task fixture
+      proof:
+        offline: [test/kogen/focused_fixture_test.exs]
+        paid_target: none
+        paid_reason: "offline-sufficient: public task fixture observes admission failure"
+        affected_paths: [lib/**]
     """)
+
+    Kogen.VerificationFixture.install!(fixture)
 
     slug
   end

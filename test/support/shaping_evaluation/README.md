@@ -31,7 +31,7 @@ fresh sessions without replacing those five established cases.
 ## Development and refresh
 
 Developers may run the focused offline tests named in
-`test/kogen/shaping_evaluation_test.exs`; Kogen owns the declared `check` and `live`
+`test/kogen/shaping_evaluation_test.exs`; Kogen owns the declared `check` and narrow catalog
 targets. Offline rehearsal fakes only the external native executor boundary while
 using actual fixture preparation, public launch commands, YAML parsing, reply routing,
 completed-turn capture, collection, manifest forwarding, and integrity consumers.

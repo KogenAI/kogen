@@ -1,0 +1,65 @@
+id: 01a0b99a-796e-7b0b-ac19-ff2af78199c2
+slug: rehearsed-verification-plan
+title: Install rehearsed verification plans
+status: approved
+shaped_against:
+  branch: main
+  head: 05133eff307ece43794d2cfc02e227ee119970eb
+shaping:
+  harness: codex
+  model: gpt-5.6-sol
+  effort: low
+  started: "2026-09-19T12:18:23.730477Z"
+shaping_continuations:
+  - harness: codex
+    model: gpt-5.6-sol
+    effort: low
+    started: "2026-09-19T16:13:58Z"
+    checkout:
+      branch: main
+      head: 05133eff307ece43794d2cfc02e227ee119970eb
+  - harness: codex
+    model: gpt-5.6-sol
+    effort: low
+    started: "2026-09-19T17:24:20Z"
+    checkout:
+      branch: main
+      head: 05133eff307ece43794d2cfc02e227ee119970eb
+may_change_guarded_paths:
+  - Makefile
+  - README.md
+  - lib/kogen/build.ex
+  - lib/kogen/build/contract.ex
+  - lib/kogen/build/failure_signature.ex
+  - lib/kogen/build/guarded_paths.ex
+  - lib/kogen/build/verification_plan.ex
+  - lib/kogen/build/verification.ex
+  - lib/kogen/build/tracking.ex
+  - lib/kogen/check.ex
+  - lib/kogen/git.ex
+  - lib/kogen/verification_policy.ex
+  - lib/kogen/codex/compatibility.ex
+  - lib/kogen/codex/environment.ex
+  - priv/kogen/prompts/developer.md
+  - priv/kogen/prompts/shaping.md
+  - priv/kogen/verification_targets.yaml
+  - lib/mix/tasks/kogen.shape.ex
+  - scripts/check/**
+  - test/kogen/**
+  - test/support/**
+  - workflows/codex-runtime-upgrade.md
+historical_approval:
+  approved_at: "2026-09-19T13:20:26Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message: approve"
+  statement: approval.md
+historical_second_approval:
+  approved_at: "2026-09-19T16:17:28Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message after failed-Build reshaping: approve"
+  statement: approval.md
+approval:
+  approved_at: "2026-09-19T17:31:41Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message after core.filemode repair: I approve"
+  statement: approval.md

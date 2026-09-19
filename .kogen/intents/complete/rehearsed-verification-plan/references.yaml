@@ -1,0 +1,21 @@
+- id: supplied-feature-brief
+  path: .kogen/runtime/shaping-followups/SHAPE_REHEARSED_VERIFICATION_PLAN.md
+  relevance: Normative supplied problem, outcome, constraints, scenarios, audit requirement, and stopping point for this Draft.
+- id: recovery-roadmap
+  path: .kogen/runtime/shaping-followups/ROADMAP.md
+  relevance: Places rehearsed verification before controller-owned verification and excludes later authority, containment, worktree, and Jev work.
+- id: recovery-evidence
+  path: .kogen/runtime/shaping-followups/EVIDENCE.md
+  relevance: Retains the three-cycle live-native/live failures and clean-main diagnosis that motivate rehearsals and bounded repeated signatures.
+- id: failed-build-record
+  path: .kogen/runtime/scenario-tracking/zK-lmvM1EEuwjp2XPOSJJBGB/record.json
+  relevance: Exact local source for cycle receipts, target order, Candidate changes, retries, and terminal failure signatures.
+- id: first-build-failure
+  path: .kogen/runtime/scenario-tracking/-lFrRPmLU9Y2eHwLcCY9CBVR/record.json
+  relevance: Exhausted implementation record whose four open findings drove this repair; the dirty Candidate is preserved and is not proof.
+- id: second-build-failure
+  path: .kogen/runtime/scenario-tracking/jJ-fpjeqdTh0FBVmI27hGzg3/record.json
+  relevance: Exhausted second implementation record; all prior findings closed and the remaining core.filemode finding drove the current Draft repair.
+- id: selective-verification-targets
+  path: .kogen/intents/complete/selective-verification-targets/
+  relevance: Historical target ownership and paid/offline distinctions superseded for maintained consumers by the Shaper-selected no-aggregate six-boundary catalog.

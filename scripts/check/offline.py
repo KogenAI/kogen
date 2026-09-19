@@ -87,6 +87,9 @@ def main():
             result = next((code for code in results if code), 0)
             if result:
                 return result
+        result = run_stage(["mix", "run", "scripts/check/rehearsals.exs"], root, env)
+        if result:
+            return result
         return 0
     finally:
         support.cleanup()

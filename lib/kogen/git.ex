@@ -94,6 +94,24 @@ defmodule Kogen.Git do
     status_porcelain!() == ""
   end
 
+  @doc "Repository-relative tracked and untracked paths changed from HEAD."
+  def changed_paths(root \\ File.cwd!()) do
+    with {tracked, 0} <-
+           System.cmd("git", mode_aware(["diff", "--name-only", "-z", "HEAD", "--"]),
+             cd: root,
+             stderr_to_stdout: true
+           ),
+         {untracked, 0} <-
+           System.cmd("git", mode_aware(["ls-files", "--others", "--exclude-standard", "-z"]),
+             cd: root,
+             stderr_to_stdout: true
+           ) do
+      {:ok, String.split(tracked <> untracked, <<0>>, trim: true) |> Enum.uniq() |> Enum.sort()}
+    else
+      {output, _} -> {:error, "could not derive changed paths: #{String.trim(output)}"}
+    end
+  end
+
   @doc "The attached branch name, or `{:error, reason}` on a detached HEAD."
   def current_branch do
     case System.cmd("git", ["symbolic-ref", "--short", "-q", "HEAD"], stderr_to_stdout: true) do
@@ -117,10 +135,17 @@ defmodule Kogen.Git do
 
       try do
         with {index_path, 0} <-
-               System.cmd("git", ["rev-parse", "--git-path", "index"], stderr_to_stdout: true),
+               System.cmd("git", mode_aware(["rev-parse", "--git-path", "index"]),
+                 stderr_to_stdout: true
+               ),
              :ok <- File.cp(String.trim(index_path), tmp_index),
-             {_out, 0} <- System.cmd("git", ["add", "-A"], env: env, stderr_to_stdout: true),
-             {tree, 0} <- System.cmd("git", ["write-tree"], env: env, stderr_to_stdout: true) do
+             {_out, 0} <-
+               System.cmd("git", mode_aware(["add", "-A"]),
+                 env: env,
+                 stderr_to_stdout: true
+               ),
+             {tree, 0} <-
+               System.cmd("git", mode_aware(["write-tree"]), env: env, stderr_to_stdout: true) do
           {:ok, String.trim(tree)}
         else
           {:error, reason} -> {:error, "could not copy Git index: #{:file.format_error(reason)}"}
@@ -137,8 +162,9 @@ defmodule Kogen.Git do
           :ok | {:error, term()}
   def stage_and_verify_candidate(candidate_tree, allowed_prefixes) do
     with :ok <- reject_candidate_blinding_index_flags(),
-         {_out, 0} <- System.cmd("git", ["add", "-A"], stderr_to_stdout: true),
-         {staged_tree, 0} <- System.cmd("git", ["write-tree"], stderr_to_stdout: true) do
+         {_out, 0} <- System.cmd("git", mode_aware(["add", "-A"]), stderr_to_stdout: true),
+         {staged_tree, 0} <-
+           System.cmd("git", mode_aware(["write-tree"]), stderr_to_stdout: true) do
       assert_tree_diff_only(candidate_tree, String.trim(staged_tree), allowed_prefixes)
     else
       {:error, _reason} = error -> error
@@ -150,7 +176,8 @@ defmodule Kogen.Git do
   @spec assert_staged_tree(String.t()) :: :ok | {:error, String.t()}
   def assert_staged_tree(expected_tree) do
     with :ok <- reject_candidate_blinding_index_flags(),
-         {staged_tree, 0} <- System.cmd("git", ["write-tree"], stderr_to_stdout: true) do
+         {staged_tree, 0} <-
+           System.cmd("git", mode_aware(["write-tree"]), stderr_to_stdout: true) do
       assert_expected_tree("staged", expected_tree, String.trim(staged_tree))
     else
       {:error, _reason} = error -> error
@@ -256,7 +283,9 @@ defmodule Kogen.Git do
   end
 
   defp assert_tree_diff_only(left, right, allowed_prefixes) do
-    case System.cmd("git", ["diff", "--name-only", "-z", left, right], stderr_to_stdout: true) do
+    case System.cmd("git", mode_aware(["diff", "--name-only", "-z", left, right]),
+           stderr_to_stdout: true
+         ) do
       {out, 0} ->
         bad =
           out
@@ -271,6 +300,8 @@ defmodule Kogen.Git do
   end
 
   defp allowed_path?(path, prefixes), do: Enum.any?(prefixes, &String.starts_with?(path, &1))
+
+  defp mode_aware(args), do: ["-c", "core.filemode=true" | args]
 
   defp assert_expected_tree(_location, expected_tree, expected_tree), do: :ok
 

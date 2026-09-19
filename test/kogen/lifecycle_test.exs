@@ -26,6 +26,7 @@ defmodule Kogen.LifecycleTest do
 
     install_distinct_profiles!(dest)
     install_target_evidence_fixture!(dest)
+    Kogen.VerificationFixture.install!(dest)
     init_fixture_git!(dest)
     original_parent = git!(dest, ["rev-parse", "HEAD"])
     {intent_id, original_intent, original_scenarios} = shape_and_explicitly_approve!(dest)

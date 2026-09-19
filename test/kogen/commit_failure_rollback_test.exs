@@ -193,6 +193,7 @@ defmodule Kogen.CommitFailureRollbackTest do
     File.write!(Path.join(intent_dir, "build-evidence-1.md"), "also supplied")
     File.write!(Path.join(intent_dir, "scenario-tracking.json"), "user tracking zero\n")
     File.write!(Path.join(intent_dir, "scenario-tracking-1.json"), "user tracking one\n")
+    Kogen.VerificationFixture.install!(dest)
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},

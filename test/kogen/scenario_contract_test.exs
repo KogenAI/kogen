@@ -10,7 +10,13 @@ defmodule Kogen.ScenarioContractTest do
     "then" => "it is retained",
     "wrong_result" => "it is lost",
     "verified_by" => ["check"],
-    "evidence" => "a focused test"
+    "evidence" => "a focused test",
+    "proof" => %{
+      "offline" => ["test/kogen/scenario_contract_test.exs"],
+      "paid_target" => "none",
+      "paid_reason" => "offline-sufficient: fixture contract validation",
+      "affected_paths" => ["test/kogen/scenario_contract_test.exs"]
+    }
   }
 
   @contract %{
@@ -32,6 +38,11 @@ defmodule Kogen.ScenarioContractTest do
     wrong_result: it is lost
     verified_by: [check]
     evidence: a focused test
+    proof:
+      offline: [test/kogen/scenario_contract_test.exs]
+      paid_target: none
+      paid_reason: "offline-sufficient: fixture contract validation"
+      affected_paths: [test/kogen/scenario_contract_test.exs]
   """
 
   test "loads strict scenarios and optional risks without changing their YAML text" do

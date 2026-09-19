@@ -16,7 +16,16 @@ defmodule Kogen.Build do
       Kogen.Codex
     ]
 
-  alias Kogen.Build.{Contract, DeveloperHandoff, TargetEvidence, Tracking, Verification}
+  alias Kogen.Build.{
+    Contract,
+    DeveloperHandoff,
+    FailureSignature,
+    GuardedPaths,
+    TargetEvidence,
+    Tracking,
+    Verification,
+    VerificationPlan
+  }
 
   @lock_path ".kogen/build.lock"
   @approved_base ".kogen/intents/approved"
@@ -178,7 +187,11 @@ defmodule Kogen.Build do
   defp do_build(slug, intent, approved_entries) do
     with {:ok, config} <- Kogen.Intent.read_config(),
          {:ok, contract} <- Contract.load(Path.join(@approved_base, slug)),
-         :ok <- Kogen.VerificationPolicy.preflight(contract.targets),
+         {:ok, catalog} <- VerificationPlan.load(),
+         {:ok, plan} <-
+           VerificationPlan.build(contract.scenarios, intent.may_change_guarded_paths, catalog),
+         :ok <- Kogen.VerificationPolicy.preflight(catalog.ordered_targets),
+         {:ok, guarded_snapshot} <- GuardedPaths.capture(),
          {:ok, runtime} <- Kogen.Codex.open(config),
          {:ok, tracking} <- Tracking.new(intent, contract, approved_entries) do
       ctx = %{
@@ -186,8 +199,11 @@ defmodule Kogen.Build do
         intent: intent,
         config: config,
         contract: contract,
-        targets: contract.targets,
-        policy_environment: Kogen.VerificationPolicy.environment(contract.targets),
+        targets: plan.targets,
+        plan: plan,
+        catalog: catalog,
+        guarded_snapshot: guarded_snapshot,
+        policy_environment: Kogen.VerificationPolicy.environment(catalog.ordered_targets),
         approved_entries: approved_entries,
         tracking: tracking,
         token: nil,
@@ -231,7 +247,8 @@ defmodule Kogen.Build do
                  token,
                  number,
                  ctx.targets,
-                 ctx.config.verification_retries
+                 ctx.config.verification_retries,
+                 ctx.plan
                ) do
           ctx =
             Map.merge(ctx, %{
@@ -265,7 +282,8 @@ defmodule Kogen.Build do
 
   defp launch_attempt(ctx, session_id, number, reason) do
     with :ok <- inputs_unchanged(ctx),
-         :ok <- Kogen.VerificationPolicy.preflight(ctx.targets),
+         true <- VerificationPlan.unchanged?(ctx.catalog),
+         :ok <- Kogen.VerificationPolicy.preflight(ctx.catalog.ordered_targets),
          :ok <- Kogen.Check.invalidate!(),
          {:ok, schema} <-
            DeveloperHandoff.schema(ctx.contract, ctx.token, Tracking.open_findings(ctx.tracking)) do
@@ -295,6 +313,7 @@ defmodule Kogen.Build do
 
       receive_developer(ctx, session_id, number, result)
     else
+      false -> stop(ctx, "verification target catalog changed after admission")
       {:error, reason} -> stop(ctx, reason)
     end
   end
@@ -359,15 +378,19 @@ defmodule Kogen.Build do
     end
   end
 
-  defp receive_developer(ctx, _expected, _number, {:error, reason}),
-    do: stop(ctx, "harness failure during Developer turn: #{inspect(reason)}")
+  defp receive_developer(ctx, _expected, _number, {:error, reason}) do
+    case post_developer_inputs_unchanged(ctx) do
+      :ok -> stop(ctx, "harness failure during Developer turn: #{inspect(reason)}")
+      {:error, guard_reason} -> stop(ctx, guard_reason)
+    end
+  end
 
   defp settle(ctx, session_id, number, message, invocation) do
     # No controller update happens during the Developer turn. Preserve that
     # exact version before recording settlement or the parsed handoff.
     developer_tracking = ctx.tracking
 
-    with :ok <- inputs_unchanged(ctx),
+    with :ok <- post_developer_inputs_unchanged(ctx),
          {:ok, candidate_id} <- Kogen.Git.candidate_id(),
          {:ok, ctx, verification} <- settle_verification(ctx, session_id, candidate_id),
          receipts = normalized_final_receipts(verification),
@@ -383,7 +406,7 @@ defmodule Kogen.Build do
       if verification["terminal_state"] == "passed" do
         validate_handoff(ctx, candidate_id, session_id, number, message, developer_tracking)
       else
-        stop(ctx, terminal_exhaustion_reason(verification))
+        stop(ctx, terminal_exhaustion_reason(ctx, verification))
       end
     else
       {:error, reason} -> stop(ctx, reason)
@@ -393,7 +416,7 @@ defmodule Kogen.Build do
   defp settle_structure_error(ctx, session_id, number, kind, evidence) do
     reason = "Developer handoff structure invalid: #{structure_diagnostic(kind)}"
 
-    with :ok <- inputs_unchanged(ctx),
+    with :ok <- post_developer_inputs_unchanged(ctx),
          {:ok, candidate_id} <- Kogen.Git.candidate_id(),
          {:ok, ctx, verification} <- settle_verification(ctx, session_id, candidate_id),
          receipts = normalized_final_receipts(verification),
@@ -407,7 +430,7 @@ defmodule Kogen.Build do
              "targets" => Enum.drop(receipts, 1)
            }) do
       if verification["terminal_state"] == "exhausted" do
-        stop(ctx, terminal_exhaustion_reason(verification))
+        stop(ctx, terminal_exhaustion_reason(ctx, verification))
       else
         rework(ctx, session_id, number, reason)
       end
@@ -420,7 +443,7 @@ defmodule Kogen.Build do
     session_id = evidence[:session_id]
 
     candidate =
-      case inputs_unchanged(ctx) do
+      case post_developer_inputs_unchanged(ctx) do
         :ok -> Kogen.Git.candidate_id()
         {:error, _reason} = error -> error
       end
@@ -429,7 +452,7 @@ defmodule Kogen.Build do
       {:ok, candidate_id} ->
         case settle_verification(ctx, session_id, candidate_id) do
           {:ok, ctx, %{"terminal_state" => "exhausted"} = verification} ->
-            stop(ctx, terminal_exhaustion_reason(verification), %{
+            stop(ctx, terminal_exhaustion_reason(ctx, verification), %{
               "developer_session_id" => session_id,
               "developer_invocation" => invocation_evidence(evidence)
             })
@@ -454,13 +477,38 @@ defmodule Kogen.Build do
     end
   end
 
+  defp post_developer_inputs_unchanged(ctx) do
+    with :ok <- inputs_unchanged(ctx),
+         true <- VerificationPlan.unchanged?(ctx.catalog),
+         :ok <- VerificationPlan.handoff_valid?(ctx.plan, ctx.catalog),
+         :ok <- GuardedPaths.check(ctx.guarded_snapshot, ctx.intent.may_change_guarded_paths) do
+      :ok
+    else
+      false -> {:error, "verification target catalog changed after admission"}
+      {:error, _} = error -> error
+    end
+  end
+
   defp settle_verification(ctx, session_id, candidate_id) do
     case Verification.settle(ctx.execution, session_id, candidate_id) do
       {:ok, execution, verification} ->
         ctx = %{ctx | execution: execution}
 
+        previous =
+          ctx.tracking.record["attempts"]
+          |> Enum.flat_map(&Map.get(&1, "failure_signatures", []))
+
+        signatures =
+          verification["cycles"]
+          |> Enum.map_reduce(previous, fn cycle, seen ->
+            signature = FailureSignature.derive(cycle, execution.context, ctx.catalog, seen)
+            {signature, seen ++ [signature]}
+          end)
+          |> elem(0)
+
         case record_attempt(ctx, %{
                "verification" => verification,
+               "failure_signatures" => signatures,
                "verification_state" => %{
                  "path" => Path.relative_to(execution.state_path, File.cwd!()),
                  "sha256" => Base.encode16(:crypto.hash(:sha256, execution.state_bytes)),
@@ -476,11 +524,17 @@ defmodule Kogen.Build do
     end
   end
 
-  defp terminal_exhaustion_reason(verification) do
+  defp terminal_exhaustion_reason(ctx, verification) do
     cycle = List.last(verification["cycles"])
     target = cycle["failed_target"] || List.last(cycle["receipts"])["target"]
 
-    "verification retries exhausted after cycle #{cycle["sequence"]} failed at make #{target}"
+    signature =
+      ctx.tracking.record["attempts"]
+      |> List.last()
+      |> Map.get("failure_signatures", [])
+      |> List.last()
+
+    "verification retries exhausted after cycle #{cycle["sequence"]} failed at make #{target}; signature: #{Jason.encode!(signature)}"
   end
 
   defp normalized_final_receipts(verification) do
@@ -1136,7 +1190,42 @@ defmodule Kogen.Build do
   end
 
   @doc false
+  # credo:disable-for-lines:45 Credo.Check.Refactor.Nesting
   def render_developer_prompt(intent, _scenarios_text, targets, config) do
+    readiness =
+      case VerificationPlan.load() do
+        {:ok, catalog} ->
+          # Rendering remains fail-closed in the real Build, which already
+          # validated the same Approved proof data. This public helper retains
+          # its historical arity for prompt fixture consumers.
+          case Contract.load(Path.join(@approved_base, intent.slug)) do
+            {:ok, contract} ->
+              case VerificationPlan.build(
+                     contract.scenarios,
+                     intent.may_change_guarded_paths,
+                     catalog
+                   ) do
+                {:ok, plan} ->
+                  changed =
+                    case Kogen.Git.changed_paths() do
+                      {:ok, paths} -> paths
+                      _ -> []
+                    end
+
+                  VerificationPlan.readiness_commands(plan, changed)
+
+                _ ->
+                  []
+              end
+
+            _ ->
+              []
+          end
+
+        _ ->
+          []
+      end
+
     "priv/kogen/prompts/developer.md"
     |> File.read!()
     |> String.replace("{{intent_title}}", intent.title)
@@ -1150,6 +1239,7 @@ defmodule Kogen.Build do
       "{{verification_ownership}}",
       Kogen.VerificationPolicy.developer_instruction(targets)
     )
+    |> String.replace("{{readiness_commands}}", Enum.join(readiness, "\n"))
     |> String.replace("{{execution_policy}}", Kogen.ExecutionPolicy.render(config, "developer"))
   end
 

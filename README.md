@@ -64,11 +64,19 @@ Start Build on a clean branch with a commit at HEAD. Kogen implements the approv
 - **Build** implements, checks, independently reviews, and reworks when necessary.
 - **Commit** records the checked and accepted implementation of one Intent.
 
-The Stop hook owns the complete verification settlement: `make check`, followed by each distinct target declared by the Approved Intent in first scenario occurrence order. `verification_retries` bounds failed Stop verification retries inside the same Developer conversation; those retries do not consume the outer allowance. A settled verification failure, invalid Developer handoff, failed declared target, or Review finding uses one outer resumption of the same Developer, when allowance remains, and a resumed attempt must settle a fresh Stop verification before handoff or Review. Handoff validation follows a passed Stop verification; a missing or invalid handoff never overrides a failed or exhausted verification. An exhausted verification or outer allowance stops the Build rather than claiming success.
+The Stop hook owns the complete verification settlement: `make check`, followed by selected narrow catalog targets in dependency-valid cost order. `verification_retries` bounds failed Stop verification retries inside the same Developer conversation; those retries do not consume the outer allowance. A settled verification failure, invalid Developer handoff, failed declared target, or Review finding uses one outer resumption of the same Developer, when allowance remains, and a resumed attempt must settle a fresh Stop verification before handoff or Review. Handoff validation follows a passed Stop verification; a missing or invalid handoff never overrides a failed or exhausted verification. An exhausted verification or outer allowance stops the Build rather than claiming success.
 
-Developers and their delegated helpers must not run `make check`, `make live`, any target declared by the selected Intent, or `.codex/hooks/check.sh`, including for early signal; focused non-gate tests remain allowed. A tracked PreToolUse hook blocks the explicit Make, command-list, and Stop-script forms before Bash dispatch. This bounded guard deliberately does not inspect indirect execution through non-gate Make dependencies, wrappers, shell expansion, `sh -c`, or later stdin; the Developer contract still forbids those routes. Existing configurations using legacy outer-resumption naming remain transition inputs; new documentation uses `verification_retries` for Stop verification and the outer allowance for Developer rework.
+Developers and their delegated helpers must not run `make check`, any target declared by the selected Intent, or `.codex/hooks/check.sh`, including for early signal; focused non-gate tests remain allowed. A tracked PreToolUse hook blocks the explicit Make, command-list, and Stop-script forms before Bash dispatch. This bounded guard deliberately does not inspect indirect execution through non-gate Make dependencies, wrappers, shell expansion, `sh -c`, or later stdin; the Developer contract still forbids those routes. Existing configurations using legacy outer-resumption naming remain transition inputs; new documentation uses `verification_retries` for Stop verification and the outer allowance for Developer rework.
 
-Every scenario's `verified_by` is a YAML list of Make target names, such as `[check]`. The real lifecycle fixture has a bounded check target; it never invokes the full live suite recursively.
+Every scenario's `verified_by` is a YAML list of Make target names, such as
+`[check]`, and its required `proof` map names focused offline selectors,
+optionally one causally justified narrow paid target, and all affected
+implementation/assertion/fixture paths. Use `offline-sufficient: ...` when no
+paid evidence is needed; provider-backed proof must name the exact
+provider-only observation and why offline rehearsal cannot establish it.
+`verified_by` is `[check]` plus that one selected target, never an automatic
+all-paid selection. The real lifecycle fixture has a bounded check target; it
+never invokes the full live suite recursively.
 
 An opted-in isolated test can require forwarding of target evidence with
 `target_evidence: :required`. A declared target may emit one
@@ -172,7 +180,7 @@ measurements remain workload-specific. Its
 [receipt controls](test/kogen/native_helper_fixture_test.exs) reject missing or
 contradictory native evidence. The existing live lifecycle also audits actual
 [root session profiles](test/support/root_profile_audit.ex). Regenerate evidence
-through the Build-owned `live` target using the prerequisites below; inspect the
+through the Build-owned provider-backed targets using the prerequisites below; inspect the
 new run’s retained receipts and raw snapshots on failure, without substituting
 a prior passing run.
 
@@ -200,24 +208,22 @@ additional targets by affected behavior and preservation risk, not by edited fil
 | Target | Select when | Classification and prerequisites |
 | --- | --- | --- |
 | `check` | Offline sufficiency covers the behavior and failure controls; a later Intent may use check only. | Offline; installed dependencies and the tools below. Provider dispatch is denied. |
-| `live` | The configured-default lifecycle, public Shape/approval/Build flow, Developer resume, Stop settlement, Review, rework, or shared lifecycle fixtures can change. | Provider-backed; network, configured Codex authentication, `expect`, and `rsync`. |
+| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The corresponding configured-default lifecycle or Review workflow can change. | Provider-backed; network, configured Codex authentication, `expect`, and `rsync`. |
 | `live-shaping-quality` | Shaping prompts, continuation, Draft quality, evaluation cases, prerequisites, or its evidence manifest can change. | Provider-backed; network, configured Codex authentication, and maintained evaluation sources. |
 | `live-native` | The authenticated native boundary, managed runtime/login/discovery, compatibility runner, helper routing, profiles, or native receipts can change. | Provider-backed; installed pinned Codex runtime and configured authentication. |
 | `cold-offline` | Cold-cache behavior, the offline recipe, dependency copying, toolchain setup, containment, or cold cleanup can change. | Offline, though expensive; installed dependency sources, `rsync`, and the offline toolchain. Provider dispatch is denied. |
 
-Use check only when deterministic offline evidence is sufficient. Select `live` for
-configured-default lifecycle preservation even if no live test file changed, and do
-not select it merely because such a file was edited. Select the specialized target
-whenever its workflow can materially change. For multiple affected boundaries, select
-each relevant target in scenario order; there is no aggregate target. Every
-provider-backed selection needs a causal reason in scenario evidence. Offline rehearsal
-proves recipes and evidence consumers, not real provider access.
+Use check only when deterministic offline evidence is sufficient. Select one
+narrow paid target per scenario only when its proof names a provider-only
+observation that offline rehearsal cannot establish. The controller deduplicates
+and orders selected targets by catalog dependency and cost rank, not scenario
+order, and there is no aggregate target. Multiple scenarios may collectively
+select multiple boundaries. Offline rehearsal proves recipes and evidence
+consumers, not real provider access. For multiple affected boundaries, select
+each relevant target through its own scenario proof and causal reason.
 
-The initial target split is a bootstrap exception: its Approved scenarios could name
-only the previously declared `check` and `live` targets. Later Intents may name the
-focused targets because Build still validates every target against the Makefile before
-Developer launch. Stop alone runs `check` first and then distinct selected targets in
-first-occurrence order, preserving Candidate/session/attempt binding, verification
+Build validates every selected target against the catalog and Makefile before
+Developer launch. Stop preserves Candidate/session/attempt binding, verification
 retries, required artifacts, receipts, and the fresh-Review boundary.
 
 Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
@@ -250,9 +256,11 @@ When upgrading Kogen's pinned Codex runtime, follow the [Codex runtime upgrade w
 
 ```sh
 make check                 # Complete provider-denied offline gate
-make live                  # Configured-default integrated lifecycle acceptance
-make live-shaping-quality  # Provider-backed maintained Shaping evaluation
-make live-native           # Provider-backed native/runtime/helper compatibility
+make live-shape-to-build  # Connected Shape-to-Build lifecycle acceptance
+make live-reviewer-rework # Build-only Reviewer rework acceptance
+make live-general         # Independent semantic Reviewer acceptance
+make live-shaping-quality # Provider-backed maintained Shaping evaluation
+make live-native          # Provider-backed native/runtime/helper compatibility
 make cold-offline          # Offline gate from an empty private build cache
 ```
 
@@ -276,8 +284,8 @@ Dependency fixtures reject destination collisions and materialize linked sources
 instead of retaining writable aliases to installed dependencies.
 See [the check workflow](scripts/check/README.md) for maintenance and timing conditions.
 
-`make live` is the configured-default integrated route, not a complete suite. It
-requires network access, Codex authentication, `expect`, and `rsync`; creates disposable
+The provider-backed lifecycle targets are narrow owner routes, not a complete suite. They
+require network access, Codex authentication, `expect`, and `rsync`; create disposable
 fixtures; and retains evidence under `.kogen/runtime/`. It covers real failed-check
 correction, exact Developer resume, reviewer-directed rework, and fresh independent
 Review. Separately selected `make cold-offline` owns the empty-cache offline run. Set
