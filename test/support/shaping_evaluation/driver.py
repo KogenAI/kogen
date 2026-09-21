@@ -46,6 +46,11 @@ COMPACT_FIXTURES = HERE / "compact-fixtures-v2"
 CASES = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "csv-continuation",
          "stateful-flawed", "stateful-complete")
 MAX_SECONDS = 600
+# Each provider session retains its independent ten-minute deadline. The suite
+# supervisor additionally owns fixture setup, the concurrency barrier, result
+# collection, and cleanup, so its deadline must include bounded orchestration
+# slack rather than expiring at the same instant as the children.
+SUITE_SECONDS = MAX_SECONDS + 120
 PARSER_CODE_PATHS_ENV = "KOGEN_SHAPING_EVALUATION_ELIXIR_CODE_PATHS"
 PARSER_OUTPUT_LIMIT = 2_000
 
@@ -460,8 +465,12 @@ def rollout_contains(path, text):
         return False
 
 def booking_reachability_trigger(text, _root):
-    return ".tmp/calendar-run-17/connection.json" in text and any(
-        word in text.lower() for word in ("missing", "absent", "unavailable", "deleted"))
+    lowered = text.lower()
+    unavailable = any(word in lowered for word in ("missing", "absent", "unavailable", "deleted"))
+    exact_fixture = ".tmp/calendar-run-17/connection.json" in text
+    semantic_fixture = "historical" in lowered and "temporary" in lowered and any(
+        word in lowered for word in ("receipt", "run", "connection"))
+    return unavailable and (exact_fixture or semantic_fixture)
 
 def read_draft(fixture, slug):
     root=draft_dir(fixture,slug)
@@ -1094,7 +1103,7 @@ def run_suite():
             log=(RUNTIME/f"{case}-output.log").open("w")
             logs[case]=log
             children[case]=subprocess.Popen(["python3", "-B", str(Path(__file__).resolve()), case], env=env, stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)
-        deadline = monotonic_now() + MAX_SECONDS
+        deadline = monotonic_now() + SUITE_SECONDS
         while pending and failure is None:
             if monotonic_now() >= deadline:
                 raise TimeoutError("parallel cases exceeded the existing case deadline")

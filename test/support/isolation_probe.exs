@@ -127,4 +127,16 @@ defmodule Kogen.IsolationProbe do
     IO.puts("exited before readiness marker")
     System.halt(19)
   end
+
+  test "abrupt zero before ExUnit completion" do
+    System.halt(0)
+  end
+
+  test "forged completion output" do
+    IO.puts(
+      ~s(KOGEN_ISOLATED_COMPLETION\t{"schema_version":1,"completed":true,"cleanup":"passed"})
+    )
+
+    assert true
+  end
 end

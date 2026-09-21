@@ -183,6 +183,33 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
     assert Enum.any?(attempts, &(&1["signal"] == "SIGKILL" and &1["target"] == "group"))
   end
 
+  test "PTY cleanup drains and hangs up a flooding child without waiting for timeout" do
+    root = temporary_root("pty-flood")
+    on_exit(fn -> File.rm_rf!(root) end)
+    receipt = Path.join(root, "receipt.json")
+
+    program =
+      "import sys\nchunk='x'*65536\nwhile True:\n sys.stdout.write(chunk)\n sys.stdout.flush()"
+
+    started = System.monotonic_time(:millisecond)
+
+    {_, status} =
+      System.cmd(
+        python(),
+        [pty_driver(), python(), receipt, "PTY_MARKER", "-c", program],
+        stderr_to_stdout: true,
+        env: [
+          {"KOGEN_PTY_EXECUTION_TIMEOUT", "0.2"},
+          {"KOGEN_PTY_CLEANUP_TIMEOUT", "5"}
+        ]
+      )
+
+    elapsed = System.monotonic_time(:millisecond) - started
+    assert status == 1
+    assert elapsed < 3_000
+    assert %{"timed_out" => true, "cleanup" => %{"ok" => true}} = receipt!(receipt)
+  end
+
   test "bounded wrapper kills an ignored turn and its descendant within its own process group" do
     root = temporary_root("bounded-descendant")
     on_exit(fn -> File.rm_rf!(root) end)

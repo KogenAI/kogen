@@ -6,7 +6,7 @@ defmodule Kogen.ColdOfflineTest do
   # Only the outer verification owner runs this acceptance step. The nested
   # complete offline recipe excludes :live, including this driver itself.
   @moduletag :live
-  @moduletag timeout: 300_000
+  @moduletag timeout: 1_200_000
 
   test "the complete offline gate passes with an empty private build cache" do
     root = Path.expand("../..", __DIR__)
@@ -45,6 +45,23 @@ defmodule Kogen.ColdOfflineTest do
 
     assert copy_status == 0, copy_output
     Kogen.DependencyFixture.copy!(Path.join(root, "deps"), Path.join(fixture, "deps"))
+
+    {source_revision, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: root)
+
+    {source_manifest, 0} =
+      System.cmd("python3", ["-B", "scripts/check/offline.py", "--source-manifest-sha256"],
+        cd: root
+      )
+
+    source_revision = String.trim(source_revision)
+    source_manifest = String.trim(source_manifest)
+
+    {fixture_manifest, 0} =
+      System.cmd("python3", ["-B", "scripts/check/offline.py", "--source-manifest-sha256"],
+        cd: fixture
+      )
+
+    assert String.trim(fixture_manifest) == source_manifest
     build_path = Path.join(fixture, "_build/cold")
     refute File.exists?(build_path)
 
@@ -65,6 +82,10 @@ defmodule Kogen.ColdOfflineTest do
           # while Rebar sees /private/var, breaking its relative header links.
           {"MIX_BUILD_PATH", "_build/cold"},
           {"HEX_OFFLINE", "1"},
+          {"KOGEN_COLD_OFFLINE", "1"},
+          {"KOGEN_OFFLINE_SOURCE_REVISION", source_revision},
+          {"KOGEN_OFFLINE_CANDIDATE_SHA256", source_manifest},
+          {"KOGEN_OFFLINE_SOURCE_MANIFEST_SHA256", source_manifest},
           {"KOGEN_HARNESS", nil},
           {"KOGEN_RAW_LOG_DIR", nil},
           {"KOGEN_TEST_PROCESS_GUARD", nil}

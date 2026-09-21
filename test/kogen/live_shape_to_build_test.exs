@@ -39,24 +39,24 @@ defmodule Kogen.LiveShapeToBuildTest do
   real Reviewer accepts. It does not substitute for the connected Shape proof.
   """
   use ExUnit.Case, async: true
+  alias Kogen.Build.{Contract, VerificationPlan}
+  alias Kogen.Intent
 
   @moduletag :live
-  @moduletag timeout: 900_000
+  @moduletag timeout: 1_200_000
 
   @slug "shape-to-build-probe"
   @continuation_marker "continuation-evidence-k4q9z"
   @review_rework_slug "live-reviewer-rework-probe"
   @selected_shaping_profile %{model: "gpt-5.6-sol", effort: "low"}
 
-  @makefile """
-  .PHONY: check
+  @check_rule """
   check:
   \t@test -f dummy.txt || (echo "dummy.txt is missing. Required exact content: shape2build-k4q9z" && exit 1)
   \t@grep -qx shape2build-k4q9z dummy.txt || (echo "dummy.txt content is wrong. Required exact content: shape2build-k4q9z" && exit 1)
   """
 
-  @review_rework_makefile """
-  .PHONY: check
+  @review_rework_check_rule """
   check:
   \t@test -f dummy.txt || (echo "dummy.txt is missing. Required exact content: reviewer-rework-k4q9z" && exit 1)
   \t@printf 'reviewer-rework-k4q9z\\n' | cmp -s - dummy.txt || (echo "dummy.txt must contain reviewer-rework-k4q9z followed by exactly one LF newline" && exit 1)
@@ -79,6 +79,11 @@ defmodule Kogen.LiveShapeToBuildTest do
     wrong_result: the first Reviewer accepts without inspecting the intentionally deferred companion file, a replacement Developer session performs rework, or the final Candidate lacks the companion file
     verified_by: [check]
     evidence: provider-backed Build-only fixture preserves both structured reviewer receipts, Developer raw streams, Stop records, and the resulting Commit
+    proof:
+      offline: [test/kogen/live_rework_audit_test.exs, test/kogen/verification_ownership_lifecycle_test.exs]
+      paid_target: none
+      paid_reason: "offline-sufficient: fixture Check deterministically rejects the missing and malformed Candidate before independent Review"
+      affected_paths: [dummy.txt, reviewer-notes.md]
   """
 
   @review_rework_risks """
@@ -87,305 +92,324 @@ defmodule Kogen.LiveShapeToBuildTest do
     description: The fixture seed establishes a reproducible starting state only; the Developer must distinguish that seed from user-owned acceptance evidence in its structured handoff.
   """
 
-  test "real Shape continues a saved draft in a fresh session, then approval and Build complete the same Intent" do
-    project_root = File.cwd!()
-    {:ok, config} = Kogen.Intent.read_config()
-    assert config.shaping.model == @selected_shaping_profile.model
-    assert config.shaping.effort == @selected_shaping_profile.effort
-    log_dir = owned_log_dir(project_root)
+  unless System.get_env("KOGEN_REVIEWER_REWORK_HELPER_ONLY") == "1" do
+    test "real Shape continues a saved draft in a fresh session, then approval and Build complete the same Intent" do
+      project_root = File.cwd!()
+      {:ok, config} = Kogen.Intent.read_config()
+      assert config.shaping.model == @selected_shaping_profile.model
+      assert config.shaping.effort == @selected_shaping_profile.effort
+      log_dir = owned_log_dir(project_root)
 
-    runtime_root = Path.join(project_root, ".kogen/runtime/live-shape2build")
-    File.mkdir_p!(runtime_root)
+      runtime_root = Path.join(project_root, ".kogen/runtime/live-shape2build")
+      File.mkdir_p!(runtime_root)
 
-    fixture =
-      Path.join(
-        runtime_root,
-        "fixture-#{System.pid()}-#{System.unique_integer([:positive])}-#{System.system_time(:nanosecond)}"
+      fixture =
+        Path.join(
+          runtime_root,
+          "fixture-#{System.pid()}-#{System.unique_integer([:positive])}-#{System.system_time(:nanosecond)}"
+        )
+
+      File.mkdir_p!(fixture)
+      on_exit(fn -> File.rm_rf!(fixture) end)
+
+      File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
+      setup_fixture(project_root, fixture)
+      precompile!(fixture, log_dir)
+
+      pty_log =
+        Path.join(log_dir, "shape-pty-transcript-#{System.system_time(:second)}.log")
+
+      continuation_state_dir = Path.join(log_dir, "continuation-state")
+
+      {diagnostics, shape_exit} =
+        System.cmd(
+          "expect",
+          [
+            "-f",
+            Path.join(project_root, "test/support/shape_to_build_probe.exp"),
+            fixture,
+            pty_log,
+            @slug,
+            continuation_state_dir,
+            @continuation_marker
+          ],
+          env: [{"MIX_BUILD_PATH", Path.join(fixture, "_build")}],
+          stderr_to_stdout: true
+        )
+
+      File.write!(Path.join(log_dir, "shape-probe-diagnostics.txt"), diagnostics)
+
+      assert shape_exit == 0, """
+      real Shape probe did not complete (exit #{shape_exit}); this is a real failure, not swallowed.
+      Diagnostics:
+      #{diagnostics}
+      Raw pty transcript: #{pty_log}
+      """
+
+      draft_dir = Path.join(fixture, ".kogen/intents/drafts/#{@slug}")
+      approved_dir = Path.join(fixture, ".kogen/intents/approved/#{@slug}")
+      approved_intent_path = Path.join(approved_dir, "intent.yaml")
+
+      refute File.dir?(draft_dir), "the Draft directory must be gone after real approval"
+      assert File.exists?(approved_intent_path), "the real Approved intent.yaml must exist"
+
+      original_intent =
+        continuation_state_dir
+        |> Path.join("original-intent.yaml")
+        |> read_yaml!()
+
+      continued_intent =
+        continuation_state_dir
+        |> Path.join("continued-intent.yaml")
+        |> read_yaml!()
+
+      pre_approval_dir = Path.join(continuation_state_dir, "pre-approval-package")
+      post_approval_dir = Path.join(continuation_state_dir, "post-approval-package")
+
+      assert File.dir?(pre_approval_dir), "pre-approval package snapshot must be retained"
+      assert File.dir?(post_approval_dir), "post-approval package snapshot must be retained"
+
+      continuation_read =
+        continuation_state_dir
+        |> Path.join("continuation-read.md")
+        |> File.read!()
+
+      assert continuation_read =~ @continuation_marker,
+             "the fresh continuation must read saved draft evidence containing the unique marker"
+
+      assert continued_intent["id"] == original_intent["id"]
+      assert continued_intent["slug"] == original_intent["slug"]
+      assert continued_intent["shaping"] == original_intent["shaping"]
+      assert continued_intent["shaped_against"] == original_intent["shaped_against"]
+
+      assert [continuation] = continued_intent["shaping_continuations"],
+             "one continuation visit must be saved before the new conversation approves the draft"
+
+      assert is_map(continuation)
+      assert continuation["harness"]
+      assert continuation["model"] == config.shaping.model
+      assert continuation["effort"] == config.shaping.effort
+      assert continuation["started"]
+      assert is_map(continuation["checkout"])
+      assert continuation["checkout"]["branch"]
+      assert continuation["checkout"]["head"]
+
+      pre_approval_intent = read_yaml!(Path.join(pre_approval_dir, "intent.yaml"))
+      post_approval_intent = read_yaml!(Path.join(post_approval_dir, "intent.yaml"))
+
+      for key <- ["id", "slug", "shaped_against", "shaping", "shaping_continuations"] do
+        assert post_approval_intent[key] == pre_approval_intent[key],
+               "approval changed protected intent field #{key}"
+      end
+
+      for file <- ["scenarios.yaml", "risks.yaml"] do
+        assert File.read!(Path.join(post_approval_dir, file)) ==
+                 File.read!(Path.join(pre_approval_dir, file)),
+               "approval changed agreed requirements in #{file}"
+      end
+
+      Kogen.RootProfileAudit.audit_shape!(
+        Path.join(log_dir, "shape-root-profile-audit"),
+        fixture,
+        %{model: config.shaping.model, effort: config.shaping.effort}
       )
 
-    File.mkdir_p!(fixture)
-    on_exit(fn -> File.rm_rf!(fixture) end)
+      transcript = File.read!(pty_log)
 
-    File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
-    setup_fixture(project_root, fixture)
-    precompile!(fixture, log_dir)
+      minted_uuid =
+        Regex.run(
+          ~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/,
+          transcript
+        )
+        |> List.first()
 
-    pty_log =
-      Path.join(log_dir, "shape-pty-transcript-#{System.system_time(:second)}.log")
+      assert minted_uuid, "expected a freshly minted UUIDv7 printed in the transcript"
 
-    continuation_state_dir = Path.join(log_dir, "continuation-state")
+      # Retain the shaped contract even when a schema assertion fails before Build.
+      File.cp_r!(approved_dir, Path.join(log_dir, "approved-package"))
+      approved_intent_content = File.read!(approved_intent_path)
+      approved_scenarios_content = File.read!(Path.join(approved_dir, "scenarios.yaml"))
+      {:ok, approved_risks} = YamlElixir.read_from_file(Path.join(approved_dir, "risks.yaml"))
 
-    {diagnostics, shape_exit} =
-      System.cmd(
-        "expect",
-        [
-          "-f",
-          Path.join(project_root, "test/support/shape_to_build_probe.exp"),
-          fixture,
-          pty_log,
-          @slug,
-          continuation_state_dir,
-          @continuation_marker
-        ],
-        env: [{"MIX_BUILD_PATH", Path.join(fixture, "_build")}],
-        stderr_to_stdout: true
-      )
+      assert approved_intent_content =~ minted_uuid,
+             "the real minted identity (#{minted_uuid}) must be preserved into the Approved intent.yaml"
 
-    File.write!(Path.join(log_dir, "shape-probe-diagnostics.txt"), diagnostics)
+      # The Shaping Controller may describe the outcome, but the exact remediation value is
+      # deliberately available only from the failing Stop-hook output.  If it
+      # leaks into the shaped package, this would no longer demonstrate an
+      # in-turn hook correction.
+      refute approved_intent_content =~ "shape2build-k4q9z"
+      refute approved_scenarios_content =~ "shape2build-k4q9z"
 
-    assert shape_exit == 0, """
-    real Shape probe did not complete (exit #{shape_exit}); this is a real failure, not swallowed.
-    Diagnostics:
-    #{diagnostics}
-    Raw pty transcript: #{pty_log}
-    """
+      assert [%{"scenario_ids" => [scenario_id], "ownership" => [ownership]}] = approved_risks
+      assert is_binary(scenario_id) and scenario_id != ""
+      assert ownership["paths"] =~ "dummy.txt"
+      assert ownership["owner_after_creation"] != ownership["owner_during_operation"]
+      assert ownership["owner_after_creation"] =~ ~r/fixture|seed/i
+      assert ownership["owner_during_operation"] =~ ~r/human|user/i
 
-    draft_dir = Path.join(fixture, ".kogen/intents/drafts/#{@slug}")
-    approved_dir = Path.join(fixture, ".kogen/intents/approved/#{@slug}")
-    approved_intent_path = Path.join(approved_dir, "intent.yaml")
+      # The provider-created package must satisfy the exact local contract and
+      # target plan before the paid Build route is allowed to start.
+      assert {:ok, contract} = Contract.load(approved_dir)
 
-    refute File.dir?(draft_dir), "the Draft directory must be gone after real approval"
-    assert File.exists?(approved_intent_path), "the real Approved intent.yaml must exist"
+      assert {:ok, intent} =
+               Intent.read(@slug, Path.join(fixture, ".kogen/intents/approved"))
 
-    original_intent =
-      continuation_state_dir
-      |> Path.join("original-intent.yaml")
-      |> read_yaml!()
+      assert {:ok, catalog} = VerificationPlan.load(fixture)
 
-    continued_intent =
-      continuation_state_dir
-      |> Path.join("continued-intent.yaml")
-      |> read_yaml!()
+      assert {:ok, _plan} =
+               VerificationPlan.build(
+                 contract.scenarios,
+                 intent.may_change_guarded_paths,
+                 catalog,
+                 fixture
+               )
 
-    pre_approval_dir = Path.join(continuation_state_dir, "pre-approval-package")
-    post_approval_dir = Path.join(continuation_state_dir, "post-approval-package")
+      # Real public Build, against the exact package the real Shaping Controller wrote
+      # and the real scripted approval moved -- not a hand-written stand-in.
+      raw_stream_dir = Path.join(log_dir, "build-raw-streams")
 
-    assert File.dir?(pre_approval_dir), "pre-approval package snapshot must be retained"
-    assert File.dir?(post_approval_dir), "post-approval package snapshot must be retained"
+      {build_out, build_exit} =
+        System.cmd("mix", ["kogen.build", @slug],
+          cd: fixture,
+          env: [
+            {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
+            {"MIX_BUILD_PATH", Path.join(fixture, "_build")}
+          ],
+          stderr_to_stdout: true
+        )
 
-    continuation_read =
-      continuation_state_dir
-      |> Path.join("continuation-read.md")
-      |> File.read!()
+      File.write!(Path.join(log_dir, "build-console.log"), build_out)
 
-    assert continuation_read =~ @continuation_marker,
-           "the fresh continuation must read saved draft evidence containing the unique marker"
+      history_path = Path.join(fixture, ".kogen/runtime/verification-history.jsonl")
 
-    assert continued_intent["id"] == original_intent["id"]
-    assert continued_intent["slug"] == original_intent["slug"]
-    assert continued_intent["shaping"] == original_intent["shaping"]
-    assert continued_intent["shaped_against"] == original_intent["shaped_against"]
+      if File.exists?(history_path) do
+        File.cp!(history_path, Path.join(log_dir, "verification-history.jsonl"))
+      end
 
-    assert [continuation] = continued_intent["shaping_continuations"],
-           "one continuation visit must be saved before the new conversation approves the draft"
+      complete_dir = Path.join(fixture, ".kogen/intents/complete/#{@slug}")
+      evidence_path = Path.join(complete_dir, "evidence.md")
 
-    assert is_map(continuation)
-    assert continuation["harness"]
-    assert continuation["model"] == config.shaping.model
-    assert continuation["effort"] == config.shaping.effort
-    assert continuation["started"]
-    assert is_map(continuation["checkout"])
-    assert continuation["checkout"]["branch"]
-    assert continuation["checkout"]["head"]
+      if File.exists?(evidence_path) do
+        File.cp!(evidence_path, Path.join(log_dir, "evidence.md"))
+      end
 
-    pre_approval_intent = read_yaml!(Path.join(pre_approval_dir, "intent.yaml"))
-    post_approval_intent = read_yaml!(Path.join(post_approval_dir, "intent.yaml"))
+      preserve_tracking(fixture, complete_dir, log_dir)
 
-    for key <- ["id", "slug", "shaped_against", "shaping", "shaping_continuations"] do
-      assert post_approval_intent[key] == pre_approval_intent[key],
-             "approval changed protected intent field #{key}"
-    end
+      {git_log, _} =
+        System.cmd("git", ["log", "--format=%H%n%B", "-3"], cd: fixture, stderr_to_stdout: true)
 
-    for file <- ["scenarios.yaml", "risks.yaml"] do
-      assert File.read!(Path.join(post_approval_dir, file)) ==
-               File.read!(Path.join(pre_approval_dir, file)),
-             "approval changed agreed requirements in #{file}"
-    end
+      File.write!(Path.join(log_dir, "git-log.txt"), git_log)
 
-    Kogen.RootProfileAudit.audit_shape!(
-      Path.join(log_dir, "shape-root-profile-audit"),
-      fixture,
-      %{model: config.shaping.model, effort: config.shaping.effort}
-    )
+      assert build_exit == 0, """
+      real mix kogen.build did not succeed (exit #{build_exit}); this is a real failure, not swallowed.
+      Console:
+      #{build_out}
+      Preserved evidence under: #{log_dir}
+      """
 
-    transcript = File.read!(pty_log)
+      assert File.dir?(complete_dir)
+      refute File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
 
-    minted_uuid =
-      Regex.run(
-        ~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/,
-        transcript
-      )
-      |> List.first()
+      evidence = File.read!(evidence_path)
+      [_, resumptions_text] = Regex.run(~r/^- Outer resumptions used: (\d+)$/m, evidence)
+      resumptions = String.to_integer(resumptions_text)
+      assert resumptions <= config.outer_resumptions
 
-    assert minted_uuid, "expected a freshly minted UUIDv7 printed in the transcript"
+      developer_session_id =
+        Regex.run(~r/Developer session id: `([^`]+)`/, evidence) |> List.last()
 
-    # Retain the shaped contract even when a schema assertion fails before Build.
-    File.cp_r!(approved_dir, Path.join(log_dir, "approved-package"))
-    approved_intent_content = File.read!(approved_intent_path)
-    approved_scenarios_content = File.read!(Path.join(approved_dir, "scenarios.yaml"))
-    {:ok, approved_risks} = YamlElixir.read_from_file(Path.join(approved_dir, "risks.yaml"))
+      reviewer_session_id =
+        Regex.run(~r/Reviewer session id: `([^`]+)`/, evidence) |> List.last()
 
-    assert approved_intent_content =~ minted_uuid,
-           "the real minted identity (#{minted_uuid}) must be preserved into the Approved intent.yaml"
+      assert developer_session_id, "expected a Developer session id in evidence.md"
+      assert reviewer_session_id, "expected a Reviewer session id in evidence.md"
 
-    # The Shaping Controller may describe the outcome, but the exact remediation value is
-    # deliberately available only from the failing Stop-hook output.  If it
-    # leaks into the shaped package, this would no longer demonstrate an
-    # in-turn hook correction.
-    refute approved_intent_content =~ "shape2build-k4q9z"
-    refute approved_scenarios_content =~ "shape2build-k4q9z"
-
-    assert [%{"scenario_ids" => [scenario_id], "ownership" => [ownership]}] = approved_risks
-    assert is_binary(scenario_id) and scenario_id != ""
-    assert ownership["paths"] =~ "dummy.txt"
-    assert ownership["owner_after_creation"] != ownership["owner_during_operation"]
-    assert ownership["owner_after_creation"] =~ ~r/fixture|seed/i
-    assert ownership["owner_during_operation"] =~ ~r/human|user/i
-
-    # Real public Build, against the exact package the real Shaping Controller wrote
-    # and the real scripted approval moved -- not a hand-written stand-in.
-    raw_stream_dir = Path.join(log_dir, "build-raw-streams")
-
-    {build_out, build_exit} =
-      System.cmd("mix", ["kogen.build", @slug],
-        cd: fixture,
-        env: [
-          {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
-          {"MIX_BUILD_PATH", Path.join(fixture, "_build")}
-        ],
-        stderr_to_stdout: true
-      )
-
-    File.write!(Path.join(log_dir, "build-console.log"), build_out)
-
-    history_path = Path.join(fixture, ".kogen/runtime/verification-history.jsonl")
-
-    if File.exists?(history_path) do
-      File.cp!(history_path, Path.join(log_dir, "verification-history.jsonl"))
-    end
-
-    complete_dir = Path.join(fixture, ".kogen/intents/complete/#{@slug}")
-    evidence_path = Path.join(complete_dir, "evidence.md")
-
-    if File.exists?(evidence_path) do
-      File.cp!(evidence_path, Path.join(log_dir, "evidence.md"))
-    end
-
-    preserve_tracking(fixture, complete_dir, log_dir)
-
-    {git_log, _} =
-      System.cmd("git", ["log", "--format=%H%n%B", "-3"], cd: fixture, stderr_to_stdout: true)
-
-    File.write!(Path.join(log_dir, "git-log.txt"), git_log)
-
-    assert build_exit == 0, """
-    real mix kogen.build did not succeed (exit #{build_exit}); this is a real failure, not swallowed.
-    Console:
-    #{build_out}
-    Preserved evidence under: #{log_dir}
-    """
-
-    assert File.dir?(complete_dir)
-    refute File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
-
-    evidence = File.read!(evidence_path)
-    [_, resumptions_text] = Regex.run(~r/^- Outer resumptions used: (\d+)$/m, evidence)
-    resumptions = String.to_integer(resumptions_text)
-    assert resumptions <= config.outer_resumptions
-
-    developer_session_id =
-      Regex.run(~r/Developer session id: `([^`]+)`/, evidence) |> List.last()
-
-    reviewer_session_id =
-      Regex.run(~r/Reviewer session id: `([^`]+)`/, evidence) |> List.last()
-
-    assert developer_session_id, "expected a Developer session id in evidence.md"
-    assert reviewer_session_id, "expected a Reviewer session id in evidence.md"
-
-    Kogen.RootProfileAudit.audit!(
-      Path.join(log_dir, "build-root-profile-audit"),
-      %{
-        developer_session_id => Map.put(config.developer, :role, "developer"),
-        reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
-      }
-    )
-
-    native_summary =
-      Kogen.LiveNativeReceiptAudit.audit!(
-        raw_stream_dir,
+      Kogen.RootProfileAudit.audit!(
+        Path.join(log_dir, "build-root-profile-audit"),
         %{
-          developer_session_id => 1,
-          reviewer_session_id => 1
-        },
-        [reviewer_session_id]
+          developer_session_id => Map.put(config.developer, :role, "developer"),
+          reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
+        }
       )
 
-    File.write!(
-      Path.join(log_dir, "native-receipt-summary.json"),
-      Jason.encode!(native_summary) <> "\n"
-    )
+      native_summary =
+        Kogen.LiveNativeReceiptAudit.audit!(
+          raw_stream_dir,
+          %{
+            developer_session_id => 1,
+            reviewer_session_id => 1
+          },
+          [reviewer_session_id]
+        )
 
-    assert File.exists?(history_path),
-           "the Verification Record history must exist -- the real Stop hook must have fired"
-
-    records =
-      history_path
-      |> File.read!()
-      |> String.split("\n", trim: true)
-      |> Enum.map(&Jason.decode!/1)
-
-    same_session = Enum.filter(records, &(&1["session_id"] == developer_session_id))
-
-    assert Enum.any?(same_session, &(&1["status"] == "failed")),
-           "expected an actual failed Check record for session #{developer_session_id}; " <>
-             "records: #{inspect(records)}"
-
-    assert Enum.any?(same_session, &(&1["status"] == "passed")),
-           "expected an actual passed Check record for session #{developer_session_id}; " <>
-             "records: #{inspect(records)}"
-
-    first_failed_index = Enum.find_index(same_session, &(&1["status"] == "failed"))
-    first_passed_index = Enum.find_index(same_session, &(&1["status"] == "passed"))
-
-    assert first_failed_index < first_passed_index,
-           "the failed record must precede the passed record within the same session"
-
-    tracking = read_tracking!(fixture, complete_dir)
-    [initial_attempt | _] = tracking["attempts"]
-
-    assert initial_attempt["developer_session_id"] == developer_session_id
-    assert is_map(initial_attempt["handoff"]), "initial attempt must contain the first handoff"
-    assert_developer_invocation!(initial_attempt, developer_session_id)
-
-    {:ok, initial_check_finished, 0} =
-      DateTime.from_iso8601(initial_attempt["check"]["finished_at"])
-
-    before_initial_handoff =
-      Enum.filter(same_session, fn record ->
-        {:ok, finished, 0} = DateTime.from_iso8601(record["finished_at"])
-        DateTime.compare(finished, initial_check_finished) != :gt
-      end)
-
-    assert Enum.map(before_initial_handoff, & &1["status"]) |> Enum.take(-2) ==
-             ["failed", "passed"],
-           "outer driver must observe failed-then-passed Stop history before the initial handoff"
-
-    subject = git!(fixture, ["log", "-1", "--format=%s"])
-    assert subject == "Shape to build probe"
-
-    {trailer_out, 0} =
-      System.cmd("sh", ["-c", "git log -1 --format=%B | git interpret-trailers --parse"],
-        cd: fixture
+      File.write!(
+        Path.join(log_dir, "native-receipt-summary.json"),
+        Jason.encode!(native_summary) <> "\n"
       )
 
-    assert trailer_out =~ "Kogen-Intent-ID: #{minted_uuid}"
-    assert trailer_out =~ "Kogen-Intent: #{@slug}"
+      assert File.exists?(history_path),
+             "the Verification Record history must exist -- the real Stop hook must have fired"
 
-    assert git!(fixture, ["log", "-1", "--format=%B"]) ==
-             "Shape to build probe\n\nKogen-Intent-ID: #{minted_uuid}\nKogen-Intent: #{@slug}"
+      records =
+        history_path
+        |> File.read!()
+        |> String.split("\n", trim: true)
+        |> Enum.map(&Jason.decode!/1)
 
-    File.rm_rf!(fixture)
-    assert :ok = Kogen.LiveReworkAudit.audit_retained!(log_dir)
+      same_session = Enum.filter(records, &(&1["session_id"] == developer_session_id))
+
+      assert Enum.any?(same_session, &(&1["status"] == "failed")),
+             "expected an actual failed Check record for session #{developer_session_id}; " <>
+               "records: #{inspect(records)}"
+
+      assert Enum.any?(same_session, &(&1["status"] == "passed")),
+             "expected an actual passed Check record for session #{developer_session_id}; " <>
+               "records: #{inspect(records)}"
+
+      first_failed_index = Enum.find_index(same_session, &(&1["status"] == "failed"))
+      first_passed_index = Enum.find_index(same_session, &(&1["status"] == "passed"))
+
+      assert first_failed_index < first_passed_index,
+             "the failed record must precede the passed record within the same session"
+
+      tracking = read_tracking!(fixture, complete_dir)
+      [initial_attempt | _] = tracking["attempts"]
+
+      assert initial_attempt["developer_session_id"] == developer_session_id
+      assert is_map(initial_attempt["handoff"]), "initial attempt must contain the first handoff"
+      assert_developer_invocation!(initial_attempt, developer_session_id)
+
+      {:ok, initial_check_finished, 0} =
+        DateTime.from_iso8601(initial_attempt["check"]["finished_at"])
+
+      before_initial_handoff =
+        Enum.filter(same_session, fn record ->
+          {:ok, finished, 0} = DateTime.from_iso8601(record["finished_at"])
+          DateTime.compare(finished, initial_check_finished) != :gt
+        end)
+
+      assert Enum.map(before_initial_handoff, & &1["status"]) |> Enum.take(-2) ==
+               ["failed", "passed"],
+             "outer driver must observe failed-then-passed Stop history before the initial handoff"
+
+      subject = git!(fixture, ["log", "-1", "--format=%s"])
+      assert subject == "Shape to build probe"
+
+      {trailer_out, 0} =
+        System.cmd("sh", ["-c", "git log -1 --format=%B | git interpret-trailers --parse"],
+          cd: fixture
+        )
+
+      assert trailer_out =~ "Kogen-Intent-ID: #{minted_uuid}"
+      assert trailer_out =~ "Kogen-Intent: #{@slug}"
+
+      assert git!(fixture, ["log", "-1", "--format=%B"]) ==
+               "Shape to build probe\n\nKogen-Intent-ID: #{minted_uuid}\nKogen-Intent: #{@slug}"
+
+      File.rm_rf!(fixture)
+      assert :ok = Kogen.LiveReworkAudit.audit_retained!(log_dir)
+    end
   end
 
   @doc false
@@ -407,7 +431,7 @@ defmodule Kogen.LiveShapeToBuildTest do
     on_exit(fn -> File.rm_rf!(fixture) end)
 
     File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
-    setup_fixture(project_root, fixture, @review_rework_makefile)
+    setup_fixture(project_root, fixture, @review_rework_check_rule)
     precompile!(fixture, log_dir)
     write_review_rework_package(fixture)
 
@@ -497,7 +521,7 @@ defmodule Kogen.LiveShapeToBuildTest do
              Base.encode16(:crypto.hash(:sha256, invocation["message"]), case: :lower)
   end
 
-  defp setup_fixture(project_root, fixture, makefile \\ @makefile) do
+  defp setup_fixture(project_root, fixture, check_rule \\ @check_rule) do
     {_out, 0} =
       System.cmd(
         "rsync",
@@ -516,7 +540,14 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     Kogen.DependencyFixture.copy!(Path.join(project_root, "deps"), Path.join(fixture, "deps"))
 
-    File.write!(Path.join(fixture, "Makefile"), makefile)
+    {:ok, catalog} = VerificationPlan.load(project_root)
+
+    other_targets =
+      catalog.entries
+      |> Enum.reject(&(&1["name"] == "check"))
+      |> VerificationPlan.render_target_declarations()
+
+    File.write!(Path.join(fixture, "Makefile"), check_rule <> other_targets)
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},

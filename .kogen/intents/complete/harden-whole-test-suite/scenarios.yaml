@@ -1,0 +1,207 @@
+- id: implement-every-remediation-class-before-handoff
+  given: the failed 2026-09-20 Candidate changed a small infrastructure subset, generated a large ledger, marked all 257 declarations keep, reused existing test paths for multiple evidence roles, and claimed unchanged production files as implementation
+  when: the Developer attempts any handoff
+  then: every scenario's claimed repaired implementation paths are changed Candidate blobs, except individually justified preserved paths with a new declaration-specific disconfirming control; positive, wrong/preservation, and failure/recovery evidence exercise distinct behavior and cannot all alias one unchanged file; both prior failed Candidates are rejected before paid verification; inventory, path existence, source hashes, and nonempty metadata never count as implementation
+  wrong_result: a small implementation patch plus thousands of generated ledger lines is accepted as comprehensive remediation
+  verified_by: [check]
+  evidence: whole-suite remediation tests compare claimed repaired blobs with the Git diff and reject retained fixtures matching the five-file Candidate and failed all-keep generated-catalog Candidate
+  proof:
+    offline: [test/kogen/test_reliability_catalog_test.exs, test/kogen/whole_suite_remediation_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: final-Candidate coverage, resolved dispositions, nonempty implementation witnesses, diff agreement, and narrow-Candidate rejection are deterministic repository contracts"
+    affected_paths: [lib/**, test/**, scripts/check/**, .codex/hooks/**, .codex/hooks.json, .codex/config.toml, .kogen/config.yaml, priv/kogen/**, Makefile, mix.exs, test/support/test_reliability_catalog.ex, test/kogen/test_reliability_catalog_test.exs, test/kogen/whole_suite_remediation_test.exs, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: reconcile-complete-test-catalog
+  given: 70 maintained test sources span offline and provider-backed targets without sufficient comparable history to label them all flaky
+  when: the suite is hardened
+  then: every maintained declaration is inspected with complete setup, teardown, fixtures, support calls, production consumer, authority boundary, and failures; keep requires a declaration-specific public outcome plus a distinct passing-wrong implementation rejected through the real consumer; rewrite/split/repair requires changed test/control and changed defective fixture/support/orchestration/prompt/hook/production code; delete names equivalent retained coverage; all 81 passing-wrong and 38 provisional obligations are resolved; blanket keep, copied rationales, filename-inferred consumers, line hashes as equivalence, and same-file evidence-role aliasing are rejected
+  wrong_result: a generator discovers declarations and assigns dispositions, consumers, hashes, and controls without repairing or semantically challenging the tests
+  verified_by: [check]
+  evidence: declaration-level tests use valid and passing-wrong inputs through real consumers; the catalog validator rejects all-keep, copied-rationale, guessed-consumer, line-hash, unchanged-implementation, and same-path-control fixtures
+  proof:
+    offline: [test/kogen/test_reliability_catalog_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: catalog completeness, dispositions, equivalence keys, and replacement links are repository-owned data"
+    affected_paths: [lib/**, test/**, scripts/check/**, .codex/hooks/**, .codex/hooks.json, .codex/config.toml, .kogen/config.yaml, priv/kogen/**, Makefile, mix.exs, test/kogen/test_reliability_catalog_test.exs, test/support/test_reliability_catalog.ex, priv/kogen/test-reliability.yaml]
+
+- id: attribute-offline-stages
+  given: check combines independently failing stages and can obscure the initiating stage or repeat successful work
+  when: format, compilation, static analysis, ExUnit, or rehearsal settles
+  then: each stage retains one structured result, discriminating signature, bounded log, duration, and cleanup disposition; the initiating failure stays primary; reuse requires a settled receipt bound to the exact Candidate bytes, source/dependency/toolchain/catalog generation, target plan, provider-denial state, and verification attempt, and any mutation or mismatched binding invalidates it; Gitless cold copies consume explicit outer-owner provenance and verify the copied-input manifest; Candidate identity includes added and untracked consumed files; and binding failure settles atomically without erasing prior stage or cleanup evidence
+  wrong_result: only scripts/check/offline.py failed is reported, logs interleave, cleanup replaces the cause, stale success is reused after Candidate, dependency, catalog, target-plan, or environment change, receipt settlement invokes Git in an intentionally Gitless copy, untracked inputs are ignored, or binding crashes after successful stages without a receipt
+  verified_by: [check]
+  evidence: positive and injected-failure controls exercise every stage through the production result consumer
+  proof:
+    offline: [test/kogen/offline_stage_results_test.exs, test/kogen/cold_offline_contract_test.exs, test/kogen/failure_signature_test.exs, test/kogen/check_settlement_test.exs, test/kogen/verification_ownership_lifecycle_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: stage attribution and failure precedence are local orchestration behavior"
+    affected_paths: [scripts/check/offline.py, lib/kogen/build/failure_signature.ex, lib/kogen/build/verification.ex, lib/kogen/build/verification_plan.ex, lib/kogen/build/tracking.ex, test/kogen/offline_stage_results_test.exs, test/kogen/cold_offline_contract_test.exs, test/kogen/cold_offline_test.exs, test/kogen/failure_signature_test.exs, test/kogen/check_settlement_test.exs, test/kogen/verification_ownership_lifecycle_test.exs]
+
+- id: harden-configuration-and-support
+  given: project configuration, environment preparation, dependency fixtures, test support, prompt resources, and hooks affect which code and assertions execute
+  when: configuration or support is loaded, generated, overridden, or rejected
+  then: supported configuration reaches its real consumer, invalid or foreign configuration fails with its initiating cause, defaults and environment precedence are explicit, fixtures do not self-validate, and test support cannot silently broaden authority or provider access
+  wrong_result: source strings or fixture existence pass while runtime configuration selects the wrong behavior, leaks mutable state, or bypasses denial
+  verified_by: [check]
+  evidence: configuration and support tests include valid, invalid, missing, overridden, foreign, and provider-denied controls through production consumers
+  proof:
+    offline: [test/kogen/configuration_support_contract_test.exs, test/kogen/codex_environment_test.exs, test/kogen/dependency_fixture_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: configuration parsing, precedence, fixture authority, and support isolation are deterministic repository behavior"
+    affected_paths: [mix.exs, .kogen/config.yaml, .codex/config.toml, .codex/hooks.json, test/test_helper.exs, test/support/**, lib/kogen/check.ex, lib/kogen/intent.ex, lib/kogen/execution_policy.ex, lib/kogen/codex/environment.ex, priv/kogen/**, .codex/hooks/**, test/kogen/configuration_support_contract_test.exs, test/kogen/codex_environment_test.exs, test/kogen/dependency_fixture_test.exs]
+
+- id: harden-git-publication-and-admission
+  given: Candidate admission and publication mutate the Git index, refs, worktree, Intent state, and rollback evidence
+  when: guarded-path validation, commit, publication, or rollback succeeds or fails
+  then: admission is bound to exact Candidate bytes and allowed paths; ignored, untracked, metadata, symlink, and out-of-root mutations are detected; publication is atomic; failure restores the owned prior state without erasing the initiating cause; successful publication retains provenance
+  wrong_result: tests assert command strings or fixture Git shape while forbidden mutations pass, partial publication survives, or rollback hides the real failure
+  verified_by: [check]
+  evidence: real temporary repositories exercise positive publication and disconfirming ignored/untracked/index/ref/rollback cases through production Git consumers
+  proof:
+    offline: [test/kogen/git_test.exs, test/kogen/git_integrity_test.exs, test/kogen/guarded_paths_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/build_evidence_test.exs, test/kogen/approved_mutation_test.exs, test/kogen/commit_failure_rollback_test.exs, test/kogen/commit_provenance_test.exs, test/kogen/target_evidence_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: Git admission, publication, rollback, provenance, and filesystem mutation are local deterministic behavior"
+    affected_paths: [lib/kogen/git.ex, lib/kogen/intent.ex, lib/kogen/build.ex, lib/kogen/build/evidence.ex, lib/kogen/build/target_evidence.ex, lib/kogen/build/guarded_paths.ex, lib/kogen/build/tracking.ex, scripts/check/bin/git, test/support/verification_fixture.ex, test/kogen/git_test.exs, test/kogen/git_integrity_test.exs, test/kogen/guarded_paths_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/build_evidence_test.exs, test/kogen/approved_mutation_test.exs, test/kogen/commit_failure_rollback_test.exs, test/kogen/commit_provenance_test.exs, test/kogen/target_evidence_test.exs]
+
+- id: fail-close-isolated-execution
+  given: isolated tests can exit zero without ExUnit completion, forge readiness, collide with statuses, race cancellation, or lose cleanup failures
+  when: an isolated invocation settles
+  then: success requires fresh atomic versioned completion bound to invocation, canonical source, module/test, selector, and cleanup; stdout cannot authorize phases; initiating and cleanup outcomes survive; overlap remains enabled
+  wrong_result: raw zero, stale evidence, forged output, or suite serialization produces success
+  verified_by: [check]
+  evidence: real subprocess controls cover abrupt zero, forged output, stale/partial/replaced/symlinked receipts, cancellation, cleanup, overlap, and evidence forwarding
+  proof:
+    offline: [test/kogen/isolation_test.exs, test/kogen/isolation_cleanup_test.exs, test/kogen/isolated_target_evidence_test.exs, test/kogen/live_scheduling_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the runner protocol and process lifecycle are local and use real subprocesses"
+    affected_paths: [test/support/isolated_case.ex, test/support/isolated_process.py, test/support/isolation_probe.exs, test/support/scheduling_overlap_probe.exs, test/kogen/isolation_test.exs, test/kogen/isolation_cleanup_test.exs, test/kogen/isolated_target_evidence_test.exs, test/kogen/live_scheduling_test.exs]
+
+- id: make-rehearsals-semantic
+  given: rehearsals can pass from fixture, symbol, or transcript shape without exercising the production evidence consumer
+  when: offline rehearsal claims coverage for a paid boundary
+  then: paired positive and disconfirming inputs traverse the real consumer and prove authority, identity, preservation, recovery, and rejection while naming the provider-only fact left unproved
+  wrong_result: a self-fulfilling fake passes while the production consumer accepts malformed or foreign evidence
+  verified_by: [check]
+  evidence: controls mutate one authority or identity field at a time and assert production rejection
+  proof:
+    offline: [scripts/check/rehearsals.exs, test/kogen/selective_verification_targets_test.exs, test/kogen/scenario_contract_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: consumer acceptance and rejection are deterministic; provider semantics remain live"
+    affected_paths: [scripts/check/rehearsals.exs, priv/kogen/verification_targets.yaml, lib/kogen/build/contract.ex, lib/kogen/harness.ex, test/kogen/selective_verification_targets_test.exs, test/kogen/scenario_contract_test.exs]
+
+- id: normalize-native-boundaries
+  given: installation, login, compatibility, helper routing, finality, timeout, cancellation, cleanup, and malformed evidence can collapse into live-native failure
+  when: native verification runs
+  then: each boundary retains a distinct normalized outcome and cause; only bound final evidence succeeds; helper paths are unambiguous; one failure does not erase completed results
+  wrong_result: intermediate output passes, authentication is confused with compatibility, or helper cleanup masks the provider result
+  verified_by: [check, live-native]
+  evidence: offline normalization controls plus live-native demonstrate provider-only runtime and routing observations
+  proof:
+    offline: [test/kogen/codex_compatibility_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/live_native_receipt_audit_test.exs, test/kogen/native_helper_fixture_test.exs, test/kogen/provider_outcome_test.exs]
+    paid_target: live-native
+    paid_reason: "provider-required: live-native; observation: authenticated runtime, compatibility lifecycle, and native helper routing; offline-limit: fixtures cannot establish installed provider behavior"
+    affected_paths: [lib/kogen/codex.ex, lib/kogen/codex/cli.ex, lib/kogen/codex/compatibility.ex, lib/kogen/codex/environment.ex, lib/kogen/codex/state.ex, priv/kogen/codex/**, test/support/native_helper_fixture.ex, test/support/live_native_receipt_audit.ex, test/support/managed_codex_fixture.py, test/kogen/codex_compatibility_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/live_native_receipt_audit_test.exs, test/kogen/native_helper_fixture_test.exs, test/kogen/native_helper_live_test.exs, test/kogen/provider_outcome_test.exs]
+
+- id: harden-shape-build-lifecycle
+  given: Shape-to-Build combines provider output, Draft validation, approval, Build, receipts, and cleanup
+  when: any phase succeeds or fails
+  then: offline controls reject malformed, stale, mismatched, or unauthorized transitions and the live target proves only the provider-dependent lifecycle with attributable causes
+  wrong_result: fixture text or intermediate schema counts as completion, or cleanup hides the failure
+  verified_by: [check, live-shape-to-build]
+  evidence: lifecycle adversaries exercise production consumers and live evidence retains the provider transition
+  proof:
+    offline: [test/kogen/scenario_lifecycle_test.exs, test/kogen/check_settlement_test.exs, test/kogen/verification_ownership_lifecycle_test.exs]
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: connected Shape-to-Build reaches a settled Candidate; offline-limit: synthetic outputs cannot establish provider execution"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/verification.ex, test/kogen/scenario_lifecycle_test.exs, test/kogen/check_settlement_test.exs, test/kogen/live_shape_to_build_test.exs]
+
+- id: harden-reviewer-rework
+  given: Reviewer rejection and Developer rework cross provider, attempt, Candidate, receipt, and evidence ownership
+  when: review requests rework or any phase fails
+  then: the same Developer performs bounded rework, fresh independent Review assesses the result, stale evidence cannot authorize it, and each phase retains its outcome; implementation first runs `mix test --only live test/kogen/live_reviewer_rework_test.exs` alone, repairs its currently missing scenario `proof` map, and reruns that exact file successfully before proceeding; the `live-reviewer-rework` target is independently executable when selected alone, owns its lifecycle helper outside another ExUnit test module, constructs a complete valid Approved fixture including `intent.yaml`, `scenarios.yaml`, scenario proof, and any referenced risks before launch, and runs deterministic local contract/precondition validation before any provider call
+  wrong_result: stale approval passes, another Developer silently replaces the attempt, provider failure is called Candidate failure, the target depends on another test module being loaded, paid execution begins with a missing or invalid lifecycle fixture, or implementation defers the known focused failure until aggregate verification
+  verified_by: [check, live-reviewer-rework]
+  evidence: offline receipt adversaries and a provider-denied standalone-target preflight reject missing/invalid intent, scenarios, risks, cross-test-module helper coupling, and launch-before-validation; only then does the live target demonstrate same-Developer rework and independent review
+  proof:
+    offline: [test/kogen/verification_ownership_lifecycle_test.exs, test/kogen/live_rework_audit_test.exs, test/kogen/two_outer_resumptions_test.exs, test/kogen/live_reviewer_rework_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: Reviewer rejection, same-Developer correction, and fresh verdict; offline-limit: fixtures cannot establish provider identity or semantic rework"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/verification.ex, test/support/live_rework_audit.ex, test/support/verification_fixture.ex, test/kogen/verification_ownership_lifecycle_test.exs, test/kogen/live_rework_audit_test.exs, test/kogen/live_reviewer_rework_test.exs, test/kogen/live_shape_to_build_test.exs]
+
+- id: pass-every-test-file-before-handoff
+  given: aggregate verification has repeatedly discovered focused failures only after earlier expensive stages completed
+  when: the Developer repairs the whole suite before final handoff
+  then: the Intent-owned `test-file-execution.yaml` enumerates all 69 current files and their exact commands; against an immutable final Candidate, each command runs alone in ordinal order and passes three consecutive times before the next command starts; a failure resets that file's streak, any Candidate mutation invalidates all prior streaks and restarts at ordinal 1, final discovery reconciles added/renamed/removed tests, and only a zero-gap three-pass ledger permits Stop-owned aggregate verification
+  wrong_result: the Developer is asked to discover the initial list, mainly edits catalogs or broad infrastructure, skips an enumerated or newly created file, advances before three consecutive passes, preserves streaks across a Candidate change, runs only aggregate targets, or reaches aggregate verification before discovering a deterministic focused defect
+  verified_by: [check]
+  evidence: the Intent-owned 69-file command manifest, deterministic three-run ledger, and offline control prove one-file-at-a-time order, streak reset, Candidate-wide invalidation, final discovery reconciliation, and zero missing files before handoff
+  proof:
+    offline: [test/kogen/whole_suite_remediation_test.exs, test/kogen/test_reliability_catalog_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: per-file command coverage, ordering, Candidate binding, and fail-fast repair are deterministic implementation evidence"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/verification.ex, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml, test/kogen/whole_suite_remediation_test.exs, test/kogen/test_reliability_catalog_test.exs]
+
+- id: repair-reproduced-triple-run-failures
+  given: the 2026-09-20 69-file audit and Fable source inspection reproduced fixture/schema defects, timeout inversion, false cancellation coverage, launch/readiness conflation, orphaned cold gates, misleading partial receipts, wrong live-command classification, repeated boot cost, and managed-scope contamination
+  when: the Developer prepares the Candidate for the final three-pass sweep
+  then: each repository defect is repaired at its owning support, production, fixture, or test path with focused positive and passing-but-wrong controls; PTY cleanup drains and hangs up the master rather than waiting on unread output; Make target inventory has one grouped-rule-capable implementation; live fixture Makefiles derive from the catalog; proof selectors are real test paths or cataloged rehearsals; every live test has at least a 20-minute outer budget with bounded attributable phases and owned cleanup; contention-only duration is not mislabeled as a product defect; audit-created external residue is diagnosed but never silently deleted; the Developer passes Git-backed/Gitless receipt binding and every route-specific provider-denied control before any provider call, then runs ordinals 39, 42, and 8 in the specified cheap-to-expensive order until each has three consecutive passes on one unchanged Candidate, resetting streaks after failures or mutation and rerunning offline controls after mutation, then stops and hands off without running the complete sweep; trusted controller/Stop verification alone runs the complete 69-file sweep and aggregate targets in check, cold-offline, then paid-target order
+  wrong_result: timeouts alone are increased, PTY output remains unread during exit, target parsers disagree, fixture target lists are hard-coded, arbitrary existing files pass as test selectors, tests are skipped or serialized, live tests use fake credentials, cancellation passes after an earlier crash, missing proof reaches provider launch, a partial cold receipt says passed, source text decides live membership, foreign scope state is silently mutated, the Developer runs aggregate verification, a provider call starts before the Gitless receipt negative control passes, receipt binding invokes Git in the Gitless cold copy or ignores added/untracked inputs, the Developer continues after the three focused streaks instead of handing off, or focused passes authorize publication without the controller's full sweep
+  verified_by: [check]
+  evidence: focused controls and retained Fable findings demonstrate each causal repair, live timeout ownership, and three-pass readiness before the immutable-Candidate sweep
+  proof:
+    offline: [test/kogen/isolation_test.exs, test/kogen/isolation_cleanup_test.exs, test/kogen/unified_state_admission_test.exs, test/kogen/cold_offline_contract_test.exs, test/kogen/offline_stage_results_test.exs, test/kogen/selective_verification_targets_test.exs, test/kogen/whole_suite_remediation_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: timeout ownership, fixture parity, cancellation, receipt truth, command classification, and contamination diagnostics are deterministic"
+    affected_paths: [lib/kogen/check.ex, lib/kogen/codex/state.ex, lib/kogen/codex/environment.ex, lib/kogen/build/contract.ex, lib/kogen/build/verification_plan.ex, priv/kogen/codex/compatibility/pty_driver.py, scripts/check/offline.py, test/support/isolated_case.ex, test/support/isolated_process.py, test/support/terminal_probe.py, test/support/codex_login_terminal_driver.py, test/support/live_reviewer_rework_fixture.ex, test/support/verification_fixture.ex, test/support/shape_to_build_probe.exp, test/support/shaping_evaluation/**, test/kogen/isolation_test.exs, test/kogen/isolation_cleanup_test.exs, test/kogen/unified_state_admission_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/codex_compatibility_test.exs, test/kogen/codex_native_live_test.exs, test/kogen/native_helper_live_test.exs, test/kogen/cold_offline_contract_test.exs, test/kogen/cold_offline_test.exs, test/kogen/live_test.exs, test/kogen/live_reviewer_rework_test.exs, test/kogen/live_shape_to_build_test.exs, test/kogen/live_shaping_evaluation_test.exs, test/kogen/selective_verification_targets_test.exs, test/kogen/shape_task_test.exs, test/kogen/shaping_evaluation_test.exs, test/kogen/whole_suite_remediation_test.exs]
+
+- id: normalize-general-review
+  given: semantic review requires provider judgment but schema, authority, preservation, and failure handling are deterministic
+  when: review emits valid, malformed, intermediate, timed-out, cancelled, or later-failed output
+  then: offline controls normalize each outcome and reject passing-but-wrong evidence while live-general proves only independent semantic judgment
+  wrong_result: schema-shaped output or prompt echo counts as final semantic success
+  verified_by: [check, live-general]
+  evidence: harness controls prove finality and ownership; live-general retains independent semantic review
+  proof:
+    offline: [test/kogen/harness_verdict_test.exs, test/kogen/scenario_contract_test.exs, test/kogen/scenario_semantic_test.exs]
+    paid_target: live-general
+    paid_reason: "provider-required: live-general; observation: independent provider semantic review; offline-limit: schema controls cannot establish semantic judgment"
+    affected_paths: [lib/kogen/harness.ex, lib/kogen/build/contract.ex, priv/kogen/prompts/**, test/kogen/harness_verdict_test.exs, test/kogen/scenario_contract_test.exs, test/kogen/live_test.exs]
+
+- id: prove-public-shaping-quality
+  given: shaping quality requires preserving intent, exposing material choices, and producing falsifiable scenarios
+  when: shaping quality is verified
+  then: deterministic negative Drafts are rejected and live-shaping-quality retains the provider-only quality judgment with provenance
+  wrong_result: keywords or file existence pass despite lost intent or non-falsifiable acceptance
+  verified_by: [check, live-shaping-quality]
+  evidence: offline negative Draft fixtures exercise the validator and live evidence retains semantic judgment
+  proof:
+    offline: [test/kogen/scenario_contract_test.exs, test/kogen/shaping_evaluation_test.exs]
+    paid_target: live-shaping-quality
+    paid_reason: "provider-required: live-shaping-quality; observation: provider evaluates public shaping quality; offline-limit: structural validation cannot establish semantic preservation"
+    affected_paths: [lib/mix/tasks/kogen.shape.ex, lib/kogen/harness.ex, lib/kogen/build/contract.ex, lib/kogen/intent.ex, priv/kogen/prompts/**, test/support/shaping_evaluation/**, test/kogen/scenario_contract_test.exs, test/kogen/shaping_evaluation_test.exs, test/kogen/live_shaping_evaluation_test.exs]
+
+- id: bind-retries-resumptions-and-invalidation
+  given: Stop verification retries, outer resumptions, Developer handoff, Review, and publication reuse results across attempts with different owners and budgets
+  when: a target fails, an unchanged Candidate retries, an outer attempt resumes, or any Candidate/source/dependency/toolchain/catalog/target-plan/provider-denial input changes
+  then: verification_retries counts only failed Stop cycles inside the same Developer conversation; Stop exhaustion is settled before handoff parsing; outer failures consume only the configured outer allowance; each resumed attempt has a fresh attempt token, output, schema, and Stop settlement; any binding mutation invalidates prior success; stale receipts and earlier handoffs cannot authorize Review or publication; a late pass on identical bytes remains an explicitly retained later cycle rather than erasing the earlier failure; exact exhaustion stops without commit
+  wrong_result: an earlier green receipt authorizes changed bytes, retry-until-green erases failures, Stop and outer budgets are conflated, stale handoff reaches Review, or exhausted verification publishes
+  verified_by: [check]
+  evidence: deterministic lifecycle controls cover unchanged-Candidate late pass, every invalidation key, stale-but-well-formed receipts, Stop exhaustion before handoff, outer exhaustion, fresh attempt identity, and refusal to review or commit unsettled work
+  proof:
+    offline: [test/kogen/verification_ownership_lifecycle_test.exs, test/kogen/scenario_lifecycle_test.exs, test/kogen/two_outer_resumptions_test.exs, test/kogen/check_settlement_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: retry budgets, attempt identity, receipt invalidation, handoff ordering, and publication refusal are deterministic controller contracts"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/verification.ex, lib/kogen/build/verification_plan.ex, lib/kogen/build/tracking.ex, .codex/hooks/stop_runner.py, test/kogen/verification_ownership_lifecycle_test.exs, test/kogen/scenario_lifecycle_test.exs, test/kogen/two_outer_resumptions_test.exs, test/kogen/check_settlement_test.exs]
+
+- id: prove-clean-room-offline
+  given: warm caches or undeclared environment can hide setup and ordering defects
+  when: the offline gate runs from an empty private build cache under provider denial
+  then: setup is explicit, no provider route is reached, every stage uses the structured evidence contract, cleanup preserves diagnostics, and the intentionally Gitless copy binds its receipt to explicit outer-owned source and Candidate provenance plus the exact copied-input digest without requiring local Git metadata
+  wrong_result: warm-cache success, a hidden credential, destructive cleanup repairs the run, git rev-parse is invoked inside the Gitless copy, or receipt binding ignores an added or untracked consumed input
+  verified_by: [check, cold-offline]
+  evidence: cold-offline executes the complete gate from an empty owned cache under denial
+  proof:
+    offline: [test/kogen/cold_offline_contract_test.exs, test/kogen/offline_stage_results_test.exs, scripts/check/offline.py]
+    paid_target: cold-offline
+    paid_reason: "provider-required: cold-offline; observation: expensive provider-denied offline gate succeeds from an actually empty private cache, not provider semantics; offline-limit: ordinary check cannot establish cold setup and executable denial together"
+    affected_paths: [Makefile, scripts/check/offline.py, test/kogen/cold_offline_contract_test.exs, test/kogen/cold_offline_test.exs]

@@ -6,8 +6,10 @@ that accidentally wait for EOF even though an interactive Shaper has no EOF.
 """
 
 import argparse
+import fcntl
 import os
 import pty
+import select
 import signal
 import subprocess
 import sys
@@ -34,9 +36,37 @@ def parse_args():
     return args
 
 
-def terminate(process, owned):
+def drain_master(master, limit=1024 * 1024):
+    if master is None:
+        return
+    try:
+        flags = fcntl.fcntl(master, fcntl.F_GETFL)
+        fcntl.fcntl(master, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    except OSError:
+        return
+    drained = 0
+    while drained < limit:
+        try:
+            ready, _, _ = select.select([master], [], [], 0)
+            if not ready:
+                return
+            data = os.read(master, min(65536, limit - drained))
+            if not data:
+                return
+            drained += len(data)
+        except (BlockingIOError, OSError, ValueError):
+            return
+
+
+def terminate(process, owned, master=None):
     """Terminate the owned process group and all descendants."""
     cleanup_error = None
+    drain_master(master)
+    if master is not None:
+        try:
+            os.close(master)
+        except OSError:
+            pass
     try:
         reap_descendants(process.pid)
     except (OSError, RuntimeError) as error:
@@ -161,12 +191,16 @@ def main():
         finally:
             remember_pid_file(args.owned_pid_file, owned)
             try:
-                terminate(process, owned)
+                terminate(process, owned, master)
             except BaseException as error:
                 if failure is None:
                     failure = error
             finally:
-                os.close(master)
+                try:
+                    os.close(master)
+                except OSError:
+                    # terminate owns the PTY hangup; a second close is benign.
+                    pass
         if failure is not None:
             raise failure
 

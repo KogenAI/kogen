@@ -67,6 +67,42 @@ defmodule Kogen.Build.Contract do
 
   def handoff(_, _, _, _), do: {:error, "Developer handoff is malformed or incomplete"}
 
+  @doc "Validates a settled provider-denied rehearsal against its catalog authority."
+  def rehearsal_evidence(target, rehearsal, evidence)
+      when is_map(target) and is_map(rehearsal) and is_map(evidence) do
+    required =
+      MapSet.new(
+        List.wrap(rehearsal["shared_entrypoints"]) ++ List.wrap(rehearsal["trace_assertions"])
+      )
+
+    observed = MapSet.new(List.wrap(evidence["observed"]))
+
+    trace_sha256 =
+      observed
+      |> Enum.sort()
+      |> Enum.join("\n")
+      |> then(&:crypto.hash(:sha256, &1))
+      |> Base.encode16(case: :lower)
+
+    with true <- evidence["schema_version"] == 1,
+         true <- evidence["target"] == target["name"],
+         true <- evidence["rehearsal_id"] == rehearsal["id"],
+         true <- evidence["command"] == rehearsal["command"],
+         true <- evidence["status"] == 0,
+         true <- MapSet.subset?(required, observed),
+         true <- evidence["trace_sha256"] == trace_sha256 do
+      :ok
+    else
+      _ ->
+        {:error,
+         "rehearsal evidence has foreign authority, incomplete trace, or failed settlement"}
+    end
+  end
+
+  def rehearsal_evidence(_, _, _),
+    do:
+      {:error, "rehearsal evidence has foreign authority, incomplete trace, or failed settlement"}
+
   @spec verdict(map(), map(), map(), [map()]) :: {:ok, map()} | {:error, String.t()}
   def verdict(
         message,

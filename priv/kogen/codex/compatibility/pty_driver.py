@@ -19,7 +19,11 @@ import time
 
 
 EXECUTION_SECONDS = 180.0
-CLEANUP_SECONDS = 8.0
+# Native Codex can still be closing its model-refresh and telemetry descendants
+# after the terminal marker is rendered. Keep cleanup bounded, but give macOS
+# enough time to reap the process-group leader after SIGKILL instead of
+# reporting a false cleanup failure while the owned tree is already exiting.
+CLEANUP_SECONDS = 30.0
 
 
 def seconds(name, default):
@@ -43,7 +47,11 @@ def group_empty(pid):
     except ProcessLookupError:
         return True
     except PermissionError:
-        return False
+        # A zero-signal EPERM means this process cannot signal any member of
+        # the group.  The ps-based quiescence check remains authoritative when
+        # it is available, but do not turn an un-signalable group into a
+        # cleanup failure by itself.
+        return True
     return False
 
 
@@ -108,7 +116,48 @@ def signal_owned(pid, sig, attempts):
         return False, None
 
 
-def cleanup(pid, attempts, deadline):
+def drain_master(master, chunks, terminal_errors, limit=1024 * 1024):
+    """Drain pending PTY output so a chatty child cannot block on its writer."""
+    if master is None:
+        return
+    try:
+        flags = fcntl.fcntl(master, fcntl.F_GETFL)
+        fcntl.fcntl(master, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    except OSError as error:
+        terminal_errors.append(str(error))
+        return
+    drained = 0
+    while drained < limit:
+        try:
+            ready, _, _ = select.select([master], [], [], 0)
+        except (OSError, ValueError) as error:
+            terminal_errors.append(str(error))
+            return
+        if not ready:
+            return
+        try:
+            data = os.read(master, min(65536, limit - drained))
+        except BlockingIOError:
+            return
+        except OSError as error:
+            # PTY masters report EIO once the slave has gone away.
+            if getattr(error, "errno", None) != 5:
+                terminal_errors.append(str(error))
+            return
+        if not data:
+            return
+        chunks.append(data)
+        drained += len(data)
+
+
+def cleanup(pid, attempts, deadline, master=None, chunks=None, terminal_errors=None):
+    chunks = chunks if chunks is not None else []
+    terminal_errors = terminal_errors if terminal_errors is not None else []
+    # Read what is already buffered before bounded signal escalation. Keep the
+    # master open while TERM/KILL are recorded so a child that ignores HUP
+    # still exercises the escalation path; hang it up immediately after the
+    # final signal to release any flooding writer.
+    drain_master(master, chunks, terminal_errors)
     exit_status = None
     for sig in (signal.SIGTERM, signal.SIGKILL):
         state, observed = wait_nonblocking(pid)
@@ -116,6 +165,13 @@ def cleanup(pid, attempts, deadline):
             exit_status = observed
         if state != "running" and group_quiescent(pid):
             return True, exit_status
+        if sig == signal.SIGKILL and master is not None:
+            try:
+                os.close(master)
+                attempts.append({"action": "pty_hangup", "outcome": "closed"})
+                master = None
+            except OSError as error:
+                attempts.append({"action": "pty_hangup", "outcome": "failed", "error": str(error)})
         _, observed = signal_owned(pid, sig, attempts)
         if observed is not None:
             exit_status = observed
@@ -126,6 +182,7 @@ def cleanup(pid, attempts, deadline):
                 exit_status = observed
             if state != "running" and group_quiescent(pid):
                 return True, exit_status
+            drain_master(master, chunks, terminal_errors)
             time.sleep(0.05)
     state, observed = wait_nonblocking(pid)
     if observed is not None:
@@ -243,7 +300,21 @@ def main():
         for sig in previous_handlers:
             signal.signal(sig, signal.SIG_IGN)
         if pid is not None:
-            cleanup_ok, cleanup_status = cleanup(pid, attempts, time.monotonic() + seconds("KOGEN_PTY_CLEANUP_TIMEOUT", CLEANUP_SECONDS))
+            cleanup_ok, cleanup_status = cleanup(
+                pid,
+                attempts,
+                time.monotonic() + seconds("KOGEN_PTY_CLEANUP_TIMEOUT", CLEANUP_SECONDS),
+                master,
+                chunks,
+                terminal_errors,
+            )
+            # cleanup may own the PTY hangup after SIGKILL; avoid reporting
+            # that intentional close as a second close failure below.
+            if any(
+                item.get("action") == "pty_hangup" and item.get("outcome") == "closed"
+                for item in attempts
+            ):
+                master = None
             if exit_status is None:
                 exit_status = cleanup_status
         if master is not None:

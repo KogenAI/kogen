@@ -1,0 +1,68 @@
+id: 01a0bd2c-f6a0-7447-897d-50f5ec441c27
+slug: harden-whole-test-suite
+title: Implement whole-suite test reliability repairs
+status: draft
+shaped_against:
+  branch: main
+  head: 7c7c3426c61c80753043d51766f53ba877c22674
+shaping:
+  harness: codex
+  model: gpt-5.6-sol
+  effort: low
+  started: 2026-09-20T04:57:15.684317Z
+historical_approval:
+  approved_at: "2026-09-20T08:03:32Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message: I approve"
+  statement: approval.md
+historical_reapproval:
+  approved_at: "2026-09-20T08:32:08Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation direction: Return the Intent to drafts, fix the Intent so that ALL THAT STUFF GETS FIXED IMMEDIATELY, then approve it"
+  statement: approval.md
+prior_approval:
+  approved_at: "2026-09-20T09:39:00Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message: I approve."
+  statement: approval.md
+prior_execution_order_approval:
+  approved_at: "2026-09-20T16:07:24Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation direction: if fortification is needed, return to Draft, fix, then approve and build again."
+  statement: approval.md
+prior_three_pass_approval:
+  approved_at: "2026-09-20T16:25:40Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation direction to enumerate all tests in the Intent and require each exact mix test command to pass three times before advancing."
+  statement: approval.md
+prior_fable_audit_approval:
+  approved_at: "2026-09-20T17:06:14Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation direction to continue fixing the Intent after the triple-run and Fable audit, including a minimum 20-minute live-test budget."
+  statement: approval.md
+prior_sequential_audit_approval:
+  approved_at: "2026-09-21T06:20:32Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation direction to run every test three times, have Fable diagnose every stable or intermittent failure, and fix the Intent."
+  statement: approval.md
+prior_focused_streak_approval:
+  approved_at: "2026-09-21T06:22:31Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation direction to require the Developer to earn three focused streaks, stop, and let the controller run the whole suite."
+  statement: approval.md
+approval:
+  approved_at: "2026-09-21T13:16:34Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message: approved"
+  statement: approval.md
+may_change_guarded_paths:
+  - Makefile
+  - mix.exs
+  - .kogen/config.yaml
+  - .codex/config.toml
+  - .codex/hooks.json
+  - lib/**
+  - test/**
+  - scripts/check/**
+  - .codex/hooks/**
+  - priv/kogen/**

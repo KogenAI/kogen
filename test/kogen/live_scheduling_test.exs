@@ -38,8 +38,8 @@ defmodule Kogen.LiveSchedulingTest do
     assert rework_source =~ "defmodule Kogen.LiveReviewerReworkTest do"
     assert length(Regex.scan(~r/use ExUnit.Case, async: true/, source)) == 1
     assert length(Regex.scan(~r/use ExUnit.Case, async: true/, rework_source)) == 1
-    assert source =~ "def run_reviewer_rework_case do"
-    assert rework_source =~ "Kogen.LiveShapeToBuildTest.run_reviewer_rework_case()"
+    assert rework_source =~ "Kogen.LiveReviewerReworkFixture.run()"
+    refute rework_source =~ "live_shape_to_build_test.exs"
   end
 
   defp run_probe(failing_owner \\ "") do

@@ -4,7 +4,7 @@ defmodule Kogen.Codex do
   A selection is held by the caller for the whole operation, including resume.
   Native Codex owns credentials and conversation formats; neither is inspected here.
   """
-  use Boundary, deps: [], exports: [Environment]
+  use Boundary, deps: [], exports: [Environment, ProviderOutcome]
 
   alias Kogen.Codex.{Environment, State}
 

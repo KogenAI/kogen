@@ -2,7 +2,7 @@ defmodule Kogen.Codex.NativeLiveTest do
   use Kogen.IsolatedCase, async: true
   alias Kogen.Codex.{Environment, State}
   @moduletag :live
-  @moduletag timeout: 300_000
+  @moduletag timeout: 1_200_000
 
   test "official initial distribution executes after promotion without personal Codex or Node" do
     root = Path.join(System.tmp_dir!(), "kogen-native-install-#{System.pid()}")

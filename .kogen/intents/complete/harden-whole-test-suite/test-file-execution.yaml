@@ -1,0 +1,214 @@
+version: 1
+required_consecutive_passes: 3
+order: lexical
+candidate_binding: exact
+failure_resets_current_file_streak: true
+candidate_change_restarts_complete_sweep: true
+files:
+  - ordinal: 1
+    path: test/kogen/approved_mutation_test.exs
+    command: mix test test/kogen/approved_mutation_test.exs
+  - ordinal: 2
+    path: test/kogen/boundary_negative_control_test.exs
+    command: mix test test/kogen/boundary_negative_control_test.exs
+  - ordinal: 3
+    path: test/kogen/build_evidence_test.exs
+    command: mix test test/kogen/build_evidence_test.exs
+  - ordinal: 4
+    path: test/kogen/build_preconditions_test.exs
+    command: mix test test/kogen/build_preconditions_test.exs
+  - ordinal: 5
+    path: test/kogen/check_settlement_test.exs
+    command: mix test test/kogen/check_settlement_test.exs
+  - ordinal: 6
+    path: test/kogen/check_test.exs
+    command: mix test test/kogen/check_test.exs
+  - ordinal: 7
+    path: test/kogen/codex_compatibility_preparation_test.exs
+    command: mix test test/kogen/codex_compatibility_preparation_test.exs
+  - ordinal: 8
+    path: test/kogen/codex_compatibility_test.exs
+    command: mix test --only live test/kogen/codex_compatibility_test.exs
+  - ordinal: 9
+    path: test/kogen/codex_denial_evidence_test.exs
+    command: mix test test/kogen/codex_denial_evidence_test.exs
+  - ordinal: 10
+    path: test/kogen/codex_discovery_test.exs
+    command: mix test test/kogen/codex_discovery_test.exs
+  - ordinal: 11
+    path: test/kogen/codex_environment_test.exs
+    command: mix test test/kogen/codex_environment_test.exs
+  - ordinal: 12
+    path: test/kogen/codex_installer_test.exs
+    command: mix test test/kogen/codex_installer_test.exs
+  - ordinal: 13
+    path: test/kogen/codex_login_help_test.exs
+    command: mix test test/kogen/codex_login_help_test.exs
+  - ordinal: 14
+    path: test/kogen/codex_management_test.exs
+    command: mix test test/kogen/codex_management_test.exs
+  - ordinal: 15
+    path: test/kogen/codex_native_live_test.exs
+    command: mix test --only live test/kogen/codex_native_live_test.exs
+  - ordinal: 16
+    path: test/kogen/codex_public_tasks_test.exs
+    command: mix test test/kogen/codex_public_tasks_test.exs
+  - ordinal: 17
+    path: test/kogen/cold_offline_contract_test.exs
+    command: mix test test/kogen/cold_offline_contract_test.exs
+  - ordinal: 18
+    path: test/kogen/cold_offline_test.exs
+    command: mix test --only live test/kogen/cold_offline_test.exs
+  - ordinal: 19
+    path: test/kogen/commit_failure_rollback_test.exs
+    command: mix test test/kogen/commit_failure_rollback_test.exs
+  - ordinal: 20
+    path: test/kogen/commit_provenance_test.exs
+    command: mix test test/kogen/commit_provenance_test.exs
+  - ordinal: 21
+    path: test/kogen/configuration_support_contract_test.exs
+    command: mix test test/kogen/configuration_support_contract_test.exs
+  - ordinal: 22
+    path: test/kogen/core_integrity_test.exs
+    command: mix test test/kogen/core_integrity_test.exs
+  - ordinal: 23
+    path: test/kogen/dependency_fixture_test.exs
+    command: mix test test/kogen/dependency_fixture_test.exs
+  - ordinal: 24
+    path: test/kogen/developer_handoff_test.exs
+    command: mix test test/kogen/developer_handoff_test.exs
+  - ordinal: 25
+    path: test/kogen/execution_policy_test.exs
+    command: mix test test/kogen/execution_policy_test.exs
+  - ordinal: 26
+    path: test/kogen/failure_signature_test.exs
+    command: mix test test/kogen/failure_signature_test.exs
+  - ordinal: 27
+    path: test/kogen/git_integrity_test.exs
+    command: mix test test/kogen/git_integrity_test.exs
+  - ordinal: 28
+    path: test/kogen/git_test.exs
+    command: mix test test/kogen/git_test.exs
+  - ordinal: 29
+    path: test/kogen/guarded_paths_test.exs
+    command: mix test test/kogen/guarded_paths_test.exs
+  - ordinal: 30
+    path: test/kogen/harness_args_test.exs
+    command: mix test test/kogen/harness_args_test.exs
+  - ordinal: 31
+    path: test/kogen/harness_role_test.exs
+    command: mix test test/kogen/harness_role_test.exs
+  - ordinal: 32
+    path: test/kogen/harness_verdict_test.exs
+    command: mix test test/kogen/harness_verdict_test.exs
+  - ordinal: 33
+    path: test/kogen/intent_test.exs
+    command: mix test test/kogen/intent_test.exs
+  - ordinal: 34
+    path: test/kogen/isolated_target_evidence_test.exs
+    command: mix test test/kogen/isolated_target_evidence_test.exs
+  - ordinal: 35
+    path: test/kogen/isolation_cleanup_test.exs
+    command: mix test test/kogen/isolation_cleanup_test.exs
+  - ordinal: 36
+    path: test/kogen/isolation_test.exs
+    command: mix test test/kogen/isolation_test.exs
+  - ordinal: 37
+    path: test/kogen/lifecycle_test.exs
+    command: mix test test/kogen/lifecycle_test.exs
+  - ordinal: 38
+    path: test/kogen/live_native_receipt_audit_test.exs
+    command: mix test test/kogen/live_native_receipt_audit_test.exs
+  - ordinal: 39
+    path: test/kogen/live_reviewer_rework_test.exs
+    command: mix test --only live test/kogen/live_reviewer_rework_test.exs
+  - ordinal: 40
+    path: test/kogen/live_rework_audit_test.exs
+    command: mix test test/kogen/live_rework_audit_test.exs
+  - ordinal: 41
+    path: test/kogen/live_scheduling_test.exs
+    command: mix test test/kogen/live_scheduling_test.exs
+  - ordinal: 42
+    path: test/kogen/live_shape_to_build_test.exs
+    command: mix test --only live test/kogen/live_shape_to_build_test.exs
+  - ordinal: 43
+    path: test/kogen/live_shaping_evaluation_test.exs
+    command: mix test --only live test/kogen/live_shaping_evaluation_test.exs
+  - ordinal: 44
+    path: test/kogen/live_test.exs
+    command: mix test --only live test/kogen/live_test.exs
+  - ordinal: 45
+    path: test/kogen/native_helper_fixture_test.exs
+    command: mix test test/kogen/native_helper_fixture_test.exs
+  - ordinal: 46
+    path: test/kogen/native_helper_live_test.exs
+    command: mix test --only live test/kogen/native_helper_live_test.exs
+  - ordinal: 47
+    path: test/kogen/offline_stage_results_test.exs
+    command: mix test test/kogen/offline_stage_results_test.exs
+  - ordinal: 48
+    path: test/kogen/profile_failure_test.exs
+    command: mix test test/kogen/profile_failure_test.exs
+  - ordinal: 49
+    path: test/kogen/provider_outcome_test.exs
+    command: mix test test/kogen/provider_outcome_test.exs
+  - ordinal: 50
+    path: test/kogen/reviewer_mutation_test.exs
+    command: mix test test/kogen/reviewer_mutation_test.exs
+  - ordinal: 51
+    path: test/kogen/root_profile_audit_test.exs
+    command: mix test test/kogen/root_profile_audit_test.exs
+  - ordinal: 52
+    path: test/kogen/scenario_contract_test.exs
+    command: mix test test/kogen/scenario_contract_test.exs
+  - ordinal: 53
+    path: test/kogen/scenario_lifecycle_test.exs
+    command: mix test test/kogen/scenario_lifecycle_test.exs
+  - ordinal: 54
+    path: test/kogen/scenario_response_test.exs
+    command: mix test test/kogen/scenario_response_test.exs
+  - ordinal: 55
+    path: test/kogen/scenario_semantic_test.exs
+    command: mix test test/kogen/scenario_semantic_test.exs
+  - ordinal: 56
+    path: test/kogen/scenario_tracking_test.exs
+    command: mix test test/kogen/scenario_tracking_test.exs
+  - ordinal: 57
+    path: test/kogen/selective_verification_targets_test.exs
+    command: mix test test/kogen/selective_verification_targets_test.exs
+  - ordinal: 58
+    path: test/kogen/settlement_regression_test.exs
+    command: mix test test/kogen/settlement_regression_test.exs
+  - ordinal: 59
+    path: test/kogen/shape_task_test.exs
+    command: mix test test/kogen/shape_task_test.exs
+  - ordinal: 60
+    path: test/kogen/shaping_evaluation_test.exs
+    command: mix test test/kogen/shaping_evaluation_test.exs
+  - ordinal: 61
+    path: test/kogen/stop_hook_test.exs
+    command: mix test test/kogen/stop_hook_test.exs
+  - ordinal: 62
+    path: test/kogen/target_evidence_test.exs
+    command: mix test test/kogen/target_evidence_test.exs
+  - ordinal: 63
+    path: test/kogen/terminal_probe_test.exs
+    command: mix test test/kogen/terminal_probe_test.exs
+  - ordinal: 64
+    path: test/kogen/test_reliability_catalog_test.exs
+    command: mix test test/kogen/test_reliability_catalog_test.exs
+  - ordinal: 65
+    path: test/kogen/two_outer_resumptions_test.exs
+    command: mix test test/kogen/two_outer_resumptions_test.exs
+  - ordinal: 66
+    path: test/kogen/unified_state_admission_test.exs
+    command: mix test test/kogen/unified_state_admission_test.exs
+  - ordinal: 67
+    path: test/kogen/verification_ownership_lifecycle_test.exs
+    command: mix test test/kogen/verification_ownership_lifecycle_test.exs
+  - ordinal: 68
+    path: test/kogen/verification_policy_test.exs
+    command: mix test test/kogen/verification_policy_test.exs
+  - ordinal: 69
+    path: test/kogen/whole_suite_remediation_test.exs
+    command: mix test test/kogen/whole_suite_remediation_test.exs

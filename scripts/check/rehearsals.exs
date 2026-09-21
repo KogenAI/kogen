@@ -1,7 +1,11 @@
 catalog = YamlElixir.read_from_file!("priv/kogen/verification_targets.yaml")
 makefile = File.read!("Makefile")
 source_files = Path.wildcard("{lib,test}/**/*.{ex,exs}") ++ Path.wildcard("test/support/**/*")
-source = Enum.map_join(source_files, "\n", fn path -> if File.regular?(path), do: File.read!(path), else: "" end)
+
+source =
+  Enum.map_join(source_files, "\n", fn path ->
+    if File.regular?(path), do: File.read!(path), else: ""
+  end)
 
 rehearsals =
   catalog["targets"]
@@ -49,7 +53,10 @@ Enum.each(rehearsals, fn {target_record, rehearsal, command} ->
     raise "runtime trace assertions are missing for #{target}"
   end
 
-  unless String.starts_with?(command, "mix test ") and String.contains?(command, "--exclude live") do
+  argv = OptionParser.split(command)
+
+  unless Enum.take(argv, 2) == ["mix", "test"] and "--exclude" in argv and "live" in argv and
+           Enum.all?(argv, &(not String.contains?(&1, [";", "|", "&", "`", "$", ">", "<"]))) do
     raise "unsafe rehearsal command for #{target}"
   end
 
@@ -59,6 +66,7 @@ Enum.each(rehearsals, fn {target_record, rehearsal, command} ->
   end
 
   IO.puts("+ rehearsal #{target}: #{command}")
+
   trace_path =
     Path.join(
       System.tmp_dir!(),
@@ -66,7 +74,7 @@ Enum.each(rehearsals, fn {target_record, rehearsal, command} ->
     )
 
   {output, status} =
-    System.cmd("sh", ["-c", command],
+    System.cmd(hd(argv), tl(argv),
       stderr_to_stdout: true,
       env: [{"MIX_ENV", "test"}, {"KOGEN_REHEARSAL_TRACE", trace_path}]
     )
@@ -85,10 +93,19 @@ Enum.each(rehearsals, fn {target_record, rehearsal, command} ->
     end
 
   File.rm(trace_path)
-  required = MapSet.new(rehearsal["shared_entrypoints"] ++ rehearsal["trace_assertions"])
 
-  unless MapSet.subset?(required, observed) do
-    missing = required |> MapSet.difference(observed) |> MapSet.to_list() |> Enum.sort()
-    raise "rehearsal runtime trace omitted #{target} entrypoints: #{Enum.join(missing, ", ")}"
+  evidence = %{
+    "schema_version" => 1,
+    "target" => target,
+    "rehearsal_id" => rehearsal["id"],
+    "command" => command,
+    "status" => status,
+    "observed" => MapSet.to_list(observed),
+    "trace_sha256" =>
+      Base.encode16(:crypto.hash(:sha256, Enum.join(Enum.sort(observed), "\n")), case: :lower)
+  }
+
+  unless Kogen.Build.Contract.rehearsal_evidence(target_record, rehearsal, evidence) == :ok do
+    raise "rehearsal production evidence was rejected for #{target}"
   end
 end)

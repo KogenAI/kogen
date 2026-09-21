@@ -8,6 +8,8 @@ defmodule Kogen.IsolatedCase do
   @child_marker "KOGEN_ISOLATED_CASE_CHILD"
   @ready_message "KOGEN_ISOLATED_READY\n"
   @target_evidence_prefix "KOGEN_TARGET_EVIDENCE_MANIFEST\t"
+  @completion_prefix "KOGEN_ISOLATED_COMPLETION\t"
+  @completion_version 1
   @default_timeout 120_000
 
   defmacro __using__(options) do
@@ -84,11 +86,20 @@ defmodule Kogen.IsolatedCase do
     timeout = Keyword.get(options, :timeout, @default_timeout)
     readiness = readiness_config(options, timeout)
     tmpdir = private_tmpdir(options)
+    invocation = Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
+    binding = %{invocation: invocation, source: source, selector: to_string(selector)}
     readiness = if readiness, do: Map.put(readiness, :path, Path.join(tmpdir, "readiness"))
 
     if File.dir?(working_dir) do
-      port =
-        start_supervisor(root, source, selector, options, tmpdir, working_dir, timeout, readiness)
+      supervision = %{
+        tmpdir: tmpdir,
+        working_dir: working_dir,
+        timeout: timeout,
+        readiness: readiness,
+        binding: binding
+      }
+
+      port = start_supervisor(root, source, selector, options, supervision)
 
       collection_timeout = Keyword.get(options, :collection_timeout, timeout + 2_000)
 
@@ -101,39 +112,79 @@ defmodule Kogen.IsolatedCase do
 
       # The supervisor alone removes its temporary root, after reaping children.
       # In particular, cancellation must never race parent-side fixture removal.
-      isolated_result(status, output)
+      isolated_result(status, output, binding)
     else
       cleanup_unowned_tmpdir(tmpdir)
       {:error, {:exit_status, 1}, "working directory does not exist: #{working_dir}"}
     end
   end
 
-  defp start_supervisor(root, source, selector, options, tmpdir, working_dir, timeout, readiness) do
+  defp start_supervisor(root, source, selector, options, supervision) do
     # Until Port.open/2 succeeds, no supervisor can clean this root. Keep the
     # setup in a separate ownership phase so failed argument or environment
     # preparation does not retain a private fixture.
     args = child_args(root, source, selector)
-    env = child_env(options, tmpdir, readiness)
-    open_supervisor(args, working_dir, env, timeout, readiness)
+    env = child_env(options, supervision.tmpdir, supervision.readiness, supervision.binding)
+
+    open_supervisor(
+      args,
+      supervision.working_dir,
+      env,
+      supervision.timeout,
+      supervision.readiness
+    )
   rescue
     exception ->
-      cleanup_unowned_tmpdir(tmpdir)
+      cleanup_unowned_tmpdir(supervision.tmpdir)
       reraise exception, __STACKTRACE__
   catch
     kind, reason ->
-      cleanup_unowned_tmpdir(tmpdir)
+      cleanup_unowned_tmpdir(supervision.tmpdir)
       :erlang.raise(kind, reason, __STACKTRACE__)
   end
 
-  defp isolated_result(0, output), do: {:ok, output}
-  defp isolated_result(124, output), do: {:error, :timeout, output}
-  defp isolated_result(126, output), do: {:error, :readiness_timeout, output}
-  defp isolated_result(:timeout, output), do: {:error, :timeout, output}
+  defp isolated_result(0, output, binding) do
+    case completion_receipt(output, binding) do
+      :ok -> {:ok, output}
+      {:error, reason} -> {:error, {:completion_receipt, reason}, output}
+    end
+  end
 
-  defp isolated_result({:readiness_exit, status}, output),
+  defp isolated_result(124, output, _binding), do: {:error, :timeout, output}
+  defp isolated_result(126, output, _binding), do: {:error, :readiness_timeout, output}
+  defp isolated_result(:timeout, output, _binding), do: {:error, :timeout, output}
+
+  defp isolated_result({:readiness_exit, status}, output, _binding),
     do: {:error, {:readiness_exit, status}, output}
 
-  defp isolated_result(status, output), do: {:error, {:exit_status, status}, output}
+  defp isolated_result(status, output, _binding), do: {:error, {:exit_status, status}, output}
+
+  defp completion_receipt(output, binding) do
+    receipts =
+      output
+      |> String.split("\n", trim: true)
+      |> Enum.filter(&String.starts_with?(&1, @completion_prefix))
+
+    with [line] <- receipts,
+         [version, invocation, source, selector, status, completed, cleanup] <-
+           line |> String.replace_prefix(@completion_prefix, "") |> String.split("\t"),
+         {version, ""} <- Integer.parse(version),
+         true <- version == @completion_version,
+         true <- invocation == binding.invocation,
+         {:ok, source} <- Base.decode64(source),
+         true <- source == binding.source,
+         {:ok, selector} <- Base.decode64(selector),
+         true <- selector == binding.selector,
+         true <- status == "0",
+         true <- completed == "true",
+         true <- cleanup == "passed" do
+      :ok
+    else
+      [] -> {:error, :missing}
+      [_ | _] -> {:error, :duplicate_or_malformed}
+      _ -> {:error, :binding_mismatch}
+    end
+  end
 
   @doc false
   def child_case_options(options) do
@@ -261,7 +312,19 @@ defmodule Kogen.IsolatedCase do
 
     # Keep the VM alive until the owner has found and reaped any OS children.
     result_path = System.fetch_env!("KOGEN_ISOLATED_RESULT")
-    File.write!(result_path <> ".tmp", Integer.to_string(status))
+
+    receipt =
+      [
+        @completion_version,
+        System.fetch_env!("KOGEN_ISOLATED_INVOCATION"),
+        Base.encode64(System.fetch_env!("KOGEN_ISOLATED_SOURCE")),
+        Base.encode64(System.fetch_env!("KOGEN_ISOLATED_SELECTOR")),
+        status,
+        "true"
+      ]
+      |> Enum.join("\n")
+
+    File.write!(result_path <> ".tmp", receipt <> "\n", [:exclusive])
     File.rename!(result_path <> ".tmp", result_path)
     await_cleanup(result_path <> ".ack", status)
   end
@@ -297,7 +360,7 @@ defmodule Kogen.IsolatedCase do
     |> Enum.uniq()
   end
 
-  defp child_env(options, tmpdir, readiness) do
+  defp child_env(options, tmpdir, readiness, binding) do
     configured =
       options
       |> Keyword.get(:env, [])
@@ -346,7 +409,10 @@ defmodule Kogen.IsolatedCase do
       {"TEMP", tmpdir},
       {"MIX_BUILD_PATH", Path.join(tmpdir, "_build")},
       {"ERL_CRASH_DUMP", Path.join(tmpdir, "erl_crash.dump")},
-      {"KOGEN_ISOLATED_RESULT", Path.join(tmpdir, "result")}
+      {"KOGEN_ISOLATED_RESULT", Path.join(tmpdir, "result")},
+      {"KOGEN_ISOLATED_INVOCATION", binding.invocation},
+      {"KOGEN_ISOLATED_SOURCE", binding.source},
+      {"KOGEN_ISOLATED_SELECTOR", binding.selector}
       | parameter_env ++ configured ++ readiness_env
     ]
     |> Enum.map(fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)

@@ -59,6 +59,16 @@ defmodule Kogen.IsolationTest do
     assert status != 0, "abruptly halted VM left subprocess #{abrupt_pid} alive"
   end
 
+  test "raw zero exit and forged completion output fail closed" do
+    assert {:error, {:completion_receipt, :missing}, _output} =
+             Kogen.IsolatedCase.run(@probe, "test abrupt zero before ExUnit completion")
+
+    assert {:error, {:completion_receipt, :duplicate_or_malformed}, output} =
+             Kogen.IsolatedCase.run(@probe, "test forged completion output")
+
+    assert output =~ "KOGEN_ISOLATED_COMPLETION"
+  end
+
   test "timeouts propagate and parent cancellation reaps a running subprocess" do
     marker = Path.join(tmp_dir!(), "child.pid")
 

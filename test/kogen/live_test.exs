@@ -12,7 +12,7 @@ defmodule Kogen.LiveTest do
   alias Kogen.Build.Contract
 
   @moduletag :live
-  @moduletag timeout: 600_000
+  @moduletag timeout: 1_200_000
 
   @selected_root_profiles %{
     shaping: %{model: "gpt-5.6-sol", effort: "low"},

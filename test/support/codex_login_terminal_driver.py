@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run a command under a controlling pseudo-terminal and send one login value."""
 import json
+import fcntl
 import os
 import pty
 import select
@@ -17,6 +18,27 @@ os.write(master, value.encode() + b"\n\x04")
 deadline = time.monotonic() + 20
 status = None
 chunks = []
+
+
+def drain():
+    try:
+        flags = fcntl.fcntl(master, fcntl.F_GETFL)
+        fcntl.fcntl(master, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    except OSError:
+        return
+    while True:
+        try:
+            ready, _, _ = select.select([master], [], [], 0)
+            if not ready:
+                return
+            data = os.read(master, 65536)
+            if not data:
+                return
+            chunks.append(data)
+        except (BlockingIOError, OSError, ValueError):
+            return
+
+
 try:
     while time.monotonic() < deadline:
         ready, _, _ = select.select([master], [], [], 0.1)
@@ -31,8 +53,10 @@ try:
             break
 finally:
     if status is None:
+        drain()
         os.killpg(pid, signal.SIGKILL)
         os.waitpid(pid, 0)
         status = 124
+    drain()
     os.close(master)
 print(json.dumps({"status": status, "output": b"".join(chunks).decode("utf-8", "replace")}))

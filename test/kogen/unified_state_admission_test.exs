@@ -104,8 +104,11 @@ defmodule Kogen.UnifiedStateAdmissionTest do
       )
 
     File.mkdir_p!(Path.join(root, ".codex/hooks"))
-    File.cp!(".codex/hooks/check.sh", Path.join(root, ".codex/hooks/check.sh"))
-    File.cp!(".codex/hooks/stop_runner.py", Path.join(root, ".codex/hooks/stop_runner.py"))
+
+    for hook <- ["check.sh", "environment.py", "stop_runner.py"] do
+      File.cp!(Path.join(".codex/hooks", hook), Path.join(root, ".codex/hooks/#{hook}"))
+    end
+
     File.write!(Path.join(root, ".gitignore"), ".kogen/runtime/\ndispatches\nmode\ninput.json\n")
     File.write!(Path.join(root, "README.md"), "fixture\n")
 

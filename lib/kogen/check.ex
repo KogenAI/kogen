@@ -5,7 +5,8 @@ defmodule Kogen.Check do
   on `Kogen.Harness`: whether a Verification Record is trustworthy must be
   decidable without knowing anything about how the Developer was launched.
   """
-  use Boundary, deps: []
+  use Boundary, deps: [], exports: [MakeInventory]
+  alias __MODULE__.MakeInventory
 
   @record_path ".kogen/runtime/verification.json"
   @history_path ".kogen/runtime/verification-history.jsonl"
@@ -93,16 +94,7 @@ defmodule Kogen.Check do
   @doc "The set of target names declared in `makefile_path` (rule lines only, not recipes)."
   @spec declared_targets(Path.t()) :: MapSet.t(String.t())
   def declared_targets(makefile_path \\ "Makefile") do
-    case File.read(makefile_path) do
-      {:ok, content} ->
-        ~r/^([A-Za-z0-9_.-]+)\s*:(?!=)/m
-        |> Regex.scan(content)
-        |> Enum.map(fn [_, name] -> name end)
-        |> MapSet.new()
-
-      {:error, _} ->
-        MapSet.new()
-    end
+    MakeInventory.declared_targets(makefile_path)
   end
 
   @doc """
@@ -113,8 +105,12 @@ defmodule Kogen.Check do
   """
   @spec validate_targets([String.t()], Path.t()) :: :ok | {:error, String.t()}
   def validate_targets(names, makefile_path \\ "Makefile") do
-    declared = declared_targets(makefile_path)
+    with {:ok, declared} <- MakeInventory.load(makefile_path) do
+      validate_declared_names(names, declared)
+    end
+  end
 
+  defp validate_declared_names(names, declared) do
     names
     |> Enum.reject(&(&1 == "check"))
     |> Enum.uniq()

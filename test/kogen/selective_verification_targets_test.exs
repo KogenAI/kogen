@@ -1,6 +1,7 @@
 defmodule Kogen.SelectiveVerificationTargetsTest do
   use ExUnit.Case, async: true
 
+  alias Kogen.Build.Contract
   alias Kogen.Build.VerificationPlan
   alias Kogen.Check
 
@@ -144,6 +145,71 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
 
     assert plan.targets == ["check", "cold-offline"]
     assert plan.rehearsals == []
+  end
+
+  test "proof admission rejects arbitrary existing repository files and source globs" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+
+    for selector <- ["Makefile", "lib/kogen/check.ex", "lib/**"] do
+      scenario = %{
+        "verified_by" => ["check"],
+        "proof" => %{
+          "offline" => [selector],
+          "paid_target" => "none",
+          "paid_reason" =>
+            "offline-sufficient: arbitrary repository files are not executable proof",
+          "affected_paths" => [selector]
+        }
+      }
+
+      assert {:error, "scenario proof map is missing, unsafe, or inconsistent"} =
+               VerificationPlan.build([scenario], ["Makefile", "lib/**"], catalog, @root)
+    end
+  end
+
+  test "rehearsal evidence consumer accepts exact authority and rejects a one-field foreign target" do
+    assert {:ok, catalog} = VerificationPlan.load(@root)
+    target = Enum.find(catalog.entries, &(&1["name"] == "live-general"))
+    rehearsal = target["rehearsal"]
+    observed = rehearsal["shared_entrypoints"] ++ rehearsal["trace_assertions"]
+
+    trace_sha256 =
+      observed
+      |> MapSet.new()
+      |> Enum.sort()
+      |> Enum.join("\n")
+      |> then(&:crypto.hash(:sha256, &1))
+      |> Base.encode16(case: :lower)
+
+    evidence = %{
+      "schema_version" => 1,
+      "target" => target["name"],
+      "rehearsal_id" => rehearsal["id"],
+      "command" => rehearsal["command"],
+      "status" => 0,
+      "observed" => observed,
+      "trace_sha256" => trace_sha256
+    }
+
+    assert :ok = Contract.rehearsal_evidence(target, rehearsal, evidence)
+
+    assert {:error, reason} =
+             Contract.rehearsal_evidence(
+               target,
+               rehearsal,
+               Map.put(evidence, "target", "live-native")
+             )
+
+    assert reason =~ "foreign authority"
+
+    assert {:error, reason} =
+             Contract.rehearsal_evidence(
+               target,
+               rehearsal,
+               Map.put(evidence, "trace_sha256", String.duplicate("a", 64))
+             )
+
+    assert reason =~ "incomplete trace"
   end
 
   test "selection guide chooses targets by behavior and explains paid evidence" do

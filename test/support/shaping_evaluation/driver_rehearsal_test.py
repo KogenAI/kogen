@@ -213,10 +213,16 @@ class DriverRehearsalTest(unittest.TestCase):
         return receipt, launches
 
     def test_real_drive_rehearses_startup_product_turns_clarification_and_continuation(self):
+        self.assertEqual(600, self.driver.MAX_SECONDS)
+        self.assertGreater(self.driver.SUITE_SECONDS, self.driver.MAX_SECONDS)
+        self.assertLessEqual(self.driver.SUITE_SECONDS, self.driver.MAX_SECONDS + 120)
         booking_reachability_trigger = self.driver.booking_reachability_trigger
         self.assertFalse(booking_reachability_trigger("Observed BOM discrepancy", None))
+        self.assertFalse(booking_reachability_trigger("A connection is unavailable", None))
         self.assertTrue(booking_reachability_trigger(
             "Observed missing .tmp/calendar-run-17/connection.json for the proposed organizer", None))
+        self.assertTrue(booking_reachability_trigger(
+            "The historical receipt names a temporary run that is now absent", None))
         cases = (
             ("csv-flawed", "eval-csv-flawed", ["clarification"], [lambda text, root: "bom" in text.lower() and self.driver.rollout_contains(root, "BOM")]),
             ("csv-complete", "eval-csv-complete", [], []),

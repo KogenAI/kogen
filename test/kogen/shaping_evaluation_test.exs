@@ -17,6 +17,8 @@ defmodule Kogen.ShapingEvaluationTest do
     facts = Jason.decode!(File.read!(Path.join(@support, "compact-fixtures-v2/facts.json")))
 
     assert driver =~ "MAX_SECONDS = 600"
+    assert driver =~ "SUITE_SECONDS = MAX_SECONDS + 120"
+    assert driver =~ "deadline = monotonic_now() + SUITE_SECONDS"
     assert driver =~ "setup_continuation_seed()"
     assert driver =~ "KOGEN_SHAPING_EVALUATION_SUITE_BARRIER"
     assert driver =~ "shape_transport.exp"

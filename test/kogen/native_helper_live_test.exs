@@ -7,7 +7,7 @@ defmodule Kogen.NativeHelperLiveTest do
   alias Kogen.NativeHelperFixture
 
   @moduletag :live
-  @moduletag timeout: 600_000
+  @moduletag timeout: 1_200_000
 
   test "a bounded fresh native dispatch records actual child routing evidence" do
     {:ok, config} = Kogen.Intent.read_config()

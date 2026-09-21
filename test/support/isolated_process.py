@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import time
+import base64
 
 
 def kill_group(pid, sig):
@@ -105,7 +106,24 @@ def main():
                     break
 
             if result.exists():
-                status = int(result.read_text())
+                if result.is_symlink() or not result.is_file():
+                    raise RuntimeError("isolated completion receipt is not a regular file")
+                fields = result.read_text().splitlines()
+                if len(fields) != 6:
+                    raise RuntimeError("isolated completion receipt shape is invalid")
+                version, invocation, source64, selector64, status_text, completed = fields
+                source = base64.b64decode(source64, validate=True).decode()
+                selector = base64.b64decode(selector64, validate=True).decode()
+                if (version != "1" or
+                        invocation != os.environ["KOGEN_ISOLATED_INVOCATION"] or
+                        source != os.environ["KOGEN_ISOLATED_SOURCE"] or
+                        selector != os.environ["KOGEN_ISOLATED_SELECTOR"] or
+                        completed != "true"):
+                    raise RuntimeError("isolated completion receipt binding mismatch")
+                try:
+                    status = int(status_text)
+                except ValueError:
+                    raise RuntimeError("isolated completion receipt status is invalid")
                 completed = True
                 break
             if deadline is None:
@@ -157,6 +175,8 @@ def main():
             shutil.rmtree(result.parent)
         except OSError as error:
             raise RuntimeError(f"could not remove private fixture {result.parent}: {error}") from error
+        if completed:
+            print("KOGEN_ISOLATED_COMPLETION\t" + "\t".join(fields + ["passed"]), flush=True)
     return status if status >= 0 else 128 - status
 
 

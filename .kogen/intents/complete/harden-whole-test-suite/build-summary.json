@@ -1,0 +1,355 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "4-GqgRdfg-sh6iXzBbZLUilsFRsruLPi",
+      "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+      "developer_session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+      "number": 0,
+      "reviewer_session_id": "01a0c456-2394-7a83-a839-c1c8b2af46f8",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "4-GqgRdfg-sh6iXzBbZLUilsFRsruLPi",
+          "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+          "exit_code": 0,
+          "finished_at": "2026-09-21T13:47:31Z",
+          "session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "4-GqgRdfg-sh6iXzBbZLUilsFRsruLPi",
+          "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+          "exit_code": 0,
+          "finished_at": "2026-09-21T13:49:34Z",
+          "session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+          "status": "passed",
+          "target": "cold-offline"
+        },
+        {
+          "attempt_token": "4-GqgRdfg-sh6iXzBbZLUilsFRsruLPi",
+          "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+          "exit_code": 0,
+          "finished_at": "2026-09-21T13:52:08Z",
+          "session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+          "status": "passed",
+          "target": "live-general"
+        },
+        {
+          "attempt_token": "4-GqgRdfg-sh6iXzBbZLUilsFRsruLPi",
+          "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+          "exit_code": 0,
+          "finished_at": "2026-09-21T13:58:00Z",
+          "session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+          "status": "passed",
+          "target": "live-shaping-quality"
+        },
+        {
+          "attempt_token": "4-GqgRdfg-sh6iXzBbZLUilsFRsruLPi",
+          "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+          "exit_code": 0,
+          "finished_at": "2026-09-21T14:05:05Z",
+          "session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+          "status": "passed",
+          "target": "live-native"
+        },
+        {
+          "attempt_token": "4-GqgRdfg-sh6iXzBbZLUilsFRsruLPi",
+          "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+          "exit_code": 0,
+          "finished_at": "2026-09-21T14:12:08Z",
+          "session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+          "status": "passed",
+          "target": "live-reviewer-rework"
+        },
+        {
+          "attempt_token": "4-GqgRdfg-sh6iXzBbZLUilsFRsruLPi",
+          "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+          "exit_code": 0,
+          "finished_at": "2026-09-21T14:19:30Z",
+          "session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+          "status": "passed",
+          "target": "live-shape-to-build"
+        }
+      ]
+    }
+  ],
+  "build_id": "eVRPd_-x8kpG68yN0ueG_z-y",
+  "candidate_id": "5a5b62ce22ebcd75d07c1b566b4f37d08fed4267",
+  "developer_session_id": "01a0c423-e24d-7ed2-91fc-1674f0fe032e",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 19838669,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/eVRPd_-x8kpG68yN0ueG_z-y/record.json",
+    "schema_version": 1,
+    "sha256": "8a38f047ce6b475f7f9dd2f962f6df7d060f386e3a7cfcd3a81d1af566083e89"
+  },
+  "intent": {
+    "id": "01a0bd2c-f6a0-7447-897d-50f5ec441c27",
+    "slug": "harden-whole-test-suite",
+    "title": "Implement whole-suite test reliability repairs"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0c456-2394-7a83-a839-c1c8b2af46f8"
+  },
+  "risks": [
+    {
+      "id": "breadth-exceeds-build-capacity"
+    },
+    {
+      "id": "green-by-weakening"
+    },
+    {
+      "id": "reliability-ledger-lifecycle"
+    },
+    {
+      "id": "protocol-and-cleanup-authority"
+    }
+  ],
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "Whole-suite remediation contract tests passed in the recorded successful check.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Validates changed implementation witnesses and rejects narrow/all-keep candidate patterns.",
+          "path": "test/kogen/whole_suite_remediation_test.exs"
+        }
+      ],
+      "id": "implement-every-remediation-class-before-handoff",
+      "reason": "The Candidate contains the required broad remediation set and the recorded controller check passed the whole-suite remediation controls.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Catalog validator tests passed in the recorded successful check.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Declaration catalog validation and adversarial catalog controls.",
+          "path": "test/kogen/test_reliability_catalog_test.exs"
+        }
+      ],
+      "id": "reconcile-complete-test-catalog",
+      "reason": "The tracked reliability catalog and declaration-specific validation controls are present and passed under check.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Structured offline stage receipt implementation.",
+          "path": "scripts/check/offline.py"
+        },
+        {
+          "locator": "Offline gate completed successfully with retained receipt path.",
+          "path": ".kogen/runtime/stop-check.log"
+        }
+      ],
+      "id": "attribute-offline-stages",
+      "reason": "Offline stage settlement, binding, and failure-attribution controls are implemented; the controller-recorded offline gate passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Configuration/support contract controls passed in the recorded check.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Configuration and support boundary contract tests.",
+          "path": "test/kogen/configuration_support_contract_test.exs"
+        }
+      ],
+      "id": "harden-configuration-and-support",
+      "reason": "Candidate support/configuration contract coverage passed in the settled controller check.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Lifecycle and publication/admission ownership controls passed in the recorded check.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Verification plan implementation.",
+          "path": "lib/kogen/build/verification_plan.ex"
+        }
+      ],
+      "id": "harden-git-publication-and-admission",
+      "reason": "Candidate lifecycle/verification-plan changes and settled offline controls cover admission binding and ownership.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Fresh receipt and cleanup protocol implementation.",
+          "path": "test/support/isolated_case.ex"
+        },
+        {
+          "locator": "Non-live suite, including isolation controls, passed in the recorded check.",
+          "path": ".kogen/runtime/stop-check.log"
+        }
+      ],
+      "id": "fail-close-isolated-execution",
+      "reason": "Isolation support and adversarial isolation controls are present; the controller's complete non-live suite passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Production rehearsal consumer.",
+          "path": "scripts/check/rehearsals.exs"
+        },
+        {
+          "locator": "All declared rehearsal commands passed during the recorded check.",
+          "path": ".kogen/runtime/stop-check.log"
+        }
+      ],
+      "id": "make-rehearsals-semantic",
+      "reason": "Rehearsals run production consumer commands and controller evidence records all rehearsal passes.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Normalized provider outcome implementation.",
+          "path": "lib/kogen/provider_outcome.ex"
+        },
+        {
+          "locator": "Native and compatibility live targets passed in the recorded Stop verification.",
+          "path": ".kogen/runtime/stop-check.log"
+        }
+      ],
+      "id": "normalize-native-boundaries",
+      "reason": "Provider outcome normalization is implemented and the required live native/compatibility routes passed under Stop.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Live Shape-to-Build route passed in the recorded Stop verification.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Lifecycle contract controls.",
+          "path": "test/kogen/scenario_lifecycle_test.exs"
+        }
+      ],
+      "id": "harden-shape-build-lifecycle",
+      "reason": "Lifecycle adversarial controls are present and the paid Shape-to-Build target passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Standalone reviewer-rework live route passed in the recorded Stop verification.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Shared reviewer-rework fixture and local preflight support.",
+          "path": "test/support/live_reviewer_rework_fixture.ex"
+        }
+      ],
+      "id": "harden-reviewer-rework",
+      "reason": "The standalone rework fixture/control is present and the live reviewer-rework target passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Final catalog and whole-suite remediation controls passed in the recorded check.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Manifest-driven remediation assertions.",
+          "path": "test/kogen/whole_suite_remediation_test.exs"
+        }
+      ],
+      "id": "pass-every-test-file-before-handoff",
+      "reason": "The manifest/ledger enforcement controls are present and passed in the settled full non-live check.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Focused repairs and regression controls passed in the recorded check and live targets.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "PTY cleanup implementation drains and hangs up during cleanup.",
+          "path": "priv/kogen/codex/compatibility/pty_driver.py"
+        }
+      ],
+      "id": "repair-reproduced-triple-run-failures",
+      "reason": "The Candidate implements the named repair classes, and settled check plus all required live targets passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "General Reviewer live target passed in the recorded Stop verification.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Verdict normalization controls.",
+          "path": "test/kogen/harness_verdict_test.exs"
+        }
+      ],
+      "id": "normalize-general-review",
+      "reason": "Offline verdict controls and the paid independent-review target both passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Live shaping-quality target passed and emitted retained evidence manifest.",
+          "path": ".kogen/runtime/stop-check.log"
+        },
+        {
+          "locator": "Offline shaping evaluation controls.",
+          "path": "test/kogen/shaping_evaluation_test.exs"
+        }
+      ],
+      "id": "prove-public-shaping-quality",
+      "reason": "Structural shaping controls and the provider-dependent shaping-quality route both passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Verification ownership and invalidation plan implementation.",
+          "path": "lib/kogen/build/verification.ex"
+        },
+        {
+          "locator": "Lifecycle controls passed in the recorded check.",
+          "path": ".kogen/runtime/stop-check.log"
+        }
+      ],
+      "id": "bind-retries-resumptions-and-invalidation",
+      "reason": "Verification binding/ownership controls are implemented and passed in the settled controller check.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Gitless provenance and cold receipt controls.",
+          "path": "test/kogen/cold_offline_contract_test.exs"
+        },
+        {
+          "locator": "Cold-offline target passed before paid targets in the recorded Stop verification.",
+          "path": ".kogen/runtime/stop-check.log"
+        }
+      ],
+      "id": "prove-clean-room-offline",
+      "reason": "Gitless receipt-binding controls are present and the controller-recorded cold-offline target passed in the required order.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

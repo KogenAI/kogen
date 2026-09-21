@@ -1,0 +1,18 @@
+- id: comprehensive-audit
+  path: .kogen/runtime/shaping-followups/test-reliability-audit/
+  note: Inventory, boundary registry, Jev triage and focused pass, independent reviews, probes, reconciliation, and evidence limitations.
+- id: catalog-reconciliation
+  path: .kogen/runtime/shaping-followups/test-reliability-audit/coverage-reconciliation.json
+  note: Seventy maintained test sources mapped across all declared targets with no unreachable test sources.
+- id: abrupt-zero-probe
+  path: .kogen/runtime/shaping-followups/test-reliability-audit/probes/isolated-abrupt-zero-result.md
+  note: Direct provider-denied false-pass reproduction in the shared isolated runner.
+- id: focused-jev
+  path: .kogen/runtime/shaping-followups/test-reliability-audit/jev-focused-summary.md
+  note: Ten-boundary Jev pass and explicit insufficiency limitations.
+- id: exhaustive-matrix
+  path: .kogen/runtime/shaping-followups/test-reliability-audit/coverage-matrix-summary.md
+  note: Complete shaping matrix, exhaustive Jev provenance, structural coverage, provisional obligations, and independent challenges; Build must materialize the final tracked ledger under priv/kogen.
+- id: prior-roadmap
+  path: .kogen/runtime/shaping-followups/ROADMAP.md
+  note: Existing Candidate-workspace work remains separate and unchanged.

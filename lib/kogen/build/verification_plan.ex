@@ -6,6 +6,7 @@ defmodule Kogen.Build.VerificationPlan do
 
   @catalog_path "priv/kogen/verification_targets.yaml"
   @aggregate_names ~w(live live-all)
+  alias Kogen.Check.MakeInventory
 
   def load(root \\ File.cwd!()) do
     path = Path.join(root, @catalog_path)
@@ -127,15 +128,8 @@ defmodule Kogen.Build.VerificationPlan do
   defp validate_declared_targets(entries, root) do
     makefile = Path.join(root, "Makefile")
 
-    case File.read(makefile) do
-      {:ok, bytes} ->
-        declared =
-          ~r/^([A-Za-z0-9_.-]+)\s*:(?!=)/m
-          |> Regex.scan(bytes)
-          |> Enum.map(fn [_, name] -> name end)
-          |> MapSet.new()
-          |> MapSet.delete(".PHONY")
-
+    case MakeInventory.load(makefile) do
+      {:ok, declared} ->
         cataloged = MapSet.new(entries, & &1["name"])
 
         if MapSet.equal?(declared, cataloged),
@@ -143,8 +137,19 @@ defmodule Kogen.Build.VerificationPlan do
           else: {:error, "verification target catalog does not match declared Make targets"}
 
       {:error, reason} ->
-        {:error, "could not read Makefile for verification target inventory: #{inspect(reason)}"}
+        {:error, "could not read Makefile for verification target inventory: #{reason}"}
     end
+  end
+
+  @doc "Renders target declarations for a fixture Makefile from catalog entries."
+  def render_target_declarations(entries) when is_list(entries) do
+    entries
+    |> Enum.map(& &1["name"])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.map_join("\n", &(&1 <> ":\n\t@true"))
+    |> Kernel.<>("\n")
   end
 
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
@@ -219,7 +224,16 @@ defmodule Kogen.Build.VerificationPlan do
     exists_or_planned =
       File.exists?(clean) or Enum.any?(affected || [], &path_matches?(selector, &1))
 
-    rehearsal? or (inside and not broad and exists_or_planned)
+    supported_test_source =
+      (String.starts_with?(relative, "test/") and
+         (String.ends_with?(relative, "_test.exs") or File.dir?(clean))) or
+        relative in ["scripts/check/rehearsals.exs", "scripts/check/offline.py"]
+
+    fixture_artifact =
+      Path.dirname(relative) == "." and String.ends_with?(relative, ".txt")
+
+    rehearsal? or
+      (inside and not broad and (supported_test_source or fixture_artifact) and exists_or_planned)
   end
 
   defp valid_selector?(_, _, _, _), do: false

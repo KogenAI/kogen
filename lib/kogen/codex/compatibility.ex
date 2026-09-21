@@ -10,7 +10,7 @@ defmodule Kogen.Codex.Compatibility do
   # authenticating here would make candidate verification able to change the
   # state it is meant to assess.
 
-  alias Kogen.Codex.Environment
+  alias Kogen.Codex.{Environment, ProviderOutcome}
 
   @type runtime :: %{
           required(String.t()) => String.t()
@@ -305,10 +305,29 @@ defmodule Kogen.Codex.Compatibility do
       "cleanup" => get_in(receipt, ["cleanup", "ok"]) == true
     }
 
-    if status == 0 and result["marker"] and result["cleanup"],
-      do: {:ok, result},
-      else: {:error, {:interactive_shaping_failed, result}}
+    outcome = shaping_outcome(status, result)
+
+    if outcome.success,
+      do: {:ok, Map.put(result, "outcome", outcome.status)},
+      else: {:error, {:interactive_shaping_failed, result, outcome}}
   end
+
+  defp shaping_outcome(0, %{"marker" => true, "cleanup" => true}),
+    do: ProviderOutcome.settle(:succeeded, %{final: true})
+
+  defp shaping_outcome(status, %{"marker" => marker, "cleanup" => false}) do
+    kind = if status == 124, do: :timed_out, else: :provider_failed
+    ProviderOutcome.settle(kind, %{status: status, marker: marker}, {:error, :pty_cleanup_failed})
+  end
+
+  defp shaping_outcome(124, result),
+    do: ProviderOutcome.settle(:timed_out, %{status: 124, marker: result["marker"]})
+
+  defp shaping_outcome(status, result) when status != 0,
+    do: ProviderOutcome.settle(:provider_failed, %{status: status, marker: result["marker"]})
+
+  defp shaping_outcome(status, _result),
+    do: ProviderOutcome.settle(:malformed_evidence, %{status: status, marker: false})
 
   defp developer_turn(context, config, fixture) do
     prompt = """

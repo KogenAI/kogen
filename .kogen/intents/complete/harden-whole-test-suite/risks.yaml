@@ -1,0 +1,30 @@
+- id: breadth-exceeds-build-capacity
+  scenario_ids: [implement-every-remediation-class-before-handoff, reconcile-complete-test-catalog, attribute-offline-stages, harden-configuration-and-support, harden-git-publication-and-admission, fail-close-isolated-execution, make-rehearsals-semantic, normalize-native-boundaries, harden-shape-build-lifecycle, harden-reviewer-rework, normalize-general-review, prove-public-shaping-quality, bind-retries-resumptions-and-invalidation, prove-clean-room-offline]
+  description: The explicitly requested whole-suite remediation crosses several subsystems and may exceed one Developer conversation; scope must not be silently narrowed, and incomplete boundaries must fail handoff rather than be declared future work.
+- id: green-by-weakening
+  scenario_ids: [reconcile-complete-test-catalog, make-rehearsals-semantic, normalize-native-boundaries, harden-shape-build-lifecycle, harden-reviewer-rework, normalize-general-review, prove-public-shaping-quality]
+  description: Broad cleanup can create superficial stability by deleting assertions, expanding timeouts, adding retries, accepting weaker evidence, or replacing real consumers with mocks; catalog dispositions and adversarial controls must preserve or strengthen coverage.
+- id: reliability-ledger-lifecycle
+  scenario_ids: [reconcile-complete-test-catalog, attribute-offline-stages, prove-clean-room-offline]
+  description: The reliability ledger and retained stage records must remain deterministic, reviewable, secret-free, and comparable without committing ephemeral run output.
+  ownership:
+    - paths: priv/kogen/test-reliability.yaml and per-run ignored reliability receipts
+      when_exists: maintained catalog exists after implementation; ignored receipts exist only after a verification run begins
+      owner_after_creation: repository owns the maintained catalog; the active verification invocation owns its receipts
+      owner_during_operation: stage/test producers append through the structured result owner and consumers read only settled records
+      permitted_mutation: catalog updates accompany changed test declarations; receipts use atomic invocation-bound writes and never rewrite prior settled runs
+      validation: schema/version, canonical test identity, target, equivalence key, outcome, timestamps, source revision, and secret/path redaction are validated before consumption
+      git_state: the catalog is tracked; per-run receipts are ignored runtime evidence and must not be staged
+      upgrade_behavior: schema changes are explicit and versioned; incompatible historical receipts remain readable as unsupported history, never reinterpreted as success
+- id: protocol-and-cleanup-authority
+  scenario_ids: [fail-close-isolated-execution, normalize-native-boundaries, harden-shape-build-lifecycle, harden-reviewer-rework]
+  description: New structured evidence can itself become spoofable; terminal records require exact invocation and owner binding, atomic settlement, finality, and preservation of both initiating and cleanup outcomes.
+  ownership:
+    - paths: per-invocation temporary control, completion, log, receipt, and cleanup artifacts
+      when_exists: created under a unique private root only after invocation validation
+      owner_after_creation: the declared stage supervisor owns lifecycle and cleanup; child/provider code owns only its bound output payload
+      owner_during_operation: one supervisor settles phases while consumers reject foreign, stale, partial, replaced, symlinked, duplicated, or downgraded records
+      permitted_mutation: atomic writes for the active invocation followed by immutable settlement; cleanup may remove only its owned root after evidence retention
+      validation: canonical path, regular-file policy, schema/version, nonce, source/Candidate/test/target identity, monotonic phases, finality, and cleanup disposition
+      git_state: outside Git in ignored invocation-specific runtime roots
+      upgrade_behavior: incompatible versions fail closed and historical artifacts never authorize a current invocation

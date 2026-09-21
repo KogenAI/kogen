@@ -10,6 +10,29 @@ defmodule Kogen.CheckTest do
   use ExUnit.Case, async: true
 
   alias Kogen.Check
+  alias Kogen.Check.MakeInventory
+
+  describe "Makefile inventory" do
+    test "includes every grouped target and ignores phony declarations and assignments" do
+      source = """
+      .PHONY: check helper
+      FLAGS := --strict
+      check helper &:
+      \t@true
+      """
+
+      assert {:ok, targets} = MakeInventory.parse(source)
+      assert targets == MapSet.new(["check", "helper"])
+    end
+
+    test "rejects double-colon and pattern rules" do
+      assert {:error, message} = MakeInventory.parse("first::\n\t@true\n")
+      assert message =~ "double-colon"
+
+      assert {:error, message} = MakeInventory.parse("%.o: %.c\n\t@true\n")
+      assert message =~ "pattern"
+    end
+  end
 
   # -- declared-targets-run-after-check -----------------------------------
 
