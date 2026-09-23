@@ -1,9 +1,11 @@
 Code.require_file("../support/native_helper_fixture.ex", __DIR__)
+Code.require_file("../support/route_config.ex", __DIR__)
 
 defmodule Kogen.NativeHelperFixtureTest do
   use ExUnit.Case, async: true
 
   alias Kogen.NativeHelperFixture
+  alias Kogen.RouteConfig
 
   test "renders the bounded packets through the production role renderer" do
     config = codex_config!()
@@ -249,20 +251,7 @@ defmodule Kogen.NativeHelperFixtureTest do
   # config reader regardless of which harness this checkout currently selects.
   defp codex_config! do
     path = Path.join(tmp_dir!(), "codex-config.yaml")
-
-    File.write!(path, """
-    harness: codex
-    shaping:   {model: gpt-5.6-sol, effort: low}
-    developer: {model: gpt-5.6-sol, effort: low}
-    reviewer:  {model: gpt-5.6-terra, effort: medium}
-    helpers:
-      scout:  {model: gpt-5.6-luna, effort: low}
-      worker: {model: gpt-5.6-luna, effort: medium}
-      expert: {model: gpt-5.6-sol, effort: medium}
-    outer_resumptions: 2
-    verification_retries: 2
-    """)
-
+    RouteConfig.write!(path, [{"codex", RouteConfig.codex_route()}])
     {:ok, config} = Kogen.Intent.read_config(path)
     config
   end

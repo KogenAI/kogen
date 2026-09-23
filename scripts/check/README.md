@@ -26,7 +26,11 @@ The owner invokes `make check`, which runs [offline.py](offline.py) in this orde
    compiler, failure, mutation, provenance, and verification-ownership controls.
    With default paths these overlap using independent dev/test build trees.
    An explicit `MIX_BUILD_PATH` keeps them sequential to avoid shared writes.
-   Wait for both and propagate either failure.
+   Wait for both and propagate either failure. The test stage runs
+   `mix test --exclude live --warnings-as-errors`: excluded live owners are
+   still compiled, so a stale call to a removed arity (for example a
+   `Kogen.Harness` launch without its launch context) fails `check` instead of
+   only warning.
 
 The recipe enables Hex offline mode, places the provider-denial shim first on PATH, and stops on any failed
 stage. Tests are rerun on every invocation. It prints stage times and complete

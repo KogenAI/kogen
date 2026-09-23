@@ -14,25 +14,41 @@ defmodule Kogen.Codex do
       Path.join(System.user_home!(), "Library/Application Support/Kogen/codex")
   end
 
-  @doc "Selects once, checks local native readiness, and holds an active-use receipt."
-  def open(config, project \\ File.cwd!()) do
+  @doc """
+  Selects once, checks local native readiness, and holds an active-use receipt.
+  `config` is a resolved route whose harness is `codex`. `KOGEN_HARNESS` only
+  replaces the Codex executable for offline fixtures.
+  """
+  def open(config, project \\ File.cwd!())
+
+  def open(%{harness: "codex"} = config, project) do
     case System.get_env("KOGEN_HARNESS") do
-      nil -> open_managed(config, project)
-      executable -> {:ok, %{executable: resolve_test_executable(executable), args: [], env: []}}
+      nil ->
+        open_managed(config, project)
+
+      executable ->
+        {:ok,
+         %{harness: "codex", executable: resolve_test_executable(executable), args: [], env: []}}
     end
   rescue
     error -> {:error, Exception.message(error)}
   end
 
+  def open(config, _project),
+    do:
+      {:error,
+       "Kogen Codex requires a codex route, got harness: #{inspect(Map.get(config, :harness))}"}
+
   defp open_managed(config, project) do
     with {:ok, runtime} <- installed(),
          {:ok, scope} <- effective_scope(project),
-         :ok <- require_login(runtime, scope, config, project) do
+         :ok <- require_login(runtime, scope, project) do
       operation = State.operation!(root())
       lease = State.lease!(root(), runtime, project)
 
       {:ok,
        %{
+         harness: "codex",
          runtime: runtime,
          scope: scope,
          config: config,
@@ -44,17 +60,18 @@ defmodule Kogen.Codex do
   end
 
   @doc "Fresh immutable settings for a launch, retaining the concrete runtime and native state."
-  def launch_context(%{runtime: runtime} = selection) do
-    Environment.prepare(
-      runtime,
+  def launch_context(%{harness: "codex", runtime: runtime} = selection) do
+    runtime
+    |> Environment.prepare(
       selection.scope,
       selection.config,
       selection.project,
       selection.operation
     )
+    |> Map.put(:harness, "codex")
   end
 
-  def launch_context(context), do: context
+  def launch_context(%{harness: "codex"} = context), do: context
 
   @doc "Releases only this operation's active receipt; runtimes and native sessions are retained."
   def close(%{lease: lease}), do: File.rm(lease)
@@ -125,20 +142,20 @@ defmodule Kogen.Codex do
   end
 
   @doc "Select scope before native login so cancellation never falls back."
-  def login(args, config) do
+  def login(args) do
     management_allowed!("login")
 
     with {:ok, selection, forwarded} <- login_arguments(args),
          :ok <- require_project(selection),
          {:ok, runtime} <- login_runtime(selection) do
-      delegate_login(runtime, selection, forwarded, config)
+      delegate_login(runtime, selection, forwarded)
     end
   end
 
   defp login_runtime(:default), do: {:ok, nil}
   defp login_runtime(_selection), do: installed()
 
-  defp delegate_login(_runtime, :default, [], _config) do
+  defp delegate_login(_runtime, :default, []) do
     State.select_scope!(root(), File.cwd!(), :shared)
 
     IO.puts(
@@ -148,12 +165,12 @@ defmodule Kogen.Codex do
     {:ok, 0}
   end
 
-  defp delegate_login(runtime, selection, forwarded, config) do
+  defp delegate_login(runtime, selection, forwarded) do
     project = File.cwd!()
     if selection == :project, do: State.select_scope!(root(), project, :project)
     scope = scope(selection, project)
     State.ensure_scope!(scope.path)
-    context = Environment.prepare(runtime, scope, config, project, State.operation!(root()))
+    context = Environment.prepare(runtime, scope, :setup, project, State.operation!(root()))
     {:ok, terminal(context, ["login" | forwarded])}
   end
 
@@ -186,8 +203,8 @@ defmodule Kogen.Codex do
   end
 
   @doc false
-  def require_login(runtime, scope, config, project) do
-    case login_status(runtime, scope, config, project) do
+  def require_login(runtime, scope, project) do
+    case login_status(runtime, scope, project) do
       :configured ->
         :ok
 
@@ -204,7 +221,7 @@ defmodule Kogen.Codex do
   defp login_command(_scope), do: "mix kogen.codex.login"
 
   @doc "Native local status is not a remote entitlement check; native text is never printed."
-  def login_status(runtime, scope, config, project) do
+  def login_status(runtime, scope, project) do
     if File.dir?(scope.path) do
       State.validate_scope!(scope.path)
       operation = State.operation!(root())
@@ -213,7 +230,7 @@ defmodule Kogen.Codex do
       # boundary reach both preparations would publish the probe context first
       # and make the real launch's exclusive receipt fail.
       caller_env = Map.delete(System.get_env(), "KOGEN_CODEX_CONTEXT_RECEIPT")
-      context = Environment.prepare(runtime, scope, config, project, operation, caller_env)
+      context = Environment.prepare(runtime, scope, :setup, project, operation, caller_env)
 
       case System.cmd(context.executable, context.args ++ ["login", "status"],
              env: context.env,
@@ -236,11 +253,11 @@ defmodule Kogen.Codex do
   end
 
   @doc "Reports the default and live operation leases; retained releases are not active use."
-  def status(config) do
+  def status do
     with {:ok, runtime} <- installer("required"),
          {:ok, scope} <- effective_scope() do
       state =
-        if runtime, do: login_status(runtime, scope, config, File.cwd!()), else: :unavailable
+        if runtime, do: login_status(runtime, scope, File.cwd!()), else: :unavailable
 
       {:ok, %{runtime: runtime, active: State.active(root()), scope: scope, login: state}}
     end

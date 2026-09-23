@@ -35,7 +35,7 @@ defmodule Kogen.Codex.Environment do
                  ])
 
   @doc "Prepares one isolated native Codex launch."
-  @spec prepare(map(), map(), struct() | map(), Path.t(), Path.t()) :: %{
+  @spec prepare(map(), map(), :setup | map(), Path.t(), Path.t()) :: %{
           executable: String.t(),
           args: [String.t()],
           env: [{String.t(), String.t() | nil}]
@@ -177,21 +177,38 @@ defmodule Kogen.Codex.Environment do
 
   # Each file is a launch snapshot.  Native helpers read only the snapshot they
   # were handed, so a later prepare cannot change an active invocation.
+  # Setup operations (install, login, status and readiness probes) declare with
+  # `:setup` that they carry no role profiles and get no helper-profile files.
+  # A role launch needs every helper's model and effort from its resolved route;
+  # an incomplete profile fails loudly rather than writing an empty one.
+  defp write_helper_profiles!(_generation, :setup), do: %{}
+
   defp write_helper_profiles!(generation, config) do
-    helpers = value(config, :helpers) || %{}
-
     Enum.into([:scout, :worker, :expert], %{}, fn role ->
-      profile = value(helpers, role) || %{}
+      {model, effort} = helper_profile!(config, role)
       path = Path.join(generation, "#{role}.toml")
-
-      content =
-        "model = #{toml(value(profile, :model) || "")}\n" <>
-          "model_reasoning_effort = #{toml(value(profile, :effort) || "")}\n"
+      content = "model = #{toml(model)}\nmodel_reasoning_effort = #{toml(effort)}\n"
 
       File.write!(path, content)
       {role, path}
     end)
   end
+
+  defp helper_profile!(config, role) do
+    helpers = if is_map(config), do: value(config, :helpers)
+    profile = if is_map(helpers), do: value(helpers, role)
+    model = if is_map(profile), do: value(profile, :model)
+    effort = if is_map(profile), do: value(profile, :effort)
+
+    if nonblank?(model) and nonblank?(effort) do
+      {model, effort}
+    else
+      raise ArgumentError,
+            "Codex role launch requires a complete helpers.#{role} profile (model and effort)"
+    end
+  end
+
+  defp nonblank?(value), do: is_binary(value) and String.trim(value) != ""
 
   # The registry belongs to the selected credential scope, not to an operation.
   # Per-launch data must never be written here because native app-server instances
@@ -415,12 +432,14 @@ defmodule Kogen.Codex.Environment do
       end
 
     helper_profiles =
-      Enum.flat_map([:scout, :worker, :expert], fn role ->
-        [
-          "agents.#{role}.config_file=#{toml(Map.fetch!(helpers, role))}",
-          "agents.#{role}.description=#{toml(helper_description(role))}"
-        ]
-      end)
+      for role <- [:scout, :worker, :expert],
+          path = Map.get(helpers, role),
+          not is_nil(path),
+          setting <- [
+            "agents.#{role}.config_file=#{toml(path)}",
+            "agents.#{role}.description=#{toml(helper_description(role))}"
+          ],
+          do: setting
 
     config_args = Enum.flat_map(base ++ caller_xdg ++ helper_profiles, &["-c", &1])
     ["--disable", "apps", "--disable", "plugins", "--disable", "shell_snapshot" | config_args]
@@ -438,7 +457,6 @@ defmodule Kogen.Codex.Environment do
     do:
       "One named difficult uncertainty. Use the configured expert profile; never run verification gates."
 
-  defp toml(nil), do: Jason.encode!("")
   defp toml(value), do: Jason.encode!(to_string(value))
 
   defp value(map, key) when is_map(map) do

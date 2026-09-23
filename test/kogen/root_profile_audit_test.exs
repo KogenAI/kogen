@@ -1,7 +1,10 @@
 Code.require_file("../support/root_profile_audit.ex", __DIR__)
+Code.require_file("../support/route_config.ex", __DIR__)
 
 defmodule Kogen.RootProfileAuditTest do
   use Kogen.IsolatedCase, async: true
+
+  alias Kogen.RouteConfig
 
   test "retains and validates every turn context for exact requested root ids" do
     {sessions, evidence} = fixture!()
@@ -191,22 +194,14 @@ defmodule Kogen.RootProfileAuditTest do
     on_exit(fn -> File.rm_rf!(base) end)
     System.put_env("KOGEN_CLAUDE_ROOT", root)
 
-    File.write!(Path.join(project, ".kogen/config.yaml"), """
-    harness: claude
-    shaping:   {model: claude-opus-5-5, effort: medium}
-    developer: {model: claude-opus-5-5, effort: medium}
-    reviewer:  {model: claude-opus-5-5, effort: medium}
-    helpers:
-      scout:  {model: claude-sonnet-5, effort: low}
-      worker: {model: claude-sonnet-5, effort: medium}
-      expert: {model: claude-opus-5-5, effort: high}
-    outer_resumptions: 2
-    verification_retries: 2
-    """)
+    RouteConfig.write!(
+      Path.join(project, ".kogen/config.yaml"),
+      [{"claude", RouteConfig.claude_route()}]
+    )
 
-    File.write!(
+    RouteConfig.write!(
       Path.join(fixture, ".kogen/config.yaml"),
-      "harness: codex\nshaping: {model: m, effort: low}\ndeveloper: {model: m, effort: low}\nreviewer: {model: m, effort: low}\nhelpers:\n  scout: {model: m, effort: low}\n  worker: {model: m, effort: low}\n  expert: {model: m, effort: low}\nouter_resumptions: 2\nverification_retries: 2\n"
+      [{"codex", RouteConfig.codex_route()}]
     )
 
     File.write!(

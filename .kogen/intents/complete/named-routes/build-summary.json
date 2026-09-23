@@ -1,0 +1,350 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "uP_Bm42Ntf8rV-lLB6OR2mMMVbvUKMcX",
+      "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+      "developer_session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+      "number": 0,
+      "reviewer_session_id": null,
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "uP_Bm42Ntf8rV-lLB6OR2mMMVbvUKMcX",
+          "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+          "exit_code": 0,
+          "finished_at": "2026-09-23T09:31:41Z",
+          "session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "uP_Bm42Ntf8rV-lLB6OR2mMMVbvUKMcX",
+          "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+          "exit_code": 0,
+          "finished_at": "2026-09-23T09:35:53Z",
+          "session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+          "status": "passed",
+          "target": "live-shape-to-build"
+        }
+      ]
+    },
+    {
+      "attempt_token": "FJZZYhqqbdbSoEKvvHmbF19CVZ66YTym",
+      "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+      "developer_session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+      "number": 1,
+      "reviewer_session_id": null,
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "FJZZYhqqbdbSoEKvvHmbF19CVZ66YTym",
+          "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+          "exit_code": 0,
+          "finished_at": "2026-09-23T09:42:23Z",
+          "session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "FJZZYhqqbdbSoEKvvHmbF19CVZ66YTym",
+          "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+          "exit_code": 0,
+          "finished_at": "2026-09-23T09:46:20Z",
+          "session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+          "status": "passed",
+          "target": "live-shape-to-build"
+        }
+      ]
+    },
+    {
+      "attempt_token": "EqUqGiI6FPdDCyDIRu1lMgVtKH2lVGsU",
+      "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+      "developer_session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+      "number": 2,
+      "reviewer_session_id": "29e930bd-dc51-4116-a936-2328fa1680a3",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "EqUqGiI6FPdDCyDIRu1lMgVtKH2lVGsU",
+          "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+          "exit_code": 0,
+          "finished_at": "2026-09-23T09:52:08Z",
+          "session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "EqUqGiI6FPdDCyDIRu1lMgVtKH2lVGsU",
+          "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+          "exit_code": 0,
+          "finished_at": "2026-09-23T09:55:44Z",
+          "session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+          "status": "passed",
+          "target": "live-shape-to-build"
+        }
+      ]
+    }
+  ],
+  "build_id": "Bg1qobsC2dxFq02go76WwTKn",
+  "candidate_id": "bb3713fc177a2c409fb92c625d5b11d511e8a0c6",
+  "developer_session_id": "189f2a50-267a-42ad-b9ae-e20661eabf6e",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 35152905,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/Bg1qobsC2dxFq02go76WwTKn/record.json",
+    "schema_version": 1,
+    "sha256": "dc6ca409a54dfe3bfeedef8c0e4b68022e2927e7d6028182f2c25bb4e080b3e4"
+  },
+  "intent": {
+    "id": "01a0cd3a-3fac-775e-8368-1a9dc7581cbe",
+    "slug": "named-routes",
+    "title": "Select named harness routes per Shape and Build session"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "29e930bd-dc51-4116-a936-2328fa1680a3"
+  },
+  "risks": [
+    {
+      "id": "tracked-config-conversion"
+    },
+    {
+      "id": "tracking-record-route-field"
+    },
+    {
+      "id": "test-reliability-catalog"
+    },
+    {
+      "id": "live-controller-follows-route-instruction"
+    },
+    {
+      "id": "removing-contextless-defaults"
+    }
+  ],
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "read_config/2 lines 60-80; normalize_routes 98-108; default_route 150-160",
+          "path": "lib/kogen/intent.ex"
+        },
+        {
+          "locator": "lines 654-750",
+          "path": "test/kogen/intent_test.exs"
+        },
+        {
+          "locator": "tracked config resolves claude and codex routes",
+          "path": "test/kogen/configuration_support_contract_test.exs"
+        }
+      ],
+      "id": "routes-config-resolves",
+      "reason": "read_config/2 resolves default_route or the named route. Retries are read only at top level. The strict parser defaults no key, and every route is validated whether or not it is selected. Table-driven tests assert exact key paths such as routes.other.helpers.worker.model. A missing or unknown default_route never falls back to the first route.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "routes_shape/1 lines 87-93",
+          "path": "lib/kogen/intent.ex"
+        },
+        {
+          "locator": "lines 450-480 flat-shaped config refused before any launch",
+          "path": "test/kogen/build_preconditions_test.exs"
+        }
+      ],
+      "id": "flat-config-refused",
+      "reason": "routes_shape/1 returns one message naming default_route and routes. Build reads config before Harness.open. A precondition test asserts refusal before any launch and that no tracking record is created.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "--route option parsing",
+          "path": "lib/mix/tasks/kogen.shape.ex"
+        },
+        {
+          "locator": "--route option parsing",
+          "path": "lib/mix/tasks/kogen.build.ex"
+        },
+        {
+          "locator": "lines 423-465 route flag positions",
+          "path": "test/kogen/shape_task_test.exs"
+        },
+        {
+          "locator": "policy from selected route",
+          "path": "test/kogen/execution_policy_test.exs"
+        }
+      ],
+      "id": "route-flag-selects-session",
+      "reason": "Both mix tasks parse --route, in either position for Shape with a slug. The resolved route drives the harness, all roles and execution policy rendering. Tests cover default and non-default routes, and the recorded check passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "select_route/2 lines 168-171",
+          "path": "lib/kogen/intent.ex"
+        },
+        {
+          "locator": "unknown --route tests",
+          "path": "test/kogen/build_preconditions_test.exs"
+        },
+        {
+          "locator": "unknown route and usage tests",
+          "path": "test/kogen/shape_task_test.exs"
+        }
+      ],
+      "id": "unknown-route-fails-before-launch",
+      "reason": "select_route rejects an unknown name with a sorted list of available routes, before any harness open. Tests cover this and the usage errors, and the recorded check passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "open/2 lines 20-27",
+          "path": "lib/kogen/harness.ex"
+        },
+        {
+          "locator": "lines 178-251",
+          "path": "test/kogen/harness_contract_test.exs"
+        },
+        {
+          "locator": "line 548",
+          "path": "test/kogen/shape_task_test.exs"
+        }
+      ],
+      "id": "selected-route-only-validation-and-readiness",
+      "reason": "Harness.open dispatches only on the selected route's harness, and proven_models runs on the selected config. Unselected pi and unproven-model routes do not block the selected route. Selecting either one fails with the expected message.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "read_draft/1 lines 264-278",
+          "path": "lib/kogen/intent.ex"
+        },
+        {
+          "locator": "lines 32-39",
+          "path": "priv/kogen/prompts/shaping-continuation.md"
+        },
+        {
+          "locator": "lines 468-486",
+          "path": "test/kogen/shape_task_test.exs"
+        }
+      ],
+      "id": "shaping-records-route",
+      "reason": "read_draft does not require route, and the prompts render the route and schema. The continuation prompt says to leave the original block unchanged. Tests confirm a Draft first shaped on another route records this session's route while the Draft bytes stay unchanged.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "preserve_frozen_fields/2 lines 321-327",
+          "path": "lib/kogen/build/tracking.ex"
+        },
+        {
+          "locator": "matching_route/2 lines 109-116",
+          "path": "lib/kogen/build/evidence.ex"
+        },
+        {
+          "locator": "lines 354-537",
+          "path": "test/kogen/two_outer_resumptions_test.exs"
+        },
+        {
+          "locator": "lines 69-133",
+          "path": "test/kogen/scenario_tracking_test.exs"
+        },
+        {
+          "locator": "lines 82-156",
+          "path": "test/kogen/build_evidence_test.exs"
+        }
+      ],
+      "id": "build-records-and-holds-route",
+      "reason": "The Build resolves config once and freezes the full route at Tracking.new. preserve_frozen_fields refuses route changes. The test edits the models, then moves default_route and removes the route, across a Stop retry and a Reviewer rework, and asserts the frozen profiles, the record route and the published summary and evidence route. Legacy summaries and records without a route still read.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "harness/1 lines 113-127; launch functions 47-101",
+          "path": "lib/kogen/harness.ex"
+        },
+        {
+          "locator": "render/2 lines 19-49",
+          "path": "lib/kogen/execution_policy.ex"
+        },
+        {
+          "locator": "lines 75-80",
+          "path": "priv/kogen/codex/discovery.py"
+        },
+        {
+          "locator": "lines 117-159",
+          "path": "test/kogen/offline_stage_results_test.exs"
+        }
+      ],
+      "id": "no-silent-fallbacks",
+      "reason": "harness/1 accepts only claude or codex and gives a named error otherwise. Launch functions have no context default, and with_context has no nil clause. KOGEN_HARNESS only swaps the executable. ExecutionPolicy fetches harness explicitly. discovery.py raises on a missing shaping model. The check stage runs with --warnings-as-errors and has a negative-control test.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "write_helper_profiles!/2 line 184; helper_profile!/2 186-209",
+          "path": "lib/kogen/codex/environment.ex"
+        },
+        {
+          "locator": "line 197 codex setup commands ignore routes",
+          "path": "test/kogen/codex_management_test.exs"
+        },
+        {
+          "locator": "line 201",
+          "path": "test/kogen/claude_code_management_test.exs"
+        }
+      ],
+      "id": "setup-commands-route-independent",
+      "reason": "The Codex and Claude CLI modules never read routes. Environment setup writes no helper profiles for :setup, and a role launch with an incomplete profile raises. Management tests cover a claude-only routes config.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "whole file",
+          "path": ".kogen/config.yaml"
+        },
+        {
+          "locator": "Configuration and local data section",
+          "path": "README.md"
+        },
+        {
+          "locator": "codex_route!/1",
+          "path": "test/support/route_config.ex"
+        },
+        {
+          "locator": "codex_route! one/zero/two tests",
+          "path": "test/kogen/codex_compatibility_preparation_test.exs"
+        }
+      ],
+      "id": "repository-config-and-docs",
+      "reason": "The tracked config matches the approved content exactly, and README documents routes, --route, default selection, flat refusal and route recording. RouteConfig.codex_route! resolves the unique codex route and fails when there are zero or several. The Codex-only live owners and the evaluation driver use it.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "lines 200-215, 403-436",
+          "path": "test/kogen/live_shape_to_build_test.exs"
+        },
+        {
+          "locator": "attempts[number=2].targets live-shape-to-build passed",
+          "path": ".kogen/runtime/scenario-tracking/Bg1qobsC2dxFq02go76WwTKn/record.json"
+        }
+      ],
+      "id": "real-default-route-end-to-end",
+      "reason": "The live test asserts shaping.route, the continuation route, the tracking record route and the committed summary and evidence route against the tracked default_route. Stop's live-shape-to-build target passed on this exact Candidate.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

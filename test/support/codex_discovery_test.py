@@ -47,8 +47,8 @@ class DiscoveryTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def seed(self):
-        return discovery.seed(self.fixture, {})
+    def seed(self, config=None):
+        return discovery.seed(self.fixture, config if config is not None else {"shaping": {"model": "gpt-5.6-sol", "effort": "low"}})
 
     def test_seed_makes_sibling_hostile_home_and_project_only_context(self):
         result = self.seed()
@@ -99,6 +99,15 @@ class DiscoveryTest(unittest.TestCase):
         for text in ["failed to load configuration", "No MCP server named 'other' found.", "unknown command"]:
             self.assertFalse(discovery._explicit_missing_mcp(subprocess.CompletedProcess([], 1, "", text)))
         self.assertFalse(discovery._explicit_missing_mcp(subprocess.CompletedProcess([], 0, "", "No MCP server named hostile")))
+
+    def test_seed_fails_loudly_without_shaping_model_and_never_defaults_to_gpt56sol(self):
+        with self.assertRaises(discovery.DiscoveryError) as failure:
+            self.seed(config={})
+        self.assertIn("shaping.model", str(failure.exception))
+        self.assertFalse((self.fixture / ".agents/skills/project-context/SKILL.md").exists())
+
+        with self.assertRaises(discovery.DiscoveryError):
+            self.seed(config={"shaping": {"model": "  ", "effort": "low"}})
 
     def test_probe_fails_when_native_prompt_omits_project_sentinel(self):
         self.seed()

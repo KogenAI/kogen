@@ -18,6 +18,13 @@ from concurrent.futures import ThreadPoolExecutor
 SCHEMA_VERSION = 1
 LOG_LIMIT = 16_384
 DEFAULT_STAGE_TIMEOUT = 1_800
+STAGES = (
+    ("mix", "format", "--check-formatted"),
+    ("mix", "compile", "--warnings-as-errors", "--force"),
+    ("mix", "credo", "--strict"),
+    # Excluded live owners still compile; a stale call must fail, not warn.
+    ("mix", "test", "--exclude", "live", "--warnings-as-errors"),
+)
 SOURCE_EXCLUDES = {".git", "_build", "deps"}
 SOURCE_EXCLUDED_PATHS = {
     ".kogen/runtime", ".kogen/intents", ".kogen/build.lock",
@@ -216,12 +223,7 @@ def main():
                for path in caches)
     # Deny accidental default-provider resolution throughout the offline path.
     env["PATH"] = str(root / "test/support") + os.pathsep + env.get("PATH", "")
-    stages = [
-        ["mix", "format", "--check-formatted"],
-        ["mix", "compile", "--warnings-as-errors", "--force"],
-        ["mix", "credo", "--strict"],
-        ["mix", "test", "--exclude", "live"],
-    ]
+    stages = [list(stage) for stage in STAGES]
     print(f"Offline gate: {platform.platform()}; installed dependencies; "
           f"build path={env.get('MIX_BUILD_PATH', '_build')}; warm={warm}", flush=True)
     result = 1

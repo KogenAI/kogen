@@ -1,0 +1,142 @@
+- id: routes-config-resolves
+  given: A .kogen/config.yaml with default_route, two structurally valid routes (one claude, one codex) and top-level outer_resumptions and verification_retries
+  when: Kogen resolves the configuration with no route requested and again with each route name
+  then: With no route requested it resolves default_route; each name resolves that route's harness and every shaping/developer/reviewer/helper model and effort; the global retry values apply to every route; a missing or unknown default_route, a route missing a role/helper or its model/effort, or a nonblank-string violation is refused before any launch with a config error naming the offending key path
+  wrong_result: Retries are looked up inside routes; a missing default_route silently picks the first route; a structurally broken unselected route is ignored until selected; roles from two routes are mixed
+  verified_by: [check]
+  evidence: Focused Intent config tests over valid and table-driven malformed route configs, asserting the resolved map and exact error key paths.
+  proof:
+    offline: [test/kogen/intent_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: Intent config reader consumer with malformed-route controls"
+    affected_paths: [lib/kogen/intent.ex, test/kogen/intent_test.exs, test/support/compiled_fixture.exs]
+
+- id: flat-config-refused
+  given: A checkout whose .kogen/config.yaml still uses the flat shape (top-level harness and roles, no routes)
+  when: The Shaper runs mix kogen.shape or mix kogen.build
+  then: Kogen fails before any harness open or provider launch with one message stating the flat configuration shape was replaced and naming default_route and routes; nothing is launched and no Draft or tracking record is created
+  wrong_result: 'The flat shape is still accepted as an implicit route, or fails with a generic "missing required key: routes" that does not explain the change, or fails only after a harness readiness check'
+  verified_by: [check]
+  evidence: Intent reader test for the flat shape message plus a public fake Shape/Build route asserting zero fake-harness launches.
+  proof:
+    offline: [test/kogen/intent_test.exs, test/kogen/build_preconditions_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: public Build precondition consumer with zero-launch control"
+    affected_paths: [lib/kogen/intent.ex, lib/kogen/build.ex, lib/mix/tasks/kogen.shape.ex, test/kogen/intent_test.exs, test/kogen/build_preconditions_test.exs]
+
+- id: route-flag-selects-session
+  given: A valid routes config whose default_route differs from another route with distinguishable models
+  when: The Shaper runs mix kogen.shape, mix kogen.shape --route <other>, mix kogen.shape --route <other> <draft-slug>, mix kogen.build <slug> and mix kogen.build --route <other> <slug>
+  then: Each session opens only the selected route's harness and launches the Shaper, Developer and Reviewer with that route's model and effort; the rendered execution policy names that route's helper profiles and harness-specific delegation; without --route the default route is used
+  wrong_result: --route is accepted but only the shaping model changes while helpers, the Reviewer or harness adapter still come from the default route; or the flag is only accepted in one argument position for Shape with a slug
+  verified_by: [check]
+  evidence: Public fake-harness Shape task and Build tests recording launched model/effort/harness and rendered policy per route, with and without the flag.
+  proof:
+    offline: [test/kogen/shape_task_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/execution_policy_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: public mix task consumers with default-route and other-route controls"
+    affected_paths: [lib/mix/tasks/kogen.shape.ex, lib/mix/tasks/kogen.build.ex, lib/kogen/build.ex, lib/kogen/execution_policy.ex, lib/kogen/intent.ex, test/kogen/shape_task_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/execution_policy_test.exs]
+
+- id: unknown-route-fails-before-launch
+  given: A valid routes config
+  when: The Shaper runs mix kogen.shape --route missing or mix kogen.build --route missing <slug>, or passes --route with no value or an unknown option
+  then: For an unknown name Kogen exits nonzero before any harness open or provider launch with a message naming the unknown route and listing available route names in sorted order; a missing value or unknown option prints the command's usage line; no Draft, prompt file or tracking record is created
+  wrong_result: Kogen silently falls back to default_route, lists routes in nondeterministic order, or fails only after Harness.open or a provider launch
+  verified_by: [check]
+  evidence: Shape task and Build precondition tests asserting exact stderr, nonzero exit and zero fake-harness launches.
+  proof:
+    offline: [test/kogen/shape_task_test.exs, test/kogen/build_preconditions_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: public mix task consumers with zero-launch control"
+    affected_paths: [lib/mix/tasks/kogen.shape.ex, lib/mix/tasks/kogen.build.ex, lib/kogen/build.ex, lib/kogen/intent.ex, test/kogen/shape_task_test.exs, test/kogen/build_preconditions_test.exs]
+
+- id: selected-route-only-validation-and-readiness
+  given: A routes config whose selected route is valid and ready, and whose other routes name an unsupported harness (e.g. pi), an unproven Claude model, or a harness that is not installed or logged in
+  when: A Shape or Build session runs on the selected route, and separately a session selects each problematic route
+  then: The session on the valid route proceeds, opening readiness only for its own harness; selecting the unsupported-harness route fails with the unsupported-harness message, the unproven-model route with the proven-model message naming the role, and the unready route with that harness's existing readiness message, all before provider launch
+  wrong_result: Proven-model or harness-support checks run across every route so an experimental route blocks all sessions; or Harness.open probes every configured harness; or an unsupported harness is only discovered at launch time
+  verified_by: [check]
+  evidence: Intent reader tests for per-route model/harness validation and harness-contract/Shape tests recording which fake harness readiness ran.
+  proof:
+    offline: [test/kogen/intent_test.exs, test/kogen/harness_contract_test.exs, test/kogen/shape_task_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake readiness consumer with unselected-broken-route and selected-broken-route controls"
+    affected_paths: [lib/kogen/intent.ex, lib/kogen/harness.ex, lib/mix/tasks/kogen.shape.ex, test/kogen/intent_test.exs, test/kogen/harness_contract_test.exs, test/kogen/shape_task_test.exs]
+
+- id: shaping-records-route
+  given: A routes config, an existing legacy Draft whose intent.yaml shaping block has harness/model/effort/started but no route, and a Draft first shaped on route A
+  when: The Shaper starts fresh shaping on a route, continues the legacy Draft, and continues the route-A Draft with --route B
+  then: The fresh startup prompt carries the route name and the shared schema asks for shaping.route; the continuation prompt's visit entry includes route B with route B's harness/model/effort and instructs leaving the original shaping block unchanged; Intent.read_draft/1 accepts the legacy Draft and a Draft with shaping.route alike
+  wrong_result: The route is rendered but read_draft now requires shaping.route so legacy Drafts cannot be continued; or continuation reuses the Draft's original route; or the original shaping block is instructed to be overwritten
+  verified_by: [check]
+  evidence: Shape task tests inspecting the rendered fresh and continuation prompt files per route, plus read_draft tests over legacy and route-bearing fixtures.
+  proof:
+    offline: [test/kogen/shape_task_test.exs, test/kogen/intent_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: rendered prompt and draft reader consumers with legacy-draft control"
+    affected_paths: [lib/mix/tasks/kogen.shape.ex, lib/kogen/intent.ex, priv/kogen/prompts/shaping.md, priv/kogen/prompts/shaping-fresh.md, priv/kogen/prompts/shaping-continuation.md, test/kogen/shape_task_test.exs, test/kogen/intent_test.exs]
+
+- id: build-records-and-holds-route
+  given: A Build started on a non-default route with distinguishable developer, reviewer and helper profiles, whose fake Developer triggers a Stop verification retry and a Reviewer-requested outer rework
+  when: During the Build, after the first Developer launch, .kogen/config.yaml is edited to change that route's models, change default_route, and then remove the route entirely
+  then: The tracking record holds one frozen top-level route with the name, harness and every resolved role/helper model and effort; the resumed Developer, execution policy text, Stop verification context and Reviewer all use the originally resolved route; the Build does not fail or change behavior because of the edit; on acceptance the committed build-summary.json carries route name and harness and evidence.md states them, while both formats keep schema_version 1 and an existing summary without route still reads
+  wrong_result: The record stores only the route name; rework or Review re-reads config and uses the edited models or new default; removing the route crashes a later attempt; the route field can be changed by a later tracking update; the committed summary omits the route, or bumping its schema_version makes existing Complete evidence unreadable
+  verified_by: [check]
+  evidence: Fake-harness Build lifecycle test that mutates config between attempts and asserts launched argv/profiles per attempt and the frozen record route; tracking tests proving route is immutable across updates.
+  proof:
+    offline: [test/kogen/two_outer_resumptions_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/build_evidence_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake Build lifecycle consumer with mid-Build config mutation control"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/tracking.ex, lib/kogen/build/evidence.ex, lib/kogen/intent.ex, test/kogen/two_outer_resumptions_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/build_evidence_test.exs, test/support/compiled_fixture.exs]
+
+- id: no-silent-fallbacks
+  given: 'A routes config and fake harness executables, with KOGEN_HARNESS set and unset'
+  when: 'Kogen code is asked to launch or dispatch without a launch context, with a context or config lacking harness, with an unknown harness name, with a Codex context, with KOGEN_HARNESS set while the selected route is claude, or with a Codex compatibility/discovery config lacking the shaping model'
+  then: 'Contextless launch/resume calls no longer exist (no context default) and nothing re-reads config after session start; Codex selections and contexts carry harness codex explicitly; dispatch accepts only claude and codex and fails loudly naming the value otherwise; KOGEN_HARNESS only replaces the selected route harness executable (a claude route stays on the Claude adapter); the execution policy renders from the explicit harness; discovery fails on a missing shaping model; the routes parser has no defaulted keys; every live test owner compiles against the changed signatures because the check test stage runs with --warnings-as-errors, so a stale call in an excluded live owner fails check'
+  wrong_result: 'A missing or unknown harness, a harness-less context, or merely setting KOGEN_HARNESS quietly selects Codex; adapter(nil) survives and re-reads default_route; discovery.py still writes gpt-5.6-sol; a route missing a helper is filled with an empty or inherited profile; a live owner still calls a removed Kogen.Harness arity and check passes because excluded tests only warn'
+  verified_by: [check]
+  evidence: Harness contract and argument tests over explicit contexts and table-driven invalid harness values; KOGEN_HARNESS under claude and codex routes asserting which adapter ran; Codex compatibility preparation test with a shaping-model-less config expecting a loud discovery failure; source search in review for removed defaults; offline_stage_results_test asserting the offline.py test stage command includes --warnings-as-errors, plus a negative control in which a fixture live-tagged test calling a removed Kogen.Harness arity fails that command while excluded (see evidence/stale_live_owner_probe_test.exs).
+  proof:
+    offline: [test/kogen/harness_contract_test.exs, test/kogen/harness_args_test.exs, test/kogen/harness_verdict_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/intent_test.exs, test/kogen/offline_stage_results_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: dispatch, fake-executable and discovery consumers with missing/unknown-harness and missing-model controls"
+    affected_paths: [lib/kogen/harness.ex, lib/kogen/harness/claude.ex, lib/kogen/harness/codex.ex, lib/kogen/codex.ex, lib/kogen/claude_code.ex, lib/kogen/execution_policy.ex, lib/kogen/codex/compatibility.ex, priv/kogen/codex/discovery.py, lib/kogen/intent.ex, scripts/check/offline.py, scripts/check/README.md, test/kogen/offline_stage_results_test.exs, test/kogen/live_test.exs, test/kogen/native_helper_live_test.exs, test/kogen/harness_contract_test.exs, test/kogen/harness_args_test.exs, test/kogen/harness_verdict_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/intent_test.exs]
+
+- id: setup-commands-route-independent
+  given: A routes config whose only route uses claude (no codex route), and separately one whose only route uses codex
+  when: The Shaper runs mix kogen.codex.status or mix kogen.codex.login, and mix kogen.claude.status or mix kogen.claude.login, including project-scope login
+  then: Each command behaves as it does today for its harness without selecting, requiring or validating a route; Codex setup operations explicitly carry no role profiles and write no helper-profile files, while a Codex role launch with an incomplete profile fails loudly; the project-scope requirement that .kogen/config.yaml exists is unchanged
+  wrong_result: mix kogen.codex.login fails because no codex route exists or because the default route is claude; or setup commands fail on a routes-shaped config because they still call the flat reader; or Codex still writes empty model/effort helper profiles
+  verified_by: [check]
+  evidence: Codex and Claude management tests running status/login against the managed fake runtimes under claude-only and codex-only routes configs.
+  proof:
+    offline: [test/kogen/codex_management_test.exs, test/kogen/claude_code_management_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: managed fake-runtime CLI consumer with no-matching-route control"
+    affected_paths: [lib/kogen/codex/cli.ex, lib/kogen/codex/environment.ex, lib/kogen/claude_code/cli.ex, lib/kogen/codex.ex, lib/kogen/claude_code.ex, test/kogen/codex_management_test.exs, test/kogen/claude_code_management_test.exs]
+
+- id: repository-config-and-docs
+  given: This repository after the Build
+  when: The tracked .kogen/config.yaml, README and existing consumers of configuration (live and native-helper test owners, shaping evaluation driver, compiled fixture) are read
+  then: The config contains default_route claude with routes claude (the current Claude profiles) and codex (harness codex with the pre-6cdb2912 Codex profiles) and global retries; it resolves successfully for both routes; README documents routes, --route, default selection, flat-shape refusal and route recording with no remaining current-tense claim that config names one harness; every in-repo config consumer compiles and reads through the route API; Codex-only live owners (codex_native_live_test, native_helper_live_test, codex_compatibility_test) resolve the unique codex route and fail loudly on zero or several, while general live owners use default_route
+  wrong_result: The repo config keeps a flat shape or drops the codex route; README still says config names the harness; a live owner or the shaping evaluation driver still calls the flat reader and breaks on the next paid run; a Codex-only live owner reads default_route and runs Claude profiles through the Codex adapter
+  verified_by: [check]
+  evidence: Configuration support contract test resolving the tracked config for both routes and asserting README statements; a shared Codex-route resolver tested offline for one, zero and two codex routes; execution policy test over the tracked config; compilation of all test owners under check.
+  proof:
+    offline: [test/kogen/configuration_support_contract_test.exs, test/kogen/execution_policy_test.exs, test/kogen/codex_compatibility_preparation_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: tracked config and README consumer; live owners compile but are not executed"
+    affected_paths: [.kogen/config.yaml, README.md, test/kogen/configuration_support_contract_test.exs, test/kogen/execution_policy_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/codex_native_live_test.exs, test/kogen/native_helper_live_test.exs, test/kogen/codex_compatibility_test.exs, test/support/native_helper_fixture.ex, test/support/compiled_fixture.exs]
+
+- id: real-default-route-end-to-end
+  given: This repository's converted routes config with default_route claude, the managed Kogen Claude Code runtime installed and logged in, and no --route flag
+  when: The live Shape-to-Build lifecycle runs a real interactive Shape (fresh, continuation and approval) and then a real Build of the approved fixture Intent
+  then: The real Shaper and Developer launch on the default route's resolved Claude profiles; the real Shaping controller writes shaping.route equal to the default route name alongside harness/model/effort/started, and the continuation entry records the same route; the Build's scenario-tracking record holds the frozen route with name claude, harness claude and the resolved role/helper profiles, and the committed build-summary.json and evidence.md name route claude with harness claude; the lifecycle completes as before
+  wrong_result: Offline fakes pass but the real Claude Code runtime is opened from a flat or partially resolved config, the real controller ignores the new route instruction, or the tracking record route is missing or stale in a real Build
+  verified_by: [check, live-shape-to-build]
+  evidence: live_shape_to_build_test.exs extended to assert shaping.route, the continuation route and the tracking record route against the tracked default route; its offline rehearsal and Shape task tests cover the same producers.
+  proof:
+    offline: [rehearse-live-shape-to-build, test/kogen/shape_task_test.exs]
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: a real Claude Code Shaping controller records shaping.route and the continuation route, and a real Build records the resolved default route in its tracking record; offline-limit: fake harnesses cannot show the real runtime starting from a route-resolved profile or the real controller following the route instruction"
+    affected_paths: [test/kogen/live_shape_to_build_test.exs, lib/kogen/intent.ex, lib/mix/tasks/kogen.shape.ex, lib/kogen/build.ex, lib/kogen/build/tracking.ex, priv/kogen/prompts/shaping.md, priv/kogen/prompts/shaping-fresh.md, priv/kogen/prompts/shaping-continuation.md, .kogen/config.yaml]

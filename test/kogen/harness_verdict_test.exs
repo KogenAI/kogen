@@ -34,6 +34,7 @@ defmodule Kogen.HarnessVerdictTest do
     File.chmod!(executable, 0o755)
     System.put_env("KOGEN_HARNESS", executable)
     System.put_env("KOGEN_RAW_LOG_DIR", Path.join(dir, "raw-streams"))
+    context = %{harness: "codex", executable: executable, args: [], env: []}
 
     valid = valid_verdict()
     System.put_env("REVIEWER_VERDICT", Jason.encode!(valid))
@@ -44,7 +45,7 @@ defmodule Kogen.HarnessVerdictTest do
               verdict: "accept",
               findings: [],
               response: ^valid
-            }} = Kogen.Harness.launch_reviewer("test", "fake", "low")
+            }} = Kogen.Harness.launch_reviewer("test", "fake", "low", context)
 
     System.delete_env("KOGEN_RAW_LOG_DIR")
 
@@ -57,7 +58,7 @@ defmodule Kogen.HarnessVerdictTest do
       System.put_env("REVIEWER_VERDICT", Jason.encode!(malformed))
 
       assert {:error, {:malformed_verdict, 0, details}} =
-               Kogen.Harness.launch_reviewer("test", "fake", "low")
+               Kogen.Harness.launch_reviewer("test", "fake", "low", context)
 
       assert details["reviewer_session_id"] == "review"
       assert Jason.decode!(details["message"]) == malformed
@@ -91,9 +92,10 @@ defmodule Kogen.HarnessVerdictTest do
 
     File.chmod!(executable, 0o755)
     System.put_env("KOGEN_HARNESS", executable)
+    context = %{harness: "codex", executable: executable, args: [], env: []}
 
     assert {:ok, %{session_id: "developer", message: "current handoff", result: result}} =
-             Kogen.Harness.launch_developer("test", "fake", "low")
+             Kogen.Harness.launch_developer("test", "fake", "low", [], context)
 
     assert result["type"] == "turn.completed"
 
@@ -106,7 +108,7 @@ defmodule Kogen.HarnessVerdictTest do
     File.chmod!(executable, 0o755)
 
     assert {:ok, %{session_id: "developer", message: ""}} =
-             Kogen.Harness.launch_developer("test", "fake", "low")
+             Kogen.Harness.launch_developer("test", "fake", "low", [], context)
   end
 
   test "a reconnect notification before terminal completion is recoverable" do
@@ -132,8 +134,10 @@ defmodule Kogen.HarnessVerdictTest do
       File.rm_rf!(dir)
     end)
 
+    context = %{harness: "codex", executable: executable, args: [], env: []}
+
     assert {:ok, %{session_id: "developer", message: "fresh handoff"}} =
-             Kogen.Harness.launch_developer("test", "fake", "low")
+             Kogen.Harness.launch_developer("test", "fake", "low", [], context)
   end
 
   test "structured Build Developer trusts only the fresh owned output file" do
@@ -174,11 +178,19 @@ defmodule Kogen.HarnessVerdictTest do
 
     File.chmod!(executable, 0o755)
     System.put_env("KOGEN_HARNESS", executable)
+    context = %{harness: "codex", executable: executable, args: [], env: []}
 
     System.put_env("OUTPUT_MODE", "valid")
 
     assert {:ok, %{session_id: "developer", message: message, invocation_evidence: evidence}} =
-             Kogen.Harness.launch_build_developer("test", "fake", "low", ~s({"type":"object"}))
+             Kogen.Harness.launch_build_developer(
+               "test",
+               "fake",
+               "low",
+               ~s({"type":"object"}),
+               [],
+               context
+             )
 
     assert message == ~s({"attempt_token":"current"})
     assert evidence.message == message
@@ -192,13 +204,13 @@ defmodule Kogen.HarnessVerdictTest do
       System.put_env("OUTPUT_MODE", mode)
 
       assert {:error, {^kind, %{session_id: "developer"}}} =
-               Kogen.Harness.launch_build_developer("test", "fake", "low", "{}")
+               Kogen.Harness.launch_build_developer("test", "fake", "low", "{}", [], context)
     end
 
     System.put_env("OUTPUT_MODE", "provider_failure")
 
     assert {:error, {:structured_transport_failure, {:provider_exit, 19, _}, evidence}} =
-             Kogen.Harness.launch_build_developer("test", "fake", "low", "{}")
+             Kogen.Harness.launch_build_developer("test", "fake", "low", "{}", [], context)
 
     assert evidence.outcome == :provider_failure
     assert File.read!(stale) == ~s({"attempt_token":"stale"})

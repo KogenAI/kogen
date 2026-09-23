@@ -18,13 +18,14 @@ defmodule Kogen.ExecutionPolicy do
   @doc "Expands the maintained policy with explicit current root and helper profiles."
   def render(config, role) do
     root = Map.fetch!(config, Map.fetch!(@roles, role))
-    claude? = Map.get(config, :harness) == "claude"
+    harness = Map.fetch!(config, :harness)
+    delegation!(harness)
 
     helpers =
       Enum.map_join(@helpers, "\n", fn {label, kind} ->
         profile = Map.fetch!(config.helpers, label)
 
-        "- **#{label}:** `#{profile.model}` at `#{profile.effort}`; #{route(claude?, label, kind)}."
+        "- **#{label}:** `#{profile.model}` at `#{profile.effort}`; #{delegation(harness, label, kind)}."
       end)
 
     File.read!(@path)
@@ -33,9 +34,17 @@ defmodule Kogen.ExecutionPolicy do
       "Configured root (#{role}): `#{root.model}` at `#{root.effort}`."
     )
     |> String.replace("{{helper_profiles}}", helpers)
-    |> then(&if(claude?, do: String.replace(&1, @codex_routing, @claude_routing), else: &1))
+    |> routing(harness)
   end
 
-  defp route(true, label, _kind), do: "Claude Code agent `kogen-#{label}`"
-  defp route(false, _label, kind), do: "native kind `#{kind}`"
+  defp delegation!(harness) when harness in ["claude", "codex"], do: :ok
+
+  defp delegation!(harness),
+    do: raise(ArgumentError, "unsupported harness: #{inspect(harness)}; expected codex or claude")
+
+  defp delegation("claude", label, _kind), do: "Claude Code agent `kogen-#{label}`"
+  defp delegation("codex", _label, kind), do: "native kind `#{kind}`"
+
+  defp routing(text, "claude"), do: String.replace(text, @codex_routing, @claude_routing)
+  defp routing(text, "codex"), do: text
 end

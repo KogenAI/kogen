@@ -1,3 +1,5 @@
+Code.require_file("../support/route_config.ex", __DIR__)
+
 defmodule Kogen.ClaudeCode.ManagementTest do
   @moduledoc """
   Managed Claude Code scopes, login delegation, isolation and readiness, with
@@ -12,6 +14,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
 
   alias Kogen.ClaudeCode
   alias Kogen.ClaudeCode.CLI
+  alias Kogen.RouteConfig
 
   @personal_markers %{
     "CLAUDE.md" => "PERSONAL-MEMORY-MARKER",
@@ -105,7 +108,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     existing = Path.join(shared(ctx), ".claude.json")
     File.write!(existing, ~s({"existing":"scope state"}))
 
-    assert {:ok, 0} = ClaudeCode.login(["--", "--console"], ctx.config)
+    assert {:ok, 0} = ClaudeCode.login(["--", "--console"])
     [call] = trace(ctx)
     assert call["args"] == ["--dangerously-skip-permissions", "--console"]
     assert call["scope"] == Path.expand(shared(ctx))
@@ -120,7 +123,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     assert call["env"]["DISABLE_AUTOUPDATER"] == "1"
 
     assert {:ok, %{login: {:configured, %{auth_method: "console"}}}} =
-             ClaudeCode.status(ctx.config)
+             ClaudeCode.status()
 
     personal_unchanged!(ctx)
   end
@@ -131,7 +134,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     File.mkdir_p!(shared(ctx))
     File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
 
-    assert {:ok, 130} = ClaudeCode.login(["--project", "--", "--cancel"], ctx.config)
+    assert {:ok, 130} = ClaudeCode.login(["--project", "--", "--cancel"])
     assert {:ok, %{name: :project, path: project_path}} = ClaudeCode.effective_scope()
     assert project_path =~ Path.join(ctx.root, "accounts/projects/")
     assert File.stat!(project_path).mode |> Bitwise.band(0o777) == 0o700
@@ -139,15 +142,15 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     assert {:error, reason} = ClaudeCode.open(ctx.config)
     assert reason =~ "Run mix kogen.claude.login --project"
 
-    assert {:ok, 0} = ClaudeCode.login(["--project"], ctx.config)
+    assert {:ok, 0} = ClaudeCode.login(["--project"])
     assert {:ok, %{scope: %{name: :project}}} = ClaudeCode.open(ctx.config)
     assert File.read!(Path.join(shared(ctx), ".fake-login")) == "claude.ai\n"
 
-    assert {:ok, 0} = ClaudeCode.login(["--use-default"], ctx.config)
+    assert {:ok, 0} = ClaudeCode.login(["--use-default"])
     assert {:ok, %{name: :shared}} = ClaudeCode.effective_scope()
     assert File.read!(Path.join(project_path, ".fake-login")) == "claude.ai\n"
 
-    assert {:error, _usage} = ClaudeCode.login(["--bogus"], ctx.config)
+    assert {:error, _usage} = ClaudeCode.login(["--bogus"])
     personal_unchanged!(ctx)
   end
 
@@ -195,12 +198,41 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     refute output =~ "SYNTHETIC-ORG"
   end
 
-  test "managed roles cannot run setup", ctx do
+  test "claude setup commands ignore routes: status and project login work under a codex-only routes config",
+       ctx do
+    install_fixture!(ctx)
+    File.mkdir_p!(shared(ctx))
+    File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
+
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-claude-route-independent-#{System.unique_integer([:positive])}"
+      )
+
+    RouteConfig.write!(
+      Path.join(dir, ".kogen/config.yaml"),
+      [{"codex", RouteConfig.codex_route()}],
+      default_route: "codex"
+    )
+
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    assert {:ok, %{login: {:configured, _}}} = File.cd!(dir, fn -> ClaudeCode.status() end)
+
+    {result, real_project} =
+      File.cd!(dir, fn -> {ClaudeCode.login(["--project", "--", "--cancel"]), File.cwd!()} end)
+
+    assert {:ok, 130} = result
+    assert {:ok, %{name: :project}} = ClaudeCode.effective_scope(real_project)
+  end
+
+  test "managed roles cannot run setup", _ctx do
     System.put_env("KOGEN_ROLE", "developer")
     assert_raise RuntimeError, ~r/explicit user operation/, fn -> ClaudeCode.install() end
 
     assert_raise RuntimeError, ~r/explicit user operation/, fn ->
-      ClaudeCode.login([], ctx.config)
+      ClaudeCode.login([])
     end
 
     System.delete_env("KOGEN_ROLE")

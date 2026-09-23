@@ -147,7 +147,8 @@ Under `.kogen/intents/drafts/<slug>/` (later moved as a whole to
     head: {{head}}
   # For continuation, preserve original shaping exactly; see startup provenance rules.
   shaping:
-    harness: <the harness name from .kogen/config.yaml, e.g. codex>
+    route: <the route name this session runs on, from the startup facts>
+    harness: <the route's harness name from the startup facts, e.g. claude>
     model: <the shaping model you were launched with>
     effort: <the shaping effort you were launched with>
     started: <ISO 8601 timestamp for when this conversation began>

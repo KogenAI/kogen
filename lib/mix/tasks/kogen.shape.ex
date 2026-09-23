@@ -6,28 +6,40 @@ defmodule Mix.Tasks.Kogen.Shape do
 
   @shortdoc "Starts fresh shaping or continues an existing draft in a new conversation"
   @moduledoc """
-  `mix kogen.shape` mints a new Intent. `mix kogen.shape <draft-slug>` opens
-  an existing draft in a fresh interactive conversation using current configuration.
+  `mix kogen.shape [--route <name>]` mints a new Intent.
+  `mix kogen.shape [--route <name>] <draft-slug>` opens an existing draft in a
+  fresh interactive conversation. The session runs on the named route from
+  `.kogen/config.yaml`, or on its `default_route` without `--route`; a
+  continuation uses this session's route, whatever route shaped the draft.
   Launch never rewrites the selected draft or restores a previous session.
-  Both routes render the maintained Shaping producer contract, including the
+  Both modes render the maintained Shaping producer contract, including the
   required per-scenario proof map consumed by future Build readiness planning.
   """
 
   @prompt_path "priv/kogen/prompts/shaping.md"
+  @usage "usage: mix kogen.shape [--route <name>] [draft-slug]"
 
   @impl Mix.Task
   def run(args) do
-    with {:ok, selection} <- select(args),
-         {:ok, config} <- Kogen.Intent.read_config() do
+    with {:ok, route, slugs} <- parse(args),
+         {:ok, config} <- Kogen.Intent.read_config(".kogen/config.yaml", route),
+         {:ok, selection} <- select(slugs) do
       shape(config, selection)
     else
       {:error, reason} -> fail(reason)
     end
   end
 
+  defp parse(args) do
+    case OptionParser.parse(args, strict: [route: :string]) do
+      {[], slugs, []} when length(slugs) <= 1 -> {:ok, nil, slugs}
+      {[route: route], slugs, []} when length(slugs) <= 1 and route != "" -> {:ok, route, slugs}
+      _usage -> {:error, @usage}
+    end
+  end
+
   defp select([]), do: {:ok, nil}
   defp select([slug]), do: Kogen.Intent.read_draft(slug)
-  defp select(_args), do: {:error, "usage: mix kogen.shape [draft-slug]"}
 
   defp shape(config, selection) do
     with {:ok, branch} <- Kogen.Git.current_branch(),
@@ -61,6 +73,7 @@ defmodule Mix.Tasks.Kogen.Shape do
       "checkout_branch" => branch,
       "checkout_head" => head,
       "slug" => if(selection, do: selection.slug, else: "<slug>"),
+      "route" => config.route,
       "harness" => config.harness,
       "model" => config.shaping.model,
       "effort" => config.shaping.effort,

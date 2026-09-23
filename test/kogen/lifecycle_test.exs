@@ -273,14 +273,17 @@ defmodule Kogen.LifecycleTest do
 
   defp install_distinct_profiles!(dest) do
     File.write!(Path.join(dest, ".kogen/config.yaml"), """
-    harness: codex
-    shaping: {model: fixture-shaper, effort: shaping-effort}
-    developer: {model: fixture-developer, effort: developer-effort}
-    reviewer: {model: fixture-reviewer, effort: reviewer-effort}
-    helpers:
-      scout: {model: fixture-scout, effort: scout-effort}
-      worker: {model: fixture-worker, effort: worker-effort}
-      expert: {model: fixture-expert, effort: expert-effort}
+    default_route: codex
+    routes:
+      codex:
+        harness: codex
+        shaping: {model: fixture-shaper, effort: shaping-effort}
+        developer: {model: fixture-developer, effort: developer-effort}
+        reviewer: {model: fixture-reviewer, effort: reviewer-effort}
+        helpers:
+          scout: {model: fixture-scout, effort: scout-effort}
+          worker: {model: fixture-worker, effort: worker-effort}
+          expert: {model: fixture-expert, effort: expert-effort}
     outer_resumptions: 2
     verification_retries: 2
     """)

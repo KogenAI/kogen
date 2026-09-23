@@ -80,4 +80,44 @@ defmodule Kogen.ExecutionPolicyTest do
     assert codex =~ "native kind `explorer`"
     assert codex =~ "not native agent-kind enums: use the supported kinds above."
   end
+
+  test "each tracked route renders its own helper profiles and harness-specific delegation" do
+    {:ok, claude} = Kogen.Intent.read_config(".kogen/config.yaml", "claude")
+    {:ok, codex} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
+
+    for role <- ["shaping", "developer", "reviewer"] do
+      claude_policy = Kogen.ExecutionPolicy.render(claude, role)
+      codex_policy = Kogen.ExecutionPolicy.render(codex, role)
+
+      assert claude_policy =~
+               "- **scout:** `claude-sonnet-5` at `low`; Claude Code agent `kogen-scout`."
+
+      assert codex_policy =~ "- **scout:** `gpt-5.6-luna` at `low`; native kind `explorer`."
+      assert codex_policy =~ "- **worker:** `gpt-5.6-luna` at `medium`; native kind `worker`."
+      assert codex_policy =~ "- **expert:** `gpt-5.6-sol` at `medium`; native kind `default`."
+      refute codex_policy =~ "claude-"
+      refute codex_policy =~ "Claude Code agent"
+      refute claude_policy =~ "gpt-5.6"
+    end
+
+    assert Kogen.ExecutionPolicy.render(codex, "reviewer") =~
+             "Configured root (reviewer): `gpt-5.6-terra` at `medium`."
+  end
+
+  test "rendering dispatches only on an explicit claude or codex harness" do
+    {:ok, codex} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
+
+    for invalid <- ["pi", "", nil] do
+      assert_raise ArgumentError, ~r/unsupported harness/, fn ->
+        Kogen.ExecutionPolicy.render(%{codex | harness: invalid}, "developer")
+      end
+    end
+
+    assert_raise KeyError, fn ->
+      Kogen.ExecutionPolicy.render(
+        Map.delete(codex, String.to_existing_atom("harness")),
+        "developer"
+      )
+    end
+  end
 end

@@ -5,7 +5,7 @@ defmodule Kogen.ScenarioTrackingTest do
 
   test "persists a frozen, self-contained record and detects byte mutation" do
     in_private_cwd(fn ->
-      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries())
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())
       assert state.path =~ ~r{\.kogen/runtime/scenario-tracking/[^/]+/record\.json$}
       assert :ok = Tracking.verify(state)
 
@@ -20,16 +20,38 @@ defmodule Kogen.ScenarioTrackingTest do
       assert record["status"] == "pending"
       assert is_binary(record["approved_package_digest"])
 
+      assert record["route"] == %{
+               "name" => "codex",
+               "harness" => "codex",
+               "shaping" => %{"model" => "gpt-5.6-sol", "effort" => "low"},
+               "developer" => %{"model" => "gpt-5.6-sol", "effort" => "low"},
+               "reviewer" => %{"model" => "gpt-5.6-terra", "effort" => "medium"},
+               "helpers" => %{
+                 "scout" => %{"model" => "gpt-5.6-luna", "effort" => "low"},
+                 "worker" => %{"model" => "gpt-5.6-luna", "effort" => "medium"},
+                 "expert" => %{"model" => "gpt-5.6-sol", "effort" => "medium"}
+               }
+             }
+
       File.write!(state.path, state.bytes <> "tampered")
       assert {:error, reason} = Tracking.verify(state)
       assert reason =~ "changed outside Build"
     end)
   end
 
+  test "refuses to create a record from a route missing a required key" do
+    in_private_cwd(fn ->
+      broken = route() |> Map.delete(:reviewer)
+
+      assert {:error, reason} = Tracking.new(intent(), contract(), approved_entries(), broken)
+      assert reason =~ "scenario tracking route lacks reviewer"
+    end)
+  end
+
   test "creates exclusive records and durable updates" do
     in_private_cwd(fn ->
-      assert {:ok, first} = Tracking.new(intent(), contract(), approved_entries())
-      assert {:ok, second} = Tracking.new(intent(), contract(), approved_entries())
+      assert {:ok, first} = Tracking.new(intent(), contract(), approved_entries(), route())
+      assert {:ok, second} = Tracking.new(intent(), contract(), approved_entries(), route())
       refute first.path == second.path
 
       assert {:ok, state} = Tracking.start_attempt(first, "attempt-token-1", 1)
@@ -44,9 +66,77 @@ defmodule Kogen.ScenarioTrackingTest do
     end)
   end
 
+  test "refuses any update that changes the frozen route, name or a single profile" do
+    in_private_cwd(fn ->
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())
+
+      renamed = Map.put(state.record, "route", Map.put(state.record["route"], "name", "other"))
+      assert {:error, reason} = Tracking.update(state, renamed)
+      assert reason =~ "frozen Approved inputs"
+
+      changed_model =
+        put_in(state.record, ["route", "developer", "model"], "gpt-different")
+
+      assert {:error, reason} = Tracking.update(state, changed_model)
+      assert reason =~ "frozen Approved inputs"
+
+      changed_helper =
+        put_in(state.record, ["route", "helpers", "scout", "effort"], "high")
+
+      assert {:error, reason} = Tracking.update(state, changed_helper)
+      assert reason =~ "frozen Approved inputs"
+
+      # An update that leaves route untouched still succeeds.
+      assert {:ok, updated} =
+               Tracking.update(state, Map.put(state.record, "status", "failed"))
+
+      assert updated.record["route"] == state.record["route"]
+    end)
+  end
+
+  test "a legacy record with no route field still updates and verifies consistently" do
+    in_private_cwd(fn ->
+      legacy_record =
+        %{
+          "schema_version" => 1,
+          "purpose" => "inspection evidence; not a recovery checkpoint",
+          "intent" => intent(),
+          "approved_package_digest" => "legacy-digest",
+          "scenarios" => contract()["scenarios"],
+          "risks" => contract()["risks"],
+          "risks_supplied" => true,
+          "attempts" => [],
+          "findings" => [],
+          "status" => "pending"
+        }
+
+      refute Map.has_key?(legacy_record, "route")
+
+      path = "legacy-record.json"
+      bytes = Jason.encode!(legacy_record) <> "\n"
+      File.write!(path, bytes)
+      legacy_state = %{path: path, bytes: bytes, record: legacy_record}
+
+      assert :ok = Tracking.verify(legacy_state)
+
+      assert {:ok, updated} =
+               Tracking.update(legacy_state, Map.put(legacy_record, "status", "failed"))
+
+      refute Map.has_key?(updated.record, "route")
+      assert :ok = Tracking.verify(updated)
+
+      # Introducing a route on a legacy record through a generic update is
+      # itself a frozen-field change and must be refused.
+      assert {:error, reason} =
+               Tracking.update(updated, Map.put(updated.record, "route", route_json()))
+
+      assert reason =~ "frozen Approved inputs"
+    end)
+  end
+
   test "cited record versions allow controller updates but never external edits" do
     in_private_cwd(fn ->
-      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries())
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())
       cited_bytes = state.bytes
 
       snapshot = %{
@@ -79,7 +169,7 @@ defmodule Kogen.ScenarioTrackingTest do
   test "records an omitted optional risks file as not supplied" do
     in_private_cwd(fn ->
       legacy_contract = Map.delete(contract(), "risks")
-      assert {:ok, state} = Tracking.new(intent(), legacy_contract, approved_entries())
+      assert {:ok, state} = Tracking.new(intent(), legacy_contract, approved_entries(), route())
       assert state.record["risks"] == []
       refute state.record["risks_supplied"]
     end)
@@ -91,7 +181,7 @@ defmodule Kogen.ScenarioTrackingTest do
             %{"scenarios" => [], "risks" => [], "risks_supplied" => false},
             %{scenarios: [], risks: [], risks_supplied: false}
           ] do
-        assert {:ok, state} = Tracking.new(intent(), legacy_contract, approved_entries())
+        assert {:ok, state} = Tracking.new(intent(), legacy_contract, approved_entries(), route())
         refute state.record["risks_supplied"]
       end
     end)
@@ -99,7 +189,7 @@ defmodule Kogen.ScenarioTrackingTest do
 
   test "atomically keeps finding origin and disposition history" do
     in_private_cwd(fn ->
-      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries())
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())
       assert {:ok, state} = Tracking.start_attempt(state, "attempt-token-1", 1)
       assert {:ok, state} = bind_attempt(state, "candidate-1", "developer-1")
 
@@ -181,7 +271,7 @@ defmodule Kogen.ScenarioTrackingTest do
 
   test "Reviewer citation preserves the Developer's earlier bytes for the same path" do
     in_private_cwd(fn ->
-      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries())
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())
       assert {:ok, state} = Tracking.start_attempt(state, "attempt-1", 0)
       developer_bytes = state.bytes
       developer_refs = %{state.path => %{"content_base64" => Base.encode64(developer_bytes)}}
@@ -209,10 +299,40 @@ defmodule Kogen.ScenarioTrackingTest do
 
   defp intent, do: %{"id" => "intent-1", "slug" => "sample", "title" => "Sample"}
 
+  defp route do
+    %{
+      route: "codex",
+      harness: "codex",
+      shaping: %{model: "gpt-5.6-sol", effort: "low"},
+      developer: %{model: "gpt-5.6-sol", effort: "low"},
+      reviewer: %{model: "gpt-5.6-terra", effort: "medium"},
+      helpers: %{
+        scout: %{model: "gpt-5.6-luna", effort: "low"},
+        worker: %{model: "gpt-5.6-luna", effort: "medium"},
+        expert: %{model: "gpt-5.6-sol", effort: "medium"}
+      }
+    }
+  end
+
   defp contract do
     %{
       "scenarios" => [%{"id" => "scenario-a", "then" => "works"}],
       "risks" => [%{"id" => "risk-a", "scenario_ids" => ["scenario-a"]}]
+    }
+  end
+
+  defp route_json do
+    %{
+      "name" => "codex",
+      "harness" => "codex",
+      "shaping" => %{"model" => "gpt-5.6-sol", "effort" => "low"},
+      "developer" => %{"model" => "gpt-5.6-sol", "effort" => "low"},
+      "reviewer" => %{"model" => "gpt-5.6-terra", "effort" => "medium"},
+      "helpers" => %{
+        "scout" => %{"model" => "gpt-5.6-luna", "effort" => "low"},
+        "worker" => %{"model" => "gpt-5.6-luna", "effort" => "medium"},
+        "expert" => %{"model" => "gpt-5.6-sol", "effort" => "medium"}
+      }
     }
   end
 

@@ -1,8 +1,11 @@
+Code.require_file("../support/route_config.ex", __DIR__)
+
 defmodule Kogen.Codex.ManagementTest do
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.Codex
   alias Kogen.Codex.State
+  alias Kogen.RouteConfig
 
   setup do
     source = File.cwd!()
@@ -18,7 +21,7 @@ defmodule Kogen.Codex.ManagementTest do
     System.put_env("KOGEN_TEST_NATIVE_TRACE", Path.join(root, "trace.jsonl"))
     System.delete_env("KOGEN_HARNESS")
     System.delete_env("KOGEN_ROLE")
-    {:ok, config} = Kogen.Intent.read_config()
+    {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
     on_exit(fn -> File.rm_rf!(root) end)
     {:ok, root: root, source: source, config: config}
   end
@@ -47,7 +50,7 @@ defmodule Kogen.Codex.ManagementTest do
     path = Path.join(scope.path, "config.toml")
     bytes = "[tui.model_availability_nux]\n\"gpt-5.6-sol\" = 1\n"
     File.write!(path, bytes)
-    assert {:ok, %{login: :configured}} = Codex.status(ctx.config)
+    assert {:ok, %{login: :configured}} = Codex.status()
     assert {:ok, selection} = Codex.open(ctx.config)
     Codex.close(selection)
     assert File.read!(path) == bytes
@@ -82,7 +85,7 @@ defmodule Kogen.Codex.ManagementTest do
     assert {:error, reason} = Codex.open(ctx.config)
     assert reason =~ "--project"
     File.write!(Path.join(project_scope.path, "auth.json"), "retained-project-account")
-    assert {:ok, 0} = Codex.login(["--use-default"], ctx.config)
+    assert {:ok, 0} = Codex.login(["--use-default"])
     assert {:ok, %{name: :shared}} = Codex.effective_scope()
     assert File.read!(Path.join(project_scope.path, "auth.json")) == "retained-project-account"
 
@@ -114,7 +117,7 @@ defmodule Kogen.Codex.ManagementTest do
 
     File.chmod!(shim, 0o755)
     System.put_env("PATH", bin <> ":" <> System.fetch_env!("PATH"))
-    assert {:ok, %{login: {:error, reason}}} = Codex.status(ctx.config)
+    assert {:ok, %{login: {:error, reason}}} = Codex.status()
     assert reason =~ "Python 3.11"
     refute reason =~ "unexpected discovery"
     assert {:error, reason} = Codex.open(ctx.config)
@@ -133,15 +136,15 @@ defmodule Kogen.Codex.ManagementTest do
 
   test "status uses native status only, omits native secret text, and counts actual active leases",
        ctx do
-    assert {:ok, %{runtime: nil, active: [], login: :unavailable}} = Codex.status(ctx.config)
+    assert {:ok, %{runtime: nil, active: [], login: :unavailable}} = Codex.status()
     install_fixture!(ctx)
     authenticate_shared!(ctx)
     assert {:ok, selection} = Codex.open(ctx.config)
-    assert {:ok, %{active: [active], login: :configured}} = Codex.status(ctx.config)
+    assert {:ok, %{active: [active], login: :configured}} = Codex.status()
     assert active["runtime"]["version"] == "0.154.0"
     assert Enum.all?(trace(ctx.root), &(Enum.take(&1["args"], -2) == ["login", "status"]))
     Codex.close(selection)
-    assert {:ok, %{active: []}} = Codex.status(ctx.config)
+    assert {:ok, %{active: []}} = Codex.status()
   end
 
   test "selected work retains its pinned executable despite default pointer and PATH changes",
@@ -189,6 +192,34 @@ defmodule Kogen.Codex.ManagementTest do
     assert Enum.all?(trace(ctx.root), &is_nil(&1["override"]))
     Codex.close(old)
     Codex.close(fresh)
+  end
+
+  test "codex setup commands ignore routes: status and project login work under a claude-only routes config",
+       ctx do
+    install_fixture!(ctx)
+    authenticate_shared!(ctx)
+
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-codex-route-independent-#{System.unique_integer([:positive])}"
+      )
+
+    RouteConfig.write!(
+      Path.join(dir, ".kogen/config.yaml"),
+      [{"claude", RouteConfig.claude_route()}],
+      default_route: "claude"
+    )
+
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    assert {:ok, %{login: :configured}} = File.cd!(dir, fn -> Codex.status() end)
+
+    {result, real_project} =
+      File.cd!(dir, fn -> {Codex.login(["--project", "--", "--help"]), File.cwd!()} end)
+
+    assert {:ok, 0} = result
+    assert {:ok, %{name: :project}} = Codex.effective_scope(real_project)
   end
 
   test "wrapper parsing forwards native arguments verbatim and rejects conflicting options",

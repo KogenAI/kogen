@@ -29,12 +29,14 @@ entailed choice; preserve adjacent unresolved behavior. Persist accepted decisio
 unresolved questions in maintained draft files so another fresh conversation
 can continue without transcript access. Do not copy private raw harness logs.
 
-Keep original `shaping` metadata unchanged. When saving continued shaping,
-append exactly one entry for this visit to `shaping_continuations` in intent.yaml
+Keep original `shaping` metadata unchanged, including its `route` or its
+absence; this visit may run on another route than the one that first shaped
+the draft. When saving continued shaping, append exactly one entry for this visit to `shaping_continuations` in intent.yaml
 (create the list if absent), preserving all prior entries. Do not append on
 every edit and do not record an engine session ID. This visit's facts are:
 
 ```yaml
+route: {{route}}
 harness: {{harness}}
 model: {{model}}
 effort: {{effort}}

@@ -1,6 +1,9 @@
+Code.require_file("../support/route_config.ex", __DIR__)
+
 defmodule Kogen.Codex.NativeLiveTest do
   use Kogen.IsolatedCase, async: true
   alias Kogen.Codex.{Environment, State}
+  alias Kogen.RouteConfig
   @moduletag :live
   @moduletag timeout: 1_200_000
 
@@ -26,7 +29,7 @@ defmodule Kogen.Codex.NativeLiveTest do
 
   test "real native login help and synthetic stdin use separate Kogen stores" do
     assert {:ok, runtime} = Kogen.Codex.installed()
-    {:ok, config} = Kogen.Intent.read_config()
+    config = RouteConfig.codex_route!()
     root = Path.join(System.tmp_dir!(), "kogen-native-auth-#{System.pid()}")
     File.mkdir_p!(root)
     on_exit(fn -> File.rm_rf!(root) end)

@@ -60,10 +60,11 @@ defmodule Kogen.HarnessRoleTest do
     System.put_env("ROLE_LOG", log)
     System.put_env("KOGEN_RAW_LOG_DIR", raw_log_dir)
     System.put_env("KOGEN_ROLE", "reviewer")
-    assert {:ok, _} = Kogen.Harness.launch_developer("test", "fake", "low")
-    assert {:ok, _} = Kogen.Harness.resume_developer("dev", "test", "fake", "low")
+    context = %{harness: "codex", executable: executable, args: [], env: []}
+    assert {:ok, _} = Kogen.Harness.launch_developer("test", "fake", "low", [], context)
+    assert {:ok, _} = Kogen.Harness.resume_developer("dev", "test", "fake", "low", [], context)
     System.put_env("KOGEN_ROLE", "developer")
-    assert {:ok, _} = Kogen.Harness.launch_reviewer("test", "fake", "low")
+    assert {:ok, _} = Kogen.Harness.launch_reviewer("test", "fake", "low", context)
     assert [verdict_path] = Path.wildcard(Path.join(raw_log_dir, "reviewer-verdict-*.json"))
 
     assert File.read!(verdict_path) ==
@@ -82,8 +83,10 @@ defmodule Kogen.HarnessRoleTest do
       |> Enum.map(&List.to_string/1)
       |> Enum.flat_map(&["-pa", &1])
 
+    shaper_context = %{harness: "codex", executable: executable, args: [], env: []}
+
     expression =
-      "System.halt(Kogen.Harness.exec_shaper(\"fake\", \"low\", #{inspect(prompt)}))"
+      "System.halt(Kogen.Harness.exec_shaper(\"fake\", \"low\", #{inspect(prompt)}, #{inspect(shaper_context)}))"
 
     command = [elixir, "--erl", "+S 2:2 +SDcpu 1 +SDio 1"] ++ code_paths ++ ["-e", expression]
 

@@ -517,7 +517,8 @@ defmodule Kogen.Codex.Compatibility do
         "KOGEN_TRACKING_CONTEXT" => nil
       })
 
-    {:ok, Environment.prepare(runtime, scope, config, fixture, fixture, caller)}
+    context = Environment.prepare(runtime, scope, config, fixture, fixture, caller)
+    {:ok, Map.put(context, :harness, "codex")}
   rescue
     error -> {:error, {:compatibility_environment, Exception.message(error)}}
   end
@@ -832,6 +833,7 @@ defmodule Kogen.Codex.Compatibility do
   defp validate_scope(_), do: {:error, :invalid_scope}
 
   defp validate_config(%{
+         harness: "codex",
          shaping: %{model: model, effort: effort},
          developer: %{model: dev_model, effort: dev_effort},
          reviewer: %{model: review_model, effort: review_effort}

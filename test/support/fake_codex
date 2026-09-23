@@ -91,6 +91,7 @@ if [ -n "$resume_id" ]; then
    printf 'Reviewer-directed rework applied\n' > reviewer-rework-marker.txt
    ;;
  esac
+ [ -n "${KOGEN_MIDBUILD_HOOK:-}" ] && sh "$KOGEN_MIDBUILD_HOOK"
  stop_check pass false
  response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
  printf '%s\n' "$response" > "$output_file"
@@ -103,6 +104,11 @@ printf '%s' "$input" > "$state_dir/developer-launch-prompt"
 printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
 printf 'initial fixture value\n' > dummy.txt
 printf 'defmodule Kogen.FakeBreak do\n  this is not valid elixir(((\nend\n' > lib/kogen_fake_break.ex
+# An offline fixture hook: when set, runs inside each Developer turn (fresh
+# and resumed) before its Stop checks, so a test can edit .kogen/config.yaml
+# mid-Build and assert every later launch still uses the Build's
+# already-resolved route.
+[ -n "${KOGEN_MIDBUILD_HOOK:-}" ] && sh "$KOGEN_MIDBUILD_HOOK"
 stop_check block false
 rm -f lib/kogen_fake_break.ex
 stop_check pass true

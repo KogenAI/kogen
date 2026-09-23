@@ -24,7 +24,7 @@ defmodule Kogen.IntentTest do
     full_path
   end
 
-  @valid_config """
+  @valid_route """
   harness: codex
   shaping:   {model: fable, effort: medium}
   developer: {model: sonnet, effort: high}
@@ -33,9 +33,59 @@ defmodule Kogen.IntentTest do
     scout:  {model: scout, effort: low}
     worker: {model: worker, effort: medium}
     expert: {model: expert, effort: medium}
+  """
+
+  @other_route """
+  harness: codex
+  shaping:   {model: other-shaper, effort: low}
+  developer: {model: other-developer, effort: medium}
+  reviewer:  {model: other-reviewer, effort: high}
+  helpers:
+    scout:  {model: other-scout, effort: low}
+    worker: {model: other-worker, effort: low}
+    expert: {model: other-expert, effort: high}
+  """
+
+  # A routes config: `routes` is an ordered list of {name, route body}.
+  defp routes_config(routes, options \\ []) do
+    default = Keyword.get(options, :default_route, routes |> hd() |> elem(0))
+
+    route_lines =
+      Enum.map_join(routes, fn {name, body} ->
+        "  #{name}:\n" <> indent(body, "    ")
+      end)
+
+    default_line = if default, do: "default_route: #{default}\n", else: ""
+
+    default_line <>
+      "routes:\n" <>
+      route_lines <>
+      Keyword.get(options, :tail, "outer_resumptions: 2\nverification_retries: 2\n")
+  end
+
+  defp indent(text, prefix) do
+    text
+    |> String.split("\n", trim: true)
+    |> Enum.map_join(&(prefix <> &1 <> "\n"))
+  end
+
+  @valid_config """
+  default_route: codex
+  routes:
+    codex:
+      harness: codex
+      shaping:   {model: fable, effort: medium}
+      developer: {model: sonnet, effort: high}
+      reviewer:  {model: sonnet, effort: high}
+      helpers:
+        scout:  {model: scout, effort: low}
+        worker: {model: worker, effort: medium}
+        expert: {model: expert, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
   """
+
+  @flat_config_error "config.yaml uses the replaced flat configuration shape (top-level harness and roles); define default_route and routes instead"
 
   @valid_intent """
   id: 01a0711c-5df0-7822-925c-640efbec8e6c
@@ -83,6 +133,7 @@ defmodule Kogen.IntentTest do
       assert is_integer(verification_retries)
       assert verification_retries == 2
 
+      assert config.route == "claude"
       assert config.harness == "claude"
       assert config.shaping == %{model: "claude-opus-5-5", effort: "medium"}
       assert config.developer == %{model: "claude-opus-5-5", effort: "medium"}
@@ -92,6 +143,23 @@ defmodule Kogen.IntentTest do
                scout: %{model: "claude-sonnet-5", effort: "low"},
                worker: %{model: "claude-sonnet-5", effort: "medium"},
                expert: %{model: "claude-opus-5-5", effort: "high"}
+             }
+
+      assert {:ok, codex} = Intent.read_config(".kogen/config.yaml", "codex")
+
+      assert codex == %{
+               route: "codex",
+               harness: "codex",
+               shaping: %{model: "gpt-5.6-sol", effort: "low"},
+               developer: %{model: "gpt-5.6-sol", effort: "low"},
+               reviewer: %{model: "gpt-5.6-terra", effort: "medium"},
+               helpers: %{
+                 scout: %{model: "gpt-5.6-luna", effort: "low"},
+                 worker: %{model: "gpt-5.6-luna", effort: "medium"},
+                 expert: %{model: "gpt-5.6-sol", effort: "medium"}
+               },
+               outer_resumptions: 2,
+               verification_retries: 2
              }
     end
 
@@ -127,64 +195,54 @@ defmodule Kogen.IntentTest do
       dir = tmp_dir!()
 
       path =
-        write_yaml!(dir, "config.yaml", """
-        shaping:   {model: fable, effort: medium}
-        developer: {model: sonnet, effort: high}
-        reviewer:  {model: sonnet, effort: high}
+        write_yaml!(
+          dir,
+          "config.yaml",
+          routes_config([{"codex", @valid_route}], default_route: nil)
+        )
+
+      assert {:error, "config.yaml missing required key: default_route"} =
+               Intent.read_config(path)
+
+      path =
+        write_yaml!(dir, "no-routes.yaml", """
+        default_route: codex
         outer_resumptions: 2
+        verification_retries: 2
         """)
 
-      assert {:error, "config.yaml missing required key: harness"} = Intent.read_config(path)
+      assert {:error, "config.yaml missing required key: routes"} = Intent.read_config(path)
     end
 
     test "refuses to start when a nested role key is absent" do
       dir = tmp_dir!()
+      route = String.replace(@valid_route, "{model: fable, effort: medium}", "{model: fable}")
+      path = write_yaml!(dir, "config.yaml", routes_config([{"codex", route}]))
 
-      path =
-        write_yaml!(dir, "config.yaml", """
-        harness: codex
-        shaping:   {model: fable}
-        developer: {model: sonnet, effort: high}
-        reviewer:  {model: sonnet, effort: high}
-        helpers:
-          scout:  {model: scout, effort: low}
-          worker: {model: worker, effort: medium}
-          expert: {model: expert, effort: medium}
-        outer_resumptions: 2
-        """)
-
-      assert {:error, "config.yaml missing required key: shaping.effort"} =
+      assert {:error, "config.yaml missing required key: routes.codex.shaping.effort"} =
                Intent.read_config(path)
     end
 
     test "refuses to start when required helper configuration is absent or incomplete" do
       dir = tmp_dir!()
+      [roles, _helpers] = String.split(@valid_route, "helpers:\n")
 
       missing_helpers =
-        write_yaml!(dir, "missing-helpers.yaml", """
-        harness: codex
-        shaping: {model: fable, effort: low}
-        developer: {model: fable, effort: low}
-        reviewer: {model: fable, effort: low}
-        outer_resumptions: 2
-        """)
+        write_yaml!(dir, "missing-helpers.yaml", routes_config([{"codex", roles}]))
 
       incomplete_helper =
-        write_yaml!(dir, "incomplete-helper.yaml", """
-        harness: codex
-        shaping: {model: fable, effort: low}
-        developer: {model: fable, effort: low}
-        reviewer: {model: fable, effort: low}
-        helpers:
-          scout: {model: scout, effort: low}
-          worker: {model: worker, effort: medium}
-        outer_resumptions: 2
-        """)
+        write_yaml!(
+          dir,
+          "incomplete-helper.yaml",
+          routes_config([
+            {"codex", String.replace(@valid_route, "expert: {model: expert, effort: medium}", "")}
+          ])
+        )
 
-      assert {:error, "config.yaml missing required key: helpers"} =
+      assert {:error, "config.yaml missing required key: routes.codex.helpers"} =
                Intent.read_config(missing_helpers)
 
-      assert {:error, "config.yaml missing required key: helpers.expert"} =
+      assert {:error, "config.yaml missing required key: routes.codex.helpers.expert"} =
                Intent.read_config(incomplete_helper)
     end
 
@@ -203,7 +261,7 @@ defmodule Kogen.IntentTest do
           kind <- [:missing, :blank, :wrong_type] do
         dir = tmp_dir!()
         path = write_yaml!(dir, "config.yaml", config_with_invalid_profile(profile, field, kind))
-        expected = "config.yaml missing required key: #{profile}.#{field}"
+        expected = "config.yaml missing required key: routes.codex.#{profile}.#{field}"
 
         assert {:error, ^expected} = Intent.read_config(path)
       end
@@ -213,16 +271,11 @@ defmodule Kogen.IntentTest do
       dir = tmp_dir!()
 
       path =
-        write_yaml!(dir, "config.yaml", """
-        harness: codex
-        shaping:   {model: fable, effort: medium}
-        developer: {model: sonnet, effort: high}
-        reviewer:  {model: sonnet, effort: high}
-        helpers:
-          scout:  {model: scout, effort: low}
-          worker: {model: worker, effort: medium}
-          expert: {model: expert, effort: medium}
-        """)
+        write_yaml!(
+          dir,
+          "config.yaml",
+          routes_config([{"codex", @valid_route}], tail: "verification_retries: 2\n")
+        )
 
       assert {:error, "config.yaml missing required key: outer_resumptions"} =
                Intent.read_config(path)
@@ -232,17 +285,13 @@ defmodule Kogen.IntentTest do
       dir = tmp_dir!()
 
       path =
-        write_yaml!(dir, "config.yaml", """
-        harness: codex
-        shaping:   {model: fable, effort: medium}
-        developer: {model: sonnet, effort: high}
-        reviewer:  {model: sonnet, effort: high}
-        helpers:
-          scout:  {model: scout, effort: low}
-          worker: {model: worker, effort: medium}
-          expert: {model: expert, effort: medium}
-        outer_resumptions: "two"
-        """)
+        write_yaml!(
+          dir,
+          "config.yaml",
+          routes_config([{"codex", @valid_route}],
+            tail: "outer_resumptions: \"two\"\nverification_retries: 2\n"
+          )
+        )
 
       assert {:error, "config.yaml missing required key: outer_resumptions"} =
                Intent.read_config(path)
@@ -308,13 +357,7 @@ defmodule Kogen.IntentTest do
         "  #{helper}: #{profile_mapping("helpers.#{helper}", profile, field, kind)}"
       end)
 
-    """
-    harness: codex
-    #{role_lines}
-    helpers:
-    #{helper_lines}
-    outer_resumptions: 2
-    """
+    routes_config([{"codex", "harness: codex\n#{role_lines}\nhelpers:\n#{helper_lines}\n"}])
   end
 
   defp profile_mapping(current, profile, field, kind) do
@@ -471,7 +514,7 @@ defmodule Kogen.IntentTest do
   end
 
   describe "harness selection and proven Claude Code models" do
-    @claude_config """
+    @claude_route """
     harness: claude
     shaping:   {model: claude-opus-5-5, effort: medium}
     developer: {model: claude-opus-5-5, effort: medium}
@@ -480,6 +523,20 @@ defmodule Kogen.IntentTest do
       scout:  {model: claude-sonnet-5, effort: low}
       worker: {model: claude-sonnet-5, effort: medium}
       expert: {model: claude-opus-5-5, effort: high}
+    """
+
+    @claude_config """
+    default_route: claude
+    routes:
+      claude:
+        harness: claude
+        shaping:   {model: claude-opus-5-5, effort: medium}
+        developer: {model: claude-opus-5-5, effort: medium}
+        reviewer:  {model: claude-opus-5-5, effort: medium}
+        helpers:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+          expert: {model: claude-opus-5-5, effort: high}
     outer_resumptions: 2
     verification_retries: 2
     """
@@ -542,6 +599,246 @@ defmodule Kogen.IntentTest do
 
       assert {:ok, %{developer: %{model: "sonnet"}}} =
                Intent.read_config(write_yaml!(dir, "c.yaml", @valid_config))
+    end
+  end
+
+  describe "named routes" do
+    test "no requested route resolves default_route and each name resolves only its own route" do
+      dir = tmp_dir!()
+
+      path =
+        write_yaml!(
+          dir,
+          "config.yaml",
+          routes_config(
+            [{"codex", @valid_route}, {"other", @other_route}, {"claude", @claude_route}],
+            default_route: "other",
+            tail: "outer_resumptions: 1\nverification_retries: 0\n"
+          )
+        )
+
+      assert {:ok, default} = Intent.read_config(path)
+      assert {:ok, other} = Intent.read_config(path, "other")
+      assert default == other
+
+      assert other == %{
+               route: "other",
+               harness: "codex",
+               shaping: %{model: "other-shaper", effort: "low"},
+               developer: %{model: "other-developer", effort: "medium"},
+               reviewer: %{model: "other-reviewer", effort: "high"},
+               helpers: %{
+                 scout: %{model: "other-scout", effort: "low"},
+                 worker: %{model: "other-worker", effort: "low"},
+                 expert: %{model: "other-expert", effort: "high"}
+               },
+               outer_resumptions: 1,
+               verification_retries: 0
+             }
+
+      assert {:ok, codex} = Intent.read_config(path, "codex")
+      assert codex.route == "codex"
+      assert codex.shaping == %{model: "fable", effort: "medium"}
+      assert codex.helpers.expert == %{model: "expert", effort: "medium"}
+
+      assert {:ok, claude} = Intent.read_config(path, "claude")
+      assert claude.harness == "claude"
+      assert claude.helpers.scout == %{model: "claude-sonnet-5", effort: "low"}
+
+      # The global retry policy applies to every route.
+      for config <- [codex, claude, other] do
+        assert {config.outer_resumptions, config.verification_retries} == {1, 0}
+      end
+    end
+
+    test "retries inside a route are not a substitute for the global retry policy" do
+      dir = tmp_dir!()
+      route = @valid_route <> "outer_resumptions: 2\nverification_retries: 2\n"
+      path = write_yaml!(dir, "config.yaml", routes_config([{"codex", route}], tail: ""))
+
+      assert {:error, "config.yaml missing required key: outer_resumptions"} =
+               Intent.read_config(path)
+    end
+
+    test "the flat configuration shape is refused with a message naming default_route and routes" do
+      dir = tmp_dir!()
+      flat = "harness: codex\n" <> String.replace(@valid_route, "harness: codex\n", "")
+
+      for yaml <- [
+            flat <> "outer_resumptions: 2\nverification_retries: 2\n",
+            String.replace(flat, "harness: codex\n", "") <> "outer_resumptions: 2\n",
+            "default_route: codex\nharness: codex\n",
+            "outer_resumptions: 2\nverification_retries: 2\n"
+          ] do
+        path = write_yaml!(dir, "flat.yaml", yaml)
+        assert {:error, @flat_config_error} = Intent.read_config(path)
+        assert {:error, @flat_config_error} = Intent.read_config(path, "codex")
+      end
+
+      assert @flat_config_error =~ "default_route"
+      assert @flat_config_error =~ "routes"
+    end
+
+    test "a missing or unknown default_route is refused, never replaced by the first route" do
+      dir = tmp_dir!()
+      routes = [{"codex", @valid_route}, {"other", @other_route}]
+
+      missing = write_yaml!(dir, "missing.yaml", routes_config(routes, default_route: nil))
+      unknown = write_yaml!(dir, "unknown.yaml", routes_config(routes, default_route: "gone"))
+      blank = write_yaml!(dir, "blank.yaml", routes_config(routes, default_route: "''"))
+
+      assert {:error, "config.yaml missing required key: default_route"} =
+               Intent.read_config(missing)
+
+      assert {:error, "config.yaml missing required key: default_route"} =
+               Intent.read_config(missing, "codex")
+
+      assert {:error,
+              "config.yaml default_route names unknown route: gone; available routes: codex, other"} =
+               Intent.read_config(unknown)
+
+      assert {:error, "config.yaml missing required key: default_route"} =
+               Intent.read_config(blank)
+    end
+
+    test "an unknown requested route lists the available routes in sorted order" do
+      dir = tmp_dir!()
+
+      path =
+        write_yaml!(
+          dir,
+          "config.yaml",
+          routes_config([{"zeta", @valid_route}, {"alpha", @other_route}, {"mid", @valid_route}])
+        )
+
+      assert {:error, "unknown route: missing; available routes: alpha, mid, zeta"} =
+               Intent.read_config(path, "missing")
+    end
+
+    test "a structurally broken unselected route is refused with its key path" do
+      dir = tmp_dir!()
+
+      broken = [
+        {String.replace(@other_route, "harness: codex\n", ""), "routes.other.harness"},
+        {String.replace(@other_route, "harness: codex", "harness: ''"), "routes.other.harness"},
+        {String.replace(@other_route, "reviewer:  {model: other-reviewer, effort: high}\n", ""),
+         "routes.other.reviewer"},
+        {String.replace(@other_route, "{model: other-worker, effort: low}", "{effort: low}"),
+         "routes.other.helpers.worker.model"},
+        {String.replace(
+           @other_route,
+           "{model: other-scout, effort: low}",
+           "{model: s, effort: 7}"
+         ), "routes.other.helpers.scout.effort"},
+        {String.replace(
+           @other_route,
+           "{model: other-shaper, effort: low}",
+           "{model: '  ', effort: low}"
+         ), "routes.other.shaping.model"}
+      ]
+
+      for {route, key_path} <- broken do
+        path =
+          write_yaml!(
+            dir,
+            "broken.yaml",
+            routes_config([{"codex", @valid_route}, {"other", route}])
+          )
+
+        expected = "config.yaml missing required key: #{key_path}"
+        assert {:error, ^expected} = Intent.read_config(path)
+        assert {:error, ^expected} = Intent.read_config(path, "codex")
+      end
+
+      not_a_map = write_yaml!(dir, "scalar.yaml", routes_config([{"codex", @valid_route}]) <> "")
+
+      File.write!(
+        not_a_map,
+        String.replace(File.read!(not_a_map), "routes:\n", "routes:\n  other: scalar\n")
+      )
+
+      assert {:error, "config.yaml missing required key: routes.other"} =
+               Intent.read_config(not_a_map)
+    end
+
+    test "harness support and proven models are checked only for the selected route" do
+      dir = tmp_dir!()
+      pi = String.replace(@other_route, "harness: codex", "harness: pi-chatgpt")
+
+      unproven =
+        String.replace(
+          @claude_route,
+          "shaping:   {model: claude-opus-5-5, effort: medium}",
+          "shaping:   {model: claude-unproven-9, effort: medium}"
+        )
+
+      path =
+        write_yaml!(
+          dir,
+          "config.yaml",
+          routes_config([{"codex", @valid_route}, {"pi", pi}, {"unproven", unproven}])
+        )
+
+      assert {:ok, %{route: "codex", harness: "codex"}} = Intent.read_config(path)
+
+      assert {:error, "unsupported harness: pi-chatgpt; expected codex or claude"} =
+               Intent.read_config(path, "pi")
+
+      assert {:error, reason} = Intent.read_config(path, "unproven")
+      assert reason =~ "unsupported Claude Code model for shaping: claude-unproven-9"
+    end
+
+    test "routes keep the resolved map shape with an explicit harness and no defaulted keys" do
+      dir = tmp_dir!()
+      path = write_yaml!(dir, "config.yaml", @valid_config)
+
+      assert {:ok, config} = Intent.read_config(path)
+
+      assert Map.keys(config) |> Enum.sort() ==
+               ~w(developer harness helpers outer_resumptions reviewer route shaping verification_retries)a
+    end
+  end
+
+  describe "read_draft/1 route provenance" do
+    # read_draft/1 reads relative to the working directory; run it in a child VM.
+    test "legacy and route-bearing Drafts are both continuable" do
+      dir = tmp_dir!()
+
+      for {slug, route_line} <- [{"legacy-draft", ""}, {"routed-draft", "  route: codex\n"}] do
+        write_yaml!(dir, ".kogen/intents/drafts/#{slug}/intent.yaml", """
+        id: 01a0711c-5df0-7822-925c-640efbec8e6c
+        slug: #{slug}
+        title: Draft
+        shaped_against: {branch: main, head: abc123}
+        shaping:
+        #{route_line}  harness: claude
+          model: claude-opus-5-5
+          effort: medium
+          started: '2026-09-23T07:45:41Z'
+        """)
+      end
+
+      script = """
+      {:ok, _apps} = Application.ensure_all_started(:yaml_elixir)
+
+      for slug <- ["legacy-draft", "routed-draft"] do
+        {:ok, draft} = Kogen.Intent.read_draft(slug)
+        IO.puts(slug <> "=" <> draft.shaping["harness"])
+      end
+      """
+
+      code_paths =
+        Enum.flat_map(:code.get_path(), fn path ->
+          path = to_string(path)
+          if String.contains?(path, "_build"), do: ["-pa", path], else: []
+        end)
+
+      {output, status} =
+        System.cmd("elixir", code_paths ++ ["-e", script], cd: dir, stderr_to_stdout: true)
+
+      assert status == 0, output
+      assert output =~ "legacy-draft=claude"
+      assert output =~ "routed-draft=claude"
     end
   end
 end

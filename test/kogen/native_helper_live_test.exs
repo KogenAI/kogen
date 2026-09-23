@@ -1,16 +1,18 @@
 Code.require_file("../support/native_helper_fixture.ex", __DIR__)
+Code.require_file("../support/route_config.ex", __DIR__)
 
 defmodule Kogen.NativeHelperLiveTest do
   @moduledoc false
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.NativeHelperFixture
+  alias Kogen.RouteConfig
 
   @moduletag :live
   @moduletag timeout: 1_200_000
 
   test "a bounded fresh native dispatch records actual child routing evidence" do
-    {:ok, config} = Kogen.Intent.read_config()
+    config = RouteConfig.codex_route!()
     project_root = File.cwd!()
     log_dir = log_dir!(project_root)
     fixture = fixture_dir!(project_root)

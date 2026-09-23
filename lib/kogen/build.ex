@@ -32,9 +32,16 @@ defmodule Kogen.Build do
   @publication_file_limit 5_242_880
   @publication_total_limit 10_485_760
 
-  @spec run(String.t()) :: :ok | {:error, String.t()}
-  def run(slug) do
-    with {:ok, intent} <- Kogen.Intent.read(slug, @approved_base),
+  @doc """
+  Runs one Build of the Approved Intent `slug` on the named `route`, or on the
+  configured `default_route` when `route` is `nil`. Configuration is resolved
+  exactly once, before any harness readiness or launch; every later launch,
+  resumption, Stop verification context and Review uses that frozen route.
+  """
+  @spec run(String.t(), String.t() | nil) :: :ok | {:error, String.t()}
+  def run(slug, route \\ nil) do
+    with {:ok, config} <- Kogen.Intent.read_config(".kogen/config.yaml", route),
+         {:ok, intent} <- Kogen.Intent.read(slug, @approved_base),
          {:ok, approved_entries} <- read_approved_entries(slug),
          :ok <- preflight_approved_budget(approved_entries),
          :ok <- Kogen.Git.reject_candidate_blinding_index_flags(),
@@ -45,7 +52,7 @@ defmodule Kogen.Build do
         :ok ->
           try do
             with :ok <- check_make_check_target() do
-              do_build(slug, intent, approved_entries)
+              do_build(slug, intent, config, approved_entries)
             end
           after
             release_lock()
@@ -183,16 +190,15 @@ defmodule Kogen.Build do
   # settle/review/rework chain below stays under a sane arity as it
   # threads per-attempt state (candidate id, session id, resumption count,
   # Check record, target results) through the loop.
-  defp do_build(slug, intent, approved_entries) do
-    with {:ok, config} <- Kogen.Intent.read_config(),
-         {:ok, contract} <- Contract.load(Path.join(@approved_base, slug)),
+  defp do_build(slug, intent, config, approved_entries) do
+    with {:ok, contract} <- Contract.load(Path.join(@approved_base, slug)),
          {:ok, catalog} <- VerificationPlan.load(),
          {:ok, plan} <-
            VerificationPlan.build(contract.scenarios, intent.may_change_guarded_paths, catalog),
          :ok <- Kogen.VerificationPolicy.preflight(catalog.ordered_targets),
          {:ok, guarded_snapshot} <- GuardedPaths.capture(),
          {:ok, runtime} <- Kogen.Harness.open(config),
-         {:ok, tracking} <- Tracking.new(intent, contract, approved_entries) do
+         {:ok, tracking} <- Tracking.new(intent, contract, approved_entries, config) do
       ctx = %{
         slug: slug,
         intent: intent,
@@ -899,7 +905,7 @@ defmodule Kogen.Build do
          resumptions_used,
          check_record,
          target_results,
-         dev_result
+         _dev_result
        ) do
     %{slug: slug, intent: intent} = ctx
     complete_dir = Path.join(@complete_base, slug)
@@ -917,7 +923,7 @@ defmodule Kogen.Build do
         resumptions_used,
         check_record,
         target_results,
-        dev_result
+        ctx.config
       )
 
     evidence_name = available_evidence_name(complete_dir)
@@ -1076,6 +1082,7 @@ defmodule Kogen.Build do
       "schema_version" => 1,
       "intent" => Map.take(record["intent"], ["id", "slug", "title"]),
       "build_id" => ctx.tracking.path |> Path.dirname() |> Path.basename(),
+      "route" => %{"name" => ctx.config.route, "harness" => ctx.config.harness},
       "candidate_id" => candidate_id,
       "developer_session_id" => developer_session_id,
       "attempts" => attempts,
@@ -1144,7 +1151,7 @@ defmodule Kogen.Build do
          resumptions_used,
          check_record,
          target_results,
-         _dev_result
+         route
        ) do
     findings_text = Enum.map_join(verdict.findings, ", ", &Map.get(&1, "id", "finding"))
     findings_text = if findings_text == "", do: "(none)", else: findings_text
@@ -1175,6 +1182,7 @@ defmodule Kogen.Build do
     """
     # Complete evidence: #{intent.title}
 
+    - Route: `#{route.route}` (harness `#{route.harness}`)
     - Candidate id: `#{candidate_id}`
     - Developer session id: `#{developer_session_id}`
     - Reviewer session id: `#{verdict.session_id}`

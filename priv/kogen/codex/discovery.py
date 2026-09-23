@@ -72,7 +72,11 @@ def seed(fixture: Path | str, config: dict[str, Any]) -> dict[str, Any]:
     _write(home / ".codex/skills/personal-context/SKILL.md", _skill(personal + "-codex", personal))
     _write(home / ".codex/AGENTS.md", "Synthetic personal instruction: " + personal + "\n")
     _write(home / ".codex/rules/hostile.rules", 'prefix_rule(pattern=["echo", "PERSONAL_RULE"], decision="prompt")\n')
-    selected_model = config.get("shaping", {}).get("model", "gpt-5.6-sol")
+    # The resolved route supplies the shaping model; never substitute one.
+    shaping = config.get("shaping") if isinstance(config, dict) else None
+    selected_model = shaping.get("model") if isinstance(shaping, dict) else None
+    if not isinstance(selected_model, str) or not selected_model.strip():
+        raise DiscoveryError("discovery config lacks the resolved route's shaping.model")
     _write(home / ".codex/config.toml", 'model = ' + json.dumps(selected_model) + '\nmodel_reasoning_effort = "high"\n')
     _write(home / ".codex/personal-hostile.config.toml", 'developer_instructions = ' + json.dumps(personal + " profile instructions") + '\n')
     _write(home / ".codex/plugins/cache/personal-fixture/.codex-plugin/plugin.json",

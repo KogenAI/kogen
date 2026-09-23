@@ -346,6 +346,60 @@ defmodule Kogen.Codex.EnvironmentTest do
     assert decoded["env"] |> Enum.any?(&(&1 == ["KOGEN_ROLE", "developer"]))
   end
 
+  test "a :setup preparation writes no helper-profile files and emits no agents.* args" do
+    root = temporary_root!()
+    on_exit(fn -> File.rm_rf(root) end)
+    %{project: project, operation: operation, scope: scope} = paths!(root)
+
+    context =
+      Environment.prepare(%{"executable" => "codex"}, scope, :setup, project, operation)
+
+    generation_dir =
+      root
+      |> Path.join("operation/generations")
+      |> File.ls!()
+      |> List.first()
+
+    generation = Path.join([root, "operation/generations", generation_dir])
+    refute File.exists?(Path.join(generation, "scout.toml"))
+    refute File.exists?(Path.join(generation, "worker.toml"))
+    refute File.exists?(Path.join(generation, "expert.toml"))
+    refute Enum.any?(context.args, &String.starts_with?(&1, "agents."))
+  end
+
+  test "a role launch with incomplete helper profiles fails loudly instead of writing empty ones" do
+    root = temporary_root!()
+    on_exit(fn -> File.rm_rf(root) end)
+    %{project: project, operation: operation, scope: scope} = paths!(root)
+    incomplete = put_in(profiles().helpers.worker.model, "")
+
+    assert_raise ArgumentError,
+                 "Codex role launch requires a complete helpers.worker profile (model and effort)",
+                 fn ->
+                   Environment.prepare(
+                     %{"executable" => "codex"},
+                     scope,
+                     incomplete,
+                     project,
+                     operation
+                   )
+                 end
+
+    missing_effort = put_in(profiles(), [:helpers, :expert], %{model: "astra"})
+
+    assert_raise ArgumentError,
+                 "Codex role launch requires a complete helpers.expert profile (model and effort)",
+                 fn ->
+                   Environment.prepare(
+                     %{"executable" => "codex"},
+                     scope,
+                     missing_effort,
+                     project,
+                     operation
+                   )
+                 end
+  end
+
   defp profiles do
     %{
       shaping: %{model: "astra", effort: "low"},

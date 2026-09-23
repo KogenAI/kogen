@@ -1,19 +1,103 @@
+Code.require_file("../support/route_config.ex", __DIR__)
+
 defmodule Kogen.Codex.CompatibilityPreparationTest do
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.Codex.Compatibility
+  alias Kogen.RouteConfig
 
   test "compatibility fixture preparation seeds discovery without model work" do
     root = Path.join(System.tmp_dir!(), "compatibility-preparation-#{System.pid()}")
     System.put_env("KOGEN_CODEX_ROOT", root)
     on_exit(fn -> File.rm_rf!(root) end)
-    {:ok, config} = Kogen.Intent.read_config()
+    config = RouteConfig.codex_route!()
 
     assert {:ok, fixture, _evidence, discovery} =
              Compatibility.prepare_fixture(File.cwd!(), config)
 
     assert File.regular?(Path.join(fixture, ".agents/skills/project-context/SKILL.md"))
     assert File.dir?(discovery["home"])
+  end
+
+  test "compatibility fixture preparation fails loudly on a config lacking the shaping model, never writing gpt-5.6-sol" do
+    root = Path.join(System.tmp_dir!(), "compatibility-preparation-no-model-#{System.pid()}")
+    System.put_env("KOGEN_CODEX_ROOT", root)
+    on_exit(fn -> File.rm_rf!(root) end)
+    config = RouteConfig.codex_route!() |> Map.update!(:shaping, &%{&1 | model: ""})
+
+    assert {:error, reason} = Compatibility.prepare_fixture(File.cwd!(), config)
+    message = if is_binary(reason), do: reason, else: inspect(reason)
+    assert message =~ "shaping.model"
+
+    written =
+      root
+      |> Path.join("**/*")
+      |> Path.wildcard(match_dot: true)
+      |> Enum.filter(&File.regular?/1)
+
+    refute Enum.any?(written, &(File.read!(&1) =~ "gpt-5.6-sol"))
+  end
+
+  test "the tracked config's codex route resolves with complete role and helper profiles" do
+    config = RouteConfig.codex_route!()
+
+    assert config.harness == "codex"
+
+    for role <- [config.shaping, config.developer, config.reviewer] do
+      assert is_binary(role.model) and role.model != ""
+      assert is_binary(role.effort) and role.effort != ""
+    end
+
+    for helper <- [config.helpers.scout, config.helpers.worker, config.helpers.expert] do
+      assert is_binary(helper.model) and helper.model != ""
+      assert is_binary(helper.effort) and helper.effort != ""
+    end
+  end
+
+  test "RouteConfig.codex_route!/1 resolves the one codex route even when default_route is claude" do
+    path =
+      Path.join(System.tmp_dir!(), "codex-route-one-#{System.unique_integer([:positive])}.yaml")
+
+    on_exit(fn -> File.rm(path) end)
+
+    RouteConfig.write!(
+      path,
+      [{"claude", RouteConfig.claude_route()}, {"codex", RouteConfig.codex_route()}],
+      default_route: "claude"
+    )
+
+    config = RouteConfig.codex_route!(path)
+    assert config.route == "codex"
+    assert config.harness == "codex"
+  end
+
+  test "RouteConfig.codex_route!/1 raises listing zero codex candidates" do
+    path =
+      Path.join(System.tmp_dir!(), "codex-route-zero-#{System.unique_integer([:positive])}.yaml")
+
+    on_exit(fn -> File.rm(path) end)
+    RouteConfig.write!(path, [{"claude", RouteConfig.claude_route()}], default_route: "claude")
+
+    assert_raise RuntimeError, ~r/candidates: \[\]/, fn ->
+      RouteConfig.codex_route!(path)
+    end
+  end
+
+  test "RouteConfig.codex_route!/1 raises listing two codex candidates" do
+    path =
+      Path.join(System.tmp_dir!(), "codex-route-two-#{System.unique_integer([:positive])}.yaml")
+
+    on_exit(fn -> File.rm(path) end)
+
+    RouteConfig.write!(
+      path,
+      [{"codex", RouteConfig.codex_route()}, {"codex-two", RouteConfig.codex_route()}],
+      default_route: "codex"
+    )
+
+    assert_raise RuntimeError, ~r/candidates: \["codex", "codex-two"\]/, fn ->
+      RouteConfig.codex_route!(path)
+    end
   end
 
   test "PTY trust response is limited to the explicitly selected compatibility fixture" do

@@ -28,8 +28,14 @@ defmodule Kogen.ClaudeCode do
       Path.join(System.user_home!(), "Library/Application Support/Kogen/claude")
   end
 
-  @doc "Selects the runtime and scope and checks readiness before any model launch."
-  def open(config, project \\ File.cwd!()) do
+  @doc """
+  Selects the runtime and scope and checks readiness before any model launch.
+  `config` is a resolved route whose harness is `claude`. `KOGEN_HARNESS` only
+  replaces the Claude Code executable for offline fixtures.
+  """
+  def open(config, project \\ File.cwd!())
+
+  def open(%{harness: "claude"} = config, project) do
     with {:ok, runtime} <- runtime(),
          {:ok, scope} <- effective_scope(project),
          :ok <- require_login(runtime, scope) do
@@ -39,6 +45,11 @@ defmodule Kogen.ClaudeCode do
   rescue
     error -> {:error, Exception.message(error)}
   end
+
+  def open(config, _project),
+    do:
+      {:error,
+       "Kogen Claude Code requires a claude route, got harness: #{inspect(Map.get(config, :harness))}"}
 
   @doc "Fresh launch settings for the selected runtime and scope."
   def launch_context(%{harness: "claude", runtime: runtime, scope: scope} = selection) do
@@ -220,7 +231,7 @@ defmodule Kogen.ClaudeCode do
   arguments after `--` are forwarded unchanged. The scope is selected first,
   so cancellation never falls back to another login.
   """
-  def login(args, _config) do
+  def login(args) do
     management_allowed!("login")
 
     with {:ok, selection, forwarded} <- login_arguments(args),
@@ -337,7 +348,7 @@ defmodule Kogen.ClaudeCode do
   end
 
   @doc "Pin, installation, effective scope and local login metadata only."
-  def status(_config) do
+  def status do
     with {:ok, runtime} <- installer("required"),
          {:ok, scope} <- effective_scope() do
       login = if runtime, do: login_status(runtime, scope), else: :unavailable

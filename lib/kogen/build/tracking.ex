@@ -22,16 +22,27 @@ defmodule Kogen.Build.Tracking do
   `contract` is the already validated Approved contract and must contain its
   scenarios and risks under either string or atom keys. `approved_entries` is
   the Build's frozen package-entry snapshot; only its SHA-256 digest is stored.
+  `route` is the Build's resolved route (`Kogen.Intent.read_config/2`); its
+  name, harness and every role and helper profile are frozen in the record.
   """
-  @spec new(map(), map(), list()) :: {:ok, state()} | {:error, String.t()}
-  def new(intent, contract, approved_entries) when is_map(intent) and is_map(contract) do
+  @spec new(map(), map(), list(), map()) :: {:ok, state()} | {:error, String.t()}
+  def new(intent, contract, approved_entries, route)
+      when is_map(intent) and is_map(contract) and is_map(route) do
     with {:ok, frozen_intent} <- freeze_intent(intent),
+         {:ok, frozen_route} <- freeze_route(route),
          {:ok, scenarios} <- required_json_value(contract, "scenarios"),
          {:ok, risks, risks_supplied} <- frozen_risks(contract),
          true <- is_list(scenarios),
          {:ok, path} <- create_record_path(),
          record <-
-           initial_record(frozen_intent, scenarios, risks, risks_supplied, approved_entries),
+           initial_record(
+             frozen_intent,
+             frozen_route,
+             scenarios,
+             risks,
+             risks_supplied,
+             approved_entries
+           ),
          {:ok, state} <- write_initial(path, record) do
       {:ok, state}
     else
@@ -40,8 +51,8 @@ defmodule Kogen.Build.Tracking do
     end
   end
 
-  def new(_intent, _contract, _approved_entries),
-    do: {:error, "scenario tracking requires intent and contract maps"}
+  def new(_intent, _contract, _approved_entries, _route),
+    do: {:error, "scenario tracking requires intent, contract and route maps"}
 
   @doc """
   Confirms that the record on disk remains byte-for-byte the controller's last
@@ -165,11 +176,12 @@ defmodule Kogen.Build.Tracking do
   def apply_verdict(_state, _verdict, _reviewer_session, _reference_snapshots),
     do: {:error, "invalid scenario tracking verdict"}
 
-  defp initial_record(intent, scenarios, risks, risks_supplied, approved_entries) do
+  defp initial_record(intent, route, scenarios, risks, risks_supplied, approved_entries) do
     %{
       "schema_version" => @schema_version,
       "purpose" => "inspection evidence; not a recovery checkpoint",
       "intent" => intent,
+      "route" => route,
       "approved_package_digest" => approved_digest(approved_entries),
       "scenarios" => scenarios,
       "risks" => risks,
@@ -178,6 +190,44 @@ defmodule Kogen.Build.Tracking do
       "findings" => [],
       "status" => "pending"
     }
+  end
+
+  # The whole resolved route is frozen, not only its name: a later config edit
+  # must not change what this record says the Build used.
+  defp freeze_route(route) do
+    roles = ~w(shaping developer reviewer)
+    helpers = ~w(scout worker expert)
+
+    with {:ok, name} <- route_string(route, ["route"]),
+         {:ok, harness} <- route_string(route, ["harness"]),
+         {:ok, role_profiles} <- route_profiles(route, roles, []),
+         {:ok, helper_profiles} <- route_profiles(route, helpers, ["helpers"]) do
+      {:ok,
+       %{"name" => name, "harness" => harness}
+       |> Map.merge(role_profiles)
+       |> Map.put("helpers", helper_profiles)}
+    end
+  end
+
+  defp route_profiles(route, names, prefix) do
+    Enum.reduce_while(names, {:ok, %{}}, fn name, {:ok, acc} ->
+      with {:ok, model} <- route_string(route, prefix ++ [name, "model"]),
+           {:ok, effort} <- route_string(route, prefix ++ [name, "effort"]) do
+        {:cont, {:ok, Map.put(acc, name, %{"model" => model, "effort" => effort})}}
+      else
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp route_string(route, keys) do
+    case Enum.reduce(keys, route, &(is_map(&2) && fetch(&2, &1))) do
+      value when is_binary(value) and value != "" ->
+        {:ok, value}
+
+      _ ->
+        {:error, "scenario tracking route lacks #{Enum.join(keys, ".")}"}
+    end
   end
 
   defp freeze_intent(intent) do
@@ -270,7 +320,8 @@ defmodule Kogen.Build.Tracking do
   end
 
   defp preserve_frozen_fields(previous, record) do
-    fields = ~w(schema_version intent approved_package_digest scenarios risks risks_supplied)
+    fields =
+      ~w(schema_version intent route approved_package_digest scenarios risks risks_supplied)
 
     if Enum.all?(fields, &(Map.get(previous, &1) == Map.get(record, &1))),
       do: :ok,

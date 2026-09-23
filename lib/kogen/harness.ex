@@ -2,45 +2,54 @@ defmodule Kogen.Harness do
   @moduledoc """
   The one harness interface used by Build, the Shape task and provider evidence.
 
-  `.kogen/config.yaml` names the harness. `codex` selects managed native Codex
-  (`Kogen.Harness.Codex`, unchanged behind this interface); `claude` selects
-  the Kogen-managed Claude Code (`Kogen.Harness.Claude`). The adapter supplies
-  runtime and login readiness, launch contexts, fresh and exactly resumed
-  Developer turns, Reviewer verdicts and the interactive Shaper.
+  The session's resolved route (see `Kogen.Intent.read_config/2`) names its
+  harness. `codex` selects managed native Codex (`Kogen.Harness.Codex`);
+  `claude` selects the Kogen-managed Claude Code (`Kogen.Harness.Claude`). The
+  adapter supplies runtime and login readiness, launch contexts, fresh and
+  exactly resumed Developer turns, Reviewer verdicts and the interactive Shaper.
 
-  A launch context carries its harness; contexts without one are Codex's, so
-  existing Codex callers and fixtures keep their exact behavior.
-  `Kogen.Check` and the Stop runner stay harness-independent.
+  Every selection and launch context carries its harness explicitly, and
+  dispatch accepts only `claude` and `codex`: a missing or unknown harness
+  fails loudly. Every launch takes the session's launch context; nothing here
+  re-reads configuration. `Kogen.Check` and the Stop runner stay
+  harness-independent.
   """
   use Boundary, deps: [Kogen.Codex, Kogen.ClaudeCode, Kogen.Intent]
 
   alias Kogen.Harness.{Claude, Codex}
 
-  @doc "Selects the configured runtime and scope and checks readiness before any launch."
+  @doc "Opens readiness for the resolved route's harness only, before any launch."
   def open(config, project \\ File.cwd!()) do
     case harness(config) do
-      "claude" -> Kogen.ClaudeCode.open(config, project)
-      _codex -> Kogen.Codex.open(config, project)
+      {:ok, "claude"} -> Kogen.ClaudeCode.open(config, project)
+      {:ok, "codex"} -> Kogen.Codex.open(config, project)
+      {:error, reason} -> {:error, reason}
     end
   end
 
   @doc "Fresh launch settings for a held selection."
-  def launch_context(%{harness: "claude"} = selection),
-    do: Kogen.ClaudeCode.launch_context(selection)
-
-  def launch_context(selection), do: Kogen.Codex.launch_context(selection)
+  def launch_context(selection) do
+    case adapter!(selection) do
+      Claude -> Kogen.ClaudeCode.launch_context(selection)
+      Codex -> Kogen.Codex.launch_context(selection)
+    end
+  end
 
   @doc "Releases a held selection."
-  def close(%{harness: "claude"} = selection), do: Kogen.ClaudeCode.close(selection)
-  def close(selection), do: Kogen.Codex.close(selection)
+  def close(selection) do
+    case adapter!(selection) do
+      Claude -> Kogen.ClaudeCode.close(selection)
+      Codex -> Kogen.Codex.close(selection)
+    end
+  end
 
   @doc "Launches a fresh Developer turn with the prompt on stdin."
-  def launch_developer(prompt, model, effort, policy_environment \\ [], context \\ nil),
-    do: adapter(context).launch_developer(prompt, model, effort, policy_environment, context)
+  def launch_developer(prompt, model, effort, policy_environment, context),
+    do: adapter!(context).launch_developer(prompt, model, effort, policy_environment, context)
 
   @doc "Resumes the exact Developer session with the prompt on stdin."
-  def resume_developer(session_id, text, model, effort, policy_environment \\ [], context \\ nil) do
-    adapter(context).resume_developer(
+  def resume_developer(session_id, text, model, effort, policy_environment, context) do
+    adapter!(context).resume_developer(
       session_id,
       text,
       model,
@@ -51,15 +60,8 @@ defmodule Kogen.Harness do
   end
 
   @doc "Launches a fresh Developer turn using the controller-supplied handoff schema."
-  def launch_build_developer(
-        prompt,
-        model,
-        effort,
-        schema,
-        policy_environment \\ [],
-        context \\ nil
-      ) do
-    adapter(context).launch_build_developer(
+  def launch_build_developer(prompt, model, effort, schema, policy_environment, context) do
+    adapter!(context).launch_build_developer(
       prompt,
       model,
       effort,
@@ -76,10 +78,10 @@ defmodule Kogen.Harness do
         model,
         effort,
         schema,
-        policy_environment \\ [],
-        context \\ nil
+        policy_environment,
+        context
       ) do
-    adapter(context).resume_build_developer(
+    adapter!(context).resume_build_developer(
       session_id,
       text,
       model,
@@ -91,12 +93,12 @@ defmodule Kogen.Harness do
   end
 
   @doc "Launches an independent Reviewer and requires a schema-valid Verdict."
-  def launch_reviewer(prompt, model, effort, context \\ nil),
-    do: adapter(context).launch_reviewer(prompt, model, effort, context)
+  def launch_reviewer(prompt, model, effort, context),
+    do: adapter!(context).launch_reviewer(prompt, model, effort, context)
 
   @doc "Launches the interactive Shaper with the caller's real terminal."
-  def exec_shaper(model, effort, prompt_file, context \\ nil),
-    do: adapter(context).exec_shaper(model, effort, prompt_file, context)
+  def exec_shaper(model, effort, prompt_file, context),
+    do: adapter!(context).exec_shaper(model, effort, prompt_file, context)
 
   @doc false
   def developer_args(model, effort, resume_session_id \\ nil),
@@ -108,22 +110,19 @@ defmodule Kogen.Harness do
   @doc false
   def shaper_args(model, effort, prompt_file), do: Codex.shaper_args(model, effort, prompt_file)
 
-  @doc false
-  def resolve_executable, do: Codex.resolve_executable()
+  defp harness(%{harness: harness}) when harness in ["claude", "codex"], do: {:ok, harness}
 
-  defp harness(config), do: Map.get(config, :harness, "codex")
+  defp harness(%{harness: harness}),
+    do: {:error, "unsupported harness: #{inspect(harness)}; expected codex or claude"}
 
-  defp adapter(%{harness: "claude"}), do: Claude
-  defp adapter(context) when is_map(context), do: Codex
+  defp harness(_config),
+    do: {:error, "harness selection has no harness; expected codex or claude"}
 
-  # Without a context the offline `KOGEN_HARNESS` fixture keeps Codex's
-  # established route; otherwise the tracked configuration decides.
-  defp adapter(nil) do
-    with nil <- System.get_env("KOGEN_HARNESS"),
-         {:ok, %{harness: "claude"}} <- Kogen.Intent.read_config() do
-      Claude
-    else
-      _ -> Codex
+  defp adapter!(context) do
+    case harness(context) do
+      {:ok, "claude"} -> Claude
+      {:ok, "codex"} -> Codex
+      {:error, reason} -> raise ArgumentError, reason
     end
   end
 end

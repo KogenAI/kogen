@@ -108,4 +108,43 @@ defmodule Kogen.OfflineStageResultsTest do
       assert Map.has_key?(bindings, key)
     end
   end
+
+  test "the check test stage fails on warnings from excluded live owners" do
+    root = Path.expand("../..", __DIR__)
+
+    program = ~S'''
+    import importlib.util, json, sys
+    spec = importlib.util.spec_from_file_location("offline", sys.argv[1])
+    offline = importlib.util.module_from_spec(spec); spec.loader.exec_module(offline)
+    print(json.dumps([list(stage) for stage in offline.STAGES]))
+    '''
+
+    {output, 0} =
+      System.cmd("python3", ["-B", "-c", program, Path.join(root, "scripts/check/offline.py")],
+        stderr_to_stdout: true
+      )
+
+    stages = output |> String.trim() |> Jason.decode!()
+    test_stage = Enum.find(stages, &match?(["mix", "test" | _], &1))
+
+    assert test_stage == ["mix", "test", "--exclude", "live", "--warnings-as-errors"]
+    assert Enum.join(test_stage, " ") =~ "mix test --exclude live"
+
+    # Negative control: an excluded live owner calling a removed Kogen.Harness
+    # arity compiles with only a warning, which the stage above makes fatal.
+    probe = """
+    defmodule Kogen.OfflineStageResultsTest.StaleLiveOwner#{System.unique_integer([:positive])} do
+      #{"@module" <> "tag :live"}
+      def probe, do: Kogen.Harness.launch_reviewer("p", "m", "e", nil, :removed_extra_arg)
+    end
+    """
+
+    {_modules, diagnostics} = Code.with_diagnostics(fn -> Code.compile_string(probe) end)
+
+    assert Enum.any?(
+             diagnostics,
+             &(&1.severity == :warning and
+                 &1.message =~ "Kogen.Harness.launch_reviewer/5 is undefined or private")
+           )
+  end
 end

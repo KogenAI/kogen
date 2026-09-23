@@ -19,7 +19,8 @@ defmodule Kogen.Build.Evidence do
          :ok <- exact_bytes(full, record_bytes),
          {:ok, record} <- Jason.decode(record_bytes),
          :ok <- matching_record_version(full, record),
-         :ok <- matching_identity(summary, record, record_path) do
+         :ok <- matching_identity(summary, record, record_path),
+         :ok <- matching_route(summary, record) do
       {:ok, record}
     else
       {:error, %Jason.DecodeError{} = error} ->
@@ -104,6 +105,15 @@ defmodule Kogen.Build.Evidence do
         :ok
     end
   end
+
+  # Summaries written before routes existed carry no route and stay readable.
+  defp matching_route(%{"route" => route}, record) do
+    if Map.take(record["route"] || %{}, ["name", "harness"]) == route,
+      do: :ok,
+      else: {:error, "bound full evidence route mismatch"}
+  end
+
+  defp matching_route(_summary, _record), do: :ok
 
   defp attempt_identity(attempt) do
     %{

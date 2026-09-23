@@ -1,0 +1,24 @@
+- id: tracked-config-conversion
+  scenario_ids: [flat-config-refused, repository-config-and-docs, real-default-route-end-to-end]
+  description: The Build rewrites the tracked .kogen/config.yaml to the routes shape. Every Kogen command after the commit refuses the flat shape, so a stale checkout or an unconverted config fixture fails loudly rather than running on the wrong provider. Live owners and the shaping evaluation driver read config and are only compiled under check; live-shape-to-build is the one executed live owner.
+  ownership:
+    - paths: .kogen/config.yaml
+      when_exists: Always exists in this repository; the Build replaces its flat content with default_route claude, routes claude and codex, and the unchanged global outer_resumptions 2 and verification_retries 2
+      owner_after_creation: The Shaper, as tracked repository configuration (unchanged ownership)
+      owner_during_operation: Read once per Shape or Build session by the controller; never written by Kogen at runtime
+      permitted_mutation: The Shaper edits routes and default_route at any time; edits during a Build affect only later sessions
+      validation: Structural validation of every route and default_route on each session; harness support and proven models for the selected route only; flat shape refused with a conversion message
+      git_state: Tracked and committed with the Build
+      upgrade_behavior: One-time conversion by this Build; no compatibility reader, no automatic migration of other checkouts
+- id: tracking-record-route-field
+  scenario_ids: [build-records-and-holds-route, real-default-route-end-to-end]
+  description: The scenario-tracking record gains a frozen route field. Controller-owned immutability checks and any exact-shape record tests must include it; older local records without it remain readable inspection evidence and are not rewritten.
+- id: test-reliability-catalog
+  scenario_ids: [routes-config-resolves, flat-config-refused, route-flag-selects-session, unknown-route-fails-before-launch, selected-route-only-validation-and-readiness, shaping-records-route, build-records-and-holds-route, no-silent-fallbacks, setup-commands-route-independent, repository-config-and-docs, real-default-route-end-to-end]
+  description: About 17 test files embed flat config fixtures and priv/kogen/test-reliability.yaml binds each cataloged test file by SHA-256. Editing them requires refreshing bindings with scripts/check/refresh_test_reliability_sources.py and adding catalog rows for new test declarations; skipping this fails check late in the Build.
+- id: live-controller-follows-route-instruction
+  scenario_ids: [shaping-records-route, real-default-route-end-to-end]
+  description: shaping.route is written by the model-driven Shaping controller from prompt instructions, not by Kogen code. The live owner is the only executed evidence that a real controller follows it; offline tests only prove the instruction is rendered.
+- id: removing-contextless-defaults
+  scenario_ids: [no-silent-fallbacks, setup-commands-route-independent]
+  description: Dropping the context defaults and harness-less Codex contexts changes signatures used by many offline tests and by live owners (for example test/kogen/native_helper_live_test.exs and test/kogen/live_test.exs call launches without a context). Live owners other than live-shape-to-build are compiled but not run under check; the check test stage gains --warnings-as-errors so a stale call to a removed arity fails check instead of only warning. Semantic mistakes in those owners that still compile would surface only on their next paid run. The stricter stage also applies to every later Build.

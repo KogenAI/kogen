@@ -36,14 +36,17 @@ defmodule Kogen.CoreIntegrityTest do
   """
 
   @config_yaml """
-  harness: codex
-  shaping:   {model: fake, effort: low}
-  developer: {model: fake, effort: low}
-  reviewer:  {model: fake, effort: low}
-  helpers:
-    scout:  {model: fake, effort: low}
-    worker: {model: fake, effort: medium}
-    expert: {model: fake, effort: medium}
+  default_route: codex
+  routes:
+    codex:
+      harness: codex
+      shaping:   {model: fake, effort: low}
+      developer: {model: fake, effort: low}
+      reviewer:  {model: fake, effort: low}
+      helpers:
+        scout:  {model: fake, effort: low}
+        worker: {model: fake, effort: medium}
+        expert: {model: fake, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
   """
@@ -62,14 +65,14 @@ defmodule Kogen.CoreIntegrityTest do
   end
 
   # The user guide documents both adapters, the separate Kogen Claude Code
-  # login, the proven models, and that only the configured harness's paid
-  # targets run; it must not claim Claude Code replaced Codex.
+  # login, the proven models, and that only a selected route's paid targets
+  # run; it must not claim Claude Code replaced Codex.
   defp run_scenario(:harness_documentation) do
     root = Path.expand("../..", __DIR__)
     guide = root |> Path.join("README.md") |> File.read!() |> String.replace(~r/\s+/, " ")
 
     for claim <- [
-          "## Choosing a harness",
+          "## Choosing a route",
           "`harness: claude`",
           "`harness: codex`",
           "mix kogen.claude.install",
@@ -78,8 +81,8 @@ defmodule Kogen.CoreIntegrityTest do
           "Anthropic Console (API",
           "separate from personal Claude Code",
           "`claude-opus-5-5` and `claude-sonnet-5`",
-          "Only the configured harness's provider-backed targets run",
-          "that harness's install, login and paid verification",
+          "Switching provider means",
+          "that route's harness install",
           "## Managed Codex runtime and login",
           "Codex remains a supported"
         ] do

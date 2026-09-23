@@ -19,9 +19,30 @@ def managed_runtime_context():
     return matches[0], root / "accounts/shared"
 
 
+# This driver always exercises the real native Codex CLI directly (managed
+# runtime, scope, and environment preparation below), independent of whichever
+# harness `default_route` currently names. It therefore resolves the one
+# route whose harness is `codex`, never `default_route`, matching the
+# Codex-only live owners' contract.
+CODEX_ROUTE_ELIXIR = '''
+    routes =
+      case YamlElixir.read_from_file(".kogen/config.yaml") do
+        {:ok, %{"routes" => routes}} when is_map(routes) -> routes
+        _ -> raise "shaping-evaluation fixture config has no routes"
+      end
+    candidates =
+      for {name, route} <- routes, is_map(route), route["harness"] == "codex", do: name
+    route_name =
+      case candidates do
+        [only] -> only
+        other -> raise "expected exactly one codex route; candidates: #{inspect(other)}"
+      end
+    {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", route_name)
+'''
+
+
 def managed_launch_context(fixture, output):
-    code = '''
-    {:ok, config} = Kogen.Intent.read_config()
+    code = CODEX_ROUTE_ELIXIR + '''
     {:ok, runtime} = Kogen.Codex.installed()
     {:ok, scope} = Kogen.Codex.effective_scope(File.cwd!())
     operation = Kogen.Codex.State.operation!(Kogen.Codex.root())
@@ -207,7 +228,7 @@ def rollout_summary(path):
     return summary
 
 def configured_profiles(fixture):
-    code='case Kogen.Intent.read_config(".kogen/config.yaml") do {:ok, value} -> IO.write(Jason.encode!(value)); {:error, reason} -> IO.write(:stderr, reason); System.halt(1) end'
+    code=CODEX_ROUTE_ELIXIR + 'IO.write(Jason.encode!(config))'
     result=subprocess.run(["mix","run","--no-compile","--no-start","-e",code],cwd=fixture,capture_output=True,text=True,timeout=30,
                           env={**os.environ,"MIX_BUILD_PATH":str(fixture/"_build")})
     if result.returncode: raise RuntimeError(f"could not normalize tracked config: {result.stderr.strip()}")

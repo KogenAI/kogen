@@ -24,6 +24,7 @@ defmodule Kogen.Intent do
   @type role_config :: %{model: String.t(), effort: String.t()}
 
   @type config :: %{
+          route: String.t(),
           harness: String.t(),
           shaping: role_config(),
           developer: role_config(),
@@ -46,22 +47,132 @@ defmodule Kogen.Intent do
         }
 
   @doc """
-  Reads and validates the tracked Kogen configuration file.
+  Reads the tracked Kogen configuration and resolves one named route.
 
-  Refuses to start (returns `{:error, reason}`) when the file is missing
-  or a required key is absent; no defaults are invented. On success
-  returns `{:ok, config}` with atom keys regardless of whether the
-  underlying YAML parser produced string or atom keys.
+  `route` names the route to select; `nil` selects the configured
+  `default_route`, the only default. Every route is checked for structure and
+  no key has a default. Harness support and Claude Code proven models are
+  checked only for the selected route. The old flat shape is refused.
+
+  On success returns `{:ok, config}`: the selected route's `harness`, role and
+  helper profiles, the global retry policy, and `route` (the selected name),
+  with atom keys regardless of whether the YAML parser produced string or
+  atom keys.
   """
-  @spec read_config(Path.t()) :: {:ok, config()} | {:error, String.t()}
-  def read_config(path \\ @default_config_path) do
+  @spec read_config(Path.t(), String.t() | nil) :: {:ok, config()} | {:error, String.t()}
+  def read_config(path \\ @default_config_path, route \\ nil) do
     with {:ok, data} <- load_yaml(path, "missing #{path}"),
-         {:ok, config} <- normalize_config(data),
-         :ok <- supported_harness(config.harness),
-         :ok <- proven_models(config) do
-      {:ok, config}
+         :ok <- routes_shape(data),
+         {:ok, routes} <- normalize_routes(data),
+         {:ok, default_route} <- default_route(data, routes),
+         {:ok, outer_resumptions} <- config_integer(data, "outer_resumptions"),
+         {:ok, verification_retries} <- config_integer(data, "verification_retries"),
+         {:ok, name} <- select_route(routes, route || default_route),
+         selected = Map.fetch!(routes, name),
+         :ok <- supported_harness(selected.harness),
+         :ok <- proven_models(selected) do
+      {:ok,
+       Map.merge(selected, %{
+         route: name,
+         outer_resumptions: outer_resumptions,
+         verification_retries: verification_retries
+       })}
     end
   end
+
+  @flat_config_error "config.yaml uses the replaced flat configuration shape (top-level harness and roles); define default_route and routes instead"
+
+  defp routes_shape(data) do
+    flat? =
+      (has_key?(data, "harness") and not has_key?(data, "routes")) or
+        not (has_key?(data, "default_route") or has_key?(data, "routes"))
+
+    if flat?, do: {:error, @flat_config_error}, else: :ok
+  end
+
+  defp has_key?(map, key), do: match?({:ok, _value}, fetch(map, key))
+
+  # Every route is structurally validated, in name order, whether or not it is
+  # selected; a broken unselected route is a configuration error.
+  defp normalize_routes(data) do
+    case fetch(data, "routes") do
+      {:ok, routes} when is_map(routes) and map_size(routes) > 0 ->
+        routes
+        |> Enum.sort_by(fn {name, _route} -> to_string(name) end)
+        |> Enum.reduce_while({:ok, %{}}, &collect_route/2)
+
+      _ ->
+        {:error, "config.yaml missing required key: routes"}
+    end
+  end
+
+  defp collect_route({name, route}, {:ok, acc}) do
+    case normalize_route(name, route) do
+      {:ok, resolved} -> {:cont, {:ok, Map.put(acc, to_string(name), resolved)}}
+      {:error, _reason} = error -> {:halt, error}
+    end
+  end
+
+  defp normalize_route(name, route) when is_binary(name) and is_map(route) do
+    with :ok <- route_name(name),
+         {:ok, harness} <- require_string(route, "harness", "harness"),
+         {:ok, shaping} <- require_role(route, "shaping"),
+         {:ok, developer} <- require_role(route, "developer"),
+         {:ok, reviewer} <- require_role(route, "reviewer"),
+         {:ok, helpers} <- require_helpers(route) do
+      {:ok,
+       %{
+         harness: harness,
+         shaping: shaping,
+         developer: developer,
+         reviewer: reviewer,
+         helpers: helpers
+       }}
+    else
+      {:error, "config.yaml " <> _reason} = error -> error
+      {:error, key} -> {:error, "config.yaml missing required key: routes.#{name}.#{key}"}
+    end
+  end
+
+  defp normalize_route(name, _route) when is_binary(name),
+    do: {:error, "config.yaml missing required key: routes.#{name}"}
+
+  defp normalize_route(name, _route),
+    do: {:error, "config.yaml route names must be nonblank strings: #{inspect(name)}"}
+
+  defp route_name(name) do
+    if String.trim(name) == "",
+      do: {:error, "config.yaml route names must be nonblank strings: #{inspect(name)}"},
+      else: :ok
+  end
+
+  defp default_route(data, routes) do
+    case require_string(data, "default_route", "default_route") do
+      {:ok, name} when is_map_key(routes, name) ->
+        {:ok, name}
+
+      {:ok, name} ->
+        {:error,
+         "config.yaml default_route names unknown route: #{name}; available routes: #{route_names(routes)}"}
+
+      {:error, key} ->
+        {:error, "config.yaml missing required key: #{key}"}
+    end
+  end
+
+  defp config_integer(data, key) do
+    case require_integer(data, key) do
+      {:ok, value} -> {:ok, value}
+      {:error, key} -> {:error, "config.yaml missing required key: #{key}"}
+    end
+  end
+
+  defp select_route(routes, name) when is_map_key(routes, name), do: {:ok, name}
+
+  defp select_route(routes, name),
+    do: {:error, "unknown route: #{name}; available routes: #{route_names(routes)}"}
+
+  defp route_names(routes), do: routes |> Map.keys() |> Enum.sort() |> Enum.join(", ")
 
   @doc """
   Reads the proven Claude Code model picker. Each entry names a model, the
@@ -87,7 +198,9 @@ defmodule Kogen.Intent do
   defp valid_model_entry?(_entry), do: false
 
   # Codex model routing is unchanged. Claude Code roles may select only a model
-  # and effort from the proven picker; Kogen never widens it per request.
+  # and effort from the proven picker; Kogen never widens it per request. Only
+  # the selected route is checked, so an unselected route may name an unproven
+  # model without blocking sessions on other routes.
   defp proven_models(%{harness: "claude"} = config) do
     with {:ok, models} <- claude_models() do
       proven = Map.new(models, &{&1["id"], &1["efforts"]})
@@ -239,29 +352,6 @@ defmodule Kogen.Intent do
 
   defp supported_harness(name),
     do: {:error, "unsupported harness: #{name}; expected #{Enum.join(@harnesses, " or ")}"}
-
-  defp normalize_config(data) do
-    with {:ok, harness} <- require_string(data, "harness", "harness"),
-         {:ok, shaping} <- require_role(data, "shaping"),
-         {:ok, developer} <- require_role(data, "developer"),
-         {:ok, reviewer} <- require_role(data, "reviewer"),
-         {:ok, helpers} <- require_helpers(data),
-         {:ok, outer_resumptions} <- require_integer(data, "outer_resumptions"),
-         {:ok, verification_retries} <- require_integer(data, "verification_retries") do
-      {:ok,
-       %{
-         harness: harness,
-         shaping: shaping,
-         developer: developer,
-         reviewer: reviewer,
-         helpers: helpers,
-         outer_resumptions: outer_resumptions,
-         verification_retries: verification_retries
-       }}
-    else
-      {:error, missing_key} -> {:error, "config.yaml missing required key: #{missing_key}"}
-    end
-  end
 
   defp normalize_intent(data, slug) do
     with {:ok, id} <- require_string(data, "id", "id"),

@@ -25,7 +25,7 @@ defmodule Kogen.Harness.Claude do
   @settings_path Path.expand("../../../priv/kogen/claude_code/settings.json", __DIR__)
 
   @doc "Launches a fresh Developer turn with the prompt on stdin."
-  def launch_developer(prompt, model, effort, policy_environment \\ [], context \\ nil) do
+  def launch_developer(prompt, model, effort, policy_environment, context) do
     with_context(context, fn resolved ->
       session_id = uuid4()
       args = developer_args(model, effort, resolved, {:fresh, session_id})
@@ -34,7 +34,7 @@ defmodule Kogen.Harness.Claude do
   end
 
   @doc "Resumes the exact Developer session with the prompt on stdin."
-  def resume_developer(session_id, text, model, effort, policy_environment \\ [], context \\ nil) do
+  def resume_developer(session_id, text, model, effort, policy_environment, context) do
     with_context(context, fn resolved ->
       args = developer_args(model, effort, resolved, {:resume, session_id})
       run_turn(resolved, args, text, "developer", policy_environment, session_id, model)
@@ -47,8 +47,8 @@ defmodule Kogen.Harness.Claude do
         model,
         effort,
         schema,
-        policy_environment \\ [],
-        context \\ nil
+        policy_environment,
+        context
       ) do
     with_context(context, fn resolved ->
       session_id = uuid4()
@@ -64,8 +64,8 @@ defmodule Kogen.Harness.Claude do
         model,
         effort,
         schema,
-        policy_environment \\ [],
-        context \\ nil
+        policy_environment,
+        context
       ) do
     with_context(context, fn resolved ->
       args = developer_args(model, effort, resolved, {:resume, session_id})
@@ -74,7 +74,7 @@ defmodule Kogen.Harness.Claude do
   end
 
   @doc "Launches a fresh independent Reviewer and requires a schema-valid verdict."
-  def launch_reviewer(prompt, model, effort, context \\ nil) do
+  def launch_reviewer(prompt, model, effort, context) do
     with_context(context, fn resolved ->
       session_id = uuid4()
       args = reviewer_args(model, effort, resolved, session_id)
@@ -90,7 +90,7 @@ defmodule Kogen.Harness.Claude do
   end
 
   @doc "Launches the interactive Claude Code Shaper on the caller's terminal."
-  def exec_shaper(model, effort, prompt_file, context \\ nil) do
+  def exec_shaper(model, effort, prompt_file, context) do
     with_context(context, fn resolved ->
       terminal(
         %{resolved | env: merge_environment(resolved.env, [{"KOGEN_ROLE", "shaper"}])},
@@ -449,15 +449,13 @@ defmodule Kogen.Harness.Claude do
     end)
   end
 
-  defp with_context(context, function) when is_map(context), do: function.(context)
+  # Every launch receives the session's Claude Code launch context; there is
+  # no contextless path that re-reads configuration or opens a runtime here.
+  defp with_context(%{harness: "claude"} = context, function), do: function.(context)
 
-  defp with_context(nil, function) do
-    with {:ok, config} <- Kogen.Intent.read_config(),
-         {:ok, selection} <- Kogen.ClaudeCode.open(config) do
-      function.(Kogen.ClaudeCode.launch_context(selection))
-    else
-      {:error, reason} -> raise reason
-    end
+  defp with_context(context, _function) do
+    raise ArgumentError,
+          "Claude Code launch requires a Claude Code launch context, got: #{inspect(Map.get(context || %{}, :harness))}"
   end
 
   defp merge_environment(base, overrides),

@@ -10,9 +10,12 @@ shape the next feature, approve its Intent, and let Kogen carry out the Build.
 The core is a starting point, not the finished product.
 
 The core runs inside this repository through one pluggable harness interface
-with two adapters: Claude Code (`harness: claude`, this repository's current
-configuration) and Codex CLI (`harness: codex`). Installing Kogen into arbitrary
-projects and other harnesses are future work.
+with two adapters: Claude Code (`harness: claude`) and Codex CLI
+(`harness: codex`). `.kogen/config.yaml` names one or more routes, each pairing
+a harness with role and helper profiles; a Shape or Build selects one route,
+by default the configured `default_route`. This repository's `default_route`
+is `claude`. Installing Kogen into arbitrary projects and other harnesses are
+future work.
 The broader design remains a longer-term direction, open to change as Kogen develops.
 
 This repository is being opened quietly so the ongoing work and its history
@@ -20,9 +23,9 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
-Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of the configured harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.280 and Codex 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the configured harness, separate from any personal login.
+Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.280 and Codex 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login.
 
-From a checkout configured for Claude Code (`harness: claude`):
+From a checkout whose `default_route` uses Claude Code:
 
 ```sh
 mix deps.get
@@ -33,8 +36,11 @@ make check
 mix kogen.shape
 ```
 
-With `harness: codex`, use `mix kogen.codex.install`, `mix kogen.codex.login`
-and `mix kogen.codex.status` instead. See [Choosing a harness](#choosing-a-harness).
+For a route with `harness: codex`, use `mix kogen.codex.install`,
+`mix kogen.codex.login` and `mix kogen.codex.status` instead — pass
+`--route <name>` to `mix kogen.shape`/`mix kogen.build` to run a session on
+that route, or set it as `default_route`. See
+[Choosing a route](#choosing-a-route).
 
 Describe one feature. As the Shaper, discuss its behavior and tradeoffs with Kogen’s Shaping Controller, inspect the Draft it writes, and explicitly approve it in that conversation. Approval moves the Intent from `.kogen/intents/drafts/<slug>/` to `.kogen/intents/approved/<slug>/`.
 The controller may also reconcile narrow current approval bookkeeping inside the
@@ -164,18 +170,65 @@ provider launch and must return to Shaping.
 
 ## Configuration and local data
 
-Edit the tracked `.kogen/config.yaml` to select the harness and the available
-model and effort for each root role and required helper profile. This repository
-selects Claude Code with Opus 5.5 (`claude-opus-5-5`) at medium for Shaping,
-Development and Review; Sonnet 5 (`claude-sonnet-5`) at low for read-only scouts
-and at medium for bounded workers; and Opus 5.5 at high for a named consequential
-expert question. The Codex defaults were Sol-low for Shaping and Development,
-Terra-medium for Review, Luna-low scouts, Luna-medium workers and a Sol-medium
-expert. Kogen passes each root profile directly to the configured harness and
-renders the helper profiles into every role prompt; it does not silently inherit
-or substitute a missing or unavailable profile. All three helper profiles are
-required, though a role delegates only when bounded independent work justifies
-the startup and integration cost.
+Edit the tracked `.kogen/config.yaml` to define named **routes** and a
+`default_route`. Each route pairs one `harness` (`claude` or `codex`) with the
+model and effort for `shaping`, `developer`, `reviewer` and each required
+helper profile (`helpers.scout`, `helpers.worker`, `helpers.expert`);
+`outer_resumptions` and `verification_retries` stay top-level, shared by every
+route:
+
+```yaml
+default_route: claude
+routes:
+  claude:
+    harness: claude
+    shaping:   {model: claude-opus-5-5, effort: medium}
+    developer: {model: claude-opus-5-5, effort: medium}
+    reviewer:  {model: claude-opus-5-5, effort: medium}
+    helpers:
+      scout:  {model: claude-sonnet-5, effort: low}
+      worker: {model: claude-sonnet-5, effort: medium}
+      expert: {model: claude-opus-5-5, effort: high}
+  codex:
+    harness: codex
+    shaping:   {model: gpt-5.6-sol, effort: low}
+    developer: {model: gpt-5.6-sol, effort: low}
+    reviewer:  {model: gpt-5.6-terra, effort: medium}
+    helpers:
+      scout:  {model: gpt-5.6-luna, effort: low}
+      worker: {model: gpt-5.6-luna, effort: medium}
+      expert: {model: gpt-5.6-sol, effort: medium}
+outer_resumptions: 2
+verification_retries: 2
+```
+
+This repository's own `.kogen/config.yaml` matches the shape above. A `--route
+<name>` flag on `mix kogen.shape` or `mix kogen.build` selects the route for
+that session; without it, the session uses `default_route`. An unknown route
+name fails before any harness open or provider launch, naming the unknown
+route and listing the available route names in sorted order. Only the
+selected route's harness and models are validated for support and readiness;
+another route may name an unsupported or unready harness without blocking a
+session on a different route. A config still using the old flat shape
+(top-level `harness:` and roles, no `routes`) is refused before launch, with a
+message naming `default_route` and `routes` as the replacement — there is no
+compatibility reader or migration.
+
+Kogen passes each root profile directly to the selected route's harness and
+renders the helper profiles into every role prompt; it does not silently
+inherit or substitute a missing or unavailable profile. All three helper
+profiles are required on every route, though a role delegates only when
+bounded independent work justifies the startup and integration cost.
+
+Shaping records the selected route in the Draft (`shaping.route`, alongside
+`harness`/`model`/`effort`/`started`), and each continuation records the
+route used for that visit; the Draft's original `shaping` block is never
+rewritten, and Drafts saved before routes existed remain continuable. A Build
+resolves its route once and freezes it — name, harness and every resolved
+role/helper profile — in its scenario-tracking record; later edits to
+`.kogen/config.yaml`, including changing `default_route`, do not affect a
+Build already in progress. The committed `build-summary.json` and
+`evidence.md` name the Build's route and harness.
 
 [Shared execution guidance](priv/kogen/prompts/execution-policy.md) has one
 [renderer](lib/kogen/execution_policy.ex), expanded by fresh/continued Shape
@@ -216,7 +269,7 @@ additional targets by affected behavior and preservation risk, not by edited fil
 | Target | Select when | Classification and prerequisites |
 | --- | --- | --- |
 | `check` | Offline sufficiency covers the behavior and failure controls; a later Intent may use check only. | Offline; installed dependencies and the tools below. Provider dispatch is denied. |
-| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The corresponding configured-default lifecycle or Review workflow can change. | Provider-backed on the configured harness; network, its installed runtime and Kogen login, `expect`, and `rsync`. |
+| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The corresponding configured-default lifecycle or Review workflow (on `default_route`) can change. | Provider-backed on `default_route`'s harness; network, its installed runtime and Kogen login, `expect`, and `rsync`. |
 | `live-shaping-quality` | Shaping prompts, continuation, Draft quality, evaluation cases, prerequisites, or its evidence manifest can change. | Provider-backed; network, configured Codex authentication, and maintained evaluation sources. |
 | `live-native` | The authenticated native boundary, managed runtime/login/discovery, compatibility runner, helper routing, profiles, or native receipts can change. | Provider-backed; installed pinned Codex runtime and configured authentication. |
 | `cold-offline` | Cold-cache behavior, the offline recipe, dependency copying, toolchain setup, containment, or cold cleanup can change. | Offline, though expensive; installed dependency sources, `rsync`, and the offline toolchain. Provider dispatch is denied. |
@@ -234,25 +287,36 @@ Build validates every selected target against the catalog and Makefile before
 Developer launch. Stop preserves Candidate/session/attempt binding, verification
 retries, required artifacts, receipts, and the fresh-Review boundary.
 
-Kogen loads the tracked project hooks and launches the configured harness with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously: Codex CLI with its bypass flags, Claude Code with `--dangerously-skip-permissions` (no permission prompts and no sandbox) for every role, including interactive Shaping and login.
+Kogen loads the tracked project hooks and launches the selected route's harness with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously: Codex CLI with its bypass flags, Claude Code with `--dangerously-skip-permissions` (no permission prompts and no sandbox) for every role, including interactive Shaping and login.
 
 Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` remains an offline test override; ordinary work selects Kogen's pinned managed runtime, never a `claude` or `codex` from PATH.
 
-## Choosing a harness
+## Choosing a route
 
-`harness` in `.kogen/config.yaml` is `claude` or `codex`; any other name is
-rejected with that list. Build, Shape and provider-outcome handling call one
-harness interface; the configured adapter supplies install and login readiness,
-launch context, fresh and exactly resumed Developer turns, Reviewer verdicts and
-the interactive Shaper. The Stop hook, Check and verification records are shared
-and harness-independent. Both adapters' offline suites run in every `make check`.
+Each route's `harness` in `.kogen/config.yaml` is `claude` or `codex`; any
+other name is rejected with that list, but only for the route a session
+selects — an unselected route may name an unsupported harness without
+blocking other routes. Build, Shape and provider-outcome handling call one
+harness interface; the selected route's adapter supplies install and login
+readiness, launch context, fresh and exactly resumed Developer turns, Reviewer
+verdicts and the interactive Shaper. The Stop hook, Check and verification
+records are shared and harness-independent. Both adapters' offline suites run
+in every `make check`.
 
-Only the configured harness's provider-backed targets run. Switching harness is a
-configuration change (harness plus proven models and efforts) followed by that
-harness's install, login and paid verification (`live-general`,
-`live-reviewer-rework`, `live-shape-to-build`) before relying on it; the other
-adapter's earlier paid evidence does not carry over. Codex remains a supported
-adapter; its documentation below still applies when `harness: codex` is selected.
+Switching provider means either passing `--route <name>` for one session or
+changing `default_route` for future ones, after that route's harness install
+and login. The general provider-backed lifecycle targets (`live-general`,
+`live-reviewer-rework`, `live-shape-to-build`) run on `default_route`, while
+the Codex-only `live-native` owners always resolve the one route whose harness
+is `codex` (and fail, listing the candidates, when there is none or several).
+Re-proving a harness therefore means running those general targets with
+`default_route` naming a route on that harness (plus `live-native` for Codex)
+before relying on it; another route's earlier paid evidence does not carry
+over. Codex remains a supported adapter; its documentation below still
+applies when a route names `harness: codex`. Harness setup commands
+(`mix kogen.{claude,codex}.{install,login,status}`) never select, require or
+validate a route — they operate on their own harness regardless of which
+route is `default_route`.
 
 ## Managed Claude Code runtime and login
 
@@ -379,7 +443,7 @@ instead of retaining writable aliases to installed dependencies.
 See [the check workflow](scripts/check/README.md) for maintenance and timing conditions.
 
 The provider-backed lifecycle targets are narrow owner routes, not a complete suite. They
-run on the configured harness only and require network access, its installed runtime
+run on `default_route`'s harness only and require network access, its installed runtime
 and Kogen login, `expect`, and `rsync`; create disposable
 fixtures; and retains evidence under `.kogen/runtime/`. It covers real failed-check
 correction, exact Developer resume, reviewer-directed rework, and fresh independent

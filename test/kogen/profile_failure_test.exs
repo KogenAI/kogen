@@ -50,10 +50,11 @@ defmodule Kogen.ProfileFailureTest do
     File.chmod!(executable, 0o755)
     System.put_env("KOGEN_HARNESS", executable)
     System.put_env("PROFILE_FAILURE_INVOCATIONS", invocations)
+    context = %{harness: "codex", executable: executable, args: [], env: []}
 
     assert_failure!(invocations, "nonzero", fn ->
       assert {:error, {:provider_exit, 17, diagnostic}} =
-               Kogen.Harness.launch_reviewer("review", "unavailable-profile", "low")
+               Kogen.Harness.launch_reviewer("review", "unavailable-profile", "low", context)
 
       assert diagnostic =~ "requested profile rejected by provider"
     end)
@@ -62,19 +63,19 @@ defmodule Kogen.ProfileFailureTest do
       assert {:error,
               {:provider_error,
                %{"type" => "error", "message" => "requested profile unavailable"}}} =
-               Kogen.Harness.launch_reviewer("review", "unavailable-profile", "low")
+               Kogen.Harness.launch_reviewer("review", "unavailable-profile", "low", context)
     end)
 
     assert_failure!(invocations, "incomplete", fn ->
       assert {:error, {:no_result_event, 0, diagnostic}} =
-               Kogen.Harness.launch_reviewer("review", "unavailable-profile", "low")
+               Kogen.Harness.launch_reviewer("review", "unavailable-profile", "low", context)
 
       assert diagnostic =~ "thread.started"
     end)
 
     assert_failure!(invocations, "malformed", fn ->
       assert {:error, {:malformed_verdict, 0, details}} =
-               Kogen.Harness.launch_reviewer("review", "unavailable-profile", "low")
+               Kogen.Harness.launch_reviewer("review", "unavailable-profile", "low", context)
 
       assert details["reviewer_session_id"] == "review"
       assert details["message"] == "{\"not\":\"a verdict\"}\n"

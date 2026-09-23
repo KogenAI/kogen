@@ -1,0 +1,41 @@
+id: 01a0cd3a-3fac-775e-8368-1a9dc7581cbe
+slug: named-routes
+title: Select named harness routes per Shape and Build session
+status: approved
+shaped_against:
+  branch: main
+  head: 6cdb29122fe662c7908aa50a179cac0697639a4a
+shaping:
+  harness: claude
+  model: claude-opus-5-5
+  effort: medium
+  started: '2026-09-23T07:45:41.808471Z'
+approval:
+  statement: Approved by the Shaper in the shaping conversation ("approved").
+  approved_at: '2026-09-23T08:34:31Z'
+  harness: claude
+  model: claude-opus-5-5
+may_change_guarded_paths:
+  - README.md
+  - .kogen/config.yaml
+  - lib/kogen/intent.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/*.ex
+  - lib/kogen/execution_policy.ex
+  - lib/kogen/claude_code.ex
+  - lib/kogen/claude_code/*.ex
+  - lib/kogen/codex.ex
+  - lib/kogen/codex/*.ex
+  - lib/kogen/build.ex
+  - lib/kogen/build/*.ex
+  - lib/mix/tasks/kogen.shape.ex
+  - lib/mix/tasks/kogen.build.ex
+  - priv/kogen/codex/discovery.py
+  - priv/kogen/prompts/shaping.md
+  - priv/kogen/prompts/shaping-fresh.md
+  - priv/kogen/prompts/shaping-continuation.md
+  - priv/kogen/test-reliability.yaml
+  - scripts/check/offline.py
+  - scripts/check/README.md
+  - test/kogen/*.exs
+  - test/support/**

@@ -25,18 +25,21 @@ defmodule Kogen.CompiledFixture do
     "test/support/fake_claude_shaper"
   ]
 
-  # Offline Codex fixtures keep their established configuration even though
-  # the tracked checkout may select another harness. Claude Code fixtures
+  # Offline Codex fixtures default to a Codex route even though the tracked
+  # checkout's default route may name another harness. Claude Code fixtures
   # write their own configuration.
   @codex_config """
-  harness: codex
-  shaping:   {model: gpt-5.6-sol, effort: low}
-  developer: {model: gpt-5.6-sol, effort: low}
-  reviewer:  {model: gpt-5.6-terra, effort: medium}
-  helpers:
-    scout:  {model: gpt-5.6-luna, effort: low}
-    worker: {model: gpt-5.6-luna, effort: medium}
-    expert: {model: gpt-5.6-sol, effort: medium}
+  default_route: codex
+  routes:
+    codex:
+      harness: codex
+      shaping:   {model: gpt-5.6-sol, effort: low}
+      developer: {model: gpt-5.6-sol, effort: low}
+      reviewer:  {model: gpt-5.6-terra, effort: medium}
+      helpers:
+        scout:  {model: gpt-5.6-luna, effort: low}
+        worker: {model: gpt-5.6-luna, effort: medium}
+        expert: {model: gpt-5.6-sol, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
   """

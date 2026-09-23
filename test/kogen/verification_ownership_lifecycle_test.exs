@@ -237,14 +237,17 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
 
   defp config do
     """
-    harness: codex
-    shaping:   {model: fake, effort: low}
-    developer: {model: fake, effort: low}
-    reviewer:  {model: fake, effort: low}
-    helpers:
-      scout:  {model: fake, effort: low}
-      worker: {model: fake, effort: medium}
-      expert: {model: fake, effort: medium}
+    default_route: codex
+    routes:
+      codex:
+        harness: codex
+        shaping:   {model: fake, effort: low}
+        developer: {model: fake, effort: low}
+        reviewer:  {model: fake, effort: low}
+        helpers:
+          scout:  {model: fake, effort: low}
+          worker: {model: fake, effort: medium}
+          expert: {model: fake, effort: medium}
     outer_resumptions: 4
     verification_retries: 2
     """

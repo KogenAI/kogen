@@ -1,6 +1,6 @@
 defmodule Kogen.Codex.CLI do
   @moduledoc false
-  use Boundary, top_level?: true, deps: [Kogen.Codex, Kogen.Intent]
+  use Boundary, top_level?: true, deps: [Kogen.Codex]
 
   def run(command, args) do
     result = dispatch(command, args)
@@ -29,15 +29,13 @@ defmodule Kogen.Codex.CLI do
   end
 
   defp dispatch(:login, args) do
-    with {:ok, config} <- Kogen.Intent.read_config(),
-         {:ok, status} <- Kogen.Codex.login(args, config) do
+    with {:ok, status} <- Kogen.Codex.login(args) do
       if status == 0, do: :ok, else: System.halt(status)
     end
   end
 
   defp dispatch(:status, []) do
-    with {:ok, config} <- Kogen.Intent.read_config(),
-         {:ok, status} <- Kogen.Codex.status(config) do
+    with {:ok, status} <- Kogen.Codex.status() do
       if status.runtime do
         IO.puts("Default: #{status.runtime["version"]} (#{status.runtime["path"]})")
       else
@@ -62,10 +60,8 @@ defmodule Kogen.Codex.CLI do
   defp dispatch(command, _args), do: {:error, "usage: mix kogen.codex.#{command}"}
 
   defp installation_readiness do
-    with {:ok, config} <- Kogen.Intent.read_config(),
-         {:ok, status} <- Kogen.Codex.status(config) do
-      print_readiness(status)
-    else
+    case Kogen.Codex.status() do
+      {:ok, status} -> print_readiness(status)
       _ -> IO.puts("Run mix kogen.codex.status from a configured Kogen checkout.")
     end
   end

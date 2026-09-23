@@ -1,4 +1,5 @@
 Code.require_file("../support/precondition_fixture.ex", __DIR__)
+Code.require_file("../support/compiled_fixture.exs", __DIR__)
 
 defmodule Kogen.BuildPreconditionsTest do
   @moduledoc """
@@ -43,27 +44,33 @@ defmodule Kogen.BuildPreconditionsTest do
   """
 
   @config_yaml """
-  harness: codex
-  shaping:   {model: gpt-5.6-sol, effort: low}
-  developer: {model: gpt-5.6-sol, effort: low}
-  reviewer:  {model: gpt-5.6-terra, effort: medium}
-  helpers:
-    scout:  {model: gpt-5.6-luna, effort: low}
-    worker: {model: gpt-5.6-luna, effort: medium}
-    expert: {model: gpt-5.6-sol, effort: medium}
+  default_route: codex
+  routes:
+    codex:
+      harness: codex
+      shaping:   {model: gpt-5.6-sol, effort: low}
+      developer: {model: gpt-5.6-sol, effort: low}
+      reviewer:  {model: gpt-5.6-terra, effort: medium}
+      helpers:
+        scout:  {model: gpt-5.6-luna, effort: low}
+        worker: {model: gpt-5.6-luna, effort: medium}
+        expert: {model: gpt-5.6-sol, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
   """
 
   @claude_config """
-  harness: claude
-  shaping:   {model: claude-opus-5-5, effort: medium}
-  developer: {model: claude-opus-5-5, effort: medium}
-  reviewer:  {model: claude-opus-5-5, effort: medium}
-  helpers:
-    scout:  {model: claude-sonnet-5, effort: low}
-    worker: {model: claude-sonnet-5, effort: medium}
-    expert: {model: claude-opus-5-5, effort: high}
+  default_route: claude
+  routes:
+    claude:
+      harness: claude
+      shaping:   {model: claude-opus-5-5, effort: medium}
+      developer: {model: claude-opus-5-5, effort: medium}
+      reviewer:  {model: claude-opus-5-5, effort: medium}
+      helpers:
+        scout:  {model: claude-sonnet-5, effort: low}
+        worker: {model: claude-sonnet-5, effort: medium}
+        expert: {model: claude-opus-5-5, effort: high}
   outer_resumptions: 2
   verification_retries: 2
   """
@@ -73,6 +80,34 @@ defmodule Kogen.BuildPreconditionsTest do
                             "developer: {model: claude-opus-5-5",
                             "developer: {model: claude-haiku-4-5-20251001"
                           )
+
+  # A second route on the same config, distinguishable from the default
+  # route's models, used by the --route selection and mid-session mutation
+  # tests below.
+  @two_route_config """
+  default_route: codex
+  routes:
+    codex:
+      harness: codex
+      shaping:   {model: gpt-5.6-sol, effort: low}
+      developer: {model: gpt-5.6-sol, effort: low}
+      reviewer:  {model: gpt-5.6-terra, effort: medium}
+      helpers:
+        scout:  {model: gpt-5.6-luna, effort: low}
+        worker: {model: gpt-5.6-luna, effort: medium}
+        expert: {model: gpt-5.6-sol, effort: medium}
+    other:
+      harness: codex
+      shaping:   {model: gpt-route-b-shape, effort: medium}
+      developer: {model: gpt-route-b-dev, effort: medium}
+      reviewer:  {model: gpt-route-b-review, effort: high}
+      helpers:
+        scout:  {model: gpt-route-b-scout, effort: low}
+        worker: {model: gpt-route-b-worker, effort: medium}
+        expert: {model: gpt-route-b-expert, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
 
   @makefile """
   .PHONY: check
@@ -412,6 +447,138 @@ defmodule Kogen.BuildPreconditionsTest do
     run_precondition_case(operation, expected)
   end
 
+  test "a flat-shaped config.yaml is refused before any launch and no tracking record is created" do
+    fixture = route_fixture!("route-flat-refused")
+    slug = write_route_build_package!(fixture)
+
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), """
+    harness: codex
+    shaping:   {model: gpt-5.6-sol, effort: low}
+    developer: {model: gpt-5.6-sol, effort: low}
+    reviewer:  {model: gpt-5.6-terra, effort: medium}
+    helpers:
+      scout:  {model: gpt-5.6-luna, effort: low}
+      worker: {model: gpt-5.6-luna, effort: medium}
+      expert: {model: gpt-5.6-sol, effort: medium}
+    outer_resumptions: 2
+    verification_retries: 2
+    """)
+
+    init_route_git!(fixture)
+
+    {output, 1} =
+      Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", slug], route_env(fixture))
+
+    assert output =~
+             "config.yaml uses the replaced flat configuration shape (top-level harness and roles); define default_route and routes instead"
+
+    refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log")),
+           "the flat config must be refused before any fake-harness launch"
+
+    refute Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*")) != [],
+           "no tracking record may be created when config resolution fails"
+  end
+
+  test "an unknown --route fails before launch, naming the route and listing available routes sorted" do
+    fixture = route_fixture!("route-unknown-refused")
+    slug = write_route_build_package!(fixture)
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), @two_route_config)
+    init_route_git!(fixture)
+
+    {output, 1} =
+      Kogen.CompiledFixture.mix_task!(
+        fixture,
+        ["kogen.build", "--route", "missing", slug],
+        route_env(fixture)
+      )
+
+    assert output =~ "unknown route: missing; available routes: codex, other"
+
+    refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log")),
+           "an unknown route must be refused before any fake-harness launch"
+
+    assert Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*")) == [],
+           "no tracking record may be created when route selection fails"
+  end
+
+  test "a missing --route value or an unknown option print the command's usage line" do
+    fixture = route_fixture!("route-usage")
+    slug = write_route_build_package!(fixture)
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), @two_route_config)
+    init_route_git!(fixture)
+
+    usage = "usage: mix kogen.build [--route <name>] <slug>"
+
+    {missing_value_output, 1} =
+      Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", "--route"], route_env(fixture))
+
+    assert missing_value_output =~ usage
+
+    {unknown_option_output, 1} =
+      Kogen.CompiledFixture.mix_task!(
+        fixture,
+        ["kogen.build", "--unknown-option", slug],
+        route_env(fixture)
+      )
+
+    assert unknown_option_output =~ usage
+
+    refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log")),
+           "usage failures must be refused before any fake-harness launch"
+  end
+
+  test "--route selects a non-default route's Developer, Reviewer, and execution-policy profiles" do
+    default_fixture = route_fixture!("route-flag-selects-default")
+    default_slug = write_route_build_package!(default_fixture)
+    File.write!(Path.join(default_fixture, ".kogen/config.yaml"), @two_route_config)
+    init_route_git!(default_fixture)
+
+    {_default_output, 0} =
+      Kogen.CompiledFixture.mix_task!(
+        default_fixture,
+        ["kogen.build", default_slug],
+        route_env(default_fixture)
+      )
+
+    default_prompt =
+      File.read!(Path.join(default_fixture, ".kogen/runtime/developer-launch-prompt"))
+
+    # The default route's developer root and helper profiles are named.
+    assert default_prompt =~ "gpt-5.6-sol"
+    assert default_prompt =~ "gpt-5.6-luna"
+    refute default_prompt =~ "gpt-route-b"
+
+    default_reviewer_prompt =
+      File.read!(Path.join(default_fixture, ".kogen/runtime/reviewer-prompt-1"))
+
+    assert default_reviewer_prompt =~ "gpt-5.6-terra"
+    refute default_reviewer_prompt =~ "gpt-route-b"
+
+    other_fixture = route_fixture!("route-flag-selects-other")
+    other_slug = write_route_build_package!(other_fixture)
+    File.write!(Path.join(other_fixture, ".kogen/config.yaml"), @two_route_config)
+    init_route_git!(other_fixture)
+
+    {_other_output, 0} =
+      Kogen.CompiledFixture.mix_task!(
+        other_fixture,
+        ["kogen.build", "--route", "other", other_slug],
+        route_env(other_fixture)
+      )
+
+    other_prompt = File.read!(Path.join(other_fixture, ".kogen/runtime/developer-launch-prompt"))
+    assert other_prompt =~ "gpt-route-b-dev"
+    assert other_prompt =~ "gpt-route-b-worker"
+    refute other_prompt =~ "gpt-5.6-sol"
+    refute other_prompt =~ "gpt-5.6-luna"
+
+    other_reviewer_prompt =
+      File.read!(Path.join(other_fixture, ".kogen/runtime/reviewer-prompt-1"))
+
+    assert other_reviewer_prompt =~ "gpt-route-b-review"
+    refute other_reviewer_prompt =~ "gpt-5.6-terra"
+  end
+
   # -- fixture plumbing --------------------------------------------------
 
   defp run_precondition_case(operation, expected) do
@@ -645,7 +812,7 @@ defmodule Kogen.BuildPreconditionsTest do
 
       assert {:ok, 130} =
                File.cd!(dir, fn ->
-                 Kogen.ClaudeCode.login(["--project", "--", "--cancel"], %{})
+                 Kogen.ClaudeCode.login(["--project", "--", "--cancel"])
                end)
     end
 
@@ -727,5 +894,66 @@ defmodule Kogen.BuildPreconditionsTest do
   defp real_index_bytes(dir) do
     {path, 0} = System.cmd("git", ["rev-parse", "--git-path", "index"], cd: dir)
     path |> String.trim() |> Path.expand(dir) |> File.read!()
+  end
+
+  # -- route fixture plumbing (public mix kogen.build task, fake codex) --
+
+  @route_slug "route-fixture-intent"
+
+  defp route_fixture!(label) do
+    fixture = Kogen.CompiledFixture.create!(@project_root, label)
+    on_exit(fn -> File.rm_rf(fixture) end)
+    fixture
+  end
+
+  defp route_env(fixture) do
+    [{"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex")}]
+  end
+
+  defp write_route_build_package!(fixture) do
+    path = Path.join(fixture, ".kogen/intents/approved/#{@route_slug}")
+    File.mkdir_p!(path)
+
+    File.write!(Path.join(path, "intent.yaml"), """
+    id: 01960000-0000-7000-8000-0000000000rf
+    slug: #{@route_slug}
+    title: Route fixture intent
+    may_change_guarded_paths:
+      - dummy.txt
+    """)
+
+    File.write!(Path.join(path, "scenarios.yaml"), """
+    - id: route-fixture-scenario
+      given: a fixture Candidate
+      when: the fake Reviewer accepts it
+      then: the Build commits normally
+      wrong_result: the wrong route's profiles are used
+      verified_by: [check]
+      evidence: fixture only
+    """)
+
+    # The fake Codex reviewer accepts a first-attempt Candidate only when it
+    # matches an explicit requirement, so the initial fresh Developer's write
+    # to dummy.txt is accepted without a Reviewer-requested rework round.
+    File.write!(
+      Path.join(path, "requirement.json"),
+      Jason.encode!(%{"path" => "dummy.txt", "expected" => "initial fixture value"})
+    )
+
+    File.write!(Path.join(fixture, "dummy.txt"), "")
+
+    Kogen.VerificationFixture.install!(fixture)
+    @route_slug
+  end
+
+  defp init_route_git!(fixture) do
+    {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: fixture)
+    {_out, 0} = System.cmd("git", ["add", "-A"], cd: fixture)
+
+    {_out, 0} =
+      System.cmd("git", ["commit", "-q", "-m", "route fixture baseline"],
+        cd: fixture,
+        env: @git_env
+      )
   end
 end

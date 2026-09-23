@@ -11,13 +11,14 @@ id="$(printf '%s\n' "$prompt" | sed -n 's/.*Intent id: `\([0-9a-f-]*\)`.*/\1/p' 
 [ -n "$id" ]
 branch="$(printf '%s\n' "$prompt" | sed -n 's/.*Shaped against branch: `\([^`]*\)`.*/\1/p' | head -n 1)"
 head="$(printf '%s\n' "$prompt" | sed -n 's/.*Shaped against head commit: `\([^`]*\)`.*/\1/p' | head -n 1)"
+route="$(printf '%s\n' "$prompt" | sed -n 's/^route `\([^`]*\)`, harness `.*/\1/p' | head -n 1)"
 model=; effort=; previous=
 for arg in "$@"; do
   [ "$previous" = --model ] && model="$arg"
   case "$arg" in model_reasoning_effort=*) effort="$(printf '%s' "$arg" | cut -d= -f2- | tr -d '\"')" ;; esac
   previous="$arg"
 done
-[ -n "$branch" ] && [ -n "$head" ] && [ -n "$model" ] && [ -n "$effort" ]
+[ -n "$branch" ] && [ -n "$head" ] && [ -n "$route" ] && [ -n "$model" ] && [ -n "$effort" ]
 dir=.kogen/intents/drafts/fake-shaped-intent
 mkdir -p "$dir"
 cat >"$dir/intent.yaml" <<EOF
@@ -28,6 +29,7 @@ shaped_against:
   branch: "$branch"
   head: "$head"
 shaping:
+  route: "$route"
   harness: codex
   model: "$model"
   effort: "$effort"

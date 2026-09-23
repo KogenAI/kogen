@@ -196,10 +196,18 @@ defmodule Kogen.LiveShapeToBuildTest do
       assert continued_intent["shaping"] == original_intent["shaping"]
       assert continued_intent["shaped_against"] == original_intent["shaped_against"]
 
+      assert is_map(original_intent["shaping"])
+      assert original_intent["shaping"]["route"] == config.route
+      assert original_intent["shaping"]["harness"] == config.harness
+      assert original_intent["shaping"]["model"] == config.shaping.model
+      assert original_intent["shaping"]["effort"] == config.shaping.effort
+      assert original_intent["shaping"]["started"]
+
       assert [continuation] = continued_intent["shaping_continuations"],
              "one continuation visit must be saved before the new conversation approves the draft"
 
       assert is_map(continuation)
+      assert continuation["route"] == config.route
       assert continuation["harness"] == config.harness
       assert continuation["model"] == config.shaping.model
       assert continuation["effort"] == config.shaping.effort
@@ -391,6 +399,42 @@ defmodule Kogen.LiveShapeToBuildTest do
              "the failed record must precede the passed record within the same session"
 
       tracking = read_tracking!(fixture, complete_dir)
+
+      assert tracking["route"] == %{
+               "name" => config.route,
+               "harness" => config.harness,
+               "shaping" => %{"model" => config.shaping.model, "effort" => config.shaping.effort},
+               "developer" => %{
+                 "model" => config.developer.model,
+                 "effort" => config.developer.effort
+               },
+               "reviewer" => %{
+                 "model" => config.reviewer.model,
+                 "effort" => config.reviewer.effort
+               },
+               "helpers" => %{
+                 "scout" => %{
+                   "model" => config.helpers.scout.model,
+                   "effort" => config.helpers.scout.effort
+                 },
+                 "worker" => %{
+                   "model" => config.helpers.worker.model,
+                   "effort" => config.helpers.worker.effort
+                 },
+                 "expert" => %{
+                   "model" => config.helpers.expert.model,
+                   "effort" => config.helpers.expert.effort
+                 }
+               }
+             }
+
+      [summary_path] = Path.wildcard(Path.join(complete_dir, "build-summary*.json"))
+      summary = summary_path |> File.read!() |> Jason.decode!()
+      assert summary["route"] == %{"name" => config.route, "harness" => config.harness}
+
+      assert evidence =~
+               "- Route: `#{config.route}` (harness `#{config.harness}`)"
+
       [initial_attempt | _] = tracking["attempts"]
 
       assert initial_attempt["developer_session_id"] == developer_session_id

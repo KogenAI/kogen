@@ -28,6 +28,7 @@ defmodule Kogen.ShapeTaskTest do
     {head, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: fixture)
     assert shaped["shaped_against"] == %{"branch" => "main", "head" => String.trim(head)}
     {:ok, config} = Kogen.Intent.read_config(Path.join(fixture, ".kogen/config.yaml"))
+    assert shaped["shaping"]["route"] == config.route
     assert shaped["shaping"]["harness"] == "codex"
     assert shaped["shaping"]["model"] == config.shaping.model
     assert shaped["shaping"]["effort"] == config.shaping.effort
@@ -107,6 +108,9 @@ defmodule Kogen.ShapeTaskTest do
         ] do
       assert prompt =~ text
     end
+
+    assert prompt =~
+             "route: current\nharness: codex\nmodel: current-shaper\neffort: shaping-effort\n"
 
     {head, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: fixture)
     assert prompt =~ String.trim(head)
@@ -249,15 +253,15 @@ defmodule Kogen.ShapeTaskTest do
       {"missing helper",
        String.replace(
          distinct_config(),
-         "  expert: {model: current-expert, effort: expert-effort}\n",
+         "      expert: {model: current-expert, effort: expert-effort}\n",
          ""
-       ), "helpers.expert"},
+       ), "routes.current.helpers.expert"},
       {"blank root model",
        String.replace(distinct_config(), "model: current-developer", "model: \"\""),
-       "developer.model"},
+       "routes.current.developer.model"},
       {"wrong-typed helper effort",
        String.replace(distinct_config(), "effort: scout-effort", "effort: 42"),
-       "helpers.scout.effort"}
+       "routes.current.helpers.scout.effort"}
     ]
 
     for {args, route} <- [{[], "fresh"}, {["unfinished"], "continuation"}],
@@ -275,14 +279,17 @@ defmodule Kogen.ShapeTaskTest do
   end
 
   @claude_config """
-  harness: claude
-  shaping:   {model: claude-opus-5-5, effort: medium}
-  developer: {model: claude-opus-5-5, effort: medium}
-  reviewer:  {model: claude-opus-5-5, effort: medium}
-  helpers:
-    scout:  {model: claude-sonnet-5, effort: low}
-    worker: {model: claude-sonnet-5, effort: medium}
-    expert: {model: claude-opus-5-5, effort: high}
+  default_route: claude
+  routes:
+    claude:
+      harness: claude
+      shaping:   {model: claude-opus-5-5, effort: medium}
+      developer: {model: claude-opus-5-5, effort: medium}
+      reviewer:  {model: claude-opus-5-5, effort: medium}
+      helpers:
+        scout:  {model: claude-sonnet-5, effort: low}
+        worker: {model: claude-sonnet-5, effort: medium}
+        expert: {model: claude-opus-5-5, effort: high}
   outer_resumptions: 2
   verification_retries: 2
   """
@@ -343,6 +350,7 @@ defmodule Kogen.ShapeTaskTest do
       assert env =~ "ANTHROPIC_API_KEY=unset"
 
       assert prompt =~ "harness `claude`" or prompt =~ "harness: claude"
+      assert prompt =~ "route `claude`" or prompt =~ "route: claude"
       assert prompt =~ "Claude Code agent `kogen-scout`"
       refute prompt =~ "native kind `explorer`"
       refute prompt =~ "{{"
@@ -412,6 +420,200 @@ defmodule Kogen.ShapeTaskTest do
     refute File.exists?(trace) and File.read!(trace) =~ ~s("--dangerously-skip-permissions")
   end
 
+  test "Shape runs on the default route or the --route route in every argument position" do
+    fixture = shape_fixture()
+    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
+    File.mkdir_p!(draft)
+    File.write!(Path.join(draft, "intent.yaml"), @draft)
+    config_path = Path.join(fixture, ".kogen/config.yaml")
+    File.write!(config_path, two_route_config())
+    before = snapshot(draft)
+
+    for {args, route, mode} <- [
+          {[], "current", :fresh},
+          {["--route", "other"], "other", :fresh},
+          {["--route=other"], "other", :fresh},
+          {["unfinished"], "current", :continuation},
+          {["--route", "other", "unfinished"], "other", :continuation},
+          {["unfinished", "--route", "other"], "other", :continuation}
+        ] do
+      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
+      {_output, 0} = capture(fixture, args)
+
+      {:ok, config} = Kogen.Intent.read_config(config_path, route)
+      args_text = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
+      prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+
+      assert args_text =~ "--model\n#{route}-shaper\n", inspect(args)
+      assert args_text =~ ~s(model_reasoning_effort="#{config.shaping.effort}")
+      assert_shared_execution_policy!(prompt, :shaping, config)
+
+      case mode do
+        :fresh ->
+          assert prompt =~ "route `#{route}`, harness `codex`, model `#{route}-shaper`"
+
+        :continuation ->
+          assert prompt =~
+                   "route: #{route}\nharness: codex\nmodel: #{route}-shaper\neffort: #{config.shaping.effort}\n"
+      end
+
+      other = if route == "current", do: "other", else: "current"
+      refute prompt =~ "#{other}-shaper"
+      refute prompt =~ "#{other}-scout"
+    end
+
+    assert snapshot(draft) == before
+  end
+
+  test "continuing a Draft first shaped on another route records this session's route only" do
+    fixture = shape_fixture()
+    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
+    File.mkdir_p!(draft)
+    routed = String.replace(@draft, "  harness: codex\n", "  route: other\n  harness: codex\n")
+    File.write!(Path.join(draft, "intent.yaml"), routed)
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), two_route_config())
+    before = snapshot(draft)
+
+    {_output, 0} = capture(fixture, ["unfinished"])
+
+    prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+    assert prompt =~ "route: current\nharness: codex\nmodel: current-shaper\n"
+    refute prompt =~ "route: other"
+    assert prompt =~ "Keep original `shaping` metadata unchanged"
+    assert Regex.replace(~r/\s+/, prompt, " ") =~ "including its `route` or its absence"
+    assert snapshot(draft) == before
+  end
+
+  test "unknown routes, missing route values and unknown options fail before harness launch" do
+    fixture = shape_fixture()
+    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
+    File.mkdir_p!(draft)
+    File.write!(Path.join(draft, "intent.yaml"), @draft)
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), two_route_config())
+    before = snapshot(Path.join(fixture, ".kogen/intents"))
+    usage = "usage: mix kogen.shape [--route <name>] [draft-slug]"
+
+    for {args, expected} <- [
+          {["--route", "missing"], "unknown route: missing; available routes: current, other"},
+          {["--route", "missing", "unfinished"],
+           "unknown route: missing; available routes: current, other"},
+          {["--route"], usage},
+          {["unfinished", "--route"], usage},
+          {["--route="], usage},
+          {["--bogus"], usage},
+          {["--route", "other", "one", "two"], usage}
+        ] do
+      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
+      {output, status} = capture(fixture, args)
+
+      assert status != 0, inspect(args)
+      assert output =~ expected, inspect(args)
+      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-args"))
+      assert snapshot(Path.join(fixture, ".kogen/intents")) == before
+    end
+  end
+
+  test "the flat configuration shape is refused before harness launch" do
+    fixture = shape_fixture()
+    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
+    File.mkdir_p!(draft)
+    File.write!(Path.join(draft, "intent.yaml"), @draft)
+
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), """
+    harness: codex
+    shaping: {model: current-shaper, effort: shaping-effort}
+    developer: {model: current-developer, effort: developer-effort}
+    reviewer: {model: current-reviewer, effort: reviewer-effort}
+    helpers:
+      scout: {model: current-scout, effort: scout-effort}
+      worker: {model: current-worker, effort: worker-effort}
+      expert: {model: current-expert, effort: expert-effort}
+    outer_resumptions: 2
+    verification_retries: 2
+    """)
+
+    before = snapshot(Path.join(fixture, ".kogen/intents"))
+
+    for args <- [[], ["unfinished"], ["--route", "current"]] do
+      {output, status} = capture(fixture, args)
+      assert status != 0
+      assert output =~ "flat configuration shape"
+      assert output =~ "define default_route and routes"
+      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+      assert snapshot(Path.join(fixture, ".kogen/intents")) == before
+    end
+  end
+
+  test "only the selected route is checked for harness support, proven models and readiness" do
+    fixture = shape_fixture()
+    config_path = Path.join(fixture, ".kogen/config.yaml")
+    claude_root = Path.join(fixture <> "-claude-root", "claude")
+    File.mkdir_p!(claude_root)
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+
+    File.write!(
+      config_path,
+      distinct_config("""
+        pi:
+          harness: pi-chatgpt
+          shaping: {model: pi-model, effort: low}
+          developer: {model: pi-model, effort: low}
+          reviewer: {model: pi-model, effort: low}
+          helpers:
+            scout: {model: pi-model, effort: low}
+            worker: {model: pi-model, effort: low}
+            expert: {model: pi-model, effort: low}
+        unproven:
+          harness: claude
+          shaping: {model: claude-unproven-9, effort: medium}
+          developer: {model: claude-opus-5-5, effort: medium}
+          reviewer: {model: claude-opus-5-5, effort: medium}
+          helpers:
+            scout: {model: claude-sonnet-5, effort: low}
+            worker: {model: claude-sonnet-5, effort: medium}
+            expert: {model: claude-opus-5-5, effort: high}
+        claude:
+          harness: claude
+          shaping: {model: claude-opus-5-5, effort: medium}
+          developer: {model: claude-opus-5-5, effort: medium}
+          reviewer: {model: claude-opus-5-5, effort: medium}
+          helpers:
+            scout: {model: claude-sonnet-5, effort: low}
+            worker: {model: claude-sonnet-5, effort: medium}
+            expert: {model: claude-opus-5-5, effort: high}
+      """)
+    )
+
+    # The selected Codex route proceeds although the other routes name an
+    # unsupported harness, an unproven model and an uninstalled Claude Code.
+    {_output, 0} =
+      Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape"], [
+        {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")},
+        {"KOGEN_SHAPE_CAPTURE_ONLY", "1"},
+        {"KOGEN_CLAUDE_ROOT", claude_root}
+      ])
+
+    assert File.read!(Path.join(fixture, ".kogen/runtime/shaping-args")) =~ "current-shaper"
+
+    for {route, expected} <- [
+          {"pi", "unsupported harness: pi-chatgpt; expected codex or claude"},
+          {"unproven", "unsupported Claude Code model for shaping: claude-unproven-9"},
+          {"claude", "Kogen Claude Code 2.1.280 is not installed. Run mix kogen.claude.install"}
+        ] do
+      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
+
+      {output, status} =
+        Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape", "--route", route], [
+          {"KOGEN_CLAUDE_ROOT", claude_root}
+        ])
+
+      assert status != 0
+      assert output =~ expected
+      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+    end
+  end
+
   defp flag(argv, name), do: argv |> Enum.drop_while(&(&1 != name)) |> Enum.at(1)
   defp assert_flag!(argv, name, value), do: assert(flag(argv, name) == value)
 
@@ -430,22 +632,44 @@ defmodule Kogen.ShapeTaskTest do
   end
 
   defp snapshot(dir) do
-    Map.new(Path.wildcard(Path.join(dir, "**/*")), &{&1, File.read!(&1)})
+    for path <- Path.wildcard(Path.join(dir, "**/*")),
+        File.regular?(path),
+        into: %{},
+        do: {path, File.read!(path)}
   end
 
-  defp distinct_config do
+  defp distinct_config(extra_routes \\ "") do
     """
-    harness: codex
-    shaping: {model: current-shaper, effort: shaping-effort}
-    developer: {model: current-developer, effort: developer-effort}
-    reviewer: {model: current-reviewer, effort: reviewer-effort}
-    helpers:
-      scout: {model: current-scout, effort: scout-effort}
-      worker: {model: current-worker, effort: worker-effort}
-      expert: {model: current-expert, effort: expert-effort}
-    outer_resumptions: 2
+    default_route: current
+    routes:
+      current:
+        harness: codex
+        shaping: {model: current-shaper, effort: shaping-effort}
+        developer: {model: current-developer, effort: developer-effort}
+        reviewer: {model: current-reviewer, effort: reviewer-effort}
+        helpers:
+          scout: {model: current-scout, effort: scout-effort}
+          worker: {model: current-worker, effort: worker-effort}
+          expert: {model: current-expert, effort: expert-effort}
+    #{extra_routes}outer_resumptions: 2
     verification_retries: 2
     """
+  end
+
+  # A second Codex route with distinguishable profiles.
+  defp two_route_config(extra_routes \\ "") do
+    distinct_config("""
+      other:
+        harness: codex
+        shaping: {model: other-shaper, effort: other-shaping-effort}
+        developer: {model: other-developer, effort: other-developer-effort}
+        reviewer: {model: other-reviewer, effort: other-reviewer-effort}
+        helpers:
+          scout: {model: other-scout, effort: other-scout-effort}
+          worker: {model: other-worker, effort: other-worker-effort}
+          expert: {model: other-expert, effort: other-expert-effort}
+    #{extra_routes}
+    """)
   end
 
   defp assert_shared_execution_policy!(prompt, role, config) do

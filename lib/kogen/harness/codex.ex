@@ -15,7 +15,7 @@ defmodule Kogen.Harness.Codex do
   ]
 
   @doc "Launches a fresh Developer turn with the prompt on stdin."
-  def launch_developer(prompt, model, effort, policy_environment \\ [], context \\ nil) do
+  def launch_developer(prompt, model, effort, policy_environment, context) do
     with_context(
       context,
       &run_turn(developer_args(model, effort), prompt, policy_environment, &1)
@@ -23,7 +23,7 @@ defmodule Kogen.Harness.Codex do
   end
 
   @doc "Resumes the exact Developer thread with the prompt on stdin."
-  def resume_developer(session_id, text, model, effort, policy_environment \\ [], context \\ nil) do
+  def resume_developer(session_id, text, model, effort, policy_environment, context) do
     with_context(
       context,
       &run_turn(developer_args(model, effort, session_id), text, policy_environment, &1)
@@ -36,8 +36,8 @@ defmodule Kogen.Harness.Codex do
         model,
         effort,
         schema,
-        policy_environment \\ [],
-        context \\ nil
+        policy_environment,
+        context
       ) do
     with_context(context, fn resolved ->
       run_structured_turn(
@@ -57,8 +57,8 @@ defmodule Kogen.Harness.Codex do
         model,
         effort,
         schema,
-        policy_environment \\ [],
-        context \\ nil
+        policy_environment,
+        context
       ) do
     with_context(context, fn resolved ->
       run_structured_turn(
@@ -79,7 +79,7 @@ defmodule Kogen.Harness.Codex do
   end
 
   @doc "Launches an independent Reviewer and requires a schema-valid Verdict."
-  def launch_reviewer(prompt, model, effort, context \\ nil) do
+  def launch_reviewer(prompt, model, effort, context) do
     with_context(context, &review(prompt, model, effort, &1))
   end
 
@@ -156,7 +156,7 @@ defmodule Kogen.Harness.Codex do
   end
 
   @doc "Launches the interactive Codex Shaping Controller with the caller's real terminal."
-  def exec_shaper(model, effort, prompt_file, context \\ nil) do
+  def exec_shaper(model, effort, prompt_file, context) do
     with_context(context, fn selected ->
       selected = %{selected | env: merge_environment(selected.env, [{"KOGEN_ROLE", "shaper"}])}
       Kogen.Codex.terminal(selected, shaper_args(model, effort, prompt_file))
@@ -168,28 +168,13 @@ defmodule Kogen.Harness.Codex do
     model_flags(model, effort) ++ @common_flags ++ ["--", File.read!(prompt_file)]
   end
 
-  @doc false
-  def resolve_executable do
-    with_context(nil, & &1.executable)
-  end
+  # Every launch receives the session's Codex launch context; there is no
+  # contextless path that re-reads configuration or opens a runtime here.
+  defp with_context(%{harness: "codex"} = context, function), do: function.(context)
 
-  defp with_context(context, function) when is_map(context), do: function.(context)
-
-  defp with_context(nil, function) do
-    {:ok, config} =
-      if System.get_env("KOGEN_HARNESS"), do: {:ok, %{}}, else: Kogen.Intent.read_config()
-
-    case Kogen.Codex.open(config) do
-      {:ok, selection} ->
-        try do
-          function.(Kogen.Codex.launch_context(selection))
-        after
-          Kogen.Codex.close(selection)
-        end
-
-      {:error, reason} ->
-        raise reason
-    end
+  defp with_context(context, _function) do
+    raise ArgumentError,
+          "Codex launch requires a Codex launch context, got: #{inspect(Map.get(context || %{}, :harness))}"
   end
 
   defp merge_environment(base, overrides),

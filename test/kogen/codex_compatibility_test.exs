@@ -1,7 +1,10 @@
+Code.require_file("../support/route_config.ex", __DIR__)
+
 defmodule Kogen.Codex.CompatibilityTest do
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.Codex.Compatibility
+  alias Kogen.RouteConfig
 
   test "evidence requires an initial rework, exact developer resume, and fresh accepting review" do
     evidence = %{
@@ -158,10 +161,10 @@ defmodule Kogen.Codex.CompatibilityTest do
   @tag :live
   @tag timeout: 900_000
   test "selected authenticated managed runtime passes the bounded compatibility runner" do
-    {:ok, config} = Kogen.Intent.read_config()
+    config = RouteConfig.codex_route!()
     {:ok, runtime} = Kogen.Codex.installed()
     {:ok, scope} = Kogen.Codex.effective_scope(File.cwd!())
-    assert :ok = Kogen.Codex.require_login(runtime, scope, config, File.cwd!())
+    assert :ok = Kogen.Codex.require_login(runtime, scope, File.cwd!())
     assert {:ok, evidence} = Compatibility.run(runtime, scope, config)
     assert File.regular?(evidence)
   end

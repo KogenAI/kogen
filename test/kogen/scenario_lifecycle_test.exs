@@ -409,7 +409,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
   defp config,
     do:
-      "harness: codex\nshaping: {model: fake, effort: low}\ndeveloper: {model: fake, effort: low}\nreviewer: {model: fake, effort: low}\nhelpers:\n  scout: {model: fake, effort: low}\n  worker: {model: fake, effort: medium}\n  expert: {model: fake, effort: medium}\nouter_resumptions: 2\nverification_retries: 2\n"
+      "default_route: codex\nroutes:\n  codex:\n    harness: codex\n    shaping: {model: fake, effort: low}\n    developer: {model: fake, effort: low}\n    reviewer: {model: fake, effort: low}\n    helpers:\n      scout: {model: fake, effort: low}\n      worker: {model: fake, effort: medium}\n      expert: {model: fake, effort: medium}\nouter_resumptions: 2\nverification_retries: 2\n"
 
   defp target_evidence_producer do
     ~S'''

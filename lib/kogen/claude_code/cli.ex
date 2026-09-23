@@ -1,6 +1,6 @@
 defmodule Kogen.ClaudeCode.CLI do
   @moduledoc false
-  use Boundary, top_level?: true, deps: [Kogen.ClaudeCode, Kogen.Intent]
+  use Boundary, top_level?: true, deps: [Kogen.ClaudeCode]
 
   def run(command, args) do
     case dispatch(command, args) do
@@ -29,15 +29,13 @@ defmodule Kogen.ClaudeCode.CLI do
   end
 
   defp dispatch(:login, args) do
-    with {:ok, config} <- Kogen.Intent.read_config(),
-         {:ok, status} <- Kogen.ClaudeCode.login(args, config) do
+    with {:ok, status} <- Kogen.ClaudeCode.login(args) do
       if status == 0, do: :ok, else: System.halt(status)
     end
   end
 
   defp dispatch(:status, []) do
-    with {:ok, config} <- Kogen.Intent.read_config(),
-         {:ok, status} <- Kogen.ClaudeCode.status(config) do
+    with {:ok, status} <- Kogen.ClaudeCode.status() do
       IO.puts("Pinned Claude Code: #{status.pin}")
 
       if status.runtime do
@@ -56,10 +54,8 @@ defmodule Kogen.ClaudeCode.CLI do
   defp dispatch(command, _args), do: {:error, "usage: mix kogen.claude.#{command}"}
 
   defp installation_readiness do
-    with {:ok, config} <- Kogen.Intent.read_config(),
-         {:ok, status} <- Kogen.ClaudeCode.status(config) do
-      print_readiness(status)
-    else
+    case Kogen.ClaudeCode.status() do
+      {:ok, status} -> print_readiness(status)
       _ -> IO.puts("Run mix kogen.claude.status from a configured Kogen checkout.")
     end
   end

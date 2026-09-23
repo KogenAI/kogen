@@ -1,0 +1,12 @@
+- kind: brief
+  path: .kogen/runtime/shaping-followups/SHAPE_NAMED_ROUTES.md
+  note: Shaper's brief for Intent A (updated 2026-09-23 10:48 local to select live-shape-to-build and recommend refusing flat config)
+- kind: related-intent
+  path: .kogen/intents/drafts/isolated-candidate-workspace
+  note: Intent B1 (isolated Candidate worktrees), built after this; decisions.md records the A -> B1 -> B2 split
+- kind: prior-commit
+  ref: 6cdb29122fe662c7908aa50a179cac0697639a4a
+  note: Switched harness to Claude Code; its diff of .kogen/config.yaml holds the Codex profiles restored as the codex route
+- kind: complete-intent
+  path: .kogen/intents/complete/claude-code-harness
+  note: Introduced the pluggable harness and live-shape-to-build coverage for Claude Code shaping metadata

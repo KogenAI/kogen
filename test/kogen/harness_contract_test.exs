@@ -64,6 +64,194 @@ defmodule Kogen.HarnessContractTest do
     refute File.exists?(Path.join(dest, ".kogen/runtime/fake-harness-log"))
   end
 
+  for {label, keys, expected} <- [
+        {"missing harness", [], "harness selection has no harness; expected codex or claude"},
+        {"blank harness", [harness: ""], "unsupported harness: \"\"; expected codex or claude"},
+        {"unknown harness pi", [harness: "pi"],
+         "unsupported harness: \"pi\"; expected codex or claude"}
+      ] do
+    test "Harness.open refuses a selection with #{label} before any launch" do
+      config = Map.new(unquote(Macro.escape(keys)))
+      assert {:error, unquote(expected)} = Kogen.Harness.open(config)
+    end
+  end
+
+  for {label, keys, expected} <- [
+        {"a context without harness", [],
+         "harness selection has no harness; expected codex or claude"},
+        {"a context naming an unknown harness", [harness: "pi"],
+         "unsupported harness: \"pi\"; expected codex or claude"}
+      ] do
+    test "every launch function raises loudly given #{label}" do
+      context = Map.new(unquote(Macro.escape(keys)))
+      expected = unquote(expected)
+
+      assert_raise ArgumentError, expected, fn ->
+        Kogen.Harness.launch_developer("p", "m", "e", [], context)
+      end
+
+      assert_raise ArgumentError, expected, fn ->
+        Kogen.Harness.resume_developer("s", "p", "m", "e", [], context)
+      end
+
+      assert_raise ArgumentError, expected, fn ->
+        Kogen.Harness.launch_build_developer("p", "m", "e", "{}", [], context)
+      end
+
+      assert_raise ArgumentError, expected, fn ->
+        Kogen.Harness.launch_reviewer("p", "m", "e", context)
+      end
+
+      assert_raise ArgumentError, fn ->
+        Kogen.Harness.launch_context(context)
+      end
+    end
+  end
+
+  test "a nil launch context raises rather than silently resolving to Codex" do
+    nil_context = Enum.random([nil])
+
+    assert_raise ArgumentError, fn ->
+      Kogen.Harness.launch_developer("p", "m", "e", [], nil_context)
+    end
+
+    assert_raise ArgumentError, fn ->
+      Kogen.Harness.launch_reviewer("p", "m", "e", nil_context)
+    end
+  end
+
+  test "a Codex selection and its launch context carry harness codex explicitly" do
+    dir =
+      Path.join(System.tmp_dir!(), "kogen-codex-explicit-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    original = System.get_env("KOGEN_HARNESS")
+
+    on_exit(fn ->
+      if original,
+        do: System.put_env("KOGEN_HARNESS", original),
+        else: System.delete_env("KOGEN_HARNESS")
+    end)
+
+    System.put_env("KOGEN_HARNESS", Path.join(File.cwd!(), "test/support/fake_codex"))
+
+    assert {:ok, selection} = Kogen.Harness.open(%{harness: "codex"}, dir)
+    assert selection.harness == "codex"
+    context = Kogen.Harness.launch_context(selection)
+    assert context.harness == "codex"
+  end
+
+  test "KOGEN_HARNESS only replaces the executable of a claude route, never selecting Codex" do
+    dir =
+      Path.join(System.tmp_dir!(), "kogen-claude-override-#{System.unique_integer([:positive])}")
+
+    claude_root = Path.join(dir, "claude")
+    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    for name <- ["KOGEN_HARNESS", "KOGEN_CLAUDE_ROOT"] do
+      original = System.get_env(name)
+
+      on_exit(fn ->
+        if original, do: System.put_env(name, original), else: System.delete_env(name)
+      end)
+    end
+
+    fake = Path.join(File.cwd!(), "test/support/fake_claude")
+    System.put_env("KOGEN_HARNESS", fake)
+    System.put_env("KOGEN_CLAUDE_ROOT", claude_root)
+
+    {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", "claude")
+    assert {:ok, selection} = Kogen.Harness.open(config, dir)
+    assert selection.harness == "claude"
+    context = Kogen.Harness.launch_context(selection)
+    assert context.harness == "claude"
+    assert context.executable == fake
+
+    # A Codex-only entry point refuses the Claude route instead of adopting it.
+    assert {:error, "Kogen Codex requires a codex route, got harness: \"claude\""} =
+             Kogen.Codex.open(config, dir)
+  end
+
+  test "selected-route-only validation and readiness: an unselected pi or unproven route never blocks the selected route",
+       ctx do
+    _ = ctx
+
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-selected-route-only-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+    path = Path.join(dir, ".kogen/config.yaml")
+
+    File.mkdir_p!(Path.dirname(path))
+
+    File.write!(path, """
+    default_route: codex
+    routes:
+      codex:
+        harness: codex
+        shaping:   {model: gpt-5.6-sol, effort: low}
+        developer: {model: gpt-5.6-sol, effort: low}
+        reviewer:  {model: gpt-5.6-terra, effort: medium}
+        helpers:
+          scout:  {model: gpt-5.6-luna, effort: low}
+          worker: {model: gpt-5.6-luna, effort: medium}
+          expert: {model: gpt-5.6-sol, effort: medium}
+      future:
+        harness: pi
+        shaping:   {model: pi-1, effort: low}
+        developer: {model: pi-1, effort: low}
+        reviewer:  {model: pi-1, effort: low}
+        helpers:
+          scout:  {model: pi-1, effort: low}
+          worker: {model: pi-1, effort: low}
+          expert: {model: pi-1, effort: low}
+      unproven:
+        harness: claude
+        shaping:   {model: claude-unproven-9, effort: low}
+        developer: {model: claude-unproven-9, effort: low}
+        reviewer:  {model: claude-unproven-9, effort: low}
+        helpers:
+          scout:  {model: claude-unproven-9, effort: low}
+          worker: {model: claude-unproven-9, effort: low}
+          expert: {model: claude-unproven-9, effort: low}
+    outer_resumptions: 2
+    verification_retries: 2
+    """)
+
+    # The default (selected) route resolves and readies successfully, without
+    # ever validating the broken unselected routes.
+    assert {:ok, config} = Kogen.Intent.read_config(path)
+    assert config.harness == "codex"
+
+    original = System.get_env("KOGEN_HARNESS")
+
+    on_exit(fn ->
+      if original,
+        do: System.put_env("KOGEN_HARNESS", original),
+        else: System.delete_env("KOGEN_HARNESS")
+    end)
+
+    System.put_env("KOGEN_HARNESS", Path.join(File.cwd!(), "test/support/fake_codex"))
+    assert {:ok, selection} = Kogen.Harness.open(config, dir)
+    assert selection.harness == "codex"
+
+    # Selecting the unsupported-harness route fails loudly with today's message.
+    assert {:error, "unsupported harness: pi; expected codex or claude"} =
+             Kogen.Intent.read_config(path, "future")
+
+    # Selecting the unproven-model route fails with the proven-model message,
+    # naming the role.
+    assert {:error, reason} = Kogen.Intent.read_config(path, "unproven")
+    assert reason =~ "unsupported Claude Code model for shaping: claude-unproven-9"
+  end
+
   defp run_contract!(harness) do
     {fake, _developer, _reviewer, _helper} = @profiles[harness]
     dest = fixture!(harness)
@@ -143,14 +331,17 @@ defmodule Kogen.HarnessContractTest do
     effort = if harness == "claude", do: "medium", else: "low"
 
     """
-    harness: #{harness}
-    shaping:   {model: #{developer}, effort: #{effort}}
-    developer: {model: #{developer}, effort: #{effort}}
-    reviewer:  {model: #{reviewer}, effort: medium}
-    helpers:
-      scout:  {model: #{helper}, effort: low}
-      worker: {model: #{helper}, effort: medium}
-      expert: {model: #{developer}, effort: high}
+    default_route: #{harness}
+    routes:
+      #{harness}:
+        harness: #{harness}
+        shaping:   {model: #{developer}, effort: #{effort}}
+        developer: {model: #{developer}, effort: #{effort}}
+        reviewer:  {model: #{reviewer}, effort: medium}
+        helpers:
+          scout:  {model: #{helper}, effort: low}
+          worker: {model: #{helper}, effort: medium}
+          expert: {model: #{developer}, effort: high}
     outer_resumptions: 2
     verification_retries: 2
     """
