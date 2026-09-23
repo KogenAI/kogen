@@ -1,0 +1,216 @@
+{
+  "format": "kogen-build-summary",
+  "schema_version": 1,
+  "build_id": "manual-claude-code-1",
+  "manual_build": "Run by Claude Opus 5.5 in Claude Code as the controller, outside the regular Kogen flow because ChatGPT tokens ran out, following Kogen's Build procedure.",
+  "intent": {
+    "id": "01a0cc76-aac2-7130-9beb-48933506606d",
+    "slug": "claude-code-harness",
+    "title": "Run Kogen on Claude Code through a pluggable harness"
+  },
+  "candidate_id": "80aeaced9a4769daeb58e36c96a01ce9b71a2b5b",
+  "developer_session_id": "5f99e885-b25e-4218-bb8a-355271aff72e",
+  "attempts": [
+    {
+      "attempt_token": "PSdZWV2lMbywvEo4NdktfTvhaxBdpReR",
+      "developer_turns": [
+        {
+          "turn": 1,
+          "subtype": "success",
+          "num_turns": 188,
+          "duration_ms": 2192009,
+          "total_cost_usd": 16.83239769999999,
+          "stop": {
+            "check": "failed (2 offline tests)"
+          }
+        },
+        {
+          "turn": 2,
+          "verification_retry": 1,
+          "subtype": "success",
+          "num_turns": 16,
+          "duration_ms": 261440,
+          "total_cost_usd": 18.722581699999985,
+          "stop": {
+            "check": "passed",
+            "live-general": "failed (live audit read Codex session storage)"
+          }
+        },
+        {
+          "turn": 3,
+          "verification_retry": 2,
+          "subtype": "success",
+          "num_turns": 16,
+          "duration_ms": 334293,
+          "total_cost_usd": 20.704700099999982,
+          "stop": {
+            "check": "passed",
+            "live-general": "passed",
+            "live-reviewer-rework": "passed",
+            "live-shape-to-build": "passed"
+          }
+        }
+      ],
+      "note": "total_cost_usd is Claude Code's cumulative session estimate; the runs used a Claude Max subscription login."
+    }
+  ],
+  "outer_resumptions_used": 0,
+  "review": {
+    "verdict": "accept",
+    "session_id": "f113f1d8-17f5-4eb6-b871-daaeed77ab40",
+    "subtype": "success",
+    "num_turns": 3,
+    "duration_ms": 35349,
+    "total_cost_usd": 1.5132571000000004
+  },
+  "scenarios": [
+    {
+      "id": "pluggable-harness",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "Kogen.Harness is the single interface. open/launch_context/close select the adapter by harness, and role launches dispatch to Kogen.Harness.Claude or Kogen.Harness.Codex. build.ex and kogen.shape.ex no longer call Kogen.Codex directly and contain no scattered harness conditionals. Kogen.Intent rejects any harness other than codex or claude with 'expected codex or claude'. ProviderOutcome is used only inside the Codex compatibility runner, never by Build or Shape. Kogen.Check, the Stop runner and .codex have no changes. The harness contract test runs one Build lifecycle against both fakes and rejects an unknown harness. make check passed at Stop 3."
+    },
+    {
+      "id": "codex-offline-preserved",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "The Codex runtime module lib/kogen/codex.ex is unchanged. The Codex turn code now lives in lib/kogen/harness/codex.ex, and contexts without a harness still route to Codex. Codex fixtures pin an explicit Codex config. No Codex tests were deleted or skipped; the Claude variants were added as separate tests. verification_targets.yaml is untouched. make check passed with the repository configured for claude."
+    },
+    {
+      "id": "pinned-claude-code-install",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "The installer pins 2.1.280 with per-platform sha512 integrity and never resolves latest. It stages privately and publishes atomically with renamex_np, and reuses an intact runtime. A corrupt or occupied target is refused without replacing a working runtime. It never uses PATH claude or writes ~/.local/share/claude. DISABLE_AUTOUPDATER=1 is set in environment/2. The upgrade workflow is documented. The offline installer suite passed in make check, and the real pinned runtime ran in the live targets."
+    },
+    {
+      "id": "claude-code-login-scopes",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "The shared scope is accounts/shared; project scopes are 0700 directories under accounts/projects, selected explicitly. Login opens the managed interactive claude with --dangerously-skip-permissions and forwards native arguments unchanged. A cancelled --project login does not fall back to shared, and --use-default is supported. The environment strips ANTHROPIC_*, CLAUDE_CODE_*, CLAUDECODE, an inherited CLAUDE_CONFIG_DIR and Bedrock/Vertex variables. Roles run with --setting-sources project and --strict-mcp-config. Only loggedIn and authMethod are read, and scopes are never moved."
+    },
+    {
+      "id": "readiness-before-work",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "Build and both Shape routes call Kogen.Harness.open, which for claude calls ClaudeCode.open: runtime lookup, then scope selection, then require_login. It stops with an exact fix before any launch context exists. Unproven models are rejected with the proven list. Status prints only the pin, installation, scope, loggedIn and authMethod. Tests assert no -p launch when not ready."
+    },
+    {
+      "id": "proven-claude-models",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "models.yaml lists only claude-opus-5-5 and claude-sonnet-5, each with low, medium, high and xhigh, and cites this Intent's evidence; Haiku is excluded. The config matches the required profiles. There is no --fallback-model. Executed models come from stream metadata, and a root response from another model returns root_model_mismatch."
+    },
+    {
+      "id": "claude-code-developer-turns",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "Developer turns run -p with stream-json and the prompt on stdin. Fresh turns use --session-id, and resumes use --resume with the exact id. Each turn gets the exact model and effort, bypass mode, KOGEN_ROLE=developer, and a settings file with the unchanged Stop and PreToolUse hooks. There is no --json-schema. The handoff is the final result message, with the typed errors kept. A session mismatch or nonzero exit fails closed. live-reviewer-rework passed."
+    },
+    {
+      "id": "claude-code-review",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "Each Reviewer run is a fresh session with a new UUID. It gets --json-schema set to the verdict schema, and Edit, Write and NotebookEdit are disallowed. The verdict goes through Verdict.validate. A missing structured_output or a hook stop becomes malformed_verdict. live-general passed."
+    },
+    {
+      "id": "claude-code-helpers",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "Role-scoped --agents carry the configured helper models and efforts. Only the Developer's worker can edit, and scouts are always read-only. Built-in agents are denied through Agent(<name>) rules. The execution policy renders the kogen-* agent names. live-general asserts a real scout ran on its configured model."
+    },
+    {
+      "id": "claude-code-shaping",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "The interactive Shaper runs claude through a Port on the caller's terminal, with the prompt passed after -- and KOGEN_ROLE=shaper; the exit status is returned. The shaping templates render the harness name. The trust helper pre-trusts only the fixture root in the selected scope and revokes it afterwards. live-shape-to-build passed."
+    },
+    {
+      "id": "documentation",
+      "developer_status": "ready",
+      "review_status": "satisfied",
+      "review_reason": "The README covers choosing a harness, the Claude Code install, login (subscription or Console), status, scopes, proven models, and paid targets for the configured harness only. It says Codex remains supported and keeps the Codex section."
+    }
+  ],
+  "risks": [
+    {
+      "id": "managed-claude-code-state",
+      "scenario_ids": [
+        "pinned-claude-code-install",
+        "claude-code-login-scopes",
+        "readiness-before-work",
+        "claude-code-developer-turns"
+      ],
+      "response": "Only mix kogen.claude.install creates runtimes, with atomic staging and no changes to accounts. Scopes are created only when missing (0700) and are never moved. Kogen reads only loggedIn and authMethod. Launches set DISABLE_AUTOUPDATER=1 and disable auto memory. Missing sessions fail closed. The live audits read transcripts only from the scope that ran the sessions, selected by the project rather than the cwd, and select files by session id or cwd before reading them in full. I never ran a real claude and never touched the real scopes."
+    },
+    {
+      "id": "subscription-limits",
+      "scenario_ids": [
+        "proven-claude-models",
+        "claude-code-developer-turns",
+        "claude-code-review",
+        "claude-code-shaping"
+      ],
+      "response": "Roles run Opus 5.5 at medium, and helpers use Sonnet 5 at low or medium, with the Opus expert only at high. No fallback model is used. Provider limits surface as typed provider_error or provider_exit failures, and a root response from an unexpected model fails with root_model_mismatch."
+    },
+    {
+      "id": "two-adapters-drift",
+      "scenario_ids": [
+        "pluggable-harness",
+        "codex-offline-preserved"
+      ],
+      "response": "Both adapters share one Build consumer. The same lifecycle, reviewer-mutation and two-resumption tests run offline against both fakes. The Codex fixtures pin their own config. The live audits select the harness from the audited project's config rather than the cwd. Switching back to Codex requires Codex's paid targets; the Codex-only live-native owners read the tracked config and are meaningful only when harness: codex is selected."
+    }
+  ],
+  "findings": [],
+  "full_record": {
+    "location": ".kogen/runtime/manual-build",
+    "committed": false,
+    "receipts": [
+      {
+        "path": ".kogen/runtime/manual-build/developer-turn-3.result.txt",
+        "sha256": "50af3693988bdd1314d4005971d9f9067968e73b5fd02d6a60d749c1fbab294c",
+        "bytes": 19686
+      },
+      {
+        "path": ".kogen/runtime/manual-build/stop-1-check.log",
+        "sha256": "85b382e3e6798830984a5e888b6132570e73a6a9317b989dd9e47b2226b4bac7",
+        "bytes": 18168
+      },
+      {
+        "path": ".kogen/runtime/manual-build/stop-1-suite.log",
+        "sha256": "70f45c9ef5fb491c30996d867034f9808186b57753d53b3d20c47c9224cd9a08",
+        "bytes": 29636
+      },
+      {
+        "path": ".kogen/runtime/manual-build/stop-2-check.log",
+        "sha256": "7784350e807d16db2ea8c8dc6c7c538819d9495a44f86716b3cfc4a24435cf22",
+        "bytes": 7645
+      },
+      {
+        "path": ".kogen/runtime/manual-build/stop-2-live-general.log",
+        "sha256": "6d6ee8a74ff1aea237e735687b19206b819837c00293951d693634f70ecf756b",
+        "bytes": 2560
+      },
+      {
+        "path": ".kogen/runtime/manual-build/stop-3-check.log",
+        "sha256": "ef56aaf7a918628e9a576db3406a01f4fabcb9ede3557a08ac659d679a65f357",
+        "bytes": 7637
+      },
+      {
+        "path": ".kogen/runtime/manual-build/stop-3-live-general.log",
+        "sha256": "3c639bdbae71148d5f8e69cb7eded13f69bca425e347e8638b6f10c44ca9e19e",
+        "bytes": 405
+      },
+      {
+        "path": ".kogen/runtime/manual-build/stop-3-live-reviewer-rework.log",
+        "sha256": "8d789dc0bd63baaf1f5d153890e026f9b6bb20a334b1d9355e7e8b9056fc7d12",
+        "bytes": 440
+      },
+      {
+        "path": ".kogen/runtime/manual-build/stop-3-live-shape-to-build.log",
+        "sha256": "6ac87646faeb07ca3356a645bdbe4c7d456be0bdc36d70a3425f3915b886eced",
+        "bytes": 441
+      }
+    ]
+  }
+}

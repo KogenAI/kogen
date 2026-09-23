@@ -9,8 +9,10 @@ to Kogen itself. The aim is to grow the rest of the product through that loop:
 shape the next feature, approve its Intent, and let Kogen carry out the Build.
 The core is a starting point, not the finished product.
 
-The core currently uses Codex CLI and runs inside this repository. Installing
-Kogen into arbitrary projects and using other model providers are future work.
+The core runs inside this repository through one pluggable harness interface
+with two adapters: Claude Code (`harness: claude`, this repository's current
+configuration) and Codex CLI (`harness: codex`). Installing Kogen into arbitrary
+projects and other harnesses are future work.
 The broader design remains a longer-term direction, open to change as Kogen develops.
 
 This repository is being opened quietly so the ongoing work and its history
@@ -18,18 +20,21 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
-Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages its own complete native Codex distribution; personal Codex and Node are not prerequisites. The pinned managed release is 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifact is selectable but has not been exercised on this host. Provider-backed work uses your selected Kogen login.
+Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of the configured harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.280 and Codex 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the configured harness, separate from any personal login.
 
-From a checkout:
+From a checkout configured for Claude Code (`harness: claude`):
 
 ```sh
 mix deps.get
-mix kogen.codex.install
-mix kogen.codex.login
-mix kogen.codex.status
+mix kogen.claude.install
+mix kogen.claude.login
+mix kogen.claude.status
 make check
 mix kogen.shape
 ```
+
+With `harness: codex`, use `mix kogen.codex.install`, `mix kogen.codex.login`
+and `mix kogen.codex.status` instead. See [Choosing a harness](#choosing-a-harness).
 
 Describe one feature. As the Shaper, discuss its behavior and tradeoffs with Kogen’s Shaping Controller, inspect the Draft it writes, and explicitly approve it in that conversation. Approval moves the Intent from `.kogen/intents/drafts/<slug>/` to `.kogen/intents/approved/<slug>/`.
 The controller may also reconcile narrow current approval bookkeeping inside the
@@ -159,13 +164,16 @@ provider launch and must return to Shaping.
 
 ## Configuration and local data
 
-Edit the tracked `.kogen/config.yaml` to select the available model and effort
-for each root role and required native helper profile. The defaults are
-Sol-low for Shaping and Development, Terra-medium for Review;
-Luna-low for read-only scouts; Luna-medium for bounded workers; and Sol-medium for a named consequential
-expert question. Kogen passes each root profile directly to Codex and renders
-the helper profiles into every role prompt; it does not silently inherit or
-substitute a missing or unavailable profile. All three helper profiles are
+Edit the tracked `.kogen/config.yaml` to select the harness and the available
+model and effort for each root role and required helper profile. This repository
+selects Claude Code with Opus 5.5 (`claude-opus-5-5`) at medium for Shaping,
+Development and Review; Sonnet 5 (`claude-sonnet-5`) at low for read-only scouts
+and at medium for bounded workers; and Opus 5.5 at high for a named consequential
+expert question. The Codex defaults were Sol-low for Shaping and Development,
+Terra-medium for Review, Luna-low scouts, Luna-medium workers and a Sol-medium
+expert. Kogen passes each root profile directly to the configured harness and
+renders the helper profiles into every role prompt; it does not silently inherit
+or substitute a missing or unavailable profile. All three helper profiles are
 required, though a role delegates only when bounded independent work justifies
 the startup and integration cost.
 
@@ -208,7 +216,7 @@ additional targets by affected behavior and preservation risk, not by edited fil
 | Target | Select when | Classification and prerequisites |
 | --- | --- | --- |
 | `check` | Offline sufficiency covers the behavior and failure controls; a later Intent may use check only. | Offline; installed dependencies and the tools below. Provider dispatch is denied. |
-| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The corresponding configured-default lifecycle or Review workflow can change. | Provider-backed; network, configured Codex authentication, `expect`, and `rsync`. |
+| `live-shape-to-build`, `live-reviewer-rework`, `live-general` | The corresponding configured-default lifecycle or Review workflow can change. | Provider-backed on the configured harness; network, its installed runtime and Kogen login, `expect`, and `rsync`. |
 | `live-shaping-quality` | Shaping prompts, continuation, Draft quality, evaluation cases, prerequisites, or its evidence manifest can change. | Provider-backed; network, configured Codex authentication, and maintained evaluation sources. |
 | `live-native` | The authenticated native boundary, managed runtime/login/discovery, compatibility runner, helper routing, profiles, or native receipts can change. | Provider-backed; installed pinned Codex runtime and configured authentication. |
 | `cold-offline` | Cold-cache behavior, the offline recipe, dependency copying, toolchain setup, containment, or cold cleanup can change. | Offline, though expensive; installed dependency sources, `rsync`, and the offline toolchain. Provider dispatch is denied. |
@@ -226,9 +234,95 @@ Build validates every selected target against the catalog and Makefile before
 Developer launch. Stop preserves Candidate/session/attempt binding, verification
 retries, required artifacts, receipts, and the fresh-Review boundary.
 
-Kogen loads the tracked project hooks and launches Codex CLI with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously.
+Kogen loads the tracked project hooks and launches the configured harness with approval, sandbox, and hook-trust prompts bypassed so the Build can run autonomously: Codex CLI with its bypass flags, Claude Code with `--dangerously-skip-permissions` (no permission prompts and no sandbox) for every role, including interactive Shaping and login.
 
-Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` remains an offline test override; ordinary work selects Kogen's pinned managed runtime, never PATH Codex.
+Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignored by Git. Complete Intents and concise verification evidence accompany successful commits. `KOGEN_HARNESS` remains an offline test override; ordinary work selects Kogen's pinned managed runtime, never a `claude` or `codex` from PATH.
+
+## Choosing a harness
+
+`harness` in `.kogen/config.yaml` is `claude` or `codex`; any other name is
+rejected with that list. Build, Shape and provider-outcome handling call one
+harness interface; the configured adapter supplies install and login readiness,
+launch context, fresh and exactly resumed Developer turns, Reviewer verdicts and
+the interactive Shaper. The Stop hook, Check and verification records are shared
+and harness-independent. Both adapters' offline suites run in every `make check`.
+
+Only the configured harness's provider-backed targets run. Switching harness is a
+configuration change (harness plus proven models and efforts) followed by that
+harness's install, login and paid verification (`live-general`,
+`live-reviewer-rework`, `live-shape-to-build`) before relying on it; the other
+adapter's earlier paid evidence does not carry over. Codex remains a supported
+adapter; its documentation below still applies when `harness: codex` is selected.
+
+## Managed Claude Code runtime and login
+
+`mix kogen.claude.install` installs the exact Claude Code release pinned by this
+checkout (2.1.280) from the official npm registry into Kogen's managed root,
+checking the pinned per-platform sha512 integrity, staging privately and
+publishing atomically. It never resolves latest, never uses a `claude` on PATH,
+and never writes to personal Claude Code locations such as `~/.local/share/claude`.
+Repeating it reuses an intact installation; a failed download, integrity check or
+extraction preserves any working runtime and every login. Every Kogen launch sets
+`DISABLE_AUTOUPDATER=1`, so the managed runtime never updates itself. Pin changes
+follow the [Claude Code runtime upgrade workflow](workflows/claude-code-runtime-upgrade.md).
+
+Kogen's Claude Code login is separate from personal Claude Code, so Kogen can use a
+different account or subscription. `mix kogen.claude.login` opens the managed
+interactive `claude` in Kogen's shared scope; complete Claude Code's own first-run
+flow there, choosing either a Claude subscription or Anthropic Console (API
+billing) login, then exit. `--project` does the same in this project's private
+scope, selected first so cancellation never falls back to the shared login;
+`--use-default` switches the project back to the shared scope and keeps retained
+project logins. Arguments after `--` are forwarded unchanged to `claude`:
+
+```sh
+mix kogen.claude.login
+mix kogen.claude.login --project
+mix kogen.claude.login --use-default
+mix kogen.claude.login -- --help
+```
+
+`mix kogen.claude.status` reports the pin, installation, effective scope and the
+`loggedIn` and `authMethod` metadata of `claude auth status`, never credential
+values or remaining quota. Fresh and continued Shaping and Build stop before any
+model launch and name the fix when the pinned runtime, the selected login, or a
+proven model is missing.
+
+Runtimes, scopes and selectors live under `~/Library/Application Support/Kogen/claude`.
+Each scope (`accounts/shared`, `accounts/projects/<project-id>`) is a private
+`CLAUDE_CONFIG_DIR` holding Claude Code's own config and sessions. Claude Code keeps
+each scope's login in the macOS Keychain keyed by the scope path, so never move or
+rename a scope directory: that loses its login. Kogen never reads, copies or prints
+credentials and never touches personal `~/.claude`. Role launches load only project
+settings plus Kogen's hook settings (`--setting-sources project`), no MCP servers or
+cached account connectors (`--strict-mcp-config`), and remove inherited provider
+variables such as `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, base URLs and
+Bedrock/Vertex switches.
+
+Interactive Claude Code asks once per new repository whether to trust it (the
+default answer exits), even in bypass mode. Answer it for your own repositories;
+Kogen never answers it.
+
+### Proven Claude Code models
+
+Configured Claude Code models must appear in the model picker
+[`priv/kogen/claude_code/models.yaml`](priv/kogen/claude_code/models.yaml), which
+lists only models with retained evidence: `claude-opus-5-5` and `claude-sonnet-5`,
+each at efforts low, medium, high and xhigh. Haiku 4.5 is excluded because it does
+not support the per-role effort Kogen configures. Kogen launches the exact
+configured model and effort, never a fallback model, and does not intercept
+provider requests. It records the model each response came from, including
+helper responses linked to their parent, and fails a turn whose root response came
+from another model. Opus 5.5 for every root role consumes a subscription quickly;
+limits surface as provider errors, never as model substitution.
+
+Each role gets its own Claude Code agents, `kogen-scout`, `kogen-worker` and
+`kogen-expert`, carrying the global helper profiles but only that role's authority:
+Developer scouts are read-only, workers may edit their assigned paths, and experts
+are read-only with Bash; every Reviewer and Shaper helper is read-only. Built-in
+Claude Code agents are denied to every role. The Developer's final message is its
+handoff, validated like Codex's; the Reviewer returns its verdict through
+`--json-schema`.
 
 ## Managed Codex runtime and login
 
@@ -285,7 +379,8 @@ instead of retaining writable aliases to installed dependencies.
 See [the check workflow](scripts/check/README.md) for maintenance and timing conditions.
 
 The provider-backed lifecycle targets are narrow owner routes, not a complete suite. They
-require network access, Codex authentication, `expect`, and `rsync`; create disposable
+run on the configured harness only and require network access, its installed runtime
+and Kogen login, `expect`, and `rsync`; create disposable
 fixtures; and retains evidence under `.kogen/runtime/`. It covers real failed-check
 correction, exact Developer resume, reviewer-directed rework, and fresh independent
 Review. Separately selected `make cold-offline` owns the empty-cache offline run. Set

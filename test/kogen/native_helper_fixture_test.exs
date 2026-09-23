@@ -6,7 +6,7 @@ defmodule Kogen.NativeHelperFixtureTest do
   alias Kogen.NativeHelperFixture
 
   test "renders the bounded packets through the production role renderer" do
-    {:ok, config} = Kogen.Intent.read_config()
+    config = codex_config!()
     prompt = NativeHelperFixture.prompt(config, "developer")
 
     assert prompt =~ "Configured root (developer): `gpt-5.6-sol` at `low`"
@@ -22,7 +22,7 @@ defmodule Kogen.NativeHelperFixtureTest do
   end
 
   test "accepts only complete runner-owned native metadata and task facts" do
-    {:ok, config} = Kogen.Intent.read_config()
+    config = codex_config!()
     protocol = NativeHelperFixture.protocol(config, "developer")
     receipt = valid_receipt(protocol)
 
@@ -53,7 +53,7 @@ defmodule Kogen.NativeHelperFixtureTest do
   end
 
   test "collects only the Harness-known parent and its exact native children" do
-    {:ok, config} = Kogen.Intent.read_config()
+    config = codex_config!()
     protocol = NativeHelperFixture.protocol(config, "developer")
     root = tmp_dir!()
     fixture = NativeHelperFixture.write_fixture!(root)
@@ -98,7 +98,7 @@ defmodule Kogen.NativeHelperFixtureTest do
   end
 
   test "native collector rejects incomplete or mismatched records and fixture additions" do
-    {:ok, config} = Kogen.Intent.read_config()
+    config = codex_config!()
     protocol = NativeHelperFixture.protocol(config, "developer")
     root = tmp_dir!()
     fixture = NativeHelperFixture.write_fixture!(root)
@@ -242,6 +242,29 @@ defmodule Kogen.NativeHelperFixtureTest do
         "payload" => %{"type" => "task_complete", "last_agent_message" => answer}
       }
     ]
+  end
+
+  # This fixture belongs to the Codex native-helper route (the Codex-only
+  # live-native target), so it renders Codex profiles through the production
+  # config reader regardless of which harness this checkout currently selects.
+  defp codex_config! do
+    path = Path.join(tmp_dir!(), "codex-config.yaml")
+
+    File.write!(path, """
+    harness: codex
+    shaping:   {model: gpt-5.6-sol, effort: low}
+    developer: {model: gpt-5.6-sol, effort: low}
+    reviewer:  {model: gpt-5.6-terra, effort: medium}
+    helpers:
+      scout:  {model: gpt-5.6-luna, effort: low}
+      worker: {model: gpt-5.6-luna, effort: medium}
+      expert: {model: gpt-5.6-sol, effort: medium}
+    outer_resumptions: 2
+    verification_retries: 2
+    """)
+
+    {:ok, config} = Kogen.Intent.read_config(path)
+    config
   end
 
   defp write_session!(path, rows) do

@@ -9,7 +9,8 @@ defmodule Kogen.CoreIntegrityTest do
       %{scenario: :late_dangling_complete},
       %{scenario: :malformed_reviewer_verdict},
       %{scenario: :reviewer_exits_nonzero},
-      %{scenario: :empty_rework_findings}
+      %{scenario: :empty_rework_findings},
+      %{scenario: :harness_documentation}
     ]
 
   alias Kogen.{Build, Check}
@@ -58,6 +59,36 @@ defmodule Kogen.CoreIntegrityTest do
 
   test "preserves core integrity for each scenario", %{scenario: scenario} do
     run_scenario(scenario)
+  end
+
+  # The user guide documents both adapters, the separate Kogen Claude Code
+  # login, the proven models, and that only the configured harness's paid
+  # targets run; it must not claim Claude Code replaced Codex.
+  defp run_scenario(:harness_documentation) do
+    root = Path.expand("../..", __DIR__)
+    guide = root |> Path.join("README.md") |> File.read!() |> String.replace(~r/\s+/, " ")
+
+    for claim <- [
+          "## Choosing a harness",
+          "`harness: claude`",
+          "`harness: codex`",
+          "mix kogen.claude.install",
+          "mix kogen.claude.login --project",
+          "mix kogen.claude.status",
+          "Anthropic Console (API",
+          "separate from personal Claude Code",
+          "`claude-opus-5-5` and `claude-sonnet-5`",
+          "Only the configured harness's provider-backed targets run",
+          "that harness's install, login and paid verification",
+          "## Managed Codex runtime and login",
+          "Codex remains a supported"
+        ] do
+      assert guide =~ claim, "README must document: #{claim}"
+    end
+
+    refute guide =~ ~r/Claude Code (replaced|replaces) Codex/i
+    refute guide =~ ~r/Claude subscription (through|via) Codex/i
+    assert File.regular?(Path.join(root, "workflows/claude-code-runtime-upgrade.md"))
   end
 
   defp run_scenario(:archives_hook_history) do

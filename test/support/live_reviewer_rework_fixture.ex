@@ -100,11 +100,16 @@ defmodule Kogen.LiveReviewerReworkFixture do
     audit =
       LiveReworkAudit.audit!(fixture, raw_stream_dir, slug: @slug, intent_id: @intent_id)
 
-    RootProfileAudit.audit!(Path.join(log_dir, "build-root-profile-audit"), %{
-      audit.developer_session_id => Map.put(config.developer, :role, "developer"),
-      audit.rework_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer"),
-      audit.accepting_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
-    })
+    # The Build ran in the fixture with the fixture's config and login scope.
+    RootProfileAudit.audit!(
+      Path.join(log_dir, "build-root-profile-audit"),
+      %{
+        audit.developer_session_id => Map.put(config.developer, :role, "developer"),
+        audit.rework_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer"),
+        audit.accepting_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
+      },
+      RootProfileAudit.sessions_root(fixture)
+    )
 
     File.write!(
       Path.join(log_dir, "native-receipt-summary.json"),

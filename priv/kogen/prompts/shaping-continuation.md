@@ -2,7 +2,7 @@
 
 This is a fresh conversation using current shared role instructions and
 configuration. Continue the existing draft; do not mint another identity,
-choose another slug, restore an old conversation, or use `codex resume`.
+choose another slug, restore an old conversation, or use a harness resume command.
 
 - Intent id: `{{id}}`
 - Existing slug: `{{slug}}`
@@ -27,7 +27,7 @@ autonomously. Ask the human only about consequential product, UX, policy, scope
 or authority conflicts. A partial answer settles only its explicit or necessarily
 entailed choice; preserve adjacent unresolved behavior. Persist accepted decisions with provenance and
 unresolved questions in maintained draft files so another fresh conversation
-can continue without transcript access. Do not copy private raw Codex logs.
+can continue without transcript access. Do not copy private raw harness logs.
 
 Keep original `shaping` metadata unchanged. When saving continued shaping,
 append exactly one entry for this visit to `shaping_continuations` in intent.yaml

@@ -1,0 +1,9 @@
+- id: isolate-codex-sessions
+  path: .kogen/intents/complete/isolate-codex-sessions
+  note: Managed runtime and scoped login behavior the Claude Code adapter replicates.
+- id: claude-code-headless
+  url: https://code.claude.com/docs/en/headless
+  note: Print mode, stream-json, sessions and structured output.
+- id: claude-code-hooks
+  url: https://code.claude.com/docs/en/hooks
+  note: Stop and PreToolUse hook protocol shared with Kogen's scripts.

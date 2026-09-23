@@ -2,6 +2,7 @@ Code.require_file("../support/live_rework_audit.ex", __DIR__)
 Code.require_file("../support/live_native_receipt_audit.ex", __DIR__)
 Code.require_file("../support/dependency_fixture.ex", __DIR__)
 Code.require_file("../support/root_profile_audit.ex", __DIR__)
+Code.require_file("../support/claude_trust.ex", __DIR__)
 
 defmodule Kogen.LiveShapeToBuildTest do
   @moduledoc """
@@ -27,9 +28,13 @@ defmodule Kogen.LiveShapeToBuildTest do
   Runs in an isolated, disposable fixture: a fresh clone with its own git
   history, cleaned up at the end -- placed under this checkout's own
   `.kogen/runtime/` so it inherits this directory's already-established
-  Codex trust. The Shape driver still handles either trust state in
-  code (`test/support/shape_to_build_probe.exp`), it just isn't required
-  to prove the one-time trust dialog itself here. Raw provider streams
+  Codex trust. Claude Code keys trust on the fixture's own repository root,
+  so under `harness: claude` the test pre-trusts only that fixture through
+  the documented `hasTrustDialogAccepted` setting in the selected Kogen scope
+  and removes the entry afterwards; Kogen itself never answers the dialog.
+  The Shape driver still handles either Codex trust state in code
+  (`test/support/shape_to_build_probe.exp`), it just isn't required to prove
+  the one-time trust dialog itself here. Raw provider streams
   and every intermediate receipt are written directly under this track's
   owned runtime directory as the run proceeds, not copied in afterward,
   so they survive independent of fixture cleanup. A second, clearly labeled
@@ -48,7 +53,10 @@ defmodule Kogen.LiveShapeToBuildTest do
   @slug "shape-to-build-probe"
   @continuation_marker "continuation-evidence-k4q9z"
   @review_rework_slug "live-reviewer-rework-probe"
-  @selected_shaping_profile %{model: "gpt-5.6-sol", effort: "low"}
+  @selected_shaping_profiles %{
+    "codex" => %{model: "gpt-5.6-sol", effort: "low"},
+    "claude" => %{model: "claude-opus-5-5", effort: "medium"}
+  }
 
   @check_rule """
   check:
@@ -96,8 +104,9 @@ defmodule Kogen.LiveShapeToBuildTest do
     test "real Shape continues a saved draft in a fresh session, then approval and Build complete the same Intent" do
       project_root = File.cwd!()
       {:ok, config} = Kogen.Intent.read_config()
-      assert config.shaping.model == @selected_shaping_profile.model
-      assert config.shaping.effort == @selected_shaping_profile.effort
+      selected_shaping_profile = Map.fetch!(@selected_shaping_profiles, config.harness)
+      assert config.shaping.model == selected_shaping_profile.model
+      assert config.shaping.effort == selected_shaping_profile.effort
       log_dir = owned_log_dir(project_root)
 
       runtime_root = Path.join(project_root, ".kogen/runtime/live-shape2build")
@@ -115,6 +124,11 @@ defmodule Kogen.LiveShapeToBuildTest do
       File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
       setup_fixture(project_root, fixture)
       precompile!(fixture, log_dir)
+
+      if config.harness == "claude" do
+        trust = Kogen.LiveClaudeTrust.grant!(fixture)
+        on_exit(fn -> Kogen.LiveClaudeTrust.revoke!(trust) end)
+      end
 
       pty_log =
         Path.join(log_dir, "shape-pty-transcript-#{System.system_time(:second)}.log")
@@ -186,7 +200,7 @@ defmodule Kogen.LiveShapeToBuildTest do
              "one continuation visit must be saved before the new conversation approves the draft"
 
       assert is_map(continuation)
-      assert continuation["harness"]
+      assert continuation["harness"] == config.harness
       assert continuation["model"] == config.shaping.model
       assert continuation["effort"] == config.shaping.effort
       assert continuation["started"]
@@ -208,10 +222,12 @@ defmodule Kogen.LiveShapeToBuildTest do
                "approval changed agreed requirements in #{file}"
       end
 
+      # Shape and Build ran in the fixture with its config and login scope.
       Kogen.RootProfileAudit.audit_shape!(
         Path.join(log_dir, "shape-root-profile-audit"),
         fixture,
-        %{model: config.shaping.model, effort: config.shaping.effort}
+        %{model: config.shaping.model, effort: config.shaping.effort},
+        Kogen.RootProfileAudit.sessions_root(fixture)
       )
 
       transcript = File.read!(pty_log)
@@ -330,7 +346,8 @@ defmodule Kogen.LiveShapeToBuildTest do
         %{
           developer_session_id => Map.put(config.developer, :role, "developer"),
           reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
-        }
+        },
+        Kogen.RootProfileAudit.sessions_root(fixture)
       )
 
       native_summary =
@@ -478,7 +495,8 @@ defmodule Kogen.LiveShapeToBuildTest do
         audit.developer_session_id => Map.put(config.developer, :role, "developer"),
         audit.rework_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer"),
         audit.accepting_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
-      }
+      },
+      Kogen.RootProfileAudit.sessions_root(fixture)
     )
 
     File.write!(

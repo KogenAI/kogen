@@ -28,7 +28,48 @@ defmodule Kogen.WholeSuiteRemediationTest do
     assert "blanket keep is forbidden" in errors
   end
 
+  # The ledger's repairs belong to the Candidate of the Intent that made them.
+  # Once that Intent is committed, its Commit (bound by the Kogen-Intent-ID
+  # trailer) is that Candidate, so later Builds are not judged by their own
+  # unrelated working-tree changes. Before it is committed, the repair Candidate
+  # is the current working tree. Without Git, fall back to the claimed paths.
   defp changed_paths(root, catalog) do
+    case repair_commit(root, catalog["intent_id"]) do
+      {:ok, commit} -> committed_paths(root, commit)
+      :none -> working_tree_paths(root, catalog)
+      :unavailable -> claimed_paths(catalog)
+    end
+  end
+
+  defp repair_commit(root, intent_id) do
+    case System.cmd(
+           "git",
+           [
+             "log",
+             "-1",
+             "--format=%H",
+             "--fixed-strings",
+             "--grep=Kogen-Intent-ID: #{intent_id}"
+           ],
+           cd: root,
+           stderr_to_stdout: true
+         ) do
+      {"", 0} -> :none
+      {commit, 0} -> {:ok, String.trim(commit)}
+      {_output, _status} -> :unavailable
+    end
+  end
+
+  defp committed_paths(root, commit) do
+    {output, 0} =
+      System.cmd("git", ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit],
+        cd: root
+      )
+
+    String.split(output, "\0", trim: true)
+  end
+
+  defp working_tree_paths(root, catalog) do
     case System.cmd("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
            cd: root,
            stderr_to_stdout: true
@@ -41,10 +82,14 @@ defmodule Kogen.WholeSuiteRemediationTest do
         end)
 
       {_output, _status} ->
-        catalog["declarations"]
-        |> Enum.flat_map(&[&1["implementation"], &1["preservation_control"]])
-        |> Enum.reject(&is_nil/1)
-        |> Enum.uniq()
+        claimed_paths(catalog)
     end
+  end
+
+  defp claimed_paths(catalog) do
+    catalog["declarations"]
+    |> Enum.flat_map(&[&1["implementation"], &1["preservation_control"]])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
   end
 end

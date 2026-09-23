@@ -41,6 +41,19 @@ defmodule Kogen.ReviewerMutationTest do
   verification_retries: 2
   """
 
+  @claude_config_yaml """
+  harness: claude
+  shaping:   {model: claude-opus-5-5, effort: medium}
+  developer: {model: claude-opus-5-5, effort: medium}
+  reviewer:  {model: claude-opus-5-5, effort: medium}
+  helpers:
+    scout:  {model: claude-sonnet-5, effort: low}
+    worker: {model: claude-sonnet-5, effort: medium}
+    expert: {model: claude-opus-5-5, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
   @makefile """
   .PHONY: check
   check:
@@ -48,6 +61,14 @@ defmodule Kogen.ReviewerMutationTest do
   """
 
   test "aborts instead of committing when the Reviewer mutates the Candidate" do
+    aborts_on_reviewer_mutation!("codex")
+  end
+
+  test "aborts instead of committing when the Claude Code Reviewer mutates the Candidate" do
+    aborts_on_reviewer_mutation!("claude")
+  end
+
+  defp aborts_on_reviewer_mutation!(harness) do
     project_root = File.cwd!()
     dest = Path.join(System.tmp_dir!(), "kogen-revmut-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
@@ -93,7 +114,7 @@ defmodule Kogen.ReviewerMutationTest do
 
     config_path = Path.join(dest, ".kogen/config.yaml")
     File.mkdir_p!(Path.dirname(config_path))
-    File.write!(config_path, @config_yaml)
+    File.write!(config_path, if(harness == "claude", do: @claude_config_yaml, else: @config_yaml))
 
     intent_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
     File.mkdir_p!(intent_dir)
@@ -114,9 +135,23 @@ defmodule Kogen.ReviewerMutationTest do
 
     head_before = git!(dest, ["rev-parse", "HEAD"])
 
-    fake_harness = Path.join(project_root, "test/support/fake_codex_reviewer_mutates")
+    fake_harness =
+      if harness == "claude",
+        do: Path.join(project_root, "test/support/fake_claude"),
+        else: Path.join(project_root, "test/support/fake_codex_reviewer_mutates")
+
     prior_harness = System.get_env("KOGEN_HARNESS")
     System.put_env("KOGEN_HARNESS", fake_harness)
+
+    if harness == "claude" do
+      claude_root = Path.join(dest <> "-claude", "claude")
+      File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+      on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+      System.put_env("KOGEN_CLAUDE_ROOT", claude_root)
+      System.put_env("FAKE_CLAUDE_REVIEWER_MUTATES", "1")
+      System.put_env("FAKE_CLAUDE_REVIEW", "accept")
+      System.put_env("FAKE_CLAUDE_STOP_BLOCK", "0")
+    end
 
     on_exit(fn ->
       if prior_harness,

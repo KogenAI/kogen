@@ -83,14 +83,15 @@ defmodule Kogen.IntentTest do
       assert is_integer(verification_retries)
       assert verification_retries == 2
 
-      assert config.shaping == %{model: "gpt-5.6-sol", effort: "low"}
-      assert config.developer == %{model: "gpt-5.6-sol", effort: "low"}
-      assert config.reviewer == %{model: "gpt-5.6-terra", effort: "medium"}
+      assert config.harness == "claude"
+      assert config.shaping == %{model: "claude-opus-5-5", effort: "medium"}
+      assert config.developer == %{model: "claude-opus-5-5", effort: "medium"}
+      assert config.reviewer == %{model: "claude-opus-5-5", effort: "medium"}
 
       assert config.helpers == %{
-               scout: %{model: "gpt-5.6-luna", effort: "low"},
-               worker: %{model: "gpt-5.6-luna", effort: "medium"},
-               expert: %{model: "gpt-5.6-sol", effort: "medium"}
+               scout: %{model: "claude-sonnet-5", effort: "low"},
+               worker: %{model: "claude-sonnet-5", effort: "medium"},
+               expert: %{model: "claude-opus-5-5", effort: "high"}
              }
     end
 
@@ -466,6 +467,81 @@ defmodule Kogen.IntentTest do
     defp extract_timestamp(uuid) do
       [group1, group2 | _rest] = String.split(uuid, "-")
       String.to_integer(group1 <> group2, 16)
+    end
+  end
+
+  describe "harness selection and proven Claude Code models" do
+    @claude_config """
+    harness: claude
+    shaping:   {model: claude-opus-5-5, effort: medium}
+    developer: {model: claude-opus-5-5, effort: medium}
+    reviewer:  {model: claude-opus-5-5, effort: medium}
+    helpers:
+      scout:  {model: claude-sonnet-5, effort: low}
+      worker: {model: claude-sonnet-5, effort: medium}
+      expert: {model: claude-opus-5-5, effort: high}
+    outer_resumptions: 2
+    verification_retries: 2
+    """
+
+    test "codex and claude are both supported harness names" do
+      dir = tmp_dir!()
+
+      assert {:ok, %{harness: "codex"}} =
+               Intent.read_config(write_yaml!(dir, "c.yaml", @valid_config))
+
+      assert {:ok, %{harness: "claude", developer: %{model: "claude-opus-5-5"}}} =
+               Intent.read_config(write_yaml!(dir, "cc.yaml", @claude_config))
+    end
+
+    test "any other harness is rejected with the supported list" do
+      dir = tmp_dir!()
+
+      path =
+        write_yaml!(
+          dir,
+          "c.yaml",
+          String.replace(@valid_config, "harness: codex", "harness: gemini")
+        )
+
+      assert {:error, "unsupported harness: gemini; expected codex or claude"} =
+               Intent.read_config(path)
+    end
+
+    test "a Claude Code role or helper model outside the proven list is refused with the list" do
+      dir = tmp_dir!()
+
+      for {from, to, label} <- [
+            {"developer: {model: claude-opus-5-5", "developer: {model: claude-haiku-4-5-20251001",
+             "developer"},
+            {"scout:  {model: claude-sonnet-5", "scout:  {model: gpt-5.6-luna", "helpers.scout"}
+          ] do
+        path = write_yaml!(dir, "#{label}.yaml", String.replace(@claude_config, from, to))
+        assert {:error, reason} = Intent.read_config(path)
+        assert reason =~ "unsupported Claude Code model for #{label}"
+        assert reason =~ "proven models: claude-opus-5-5, claude-sonnet-5"
+      end
+    end
+
+    test "a Claude Code effort outside the proven efforts of its model is refused" do
+      dir = tmp_dir!()
+
+      config =
+        String.replace(
+          @claude_config,
+          "reviewer:  {model: claude-opus-5-5, effort: medium}",
+          "reviewer:  {model: claude-opus-5-5, effort: max}"
+        )
+
+      assert {:error, reason} = Intent.read_config(write_yaml!(dir, "effort.yaml", config))
+      assert reason =~ "unsupported Claude Code effort for reviewer: claude-opus-5-5 at max"
+    end
+
+    test "Codex model routing is unchanged by the Claude Code picker" do
+      dir = tmp_dir!()
+
+      assert {:ok, %{developer: %{model: "sonnet"}}} =
+               Intent.read_config(write_yaml!(dir, "c.yaml", @valid_config))
     end
   end
 end

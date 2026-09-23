@@ -152,9 +152,16 @@ provider-backed lifecycle owners, `live-shaping-quality`, `live-native`, and
 `cold-offline` are separate selections, not components of an aggregate alias.
 
 The lifecycle and first two specialized targets are provider-backed. `check` and
-`cold-offline` are provider-denied. The lifecycle targets need network, configured
-Codex authentication, `expect`, and `rsync`; `live-shaping-quality` needs the
+`cold-offline` are provider-denied. The lifecycle targets run on the configured harness
+and need network, its installed runtime and Kogen login, `expect`, and `rsync`; `live-shaping-quality` needs the
 provider route and maintained evaluation sources; `live-native` needs the pinned
 runtime and configured authentication; and `cold-offline` needs installed dependency
 sources, `rsync`, and the offline toolchain. Every Build begins with `check`; Stop
 then runs distinct selected targets in dependency-valid catalog cost order.
+
+`priv/kogen/test-reliability.yaml` binds each cataloged test declaration to its
+source bytes. After a reviewed change edits a cataloged test file, run
+`python3 scripts/check/refresh_test_reliability_sources.py` to refresh only those
+`source_sha256` bindings (declaration identities, dispositions and controls are
+unchanged); `--check` reports stale bindings and missing consumer witnesses
+without writing.

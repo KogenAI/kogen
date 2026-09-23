@@ -61,6 +61,56 @@ defmodule Kogen.LiveNativeReceiptAuditTest do
     end
   end
 
+  test "Claude Code stream-json captures bind one init session and one successful result" do
+    dir = fixture!()
+    on_exit(fn -> File.rm_rf!(dir) end)
+    write_claude!(dir, 1, "developer", [claude_result()])
+    write_claude!(dir, 2, "developer", [claude_result()])
+    write_claude!(dir, 3, "reviewer", [claude_result()])
+
+    assert %{provider_invocations: 3, required_invocations: 3} =
+             Kogen.LiveNativeReceiptAudit.audit!(dir, %{"developer" => 2, "reviewer" => 1})
+
+    for {tail, message} <- [
+          {[], ~r/one result event/},
+          {[Map.delete(claude_result(), "usage")], ~r/needs a usage map/},
+          {[
+             Map.merge(claude_result(), %{
+               "subtype" => "error_during_execution",
+               "is_error" => true
+             })
+           ], ~r/failed provider event/},
+          {[Map.put(claude_result(), "session_id", "other")], ~r/exactly one native session/}
+        ] do
+      bad = fixture!()
+      write_claude!(bad, 1, "required", tail)
+
+      assert_raise ArgumentError, message, fn ->
+        Kogen.LiveNativeReceiptAudit.audit!(bad, %{"required" => 1})
+      end
+
+      File.rm_rf!(bad)
+    end
+  end
+
+  defp claude_result,
+    do: %{
+      "type" => "result",
+      "subtype" => "success",
+      "is_error" => false,
+      "usage" => %{"input_tokens" => 1}
+    }
+
+  defp write_claude!(dir, sequence, session, tail) do
+    events = [
+      %{"type" => "system", "subtype" => "init", "session_id" => session}
+      | Enum.map(tail, &Map.put_new(&1, "session_id", session))
+    ]
+
+    body = Enum.map_join(events, "\n", &Jason.encode!/1) <> "\n"
+    File.write!(Path.join(dir, "raw-stream-100-#{sequence}.jsonl"), body)
+  end
+
   defp completed, do: %{"type" => "turn.completed", "usage" => %{"input_tokens" => 1}}
 
   defp write_stream!(dir, sequence, session, tail) do

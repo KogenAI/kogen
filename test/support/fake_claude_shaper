@@ -1,0 +1,20 @@
+#!/bin/sh
+# Interactive Claude Code replacement for the public Shape fixture. It answers
+# readiness `auth status`, then records argv, the first message (the argument
+# after `--`) and the environment Kogen controls, without reading stdin.
+set -eu
+if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+  printf '{"loggedIn":true,"authMethod":"claude.ai"}\n'; exit 0
+fi
+mkdir -p .kogen/runtime
+printf '%s\n' "$@" > .kogen/runtime/shaping-args
+prompt=; seen=0
+for arg in "$@"; do
+  if [ "$seen" = 1 ]; then prompt="$arg"; fi
+  [ "$arg" = -- ] && seen=1
+done
+printf '%s' "$prompt" > .kogen/runtime/shaping-prompt
+printf 'CLAUDE_CONFIG_DIR=%s\nKOGEN_ROLE=%s\nDISABLE_AUTOUPDATER=%s\nANTHROPIC_API_KEY=%s\n' \
+  "${CLAUDE_CONFIG_DIR:-}" "${KOGEN_ROLE:-}" "${DISABLE_AUTOUPDATER:-}" "${ANTHROPIC_API_KEY:-unset}" \
+  > .kogen/runtime/shaping-env
+exit "${FAKE_CLAUDE_SHAPER_EXIT:-0}"

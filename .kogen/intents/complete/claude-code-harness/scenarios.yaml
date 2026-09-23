@@ -1,0 +1,145 @@
+# Run Kogen on Claude Code (harness name: claude) through a pluggable harness; Codex stays as a second adapter.
+# Every Kogen claude invocation uses --dangerously-skip-permissions; no permission prompts and no sandbox.
+
+- id: pluggable-harness
+  given: .kogen/config.yaml names harness codex or claude, with per-role model and effort.
+  when: Shaping, Build Developer turns, exact resumes, Reviews and helper routing run.
+  then: Build, the Shape task and provider-outcome handling call one harness interface; the configured adapter supplies install/readiness, launch context, fresh and resumed structured Developer turns, Reviewer verdicts and the interactive Shaper. Codex behavior is unchanged behind the interface; claude (Claude Code) is a second adapter. Any other harness name is rejected with the supported list. Kogen.Check and the Stop runner stay harness-independent.
+  wrong_result: Build or Shape keep Codex-specific calls, Claude Code is bolted in with conditionals throughout Build, or Codex behavior changes.
+  verified_by: [check]
+  evidence: Harness contract tests run the same Build lifecycle suites against the fake Codex and the fake Claude Code; config tests cover both names and a rejected name.
+  proof:
+    offline: [test/kogen/harness_contract_test.exs, test/kogen/intent_test.exs, test/kogen/lifecycle_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: both adapters driven through the same Build consumer with fake executables"
+    affected_paths: [lib/kogen/harness.ex, lib/kogen/harness, lib/kogen/build.ex, lib/kogen/provider_outcome.ex, lib/kogen/intent.ex, lib/mix/tasks/kogen.shape.ex, test/kogen/harness_contract_test.exs, test/kogen/intent_test.exs, test/kogen/lifecycle_test.exs, test/support]
+
+- id: codex-offline-preserved
+  given: The Codex adapter behind the interface and its existing offline fakes and tests.
+  when: make check runs while the repository configuration selects claude.
+  then: Every existing Codex offline test and the live-native rehearsal still pass without provider access, proving Codex remains a working plug-in adapter; Codex paid targets are simply not selected while it is inactive.
+  wrong_result: Codex tests are deleted, skipped or weakened to make room for Claude Code, or the live-native catalog entry is changed.
+  verified_by: [check]
+  evidence: The unchanged Codex offline suites and catalog rehearsals in make check.
+  proof:
+    offline: [test/kogen/harness_role_test.exs, test/kogen/codex_management_test.exs, test/kogen/codex_compatibility_preparation_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: existing Codex offline consumers and rehearsals"
+    affected_paths: [lib/kogen/codex.ex, lib/kogen/codex, lib/kogen/harness, test/kogen/harness_role_test.exs, test/kogen/codex_management_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/support]
+
+- id: pinned-claude-code-install
+  given: The checkout pins one exact Claude Code release with per-platform npm tarball integrity (initially 2.1.280, darwin-arm64 and darwin-x64), and the user may have a personal claude on PATH or a newer upstream release.
+  when: The user runs mix kogen.claude.install, repeats it, or a download, integrity or extraction step fails.
+  then: Kogen installs exactly the pinned native binary into its own managed root ~/Library/Application Support/Kogen/claude (the same staged, integrity-checked, atomically published pattern as the managed Codex installer, no Node at runtime), reuses an intact installation, never touches personal Claude Code, and preserves any working runtime and logins on failure. Every Kogen launch sets DISABLE_AUTOUPDATER=1 so the managed runtime never self-updates or prompts to update; pin changes follow a documented upgrade workflow with real verification.
+  wrong_result: Install resolves latest, uses PATH claude, writes into ~/.local/share/claude, lets the managed binary auto-update, or publishes a half-installed runtime.
+  verified_by: [check]
+  evidence: Installer tests with injected registry/fetch fixtures cover absent, intact, corrupt, occupied, integrity-failure and repeat cases with byte-preservation assertions and no network.
+  proof:
+    offline: [test/kogen/claude_code_install_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: installer consumer with injected package fixtures and failure controls; the real pinned runtime is exercised by live-shape-to-build"
+    affected_paths: [lib/kogen/claude_code.ex, lib/kogen/claude_code, priv/kogen/claude_code, "lib/mix/tasks/**", workflows/claude-code-runtime-upgrade.md, test/kogen/claude_code_install_test.exs, test/support]
+
+- id: claude-code-login-scopes
+  given: The user has personal Claude Code (~/.claude, or any inherited CLAUDE_CONFIG_DIR) with its own login, settings, CLAUDE.md, agents, skills, plugins and MCP servers; Kogen's shared scope and an optional project scope may be empty or logged in.
+  when: Kogen launches any role, or the user runs mix kogen.claude.login (shared), mix kogen.claude.login --project, cancels, chooses a Claude subscription or Anthropic Console (API billing) login, or runs mix kogen.claude.login --use-default.
+  then: As with managed Codex, Kogen's shared scope is a Kogen-owned private CLAUDE_CONFIG_DIR (~/Library/Application Support/Kogen/claude/accounts/shared) and project scopes are private directories selected explicitly, so Kogen can use a different account or subscription than personal Claude Code. Login launches the managed interactive claude (with --dangerously-skip-permissions) in that config dir so the user completes Claude Code's own first-run flow, including its login (claude auth login alone does not complete the interactive first run), theme and bypass-mode acknowledgement, then exits; native arguments are forwarded unchanged. mix kogen.claude.login --project does the same with the project's private config dir. Role launches never load personal settings, memory, agents, skills, plugins or MCP servers, nor the account's claude.ai connectors that Claude Code caches in the scope (Kogen config dir, --setting-sources limited to project, --strict-mcp-config with no servers); Kogen sessions live in the Kogen scope. Claude Code keeps each scope's credentials in the macOS Keychain keyed by the scope path, so Kogen never moves or renames a scope directory, and any Kogen scope removal logs that scope out first. Provider credential variables (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, base URLs, Bedrock/Vertex switches) are removed from launches. Kogen never reads, copies or prints credential values; project login never changes shared credentials; cancellation never falls back.
+  wrong_result: Kogen uses ~/.claude, copies credentials, moves a scope and loses its login, loads personal CLAUDE.md, agents, plugins, MCP servers or account connectors into a role, lets an inherited API key fund work, or falls back from a missing project login.
+  verified_by: [check]
+  evidence: Fake-claude argv/env fixtures prove scope selection, forwarded login arguments, cancellation and removed variables; a marker-filled personal config dir proves nothing personal is read. The Shaping probe showed an empty CLAUDE_CONFIG_DIR reports loggedIn false while the default reports claude.ai, and that moving a logged-in scope directory loses its Keychain login.
+  proof:
+    offline: [test/kogen/claude_code_management_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: scope selection, delegation and isolation consumer with marker fixtures; real login is a human action"
+    affected_paths: [lib/kogen/claude_code.ex, lib/kogen/claude_code, "lib/mix/tasks/**", test/kogen/claude_code_management_test.exs, test/support]
+
+- id: readiness-before-work
+  given: The configured harness's runtime may be missing or a different pin, its selected scope may be logged out, or a configured model may be absent from that harness's proven-model list.
+  when: The user starts fresh Shaping, continued Shaping or Build, or runs mix kogen.claude.status.
+  then: Before any model launch Kogen stops and names the exact fix for the configured harness (install, scoped login, or the unsupported model and the list). Claude Code status reports the pin, installation, effective scope and claude auth status metadata only (loggedIn, authMethod), never credential values or remaining quota. Codex readiness is unchanged.
+  wrong_result: A missing login surfaces as an opaque provider error mid-Build, status prints account secrets, or an unlisted model is launched.
+  verified_by: [check]
+  evidence: Public Mix-task launch counters with fake runtimes cover every entry path for both harnesses.
+  proof:
+    offline: [test/kogen/claude_code_management_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/shape_task_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: preflight consumers with fake runtimes and launch counters"
+    affected_paths: [lib/kogen/claude_code.ex, lib/kogen/claude_code, lib/kogen/intent.ex, lib/kogen/build.ex, "lib/mix/tasks/**", test/kogen/claude_code_management_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/shape_task_test.exs]
+
+- id: proven-claude-models
+  given: The claude-code configuration names a model and effort per role and helper.
+  when: Kogen reads configuration.
+  then: Configured Claude Code models must appear in priv/kogen/claude_code/models.yaml, a model picker listing only models with retained evidence (initially claude-opus-5-5 and claude-sonnet-5 with efforts low, medium, high and xhigh, citing this Intent's evidence; Haiku 4.5 is excluded because it does not support the effort setting Kogen configures per role). The repository config selects claude-opus-5-5 at medium (Anthropic's default for Opus 5.5) for shaping, developer and reviewer, claude-opus-5-5 at high for the expert (one named hard uncertainty), and claude-sonnet-5 at low for the scout and medium for the worker. Kogen launches with the exact configured model and effort and never uses --fallback-model. Kogen does not intercept individual provider requests; it records the model each response came from (assistant message model, helper messages linked to their parent) in the role's receipt and fails the turn with a typed error if a root response came from a different model.
+  wrong_result: Any model string is accepted, entries lack evidence, a fallback model is enabled, executed identity is taken from model text, or requests are intercepted.
+  verified_by: [check]
+  evidence: Config and catalog integrity tests; harness tests with fake stream-json assert recorded executed models and the typed mismatch failure.
+  proof:
+    offline: [test/kogen/claude_code_catalog_test.exs, test/kogen/intent_test.exs, test/kogen/claude_code_harness_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: configuration and stream consumers; real executed models are asserted by the paid lifecycle targets"
+    affected_paths: [priv/kogen/claude_code/models.yaml, lib/kogen/intent.ex, lib/kogen/harness, .kogen/config.yaml, test/kogen/claude_code_catalog_test.exs, test/kogen/intent_test.exs, test/kogen/claude_code_harness_test.exs]
+
+- id: claude-code-developer-turns
+  given: Build launches a Developer with the controller handoff schema and a verification context.
+  when: Kogen starts a fresh Developer turn with a Kogen-chosen session id, and later resumes it for a Stop failure or Review rework.
+  then: "Kogen runs the managed claude -p (prompt on stdin, closed) with stream-json output, --session-id (fresh) or --resume (exact), the configured model and --effort, --dangerously-skip-permissions, KOGEN_ROLE=developer and a Kogen settings file registering the unchanged Stop hook (.codex/hooks/check.sh and stop_runner.py) and the existing Bash PreToolUse gate policy. The Developer does not use --json-schema (a Stop-hook block is ignored once the model calls StructuredOutput, an undocumented interaction), so Stop verification behaves exactly as documented and as under Codex: a failed check blocks with the runner reason and the same turn continues. The final assistant message is the handoff; Kogen validates it against the controller schema, and missing, empty, truncated or malformed handoffs keep the existing typed errors and same-session correction. The init session id must equal the requested id; resuming a missing session exits 1 and Kogen fails closed."
+  wrong_result: The Developer is launched with --json-schema so Stop failures are silently dropped, the handoff is scraped from intermediate prose, a resume creates a new session, or gate commands are not denied.
+  verified_by: [check, live-reviewer-rework]
+  evidence: Harness tests with fake claude streams (complete, empty, malformed, wrong session, provider error, Stop block then pass, and a launch-argument assertion that the Developer has no --json-schema); live-reviewer-rework runs a real Build with exact resume on Claude Code.
+  proof:
+    offline: [test/kogen/claude_code_harness_test.exs, test/kogen/two_outer_resumptions_test.exs, test/kogen/stop_hook_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: a real Claude Code Developer settles through the Stop hook, is resumed exactly after Review rework and returns a schema-enforced handoff; offline-limit: fake streams cannot show real hook firing or model output"
+    affected_paths: [lib/kogen/harness, lib/kogen/build.ex, test/kogen/claude_code_harness_test.exs, test/kogen/two_outer_resumptions_test.exs, test/kogen/stop_hook_test.exs, test/kogen/live_reviewer_rework_test.exs, test/support]
+
+- id: claude-code-review
+  given: A Candidate awaits Review under the claude-code harness.
+  when: Build launches the Reviewer.
+  then: A fresh claude -p session (never the Developer's) with --dangerously-skip-permissions, the configured reviewer model and effort, Edit/Write/NotebookEdit disallowed, KOGEN_ROLE=reviewer and --json-schema set to the verdict schema (the Reviewer has no Stop verification, so structured output is safe here); structured_output is validated by the existing verdict validator and, as documented, a success result without structured_output is a malformed verdict; mutation detection and malformed-verdict handling are unchanged.
+  wrong_result: Review reuses the Developer session, can edit files, or accepts an invalid verdict.
+  verified_by: [check, live-general]
+  evidence: Harness and reviewer mutation tests with fake claude; live-general runs a real independent semantic Review on Claude Code and also asserts one real scout helper ran on its configured model.
+  proof:
+    offline: [test/kogen/claude_code_harness_test.exs, test/kogen/reviewer_mutation_test.exs]
+    paid_target: live-general
+    paid_reason: "provider-required: live-general; observation: a real Claude Code Reviewer returns a schema-enforced verdict on a known defect; offline-limit: a fake verdict cannot establish real review behavior"
+    affected_paths: [lib/kogen/harness, lib/kogen/build.ex, test/kogen/claude_code_harness_test.exs, test/kogen/reviewer_mutation_test.exs, test/kogen/live_test.exs, test/support]
+
+- id: claude-code-helpers
+  given: The configuration defines scout, worker and expert profiles and a root role wants to delegate.
+  when: The root uses Claude Code's agent tool.
+  then: Helper models and efforts are global (config helpers), but each root role gets its own --agents definitions restricted to that role's authority. For the Developer the scout is read-only, the worker has edit tools limited by its packet, and the expert is read-only plus Bash. For the Reviewer and Shaper the scout, worker and expert all read-only (no Edit, Write or NotebookEdit), because Review and every child are read-only and Shaping helpers never author the Draft. Claude Code's built-in agents (general-purpose, Explore, Plan, claude, statusline-setup) are denied to every role with --disallowedTools Agent(<name>) rules, which hold under --dangerously-skip-permissions, so all delegation uses Kogen's configured helpers. Every definition carries its configured model and effort (the pinned 2.1.280 accepts a per-agent effort in --agents and records it in the helper transcript; this is undocumented, so the runtime upgrade workflow must re-verify it before a new pin), and the rendered execution policy names those agents instead of Codex native kinds. Helpers inherit the root's PreToolUse hooks (gate commands are denied inside helpers too), and helper completion fires SubagentStop, never Kogen's Stop verification; executed helper models are recorded from linked helper messages, never from helper self-report.
+  wrong_result: A role delegates to a built-in agent on the root model, helpers inherit the root model, a Reviewer or Shaper helper can edit files, scouts can edit, the policy still names Codex kinds, or helper identity comes from model text.
+  verified_by: [check, live-general]
+  evidence: Argv and policy-rendering tests; receipt tests with fake linked helper messages; live-general asserts one real scout on its configured model (the Shaping probe showed a Haiku helper linked to a Sonnet root).
+  proof:
+    offline: [test/kogen/claude_code_harness_test.exs, test/kogen/execution_policy_test.exs]
+    paid_target: live-general
+    paid_reason: "provider-required: live-general; observation: a real helper runs on its configured model under a real root; offline-limit: fake messages cannot show real delegation"
+    affected_paths: [lib/kogen/harness, lib/kogen/execution_policy.ex, priv/kogen/prompts, test/kogen/claude_code_harness_test.exs, test/kogen/execution_policy_test.exs, test/kogen/live_test.exs]
+
+- id: claude-code-shaping
+  given: A ready claude configuration and scope, and either no draft or an existing draft slug.
+  when: The user runs mix kogen.shape or mix kogen.shape <slug>.
+  then: Kogen launches the managed interactive claude TUI on the caller's terminal with --dangerously-skip-permissions and the rendered shaping prompt as the first message, KOGEN_ROLE=shaper, the configured model and effort, the Kogen settings, agents and scope; the shaping prompt's harness facts and continuation metadata name claude; exit status is returned. Claude Code asks once per new folder whether to trust it (default answer No, exit), even in bypass mode; the user answers it for their own repositories, and Kogen never answers the dialog. The live-shape-to-build test pre-trusts only the fixture repository it created, using the documented projects[<repo root>].hasTrustDialogAccepted setting in the selected Kogen config dir's .claude.json, and removes that entry when the test finishes.
+  wrong_result: The prompt is lost, personal Claude Code resources leak in, Codex flags remain, or shaping metadata claims codex.
+  verified_by: [check, live-shape-to-build]
+  evidence: Shape task tests with a fake claude capture argv, env and first-message bytes; live-shape-to-build drives a real interactive Claude Code Shape through approval and Build (its expect driver handles the Claude Code terminal).
+  proof:
+    offline: [test/kogen/shape_task_test.exs]
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: a real interactive Claude Code Shaping conversation produces a Draft that a real Claude Code Build consumes, using the managed pinned runtime and Kogen scope; offline-limit: a fake TUI cannot show real terminal interaction or model behavior"
+    affected_paths: [lib/mix/tasks/kogen.shape.ex, lib/kogen/harness, priv/kogen/prompts, test/kogen/shape_task_test.exs, test/kogen/live_shape_to_build_test.exs, test/support]
+
+- id: documentation
+  given: A user reads the README.
+  when: They set up and run Kogen.
+  then: The README documents choosing a harness, Claude Code install/login/status (subscription or Console API billing), the proven Claude models, that only the configured harness's paid targets run, and that switching harness is a config change plus the harness's paid verification; Codex documentation remains for the Codex adapter.
+  wrong_result: Docs claim Claude Code replaced Codex, omit the separate Kogen login, or describe Claude subscription use through other harnesses.
+  verified_by: [check]
+  evidence: README review plus the existing documentation integrity checks.
+  proof:
+    offline: [test/kogen/core_integrity_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: documentation integrity consumer and Review"
+    affected_paths: [README.md, workflows/claude-code-runtime-upgrade.md, test/kogen/core_integrity_test.exs]

@@ -4,7 +4,6 @@ defmodule Kogen.CompiledFixture do
   @fixture_files [
     ".gitignore",
     "mix.exs",
-    ".kogen/config.yaml",
     ".codex/hooks.json",
     ".codex/hooks/check.sh",
     ".codex/hooks/stop_runner.py",
@@ -19,8 +18,28 @@ defmodule Kogen.CompiledFixture do
     "test/support/codex",
     "test/support/fake_codex",
     "test/support/scenario_response.py",
-    "test/support/fake_codex_shaper"
+    "test/support/fake_codex_shaper",
+    "test/support/claude",
+    "test/support/fake_claude",
+    "test/support/claude_stream.py",
+    "test/support/fake_claude_shaper"
   ]
+
+  # Offline Codex fixtures keep their established configuration even though
+  # the tracked checkout may select another harness. Claude Code fixtures
+  # write their own configuration.
+  @codex_config """
+  harness: codex
+  shaping:   {model: gpt-5.6-sol, effort: low}
+  developer: {model: gpt-5.6-sol, effort: low}
+  reviewer:  {model: gpt-5.6-terra, effort: medium}
+  helpers:
+    scout:  {model: gpt-5.6-luna, effort: low}
+    worker: {model: gpt-5.6-luna, effort: medium}
+    expert: {model: gpt-5.6-sol, effort: medium}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
 
   @doc "Creates a private lifecycle fixture that loads this test build's BEAM files."
   def create!(source, label) do
@@ -39,9 +58,14 @@ defmodule Kogen.CompiledFixture do
       File.cp!(Path.join(source, relative), destination)
     end)
 
+    File.mkdir_p!(Path.join(root, ".kogen"))
+    File.write!(Path.join(root, ".kogen/config.yaml"), @codex_config)
     File.chmod!(Path.join(root, ".codex/hooks/check.sh"), 0o755)
     File.chmod!(Path.join(root, "test/support/fake_codex"), 0o755)
     File.chmod!(Path.join(root, "test/support/fake_codex_shaper"), 0o755)
+
+    for executable <- ~w(claude fake_claude claude_stream.py fake_claude_shaper),
+        do: File.chmod!(Path.join(root, "test/support/#{executable}"), 0o755)
 
     File.write!(
       Path.join(root, "Makefile"),

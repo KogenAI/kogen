@@ -51,6 +51,19 @@ defmodule Kogen.TwoOuterResumptionsTest do
   verification_retries: 2
   """
 
+  @claude_config_yaml """
+  harness: claude
+  shaping:   {model: claude-opus-5-5, effort: medium}
+  developer: {model: claude-opus-5-5, effort: medium}
+  reviewer:  {model: claude-opus-5-5, effort: medium}
+  helpers:
+    scout:  {model: claude-sonnet-5, effort: low}
+    worker: {model: claude-sonnet-5, effort: medium}
+    expert: {model: claude-opus-5-5, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
   @makefile """
   .PHONY: check
   check:
@@ -58,6 +71,14 @@ defmodule Kogen.TwoOuterResumptionsTest do
   """
 
   test "stops after two outer resumptions when Review never accepts" do
+    stops_after_two_resumptions!("codex")
+  end
+
+  test "stops after two outer resumptions when Claude Code Review never accepts" do
+    stops_after_two_resumptions!("claude")
+  end
+
+  defp stops_after_two_resumptions!(harness) do
     project_root = File.cwd!()
     dest = Path.join(System.tmp_dir!(), "kogen-rework-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
@@ -116,7 +137,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     File.write!(
       Path.join(dest, ".kogen/config.yaml") |> tap(&File.mkdir_p!(Path.dirname(&1))),
-      @config_yaml
+      if(harness == "claude", do: @claude_config_yaml, else: @config_yaml)
     )
 
     intent_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
@@ -137,9 +158,23 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     head_before = git!(dest, ["rev-parse", "HEAD"])
 
-    fake_harness = Path.join(project_root, "test/support/fake_codex_always_rework")
+    fake_harness =
+      if harness == "claude",
+        do: Path.join(project_root, "test/support/fake_claude"),
+        else: Path.join(project_root, "test/support/fake_codex_always_rework")
+
     prior_harness = System.get_env("KOGEN_HARNESS")
     System.put_env("KOGEN_HARNESS", fake_harness)
+
+    if harness == "claude" do
+      claude_root = Path.join(dest <> "-claude", "claude")
+      File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+      on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+      System.put_env("KOGEN_CLAUDE_ROOT", claude_root)
+      System.put_env("FAKE_CLAUDE_REVIEW", "rework")
+      System.put_env("FAKE_CLAUDE_STOP_BLOCK", "0")
+      System.put_env("FAKE_CLAUDE_RESUME_EDITS", "0")
+    end
 
     on_exit(fn ->
       if prior_harness,
@@ -166,8 +201,11 @@ defmodule Kogen.TwoOuterResumptionsTest do
       Path.join(dest, ".kogen/runtime/fake-harness-log")
       |> File.read!()
       |> String.split("\n", trim: true)
+      |> Enum.filter(&String.starts_with?(&1, "argv:"))
+      |> Enum.reject(&String.starts_with?(&1, "argv: auth status"))
 
-    resume_calls = Enum.count(log_lines, &String.contains?(&1, "exec resume"))
+    resume_marker = if harness == "claude", do: " --resume ", else: "exec resume"
+    resume_calls = Enum.count(log_lines, &String.contains?(&1, resume_marker))
 
     reviewer_calls =
       dest
@@ -182,6 +220,10 @@ defmodule Kogen.TwoOuterResumptionsTest do
     assert reviewer_calls == 3,
            "expected exactly three Reviewer launches (all rework), log:\n#{Enum.join(log_lines, "\n")}"
 
+    if harness == "codex", do: assert_owned_output_paths!(log_lines)
+  end
+
+  defp assert_owned_output_paths!(log_lines) do
     output_paths =
       Enum.map(log_lines, fn line ->
         [_before, path | _after] = String.split(line, " --output-last-message ")

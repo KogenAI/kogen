@@ -14,10 +14,19 @@ defmodule Kogen.LiveTest do
   @moduletag :live
   @moduletag timeout: 1_200_000
 
+  # Paid targets run only for the configured harness; each harness has its
+  # own selected root profiles.
   @selected_root_profiles %{
-    shaping: %{model: "gpt-5.6-sol", effort: "low"},
-    developer: %{model: "gpt-5.6-sol", effort: "low"},
-    reviewer: %{model: "gpt-5.6-terra", effort: "medium"}
+    "codex" => %{
+      shaping: %{model: "gpt-5.6-sol", effort: "low"},
+      developer: %{model: "gpt-5.6-sol", effort: "low"},
+      reviewer: %{model: "gpt-5.6-terra", effort: "medium"}
+    },
+    "claude" => %{
+      shaping: %{model: "claude-opus-5-5", effort: "medium"},
+      developer: %{model: "claude-opus-5-5", effort: "medium"},
+      reviewer: %{model: "claude-opus-5-5", effort: "medium"}
+    }
   }
 
   test "independent real Reviewer catches semantic fixture defects and accepts their corrected counterpart" do
@@ -31,10 +40,10 @@ defmodule Kogen.LiveTest do
     previous_raw_log_dir = System.get_env("KOGEN_RAW_LOG_DIR")
     System.put_env("KOGEN_RAW_LOG_DIR", log_dir)
 
-    assert {:ok, managed} = Kogen.Codex.open(config, project_root)
+    assert {:ok, managed} = Kogen.Harness.open(config, project_root)
 
     on_exit(fn ->
-      Kogen.Codex.close(managed)
+      Kogen.Harness.close(managed)
       restore_env("KOGEN_RAW_LOG_DIR", previous_raw_log_dir)
       File.rm_rf!(fixture)
     end)
@@ -47,7 +56,7 @@ defmodule Kogen.LiveTest do
       write_probe_receipts!(fixture, :incomplete, incomplete_probes)
       incomplete_candidate = candidate_id!(fixture)
 
-      %{response: incomplete, session_id: incomplete_reviewer} =
+      %{response: incomplete, session_id: incomplete_reviewer, verdict: incomplete_verdict} =
         review_semantic_candidate!(
           config,
           incomplete_candidate,
@@ -63,6 +72,8 @@ defmodule Kogen.LiveTest do
         attempt_token: "semantic-attempt-incomplete",
         scenario_ids: semantic_scenario_ids()
       })
+
+      assert_configured_scout!(config, incomplete_verdict)
 
       Kogen.ScenarioSemantic.write_fixture!(fixture, :corrected)
       stage_readiness_baseline!(fixture)
@@ -95,7 +106,7 @@ defmodule Kogen.LiveTest do
 
       File.write!(Path.join(log_dir, "semantic-corrected-review.json"), Jason.encode!(corrected))
 
-      audit_root_profiles!(Path.join(log_dir, "root-profile-audit"), %{
+      audit_root_profiles!(project_root, Path.join(log_dir, "root-profile-audit"), %{
         incomplete_reviewer => Map.put(config.reviewer, :role, "reviewer"),
         corrected_reviewer => Map.put(config.reviewer, :role, "reviewer")
       })
@@ -130,6 +141,7 @@ defmodule Kogen.LiveTest do
     prompt = """
     Independently assess this Candidate against the full contract and supplied handoff below. Inspect the files yourself, use the focused probes as evidence where useful, and make your own verdict. Do not modify anything and do not run a gate. Use the exact supplied Candidate and attempt token. Assess every listed scenario exactly once: use no extra, duplicate, or empty scenario IDs. Every evidence reference must use an existing repository-relative file path and a useful locator. There are no prior open findings in this review, so `dispositions` must be exactly an empty list. For rework, create new actionable findings only for listed scenario IDs; for acceptance, use no findings. Retained earlier receipts are history; assess the current Candidate and current supplied observations.
 
+    #{helper_instruction(config)}
     Scenarios:
     #{Jason.encode!(semantic_contract())}
 
@@ -138,7 +150,8 @@ defmodule Kogen.LiveTest do
     """
 
     assert {:ok,
-            %{session_id: session_id, response: response, verdict: verdict, findings: findings}} =
+            %{session_id: session_id, response: response, verdict: verdict, findings: findings} =
+              result} =
              Kogen.Harness.launch_reviewer(
                prompt,
                config.reviewer.model,
@@ -158,13 +171,36 @@ defmodule Kogen.LiveTest do
                []
              )
 
-    %{response: response, session_id: session_id}
+    %{response: response, session_id: session_id, verdict: result}
   end
+
+  # Claude Code: prove one real configured helper ran on its configured model,
+  # from stream metadata linked to the root Agent tool use, not helper text.
+  defp helper_instruction(%{harness: "claude"}) do
+    "Before deciding, delegate exactly one bounded read-only question to the `kogen-scout` agent (for example, which files exist under probes/ and what each prints), and use its answer only as advisory input.\n"
+  end
+
+  defp helper_instruction(_config), do: ""
+
+  defp assert_configured_scout!(%{harness: "claude"} = config, verdict) do
+    helpers = get_in(verdict, [:executed_models, "helpers"]) || []
+    scouts = Enum.filter(helpers, &(&1["agent"] == "kogen-scout"))
+
+    assert scouts != [],
+           "the Claude Code Reviewer must have delegated to kogen-scout; executed: #{inspect(verdict[:executed_models])}"
+
+    assert Enum.all?(scouts, &(&1["models"] == [config.helpers.scout.model])),
+           "kogen-scout must run on #{config.helpers.scout.model}; executed: #{inspect(helpers)}"
+
+    assert get_in(verdict, [:executed_models, "root"]) == [config.reviewer.model]
+  end
+
+  defp assert_configured_scout!(_config, _verdict), do: :ok
 
   defp managed_context(selection, fixture) do
     selection
     |> Map.put(:project, fixture)
-    |> Kogen.Codex.launch_context()
+    |> Kogen.Harness.launch_context()
   end
 
   defp semantic_scenario_ids, do: Kogen.ScenarioSemantic.scenario_ids()
@@ -173,15 +209,21 @@ defmodule Kogen.LiveTest do
     assert config.outer_resumptions == 2,
            "the live routing fixture must retain the approved two-resumption budget"
 
-    for {role, expected} <- @selected_root_profiles do
+    for {role, expected} <- Map.fetch!(@selected_root_profiles, config.harness) do
       actual = Map.fetch!(config, role)
       assert actual.model == expected.model, "#{role} must use its selected model"
       assert actual.effort == expected.effort, "#{role} must use its selected effort"
     end
   end
 
-  defp audit_root_profiles!(evidence_dir, expected) do
-    Kogen.RootProfileAudit.audit!(evidence_dir, expected)
+  # The Reviewer ran from the selection opened for `project_root`; audit that
+  # project's harness and scope, not the fixture cwd this is called from.
+  defp audit_root_profiles!(project_root, evidence_dir, expected) do
+    Kogen.RootProfileAudit.audit!(
+      evidence_dir,
+      expected,
+      Kogen.RootProfileAudit.sessions_root(project_root)
+    )
   end
 
   defp candidate_id!(fixture) do

@@ -1,0 +1,16 @@
+# Proven Claude Code models: the model picker for `harness: claude`.
+# Configuration may select only models and efforts listed here. Kogen launches
+# the exact configured model and effort and never enables a fallback model.
+# Every entry cites retained evidence from the Intent that proved it; Build
+# moves an Approved package to `.kogen/intents/complete/<slug>` on commit.
+# Haiku 4.5 is deliberately absent: it does not support the per-role effort
+# setting Kogen configures.
+models:
+  - id: claude-opus-5-5
+    efforts: [low, medium, high, xhigh]
+    intent: 01a0cc76-aac2-7130-9beb-48933506606d
+    evidence: .kogen/intents/complete/claude-code-harness/evidence/claude-code-probe.md
+  - id: claude-sonnet-5
+    efforts: [low, medium, high, xhigh]
+    intent: 01a0cc76-aac2-7130-9beb-48933506606d
+    evidence: .kogen/intents/complete/claude-code-harness/evidence/claude-code-probe.md

@@ -1,0 +1,4 @@
+init session 11111111-2222-4333-8444-555555555555 model claude-sonnet-5
+assistant claude-sonnet-5 root [('tool_use', 'StructuredOutput')]
+  tool_result Structured output provided successfully
+result success turns 2 structured {"reason": "Kogen machinery owns verification gates."} models ['claude-sonnet-5', 'claude-haiku-4-5-20251001']

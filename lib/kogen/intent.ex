@@ -10,6 +10,16 @@ defmodule Kogen.Intent do
   """
 
   @default_config_path ".kogen/config.yaml"
+  @harnesses ["codex", "claude"]
+  @claude_models Path.expand("../../priv/kogen/claude_code/models.yaml", __DIR__)
+  @claude_roles [
+    {"shaping", [:shaping]},
+    {"developer", [:developer]},
+    {"reviewer", [:reviewer]},
+    {"helpers.scout", [:helpers, :scout]},
+    {"helpers.worker", [:helpers, :worker]},
+    {"helpers.expert", [:helpers, :expert]}
+  ]
 
   @type role_config :: %{model: String.t(), effort: String.t()}
 
@@ -47,8 +57,60 @@ defmodule Kogen.Intent do
   def read_config(path \\ @default_config_path) do
     with {:ok, data} <- load_yaml(path, "missing #{path}"),
          {:ok, config} <- normalize_config(data),
-         :ok <- supported_harness(config.harness) do
+         :ok <- supported_harness(config.harness),
+         :ok <- proven_models(config) do
       {:ok, config}
+    end
+  end
+
+  @doc """
+  Reads the proven Claude Code model picker. Each entry names a model, the
+  efforts Kogen may configure for it, and the retained evidence proving it.
+  """
+  @spec claude_models(Path.t()) :: {:ok, [map()]} | {:error, String.t()}
+  def claude_models(path \\ @claude_models) do
+    with {:ok, data} <- load_yaml(path, "missing proven Claude Code model list: #{path}"),
+         {:ok, models} when is_list(models) and models != [] <- fetch(data, "models"),
+         true <- Enum.all?(models, &valid_model_entry?/1) do
+      {:ok, models}
+    else
+      {:error, reason} when is_binary(reason) -> {:error, reason}
+      _ -> {:error, "invalid proven Claude Code model list: #{path}"}
+    end
+  end
+
+  defp valid_model_entry?(%{"id" => id, "efforts" => efforts, "evidence" => evidence})
+       when is_binary(id) and is_list(efforts) and efforts != [] and is_binary(evidence) do
+    String.trim(id) != "" and String.trim(evidence) != "" and Enum.all?(efforts, &is_binary/1)
+  end
+
+  defp valid_model_entry?(_entry), do: false
+
+  # Codex model routing is unchanged. Claude Code roles may select only a model
+  # and effort from the proven picker; Kogen never widens it per request.
+  defp proven_models(%{harness: "claude"} = config) do
+    with {:ok, models} <- claude_models() do
+      proven = Map.new(models, &{&1["id"], &1["efforts"]})
+
+      Enum.find_value(@claude_roles, :ok, fn {label, keys} ->
+        proven_profile(label, get_in(config, keys), proven, models)
+      end)
+    end
+  end
+
+  defp proven_models(_config), do: :ok
+
+  defp proven_profile(label, %{model: model, effort: effort}, proven, models) do
+    case Map.fetch(proven, model) do
+      {:ok, efforts} ->
+        unless effort in efforts do
+          {:error,
+           "unsupported Claude Code effort for #{label}: #{model} at #{effort}; proven efforts: #{Enum.join(efforts, ", ")}"}
+        end
+
+      :error ->
+        {:error,
+         "unsupported Claude Code model for #{label}: #{model}; proven models: #{Enum.map_join(models, ", ", & &1["id"])}"}
     end
   end
 
@@ -170,8 +232,13 @@ defmodule Kogen.Intent do
     end
   end
 
-  defp supported_harness("codex"), do: :ok
-  defp supported_harness(name), do: {:error, "unsupported harness: #{name}; expected codex"}
+  @doc "Harness names Kogen supports, in documentation order."
+  def harnesses, do: @harnesses
+
+  defp supported_harness(name) when name in @harnesses, do: :ok
+
+  defp supported_harness(name),
+    do: {:error, "unsupported harness: #{name}; expected #{Enum.join(@harnesses, " or ")}"}
 
   defp normalize_config(data) do
     with {:ok, harness} <- require_string(data, "harness", "harness"),

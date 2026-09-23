@@ -55,6 +55,25 @@ defmodule Kogen.BuildPreconditionsTest do
   verification_retries: 2
   """
 
+  @claude_config """
+  harness: claude
+  shaping:   {model: claude-opus-5-5, effort: medium}
+  developer: {model: claude-opus-5-5, effort: medium}
+  reviewer:  {model: claude-opus-5-5, effort: medium}
+  helpers:
+    scout:  {model: claude-sonnet-5, effort: low}
+    worker: {model: claude-sonnet-5, effort: medium}
+    expert: {model: claude-opus-5-5, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
+  @claude_config_unproven String.replace(
+                            @claude_config,
+                            "developer: {model: claude-opus-5-5",
+                            "developer: {model: claude-haiku-4-5-20251001"
+                          )
+
   @makefile """
   .PHONY: check
 
@@ -350,6 +369,28 @@ defmodule Kogen.BuildPreconditionsTest do
                           expected: "unsupported harness"
                         },
                         %{
+                          case: "configured Claude Code runtime is not installed",
+                          operation: {:claude, :uninstalled},
+                          expected:
+                            "Kogen Claude Code 2.1.280 is not installed. Run mix kogen.claude.install"
+                        },
+                        %{
+                          case: "configured Claude Code shared login is missing",
+                          operation: {:claude, :logged_out},
+                          expected: "Run mix kogen.claude.login"
+                        },
+                        %{
+                          case: "configured Claude Code project login is missing",
+                          operation: {:claude, :project_logged_out},
+                          expected: "Run mix kogen.claude.login --project"
+                        },
+                        %{
+                          case: "configured Claude Code model is not proven",
+                          operation: {:claude, :unproven_model},
+                          expected:
+                            "unsupported Claude Code model for developer: claude-haiku-4-5-20251001"
+                        },
+                        %{
                           case: "negative resumption budget",
                           operation: :negative_resumption_budget,
                           expected: "outer_resumptions"
@@ -393,6 +434,7 @@ defmodule Kogen.BuildPreconditionsTest do
 
     previous_harness = System.get_env("KOGEN_HARNESS")
     System.put_env("KOGEN_HARNESS", fake_harness)
+    trace = claude_readiness!(dir, harness_dir, operation)
 
     on_exit(fn ->
       if previous_harness do
@@ -413,6 +455,7 @@ defmodule Kogen.BuildPreconditionsTest do
     assert reason =~ expected
     assert File.exists?(Path.join(dir, ".kogen/build.lock")) == lock_was_present
     refute File.exists?(marker), "the fake harness marker exists: the harness was invoked"
+    refute_role_launch!(trace)
     assert approved_bytes(dir) == approved_before
     assert {"", 0} = System.cmd("git", ["diff", "--cached", "--"], cd: dir)
     assert real_index_bytes(dir) == index_before
@@ -545,6 +588,13 @@ defmodule Kogen.BuildPreconditionsTest do
     commit_fixture!(dir)
   end
 
+  defp setup_case!(dir, {:claude, state}) do
+    write_intent(dir, @valid_intent)
+    config = if state == :unproven_model, do: @claude_config_unproven, else: @claude_config
+    File.write!(Path.join(dir, ".kogen/config.yaml"), config)
+    commit_fixture!(dir)
+  end
+
   defp setup_case!(dir, :negative_resumption_budget) do
     write_intent(dir, @valid_intent)
 
@@ -561,6 +611,59 @@ defmodule Kogen.BuildPreconditionsTest do
     lock_dir = Path.join(dir, ".kogen")
     File.mkdir_p!(lock_dir)
     File.write!(Path.join(lock_dir, "build.lock"), "")
+  end
+
+  # Claude Code readiness uses the real managed-runtime route (no fake harness
+  # override) with a private managed root and an offline stand-in runtime whose
+  # every invocation is traced. Readiness may ask `auth status`; no role may run.
+  defp claude_readiness!(dir, harness_dir, {:claude, state}) do
+    System.delete_env("KOGEN_HARNESS")
+    root = Path.join(harness_dir, "claude")
+    trace = Path.join(harness_dir, "claude-trace.jsonl")
+    File.mkdir_p!(root)
+    System.put_env("KOGEN_CLAUDE_ROOT", root)
+    System.put_env("KOGEN_TEST_NATIVE_TRACE", trace)
+
+    if state in [:logged_out, :project_logged_out] do
+      assert {_out, 0} =
+               System.cmd(
+                 "python3",
+                 [
+                   Path.join(@project_root, "test/support/managed_claude_fixture.py"),
+                   root,
+                   Path.join(@project_root, "priv/kogen/claude_code/install.py")
+                 ],
+                 stderr_to_stdout: true
+               )
+
+      shared = Path.join(root, "accounts/shared")
+      File.mkdir_p!(shared)
+    end
+
+    if state == :project_logged_out do
+      File.write!(Path.join(root, "accounts/shared/.fake-login"), "claude.ai\n")
+
+      assert {:ok, 130} =
+               File.cd!(dir, fn ->
+                 Kogen.ClaudeCode.login(["--project", "--", "--cancel"], %{})
+               end)
+    end
+
+    trace
+  end
+
+  defp claude_readiness!(_dir, _harness_dir, _operation), do: nil
+
+  defp refute_role_launch!(nil), do: :ok
+
+  defp refute_role_launch!(trace) do
+    launches =
+      if File.exists?(trace),
+        do: trace |> File.read!() |> String.split("\n", trim: true) |> Enum.map(&Jason.decode!/1),
+        else: []
+
+    refute Enum.any?(launches, &("-p" in &1["args"])),
+           "readiness must stop before any Claude Code role launch: #{inspect(launches)}"
   end
 
   defp tmp_repo! do

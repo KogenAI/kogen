@@ -12,8 +12,7 @@ defmodule Kogen.Build do
       Kogen.Check,
       Kogen.Git,
       Kogen.VerificationPolicy,
-      Kogen.ExecutionPolicy,
-      Kogen.Codex
+      Kogen.ExecutionPolicy
     ]
 
   alias Kogen.Build.{
@@ -192,7 +191,7 @@ defmodule Kogen.Build do
            VerificationPlan.build(contract.scenarios, intent.may_change_guarded_paths, catalog),
          :ok <- Kogen.VerificationPolicy.preflight(catalog.ordered_targets),
          {:ok, guarded_snapshot} <- GuardedPaths.capture(),
-         {:ok, runtime} <- Kogen.Codex.open(config),
+         {:ok, runtime} <- Kogen.Harness.open(config),
          {:ok, tracking} <- Tracking.new(intent, contract, approved_entries) do
       ctx = %{
         slug: slug,
@@ -215,7 +214,7 @@ defmodule Kogen.Build do
       try do
         begin_attempt(ctx, nil, 0, nil)
       after
-        Kogen.Codex.close(runtime)
+        Kogen.Harness.close(runtime)
       end
     end
   end
@@ -298,7 +297,7 @@ defmodule Kogen.Build do
             ctx.config.developer.effort,
             schema,
             ctx.policy_environment ++ Verification.environment(ctx.execution),
-            Kogen.Codex.launch_context(ctx.runtime)
+            Kogen.Harness.launch_context(ctx.runtime)
           )
         else
           Kogen.Harness.launch_build_developer(
@@ -307,7 +306,7 @@ defmodule Kogen.Build do
             ctx.config.developer.effort,
             schema,
             ctx.policy_environment ++ Verification.environment(ctx.execution),
-            Kogen.Codex.launch_context(ctx.runtime)
+            Kogen.Harness.launch_context(ctx.runtime)
           )
         end
 
@@ -585,7 +584,7 @@ defmodule Kogen.Build do
           prompt,
           ctx.config.reviewer.model,
           ctx.config.reviewer.effort,
-          Kogen.Codex.launch_context(ctx.runtime)
+          Kogen.Harness.launch_context(ctx.runtime)
         )
 
       receive_review(ctx, candidate_id, session_id, number, result)

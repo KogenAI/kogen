@@ -39,7 +39,7 @@ defmodule Kogen.LiveNativeReceiptAudit do
           &%{path: Path.basename(&1.path), session_id: &1.session_id, usage: &1.usage}
         ),
       accounting_note:
-        "Usage maps are retained per capture because resumed Codex counters can include prior work; cached input is a subset and missing usage is unavailable, never zero."
+        "Usage maps are retained per capture because resumed native counters can include prior work; cached input is a subset and missing usage is unavailable, never zero."
     }
   end
 
@@ -96,6 +96,12 @@ defmodule Kogen.LiveNativeReceiptAudit do
         end
       end)
 
+    if Enum.any?(events, &claude_init?/1),
+      do: claude_stream!(path, events),
+      else: codex_stream!(path, events)
+  end
+
+  defp codex_stream!(path, events) do
     starts = for %{"type" => "thread.started", "thread_id" => id} <- events, do: id
     completions = Enum.filter(events, &(&1["type"] == "turn.completed"))
 
@@ -122,6 +128,32 @@ defmodule Kogen.LiveNativeReceiptAudit do
     require!(is_nil(failed), "#{Path.basename(path)} contains a failed provider event")
     %{path: path, session_id: hd(starts), usage: completion["usage"]}
   end
+
+  # Claude Code `-p --output-format stream-json`: one init binds the session
+  # and exactly one successful result settles the turn with its usage.
+  defp claude_stream!(path, events) do
+    starts = for event <- events, claude_init?(event), do: event["session_id"]
+    results = Enum.filter(events, &(&1["type"] == "result"))
+
+    require!(length(starts) == 1, "#{Path.basename(path)} must bind exactly one native session")
+    require!(length(results) == 1, "#{Path.basename(path)} must contain one result event")
+    [result] = results
+    require!(is_map(result["usage"]), "#{Path.basename(path)} result needs a usage map")
+
+    require!(
+      result["subtype"] == "success" and result["is_error"] != true,
+      "#{Path.basename(path)} contains a failed provider event"
+    )
+
+    require!(
+      Enum.all?(events, &(not is_binary(&1["session_id"]) or &1["session_id"] == hd(starts))),
+      "#{Path.basename(path)} must bind exactly one native session"
+    )
+
+    %{path: path, session_id: hd(starts), usage: result["usage"]}
+  end
+
+  defp claude_init?(event), do: event["type"] == "system" and event["subtype"] == "init"
 
   defp require!(true, _message), do: :ok
   defp require!(false, message), do: raise(ArgumentError, message)

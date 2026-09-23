@@ -274,6 +274,147 @@ defmodule Kogen.ShapeTaskTest do
     end
   end
 
+  @claude_config """
+  harness: claude
+  shaping:   {model: claude-opus-5-5, effort: medium}
+  developer: {model: claude-opus-5-5, effort: medium}
+  reviewer:  {model: claude-opus-5-5, effort: medium}
+  helpers:
+    scout:  {model: claude-sonnet-5, effort: low}
+    worker: {model: claude-sonnet-5, effort: medium}
+    expert: {model: claude-opus-5-5, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
+  test "Claude Code Shape launches the interactive managed claude with the prompt as first message" do
+    fixture = shape_fixture()
+    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
+    File.mkdir_p!(draft)
+    File.write!(Path.join(draft, "intent.yaml"), @draft)
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), @claude_config)
+    claude_root = Path.join(fixture <> "-claude-root", "claude")
+    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+
+    for {args, mode} <- [{[], "fresh"}, {["unfinished"], "continuation"}] do
+      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
+
+      {output, 0} =
+        Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape" | args], [
+          {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_claude_shaper")},
+          {"KOGEN_CLAUDE_ROOT", claude_root},
+          {"ANTHROPIC_API_KEY", "INHERITED-API-KEY"}
+        ])
+
+      argv =
+        fixture |> Path.join(".kogen/runtime/shaping-args") |> File.read!() |> String.split("\n")
+
+      prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+      env = File.read!(Path.join(fixture, ".kogen/runtime/shaping-env"))
+
+      assert output =~ ~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}/
+      refute "-p" in argv
+
+      args_bytes = File.read!(Path.join(fixture, ".kogen/runtime/shaping-args"))
+      assert prompt != ""
+
+      assert String.ends_with?(args_bytes, "\n--\n" <> prompt <> "\n"),
+             "the rendered prompt must be the first message after --"
+
+      assert prompt =~ if(mode == "fresh", do: "Fresh", else: "continuation")
+      assert_flag!(argv, "--model", "claude-opus-5-5")
+      assert_flag!(argv, "--effort", "medium")
+      assert_flag!(argv, "--setting-sources", "project")
+      assert "--dangerously-skip-permissions" in argv
+      assert "--strict-mcp-config" in argv
+      assert "Agent(general-purpose)" in argv
+      refute Enum.any?(argv, &String.contains?(&1, "model_reasoning_effort"))
+      refute "--enable" in argv
+
+      agents = argv |> flag("--agents") |> Jason.decode!()
+
+      for {_name, agent} <- agents,
+          do: assert(Enum.all?(agent["tools"], &(&1 not in ~w(Edit Write NotebookEdit))))
+
+      assert env =~ "KOGEN_ROLE=shaper"
+      assert env =~ "CLAUDE_CONFIG_DIR=#{Path.join(claude_root, "accounts/shared")}"
+      assert env =~ "DISABLE_AUTOUPDATER=1"
+      assert env =~ "ANTHROPIC_API_KEY=unset"
+
+      assert prompt =~ "harness `claude`" or prompt =~ "harness: claude"
+      assert prompt =~ "Claude Code agent `kogen-scout`"
+      refute prompt =~ "native kind `explorer`"
+      refute prompt =~ "{{"
+    end
+  end
+
+  test "Claude Code Shape stops before launch when the runtime, login or model is not ready" do
+    fixture = shape_fixture()
+    draft = Path.join(fixture, ".kogen/intents/drafts/unfinished")
+    File.mkdir_p!(draft)
+    File.write!(Path.join(draft, "intent.yaml"), @draft)
+    config_path = Path.join(fixture, ".kogen/config.yaml")
+    claude_root = Path.join(fixture <> "-claude-root", "claude")
+    trace = Path.join(Path.dirname(claude_root), "trace.jsonl")
+    File.mkdir_p!(claude_root)
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+    env = [{"KOGEN_CLAUDE_ROOT", claude_root}, {"KOGEN_TEST_NATIVE_TRACE", trace}]
+
+    route = fn args ->
+      File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
+      {output, status} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape" | args], env)
+      refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+      {output, status}
+    end
+
+    File.write!(config_path, @claude_config)
+
+    for args <- [[], ["unfinished"]] do
+      {output, status} = route.(args)
+      assert status != 0
+      assert output =~ "Kogen Claude Code 2.1.280 is not installed. Run mix kogen.claude.install"
+    end
+
+    source = File.cwd!()
+
+    {_out, 0} =
+      System.cmd("python3", [
+        Path.join(source, "test/support/managed_claude_fixture.py"),
+        claude_root,
+        Path.join(source, "priv/kogen/claude_code/install.py")
+      ])
+
+    for args <- [[], ["unfinished"]] do
+      {output, status} = route.(args)
+      assert status != 0
+
+      assert output =~
+               "Selected shared Kogen Claude Code login is not configured. Run mix kogen.claude.login"
+    end
+
+    File.write!(
+      config_path,
+      String.replace(
+        @claude_config,
+        "shaping:   {model: claude-opus-5-5",
+        "shaping:   {model: gpt-5.6-sol"
+      )
+    )
+
+    for args <- [[], ["unfinished"]] do
+      {output, status} = route.(args)
+      assert status != 0
+      assert output =~ "unsupported Claude Code model for shaping: gpt-5.6-sol"
+    end
+
+    refute File.exists?(trace) and File.read!(trace) =~ ~s("-p")
+    refute File.exists?(trace) and File.read!(trace) =~ ~s("--dangerously-skip-permissions")
+  end
+
+  defp flag(argv, name), do: argv |> Enum.drop_while(&(&1 != name)) |> Enum.at(1)
+  defp assert_flag!(argv, name, value), do: assert(flag(argv, name) == value)
+
   defp shape_fixture do
     fixture = Kogen.CompiledFixture.create!(File.cwd!(), "continue-shape")
     on_exit(fn -> File.rm_rf(fixture) end)

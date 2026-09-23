@@ -177,4 +177,113 @@ defmodule Kogen.RootProfileAuditTest do
         "payload" => %{"model" => model, "effort" => effort}
       }) <> "\n"
   end
+
+  test "Claude Code audits follow the project's harness and scope, not the caller's cwd" do
+    base = Path.join(System.tmp_dir!(), "claude-audit-#{System.unique_integer([:positive])}")
+    project = Path.join(base, "project")
+    fixture = Path.join(base, "fixture")
+    root = Path.join(base, "Kogen/claude")
+    projects = Path.join(root, "accounts/shared/projects")
+    File.mkdir_p!(Path.join(project, ".kogen"))
+    File.mkdir_p!(Path.join(fixture, ".kogen"))
+    File.mkdir_p!(Path.join(projects, "-fixture"))
+    File.mkdir_p!(Path.join(projects, "-unrelated"))
+    on_exit(fn -> File.rm_rf!(base) end)
+    System.put_env("KOGEN_CLAUDE_ROOT", root)
+
+    File.write!(Path.join(project, ".kogen/config.yaml"), """
+    harness: claude
+    shaping:   {model: claude-opus-5-5, effort: medium}
+    developer: {model: claude-opus-5-5, effort: medium}
+    reviewer:  {model: claude-opus-5-5, effort: medium}
+    helpers:
+      scout:  {model: claude-sonnet-5, effort: low}
+      worker: {model: claude-sonnet-5, effort: medium}
+      expert: {model: claude-opus-5-5, effort: high}
+    outer_resumptions: 2
+    verification_retries: 2
+    """)
+
+    File.write!(
+      Path.join(fixture, ".kogen/config.yaml"),
+      "harness: codex\nshaping: {model: m, effort: low}\ndeveloper: {model: m, effort: low}\nreviewer: {model: m, effort: low}\nhelpers:\n  scout: {model: m, effort: low}\n  worker: {model: m, effort: low}\n  expert: {model: m, effort: low}\nouter_resumptions: 2\nverification_retries: 2\n"
+    )
+
+    File.write!(
+      Path.join(projects, "-fixture/reviewer-id.jsonl"),
+      transcript!(fixture, "claude-opus-5-5", "medium") <>
+        Jason.encode!(%{
+          "type" => "assistant",
+          "isSidechain" => true,
+          "cwd" => fixture,
+          "message" => %{"model" => "claude-sonnet-5"}
+        }) <> "\n"
+    )
+
+    File.write!(
+      Path.join(projects, "-fixture/wrong-id.jsonl"),
+      transcript!(fixture, "claude-sonnet-5", "medium")
+    )
+
+    File.write!(
+      Path.join(projects, "-unrelated/other.jsonl"),
+      transcript!("/elsewhere", "claude-opus-5-5", "medium")
+    )
+
+    # Called from inside a directory configured for Codex, the audit still uses
+    # the project's Claude Code harness and scope.
+    {sessions_root, evidence} =
+      File.cd!(fixture, fn ->
+        {Kogen.RootProfileAudit.sessions_root(project), Path.join(base, "evidence")}
+      end)
+
+    assert sessions_root == {:claude, Path.expand(projects)}
+    profile = %{model: "claude-opus-5-5", effort: "medium", role: "reviewer"}
+
+    assert %{"harness" => "claude", "sessions" => [receipt]} =
+             Kogen.RootProfileAudit.audit!(evidence, %{"reviewer-id" => profile}, sessions_root)
+
+    assert receipt["observed_root_models"] == ["claude-opus-5-5"]
+    assert receipt["observed_efforts"] == ["medium"]
+
+    assert_raise ArgumentError, ~r/root responses came from/, fn ->
+      Kogen.RootProfileAudit.audit!(evidence, %{"wrong-id" => profile}, sessions_root)
+    end
+
+    assert_raise ArgumentError, ~r/recorded effort/, fn ->
+      Kogen.RootProfileAudit.audit!(
+        evidence,
+        %{"reviewer-id" => %{profile | effort: "high"}},
+        sessions_root
+      )
+    end
+
+    assert_raise ArgumentError, ~r/missing Claude Code transcript/, fn ->
+      Kogen.RootProfileAudit.audit!(evidence, %{"absent-id" => profile}, sessions_root)
+    end
+
+    # Both fixture sessions (and not the unrelated one) are selected by cwd;
+    # the Sonnet root among them is rejected.
+    assert_raise ArgumentError, ~r/wrong-id root responses came from/, fn ->
+      Kogen.RootProfileAudit.audit_shape!(evidence, fixture, profile, sessions_root)
+    end
+
+    File.rm!(Path.join(projects, "-fixture/wrong-id.jsonl"))
+
+    assert_raise ArgumentError, ~r/expected exactly fresh and continued/, fn ->
+      Kogen.RootProfileAudit.audit_shape!(evidence, fixture, profile, sessions_root)
+    end
+  end
+
+  defp transcript!(cwd, model, effort) do
+    Jason.encode!(%{"type" => "user", "cwd" => cwd, "message" => %{"content" => "hi"}}) <>
+      "\n" <>
+      Jason.encode!(%{
+        "type" => "assistant",
+        "isSidechain" => false,
+        "cwd" => cwd,
+        "effort" => effort,
+        "message" => %{"model" => model, "content" => [%{"type" => "text", "text" => "ok"}]}
+      }) <> "\n"
+  end
 end

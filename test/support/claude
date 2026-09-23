@@ -1,0 +1,8 @@
+#!/bin/sh
+# PATH shim: Kogen never resolves a literal `claude` from PATH; it runs only
+# its managed runtime or an explicit KOGEN_HARNESS fixture. If anything does,
+# this records the attempt and fails loudly instead of reaching a provider.
+receipt=${KOGEN_PROVIDER_DENIAL_RECEIPT:-.kogen/runtime/path-shim-invoked}
+mkdir -p "$(dirname "$receipt")"
+echo "PATH-SHIM-CLAUDE-INVOKED: $*" >>"$receipt"
+exit 1

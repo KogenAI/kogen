@@ -1,0 +1,37 @@
+id: 01a0cc76-aac2-7130-9beb-48933506606d
+slug: claude-code-harness
+title: Run Kogen on Claude Code through a pluggable harness
+status: draft
+readiness: approved
+scope_note: >-
+  Introduce one harness interface. Codex moves behind it unchanged and stays
+  offline-verified; a Kogen-managed Claude Code adapter is added and this
+  repository switches to it (harness name claude; Opus 5.5 at medium for roles, Sonnet 5 helpers).
+shaped_against:
+  branch: main
+  head: c1f085324f78d5030c8d3d7b6efc2df248ff01c2
+shaping:
+  harness: claude-code
+  model: claude-opus-5-5
+  effort: not-configured
+  started: '2026-09-23T04:14:22Z'
+  launch_note: Shaped in Claude Code at the Shaper's direction (not through mix kogen.shape).
+build_prerequisites:
+  - Build executor: Claude Code (claude-opus-5-5) manually following the Kogen flow; one commit.
+  - Before paid verification the Shaper logs Kogen's shared Claude scope in at ~/Library/Application Support/Kogen/claude/accounts/shared (command in questions.md).
+approval:
+  approved_at: '2026-09-23T05:19:09Z'
+  source: 'Shaper replied "Everything is hopefully documented properly approved" in the current conversation after reviewing the final summary.'
+  statement: evidence/approval.md
+may_change_guarded_paths:
+  - README.md
+  - Makefile
+  - .gitignore
+  - .kogen/config.yaml
+  - .codex/**
+  - lib/kogen/**
+  - lib/mix/tasks/**
+  - priv/kogen/**
+  - scripts/check/**
+  - workflows/**
+  - test/**

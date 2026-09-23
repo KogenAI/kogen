@@ -47,4 +47,37 @@ defmodule Kogen.ExecutionPolicyTest do
     assert File.read!("priv/kogen/prompts/reviewer.md") =~ "schema-valid final verdict yourself"
     assert File.read!("priv/kogen/prompts/shaping.md") =~ "in this same conversation"
   end
+
+  test "Claude Code roles name the configured Claude Code agents instead of Codex native kinds" do
+    config = %{
+      harness: "claude",
+      shaping: %{model: "claude-opus-5-5", effort: "medium"},
+      developer: %{model: "claude-opus-5-5", effort: "medium"},
+      reviewer: %{model: "claude-opus-5-5", effort: "medium"},
+      helpers: %{
+        scout: %{model: "claude-sonnet-5", effort: "low"},
+        worker: %{model: "claude-sonnet-5", effort: "medium"},
+        expert: %{model: "claude-opus-5-5", effort: "high"}
+      }
+    }
+
+    for role <- ["shaping", "developer", "reviewer"] do
+      policy = Kogen.ExecutionPolicy.render(config, role)
+      assert policy =~ "- **scout:** `claude-sonnet-5` at `low`; Claude Code agent `kogen-scout`."
+
+      assert policy =~
+               "- **worker:** `claude-sonnet-5` at `medium`; Claude Code agent `kogen-worker`."
+
+      assert policy =~
+               "- **expert:** `claude-opus-5-5` at `high`; Claude Code agent `kogen-expert`."
+
+      assert policy =~ "never to built-in agents"
+      refute policy =~ "native kind"
+      refute policy =~ "native agent-kind enums"
+    end
+
+    codex = Kogen.ExecutionPolicy.render(%{config | harness: "codex"}, "developer")
+    assert codex =~ "native kind `explorer`"
+    assert codex =~ "not native agent-kind enums: use the supported kinds above."
+  end
 end

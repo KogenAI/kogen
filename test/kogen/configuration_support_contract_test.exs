@@ -41,7 +41,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
     verification_retries: 1
     """)
 
-    assert {:error, "unsupported harness: foreign; expected codex"} =
+    assert {:error, "unsupported harness: foreign; expected codex or claude"} =
              Kogen.Intent.read_config(path)
   end
 

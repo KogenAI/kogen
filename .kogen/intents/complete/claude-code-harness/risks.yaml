@@ -1,0 +1,28 @@
+- id: managed-claude-code-state
+  scenario_ids: [pinned-claude-code-install, claude-code-login-scopes, readiness-before-work, claude-code-developer-turns]
+  description: Kogen creates a managed Claude Code runtime, per-scope config directories holding credentials and sessions, and hook settings files. Mishandling them can leak credentials, cross scopes, lose resumable sessions, or let the runtime self-update.
+  ownership:
+    - paths: "~/Library/Application Support/Kogen/claude/runtimes/<version> (pinned native binary)"
+      when_exists: An intact matching runtime is verified and reused; a partial or foreign occupant is reported and left untouched; install stages beside it and publishes atomically.
+      owner_after_creation: Kogen owns the runtime tree it published.
+      owner_during_operation: Active operations keep the runtime they selected; DISABLE_AUTOUPDATER=1 prevents self-update.
+      permitted_mutation: Only mix kogen.claude.install creates a runtime; roles never install or update.
+      validation: Installer fixtures for absent, intact, corrupt, occupied and failed staging; integrity and version checks.
+      git_state: Outside the repository; nothing committed.
+      upgrade_behavior: A new pin installs beside prior runtimes through the documented upgrade workflow after real verification.
+    - paths: "~/Library/Application Support/Kogen/claude/accounts/shared and accounts/projects/<project-id> (CLAUDE_CONFIG_DIR scopes)"
+      when_exists: Existing scope contents are preserved; Kogen creates only missing private (0700) scope directories and a selector.
+      owner_after_creation: Native Claude Code owns credentials (macOS Keychain items keyed by the scope path), sessions and its config files inside each scope; Kogen owns scope creation and selection. Personal Claude Code is never touched.
+      owner_during_operation: Claude Code reads and refreshes credentials and writes sessions; Kogen reads readiness only through claude auth status metadata.
+      permitted_mutation: Claude Code login, refresh and session writes only; Kogen never reads, copies or prints credential values and never moves or renames a scope (that loses its Keychain login).
+      validation: Marker-fixture isolation tests across shared, project and personal config dirs.
+      git_state: Outside the repository; never committed.
+      upgrade_behavior: Scopes persist across pin changes; incompatible sessions fail closed on resume.
+
+- id: subscription-limits
+  scenario_ids: [proven-claude-models, claude-code-developer-turns, claude-code-review, claude-code-shaping]
+  description: Opus 5.5 for every root role consumes the Claude subscription quickly; roles run at medium effort (Anthropic's Opus 5.5 default) and helpers use Sonnet 5 to reduce that. Limits or throttling surface as provider errors, never as silent model substitution (no --fallback-model).
+
+- id: two-adapters-drift
+  scenario_ids: [pluggable-harness, codex-offline-preserved]
+  description: With Codex inactive, only its offline tests run. Shared-code changes must keep both adapters' offline suites green; switching back to Codex requires its paid targets before relying on it.

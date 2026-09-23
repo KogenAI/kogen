@@ -117,8 +117,8 @@ exact Developer session; do not replace it with a child.
 
 ## Being resumed later with rework feedback
 
-After this turn settles, Kogen may resume this exact thread later (via
-`codex exec resume` with this session's id) with rework feedback. That
+After this turn settles, Kogen may resume this exact thread later (an exact
+harness resume of this session's id) with rework feedback. That
 feedback will be one of:
 
 - a settled Check failure (the Verification Record didn't match the

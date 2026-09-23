@@ -389,9 +389,18 @@ defmodule Kogen.LiveReworkAudit do
 
   defp sequences_for_thread(streams, thread_id) do
     for %{sequence: sequence, events: events} <- streams,
-        Enum.any?(events, &(&1["type"] == "thread.started" and &1["thread_id"] == thread_id)),
+        Enum.any?(events, &binds_session?(&1, thread_id)),
         do: sequence
   end
+
+  # Codex binds a capture with `thread.started`; Claude Code with its init event.
+  defp binds_session?(%{"type" => "thread.started", "thread_id" => id}, session),
+    do: id == session
+
+  defp binds_session?(%{"type" => "system", "subtype" => "init", "session_id" => id}, session),
+    do: id == session
+
+  defp binds_session?(_event, _session), do: false
 
   defp one_sequence_for_thread!(streams, thread_id, label) do
     case sequences_for_thread(streams, thread_id) do
@@ -455,7 +464,7 @@ defmodule Kogen.LiveReworkAudit do
     end)
   end
 
-  # Codex can interleave diagnostic stderr with its JSON event stream. The raw
+  # A native harness can interleave diagnostic stderr with its JSON event stream. The raw
   # capture is still useful evidence, but only its structured event lines can
   # establish a thread identity; receipt and Check logs remain strict above.
   defp json_events(path) do

@@ -45,8 +45,9 @@ proc safe_send {text} {
 
 # Native startup and large bracketed-paste rendering are asynchronous.  Wait
 # until the composer has acknowledged the complete paste before pressing Enter;
-# a successful write(2) only proves bytes reached the pty, not that Codex
-# submitted a user turn.
+# a successful write(2) only proves bytes reached the pty, not that the native
+# TUI submitted a user turn. Codex shows `[Pasted Content N chars]`; Claude Code
+# shows `[Pasted text #N ...]`, whose spaces it may render as cursor moves.
 proc submit_message {text label} {
   global spawn_id
   if {![safe_send "\x1b\[200~${text}\x1b\[201~"]} { return 0 }
@@ -56,6 +57,7 @@ proc submit_message {text label} {
     expect {
       -timeout 30
       -re {\[Pasted Content [0-9]+ chars\]} { set acknowledged 1 }
+      -re {Pasted[^a-z]{1,16}text[^a-z#]{0,16}#[0-9]+} { set acknowledged 1 }
       -re [string range $text end-48 end] { set acknowledged 1 }
       eof { }
       timeout { }

@@ -121,6 +121,56 @@ defmodule Kogen.StopHookTest do
     end
   end
 
+  test "Claude Code settings register the unchanged Stop hook, which blocks then passes on Claude Code Stop input" do
+    in_fixture!(fn dir ->
+      settings =
+        Path.join(__DIR__, "../../priv/kogen/claude_code/settings.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      codex = Path.join(dir, ".codex/hooks.json") |> File.read!() |> Jason.decode!()
+      [claude_stop] = get_in(settings, ["hooks", "Stop", Access.at(0), "hooks"])
+      [codex_stop] = get_in(codex, ["hooks", "Stop", Access.at(0), "hooks"])
+      assert claude_stop["command"] == codex_stop["command"]
+
+      [pre] = get_in(settings, ["hooks", "PreToolUse"])
+      [codex_pre] = get_in(codex, ["hooks", "PreToolUse"])
+      assert pre == codex_pre
+
+      input =
+        Jason.encode!(%{
+          "session_id" => @session_id,
+          "transcript_path" => Path.join(dir, "transcript.jsonl"),
+          "cwd" => dir,
+          "hook_event_name" => "Stop",
+          "stop_hook_active" => false
+        })
+
+      assert {block, 0} = run_command(claude_stop["command"], dir, input)
+      assert Jason.decode!(block)["decision"] == "block"
+      assert verification(dir)["status"] == "failed"
+
+      File.write!(Path.join(dir, "proof-fixed.txt"), "HOOK-PASS\n")
+      assert {"{\"continue\":true}\n", 0} = run_command(claude_stop["command"], dir, input)
+      assert verification(dir)["session_id"] == @session_id
+    end)
+  end
+
+  defp run_command(command, dir, input) do
+    input_path = Path.join(dir, "claude-hook-input.json")
+    File.write!(input_path, input)
+
+    System.cmd("sh", ["-c", command <> " < \"$1\"", "--", input_path],
+      cd: dir,
+      env: [
+        {"KOGEN_ROLE", "developer"},
+        {"KOGEN_VERIFICATION_CONTEXT", ""},
+        {"KOGEN_TRACKING_CONTEXT", ""}
+      ],
+      stderr_to_stdout: true
+    )
+  end
+
   defp run_hook(_hook, dir, session_id \\ @session_id, role \\ "developer") do
     input_path = Path.join(dir, "hook-input.json")
     input = if session_id, do: Jason.encode!(%{"session_id" => session_id}), else: "{}"
