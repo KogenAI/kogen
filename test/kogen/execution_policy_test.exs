@@ -42,7 +42,7 @@ defmodule Kogen.ExecutionPolicyTest do
     end
 
     assert File.read!("priv/kogen/prompts/developer.md") =~ "{{verification_ownership}}"
-    assert File.read!("priv/kogen/prompts/developer.md") =~ "Required final Developer handoff"
+    assert File.read!("priv/kogen/prompts/developer.md") =~ "## Final Developer notes"
     assert File.read!("priv/kogen/prompts/reviewer.md") =~ "You must not modify the Candidate"
     assert File.read!("priv/kogen/prompts/reviewer.md") =~ "schema-valid final verdict yourself"
     assert File.read!("priv/kogen/prompts/shaping.md") =~ "in this same conversation"

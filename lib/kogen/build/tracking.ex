@@ -11,7 +11,7 @@ defmodule Kogen.Build.Tracking do
 
   @runtime_base ".kogen/runtime/scenario-tracking"
   @record_name "record.json"
-  @schema_version 1
+  @schema_version 2
 
   @type tracking_record :: %{required(String.t()) => term()}
   @type state :: %{path: Path.t(), bytes: binary(), record: tracking_record()}

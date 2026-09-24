@@ -1,0 +1,492 @@
+- id: controller-built-report
+  given: >-
+    An Approved Intent with scenarios, risks and possibly open Reviewer findings.
+    The Developer turn's Stop verification has settled `passed` on Candidate C.
+    Jev raised no objection at or above 0.85, or was unavailable.
+  when: >-
+    The Developer's final message is any text: a status paragraph, prose
+    followed by JSON, malformed or truncated JSON, a JSON object in the old
+    handoff shape, or an empty string.
+  then: >-
+    No Kogen code parses the message; only Jev reads it. Build records it
+    byte for byte in the attempt
+    as the Developer's notes, labelled unverified. Controller code
+    deterministically builds the handoff report bound to the attempt token and
+    C, and stores it under the attempt's existing `handoff` key. The report
+    has exactly one entry per Approved scenario, one per Approved
+    risk with its `scenario_ids` copied from the contract, and one per open
+    finding. Each scenario entry lists which of its `proof.affected_paths`
+    changed in C relative to HEAD (added, modified or deleted). When none
+    changed, the entry says so plainly, as a hint to the Reviewer rather than a
+    failure, because preservation scenarios can legitimately change nothing.
+    It also lists the scenario's declared offline proof selectors and its paid
+    target, and Build binds it to the
+    settled check and target receipts. It snapshots existing cited regular files
+    exactly as it snapshots references today. Build then continues to the
+    declared targets and fresh independent Review, with no handoff-format
+    failure possible.
+  wrong_result: >-
+    Build still extracts or validates JSON from the message, or rejects prose,
+    empty or malformed output. It asks the model to copy IDs or risk links, or
+    lets a Developer-supplied JSON object override controller-derived fields.
+    It lists every changed file instead of the scenario's affected paths, cites
+    a deleted file as an existing reference, or drops the notes. Or it still
+    labels any outcome "Developer handoff structure invalid" or "semantic
+    invalid".
+  verified_by: [check]
+  evidence: >-
+    Focused fake-harness Build tests. A fake Developer ends with each message
+    variant listed in `when`, and the test asserts the same recorded report
+    (IDs, copied risk links, changed affected paths, selectors, receipt
+    bindings), the verbatim notes, and that Review was reached. A control shows
+    that changing C's affected paths changes the report. A generated-input test
+    feeds the report builder arbitrary message bytes (random, invalid UTF-8,
+    huge, empty) and every recorded Jev outcome. It asserts the builder always
+    succeeds and its output is identical regardless of the message. A
+    source-level assertion checks that Build has no remaining code path that
+    produces a "Developer handoff ... invalid" failure.
+  proof:
+    offline: [test/kogen/controller_handoff_test.exs, test/kogen/two_outer_resumptions_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake Developers drive the real Build consumer through Stop settlement to Review, and report derivation is deterministic controller code"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/contract.ex
+      - lib/kogen/build/tracking.ex
+      - test/kogen/controller_handoff_test.exs
+      - test/kogen/two_outer_resumptions_test.exs
+      - test/support/fake_claude
+      - test/support/fake_codex
+
+- id: schema-free-developer-turns
+  given: A Build on either the `claude` or the `codex` route.
+  when: Build launches a fresh Developer turn or resumes the exact Developer session for rework.
+  then: >-
+    The Developer turn carries no controller handoff schema. Claude Code gets
+    no pasted "Controller handoff schema" block and no `--json-schema`, and
+    Codex gets no `--output-schema` or `--output-last-message` file for the
+    handoff. The harness returns the settled session and its final assistant
+    message, which may be empty, as notes. Exact-session resume, configured
+    model and effort, policy environment, Stop-hook ownership, executed-model
+    checks, and provider/transport failure handling stay as they are. A
+    nonzero exit, a failed result or a session mismatch still stops the Build
+    as a harness failure.
+  wrong_result: >-
+    Only the fresh launch drops the schema while resume still sends it. Or an
+    empty or missing final message becomes a failure. Or provider errors are
+    converted into an accepted empty turn. Or fake providers tell the Developer
+    and Reviewer roles apart by the presence of the schema flag, so a role is
+    misidentified.
+  verified_by: [check]
+  evidence: >-
+    Harness argument and fake-provider tests for both adapters on fresh and
+    resumed Developer turns. They assert that no schema argument or prompt block
+    is present, that notes are passed through, and that a provider-failure
+    control still stops the Build.
+  proof:
+    offline: [test/kogen/claude_code_harness_test.exs, test/kogen/harness_contract_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: argument construction and stream parsing are deterministic; the plain Claude/Codex turn shapes were observed in evidence/stop-terminal-probe.md, and the real route is exercised by live-reviewer-rework in rework-lifecycle-live"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/harness.ex
+      - lib/kogen/harness/claude.ex
+      - lib/kogen/harness/codex.ex
+      - test/kogen/claude_code_harness_test.exs
+      - test/kogen/harness_contract_test.exs
+      - test/support/fake_claude
+      - test/support/fake_codex
+
+- id: jev-reads-developer-notes
+  given: >-
+    Stop verification has settled for attempt T on Candidate C. The
+    Developer's final message (notes) is any text, possibly empty. The contract
+    lists the scenario, risk and open-finding IDs.
+  when: Build asks Jev about the notes.
+  then: >-
+    Build sends exactly one `POST https://api.typesafe.ai/v1/systemone`
+    request with `model: "jev-1.13.0"`, a pinned model that is not an alias.
+    The `state` holds the notes verbatim and the controller-listed item IDs and
+    kinds. The `questions` are, for each scenario, a `status:<id>` Choice with
+    six options: `unfinished`, `done`, `pending_external`,
+    `resolved_or_historical`, `objection_only` and `unclear`. For each
+    scenario, risk and open finding there is also an `objection:<kind>:<id>`
+    Choice with three options: `objection`, `no_objection` and `unclear`. The
+    instructions, rules and option criteria are fixed, versioned controller
+    text, copied from the calibrated v2 wording in
+    `evidence/jev-probe/prose_v2.py`. That wording covers the boundary cases:
+    verification owned by someone else is `pending_external`, and unfinished
+    work alone is not an objection. Build validates every returned option
+    against the options it sent. The API
+    key is read at call time from the macOS Keychain service
+    `ai.typesafe.api` and used only in the `Authorization: Bearer` header. It
+    is never logged, retained, placed in any role's context, or included in an
+    error. Build retains the exact request bytes and their digest, the
+    response, HTTP status, usage, latency and outcome in the tracking record,
+    bound to T and C. None of this appears in the Developer's context. The
+    request has a fixed 60-second timeout and at most one retry, only for a
+    timeout, HTTP 429 or HTTP 529. Offline tests reach Jev only through an
+    injected fake transport that replays recorded responses. No offline test
+    can reach the network.
+  wrong_result: >-
+    Build sends Jev the diff or code, or asks Jev to judge implementation. Or it
+    sends one request per item, or uses an alias such as `jev-latest`. Or it
+    lets the Developer or a helper call Jev, or copies the key into the
+    environment, a log or the record. Or it retries without bound, or an
+    offline test calls the real API.
+  verified_by: [check]
+  evidence: >-
+    Client and Build tests with a fake transport. They assert the exact
+    request body (model, state, question IDs and wording), the header source,
+    the retained evidence and digest, timeout and retry behaviour, and that the
+    key string never appears in the record, logs or errors (a sentinel key is
+    used). A guard test fails if the offline suite opens a connection to
+    api.typesafe.ai.
+  proof:
+    offline: [test/kogen/jev_test.exs, test/kogen/controller_handoff_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: request construction, key handling, retry policy and retention are deterministic controller code driven through a fake transport; the real service is exercised in the paid targets of bindings-and-records-preserved and rework-lifecycle-live"
+    affected_paths:
+      - mix.exs
+      - mix.lock
+      - lib/kogen/jev.ex
+      - lib/kogen/build.ex
+      - lib/kogen/build/tracking.ex
+      - test/kogen/jev_test.exs
+      - test/kogen/controller_handoff_test.exs
+      - test/support/fake_jev.ex
+
+- id: jev-key-required-before-build
+  given: >-
+    A Build is requested on a machine where the macOS Keychain has no generic
+    password for service `ai.typesafe.api` (or the item cannot be looked up).
+  when: "`mix kogen.build <slug>` runs its preconditions."
+  then: >-
+    Build fails before any Developer launch, tracking record or verification
+    context is created. The message names the missing Keychain service
+    `ai.typesafe.api` and says how to add it. The check only tests whether the
+    item exists, for example `security find-generic-password -s
+    ai.typesafe.api` without `-w`. It never reads, prints or retains the
+    value. With the item present, preconditions pass exactly as today. A key
+    that is present but rejected during the Build (HTTP 401), and every other
+    runtime Jev failure, still goes to Review marked "Jev unavailable", as in
+    `jev-unavailable-goes-to-review`.
+  wrong_result: >-
+    A missing key lets every Build run silently without the objection check,
+    visible only in Reviewer notes. Or the precondition reads or logs the key
+    value. Or it runs after the Developer has launched. Or a present key is
+    refused.
+  verified_by: [check]
+  evidence: >-
+    Precondition tests with an injected Keychain lookup: a missing item fails
+    before launch with the named service and no tracking record, while a
+    present item passes. A test asserts that the lookup is invoked without the
+    value-printing flag.
+  proof:
+    offline: [test/kogen/build_preconditions_test.exs, test/kogen/jev_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the existence check is a deterministic precondition exercised through the real Build entry with an injected lookup"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/jev.ex
+      - test/kogen/build_preconditions_test.exs
+      - test/kogen/jev_test.exs
+
+- id: cannot-comply-stops
+  given: >-
+    Jev answered for attempt T. At least one `objection:<kind>:<id>` answer is
+    `objection` with confidence at or above the named constant 0.85. The code
+    documents that constant as calibrated by `evidence/jev-calibration.md`
+    (round 3): 0 wrong stops and 29 of 30 real objections caught across
+    repeated runs, whereas 0.8 produced 2 wrong stops.
+  when: Build settles the attempt.
+  then: >-
+    Build stops immediately, without Review and without spending an outer
+    resumption. The error begins "Developer cannot comply as approved; return
+    to Shaping:". It lists each flagged item with its kind, ID and Jev
+    confidence, and quotes the Developer's notes verbatim. When the notes
+    exceed a fixed limit, the quote is visibly truncated and names the
+    record path that holds the full notes. The record keeps the same data.
+    The Candidate is kept for inspection like any stopped Build. If
+    verification retries were exhausted in the same attempt, Build still asks
+    Jev, and the objection text leads the error before the existing
+    exhaustion reason. `objection` answers below 0.85 never stop the Build;
+    they reach the Reviewer as "possible objection (confidence x)". An
+    open finding that the Developer says it cannot address is handled the
+    same way, and there is no separate `blocked` status.
+  wrong_result: >-
+    A low-confidence answer stops the Build. Or a stop spends an outer attempt,
+    resumes the Developer, or reaches Review. Or the Developer's words or Jev's
+    confidence are left out of the error. Or an objection hides behind
+    "verification retries exhausted". Or the threshold is an unexplained magic
+    number or a new configuration key.
+  verified_by: [check]
+  evidence: >-
+    Fake-Jev Build tests: one objection each for a scenario, a risk and a
+    finding at 0.95; answers at 0.85 and 0.84 (the boundary); an objection with
+    long notes (truncation); an objection with exhausted verification; and a
+    low-confidence objection that must reach Review as a note. Each asserts
+    the stop text, the record, and whether a Reviewer or resume was launched.
+  proof:
+    offline: [test/kogen/controller_handoff_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the mapping from recorded Jev answers to outcomes is deterministic controller code; Jev's reading accuracy is Shaping evidence, not a Build gate"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/jev.ex
+      - lib/kogen/build/tracking.ex
+      - test/kogen/controller_handoff_test.exs
+      - test/support/fake_jev.ex
+
+- id: jev-unavailable-goes-to-review
+  given: >-
+    Stop verification passed, but Jev cannot give a usable answer. The cases
+    are: the Keychain item disappeared or became unreadable after the
+    precondition passed; a timeout; HTTP 400
+    (including `{"detail":{"error_type":"max_tokens_exceeded"}}`), 401, 422,
+    429 or 529 after the one allowed retry; any other HTTP error or transport
+    failure; a body that is not JSON; a response for another model; or an
+    answer missing, duplicated or invalid for any asked question.
+  when: Build settles the attempt.
+  then: >-
+    Build never treats the failure as "no objection" and never drops it
+    silently. It records the Jev outcome as `unavailable` with a precise reason
+    (never the key). It continues to the declared targets and fresh Review,
+    and tells the Reviewer "Jev unavailable: <reason>; no Developer-notes
+    reading was available" for every item. A partially valid response is
+    treated as unavailable in full; no answers are cherry-picked. The Build
+    neither stops nor spends an attempt because of Jev.
+  wrong_result: >-
+    A missing key or a 400 error stops the Build, or is recorded as "no
+    objections". Or valid answers from a malformed response are used. Or the
+    Reviewer is not told that Jev was unavailable. Or the error or record
+    contains the key.
+  verified_by: [check]
+  evidence: >-
+    Fake-transport Build tests for each listed failure, including the exact
+    recorded `max_tokens_exceeded` body and a partially valid response. Each
+    asserts that Review is reached with the unavailable note and the recorded
+    reason, and that the sentinel key is absent.
+  proof:
+    offline: [test/kogen/jev_test.exs, test/kogen/controller_handoff_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: every failure path is a recorded transport response replayed through the real Build consumer"
+    affected_paths:
+      - lib/kogen/jev.ex
+      - lib/kogen/build.ex
+      - test/kogen/jev_test.exs
+      - test/kogen/controller_handoff_test.exs
+      - test/support/fake_jev.ex
+
+- id: missing-proof-selector-is-unfinished
+  given: >-
+    Stop verification passed for attempt N, with outer allowance remaining, but
+    a declared offline proof selector P for some scenario still does not exist
+    in the Candidate.
+  when: Build settles the attempt.
+  then: >-
+    Build does not run Review for this attempt. It records the outcome
+    `unfinished_work` naming P, and the failure reads "Unfinished work: missing
+    declared proof selector P". The same Developer session is resumed with
+    that text, spending one outer resumption, and the next attempt needs a
+    fresh Stop verification. When the allowance is exhausted, the Build stops
+    with "stopped after 2 outer resumptions without an accepting Review:
+    Unfinished work: ...". The check runs after verification settles, not
+    before as it does today. Other checks that run before settlement stay
+    there: catalog change, guarded paths and Approved mutation. A Jev
+    `cannot_comply` stop in the same attempt takes precedence.
+  wrong_result: >-
+    It is reported as a handoff failure, or Review runs anyway. Or the Build
+    stops immediately as today. Or it resumes without spending the outer
+    allowance.
+  verified_by: [check]
+  evidence: >-
+    Fake Developer tests: a missing selector on attempt 0 followed by a
+    finished attempt 1 that reaches an accepting Review; a missing selector
+    on every attempt until the allowance is exhausted; and a positive control
+    where the selector exists.
+  proof:
+    offline: [test/kogen/controller_handoff_test.exs, test/kogen/two_outer_resumptions_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: deterministic orchestration through the real Build consumer with fake Developers"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification_plan.ex
+      - lib/kogen/build/tracking.ex
+      - test/kogen/controller_handoff_test.exs
+      - test/kogen/two_outer_resumptions_test.exs
+
+- id: reviewer-owns-completeness
+  given: A Developer turn has settled with a passing Stop and no Jev stop.
+  when: Build launches the fresh Reviewer.
+  then: >-
+    The Reviewer's prompt and task context say the report is controller-built
+    and contains no Developer self-assessment, so the Reviewer is responsible
+    for finding unfinished or plausible-looking-only scenarios. They also say
+    that the Developer's notes, including prose responses to open findings,
+    are unverified claims. Jev's answers are shown per item and labelled
+    advisory: "the Developer says X is unfinished (confidence c)", "the
+    Developer says its work on X is done and only external verification is
+    pending (c)", "resolved or historical (c)", "unclear (c)", "possible
+    objection (c)", or "Jev unavailable: reason". The Shaper chose that a
+    confident "unfinished" answer never routes rework by itself; only the
+    Reviewer decides rework. The context
+    states that Jev only read the Developer's words and never judged the code.
+    It also states that `changed_affected_paths` lists files that changed, not
+    where each behaviour lives. The Developer prompt drops the JSON handoff
+    section. It asks for free prose that names, per scenario, anything still
+    unfinished. It asks for any contract objection to be stated plainly in one
+    short paragraph naming the scenario, risk or finding and the reason. It
+    also asks the Developer to answer open findings in prose. It keeps honest
+    reporting and "return to Shaping". The verdict schema, disposition rules,
+    fresh-Reviewer checks and publication stay as they are.
+    `README.md` is updated to match (added by Shaper decision 19). "The loop"
+    and the Build handoff paragraphs (today around lines 78 and 119-133)
+    say that controller code builds the handoff report after Stop settles, and
+    the Developer's final message is free prose that Kogen code never
+    parses. They say Jev (`jev-1.13.0`) reads the prose once per handoff, and
+    that an objection at 0.85 or higher stops the Build and returns it to
+    Shaping. "Unfinished" answers and any runtime Jev failure reach the
+    Reviewer only as advisory notes. A missing declared proof selector is
+    unfinished work that uses one outer resumption. The Claude Code section
+    (today around line 387) no longer says the Developer's final message is a
+    validated handoff. The Get started prerequisites and the Build
+    instructions both say `mix kogen.build` needs a macOS Keychain generic
+    password for service `ai.typesafe.api` (the TypeSafe API key). They say
+    how to add it, for example `security add-generic-password -s
+    ai.typesafe.api -a <account> -w`, and that without it Build stops before
+    launch. They say Build sends the Developer's notes and item IDs to
+    TypeSafe. No README text still describes invalid or malformed Developer
+    handoffs, controller handoff schemas, or handoff validation as a Build
+    outcome.
+  wrong_result: >-
+    Jev's answers are presented as findings or as verification. Or the
+    Reviewer is not told it must catch unfinished work. Or "unfinished"
+    answers route rework without Review. Or the prompts still describe a JSON
+    handoff. Or verdict validation is loosened. Or the README still says an
+    invalid Developer handoff uses an outer resumption, or never mentions the
+    `ai.typesafe.api` Keychain requirement, so someone running
+    `mix kogen.build` on another machine hits the precondition stop without
+    documentation.
+  verified_by: [check]
+  evidence: >-
+    Prompt-rendering and task-context tests assert the required statements
+    and advisory labels for each Jev outcome. A preservation test shows
+    verdicts and dispositions validate and apply as before. A README claim
+    test, in the style of `core_integrity_test.exs` `:harness_documentation`,
+    asserts the new claims, including `ai.typesafe.api`. It refutes the
+    superseded "invalid Developer handoff" and schema-validated handoff
+    wording.
+  proof:
+    offline: [test/kogen/controller_handoff_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/core_integrity_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: rendered prompt and context bytes and README text are deterministic; real Review is exercised in rework-lifecycle-live"
+    affected_paths:
+      - README.md
+      - test/kogen/core_integrity_test.exs
+      - priv/kogen/prompts/developer.md
+      - priv/kogen/prompts/reviewer.md
+      - priv/kogen/prompts/execution-policy.md
+      - lib/kogen/build.ex
+      - test/kogen/controller_handoff_test.exs
+      - test/kogen/scenario_tracking_test.exs
+
+- id: bindings-and-records-preserved
+  given: >-
+    A Build using the new report. The Candidate, the Approved package, the
+    target catalog, guarded paths, the tracking record and the Verification
+    Record could each be mutated during or after the Developer turn.
+  when: >-
+    Build settles, reviews and publishes, including the real connected route
+    run by `make live-shape-to-build`. In that route the first Stop fails, the
+    second passes, Review accepts and the Candidate is published.
+  then: >-
+    Every existing integrity stop still fires with its current reason. These
+    are Candidate mutation between settlement and Review, Approved package
+    mutation, catalog change, guarded-path violation, tracking or Verification
+    Record tampering, and a fresh-Reviewer violation. The controller-built
+    report is stored under the attempt's existing `handoff` key. The tracking
+    record gets a new schema version that also holds the notes and the
+    retained Jev request, response and outcome. The per-attempt failure kinds `unfinished_work` and
+    `cannot_comply` appear in the build summary in place of
+    `handoff_structure` and `handoff_semantic`. Retained records written by
+    earlier Builds are never rewritten or migrated. The verification catalog's
+    rehearsal trace entrypoints name the new controller report function in
+    place of `Kogen.Build.Contract.handoff`, and both rehearsals still run.
+    Every test assertion that reads the Developer's schema back from
+    `developer_invocation` is updated. These are
+    `test/kogen/live_shape_to_build_test.exs:570-584`,
+    `test/support/live_rework_audit.ex:155` and
+    `test/kogen/scenario_lifecycle_test.exs:75`. Each now asserts that a
+    Developer invocation carries no handoff schema, and that its recorded
+    message and digest match the notes. `live_shape_to_build_test.exs` drops
+    its "structured handoff" instruction, keeps asserting that
+    `initial_attempt["handoff"]` is a map, and also asserts that the map is the
+    controller report, and that the attempt retains a real Jev outcome with
+    no objection. The real connected route then publishes with the new
+    report, notes and Jev evidence in the Complete package's evidence.
+  wrong_result: >-
+    Removing handoff parsing also removes the post-turn input and Candidate
+    checks. Or old records are rewritten. Or the report moves to a new key.
+    Or the rehearsal traces still assert an entrypoint Build no longer calls,
+    so `live-reviewer-rework` planning fails. Or the summary still reports
+    handoff kinds. Or `live_shape_to_build_test.exs` still decodes
+    `invocation["schema"]`, so the next paid run (Intent B1's) fails with a
+    misattributed error.
+  verified_by: [check, live-shape-to-build]
+  evidence: >-
+    The existing mutation and integrity regression tests pass unchanged, plus
+    summary-kind assertions, the rehearsal trace tests, and the paid
+    live-shape-to-build receipt. The outer live driver alone observes that
+    run's ephemeral stream sequence, and Review assesses the retained receipts,
+    record and Candidate.
+  proof:
+    offline: [test/kogen/settlement_regression_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/scenario_lifecycle_test.exs, rehearse-live-reviewer-rework, rehearse-live-shape-to-build]
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: the updated connected-lifecycle assertions execute against a real Build record containing the controller-built report, notes and new failure kinds through publication; offline-limit: the rehearsal cannot execute the live owner's record assertions against a real Candidate"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/tracking.ex
+      - priv/kogen/verification_targets.yaml
+      - test/kogen/settlement_regression_test.exs
+      - test/kogen/scenario_tracking_test.exs
+      - test/kogen/scenario_lifecycle_test.exs
+      - test/kogen/live_shape_to_build_test.exs
+
+- id: rework-lifecycle-live
+  given: >-
+    The maintained provider-backed Reviewer-rework fixture on the default
+    `claude` route. Its fixture text is updated so it no longer instructs a
+    "full structured handoff" and instead has the Developer disclose the
+    deliberately absent file in its notes.
+  when: "`make live-reviewer-rework` runs a real Build."
+  then: >-
+    The real Developer finishes its turns without any handoff schema and with
+    free-text notes. Build records the controller-built report and a real Jev
+    reading of the notes. The fixture's intentional-absence wording may give
+    an advisory "unfinished" note, but it never produces a cannot-comply stop.
+    The first fresh
+    Reviewer returns rework, the exact Developer session is resumed with a new
+    token, a new Stop verification passes, and a second fresh Reviewer accepts.
+    No attempt fails for a handoff reason. The outer live driver keeps and
+    audits the stream sequence.
+  wrong_result: >-
+    The offline fakes pass, but the real Developer on the managed harness fails
+    because the command or environment is missing from its shell, or it still
+    emits JSON that Build then chokes on. Or the real Jev call fails and is
+    silently skipped, or Jev stops the fixture Build. Or the fixture still demands a
+    structured handoff, or its audit still decodes the Developer schema.
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    The receipt from live-reviewer-rework and its retained audit. The outer
+    driver alone observes the ephemeral stream sequence; independent Review
+    assesses the retained receipts and Candidate.
+  proof:
+    offline: [rehearse-live-reviewer-rework, test/kogen/two_outer_resumptions_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: a real managed Claude Code Developer completes schema-free Build and rework turns with notes and a controller-built report reaching an accepting fresh Review; offline-limit: fakes cannot show the real model follows the new prompt or that real Jev reads real notes without a false stop"
+    affected_paths:
+      - test/support/live_reviewer_rework_fixture.ex
+      - test/support/live_rework_audit.ex
+      - test/kogen/live_reviewer_rework_test.exs
+      - lib/kogen/build.ex

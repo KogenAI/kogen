@@ -1,0 +1,32 @@
+- path: .kogen/runtime/shaping-followups/SHAPE_HANDOFF_HARDENING.md
+  note: Shaper's brief for this Intent (failure table, causes, directions, constraints).
+- path: .kogen/intents/complete/structured-developer-handoffs
+  note: Prior Intent that introduced schema-constrained handoffs and its correction policy; superseded here.
+- path: .kogen/intents/complete/claude-code-harness/evidence/claude-code-probe.md
+  note: Earlier probe - Stop block ignored once the model ends with StructuredOutput.
+- path: .kogen/intents/complete/named-routes
+  note: Build Bg1qobsC; attempt 0 prose-before-JSON, attempt 1 deliberate contract objection via narrowed risk links.
+- path: lib/kogen/build.ex
+  note: settle/validate_handoff/rework at shaped head (lines ~393-575, 1256-1265).
+- path: lib/kogen/build/contract.ex
+  note: Contract.handoff semantic validation (lines 40-68, 248-330, 505-630).
+- path: lib/kogen/build/developer_handoff.ex
+  note: Controller-generated handoff schema.
+- path: lib/kogen/build/verification_plan.ex
+  note: handoff_valid? missing-selector stop (lines 84-95).
+- path: .codex/hooks/stop_runner.py
+  note: Unified Stop runner; `verification already terminal` answer (unchanged by this Intent).
+- path: priv/kogen/verification_targets.yaml
+  note: Rehearsal trace entrypoints naming Kogen.Build.Contract.handoff (lines 85, 90).
+- path: test/kogen/test_reliability_catalog_test.exs
+  note: Pins declaration count and per-file source hashes in priv/kogen/test-reliability.yaml.
+- path: .kogen/runtime/shaping-followups/SHAPE_HANDOFF_JEV.md
+  note: Shaper's Jev revision brief (Jev reads the handoff; signal command dropped).
+- path: .kogen/runtime/shaping-followups/test-reliability-audit/jev_focused_runner.py
+  note: Prior Jev request shape and Keychain key handling in this repository.
+- url: https://docs.typesafe.ai/models.md
+  note: jev-1.13.0 limits (64k per request, 32k state + longest question), rate limits, pricing; snapshot 2026-09-23.
+- url: https://docs.typesafe.ai/api.md
+  note: systemone request/response and documented errors (401, 422, 429, 529).
+- url: https://docs.typesafe.ai/legal.md
+  note: No training on customer requests; zero data retention enterprise-only.

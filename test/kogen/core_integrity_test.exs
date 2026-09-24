@@ -10,7 +10,8 @@ defmodule Kogen.CoreIntegrityTest do
       %{scenario: :malformed_reviewer_verdict},
       %{scenario: :reviewer_exits_nonzero},
       %{scenario: :empty_rework_findings},
-      %{scenario: :harness_documentation}
+      %{scenario: :harness_documentation},
+      %{scenario: :handoff_report_documentation}
     ]
 
   alias Kogen.{Build, Check}
@@ -92,6 +93,48 @@ defmodule Kogen.CoreIntegrityTest do
     refute guide =~ ~r/Claude Code (replaced|replaces) Codex/i
     refute guide =~ ~r/Claude subscription (through|via) Codex/i
     assert File.regular?(Path.join(root, "workflows/claude-code-runtime-upgrade.md"))
+  end
+
+  # The user guide must reflect the controller-built handoff report: the
+  # Developer's final message is free prose Kogen never parses, Jev reads it
+  # once per handoff, an objection at 0.85 stops the Build back to Shaping,
+  # a missing proof selector is unfinished work worth one outer resumption,
+  # and the ai.typesafe.api Keychain requirement is documented. It must no
+  # longer describe invalid or malformed Developer handoffs, controller
+  # handoff schemas, or schema-validated Developer turns.
+  defp run_scenario(:handoff_report_documentation) do
+    root = Path.expand("../..", __DIR__)
+    guide = root |> Path.join("README.md") |> File.read!() |> String.replace(~r/\s+/, " ")
+
+    for claim <- [
+          "controller code builds the handoff report",
+          "Kogen code never parses it",
+          "jev-1.13.0",
+          "0.85 confidence or higher stops the Build",
+          "quoting the Developer's words and Jev's confidence",
+          "reaches the Reviewer only as a labelled advisory note",
+          "the Reviewer alone decides acceptance or rework",
+          "unfinished work decided by code",
+          "one outer resumption",
+          "ai.typesafe.api",
+          "security add-generic-password -s ai.typesafe.api -a <account> -w",
+          "Build stops before launching the Developer",
+          "Build sends the Developer's notes and the contract's scenario, risk, and finding IDs to TypeSafe"
+        ] do
+      assert guide =~ claim, "README must document: #{claim}"
+    end
+
+    refute guide =~ ~r/invalid Developer handoff/i
+    refute guide =~ ~r/Developer handoff structure invalid/i
+    refute guide =~ ~r/semantic invalid/i
+
+    refute guide =~
+             ~r/Developer('s)? (final )?message (is|carries)( its| a)? (validated|schema[- ]validated)/i
+
+    refute guide =~ ~r/final Developer message against a\s*controller-owned schema/i
+    refute guide =~ ~r/controller[- ]owned (handoff )?schema/i
+    refute guide =~ ~r/malformed handoff/i
+    refute guide =~ ~r/Invalid handoffs share/i
   end
 
   defp run_scenario(:archives_hook_history) do
@@ -331,7 +374,9 @@ defmodule Kogen.CoreIntegrityTest do
     #{developer_setup}printf '%s\\n' '{"type":"thread.started","thread_id":"dev-session-1"}'
     printf '%s' '{"session_id":"dev-session-1"}' | sh .codex/hooks/check.sh >/dev/null
     response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
-    printf '%s\n' "$response" > "$output_file"
+    if [ -n "$output_file" ]; then
+      printf '%s\n' "$response" > "$output_file"
+    fi
     printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
     printf '%s\\n' '{"type":"turn.completed","thread_id":"dev-session-1"}'
     """

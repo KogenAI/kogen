@@ -1,5 +1,5 @@
 defmodule Kogen.ScenarioLifecycleTest do
-  @moduledoc "Offline lifecycle controls for scenario-bound handoffs and findings."
+  @moduledoc "Offline lifecycle controls for controller-built handoff reports and findings."
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.Build
@@ -9,27 +9,38 @@ defmodule Kogen.ScenarioLifecycleTest do
 
   for mode <-
         ~w(handoff_missing handoff_stale handoff_incomplete handoff_duplicate handoff_unknown) do
-    test "#{mode} handoff blocks Review then corrects in the exact Developer session" do
+    test "#{mode} old-shape JSON notes are never validated and reach Review in one attempt" do
       dir = fixture!()
       on_exit(fn -> File.rm_rf(dir) end)
 
       assert :ok = run(dir, unquote(mode))
       assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
-      assert File.read!(Path.join(dir, ".kogen/runtime/resume-sessions")) == "developer-session\n"
+      refute File.exists?(Path.join(dir, ".kogen/runtime/resume-sessions"))
+      [attempt] = record!(dir)["attempts"]
+      notes = File.read!(Path.join(dir, ".kogen/runtime/developer-notes-1"))
+      assert attempt["developer_notes"]["text"] == notes
+      assert attempt["handoff"]["built_by"] == "controller"
+      assert Enum.map(attempt["handoff"]["scenarios"], & &1["id"]) == ["first"]
     end
   end
 
   for mode <- ~w(output_missing output_empty output_truncated) do
-    test "settled #{mode} output is a bounded structural correction in the same session" do
+    test "settled #{mode} notes are recorded verbatim and reach Review without correction" do
       dir = fixture!()
       on_exit(fn -> File.rm_rf(dir) end)
 
       assert :ok = run(dir, unquote(mode))
-      [failed, corrected] = record!(dir)["attempts"]
-      assert failed["failure"] =~ "Developer handoff structure invalid"
-      assert failed["developer_session_id"] == "developer-session"
-      assert corrected["developer_session_id"] == "developer-session"
-      assert File.read!(Path.join(dir, ".kogen/runtime/resume-sessions")) == "developer-session\n"
+      [attempt] = record!(dir)["attempts"]
+
+      expected =
+        if unquote(mode) == "output_missing",
+          do: "",
+          else: File.read!(Path.join(dir, ".kogen/runtime/developer-notes-1"))
+
+      assert Base.decode64!(attempt["developer_notes"]["content_base64"]) == expected
+      assert attempt["developer_notes"]["label"] =~ "unverified"
+      refute attempt["failure"]
+      refute File.exists?(Path.join(dir, ".kogen/runtime/resume-sessions"))
       assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
     end
   end
@@ -49,45 +60,26 @@ defmodule Kogen.ScenarioLifecycleTest do
     end
   end
 
-  test "handoff diagnostics reach the resumed Developer through the retained attempt" do
+  test "Build retains each Developer invocation's notes and carries no handoff schema" do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
 
-    assert :ok = run(dir, "handoff_diagnostics")
-    assert File.regular?(Path.join(dir, ".kogen/runtime/developer-verified-diagnostics"))
-    [failed, _corrected] = record!(dir)["attempts"]
-    assert failed["failure"] =~ "path \"lib\""
-    assert failed["failure"] =~ "found directory"
-    assert failed["failure"] =~ "field response must be nonblank text"
-    assert File.read!(Path.join(dir, ".kogen/runtime/resume-sessions")) == "developer-session\n"
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
-  end
+    assert :ok = run(dir, "review_evidence")
+    [first, reworked] = record!(dir)["attempts"]
 
-  test "Build retains each owned Developer schema and final message after invocation cleanup" do
-    dir = fixture!()
-    on_exit(fn -> File.rm_rf(dir) end)
-
-    assert :ok = run(dir, "handoff_stale")
-    [first, corrected] = record!(dir)["attempts"]
-
-    for attempt <- [first, corrected] do
+    for {attempt, call} <- [{first, 1}, {reworked, 2}] do
       invocation = attempt["developer_invocation"]
-      schema = Jason.decode!(invocation["schema"])
+      refute Map.has_key?(invocation, "schema")
+      refute Map.has_key?(invocation, "schema_sha256")
       assert invocation["outcome"] == "settled"
       assert invocation["session_id"] == "developer-session"
-
-      assert invocation["schema_sha256"] ==
-               Base.encode16(:crypto.hash(:sha256, invocation["schema"]), case: :lower)
-
-      assert invocation["message_sha256"] ==
-               Base.encode16(:crypto.hash(:sha256, invocation["message"]), case: :lower)
-
-      assert schema["properties"]["attempt_token"]["enum"] == [attempt["attempt_token"]]
-      assert schema["properties"]["scenarios"]["minItems"] == 1
-      assert schema["properties"]["risks"]["minItems"] == 1
+      notes = File.read!(Path.join(dir, ".kogen/runtime/developer-notes-#{call}"))
+      assert invocation["message"] == notes
+      assert attempt["developer_notes"]["text"] == notes
+      assert invocation["message_sha256"] == sha256(notes)
+      assert attempt["developer_notes"]["sha256"] == sha256(notes)
+      assert attempt["handoff"]["attempt_token"] == attempt["attempt_token"]
     end
-
-    refute first["developer_invocation"]["schema"] == corrected["developer_invocation"]["schema"]
   end
 
   test "invalid Review retains all entry diagnoses and stops without publication" do
@@ -236,16 +228,16 @@ defmodule Kogen.ScenarioLifecycleTest do
     path = records(dir) |> List.first() |> Path.relative_to(dir)
 
     for {attempt, call} <- Enum.with_index(record["attempts"], 1) do
-      for role <- ~w(developer reviewer) do
-        snapshot = attempt["#{role}_reference_snapshots"][path]
-        assert snapshot["binding"] == "controller_record_version"
-        inspected = File.read!(Path.join(dir, ".kogen/runtime/#{role}-inspected-#{call}.json"))
-        assert Base.decode64!(snapshot["content_base64"]) == inspected
-        assert snapshot["sha256"] == Base.encode16(:crypto.hash(:sha256, inspected))
-      end
+      snapshot = attempt["reviewer_reference_snapshots"][path]
+      assert snapshot["binding"] == "controller_record_version"
+      inspected = File.read!(Path.join(dir, ".kogen/runtime/reviewer-inspected-#{call}.json"))
+      assert Base.decode64!(snapshot["content_base64"]) == inspected
+      assert snapshot["sha256"] == Base.encode16(:crypto.hash(:sha256, inspected))
 
-      refute attempt["developer_reference_snapshots"][path] ==
-               attempt["reviewer_reference_snapshots"][path]
+      # A record path in the Developer's notes is never parsed into a citation;
+      # the controller report cites only Candidate files and selectors.
+      assert attempt["developer_notes"]["text"] =~ path
+      refute Map.has_key?(attempt["developer_reference_snapshots"], path)
     end
 
     [summary] =

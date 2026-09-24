@@ -77,6 +77,68 @@ defmodule Kogen.BuildEvidenceTest do
     write_summary!(summary_path, Map.put(summary, "schema_version", 99))
     assert {:error, unsupported} = Evidence.resolve(summary_path, root)
     assert unsupported =~ "unsupported Build summary"
+
+    write_summary!(summary_path, put_in(summary, ["full_record", "schema_version"], 99))
+    assert {:error, unsupported_record} = Evidence.resolve(summary_path, root)
+    assert unsupported_record =~ "unsupported bound tracking"
+
+    assert_version_2_record_resolves!()
+  end
+
+  # Version 2 records add the Developer notes, Jev evidence and the
+  # controller-built report; version 1 records above stay readable.
+  defp assert_version_2_record_resolves! do
+    root = Path.join(System.tmp_dir!(), "kogen-evidence-v2-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(root) end)
+    File.mkdir_p!(Path.join(root, ".kogen/runtime/scenario-tracking/build-2"))
+    record_path = ".kogen/runtime/scenario-tracking/build-2/record.json"
+
+    attempt = %{
+      "number" => 0,
+      "attempt_token" => "token-2",
+      "status" => "accepted",
+      "developer_session_id" => "developer-2",
+      "reviewer_session" => "reviewer-2",
+      "candidate_id" => "candidate-2",
+      "developer_notes" => %{"text" => "Done."},
+      "jev" => %{"outcome" => "answered"},
+      "handoff" => %{"format" => "kogen-controller-handoff-report"}
+    }
+
+    record =
+      Jason.encode!(%{
+        "schema_version" => 2,
+        "status" => "accepted",
+        "intent" => %{"id" => "intent-2"},
+        "attempts" => [attempt]
+      })
+
+    File.write!(Path.join(root, record_path), record)
+    summary_path = Path.join(root, "build-summary.json")
+
+    summary = %{
+      "format" => "kogen-build-summary",
+      "schema_version" => 1,
+      "intent" => %{"id" => "intent-2"},
+      "build_id" => "build-2",
+      "candidate_id" => "candidate-2",
+      "developer_session_id" => "developer-2",
+      "attempts" => [Map.put(attempt, "reviewer_session_id", "reviewer-2")],
+      "full_record" => %{
+        "format" => "kogen-scenario-tracking-record",
+        "schema_version" => 2,
+        "path" => record_path,
+        "sha256" => sha256(record),
+        "byte_count" => byte_size(record)
+      }
+    }
+
+    write_summary!(summary_path, summary)
+    assert {:ok, %{"schema_version" => 2}} = Evidence.resolve(summary_path, root)
+
+    # The binding must still name the record's own version.
+    write_summary!(summary_path, put_in(summary, ["full_record", "schema_version"], 1))
+    assert {:error, _mismatch} = Evidence.resolve(summary_path, root)
   end
 
   test "a summary carrying route resolves only when it matches the record's frozen route, and a legacy summary without route still resolves" do

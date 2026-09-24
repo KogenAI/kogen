@@ -90,19 +90,6 @@ def developer(snapshot, call, mode):
         if mode == "handoff_incomplete": response["scenarios"] = []
         if mode == "handoff_duplicate": response["scenarios"] += response["scenarios"][:1]
         if mode == "handoff_unknown" and response["scenarios"]: response["scenarios"][0]["id"] = "unknown"
-        if mode == "handoff_diagnostics":
-            response["scenarios"][0]["evidence"] = [{"path": "lib", "locator": "source directory"}]
-            response["risks"][0]["response"] = ""
-    if mode == "handoff_diagnostics" and call == 2:
-        attempts = snapshot.get("attempts", [])
-        if len(attempts) < 2:
-            raise ValueError("resumed Developer did not receive attempt history")
-        failure = attempts[-2].get("failure", "")
-        required = ['handoff scenarios', 'entry "first"', 'evidence[1]', 'path "lib"', 'found directory', 'handoff risks', 'entry "lifecycle-risk"', 'field response', 'nonblank text']
-        missing = [detail for detail in required if detail not in failure]
-        if missing:
-            raise ValueError(f"previous handoff failure lacks actionable diagnostics: {missing}")
-        (RUNTIME / "developer-verified-diagnostics").write_text(failure)
     return response
 
 
@@ -191,9 +178,11 @@ def main():
     if mode == "record_mutation":
         records = list((RUNTIME / "scenario-tracking").glob("*/record.json"))
         if records: records[0].write_text(records[0].read_text() + " tampered")
-    output = args[args.index("--output-last-message") + 1]
+    # Build Developer turns own no output file; the final agent message is
+    # the Developer's notes, which Build records verbatim and never parses.
+    if "--output-last-message" in args or "--output-schema" in args:
+        raise SystemExit("Build Developer turn unexpectedly carried a handoff output schema")
     if mode == "developer_exit":
-        pathlib.Path(output).write_text('{"attempt_token":"stale"}')
         print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
         raise SystemExit(19)
     if mode == "developer_error":
@@ -204,16 +193,11 @@ def main():
     if mode == "missing_settlement":
         print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
         return
-    if call == 1 and mode == "output_missing":
-        pass
-    elif call == 1 and mode == "output_empty":
-        pathlib.Path(output).write_text("")
-    elif call == 1 and mode == "output_truncated":
-        pathlib.Path(output).write_text('{"attempt_token":')
-    else:
-        pathlib.Path(output).write_text(json.dumps(response))
+    notes = {"output_empty": "", "output_truncated": '{"attempt_token":'}.get(mode, json.dumps(response))
+    (RUNTIME / f"developer-notes-{call}").write_text(notes)
     print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
-    print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(response)}}))
+    if mode != "output_missing":
+        print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": notes}}))
     print(json.dumps({"type": "turn.completed", "thread_id": "developer-session"}))
 
 

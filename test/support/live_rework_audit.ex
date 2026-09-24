@@ -152,25 +152,77 @@ defmodule Kogen.LiveReworkAudit do
 
     for attempt <- [first, second] do
       invocation = attempt["developer_invocation"]
-      schema = Jason.decode!(invocation["schema"])
+      notes = attempt["developer_notes"]
+
+      require!(
+        not Map.has_key?(invocation, "schema"),
+        "Developer invocation must carry no handoff schema"
+      )
 
       require!(invocation["outcome"] == "settled", "Developer invocation must settle")
       require!(invocation["session_id"] == session_id, "Developer resume must keep its session")
 
       require!(
-        invocation["message"] == attempt["developer_message"],
-        "retained final bytes differ"
+        invocation["message"] == notes["text"],
+        "retained invocation message must match the recorded developer_notes text"
       )
 
       require!(
-        schema["properties"]["attempt_token"]["enum"] == [attempt["attempt_token"]],
-        "Developer schema must bind its current attempt token"
+        invocation["message_sha256"] == notes["sha256"],
+        "retained invocation digest must match the recorded developer_notes digest"
+      )
+
+      controller_handoff!(attempt)
+      jev_recorded!(attempt)
+
+      require!(
+        not (is_binary(attempt["failure"]) and
+               String.starts_with?(attempt["failure"], "Developer handoff")),
+        "no attempt may fail for a Developer handoff reason"
       )
     end
 
     require!(
-      first["developer_invocation"]["schema"] != second["developer_invocation"]["schema"],
-      "resumed Developer must receive a fresh attempt schema"
+      first["handoff"]["attempt_token"] != second["handoff"]["attempt_token"],
+      "resumed Developer attempt must receive a fresh controller report binding"
+    )
+  end
+
+  defp controller_handoff!(attempt) do
+    handoff = attempt["handoff"]
+
+    require!(is_map(handoff), "attempt must carry the controller-built handoff report")
+
+    require!(
+      handoff["format"] == "kogen-controller-handoff-report" and
+        handoff["built_by"] == "controller" and
+        handoff["attempt_token"] == attempt["attempt_token"] and
+        handoff["candidate_id"] == attempt["candidate_id"],
+      "handoff report must be the controller-built report bound to this attempt"
+    )
+  end
+
+  defp jev_recorded!(attempt) do
+    jev = attempt["jev"]
+
+    require!(is_map(jev), "attempt must record a real Jev reading")
+
+    # The paid run must show a real reading: a Jev outage is a failed paid
+    # target here, never a silently skipped reading.
+    require!(
+      jev["outcome"] == "answered" and jev["model"] == "jev-1.13.0",
+      "the real Jev must answer with the pinned model: #{inspect(jev["reason"])}"
+    )
+
+    require!(
+      jev["request"]["sha256"] ==
+        Base.encode16(:crypto.hash(:sha256, jev["request"]["body"]), case: :lower),
+      "retained Jev request digest must match its exact bytes"
+    )
+
+    require!(
+      attempt["outcome"] != "cannot_comply",
+      "no attempt in this fixture may stop as cannot_comply"
     )
   end
 

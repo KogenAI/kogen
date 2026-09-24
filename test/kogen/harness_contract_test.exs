@@ -47,6 +47,17 @@ defmodule Kogen.HarnessContractTest do
     end
   end
 
+  # schema-free-developer-turns: a fresh and a resumed Build Developer turn
+  # carry no handoff schema on either adapter, on argv or stdin; the settled
+  # turn's final message, empty, prose or malformed, passes through verbatim
+  # as notes with a matching digest; and a provider-failure control (a
+  # nonzero exit) still fails the turn.
+  for harness <- ["codex", "claude"] do
+    test "the #{harness} adapter's Build Developer turns carry no schema and pass the final message through as notes" do
+      schema_free_developer_turns!(unquote(harness))
+    end
+  end
+
   test "any other harness name is rejected before Build launches anything" do
     dest = fixture!("codex")
 
@@ -95,7 +106,7 @@ defmodule Kogen.HarnessContractTest do
       end
 
       assert_raise ArgumentError, expected, fn ->
-        Kogen.Harness.launch_build_developer("p", "m", "e", "{}", [], context)
+        Kogen.Harness.launch_build_developer("p", "m", "e", [], context)
       end
 
       assert_raise ArgumentError, expected, fn ->
@@ -250,6 +261,142 @@ defmodule Kogen.HarnessContractTest do
     # naming the role.
     assert {:error, reason} = Kogen.Intent.read_config(path, "unproven")
     assert reason =~ "unsupported Claude Code model for shaping: claude-unproven-9"
+  end
+
+  defp schema_free_developer_turns!(harness) do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-schema-free-#{harness}-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    context = developer_fixture_context!(harness, dir)
+
+    # A fresh turn with no final agent message settles with empty notes and no
+    # schema argument or pasted schema block anywhere in argv or stdin.
+    System.put_env("FAKE_MESSAGE_MODE", "absent")
+
+    assert {:ok, fresh} =
+             Kogen.Harness.launch_build_developer("PROMPT", model(harness), "medium", [], context)
+
+    fresh_args = argv_lines(dir)
+    refute Enum.any?(fresh_args, &(&1 =~ "schema"))
+    assert File.read!(Path.join(dir, "stdin")) == "PROMPT"
+    assert fresh.message == ""
+    assert fresh.invocation_evidence.message_sha256 == sha256("")
+    refute Map.has_key?(fresh.invocation_evidence, :schema)
+    refute Map.has_key?(fresh.invocation_evidence, :schema_sha256)
+
+    # A resumed turn, whose final message is prose, keeps the exact session,
+    # carries no schema and passes the prose through verbatim as notes.
+    prose = "Rework applied; nothing further to declare."
+    System.put_env("FAKE_MESSAGE_MODE", "present")
+    System.put_env("FAKE_MESSAGE", prose)
+
+    assert {:ok, resumed} =
+             Kogen.Harness.resume_build_developer(
+               fresh.session_id,
+               "FEEDBACK",
+               model(harness),
+               "medium",
+               [],
+               context
+             )
+
+    resumed_args = argv_lines(dir)
+    refute Enum.any?(resumed_args, &(&1 =~ "schema"))
+    assert File.read!(Path.join(dir, "stdin")) == "FEEDBACK"
+    assert resumed.session_id == fresh.session_id
+    assert resumed.message == prose
+    assert resumed.invocation_evidence.message_sha256 == sha256(prose)
+
+    # A provider-failure control (a nonzero exit) still fails the turn closed.
+    System.put_env("FAKE_EXIT", "1")
+
+    assert {:error, {:developer_transport_failure, _reason, failure_evidence}} =
+             Kogen.Harness.launch_build_developer("p", model(harness), "medium", [], context)
+
+    assert failure_evidence.outcome == :provider_failure
+  after
+    System.delete_env("FAKE_MESSAGE_MODE")
+    System.delete_env("FAKE_MESSAGE")
+    System.delete_env("FAKE_EXIT")
+    System.delete_env("FAKE_SESSION")
+  end
+
+  defp model("codex"), do: "gpt-5.6-sol"
+  defp model("claude"), do: "claude-opus-5-5"
+
+  defp argv_lines(dir),
+    do: dir |> Path.join("argv") |> File.read!() |> String.split("\n", trim: true)
+
+  defp sha256(value), do: Base.encode16(:crypto.hash(:sha256, value), case: :lower)
+
+  defp developer_fixture_context!("codex", dir) do
+    executable = Path.join(dir, "codex")
+
+    File.write!(executable, """
+    #!/bin/sh
+    set -eu
+    d="#{dir}"
+    : > "$d/argv"; for a in "$@"; do printf '%s\\n' "$a" >> "$d/argv"; done
+    input="$(cat)"; printf '%s' "$input" > "$d/stdin"
+    is_resume=0; previous=; penultimate=; last=
+    for a in "$@"; do
+      [ "$a" = resume ] && is_resume=1
+      previous="$a"; penultimate="$last"; last="$a"
+    done
+    resume_id=; [ "$is_resume" -eq 1 ] && resume_id="$penultimate"
+    if [ "${FAKE_EXIT:-0}" != 0 ]; then exit "${FAKE_EXIT}"; fi
+    sid="${resume_id:-${FAKE_SESSION:-dev-session-1}}"
+    printf '{"type":"thread.started","thread_id":"%s"}\\n' "$sid"
+    if [ "${FAKE_MESSAGE_MODE:-absent}" = present ]; then
+      python3 -c 'import json, os; print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": os.environ.get("FAKE_MESSAGE", "")}}))'
+    fi
+    printf '{"type":"turn.completed","thread_id":"%s"}\\n' "$sid"
+    """)
+
+    File.chmod!(executable, 0o755)
+    %{harness: "codex", executable: executable, args: [], env: []}
+  end
+
+  defp developer_fixture_context!("claude", dir) do
+    executable = Path.join(dir, "claude")
+
+    File.write!(executable, """
+    #!/bin/sh
+    set -eu
+    d="#{dir}"
+    : > "$d/argv"; for a in "$@"; do printf '%s\\n' "$a" >> "$d/argv"; done
+    if [ "$1" = -p ]; then cat > "$d/stdin"; else cat >/dev/null; fi
+    session=; previous=
+    for a in "$@"; do
+      [ "$previous" = --session-id ] && session="$a"
+      [ "$previous" = --resume ] && session="$a"
+      previous="$a"
+    done
+    [ -n "${FAKE_SESSION:-}" ] && session="$FAKE_SESSION"
+    if [ "${FAKE_EXIT:-0}" != 0 ]; then exit "${FAKE_EXIT}"; fi
+    message=""
+    [ "${FAKE_MESSAGE_MODE:-absent}" = present ] && message="${FAKE_MESSAGE:-}"
+    python3 -c 'import json, sys; emit = lambda e: print(json.dumps({**e, "session_id": sys.argv[1]})); emit({"type": "system", "subtype": "init"}); emit({"type": "result", "subtype": "success", "is_error": False, "terminal_reason": "completed", "result": sys.argv[2]})' "$session" "$message"
+    """)
+
+    File.chmod!(executable, 0o755)
+
+    config = %{
+      harness: "claude",
+      helpers: %{
+        scout: %{model: "claude-sonnet-5", effort: "low"},
+        worker: %{model: "claude-sonnet-5", effort: "medium"},
+        expert: %{model: "claude-opus-5-5", effort: "high"}
+      }
+    }
+
+    %{harness: "claude", executable: executable, args: [], env: [], config: config, project: dir}
   end
 
   defp run_contract!(harness) do

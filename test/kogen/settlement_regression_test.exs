@@ -97,6 +97,32 @@ defmodule Kogen.SettlementRegressionTest do
       assert git!(fixture, ["rev-parse", "HEAD"]) != parent
       assert File.exists?(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
     end
+
+    # The published summary reports controller-decided failure kinds only;
+    # the former Developer-handoff kinds no longer exist.
+    summary =
+      fixture
+      |> Path.join(".kogen/intents/complete/#{@slug}/build-summary.json")
+      |> File.read!()
+      |> Jason.decode!()
+
+    kinds = Enum.map(summary["attempts"], & &1["failure_kind"])
+    assert List.last(kinds) == nil
+
+    assert Enum.all?(
+             kinds,
+             &(&1 in [
+                 nil,
+                 "check_settlement",
+                 "declared_target",
+                 "review_rework",
+                 "unfinished_work",
+                 "cannot_comply",
+                 "rework"
+               ])
+           )
+
+    refute Enum.any?(kinds, &(&1 in ["handoff_structure", "handoff_semantic"]))
   end
 
   defp git!(fixture, args) do

@@ -82,12 +82,12 @@ targets:
       id: rehearse-live-reviewer-rework
       command: mix test --exclude live test/kogen/two_outer_resumptions_test.exs
       shared_entrypoints:
-        - Kogen.Build.Contract.handoff
+        - Kogen.Build.Report.build
         - Kogen.Build.Contract.verdict
       correct_fixture: test/support/live_rework_audit.ex
       wrong_fixture: test/support/live_rework_audit.ex:missing-companion
       trace_assertions:
-        - Kogen.Build.Contract.handoff
+        - Kogen.Build.Report.build
         - Kogen.Build.Contract.verdict
 
   - name: live-shape-to-build

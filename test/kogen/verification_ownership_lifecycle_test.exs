@@ -323,7 +323,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
       printf '%s' '{"session_id":"dev-1"}' | sh .codex/hooks/check.sh >/dev/null
     fi
     response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
-    printf '%s\n' "$response" > "$output_file"
+    if [ -n "$output_file" ]; then printf '%s\n' "$response" > "$output_file"; fi
     printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
     printf '%s\n' '{"type":"turn.completed","thread_id":"dev-1"}'
     """

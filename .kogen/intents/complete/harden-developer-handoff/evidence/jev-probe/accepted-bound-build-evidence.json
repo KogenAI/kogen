@@ -1,0 +1,14 @@
+{
+ "label": "accepted-bound-build-evidence",
+ "base": "aef8b98a1c9356516f914bd649dd6ecdae956f4d",
+ "tree": "d3a1582cd937c884589cf72d1264f5e9c5305827",
+ "slug": "bound-build-evidence",
+ "include_tests": true,
+ "request_bytes": 48994,
+ "diff_bytes": 39998,
+ "status": 422,
+ "latency_s": 0.54,
+ "response": {
+  "error_body": "{\"detail\":[{\"type\":\"too_short\",\"loc\":[\"body\",\"questions\"],\"msg\":\"Dictionary should have at least 1 item after validation, not 0\",\"input\":{},\"ctx\":{\"field_type\":\"Dictionary\",\"min_length\":1,\"actual_length\":0}}]}"
+ }
+}

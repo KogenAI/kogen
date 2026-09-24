@@ -1,0 +1,51 @@
+{
+ "label": "notes-reviewer-rework",
+ "build": "cDBZM4Sp",
+ "attempt": 0,
+ "status": 200,
+ "response": {
+  "model": "jev-1.13.0",
+  "answers": {
+   "unfinished:cost-ordered-plan": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   },
+   "unfinished:rehearsal-parity": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   },
+   "unfinished:bounded-developer-readiness": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.94,
+    "probabilities": {
+     "yes": 0.03,
+     "no": 0.97
+    }
+   },
+   "unfinished:structured-deterministic-triage": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 2114,
+   "output_tokens": 149
+  }
+ }
+}

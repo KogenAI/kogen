@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Offline TypeSafe Jev transport selected through KOGEN_JEV_TRANSPORT.
+
+It never opens a network connection. Kogen.Jev writes one length-prefixed JSON
+request ({url, timeout_ms, headers, body}) to stdin; this fake answers with one
+JSON transport result on stdout: {"status": N, "body": "..."} or
+{"error": "timeout" | reason}.
+
+FAKE_JEV_LOG_DIR (default .kogen/runtime/fake-jev) receives request-N.json for
+every call, with the exact request body and whether the Authorization header
+carried the fake Keychain key. The key itself is never written.
+FAKE_JEV_RESPONSES names a directory of recorded transport results; call N
+replays N.json when it exists. Otherwise the fake answers every asked question:
+status `done` (0.97) and objection `no_objection` (0.98), overridden per
+question by FAKE_JEV_ANSWERS, a JSON object {question_id: [choice, confidence]}.
+"""
+import json
+import os
+import pathlib
+import sys
+
+DEFAULT_KEY = "kogen-offline-sentinel-jev-key"
+
+length = int(sys.stdin.buffer.readline())
+payload = json.loads(sys.stdin.buffer.read(length))
+body = payload["body"]
+authorization = payload.get("headers", {}).get("authorization")
+expected = "Bearer " + os.environ.get("FAKE_JEV_KEY", DEFAULT_KEY)
+
+log_dir = pathlib.Path(os.environ.get("FAKE_JEV_LOG_DIR", ".kogen/runtime/fake-jev"))
+log_dir.mkdir(parents=True, exist_ok=True)
+number = len(list(log_dir.glob("request-*.json"))) + 1
+(log_dir / f"request-{number}.json").write_text(json.dumps({
+    "url": payload.get("url"),
+    "timeout_ms": payload.get("timeout_ms"),
+    "header_names": sorted(payload.get("headers", {}).keys()),
+    "authorization_matches_keychain": authorization == expected,
+    "body": body,
+}))
+
+responses = os.environ.get("FAKE_JEV_RESPONSES")
+if responses:
+    recorded = pathlib.Path(responses) / f"{number}.json"
+    if recorded.exists():
+        sys.stdout.write(recorded.read_text())
+        raise SystemExit(0)
+
+request = json.loads(body)
+overrides = json.loads(os.environ.get("FAKE_JEV_ANSWERS", "{}"))
+answers = {}
+for question_id in request["questions"]:
+    choice, confidence = overrides.get(
+        question_id,
+        ["done", 0.97] if question_id.startswith("status:") else ["no_objection", 0.98],
+    )
+    answers[question_id] = {"type": "choice", "choice": choice, "confidence": confidence}
+
+sys.stdout.write(json.dumps({
+    "status": 200,
+    "body": json.dumps({
+        "model": request["model"],
+        "answers": answers,
+        "usage": {"input_tokens": len(body) // 4, "output_tokens": 0},
+    }),
+}))

@@ -1,0 +1,70 @@
+{
+ "label": "accepted-selective-verification-targets",
+ "base": "6e1f59dc595ed9ab82aa814f3d483c01f1a69721",
+ "tree": "05133eff307ece43794d2cfc02e227ee119970eb",
+ "slug": "selective-verification-targets",
+ "include_tests": true,
+ "request_bytes": 26088,
+ "diff_bytes": 16915,
+ "status": 200,
+ "latency_s": 0.82,
+ "response": {
+  "model": "jev-1.13.0",
+  "answers": {
+   "implemented:selective-target-contract": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 0.84,
+    "probabilities": {
+     "yes": 0.9,
+     "insufficient_evidence": 0.02,
+     "no": 0.08
+    }
+   },
+   "implemented:preserved-owner-coverage": {
+    "type": "choice",
+    "choice": "insufficient_evidence",
+    "confidence": 0.11,
+    "probabilities": {
+     "insufficient_evidence": 0.41,
+     "yes": 0.28,
+     "no": 0.31
+    }
+   },
+   "implemented:behavior-based-selection": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 0.43,
+    "probabilities": {
+     "insufficient_evidence": 0.04,
+     "yes": 0.62,
+     "no": 0.34
+    }
+   },
+   "implemented:verification-ownership-preserved": {
+    "type": "choice",
+    "choice": "insufficient_evidence",
+    "confidence": 0.4,
+    "probabilities": {
+     "yes": 0.03,
+     "insufficient_evidence": 0.6,
+     "no": 0.37
+    }
+   },
+   "implemented:offline-before-paid": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.18,
+    "probabilities": {
+     "yes": 0.14,
+     "insufficient_evidence": 0.41,
+     "no": 0.45
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 6595,
+   "output_tokens": 258
+  }
+ }
+}

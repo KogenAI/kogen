@@ -1,0 +1,87 @@
+- id: weaker-developer-self-assessment
+  scenario_ids: [controller-built-report, reviewer-owns-completeness, jev-reads-developer-notes]
+  description: >-
+    Today every scenario needs an explicit Developer status. In the retained
+    records that status sometimes caught unfinished work that had still passed
+    `check`. Now the Developer writes free prose, and Jev's "the Developer says
+    X is unfinished" is only advisory. With the v2 questions it was never wrong
+    at 0.8, but the evidence rests on about 17 positives rebuilt from old JSON
+    claims. The Shaper therefore kept it advisory for now; switching to
+    automatic rework later means changing one constant once real free-prose
+    Builds confirm it. Some unfinished
+    Candidates will therefore cost one Review before rework. The Shaper
+    accepted this deliberately (2026-09-23). Mitigation: the Developer prompt
+    asks for unfinished items to be named plainly, and the Reviewer is told it
+    owns completeness.
+
+- id: jev-misreads-objection
+  scenario_ids: [cannot-comply-stops, jev-reads-developer-notes, reviewer-owns-completeness]
+  description: >-
+    Jev can stop a Build wrongly, which sends correct work back to Shaping, or
+    miss a real objection, which then reaches Review. The 0.85 threshold comes
+    from 294 real messages and repeated runs: 29 of 30 objection runs caught
+    and 0 wrong stops (`evidence/jev-calibration.md`, round 3). But there are
+    only 10 positives, the
+    prose was reconstructed from old JSON claims, and TypeSafe may change
+    behaviour. Mitigations: the model is pinned to `jev-1.13.0`, not an alias.
+    The stop error quotes the Developer's words and Jev's confidence, so a
+    wrong stop is obvious at a glance. Answers below 0.85 reach the Reviewer.
+    Every request and response is retained, so the threshold can be
+    re-checked against later Builds. The Developer is asked to state
+    objections plainly.
+
+- id: external-service-and-key
+  scenario_ids: [jev-reads-developer-notes, jev-key-required-before-build, jev-unavailable-goes-to-review, rework-lifecycle-live, bindings-and-records-preserved]
+  description: >-
+    Build now sends the Developer's notes and item IDs to TypeSafe. The notes
+    can quote code. The Shaper accepted this (2026-09-23), knowing that zero
+    data retention is enterprise-only and that TypeSafe does not train on
+    requests. The key lives in the macOS Keychain (`ai.typesafe.api`) and
+    must never reach a log, record, error, environment variable or role
+    context. A missing Keychain item fails the Build before launch, like a
+    logged-out harness, so no Build ever runs silently without the objection
+    check. Any runtime Jev outage, rejected key or limit change degrades to
+    Review with an explicit note, never to a silent pass or a stopped Build.
+    Both paid targets now also depend on TypeSafe being up. A Jev outage during
+    Stop verification appears as a failed paid target even though the code is
+    fine, so check Jev's status before sending the Developer back.
+    Offline verification must never touch the network. The paid targets make
+    real Jev calls on this host and need the Keychain item.
+
+- id: record-and-consumer-drift
+  scenario_ids: [controller-built-report, bindings-and-records-preserved, reviewer-owns-completeness, rework-lifecycle-live]
+  description: >-
+    The handoff feeds the tracking record, reference snapshots, the build
+    summary kinds, the Reviewer context, rehearsal trace entrypoints and the
+    live fixtures. A partial change could leave a consumer expecting Developer
+    claims or asserting `Kogen.Build.Contract.handoff`, which would break
+    `live-reviewer-rework` planning or Review. Three test helpers read the
+    Developer schema back from `developer_invocation`
+    (`live_shape_to_build_test.exs:572`, `live_rework_audit.ex:155`,
+    `scenario_lifecycle_test.exs:75`) and would crash once the schema is gone.
+    Two of them run only in paid targets, so this Intent selects both
+    `live-reviewer-rework` and `live-shape-to-build`. Earlier retained records
+    use the old shape and must remain readable history, never rewritten.
+
+- id: test-reliability-catalog-pins
+  scenario_ids: [controller-built-report, schema-free-developer-turns, jev-reads-developer-notes, jev-key-required-before-build, cannot-comply-stops, jev-unavailable-goes-to-review, missing-proof-selector-is-unfinished, reviewer-owns-completeness, bindings-and-records-preserved, rework-lifecycle-live]
+  description: >-
+    `test/kogen/test_reliability_catalog_test.exs` pins the declaration count
+    and a per-file source sha256 in `priv/kogen/test-reliability.yaml`. Adding,
+    removing or editing test declarations therefore requires updating the
+    catalog. Named-routes attempt Bg1qobsC #1 hit exactly this because the
+    catalog path was not guarded. Both catalog files are guarded here. The
+    catalog test itself is guarded by `test/kogen/*.exs`, but its pinned
+    expectations should be updated only to match the new declarations,
+    never relaxed.
+
+- id: size-over-one-build
+  scenario_ids: [controller-built-report, schema-free-developer-turns, jev-reads-developer-notes, rework-lifecycle-live]
+  description: >-
+    This touches Build orchestration, both harness adapters, a new Jev client
+    and its first HTTP dependency, two prompts, the verification catalog, the
+    fixtures and several test files. Jev's role was reduced by calibration to
+    one small request per handoff and a fixed mapping from answers to
+    outcomes. The old schema code is left unused and is deleted in a
+    follow-up Intent. If the Build proves too large, split along the line
+    recorded in questions.md.

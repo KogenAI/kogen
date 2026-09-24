@@ -1,0 +1,2510 @@
+[
+ {
+  "label": "negation",
+  "notes": "All three scenarios are done. Nothing in parse-config remains unfinished, and retry-budget has no missing parts.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    0,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1055,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1055,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1055,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "fixed-since",
+  "notes": "parse-config was incomplete after my first pass, but I finished the missing YAML anchors and it is now complete. retry-budget and report-errors are done.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    0,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1064,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1064,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1064,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "feature-named-incomplete",
+  "notes": "report-errors now renders the `incomplete` status label correctly and handles the `unfinished` enum value. parse-config and retry-budget are done.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    0,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1064,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1064,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1064,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "non-goal",
+  "notes": "parse-config and retry-budget are done. report-errors is done; streaming output is out of scope per the Intent's non-goals and was not implemented.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    0,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.89,
+      "probabilities": {
+       "yes": 0.06,
+       "no": 0.94
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1065,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.86,
+      "probabilities": {
+       "yes": 0.07,
+       "no": 0.93
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1065,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.89,
+      "probabilities": {
+       "no": 0.95,
+       "yes": 0.05
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1065,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "hedge",
+  "notes": "parse-config is mostly done, but the error path for duplicate keys still needs work. retry-budget and report-errors are done.",
+  "truth": {
+   "parse-config": [
+    1,
+    0
+   ],
+   "retry-budget": [
+    0,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 1.0,
+       "no": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1059,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1059,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1059,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "todo-later",
+  "notes": "retry-budget works for the happy path; I did not get to the exhaustion case yet. The others are finished.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    1,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.67,
+      "probabilities": {
+       "yes": 0.17,
+       "no": 0.83
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 1.0,
+       "no": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.19,
+      "probabilities": {
+       "yes": 0.59,
+       "no": 0.41
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1057,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.46,
+      "probabilities": {
+       "no": 0.73,
+       "yes": 0.27
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.29,
+      "probabilities": {
+       "no": 0.36,
+       "yes": 0.64
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1057,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.55,
+      "probabilities": {
+       "no": 0.77,
+       "yes": 0.23
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.39,
+      "probabilities": {
+       "no": 0.3,
+       "yes": 0.7
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1057,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "indirect-objection",
+  "notes": "Everything I could do is done. report-errors requires changing lib/kogen/cli.ex, but that file is not in may_change_guarded_paths, so I could not make the change the scenario demands.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    0,
+    0
+   ],
+   "report-errors": [
+    0,
+    1
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.69,
+      "probabilities": {
+       "no": 0.85,
+       "yes": 0.15
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.73,
+      "probabilities": {
+       "no": 0.87,
+       "yes": 0.13
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.33,
+      "probabilities": {
+       "no": 0.34,
+       "yes": 0.66
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.25,
+      "probabilities": {
+       "no": 0.37,
+       "yes": 0.63
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.98,
+      "probabilities": {
+       "no": 0.01,
+       "yes": 0.99
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1076,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.74,
+      "probabilities": {
+       "yes": 0.13,
+       "no": 0.87
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.76,
+      "probabilities": {
+       "yes": 0.12,
+       "no": 0.88
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.5,
+      "probabilities": {
+       "yes": 0.75,
+       "no": 0.25
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.47,
+      "probabilities": {
+       "yes": 0.74,
+       "no": 0.26
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.98,
+      "probabilities": {
+       "yes": 0.99,
+       "no": 0.01
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.99,
+      "probabilities": {
+       "yes": 1.0,
+       "no": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1076,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.76,
+      "probabilities": {
+       "no": 0.88,
+       "yes": 0.12
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.86,
+      "probabilities": {
+       "no": 0.93,
+       "yes": 0.07
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.11,
+      "probabilities": {
+       "no": 0.45,
+       "yes": 0.55
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.24,
+      "probabilities": {
+       "no": 0.38,
+       "yes": 0.62
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.98,
+      "probabilities": {
+       "no": 0.01,
+       "yes": 0.99
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1076,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "contradiction-objection",
+  "notes": "parse-config says unknown keys must fail, while retry-budget says unknown keys must be ignored; both cannot hold for the same file, so this needs a Shaping decision. report-errors is done.",
+  "truth": {
+   "parse-config": [
+    0,
+    1
+   ],
+   "retry-budget": [
+    0,
+    1
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.27,
+      "probabilities": {
+       "yes": 0.63,
+       "no": 0.37
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.71,
+      "probabilities": {
+       "yes": 0.85,
+       "no": 0.15
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.62,
+      "probabilities": {
+       "yes": 0.81,
+       "no": 0.19
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.69,
+      "probabilities": {
+       "yes": 0.85,
+       "no": 0.15
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.92,
+      "probabilities": {
+       "yes": 0.04,
+       "no": 0.96
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1074,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.48,
+      "probabilities": {
+       "yes": 0.74,
+       "no": 0.26
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.7,
+      "probabilities": {
+       "yes": 0.85,
+       "no": 0.15
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.61,
+      "probabilities": {
+       "yes": 0.81,
+       "no": 0.19
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.73,
+      "probabilities": {
+       "yes": 0.87,
+       "no": 0.13
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.89,
+      "probabilities": {
+       "yes": 0.05,
+       "no": 0.95
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1074,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.48,
+      "probabilities": {
+       "no": 0.26,
+       "yes": 0.74
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.79,
+      "probabilities": {
+       "no": 0.11,
+       "yes": 0.89
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.58,
+      "probabilities": {
+       "no": 0.21,
+       "yes": 0.79
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.8,
+      "probabilities": {
+       "no": 0.1,
+       "yes": 0.9
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.9,
+      "probabilities": {
+       "no": 0.95,
+       "yes": 0.05
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1074,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "objection-plus-unfinished",
+  "notes": "parse-config is unfinished: I ran out of time on the anchors. Separately, retry-budget cannot be satisfied as approved because its proof target cannot observe the provider retry. report-errors is done.",
+  "truth": {
+   "parse-config": [
+    1,
+    0
+   ],
+   "retry-budget": [
+    0,
+    1
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.89,
+      "probabilities": {
+       "no": 0.05,
+       "yes": 0.95
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1074,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 1.0,
+       "no": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.91,
+      "probabilities": {
+       "yes": 0.96,
+       "no": 0.04
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 1.0,
+       "no": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1074,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 1.0,
+       "no": 0.0
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 0.91,
+      "probabilities": {
+       "yes": 0.96,
+       "no": 0.04
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 1.0,
+       "no": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1074,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "reviewer-disputed",
+  "notes": "Finding F1 claims report-errors is missing a newline; I disagree, the newline is emitted at line 40 and the test asserts it. All scenarios are done.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    0,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.95,
+      "probabilities": {
+       "yes": 0.03,
+       "no": 0.97
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1068,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "no": 0.98,
+       "yes": 0.02
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.93,
+      "probabilities": {
+       "no": 0.96,
+       "yes": 0.04
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1068,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.95,
+      "probabilities": {
+       "yes": 0.02,
+       "no": 0.98
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1068,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "blocked-env",
+  "notes": "All code is done. The live check for retry-budget could not run here because the provider login was missing; the implementation itself is complete.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    0,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.76,
+      "probabilities": {
+       "no": 0.88,
+       "yes": 0.12
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.79,
+      "probabilities": {
+       "no": 0.9,
+       "yes": 0.1
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.58,
+      "probabilities": {
+       "no": 0.79,
+       "yes": 0.21
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1062,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.75,
+      "probabilities": {
+       "no": 0.87,
+       "yes": 0.13
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.79,
+      "probabilities": {
+       "no": 0.89,
+       "yes": 0.11
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.57,
+      "probabilities": {
+       "no": 0.78,
+       "yes": 0.22
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1062,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.7,
+      "probabilities": {
+       "no": 0.85,
+       "yes": 0.15
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.75,
+      "probabilities": {
+       "no": 0.88,
+       "yes": 0.12
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.56,
+      "probabilities": {
+       "no": 0.78,
+       "yes": 0.22
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1062,
+     "output_tokens": 211
+    }
+   }
+  ]
+ },
+ {
+  "label": "terse-prose",
+  "notes": "done: parse-config, report-errors. retry-budget: exhaustion branch TODO.",
+  "truth": {
+   "parse-config": [
+    0,
+    0
+   ],
+   "retry-budget": [
+    1,
+    0
+   ],
+   "report-errors": [
+    0,
+    0
+   ]
+  },
+  "runs": [
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 1.0,
+       "no": 0.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.98,
+      "probabilities": {
+       "yes": 0.01,
+       "no": 0.99
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "yes": 0.0,
+       "no": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1049,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.99,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.96,
+      "probabilities": {
+       "no": 0.98,
+       "yes": 0.02
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1049,
+     "output_tokens": 211
+    }
+   },
+   {
+    "status": 200,
+    "answers": {
+     "unfinished:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "cannot_comply:scenario:parse-config": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:retry-budget": {
+      "type": "choice",
+      "choice": "yes",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 0.0,
+       "yes": 1.0
+      }
+     },
+     "cannot_comply:scenario:retry-budget": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     },
+     "unfinished:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 0.97,
+      "probabilities": {
+       "no": 0.99,
+       "yes": 0.01
+      }
+     },
+     "cannot_comply:scenario:report-errors": {
+      "type": "choice",
+      "choice": "no",
+      "confidence": 1.0,
+      "probabilities": {
+       "no": 1.0,
+       "yes": 0.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 1049,
+     "output_tokens": 211
+    }
+   }
+  ]
+ }
+]

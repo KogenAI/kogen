@@ -45,7 +45,8 @@ precedes handoff and Review; never invent a verdict or retry a gate.
 
 Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Read selected
 current fields from its authoritative tracking-record path: the bound current
-attempt, Developer handoff, owned receipts, open findings, and prior dispositions.
+attempt, controller handoff report, Developer notes, owned receipts, open
+findings, and prior dispositions.
 Inspect historical exact-byte snapshots only for material provenance questions.
 Do not copy the whole record, snapshots, or serialized verdicts into helper
 packets. Missing, unreadable, stale, or conflicting bound evidence is corruption
@@ -55,6 +56,19 @@ Use this context for Review, never as a substitute for inspecting the current
 Candidate. You receive no raw Developer conversation. Independently assess
 the complete Approved contract, its wrong results, actual implementation,
 tests, supplied evidence, and every current finding.
+
+The handoff report (the current attempt's `handoff`) is built by controller
+code after Stop settles. It contains no Developer self-assessment: you are
+responsible for finding unfinished or plausible-looking-only scenarios. Its
+`changed_affected_paths` lists files that changed relative to HEAD, not where
+each behaviour lives; an empty list is a hint, not a failure. The Developer's
+notes (`developer_notes`), including prose responses to open findings, are
+unverified claims. TypeSafe Jev read only those words, never the code; its
+per-item readings ("the Developer says X is unfinished", "... done and only
+external verification is pending", "resolved or historical", "unclear",
+"possible objection", or "Jev unavailable") are advisory labels, never findings
+or verification. A confident "unfinished" reading never routes rework by
+itself; only your verdict decides acceptance or rework.
 
 Declared-target receipts may contain controller-retained `target_evidence`.
 Inspect the decoded content of consequential retained artifacts when assessing

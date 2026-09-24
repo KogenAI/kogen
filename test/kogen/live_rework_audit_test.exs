@@ -225,6 +225,24 @@ defmodule Kogen.LiveReworkAuditTest do
     end
   end
 
+  test "rejects a Developer invocation that still carries a handoff schema" do
+    {fixture, logs} = audit_fixture!(legacy_schema?: true)
+    on_exit(fn -> File.rm_rf!(fixture) end)
+
+    assert_raise ArgumentError, ~r/no handoff schema/, fn ->
+      Kogen.LiveReworkAudit.audit!(fixture, logs, slug: @slug, intent_id: @intent)
+    end
+  end
+
+  test "rejects a Developer invocation whose digest disagrees with the recorded notes" do
+    {fixture, logs} = audit_fixture!(digest_mismatch?: true)
+    on_exit(fn -> File.rm_rf!(fixture) end)
+
+    assert_raise ArgumentError, ~r/digest must match/, fn ->
+      Kogen.LiveReworkAudit.audit!(fixture, logs, slug: @slug, intent_id: @intent)
+    end
+  end
+
   test "owner audit rejects malformed structured Reviewer evidence" do
     {fixture, logs} = audit_fixture!()
     on_exit(fn -> File.rm_rf!(fixture) end)
@@ -259,7 +277,14 @@ defmodule Kogen.LiveReworkAuditTest do
       candidate_trees!(root, Keyword.get(options, :initial_notes?, false))
 
     File.write!(Path.join(complete, "evidence.md"), evidence!(final_candidate))
-    File.write!(Path.join(complete, "scenario-tracking.json"), tracking_fixture!())
+
+    File.write!(
+      Path.join(complete, "scenario-tracking.json"),
+      tracking_fixture!(
+        legacy_schema?: Keyword.get(options, :legacy_schema?, false),
+        digest_mismatch?: Keyword.get(options, :digest_mismatch?, false)
+      )
+    )
 
     File.write!(
       Path.join(runtime, "verification.json"),
@@ -301,23 +326,63 @@ defmodule Kogen.LiveReworkAuditTest do
     do:
       "- Candidate id: `#{candidate}`\n- Developer session id: `developer-1`\n- Reviewer session id: `review-2`\n- Outer resumptions used: 1\n"
 
-  defp tracking_fixture! do
+  defp tracking_fixture!(options) do
+    legacy_schema? = Keyword.get(options, :legacy_schema?, false)
+    digest_mismatch? = Keyword.get(options, :digest_mismatch?, false)
+
     attempts =
-      for token <- ["attempt-1", "attempt-2"] do
-        message = Jason.encode!(%{"attempt_token" => token})
+      for {token, index} <- Enum.with_index(["attempt-1", "attempt-2"], 1) do
+        text = "unverified Developer notes for #{token}"
+        sha256 = Base.encode16(:crypto.hash(:sha256, text), case: :lower)
+        candidate_id = "candidate-#{index}"
+
+        message_sha256 =
+          if digest_mismatch? and index == 1, do: String.duplicate("0", 64), else: sha256
+
+        invocation = %{
+          "outcome" => "settled",
+          "session_id" => "developer-1",
+          "message" => text,
+          "message_sha256" => message_sha256
+        }
+
+        invocation =
+          if legacy_schema? and index == 1,
+            do:
+              Map.put(
+                invocation,
+                "schema",
+                Jason.encode!(%{"properties" => %{"attempt_token" => %{"enum" => [token]}}})
+              ),
+            else: invocation
 
         %{
           "attempt_token" => token,
+          "candidate_id" => candidate_id,
           "developer_session_id" => "developer-1",
-          "developer_message" => message,
-          "developer_invocation" => %{
-            "outcome" => "settled",
-            "session_id" => "developer-1",
-            "message" => message,
-            "schema" =>
-              Jason.encode!(%{
-                "properties" => %{"attempt_token" => %{"enum" => [token]}}
-              })
+          "outcome" => "settled",
+          "developer_notes" => %{
+            "label" =>
+              "unverified Developer notes; recorded verbatim and never parsed by Kogen code",
+            "sha256" => sha256,
+            "byte_count" => byte_size(text),
+            "content_base64" => Base.encode64(text),
+            "text" => text
+          },
+          "developer_invocation" => invocation,
+          "handoff" => %{
+            "format" => "kogen-controller-handoff-report",
+            "built_by" => "controller",
+            "attempt_token" => token,
+            "candidate_id" => candidate_id
+          },
+          "jev" => %{
+            "outcome" => "answered",
+            "model" => "jev-1.13.0",
+            "request" => %{
+              "body" => "{}",
+              "sha256" => Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower)
+            }
           }
         }
       end

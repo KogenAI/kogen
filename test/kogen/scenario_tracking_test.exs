@@ -10,7 +10,7 @@ defmodule Kogen.ScenarioTrackingTest do
       assert :ok = Tracking.verify(state)
 
       record = Jason.decode!(state.bytes)
-      assert record["schema_version"] == 1
+      assert record["schema_version"] == 2
       assert record["intent"]["id"] == "intent-1"
       assert record["scenarios"] == contract()["scenarios"]
       assert record["risks"] == contract()["risks"]
@@ -46,6 +46,93 @@ defmodule Kogen.ScenarioTrackingTest do
       assert {:error, reason} = Tracking.new(intent(), contract(), approved_entries(), broken)
       assert reason =~ "scenario tracking route lacks reviewer"
     end)
+  end
+
+  test "version 2 holds notes, Jev evidence and the controller report while earlier records stay unrewritten" do
+    in_private_cwd(fn ->
+      legacy_dir = ".kogen/runtime/scenario-tracking/legacy-build"
+      File.mkdir_p!(legacy_dir)
+      legacy_path = Path.join(legacy_dir, "record.json")
+
+      legacy_bytes =
+        Jason.encode!(%{
+          "schema_version" => 1,
+          "attempts" => [
+            %{
+              "developer_message" => ~s({"attempt_token":"old"}),
+              "developer_invocation" => %{"schema" => "{}", "schema_sha256" => "x"},
+              "handoff" => %{"attempt_token" => "old", "scenarios" => []},
+              "failure" => "Developer handoff structure invalid: old history"
+            }
+          ]
+        })
+
+      File.write!(legacy_path, legacy_bytes)
+
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())
+      assert {:ok, state} = Tracking.start_attempt(state, "token-2", 0)
+
+      attempt =
+        state.record["attempts"]
+        |> List.last()
+        |> Map.merge(%{
+          "developer_notes" => %{"label" => "unverified", "text" => "done", "sha256" => "d"},
+          "jev" => %{"outcome" => "unavailable", "reason" => "timeout", "request" => %{}},
+          "outcome" => "settled",
+          "handoff" => %{
+            "format" => "kogen-controller-handoff-report",
+            "built_by" => "controller"
+          }
+        })
+
+      assert {:ok, updated} =
+               Tracking.update(state, Map.put(state.record, "attempts", [attempt]))
+
+      record = Jason.decode!(File.read!(updated.path))
+      assert record["schema_version"] == 2
+      [stored] = record["attempts"]
+      assert stored["handoff"]["built_by"] == "controller"
+      assert stored["jev"]["outcome"] == "unavailable"
+      assert stored["developer_notes"]["label"] == "unverified"
+
+      # Earlier Builds' records are readable history, never migrated.
+      assert File.read!(legacy_path) == legacy_bytes
+      refute updated.path == legacy_path
+    end)
+  end
+
+  test "prompts describe the controller-built report and free-prose notes, not a JSON handoff" do
+    root = System.fetch_env!("KOGEN_TEST_ROOT")
+    squish = &(&1 |> File.read!() |> String.replace(~r/\s+/, " "))
+    developer = squish.(Path.join(root, "priv/kogen/prompts/developer.md"))
+    reviewer = squish.(Path.join(root, "priv/kogen/prompts/reviewer.md"))
+
+    assert developer =~ "## Final Developer notes"
+    assert developer =~ "Do not write a JSON handoff"
+    assert developer =~ "no Kogen code parses your final message"
+    assert developer =~ "name anything still unfinished"
+
+    assert developer =~
+             "state that objection plainly in one short paragraph naming the scenario, risk or finding and the reason"
+
+    assert developer =~ "Answer every open Reviewer finding in prose"
+    assert developer =~ "return to Shaping"
+    refute developer =~ "output only this JSON object"
+    refute developer =~ "controller-owned schema"
+    refute developer =~ ~s("status": "ready" | "incomplete")
+
+    assert reviewer =~ "It contains no Developer self-assessment"
+
+    assert reviewer =~
+             "you are responsible for finding unfinished or plausible-looking-only scenarios"
+
+    assert reviewer =~ "including prose responses to open findings, are unverified claims"
+    assert reviewer =~ "TypeSafe Jev read only those words, never the code"
+    assert reviewer =~ "are advisory labels, never findings or verification"
+    assert reviewer =~ "only your verdict decides acceptance or rework"
+
+    assert reviewer =~
+             "`changed_affected_paths` lists files that changed relative to HEAD, not where each behaviour lives"
   end
 
   test "creates exclusive records and durable updates" do

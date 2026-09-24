@@ -82,16 +82,24 @@ defmodule Kogen.Build.VerificationPlan do
   end
 
   def handoff_valid?(plan, catalog, root \\ File.cwd!()) do
+    if missing_selectors(plan, catalog, root) == [],
+      do: :ok,
+      else: {:error, "scenario proof selector is still missing at Developer handoff"}
+  end
+
+  @doc """
+  Declared offline proof selectors that still do not exist in the Candidate,
+  in plan order. A provider-backed rehearsal id is never missing.
+  """
+  def missing_selectors(plan, catalog, root \\ File.cwd!()) do
     rehearsal_ids =
       catalog.entries
       |> Enum.filter(& &1["provider_backed"])
       |> MapSet.new(&get_in(&1, ["rehearsal", "id"]))
 
-    if Enum.all?(plan.offline, fn selector ->
-         MapSet.member?(rehearsal_ids, selector) or File.exists?(Path.join(root, selector))
-       end),
-       do: :ok,
-       else: {:error, "scenario proof selector is still missing at Developer handoff"}
+    Enum.reject(plan.offline, fn selector ->
+      MapSet.member?(rehearsal_ids, selector) or File.exists?(Path.join(root, selector))
+    end)
   end
 
   def unchanged?(catalog), do: File.read(catalog.path) == {:ok, catalog.bytes}

@@ -102,7 +102,9 @@ defmodule Kogen.LifecycleTest do
       |> String.split("\n", trim: true)
 
     assert length(log_lines) == 4
-    assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 4
+    # Only the two Reviewers own an output schema; Developer turns carry none.
+    assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 2
+    assert Enum.count(log_lines, &String.contains?(&1, "--output-last-message")) == 2
     assert File.read!(Path.join(dest, ".kogen/runtime/fake-reviewer-calls")) == "2\n"
     assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 1
 
@@ -125,8 +127,10 @@ defmodule Kogen.LifecycleTest do
     assert length(resumed_prompts) == 1
     Enum.each(resumed_prompts, &assert_delegation_prompt!(&1, :developer))
     assert resume_feedback =~ "# Developer Role"
-    assert resume_feedback =~ "## Required final Developer handoff"
-    assert resume_feedback =~ ~s("attempt_token": "<the supplied token>")
+    assert resume_feedback =~ "## Final Developer notes"
+    assert resume_feedback =~ "End your turn with a short free-prose final message"
+    refute resume_feedback =~ ~s("attempt_token": "<the supplied token>")
+    refute resume_feedback =~ "Controller handoff schema"
 
     assert resume_feedback =~ "category: review_rework"
     assert resume_feedback =~ "record: "

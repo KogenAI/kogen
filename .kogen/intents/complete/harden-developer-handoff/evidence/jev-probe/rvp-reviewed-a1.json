@@ -1,0 +1,60 @@
+{
+ "label": "rvp-reviewed-a1",
+ "base": "05133eff307ece43794d2cfc02e227ee119970eb",
+ "tree": "4cc9fd51c9fd9394e42989eba66e5d7028a7f5bf",
+ "slug": "rehearsed-verification-plan",
+ "include_tests": true,
+ "request_bytes": 123170,
+ "diff_bytes": 107975,
+ "status": 200,
+ "latency_s": 1.22,
+ "response": {
+  "model": "jev-1.13.0",
+  "answers": {
+   "implemented:cost-ordered-plan": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.26,
+    "probabilities": {
+     "no": 0.51,
+     "yes": 0.45,
+     "insufficient_evidence": 0.04
+    }
+   },
+   "implemented:rehearsal-parity": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.38,
+    "probabilities": {
+     "no": 0.59,
+     "yes": 0.3,
+     "insufficient_evidence": 0.11
+    }
+   },
+   "implemented:bounded-developer-readiness": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 0.26,
+    "probabilities": {
+     "no": 0.46,
+     "yes": 0.5,
+     "insufficient_evidence": 0.04
+    }
+   },
+   "implemented:structured-deterministic-triage": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 0.54,
+    "probabilities": {
+     "no": 0.26,
+     "yes": 0.69,
+     "insufficient_evidence": 0.05
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 33314,
+   "output_tokens": 201
+  }
+ }
+}

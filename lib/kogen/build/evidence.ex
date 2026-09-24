@@ -37,10 +37,13 @@ defmodule Kogen.Build.Evidence do
   defp supported_summary(%{"format" => "kogen-build-summary", "schema_version" => 1}), do: :ok
   defp supported_summary(_), do: {:error, "unsupported Build summary format or version"}
 
+  # Version 1 records from earlier Builds stay readable history; version 2
+  # adds the Developer notes, Jev evidence and the controller-built report.
   defp supported_record_binding(%{
          "format" => "kogen-scenario-tracking-record",
-         "schema_version" => 1
-       }),
+         "schema_version" => version
+       })
+       when version in [1, 2],
        do: :ok
 
   defp supported_record_binding(_), do: {:error, "unsupported bound tracking format or version"}

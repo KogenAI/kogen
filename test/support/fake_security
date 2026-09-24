@@ -1,0 +1,13 @@
+#!/bin/sh
+# Offline macOS Keychain lookup selected through KOGEN_JEV_SECURITY.
+# FAKE_SECURITY_ITEM=present (default) | missing | unreadable (exists, but
+# reading the value with -w fails, as if it disappeared after preconditions).
+# FAKE_SECURITY_LOG receives each argv; -w prints FAKE_JEV_KEY or the sentinel.
+[ -n "${FAKE_SECURITY_LOG:-}" ] && printf '%s\n' "$*" >>"$FAKE_SECURITY_LOG"
+reading=0
+for a in "$@"; do [ "$a" = -w ] && reading=1; done
+case "${FAKE_SECURITY_ITEM:-present}:$reading" in
+ present:1) printf '%s\n' "${FAKE_JEV_KEY:-kogen-offline-sentinel-jev-key}"; exit 0 ;;
+ present:0|unreadable:0) printf 'keychain: "/fake/login.keychain-db"\nclass: "genp"\n'; exit 0 ;;
+ *) echo 'security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.' >&2; exit 44 ;;
+esac

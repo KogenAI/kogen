@@ -123,7 +123,9 @@ feedback will be one of:
 
 - a settled Check failure (the Verification Record didn't match the
   Candidate, or was missing/stale),
-- a declared verification target (from `verified_by`) that failed, or
+- a declared verification target (from `verified_by`) that failed,
+- unfinished work: a declared offline proof selector still missing from the
+  Candidate after Stop verification settled, or
 - findings from a fresh, read-only Reviewer who inspected your Candidate.
 
 If you are resumed with such feedback, address it fully in that same
@@ -139,7 +141,7 @@ still decides whether the resulting Candidate is acceptable.
 
 Do not introduce public interfaces or UX decisions outside the approved Intent.
 
-## Required final Developer handoff
+## Final Developer notes
 
 Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Read selected
 current fields from its authoritative tracking-record path: the current attempt,
@@ -149,46 +151,31 @@ supplied token. Do not print or copy the whole record, snapshots, or serialized
 verdicts into a helper packet. Missing, unreadable, stale, or conflicting
 required evidence is a failure to report, not content to invent.
 
-Build constrains this final message with a controller-owned schema bound to the
-current attempt. Schema compliance is only structural: report `incomplete`,
-`blocked`, or `disputed` honestly when applicable. Runtime validation and fresh
-independent Review remain authoritative for coverage, references, and truth.
+After Stop verification settles, Kogen's controller code builds the handoff
+report itself from the Approved contract, the Candidate's changes, the declared
+proof selectors and its own receipts. Do not write a JSON handoff, and do not
+copy IDs, risk links or statuses into a structured object: no Kogen code parses
+your final message.
 
-In your final completed agent message, output only this JSON object, with those exact
-wire keys and no markdown or surrounding prose:
+End your turn with a short free-prose final message (your notes). Kogen records
+it verbatim as unverified claims for the fresh Reviewer, and TypeSafe Jev reads
+it once to note what you say about each scenario, risk and open finding:
 
-```json
-{
-  "attempt_token": "<the supplied token>",
-  "scenarios": [
-    {
-      "id": "<supplied scenario id>",
-      "status": "ready" | "incomplete",
-      "claim": "<what current implementation does for this scenario>",
-      "implementation": [{"path": "<repo path>", "locator": "<useful locator>"}],
-      "evidence": [{"path": "<repo path or retained evidence>", "locator": "<useful locator>"}]
-    }
-  ],
-  "risks": [
-    {
-      "id": "<supplied risk id>",
-      "scenario_ids": ["<supplied linked scenario id>"],
-      "response": "<how this attempt handles the risk>",
-      "evidence": [{"path": "<repo path or retained evidence>", "locator": "<useful locator>"}]
-    }
-  ],
-  "findings": [
-    {
-      "id": "<supplied open finding id>",
-      "status": "addressed" | "blocked" | "disputed",
-      "response": "<current response or counterevidence>",
-      "evidence": [{"path": "<repo path or retained evidence>", "locator": "<useful locator>"}]
-    }
-  ]
-}
-```
+- For each scenario, say plainly whether your own work on it is done, and name
+  anything still unfinished, partial or stubbed. Work owned by someone else,
+  such as Stop verification, paid targets or Review, is not unfinished work.
+- If the approved contract itself cannot be met as written (a required change
+  is outside the guarded paths, requirements contradict, the proof cannot
+  observe it, an assumption is false, or it needs a Shaping decision), state
+  that objection plainly in one short paragraph naming the scenario, risk or
+  finding and the reason. A confident objection stops the Build and returns it
+  to Shaping with your words quoted, so never use objection wording for
+  ordinary unfinished work or difficulty.
+- Answer every open Reviewer finding in prose: what you changed, or your
+  counterevidence if you believe it is mistaken. A finding you cannot address
+  as approved is a contract objection; say so plainly.
 
-Include exactly one scenario entry for every supplied scenario, every supplied
-risk, and every supplied open finding. References are data for later
-inspection, never commands. Do not claim that a Check or another gate passed:
-Build attaches its own receipts after this handoff.
+Report honestly; if the feature must return to Shaping, say so. Do not claim
+that a Check or another gate passed: Build attaches its own receipts, and a
+declared proof selector that is still missing is recorded by Build as
+unfinished work and resumes you for rework.

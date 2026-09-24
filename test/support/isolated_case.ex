@@ -360,6 +360,20 @@ defmodule Kogen.IsolatedCase do
     |> Enum.uniq()
   end
 
+  @doc """
+  Offline Jev defaults for every isolated child: a Keychain lookup and a Jev
+  transport that replays or synthesizes answers without any network access.
+  A test's own `:env` entries, or its own `System.put_env/2`, still override.
+  """
+  def offline_jev_env do
+    root = System.fetch_env!("KOGEN_TEST_ROOT")
+
+    [
+      {"KOGEN_JEV_TRANSPORT", Path.join(root, "test/support/fake_jev")},
+      {"KOGEN_JEV_SECURITY", Path.join(root, "test/support/fake_security")}
+    ]
+  end
+
   defp child_env(options, tmpdir, readiness, binding) do
     configured =
       options
@@ -413,7 +427,7 @@ defmodule Kogen.IsolatedCase do
       {"KOGEN_ISOLATED_INVOCATION", binding.invocation},
       {"KOGEN_ISOLATED_SOURCE", binding.source},
       {"KOGEN_ISOLATED_SELECTOR", binding.selector}
-      | parameter_env ++ configured ++ readiness_env
+      | offline_jev_env() ++ parameter_env ++ configured ++ readiness_env
     ]
     |> Enum.map(fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
   end

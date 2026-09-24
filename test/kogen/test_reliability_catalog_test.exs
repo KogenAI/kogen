@@ -13,7 +13,7 @@ defmodule Kogen.TestReliabilityCatalogTest do
   end
 
   test "final catalog is exhaustive, resolved, source-bound, and declaration-specific", context do
-    assert context.catalog["declaration_count"] == 312
+    assert context.catalog["declaration_count"] == 346
     assert context.catalog["provisional_count"] == 0
     assert :ok = Catalog.validate(context.catalog, context.root)
     assert :ok = Catalog.validate_remediation(context.catalog, context.remediation)

@@ -23,7 +23,7 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
-Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.280 and Codex 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login.
+Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.280 and Codex 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `ai.typesafe.api` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s ai.typesafe.api -a <account> -w` before building, or Build stops before launching the Developer.
 
 From a checkout whose `default_route` uses Claude Code:
 
@@ -66,7 +66,7 @@ Exit the shaping conversation, then build its chosen slug:
 mix kogen.build <slug>
 ```
 
-Start Build on a clean branch with a commit at HEAD. Kogen implements the approved feature, runs verification, obtains an independent review, and commits the accepted result with its completed Intent and evidence. A stopped Build returns an error and keeps its work available for inspection. Review the error and working tree before starting again.
+Start Build on a clean branch with a commit at HEAD. Kogen implements the approved feature, runs verification, obtains an independent review, and commits the accepted result with its completed Intent and evidence. A stopped Build returns an error and keeps its work available for inspection. Review the error and working tree before starting again. `mix kogen.build` needs a macOS Keychain generic password for service `ai.typesafe.api`, the TypeSafe API key Jev uses to read the Developer's handoff notes; add it with `security add-generic-password -s ai.typesafe.api -a <account> -w`. Without it, Build stops before launching the Developer. Once running, Build sends the Developer's notes and the contract's scenario, risk, and finding IDs to TypeSafe; it never sends the diff or Candidate files, although the notes themselves may quote code.
 
 ## The loop
 
@@ -75,7 +75,7 @@ Start Build on a clean branch with a commit at HEAD. Kogen implements the approv
 - **Build** implements, checks, independently reviews, and reworks when necessary.
 - **Commit** records the checked and accepted implementation of one Intent.
 
-The Stop hook owns the complete verification settlement: `make check`, followed by selected narrow catalog targets in dependency-valid cost order. `verification_retries` bounds failed Stop verification retries inside the same Developer conversation; those retries do not consume the outer allowance. A settled verification failure, invalid Developer handoff, failed declared target, or Review finding uses one outer resumption of the same Developer, when allowance remains, and a resumed attempt must settle a fresh Stop verification before handoff or Review. Handoff validation follows a passed Stop verification; a missing or invalid handoff never overrides a failed or exhausted verification. An exhausted verification or outer allowance stops the Build rather than claiming success.
+The Stop hook owns the complete verification settlement: `make check`, followed by selected narrow catalog targets in dependency-valid cost order. `verification_retries` bounds failed Stop verification retries inside the same Developer conversation; those retries do not consume the outer allowance. After Stop settles, controller code builds the handoff report itself, so no handoff can be malformed or invalid; a declared proof selector still missing from the Candidate is unfinished work, decided by code, and uses one outer resumption. Jev (`jev-1.13.0`) reads the Developer's free prose once per handoff; an objection at 0.85 confidence or higher stops the Build immediately and returns it to Shaping, quoting the Developer's words and Jev's confidence. Otherwise, a settled verification failure, a failed declared target, or a Review finding uses one outer resumption of the same Developer, when allowance remains, and a resumed attempt must settle a fresh Stop verification before the next handoff or Review. An exhausted verification or outer allowance stops the Build rather than claiming success.
 
 Developers and their delegated helpers must not run `make check`, any target declared by the selected Intent, or `.codex/hooks/check.sh`, including for early signal; focused non-gate tests remain allowed. A tracked PreToolUse hook blocks the explicit Make, command-list, and Stop-script forms before Bash dispatch. This bounded guard deliberately does not inspect indirect execution through non-gate Make dependencies, wrappers, shell expansion, `sh -c`, or later stdin; the Developer contract still forbids those routes. Existing configurations using legacy outer-resumption naming remain transition inputs; new documentation uses `verification_retries` for Stop verification and the outer allowance for Developer rework.
 
@@ -116,21 +116,31 @@ verdicts, findings, receipts, source snapshots, and historical exact bytes stay
 in that record. Missing or conflicting required evidence is an integrity failure;
 unfinished optional Draft files remain valid shaping work.
 
-After Stop verification settles, Build validates the final Developer message against a
-controller-owned schema bound to the fresh attempt token, contract IDs, and
-collection sizes. Fresh and resumed attempts each use a distinct private schema
-and final-output file; Build retains their exact bytes before cleanup and never
-falls back to an earlier file or intermediate message. The handoff covers every
-scenario, supplied risk, and open finding with claims and existing file
-references. Runtime checks still enforce unique coverage and safe references;
-schema compliance is not evidence that a claim is true. Build attaches its owned
-gate receipts; claims never count as gate results. A fresh Reviewer assesses every
-scenario and explicitly closes or retains every open finding with inspected
-counterevidence or repair evidence. Acceptance requires all scenarios satisfied
-and no open blocking findings for the current Candidate. Invalid handoffs share
-the outer allowance; malformed Review stops without partial closures.
-Verification exhaustion takes precedence over handoff parsing, and
-outer-allowance exhaustion takes precedence over another launch.
+After Stop verification settles, controller code deterministically builds the
+handoff report, bound to the fresh attempt token and the Candidate, from the
+Approved contract, the Candidate's Git changes relative to HEAD, the declared
+proof selectors, and Kogen's own receipts, so the report's format cannot fail.
+The Developer's final message is free prose; Kogen code never parses it. Build
+records it byte for byte as the Developer's notes and sends it, with the
+controller-listed scenario, risk, and finding IDs, to TypeSafe Jev
+(`jev-1.13.0`) once per handoff. Jev reports what the Developer says about
+each item — unfinished, done, pending external verification, resolved or
+historical, unclear — and whether the Developer objects that the approved
+contract cannot be met. An objection at 0.85 confidence or higher stops the
+Build immediately, without Review, and returns it to Shaping, quoting the
+Developer's words and Jev's confidence. Every other Jev reading, including a
+confident "unfinished" answer, and any runtime Jev failure, reaches the
+Reviewer only as a labelled advisory note; a confident "unfinished" answer
+never routes rework by itself, and the Reviewer alone decides acceptance or
+rework. A fresh Reviewer assesses every scenario and explicitly closes or
+retains every open finding with inspected counterevidence or repair evidence.
+Acceptance requires all scenarios satisfied and no open blocking findings for
+the current Candidate. A declared proof selector still missing from the
+Candidate is unfinished work decided by code; it uses one outer resumption of
+the same Developer, and the next attempt needs a fresh Stop verification.
+Verification exhaustion and a Jev cannot-comply stop both take precedence
+over ordinary Review routing, and outer-allowance exhaustion takes precedence
+over another launch. Malformed Review still stops without partial closures.
 
 To inspect a stopped Build, start with the record path and unresolved scenario IDs
 in its error. Read `.kogen/runtime/scenario-tracking/<build-id>/record.json`:
@@ -384,8 +394,9 @@ Each role gets its own Claude Code agents, `kogen-scout`, `kogen-worker` and
 `kogen-expert`, carrying the global helper profiles but only that role's authority:
 Developer scouts are read-only, workers may edit their assigned paths, and experts
 are read-only with Bash; every Reviewer and Shaper helper is read-only. Built-in
-Claude Code agents are denied to every role. The Developer's final message is its
-handoff, validated like Codex's; the Reviewer returns its verdict through
+Claude Code agents are denied to every role. The Developer's final message carries
+no schema; Kogen never validates or parses it, and controller code builds the
+handoff report on its own. The Reviewer still returns its verdict through
 `--json-schema`.
 
 ## Managed Codex runtime and login

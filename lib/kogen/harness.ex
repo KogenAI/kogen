@@ -59,34 +59,22 @@ defmodule Kogen.Harness do
     )
   end
 
-  @doc "Launches a fresh Developer turn using the controller-supplied handoff schema."
-  def launch_build_developer(prompt, model, effort, schema, policy_environment, context) do
-    adapter!(context).launch_build_developer(
-      prompt,
-      model,
-      effort,
-      schema,
-      policy_environment,
-      context
-    )
+  @doc """
+  Launches a fresh Build Developer turn. It carries no handoff schema and
+  returns the settled session with its final message (possibly empty) as the
+  Developer's unverified notes.
+  """
+  def launch_build_developer(prompt, model, effort, policy_environment, context) do
+    adapter!(context).launch_build_developer(prompt, model, effort, policy_environment, context)
   end
 
-  @doc "Resumes the exact Developer session using the controller-supplied handoff schema."
-  def resume_build_developer(
-        session_id,
-        text,
-        model,
-        effort,
-        schema,
-        policy_environment,
-        context
-      ) do
+  @doc "Resumes the exact Build Developer session; like `launch_build_developer/5`."
+  def resume_build_developer(session_id, text, model, effort, policy_environment, context) do
     adapter!(context).resume_build_developer(
       session_id,
       text,
       model,
       effort,
-      schema,
       policy_environment,
       context
     )

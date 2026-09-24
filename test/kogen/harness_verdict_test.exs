@@ -140,19 +140,18 @@ defmodule Kogen.HarnessVerdictTest do
              Kogen.Harness.launch_developer("test", "fake", "low", [], context)
   end
 
-  test "structured Build Developer trusts only the fresh owned output file" do
+  test "Build Developer notes are the final agent message, never an owned output file" do
     dir =
       Path.join(
         System.tmp_dir!(),
-        "kogen structured developer #{System.unique_integer([:positive])}"
+        "kogen build developer notes #{System.unique_integer([:positive])}"
       )
 
     File.mkdir_p!(dir)
     executable = Path.join(dir, "provider")
-    stale = Path.join(dir, "stale.json")
-    File.write!(stale, ~s({"attempt_token":"stale"}))
+    argv_log = Path.join(dir, "argv.log")
 
-    original = Map.new(["KOGEN_HARNESS", "OUTPUT_MODE"], &{&1, System.get_env(&1)})
+    original = Map.new(["KOGEN_HARNESS", "OUTPUT_MODE", "ARGV_LOG"], &{&1, System.get_env(&1)})
 
     on_exit(fn ->
       Enum.each(original, fn {key, value} ->
@@ -165,55 +164,51 @@ defmodule Kogen.HarnessVerdictTest do
     File.write!(executable, """
     #!/bin/sh
     cat >/dev/null || true
-    out=; prev=
-    for arg in "$@"; do [ "$prev" = --output-last-message ] && out="$arg"; prev="$arg"; done
+    printf '%s\\n' "$*" >> "$ARGV_LOG"
+    printf '%s\\n' '{"type":"thread.started","thread_id":"developer"}'
     case "$OUTPUT_MODE" in
-      valid) printf '%s' '{"attempt_token":"current"}' > "$out" ;;
-      empty) : > "$out" ;;
-      truncated) printf '%s' '{"attempt_token":' > "$out" ;;
-      provider_failure) printf '%s' '{"attempt_token":"stale"}' > "$out"; exit 19 ;;
+      prose) printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","text":"earlier progress"}}' '{"type":"item.completed","item":{"type":"agent_message","text":"All scenarios done; nothing unfinished."}}' ;;
+      malformed) printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","text":"{\\"attempt_token\\":"}}' ;;
+      empty) : ;;
+      provider_failure) exit 19 ;;
     esac
-    printf '%s\n' '{"type":"thread.started","thread_id":"developer"}' '{"type":"item.completed","item":{"type":"agent_message","text":"stale event"}}' '{"type":"turn.completed","thread_id":"developer"}'
+    printf '%s\\n' '{"type":"turn.completed","thread_id":"developer"}'
     """)
 
     File.chmod!(executable, 0o755)
     System.put_env("KOGEN_HARNESS", executable)
+    System.put_env("ARGV_LOG", argv_log)
     context = %{harness: "codex", executable: executable, args: [], env: []}
 
-    System.put_env("OUTPUT_MODE", "valid")
-
-    assert {:ok, %{session_id: "developer", message: message, invocation_evidence: evidence}} =
-             Kogen.Harness.launch_build_developer(
-               "test",
-               "fake",
-               "low",
-               ~s({"type":"object"}),
-               [],
-               context
-             )
-
-    assert message == ~s({"attempt_token":"current"})
-    assert evidence.message == message
-    assert evidence.schema == ~s({"type":"object"})
-
-    for {mode, kind} <- [
-          {"missing", :structured_output_missing},
-          {"empty", :structured_output_empty},
-          {"truncated", :structured_output_truncated}
+    for {mode, expected} <- [
+          {"prose", "All scenarios done; nothing unfinished."},
+          {"malformed", ~s({"attempt_token":)},
+          {"empty", ""}
         ] do
       System.put_env("OUTPUT_MODE", mode)
 
-      assert {:error, {^kind, %{session_id: "developer"}}} =
-               Kogen.Harness.launch_build_developer("test", "fake", "low", "{}", [], context)
+      assert {:ok, %{session_id: "developer", message: ^expected, invocation_evidence: evidence}} =
+               Kogen.Harness.launch_build_developer("test", "fake", "low", [], context)
+
+      assert evidence.message == expected
+
+      assert evidence.message_sha256 ==
+               Base.encode16(:crypto.hash(:sha256, expected), case: :lower)
+
+      refute Map.has_key?(evidence, :schema)
     end
 
     System.put_env("OUTPUT_MODE", "provider_failure")
 
-    assert {:error, {:structured_transport_failure, {:provider_exit, 19, _}, evidence}} =
-             Kogen.Harness.launch_build_developer("test", "fake", "low", "{}", [], context)
+    assert {:error, {:developer_transport_failure, {:provider_exit, 19, _}, evidence}} =
+             Kogen.Harness.launch_build_developer("test", "fake", "low", [], context)
 
     assert evidence.outcome == :provider_failure
-    assert File.read!(stale) == ~s({"attempt_token":"stale"})
+
+    for argv <- String.split(File.read!(argv_log), "\n", trim: true) do
+      refute argv =~ "--output-schema"
+      refute argv =~ "--output-last-message"
+    end
   end
 
   defp valid_verdict do

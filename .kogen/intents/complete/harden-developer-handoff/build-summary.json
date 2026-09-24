@@ -1,0 +1,300 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "Vmt0BF7KIFnLesPRKdlZM9uk303KDJQk",
+      "candidate_id": "099217b2c93b1d262cd0d7b7ac6b42565d322d16",
+      "developer_session_id": "29994aaa-8f9c-46fa-b651-150ca41296c7",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "2ff35120-1760-4ad2-af76-93f912dde1b0",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "Vmt0BF7KIFnLesPRKdlZM9uk303KDJQk",
+          "candidate_id": "099217b2c93b1d262cd0d7b7ac6b42565d322d16",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T04:29:28Z",
+          "session_id": "29994aaa-8f9c-46fa-b651-150ca41296c7",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "Vmt0BF7KIFnLesPRKdlZM9uk303KDJQk",
+          "candidate_id": "099217b2c93b1d262cd0d7b7ac6b42565d322d16",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T04:31:24Z",
+          "session_id": "29994aaa-8f9c-46fa-b651-150ca41296c7",
+          "status": "passed",
+          "target": "live-reviewer-rework"
+        },
+        {
+          "attempt_token": "Vmt0BF7KIFnLesPRKdlZM9uk303KDJQk",
+          "candidate_id": "099217b2c93b1d262cd0d7b7ac6b42565d322d16",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T04:34:25Z",
+          "session_id": "29994aaa-8f9c-46fa-b651-150ca41296c7",
+          "status": "passed",
+          "target": "live-shape-to-build"
+        }
+      ]
+    }
+  ],
+  "build_id": "OiO8ooXF8pvKUkFiGLQceMwh",
+  "candidate_id": "099217b2c93b1d262cd0d7b7ac6b42565d322d16",
+  "developer_session_id": "29994aaa-8f9c-46fa-b651-150ca41296c7",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 12527472,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/OiO8ooXF8pvKUkFiGLQceMwh/record.json",
+    "schema_version": 2,
+    "sha256": "c105a175766a16391090344e2f97e5b87eece4a74053ae28a2fab2022042d9a9"
+  },
+  "intent": {
+    "id": "01a0ce42-08f3-78e5-99bb-4fe3a664d100",
+    "slug": "harden-developer-handoff",
+    "title": "Build the Developer handoff report in the controller"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "2ff35120-1760-4ad2-af76-93f912dde1b0"
+  },
+  "risks": [
+    {
+      "id": "weaker-developer-self-assessment"
+    },
+    {
+      "id": "jev-misreads-objection"
+    },
+    {
+      "id": "external-service-and-key"
+    },
+    {
+      "id": "record-and-consumer-drift"
+    },
+    {
+      "id": "test-reliability-catalog-pins"
+    },
+    {
+      "id": "size-over-one-build"
+    }
+  ],
+  "route": {
+    "harness": "claude",
+    "name": "claude"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "build/1, scenario_entry/4",
+          "path": "lib/kogen/build/report.ex"
+        },
+        {
+          "locator": "settle/5, notes_record/1, report_and_review/5, candidate_changes/1",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "tests at lines 32, 101, 132, 181",
+          "path": "test/kogen/controller_handoff_test.exs"
+        }
+      ],
+      "id": "controller-built-report",
+      "reason": "Build.settle no longer parses the message. It records it via notes_record (verbatim base64 plus sha256, labelled unverified) and builds the report with Kogen.Build.Report.build from the contract, the git diff --name-status of HEAD..Candidate, the declared selectors and the settled receipts. The report is stored under the attempt's `handoff` key. It has one entry per scenario, risks with scenario_ids copied from the contract, and open findings. Changed affected paths are filtered to each scenario's affected_paths, a no-change hint note is added, and deleted paths carry no locator so they are never snapshotted. The builder ignores the notes and the Jev input. Tests cover six message variants that yield identical reports, a control where affected paths change, a generated-input builder test over random, invalid-UTF-8, 2 MB and empty bytes and every Jev outcome, and a source assertion against 'Developer handoff ... invalid'. The retained record for this attempt shows the controller report bound to this token and Candidate with the check receipt.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "developer_args vs reviewer_args; notes_turn",
+          "path": "lib/kogen/harness/claude.ex"
+        },
+        {
+          "locator": "developer_args; final_agent_message returns empty string",
+          "path": "lib/kogen/harness/codex.ex"
+        },
+        {
+          "locator": "schema_free_developer_turns!/1 incl FAKE_EXIT provider-failure control",
+          "path": "test/kogen/harness_contract_test.exs"
+        },
+        {
+          "locator": "describe Developer turns: fresh/resume no schema, notes pass-through, provider errors",
+          "path": "test/kogen/claude_code_harness_test.exs"
+        }
+      ],
+      "id": "schema-free-developer-turns",
+      "reason": "The schema parameter is removed from Harness.launch_build_developer and resume_build_developer. Claude developer_args adds no --json-schema and pastes no schema block. Codex developer args add no --output-schema or --output-last-message; only the Reviewer paths do. A final message that is empty or missing settles as notes. Nonzero exit, provider errors and session mismatch still fail. Fakes distinguish roles by KOGEN_ROLE, not by schema flags. Fresh and resume tests exist for both adapters, including a provider-failure control.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "request_body/2, read_notes/3, with_key/3, send_with_retry/5, validate_answers/2",
+          "path": "lib/kogen/jev.ex"
+        },
+        {
+          "locator": "STATUS_OPTS/OBJ_OPTS and question rules",
+          "path": ".kogen/intents/approved/harden-developer-handoff/evidence/jev-probe/prose_v2.py"
+        },
+        {
+          "locator": "tests at 47, 120, 162, 267, 351",
+          "path": "test/kogen/jev_test.exs"
+        },
+        {
+          "locator": "offline_jev_env/0",
+          "path": "test/support/isolated_case.ex"
+        }
+      ],
+      "id": "jev-reads-developer-notes",
+      "reason": "Kogen.Jev sends one POST to the systemone endpoint with the pinned model jev-1.13.0. The state holds the verbatim notes and the controller item kinds and IDs. There is a six-option status Choice per scenario and a three-option objection Choice per scenario, risk and finding. The task, rules and criteria wording matches evidence/jev-probe/prose_v2.py byte for byte. Returned options are validated against the options sent, and duplicated keys are detected. The key is read at call time with -w and used only in the Bearer header, with redaction. The timeout is 60 s, with one retry only for a timeout, 429 or 529. The request bytes, digest, exchanges, latency, usage and outcome are recorded, bound to the token and Candidate. Offline tests default to the fake transport and Keychain lookup, and a guard test checks those defaults and that only live drivers clear them. The real Jev call on this Candidate answered (HTTP 200).",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "run/2 with-chain :ok <- Kogen.Jev.key_present()",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "test 'a missing Jev Keychain item fails before any launch, tracking record or verification context'",
+          "path": "test/kogen/build_preconditions_test.exs"
+        },
+        {
+          "locator": "test 'the Build precondition only tests that the Keychain item exists, never reading it'",
+          "path": "test/kogen/jev_test.exs"
+        }
+      ],
+      "id": "jev-key-required-before-build",
+      "reason": "Kogen.Jev.key_present runs `security find-generic-password -s ai.typesafe.api` without -w as a run/2 precondition, before the lock, any launch, the tracking record or the verification context. The error names the service and gives the add command. The test asserts no harness launch, no tracking record or context, and the exact argv without -w; a present item passes. A runtime unreadable key becomes Jev unavailable.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "@objection_threshold comment and objections/1",
+          "path": "lib/kogen/jev.ex"
+        },
+        {
+          "locator": "settle_outcome/7, cannot_comply/6, quote_notes/1",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "tests at 309-423",
+          "path": "test/kogen/controller_handoff_test.exs"
+        }
+      ],
+      "id": "cannot-comply-stops",
+      "reason": "@objection_threshold 0.85 is documented with the round 3 calibration. settle_outcome checks objections first and stops without Review or resumption. The reason starts with the required prefix, lists each item's kind, ID and confidence, and quotes the notes. Beyond 2000 characters the quote is truncated with a marker that names the record path. When verification is exhausted, the exhaustion reason is appended after the objection. The record keeps a cannot_comply outcome with its items. Answers below the threshold reach the Reviewer as 'possible objection'. Findings are included as Jev items. Tests cover scenario and risk objections at 0.95, the 0.85 boundary, 0.84, a finding, truncation and exhaustion.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "answered/3, unavailable/2, advisory/1 unavailable clause",
+          "path": "lib/kogen/jev.ex"
+        },
+        {
+          "locator": "@unavailable table and Keychain-disappears test (lines 436-481)",
+          "path": "test/kogen/controller_handoff_test.exs"
+        }
+      ],
+      "id": "jev-unavailable-goes-to-review",
+      "reason": "Every failure path, including an unreadable key, timeout, HTTP errors, a non-JSON body, another model, and missing, duplicated or invalid answers, returns an unavailable outcome with a reason and answers set to nil, so no answers are cherry-picked. objections/1 returns none for unavailable, so Build proceeds to Review. advisory/1 gives every item 'Jev unavailable: <reason>; no Developer-notes reading was available'. Tests cover each listed case, including the max_tokens_exceeded body and a partial response.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "settle_outcome/7, unfinished_work/4, post_developer_inputs_unchanged/1",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "missing_selectors/3",
+          "path": "lib/kogen/build/verification_plan.ex"
+        },
+        {
+          "locator": "tests at 483-551",
+          "path": "test/kogen/controller_handoff_test.exs"
+        },
+        {
+          "locator": "missing selector spends outer resumptions test",
+          "path": "test/kogen/two_outer_resumptions_test.exs"
+        }
+      ],
+      "id": "missing-proof-selector-is-unfinished",
+      "reason": "The handoff_valid? check moved out of post_developer_inputs_unchanged. After settlement, missing_selectors routes to unfinished_work, which records the outcome and calls rework with 'Unfinished work: missing declared proof selector P'. That spends an outer resumption, needs a fresh Stop, and stops with the 'stopped after 2 outer resumptions ...' text when the allowance is exhausted. A cannot-comply stop takes precedence. Positive, recovery, exhaustion and precedence tests exist, including in two_outer_resumptions_test.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "reviewer_context/1, reviewer_notes_section/1",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "## Final Developer notes",
+          "path": "priv/kogen/prompts/developer.md"
+        },
+        {
+          "locator": "Get started, Build paragraph, The loop line 78, handoff paragraph ~119-143, Claude Code section ~397",
+          "path": "README.md"
+        },
+        {
+          "locator": "run_scenario(:handoff_report_documentation)",
+          "path": "test/kogen/core_integrity_test.exs"
+        }
+      ],
+      "id": "reviewer-owns-completeness",
+      "reason": "The Reviewer prompt section and task context carry the controller-built, no-self-assessment, unverified-notes, Jev-advisory and changed_affected_paths statements, plus per-item advisory labels (observed in this very Review prompt). The Developer prompt drops the JSON handoff and asks for per-scenario unfinished items in prose, a plain objection paragraph, and prose answers to findings, keeping honest reporting and return to Shaping. The README covers the loop, the handoff, the Claude Code section, and the Keychain requirement in both Get started and Build, and has no leftover invalid-handoff wording. core_integrity_test asserts these claims and refutes the superseded wording.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "@schema_version 2",
+          "path": "lib/kogen/build/tracking.ex"
+        },
+        {
+          "locator": "supported_record_binding version in [1, 2]",
+          "path": "lib/kogen/build/evidence.ex"
+        },
+        {
+          "locator": "rehearse-live-reviewer-rework shared_entrypoints Kogen.Build.Report.build",
+          "path": "priv/kogen/verification_targets.yaml"
+        },
+        {
+          "locator": "assert_developer_invocation!, assert_controller_handoff!, assert_jev_no_objection!",
+          "path": "test/kogen/live_shape_to_build_test.exs"
+        },
+        {
+          "locator": "attempts[0].targets live-shape-to-build status passed 2026-09-24T04:34:25Z",
+          "path": ".kogen/runtime/scenario-tracking/OiO8ooXF8pvKUkFiGLQceMwh/record.json"
+        }
+      ],
+      "id": "bindings-and-records-preserved",
+      "reason": "The integrity checks remain: inputs_unchanged, catalog, guarded paths and bound_inputs_unchanged. Tracking schema_version is now 2, and evidence.ex accepts versions 1 and 2 without migration. The summary gains failure_kind with unfinished_work and cannot_comply in place of the handoff kinds. Rehearsal entrypoints now name Kogen.Build.Report.build, which traces. The live_shape_to_build, live_rework_audit and scenario_lifecycle assertions now refute a schema, match the message and digest to the notes, and assert the controller report and a real Jev outcome with no objection. The paid live-shape-to-build receipt passed on this Candidate and token.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "scenario then text and env KOGEN_JEV_TRANSPORT nil",
+          "path": "test/support/live_reviewer_rework_fixture.ex"
+        },
+        {
+          "locator": "controller_handoff!/1, jev_recorded!/1",
+          "path": "test/support/live_rework_audit.ex"
+        },
+        {
+          "locator": "attempts[0].targets live-reviewer-rework status passed 2026-09-24T04:31:24Z",
+          "path": ".kogen/runtime/scenario-tracking/OiO8ooXF8pvKUkFiGLQceMwh/record.json"
+        }
+      ],
+      "id": "rework-lifecycle-live",
+      "reason": "The fixture text now asks for free-prose notes disclosing the absent file, not a structured handoff. The live driver clears the offline Jev overrides so real Jev and the real Keychain are used. The audit requires no schema, the controller report, a fresh binding per attempt, an answered real Jev reading, no cannot_comply, and no handoff failures. The live-reviewer-rework receipt passed on this Candidate and token.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

@@ -4,6 +4,13 @@ defmodule Kogen.Build do
   Check settlement, declared-target verification, a fresh Review, bounded
   Rework (at most `outer_resumptions` resumes of the exact Developer
   thread), and one ordinary Git Commit carrying the Intent identity.
+
+  After Stop verification settles, controller code builds the handoff report
+  (`Kogen.Build.Report`). The Developer's final message is free prose that no
+  Kogen code parses: Build records it as unverified notes and asks TypeSafe Jev
+  (`Kogen.Jev`) once what the Developer says about each item. Only a confident
+  contract objection stops the Build; every other reading, and any Jev
+  failure, reaches the fresh Reviewer as advisory notes.
   """
   use Boundary,
     deps: [
@@ -12,14 +19,15 @@ defmodule Kogen.Build do
       Kogen.Check,
       Kogen.Git,
       Kogen.VerificationPolicy,
-      Kogen.ExecutionPolicy
+      Kogen.ExecutionPolicy,
+      Kogen.Jev
     ]
 
   alias Kogen.Build.{
     Contract,
-    DeveloperHandoff,
     FailureSignature,
     GuardedPaths,
+    Report,
     TargetEvidence,
     Tracking,
     Verification,
@@ -47,7 +55,8 @@ defmodule Kogen.Build do
          :ok <- Kogen.Git.reject_candidate_blinding_index_flags(),
          :ok <- check_clean_worktree(),
          :ok <- check_branch_attached(),
-         :ok <- check_complete_absent(slug) do
+         :ok <- check_complete_absent(slug),
+         :ok <- Kogen.Jev.key_present() do
       case acquire_lock() do
         :ok ->
           try do
@@ -289,9 +298,7 @@ defmodule Kogen.Build do
     with :ok <- inputs_unchanged(ctx),
          true <- VerificationPlan.unchanged?(ctx.catalog),
          :ok <- Kogen.VerificationPolicy.preflight(ctx.catalog.ordered_targets),
-         :ok <- Kogen.Check.invalidate!(),
-         {:ok, schema} <-
-           DeveloperHandoff.schema(ctx.contract, ctx.token, Tracking.open_findings(ctx.tracking)) do
+         :ok <- Kogen.Check.invalidate!() do
       prompt = developer_prompt(ctx, reason)
 
       result =
@@ -301,7 +308,6 @@ defmodule Kogen.Build do
             prompt,
             ctx.config.developer.model,
             ctx.config.developer.effort,
-            schema,
             ctx.policy_environment ++ Verification.environment(ctx.execution),
             Kogen.Harness.launch_context(ctx.runtime)
           )
@@ -310,7 +316,6 @@ defmodule Kogen.Build do
             prompt,
             ctx.config.developer.model,
             ctx.config.developer.effort,
-            schema,
             ctx.policy_environment ++ Verification.environment(ctx.execution),
             Kogen.Harness.launch_context(ctx.runtime)
           )
@@ -330,7 +335,7 @@ defmodule Kogen.Build do
         "resume created a new session (expected #{expected}, got #{turn.session_id})",
         %{
           "developer_session_id" => turn.session_id,
-          "developer_message" => turn.message,
+          "developer_notes" => notes_record(turn.message),
           "developer_invocation" => invocation_evidence(turn.invocation_evidence)
         }
       )
@@ -345,31 +350,11 @@ defmodule Kogen.Build do
     end
   end
 
-  defp receive_developer(ctx, expected, number, {:error, {kind, evidence}})
-       when kind in [
-              :structured_output_missing,
-              :structured_output_empty,
-              :structured_output_malformed,
-              :structured_output_truncated
-            ] and is_map(evidence) do
-    session_id = evidence[:session_id]
-
-    if expected && session_id != expected do
-      stop(ctx, "resume created a new session (expected #{expected}, got #{session_id})", %{
-        "developer_session_id" => session_id,
-        "developer_message" => evidence[:message],
-        "developer_invocation" => invocation_evidence(evidence)
-      })
-    else
-      settle_structure_error(ctx, session_id, number, kind, evidence)
-    end
-  end
-
   defp receive_developer(
          ctx,
          expected,
          number,
-         {:error, {:structured_transport_failure, reason, evidence}}
+         {:error, {:developer_transport_failure, reason, evidence}}
        ) do
     session_id = evidence[:session_id]
 
@@ -390,11 +375,11 @@ defmodule Kogen.Build do
     end
   end
 
-  defp settle(ctx, session_id, number, message, invocation) do
-    # No controller update happens during the Developer turn. Preserve that
-    # exact version before recording settlement or the parsed handoff.
-    developer_tracking = ctx.tracking
-
+  # No Kogen code parses `notes`: they are recorded verbatim as unverified
+  # claims and only Jev reads them. Every outcome below is decided by
+  # controller code from settled verification, the Candidate and Jev's
+  # validated answers, so no handoff-format failure exists.
+  defp settle(ctx, session_id, number, notes, invocation) do
     with :ok <- post_developer_inputs_unchanged(ctx),
          {:ok, candidate_id} <- Kogen.Git.candidate_id(),
          {:ok, ctx, verification} <- settle_verification(ctx, session_id, candidate_id),
@@ -403,46 +388,186 @@ defmodule Kogen.Build do
            record_attempt(ctx, %{
              "candidate_id" => candidate_id,
              "developer_session_id" => session_id,
-             "developer_message" => message,
+             "developer_notes" => notes_record(notes),
              "developer_invocation" => invocation,
              "check" => List.first(receipts),
              "targets" => Enum.drop(receipts, 1)
-           }) do
-      if verification["terminal_state"] == "passed" do
-        validate_handoff(ctx, candidate_id, session_id, number, message, developer_tracking)
-      else
-        stop(ctx, terminal_exhaustion_reason(ctx, verification))
-      end
+           }),
+         {:ok, ctx, jev} <- read_notes(ctx, candidate_id, notes) do
+      settle_outcome(ctx, candidate_id, session_id, number, notes, verification, jev)
     else
       {:error, reason} -> stop(ctx, reason)
     end
   end
 
-  defp settle_structure_error(ctx, session_id, number, kind, evidence) do
-    reason = "Developer handoff structure invalid: #{structure_diagnostic(kind)}"
+  defp settle_outcome(ctx, candidate_id, session_id, number, notes, verification, jev) do
+    objections = Kogen.Jev.objections(jev)
+    exhausted? = verification["terminal_state"] != "passed"
+    missing = VerificationPlan.missing_selectors(ctx.plan, ctx.catalog)
 
-    with :ok <- post_developer_inputs_unchanged(ctx),
-         {:ok, candidate_id} <- Kogen.Git.candidate_id(),
-         {:ok, ctx, verification} <- settle_verification(ctx, session_id, candidate_id),
-         receipts = normalized_final_receipts(verification),
-         {:ok, ctx} <-
-           record_attempt(ctx, %{
-             "candidate_id" => candidate_id,
-             "developer_session_id" => session_id,
-             "developer_invocation" => invocation_evidence(evidence),
-             "developer_message" => evidence[:message],
-             "check" => List.first(receipts),
-             "targets" => Enum.drop(receipts, 1)
-           }) do
-      if verification["terminal_state"] == "exhausted" do
+    cond do
+      objections != [] ->
+        cannot_comply(ctx, number, notes, objections, exhausted?, verification)
+
+      exhausted? ->
         stop(ctx, terminal_exhaustion_reason(ctx, verification))
-      else
-        rework(ctx, session_id, number, reason)
-      end
-    else
+
+      missing != [] ->
+        unfinished_work(ctx, session_id, number, missing)
+
+      true ->
+        report_and_review(ctx, candidate_id, session_id, number, jev)
+    end
+  end
+
+  defp notes_record(notes) when is_binary(notes) do
+    %{
+      "label" => "unverified Developer notes; recorded verbatim and never parsed by Kogen code",
+      "sha256" => Base.encode16(:crypto.hash(:sha256, notes), case: :lower),
+      "byte_count" => byte_size(notes),
+      "content_base64" => Base.encode64(notes),
+      "text" => if(String.valid?(notes), do: notes)
+    }
+  end
+
+  defp notes_record(_notes), do: notes_record("")
+
+  defp read_notes(ctx, candidate_id, notes) do
+    jev =
+      notes
+      |> Kogen.Jev.read_notes(jev_items(ctx))
+      |> Map.merge(%{"attempt_token" => ctx.token, "candidate_id" => candidate_id})
+
+    with {:ok, ctx} <- record_attempt(ctx, %{"jev" => jev}), do: {:ok, ctx, jev}
+  end
+
+  defp jev_items(ctx) do
+    Enum.map(ctx.contract.scenarios, &%{"kind" => "scenario", "id" => &1["id"]}) ++
+      Enum.map(ctx.contract.risks, &%{"kind" => "risk", "id" => &1["id"]}) ++
+      Enum.map(Tracking.open_findings(ctx.tracking), &%{"kind" => "finding", "id" => &1["id"]})
+  end
+
+  @cannot_comply_prefix "Developer cannot comply as approved; return to Shaping:"
+  @quote_limit 2_000
+
+  defp cannot_comply(ctx, number, notes, objections, exhausted?, verification) do
+    {quote, truncated?} = quote_notes(notes)
+
+    items =
+      Enum.map_join(objections, ", ", fn item ->
+        "#{item["kind"]} `#{item["id"]}` (Jev confidence #{Kogen.Jev.format(item["confidence"])})"
+      end)
+
+    location =
+      "#{ctx.tracking.path} attempt #{number} developer_notes"
+
+    quoted =
+      if truncated?,
+        do:
+          "\"#{quote}\" [notes truncated at #{@quote_limit} of #{String.length(notes)} characters; full notes in #{location}]",
+        else: "\"#{quote}\""
+
+    reason =
+      "#{@cannot_comply_prefix} Jev (#{Kogen.Jev.model()}) read a contract objection at or above #{Kogen.Jev.objection_threshold()} for #{items}. Developer's notes: #{quoted}"
+
+    reason =
+      if exhausted?,
+        do: reason <> "; " <> terminal_exhaustion_reason(ctx, verification),
+        else: reason
+
+    case record_attempt(ctx, %{
+           "outcome" => "cannot_comply",
+           "cannot_comply" => %{
+             "items" => objections,
+             "threshold" => Kogen.Jev.objection_threshold(),
+             "notes_quote" => quote,
+             "notes_truncated" => truncated?
+           }
+         }) do
+      {:ok, ctx} -> stop(ctx, reason)
       {:error, error} -> stop(ctx, error)
     end
   end
+
+  defp quote_notes(notes) do
+    if String.length(notes) > @quote_limit,
+      do: {String.slice(notes, 0, @quote_limit), true},
+      else: {notes, false}
+  end
+
+  defp unfinished_work(ctx, session_id, number, missing) do
+    reason =
+      Enum.map_join(missing, "; ", &"Unfinished work: missing declared proof selector #{&1}")
+
+    case record_attempt(ctx, %{
+           "outcome" => "unfinished_work",
+           "unfinished_work" => %{"missing_selectors" => missing}
+         }) do
+      {:ok, ctx} -> rework(ctx, session_id, number, reason)
+      {:error, error} -> stop(ctx, error)
+    end
+  end
+
+  defp report_and_review(ctx, candidate_id, session_id, number, jev) do
+    attempt = current_attempt(ctx)
+
+    with {:ok, changes} <- candidate_changes(candidate_id),
+         report =
+           Report.build(%{
+             contract: ctx.contract,
+             attempt_token: ctx.token,
+             candidate_id: candidate_id,
+             open_findings: Tracking.open_findings(ctx.tracking),
+             changes: changes,
+             check: attempt["check"],
+             targets: Map.get(attempt, "targets", []),
+             jev: jev
+           }),
+         {:ok, references} <- snapshot_references(report, ctx.tracking),
+         {:ok, ctx} <-
+           record_attempt(ctx, %{
+             "outcome" => "settled",
+             "handoff" => report,
+             "developer_reference_snapshots" => references
+           }) do
+      review(%{ctx | references: references}, candidate_id, session_id, number)
+    else
+      {:error, reason} -> stop(ctx, reason)
+    end
+  end
+
+  # Paths that differ between the settled Candidate tree and HEAD.
+  defp candidate_changes(candidate_id) do
+    case System.cmd(
+           "git",
+           [
+             "-c",
+             "core.filemode=true",
+             "diff",
+             "--name-status",
+             "--no-renames",
+             "-z",
+             "HEAD",
+             candidate_id,
+             "--"
+           ],
+           stderr_to_stdout: true
+         ) do
+      {output, 0} ->
+        {:ok,
+         output
+         |> String.split(<<0>>, trim: true)
+         |> Enum.chunk_every(2)
+         |> Enum.map(fn [status, path] -> {path, change_kind(status)} end)}
+
+      {output, _status} ->
+        {:error, "could not derive Candidate changes: #{String.trim(output)}"}
+    end
+  end
+
+  defp change_kind("A"), do: "added"
+  defp change_kind("D"), do: "deleted"
+  defp change_kind(_status), do: "modified"
 
   defp settle_transport_failure(ctx, number, reason, evidence) do
     session_id = evidence[:session_id]
@@ -485,7 +610,6 @@ defmodule Kogen.Build do
   defp post_developer_inputs_unchanged(ctx) do
     with :ok <- inputs_unchanged(ctx),
          true <- VerificationPlan.unchanged?(ctx.catalog),
-         :ok <- VerificationPlan.handoff_valid?(ctx.plan, ctx.catalog),
          :ok <- GuardedPaths.check(ctx.guarded_snapshot, ctx.intent.may_change_guarded_paths) do
       :ok
     else
@@ -554,26 +678,6 @@ defmodule Kogen.Build do
     end)
   end
 
-  defp validate_handoff(ctx, candidate_id, session_id, number, message, developer_tracking) do
-    case Contract.handoff(message, ctx.contract, ctx.token, Tracking.open_findings(ctx.tracking)) do
-      {:ok, handoff} ->
-        with {:ok, references} <- snapshot_references(handoff, developer_tracking),
-             {:ok, ctx} <-
-               record_attempt(ctx, %{
-                 "handoff" => handoff,
-                 "developer_reference_snapshots" => references
-               }) do
-          ctx = %{ctx | references: references}
-          review(ctx, candidate_id, session_id, number)
-        else
-          {:error, reason} -> stop(ctx, reason)
-        end
-
-      {:error, reason} ->
-        rework(ctx, session_id, number, "Developer handoff semantic invalid: #{reason}")
-    end
-  end
-
   defp review(ctx, candidate_id, session_id, number) do
     with :ok <- bound_inputs_unchanged(ctx, candidate_id, session_id),
          {:ok, ctx} <-
@@ -583,7 +687,7 @@ defmodule Kogen.Build do
            }) do
       prompt =
         render_reviewer_prompt(ctx.intent, candidate_id, ctx.config) <>
-          task_context(ctx, candidate_id, "reviewer")
+          reviewer_notes_section(ctx) <> task_context(ctx, candidate_id, "reviewer")
 
       result =
         Kogen.Harness.launch_reviewer(
@@ -783,8 +887,45 @@ defmodule Kogen.Build do
       "developer_session_id" => current_attempt(ctx)["developer_session_id"]
     }
 
+    context = if role == "reviewer", do: Map.merge(context, reviewer_context(ctx)), else: context
+
     "\nRead-only locator packet. Never edit authoritative tracking files.\n" <>
       "KOGEN_TASK_CONTEXT\n" <> Jason.encode!(context) <> "\n"
+  end
+
+  @report_statement "The handoff report (current attempt `handoff`) is controller-built and contains no Developer self-assessment; you are responsible for finding unfinished or plausible-looking-only scenarios."
+  @notes_statement "The Developer's notes (current attempt `developer_notes`), including prose responses to open findings, are unverified claims."
+  @jev_statement "Jev only read the Developer's words and never judged the code. Its readings are advisory, never findings or verification; a confident \"unfinished\" reading never routes rework by itself, only your verdict does."
+  @changes_statement "`changed_affected_paths` lists files that changed relative to HEAD, not where each behaviour lives."
+
+  defp reviewer_context(ctx) do
+    jev = current_attempt(ctx)["jev"] || %{}
+
+    %{
+      "handoff_report" => @report_statement,
+      "developer_notes" => @notes_statement,
+      "changed_affected_paths" => @changes_statement,
+      "jev_reading" => %{
+        "model" => jev["model"],
+        "outcome" => jev["outcome"],
+        "advisory" => @jev_statement,
+        "items" => Kogen.Jev.advisory(jev)
+      }
+    }
+  end
+
+  defp reviewer_notes_section(ctx) do
+    jev = current_attempt(ctx)["jev"] || %{}
+
+    lines =
+      Enum.map_join(Kogen.Jev.advisory(jev), "\n", fn item ->
+        "- #{item["kind"]} `#{item["id"]}`: " <> Enum.join(item["notes"], "; ")
+      end)
+
+    "\n\n## Controller report, Developer notes and advisory Jev reading\n\n" <>
+      Enum.join([@report_statement, @notes_statement, @changes_statement], "\n") <>
+      "\n\nAdvisory Jev (#{Kogen.Jev.model()}) reading of the Developer's notes. " <>
+      @jev_statement <> "\n\n" <> lines <> "\n"
   end
 
   defp snapshot_references(value, tracking) do
@@ -1107,6 +1248,7 @@ defmodule Kogen.Build do
       "number" => attempt["number"],
       "attempt_token" => attempt["attempt_token"],
       "status" => attempt["status"],
+      "failure_kind" => attempt["failure"] && failure_category(attempt["failure"]),
       "developer_session_id" => attempt["developer_session_id"],
       "reviewer_session_id" => attempt["reviewer_session"],
       "candidate_id" => attempt["candidate_id"],
@@ -1253,7 +1395,7 @@ defmodule Kogen.Build do
   defp resume_feedback(ctx, reason) do
     "Rework required (category: #{failure_category(reason)}; record: #{ctx.tracking.path}).\n" <>
       "Read the preceding failed attempt's `failure` field for full details; " <>
-      "select the current attempt by its supplied token for the new handoff.\n"
+      "select the current attempt by its supplied token.\n"
   end
 
   defp failure_category(reason) do
@@ -1261,8 +1403,8 @@ defmodule Kogen.Build do
       String.starts_with?(reason, "settled Check failure:") -> "check_settlement"
       String.starts_with?(reason, "declared-target failure:") -> "declared_target"
       String.starts_with?(reason, "Reviewer findings:") -> "review_rework"
-      String.starts_with?(reason, "Developer handoff structure invalid:") -> "handoff_structure"
-      String.starts_with?(reason, "Developer handoff semantic invalid:") -> "handoff_semantic"
+      String.starts_with?(reason, "Unfinished work:") -> "unfinished_work"
+      String.starts_with?(reason, @cannot_comply_prefix) -> "cannot_comply"
       true -> "rework"
     end
   end
@@ -1273,18 +1415,6 @@ defmodule Kogen.Build do
 
   defp invocation_value(value) when is_atom(value), do: Atom.to_string(value)
   defp invocation_value(value), do: value
-
-  defp structure_diagnostic(:structured_output_missing),
-    do: "the current owned final-output file was not created"
-
-  defp structure_diagnostic(:structured_output_empty),
-    do: "the current owned final-output file was empty"
-
-  defp structure_diagnostic(:structured_output_truncated),
-    do: "the current owned final-output file contained truncated JSON"
-
-  defp structure_diagnostic(:structured_output_malformed),
-    do: "the current owned final-output file contained malformed JSON"
 
   @doc false
   def render_reviewer_prompt(intent, candidate_id, config) do

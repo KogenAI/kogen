@@ -1,0 +1,159 @@
+{
+ "label": "objection-named-routes-a1",
+ "build": "Bg1qobsC",
+ "attempt": 1,
+ "status": 200,
+ "response": {
+  "model": "jev-1.13.0",
+  "answers": {
+   "cannot_comply:scenario:routes-config-resolves": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.99,
+    "probabilities": {
+     "no": 0.99,
+     "yes": 0.01
+    }
+   },
+   "cannot_comply:scenario:flat-config-refused": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.99,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:scenario:route-flag-selects-session": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:scenario:unknown-route-fails-before-launch": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:scenario:selected-route-only-validation-and-readiness": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:scenario:shaping-records-route": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.99,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:scenario:build-records-and-holds-route": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:scenario:no-silent-fallbacks": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.97,
+    "probabilities": {
+     "no": 0.98,
+     "yes": 0.02
+    }
+   },
+   "cannot_comply:scenario:setup-commands-route-independent": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:scenario:repository-config-and-docs": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.94,
+    "probabilities": {
+     "no": 0.97,
+     "yes": 0.03
+    }
+   },
+   "cannot_comply:scenario:real-default-route-end-to-end": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.96,
+    "probabilities": {
+     "no": 0.98,
+     "yes": 0.02
+    }
+   },
+   "cannot_comply:risk:tracked-config-conversion": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.98,
+    "probabilities": {
+     "no": 0.99,
+     "yes": 0.01
+    }
+   },
+   "cannot_comply:risk:tracking-record-route-field": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:risk:test-reliability-catalog": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 0.94,
+    "probabilities": {
+     "no": 0.03,
+     "yes": 0.97
+    }
+   },
+   "cannot_comply:risk:live-controller-follows-route-instruction": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.99,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   },
+   "cannot_comply:risk:removing-contextless-defaults": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "no": 1.0,
+     "yes": 0.0
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 5953,
+   "output_tokens": 663
+  }
+ }
+}

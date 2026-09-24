@@ -1,0 +1,67 @@
+id: 01a0ce42-08f3-78e5-99bb-4fe3a664d100
+slug: harden-developer-handoff
+title: Build the Developer handoff report in the controller
+status: draft
+shaped_against:
+  branch: main
+  head: 5af112735bab561c4be6429433598c8d728a9efd
+shaping:
+  route: claude
+  harness: claude
+  model: claude-opus-5-5
+  effort: medium
+  started: "2026-09-23T12:33:49.304307Z"
+summary: >-
+  After Stop verification settles, Build no longer asks the Developer model for
+  a JSON handoff. Deterministic controller code builds the handoff report from
+  the Approved contract, the Candidate's Git changes, the declared proof
+  selectors and Kogen's own receipts, so the report's format and schema cannot
+  fail. The Developer's final message is free prose and is never parsed by
+  Kogen code. Build sends that prose, with the controller-listed item IDs, to
+  TypeSafe Jev (`jev-1.13.0`) in one request. Jev reports, for each item,
+  what the Developer says about its own work (unfinished, done, pending
+  external verification, resolved or historical, unclear) and whether the
+  Developer says the approved contract cannot be met. If an objection answer
+  reaches 0.85 or higher, the Build stops and returns to Shaping, quoting the
+  Developer's words and Jev's confidence. Every other answer, and any Jev
+  failure, goes to the fresh Reviewer as labelled advisory notes. Jev never
+  judges code and never accepts anything. A declared proof selector that is
+  still missing is unfinished work, decided by code, and the Build reworks.
+  Independent Review stays authoritative for acceptance.
+appetite: >-
+  One Build: one Developer conversation within the configured outer allowance
+  (2). The old schema plumbing is left in place, unused by Build, and deleted in
+  a follow-up Intent (see questions.md).
+approval:
+  approved_at: '2026-09-23T17:06:16Z'
+  approved_by: human Shaper
+  source: 'Shaper explicitly said "I approve" in the current continuation conversation after reviewing the draft and the README update.'
+  statement: evidence/approval.md
+may_change_guarded_paths:
+  - README.md
+  - mix.exs
+  - mix.lock
+  - lib/kogen/build.ex
+  - lib/kogen/build/*.ex
+  - lib/kogen/jev.ex
+  - lib/kogen/jev/*.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/*.ex
+  - priv/kogen/prompts/developer.md
+  - priv/kogen/prompts/reviewer.md
+  - priv/kogen/prompts/execution-policy.md
+  - priv/kogen/verification_targets.yaml
+  - priv/kogen/test-reliability.yaml
+  - priv/kogen/test-reliability-remediation.yaml
+  - scripts/check/README.md
+  - test/kogen/*.exs
+  - test/support/**
+shaping_continuations:
+  - route: claude
+    harness: claude
+    model: claude-opus-5-5
+    effort: medium
+    started: '2026-09-23T16:54:17.900568Z'
+    checkout:
+      branch: main
+      head: 5af112735bab561c4be6429433598c8d728a9efd

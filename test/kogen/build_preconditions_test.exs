@@ -434,6 +434,12 @@ defmodule Kogen.BuildPreconditionsTest do
                           case: "existing build lock",
                           operation: :existing_lock,
                           expected: "build lock already present"
+                        },
+                        %{
+                          case: "TypeSafe Jev Keychain item is missing",
+                          operation: :jev_key_missing,
+                          expected:
+                            "the macOS Keychain has no generic password for service `ai.typesafe.api`"
                         }
                       ]
                       |> Enum.map(&Map.put(&1, :template, @template))
@@ -445,6 +451,37 @@ defmodule Kogen.BuildPreconditionsTest do
     expected: expected
   } do
     run_precondition_case(operation, expected)
+  end
+
+  test "a missing Jev Keychain item fails before any launch, tracking record or verification context" do
+    dir = tmp_repo!()
+    write_intent(dir, @valid_intent)
+
+    harness_dir =
+      Path.join(System.tmp_dir!(), "kogen-jev-key-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(harness_dir)
+    on_exit(fn -> File.rm_rf(harness_dir) end)
+    marker = Path.join(harness_dir, "harness-invoked")
+    log = Path.join(harness_dir, "security.log")
+    System.put_env("KOGEN_HARNESS", write_fake_harness!(harness_dir, marker))
+    System.put_env("FAKE_SECURITY_LOG", log)
+    System.put_env("FAKE_SECURITY_ITEM", "missing")
+
+    assert {:error, reason} = File.cd!(dir, fn -> Kogen.Build.run(@slug) end)
+    assert reason =~ "`ai.typesafe.api`"
+    assert reason =~ "security add-generic-password -s ai.typesafe.api -a <account> -w"
+    refute File.exists?(marker), "the Developer harness must never launch"
+    refute File.exists?(Path.join(dir, ".kogen/runtime/scenario-tracking"))
+    assert Path.wildcard(Path.join(dir, ".kogen/runtime/**/context.json")) == []
+    refute File.exists?(Path.join(dir, ".kogen/build.lock"))
+    # The existence check never asks for the value (-w).
+    assert File.read!(log) == "find-generic-password -s ai.typesafe.api\n"
+
+    # With the item present the same precondition passes; every Build fixture
+    # in the offline suite runs with the present fake item.
+    System.put_env("FAKE_SECURITY_ITEM", "present")
+    assert :ok = Kogen.Jev.key_present()
   end
 
   test "a flat-shaped config.yaml is refused before any launch and no tracking record is created" do
@@ -780,6 +817,12 @@ defmodule Kogen.BuildPreconditionsTest do
     File.write!(Path.join(lock_dir, "build.lock"), "")
   end
 
+  defp setup_case!(dir, :jev_key_missing) do
+    write_intent(dir, @valid_intent)
+    System.put_env("FAKE_SECURITY_ITEM", "missing")
+    on_exit(fn -> System.delete_env("FAKE_SECURITY_ITEM") end)
+  end
+
   # Claude Code readiness uses the real managed-runtime route (no fake harness
   # override) with a private managed root and an offline stand-in runtime whose
   # every invocation is traced. Readiness may ask `auth status`; no role may run.
@@ -810,10 +853,20 @@ defmodule Kogen.BuildPreconditionsTest do
     if state == :project_logged_out do
       File.write!(Path.join(root, "accounts/shared/.fake-login"), "claude.ai\n")
 
-      assert {:ok, 130} =
-               File.cd!(dir, fn ->
-                 Kogen.ClaudeCode.login(["--project", "--", "--cancel"])
-               end)
+      # This fixture step stands in for the user's own explicit login. A role
+      # inherited from an enclosing managed Developer shell must not leak into
+      # it; the Build under test still runs with the inherited environment.
+      role = System.get_env("KOGEN_ROLE")
+      System.delete_env("KOGEN_ROLE")
+
+      try do
+        assert {:ok, 130} =
+                 File.cd!(dir, fn ->
+                   Kogen.ClaudeCode.login(["--project", "--", "--cancel"])
+                 end)
+      after
+        if role, do: System.put_env("KOGEN_ROLE", role)
+      end
     end
 
     trace

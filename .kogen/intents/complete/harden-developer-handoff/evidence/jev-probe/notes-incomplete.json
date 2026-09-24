@@ -1,0 +1,51 @@
+{
+ "label": "notes-incomplete",
+ "build": "-lFrRPmL",
+ "attempt": 0,
+ "status": 200,
+ "response": {
+  "model": "jev-1.13.0",
+  "answers": {
+   "unfinished:cost-ordered-plan": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 1.0,
+     "no": 0.0
+    }
+   },
+   "unfinished:rehearsal-parity": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 1.0,
+     "no": 0.0
+    }
+   },
+   "unfinished:bounded-developer-readiness": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 1.0,
+     "no": 0.0
+    }
+   },
+   "unfinished:structured-deterministic-triage": {
+    "type": "choice",
+    "choice": "yes",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 1.0,
+     "no": 0.0
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 1600,
+   "output_tokens": 149
+  }
+ }
+}

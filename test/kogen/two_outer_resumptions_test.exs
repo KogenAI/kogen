@@ -84,7 +84,16 @@ defmodule Kogen.TwoOuterResumptionsTest do
     stops_after_two_resumptions!("claude")
   end
 
-  defp stops_after_two_resumptions!(harness) do
+  # Scenario `missing-proof-selector-is-unfinished`: a declared offline proof
+  # selector still missing after every settled attempt is unfinished work. It
+  # never reaches Review, spends each outer resumption, then stops.
+  test "a declared proof selector missing on every attempt spends the outer resumptions without Review" do
+    stops_after_two_resumptions!("codex", :missing_selector)
+  end
+
+  @missing_selector "test/kogen/never_written_test.exs"
+
+  defp stops_after_two_resumptions!(harness, mode \\ :review) do
     project_root = File.cwd!()
     dest = Path.join(System.tmp_dir!(), "kogen-rework-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
@@ -148,8 +157,10 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     intent_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
     File.mkdir_p!(intent_dir)
-    File.write!(Path.join(intent_dir, "intent.yaml"), @intent_yaml)
-    File.write!(Path.join(intent_dir, "scenarios.yaml"), @scenarios_yaml)
+
+    {intent_yaml, scenarios_yaml} = contract_yaml(mode)
+    File.write!(Path.join(intent_dir, "intent.yaml"), intent_yaml)
+    File.write!(Path.join(intent_dir, "scenarios.yaml"), scenarios_yaml)
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},
@@ -196,6 +207,8 @@ defmodule Kogen.TwoOuterResumptionsTest do
     assert {:error, reason} = result
     assert reason =~ "stopped after 2 outer resumptions"
 
+    assert_mode_outcome!(mode, dest, reason)
+
     head_after = git!(dest, ["rev-parse", "HEAD"])
     assert head_after == head_before, "no Commit should have been made"
 
@@ -216,28 +229,80 @@ defmodule Kogen.TwoOuterResumptionsTest do
     reviewer_calls =
       dest
       |> Path.join(".kogen/runtime/fake-reviewer-calls")
-      |> File.read!()
+      |> File.read()
+      |> reviewer_call_count()
       |> String.trim()
       |> String.to_integer()
 
     assert resume_calls == 2,
            "expected exactly two Codex resume launches, log:\n#{Enum.join(log_lines, "\n")}"
 
-    assert reviewer_calls == 3,
+    assert reviewer_calls == expected_reviews(mode),
            "expected exactly three Reviewer launches (all rework), log:\n#{Enum.join(log_lines, "\n")}"
 
-    if harness == "codex", do: assert_owned_output_paths!(log_lines)
+    assert_output_paths!(harness, mode, log_lines)
+  end
+
+  defp contract_yaml(:review), do: {@intent_yaml, @scenarios_yaml}
+
+  defp contract_yaml(:missing_selector) do
+    {@intent_yaml <> "  - #{@missing_selector}\n",
+     @scenarios_yaml
+     |> String.replace("offline: [proof.txt]", "offline: [#{@missing_selector}]")
+     |> String.replace(
+       "affected_paths: [dummy.txt]",
+       "affected_paths: [dummy.txt, #{@missing_selector}]"
+     )}
+  end
+
+  defp assert_mode_outcome!(:missing_selector, dest, reason),
+    do: assert_unfinished_work!(dest, reason)
+
+  defp assert_mode_outcome!(:review, _dest, _reason), do: :ok
+
+  defp expected_reviews(:missing_selector), do: 0
+  defp expected_reviews(:review), do: 3
+
+  defp assert_output_paths!("codex", :review, log_lines),
+    do: assert_owned_output_paths!(log_lines)
+
+  defp assert_output_paths!(_harness, _mode, _log_lines), do: :ok
+
+  defp reviewer_call_count({:ok, calls}), do: calls
+  defp reviewer_call_count({:error, :enoent}), do: "0"
+
+  defp assert_unfinished_work!(dest, reason) do
+    assert reason =~
+             "stopped after 2 outer resumptions without an accepting Review: Unfinished work: missing declared proof selector #{@missing_selector}"
+
+    refute File.exists?(Path.join(dest, ".kogen/runtime/fake-reviewer-calls")),
+           "unfinished work never reaches Review"
+
+    [record_path] =
+      Path.wildcard(Path.join(dest, ".kogen/runtime/scenario-tracking/*/record.json"))
+
+    attempts = record_path |> File.read!() |> Jason.decode!() |> Map.fetch!("attempts")
+    assert Enum.map(attempts, & &1["outcome"]) == List.duplicate("unfinished_work", 3)
   end
 
   defp assert_owned_output_paths!(log_lines) do
+    # Developer turns (fresh and resumed) carry no handoff schema and own no
+    # output file; only each Reviewer owns its verdict output.
+    {reviewer_lines, developer_lines} =
+      Enum.split_with(log_lines, &String.contains?(&1, " --output-last-message "))
+
+    assert length(developer_lines) == 3
+    assert length(reviewer_lines) == 3
+    refute Enum.any?(developer_lines, &String.contains?(&1, "--output-schema"))
+
     output_paths =
-      Enum.map(log_lines, fn line ->
+      Enum.map(reviewer_lines, fn line ->
         [_before, path | _after] = String.split(line, " --output-last-message ")
         path |> String.split(" ") |> List.first()
       end)
 
     assert Enum.uniq(output_paths) == output_paths,
-           "every Developer and Reviewer invocation must own a distinct output path"
+           "every Reviewer invocation must own a distinct output path"
 
     assert Enum.all?(output_paths, &(not File.exists?(&1))),
            "owned invocation output paths must be cleaned after handled completion"

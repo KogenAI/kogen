@@ -48,6 +48,19 @@ proc safe_send {text} {
 # a successful write(2) only proves bytes reached the pty, not that the native
 # TUI submitted a user turn. Codex shows `[Pasted Content N chars]`; Claude Code
 # shows `[Pasted text #N ...]`, whose spaces it may render as cursor moves.
+# The pasted tail's visible characters, allowing whitespace or cursor-motion
+# escapes wherever the TUI draws a space or wraps a line.
+proc rendered_tail_pattern {text} {
+  set separator {(?:[[:space:]]|\x1b\[[0-9;?]*[A-Za-z])*}
+  set pattern ""
+  foreach char [split [string range $text end-40 end] ""] {
+    if {[string is space $char]} { continue }
+    if {$pattern ne ""} { append pattern $separator }
+    if {[string is alnum $char]} { append pattern $char } else { append pattern "\\" $char }
+  }
+  return $pattern
+}
+
 proc submit_message {text label} {
   global spawn_id
   if {![safe_send "\x1b\[200~${text}\x1b\[201~"]} { return 0 }
@@ -59,6 +72,7 @@ proc submit_message {text label} {
       -re {\[Pasted Content [0-9]+ chars\]} { set acknowledged 1 }
       -re {Pasted[^a-z]{1,16}text[^a-z#]{0,16}#[0-9]+} { set acknowledged 1 }
       -re [string range $text end-48 end] { set acknowledged 1 }
+      -re [rendered_tail_pattern $text] { set acknowledged 1 }
       eof { }
       timeout { }
     }

@@ -7,10 +7,11 @@ defmodule Kogen.Harness.Claude do
   project settings plus Kogen's hook settings file, no MCP servers, Kogen's
   role-scoped helper agents, and Claude Code's built-in agents denied.
 
-  Developer turns use `-p` with stream-json and no `--json-schema`: a Stop-hook
-  block is ignored once a model calls StructuredOutput, so the handoff is the
-  final assistant message, validated by Build exactly like the Codex handoff.
-  The Reviewer, which has no Stop verification, uses `--json-schema`.
+  Developer turns use `-p` with stream-json and carry no handoff schema: no
+  `--json-schema` and no pasted schema block. Build turns return the settled
+  session and its final assistant message, which may be empty, as the
+  Developer's unverified notes; Kogen code never parses them. The Reviewer,
+  which has no Stop verification, uses `--json-schema`.
 
   Executed identity comes from stream metadata: the model of each assistant
   message, and helper messages linked to their parent `Agent` tool use. A root
@@ -41,35 +42,20 @@ defmodule Kogen.Harness.Claude do
     end)
   end
 
-  @doc "Launches a fresh Developer turn whose final message is the controller handoff."
-  def launch_build_developer(
-        prompt,
-        model,
-        effort,
-        schema,
-        policy_environment,
-        context
-      ) do
+  @doc "Launches a fresh Build Developer turn; its final message is returned as notes."
+  def launch_build_developer(prompt, model, effort, policy_environment, context) do
     with_context(context, fn resolved ->
       session_id = uuid4()
       args = developer_args(model, effort, resolved, {:fresh, session_id})
-      structured_turn(resolved, args, prompt, schema, policy_environment, session_id, model)
+      notes_turn(resolved, args, prompt, policy_environment, session_id, model)
     end)
   end
 
-  @doc "Resumes the exact Developer session; the final message is the controller handoff."
-  def resume_build_developer(
-        session_id,
-        text,
-        model,
-        effort,
-        schema,
-        policy_environment,
-        context
-      ) do
+  @doc "Resumes the exact Build Developer session; its final message is returned as notes."
+  def resume_build_developer(session_id, text, model, effort, policy_environment, context) do
     with_context(context, fn resolved ->
       args = developer_args(model, effort, resolved, {:resume, session_id})
-      structured_turn(resolved, args, text, schema, policy_environment, session_id, model)
+      notes_turn(resolved, args, text, policy_environment, session_id, model)
     end)
   end
 
@@ -195,92 +181,41 @@ defmodule Kogen.Harness.Claude do
       "conclusions with source locators, observed evidence, uncertainty and failures."
   end
 
-  defp structured_turn(_context, _args, _text, schema, _policy_environment, _session_id, _model)
-       when not is_binary(schema),
-       do: {:error, {:invalid_output_schema, "schema must be a binary"}}
-
-  defp structured_turn(context, args, text, schema, policy_environment, session_id, model) do
+  # A settled turn's final assistant message (possibly empty) is the notes.
+  # Provider, transport, session and executed-model failures stay failures.
+  defp notes_turn(context, args, text, policy_environment, session_id, model) do
     {output, exit_code} =
-      run_with_stdin(
-        context,
-        args,
-        text <> handoff_instructions(schema),
-        [{"KOGEN_ROLE", "developer"} | policy_environment]
-      )
+      run_with_stdin(context, args, text, [{"KOGEN_ROLE", "developer"} | policy_environment])
 
-    evidence_base = %{
-      harness: "claude",
-      schema: schema,
-      schema_sha256: digest(schema),
-      diagnostics: output
-    }
+    evidence_base = %{harness: "claude", diagnostics: output}
 
     case parse_stream(output, exit_code, session_id, model) do
       {:ok, turn} ->
+        message = if is_binary(turn.result["result"]), do: turn.result["result"], else: ""
+
         evidence =
           Map.merge(evidence_base, %{
             outcome: :settled,
             session_id: turn.session_id,
-            executed_models: turn.executed_models
+            executed_models: turn.executed_models,
+            message: message,
+            message_sha256: digest(message)
           })
 
-        structured_response(turn, evidence)
+        {:ok,
+         %{
+           session_id: turn.session_id,
+           message: message,
+           invocation_evidence: evidence,
+           executed_models: turn.executed_models
+         }}
 
       {:error, reason} ->
         {:error,
-         {:structured_transport_failure, reason,
+         {:developer_transport_failure, reason,
           evidence_base
           |> Map.put(:outcome, :provider_failure)
           |> Map.put(:session_id, observed_session(output))}}
-    end
-  end
-
-  # Claude Code sees the controller schema only through the prompt. Build
-  # validates the final message against the same bytes it recorded here.
-  defp handoff_instructions(schema) do
-    "\n\nController handoff schema (Build validates your final message against it; " <>
-      "reply with only this JSON object, no markdown fence or prose):\n" <> schema <> "\n"
-  end
-
-  defp structured_response(turn, evidence) do
-    case turn.result["result"] do
-      message when is_binary(message) ->
-        evidence =
-          evidence |> Map.put(:message, message) |> Map.put(:message_sha256, digest(message))
-
-        case structured_message_status(message) do
-          :ok ->
-            {:ok,
-             %{
-               session_id: turn.session_id,
-               message: message,
-               invocation_evidence: evidence,
-               executed_models: turn.executed_models
-             }}
-
-          status ->
-            {:error, {status, evidence}}
-        end
-
-      _missing ->
-        {:error, {:structured_output_missing, Map.put(evidence, :message, nil)}}
-    end
-  end
-
-  defp structured_message_status(""), do: :structured_output_empty
-
-  defp structured_message_status(message) do
-    case Jason.decode(message) do
-      {:ok, _json} ->
-        :ok
-
-      {:error, _reason} ->
-        trimmed = String.trim(message)
-
-        if (String.starts_with?(trimmed, "{") and not String.ends_with?(trimmed, "}")) or
-             (String.starts_with?(trimmed, "[") and not String.ends_with?(trimmed, "]")),
-           do: :structured_output_truncated,
-           else: :structured_output_malformed
     end
   end
 

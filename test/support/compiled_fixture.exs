@@ -85,6 +85,10 @@ defmodule Kogen.CompiledFixture do
     do: mix_task!(fixture, [task], env)
 
   def mix_task!(fixture, task, env) when is_list(task) do
+    # A fixture Build never reaches TypeSafe: unless the caller selects its own
+    # Jev fakes, the offline Keychain lookup and transport are used.
+    env = offline_jev_env(env) ++ env
+
     {output, exit_code} =
       System.cmd(
         "elixir",
@@ -96,6 +100,18 @@ defmodule Kogen.CompiledFixture do
       )
 
     {output, exit_code}
+  end
+
+  @doc false
+  def offline_jev_env(env \\ []) do
+    root = System.get_env("KOGEN_TEST_ROOT") || File.cwd!()
+    configured = Enum.map(env, fn {key, _value} -> to_string(key) end)
+
+    [
+      {"KOGEN_JEV_TRANSPORT", Path.join(root, "test/support/fake_jev")},
+      {"KOGEN_JEV_SECURITY", Path.join(root, "test/support/fake_security")}
+    ]
+    |> Enum.reject(fn {key, _value} -> key in configured end)
   end
 
   defp compiled_ebins do

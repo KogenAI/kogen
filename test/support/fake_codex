@@ -94,7 +94,7 @@ if [ -n "$resume_id" ]; then
  [ -n "${KOGEN_MIDBUILD_HOOK:-}" ] && sh "$KOGEN_MIDBUILD_HOOK"
  stop_check pass false
  response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
- printf '%s\n' "$response" > "$output_file"
+ if [ -n "$output_file" ]; then printf '%s\n' "$response" > "$output_file"; fi
  printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
  printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"
  exit 0
@@ -113,6 +113,6 @@ stop_check block false
 rm -f lib/kogen_fake_break.ex
 stop_check pass true
 response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
-printf '%s\n' "$response" > "$output_file"
+if [ -n "$output_file" ]; then printf '%s\n' "$response" > "$output_file"; fi
 printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
 printf '{"type":"turn.completed","thread_id":"%s"}\n' "$sid"

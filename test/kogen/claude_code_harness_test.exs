@@ -18,8 +18,7 @@ defmodule Kogen.ClaudeCodeHarnessTest do
     }
   }
 
-  @schema ~s({"type":"object","properties":{"attempt_token":{"enum":["tok"]}}})
-  @handoff ~s({"attempt_token":"tok","scenarios":[],"risks":[],"findings":[]})
+  @notes "Implemented the plan and left the Candidate ready for review."
   @verdict %{
     "candidate_id" => "cand",
     "attempt_token" => "tok",
@@ -115,12 +114,12 @@ defmodule Kogen.ClaudeCodeHarnessTest do
   end
 
   describe "Developer turns" do
-    test "a fresh turn uses -p stream-json, a Kogen session id, exact profile, hooks and no --json-schema",
+    test "a fresh turn uses -p stream-json, a Kogen session id, exact profile, hooks and no schema",
          %{dir: dir, context: context} do
       stream!(dir, [
         init(),
-        root("claude-opus-5-5", [%{"type" => "text", "text" => @handoff}]),
-        result(%{"result" => @handoff})
+        root("claude-opus-5-5", [%{"type" => "text", "text" => @notes}]),
+        result(%{"result" => @notes})
       ])
 
       assert {:ok, turn} =
@@ -128,7 +127,6 @@ defmodule Kogen.ClaudeCodeHarnessTest do
                  "PROMPT",
                  "claude-opus-5-5",
                  "medium",
-                 @schema,
                  [{"KOGEN_VERIFICATION_CONTEXT", "/ctx"}],
                  context
                )
@@ -165,42 +163,107 @@ defmodule Kogen.ClaudeCodeHarnessTest do
       assert env =~ "DISABLE_AUTOUPDATER=1"
 
       stdin = File.read!(Path.join(dir, "stdin"))
-      assert String.starts_with?(stdin, "PROMPT")
-      assert stdin =~ @schema
+      assert stdin == "PROMPT"
+      refute stdin =~ "schema"
 
-      assert turn.message == @handoff
+      assert turn.message == @notes
       assert turn.invocation_evidence.outcome == :settled
-      assert turn.invocation_evidence.schema == @schema
+      refute Map.has_key?(turn.invocation_evidence, :schema)
+      refute Map.has_key?(turn.invocation_evidence, :schema_sha256)
       assert turn.invocation_evidence.session_id == session
-      assert turn.invocation_evidence.message_sha256 == sha(@handoff)
+      assert turn.invocation_evidence.message == @notes
+      assert turn.invocation_evidence.message_sha256 == sha(@notes)
       assert turn.executed_models == %{"root" => ["claude-opus-5-5"], "helpers" => []}
     end
 
-    test "a resume uses --resume with the exact id and never mints a session",
+    test "a resume uses --resume with the exact id, never mints a session and carries no schema",
          %{dir: dir, context: context} do
-      stream!(dir, [init(), result(%{"result" => @handoff})])
+      stream!(dir, [init(), result(%{"result" => @notes})])
 
-      assert {:ok, %{session_id: "abc-123"}} =
+      assert {:ok, turn} =
                Harness.resume_build_developer(
                  "abc-123",
                  "FEEDBACK",
                  "claude-opus-5-5",
                  "medium",
-                 @schema,
                  [],
                  context
                )
+
+      assert turn.session_id == "abc-123"
+      assert turn.message == @notes
+      assert turn.invocation_evidence.message_sha256 == sha(@notes)
+      refute Map.has_key?(turn.invocation_evidence, :schema)
 
       args = argv(dir)
       assert flag(args, "--resume") == "abc-123"
       refute "--session-id" in args
       refute "--json-schema" in args
+
+      stdin = File.read!(Path.join(dir, "stdin"))
+      assert stdin == "FEEDBACK"
+      refute stdin =~ "schema"
+    end
+
+    for {label, message} <- [
+          {"empty", ""},
+          {"prose", "Done. Everything is ready."},
+          {"malformed JSON", ~s({"attempt_token":"tok")}
+        ] do
+      test "a #{label} final message is settled and passed through as notes, never a typed error",
+           %{dir: dir, context: context} do
+        message = unquote(message)
+        stream!(dir, [init(), root("claude-opus-5-5", []), result(%{"result" => message})])
+
+        assert {:ok, turn} =
+                 Harness.launch_build_developer(
+                   "p",
+                   "claude-opus-5-5",
+                   "medium",
+                   [],
+                   context
+                 )
+
+        assert turn.message == message
+        assert turn.invocation_evidence.outcome == :settled
+        assert turn.invocation_evidence.message == message
+        assert turn.invocation_evidence.message_sha256 == sha(message)
+        assert turn.invocation_evidence.session_id == flag(argv(dir), "--session-id")
+      end
+    end
+
+    test "a settled result carrying no result field at all is settled with empty notes",
+         %{dir: dir, context: context} do
+      stream!(dir, [init(), root("claude-opus-5-5", []), result(%{})])
+
+      assert {:ok, turn} =
+               Harness.launch_build_developer("p", "claude-opus-5-5", "medium", [], context)
+
+      assert turn.message == ""
+      assert turn.invocation_evidence.message_sha256 == sha("")
+    end
+
+    test "the notes are the final result, never intermediate prose", %{
+      dir: dir,
+      context: context
+    } do
+      stream!(dir, [
+        init(),
+        root("claude-opus-5-5", [%{"type" => "text", "text" => @notes}]),
+        root("claude-opus-5-5", [%{"type" => "text", "text" => "Stop hook fixed; here is prose."}]),
+        result(%{"result" => "Stop hook fixed; here is prose."})
+      ])
+
+      assert {:ok, turn} =
+               Harness.launch_build_developer("p", "claude-opus-5-5", "medium", [], context)
+
+      assert turn.message == "Stop hook fixed; here is prose."
     end
 
     test "a resume that reports another session fails closed", %{dir: dir, context: context} do
-      stream!(dir, [init(), result(%{"result" => @handoff})])
+      stream!(dir, [init(), result(%{"result" => @notes})])
 
-      assert {:error, {:structured_transport_failure, {:session_id_mismatch, mismatch}, _}} =
+      assert {:error, {:developer_transport_failure, {:session_id_mismatch, mismatch}, evidence}} =
                run(
                  context,
                  &Harness.resume_build_developer(
@@ -208,7 +271,6 @@ defmodule Kogen.ClaudeCodeHarnessTest do
                    "x",
                    "claude-opus-5-5",
                    "medium",
-                   @schema,
                    [],
                    &1
                  ),
@@ -216,12 +278,13 @@ defmodule Kogen.ClaudeCodeHarnessTest do
                )
 
       assert mismatch == %{expected: "abc-123", actual: "other-session"}
+      assert evidence.outcome == :provider_failure
     end
 
     test "resuming a missing session exits 1 and fails closed", %{dir: dir, context: context} do
       File.write!(Path.join(dir, "stream"), "No conversation found with session ID: gone\n")
 
-      assert {:error, {:structured_transport_failure, {:provider_exit, 1, _}, evidence}} =
+      assert {:error, {:developer_transport_failure, {:provider_exit, 1, _}, evidence}} =
                run(
                  context,
                  &Harness.resume_build_developer(
@@ -229,7 +292,6 @@ defmodule Kogen.ClaudeCodeHarnessTest do
                    "x",
                    "claude-opus-5-5",
                    "medium",
-                   @schema,
                    [],
                    &1
                  ),
@@ -239,74 +301,21 @@ defmodule Kogen.ClaudeCodeHarnessTest do
       assert evidence.outcome == :provider_failure
     end
 
-    test "missing, empty, truncated and malformed handoffs keep the typed errors",
-         %{dir: dir, context: context} do
-      for {result, kind} <- [
-            {%{}, :structured_output_missing},
-            {%{"result" => ""}, :structured_output_empty},
-            {%{"result" => ~s({"attempt_token":"tok")}, :structured_output_truncated},
-            {%{"result" => "Done. Everything is ready."}, :structured_output_malformed}
-          ] do
-        stream!(dir, [init(), root("claude-opus-5-5", []), result(result)])
-
-        assert {:error, {^kind, evidence}} =
-                 Harness.launch_build_developer(
-                   "p",
-                   "claude-opus-5-5",
-                   "medium",
-                   @schema,
-                   [],
-                   context
-                 )
-
-        assert evidence.session_id == flag(argv(dir), "--session-id")
-        assert evidence.outcome == :settled
-      end
-    end
-
-    test "the handoff is the final result, never intermediate prose", %{
-      dir: dir,
-      context: context
-    } do
-      stream!(dir, [
-        init(),
-        root("claude-opus-5-5", [%{"type" => "text", "text" => @handoff}]),
-        root("claude-opus-5-5", [%{"type" => "text", "text" => "Stop hook fixed; here is prose."}]),
-        result(%{"result" => "Stop hook fixed; here is prose."})
-      ])
-
-      assert {:error, {:structured_output_malformed, _}} =
-               Harness.launch_build_developer(
-                 "p",
-                 "claude-opus-5-5",
-                 "medium",
-                 @schema,
-                 [],
-                 context
-               )
-    end
-
     test "provider errors and missing init or result are transport failures",
          %{dir: dir, context: context} do
       for {events, match} <- [
             {[init(), result(%{"subtype" => "error_during_execution", "is_error" => true})],
              :provider_error},
             {[init()], :no_result_event},
-            {[result(%{"result" => @handoff})], :no_init_event}
+            {[result(%{"result" => @notes})], :no_init_event}
           ] do
         stream!(dir, events)
 
-        assert {:error, {:structured_transport_failure, reason, _}} =
-                 Harness.launch_build_developer(
-                   "p",
-                   "claude-opus-5-5",
-                   "medium",
-                   @schema,
-                   [],
-                   context
-                 )
+        assert {:error, {:developer_transport_failure, reason, evidence}} =
+                 Harness.launch_build_developer("p", "claude-opus-5-5", "medium", [], context)
 
         assert elem(reason, 0) == match
+        assert evidence.outcome == :provider_failure
       end
     end
 
@@ -314,22 +323,17 @@ defmodule Kogen.ClaudeCodeHarnessTest do
          %{dir: dir, context: context} do
       stream!(dir, [
         init(),
-        root("claude-sonnet-5", [%{"type" => "text", "text" => @handoff}]),
-        result(%{"result" => @handoff})
+        root("claude-sonnet-5", [%{"type" => "text", "text" => @notes}]),
+        result(%{"result" => @notes})
       ])
 
       assert {:error,
-              {:structured_transport_failure,
+              {:developer_transport_failure,
                {:root_model_mismatch, %{expected: "claude-opus-5-5", actual: "claude-sonnet-5"}},
-               _}} =
-               Harness.launch_build_developer(
-                 "p",
-                 "claude-opus-5-5",
-                 "medium",
-                 @schema,
-                 [],
-                 context
-               )
+               evidence}} =
+               Harness.launch_build_developer("p", "claude-opus-5-5", "medium", [], context)
+
+      assert evidence.outcome == :provider_failure
     end
   end
 

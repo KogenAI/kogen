@@ -133,6 +133,12 @@ def reviewer(context, verdict, finding_id=None):
 def main():
     mode = sys.argv[1]
     prompt = sys.stdin.read()
+    # Build never parses Developer notes, so a fixture may end its turn with
+    # any text: prose, prose then JSON, malformed JSON or nothing at all.
+    notes_file = os.environ.get("FAKE_DEVELOPER_NOTES_FILE")
+    if mode == "developer" and notes_file:
+        sys.stdout.write(pathlib.Path(notes_file).read_text())
+        return
     context = snapshot(prompt)
     if mode == "developer":
         response = developer(context)

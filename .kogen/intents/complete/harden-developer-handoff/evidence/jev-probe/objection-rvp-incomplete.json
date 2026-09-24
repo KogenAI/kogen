@@ -1,0 +1,96 @@
+{
+ "label": "objection-rvp-incomplete",
+ "build": "-lFrRPmL",
+ "attempt": 0,
+ "status": 200,
+ "response": {
+  "model": "jev-1.13.0",
+  "answers": {
+   "cannot_comply:scenario:cost-ordered-plan": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   },
+   "cannot_comply:scenario:rehearsal-parity": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   },
+   "cannot_comply:scenario:bounded-developer-readiness": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.99,
+    "probabilities": {
+     "yes": 0.01,
+     "no": 0.99
+    }
+   },
+   "cannot_comply:scenario:structured-deterministic-triage": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   },
+   "cannot_comply:risk:rehearsal-fidelity": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   },
+   "cannot_comply:risk:readiness-authority-leak": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.98,
+    "probabilities": {
+     "yes": 0.01,
+     "no": 0.99
+    }
+   },
+   "cannot_comply:risk:mutable-plan-self-judgment": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   },
+   "cannot_comply:risk:readiness-enforcement-gap": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 0.99,
+    "probabilities": {
+     "no": 0.99,
+     "yes": 0.01
+    }
+   },
+   "cannot_comply:risk:runtime-signature-evidence": {
+    "type": "choice",
+    "choice": "no",
+    "confidence": 1.0,
+    "probabilities": {
+     "yes": 0.0,
+     "no": 1.0
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 2488,
+   "output_tokens": 374
+  }
+ }
+}

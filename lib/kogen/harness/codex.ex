@@ -30,45 +30,20 @@ defmodule Kogen.Harness.Codex do
     )
   end
 
-  @doc "Launches a fresh Developer turn using the controller-supplied output schema."
-  def launch_build_developer(
-        prompt,
-        model,
-        effort,
-        schema,
-        policy_environment,
-        context
-      ) do
-    with_context(context, fn resolved ->
-      run_structured_turn(
-        developer_args(model, effort),
-        prompt,
-        schema,
-        policy_environment,
-        resolved
-      )
-    end)
+  @doc "Launches a fresh Build Developer turn; its final agent message is returned as notes."
+  def launch_build_developer(prompt, model, effort, policy_environment, context) do
+    with_context(
+      context,
+      &notes_turn(developer_args(model, effort), prompt, policy_environment, &1)
+    )
   end
 
-  @doc "Resumes the exact Developer thread using the controller-supplied output schema."
-  def resume_build_developer(
-        session_id,
-        text,
-        model,
-        effort,
-        schema,
-        policy_environment,
-        context
-      ) do
-    with_context(context, fn resolved ->
-      run_structured_turn(
-        developer_args(model, effort, session_id),
-        text,
-        schema,
-        policy_environment,
-        resolved
-      )
-    end)
+  @doc "Resumes the exact Build Developer thread; its final agent message is returned as notes."
+  def resume_build_developer(session_id, text, model, effort, policy_environment, context) do
+    with_context(
+      context,
+      &notes_turn(developer_args(model, effort, session_id), text, policy_environment, &1)
+    )
   end
 
   @doc false
@@ -192,111 +167,37 @@ defmodule Kogen.Harness.Codex do
     parse_turn(decode_events(output), exit_code, output)
   end
 
-  # Build's structured handoff is deliberately a separate transport. Never adopt
-  # an agent_message event when the designated output file is absent or corrupt.
-  defp run_structured_turn(_args, _stdin_text, schema, _policy_environment, _context)
-       when not is_binary(schema),
-       do: {:error, {:invalid_output_schema, "schema must be a binary"}}
+  # A Build Developer turn carries no handoff schema and owns no output file.
+  # The final completed agent message (possibly empty) is the unverified notes;
+  # provider, transport and session failures stay failures.
+  defp notes_turn(args, stdin_text, policy_environment, context) do
+    {output, exit_code} =
+      run_with_stdin(
+        context.executable,
+        context.args ++ args,
+        stdin_text,
+        merge_environment(context.env, [{"KOGEN_ROLE", "developer"} | policy_environment])
+      )
 
-  defp run_structured_turn(args, stdin_text, schema, policy_environment, context) do
-    dir = temporary_directory("build-developer")
-    schema_path = Path.join(dir, "developer-output.schema.json")
-    message_path = Path.join(dir, "developer-output.last-message.json")
-    File.write!(schema_path, schema, [:binary])
+    case parse_turn(decode_events(output), exit_code, output) do
+      {:ok, turn} ->
+        evidence = %{
+          harness: "codex",
+          outcome: :settled,
+          diagnostics: output,
+          session_id: turn.session_id,
+          message: turn.message,
+          message_sha256: digest(turn.message)
+        }
 
-    try do
-      output_flags = ["--output-schema", schema_path, "--output-last-message", message_path]
+        {:ok,
+         %{session_id: turn.session_id, message: turn.message, invocation_evidence: evidence}}
 
-      structured_args =
-        case Enum.take(args, -2) do
-          [session_id, "-"] when session_id != "--json" ->
-            Enum.drop(args, -2) ++ output_flags ++ [session_id, "-"]
-
-          _ ->
-            Enum.drop(args, -1) ++ output_flags ++ ["-"]
-        end
-
-      {output, exit_code} =
-        run_with_stdin(
-          context.executable,
-          context.args ++ structured_args,
-          stdin_text,
-          merge_environment(context.env, [{"KOGEN_ROLE", "developer"} | policy_environment])
-        )
-
-      case parse_turn(decode_events(output), exit_code, output) do
-        {:ok, turn} ->
-          structured_response(turn, schema, message_path, output)
-
-        {:error, reason} ->
-          {:error,
-           {:structured_transport_failure, reason,
-            %{
-              schema: schema,
-              schema_sha256: digest(schema),
-              outcome: :provider_failure,
-              diagnostics: output
-            }}}
-      end
-    after
-      File.rm_rf(dir)
+      {:error, reason} ->
+        {:error,
+         {:developer_transport_failure, reason,
+          %{harness: "codex", outcome: :provider_failure, diagnostics: output}}}
     end
-  end
-
-  defp structured_response(turn, schema, message_path, diagnostics) do
-    evidence_base = %{
-      schema: schema,
-      schema_sha256: digest(schema),
-      outcome: :settled,
-      diagnostics: diagnostics,
-      session_id: turn.session_id
-    }
-
-    case File.read(message_path) do
-      {:ok, message} when byte_size(message) == 0 ->
-        evidence =
-          evidence_base
-          |> Map.put(:message, message)
-          |> Map.put(:message_sha256, digest(message))
-
-        {:error, {:structured_output_empty, evidence}}
-
-      {:ok, message} ->
-        evidence =
-          evidence_base
-          |> Map.put(:message, message)
-          |> Map.put(:message_sha256, digest(message))
-
-        case structured_message_status(message) do
-          :ok ->
-            {:ok, %{session_id: turn.session_id, message: message, invocation_evidence: evidence}}
-
-          status ->
-            {:error, {status, evidence}}
-        end
-
-      {:error, _reason} ->
-        {:error, {:structured_output_missing, Map.put(evidence_base, :message, nil)}}
-    end
-  end
-
-  defp structured_message_status(message) do
-    case Jason.decode(message) do
-      {:ok, _json} ->
-        :ok
-
-      {:error, _reason} ->
-        if truncated_json?(message),
-          do: :structured_output_truncated,
-          else: :structured_output_malformed
-    end
-  end
-
-  defp truncated_json?(message) do
-    trimmed = String.trim(message)
-
-    (String.starts_with?(trimmed, "{") and not String.ends_with?(trimmed, "}")) or
-      (String.starts_with?(trimmed, "[") and not String.ends_with?(trimmed, "]"))
   end
 
   defp digest(value), do: Base.encode16(:crypto.hash(:sha256, value), case: :lower)
@@ -342,9 +243,8 @@ defmodule Kogen.Harness.Codex do
   end
 
   # `turn.completed` proves that the provider settled, but its payload is not
-  # the Developer's handoff. The final completed agent message is. Absence is
-  # represented as an empty handoff while retaining the validated session so
-  # Build can request correction in the exact same Developer conversation.
+  # the Developer's notes. The final completed agent message is. Absence is
+  # represented as empty notes while retaining the validated session.
   defp final_agent_message(events) do
     events
     |> Enum.filter(

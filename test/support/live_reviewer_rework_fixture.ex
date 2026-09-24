@@ -28,7 +28,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
   - id: reviewer-directed-rework
     given: an isolated provider-backed fixture with no dummy.txt or reviewer-notes.md
     when: the first Developer turn implements this test protocol
-    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation. For the first controlled phase, submit the full structured handoff with status ready for the mandated independent Review, explicitly disclosing the intentionally absent reviewer-notes.md in the claim and referencing existing files; do not fabricate the missing file or gate receipts. The fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, and resume sequence from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
+    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation. For the first controlled phase, its final free-prose notes plainly disclose that reviewer-notes.md is intentionally absent pending the mandated independent Review -- not a contract objection -- and reference only files that actually exist; it does not fabricate the missing file or gate receipts. The fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, and resume sequence from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
     wrong_result: the first Reviewer accepts without inspecting the intentionally deferred companion file, a replacement Developer session performs rework, or the final Candidate lacks the companion file
     verified_by: [check]
     evidence: provider-backed Build-only fixture preserves both structured reviewer receipts, Developer raw streams, Stop records, and the resulting Commit
@@ -83,7 +83,9 @@ defmodule Kogen.LiveReviewerReworkFixture do
         cd: fixture,
         env: [
           {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
-          {"MIX_BUILD_PATH", Path.join(fixture, "_build")}
+          {"MIX_BUILD_PATH", Path.join(fixture, "_build")},
+          {"KOGEN_JEV_TRANSPORT", nil},
+          {"KOGEN_JEV_SECURITY", nil}
         ],
         stderr_to_stdout: true
       )

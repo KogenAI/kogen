@@ -83,7 +83,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   - id: reviewer-directed-rework
     given: an isolated provider-backed fixture with no dummy.txt or reviewer-notes.md
     when: the first Developer turn implements this test protocol
-    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation. For the first controlled phase, submit the full structured handoff with status ready for the mandated independent Review, explicitly disclosing the intentionally absent reviewer-notes.md in the claim and referencing existing files; do not fabricate the missing file or gate receipts. The fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, and resume sequence from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
+    then: it creates dummy.txt at the repository root containing exactly reviewer-rework-k4q9z followed by one LF newline, deliberately leaves reviewer-notes.md absent for the first independent Reviewer to identify, and creates reviewer-notes.md containing exactly reviewer-confirmed-k4q9z followed by one LF newline only after that Reviewer returns actionable rework in the exact same Developer conversation. For the first controlled phase, its final free-prose notes plainly disclose that reviewer-notes.md is intentionally absent pending the mandated independent Review -- not a contract objection -- and reference only files that actually exist; it does not fabricate the missing file or gate receipts. The fresh second Reviewer assesses only the final Candidate's exact bytes and current passing Check before accepting it. The outer live-test driver exclusively audits the historical omission, first Review, and resume sequence from retained streams, receipts, and Check archives; a nested Reviewer must not request inaccessible prior records or transcripts, and cannot certify its own future acceptance
     wrong_result: the first Reviewer accepts without inspecting the intentionally deferred companion file, a replacement Developer session performs rework, or the final Candidate lacks the companion file
     verified_by: [check]
     evidence: provider-backed Build-only fixture preserves both structured reviewer receipts, Developer raw streams, Stop records, and the resulting Commit
@@ -97,7 +97,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   @review_rework_risks """
   - id: seeded-fixture-is-not-user-ownership
     scenario_ids: [reviewer-directed-rework]
-    description: The fixture seed establishes a reproducible starting state only; the Developer must distinguish that seed from user-owned acceptance evidence in its structured handoff.
+    description: The fixture seed establishes a reproducible starting state only; the Developer must distinguish that seed from user-owned acceptance evidence in its final free-prose notes.
   """
 
   unless System.get_env("KOGEN_REVIEWER_REWORK_HELPER_ONLY") == "1" do
@@ -298,7 +298,9 @@ defmodule Kogen.LiveShapeToBuildTest do
           cd: fixture,
           env: [
             {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
-            {"MIX_BUILD_PATH", Path.join(fixture, "_build")}
+            {"MIX_BUILD_PATH", Path.join(fixture, "_build")},
+            {"KOGEN_JEV_TRANSPORT", nil},
+            {"KOGEN_JEV_SECURITY", nil}
           ],
           stderr_to_stdout: true
         )
@@ -440,6 +442,8 @@ defmodule Kogen.LiveShapeToBuildTest do
       assert initial_attempt["developer_session_id"] == developer_session_id
       assert is_map(initial_attempt["handoff"]), "initial attempt must contain the first handoff"
       assert_developer_invocation!(initial_attempt, developer_session_id)
+      assert_controller_handoff!(initial_attempt, contract)
+      assert_jev_no_objection!(initial_attempt)
 
       {:ok, initial_check_finished, 0} =
         DateTime.from_iso8601(initial_attempt["check"]["finished_at"])
@@ -503,7 +507,9 @@ defmodule Kogen.LiveShapeToBuildTest do
         cd: fixture,
         env: [
           {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
-          {"MIX_BUILD_PATH", Path.join(fixture, "_build")}
+          {"MIX_BUILD_PATH", Path.join(fixture, "_build")},
+          {"KOGEN_JEV_TRANSPORT", nil},
+          {"KOGEN_JEV_SECURITY", nil}
         ],
         stderr_to_stdout: true
       )
@@ -569,18 +575,49 @@ defmodule Kogen.LiveShapeToBuildTest do
 
   defp assert_developer_invocation!(attempt, session_id) do
     invocation = attempt["developer_invocation"]
-    schema = Jason.decode!(invocation["schema"])
+    notes = attempt["developer_notes"]
+
+    refute Map.has_key?(invocation, "schema"),
+           "Developer invocation must carry no handoff schema"
 
     assert invocation["outcome"] == "settled"
     assert invocation["session_id"] == session_id
-    assert invocation["message"] == attempt["developer_message"]
-    assert schema["properties"]["attempt_token"]["enum"] == [attempt["attempt_token"]]
-
-    assert invocation["schema_sha256"] ==
-             Base.encode16(:crypto.hash(:sha256, invocation["schema"]), case: :lower)
+    assert invocation["message"] == notes["text"]
+    assert invocation["message_sha256"] == notes["sha256"]
 
     assert invocation["message_sha256"] ==
              Base.encode16(:crypto.hash(:sha256, invocation["message"]), case: :lower)
+  end
+
+  defp assert_controller_handoff!(attempt, contract) do
+    handoff = attempt["handoff"]
+
+    assert handoff["format"] == "kogen-controller-handoff-report"
+    assert handoff["built_by"] == "controller"
+    assert handoff["attempt_token"] == attempt["attempt_token"]
+    assert handoff["candidate_id"] == attempt["candidate_id"]
+
+    assert Enum.map(handoff["scenarios"], & &1["id"]) ==
+             Enum.map(contract.scenarios, & &1["id"])
+  end
+
+  defp assert_jev_no_objection!(attempt) do
+    jev = attempt["jev"]
+
+    assert jev["outcome"] == "answered"
+    assert jev["model"] == "jev-1.13.0"
+
+    assert jev["request"]["sha256"] ==
+             Base.encode16(:crypto.hash(:sha256, jev["request"]["body"]), case: :lower)
+
+    refute Enum.any?(jev["answers"], fn {id, answer} ->
+             String.starts_with?(id, "objection:") and
+               answer["choice"] == "objection" and
+               answer["confidence"] >= 0.85
+           end),
+           "no scenario/risk/finding objection should have stopped this settled attempt"
+
+    assert attempt["outcome"] != "cannot_comply"
   end
 
   defp setup_fixture(project_root, fixture, check_rule \\ @check_rule) do

@@ -1,0 +1,11 @@
+turn1 assistant text  "{\"turn\":1}"
+turn1 {"subtype": "success", "is_error": false, "terminal_reason": "completed", "stop_reason": "end_turn", "result": "{\"turn\":1}", "structured_output": null}
+turn2 assistant text  "{\"turn\":2}"
+turn2 {"subtype": "success", "is_error": false, "terminal_reason": "stop_hook_prevented", "stop_reason": "end_turn", "result": "{\"turn\":2}", "structured_output": null}
+turn3 assistant text  "{\"turn\":3}"
+turn3 {"subtype": "success", "is_error": false, "terminal_reason": "stop_hook_prevented", "stop_reason": "end_turn", "result": "", "structured_output": null}
+turn4-control assistant text  "{\"turn\":4}"
+turn4-control assistant tool_use StructuredOutput {"turn": 4}
+turn4-control {"subtype": "success", "is_error": false, "terminal_reason": "completed", "stop_reason": "tool_use", "result": "{\"turn\":4}", "structured_output": {"turn": 4}}
+turn5 assistant tool_use StructuredOutput {"turn": 5}
+turn5 {"subtype": "success", "is_error": false, "terminal_reason": "completed", "stop_reason": "tool_use", "result": "{\"turn\":5}", "structured_output": {"turn": 5}}
