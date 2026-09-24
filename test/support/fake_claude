@@ -11,8 +11,8 @@ stream="$script_dir/claude_stream.py"
 state_dir=.kogen/runtime; mkdir -p "$state_dir"
 log="$state_dir/fake-harness-log"
 printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
-printf 'env: CLAUDE_CONFIG_DIR=%s DISABLE_AUTOUPDATER=%s ANTHROPIC_API_KEY=%s KOGEN_ROLE=%s\n' \
-  "${CLAUDE_CONFIG_DIR:-}" "${DISABLE_AUTOUPDATER:-}" "${ANTHROPIC_API_KEY:-unset}" "${KOGEN_ROLE:-}" >>"$log"
+printf 'env: CLAUDE_CONFIG_DIR=%s DISABLE_AUTOUPDATER=%s CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=%s ANTHROPIC_API_KEY=%s KOGEN_ROLE=%s\n' \
+  "${CLAUDE_CONFIG_DIR:-}" "${DISABLE_AUTOUPDATER:-}" "${CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT:-unset}" "${ANTHROPIC_API_KEY:-unset}" "${KOGEN_ROLE:-}" >>"$log"
 if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
   if [ "${FAKE_CLAUDE_LOGGED_OUT:-0}" = 1 ]; then
     printf '{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}\n'; exit 1

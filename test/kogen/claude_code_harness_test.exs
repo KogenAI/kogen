@@ -6,6 +6,7 @@ defmodule Kogen.ClaudeCodeHarnessTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  alias Kogen.ClaudeCode
   alias Kogen.Harness
   alias Kogen.Harness.Claude
 
@@ -58,7 +59,7 @@ defmodule Kogen.ClaudeCodeHarnessTest do
       harness: "claude",
       executable: executable,
       args: [],
-      env: [{"CLAUDE_CONFIG_DIR", Path.join(dir, "scope")}, {"DISABLE_AUTOUPDATER", "1"}],
+      env: ClaudeCode.environment(%{path: Path.join(dir, "scope")}),
       config: @config,
       project: dir
     }
@@ -161,6 +162,7 @@ defmodule Kogen.ClaudeCodeHarnessTest do
       assert env =~ "KOGEN_ROLE=developer"
       assert env =~ "KOGEN_VERIFICATION_CONTEXT=/ctx"
       assert env =~ "DISABLE_AUTOUPDATER=1"
+      assert env =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1\n"
 
       stdin = File.read!(Path.join(dir, "stdin"))
       assert stdin == "PROMPT"
@@ -478,6 +480,36 @@ defmodule Kogen.ClaudeCodeHarnessTest do
       assert flag(args, "--effort") == "medium"
       assert "--dangerously-skip-permissions" in args
       assert File.read!(Path.join(dir, "env")) =~ "KOGEN_ROLE=shaper"
+    end
+  end
+
+  describe "launch environment" do
+    test "every role launch overrides an inherited substitution-rm prompt setting with 1",
+         %{dir: dir, context: context} do
+      prompt = Path.join(dir, "prompt.md")
+      File.write!(prompt, "Shape one Intent.")
+
+      launches = [
+        {[init(), root("claude-opus-5-5", []), result(%{"result" => @notes})],
+         &Harness.launch_build_developer("p", "claude-opus-5-5", "medium", [], &1)},
+        {[init(), result(%{"result" => @notes})],
+         &Harness.resume_build_developer("abc-123", "f", "claude-opus-5-5", "medium", [], &1)},
+        {[init(), result(%{"structured_output" => @verdict, "result" => ""})],
+         &Harness.launch_reviewer("r", "claude-opus-5-5", "medium", &1)},
+        {[], &Harness.exec_shaper("claude-opus-5-5", "medium", prompt, &1)}
+      ]
+
+      for {events, launch} <- launches do
+        stream!(dir, events)
+        File.rm_rf!(Path.join(dir, "env"))
+
+        result = run(context, launch, [{"CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT", "0"}])
+        assert result == 0 or match?({:ok, _}, result)
+
+        env = File.read!(Path.join(dir, "env"))
+        assert env =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1\n"
+        refute env =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=0"
+      end
     end
   end
 

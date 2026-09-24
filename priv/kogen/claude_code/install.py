@@ -26,17 +26,17 @@ import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, Iterator, Optional
 
-INITIAL_VERSION = "2.1.280"
+INITIAL_VERSION = "2.1.281"
 PINNED_ARTIFACTS = {
     "darwin-arm64": {
-        "version": "2.1.280",
-        "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-2.1.280.tgz",
-        "integrity": "sha512-ctkNgja8Yi2kngVFPO2667k6zbtJwjQ+dOTeEp1XmzHcoDFdaee4h4WVgZllsewm/Io+pPPPSFQVdGHOtdE/1A==",
+        "version": "2.1.281",
+        "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-2.1.281.tgz",
+        "integrity": "sha512-rEI/YGBDX4YTfdq5w1B86NicoLgpFHGp4IrKM6sDrmUemruePSXF7ybICthHClIsRY8a/Kp7PQ6UJah1VWTbSA==",
     },
     "darwin-x64": {
-        "version": "2.1.280",
-        "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-x64/-/claude-code-darwin-x64-2.1.280.tgz",
-        "integrity": "sha512-991qNyZVC/ra6THRMLDJ1mB1a+/C/bpKEA1w5ttNJA0mTvVm012kAbS3Pf7zrvRBFe7fU1KeHkGlTTq49519qA==",
+        "version": "2.1.281",
+        "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-x64/-/claude-code-darwin-x64-2.1.281.tgz",
+        "integrity": "sha512-nGJBmWAMlyHAlf0i/vwBzjvTfEC86KcGZT4VNlpInL03jufnBztZr8+ILcXcwg5h94McpmvI/tu8lgHJtHKLVQ==",
     },
 }
 MANIFEST = ".kogen-runtime.json"

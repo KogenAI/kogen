@@ -1,0 +1,21 @@
+- id: native-behavior-drift
+  scenario_ids: [managed-runtime-2-1-281, roles-and-helpers-on-2-1-281, resume-and-reviewer-on-2-1-281]
+  description: Kogen relies on undocumented Claude Code behavior (per-agent effort in --agents, Agent(<name>) denial under --dangerously-skip-permissions, Stop hook block continuing the -p turn, exact --session-id/--resume, --json-schema output, stream-json model/parent linkage). Shaping only proved the flags are still listed in 2.1.281 --help; semantics are proven only by the three paid targets. A failure there is a compatibility defect to fix within scope, or a return to Shaping, never a fallback to 2.1.280 or another release.
+- id: rm-substitution-prompt
+  scenario_ids: [unattended-rm-opt-out, managed-runtime-2-1-281]
+  description: 2.1.281 blocks a recursive rm on command-substitution output even under --dangerously-skip-permissions (probe-confirmed). Shaper decision - Kogen roles run unattended, so every managed launch sets CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1, accepting upstream's pre-2.1.281 behavior for those commands. Because Kogen strips inherited CLAUDE_CODE_* variables, the value must be set explicitly in Kogen.ClaudeCode.environment/2, not inherited.
+- id: codex-baseline-ordering
+  scenario_ids: [managed-runtime-2-1-281]
+  description: The Build must start from a clean branch after upgrade-codex-gpt-6 is committed. Both Intents may touch README.md and priv/kogen/test-reliability*.yaml; the reliability catalog binds tests to exact source bytes, so catalog entries for changed Claude-covered tests (build_preconditions_test, shape_task_test, live tests) must be refreshed against that committed baseline, not the pre-Codex one.
+- id: managed-runtime-ownership
+  scenario_ids: [existing-runtime-upgrade, managed-runtime-2-1-281]
+  description: Installing a new runtime version beside the existing one.
+  ownership:
+    - paths: "~/Library/Application Support/Kogen/claude/runtimes/2.1.281-<platform> and default.json under the managed root"
+      when_exists: An intact 2.1.281 runtime is reused; an existing 2.1.280 runtime is kept; an unexpected occupant fails closed as today.
+      owner_after_creation: Kogen managed installer
+      owner_during_operation: The running Kogen operation that selected it (active Builds keep their starting runtime)
+      permitted_mutation: Only the installer stages and atomically publishes a runtime and switches default.json; no in-place edits, no self-update (DISABLE_AUTOUPDATER=1)
+      validation: Pinned per-platform sha512 integrity and version check before publishing
+      git_state: Outside the repository; untracked
+      upgrade_behavior: Old 2.1.280 runtime is retained, not deleted, by this Intent; login scopes under accounts/ are never moved or renamed

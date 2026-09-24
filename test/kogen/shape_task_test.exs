@@ -311,7 +311,8 @@ defmodule Kogen.ShapeTaskTest do
         Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape" | args], [
           {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_claude_shaper")},
           {"KOGEN_CLAUDE_ROOT", claude_root},
-          {"ANTHROPIC_API_KEY", "INHERITED-API-KEY"}
+          {"ANTHROPIC_API_KEY", "INHERITED-API-KEY"},
+          {"CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT", "0"}
         ])
 
       argv =
@@ -347,6 +348,7 @@ defmodule Kogen.ShapeTaskTest do
       assert env =~ "KOGEN_ROLE=shaper"
       assert env =~ "CLAUDE_CONFIG_DIR=#{Path.join(claude_root, "accounts/shared")}"
       assert env =~ "DISABLE_AUTOUPDATER=1"
+      assert env =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1\n"
       assert env =~ "ANTHROPIC_API_KEY=unset"
 
       assert prompt =~ "harness `claude`" or prompt =~ "harness: claude"
@@ -381,7 +383,7 @@ defmodule Kogen.ShapeTaskTest do
     for args <- [[], ["unfinished"]] do
       {output, status} = route.(args)
       assert status != 0
-      assert output =~ "Kogen Claude Code 2.1.280 is not installed. Run mix kogen.claude.install"
+      assert output =~ "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
     end
 
     source = File.cwd!()
@@ -599,7 +601,7 @@ defmodule Kogen.ShapeTaskTest do
     for {route, expected} <- [
           {"pi", "unsupported harness: pi-chatgpt; expected codex or claude"},
           {"unproven", "unsupported Claude Code model for shaping: claude-unproven-9"},
-          {"claude", "Kogen Claude Code 2.1.280 is not installed. Run mix kogen.claude.install"}
+          {"claude", "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"}
         ] do
       File.rm_rf!(Path.join(fixture, ".kogen/runtime"))
 

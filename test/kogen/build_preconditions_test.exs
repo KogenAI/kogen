@@ -407,7 +407,7 @@ defmodule Kogen.BuildPreconditionsTest do
                           case: "configured Claude Code runtime is not installed",
                           operation: {:claude, :uninstalled},
                           expected:
-                            "Kogen Claude Code 2.1.280 is not installed. Run mix kogen.claude.install"
+                            "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
                         },
                         %{
                           case: "configured Claude Code shared login is missing",

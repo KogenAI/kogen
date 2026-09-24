@@ -23,7 +23,7 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
-Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.280 and Codex 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `ai.typesafe.api` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s ai.typesafe.api -a <account> -w` before building, or Build stops before launching the Developer.
+Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.281 and Codex 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `ai.typesafe.api` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s ai.typesafe.api -a <account> -w` before building, or Build stops before launching the Developer.
 
 From a checkout whose `default_route` uses Claude Code:
 
@@ -331,13 +331,17 @@ route is `default_route`.
 ## Managed Claude Code runtime and login
 
 `mix kogen.claude.install` installs the exact Claude Code release pinned by this
-checkout (2.1.280) from the official npm registry into Kogen's managed root,
+checkout (2.1.281) from the official npm registry into Kogen's managed root,
 checking the pinned per-platform sha512 integrity, staging privately and
 publishing atomically. It never resolves latest, never uses a `claude` on PATH,
 and never writes to personal Claude Code locations such as `~/.local/share/claude`.
 Repeating it reuses an intact installation; a failed download, integrity check or
 extraction preserves any working runtime and every login. Every Kogen launch sets
-`DISABLE_AUTOUPDATER=1`, so the managed runtime never updates itself. Pin changes
+`DISABLE_AUTOUPDATER=1`, so the managed runtime never updates itself. Kogen's
+roles run unattended, so every launch also sets
+`CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1`, overriding any inherited value;
+without it Claude Code asks to confirm a recursive `rm` whose target is
+command-substitution output, even with `--dangerously-skip-permissions`. Pin changes
 follow the [Claude Code runtime upgrade workflow](workflows/claude-code-runtime-upgrade.md).
 
 Kogen's Claude Code login is separate from personal Claude Code, so Kogen can use a

@@ -45,6 +45,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     System.put_env("CLAUDE_CODE_OAUTH_TOKEN", "INHERITED-OAUTH-TOKEN")
     System.put_env("CLAUDE_CODE_USE_BEDROCK", "1")
     System.put_env("CLAUDECODE", "1")
+    System.put_env("CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT", "0")
     System.delete_env("KOGEN_HARNESS")
     System.delete_env("KOGEN_ROLE")
     {:ok, config} = Kogen.Intent.read_config()
@@ -53,12 +54,14 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     {:ok, root: root, base: base, source: source, config: config, personal: [personal_config]}
   end
 
-  defp install_fixture!(ctx) do
+  defp install_fixture!(ctx, version \\ []) do
     fixture = Path.join(ctx.source, "test/support/managed_claude_fixture.py")
     installer = Path.join(ctx.source, "priv/kogen/claude_code/install.py")
 
     assert {_out, 0} =
-             System.cmd("python3", [fixture, ctx.root, installer], stderr_to_stdout: true)
+             System.cmd("python3", [fixture, ctx.root, installer | version],
+               stderr_to_stdout: true
+             )
   end
 
   defp trace(ctx) do
@@ -81,7 +84,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
 
   test "readiness stops before any model launch with the exact fix", ctx do
     assert {:error, reason} = ClaudeCode.open(ctx.config)
-    assert reason == "Kogen Claude Code 2.1.280 is not installed. Run mix kogen.claude.install"
+    assert reason == "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
     assert trace(ctx) == []
 
     install_fixture!(ctx)
@@ -112,7 +115,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     [call] = trace(ctx)
     assert call["args"] == ["--dangerously-skip-permissions", "--console"]
     assert call["scope"] == Path.expand(shared(ctx))
-    assert call["executable"] =~ Path.join(ctx.root, "runtimes/2.1.280-")
+    assert call["executable"] =~ Path.join(ctx.root, "runtimes/2.1.281-")
     assert File.read!(existing) == ~s({"existing":"scope state"})
 
     for name <-
@@ -121,6 +124,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     end
 
     assert call["env"]["DISABLE_AUTOUPDATER"] == "1"
+    assert call["env"]["CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT"] == "1"
 
     assert {:ok, %{login: {:configured, %{auth_method: "console"}}}} =
              ClaudeCode.status()
@@ -173,6 +177,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     assert call["env"]["HOME"] == System.get_env("HOME")
     assert call["env"]["ANTHROPIC_API_KEY"] == nil
     assert call["env"]["CLAUDE_CODE_OAUTH_TOKEN"] == nil
+    assert call["env"]["CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT"] == "1"
 
     assert ["--setting-sources", "project"] ==
              Enum.take(Enum.drop_while(call["args"], &(&1 != "--setting-sources")), 2)
@@ -182,16 +187,40 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     personal_unchanged!(ctx)
   end
 
+  test "a retained 2.1.280 default is never launched and survives the 2.1.281 install with logins",
+       ctx do
+    install_fixture!(ctx, ["2.1.280"])
+    File.mkdir_p!(shared(ctx))
+    File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
+    [old] = Path.wildcard(Path.join(ctx.root, "runtimes/2.1.280-*/claude"))
+    old_bytes = File.read!(old)
+
+    assert {:error, reason} = ClaudeCode.open(ctx.config)
+    assert reason == "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
+    assert trace(ctx) == []
+
+    install_fixture!(ctx)
+    assert Jason.decode!(File.read!(Path.join(ctx.root, "default.json")))["version"] == "2.1.281"
+    assert File.read!(old) == old_bytes
+    assert File.read!(Path.join(shared(ctx), ".fake-login")) == "claude.ai\n"
+
+    assert {:ok, selection} = ClaudeCode.open(ctx.config)
+    assert selection.runtime["executable"] =~ Path.join(ctx.root, "runtimes/2.1.281-")
+    assert selection.scope.path == Path.expand(shared(ctx))
+    assert Enum.all?(trace(ctx), &(&1["executable"] =~ "runtimes/2.1.281-"))
+    personal_unchanged!(ctx)
+  end
+
   test "status reports pin, installation, scope and login metadata only", ctx do
     output = capture_io(fn -> CLI.run(:status, []) end)
-    assert output =~ "Pinned Claude Code: 2.1.280"
+    assert output =~ "Pinned Claude Code: 2.1.281"
     assert output =~ "Not installed. Run mix kogen.claude.install"
 
     install_fixture!(ctx)
     File.mkdir_p!(shared(ctx))
     File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
     output = capture_io(fn -> CLI.run(:status, []) end)
-    assert output =~ "Installed: 2.1.280"
+    assert output =~ "Installed: 2.1.281"
     assert output =~ "Effective login: shared (#{Path.expand(shared(ctx))})"
     assert output =~ "loggedIn: true, authMethod: claude.ai"
     refute output =~ "SYNTHETIC-SECRET"
@@ -244,6 +273,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
         "ANTHROPIC_API_KEY" => "k",
         "ANTHROPIC_AUTH_TOKEN" => "t",
         "CLAUDE_CODE_USE_VERTEX" => "1",
+        "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT" => "0",
         "CLAUDE_CONFIG_DIR" => "/personal",
         "PATH" => "/bin"
       })
@@ -251,6 +281,8 @@ defmodule Kogen.ClaudeCode.ManagementTest do
 
     assert env["CLAUDE_CONFIG_DIR"] == "/scope"
     assert env["DISABLE_AUTOUPDATER"] == "1"
+    assert env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert env["CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT"] == "1"
     assert env["ANTHROPIC_API_KEY"] == nil and Map.has_key?(env, "ANTHROPIC_API_KEY")
     assert env["ANTHROPIC_AUTH_TOKEN"] == nil and Map.has_key?(env, "ANTHROPIC_AUTH_TOKEN")
     assert env["CLAUDE_CODE_USE_VERTEX"] == nil and Map.has_key?(env, "CLAUDE_CODE_USE_VERTEX")

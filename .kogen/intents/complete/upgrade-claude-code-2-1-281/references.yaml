@@ -1,0 +1,5 @@
+- workflows/claude-code-runtime-upgrade.md  # maintained upgrade procedure this Intent follows
+- .kogen/intents/complete/claude-code-harness/  # original 2.1.280 pin, integrity and probe evidence
+- .kogen/intents/approved/upgrade-codex-gpt-6/  # sibling runtime upgrade; treated as completed baseline
+- https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md  # 2.1.281 release notes
+- https://registry.npmjs.org/@anthropic-ai/claude-code  # dist-tags at shaping: latest=next=2.1.281, stable=2.1.273

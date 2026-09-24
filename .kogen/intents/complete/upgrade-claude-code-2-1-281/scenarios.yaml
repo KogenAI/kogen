@@ -1,0 +1,64 @@
+- id: managed-runtime-2-1-281
+  given: A checkout on supported macOS arm64 or x64 has no managed Claude Code 2.1.281 runtime, and the pinned artifacts are the official npm platform tarballs claude-code-darwin-arm64-2.1.281.tgz (sha512-rEI/YGBDX4YTfdq5w1B86NicoLgpFHGp4IrKM6sDrmUemruePSXF7ybICthHClIsRY8a/Kp7PQ6UJah1VWTbSA==) and claude-code-darwin-x64-2.1.281.tgz (sha512-nGJBmWAMlyHAlf0i/vwBzjvTfEC86KcGZT4VNlpInL03jufnBztZr8+ILcXcwg5h94McpmvI/tu8lgHJtHKLVQ==).
+  when: The user runs mix kogen.claude.install, then mix kogen.claude.status, then a real Shape and Build on the claude route.
+  then: Kogen installs, integrity-checks and atomically publishes exactly 2.1.281; Kogen.ClaudeCode.pinned_version, status output, the not-installed error message and README tested-version claims all say 2.1.281; a real Shape-to-Build lifecycle completes on the managed 2.1.281 binary with DISABLE_AUTOUPDATER=1, including a Stop hook block continuing the same -p turn.
+  wrong_result: The installer resolves latest or the npm stable tag (2.1.273), keeps a stale 2.1.280 integrity next to a 2.1.281 URL, uses a claude on PATH, reports 2.1.281 while launching the 2.1.280 runtime, or updates only some version claims.
+  verified_by: [check, live-shape-to-build]
+  evidence: Installer tests with the new pin and integrity plus mismatch control; management/status assertions; live Shape-to-Build receipt from the managed 2.1.281 executable.
+  proof:
+    offline: [test/kogen/claude_code_install_test.exs, test/kogen/claude_code_management_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/shape_task_test.exs]
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: authenticated managed 2.1.281 completes Shape and Build with the Stop hook continuing the same -p turn; offline-limit: fixtures and the fake harness cannot execute the native binary or its hook semantics"
+    affected_paths: [priv/kogen/claude_code/install.py, lib/kogen/claude_code.ex, README.md, test/kogen/claude_code_install_test.exs, test/support/claude_code_installer_test.py, test/kogen/claude_code_management_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/shape_task_test.exs, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: roles-and-helpers-on-2-1-281
+  given: The claude route configures Opus 5.5 root roles and Sonnet 5 / Opus 5.5 helpers with per-role efforts, and the managed runtime is 2.1.281.
+  when: Kogen launches roles with --agents, --disallowedTools Agent(<name>), --setting-sources and --dangerously-skip-permissions.
+  then: Each role and helper runs with its exact configured model and effort (per-agent effort visible in helper transcripts), built-in agents stay denied, stream-json message.model and parent_tool_use_id linkage still identify executed helpers, and route/model configuration is unchanged.
+  wrong_result: A flag is silently ignored on 2.1.281 so helpers inherit the root profile, built-in agents become reachable, helper identity cannot be linked, or the upgrade changes route models/efforts.
+  verified_by: [check, live-general]
+  evidence: Harness argument tests unchanged or adapted; live-general receipt proving configured scout and role routing on 2.1.281.
+  proof:
+    offline: [test/kogen/harness_args_test.exs, test/kogen/claude_code_harness_test.exs, test/kogen/claude_code_catalog_test.exs]
+    paid_target: live-general
+    paid_reason: "provider-required: live-general; observation: native 2.1.281 honors per-agent model/effort and built-in agent denial in a real role launch; offline-limit: argument assertions cannot prove the native CLI still honors those flags"
+    affected_paths: [lib/kogen/harness/claude.ex, test/kogen/harness_args_test.exs, test/kogen/claude_code_harness_test.exs, test/kogen/live_test.exs]
+
+- id: resume-and-reviewer-on-2-1-281
+  given: 2.1.281 changes how resumed sessions replay history (changelog - resumed turns no longer re-sent in changed form; sessions ending during a tool call are told the outcome is unknown; manual resume no longer adds a hidden Continue message).
+  when: A Build needs Reviewer rework, so Kogen resumes the same Developer session with --resume <session-id> and the Reviewer returns a --json-schema verdict.
+  then: The resumed Developer is the exact same session, the rework completes, and the Reviewer's structured verdict validates against Kogen's schema.
+  wrong_result: Resume starts a new session or loses prior context, Kogen relies on the removed hidden Continue message, or the Reviewer output no longer arrives as schema-valid structured output.
+  verified_by: [check, live-reviewer-rework]
+  evidence: Offline resume/session argument tests; live-reviewer-rework receipt on 2.1.281.
+  proof:
+    offline: [test/kogen/harness_args_test.exs, test/kogen/claude_code_harness_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: native 2.1.281 --resume continues the exact Developer session and --json-schema yields a valid Reviewer verdict; offline-limit: fake transports cannot reproduce the changed native resume replay"
+    affected_paths: [lib/kogen/harness/claude.ex, test/kogen/claude_code_harness_test.exs, test/kogen/live_reviewer_rework_test.exs]
+
+- id: existing-runtime-upgrade
+  given: A working managed 2.1.280 runtime is installed and selected, logins exist in shared and project scopes, and a Build may already be running on 2.1.280.
+  when: mix kogen.claude.install runs for 2.1.281, including a failed download, integrity mismatch or extraction.
+  then: 2.1.281 is staged privately and published atomically as the default; an already-running Build keeps its concrete 2.1.280 executable; a failure leaves the 2.1.280 runtime selected and working; no scope under accounts/ is moved, renamed or logged out.
+  wrong_result: The 2.1.280 runtime is overwritten or deleted mid-Build, a partial 2.1.281 becomes default, or login scopes are disturbed so the user must log in again.
+  verified_by: [check]
+  evidence: Installer and management preservation tests with the old runtime present and failure controls.
+  proof:
+    offline: [test/kogen/claude_code_install_test.exs, test/kogen/claude_code_management_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: installer default selection, active-runtime retention and failure-preservation controls with an existing 2.1.280 fixture runtime"
+    affected_paths: [priv/kogen/claude_code/install.py, lib/kogen/claude_code.ex, test/kogen/claude_code_install_test.exs, test/support/claude_code_installer_test.py, test/kogen/claude_code_management_test.exs]
+
+- id: unattended-rm-opt-out
+  given: The managed 2.1.281 runtime blocks a recursive rm whose target is command-substitution output even under --dangerously-skip-permissions, and the caller's environment may contain its own CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT value (for example 0) that Kogen strips with every other CLAUDE_CODE_* variable.
+  when: Kogen launches any managed Claude Code process (Shaping, Developer, Reviewer, helpers via the root, login/status interactive launches, and compatibility probes) through Kogen.ClaudeCode.environment/2.
+  then: Every managed launch environment sets CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1 alongside DISABLE_AUTOUPDATER=1 and CLAUDE_CODE_DISABLE_AUTO_MEMORY=1, overriding any inherited value, so unattended roles run such commands without a confirmation; the module doc and README managed-runtime section state this.
+  wrong_result: The variable is set only for some roles, an inherited value such as 0 survives, it is set through a tracked settings file that --setting-sources does not load, or the upgrade ships without it so Developers hit an unanswerable block.
+  verified_by: [check]
+  evidence: Environment map assertion including an inherited-0 control in claude_code_management_test; fake_claude launch-log assertion in claude_code_harness_test; the retained Shaping probe (evidence/rm-prompt-probe.md) shows the exact 2.1.281 binary blocks by default and honors the variable.
+  proof:
+    offline: [test/kogen/claude_code_management_test.exs, test/kogen/claude_code_harness_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: Kogen-built launch environment asserted through the fake_claude consumer with an inherited-0 control; native honoring of the variable by the sha512-identical 2.1.281 binary is retained Shaping evidence in evidence/rm-prompt-probe.md"
+    affected_paths: [lib/kogen/claude_code.ex, README.md, test/kogen/claude_code_management_test.exs, test/kogen/claude_code_harness_test.exs, test/support/fake_claude]

@@ -1,6 +1,8 @@
 """Offline Claude Code stand-in placed through the production manifest/promotion code.
 
-usage: managed_claude_fixture.py ROOT INSTALLER
+usage: managed_claude_fixture.py ROOT INSTALLER [VERSION]
+VERSION defaults to the installer's pin; another version stands in for a
+retained older runtime, and the new one is published over the current default.
 The stand-in records every invocation (argv and the environment Kogen controls)
 to KOGEN_TEST_NATIVE_TRACE, answers `auth status` from a marker in its
 CLAUDE_CONFIG_DIR, completes or cancels an interactive login, and replays a
@@ -22,7 +24,8 @@ args = sys.argv[1:]
 scope = pathlib.Path(os.environ["CLAUDE_CONFIG_DIR"])
 watched = ["HOME", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
            "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
-           "CLAUDECODE", "DISABLE_AUTOUPDATER", "KOGEN_ROLE"]
+           "CLAUDECODE", "DISABLE_AUTOUPDATER", "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT",
+           "KOGEN_ROLE"]
 with pathlib.Path(os.environ["KOGEN_TEST_NATIVE_TRACE"]).open("a") as trace:
     trace.write(json.dumps({"args": args, "scope": str(scope), "executable": sys.argv[0],
                             "env": {name: os.environ.get(name) for name in watched}}) + "\n")
@@ -54,7 +57,7 @@ emit(result)
 '''
 
 platform = installer.platform_name()
-version = installer.INITIAL_VERSION
+version = sys.argv[3] if len(sys.argv) > 3 else installer.INITIAL_VERSION
 installer._owned_directory(root, root=True)
 installer._owned_directory(root / "runtimes")
 target = installer._runtime(root, version, platform)
@@ -65,4 +68,5 @@ target.mkdir(parents=True)
     "name": "@anthropic-ai/claude-code-" + platform, "version": version,
     "os": ["darwin"], "cpu": ["arm64" if platform == "darwin-arm64" else "x64"]}))
 installer._write_manifest(target, version, platform)
-installer.activate(root, version, "-", platform=platform)
+current = installer.inspect(root, platform=platform)
+installer.activate(root, version, current["version"] if current else "-", platform=platform)

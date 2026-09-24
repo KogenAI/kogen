@@ -5,6 +5,7 @@ import http.client
 import importlib.util
 import io
 import json
+import os
 import tarfile
 import tempfile
 import threading
@@ -144,6 +145,69 @@ class InstallerTest(unittest.TestCase):
             self.assertEqual(result["version"], installer.INITIAL_VERSION)
         finally:
             artifact["integrity"] = artifact_integrity
+
+    def test_production_pin_is_exactly_2_1_281_with_registry_integrity(self):
+        self.assertEqual(installer.INITIAL_VERSION, "2.1.281")
+        self.assertEqual(installer.PINNED_ARTIFACTS, {
+            "darwin-arm64": {
+                "version": "2.1.281",
+                "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-2.1.281.tgz",
+                "integrity": "sha512-rEI/YGBDX4YTfdq5w1B86NicoLgpFHGp4IrKM6sDrmUemruePSXF7ybICthHClIsRY8a/Kp7PQ6UJah1VWTbSA==",
+            },
+            "darwin-x64": {
+                "version": "2.1.281",
+                "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-x64/-/claude-code-darwin-x64-2.1.281.tgz",
+                "integrity": "sha512-nGJBmWAMlyHAlf0i/vwBzjvTfEC86KcGZT4VNlpInL03jufnBztZr8+ILcXcwg5h94McpmvI/tu8lgHJtHKLVQ==",
+            },
+        })
+
+    def test_production_pin_refuses_bytes_that_do_not_match_the_pinned_integrity(self):
+        payload = package_tar(version=installer.INITIAL_VERSION)
+        fetched, launches = [], []
+        with self.assertRaisesRegex(installer.InstallerError, "integrity mismatch"):
+            installer.install(self.root, platform=self.platform,
+                              fetch=lambda url: fetched.append(url) or payload,
+                              native_check=lambda _runtime: launches.append(True),
+                              progress=lambda _message: None)
+        self.assertEqual(fetched, [installer.PINNED_ARTIFACTS[self.platform]["tarball"]])
+        self.assertEqual(launches, [])
+        self.assertFalse((self.root / "runtimes").exists())
+        self.assertFalse((self.root / "default.json").exists())
+
+    def test_upgrade_from_retained_2_1_280_preserves_it_on_failure_and_after_publishing(self):
+        self.stage("2.1.280")
+        installer.activate(self.root, "2.1.280", "-", platform=self.platform)
+        default = (self.root / "default.json").read_bytes()
+        old = self.root / "runtimes/2.1.280-darwin-arm64"
+        before = {p: p.read_bytes() for p in sorted(old.rglob("*")) if p.is_file()}
+        marker, marker_content = self.accounts_marker()
+        payload = package_tar(version=installer.INITIAL_VERSION)
+        def failed_download(_url):
+            raise installer.InstallerError("download failed")
+        failures = [
+            ("download failed", dict(registry=registry_for(payload), fetch=failed_download)),
+            ("integrity mismatch", dict(fetch=lambda _url: payload)),
+            ("incomplete native distribution",
+             dict(registry=registry_for(package_tar(version=installer.INITIAL_VERSION, omit="package/claude")),
+                  fetch=lambda _url: package_tar(version=installer.INITIAL_VERSION, omit="package/claude"))),
+        ]
+        for message, dependencies in failures:
+            with self.assertRaisesRegex(installer.InstallerError, message):
+                installer.install(self.root, platform=self.platform,
+                                  native_check=lambda _runtime: None,
+                                  progress=lambda _message: None, **dependencies)
+            self.assertEqual((self.root / "default.json").read_bytes(), default)
+            self.assertEqual(installer.inspect(self.root, platform=self.platform)["version"], "2.1.280")
+            self.assertIsNone(installer.required(self.root, platform=self.platform))
+            self.assertFalse((self.root / "runtimes/2.1.281-darwin-arm64").exists())
+        result = installer.install(self.root, platform=self.platform, registry=registry_for(payload),
+                                   fetch=lambda _url: payload, native_check=lambda _runtime: None,
+                                   progress=lambda _message: None)
+        self.assertEqual(result["version"], "2.1.281")
+        self.assertEqual(installer.inspect(self.root, platform=self.platform)["version"], "2.1.281")
+        self.assertEqual({p: p.read_bytes() for p in sorted(old.rglob("*")) if p.is_file()}, before)
+        self.assertTrue(os.access(old / "claude", os.X_OK))
+        self.assertEqual(marker.read_bytes(), marker_content)
 
     def test_install_moves_an_older_default_to_the_checkout_pin_without_deleting_it(self):
         self.stage("2.0.10")
@@ -331,11 +395,11 @@ class InstallerTest(unittest.TestCase):
             installer.inspect(self.root, platform=self.platform)
 
     def test_native_probe_uses_private_minimal_environment_and_checks_pinned_version_stdout(self):
-        runtime = {"executable": "/fixture/claude", "version": "2.1.280"}
+        runtime = {"executable": "/fixture/claude", "version": "2.1.281"}
         calls = []
         def fake_run(*args, **kwargs):
             calls.append(kwargs)
-            return mock.Mock(returncode=0, stdout="2.1.280\n", stderr="")
+            return mock.Mock(returncode=0, stdout="2.1.281\n", stderr="")
         with mock.patch.object(installer.subprocess, "run", side_effect=fake_run):
             installer._native_check(runtime)
         self.assertEqual(len(calls), 1)

@@ -3,15 +3,19 @@ defmodule Kogen.ClaudeCode do
   Owns the managed Claude Code runtime and explicit Kogen login scopes.
 
   The runtime is one pinned native binary under Kogen's managed root, never a
-  `claude` from PATH, and every launch sets `DISABLE_AUTOUPDATER=1`. Each scope
-  is a private `CLAUDE_CONFIG_DIR`. Claude Code keys a scope's macOS Keychain
+  `claude` from PATH, and every launch sets `DISABLE_AUTOUPDATER=1`. Kogen's
+  roles run unattended, so every launch also sets
+  `CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1`, overriding any inherited
+  value; otherwise Claude Code asks to confirm a recursive `rm` of
+  command-substitution output even with `--dangerously-skip-permissions`.
+  Each scope is a private `CLAUDE_CONFIG_DIR`. Claude Code keys a scope's macOS Keychain
   login by its path, so Kogen never moves or renames a scope, and it never
   reads, copies or prints credential values: readiness uses only the
   `loggedIn` and `authMethod` metadata of `claude auth status`.
   """
   use Boundary, deps: [], exports: []
 
-  @pinned_version "2.1.280"
+  @pinned_version "2.1.281"
   @installer Path.expand("../../priv/kogen/claude_code/install.py", __DIR__)
 
   # Provider credentials and routing switches must never fund or redirect a
@@ -68,7 +72,8 @@ defmodule Kogen.ClaudeCode do
 
   @doc """
   The launch environment delta: the scope's config dir, no self-update, no
-  auto memory shared across role sessions, and every inherited provider
+  auto memory shared across role sessions, no confirmation prompt for a
+  recursive `rm` of command-substitution output, and every inherited provider
   credential, base URL, Bedrock/Vertex switch or Claude Code variable removed.
   """
   def environment(scope, caller_env \\ System.get_env()) do
@@ -79,7 +84,8 @@ defmodule Kogen.ClaudeCode do
        [
          {"CLAUDE_CONFIG_DIR", scope.path},
          {"DISABLE_AUTOUPDATER", "1"},
-         {"CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1"}
+         {"CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1"},
+         {"CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT", "1"}
        ])
     |> Map.new()
     |> Map.to_list()

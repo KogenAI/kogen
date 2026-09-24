@@ -14,7 +14,8 @@ for arg in "$@"; do
   [ "$arg" = -- ] && seen=1
 done
 printf '%s' "$prompt" > .kogen/runtime/shaping-prompt
-printf 'CLAUDE_CONFIG_DIR=%s\nKOGEN_ROLE=%s\nDISABLE_AUTOUPDATER=%s\nANTHROPIC_API_KEY=%s\n' \
-  "${CLAUDE_CONFIG_DIR:-}" "${KOGEN_ROLE:-}" "${DISABLE_AUTOUPDATER:-}" "${ANTHROPIC_API_KEY:-unset}" \
+printf 'CLAUDE_CONFIG_DIR=%s\nKOGEN_ROLE=%s\nDISABLE_AUTOUPDATER=%s\nCLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=%s\nANTHROPIC_API_KEY=%s\n' \
+  "${CLAUDE_CONFIG_DIR:-}" "${KOGEN_ROLE:-}" "${DISABLE_AUTOUPDATER:-}" \
+  "${CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT:-unset}" "${ANTHROPIC_API_KEY:-unset}" \
   > .kogen/runtime/shaping-env
 exit "${FAKE_CLAUDE_SHAPER_EXIT:-0}"

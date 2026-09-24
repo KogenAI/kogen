@@ -471,6 +471,9 @@ defmodule Kogen.HarnessContractTest do
     refute log =~ "exec resume"
     refute log =~ "ANTHROPIC_API_KEY=secret"
     assert log =~ "DISABLE_AUTOUPDATER=1"
+    env = Enum.filter(lines, &String.starts_with?(&1, "env:"))
+    assert env != []
+    assert Enum.all?(env, &(&1 =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1 "))
   end
 
   defp config(harness) do

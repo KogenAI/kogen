@@ -1,0 +1,204 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "kCkVPGO1bZLeb4fVI1F5Sb8vnvmxfxna",
+      "candidate_id": "269240a896ffd732723f1256101996dfc88fc03d",
+      "developer_session_id": "888f7342-8227-4a14-a3a8-401c18ed371d",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "44a3e818-fcab-4c23-8ed9-d54584e5f8f5",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "kCkVPGO1bZLeb4fVI1F5Sb8vnvmxfxna",
+          "candidate_id": "269240a896ffd732723f1256101996dfc88fc03d",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T10:38:02Z",
+          "session_id": "888f7342-8227-4a14-a3a8-401c18ed371d",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "kCkVPGO1bZLeb4fVI1F5Sb8vnvmxfxna",
+          "candidate_id": "269240a896ffd732723f1256101996dfc88fc03d",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T10:39:31Z",
+          "session_id": "888f7342-8227-4a14-a3a8-401c18ed371d",
+          "status": "passed",
+          "target": "live-general"
+        },
+        {
+          "attempt_token": "kCkVPGO1bZLeb4fVI1F5Sb8vnvmxfxna",
+          "candidate_id": "269240a896ffd732723f1256101996dfc88fc03d",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T10:41:30Z",
+          "session_id": "888f7342-8227-4a14-a3a8-401c18ed371d",
+          "status": "passed",
+          "target": "live-reviewer-rework"
+        },
+        {
+          "attempt_token": "kCkVPGO1bZLeb4fVI1F5Sb8vnvmxfxna",
+          "candidate_id": "269240a896ffd732723f1256101996dfc88fc03d",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T10:45:25Z",
+          "session_id": "888f7342-8227-4a14-a3a8-401c18ed371d",
+          "status": "passed",
+          "target": "live-shape-to-build"
+        }
+      ]
+    }
+  ],
+  "build_id": "DXMmwMNnRlr-eAgLZz1849hz",
+  "candidate_id": "269240a896ffd732723f1256101996dfc88fc03d",
+  "developer_session_id": "888f7342-8227-4a14-a3a8-401c18ed371d",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 9571215,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/DXMmwMNnRlr-eAgLZz1849hz/record.json",
+    "schema_version": 2,
+    "sha256": "e64393fbac3f62f58f86f88c0ee97826d5da9c1d00b2c6bb1fbda920f68a44e8"
+  },
+  "intent": {
+    "id": "01a0d2df-a5da-72dd-a0a9-95702919dcb7",
+    "slug": "upgrade-claude-code-2-1-281",
+    "title": "Upgrade managed Claude Code runtime to 2.1.281"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "44a3e818-fcab-4c23-8ed9-d54584e5f8f5"
+  },
+  "risks": [
+    {
+      "id": "native-behavior-drift"
+    },
+    {
+      "id": "rm-substitution-prompt"
+    },
+    {
+      "id": "codex-baseline-ordering"
+    },
+    {
+      "id": "managed-runtime-ownership"
+    }
+  ],
+  "route": {
+    "harness": "claude",
+    "name": "claude"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "lines 29-41 INITIAL_VERSION/PINNED_ARTIFACTS 2.1.281 URLs and sha512; def required lines 491-499",
+          "path": "priv/kogen/claude_code/install.py"
+        },
+        {
+          "locator": "@pinned_version \"2.1.281\"; installed/0 not-installed message",
+          "path": "lib/kogen/claude_code.ex"
+        },
+        {
+          "locator": "line 26 and Managed Claude Code runtime section (2.1.281)",
+          "path": "README.md"
+        },
+        {
+          "locator": "test_production_pin_is_exactly_2_1_281_with_registry_integrity; test_production_pin_refuses_bytes_that_do_not_match_the_pinned_integrity",
+          "path": "test/support/claude_code_installer_test.py"
+        },
+        {
+          "locator": "status reports pin... 'Pinned Claude Code: 2.1.281'; readiness error 2.1.281",
+          "path": "test/kogen/claude_code_management_test.exs"
+        },
+        {
+          "locator": "attempts[0].targets live-shape-to-build passed exit 0; check passed 726 tests",
+          "path": ".kogen/runtime/scenario-tracking/DXMmwMNnRlr-eAgLZz1849hz/record.json"
+        }
+      ],
+      "id": "managed-runtime-2-1-281",
+      "reason": "install.py sets INITIAL_VERSION and both PINNED_ARTIFACTS entries to 2.1.281. The tarball URLs and sha512 values match the approved scenario byte for byte, so no stale 2.1.280 integrity remains. @pinned_version is 2.1.281, and both the status output and the not-installed error are built from it. README line 26 and the managed-runtime section both say 2.1.281. `required/2` inspects only INITIAL_VERSION and never falls back to a retained or default release. The installer test pins the exact constants and has an integrity-mismatch control. The management, build-preconditions and shape tests assert 2.1.281. Stop's check passed, and so did live-shape-to-build (the real Shape continues a saved draft, then approval and Build complete). That run goes through ClaudeCode.installed/required, so it used the staged managed 2.1.281 runtime and not the 2.1.280 default.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "unchanged in Candidate diff; developer_args/session_args",
+          "path": "lib/kogen/harness/claude.ex"
+        },
+        {
+          "locator": "existing argument tests plus new launch environment describe block",
+          "path": "test/kogen/claude_code_harness_test.exs"
+        },
+        {
+          "locator": "attempts[0].targets live-general passed exit 0 (Kogen.LiveTest 1 passed)",
+          "path": ".kogen/runtime/scenario-tracking/DXMmwMNnRlr-eAgLZz1849hz/record.json"
+        }
+      ],
+      "id": "roles-and-helpers-on-2-1-281",
+      "reason": "The harness launch code (lib/kogen/harness/claude.ex) and the route/model configuration are unchanged, so the flags, models and efforts are the same as before. The existing harness argument tests pass under Stop's check. The only open question was whether native 2.1.281 still honors these flags. The paid live-general target answers it: it passed on the managed 2.1.281 runtime (independent real Reviewer catches semantic fixture defects).",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "resume_build_developer lines 55-57; session_args({:resume, id}) line 107; --json-schema line 98",
+          "path": "lib/kogen/harness/claude.ex"
+        },
+        {
+          "locator": "attempts[0].targets live-reviewer-rework passed exit 0 (Kogen.LiveReviewerReworkTest 1 passed)",
+          "path": ".kogen/runtime/scenario-tracking/DXMmwMNnRlr-eAgLZz1849hz/record.json"
+        }
+      ],
+      "id": "resume-and-reviewer-on-2-1-281",
+      "reason": "Resume passes `--resume <session_id>` and sends the rework feedback text explicitly, so it never depended on the hidden Continue message. The Reviewer uses `--json-schema` with Verdict.schema(). The offline resume and Reviewer tests pass. The paid live-reviewer-rework target passed on 2.1.281: real Reviewer rework resumed the same Developer, and a fresh Reviewer accepted.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "test_upgrade_from_retained_2_1_280_preserves_it_on_failure_and_after_publishing",
+          "path": "test/support/claude_code_installer_test.py"
+        },
+        {
+          "locator": "test 'a retained 2.1.280 default is never launched and survives the 2.1.281 install with logins'",
+          "path": "test/kogen/claude_code_management_test.exs"
+        },
+        {
+          "locator": "optional VERSION argument; activate with current expected version",
+          "path": "test/support/managed_claude_fixture.py"
+        }
+      ],
+      "id": "existing-runtime-upgrade",
+      "reason": "A new installer test starts with 2.1.280 staged and active and an accounts login marker. It forces a failed download, an integrity mismatch and an incomplete extraction. After each failure, default.json bytes are unchanged, 2.1.280 stays selected, `required` is None and no 2.1.281 directory exists. A successful install then publishes 2.1.281 as the default. The old runtime's files stay byte-identical and executable, and the login marker is untouched. A new management test shows that a retained 2.1.280 default is never launched, that it survives the 2.1.281 install, and that the shared login marker is preserved. Stop's check passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "environment/2 lines 79-92 and moduledoc",
+          "path": "lib/kogen/claude_code.ex"
+        },
+        {
+          "locator": "Managed Claude Code runtime and login section, CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT sentence",
+          "path": "README.md"
+        },
+        {
+          "locator": "setup puts inherited 0; environment map assertion; launch trace env assertions",
+          "path": "test/kogen/claude_code_management_test.exs"
+        },
+        {
+          "locator": "describe 'launch environment' every role launch overrides inherited setting with 1",
+          "path": "test/kogen/claude_code_harness_test.exs"
+        },
+        {
+          "locator": "control vs opt-out table",
+          "path": ".kogen/intents/approved/upgrade-claude-code-2-1-281/evidence/rm-prompt-probe.md"
+        }
+      ],
+      "id": "unattended-rm-opt-out",
+      "reason": "Kogen.ClaudeCode.environment/2 first strips every inherited CLAUDE_CODE_* variable (it maps them to nil). It then appends CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1, and because Map.new keeps the last value for a key, the 1 wins, next to DISABLE_AUTOUPDATER=1 and CLAUDE_CODE_DISABLE_AUTO_MEMORY=1. Every managed launch (open/login/status/terminal and the harness contexts) takes its env from this function, and the harness only merges role overrides on top. The tests cover it at several levels: a unit test with an inherited 0, a managed launch trace with an inherited 0, a harness test covering developer, resume, Reviewer and Shaper with 0 becoming 1, the shape task test, and the harness_contract log. The module doc and the README managed-runtime section state the behavior. The retained probe shows that the native binary honors the variable.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

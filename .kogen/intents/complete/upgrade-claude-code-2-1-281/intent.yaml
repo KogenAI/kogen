@@ -1,0 +1,37 @@
+id: 01a0d2df-a5da-72dd-a0a9-95702919dcb7
+slug: upgrade-claude-code-2-1-281
+title: Upgrade managed Claude Code runtime to 2.1.281
+status: approved
+shaped_against:
+  branch: main
+  head: 5b44ceb4dfb62c07296c1a799246c125f252ac69
+  baseline_note: >-
+    The Shaper directed that the in-flight upgrade-codex-gpt-6 Build be treated
+    as completed. Its uncommitted working-tree changes (Codex pin, codex route
+    profiles, reliability catalog) are assumed to be committed before this Build
+    starts; this Intent does not touch them.
+shaping:
+  route: claude
+  harness: claude
+  model: claude-opus-5-5
+  effort: medium
+  started: 2026-09-24T10:04:27.486728Z
+may_change_guarded_paths:
+  - priv/kogen/claude_code/**
+  - lib/kogen/claude_code.ex
+  - lib/kogen/claude_code/**
+  - lib/kogen/harness/claude.ex
+  - README.md
+  - test/kogen/**
+  - test/support/**
+  - priv/kogen/test-reliability.yaml
+  - priv/kogen/test-reliability-remediation.yaml
+approval_status: approved
+approval:
+  approved_at: "2026-09-24T10:13:48Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message: \"when you've prepared the thing, shaped Intent properly, and it's ready for build. I approve it right now so we don't have to approve later.\" Given with the Q1/Q2 decisions; applied to the completed package."
+  statement: approval.md
+  reviewed_against:
+    branch: main
+    head: 5b44ceb4dfb62c07296c1a799246c125f252ac69
