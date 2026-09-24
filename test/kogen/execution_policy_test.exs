@@ -92,16 +92,16 @@ defmodule Kogen.ExecutionPolicyTest do
       assert claude_policy =~
                "- **scout:** `claude-sonnet-5` at `low`; Claude Code agent `kogen-scout`."
 
-      assert codex_policy =~ "- **scout:** `gpt-5.6-luna` at `low`; native kind `explorer`."
-      assert codex_policy =~ "- **worker:** `gpt-5.6-luna` at `medium`; native kind `worker`."
-      assert codex_policy =~ "- **expert:** `gpt-5.6-sol` at `medium`; native kind `default`."
+      assert codex_policy =~ "- **scout:** `gpt-6-luna` at `low`; native kind `explorer`."
+      assert codex_policy =~ "- **worker:** `gpt-6-luna` at `high`; native kind `worker`."
+      assert codex_policy =~ "- **expert:** `gpt-6-sol` at `high`; native kind `default`."
       refute codex_policy =~ "claude-"
       refute codex_policy =~ "Claude Code agent"
-      refute claude_policy =~ "gpt-5.6"
+      refute claude_policy =~ "gpt-"
     end
 
     assert Kogen.ExecutionPolicy.render(codex, "reviewer") =~
-             "Configured root (reviewer): `gpt-5.6-terra` at `medium`."
+             "Configured root (reviewer): `gpt-6-sol` at `high`."
   end
 
   test "rendering dispatches only on an explicit claude or codex harness" do

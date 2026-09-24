@@ -163,7 +163,7 @@ defmodule Kogen.CodexPublicTasksTest do
     {_, 0} = System.cmd("python3", [utility, root, installer])
 
     [executable] =
-      Path.wildcard(Path.join([root, "runtimes", "0.154.0-*", "vendor", "*", "bin", "codex"]))
+      Path.wildcard(Path.join([root, "runtimes", "0.156.1-*", "vendor", "*", "bin", "codex"]))
 
     File.cp!(Path.join(@source, "test/support/codex_login_terminal.py"), executable)
     File.chmod!(executable, 0o755)
@@ -175,7 +175,7 @@ defmodule Kogen.CodexPublicTasksTest do
 
   defp rewrite_manifest!(installer, runtime) do
     code =
-      "import importlib.util,pathlib,sys; s=importlib.util.spec_from_file_location('i',sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m._write_manifest(pathlib.Path(sys.argv[2]),'0.154.0',m.platform_name())"
+      "import importlib.util,pathlib,sys; s=importlib.util.spec_from_file_location('i',sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m._write_manifest(pathlib.Path(sys.argv[2]),'0.156.1',m.platform_name())"
 
     {_, 0} = System.cmd("python3", ["-c", code, installer, runtime])
   end

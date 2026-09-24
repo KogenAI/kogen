@@ -28,7 +28,7 @@ while {![file exists $stop_path]} {
       set visible $screen_buffer
       regsub -all {\033\[[0-?]*[ -/]*[@-~]} $visible "" visible
       regsub -all {\033\][^\a]*\a} $visible "" visible
-      if {!$trust_acknowledged && [regexp -nocase -- {Yes, continue|Press enter to continue} $visible]} {
+      if {!$trust_acknowledged && [regexp -nocase -- {Yes, continue|Press enter to continue|Trust\s*and\s*continue} $visible]} {
         # The trust widget is painted before its input handler is ready.
         # Match the established public lifecycle transport settling interval.
         after 2000

@@ -1,0 +1,15 @@
+- id: native-runtime-compatibility
+  scenario_ids: [managed-runtime, gpt6-codex-route, existing-runtime-upgrade]
+  description: The new native Codex release or GPT-6 model availability may change startup, authentication, CLI flags, helper behavior, or compatibility semantics in ways offline fixtures cannot prove.
+  ownership:
+    - paths: "~/Library/Application Support/Kogen/codex managed runtime, accounts, selectors, and sessions"
+      when_exists: "Existing managed paths may be retained and reused only after integrity and version validation."
+      owner_after_creation: "Kogen's managed installer owns created runtime and selector files; native Codex owns credential contents and session formats."
+      owner_during_operation: "Kogen controls staging, activation, scoped discovery, and cleanup; native Codex controls credential/session internals."
+      permitted_mutation: "Only the installer may create or atomically replace its pinned runtime/selector metadata; login and native Codex may mutate their own scoped state."
+      validation: "Pinned platform metadata, sha512 integrity, archive/tree validation, native version probes, and live-native compatibility evidence."
+      git_state: "Untracked local runtime state outside the repository; no runtime artifact may be staged under .kogen/runtime."
+      upgrade_behavior: "Install the approved 0.156.1 candidate beside retained runtimes, activate atomically, preserve active operations on their concrete runtime, and retain prior working state on failure."
+- id: probe-process-termination
+  scenario_ids: [managed-runtime, gpt6-codex-route]
+  description: Disposable model probes showed successful turns followed by cleanup or process-termination problems; native compatibility must distinguish provider behavior from guard-rejected cleanup and hung process settlement.

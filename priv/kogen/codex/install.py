@@ -26,17 +26,17 @@ import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, Iterator, Optional
 
-INITIAL_VERSION = "0.154.0"
+INITIAL_VERSION = "0.156.1"
 PINNED_ARTIFACTS = {
     "darwin-arm64": {
-        "version": "0.154.0-darwin-arm64",
-        "tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.154.0-darwin-arm64.tgz",
-        "integrity": "sha512-HP/vJCH/t2hB9Kg6hotN9UglClJ6/z584fal5lEP14C9gNAgAQS4/kTQC7l5V+BA3TqwDPwINSjul28cX8AYXg==",
+        "version": "0.156.1-darwin-arm64",
+        "tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.156.1-darwin-arm64.tgz",
+        "integrity": "sha512-Jg6wbdV+wmMZczhwE74GSxOYEZlViKXn6KyCw/yfrz3PAKFD14xljuPopmdhWC1+8IKU2WdN5fdmXNPt2q4HPA==",
     },
     "darwin-x64": {
-        "version": "0.154.0-darwin-x64",
-        "tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.154.0-darwin-x64.tgz",
-        "integrity": "sha512-2aqz+72Hop8PF2RYglQ4JnGjm3OlRIrTykJIT0hyLeUgM6NCFy09RgTmqRCoWliKQZjEn9jjZqUEp7QujAj77g==",
+        "version": "0.156.1-darwin-x64",
+        "tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.156.1-darwin-x64.tgz",
+        "integrity": "sha512-BVjqNOoltWrnNUrgMRepvDIIBmd4XY+ikAE4pYVHlrwiizNlEWQuCQOTrFMJKp54LFRG8jDTjLZyYQ1QrliuOg==",
     },
 }
 MANIFEST = ".kogen-runtime.json"

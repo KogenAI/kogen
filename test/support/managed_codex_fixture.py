@@ -47,7 +47,7 @@ sys.exit(0)
 
 platform = installer.platform_name()
 installer._owned_directory(root / "runtimes")
-for version in ["0.154.0", "0.200.0"]:
+for version in ["0.154.0", "0.156.1", "0.200.0"]:
     target = installer._runtime(root, version, platform)
     executable, resources = installer._required_paths(platform)
     for relative in [executable, *resources]:
@@ -58,4 +58,6 @@ for version in ["0.154.0", "0.200.0"]:
             if relative.endswith("codex-package.json") else "#!/bin/sh\nexit 0\n"))
         path.chmod(0o755)
     installer._write_manifest(target, version, platform)
+# Management tests start from the retained prior release and exercise the
+# upgrade/preservation path explicitly.
 installer.activate(root, "0.154.0", "-", platform=platform)

@@ -23,7 +23,7 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
-Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.281 and Codex 0.154.0. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `ai.typesafe.api` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s ai.typesafe.api -a <account> -w` before building, or Build stops before launching the Developer.
+Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.281 and Codex 0.156.1. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `ai.typesafe.api` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s ai.typesafe.api -a <account> -w` before building, or Build stops before launching the Developer.
 
 From a checkout whose `default_route` uses Claude Code:
 
@@ -201,13 +201,13 @@ routes:
       expert: {model: claude-opus-5-5, effort: high}
   codex:
     harness: codex
-    shaping:   {model: gpt-5.6-sol, effort: low}
-    developer: {model: gpt-5.6-sol, effort: low}
-    reviewer:  {model: gpt-5.6-terra, effort: medium}
+    shaping:   {model: gpt-6-sol, effort: medium}
+    developer: {model: gpt-6-sol, effort: medium}
+    reviewer:  {model: gpt-6-sol, effort: high}
     helpers:
-      scout:  {model: gpt-5.6-luna, effort: low}
-      worker: {model: gpt-5.6-luna, effort: medium}
-      expert: {model: gpt-5.6-sol, effort: medium}
+      scout:  {model: gpt-6-luna, effort: low}
+      worker: {model: gpt-6-luna, effort: high}
+      expert: {model: gpt-6-sol, effort: high}
 outer_resumptions: 2
 verification_retries: 2
 ```

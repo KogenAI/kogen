@@ -4,7 +4,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
   @config_path ".kogen/config.yaml"
   @readme Path.expand("../../README.md", __DIR__) |> File.read!()
 
-  test "the tracked config resolves the claude route (default) with the exact profiles" do
+  test "the tracked config keeps Claude as the repository default" do
     assert {:ok, config} = Kogen.Intent.read_config(@config_path)
 
     assert config.route == "claude"
@@ -24,12 +24,12 @@ defmodule Kogen.ConfigurationSupportContractTest do
 
     assert config.route == "codex"
     assert config.harness == "codex"
-    assert config.shaping == %{model: "gpt-5.6-sol", effort: "low"}
-    assert config.developer == %{model: "gpt-5.6-sol", effort: "low"}
-    assert config.reviewer == %{model: "gpt-5.6-terra", effort: "medium"}
-    assert config.helpers.scout == %{model: "gpt-5.6-luna", effort: "low"}
-    assert config.helpers.worker == %{model: "gpt-5.6-luna", effort: "medium"}
-    assert config.helpers.expert == %{model: "gpt-5.6-sol", effort: "medium"}
+    assert config.shaping == %{model: "gpt-6-sol", effort: "medium"}
+    assert config.developer == %{model: "gpt-6-sol", effort: "medium"}
+    assert config.reviewer == %{model: "gpt-6-sol", effort: "high"}
+    assert config.helpers.scout == %{model: "gpt-6-luna", effort: "low"}
+    assert config.helpers.worker == %{model: "gpt-6-luna", effort: "high"}
+    assert config.helpers.expert == %{model: "gpt-6-sol", effort: "high"}
     assert config.outer_resumptions == 2
     assert config.verification_retries == 2
   end

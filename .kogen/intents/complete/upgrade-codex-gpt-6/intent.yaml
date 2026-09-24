@@ -1,0 +1,50 @@
+id: 01a0d249-487f-7ec0-9956-6f3375c5faa1
+slug: upgrade-codex-gpt-6
+title: Upgrade managed Codex runtime and GPT-6 route
+status: draft
+shaped_against:
+  branch: main
+  head: 5b44ceb4dfb62c07296c1a799246c125f252ac69
+shaping:
+  route: codex
+  harness: codex
+  model: gpt-5.6-sol
+  effort: low
+  started: 2026-09-24T07:20:13.187616Z
+may_change_guarded_paths:
+  - priv/kogen/codex/**
+  - lib/kogen/codex/**
+  - lib/kogen/harness/codex.ex
+  - .kogen/config.yaml
+  - README.md
+  - test/kogen/**
+  - test/support/**
+  - priv/kogen/test-reliability.yaml
+  - priv/kogen/test-reliability-remediation.yaml
+historical_approval:
+  approved_at: "2026-09-24T09:59:22Z"
+  approved_by: human Shaper
+  source: "Explicit current-conversation user message: I approve."
+  statement: approval.md
+  reviewed_against:
+    branch: main
+    head: 260cc6f5b9d9efc10596f3cab982a26282173c79
+approval_status: approved
+approval_status_note: "Approved in the current conversation after repairing the default-route and reliability-catalog contract."
+codex_profiles:
+  shaping: {model: gpt-6-sol, effort: medium}
+  developer: {model: gpt-6-sol, effort: medium}
+  reviewer: {model: gpt-6-sol, effort: high}
+  helpers:
+    scout: {model: gpt-6-luna, effort: low}
+    worker: {model: gpt-6-luna, effort: high}
+    expert: {model: gpt-6-sol, effort: high}
+shaping_continuations:
+  - route: codex
+    harness: codex
+    model: gpt-6-sol
+    effort: medium
+    started: '2026-09-24T09:47:01.893185Z'
+    checkout:
+      branch: main
+      head: 260cc6f5b9d9efc10596f3cab982a26282173c79

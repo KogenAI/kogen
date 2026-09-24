@@ -11,13 +11,13 @@ defmodule Kogen.NativeHelperFixtureTest do
     config = codex_config!()
     prompt = NativeHelperFixture.prompt(config, "developer")
 
-    assert prompt =~ "Configured root (developer): `gpt-5.6-sol` at `low`"
+    assert prompt =~ "Configured root (developer): `gpt-6-sol` at `medium`"
     assert prompt =~ "fresh_scout_route"
     assert prompt =~ "agent_type `explorer`"
     assert prompt =~ "agent_type `worker`"
     assert prompt =~ "agent_type `default`"
-    assert prompt =~ "gpt-5.6-luna"
-    assert prompt =~ "gpt-5.6-sol"
+    assert prompt =~ "gpt-6-luna"
+    assert prompt =~ "gpt-6-sol"
     assert prompt =~ "Read-only boundary"
     refute prompt =~ "r17"
     refute prompt =~ "provider_error"

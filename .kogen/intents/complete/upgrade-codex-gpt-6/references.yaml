@@ -1,0 +1,9 @@
+- title: Codex runtime upgrade workflow
+  path: workflows/codex-runtime-upgrade.md
+  relevance: Required lifecycle, integrity, compatibility, and preservation procedure for changing the managed pin.
+- title: OpenAI GPT-6 model guidance
+  url: https://developers.openai.com/api/docs/guides/latest-model
+  relevance: Official GPT-6 Sol/Luna identifiers and reasoning-effort guidance.
+- title: OpenAI model release changelog
+  url: https://developers.openai.com/api/docs/changelog
+  relevance: Official release date and API availability for GPT-6 Sol and GPT-6 Luna.

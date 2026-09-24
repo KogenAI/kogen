@@ -38,8 +38,11 @@ def project_paths(path):
                 or settings["trust_level"] not in ("trusted", "untrusted")):
             raise ValueError("invalid project trust bookkeeping")
     tui = data.get("tui", {})
-    if not isinstance(tui, dict) or set(tui) - {"model_availability_nux"}:
+    # Native 0.156.1 records that its one-time screen reader probe ran.
+    if not isinstance(tui, dict) or set(tui) - {"model_availability_nux", "screen_reader_detection_done"}:
         raise ValueError("unrecognized UI configuration")
+    if type(tui.get("screen_reader_detection_done", True)) is not bool:
+        raise ValueError("invalid UI bookkeeping")
     nux = tui.get("model_availability_nux", {})
     if not isinstance(nux, dict) or any(
             not name.strip() or type(value) is not int for name, value in nux.items()):

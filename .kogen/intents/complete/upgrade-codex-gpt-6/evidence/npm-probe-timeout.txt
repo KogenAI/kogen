@@ -1,0 +1,7 @@
+On 2026-09-24 a bounded direct probe attempted to download both official
+Codex 0.156.1 platform tarballs from registry.npmjs.org and recompute their
+sha512 integrity values. The request exceeded the 30-second bounded execution
+window before producing a result. This is an invalid/incomplete probe and is
+not readiness evidence. The Draft retains the previously captured npm metadata
+and integrity values; Build-owned installer tests and `make live-native` remain
+the acceptance evidence.

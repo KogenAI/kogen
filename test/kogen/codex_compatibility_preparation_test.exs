@@ -35,7 +35,7 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
       |> Path.wildcard(match_dot: true)
       |> Enum.filter(&File.regular?/1)
 
-    refute Enum.any?(written, &(File.read!(&1) =~ "gpt-5.6-sol"))
+    refute Enum.any?(written, &(File.read!(&1) =~ ~r/gpt-(5\.6|6)-sol/))
   end
 
   test "the tracked config's codex route resolves with complete role and helper profiles" do
@@ -104,10 +104,18 @@ defmodule Kogen.Codex.CompatibilityPreparationTest do
     root = temporary_root("pty-trust")
     on_exit(fn -> File.rm_rf!(root) end)
 
-    program =
-      "import sys, termios, time; print('1. Yes, continue\\nPress enter to continue', flush=True); time.sleep(.2); termios.tcflush(0, termios.TCIFLUSH); sys.stdin.readline(); print('TRUST_MARKER', flush=True)"
+    # 0.154.0 and 0.156.1 native trust screens, in that order. 0.156.1 places
+    # the title's words with cursor moves, not spaces, as observed live.
+    screens = [
+      "1. Yes, continue\\nPress enter to continue",
+      "Trust\\x1b[1Cthis\\x1b[1Cfolder?\\n> 1. Trust and continue\\n  2. Quit\\nenter continue"
+    ]
 
-    for {selected, expected} <- [{root, true}, {root <> "-other", false}, {nil, false}] do
+    for screen <- screens,
+        {selected, expected} <- [{root, true}, {root <> "-other", false}, {nil, false}] do
+      program =
+        "import sys, termios, time; print('#{screen}', flush=True); time.sleep(.2); termios.tcflush(0, termios.TCIFLUSH); sys.stdin.readline(); print('TRUST_MARKER', flush=True)"
+
       receipt = Path.join(root, "receipt-#{System.unique_integer([:positive])}.json")
 
       {_, status} =

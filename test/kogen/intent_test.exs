@@ -150,13 +150,13 @@ defmodule Kogen.IntentTest do
       assert codex == %{
                route: "codex",
                harness: "codex",
-               shaping: %{model: "gpt-5.6-sol", effort: "low"},
-               developer: %{model: "gpt-5.6-sol", effort: "low"},
-               reviewer: %{model: "gpt-5.6-terra", effort: "medium"},
+               shaping: %{model: "gpt-6-sol", effort: "medium"},
+               developer: %{model: "gpt-6-sol", effort: "medium"},
+               reviewer: %{model: "gpt-6-sol", effort: "high"},
                helpers: %{
-                 scout: %{model: "gpt-5.6-luna", effort: "low"},
-                 worker: %{model: "gpt-5.6-luna", effort: "medium"},
-                 expert: %{model: "gpt-5.6-sol", effort: "medium"}
+                 scout: %{model: "gpt-6-luna", effort: "low"},
+                 worker: %{model: "gpt-6-luna", effort: "high"},
+                 expert: %{model: "gpt-6-sol", effort: "high"}
                },
                outer_resumptions: 2,
                verification_retries: 2

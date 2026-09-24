@@ -106,8 +106,8 @@ class InstallerTest(unittest.TestCase):
         first = installer.install(self.root, platform=self.platform, registry=registry,
             fetch=lambda _: payload, native_check=lambda runtime: launches.append(runtime["version"]),
             progress=lambda _: None)
-        self.assertEqual(selected, ["0.154.0-darwin-arm64"])
-        self.assertEqual(launches, ["0.154.0"])
+        self.assertEqual(selected, ["0.156.1-darwin-arm64"])
+        self.assertEqual(launches, ["0.156.1"])
         account = self.root / "account-state"
         account.write_bytes(b"synthetic-credentials-and-retained-conversations")
         repeated = installer.install(self.root, platform=self.platform,
@@ -131,16 +131,59 @@ class InstallerTest(unittest.TestCase):
             artifact["integrity"] = artifact_integrity
 
     def test_install_moves_an_older_default_to_the_checkout_pin_without_deleting_it(self):
-        self.stage("0.153.4")
-        installer.activate(self.root, "0.153.4", "-", platform=self.platform)
+        previous = self.stage("0.154.0")
+        installer.activate(self.root, "0.154.0", "-", platform=self.platform)
+        account = self.root / "accounts/shared/auth.json"
+        account.parent.mkdir(parents=True)
+        account.write_bytes(b"synthetic-account")
         payload = package_tar()
         result = installer.install(
             self.root, platform=self.platform, registry=registry_for(payload),
             fetch=lambda _url: payload, native_check=lambda _runtime: None,
             progress=lambda _message: None,
         )
-        self.assertEqual(result["version"], installer.INITIAL_VERSION)
-        self.assertTrue((self.root / "runtimes/0.153.4-darwin-arm64").is_dir())
+        self.assertEqual(installer.INITIAL_VERSION, "0.156.1")
+        self.assertEqual(result["version"], "0.156.1")
+        self.assertEqual(installer.inspect(self.root, platform=self.platform), result)
+        # The retained 0.154.0 tree still verifies at its original executable,
+        # so an operation that selected it before activation keeps working.
+        self.assertEqual(installer.verify_runtime(self.root, "0.154.0", self.platform), previous)
+        self.assertNotEqual(previous["executable"], result["executable"])
+        self.assertEqual(account.read_bytes(), b"synthetic-account")
+
+    def test_failed_pinned_upgrade_keeps_the_working_prior_runtime_selected(self):
+        previous = self.stage("0.154.0")
+        installer.activate(self.root, "0.154.0", "-", platform=self.platform)
+        default = (self.root / "default.json").read_bytes()
+        account = self.root / "accounts/shared/auth.json"
+        account.parent.mkdir(parents=True)
+        account.write_bytes(b"synthetic-account")
+        payload = package_tar()
+        def rejected_native(_runtime):
+            raise installer.InstallerError("native validation failed")
+        failures = [
+            dict(fetch=lambda _url: package_tar(extra={"package/extra": b"x"})),
+            dict(fetch=lambda _url: package_tar(omit="package/vendor/aarch64-apple-darwin/codex-path/rg"),
+                 registry=registry_for(package_tar(omit="package/vendor/aarch64-apple-darwin/codex-path/rg"))),
+            dict(fetch=lambda _url: payload, native_check=rejected_native),
+        ]
+        for failure in failures:
+            with self.assertRaises(installer.InstallerError):
+                installer.install(self.root, platform=self.platform,
+                                  registry=failure.get("registry", registry_for(payload)),
+                                  fetch=failure["fetch"],
+                                  native_check=failure.get("native_check", lambda _runtime: None),
+                                  progress=lambda _message: None)
+            self.assertEqual((self.root / "default.json").read_bytes(), default)
+            self.assertFalse((self.root / "runtimes/0.156.1-darwin-arm64").exists())
+            self.assertIsNone(installer.required(self.root, platform=self.platform))
+            self.assertEqual(installer.inspect(self.root, platform=self.platform), previous)
+            self.assertEqual(account.read_bytes(), b"synthetic-account")
+        retried = installer.install(self.root, platform=self.platform, registry=registry_for(payload),
+                                    fetch=lambda _url: payload, native_check=lambda _runtime: None,
+                                    progress=lambda _message: None)
+        self.assertEqual(retried["version"], "0.156.1")
+        self.assertEqual(installer.verify_runtime(self.root, "0.154.0", self.platform), previous)
 
     def test_download_and_incomplete_tree_failures_preserve_working_default_and_credentials(self):
         self.stage("1.0.0")

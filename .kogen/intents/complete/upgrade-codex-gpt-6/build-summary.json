@@ -1,0 +1,146 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "Y8FFhn9O9sPSeYfX5CvQQG9DGrvqT_A2",
+      "candidate_id": "7a3e970f89bf8a20ea28894f07d550f241aae480",
+      "developer_session_id": "1cba740d-f0f0-4761-ae4e-61c0dd6afeb4",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "04498d04-3a58-4a71-98f2-a59e0fe5c48c",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "Y8FFhn9O9sPSeYfX5CvQQG9DGrvqT_A2",
+          "candidate_id": "7a3e970f89bf8a20ea28894f07d550f241aae480",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T11:56:13Z",
+          "session_id": "1cba740d-f0f0-4761-ae4e-61c0dd6afeb4",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "Y8FFhn9O9sPSeYfX5CvQQG9DGrvqT_A2",
+          "candidate_id": "7a3e970f89bf8a20ea28894f07d550f241aae480",
+          "exit_code": 0,
+          "finished_at": "2026-09-24T12:06:17Z",
+          "session_id": "1cba740d-f0f0-4761-ae4e-61c0dd6afeb4",
+          "status": "passed",
+          "target": "live-native"
+        }
+      ]
+    }
+  ],
+  "build_id": "YmvihNr7czyNMcN74nMiKW8Y",
+  "candidate_id": "7a3e970f89bf8a20ea28894f07d550f241aae480",
+  "developer_session_id": "1cba740d-f0f0-4761-ae4e-61c0dd6afeb4",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 3446318,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/YmvihNr7czyNMcN74nMiKW8Y/record.json",
+    "schema_version": 2,
+    "sha256": "62d1a47ab132559db7b1d13190ff66bfb7ffe31ec80f5707a62fc8593fd31bda"
+  },
+  "intent": {
+    "id": "01a0d249-487f-7ec0-9956-6f3375c5faa1",
+    "slug": "upgrade-codex-gpt-6",
+    "title": "Upgrade managed Codex runtime and GPT-6 route"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "04498d04-3a58-4a71-98f2-a59e0fe5c48c"
+  },
+  "risks": [
+    {
+      "id": "native-runtime-compatibility"
+    },
+    {
+      "id": "probe-process-termination"
+    }
+  ],
+  "route": {
+    "harness": "claude",
+    "name": "claude"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "INITIAL_VERSION and PINNED_ARTIFACTS (lines ~29-41)",
+          "path": "priv/kogen/codex/install.py"
+        },
+        {
+          "locator": "dist.integrity / dist.tarball match install.py darwin-x64 entry",
+          "path": ".kogen/intents/approved/upgrade-codex-gpt-6/evidence/npm-darwin-x64.json"
+        },
+        {
+          "locator": "dist.integrity / dist.tarball match install.py darwin-arm64 entry",
+          "path": ".kogen/intents/approved/upgrade-codex-gpt-6/evidence/npm-darwin-arm64.json"
+        },
+        {
+          "locator": "asserts runtime version and native --version == 0.156.1",
+          "path": "test/kogen/codex_native_live_test.exs"
+        },
+        {
+          "locator": "legacy_trust_prompt / current_trust_prompt, still gated on scoped fixture",
+          "path": "priv/kogen/codex/compatibility/pty_driver.py"
+        },
+        {
+          "locator": "attempts[-1].check exit_code 0; attempts[-1].targets[0] live-native passed, 4 passed",
+          "path": ".kogen/runtime/scenario-tracking/YmvihNr7czyNMcN74nMiKW8Y/record.json"
+        }
+      ],
+      "id": "managed-runtime",
+      "reason": "install.py sets INITIAL_VERSION to 0.156.1. Both darwin-arm64 and darwin-x64 entries pin exact npm tarball URLs and sha512 integrity values, which match byte-for-byte the approved npm evidence files. The integrity, retry and atomic-activation code is unchanged. Installer tests assert that 0.156.1 is selected and launched. pty_driver.py accepts 0.156.1's new trust screen only under the same scoped-fixture conditions, and native_settings.py accepts the new screen_reader_detection_done flag only as a boolean. The recorded make check passed (exit 0). The recorded live-native receipt passed, including NativeLiveTest, which installs the runtime, asserts version 0.156.1 and runs `--version` without personal Codex. CompatibilityTest's bounded compatibility runner also passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "line 1 default_route: claude; routes.codex profiles",
+          "path": ".kogen/config.yaml"
+        },
+        {
+          "locator": "codex route exact profile assertions",
+          "path": "test/kogen/configuration_support_contract_test.exs"
+        },
+        {
+          "locator": "test 'the tracked codex route launches each root role with its exact GPT-6 profile'",
+          "path": "test/kogen/harness_args_test.exs"
+        },
+        {
+          "locator": "test 'the tracked codex route writes the exact GPT-6 helper profiles'",
+          "path": "test/kogen/codex_environment_test.exs"
+        },
+        {
+          "locator": "routes.codex example block",
+          "path": "README.md"
+        }
+      ],
+      "id": "gpt6-codex-route",
+      "reason": "In .kogen/config.yaml, `default_route` is still `claude`. The codex route now uses gpt-6-sol medium for shaping and developer, gpt-6-sol high for reviewer and expert, gpt-6-luna low for scout, and gpt-6-luna high for worker. The README example and test/support/route_config.ex match. Tests check that the tracked default stays claude and that the codex route resolves to this exact matrix. They also check Developer, Developer-resume, Reviewer and Shaper launch arguments, reject any gpt-5 or terra values, and confirm the exact helper profile TOML and agents.* arguments. No gpt-5 or terra references remain in lib/, priv/kogen/codex or the config. live-native passed, including the compatibility runner and the native helper live dispatch.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "test_install_moves_an_older_default_to_the_checkout_pin_without_deleting_it; test_failed_pinned_upgrade_keeps_the_working_prior_runtime_selected",
+          "path": "test/support/codex_installer_test.py"
+        },
+        {
+          "locator": "test 'an operation already using the retained 0.154.0 runtime keeps it across the 0.156.1 upgrade'",
+          "path": "test/kogen/codex_management_test.exs"
+        },
+        {
+          "locator": "fixture stages 0.154.0, 0.156.1, 0.200.0 and activates 0.154.0",
+          "path": "test/support/managed_codex_fixture.py"
+        }
+      ],
+      "id": "existing-runtime-upgrade",
+      "reason": "The installer tests start from an activated 0.154.0 runtime. After upgrading, the old runtime still verifies at its original executable, the new executable is different, and the credentials file is unchanged. Three failure cases are covered: an unexpected archive entry, a missing required file, and a rejected native check. In each case the default.json bytes are preserved, no 0.156.1 directory remains, 0.154.0 stays inspected, and credentials are kept. A later retry succeeds. A new management test starts an in-flight operation on 0.154.0 and then installs 0.156.1. The in-flight operation keeps launching the 0.154.0 executable, a fresh open gets 0.156.1, and auth.json is intact. make check and live-native both passed.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

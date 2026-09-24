@@ -62,6 +62,8 @@ defmodule Kogen.Codex.EnvironmentTest do
     bytes = """
     [projects."/another/project"]
     trust_level = "trusted"
+    [tui]
+    screen_reader_detection_done = true
     [tui.model_availability_nux]
     "gpt-5.6-sol" = 1
     """
@@ -86,6 +88,7 @@ defmodule Kogen.Codex.EnvironmentTest do
           "[projects.\"/another/project\"]\ntrust_level = 'trusted'\nextra = true",
           "[tui.model_availability_nux]\nmodel = true",
           "[tui]\nnotifications = ['command']",
+          "[tui]\nscreen_reader_detection_done = 'yes'",
           "not valid TOML"
         ] do
       File.write!(settings, hostile)
@@ -145,6 +148,30 @@ defmodule Kogen.Codex.EnvironmentTest do
 
     assert File.read!(Path.join(Path.dirname(value!(third.env, "HOME")), "worker.toml")) =~
              "different-worker"
+  end
+
+  test "the tracked codex route writes the exact GPT-6 helper profiles" do
+    root = temporary_root!()
+    on_exit(fn -> File.rm_rf(root) end)
+    %{project: project, operation: operation, scope: scope} = paths!(root)
+    assert {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
+    result = Environment.prepare(%{"executable" => "codex"}, scope, config, project, operation)
+    generation = Path.dirname(value!(result.env, "HOME"))
+
+    expected = %{
+      "scout" => {"gpt-6-luna", "low"},
+      "worker" => {"gpt-6-luna", "high"},
+      "expert" => {"gpt-6-sol", "high"}
+    }
+
+    for {role, {model, effort}} <- expected do
+      path = Path.join(generation, "#{role}.toml")
+
+      assert File.read!(path) ==
+               "model = \"#{model}\"\nmodel_reasoning_effort = \"#{effort}\"\n"
+
+      assert "agents.#{role}.config_file=#{Jason.encode!(path)}" in result.args
+    end
   end
 
   test "concurrent preparations receive distinct private generations" do

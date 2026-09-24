@@ -141,7 +141,7 @@ defmodule Kogen.Codex.ManagementTest do
     authenticate_shared!(ctx)
     assert {:ok, selection} = Codex.open(ctx.config)
     assert {:ok, %{active: [active], login: :configured}} = Codex.status()
-    assert active["runtime"]["version"] == "0.154.0"
+    assert active["runtime"]["version"] == "0.156.1"
     assert Enum.all?(trace(ctx.root), &(Enum.take(&1["args"], -2) == ["login", "status"]))
     Codex.close(selection)
     assert {:ok, %{active: []}} = Codex.status()
@@ -157,7 +157,7 @@ defmodule Kogen.Codex.ManagementTest do
     assert {:ok, _} = Codex.installer("activate", ["0.200.0", "0.154.0"])
     assert {:ok, fresh} = Codex.open(ctx.config)
     assert old.runtime["executable"] == fresh.runtime["executable"]
-    assert fresh.runtime["version"] == "0.154.0"
+    assert fresh.runtime["version"] == "0.156.1"
     personal_bin = Path.join(ctx.root, "personal-bin")
     File.mkdir!(personal_bin)
     File.write!(Path.join(personal_bin, "codex"), "#!/bin/sh\nexit 87\n")
@@ -191,6 +191,62 @@ defmodule Kogen.Codex.ManagementTest do
     assert Enum.all?(launched, &(&1["executable"] == old.runtime["executable"]))
     assert Enum.all?(trace(ctx.root), &is_nil(&1["override"]))
     Codex.close(old)
+    Codex.close(fresh)
+  end
+
+  test "an operation already using the retained 0.154.0 runtime keeps it across the 0.156.1 upgrade",
+       ctx do
+    install_fixture!(ctx)
+    authenticate_shared!(ctx)
+    assert {:ok, %{"version" => "0.154.0"} = previous} = Codex.installer("inspect")
+    {:ok, scope} = Codex.effective_scope(ctx.source)
+
+    in_flight = %{
+      harness: "codex",
+      runtime: previous,
+      scope: scope,
+      config: ctx.config,
+      project: ctx.source,
+      operation: State.operation!(ctx.root),
+      lease: State.lease!(ctx.root, previous, ctx.source)
+    }
+
+    assert {:ok, %{"version" => "0.156.1"} = upgraded} = Codex.installer("install")
+    assert {:ok, ^upgraded} = Codex.installer("inspect")
+    assert upgraded["executable"] != previous["executable"]
+    assert {:ok, %{active: [active]}} = Codex.status()
+    assert active["runtime"] == previous
+
+    assert {:ok, %{session_id: "managed-developer"}} =
+             Kogen.Harness.launch_developer(
+               "in flight",
+               "fake",
+               "low",
+               [],
+               Codex.launch_context(in_flight)
+             )
+
+    assert {:ok, fresh} = Codex.open(ctx.config)
+    assert fresh.runtime == upgraded
+
+    assert {:ok, %{session_id: "managed-developer"}} =
+             Kogen.Harness.launch_developer(
+               "fresh",
+               "fake",
+               "low",
+               [],
+               Codex.launch_context(fresh)
+             )
+
+    launched = trace(ctx.root) |> Enum.filter(&("exec" in &1["args"]))
+
+    assert Enum.map(launched, & &1["executable"]) == [
+             previous["executable"],
+             upgraded["executable"]
+           ]
+
+    assert File.read!(Path.join(scope.path, "auth.json")) == "shared-account"
+    Codex.close(in_flight)
     Codex.close(fresh)
   end
 

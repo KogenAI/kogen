@@ -12,13 +12,13 @@ defmodule Kogen.Codex.NativeLiveTest do
     System.put_env("KOGEN_CODEX_ROOT", root)
     on_exit(fn -> File.rm_rf!(root) end)
     assert {:ok, runtime} = Kogen.Codex.installer("install")
-    assert runtime["version"] == "0.154.0"
+    assert runtime["version"] == "0.156.1"
     assert {:ok, ^runtime} = Kogen.Codex.installer("install")
     native_home = Path.join(root, "no-personal-home")
     File.mkdir_p!(native_home)
     native_env = ["-i", "HOME=#{native_home}", "CODEX_HOME=#{native_home}", "PATH=/usr/bin:/bin"]
     {version, 0} = System.cmd("/usr/bin/env", native_env ++ [runtime["executable"], "--version"])
-    assert version =~ "0.154.0"
+    assert version =~ "0.156.1"
 
     {help, 0} =
       System.cmd("/usr/bin/env", native_env ++ [runtime["executable"], "login", "--help"])

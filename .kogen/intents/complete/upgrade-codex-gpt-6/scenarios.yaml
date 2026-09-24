@@ -1,0 +1,38 @@
+- id: managed-runtime
+  given: A clean checkout has no usable managed Codex runtime for the pinned release and the host is a supported macOS arm64 or x64 platform.
+  when: The Shaper or user runs the managed Codex install flow for this checkout.
+  then: Kogen stages, verifies, and activates exact official Codex 0.156.1 artifacts for the host platform, while preserving installer integrity, atomic activation, retry, and existing-runtime protections.
+  wrong_result: The installer resolves an unpinned/latest-at-build artifact, accepts a mismatched or unverifiable archive, overwrites a working runtime, or activates a different version.
+  verified_by: [check, live-native]
+  evidence: Installer unit/contract coverage plus authenticated native compatibility receipt reporting the selected 0.156.1 runtime.
+  proof:
+    offline: [test/kogen/codex_installer_test.exs]
+    paid_target: live-native
+    paid_reason: "provider-required: live-native; observation: Codex 0.156.1 starts and completes native compatibility under the selected Kogen scope; offline-limit: fixtures cannot establish native binary execution or authenticated managed-runtime behavior"
+    affected_paths: [priv/kogen/codex/install.py, priv/kogen/codex/compatibility/pty_driver.py, test/kogen/codex_installer_test.exs, test/kogen/codex_native_live_test.exs, test/support/codex_installer_test.py, test/support/managed_codex_fixture.py, README.md]
+
+- id: gpt6-codex-route
+  given: The selected route is `codex`, and the route configuration contains shaping, Developer, Reviewer, and helper profiles.
+  when: Kogen resolves and launches Codex work after the upgrade.
+  then: The tracked repository default remains `claude`, while explicit `codex` route selection uses `gpt-6-sol` at medium for shaping and Developer, `gpt-6-sol` at high for Reviewer and expert, and `gpt-6-luna` at low for scout and high for worker; the selected runtime and route are retained across compatibility and resume behavior.
+  wrong_result: The repository default changes to Codex, a role silently falls back to GPT-5.6 or Terra, receives a different model or effort than the proposed matrix, or uses a stale runtime/session after the upgrade.
+  verified_by: [check, live-native]
+  evidence: Configuration and launch-argument assertions plus the authenticated native helper/compatibility receipt covering every role and exact runtime selection.
+  proof:
+    offline: [test/kogen/configuration_support_contract_test.exs, test/kogen/harness_args_test.exs, test/kogen/codex_environment_test.exs]
+    paid_target: live-native
+    paid_reason: "provider-required: live-native; observation: bounded compatibility runner completes with the configured GPT-6 profiles across role/helper launches; offline-limit: fake transports cannot establish provider model availability or native role behavior"
+    affected_paths: [.kogen/config.yaml, lib/kogen/codex/**, lib/kogen/harness/codex.ex, test/kogen/**, test/support/**, README.md]
+
+- id: existing-runtime-upgrade
+  given: A working managed Codex 0.154.0 runtime is installed, selected, and an operation may already be active.
+  when: Kogen installs and activates the approved 0.156.1 runtime, including when staging or native validation fails.
+  then: The new runtime is staged and activated atomically; active operations retain their concrete 0.154.0 runtime, and a failed upgrade preserves the working runtime and credentials.
+  wrong_result: Installation overwrites or invalidates the active runtime, switches an in-flight operation unexpectedly, deletes credentials, or leaves a partial 0.156.1 installation selected after failure.
+  verified_by: [check, live-native]
+  evidence: Installer preservation tests plus the native compatibility receipt for active-runtime retention and failed-staging controls.
+  proof:
+    offline: [test/kogen/codex_management_test.exs, test/kogen/codex_installer_test.exs]
+    paid_target: live-native
+    paid_reason: "provider-required: live-native; observation: managed runtime activation and active-use compatibility complete without disturbing retained runtime state; offline-limit: fixtures cannot establish native runtime/session retention"
+    affected_paths: [priv/kogen/codex/install.py, lib/kogen/codex/**, test/kogen/codex_management_test.exs, test/kogen/codex_installer_test.exs, README.md]

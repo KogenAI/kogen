@@ -1,0 +1,28 @@
+{
+  "dist": {
+    "attestations": {
+      "provenance": {
+        "predicateType": "https://slsa.dev/provenance/v1"
+      },
+      "url": "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.156.1-darwin-arm64"
+    },
+    "fileCount": 44,
+    "integrity": "sha512-Jg6wbdV+wmMZczhwE74GSxOYEZlViKXn6KyCw/yfrz3PAKFD14xljuPopmdhWC1+8IKU2WdN5fdmXNPt2q4HPA==",
+    "shasum": "6490e0ad8328750b1169ca1e8f8a79d210f29d3a",
+    "signatures": [
+      {
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+        "sig": "MEUCIGZxHqkUOewDIA95DuD6GI+Qg/fcw2iFsAz5VhDutIsaAiEAuWzzWmCRdFtJCTn6Zu4twLcWLkeMQLcBWM6s/UGP+Nc="
+      },
+      {
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+        "sig": "MEYCIQDHRzYX/6aKcJgnY1GSH4beg9bLrn52RGXpvCIYaMPz0AIhANlvgc8kF0lYN+5vS8f9C4wlNgKBpppLlTAI9idvgODD"
+      }
+    ],
+    "tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.156.1-darwin-arm64.tgz",
+    "unpackedSize": 326379086
+  },
+  "package": "@openai/codex",
+  "published": "2026-09-23T02:50:04.460Z",
+  "version": "0.156.1-darwin-arm64"
+}

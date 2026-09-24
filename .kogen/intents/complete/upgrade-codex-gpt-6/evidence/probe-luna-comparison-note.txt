@@ -1,0 +1,7 @@
+Provider probes used separate Codex CLI 0.156.1, disposable workspaces, and a real installed pytest wrapper.
+
+Luna medium: rc=0, external elapsed 109.7s. Model edited ranges.py and ./run_tests.sh reported 4 passed. Turn usage: input 79,350; cached input 45,312; output 769; reasoning output 151. The wrapper elapsed includes provider/agent work and is not a comparable Kogen-role timing.
+
+Luna max: model edited ranges.py and ./run_tests.sh reported 4 passed. Turn usage: input 95,920; cached input 79,360; output 1,272; reasoning output 450. The outer process did not exit by the 120s timeout after the successful turn, so no reliable wall-time result is claimed.
+
+Controls/limits: same fixture and prompt family; this is a tiny synthetic worker task, not Kogen acceptance evidence. The model changed only the implementation. No comparative success-rate conclusion is justified from one run per effort; the useful observation is that both Luna medium and max solved the bounded task, while max consumed more reasoning/output tokens and did not yield an observable quality difference.

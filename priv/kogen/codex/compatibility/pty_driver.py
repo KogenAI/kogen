@@ -258,12 +258,24 @@ def main():
                             terminal_errors.append(str(error))
                     text = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", b"".join(chunks))
                     fixture = os.environ.get("KOGEN_COMPATIBILITY_TRUST_FIXTURE")
+                    legacy_trust_prompt = (
+                        b"Yes, continue" in text and b"Press enter to continue" in text
+                    )
+                    # Native 0.156.1 replaced that screen with "Trust this
+                    # folder?" whose first (default) option is "Trust and
+                    # continue". It positions the title's words with cursor
+                    # moves rather than spaces, so compare whitespace-free text;
+                    # the "enter continue" footer is drawn last.
+                    compact = re.sub(rb"\s+", b"", text)
+                    current_trust_prompt = (
+                        b"Trustthisfolder?" in compact and b"Trustandcontinue" in compact
+                        and b"entercontinue" in compact
+                    )
                     if (not trust_answered and trust_ready_at is None and fixture
                             and os.path.realpath(fixture) == os.path.realpath(os.getcwd())
                             and os.environ.get("KOGEN_PROJECT_ROOT") == fixture
-                            and b"Yes, continue" in text
-                            and b"Press enter to continue" in text):
-                        # Native 0.154.0 draws protected onboarding screens before
+                            and (legacy_trust_prompt or current_trust_prompt)):
+                        # Native Codex draws protected onboarding screens before
                         # discard_pending_input_before_interactive_screen (a drain
                         # bounded to one second in tui/input_boundary.rs). Match
                         # the public Shape driver's settling delay so Enter is

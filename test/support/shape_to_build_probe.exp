@@ -112,7 +112,7 @@ proc handle_trust_dialog {} {
   catch {
     expect {
       -timeout 20
-      -re {Yes, continue|Press enter to continue} {
+      -re {Yes, continue|Press enter to continue|Trust and continue} {
         set saw_trust 1
         puts "PROBE: saw the fully-rendered workspace trust dialog"
       }

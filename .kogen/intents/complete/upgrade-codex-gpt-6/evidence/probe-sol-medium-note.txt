@@ -1,0 +1,4 @@
+Probe: separate Codex CLI 0.156.1, gpt-6-sol, medium effort, disposable /tmp workspace.
+Task: implement compact_ranges over a fixed four-case Python fixture without changing tests.
+Observed: implementation completed; direct assertions and py_compile passed. Codex first attempted pytest, but pytest executable was unavailable; it then ran equivalent inline assertions successfully.
+Limitation/failure: Codex attempted `rm -rf __pycache__` during cleanup; the tracked execution guard rejected it. The process did not terminate cleanly, so no reliable wall-time/cost receipt exists. This is retained as model behavior evidence only, not benchmark success or readiness proof.
