@@ -58,6 +58,7 @@ defmodule Kogen.IsolatedTargetEvidenceTest do
 
     assert %ExUnit.AssertionError{message: message} = error
     assert message =~ "child failure after evidence"
+    refute message =~ "KOGEN_TARGET_EVIDENCE_MANIFEST"
     assert forwarded == "KOGEN_TARGET_EVIDENCE_MANIFEST\tfailure-frame\n"
   end
 

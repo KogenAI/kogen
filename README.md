@@ -11,11 +11,13 @@ The core is a starting point, not the finished product.
 
 The core runs inside this repository through one pluggable harness interface
 with two adapters: Claude Code (`harness: claude`) and Codex CLI
-(`harness: codex`). `.kogen/config.yaml` names one or more routes, each pairing
-a harness with role and helper profiles; a Shape or Build selects one route,
-by default the configured `default_route`. This repository's `default_route`
-is `claude`. Installing Kogen into arbitrary projects and other harnesses are
-future work.
+(`harness: codex`). `.kogen/config.yaml` names one or more routes, each
+assigning every role a harness and a model profile; a Shape or Build selects
+one route, by default the configured `default_route`. This repository's
+`default_route` is `claude`. The `claude-dominant-adversarial-codex` route lets
+Claude Code shape and develop while Codex reviews and answers Expert
+questions; `codex-dominant-adversarial-claude` is its mirror image. Installing
+Kogen into arbitrary projects and other harnesses are future work.
 The broader design remains a longer-term direction, open to change as Kogen develops.
 
 This repository is being opened quietly so the ongoing work and its history
@@ -35,6 +37,10 @@ mix kogen.claude.status
 make check
 mix kogen.shape
 ```
+
+A hybrid route needs both harnesses; before `mix kogen.shape --route
+claude-dominant-adversarial-codex`, also run `mix kogen.codex.install`,
+`mix kogen.codex.login` and `mix kogen.codex.status`.
 
 For a route with `harness: codex`, use `mix kogen.codex.install`,
 `mix kogen.codex.login` and `mix kogen.codex.status` instead — pass
@@ -210,7 +216,7 @@ provider launch and must return to Shaping.
 ## Configuration and local data
 
 Edit the tracked `.kogen/config.yaml` to define named **routes** and a
-`default_route`. Each route pairs one `harness` (`claude` or `codex`) with the
+`default_route`. A clean route pairs one `harness` (`claude` or `codex`) with the
 model and effort for `shaping`, `developer`, `reviewer` and each required
 helper profile (`helpers.scout`, `helpers.worker`, `helpers.expert`);
 `outer_resumptions` and `verification_retries` stay top-level, shared by every
@@ -237,18 +243,53 @@ routes:
       scout:  {model: gpt-6-luna, effort: low}
       worker: {model: gpt-6-luna, effort: high}
       expert: {model: gpt-6-sol, effort: high}
+  claude-dominant-adversarial-codex:
+    shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+    developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+    reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
+    expert:    {harness: codex, model: gpt-6-sol, effort: high}
+    helpers:
+      claude:
+        scout:  {model: claude-sonnet-5, effort: low}
+        worker: {model: claude-sonnet-5, effort: medium}
+      codex:
+        scout:  {model: gpt-6-luna, effort: low}
+        worker: {model: gpt-6-luna, effort: high}
+  # codex-dominant-adversarial-claude is the mirror image: Codex shapes and
+  # develops, Claude Code reviews and answers Expert questions.
 outer_resumptions: 2
 verification_retries: 2
 ```
 
-This repository's own `.kogen/config.yaml` matches the shape above. A `--route
+A hybrid (role-level) route has no top-level `harness`: each of `shaping`,
+`developer`, `reviewer` and `expert` names its own `harness`,
+`model` and `effort`, and `helpers` holds the native `scout` and `worker`
+profiles of every harness a role uses. A missing role assignment or helper set
+is refused with its key path; nothing falls back to the dominant harness. A
+clean route needs no new keys: its Expert is `helpers.expert` on its one
+harness; a role-level `harness` inside a clean route is refused. Helpers are always native to the
+harness of the role that launches them. The Expert is a role: a role on the
+Expert's harness delegates to it as its native expert helper, and a role on
+another harness (in `claude-dominant-adversarial-codex`, Shaping and the
+Developer) consults it only through `mix kogen.expert`, which launches one
+fresh read-only Expert on its assigned harness, model and effort from the
+frozen `KOGEN_EXPERT` assignment the role's launch carries, reads its question
+on stdin and prints its answer. It never reads `.kogen/config.yaml`, and no
+native helper is ever substituted for it.
+
+This repository's own `.kogen/config.yaml` defines these four routes: the clean
+`claude` and `codex` routes and both hybrids. A `--route
 <name>` flag on `mix kogen.shape` or `mix kogen.build` selects the route for
 that session; without it, the session uses `default_route`. An unknown route
 name fails before any harness open or provider launch, naming the unknown
 route and listing the available route names in sorted order. Only the
-selected route's harness and models are validated for support and readiness;
+selected route's harnesses and models are validated for support and readiness;
 another route may name an unsupported or unready harness without blocking a
-session on a different route. A config still using the old flat shape
+session on a different route. Shape checks the readiness of the Shaping
+and Expert harnesses, and Build of the Developer, Reviewer and Expert harnesses,
+before any role launches; a harness that is not installed, logged in or
+supported fails naming its roles and harness, and selections already held are
+released. A config still using the old flat shape
 (top-level `harness:` and roles, no `routes`) is refused before launch, with a
 message naming `default_route` and `routes` as the replacement — there is no
 compatibility reader or migration.
@@ -264,10 +305,17 @@ Shaping records the selected route in the Draft (`shaping.route`, alongside
 route used for that visit; the Draft's original `shaping` block is never
 rewritten, and Drafts saved before routes existed remain continuable. A Build
 resolves its route once and freezes it — name, harness and every resolved
-role/helper profile — in its scenario-tracking record; later edits to
+role/helper profile under `route`, and the complete role matrix (every
+role's harness/model/effort, including the Expert, and each
+harness's native helper profiles) under the additive `role_assignment` — in
+its scenario-tracking record, and takes every launch profile from that frozen
+matrix; later edits to
 `.kogen/config.yaml`, including changing `default_route`, do not affect a
-Build already in progress. The committed `build-summary.json` and
-`evidence.md` name the Build's route and harness.
+Build already in progress. The Developer is resumed on its own harness and
+session, Stop verification stays with the Developer, and each Review is a fresh
+session on the Reviewer's harness with the same review packet. The committed
+`build-summary.json` names the Build's route and harness and carries the same
+`role_assignment`; `evidence.md` names every role's harness.
 
 [Shared execution guidance](priv/kogen/prompts/execution-policy.md) has one
 [renderer](lib/kogen/execution_policy.ex), expanded by fresh/continued Shape
@@ -332,7 +380,7 @@ Drafts, Approved Intents, Build locks, and raw runtime logs are local and ignore
 
 ## Choosing a route
 
-Each route's `harness` in `.kogen/config.yaml` is `claude` or `codex`; any
+Each route's harnesses in `.kogen/config.yaml` are `claude` or `codex`; any
 other name is rejected with that list, but only for the route a session
 selects — an unselected route may name an unsupported harness without
 blocking other routes. Build, Shape and provider-outcome handling call one
@@ -424,7 +472,8 @@ from another model. Opus 5.5 for every root role consumes a subscription quickly
 limits surface as provider errors, never as model substitution.
 
 Each role gets its own Claude Code agents, `kogen-scout`, `kogen-worker` and
-`kogen-expert`, carrying the global helper profiles but only that role's authority:
+`kogen-expert` (the last only when the route assigns the Expert to Claude Code),
+carrying the route's Claude Code helper profiles but only that role's authority:
 Developer scouts are read-only, workers may edit their assigned paths, and experts
 are read-only with Bash; every Reviewer and Shaper helper is read-only. Built-in
 Claude Code agents are denied to every role. The Developer's final message carries
@@ -451,6 +500,8 @@ Device authorization still requires a human. `--project` selects a private proje
 `mix kogen.codex.status` reports the checkout pin, installation and actual active-use records, effective scope, and native local login state. It does not install, authenticate, call a model, expose secrets, or claim remote entitlement. Fresh/continued Shaping and Build stop before provider work when the pinned runtime or selected login is missing.
 
 Managed distributions, accounts, selectors, settings generations, sessions, and compatibility evidence live under `~/Library/Application Support/Kogen/codex`. Per-launch discovery homes exclude personal Codex settings while project guidance and tracked hooks remain available. Shell tools and hooks retain the caller's HOME and exact set/unset XDG semantics. Every managed Codex role and native helper launch carries one central `-c tool_output_token_limit=4000`, about Claude Code's Bash result cap, so a large tool result is not re-sent in full on every later step. Active operations retain their concrete runtime and session across Review and exact resume; new checkouts select their own pin.
+
+The `live-native` compatibility runner drives discovery, interactive Shaping, the Developer with its Stop Check, and the exact Developer resume with its scout helper. The resume is driven by a fixed rework request held in the runner. The real Reviewer is proved by `live-reviewer-rework`, not by a scripted stand-in. The runner owns its own timing: it passes each native turn the unchanged 240 s limit explicitly, and the whole test must finish within 15 minutes. A `timed_out` attempt is rerun once in a fresh fixture, and only if a typical run still fits before that deadline. No other failure is retried. Both attempts' class, provider session ids, elapsed time and cleanup are kept in one repository-relative summary under `.kogen/runtime/codex-compatibility/`, which the test emits as its target evidence manifest.
 
 When upgrading Kogen's pinned Codex runtime, follow the [Codex runtime upgrade workflow](workflows/codex-runtime-upgrade.md).
 

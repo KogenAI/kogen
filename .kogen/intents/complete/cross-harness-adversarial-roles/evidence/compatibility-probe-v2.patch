@@ -1,0 +1,227 @@
+diff --git a/lib/kogen/codex/compatibility.ex b/lib/kogen/codex/compatibility.ex
+index 754eee3..68f33da 100644
+--- a/lib/kogen/codex/compatibility.ex
++++ b/lib/kogen/codex/compatibility.ex
+@@ -16,6 +16,16 @@ defmodule Kogen.Codex.Compatibility do
+           required(String.t()) => String.t()
+         }
+ 
++  # The resume is driven by a fixed rework request. Reviewer behaviour is proved
++  # by the real Build Reviewer in live-reviewer-rework, not by a scripted stand-in.
++  @rework_findings [
++    %{
++      "description" =>
++        "The exact-resume marker and scout helper evidence (resume-rework.txt, helper-environment.json, helper-receipt.txt, helper-context.txt) are missing.",
++      "scenario_ids" => ["compatibility-runner"]
++    }
++  ]
++
+   @type scope :: %{path: Path.t(), name: :shared | :project}
+ 
+   @spec run(runtime(), scope(), Kogen.Intent.config()) :: {:ok, Path.t()} | {:error, term()}
+@@ -92,17 +102,6 @@ defmodule Kogen.Codex.Compatibility do
+         "shaping" => %{"status" => 0, "marker" => true, "cleanup" => true},
+         "developer" => %{"session_id" => developer_id},
+         "resume" => %{"session_id" => developer_id},
+-        "initial_reviewer" => %{
+-          "session_id" => initial_reviewer_id,
+-          "verdict" => "rework",
+-          "scenarios" => initial_scenarios,
+-          "findings" => initial_findings
+-        },
+-        "final_reviewer" => %{
+-          "session_id" => final_reviewer_id,
+-          "verdict" => "accept",
+-          "scenarios" => final_scenarios
+-        },
+         "checks" => checks,
+         "checks_before_resume" => prior_count,
+         "discovery_controls" => %{"ok" => true},
+@@ -120,18 +119,12 @@ defmodule Kogen.Codex.Compatibility do
+         }
+       })
+       when is_list(checks) and is_integer(prior_count) and prior_count >= 0 do
+-    with :ok <- validate_sessions([developer_id, initial_reviewer_id, final_reviewer_id]),
++    with :ok <- validate_sessions([developer_id]),
+          :ok <- check_state(checks, developer_id),
+-         true <- fresh_resume_check?(checks, prior_count, developer_id),
+-         true <- reviewer_requested_rework?(initial_scenarios, initial_findings),
+-         true <-
+-           Enum.any?(
+-             final_scenarios,
+-             &(&1["id"] == "compatibility-runner" and &1["status"] == "satisfied")
+-           ) do
++         true <- fresh_resume_check?(checks, prior_count, developer_id) do
+       :ok
+     else
+-      false -> {:error, :reviewer_did_not_complete_rework_sequence}
++      false -> {:error, :resume_check_missing}
+       {:error, _} = error -> error
+     end
+   end
+@@ -152,13 +145,7 @@ defmodule Kogen.Codex.Compatibility do
+           Map.get(environment, key) == false,
+           do: {key, :caller_environment_mismatch}
+ 
+-    case receipts["final_reviewer"] do
+-      %{"verdict" => "rework"} = review ->
+-        failed ++ [{"final_reviewer", Map.take(review, ~w(findings scenarios))}]
+-
+-      _ ->
+-        failed
+-    end
++    failed
+   end
+ 
+   defp evidence_failures(_), do: []
+@@ -193,38 +180,18 @@ defmodule Kogen.Codex.Compatibility do
+     end
+   end
+ 
+-  defp reviewer_requested_rework?(scenarios, findings)
+-       when is_list(scenarios) and is_list(findings) do
+-    findings != [] and
+-      Enum.any?(
+-        scenarios,
+-        &(&1["id"] == "compatibility-runner" and &1["status"] == "needs_rework")
+-      )
+-  end
+-
+-  defp reviewer_requested_rework?(_, _), do: false
+ 
+   defp exercise(context, config, fixture, discovery) do
+     with {:ok, discovery_receipt} <- probe_discovery(context, fixture, discovery),
+          {:ok, shaping} <- interactive_shaping(context, config, fixture),
+          {:ok, developer} <- developer_turn(bounded(context), config, fixture),
+          {:ok, before_resume} <- check_history(fixture),
+-         {:ok, initial_reviewer} <- initial_reviewer_turn(bounded(context), config, fixture),
+          {:ok, resumed} <-
+-           resume_turn(
+-             bounded(context),
+-             config,
+-             fixture,
+-             developer.session_id,
+-             initial_reviewer.response["findings"]
+-           ),
+-         {:ok, final_reviewer} <- final_reviewer_turn(bounded(context), config, fixture),
++           resume_turn(bounded(context), config, fixture, developer.session_id, @rework_findings),
+          {:ok, checks} <- check_history(fixture) do
+       for {name, turn} <- [
+             {"developer", developer},
+-            {"initial-reviewer", initial_reviewer},
+-            {"resume", resumed},
+-            {"final-reviewer", final_reviewer}
++            {"resume", resumed}
+           ] do
+         File.write!(
+           Path.join(fixture, ".kogen/runtime/compatibility-#{name}.json"),
+@@ -237,18 +204,6 @@ defmodule Kogen.Codex.Compatibility do
+          "shaping" => shaping,
+          "developer" => %{"session_id" => developer.session_id},
+          "resume" => %{"session_id" => resumed.session_id},
+-         "initial_reviewer" => %{
+-           "session_id" => initial_reviewer.session_id,
+-           "verdict" => initial_reviewer.verdict,
+-           "scenarios" => initial_reviewer.response["scenarios"],
+-           "findings" => initial_reviewer.response["findings"]
+-         },
+-         "final_reviewer" => %{
+-           "session_id" => final_reviewer.session_id,
+-           "verdict" => final_reviewer.verdict,
+-           "scenarios" => final_reviewer.response["scenarios"],
+-           "findings" => final_reviewer.response["findings"]
+-         },
+          "checks" => checks,
+          "checks_before_resume" => length(before_resume),
+          "discovery_controls" => discovery_receipt,
+@@ -358,8 +313,7 @@ defmodule Kogen.Codex.Compatibility do
+ 
+   defp resume_turn(context, config, fixture, session_id, findings) do
+     prompt = """
+-    This is the exact compatibility rework resume after the initial independent Reviewer returned
+-    these findings:
++    This is the exact compatibility rework resume. Rework was requested with these findings:
+     #{Jason.encode!(findings)}
+ 
+     Preserve `state.txt` as exactly `corrected`, add `.kogen/runtime/resume-rework.txt` containing
+@@ -390,51 +344,6 @@ defmodule Kogen.Codex.Compatibility do
+     ])
+   end
+ 
+-  defp initial_reviewer_turn(context, config, _fixture) do
+-    prompt = """
+-    You are the initial independent Reviewer for this disposable compatibility fixture. Do not
+-    modify files or run a gate. The Developer has corrected its Stop Check, but no rework resume
+-    has occurred yet. Inspect `state.txt`, `.kogen/runtime/verification-history.jsonl`, and the
+-    runtime receipts. In particular, determine whether the required exact-resume marker and helper
+-    evidence (`resume-rework.txt`, helper environment, project-skill receipt, and personal-context
+-    receipt) are actually absent or inadequate. Those missing artifacts are concrete blocking
+-    evidence for this candidate, so return `rework` with actionable findings citing existing
+-    requirement/fixture files and a `compatibility-runner` assessment of `needs_rework` when they
+-    are missing. Do not invent a pass merely because the first Developer Check settled. Return the
+-    schema-valid verdict for candidate `compatibility-candidate` and attempt
+-    `compatibility-initial-review` based on the inspected candidate.
+-    """
+-
+-    invoke_harness(:launch_reviewer, [
+-      prompt,
+-      config.reviewer.model,
+-      config.reviewer.effort,
+-      context
+-    ])
+-  end
+-
+-  defp final_reviewer_turn(context, config, _fixture) do
+-    prompt = """
+-    You are the final independent Reviewer for this disposable compatibility fixture after a
+-    Developer rework resume. Do not modify files or run a gate. Inspect the revised candidate and
+-    assess the whole contract: `state.txt` is `corrected`; verification history has a failed then
+-    passed Check in one Developer session plus a later passing Check from that exact resumed session;
+-    `resume-rework.txt` contains its exact marker; root, hook, and helper environment receipts have
+-    the restored caller HOME/XDG and selected CODEX_HOME; the helper receipt names the project skill;
+-    and helper context actually records `PERSONAL_CONTEXT_ABSENT`. Also inspect project guidance
+-    content and the discovery receipt rather than treating marker-file existence as proof. Return a
+-    schema-valid verdict for candidate `compatibility-candidate` and attempt
+-    `compatibility-final-review` based only on what you find. Acceptance is not pre-decided. Include
+-    one scenario assessment with id `compatibility-runner`.
+-    """
+-
+-    invoke_harness(:launch_reviewer, [
+-      prompt,
+-      config.reviewer.model,
+-      config.reviewer.effort,
+-      context
+-    ])
+-  end
+ 
+   # The Harness owns JSON/event parsing.  This runner merely supplies the
+   # selected native context; accepting the legacy arity would silently re-resolve
+@@ -460,19 +369,26 @@ defmodule Kogen.Codex.Compatibility do
+           | env:
+               merge_env(context.env, [
+                 {"KOGEN_BOUNDED_EXEC_RECEIPT", receipt},
+-                {"KOGEN_BOUNDED_EXEC_INVOCATION", invocation}
++                {"KOGEN_BOUNDED_EXEC_INVOCATION", invocation},
++                {"KOGEN_BOUNDED_EXEC_TIMEOUT", "300"}
+               ])
+         }
+       end)
+ 
++    started = System.monotonic_time(:millisecond)
+     result = apply(Kogen.Harness, function, arguments)
++    elapsed_ms = System.monotonic_time(:millisecond) - started
+ 
+     path =
+       Path.join(".kogen/runtime", "turn-#{function}-#{System.unique_integer([:positive])}.json")
+ 
+     File.write!(
+       path,
+-      Jason.encode!(%{"operation" => function, "result" => inspect(result, limit: :infinity)})
++      Jason.encode!(%{
++        "operation" => function,
++        "elapsed_ms" => elapsed_ms,
++        "result" => inspect(result, limit: :infinity)
++      })
+     )
+ 
+     case result do

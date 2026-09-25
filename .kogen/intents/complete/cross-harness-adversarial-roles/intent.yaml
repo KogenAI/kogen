@@ -1,0 +1,161 @@
+id: 01a0d2c5-e2aa-7138-9548-975e49df3ea2
+slug: cross-harness-adversarial-roles
+title: Add cross-harness adversarial Reviewer and Expert routes
+status: draft
+default_route_after_build: claude  # unchanged; the flip is a follow-up (risk default-route-flip-deferred)
+depends_on:
+  - slug: bounded-reviewer-evidence
+    roadmap_order: 1
+    roadmap_id: 33
+    requirement: >-
+      Must be merged on main before this Build starts. This Intent relies on its bounded
+      review packet, metadata-only record citations, the central Codex tool_output_token_limit,
+      the live Reviewer-rework fixture root outside the checkout, and the superseded-objection
+      fix, and must keep each of them on every new launch path.
+consumers:
+  - slug: shaping-preflight-audit
+    roadmap_order: 3
+    roadmap_id: 32
+    uses: >-
+      The per-role routing contract (Kogen.Intent.role_harness/2, role_config/2, per-role Shape
+      readiness, Kogen.Harness.role_context/2, the frozen role_assignment) and the Expert's
+      fresh read-only cross-harness launch path as a pattern. This Intent adds no auditor role
+      (Shaper, 2026-09-25 Claude Shaping continuation); #3 adds the auditor slot, its launch
+      plumbing and its wiring together.
+shaped_against:
+  branch: main
+  head: 22a2db955e8941941a80e44c5ce3649cfb449945
+  baseline_note: >-
+    Shaped against main before Intent #1 (bounded-reviewer-evidence) landed. Re-validate on the
+    main that contains #1 before the Build (risk baseline-moves-before-build).
+shaping:
+  route: codex
+  harness: codex
+  model: gpt-6-sol
+  effort: medium
+  started: 2026-09-24T09:36:19.118014Z
+shaping_continuations:
+  - route: codex
+    harness: codex
+    model: gpt-6-sol
+    effort: medium
+    started: 2026-09-24T12:14:01Z
+    checkout:
+      branch: main
+      head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+  - route: claude
+    harness: claude
+    model: claude-opus-5-5
+    effort: medium
+    started: '2026-09-25T05:28:49.626307Z'
+    checkout:
+      branch: main
+      head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+  - route: driver
+    harness: claude
+    model: claude-opus-5-5
+    effort: high
+    started: '2026-09-25T08:20:52Z'
+    checkout:
+      branch: main
+      head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+    note: >-
+      Driver-session shaping subagent, outside Kogen Shaping, under the Shaper's 2026-09-25 batch
+      approval. It rebased the contract on Intent #1, added the auditor slot, kept the 240 s
+      turn limit, and moved the default-route flip to a follow-up after the Sol and Astra audits.
+  - route: claude
+    harness: claude
+    model: claude-opus-5-5
+    effort: medium
+    started: '2026-09-25T12:16:49.620869Z'
+    checkout:
+      branch: main
+      head: 22a2db955e8941941a80e44c5ce3649cfb449945
+    note: >-
+      Kogen Shaping continuation. Ran the admission validation on post-#1 main, reconciled the
+      reference-Candidate and #1-dependency statements, and, on the Shaper's direction, removed
+      the auditor slot and plumbing (moved to shaping-preflight-audit). The Shaper approved the
+      resulting revision in this visit.
+approval:
+  actor: human Shaper
+  approved_by: Shaper (Almir Sarajčić)
+  approved_at: "2026-09-25T12:22:41Z"
+  source: approval.md
+  quotes:
+    - "approved"
+  conversation: Kogen Shaping continuation (route claude, claude-opus-5-5, medium) started 2026-09-25T12:16:49Z
+  scope: >-
+    The reviewed revision: four routes; Reviewer and Expert on the adversarial harness; no
+    auditor (moved to shaping-preflight-audit); reuse of accepted Candidate 30b96fa0 minus its
+    auditor plumbing; the Codex compatibility fix; the retained record-version sidecar fix; live
+    checks live-native and live-reviewer-rework.
+  approved_against_head: 22a2db955e8941941a80e44c5ce3649cfb449945
+historical_approvals:
+  # None of these cover the current revision.
+  - approved_at: "2026-09-25"
+    approved_by: human Shaper
+    source: historical-approval-2026-09-25-batch.md
+    note: Driver-session batch approval of the revision that still carried the auditor.
+  - approved_at: "2026-09-25T06:23:24Z"
+    approved_by: human Shaper
+    source: historical-approval-2026-09-25.md
+    superseded_by_failed_build: kdUszVF4Gw71QsxsppvSKc2b
+  - approved_at: "2026-09-24T13:51:25Z"
+    approved_by: human Shaper
+    source: historical-approval-2026-09-24-ledger.md
+    superseded_by_failed_build: btwokrNxL50md1z5Fb-GGYOO
+  - approved_at: "2026-09-24T12:18:57Z"
+    approved_by: human Shaper
+    source: historical-approval-2026-09-24-default-route.md
+  - approved_at: "2026-09-24T12:17:01Z"
+    approved_by: human Shaper
+    source: historical-approval-2026-09-24.md
+    note: Superseded when the default-route requirement was added during reshaping.
+revisions:
+  - date: 2026-09-24
+    reason: >-
+      Build Stop found that the offline reliability catalog must be refreshed when this Intent
+      changes the listed test sources; the ledger path was missing from the guarded paths.
+    source: evidence/build-failure-2026-09-24.md
+  - date: 2026-09-25
+    reason: >-
+      Build btwokrNxL50md1z5Fb-GGYOO passed check, but live-native timed out in the Codex
+      compatibility runner in all 3 cycles. The Shaper directed this Intent to take over the
+      compatibility owner's reliability work from fortify-paid-verification.
+    source: evidence/compatibility-diagnosis-2026-09-25.md
+  - date: 2026-09-25
+    reason: >-
+      Build kdUszVF4Gw71QsxsppvSKc2b ended cannot_comply on a stale objection after a Codex Reviewer
+      timeout that had Kogen root causes. This revision depends on Intent #1 for those root causes,
+      replaces risk codex-reviewer-rework-duration, adds the auditor role slot, closes the Codex
+      setup-guard gap, keeps the 240 s compatibility turn limit, and defers the default-route
+      flip to a follow-up.
+    source: evidence/build-failure-2026-09-25.md
+  - date: 2026-09-25
+    reason: >-
+      Shaper direction in the Claude Shaping continuation: "we don't want auditor now … auditor
+      comes in the shaping quality/audit intent … it's stupid to have the plumbing now for things
+      that aren't wired in". The auditor slot, launch_auditor/4, the auditor readiness entry, the
+      KOGEN_ROLE=auditor identity and the auditor setup guard are removed from this Intent and
+      belong to shaping-preflight-audit. This narrows the batch-approved row-2 scope.
+    source: questions.md
+may_change_guarded_paths:
+  - .kogen/config.yaml
+  - README.md
+  - lib/kogen/intent.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/**
+  - lib/kogen/build.ex
+  - lib/kogen/build/**
+  - lib/kogen/execution_policy.ex
+  - lib/kogen/codex.ex
+  - lib/kogen/codex/**
+  - priv/kogen/codex/**
+  - lib/kogen/claude_code.ex
+  - lib/mix/tasks/**
+  # Only these two prompts. reviewer.md, developer.md and shaping.md are outside the guard, so
+  # the Build guard rejects any edit to them.
+  - priv/kogen/prompts/expert.md
+  - priv/kogen/prompts/execution-policy.md
+  - priv/kogen/test-reliability.yaml
+  - test/**

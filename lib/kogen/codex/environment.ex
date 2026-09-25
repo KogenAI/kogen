@@ -185,8 +185,13 @@ defmodule Kogen.Codex.Environment do
   # an incomplete profile fails loudly rather than writing an empty one.
   defp write_helper_profiles!(_generation, :setup), do: %{}
 
+  # The expert profile is native only when the route assigns the Expert role to
+  # Codex; a harness view without it gets no expert helper, never a substitute.
   defp write_helper_profiles!(generation, config) do
-    Enum.into([:scout, :worker, :expert], %{}, fn role ->
+    helpers = if is_map(config), do: value(config, :helpers)
+    expert = if is_map(helpers) and has_value?(helpers, :expert), do: [:expert], else: []
+
+    Enum.into([:scout, :worker] ++ expert, %{}, fn role ->
       {model, effort} = helper_profile!(config, role)
       path = Path.join(generation, "#{role}.toml")
       content = "model = #{toml(model)}\nmodel_reasoning_effort = #{toml(effort)}\n"
@@ -211,6 +216,8 @@ defmodule Kogen.Codex.Environment do
   end
 
   defp nonblank?(value), do: is_binary(value) and String.trim(value) != ""
+
+  defp has_value?(map, key), do: Map.has_key?(map, key) or Map.has_key?(map, Atom.to_string(key))
 
   # The registry belongs to the selected credential scope, not to an operation.
   # Per-launch data must never be written here because native app-server instances

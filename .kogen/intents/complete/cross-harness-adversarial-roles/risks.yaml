@@ -1,0 +1,143 @@
+- id: stale-test-reliability-bindings
+  scenario_ids: [four-route-selection, adversarial-role-dispatch, role-boundary-preservation, readiness-and-failure-ownership, reliable-codex-compatibility, retained-evidence-with-record-sidecars]
+  description: >-
+    Many Build tests are cataloged by source hash in priv/kogen/test-reliability.yaml, including
+    codex_compatibility_test.exs, codex_compatibility_preparation_test.exs, harness_role_test.exs,
+    intent_test.exs, root_profile_audit_test.exs, native_helper_live_test.exs and
+    test/support/isolated_case.ex. If those test bytes change and the tracked ledger is not
+    refreshed, the offline gate fails. Blindly regenerating or weakening the ledger would lose its
+    reviewed controls.
+  ownership:
+    - paths: priv/kogen/test-reliability.yaml
+      when_exists: Tracked existing reliability ledger; preserve it, its declaration identity and its controls.
+      owner_after_creation: Kogen repository maintainers own the tracked ledger.
+      owner_during_operation: The Developer may refresh source_sha256 values for changed cataloged tests within this approved Build; Stop validates the result.
+      permitted_mutation: Run scripts/check/refresh_test_reliability_sources.py to update stale source_sha256 bindings only; do not regenerate dispositions, controls, witnesses or validator rules.
+      validation: Run the script with --check, plus the existing catalog and whole-suite tests through the Stop-owned make check; inspect the ledger diff for hash-only changes.
+      git_state: A tracked Candidate change, committed with the accepted Build; no runtime-only replacement.
+      upgrade_behavior: Future edits to cataloged tests refresh their source hashes through the same supported script and keep the reviewed ledger entries.
+  # The validator binds files by hash, not by test name. Renamed or removed
+  # stand-in-Reviewer tests keep their ledger rows; refresh hashes only.
+
+- id: depends-on-bounded-reviewer-evidence
+  scenario_ids: [role-boundary-preservation, adversarial-role-dispatch]
+  description: >-
+    Replaces the earlier risk codex-reviewer-rework-duration, which stopped Build kdUszVF4. With the
+    new default route, live-reviewer-rework runs the production Reviewer on Codex GPT-6 Sol at high
+    effort. Before Intent bounded-reviewer-evidence, that Reviewer took 5 + 16 min in one cycle and
+    about 2.5 + 4.5 min in the next, on the same fixture (evidence/build-failure-2026-09-25.md). The
+    root causes were Kogen's: a self-embedding tracking record, the raw record as the only evidence
+    pointer, no Codex tool-output limit, and a fixture inside the checkout
+    (evidence/reviewer-context-diagnosis-2026-09-25.md). Intent #1 fixes all of these with the
+    bounded review packet, metadata-only citations, the central tool_output_token_limit and a fixture
+    outside the checkout. It also stops a superseded objection from ending a passing Build. This
+    Build must not start before #1 is on main. Mitigation inside this Intent: every new launch path
+    goes through the prepared launch context and the existing Reviewer task context. A Codex
+    Reviewer or Expert launch missing the output limit or the review packet is a defect of
+    this Intent, which the Developer fixes. Forbidden: raising the 1_200_000 ms live-reviewer-rework
+    timeout, lowering Reviewer effort, editing reviewer.md, or disabling Reviewer helpers. The
+    Reviewer duration after #1 is unmeasured on Codex, because #1's own live target runs on main's
+    claude default. If live-reviewer-rework still times out with #1's controls in effect, the
+    Developer records a contract objection with the measured phase times, which returns the Intent
+    to Shaping. A single timed-out cycle followed by a passing cycle no longer stops the Build.
+    Optional pre-Build probe (driver decision; both auditors asked for a feasibility check). The
+    hybrid route itself arrives with this Build, so the probe needs a disposable clone of post-#1
+    main where the reference Candidate's route parsing and dispatch are ported (config.yaml hybrid
+    routes, intent.ex, harness.ex, harness/*.ex, build.ex role_context) and the rework fixture is
+    pinned to --route claude-dominant-adversarial-codex. Run one make live-reviewer-rework there. If
+    it passes with each Codex Review under 8 minutes, admit the Build. If it fails, return to
+    Shaping before spending a Build. If the driver skips the probe, the backstops are #1's
+    superseded-objection fix and main's verification_retries of 2: one slow cycle followed by a
+    passing cycle is accepted.
+    A live-shape-to-build run on the hybrid default is not needed in this Intent. The default stays
+    claude, and live_shape_to_build_test.exs and live_test.exs are not edited, so D8 does not
+    require live-shape-to-build or live-general here. The first real Codex Reviewer under
+    live-shape-to-build's unchanged 20-minute timeout belongs to the default-flip follow-up.
+
+- id: compatibility-live-variance
+  scenario_ids: [reliable-codex-compatibility]
+  description: >-
+    The design without stand-in Reviewers passed one Shaping probe run (229 s, under a 300 s probe
+    limit). The reference Candidate passed twice inside Build kdUszVF4 (292 s, 431 s). Measured turns
+    without stand-in Reviewers are Developer 72-135 s and resume 56-90 s. One Developer turn was killed
+    at about 227 s under the old design with stand-ins. This revision keeps main's 240 s per-turn limit
+    and does not adopt the 300 s from the historical revision, because the Shaper's later 2026-09-25
+    direction forbids raising timeouts, and removing the stand-in Reviewers fixes the cause. The
+    bounded mitigation for residual variance is the one fresh-fixture rerun on timed_out, once per
+    test invocation, within the unchanged 900_000 ms ExUnit cap. Kogen core never retries by provider
+    class. If live-native still times out, the Developer diagnoses the turn from the retained
+    manifest. A Kogen cause is fixed. A legitimately slow turn is a contract objection, not a limit
+    increase.
+
+- id: default-route-flip-deferred
+  scenario_ids: [four-route-selection, role-boundary-preservation]
+  description: >-
+    The 2026-09-24 historical approval and HAR-02 name claude-dominant-adversarial-codex as the
+    configured default. Flipping it in this Build would move the Reviewer to Codex in live-general and
+    live-shape-to-build. Their test files hard-code one harness per route (live_test.exs:208-216,
+    live_shape_to_build_test.exs:103-109, 405-435), so they would have to be edited. DIRECTION D8 then
+    requires running them, but the roadmap row allows only live-native and live-reviewer-rework. Both
+    Sol and Astra flagged the edit-without-run as blocking. Decision (driver session, under the
+    Shaper's delegation of technical decisions): expand, then contract (D9). This Intent delivers the
+    four routes, keeps default_route claude, and proves the hybrid route through explicitly routed
+    live cases. A small follow-up (ROADMAP row 10a) flips the default, makes those two owners role-aware, and runs
+    live-general and live-shape-to-build. The driver should confirm this sequencing, or instead accept
+    running those two targets here. If the default were flipped here without them, the next Build
+    that selects them would fail.
+
+- id: baseline-moves-before-build
+  scenario_ids: [four-route-selection, adversarial-role-dispatch, role-boundary-preservation, readiness-and-failure-ownership, reliable-codex-compatibility]
+  description: >-
+    This revision was shaped against main 2909f557, before Intent #1 landed. #1 changes
+    lib/kogen/build.ex (review packet, citations, objection handling), lib/kogen/codex/environment.ex
+    (output limit), test/support/live_reviewer_rework_fixture.ex (fixture root) and possibly the
+    ledger. This Intent changes the same files. Before this Build starts, re-run the package validator
+    (Intent.read, Contract.load, VerificationPlan.build, VerificationPolicy.preflight) on the
+    then-current main. Confirm every proof.offline selector still exists. Confirm #1's controls are
+    present where this package relies on them: the review packet in the Reviewer context,
+    metadata-only record citations, tool_output_token_limit in the Codex config arguments, the
+    fixture root outside the checkout in live_reviewer_rework_fixture.ex, and the superseded-objection
+    handling. Record the offline test files #1 added for each of the five, because this package
+    relies on them staying green. Driver note on #1's final design: the packet is written to
+    .kogen/runtime/scenario-tracking/<id>/review-packets/<n>.json. review_packet is added to the
+    Reviewer KOGEN_TASK_CONTEXT, with tracking_path kept. Record self-citations move to
+    record-versions/ sidecars. tool_output_token_limit=4000 goes into the Codex config_args.
+    The fixture sits outside the checkout. The final contract is
+    plan/staging/bounded-reviewer-evidence/scenarios.yaml. This is an admission gate: without a passing post-#1
+    validation, the Build does not start. A contradiction needs a Shaping continuation, not an edit
+    during the Build.
+    Executed on main 22a2db95 (which contains #1) in the 2026-09-25 Claude Shaping continuation:
+    Intent.read, Contract.load, VerificationPlan.build and VerificationPolicy.preflight all
+    returned ok, every proof.offline selector exists, and all five #1 controls are present
+    (evidence/admission-validation-2026-09-25-22a2db95.md). If main moves past 22a2db95 before
+    the Build, re-run the same validation on that main.
+
+- id: reference-candidate-predates-dependency
+  scenario_ids: [four-route-selection, adversarial-role-dispatch, role-boundary-preservation, readiness-and-failure-ownership, reliable-codex-compatibility, retained-evidence-with-record-sidecars]
+  description: >-
+    Reuse base: commit 30b96fa0e2c954e4804733df805a36823262e875, the accepted Candidate of Build
+    sjqVuqHRgv3YXUVdET-YlksA ("Add cross-harness adversarial Reviewer, Expert and auditor routes"),
+    parent 22a2db95. It was committed on main on 2026-09-25 14:55 and then reset away because it
+    carried the unwanted auditor plumbing, so it is reachable only from the reflog (HEAD@{...}
+    "commit: Add cross-harness adversarial Reviewer, Expert and auditor routes") until someone
+    gives it a ref. Unreachable reflog entries expire (git's default is 30 days) and git gc can
+    then prune the commit. Before the Build, the Shaper or the driver gives it a durable ref.
+    The Developer restores files with git show 30b96fa0:<path>, never checks out, cherry-picks
+    or resets to it, and never restores its .kogen/intents/** package copy (that path is outside
+    the guarded paths, and the Build guard rejects it). Then it removes every auditor part:
+    the auditor keys and comments in .kogen/config.yaml and README.md; the :auditor role,
+    assigned_path/no_clean_auditor and the auditor field in lib/kogen/intent.ex; launch_auditor,
+    auditor_args, reader handling for "auditor" and the :auditor readiness entry in
+    lib/kogen/harness.ex, lib/kogen/harness/*.ex and lib/mix/tasks/kogen.shape.ex; "auditor" in
+    the setup guards of lib/kogen/codex.ex and lib/kogen/claude_code.ex; the auditor in
+    role_assignment in lib/kogen/build.ex; and the matching test cases and assertions (git diff
+    22a2db95 30b96fa0 | grep -n auditor lists about 180 changed lines). It keeps the Expert
+    equivalents: the Expert launch, its guards and its live case. The live-native hybrid case
+    keeps the real Codex Expert and drops the auditor launch. Earlier stashes
+    cross-harness-candidate-2026-09-25b (2294e64a) and cross-harness-candidate-2026-09-25
+    (6905e9a4, pre-#1) are superseded and read only if needed; never apply, pop or drop them.
+    If main has moved past 22a2db95, the Developer checks each restored file against main.
+    Because 30b96fa0 already contains its own sidecar fix, the Developer confirms that fix
+    against scenario retained-evidence-with-record-sidecars instead of re-implementing it. The
+    new Candidate is verified and reviewed on its own; an accepted verdict on 30b96fa0 is not
+    evidence for it.

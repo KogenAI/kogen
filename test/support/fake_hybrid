@@ -1,0 +1,96 @@
+#!/bin/sh
+# Offline hybrid-route fixture: one `KOGEN_HARNESS` executable that dispatches
+# to `fake_claude` (Claude protocol: `auth status`, `-p` Developer/Reviewer
+# turns) or handles the Reviewer directly (Codex protocol: `exec`, structured
+# `--output-schema`/`--output-last-message` verdicts) so a single hybrid Build
+# can run its dominant Developer on Claude Code and its adversarial Reviewer
+# on Codex without editing either existing fake.
+#
+# Every invocation (role, frozen KOGEN_EXPERT assignment, argv) is appended to
+# `.kogen/runtime/hybrid-dispatch-log` before dispatch, so a test can assert
+# on protocol, role and cross-harness Expert assignment directly.
+#
+# Reviewer behavior (KOGEN_ROLE=reviewer) is owned entirely here, independent
+# of `fake_codex`'s target-evidence-driven decisions:
+#   FAKE_HYBRID_REVIEW=accept|rework   fixes the verdict for every call.
+#   (unset)                            rework on the first call, accept after.
+#   FAKE_HYBRID_REVIEWER_MUTATES=1     writes a file the Reviewer must never write.
+#   FAKE_HYBRID_REVIEWER_MALFORMED=1   writes a non-schema verdict body.
+#
+# FAKE_HYBRID_MIDBUILD_CONFIG=<path>   once, on the Developer's first fresh
+#   launch (never on a resume), copies that file over `.kogen/config.yaml` so
+#   a test can prove a mid-Build edit never reaches a later launch.
+set -eu
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+state_dir=.kogen/runtime
+mkdir -p "$state_dir"
+log="$state_dir/hybrid-dispatch-log"
+
+{
+  printf 'role=%s expert=%s argv:' "${KOGEN_ROLE:-}" "${KOGEN_EXPERT:-}"
+  for a in "$@"; do printf ' %s' "$a"; done
+  printf '\n'
+} >>"$log"
+
+# Claude Code readiness: always answered by the real fake_claude logic.
+if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+  exec "$script_dir/fake_claude" "$@"
+fi
+
+if [ "${KOGEN_ROLE:-}" = reviewer ]; then
+  input="$(cat)"
+  output_file=; previous=
+  for a in "$@"; do
+    [ "$previous" = --output-last-message ] && output_file="$a"
+    previous="$a"
+  done
+
+  state="$state_dir/fake-hybrid-reviewer-calls"
+  n=0
+  [ -f "$state" ] && n="$(cat "$state")"
+  n=$((n + 1))
+  echo "$n" >"$state"
+  printf '%s' "$input" >"$state_dir/reviewer-prompt-$n"
+
+  if [ "${FAKE_HYBRID_REVIEWER_MUTATES:-0}" = 1 ]; then
+    echo 'tampered by a hybrid Reviewer that should never write anything' >tampered.txt
+  fi
+
+  if [ "${FAKE_HYBRID_REVIEWER_MALFORMED:-0}" = 1 ]; then
+    printf 'not a schema-valid verdict at all' >"$output_file"
+  else
+    decision="${FAKE_HYBRID_REVIEW:-}"
+    if [ -z "$decision" ]; then
+      if [ "$n" -eq 1 ]; then decision=rework; else decision=accept; fi
+    fi
+    printf '%s' "$input" | python3 "$script_dir/scenario_response.py" reviewer "$decision" >"$output_file"
+  fi
+
+  printf '{"type":"thread.started","thread_id":"hybrid-reviewer-session-%s"}\n{"type":"turn.completed","thread_id":"hybrid-reviewer-session-%s"}\n' "$n" "$n"
+  exit 0
+fi
+
+# Any non-Reviewer Codex-protocol call (not exercised by the current hybrid
+# fixtures, kept only so an unexpected route still dispatches sanely).
+if [ "${1:-}" = exec ]; then
+  exec "$script_dir/fake_codex" "$@"
+fi
+
+# The Developer's one-shot mid-Build config mutation, fired only on its fresh
+# launch (a resume carries `--resume` in argv), so later launches (the
+# resumed Developer, every Reviewer) observe the Build's already-resolved,
+# frozen route even though the tracked config file itself changed underneath.
+if [ "${KOGEN_ROLE:-}" = developer ] && [ -n "${FAKE_HYBRID_MIDBUILD_CONFIG:-}" ]; then
+  is_resume=0
+  for a in "$@"; do [ "$a" = --resume ] && is_resume=1; done
+
+  if [ "$is_resume" -eq 0 ]; then
+    stage="$state_dir/fake-hybrid-midbuild-done"
+    if [ ! -f "$stage" ]; then
+      cp "$FAKE_HYBRID_MIDBUILD_CONFIG" .kogen/config.yaml
+      : >"$stage"
+    fi
+  fi
+fi
+
+exec "$script_dir/fake_claude" "$@"

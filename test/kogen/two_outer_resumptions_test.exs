@@ -597,6 +597,26 @@ defmodule Kogen.TwoOuterResumptionsTest do
     assert summary["schema_version"] == 1
     assert summary["route"] == %{"name" => "other", "harness" => "codex"}
 
+    # The clean route's frozen matrix is additive to the unchanged route map:
+    # one harness, the expert helper as Expert.
+    other = fn model, effort -> %{"harness" => "codex", "model" => model, "effort" => effort} end
+
+    assert record["role_assignment"] == %{
+             "shaping" => other.("gpt-other-shape", "medium"),
+             "developer" => other.("gpt-other-dev", "medium"),
+             "reviewer" => other.("gpt-other-review", "high"),
+             "expert" => other.("gpt-other-expert", "high"),
+             "helpers" => %{
+               "codex" => %{
+                 "scout" => %{"model" => "gpt-other-scout", "effort" => "low"},
+                 "worker" => %{"model" => "gpt-other-worker", "effort" => "medium"},
+                 "expert" => %{"model" => "gpt-other-expert", "effort" => "high"}
+               }
+             }
+           }
+
+    assert summary["role_assignment"] == record["role_assignment"]
+
     evidence = complete_dir |> Path.join("evidence.md") |> File.read!()
     assert evidence =~ "Route: `other` (harness `codex`)"
   end

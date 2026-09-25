@@ -18,12 +18,229 @@ defmodule Kogen.Codex.Compatibility do
 
   @type scope :: %{path: Path.t(), name: :shared | :project}
 
+  # The resume is driven by this fixed rework request. The real Reviewer is
+  # proved by the real Build in live-reviewer-rework, never by a scripted
+  # stand-in Reviewer here.
+  @rework_findings [
+    %{
+      "description" =>
+        "The exact-resume marker and scout helper evidence (resume-rework.txt, helper-environment.json, helper-receipt.txt, helper-context.txt) are missing.",
+      "scenario_ids" => ["compatibility-runner"]
+    }
+  ]
+
+  # Timing policy is owned here, never by Kogen core or configuration. Measured
+  # GPT-6 Sol turns without stand-in Reviewers: Developer 72-135 s, resume
+  # 56-90 s, whole run 229 s (Shaping probe 2026-09-25). A native turn gets
+  # main's unchanged 240 s per-turn limit, passed explicitly here and never
+  # raised in Kogen core, config or bounded_exec.py. The whole live test must
+  # finish within 15 minutes, so the runner keeps a reserve for test startup,
+  # bounded cleanup and evidence emission, and starts its one timed_out rerun
+  # only when a typical run still fits.
+  @turn_timeout_seconds 240
+  @deadline_ms 900_000
+  @reserve_ms 60_000
+  @typical_attempt_ms 300_000
+  @minimum_turn_seconds 30
+
   @spec run(runtime(), scope(), Kogen.Intent.config()) :: {:ok, Path.t()} | {:error, term()}
-  def run(runtime, scope, config) do
-    Kogen.Codex.with_active(runtime, File.cwd!(), fn -> run_fixture(runtime, scope, config) end)
+  def run(runtime, scope, config),
+    do: run(runtime, scope, config, System.monotonic_time(:millisecond) + @deadline_ms)
+
+  defp run(runtime, scope, config, deadline) do
+    Kogen.Codex.with_active(runtime, File.cwd!(), fn ->
+      run_fixture(runtime, scope, config, deadline)
+    end)
   end
 
-  defp run_fixture(runtime, scope, config) do
+  @doc """
+  Runs the compatibility fixture under the owner's 15-minute deadline. Only a
+  `timed_out` attempt is rerun, once, in a fresh fixture, and only when a
+  typical run still fits. Both attempts are kept in a repository-relative
+  summary bound by the returned target evidence locator.
+  """
+  @spec run_bounded(runtime(), scope(), Kogen.Intent.config()) ::
+          {:ok | :error, %{summary: Path.t(), locator: map()}}
+  def run_bounded(runtime, scope, config) do
+    root = File.cwd!()
+
+    attempt = fn _number, deadline ->
+      File.cd!(root, fn -> run(runtime, scope, config, deadline) end)
+    end
+
+    run_attempts(attempt, root: root)
+  end
+
+  @doc false
+  def run_attempts(attempt, options) do
+    clock = Keyword.get(options, :clock, fn -> System.monotonic_time(:millisecond) end)
+    deadline_ms = Keyword.get(options, :deadline_ms, @deadline_ms)
+    typical = Keyword.get(options, :typical_attempt_ms, @typical_attempt_ms)
+    started = clock.()
+    deadline = started + deadline_ms - @reserve_ms
+    first = run_attempt(attempt, 1, deadline, clock)
+
+    {attempts, retry} =
+      case retry_decision(first, deadline - clock.(), typical) do
+        :rerun -> {[first, run_attempt(attempt, 2, deadline, clock)], %{"started" => true}}
+        reason -> {[first], %{"started" => false, "reason" => reason}}
+      end
+
+    status = if List.last(attempts)["class"] == "passed", do: :ok, else: :error
+
+    summary = %{
+      "schema_version" => 1,
+      "result" => Atom.to_string(status),
+      "elapsed_ms" => clock.() - started,
+      "deadline_ms" => deadline_ms,
+      "reserve_ms" => @reserve_ms,
+      "turn_timeout_seconds" => @turn_timeout_seconds,
+      "typical_attempt_ms" => typical,
+      "retry" => retry,
+      "attempts" => attempts
+    }
+
+    {status, write_summary(Keyword.fetch!(options, :root), summary, attempts)}
+  end
+
+  defp run_attempt(attempt, number, deadline, clock) do
+    started = clock.()
+    result = attempt.(number, deadline)
+    elapsed = clock.() - started
+    evidence = attempt_evidence(result)
+    fixture = if evidence, do: Path.join(Path.dirname(evidence), "fixture")
+
+    Map.merge(
+      %{
+        "number" => number,
+        "class" => attempt_class(result),
+        "reason" => attempt_reason(result),
+        "elapsed_ms" => elapsed,
+        "evidence" => evidence,
+        "fixture" => fixture
+      },
+      fixture_receipts(fixture)
+    )
+  end
+
+  defp retry_decision(%{"class" => "timed_out"}, remaining, typical) when remaining >= typical,
+    do: :rerun
+
+  defp retry_decision(%{"class" => "timed_out"}, _remaining, _typical), do: "no_retry_fitted"
+  defp retry_decision(%{"class" => "passed"}, _remaining, _typical), do: "passed"
+  defp retry_decision(_attempt, _remaining, _typical), do: "not_timed_out"
+
+  defp attempt_class({:ok, _evidence}), do: "passed"
+
+  defp attempt_class({:error, {:compatibility_failed, reason, _evidence}}),
+    do: failure_class(reason)
+
+  defp attempt_class({:error, reason}), do: failure_class(reason)
+
+  defp failure_class({:compatibility_turn_timed_out, _function, _reason}), do: "timed_out"
+
+  defp failure_class({:interactive_shaping_failed, _result, %{status: :timed_out}}),
+    do: "timed_out"
+
+  defp failure_class(_reason), do: "failed"
+
+  defp attempt_reason({:ok, _evidence}), do: nil
+  defp attempt_reason({:error, reason}), do: inspect(reason, limit: 50, printable_limit: 2000)
+
+  defp attempt_evidence({:ok, evidence}) when is_binary(evidence), do: evidence
+
+  defp attempt_evidence({:error, {:compatibility_failed, _reason, evidence}})
+       when is_binary(evidence),
+       do: evidence
+
+  defp attempt_evidence(_result), do: nil
+
+  # Provider session ids and cleanup come from the bounded wrapper's own
+  # receipts and the PTY receipt, never from model output.
+  defp fixture_receipts(nil), do: %{"sessions" => [], "cleanup" => %{"ok" => false}}
+
+  defp fixture_receipts(fixture) do
+    runtime = Path.join(fixture, ".kogen/runtime")
+
+    sessions =
+      runtime
+      |> Path.join("process-*.json")
+      |> Path.wildcard()
+      |> Enum.sort_by(&process_sequence/1)
+      |> Enum.map(&session_receipt/1)
+
+    shaping = read_bounded_receipt(Path.join(runtime, "compatibility-shaping.json"))
+    shaping_cleanup = if shaping == %{}, do: nil, else: get_in(shaping, ["cleanup", "ok"]) == true
+    native_cleanup = Enum.all?(sessions, & &1["cleanup"])
+
+    %{
+      "sessions" => sessions,
+      "cleanup" => %{
+        "ok" => shaping_cleanup != false and native_cleanup,
+        "shaping" => shaping_cleanup,
+        "native_turns" => native_cleanup
+      }
+    }
+  end
+
+  defp session_receipt(path) do
+    receipt = read_bounded_receipt(path)
+
+    %{
+      "operation" => path |> Path.basename(".json") |> String.replace(~r/^process-|-\d+$/, ""),
+      "session_id" => receipt["native_session_id"],
+      "native_exit" => receipt["native_exit"],
+      "timed_out" => receipt["timed_out"] == true,
+      "cleanup" => get_in(receipt, ["cleanup", "ok"]) == true
+    }
+  end
+
+  defp process_sequence(path) do
+    case Regex.run(~r/-(\d+)\.json$/, path) do
+      [_, sequence] -> String.to_integer(sequence)
+      _ -> 0
+    end
+  end
+
+  defp write_summary(root, summary, attempts) do
+    directory =
+      Path.join(
+        ".kogen/runtime/codex-compatibility",
+        "run-#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(Path.join(root, directory))
+
+    copies =
+      for %{"number" => number, "evidence" => evidence} <- attempts,
+          is_binary(evidence) and File.regular?(evidence) do
+        path = Path.join(directory, "attempt-#{number}-evidence.json")
+        File.cp!(evidence, Path.join(root, path))
+        path
+      end
+
+    summary_path = Path.join(directory, "summary.json")
+    File.write!(Path.join(root, summary_path), Jason.encode!(summary, pretty: true) <> "\n")
+
+    manifest = %{
+      "schema_version" => 1,
+      "required_evidence" =>
+        Enum.map([summary_path | copies], &%{"path" => &1, "sha256" => file_digest(root, &1)})
+    }
+
+    manifest_path = Path.join(directory, "manifest.json")
+    File.write!(Path.join(root, manifest_path), Jason.encode!(manifest) <> "\n")
+
+    %{
+      summary: summary_path,
+      locator: %{"manifest_path" => manifest_path, "sha256" => file_digest(root, manifest_path)}
+    }
+  end
+
+  defp file_digest(root, path),
+    do: Base.encode16(:crypto.hash(:sha256, File.read!(Path.join(root, path))), case: :lower)
+
+  defp run_fixture(runtime, scope, config, deadline) do
     with :ok <- validate_runtime(runtime),
          :ok <- validate_scope(scope),
          :ok <- validate_config(config),
@@ -32,7 +249,7 @@ defmodule Kogen.Codex.Compatibility do
       result =
         with {:ok, context} <- launch_context(runtime, scope, config, fixture, discovery),
              {:ok, receipts} <-
-               exercise_in_fixture(context, config, fixture, discovery),
+               exercise_in_fixture(context, config, fixture, discovery, deadline),
              do: settle_evidence(receipts)
 
       retain_result(result, evidence, fixture)
@@ -43,8 +260,8 @@ defmodule Kogen.Codex.Compatibility do
     error -> {:error, {:compatibility_exception, Exception.message(error)}}
   end
 
-  defp exercise_in_fixture(context, config, fixture, discovery),
-    do: File.cd!(fixture, fn -> exercise(context, config, fixture, discovery) end)
+  defp exercise_in_fixture(context, config, fixture, discovery, deadline),
+    do: File.cd!(fixture, fn -> exercise(context, config, fixture, discovery, deadline) end)
 
   defp retain_result({:ok, receipts}, evidence, fixture) do
     File.write!(evidence, Jason.encode!(Map.put(receipts, "fixture", fixture)) <> "\n")
@@ -92,17 +309,6 @@ defmodule Kogen.Codex.Compatibility do
         "shaping" => %{"status" => 0, "marker" => true, "cleanup" => true},
         "developer" => %{"session_id" => developer_id},
         "resume" => %{"session_id" => developer_id},
-        "initial_reviewer" => %{
-          "session_id" => initial_reviewer_id,
-          "verdict" => "rework",
-          "scenarios" => initial_scenarios,
-          "findings" => initial_findings
-        },
-        "final_reviewer" => %{
-          "session_id" => final_reviewer_id,
-          "verdict" => "accept",
-          "scenarios" => final_scenarios
-        },
         "checks" => checks,
         "checks_before_resume" => prior_count,
         "discovery_controls" => %{"ok" => true},
@@ -120,18 +326,12 @@ defmodule Kogen.Codex.Compatibility do
         }
       })
       when is_list(checks) and is_integer(prior_count) and prior_count >= 0 do
-    with :ok <- validate_sessions([developer_id, initial_reviewer_id, final_reviewer_id]),
+    with :ok <- validate_sessions([developer_id]),
          :ok <- check_state(checks, developer_id),
-         true <- fresh_resume_check?(checks, prior_count, developer_id),
-         true <- reviewer_requested_rework?(initial_scenarios, initial_findings),
-         true <-
-           Enum.any?(
-             final_scenarios,
-             &(&1["id"] == "compatibility-runner" and &1["status"] == "satisfied")
-           ) do
+         true <- fresh_resume_check?(checks, prior_count, developer_id) do
       :ok
     else
-      false -> {:error, :reviewer_did_not_complete_rework_sequence}
+      false -> {:error, :resume_check_missing}
       {:error, _} = error -> error
     end
   end
@@ -147,18 +347,9 @@ defmodule Kogen.Codex.Compatibility do
   defp evidence_failures(receipts) when is_map(receipts) do
     environment = Map.get(receipts, "hostile_discovery", %{})
 
-    failed =
-      for key <- ~w(root_receipt helper_environment hook_receipt shell_modes),
-          Map.get(environment, key) == false,
-          do: {key, :caller_environment_mismatch}
-
-    case receipts["final_reviewer"] do
-      %{"verdict" => "rework"} = review ->
-        failed ++ [{"final_reviewer", Map.take(review, ~w(findings scenarios))}]
-
-      _ ->
-        failed
-    end
+    for key <- ~w(root_receipt helper_environment hook_receipt shell_modes),
+        Map.get(environment, key) == false,
+        do: {key, :caller_environment_mismatch}
   end
 
   defp evidence_failures(_), do: []
@@ -193,39 +384,17 @@ defmodule Kogen.Codex.Compatibility do
     end
   end
 
-  defp reviewer_requested_rework?(scenarios, findings)
-       when is_list(scenarios) and is_list(findings) do
-    findings != [] and
-      Enum.any?(
-        scenarios,
-        &(&1["id"] == "compatibility-runner" and &1["status"] == "needs_rework")
-      )
-  end
-
-  defp reviewer_requested_rework?(_, _), do: false
-
-  defp exercise(context, config, fixture, discovery) do
+  defp exercise(context, config, fixture, discovery, deadline) do
     with {:ok, discovery_receipt} <- probe_discovery(context, fixture, discovery),
          {:ok, shaping} <- interactive_shaping(context, config, fixture),
-         {:ok, developer} <- developer_turn(bounded(context), config, fixture),
+         {:ok, developer_context} <- bounded(context, deadline),
+         {:ok, developer} <- developer_turn(developer_context, config, fixture),
          {:ok, before_resume} <- check_history(fixture),
-         {:ok, initial_reviewer} <- initial_reviewer_turn(bounded(context), config, fixture),
+         {:ok, resume_context} <- bounded(context, deadline),
          {:ok, resumed} <-
-           resume_turn(
-             bounded(context),
-             config,
-             fixture,
-             developer.session_id,
-             initial_reviewer.response["findings"]
-           ),
-         {:ok, final_reviewer} <- final_reviewer_turn(bounded(context), config, fixture),
+           resume_turn(resume_context, config, fixture, developer.session_id, @rework_findings),
          {:ok, checks} <- check_history(fixture) do
-      for {name, turn} <- [
-            {"developer", developer},
-            {"initial-reviewer", initial_reviewer},
-            {"resume", resumed},
-            {"final-reviewer", final_reviewer}
-          ] do
+      for {name, turn} <- [{"developer", developer}, {"resume", resumed}] do
         File.write!(
           Path.join(fixture, ".kogen/runtime/compatibility-#{name}.json"),
           Jason.encode!(turn)
@@ -237,18 +406,6 @@ defmodule Kogen.Codex.Compatibility do
          "shaping" => shaping,
          "developer" => %{"session_id" => developer.session_id},
          "resume" => %{"session_id" => resumed.session_id},
-         "initial_reviewer" => %{
-           "session_id" => initial_reviewer.session_id,
-           "verdict" => initial_reviewer.verdict,
-           "scenarios" => initial_reviewer.response["scenarios"],
-           "findings" => initial_reviewer.response["findings"]
-         },
-         "final_reviewer" => %{
-           "session_id" => final_reviewer.session_id,
-           "verdict" => final_reviewer.verdict,
-           "scenarios" => final_reviewer.response["scenarios"],
-           "findings" => final_reviewer.response["findings"]
-         },
          "checks" => checks,
          "checks_before_resume" => length(before_resume),
          "discovery_controls" => discovery_receipt,
@@ -358,13 +515,12 @@ defmodule Kogen.Codex.Compatibility do
 
   defp resume_turn(context, config, fixture, session_id, findings) do
     prompt = """
-    This is the exact compatibility rework resume after the initial independent Reviewer returned
-    these findings:
+    This is the exact compatibility rework resume. Rework was requested with these findings:
     #{Jason.encode!(findings)}
 
     Preserve `state.txt` as exactly `corrected`, add `.kogen/runtime/resume-rework.txt` containing
     exactly `EXACT_RESUME_REWORK`, and repair the concrete missing resume/helper evidence named by
-    the Reviewer. Do not run any gate yourself; the Stop hook owns this fresh Check settlement.
+    the rework request. Do not run any gate yourself; the Stop hook owns this fresh Check settlement.
     Before finishing, ask one configured native scout helper using model
     #{config.helpers.scout.model} at effort #{config.helpers.scout.effort}, read-only, to identify
     the project skill from its automatically supplied catalog, state whether any personal skill
@@ -386,52 +542,6 @@ defmodule Kogen.Codex.Compatibility do
       config.developer.model,
       config.developer.effort,
       Kogen.VerificationPolicy.environment(["check", "live-native"], fixture),
-      context
-    ])
-  end
-
-  defp initial_reviewer_turn(context, config, _fixture) do
-    prompt = """
-    You are the initial independent Reviewer for this disposable compatibility fixture. Do not
-    modify files or run a gate. The Developer has corrected its Stop Check, but no rework resume
-    has occurred yet. Inspect `state.txt`, `.kogen/runtime/verification-history.jsonl`, and the
-    runtime receipts. In particular, determine whether the required exact-resume marker and helper
-    evidence (`resume-rework.txt`, helper environment, project-skill receipt, and personal-context
-    receipt) are actually absent or inadequate. Those missing artifacts are concrete blocking
-    evidence for this candidate, so return `rework` with actionable findings citing existing
-    requirement/fixture files and a `compatibility-runner` assessment of `needs_rework` when they
-    are missing. Do not invent a pass merely because the first Developer Check settled. Return the
-    schema-valid verdict for candidate `compatibility-candidate` and attempt
-    `compatibility-initial-review` based on the inspected candidate.
-    """
-
-    invoke_harness(:launch_reviewer, [
-      prompt,
-      config.reviewer.model,
-      config.reviewer.effort,
-      context
-    ])
-  end
-
-  defp final_reviewer_turn(context, config, _fixture) do
-    prompt = """
-    You are the final independent Reviewer for this disposable compatibility fixture after a
-    Developer rework resume. Do not modify files or run a gate. Inspect the revised candidate and
-    assess the whole contract: `state.txt` is `corrected`; verification history has a failed then
-    passed Check in one Developer session plus a later passing Check from that exact resumed session;
-    `resume-rework.txt` contains its exact marker; root, hook, and helper environment receipts have
-    the restored caller HOME/XDG and selected CODEX_HOME; the helper receipt names the project skill;
-    and helper context actually records `PERSONAL_CONTEXT_ABSENT`. Also inspect project guidance
-    content and the discovery receipt rather than treating marker-file existence as proof. Return a
-    schema-valid verdict for candidate `compatibility-candidate` and attempt
-    `compatibility-final-review` based only on what you find. Acceptance is not pre-decided. Include
-    one scenario assessment with id `compatibility-runner`.
-    """
-
-    invoke_harness(:launch_reviewer, [
-      prompt,
-      config.reviewer.model,
-      config.reviewer.effort,
       context
     ])
   end
@@ -465,14 +575,20 @@ defmodule Kogen.Codex.Compatibility do
         }
       end)
 
+    started = System.monotonic_time(:millisecond)
     result = apply(Kogen.Harness, function, arguments)
+    elapsed_ms = System.monotonic_time(:millisecond) - started
 
     path =
       Path.join(".kogen/runtime", "turn-#{function}-#{System.unique_integer([:positive])}.json")
 
     File.write!(
       path,
-      Jason.encode!(%{"operation" => function, "result" => inspect(result, limit: :infinity)})
+      Jason.encode!(%{
+        "operation" => function,
+        "elapsed_ms" => elapsed_ms,
+        "result" => inspect(result, limit: :infinity)
+      })
     )
 
     case result do
@@ -484,7 +600,7 @@ defmodule Kogen.Codex.Compatibility do
          })}
 
       {:error, reason} ->
-        {:error, {:compatibility_turn, function, reason}}
+        {:error, turn_failure(function, reason, read_bounded_receipt(receipt))}
 
       other ->
         {:error, {:compatibility_turn, function, other}}
@@ -492,6 +608,14 @@ defmodule Kogen.Codex.Compatibility do
   rescue
     UndefinedFunctionError -> {:error, {:compatibility_harness_context_unavailable, function}}
   end
+
+  # Only the bounded wrapper's own receipt classifies a turn as timed out; a
+  # native exit status alone is never trusted as that class.
+  @doc false
+  def turn_failure(function, reason, %{"timed_out" => true}),
+    do: {:compatibility_turn_timed_out, function, reason}
+
+  def turn_failure(function, reason, _receipt), do: {:compatibility_turn, function, reason}
 
   defp read_bounded_receipt(path) do
     with {:ok, body} <- File.read(path),
@@ -803,19 +927,35 @@ defmodule Kogen.Codex.Compatibility do
     end
   end
 
-  defp bounded(context) do
+  # Each native turn gets the owner's per-turn limit, shortened only so that no
+  # turn can outlive the whole-test deadline. This overrides any inherited value.
+  # Exposed (not private) so offline tests can assert the exact
+  # KOGEN_BOUNDED_EXEC_TIMEOUT value the owner actually passes, not merely the
+  # module attribute.
+  @doc false
+  def bounded(context, deadline) do
     python =
       System.find_executable("python3") ||
         raise "Kogen compatibility requires Python 3.11 or newer"
 
-    %{
-      context
-      | executable: python,
-        args: [
-          Path.join([priv_dir(), "compatibility", "bounded_exec.py"]),
-          context.executable | context.args
-        ]
-    }
+    seconds =
+      min(@turn_timeout_seconds, div(deadline - System.monotonic_time(:millisecond), 1000))
+
+    if seconds < @minimum_turn_seconds do
+      {:error, {:compatibility_deadline_exhausted, seconds}}
+    else
+      {:ok,
+       %{
+         context
+         | executable: python,
+           args: [
+             Path.join([priv_dir(), "compatibility", "bounded_exec.py"]),
+             context.executable | context.args
+           ],
+           env:
+             merge_env(context.env, [{"KOGEN_BOUNDED_EXEC_TIMEOUT", Integer.to_string(seconds)}])
+       }}
+    end
   end
 
   defp merge_env(environment, overrides),

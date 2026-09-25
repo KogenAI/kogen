@@ -257,11 +257,13 @@ defmodule Kogen.ClaudeCode.ManagementTest do
   end
 
   test "managed roles cannot run setup", _ctx do
-    System.put_env("KOGEN_ROLE", "developer")
-    assert_raise RuntimeError, ~r/explicit user operation/, fn -> ClaudeCode.install() end
+    for role <- ~w(developer reviewer shaper expert) do
+      System.put_env("KOGEN_ROLE", role)
+      assert_raise RuntimeError, ~r/explicit user operation/, fn -> ClaudeCode.install() end
 
-    assert_raise RuntimeError, ~r/explicit user operation/, fn ->
-      ClaudeCode.login([])
+      assert_raise RuntimeError, ~r/explicit user operation/, fn ->
+        ClaudeCode.login([])
+      end
     end
 
     System.delete_env("KOGEN_ROLE")

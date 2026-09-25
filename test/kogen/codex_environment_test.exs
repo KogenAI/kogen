@@ -175,6 +175,33 @@ defmodule Kogen.Codex.EnvironmentTest do
     end
   end
 
+  # A hybrid route prepares Codex from the adversarial harness's own view:
+  # its native helpers, the native expert only where the Expert role runs on
+  # Codex, and the one central output limit for every Codex root.
+  test "hybrid routes prepare Codex from the Codex harness view with the central limit" do
+    for {route, expert?} <- [
+          {"claude-dominant-adversarial-codex", true},
+          {"codex-dominant-adversarial-claude", false}
+        ] do
+      root = temporary_root!()
+      on_exit(fn -> File.rm_rf(root) end)
+      %{project: project, operation: operation, scope: scope} = paths!(root)
+      assert {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", route)
+      view = Kogen.Intent.harness_config(config, "codex")
+      result = Environment.prepare(%{"executable" => "codex"}, scope, view, project, operation)
+      generation = Path.dirname(value!(result.env, "HOME"))
+      expert_file = Path.join(generation, "expert.toml")
+
+      assert File.read!(Path.join(generation, "scout.toml")) =~ "gpt-6-luna"
+      assert File.exists?(expert_file) == expert?
+
+      assert ("agents.expert.config_file=" <> Jason.encode!(expert_file)) in result.args ==
+               expert?
+
+      assert limit_count(result.args) == 1
+    end
+  end
+
   test "concurrent preparations receive distinct private generations" do
     root = temporary_root!()
     on_exit(fn -> File.rm_rf(root) end)
@@ -492,7 +519,8 @@ defmodule Kogen.Codex.EnvironmentTest do
       "shaping" => CodexHarness.shaper_args("astra", "low", write_prompt!(root)),
       "developer" => CodexHarness.developer_args("astra", "low"),
       "developer resume" => CodexHarness.developer_args("astra", "low", "session-1"),
-      "reviewer" => CodexHarness.reviewer_args("astra", "low")
+      "reviewer" => CodexHarness.reviewer_args("astra", "low"),
+      "expert" => CodexHarness.expert_args("astra", "low")
     }
 
     for {role, role_args} <- launches do

@@ -23,13 +23,15 @@ defmodule Kogen.Build.Tracking do
   scenarios and risks under either string or atom keys. `approved_entries` is
   the Build's frozen package-entry snapshot; only its SHA-256 digest is stored.
   `route` is the Build's resolved route (`Kogen.Intent.read_config/2`); its
-  name, harness and every role and helper profile are frozen in the record.
+  name, harness and every role and helper profile are frozen in the record,
+  and its complete role matrix under `role_assignment`.
   """
   @spec new(map(), map(), list(), map()) :: {:ok, state()} | {:error, String.t()}
   def new(intent, contract, approved_entries, route)
       when is_map(intent) and is_map(contract) and is_map(route) do
     with {:ok, frozen_intent} <- freeze_intent(intent),
          {:ok, frozen_route} <- freeze_route(route),
+         {:ok, role_assignment} <- freeze_role_assignment(route),
          {:ok, scenarios} <- required_json_value(contract, "scenarios"),
          {:ok, risks, risks_supplied} <- frozen_risks(contract),
          true <- is_list(scenarios),
@@ -38,6 +40,7 @@ defmodule Kogen.Build.Tracking do
            initial_record(
              frozen_intent,
              frozen_route,
+             role_assignment,
              scenarios,
              risks,
              risks_supplied,
@@ -293,12 +296,21 @@ defmodule Kogen.Build.Tracking do
   def apply_verdict(_state, _verdict, _reviewer_session, _reference_snapshots),
     do: {:error, "invalid scenario tracking verdict"}
 
-  defp initial_record(intent, route, scenarios, risks, risks_supplied, approved_entries) do
+  defp initial_record(
+         intent,
+         route,
+         role_assignment,
+         scenarios,
+         risks,
+         risks_supplied,
+         approved_entries
+       ) do
     %{
       "schema_version" => @schema_version,
       "purpose" => "inspection evidence; not a recovery checkpoint",
       "intent" => intent,
       "route" => route,
+      "role_assignment" => role_assignment,
       "approved_package_digest" => approved_digest(approved_entries),
       "scenarios" => scenarios,
       "risks" => risks,
@@ -310,20 +322,99 @@ defmodule Kogen.Build.Tracking do
   end
 
   # The whole resolved route is frozen, not only its name: a later config edit
-  # must not change what this record says the Build used.
+  # must not change what this record says the Build used. `route` keeps its
+  # established shape; the complete role matrix is the additive
+  # `role_assignment` (see `freeze_role_assignment/1`).
   defp freeze_route(route) do
     roles = ~w(shaping developer reviewer)
-    helpers = ~w(scout worker expert)
 
     with {:ok, name} <- route_string(route, ["route"]),
          {:ok, harness} <- route_string(route, ["harness"]),
          {:ok, role_profiles} <- route_profiles(route, roles, []),
-         {:ok, helper_profiles} <- route_profiles(route, helpers, ["helpers"]) do
+         {:ok, helper_profiles} <- route_profiles(route, helper_names(route), ["helpers"]) do
       {:ok,
        %{"name" => name, "harness" => harness}
        |> Map.merge(role_profiles)
        |> Map.put("helpers", helper_profiles)}
     end
+  end
+
+  # A role-level route has no native expert helper on the dominant harness
+  # when the Expert is assigned elsewhere; a clean route always has one.
+  defp helper_names(route) do
+    helpers = fetch(route, "helpers")
+
+    if is_map(helpers) and is_nil(fetch(helpers, "expert")) and is_map(fetch(route, "roles")),
+      do: ~w(scout worker),
+      else: ~w(scout worker expert)
+  end
+
+  @assigned_roles ~w(shaping developer reviewer expert)
+
+  # The complete role-to-harness/model/effort matrix and every harness's
+  # native helper profiles, frozen once at Build start. A route without an
+  # explicit matrix assigns every role its one harness and its expert helper
+  # as the Expert.
+  defp freeze_role_assignment(route) do
+    with {:ok, harness} <- route_string(route, ["harness"]),
+         {:ok, roles} <- assigned_roles(route, harness),
+         {:ok, helpers} <- assigned_helpers(route, harness, roles["expert"]) do
+      {:ok, Map.put(roles, "helpers", helpers)}
+    end
+  end
+
+  defp assigned_roles(route, harness) do
+    assigned = fetch(route, "roles")
+
+    Enum.reduce_while(@assigned_roles, {:ok, %{}}, fn role, {:ok, acc} ->
+      role_harness = if is_map(assigned), do: fetch(assigned, role), else: harness
+
+      with true <- is_binary(role_harness) and role_harness != "",
+           {:ok, profile} <- route_profile(route, assigned_path(route, role)) do
+        {:cont, {:ok, Map.put(acc, role, Map.put(profile, "harness", role_harness))}}
+      else
+        false -> {:halt, {:error, "scenario tracking route lacks roles.#{role}"}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp assigned_path(route, "expert"),
+    do: if(is_map(fetch(route, "expert")), do: ["expert"], else: ["helpers", "expert"])
+
+  defp assigned_path(_route, role), do: [role]
+
+  # Each harness's native scout and worker, plus the native expert on the
+  # harness the Expert role is assigned to, exactly as launches see them.
+  defp assigned_helpers(route, harness, expert) do
+    sources =
+      case fetch(route, "native_helpers") do
+        native when is_map(native) and map_size(native) > 0 ->
+          Enum.map(native, fn {name, _set} ->
+            {to_string(name), ["native_helpers", to_string(name)]}
+          end)
+
+        _absent ->
+          [{harness, ["helpers"]}]
+      end
+
+    Enum.reduce_while(sources, {:ok, %{}}, fn {name, prefix}, {:ok, acc} ->
+      case route_profiles(route, ~w(scout worker), prefix) do
+        {:ok, profiles} -> {:cont, {:ok, Map.put(acc, name, with_expert(profiles, name, expert))}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp with_expert(profiles, harness, %{"harness" => harness} = expert),
+    do: Map.put(profiles, "expert", Map.take(expert, ["model", "effort"]))
+
+  defp with_expert(profiles, _harness, _expert), do: profiles
+
+  defp route_profile(route, path) do
+    with {:ok, model} <- route_string(route, path ++ ["model"]),
+         {:ok, effort} <- route_string(route, path ++ ["effort"]),
+         do: {:ok, %{"model" => model, "effort" => effort}}
   end
 
   defp route_profiles(route, names, prefix) do
@@ -438,7 +529,7 @@ defmodule Kogen.Build.Tracking do
 
   defp preserve_frozen_fields(previous, record) do
     fields =
-      ~w(schema_version intent route approved_package_digest scenarios risks risks_supplied)
+      ~w(schema_version intent route role_assignment approved_package_digest scenarios risks risks_supplied)
 
     if Enum.all?(fields, &(Map.get(previous, &1) == Map.get(record, &1))),
       do: :ok,

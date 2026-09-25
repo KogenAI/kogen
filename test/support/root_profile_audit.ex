@@ -62,10 +62,14 @@ defmodule Kogen.RootProfileAudit do
   # The harness comes from `project`'s own configuration and the Kogen login
   # scope from `project`'s selector, never from whatever directory the caller
   # happens to be in (a live driver may be inside a disposable fixture).
-  def sessions_root(project \\ File.cwd!()) do
+  # In a role-level route each role's sessions live in its own harness's store,
+  # so a caller auditing a role passes that role. `route` names the resolved
+  # route the role's harness is read from; `nil` (the default) resolves the
+  # project's own `default_route`, exactly as on main.
+  def sessions_root(project \\ File.cwd!(), role \\ :developer, route \\ nil) do
     project = Path.expand(project)
 
-    if claude?(project),
+    if claude?(project, role, route),
       do: {:claude, claude_sessions_root(project)},
       else: codex_sessions_root(project)
   end
@@ -93,9 +97,9 @@ defmodule Kogen.RootProfileAudit do
   # selected Kogen scope. Assistant message metadata, not model text, is the
   # authority for the executed root model; efforts recorded in the transcript
   # must match the configured effort.
-  defp claude?(project) do
-    case Kogen.Intent.read_config(Path.join(project, ".kogen/config.yaml")) do
-      {:ok, %{harness: harness}} -> harness == "claude"
+  defp claude?(project, role, route) do
+    case Kogen.Intent.read_config(Path.join(project, ".kogen/config.yaml"), route) do
+      {:ok, config} -> Kogen.Intent.role_harness(config, role) == "claude"
       {:error, reason} -> fail!("cannot select the audited harness for #{project}: #{reason}")
     end
   end

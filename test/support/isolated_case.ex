@@ -257,8 +257,11 @@ defmodule Kogen.IsolatedCase do
         # replace the child's status or cleanup error.
         output |> target_evidence_frames() |> forward_target_evidence()
 
+        # The frame was forwarded once above; echoing it again in the failure
+        # message would make the target's one manifest frame a duplicate.
         raise ExUnit.AssertionError,
-          message: "isolated test #{source}:#{selector} failed (#{inspect(reason)})\n#{output}"
+          message:
+            "isolated test #{source}:#{selector} failed (#{inspect(reason)})\n#{without_target_evidence_frames(output)}"
     end
   end
 
@@ -276,6 +279,13 @@ defmodule Kogen.IsolatedCase do
           []
       end
     end)
+  end
+
+  defp without_target_evidence_frames(output) do
+    output
+    |> String.split("\n")
+    |> Enum.reject(&String.contains?(&1, @target_evidence_prefix))
+    |> Enum.join("\n")
   end
 
   defp forward_target_evidence(frames) do

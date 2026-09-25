@@ -44,6 +44,9 @@ defmodule Kogen.Build do
   @complete_base ".kogen/intents/complete"
   @publication_file_limit 5_242_880
   @publication_total_limit 10_485_760
+  # Every harness a Build role may use is ready before any launch; the Expert
+  # may be consulted from the Developer's harness through `mix kogen.expert`.
+  @build_roles [:developer, :reviewer, :expert]
 
   @doc """
   Runs one Build of the Approved Intent `slug` on the named `route`, or on the
@@ -211,8 +214,11 @@ defmodule Kogen.Build do
            VerificationPlan.build(contract.scenarios, intent.may_change_guarded_paths, catalog),
          :ok <- Kogen.VerificationPolicy.preflight(catalog.ordered_targets),
          {:ok, guarded_snapshot} <- GuardedPaths.capture(),
-         {:ok, runtime} <- Kogen.Harness.open(config),
-         {:ok, tracking} <- Tracking.new(intent, contract, approved_entries, config) do
+         {:ok, runtime} <- Kogen.Harness.open_roles(config, @build_roles),
+         {:ok, tracking} <- new_tracking(intent, contract, approved_entries, config, runtime) do
+      config = assigned_config(config, tracking.record)
+      runtime = %{runtime | route: config}
+
       ctx = %{
         slug: slug,
         intent: intent,
@@ -316,7 +322,7 @@ defmodule Kogen.Build do
             ctx.config.developer.model,
             ctx.config.developer.effort,
             ctx.policy_environment ++ Verification.environment(ctx.execution),
-            Kogen.Harness.launch_context(ctx.runtime)
+            Kogen.Harness.role_context(ctx.runtime, :developer)
           )
         else
           Kogen.Harness.launch_build_developer(
@@ -324,7 +330,7 @@ defmodule Kogen.Build do
             ctx.config.developer.model,
             ctx.config.developer.effort,
             ctx.policy_environment ++ Verification.environment(ctx.execution),
-            Kogen.Harness.launch_context(ctx.runtime)
+            Kogen.Harness.role_context(ctx.runtime, :developer)
           )
         end
 
@@ -377,8 +383,14 @@ defmodule Kogen.Build do
 
   defp receive_developer(ctx, _expected, _number, {:error, reason}) do
     case post_developer_inputs_unchanged(ctx) do
-      :ok -> stop(ctx, "harness failure during Developer turn: #{inspect(reason)}")
-      {:error, guard_reason} -> stop(ctx, guard_reason)
+      :ok ->
+        stop(
+          ctx,
+          "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}"
+        )
+
+      {:error, guard_reason} ->
+        stop(ctx, guard_reason)
     end
   end
 
@@ -618,22 +630,34 @@ defmodule Kogen.Build do
             })
 
           {:ok, ctx, _passed} ->
-            stop(ctx, "harness failure during Developer turn: #{inspect(reason)}", %{
-              "developer_session_id" => session_id,
-              "developer_invocation" => invocation_evidence(evidence),
-              "outer_attempt" => number
-            })
+            stop(
+              ctx,
+              "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}",
+              %{
+                "developer_session_id" => session_id,
+                "developer_invocation" => invocation_evidence(evidence),
+                "outer_attempt" => number
+              }
+            )
 
           {:error, _settlement_reason} ->
-            stop(ctx, "harness failure during Developer turn: #{inspect(reason)}", %{
-              "developer_invocation" => invocation_evidence(evidence)
-            })
+            stop(
+              ctx,
+              "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}",
+              %{
+                "developer_invocation" => invocation_evidence(evidence)
+              }
+            )
         end
 
       {:error, _} ->
-        stop(ctx, "harness failure during Developer turn: #{inspect(reason)}", %{
-          "developer_invocation" => invocation_evidence(evidence)
-        })
+        stop(
+          ctx,
+          "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}",
+          %{
+            "developer_invocation" => invocation_evidence(evidence)
+          }
+        )
     end
   end
 
@@ -726,7 +750,7 @@ defmodule Kogen.Build do
           prompt,
           ctx.config.reviewer.model,
           ctx.config.reviewer.effort,
-          Kogen.Harness.launch_context(ctx.runtime)
+          Kogen.Harness.role_context(ctx.runtime, :reviewer)
         )
 
       receive_review(ctx, candidate_id, session_id, number, result)
@@ -817,7 +841,9 @@ defmodule Kogen.Build do
       end
     else
       {:error, reason} ->
-        stop(ctx, "Reviewer failure: #{reason}", %{"invalid_verdict" => verdict.response})
+        stop(ctx, "Reviewer failure: #{reason} #{role_label(ctx, :reviewer)}", %{
+          "invalid_verdict" => verdict.response
+        })
     end
   end
 
@@ -829,11 +855,69 @@ defmodule Kogen.Build do
          {:error, {:malformed_verdict, _code, details}} = error
        )
        when is_map(details) do
-    stop(ctx, "Reviewer failure: #{inspect(error)}", %{"invalid_verdict" => details})
+    stop(ctx, "Reviewer failure: #{inspect(error)} #{role_label(ctx, :reviewer)}", %{
+      "invalid_verdict" => details
+    })
   end
 
   defp receive_review(ctx, _candidate_id, _session_id, _number, {:error, reason}),
-    do: stop(ctx, "Reviewer failure: #{inspect(reason)}")
+    do: stop(ctx, "Reviewer failure: #{inspect(reason)} #{role_label(ctx, :reviewer)}")
+
+  # The record is written before any launch; a failure releases every held
+  # harness selection.
+  defp new_tracking(intent, contract, approved_entries, config, runtime) do
+    case Tracking.new(intent, contract, approved_entries, config) do
+      {:ok, tracking} ->
+        {:ok, tracking}
+
+      {:error, _reason} = error ->
+        Kogen.Harness.close(runtime)
+        error
+    end
+  end
+
+  # Every launch takes its role, Expert and native helper profiles
+  # from the record's `role_assignment`, frozen once at Build start; nothing
+  # is re-derived from `.kogen/config.yaml`.
+  @doc false
+  def assigned_config(config, %{"role_assignment" => assignment}) do
+    roles = Kogen.Intent.roles()
+    helpers = Map.fetch!(assignment, "helpers")
+    harness = get_in(assignment, ["developer", "harness"])
+
+    native =
+      Map.new(helpers, fn {harness, set} ->
+        {harness,
+         %{scout: assigned_profile(set["scout"]), worker: assigned_profile(set["worker"])}}
+      end)
+
+    dominant =
+      helpers
+      |> Map.fetch!(harness)
+      |> Map.new(fn {label, profile} ->
+        {String.to_existing_atom(label), assigned_profile(profile)}
+      end)
+
+    config
+    |> Map.merge(Map.new(roles, &{&1, assigned_profile(assignment[Atom.to_string(&1)])}))
+    |> Map.merge(%{
+      harness: harness,
+      roles: Map.new(roles, &{&1, assignment[Atom.to_string(&1)]["harness"]}),
+      native_helpers: native,
+      helpers: dominant
+    })
+  end
+
+  defp assigned_profile(%{"model" => model, "effort" => effort}),
+    do: %{model: model, effort: effort}
+
+  # Names the role's frozen harness, model and effort in a role failure.
+  defp role_label(ctx, role) do
+    profile = Map.fetch!(ctx.config, role)
+
+    "(#{role} on harness #{Kogen.Intent.role_harness(ctx.config, role)}, " <>
+      "#{profile.model} at #{profile.effort})"
+  end
 
   defp fresh_reviewer(ctx, reviewer, developer) do
     if reviewer == developer or reviewer in ctx.reviewers,
@@ -1327,6 +1411,7 @@ defmodule Kogen.Build do
       "intent" => Map.take(record["intent"], ["id", "slug", "title"]),
       "build_id" => ctx.tracking.path |> Path.dirname() |> Path.basename(),
       "route" => %{"name" => ctx.config.route, "harness" => ctx.config.harness},
+      "role_assignment" => record["role_assignment"],
       "candidate_id" => candidate_id,
       "developer_session_id" => developer_session_id,
       "attempts" => attempts,
@@ -1388,6 +1473,15 @@ defmodule Kogen.Build do
     end)
   end
 
+  defp role_harnesses(route) do
+    Enum.map_join(Kogen.Intent.roles(), ", ", fn role ->
+      profile = Map.fetch!(route, role)
+
+      "#{role} `#{Kogen.Intent.role_harness(route, role)}` " <>
+        "(`#{profile.model}` at `#{profile.effort}`)"
+    end)
+  end
+
   defp evidence_markdown(
          intent,
          candidate_id,
@@ -1428,6 +1522,7 @@ defmodule Kogen.Build do
     # Complete evidence: #{intent.title}
 
     - Route: `#{route.route}` (harness `#{route.harness}`)
+    - Role harnesses: #{role_harnesses(route)}
     - Candidate id: `#{candidate_id}`
     - Developer session id: `#{developer_session_id}`
     - Reviewer session id: `#{verdict.session_id}`

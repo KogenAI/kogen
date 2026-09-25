@@ -21,7 +21,7 @@ defmodule Kogen.Build.Evidence do
          :ok <- matching_record_version(full, record),
          :ok <- matching_identity(summary, record, record_path),
          :ok <- matching_route(summary, record),
-         :ok <- record_versions(record, checkout_root) do
+         :ok <- record_versions(record, record_path, checkout_root) do
       {:ok, record}
     else
       {:error, %Jason.DecodeError{} = error} ->
@@ -133,7 +133,10 @@ defmodule Kogen.Build.Evidence do
   # A citation of the record itself is retained as metadata plus an immutable
   # sidecar holding the exact cited bytes. Earlier records inline those bytes
   # as `content_base64` and carry no sidecar; they stay readable unchanged.
-  defp record_versions(record, root) do
+  # Retained evidence travels as the record plus its `record-versions/`
+  # directory, so each sidecar is found next to the resolved record by its
+  # digest name, or at its checkout-relative locator when that still exists.
+  defp record_versions(record, record_path, root) do
     record
     |> Map.get("attempts", [])
     |> Enum.flat_map(fn attempt ->
@@ -142,7 +145,7 @@ defmodule Kogen.Build.Evidence do
     end)
     |> Enum.filter(&(is_map(&1) and Map.has_key?(&1, "sidecar")))
     |> Enum.reduce_while(:ok, fn snapshot, :ok ->
-      case record_version(snapshot, root) do
+      case record_version(snapshot, record_path, root) do
         :ok -> {:cont, :ok}
         error -> {:halt, error}
       end
@@ -152,20 +155,36 @@ defmodule Kogen.Build.Evidence do
   defp snapshot_values(snapshots) when is_map(snapshots), do: Map.values(snapshots)
   defp snapshot_values(_snapshots), do: []
 
-  defp record_version(%{"sidecar" => sidecar} = snapshot, root) when is_binary(sidecar) do
-    with {:ok, path} <- resolve_path(sidecar, root),
-         {:ok, bytes} <- File.read(path) do
-      if byte_size(bytes) == snapshot["byte_count"] and
-           Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == snapshot["sha256"],
-         do: :ok,
-         else: {:error, "bound record version sidecar mismatch: #{sidecar}"}
+  defp record_version(%{"sidecar" => sidecar, "sha256" => sha256} = snapshot, record_path, root)
+       when is_binary(sidecar) and sidecar != "" and is_binary(sha256) do
+    if sha256 =~ ~r/\A[0-9a-f]{64}\z/ do
+      beside = Path.join([Path.dirname(record_path), "record-versions", sha256 <> ".json"])
+      {:ok, located} = resolve_path(sidecar, root)
+
+      case Enum.find([beside, located], &File.regular?/1) do
+        nil -> {:error, "bound record version sidecar unavailable: #{sidecar}"}
+        path -> matching_sidecar(path, snapshot, sidecar)
+      end
     else
-      _ -> {:error, "bound record version sidecar unavailable: #{sidecar}"}
+      {:error, "bound record version sidecar has an invalid digest: #{sidecar}"}
     end
   end
 
-  defp record_version(_snapshot, _root),
+  defp record_version(_snapshot, _record_path, _root),
     do: {:error, "bound record version sidecar has an invalid locator"}
+
+  defp matching_sidecar(path, snapshot, sidecar) do
+    case File.read(path) do
+      {:ok, bytes} ->
+        if byte_size(bytes) == snapshot["byte_count"] and
+             Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == snapshot["sha256"],
+           do: :ok,
+           else: {:error, "bound record version sidecar mismatch: #{sidecar}"}
+
+      {:error, _reason} ->
+        {:error, "bound record version sidecar unavailable: #{sidecar}"}
+    end
+  end
 
   defp matching_record_version(full, record) do
     if record["schema_version"] == full["schema_version"],

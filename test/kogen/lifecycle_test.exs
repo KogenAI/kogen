@@ -282,6 +282,410 @@ defmodule Kogen.LifecycleTest do
            "the retained failed settlement reason must identify the bounded fixture check"
   end
 
+  # Scenario "hybrid-route-launches-dominant-and-adversarial": a Build on a
+  # role-level (hybrid) route launches the Developer only on its dominant
+  # harness (Claude Code) and the Reviewer only on the adversarial harness
+  # (Codex), resumes the exact Developer session on Claude Code after one
+  # Reviewer-requested rework round, never lets Stop ownership move to the
+  # Reviewer, and keeps the originally resolved role-to-harness matrix even
+  # after `.kogen/config.yaml` is edited mid-Build.
+  @hybrid_slug "hybrid-route-intent"
+
+  @hybrid_intent_yaml """
+  id: 01960000-0000-7000-8000-0000000hyb01
+  slug: #{@hybrid_slug}
+  title: Hybrid route intent
+  may_change_guarded_paths:
+    - dummy.txt
+    - reviewer-rework-marker.txt
+    - .kogen/config.yaml
+  """
+
+  @hybrid_scenarios_yaml """
+  - id: hybrid-route-scenario
+    given: a fake Candidate
+    when: the hybrid Reviewer reworks once on Codex then accepts
+    then: the Developer stays on Claude Code and the Reviewer stays on Codex, with the frozen route held across a mid-Build config edit
+    wrong_result: a later launch or the recorded route reflects the mid-Build edit, or Stop runs for the Reviewer
+    verified_by: [check]
+    evidence: fake hybrid dispatcher scripted to rework once then accept, with a mid-Build config mutation
+    proof:
+      offline: [hybrid-proof.txt]
+      paid_target: none
+      paid_reason: "offline-sufficient: scripted lifecycle fixture observes hybrid role dispatch"
+      affected_paths: [dummy.txt, reviewer-rework-marker.txt]
+  """
+
+  @hybrid_config_before """
+  default_route: hybrid
+  routes:
+    hybrid:
+      shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+      developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+      reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
+      expert:    {harness: codex, model: gpt-6-sol, effort: high}
+      helpers:
+        claude:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+        codex:
+          scout:  {model: gpt-6-luna, effort: low}
+          worker: {model: gpt-6-luna, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
+  # Fired once, from within the fake dispatcher, on the Developer's fresh
+  # Claude Code launch: moves the Reviewer onto Claude too and changes the
+  # Expert and every native helper profile. If the Build ever re-read config,
+  # a later launch would observe the edit.
+  @hybrid_config_mutated """
+  default_route: hybrid
+  routes:
+    hybrid:
+      shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+      developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+      reviewer:  {harness: claude, model: claude-opus-5-5, effort: medium}
+      expert:    {harness: codex, model: gpt-6-mutated, effort: low}
+      helpers:
+        claude:
+          scout:  {model: claude-sonnet-5, effort: medium}
+          worker: {model: claude-sonnet-5, effort: low}
+        codex:
+          scout:  {model: gpt-6-mutated-luna, effort: high}
+          worker: {model: gpt-6-mutated-luna, effort: low}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
+  @frozen_expert_assignment %{
+    "route" => "hybrid",
+    "caller" => "developer",
+    "harness" => "codex",
+    "model" => "gpt-6-sol",
+    "effort" => "high",
+    "helpers" => %{
+      "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
+      "worker" => %{"model" => "gpt-6-luna", "effort" => "high"}
+    }
+  }
+
+  @frozen_role_assignment %{
+    "shaping" => %{"harness" => "claude", "model" => "claude-opus-5-5", "effort" => "medium"},
+    "developer" => %{"harness" => "claude", "model" => "claude-opus-5-5", "effort" => "medium"},
+    "reviewer" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+    "expert" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+    "helpers" => %{
+      "claude" => %{
+        "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
+        "worker" => %{"model" => "claude-sonnet-5", "effort" => "medium"}
+      },
+      "codex" => %{
+        "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
+        "worker" => %{"model" => "gpt-6-luna", "effort" => "high"},
+        "expert" => %{"model" => "gpt-6-sol", "effort" => "high"}
+      }
+    }
+  }
+
+  test "a hybrid route launches the Developer on Claude Code and Review on Codex, resumes exactly, and freezes the role matrix" do
+    project_root = File.cwd!()
+    dest = Kogen.CompiledFixture.create!(project_root, "hybrid-lifecycle")
+    on_exit(fn -> File.rm_rf(dest) end)
+
+    install_hybrid_fixture_files!(project_root, dest)
+
+    File.write!(Path.join(dest, ".kogen/config.yaml"), @hybrid_config_before)
+
+    intent_dir = Path.join(dest, ".kogen/intents/approved/#{@hybrid_slug}")
+    File.mkdir_p!(intent_dir)
+    File.write!(Path.join(intent_dir, "intent.yaml"), @hybrid_intent_yaml)
+    File.write!(Path.join(intent_dir, "scenarios.yaml"), @hybrid_scenarios_yaml)
+
+    init_fixture_git!(dest)
+    head_before = git!(dest, ["rev-parse", "HEAD"])
+
+    hook_dir =
+      Path.join(System.tmp_dir!(), "kogen-hybrid-hook-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(hook_dir)
+    on_exit(fn -> File.rm_rf(hook_dir) end)
+    mutated_config = Path.join(hook_dir, "mutated.yaml")
+    File.write!(mutated_config, @hybrid_config_mutated)
+
+    fake_harness = Path.join(dest, "test/support/fake_hybrid")
+    claude_root = Path.join(dest <> "-claude", "claude")
+    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+
+    # Every fixture switch travels as an explicit env entry to this one
+    # subprocess (via `Kogen.CompiledFixture.mix_task!`), never as a
+    # `System.put_env` mutation of the shared outer test VM: this file's
+    # tests run alongside other async test modules (some of which spawn their
+    # own isolated child VMs that inherit the outer VM's ambient OS
+    # environment at spawn time), so a global env mutation here could leak
+    # into an unrelated concurrently-running Build fixture.
+    build_env = [
+      {"KOGEN_HARNESS", fake_harness},
+      {"KOGEN_CLAUDE_ROOT", claude_root},
+      {"FAKE_CLAUDE_STOP_BLOCK", "0"},
+      {"FAKE_CLAUDE_RESUME_EDITS", "1"},
+      {"FAKE_HYBRID_MIDBUILD_CONFIG", mutated_config}
+    ]
+
+    {output, exit_code} =
+      Kogen.CompiledFixture.mix_task!(
+        dest,
+        ["kogen.build", "--route", "hybrid", @hybrid_slug],
+        build_env
+      )
+
+    assert exit_code == 0, "expected the hybrid Build to accept:\n#{output}"
+
+    assert File.read!(Path.join(dest, ".kogen/config.yaml")) == @hybrid_config_mutated,
+           "sanity: the mid-Build config mutation really happened"
+
+    dispatch_lines =
+      Path.join(dest, ".kogen/runtime/hybrid-dispatch-log")
+      |> File.read!()
+      |> String.split("\n", trim: true)
+
+    # Categorized by protocol (`-p` vs `exec`), not by the dispatcher's logged
+    # `role=`: an ambient `KOGEN_ROLE` inherited from an enclosing ordinary
+    # shell environment (never set by Kogen code for readiness checks) could
+    # otherwise mislabel the unrelated `claude auth status` readiness call.
+    developer_lines = Enum.filter(dispatch_lines, &String.contains?(&1, "argv: -p"))
+    reviewer_lines = Enum.filter(dispatch_lines, &String.contains?(&1, "argv: exec"))
+
+    assert length(developer_lines) == 2, "expected exactly a fresh and a resumed Developer turn"
+
+    assert length(reviewer_lines) == 2,
+           "expected exactly a rework then an accepting Reviewer turn"
+
+    for line <- developer_lines do
+      assert line =~ "argv: -p", "the Developer must always run the Claude protocol"
+      assert line =~ "--model claude-opus-5-5"
+      assert line =~ "--effort medium"
+      assert line =~ "--dangerously-skip-permissions"
+      refute line =~ "argv: exec", "the Developer must never run under the Codex protocol"
+
+      assert expert_assignment!(line) == @frozen_expert_assignment,
+             "the Developer must carry the frozen cross-harness Expert assignment: #{line}"
+
+      # The Developer's native Claude Code helpers keep their frozen profiles
+      # and no native expert stands in for the Codex Expert.
+      assert line =~
+               ~r/"kogen-scout":\{"description":"[^"]*","effort":"low","model":"claude-sonnet-5"/
+
+      assert line =~
+               ~r/"kogen-worker":\{"description":"[^"]*","effort":"medium","model":"claude-sonnet-5"/
+
+      refute line =~ "kogen-expert"
+    end
+
+    for line <- reviewer_lines do
+      assert line =~ "argv: exec", "the Reviewer must always run the Codex protocol"
+      assert line =~ "--model gpt-6-sol"
+      assert line =~ ~s(model_reasoning_effort=\"high\")
+      assert line =~ "--dangerously-bypass-approvals-and-sandbox"
+      assert line =~ "--output-schema"
+      refute line =~ "argv: -p", "the Reviewer must never run under the Claude Code protocol"
+      assert line =~ "role=reviewer"
+
+      assert line =~ "expert= argv:",
+             "the Reviewer's own Expert is native Codex, so it must carry no KOGEN_EXPERT"
+    end
+
+    # The adversarial Codex Reviewer gets the same bounded review packet the
+    # dominant harness's Reviewer would get, bound to its attempt.
+    for n <- 1..2 do
+      prompt = File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-#{n}"))
+      [_prompt, context] = String.split(prompt, "KOGEN_TASK_CONTEXT\n", parts: 2)
+      context = context |> String.split("\n", parts: 2) |> hd() |> Jason.decode!()
+      assert context["evidence_source"] == "review_packet"
+      packet = Path.join(dest, context["review_packet"]["path"])
+      assert packet =~ "/review-packets/#{n - 1}.json"
+      assert File.exists?(packet)
+    end
+
+    [fresh_line, resumed_line] = developer_lines
+
+    [_before, session_id] = String.split(fresh_line, "--session-id ", parts: 2)
+    session_id = session_id |> String.split(" ") |> List.first()
+
+    assert resumed_line =~ "--resume #{session_id}",
+           "the resumed Developer turn must reuse the exact fresh session id"
+
+    refute fresh_line =~ "--resume", "the fresh Developer launch must never carry --resume"
+
+    hook_responses =
+      Path.join(dest, ".kogen/runtime/fake-hook-responses")
+      |> File.read!()
+      |> String.split("\n", trim: true)
+
+    assert length(hook_responses) == 2,
+           "Stop must run exactly once per Developer turn (fresh and resumed), never for the Reviewer"
+
+    assert File.read!(Path.join(dest, "dummy.txt")) == "reviewed fixture value\n"
+
+    assert File.read!(Path.join(dest, "reviewer-rework-marker.txt")) ==
+             "Reviewer-directed rework applied\n"
+
+    head_after = git!(dest, ["rev-parse", "HEAD"])
+    refute head_after == head_before, "the accepted hybrid Build must have committed"
+
+    complete_dir = Path.join(dest, ".kogen/intents/complete/#{@hybrid_slug}")
+    assert File.dir?(complete_dir)
+
+    [record_path] =
+      Path.wildcard(Path.join(dest, ".kogen/runtime/scenario-tracking/*/record.json"))
+
+    record = record_path |> File.read!() |> Jason.decode!()
+
+    # The existing route map keeps its exact shape; the matrix is additive.
+    assert record["route"] == %{
+             "name" => "hybrid",
+             "harness" => "claude",
+             "shaping" => %{"model" => "claude-opus-5-5", "effort" => "medium"},
+             "developer" => %{"model" => "claude-opus-5-5", "effort" => "medium"},
+             "reviewer" => %{"model" => "gpt-6-sol", "effort" => "high"},
+             "helpers" => %{
+               "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
+               "worker" => %{"model" => "claude-sonnet-5", "effort" => "medium"}
+             }
+           }
+
+    assert record["role_assignment"] == @frozen_role_assignment,
+           "the tracking record must hold the originally resolved matrix, never the mid-Build edit"
+
+    assert record["role_assignment"] |> Map.keys() |> Enum.sort() ==
+             ["developer", "expert", "helpers", "reviewer", "shaping"]
+
+    # Every role view derived for a launch after the edit comes from the
+    # frozen role_assignment: the Expert assignment and each harness's native
+    # helper profiles.
+    {:ok, mutated} = File.cd!(dest, fn -> Kogen.Intent.read_config(".kogen/config.yaml") end)
+    refute Map.has_key?(mutated, :auditor)
+    refute Map.has_key?(mutated.roles, :auditor)
+    frozen = Kogen.Build.assigned_config(mutated, record)
+
+    assert frozen.roles == %{
+             shaping: "claude",
+             developer: "claude",
+             reviewer: "codex",
+             expert: "codex"
+           }
+
+    refute Map.has_key?(frozen, :auditor)
+    refute Map.has_key?(frozen.roles, :auditor)
+
+    [{"KOGEN_EXPERT", json}] = Kogen.Harness.expert_environment(frozen, :developer)
+    assert Jason.decode!(json) == @frozen_expert_assignment
+
+    assert Kogen.Intent.role_config(frozen, :developer).helpers == %{
+             scout: %{model: "claude-sonnet-5", effort: "low"},
+             worker: %{model: "claude-sonnet-5", effort: "medium"}
+           }
+
+    [initial_attempt, accepted_attempt] = record["attempts"]
+
+    assert Enum.uniq(Enum.map(record["attempts"], & &1["developer_session_id"])) == [session_id]
+
+    refute initial_attempt["reviewer_session"] == accepted_attempt["reviewer_session"],
+           "each Reviewer launch must be an independent Codex session, distinct from the Developer's"
+
+    refute accepted_attempt["reviewer_session"] == session_id
+    refute initial_attempt["reviewer_session"] == session_id
+
+    summary =
+      complete_dir |> Path.join("build-summary.json") |> File.read!() |> Jason.decode!()
+
+    assert summary["route"] == %{"name" => "hybrid", "harness" => "claude"}
+    assert summary["role_assignment"] == @frozen_role_assignment
+
+    evidence = File.read!(Path.join(complete_dir, "evidence.md"))
+    assert evidence =~ "Route: `hybrid` (harness `claude`)"
+    assert evidence =~ "developer `claude`"
+    assert evidence =~ "reviewer `codex`"
+  end
+
+  # A role failure names the role's frozen harness, model and effort, even
+  # after a mid-Build edit moved that role to another harness and profile.
+  test "a failing hybrid Reviewer's stop reason names its frozen harness, model and effort" do
+    project_root = File.cwd!()
+    dest = Kogen.CompiledFixture.create!(project_root, "hybrid-failure")
+    on_exit(fn -> File.rm_rf(dest) end)
+
+    install_hybrid_fixture_files!(project_root, dest)
+    File.write!(Path.join(dest, ".kogen/config.yaml"), @hybrid_config_before)
+    intent_dir = Path.join(dest, ".kogen/intents/approved/#{@hybrid_slug}")
+    File.mkdir_p!(intent_dir)
+    File.write!(Path.join(intent_dir, "intent.yaml"), @hybrid_intent_yaml)
+    File.write!(Path.join(intent_dir, "scenarios.yaml"), @hybrid_scenarios_yaml)
+    init_fixture_git!(dest)
+
+    hook_dir =
+      Path.join(System.tmp_dir!(), "kogen-hybrid-fail-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(hook_dir)
+    on_exit(fn -> File.rm_rf(hook_dir) end)
+    mutated_config = Path.join(hook_dir, "mutated.yaml")
+    File.write!(mutated_config, @hybrid_config_mutated)
+    claude_root = Path.join(dest <> "-claude", "claude")
+    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+
+    {output, exit_code} =
+      Kogen.CompiledFixture.mix_task!(dest, ["kogen.build", "--route", "hybrid", @hybrid_slug], [
+        {"KOGEN_HARNESS", Path.join(dest, "test/support/fake_hybrid")},
+        {"KOGEN_CLAUDE_ROOT", claude_root},
+        {"FAKE_CLAUDE_STOP_BLOCK", "0"},
+        {"FAKE_HYBRID_MIDBUILD_CONFIG", mutated_config},
+        {"FAKE_HYBRID_REVIEWER_MALFORMED", "1"}
+      ])
+
+    assert exit_code != 0
+    assert File.read!(Path.join(dest, ".kogen/config.yaml")) == @hybrid_config_mutated
+    assert output =~ "Reviewer failure: "
+    assert output =~ "(reviewer on harness codex, gpt-6-sol at high)"
+    refute output =~ "reviewer on harness claude"
+    refute File.dir?(Path.join(dest, ".kogen/intents/complete/#{@hybrid_slug}"))
+  end
+
+  defp expert_assignment!(dispatch_line) do
+    [_before, rest] = String.split(dispatch_line, "expert=", parts: 2)
+    [json, _after] = String.split(rest, " argv:", parts: 2)
+    Jason.decode!(json)
+  end
+
+  # `Kogen.CompiledFixture.create!/2` already installs the tracked Stop hooks,
+  # role prompts, `.gitignore`, a trivial-passing Makefile and every fixture
+  # executable a plain Codex or Claude Code route needs (including
+  # `fake_claude` and its `scenario_response.py`/`claude_stream.py`
+  # dependencies). Only the hybrid dispatcher and this route's minimal
+  # verification catalog and offline proof selector are added here.
+  defp install_hybrid_fixture_files!(project_root, dest) do
+    File.cp!(
+      Path.join(project_root, "test/support/fake_hybrid"),
+      Path.join(dest, "test/support/fake_hybrid")
+    )
+
+    File.chmod!(Path.join(dest, "test/support/fake_hybrid"), 0o755)
+
+    File.write!(Path.join(dest, "hybrid-proof.txt"), "hybrid route fixture selector\n")
+    File.mkdir_p!(Path.join(dest, "priv/kogen"))
+
+    File.write!(Path.join(dest, "priv/kogen/verification_targets.yaml"), """
+    targets:
+      - name: check
+        cost_class: offline-complete
+        rank: 0
+        dependencies: []
+        provider_backed: false
+        owner: fixture
+    """)
+  end
+
   defp init_fixture_git!(dest) do
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},

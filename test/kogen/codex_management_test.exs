@@ -26,6 +26,35 @@ defmodule Kogen.Codex.ManagementTest do
     {:ok, root: root, source: source, config: config}
   end
 
+  test "managed roles, including the Expert, cannot run setup", ctx do
+    for role <- ~w(developer reviewer shaper expert) do
+      System.put_env("KOGEN_ROLE", role)
+
+      assert_raise RuntimeError, ~r/explicit user operation/, fn -> Codex.install() end
+      assert_raise RuntimeError, ~r/explicit user operation/, fn -> Codex.login([]) end
+    end
+
+    System.delete_env("KOGEN_ROLE")
+    refute File.exists?(Path.join(ctx.root, "trace.jsonl"))
+  end
+
+  # A test VM prepends a private `kogen-test-code-*` directory, which the
+  # code server treats as a `kogen` application directory. Readiness must
+  # still find the managed installer and report the real state.
+  test "readiness ignores a code-path entry that shadows the kogen application", ctx do
+    shadow = Path.join(ctx.root, "kogen-shadow-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(shadow)
+    Code.prepend_path(shadow)
+    on_exit(fn -> Code.delete_path(shadow) end)
+    assert to_string(:code.lib_dir(:kogen)) == shadow
+
+    assert {:error, reason} = Codex.open(ctx.config)
+    assert reason =~ "mix kogen.codex.install"
+    install_fixture!(ctx)
+    assert {:error, reason} = Codex.open(ctx.config)
+    assert reason =~ "mix kogen.codex.login"
+  end
+
   test "missing runtime and explicit scope preflight never call a provider", ctx do
     assert {:error, reason} = Codex.open(ctx.config)
     assert reason =~ "mix kogen.codex.install"

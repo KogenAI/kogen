@@ -130,6 +130,38 @@ defmodule Kogen.Harness.Codex do
     end
   end
 
+  @doc """
+  Launches a fresh Expert thread for one question on stdin with the same
+  unattended flags as every Codex role; its final agent message is returned.
+  """
+  def launch_expert(prompt, model, effort, context),
+    do: launch_reader("expert", prompt, model, effort, context)
+
+  defp launch_reader(role, prompt, model, effort, context) do
+    with_context(context, fn selected ->
+      removed =
+        Enum.map(
+          ~w(KOGEN_VERIFICATION_CONTEXT KOGEN_VERIFICATION_RETRY_LIMIT KOGEN_VERIFICATION_TARGETS KOGEN_EXPERT),
+          &{&1, nil}
+        )
+
+      {output, exit_code} =
+        run_with_stdin(
+          selected.executable,
+          selected.args ++ expert_args(model, effort),
+          prompt,
+          merge_environment(selected.env, [{"KOGEN_ROLE", role} | removed])
+        )
+
+      with {:ok, turn} <- parse_turn(decode_events(output), exit_code, output) do
+        {:ok, %{session_id: turn.session_id, message: turn.message}}
+      end
+    end)
+  end
+
+  @doc false
+  def expert_args(model, effort), do: ["exec"] ++ exec_flags(model, effort) ++ ["-"]
+
   @doc "Launches the interactive Codex Shaping Controller with the caller's real terminal."
   def exec_shaper(model, effort, prompt_file, context) do
     with_context(context, fn selected ->

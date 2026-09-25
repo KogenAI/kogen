@@ -270,6 +270,80 @@ defmodule Kogen.RootProfileAuditTest do
     end
   end
 
+  test "sessions_root is role-aware: a hybrid route splits stores, a clean route does not" do
+    base =
+      Path.join(
+        System.tmp_dir!(),
+        "root-profile-route-aware-#{System.unique_integer([:positive])}"
+      )
+
+    project = Path.join(base, "project")
+    File.mkdir_p!(Path.join(project, ".kogen"))
+    on_exit(fn -> File.rm_rf!(base) end)
+
+    hybrid_route = %{
+      "shaping" => %{"harness" => "claude", "model" => "claude-opus-5-5", "effort" => "medium"},
+      "developer" => %{
+        "harness" => "claude",
+        "model" => "claude-opus-5-5",
+        "effort" => "medium"
+      },
+      "reviewer" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+      "expert" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+      "helpers" => %{
+        "claude" => %{
+          "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
+          "worker" => %{"model" => "claude-sonnet-5", "effort" => "medium"}
+        },
+        "codex" => %{
+          "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
+          "worker" => %{"model" => "gpt-6-luna", "effort" => "high"}
+        }
+      }
+    }
+
+    RouteConfig.write!(
+      Path.join(project, ".kogen/config.yaml"),
+      [
+        {"claude", RouteConfig.claude_route()},
+        {"claude-dominant-adversarial-codex", hybrid_route}
+      ],
+      default_route: "claude"
+    )
+
+    # On the unchanged claude default, every role selects the same (Claude
+    # Code) store, exactly as on main -- with no route argument at all.
+    assert {:claude, _} = Kogen.RootProfileAudit.sessions_root(project)
+    assert {:claude, _} = Kogen.RootProfileAudit.sessions_root(project, :developer)
+    assert {:claude, _} = Kogen.RootProfileAudit.sessions_root(project, :reviewer)
+
+    # On the named hybrid route, Shaping and Developer stay on the Claude
+    # Code store; Reviewer and Expert move to the Codex store. Both stores
+    # are distinct paths, audited separately.
+    assert {:claude, claude_root} =
+             Kogen.RootProfileAudit.sessions_root(
+               project,
+               :developer,
+               "claude-dominant-adversarial-codex"
+             )
+
+    codex_root =
+      Kogen.RootProfileAudit.sessions_root(
+        project,
+        :reviewer,
+        "claude-dominant-adversarial-codex"
+      )
+
+    refute match?({:claude, _}, codex_root)
+    refute claude_root == codex_root
+
+    assert Kogen.RootProfileAudit.sessions_root(
+             project,
+             :expert,
+             "claude-dominant-adversarial-codex"
+           ) == codex_root
+  end
+
   defp transcript!(cwd, model, effort) do
     Jason.encode!(%{"type" => "user", "cwd" => cwd, "message" => %{"content" => "hi"}}) <>
       "\n" <>

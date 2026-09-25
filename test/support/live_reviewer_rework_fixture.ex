@@ -10,6 +10,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
 
   @slug "live-reviewer-rework-probe"
   @intent_id "01960000-0000-7000-8000-00000000beef"
+  @route "claude-dominant-adversarial-codex"
 
   @check_rule """
   check:
@@ -49,7 +50,12 @@ defmodule Kogen.LiveReviewerReworkFixture do
 
   def run do
     project_root = File.cwd!()
-    {:ok, config} = Intent.read_config()
+
+    # Never the default: this fixture proves the Reviewer really runs on the
+    # adversarial harness, so it names the hybrid route explicitly.
+    {:ok, config} =
+      Intent.read_config(Path.join(project_root, ".kogen/config.yaml"), @route)
+
     log_dir = owned_log_dir(project_root)
 
     raw_fixture =
@@ -70,8 +76,12 @@ defmodule Kogen.LiveReviewerReworkFixture do
     fixture = ReviewPacketAudit.assert_outside_checkout!(raw_fixture, project_root)
 
     # Fail closed, before any provider dispatch, if the fixture does not
-    # resolve to a logged-in Kogen Claude Code login scope.
+    # resolve to a logged-in Kogen Claude Code login scope (Developer) or a
+    # logged-in Kogen Codex login scope (Reviewer, Expert). Both preflights
+    # delegate to each harness's own readiness, and Codex's canonical-path
+    # trust and executor setup stay untouched.
     ReviewPacketAudit.assert_logged_in!(fixture)
+    ReviewPacketAudit.assert_codex_logged_in!(fixture)
 
     File.write!(Path.join(log_dir, "fixture-path.txt"), fixture <> "\n")
     setup_fixture(project_root, fixture)
@@ -95,7 +105,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
     raw_stream_dir = Path.join(log_dir, "build-raw-streams")
 
     {output, status} =
-      System.cmd("mix", ["kogen.build", @slug],
+      System.cmd("mix", ["kogen.build", @slug, "--route", @route],
         cd: fixture,
         env: [
           {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
@@ -122,14 +132,21 @@ defmodule Kogen.LiveReviewerReworkFixture do
       LiveReworkAudit.audit!(fixture, raw_stream_dir, slug: @slug, intent_id: @intent_id)
 
     # The Build ran in the fixture with the fixture's config and login scope.
+    # Each role is audited in its own assigned harness's native session store,
+    # so a hybrid route proves the Reviewer really ran on the adversary.
     RootProfileAudit.audit!(
-      Path.join(log_dir, "build-root-profile-audit"),
+      Path.join(log_dir, "build-root-profile-audit/developer"),
+      %{audit.developer_session_id => Map.put(config.developer, :role, "developer")},
+      RootProfileAudit.sessions_root(fixture, :developer, @route)
+    )
+
+    RootProfileAudit.audit!(
+      Path.join(log_dir, "build-root-profile-audit/reviewer"),
       %{
-        audit.developer_session_id => Map.put(config.developer, :role, "developer"),
         audit.rework_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer"),
         audit.accepting_reviewer_session_id => Map.put(config.reviewer, :role, "reviewer")
       },
-      RootProfileAudit.sessions_root(fixture)
+      RootProfileAudit.sessions_root(fixture, :reviewer, @route)
     )
 
     File.write!(
@@ -232,6 +249,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
 
         File.mkdir_p!(Path.dirname(destination))
         File.cp!(path, destination)
+        ReviewPacketAudit.preserve_record_versions!(path, destination)
         {Path.relative_to(path, fixture), destination}
       end
 

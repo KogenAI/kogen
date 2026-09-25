@@ -616,6 +616,137 @@ defmodule Kogen.ShapeTaskTest do
     end
   end
 
+  # A hybrid (role-level) route: Shaping (and Developer) run on Claude Code,
+  # the dominant harness; Reviewer and Expert run on Codex, the adversarial
+  # harness. Used to prove Shape opens every role's harness, launches the
+  # Shaper through the Shaping role's harness, and carries the cross-harness
+  # Expert assignment into the launch environment.
+  defp hybrid_config do
+    """
+    default_route: hybrid
+    routes:
+      hybrid:
+        shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+        developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+        reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
+        expert:    {harness: codex, model: gpt-6-sol, effort: high}
+        helpers:
+          claude:
+            scout:  {model: claude-sonnet-5, effort: low}
+            worker: {model: claude-sonnet-5, effort: medium}
+          codex:
+            scout:  {model: gpt-6-luna, effort: low}
+            worker: {model: gpt-6-luna, effort: high}
+    outer_resumptions: 2
+    verification_retries: 2
+    """
+  end
+
+  test "a hybrid route's not-ready adversarial Expert harness fails before any Shaper launch, naming the role and harness" do
+    fixture = shape_fixture()
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), hybrid_config())
+
+    claude_root = Path.join(fixture <> "-claude-root", "claude")
+    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+    source = File.cwd!()
+
+    {_out, 0} =
+      System.cmd("python3", [
+        Path.join(source, "test/support/managed_claude_fixture.py"),
+        claude_root,
+        Path.join(source, "priv/kogen/claude_code/install.py")
+      ])
+
+    File.write!(Path.join(claude_root, "accounts/shared/.fake-login"), "claude.ai\n")
+
+    # No `KOGEN_HARNESS`: both harnesses use real managed readiness, so only
+    # the adversarial Codex harness (a fresh, unmanaged root) is not ready.
+    env = [
+      {"KOGEN_CLAUDE_ROOT", claude_root},
+      {"KOGEN_TEST_NATIVE_TRACE", Path.join(fixture <> "-claude-root", "claude-trace.jsonl")},
+      {"KOGEN_CODEX_ROOT", Path.join(fixture <> "-claude-root", "codex-not-installed")}
+    ]
+
+    {output, status} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape"], env)
+
+    assert status != 0
+
+    assert output =~
+             "expert harness codex is not ready: Kogen Codex is not installed. Run mix kogen.codex.install"
+
+    refute output =~ "reviewer"
+    refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+    refute File.exists?(Path.join(fixture, ".kogen/runtime/shaping-args"))
+  end
+
+  # The Expert task never reads the config: without a frozen assignment it
+  # fails naming the missing assignment, even when the config is unreadable.
+  test "mix kogen.expert without KOGEN_EXPERT names the missing assignment and never reads the config" do
+    fixture = shape_fixture()
+    config = Path.join(fixture, ".kogen/config.yaml")
+    File.write!(config, "not: [valid")
+    File.chmod!(config, 0o000)
+    on_exit(fn -> File.chmod(config, 0o644) end)
+
+    for assignment <- [nil, ~s({"harness":"codex"})] do
+      {output, status} =
+        Kogen.CompiledFixture.mix_task!(fixture, ["kogen.expert", "Which lock order is safe?"], [
+          {"KOGEN_EXPERT", assignment},
+          {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")}
+        ])
+
+      assert status != 0
+      assert output =~ "KOGEN_EXPERT assignment"
+      refute output =~ "config.yaml"
+    end
+  end
+
+  test "Shape launches the Shaper on the Shaping role's harness in a hybrid route, carrying the cross-harness Expert assignment" do
+    fixture = shape_fixture()
+    File.write!(Path.join(fixture, ".kogen/config.yaml"), hybrid_config())
+    claude_root = Path.join(fixture <> "-claude-root", "claude")
+    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+
+    env = [
+      {"KOGEN_HARNESS", Path.join(File.cwd!(), "test/support/hybrid_claude_shaper.py")},
+      {"KOGEN_CLAUDE_ROOT", claude_root},
+      {"ANTHROPIC_API_KEY", "INHERITED-API-KEY"}
+    ]
+
+    {output, 0} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape"], env)
+    assert output =~ ~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}/
+
+    argv =
+      fixture |> Path.join(".kogen/runtime/shaping-args") |> File.read!() |> String.split("\n")
+
+    prompt = File.read!(Path.join(fixture, ".kogen/runtime/shaping-prompt"))
+    env_out = File.read!(Path.join(fixture, ".kogen/runtime/shaping-env"))
+
+    # The Shaper launches through the Claude adapter (the Shaping role's
+    # harness), never through Codex (the Reviewer/Expert's harness).
+    assert_flag!(argv, "--model", "claude-opus-5-5")
+    assert_flag!(argv, "--effort", "medium")
+    assert "--dangerously-skip-permissions" in argv
+    refute Enum.any?(argv, &String.contains?(&1, "model_reasoning_effort"))
+
+    # The rendered prompt (what the Shaper is instructed to record as this
+    # Draft's `shaping` metadata) names the Shaping role's own harness,
+    # `claude`, never the adversarial Codex harness.
+    assert prompt =~ "route `hybrid`, harness `claude`, model `claude-opus-5-5`"
+
+    # The cross-harness Expert assignment (Codex) is carried into the
+    # Shaper's environment, never a substituted native Claude Code helper.
+    assert env_out =~ ~s("harness":"codex")
+    assert env_out =~ ~s("caller":"shaping")
+    assert env_out =~ ~s("model":"gpt-6-sol")
+    assert env_out =~ ~s("effort":"high")
+
+    assert prompt =~ "mix kogen.expert"
+    refute prompt =~ "kogen-expert"
+  end
+
   defp flag(argv, name), do: argv |> Enum.drop_while(&(&1 != name)) |> Enum.at(1)
   defp assert_flag!(argv, name, value), do: assert(flag(argv, name) == value)
 

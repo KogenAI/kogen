@@ -1,0 +1,278 @@
+- id: four-route-selection
+  given: >-
+    The tracked configuration keeps default_route claude and the two existing clean routes (claude,
+    codex) byte-for-byte, and adds two hybrid routes (claude-dominant-adversarial-codex,
+    codex-dominant-adversarial-claude). In each hybrid route, shaping, developer, reviewer and expert
+    name their own harness, model and effort, and helpers are keyed by every harness a role
+    uses. Neither hybrid route has a top-level harness key.
+  when: >-
+    A caller selects each route explicitly with --route, or relies on the configured default_route.
+  then: >-
+    Kogen resolves all four routes, and the default still resolves to the clean claude route. For
+    every resolved route, Kogen.Intent.role_harness/2 and role_config/2 give each of shaping,
+    developer, reviewer and expert its assigned harness and exact profile. In a clean route, every
+    role resolves to the one harness and the Expert to its helpers.expert profile. No route has an
+    auditor role: the tracked config declares no auditor key, and the role set of role_harness/2,
+    role_config/2 and the frozen role_assignment is exactly shaping, developer, reviewer and
+    expert. The resolved values of the existing keys (harness, shaping, developer,
+    reviewer, helpers) are identical to main's. A hybrid route that omits any role, a role harness or a
+    harness helper set is refused with the missing key named. A clean route with a
+    role-level harness beside its route harness is refused. Claude Code proven-model checks apply
+    only to roles and helpers assigned to Claude Code. Exactly one route still declares a top-level
+    harness of codex, so RouteConfig.codex_route! and the shaping-evaluation driver keep resolving
+    it. When the Build edits cataloged tests, it refreshes only their source_sha256 bindings in
+    priv/kogen/test-reliability.yaml with the supported script, keeps the ledger's declarations and
+    controls, and the catalog and whole-suite checks pass. The Makefile and
+    priv/kogen/verification_targets.yaml stay byte-identical.
+  wrong_result: >-
+    A hybrid route is rejected for having more than one harness, silently falls back to the dominant
+    harness, or inherits a missing expert from another role. A clean route changes bytes, resolved
+    values or behaviour. An auditor role, key, readiness entry or launch function appears (for
+    example carried over from the reuse Candidate 30b96fa0). default_route is changed in this
+    Build. A second top-level codex route appears. Test hashes are left stale, or the ledger validator
+    is weakened to pass Check.
+  verified_by: [check]
+  evidence: >-
+    A codex_route! test with the four-route config asserts that exactly one top-level codex route
+    resolves, and refuses a config with two. selective_verification_targets_test and main's controller
+    catalog digest (VerificationPlan.unchanged?) catch any Makefile or catalog byte change.
+    Configuration and parser tests resolve all four routes, assert the four-role matrix, assert the
+    role set has no auditor, reject incomplete role assignments, and keep the existing default and clean-route tests
+    (configuration_support_contract_test, claude_code_catalog_test) passing. The refresh script and
+    the catalog and whole-suite tests show hash-only ledger changes.
+  proof:
+    offline: [test/kogen/configuration_support_contract_test.exs, test/kogen/intent_test.exs, test/kogen/claude_code_catalog_test.exs, test/kogen/selective_verification_targets_test.exs, test/kogen/test_reliability_catalog_test.exs, test/kogen/whole_suite_remediation_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: the route parser and its configuration consumers cover the public selection
+      contract, including refusal controls
+    affected_paths: [.kogen/config.yaml, README.md, lib/kogen/intent.ex, priv/kogen/test-reliability.yaml, test/support/route_config.ex, test/kogen/configuration_support_contract_test.exs, test/kogen/intent_test.exs, test/kogen/claude_code_catalog_test.exs, test/kogen/test_reliability_catalog_test.exs, test/kogen/whole_suite_remediation_test.exs]
+
+- id: adversarial-role-dispatch
+  given: >-
+    A hybrid route assigns Shaping and Developer to its dominant harness, and Reviewer and Expert to
+    the adversarial harness. Intent bounded-reviewer-evidence has landed, so every prepared
+    Codex launch context carries the central tool_output_token_limit.
+  when: >-
+    Kogen launches each role: a role's native helper delegation, and a Developer consulting the
+    cross-harness Expert through mix kogen.expert.
+  then: >-
+    Each role launches through its assigned harness with its exact model and effort, and uses that
+    harness's existing autonomous-launch flags and its prepared launch context. So every Codex root
+    launch (Developer, Reviewer or Expert) carries the central tool_output_token_limit.
+    Helpers are launched only by and through the role's own native harness. A Developer whose Expert
+    is on the other harness gets no native expert helper, and its execution policy tells it to use
+    mix kogen.expert. Its launch carries a frozen KOGEN_EXPERT assignment, and the task never reads
+    .kogen/config.yaml. The Expert starts a fresh session and returns that session id and the final
+    message. It runs with KOGEN_ROLE expert, with the verification-context variables and
+    KOGEN_EXPERT removed, and with editing tools denied on Claude Code. Both managed-runtime setup
+    guards (mix kogen.claude.* and mix kogen.codex.*) refuse the expert role as they refuse
+    developer, reviewer and shaper. Kogen.Harness exposes no launch_auditor function and no
+    :auditor role context. On live-native, a new case
+    in native_helper_live_test.exs runs mix kogen.expert as a subprocess with the frozen assignment
+    on managed Codex for the named claude-dominant-adversarial-codex route. Its retained
+    cross-harness-expert.json receipt records the session's executed model and effort from the
+    Codex session store, and they equal the route's expert profile.
+  wrong_result: >-
+    The Reviewer or Expert runs on the dominant harness. A helper inherits the wrong harness.
+    A native helper stands in for the cross-harness Expert. A role silently uses another model or
+    effort. An Expert launch builds its own Codex argv or environment and so loses the output limit
+    or the safety-bypass flags. An Expert can run managed-runtime setup. Unwired auditor plumbing
+    (launch_auditor, an :auditor context, KOGEN_ROLE=auditor or an auditor setup guard) is added. priv/kogen/prompts/reviewer.md is edited, which the Build's GuardedPaths check rejects because the file is outside
+    may_change_guarded_paths. Or the live case calls the Expert in-process only, leaving
+    the task's stdin handling unproved.
+  verified_by: [check, live-native]
+  evidence: >-
+    Editing reviewer.md is caught mechanically: the file is outside may_change_guarded_paths, so the
+    Build's GuardedPaths check stops the Build before Review. execution_policy_test and
+    review_packet_test also keep asserting reviewer.md's required text. Offline fake-harness and
+    argument tests assert per-role dispatch, argv, environment and context
+    identity, including the output limit on every Codex root launch, native helper ownership, the
+    Expert task's refusal without an assignment, and both setup guards. live-native
+    retains the hybrid case's receipt with executed identities.
+  proof:
+    offline: [test/kogen/harness_role_test.exs, test/kogen/harness_args_test.exs, test/kogen/codex_environment_test.exs, test/kogen/execution_policy_test.exs, test/kogen/codex_management_test.exs, test/kogen/claude_code_management_test.exs]
+    paid_target: live-native
+    paid_reason: >-
+      provider-required: live-native; observation: managed Codex authenticates and executes the hybrid
+      route's Expert at its exact model and effort, as recorded in the native session
+      store; offline-limit: fake executables cannot establish real provider runtime and model
+      availability
+    affected_paths: [lib/kogen/harness.ex, lib/kogen/harness/**, lib/kogen/execution_policy.ex, lib/kogen/codex.ex, lib/kogen/claude_code.ex, lib/kogen/codex/environment.ex, lib/mix/tasks/kogen.expert.ex, priv/kogen/prompts/expert.md, priv/kogen/prompts/execution-policy.md, test/kogen/harness_role_test.exs, test/kogen/harness_args_test.exs, test/kogen/codex_environment_test.exs, test/kogen/execution_policy_test.exs, test/kogen/codex_management_test.exs, test/kogen/claude_code_management_test.exs, test/kogen/native_helper_live_test.exs, test/support/fake_hybrid]
+
+- id: role-boundary-preservation
+  given: >-
+    A Build on a hybrid route, after bounded-reviewer-evidence has landed, resumes the Developer, runs
+    Stop verification, launches independent Review, or hands the Developer its Expert assignment.
+  when: >-
+    The configuration changes after route resolution, or a role fails and is retried within the
+    existing lifecycle.
+  then: >-
+    The Build freezes the complete role matrix (harness, model and effort for shaping, developer,
+    reviewer, expert, and every native helper of each harness) under a new record key,
+    role_assignment. Every launch, including the Expert and each native helper, takes
+    its profile from role_assignment. The build summary carries the same key. It is written once at Build start and
+    never re-derived from the config. The existing record route and summary
+    route keep exactly their current shape and values, so their consumers need no change. After a
+    config edit mid-Build, the Developer resume, every Review, the Developer's KOGEN_EXPERT
+    assignment (including the Expert's native helper profiles) and role_context for every opened
+    role still use the frozen values, and role_assignment still records the pre-edit helper
+    profiles. The Build resumes the same Developer harness session,
+    keeps Stop ownership unchanged, and starts each Review fresh on the assigned adversarial harness
+    with the existing mutation and malformed-verdict protections. It gives that Reviewer the same
+    bounded review packet it would get on the dominant harness. Role failures name the role's frozen
+    harness, model and effort. On live-reviewer-rework, test/support/live_reviewer_rework_fixture.ex loads the
+    claude-dominant-adversarial-codex route explicitly (Kogen.Intent.read_config(path, that route),
+    never the default) and runs its nested Build with --route claude-dominant-adversarial-codex.
+    Before any provider dispatch it asserts both logins: the existing
+    ReviewPacketAudit.assert_logged_in!/1 for Claude Code, and a new Codex login and scope preflight
+    beside it that delegates to Kogen.Codex's own readiness and keeps Codex's canonical-path trust
+    and executor setup unchanged. RootProfileAudit becomes role- and harness-aware
+    (sessions_root(project, role) resolves the role's harness from the named route). The fixture root stays outside the checkout, where
+    bounded-reviewer-evidence placed it. The Build completes a Claude Developer turn, a rework verdict
+    from a fresh Codex Reviewer, the same Claude session resuming, and a fresh accepting Codex
+    Reviewer, all within the unchanged 1_200_000 ms test timeout. The root-profile audit finds the
+    Developer session in the Claude Code store and both Reviewer sessions in the Codex store, each
+    with the hybrid route's configured model and effort. The bounded-reviewer-evidence tests for
+    metadata-only record citations and for a superseded objection not stopping a passing Build keep
+    passing unchanged in the offline gate, and this Build adds no new path that embeds cited bytes
+    or re-reads a superseded objection.
+  wrong_result: >-
+    A later config edit changes a role's harness or the Expert assignment. A resume crosses harnesses.
+    Stop runs for Review. Review reuses the Developer session. The role matrix is written into the
+    existing route map, breaking its exact-shape consumers. The Codex Reviewer gets the raw record
+    instead of the review packet. The audit looks for every role in one store. The fixture keeps
+    using the default route, so no Codex Reviewer runs. The fixture preflights only the Claude login,
+    so a missing Codex login surfaces mid-Build. #1's packet, sidecar or superseded-objection behaviour
+    is re-implemented or regressed. Or the timeout, Reviewer effort, reviewer.md
+    or Reviewer helpers are changed to pass.
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    lifecycle_test asserts a failing fake Reviewer's stop reason names its frozen harness, model and
+    effort. review_packet_audit_test keeps asserting that the fixture root is outside the checkout.
+    A mid-Build mutation test (in lifecycle_test.exs) edits .kogen/config.yaml after route
+    resolution, then invokes the Developer resume, a Review, the Expert assignment, role_context
+    and every native helper profile, and asserts each came from role_assignment. The
+    tracking tests assert frozen Developer, Reviewer, Expert and helper assignments, the unchanged route shape plus role_assignment, exact resume
+    identity, Stop ownership, and a fresh adversarial Review with the review packet. The root-profile
+    audit tests assert role-aware session-store selection for clean and hybrid configs. Both stores
+    are audited separately. The review-packet audit tests cover the new Codex login preflight.
+    Intent #1's review_packet_test, review_packet_audit_test and superseded_objection_test stay
+    green. The
+    live-reviewer-rework receipt and its retained developer and reviewer root-profile audits.
+  proof:
+    offline: [test/kogen/scenario_tracking_test.exs, test/kogen/lifecycle_test.exs, test/kogen/reviewer_mutation_test.exs, test/kogen/two_outer_resumptions_test.exs, test/kogen/build_evidence_test.exs, test/kogen/root_profile_audit_test.exs, test/kogen/review_packet_test.exs, test/kogen/review_packet_audit_test.exs, test/kogen/superseded_objection_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: >-
+      provider-required: live-reviewer-rework; observation: a real Claude Developer resume and two fresh
+      Codex Reviews complete across the frozen role boundary within the unchanged timeout;
+      offline-limit: fake sessions cannot establish provider-backed cross-harness continuity or Codex
+      Reviewer duration
+    affected_paths: [lib/kogen/build/tracking.ex, lib/kogen/build.ex, lib/kogen/build/evidence.ex, lib/kogen/build/review_packet.ex, lib/kogen/harness.ex, test/support/root_profile_audit.ex, test/support/live_reviewer_rework_fixture.ex, test/support/review_packet_audit.ex, test/kogen/review_packet_test.exs, test/kogen/review_packet_audit_test.exs, test/kogen/superseded_objection_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/lifecycle_test.exs, test/kogen/reviewer_mutation_test.exs, test/kogen/two_outer_resumptions_test.exs, test/kogen/build_evidence_test.exs, test/kogen/root_profile_audit_test.exs]
+
+- id: readiness-and-failure-ownership
+  given: >-
+    One harness required by a hybrid route is uninstalled, unauthenticated, unavailable, or returns a
+    provider or model mismatch.
+  when: >-
+    The user starts Shape (readiness for shaping and expert) or Build (readiness for developer,
+    reviewer and expert), or the affected role or mix kogen.expert launches.
+  then: >-
+    Kogen fails before that role's provider work and names the affected roles and harness. It releases
+    any selections it already holds, keeps the other role assignments and the existing cleanup, and
+    never falls back to the dominant or personal harness. On a clean route, readiness opens only its
+    one harness, as on main. mix kogen.expert without a KOGEN_EXPERT assignment, or with an invalid
+    one, fails with a message that names the missing assignment. It does not read the config.
+  wrong_result: >-
+    Kogen launches some roles before it detects the missing adversary, readiness skips the Expert's
+    harness, a clean route gains a new readiness requirement, a held selection leaks, it falls back to
+    another harness or model, or it reports an opaque provider failure after partial work.
+  verified_by: [check]
+  evidence: >-
+    A shape_task_test case runs mix kogen.expert with no KOGEN_EXPERT and an unreadable
+    .kogen/config.yaml, and asserts the named-assignment failure. Readiness and fake-launch tests cover missing runtimes and logins, role-specific provider
+    failures, no-fallback behaviour, clean-route readiness parity, and cleanup of held selections for
+    Shape and Build.
+  proof:
+    offline: [test/kogen/build_preconditions_test.exs, test/kogen/shape_task_test.exs, test/kogen/harness_role_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: the readiness and launch-failure consumers prove refusal before provider
+      dispatch, and the preservation controls
+    affected_paths: [lib/kogen/intent.ex, lib/kogen/harness.ex, lib/kogen/build.ex, lib/mix/tasks/kogen.shape.ex, lib/mix/tasks/kogen.expert.ex, test/kogen/build_preconditions_test.exs, test/kogen/shape_task_test.exs, test/kogen/harness_role_test.exs, test/support/hybrid_claude_shaper.py]
+
+- id: reliable-codex-compatibility
+  given: >-
+    The pinned managed Codex runtime and the clean codex route (GPT-6 Sol; Developer medium). On main,
+    the compatibility runner drives a scripted stand-in Reviewer twice and caps every native turn at
+    240 s. It passed 1 of 9 recorded live-native runs, and every current failure is a turn killed at
+    219-237 s while doing legitimate work (evidence/compatibility-diagnosis-2026-09-25.md).
+  when: >-
+    live-native runs the Kogen.Codex.CompatibilityTest case "selected authenticated managed runtime
+    passes the bounded compatibility runner".
+  then: >-
+    The runner no longer launches scripted stand-in Reviewer turns, which were the root cause of the
+    timeouts. A fixed rework request held in the runner drives its Developer resume, and
+    live-reviewer-rework proves the real Codex Reviewer through the real Build. Every native-boundary
+    check remains, and verify_evidence and the offline evidence tests still assert each one: hostile
+    discovery exclusion, interactive Shaping with the trust dialog, the PreToolUse gate block, the
+    Stop Check failing then passing in one Developer session, login, non-login and explicit shell
+    receipts, the exact-session resume with its fresh Stop Check, and the scout helper's receipt,
+    environment and absent personal context. The per-turn limit stays at main's 240 s, which covers
+    the measured turns without stand-in Reviewers (Developer 72-135 s, resume 56-90 s). The owner
+    passes it explicitly, and it is never raised in Kogen core, config or bounded_exec.py. The whole
+    test finishes within its unchanged 900_000 ms (15-minute) ExUnit timeout. Only a timed_out result
+    makes the owner start one whole rerun in a fresh fixture, once per invocation of the test, and
+    only if at least 300_000 ms (one typical attempt) remains before an internal deadline of
+    900_000 ms minus a 60_000 ms reserve for startup, cleanup and evidence emission. Otherwise it fails and records
+    that no retry fitted. Later Stop cycles are governed by main's unchanged Stop policy, not by extra
+    owner retries. The test emits one KOGEN_TARGET_EVIDENCE_MANIFEST: a repository-relative summary
+    with each attempt's class, provider session ids, elapsed time and cleanup. On failure, the
+    isolated-test failure message does not echo that frame a second time. A retried test passes only
+    if the second attempt fully passes, and no other failure class is ever retried. The Build's own
+    live-native run passes.
+  wrong_result: >-
+    Any turn limit or ExUnit timeout is raised. The stand-in Reviewer is kept but tailored with file
+    lists or pre-decided verdicts. Native-boundary assertions in verify_evidence are weakened or
+    dropped with the Reviewer turns. The production reviewer.md prompt is edited (rejected by the Build's GuardedPaths check). Only the failed turn
+    is retried, the first attempt's evidence is discarded, a non-timeout failure is retried, a retry
+    starts that cannot finish before the deadline, or the manifest frame appears twice.
+  verified_by: [check, live-native]
+  evidence: >-
+    Offline, the compatibility evidence tests assert the retained native-boundary requirements, the
+    explicit 240 s turn limit passed by the owner (and bounded_exec.py's default unchanged at 240),
+    that the runner launches no Reviewer-role turn at all (so no tailored stand-in can exist), and rejection of a missing resume check, a fresh (non-exact) resume and
+    a missing helper receipt. Retry policy tests use a fake timed_out turn to assert one fresh-fixture
+    rerun, retention of both attempts, refusal when no time is left, and no retry for other classes.
+    isolated_target_evidence_test asserts that a failing isolated case forwards exactly one manifest
+    frame. Live, the Build's own live-native receipt and emitted manifest.
+  proof:
+    offline: [test/kogen/codex_compatibility_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/isolated_target_evidence_test.exs]
+    paid_target: live-native
+    paid_reason: >-
+      provider-required: live-native; observation: real GPT-6 Sol turns complete within the owner's
+      per-turn limit, and the whole test within 15 minutes, on the pinned runtime; offline-limit: fake
+      turns cannot establish provider turn latency or native runtime behaviour
+    affected_paths: [lib/kogen/codex/compatibility.ex, priv/kogen/codex/compatibility/bounded_exec.py, test/kogen/codex_compatibility_test.exs, test/kogen/codex_compatibility_preparation_test.exs, test/kogen/isolated_target_evidence_test.exs, test/support/isolated_case.ex, priv/kogen/test-reliability.yaml]
+
+- id: retained-evidence-with-record-sidecars
+  given: >-
+    a Build (the live Build-only fixture, or any Build whose Reviewer cites its own tracking record) whose record references record-version sidecars under `record-versions/`, and whose record, summary and sidecars are later copied out of a fixture that is then deleted
+  when: >-
+    the retained evidence is resolved with Kogen.Build.Evidence.resolve/2 from the log directory, as LiveReworkAudit.audit_retained!/1 does
+  then: >-
+    Evidence.resolve/2 locates each sidecar in the `record-versions/` directory next to the resolved record, by its sha256 file name, and checks its digest and byte count. It also accepts the sidecar at its checkout-relative path when that exists.
+    The Reviewer-rework fixture's preserve step copies each record's `record-versions/` directory with the record, so retained evidence resolves after the fixture is deleted.
+    A missing or altered sidecar still fails resolution.
+    Records with inline snapshots still resolve.
+    An offline regression test builds a record whose attempt cites the record itself (so a sidecar exists), copies record, summary and sidecars to another directory the way the fixture does, deletes the original, and resolves successfully; the control without the copied sidecar fails.
+  wrong_result: >-
+    the fixture copies only record.json, so a live run where the Codex Reviewer cites its record fails at the retained-evidence audit (Build o-DlRi_iHnqIwmxfcCz-obe0 failed exactly this way); or resolution skips sidecar verification when the file is missing; or sidecars resolve only at the original checkout-relative path
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    build_evidence_test relocation regression and missing-sidecar control; the live run's retained-evidence audit on the hybrid route
+  proof:
+    offline: [test/kogen/build_evidence_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: a real Codex Reviewer that cites its record produces sidecars that must survive retention; offline-limit: whether a real Reviewer cites the record is model behaviour"
+    affected_paths: [lib/kogen/build/evidence.ex, test/kogen/build_evidence_test.exs, test/support/live_reviewer_rework_fixture.ex, priv/kogen/test-reliability.yaml]

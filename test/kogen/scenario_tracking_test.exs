@@ -33,9 +33,101 @@ defmodule Kogen.ScenarioTrackingTest do
                }
              }
 
+      # A clean route's frozen matrix: every role on its one harness and the
+      # expert helper as the Expert.
+      assert record["role_assignment"] == %{
+               "shaping" => %{"harness" => "codex", "model" => "gpt-5.6-sol", "effort" => "low"},
+               "developer" => %{"harness" => "codex", "model" => "gpt-5.6-sol", "effort" => "low"},
+               "reviewer" => %{
+                 "harness" => "codex",
+                 "model" => "gpt-5.6-terra",
+                 "effort" => "medium"
+               },
+               "expert" => %{"harness" => "codex", "model" => "gpt-5.6-sol", "effort" => "medium"},
+               "helpers" => %{
+                 "codex" => %{
+                   "scout" => %{"model" => "gpt-5.6-luna", "effort" => "low"},
+                   "worker" => %{"model" => "gpt-5.6-luna", "effort" => "medium"},
+                   "expert" => %{"model" => "gpt-5.6-sol", "effort" => "medium"}
+                 }
+               }
+             }
+
+      assert record["role_assignment"] |> Map.keys() |> Enum.sort() ==
+               ["developer", "expert", "helpers", "reviewer", "shaping"]
+
       File.write!(state.path, state.bytes <> "tampered")
       assert {:error, reason} = Tracking.verify(state)
       assert reason =~ "changed outside Build"
+    end)
+  end
+
+  test "freezes a hybrid route's complete role-to-harness/model/effort matrix against later edits" do
+    config_path = Path.expand("../../.kogen/config.yaml", __DIR__)
+
+    {:ok, hybrid} =
+      Kogen.Intent.read_config(config_path, "claude-dominant-adversarial-codex")
+
+    in_private_cwd(fn ->
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), hybrid)
+      record = Jason.decode!(state.bytes)
+
+      # The existing route map keeps its shape: no matrix is written into it.
+      assert record["route"] == %{
+               "name" => "claude-dominant-adversarial-codex",
+               "harness" => "claude",
+               "shaping" => %{"model" => "claude-opus-5-5", "effort" => "medium"},
+               "developer" => %{"model" => "claude-opus-5-5", "effort" => "medium"},
+               "reviewer" => %{"model" => "gpt-6-sol", "effort" => "high"},
+               "helpers" => %{
+                 "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
+                 "worker" => %{"model" => "claude-sonnet-5", "effort" => "medium"}
+               }
+             }
+
+      assert record["role_assignment"] == %{
+               "shaping" => %{
+                 "harness" => "claude",
+                 "model" => "claude-opus-5-5",
+                 "effort" => "medium"
+               },
+               "developer" => %{
+                 "harness" => "claude",
+                 "model" => "claude-opus-5-5",
+                 "effort" => "medium"
+               },
+               "reviewer" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+               "expert" => %{"harness" => "codex", "model" => "gpt-6-sol", "effort" => "high"},
+               "helpers" => %{
+                 "claude" => %{
+                   "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
+                   "worker" => %{"model" => "claude-sonnet-5", "effort" => "medium"}
+                 },
+                 "codex" => %{
+                   "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
+                   "worker" => %{"model" => "gpt-6-luna", "effort" => "high"},
+                   "expert" => %{"model" => "gpt-6-sol", "effort" => "high"}
+                 }
+               }
+             }
+
+      # Launch views rebuilt from the record equal the resolved route.
+      frozen = Kogen.Build.assigned_config(hybrid, record)
+
+      for role <- Kogen.Intent.roles() do
+        assert Map.fetch!(frozen, role) == Map.fetch!(hybrid, role)
+        assert Kogen.Intent.role_config(frozen, role) == Kogen.Intent.role_config(hybrid, role)
+      end
+
+      # Any later change to the frozen matrix is refused.
+      for path <- [
+            ["role_assignment", "reviewer", "harness"],
+            ["role_assignment", "expert", "model"],
+            ["role_assignment", "helpers", "codex", "scout", "effort"]
+          ] do
+        assert {:error, reason} = Tracking.update(state, put_in(state.record, path, "claude"))
+        assert reason =~ "frozen Approved inputs"
+      end
     end)
   end
 

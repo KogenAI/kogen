@@ -1,0 +1,79 @@
+diff --git a/lib/kogen/codex/compatibility.ex b/lib/kogen/codex/compatibility.ex
+index 754eee3..7661c59 100644
+--- a/lib/kogen/codex/compatibility.ex
++++ b/lib/kogen/codex/compatibility.ex
+@@ -280,6 +280,8 @@ defmodule Kogen.Codex.Compatibility do
+     driver = Path.join([priv_dir(), "compatibility", "pty_driver.py"])
+     output = Path.join(fixture, ".kogen/runtime/compatibility-shaping.json")
+ 
++    shaping_started = System.monotonic_time(:millisecond)
++
+     {_, status} =
+       System.cmd(
+         "python3",
+@@ -292,6 +294,11 @@ defmodule Kogen.Codex.Compatibility do
+           ])
+       )
+ 
++    IO.puts(
++      :stderr,
++      "KOGEN_PROBE_TURN\tinteractive_shaping\t#{System.monotonic_time(:millisecond) - shaping_started}"
++    )
++
+     receipt =
+       case File.read(output) do
+         {:ok, text} -> Jason.decode!(text)
+@@ -403,6 +410,11 @@ defmodule Kogen.Codex.Compatibility do
+     are missing. Do not invent a pass merely because the first Developer Check settled. Return the
+     schema-valid verdict for candidate `compatibility-candidate` and attempt
+     `compatibility-initial-review` based on the inspected candidate.
++    Inspect only these fixture-relative paths, reading them together in one shell command
++    (for example `for f in ...; do echo "== $f"; cat "$f" 2>/dev/null || echo MISSING; done`):
++    `state.txt`, `.kogen/runtime/verification-history.jsonl`, `.kogen/runtime/resume-rework.txt`, `.kogen/runtime/helper-environment.json`, `.kogen/runtime/helper-receipt.txt`, `.kogen/runtime/helper-context.txt`, and `README.md`.
++    Do not list directories, search the tree, or read `.git`; these paths are the complete
++    evidence set, and a missing path is itself evidence.
+     """
+ 
+     invoke_harness(:launch_reviewer, [
+@@ -426,6 +438,11 @@ defmodule Kogen.Codex.Compatibility do
+     schema-valid verdict for candidate `compatibility-candidate` and attempt
+     `compatibility-final-review` based only on what you find. Acceptance is not pre-decided. Include
+     one scenario assessment with id `compatibility-runner`.
++    Inspect only these fixture-relative paths, reading them together in one shell command
++    (for example `for f in ...; do echo "== $f"; cat "$f" 2>/dev/null || echo MISSING; done`):
++    `state.txt`, `.kogen/runtime/verification-history.jsonl`, `.kogen/runtime/resume-rework.txt`, `.kogen/runtime/root-environment.json`, `.kogen/runtime/root-nonlogin-environment.json`, `.kogen/runtime/root-explicit-shell-environment.json`, `.kogen/runtime/hook-environment.json`, `.kogen/runtime/helper-environment.json`, `.kogen/runtime/helper-receipt.txt`, `.kogen/runtime/helper-context.txt`, `.kogen/runtime/discovery.json`, `PROJECT_GUIDANCE.md`, and `.agents/skills/project-context/SKILL.md`. Compare environment receipts with your own `HOME`, `CODEX_HOME`, and XDG variables in that same command.
++    Do not list directories, search the tree, or read `.git`; these paths are the complete
++    evidence set, and a missing path is itself evidence.
+     """
+ 
+     invoke_harness(:launch_reviewer, [
+@@ -460,19 +477,27 @@ defmodule Kogen.Codex.Compatibility do
+           | env:
+               merge_env(context.env, [
+                 {"KOGEN_BOUNDED_EXEC_RECEIPT", receipt},
+-                {"KOGEN_BOUNDED_EXEC_INVOCATION", invocation}
++                {"KOGEN_BOUNDED_EXEC_INVOCATION", invocation},
++                {"KOGEN_BOUNDED_EXEC_TIMEOUT", "360"}
+               ])
+         }
+       end)
+ 
++    started = System.monotonic_time(:millisecond)
+     result = apply(Kogen.Harness, function, arguments)
++    elapsed_ms = System.monotonic_time(:millisecond) - started
++    IO.puts(:stderr, "KOGEN_PROBE_TURN\t#{function}\t#{elapsed_ms}")
+ 
+     path =
+       Path.join(".kogen/runtime", "turn-#{function}-#{System.unique_integer([:positive])}.json")
+ 
+     File.write!(
+       path,
+-      Jason.encode!(%{"operation" => function, "result" => inspect(result, limit: :infinity)})
++      Jason.encode!(%{
++        "operation" => function,
++        "elapsed_ms" => elapsed_ms,
++        "result" => inspect(result, limit: :infinity)
++      })
+     )
+ 
+     case result do

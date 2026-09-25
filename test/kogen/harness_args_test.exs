@@ -44,6 +44,48 @@ defmodule Kogen.HarnessArgsTest do
     end
   end
 
+  # The hybrid route's adversarial Expert launches with its own exact profile
+  # and its harness's existing unattended flags; it is read-only on Claude
+  # Code like the Reviewer.
+  test "hybrid Expert args carry their exact profile and harness flags" do
+    assert {:ok, config} =
+             Kogen.Intent.read_config(".kogen/config.yaml", "claude-dominant-adversarial-codex")
+
+    assert Kogen.Intent.role_harness(config, :expert) == "codex"
+    profile = Map.fetch!(config, :expert)
+    args = Harness.Codex.expert_args(profile.model, profile.effort)
+
+    assert Enum.take(args, 5) == [
+             "exec",
+             "--model",
+             "gpt-6-sol",
+             "-c",
+             ~s(model_reasoning_effort="high")
+           ]
+
+    assert "--dangerously-bypass-approvals-and-sandbox" in args
+    assert "--dangerously-bypass-hook-trust" in args
+    assert List.last(args) == "-"
+    refute "resume" in args
+
+    assert {:ok, mirror} =
+             Kogen.Intent.read_config(".kogen/config.yaml", "codex-dominant-adversarial-claude")
+
+    context = %{config: Kogen.Intent.role_config(mirror, :expert)}
+
+    args =
+      Harness.Claude.expert_args(mirror.expert.model, mirror.expert.effort, context, "s-1")
+
+    assert Enum.take(args, 4) == ["-p", "--output-format", "stream-json", "--verbose"]
+    assert "--dangerously-skip-permissions" in args
+    assert ["--model", "claude-opus-5-5"] in Enum.chunk_every(args, 2, 1, :discard)
+    assert ["--effort", "high"] in Enum.chunk_every(args, 2, 1, :discard)
+    assert ["--session-id", "s-1"] in Enum.chunk_every(args, 2, 1, :discard)
+
+    for tool <- ~w(Edit Write NotebookEdit),
+        do: assert(tool in Harness.Claude.disallowed_tools("expert"))
+  end
+
   test "Developer resumes the exact Codex thread" do
     args = Harness.developer_args("gpt-5.6", "high", "abc-123")
     assert Enum.take(args, 2) == ["exec", "resume"]

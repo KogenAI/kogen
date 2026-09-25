@@ -20,8 +20,14 @@ defmodule Kogen.Intent do
     {"helpers.worker", [:helpers, :worker]},
     {"helpers.expert", [:helpers, :expert]}
   ]
+  # The role-to-harness matrix, in launch-readiness order. The Expert is a
+  # role: in a clean route it is the route's native expert helper; in a
+  # role-level route it may run on another harness than the role consulting it.
+  @roles [:shaping, :developer, :reviewer, :expert]
+  @native_helpers [:scout, :worker]
 
   @type role_config :: %{model: String.t(), effort: String.t()}
+  @type role :: :shaping | :developer | :reviewer | :expert
 
   @type config :: %{
           route: String.t(),
@@ -29,10 +35,15 @@ defmodule Kogen.Intent do
           shaping: role_config(),
           developer: role_config(),
           reviewer: role_config(),
+          expert: role_config(),
           helpers: %{
-            scout: role_config(),
-            worker: role_config(),
-            expert: role_config()
+            required(:scout) => role_config(),
+            required(:worker) => role_config(),
+            optional(:expert) => role_config()
+          },
+          roles: %{required(role()) => String.t()},
+          native_helpers: %{
+            required(String.t()) => %{scout: role_config(), worker: role_config()}
           },
           outer_resumptions: non_neg_integer(),
           verification_retries: non_neg_integer()
@@ -54,10 +65,18 @@ defmodule Kogen.Intent do
   no key has a default. Harness support and Claude Code proven models are
   checked only for the selected route. The old flat shape is refused.
 
-  On success returns `{:ok, config}`: the selected route's `harness`, role and
-  helper profiles, the global retry policy, and `route` (the selected name),
-  with atom keys regardless of whether the YAML parser produced string or
-  atom keys.
+  A route is either clean, naming one top-level `harness` for every role and
+  its `helpers`, or role-level, naming a `harness`, `model` and `effort` for
+  each of `shaping`, `developer`, `reviewer` and `expert`, with `helpers`
+  (`scout` and `worker`) keyed by every harness a role uses. Helpers stay
+  native to the harness of the role that launches them.
+
+  On success returns `{:ok, config}`: the selected route's dominant `harness`
+  (the Developer's), role and helper profiles, `expert`, the role-to-harness
+  matrix `roles`, each harness's `native_helpers`, the global retry policy,
+  and `route` (the selected name), with atom keys regardless of whether the
+  YAML parser produced string or atom keys. `helpers` is the dominant
+  harness's native helper set (see `harness_config/2`).
   """
   @spec read_config(Path.t(), String.t() | nil) :: {:ok, config()} | {:error, String.t()}
   def read_config(path \\ @default_config_path, route \\ nil) do
@@ -69,7 +88,7 @@ defmodule Kogen.Intent do
          {:ok, verification_retries} <- config_integer(data, "verification_retries"),
          {:ok, name} <- select_route(routes, route || default_route),
          selected = Map.fetch!(routes, name),
-         :ok <- supported_harness(selected.harness),
+         :ok <- supported_harnesses(selected),
          :ok <- proven_models(selected) do
       {:ok,
        Map.merge(selected, %{
@@ -115,7 +134,40 @@ defmodule Kogen.Intent do
 
   defp normalize_route(name, route) when is_binary(name) and is_map(route) do
     with :ok <- route_name(name),
-         {:ok, harness} <- require_string(route, "harness", "harness"),
+         {:ok, resolved} <- normalize_route_body(route) do
+      {:ok, resolved}
+    else
+      {:error, "config.yaml " <> _reason} = error -> error
+      {:error, {:refused, key, reason}} -> {:error, "config.yaml routes.#{name}.#{key} #{reason}"}
+      {:error, key} -> {:error, "config.yaml missing required key: routes.#{name}.#{key}"}
+    end
+  end
+
+  defp normalize_route(name, _route) when is_binary(name),
+    do: {:error, "config.yaml missing required key: routes.#{name}"}
+
+  defp normalize_route(name, _route),
+    do: {:error, "config.yaml route names must be nonblank strings: #{inspect(name)}"}
+
+  # A route with no harness anywhere is a clean route missing its harness.
+  defp normalize_route_body(route) do
+    role_level? =
+      not has_key?(route, "harness") and
+        Enum.any?(@roles, fn role ->
+          match?({:ok, %{} = sub} when is_map_key(sub, "harness"), fetch(route, "#{role}")) or
+            match?({:ok, %{harness: _}}, fetch(route, "#{role}"))
+        end)
+
+    if role_level?,
+      do: normalize_role_route(route),
+      else: normalize_clean_route(route)
+  end
+
+  # One harness for every role; the configured expert helper is the Expert, so
+  # clean routes need no new keys.
+  defp normalize_clean_route(route) do
+    with {:ok, harness} <- require_string(route, "harness", "harness"),
+         :ok <- no_role_harness(route),
          {:ok, shaping} <- require_role(route, "shaping"),
          {:ok, developer} <- require_role(route, "developer"),
          {:ok, reviewer} <- require_role(route, "reviewer"),
@@ -126,19 +178,137 @@ defmodule Kogen.Intent do
          shaping: shaping,
          developer: developer,
          reviewer: reviewer,
-         helpers: helpers
+         expert: helpers.expert,
+         helpers: helpers,
+         roles: Map.new(@roles, &{&1, harness}),
+         native_helpers: %{harness => Map.take(helpers, @native_helpers)}
        }}
-    else
-      {:error, "config.yaml " <> _reason} = error -> error
-      {:error, key} -> {:error, "config.yaml missing required key: routes.#{name}.#{key}"}
     end
   end
 
-  defp normalize_route(name, _route) when is_binary(name),
-    do: {:error, "config.yaml missing required key: routes.#{name}"}
+  # A clean route's single harness is the only one; a role-level harness beside
+  # it would be silently ignored, so it is refused.
+  defp no_role_harness(route) do
+    Enum.find_value(~w(shaping developer reviewer expert), :ok, fn role ->
+      with {:ok, sub} when is_map(sub) <- fetch(route, role),
+           true <- has_key?(sub, "harness") do
+        {:error, {:refused, "#{role}.harness", "is not allowed beside a route-level harness"}}
+      else
+        _ -> nil
+      end
+    end)
+  end
 
-  defp normalize_route(name, _route),
-    do: {:error, "config.yaml route names must be nonblank strings: #{inspect(name)}"}
+  # Every role names its own harness; no role inherits a dominant harness.
+  defp normalize_role_route(route) do
+    with {:ok, assigned} <- require_assigned_roles(route),
+         roles = Map.new(assigned, fn {role, harness, _profile} -> {role, harness} end),
+         {:ok, native_helpers} <- require_native_helpers(route, roles) do
+      config =
+        assigned
+        |> Map.new(fn {role, _harness, profile} -> {role, profile} end)
+        |> Map.merge(%{harness: roles.developer, roles: roles, native_helpers: native_helpers})
+
+      {:ok, Map.put(config, :helpers, native_helper_set(config, roles.developer))}
+    end
+  end
+
+  defp require_assigned_roles(route) do
+    Enum.reduce_while(@roles, {:ok, []}, fn role, {:ok, acc} ->
+      name = Atom.to_string(role)
+
+      with {:ok, sub} when is_map(sub) <- fetch(route, name),
+           {:ok, harness} <- require_string(sub, "harness", "#{name}.harness"),
+           {:ok, profile} <- require_role(route, name) do
+        {:cont, {:ok, acc ++ [{role, harness, profile}]}}
+      else
+        {:error, key} -> {:halt, {:error, key}}
+        _ -> {:halt, {:error, name}}
+      end
+    end)
+  end
+
+  defp require_native_helpers(route, roles) do
+    case fetch(route, "helpers") do
+      {:ok, helpers} when is_map(helpers) ->
+        roles
+        |> Map.values()
+        |> Enum.uniq()
+        |> Enum.sort()
+        |> Enum.reduce_while({:ok, %{}}, &collect_native_helpers(&1, &2, helpers))
+
+      _ ->
+        {:error, "helpers"}
+    end
+  end
+
+  defp collect_native_helpers(harness, {:ok, acc}, helpers) do
+    with {:ok, set} when is_map(set) <- fetch(helpers, harness),
+         :ok <- no_native_expert(set, harness),
+         {:ok, scout} <- require_role(set, "scout"),
+         {:ok, worker} <- require_role(set, "worker") do
+      {:cont, {:ok, Map.put(acc, harness, %{scout: scout, worker: worker})}}
+    else
+      {:error, {:refused, _key, _reason}} = error -> {:halt, error}
+      {:error, key} -> {:halt, {:error, "helpers.#{harness}.#{key}"}}
+      _ -> {:halt, {:error, "helpers.#{harness}"}}
+    end
+  end
+
+  defp no_native_expert(set, harness) do
+    if has_key?(set, "expert"),
+      do:
+        {:error,
+         {:refused, "helpers.#{harness}.expert",
+          "is not allowed in a role-level route; assign the expert role instead"}},
+      else: :ok
+  end
+
+  @doc """
+  The native configuration of one harness in a resolved route: `harness` set
+  to it and `helpers` holding that harness's native scout and worker, plus the
+  native expert only when the route assigns the Expert role to that harness.
+  Adapters launch every role of that harness from this view.
+  """
+  @spec harness_config(map(), String.t()) :: map()
+  def harness_config(%{native_helpers: native} = config, harness)
+      when is_map_key(native, harness),
+      do: %{config | harness: harness, helpers: native_helper_set(config, harness)}
+
+  # A harness without native helpers is never replaced by another harness; the
+  # adapter dispatch refuses it.
+  def harness_config(%{native_helpers: _native} = config, harness),
+    do: %{config | harness: harness}
+
+  def harness_config(config, _harness), do: config
+
+  @doc "The resolved route viewed from one role: its assigned harness's native configuration."
+  @spec role_config(map(), role()) :: map()
+  def role_config(config, role), do: harness_config(config, role_harness(config, role))
+
+  @doc """
+  The harness assigned to `role`; a route without a role matrix uses its one
+  harness. Only the route's roles resolve; any other role raises.
+  """
+  @spec role_harness(map(), role()) :: String.t()
+  def role_harness(_config, role) when role not in @roles,
+    do: raise(ArgumentError, "unknown role #{inspect(role)}")
+
+  def role_harness(%{roles: roles}, role) when is_map_key(roles, role),
+    do: Map.fetch!(roles, role)
+
+  def role_harness(config, _role), do: Map.fetch!(config, :harness)
+
+  @doc "The route's roles in launch-readiness order."
+  def roles, do: @roles
+
+  defp native_helper_set(config, harness) do
+    native = Map.fetch!(config.native_helpers, harness)
+
+    if config.roles.expert == harness,
+      do: Map.put(native, :expert, config.expert),
+      else: native
+  end
 
   defp route_name(name) do
     if String.trim(name) == "",
@@ -200,18 +370,50 @@ defmodule Kogen.Intent do
   # Codex model routing is unchanged. Claude Code roles may select only a model
   # and effort from the proven picker; Kogen never widens it per request. Only
   # the selected route is checked, so an unselected route may name an unproven
-  # model without blocking sessions on other routes.
-  defp proven_models(%{harness: "claude"} = config) do
-    with {:ok, models} <- claude_models() do
-      proven = Map.new(models, &{&1["id"], &1["efforts"]})
-
-      Enum.find_value(@claude_roles, :ok, fn {label, keys} ->
-        proven_profile(label, get_in(config, keys), proven, models)
-      end)
+  # model without blocking sessions on other routes. In a role-level route only
+  # the roles and native helpers assigned to Claude Code are checked.
+  defp proven_models(config) do
+    case claude_profiles(config) do
+      [] -> :ok
+      profiles -> with {:ok, models} <- claude_models(), do: proven_profiles(profiles, models)
     end
   end
 
-  defp proven_models(_config), do: :ok
+  defp proven_profiles(profiles, models) do
+    proven = Map.new(models, &{&1["id"], &1["efforts"]})
+
+    Enum.find_value(profiles, :ok, fn {label, profile} ->
+      proven_profile(label, profile, proven, models)
+    end)
+  end
+
+  defp claude_profiles(config) do
+    cond do
+      role_level?(config) ->
+        roles =
+          for role <- @roles,
+              config.roles[role] == "claude",
+              do: {Atom.to_string(role), Map.fetch!(config, role)}
+
+        helpers =
+          for {"claude", set} <- config.native_helpers,
+              label <- @native_helpers,
+              do: {"helpers.claude.#{label}", Map.fetch!(set, label)}
+
+        roles ++ helpers
+
+      config.harness == "claude" ->
+        Enum.map(@claude_roles, fn {label, keys} -> {label, get_in(config, keys)} end)
+
+      true ->
+        []
+    end
+  end
+
+  # A clean route resolves every role to its one harness and keeps its
+  # configured expert helper; anything else was configured role by role.
+  defp role_level?(%{roles: roles, harness: harness, native_helpers: native}),
+    do: Enum.any?(roles, fn {_role, assigned} -> assigned != harness end) or map_size(native) > 1
 
   defp proven_profile(label, %{model: model, effort: effort}, proven, models) do
     case Map.fetch(proven, model) do
@@ -348,10 +550,23 @@ defmodule Kogen.Intent do
   @doc "Harness names Kogen supports, in documentation order."
   def harnesses, do: @harnesses
 
-  defp supported_harness(name) when name in @harnesses, do: :ok
+  # A role-level route names the role whose harness is unsupported.
+  defp supported_harnesses(config) do
+    if role_level?(config) do
+      case Enum.find(@roles, &(config.roles[&1] not in @harnesses)) do
+        nil -> :ok
+        role -> supported_harness(config.roles[role], " for #{role}")
+      end
+    else
+      supported_harness(config.harness, "")
+    end
+  end
 
-  defp supported_harness(name),
-    do: {:error, "unsupported harness: #{name}; expected #{Enum.join(@harnesses, " or ")}"}
+  defp supported_harness(name, _label) when name in @harnesses, do: :ok
+
+  defp supported_harness(name, label),
+    do:
+      {:error, "unsupported harness#{label}: #{name}; expected #{Enum.join(@harnesses, " or ")}"}
 
   defp normalize_intent(data, slug) do
     with {:ok, id} <- require_string(data, "id", "id"),

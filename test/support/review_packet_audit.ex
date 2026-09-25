@@ -72,6 +72,27 @@ defmodule Kogen.ReviewPacketAudit do
     end
   end
 
+  @doc """
+  Asserts that `fixture_root` resolves, through Kogen's own scope selection,
+  to a logged-in Kogen Codex login scope. Fails before any provider dispatch
+  otherwise. Delegates to the existing public `Kogen.Codex.open/2` readiness
+  check -- installation, canonical-path scope selection and native login
+  status -- so this preflight never reimplements Codex's own trust and
+  executor setup.
+  """
+  def assert_codex_logged_in!(fixture_root) do
+    case Kogen.Codex.open(%{harness: "codex"}, fixture_root) do
+      {:ok, selection} ->
+        Kogen.Codex.close(selection)
+        :ok
+
+      {:error, reason} ->
+        flunk(
+          "fixture root #{fixture_root} does not resolve to a logged-in Kogen Codex scope: #{reason}"
+        )
+    end
+  end
+
   ## Evidence retention ------------------------------------------------------
 
   @doc """
@@ -106,6 +127,26 @@ defmodule Kogen.ReviewPacketAudit do
       complete_dir: complete_destination,
       build_ids: build_ids
     }
+  end
+
+  @doc """
+  Copies the record-version sidecars that sit next to `record` into the
+  `record-versions/` directory next to its retained copy `destination`, so
+  `Kogen.Build.Evidence.resolve/2` still verifies them after the fixture is
+  deleted. A record that never cited itself has no sidecars to copy.
+  """
+  def preserve_record_versions!(record, destination) do
+    source = Path.join(Path.dirname(record), "record-versions")
+
+    if File.dir?(source) do
+      target = Path.join(Path.dirname(destination), "record-versions")
+      File.mkdir_p!(target)
+
+      for sidecar <- Path.wildcard(Path.join(source, "*.json")),
+          do: File.cp!(sidecar, Path.join(target, Path.basename(sidecar)))
+    end
+
+    :ok
   end
 
   defp copy_tree!(source, destination) do

@@ -100,7 +100,7 @@ defmodule Kogen.IntentTest do
 
   describe "read_config/1" do
     test "parses the real tracked .kogen/config.yaml" do
-      assert {:ok, config} = Intent.read_config()
+      assert {:ok, config} = Intent.read_config(".kogen/config.yaml", "claude")
 
       assert %{
                harness: harness,
@@ -158,9 +158,28 @@ defmodule Kogen.IntentTest do
                  worker: %{model: "gpt-6-luna", effort: "high"},
                  expert: %{model: "gpt-6-sol", effort: "high"}
                },
+               expert: %{model: "gpt-6-sol", effort: "high"},
+               roles: %{
+                 shaping: "codex",
+                 developer: "codex",
+                 reviewer: "codex",
+                 expert: "codex"
+               },
+               native_helpers: %{
+                 "codex" => %{
+                   scout: %{model: "gpt-6-luna", effort: "low"},
+                   worker: %{model: "gpt-6-luna", effort: "high"}
+                 }
+               },
                outer_resumptions: 2,
                verification_retries: 2
              }
+
+      refute Map.has_key?(codex, :auditor)
+      refute Map.has_key?(codex.roles, :auditor)
+
+      assert {:ok, default} = Intent.read_config()
+      assert default.route == "claude"
     end
 
     test "parses an explicit valid config path" do
@@ -632,6 +651,19 @@ defmodule Kogen.IntentTest do
                  worker: %{model: "other-worker", effort: "low"},
                  expert: %{model: "other-expert", effort: "high"}
                },
+               expert: %{model: "other-expert", effort: "high"},
+               roles: %{
+                 shaping: "codex",
+                 developer: "codex",
+                 reviewer: "codex",
+                 expert: "codex"
+               },
+               native_helpers: %{
+                 "codex" => %{
+                   scout: %{model: "other-scout", effort: "low"},
+                   worker: %{model: "other-worker", effort: "low"}
+                 }
+               },
                outer_resumptions: 1,
                verification_retries: 0
              }
@@ -795,7 +827,168 @@ defmodule Kogen.IntentTest do
       assert {:ok, config} = Intent.read_config(path)
 
       assert Map.keys(config) |> Enum.sort() ==
-               ~w(developer harness helpers outer_resumptions reviewer route shaping verification_retries)a
+               ~w(developer expert harness helpers native_helpers outer_resumptions reviewer roles route shaping verification_retries)a
+
+      refute Map.has_key?(config, :auditor)
+    end
+  end
+
+  describe "role-level (hybrid) routes" do
+    @hybrid_route """
+    shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+    developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+    reviewer:  {harness: codex, model: review-sol, effort: high}
+    expert:    {harness: codex, model: expert-sol, effort: high}
+    helpers:
+      claude:
+        scout:  {model: claude-sonnet-5, effort: low}
+        worker: {model: claude-sonnet-5, effort: medium}
+      codex:
+        scout:  {model: luna, effort: low}
+        worker: {model: luna, effort: high}
+    """
+
+    test "a hybrid route resolves every role to its own harness, never the dominant one" do
+      dir = tmp_dir!()
+
+      path =
+        write_yaml!(
+          dir,
+          "config.yaml",
+          routes_config([{"codex", @valid_route}, {"hybrid", @hybrid_route}])
+        )
+
+      assert {:ok, config} = Intent.read_config(path, "hybrid")
+      assert config.route == "hybrid"
+      assert config.harness == "claude"
+
+      assert config.roles == %{
+               shaping: "claude",
+               developer: "claude",
+               reviewer: "codex",
+               expert: "codex"
+             }
+
+      refute Map.has_key?(config.roles, :auditor)
+
+      assert config.reviewer == %{model: "review-sol", effort: "high"}
+      assert config.expert == %{model: "expert-sol", effort: "high"}
+
+      # The dominant harness has no native expert: the Expert is on Codex.
+      refute Map.has_key?(config.helpers, :expert)
+
+      assert Intent.role_harness(config, :reviewer) == "codex"
+      reviewer = Intent.role_config(config, :reviewer)
+      assert reviewer.harness == "codex"
+
+      assert reviewer.helpers == %{
+               scout: %{model: "luna", effort: "low"},
+               worker: %{model: "luna", effort: "high"},
+               expert: %{model: "expert-sol", effort: "high"}
+             }
+
+      developer = Intent.role_config(config, :developer)
+      assert developer.harness == "claude"
+      assert developer.helpers.scout == %{model: "claude-sonnet-5", effort: "low"}
+      refute Map.has_key?(developer.helpers, :expert)
+
+      # Clean routes keep their behavior beside a hybrid.
+      assert {:ok, codex} = Intent.read_config(path, "codex")
+      assert codex.harness == "codex"
+      assert codex.helpers.expert == %{model: "expert", effort: "medium"}
+      assert Intent.role_config(codex, :reviewer) == codex
+    end
+
+    test "incomplete role assignments are refused with their key path" do
+      dir = tmp_dir!()
+
+      broken = [
+        {String.replace(@hybrid_route, "reviewer:  {harness: codex, ", "reviewer:  {"),
+         "config.yaml missing required key: routes.hybrid.reviewer.harness"},
+        {String.replace(
+           @hybrid_route,
+           "expert:    {harness: codex, model: expert-sol, effort: high}\n",
+           ""
+         ), "config.yaml missing required key: routes.hybrid.expert"},
+        {String.replace(
+           @hybrid_route,
+           "expert:    {harness: codex, model: expert-sol, ",
+           "expert:    {harness: codex, "
+         ), "config.yaml missing required key: routes.hybrid.expert.model"},
+        {String.replace(
+           @hybrid_route,
+           "  codex:\n    scout:  {model: luna, effort: low}\n",
+           "  codex:\n"
+         ), "config.yaml missing required key: routes.hybrid.helpers.codex.scout"},
+        {String.replace(
+           @hybrid_route,
+           "  codex:\n    scout:  {model: luna, effort: low}\n    worker: {model: luna, effort: high}\n",
+           ""
+         ), "config.yaml missing required key: routes.hybrid.helpers.codex"},
+        {@hybrid_route <> "    expert: {model: e, effort: high}\n",
+         "config.yaml routes.hybrid.helpers.codex.expert is not allowed in a role-level route; assign the expert role instead"}
+      ]
+
+      for {route, expected} <- broken do
+        path =
+          write_yaml!(
+            dir,
+            "broken.yaml",
+            routes_config([{"codex", @valid_route}, {"hybrid", route}])
+          )
+
+        assert {:error, ^expected} = Intent.read_config(path)
+        assert {:error, ^expected} = Intent.read_config(path, "hybrid")
+      end
+
+      mixed =
+        String.replace(
+          @valid_route,
+          "reviewer:  {model: sonnet",
+          "reviewer:  {harness: claude, model: sonnet"
+        )
+
+      path = write_yaml!(dir, "mixed.yaml", routes_config([{"codex", mixed}]))
+
+      assert {:error,
+              "config.yaml routes.codex.reviewer.harness is not allowed beside a route-level harness"} =
+               Intent.read_config(path)
+    end
+
+    test "only roles assigned to Claude Code are checked against the proven picker" do
+      dir = tmp_dir!()
+
+      unproven =
+        String.replace(
+          @hybrid_route,
+          "developer: {harness: claude, model: claude-opus-5-5",
+          "developer: {harness: claude, model: claude-unproven-9"
+        )
+
+      path = write_yaml!(dir, "config.yaml", routes_config([{"hybrid", unproven}]))
+      assert {:error, reason} = Intent.read_config(path)
+      assert reason =~ "unsupported Claude Code model for developer: claude-unproven-9"
+
+      helper =
+        String.replace(@hybrid_route, "scout:  {model: claude-sonnet-5", "scout:  {model: luna")
+
+      path = write_yaml!(dir, "helper.yaml", routes_config([{"hybrid", helper}]))
+      assert {:error, reason} = Intent.read_config(path)
+      assert reason =~ "unsupported Claude Code model for helpers.claude.scout: luna"
+
+      # Codex-assigned roles keep unrestricted Codex model routing.
+      path = write_yaml!(dir, "ok.yaml", routes_config([{"hybrid", @hybrid_route}]))
+      assert {:ok, %{reviewer: %{model: "review-sol"}}} = Intent.read_config(path)
+
+      pi = String.replace(@hybrid_route, "reviewer:  {harness: codex", "reviewer:  {harness: pi")
+
+      pi =
+        pi <> "  pi:\n    scout: {model: p, effort: low}\n    worker: {model: p, effort: low}\n"
+
+      path = write_yaml!(dir, "pi.yaml", routes_config([{"hybrid", pi}]))
+
+      assert {:error, "unsupported harness for reviewer: pi; expected codex or claude"} =
+               Intent.read_config(path)
     end
   end
 

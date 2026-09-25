@@ -1,6 +1,9 @@
 defmodule Kogen.HarnessRoleTest do
   use Kogen.IsolatedCase, async: true
 
+  alias Kogen.Harness.Claude
+  alias Mix.Tasks.Kogen.Expert
+
   @moduletag timeout: 120_000
 
   test "every Codex launch overrides a hostile inherited role" do
@@ -106,6 +109,272 @@ defmodule Kogen.HarnessRoleTest do
     roles = log |> File.read!() |> String.split("\n", trim: true)
     assert Enum.take(roles, 3) == ["developer", "developer", "reviewer"]
     assert Enum.count(roles, &(&1 == "shaper")) == 12
+  end
+
+  @hybrid_config """
+  default_route: hybrid
+  routes:
+    hybrid:
+      shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+      developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+      reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
+      expert:    {harness: codex, model: gpt-6-sol, effort: high}
+      helpers:
+        claude:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+        codex:
+          scout:  {model: gpt-6-luna, effort: low}
+          worker: {model: gpt-6-luna, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
+  # Claude Code speaks `-p` stream-json and Codex speaks `exec` JSONL; one
+  # offline executable answers either protocol and logs argv and role env.
+  @dual_protocol """
+  #!/bin/sh
+  printf 'argv:' >> "$DISPATCH_LOG"; for a in "$@"; do printf ' %s' "$a" >> "$DISPATCH_LOG"; done
+  printf '\\nenv: KOGEN_ROLE=%s KOGEN_EXPERT=%s KOGEN_VERIFICATION_CONTEXT=%s\\n' "${KOGEN_ROLE:-}" "${KOGEN_EXPERT:-unset}" "${KOGEN_VERIFICATION_CONTEXT:-unset}" >> "$DISPATCH_LOG"
+  if [ "${1:-}" = auth ]; then
+    printf '%s\\n' '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}'
+    exit 0
+  fi
+  cat > /dev/null
+  protocol=
+  for a in "$@"; do
+    case "$a" in -p|exec) protocol="$a"; break ;; esac
+  done
+  if [ "$protocol" = exec ]; then
+    printf '%s\\n' '{"type":"thread.started","thread_id":"codex-expert"}' '{"type":"item.completed","item":{"type":"agent_message","text":"codex expert answer"}}' '{"type":"turn.completed"}'
+    exit 0
+  fi
+  sid=; model=; prev=
+  for a in "$@"; do
+    [ "$prev" = --session-id ] && sid="$a"
+    [ "$prev" = --model ] && model="$a"
+    prev="$a"
+  done
+  printf '{"type":"system","subtype":"init","session_id":"%s"}\\n' "$sid"
+  printf '{"type":"assistant","session_id":"%s","message":{"model":"%s","content":[]}}\\n' "$sid" "${FAKE_ROOT_MODEL:-$model}"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"claude expert answer","session_id":"%s"}\\n' "$sid"
+  """
+
+  test "a hybrid route launches each role only through its assigned harness and profile" do
+    dir = Path.join(System.tmp_dir!(), "kogen-hybrid-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    executable = Path.join(dir, "provider")
+    log = Path.join(dir, "dispatch")
+    File.write!(executable, @dual_protocol)
+    File.chmod!(executable, 0o755)
+    config_path = Path.join(dir, "config.yaml")
+    File.write!(config_path, @hybrid_config)
+    System.put_env("KOGEN_HARNESS", executable)
+    System.put_env("DISPATCH_LOG", log)
+    private_claude_scope!(dir)
+    System.delete_env("KOGEN_RAW_LOG_DIR")
+    # An inherited Developer verification context must never reach an Expert.
+    System.put_env("KOGEN_VERIFICATION_CONTEXT", "/inherited/context")
+
+    {:ok, config} = Kogen.Intent.read_config(config_path)
+
+    assert {:ok, runtime} =
+             Kogen.Harness.open_roles(config, [:developer, :reviewer, :expert], dir)
+
+    assert runtime.selections |> Map.keys() |> Enum.sort() == ["claude", "codex"]
+
+    developer = Kogen.Harness.role_context(runtime, :developer)
+    reviewer = Kogen.Harness.role_context(runtime, :reviewer)
+    assert developer.harness == "claude"
+    assert reviewer.harness == "codex"
+
+    # The dominant Developer carries the frozen Codex Expert assignment; its
+    # native Claude Code helpers exclude any substituted expert.
+    {"KOGEN_EXPERT", json} = List.keyfind(developer.env, "KOGEN_EXPERT", 0)
+
+    assert Jason.decode!(json) == %{
+             "route" => "hybrid",
+             "caller" => "developer",
+             "harness" => "codex",
+             "model" => "gpt-6-sol",
+             "effort" => "high",
+             "helpers" => %{
+               "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
+               "worker" => %{"model" => "gpt-6-luna", "effort" => "high"}
+             }
+           }
+
+    assert List.keyfind(reviewer.env, "KOGEN_EXPERT", 0) == {"KOGEN_EXPERT", nil}
+
+    developer_args =
+      Claude.developer_args("claude-opus-5-5", "medium", developer, {:fresh, "s"})
+
+    agents = developer_args |> after_flag("--agents") |> Jason.decode!()
+    assert agents |> Map.keys() |> Enum.sort() == ["kogen-scout", "kogen-worker"]
+    assert agents["kogen-scout"]["model"] == "claude-sonnet-5"
+    assert "--dangerously-skip-permissions" in developer_args
+    assert after_flag(developer_args, "--model") == "claude-opus-5-5"
+    assert after_flag(developer_args, "--effort") == "medium"
+
+    # The Expert role itself launches on Codex with Codex's unattended flags.
+    assignment = Expert.assignment(json)
+    assert {:ok, %{harness: "codex", expert: %{model: "gpt-6-sol", effort: "high"}}} = assignment
+    {:ok, expert_config} = assignment
+
+    assert {:ok, %{session_id: "codex-expert", message: "codex expert answer"}} =
+             Expert.launch(expert_config, "Which lock order is safe?", dir)
+
+    assert_raise ArgumentError, ~r/role shaping was not opened/, fn ->
+      Kogen.Harness.role_context(runtime, :shaping)
+    end
+
+    Kogen.Harness.close(runtime)
+
+    # The codex-dominant route's Expert runs on Claude Code, read-only, with
+    # only Claude Code native helpers and no nested expert.
+    claude_expert = %{
+      route: "hybrid",
+      caller: "developer",
+      harness: "claude",
+      expert: %{model: "claude-opus-5-5", effort: "high"},
+      helpers: %{
+        scout: %{model: "claude-sonnet-5", effort: "low"},
+        worker: %{model: "claude-sonnet-5", effort: "medium"}
+      },
+      roles: %{expert: "claude"},
+      native_helpers: %{
+        "claude" => %{
+          scout: %{model: "claude-sonnet-5", effort: "low"},
+          worker: %{model: "claude-sonnet-5", effort: "medium"}
+        }
+      }
+    }
+
+    {:ok, claude_selection} = Kogen.Harness.open(claude_expert, dir)
+    claude_context = Kogen.Harness.launch_context(claude_selection)
+
+    assert {:ok, %{message: "claude expert answer"}} =
+             Kogen.Harness.launch_expert("question", "claude-opus-5-5", "high", claude_context)
+
+    # A provider answering from another model is a failure, never a fallback.
+    System.put_env("FAKE_ROOT_MODEL", "claude-sonnet-5")
+
+    assert {:error,
+            {:root_model_mismatch, %{expected: "claude-opus-5-5", actual: "claude-sonnet-5"}}} =
+             Kogen.Harness.launch_expert("question", "claude-opus-5-5", "high", claude_context)
+
+    entries = log |> File.read!() |> String.split("argv:", trim: true)
+    [codex_expert] = Enum.filter(entries, &String.starts_with?(&1, " exec "))
+    claude_launch = Enum.find(entries, &String.starts_with?(&1, " -p "))
+
+    assert codex_expert =~
+             ~s(exec --model gpt-6-sol -c model_reasoning_effort="high" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json -)
+
+    assert codex_expert =~ "KOGEN_ROLE=expert KOGEN_EXPERT=unset KOGEN_VERIFICATION_CONTEXT=unset"
+
+    assert claude_launch =~ "--model claude-opus-5-5 --effort high --dangerously-skip-permissions"
+    assert claude_launch =~ "Agent(general-purpose)"
+    assert claude_launch =~ " Edit Write NotebookEdit "
+    assert claude_launch =~ "kogen-scout"
+    refute claude_launch =~ "kogen-expert"
+
+    assert claude_launch =~
+             "KOGEN_ROLE=expert KOGEN_EXPERT=unset KOGEN_VERIFICATION_CONTEXT=unset"
+  end
+
+  # Expert launches reuse the prepared launch context: its arguments (which
+  # carry the central tool_output_token_limit, see codex_environment_test)
+  # and environment precede the role's own flags.
+  test "Codex Expert launches run from the prepared launch context" do
+    dir = Path.join(System.tmp_dir!(), "kogen-prepared-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    executable = Path.join(dir, "provider")
+    log = Path.join(dir, "dispatch")
+    File.write!(executable, @dual_protocol)
+    File.chmod!(executable, 0o755)
+    System.put_env("DISPATCH_LOG", log)
+    System.put_env("KOGEN_EXPERT", ~s({"inherited":true}))
+    System.put_env("KOGEN_VERIFICATION_CONTEXT", "/inherited/context")
+
+    prepared = ["--disable", "apps", "-c", "tool_output_token_limit=4000"]
+
+    context = %{
+      harness: "codex",
+      executable: executable,
+      args: prepared,
+      env: [{"DISPATCH_LOG", log}]
+    }
+
+    assert {:ok, %{session_id: "codex-expert"}} =
+             Kogen.Harness.launch_expert("q", "gpt-6-sol", "high", context)
+
+    [expert] = log |> File.read!() |> String.split("argv:", trim: true)
+
+    assert expert =~
+             ~s( --disable apps -c tool_output_token_limit=4000 exec --model gpt-6-sol -c model_reasoning_effort="high" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json -)
+
+    assert expert =~
+             "KOGEN_ROLE=expert KOGEN_EXPERT=unset KOGEN_VERIFICATION_CONTEXT=unset"
+  end
+
+  test "a harness that is not ready names its roles and releases held selections" do
+    dir = Path.join(System.tmp_dir!(), "kogen-unready-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    executable = Path.join(dir, "provider")
+    File.write!(executable, @dual_protocol)
+    File.chmod!(executable, 0o755)
+    System.put_env("KOGEN_HARNESS", executable)
+    System.put_env("DISPATCH_LOG", Path.join(dir, "dispatch"))
+    private_claude_scope!(dir)
+
+    {:ok, config} =
+      Kogen.Intent.read_config(".kogen/config.yaml", "claude-dominant-adversarial-codex")
+
+    broken = put_in(config, [:roles, :reviewer], "pi")
+
+    assert {:error,
+            "reviewer harness pi is not ready: unsupported harness: \"pi\"; expected codex or claude"} =
+             Kogen.Harness.open_roles(broken, [:developer, :reviewer, :expert])
+
+    assert {:error, reason} = Expert.assignment(nil)
+    assert reason =~ "missing KOGEN_EXPERT assignment"
+    assert {:error, reason} = Expert.assignment(~s({"harness":"pi"}))
+    assert reason =~ "invalid KOGEN_EXPERT assignment"
+  end
+
+  test "no harness exposes an auditor launch" do
+    Code.ensure_loaded(Kogen.Harness)
+    Code.ensure_loaded(Kogen.Harness.Claude)
+    Code.ensure_loaded(Kogen.Harness.Codex)
+
+    refute function_exported?(Kogen.Harness, :launch_auditor, 4)
+    refute function_exported?(Kogen.Harness.Claude, :launch_auditor, 4)
+    refute function_exported?(Kogen.Harness.Codex, :launch_auditor, 4)
+
+    assert Kogen.Intent.roles() == [:shaping, :developer, :reviewer, :expert]
+    config = %{harness: "claude"}
+
+    assert_raise ArgumentError, ~r/unknown role :auditor/, fn ->
+      Kogen.Harness.open_roles(config, [:auditor])
+    end
+
+    assert_raise ArgumentError, ~r/unknown role :auditor/, fn ->
+      Kogen.Intent.role_config(config, :auditor)
+    end
+  end
+
+  defp private_claude_scope!(dir) do
+    root = Path.join(dir, "claude-root")
+    File.mkdir_p!(Path.join(root, "accounts/shared"))
+    System.put_env("KOGEN_CLAUDE_ROOT", root)
+  end
+
+  defp after_flag(args, flag) do
+    index = Enum.find_index(args, &(&1 == flag))
+    Enum.at(args, index + 1)
   end
 
   defp terminal_behaviors do

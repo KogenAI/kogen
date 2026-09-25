@@ -75,6 +75,40 @@ defmodule Kogen.Harness.Claude do
     end)
   end
 
+  @doc """
+  Launches a fresh read-only Expert for one question on stdin. Its root must
+  respond from the configured model; its final message is returned.
+  """
+  def launch_expert(prompt, model, effort, context),
+    do: launch_reader("expert", prompt, model, effort, context)
+
+  defp launch_reader(role, prompt, model, effort, context) do
+    with_context(context, fn resolved ->
+      session_id = uuid4()
+      args = reader_args(role, model, effort, resolved, session_id)
+      role_environment = [{"KOGEN_ROLE", role} | expert_removed_environment()]
+      {output, exit_code} = run_with_stdin(resolved, args, prompt, role_environment)
+
+      with {:ok, turn} <- parse_stream(output, exit_code, session_id, model),
+           do: {:ok, expert_response(turn)}
+    end)
+  end
+
+  defp expert_response(turn) do
+    message = if is_binary(turn.result["result"]), do: turn.result["result"], else: ""
+    %{session_id: turn.session_id, message: message, executed_models: turn.executed_models}
+  end
+
+  # A consulted Expert never inherits the launching role's
+  # verification context or Expert assignment.
+  @doc false
+  def expert_removed_environment do
+    Enum.map(
+      ~w(KOGEN_VERIFICATION_CONTEXT KOGEN_VERIFICATION_RETRY_LIMIT KOGEN_VERIFICATION_TARGETS KOGEN_EXPERT),
+      &{&1, nil}
+    )
+  end
+
   @doc "Launches the interactive Claude Code Shaper on the caller's terminal."
   def exec_shaper(model, effort, prompt_file, context) do
     with_context(context, fn resolved ->
@@ -96,6 +130,15 @@ defmodule Kogen.Harness.Claude do
     ["-p", "--output-format", "stream-json", "--verbose"] ++
       common_args(model, effort, context, "reviewer") ++
       ["--json-schema", Verdict.schema()] ++ session_args({:fresh, session_id})
+  end
+
+  @doc false
+  def expert_args(model, effort, context, session_id),
+    do: reader_args("expert", model, effort, context, session_id)
+
+  defp reader_args(role, model, effort, context, session_id) do
+    ["-p", "--output-format", "stream-json", "--verbose"] ++
+      common_args(model, effort, context, role) ++ session_args({:fresh, session_id})
   end
 
   @doc false
@@ -125,8 +168,10 @@ defmodule Kogen.Harness.Claude do
       ]
   end
 
-  @doc "Tools denied to a role: every built-in agent, and editing for the Reviewer."
-  def disallowed_tools("reviewer"), do: builtin_agent_rules() ++ @editing_tools
+  @doc "Tools denied to a role: every built-in agent, and editing for the Reviewer and Expert."
+  def disallowed_tools(role) when role in ["reviewer", "expert"],
+    do: builtin_agent_rules() ++ @editing_tools
+
   def disallowed_tools(_role), do: builtin_agent_rules()
 
   defp builtin_agent_rules, do: Enum.map(@builtin_agents, &"Agent(#{&1})")
@@ -134,9 +179,15 @@ defmodule Kogen.Harness.Claude do
   @doc "Kogen's hook settings: the unchanged tracked Stop and Bash PreToolUse hooks."
   def settings_path, do: @settings_path
 
-  @doc "The configured helper agents, restricted to the root role's authority."
+  @doc """
+  The configured native helper agents, restricted to the root role's
+  authority. `kogen-expert` exists only when the route assigns the Expert to
+  Claude Code; it is never substituted for an Expert on another harness.
+  """
   def agents(role, helpers) do
-    Map.new([:scout, :worker, :expert], fn label ->
+    [:scout, :worker, :expert]
+    |> Enum.filter(&Map.has_key?(helpers, &1))
+    |> Map.new(fn label ->
       profile = Map.fetch!(helpers, label)
       {description, prompt, tools} = helper(role, label)
 

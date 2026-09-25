@@ -41,7 +41,9 @@ defmodule Kogen.ClaudeCodeCatalogTest do
   end
 
   test "the repository selects Opus 5.5 roles at medium, an Opus expert at high and Sonnet 5 helpers" do
-    assert {:ok, config} = Kogen.Intent.read_config(Path.join(@root, ".kogen/config.yaml"))
+    assert {:ok, config} =
+             Kogen.Intent.read_config(Path.join(@root, ".kogen/config.yaml"), "claude")
+
     assert config.harness == "claude"
 
     for role <- [:shaping, :developer, :reviewer],

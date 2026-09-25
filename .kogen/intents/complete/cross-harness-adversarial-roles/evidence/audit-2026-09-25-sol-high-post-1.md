@@ -1,0 +1,19 @@
+1. **Hybrid live fixture is still wired to Claude/default-route state.**  
+   Evidence on HEAD: [fixture](</Users/almirsarajcic/Areas/Kogen/kogen/test/support/live_reviewer_rework_fixture.ex:51>) reads the default config; [nested Build](</Users/almirsarajcic/Areas/Kogen/kogen/test/support/live_reviewer_rework_fixture.ex:97>) has no `--route`; its profile audit expects the outer Claude profiles at [lines 124–133](</Users/almirsarajcic/Areas/Kogen/kogen/test/support/live_reviewer_rework_fixture.ex:124>); `sessions_root/1` selects only `default_route` at [root_profile_audit.ex:65–71](</Users/almirsarajcic/Areas/Kogen/kogen/test/support/root_profile_audit.ex:65>).  
+   **Draft fix:** Require the explicit hybrid route, load that route’s profiles, and audit Claude Developer and Codex Reviewer stores separately. Add a Codex login/scope preflight; `ReviewPacketAudit.assert_logged_in!/1` currently checks Claude only ([review_packet_audit.ex:56–73](</Users/almirsarajcic/Areas/Kogen/kogen/test/support/review_packet_audit.ex:56>)). Preserve Codex’s canonical-path trust and executor setup ([environment.ex:80–103](</Users/almirsarajcic/Areas/Kogen/kogen/lib/kogen/codex/environment.ex:80>).
+
+2. **Supporting evidence contains stale pre-#1 code anchors that can mislead the Developer.**  
+   Evidence on HEAD: `snapshot_references/2` now calls sidecar-based `snapshot_reference/2` ([build.ex:1030–1053](</Users/almirsarajcic/Areas/Kogen/kogen/lib/kogen/build.ex:1030>)); the old `cited_bytes/2` cited by the Draft evidence no longer exists. HEAD also already supplies packet context ([build.ex:957–974](</Users/almirsarajcic/Areas/Kogen/kogen/lib/kogen/build.ex:957>) and the output limit ([environment.ex:416–431](</Users/almirsarajcic/Areas/Kogen/kogen/lib/kogen/codex/environment.ex:416>).  
+   **Draft fix:** Mark the external analyses explicitly historical, remove obsolete function/line citations, and replace them with current HEAD anchors plus “do not reimplement #1” guidance.
+
+3. **Default-route instructions contradict the current contract.**  
+   Evidence on HEAD: `default_route: claude` ([config.yaml:1](</Users/almirsarajcic/Areas/Kogen/kogen/.kogen/config.yaml:1>)) and its preservation test ([configuration_support_contract_test.exs:7–14](</Users/almirsarajcic/Areas/Kogen/kogen/test/kogen/configuration_support_contract_test.exs:7>). The Draft’s `references.yaml:28` and `questions.md:90` still say the hybrid route becomes the default.  
+   **Draft fix:** Mark those statements superseded and state consistently that the default flip belongs to the follow-up Intent.
+
+4. **The frozen-matrix proof does not cover the required auditor and helper assignments.**  
+   Evidence on HEAD: existing tracking assertions cover only the current route/helper shape ([scenario_tracking_test.exs:23–33](</Users/almirsarajcic/Areas/Kogen/kogen/test/kogen/scenario_tracking_test.exs:23>)); the root-profile audit test covers only Developer and Reviewer IDs ([root_profile_audit_test.exs:9–25](</Users/almirsarajcic/Areas/Kogen/kogen/test/kogen/root_profile_audit_test.exs:9>).  
+   **Draft fix:** Require a mid-Build mutation test that invokes Expert, auditor, and every native helper through frozen `role_assignment`, plus role-aware audits for both harness stores.
+
+5. **The Draft’s role-boundary proof omits the #1 packet/sidecar/superseded-objection regression selectors.**  
+   Evidence on HEAD: these controls are implemented in [review_packet.ex:117–147](</Users/almirsarajcic/Areas/Kogen/kogen/lib/kogen/build/review_packet.ex:117>), [tracking.ex:101–149](</Users/almirsarajcic/Areas/Kogen/kogen/lib/kogen/build/tracking.ex:101>), and tested by `review_packet_test.exs`, `review_packet_audit_test.exs`, and `superseded_objection_test.exs`.  
+   **Draft fix:** Add those tests (and `test/support/review_packet_audit.ex` if changed for the hybrid audit) to the relevant scenario proof and affected-path declarations.

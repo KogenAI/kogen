@@ -381,7 +381,7 @@ defmodule Kogen.ClaudeCode do
   end
 
   def management_allowed!(command) do
-    if System.get_env("KOGEN_ROLE") in ["developer", "reviewer", "shaper"] do
+    if System.get_env("KOGEN_ROLE") in ["developer", "reviewer", "shaper", "expert"] do
       raise "mix kogen.claude.#{command} is an explicit user operation; managed roles cannot run setup"
     end
   end

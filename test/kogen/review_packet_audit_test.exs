@@ -1,8 +1,13 @@
 Code.require_file("../support/review_packet_audit.ex", __DIR__)
 
 defmodule Kogen.ReviewPacketAuditTest do
-  use ExUnit.Case, async: true
+  # The Codex preflight tests below select a managed Codex root through the
+  # global KOGEN_CODEX_ROOT/PATH environment, exactly like
+  # Kogen.Codex.ManagementTest; isolation keeps that mutation from racing any
+  # concurrently running suite.
+  use Kogen.IsolatedCase, async: true
 
+  alias Kogen.Codex.State
   alias Kogen.ReviewPacketAudit
 
   @build_id "build-1"
@@ -145,6 +150,74 @@ defmodule Kogen.ReviewPacketAuditTest do
       assert_raise ExUnit.AssertionError, ~r/must cite at least one Candidate file/, fn ->
         ReviewPacketAudit.audit!(log_dir, @build_id, {:dir, candidate_dir})
       end
+    end
+  end
+
+  describe "Codex login and scope preflight (adversarial reviewer/expert routes)" do
+    setup do
+      source = File.cwd!()
+
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "review-packet-codex-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(root)
+      System.put_env("KOGEN_CODEX_ROOT", root)
+      System.put_env("KOGEN_TEST_NATIVE_TRACE", Path.join(root, "trace.jsonl"))
+      System.delete_env("KOGEN_HARNESS")
+      System.delete_env("KOGEN_ROLE")
+      on_exit(fn -> File.rm_rf!(root) end)
+      {:ok, root: root, source: source}
+    end
+
+    test "flunks clearly, before any provider dispatch, when Codex is not installed", _ctx do
+      fixture_root = unique_tmp_dir!("codex-not-installed")
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/does not resolve to a logged-in Kogen Codex scope.*mix kogen\.codex\.install/s,
+                   fn -> ReviewPacketAudit.assert_codex_logged_in!(fixture_root) end
+    end
+
+    test "flunks clearly, before any provider dispatch, when Codex is installed but not logged in",
+         ctx do
+      install_fixture!(ctx)
+      fixture_root = unique_tmp_dir!("codex-not-logged-in")
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/does not resolve to a logged-in Kogen Codex scope.*mix kogen\.codex\.login/s,
+                   fn -> ReviewPacketAudit.assert_codex_logged_in!(fixture_root) end
+    end
+
+    test "passes for a fixture that resolves to an installed and authenticated Codex scope",
+         ctx do
+      install_fixture!(ctx)
+      authenticate_shared!(ctx)
+      fixture_root = unique_tmp_dir!("codex-logged-in")
+
+      assert :ok = ReviewPacketAudit.assert_codex_logged_in!(fixture_root)
+    end
+
+    defp install_fixture!(ctx) do
+      {output, status} =
+        System.cmd(
+          "python3",
+          [
+            Path.join(ctx.source, "test/support/managed_codex_fixture.py"),
+            ctx.root,
+            Path.join(ctx.source, "priv/kogen/codex/install.py")
+          ],
+          stderr_to_stdout: true
+        )
+
+      assert status == 0, output
+    end
+
+    defp authenticate_shared!(ctx) do
+      scope = Path.join([ctx.root, "accounts", "shared"])
+      State.ensure_scope!(scope)
+      File.write!(Path.join(scope, "auth.json"), "shared-account")
     end
   end
 

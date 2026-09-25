@@ -81,6 +81,29 @@ defmodule Kogen.BuildPreconditionsTest do
                             "developer: {model: claude-haiku-4-5-20251001"
                           )
 
+  # A hybrid (role-level) route: Shaping and Developer run on Claude Code (the
+  # dominant harness), Reviewer and Expert run on Codex (the adversarial
+  # harness). Used to prove readiness for every role's harness is checked,
+  # named and refused before any role launch, with no fallback.
+  @hybrid_config """
+  default_route: hybrid
+  routes:
+    hybrid:
+      shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+      developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+      reviewer:  {harness: codex, model: gpt-5.6-terra, effort: high}
+      expert:    {harness: codex, model: gpt-5.6-sol, effort: high}
+      helpers:
+        claude:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+        codex:
+          scout:  {model: gpt-5.6-luna, effort: low}
+          worker: {model: gpt-5.6-luna, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
   # A second route on the same config, distinguishable from the default
   # route's models, used by the --route selection and mid-session mutation
   # tests below.
@@ -424,6 +447,13 @@ defmodule Kogen.BuildPreconditionsTest do
                           operation: {:claude, :unproven_model},
                           expected:
                             "unsupported Claude Code model for developer: claude-haiku-4-5-20251001"
+                        },
+                        %{
+                          case:
+                            "hybrid route's adversarial Codex harness (Reviewer and Expert) is not installed",
+                          operation: {:hybrid, :codex_not_installed},
+                          expected:
+                            "reviewer and expert harness codex is not ready: Kogen Codex is not installed. Run mix kogen.codex.install"
                         },
                         %{
                           case: "negative resumption budget",
@@ -799,6 +829,12 @@ defmodule Kogen.BuildPreconditionsTest do
     commit_fixture!(dir)
   end
 
+  defp setup_case!(dir, {:hybrid, :codex_not_installed}) do
+    write_intent(dir, @valid_intent)
+    File.write!(Path.join(dir, ".kogen/config.yaml"), @hybrid_config)
+    commit_fixture!(dir)
+  end
+
   defp setup_case!(dir, :negative_resumption_budget) do
     write_intent(dir, @valid_intent)
 
@@ -868,6 +904,47 @@ defmodule Kogen.BuildPreconditionsTest do
         if role, do: System.put_env("KOGEN_ROLE", role)
       end
     end
+
+    trace
+  end
+
+  # A hybrid route's readiness uses real managed readiness for both harnesses
+  # (no `KOGEN_HARNESS` override, which would otherwise bypass both harnesses'
+  # own readiness checks): Claude Code is installed and logged in so the
+  # dominant harness (Shaping and Developer) opens successfully, while Codex's
+  # managed root is a fresh, unmanaged directory so the adversarial harness
+  # (Reviewer and Expert) is refused as not installed. Build must stop there,
+  # naming both roles and the Codex harness, before any role launches and
+  # without falling back to Claude Code for the Reviewer.
+  defp claude_readiness!(_dir, harness_dir, {:hybrid, :codex_not_installed}) do
+    System.delete_env("KOGEN_HARNESS")
+    root = Path.join(harness_dir, "claude")
+    trace = Path.join(harness_dir, "claude-trace.jsonl")
+    File.mkdir_p!(root)
+    System.put_env("KOGEN_CLAUDE_ROOT", root)
+    System.put_env("KOGEN_TEST_NATIVE_TRACE", trace)
+    System.put_env("KOGEN_CODEX_ROOT", Path.join(harness_dir, "codex-not-installed"))
+
+    assert {_out, 0} =
+             System.cmd(
+               "python3",
+               [
+                 Path.join(@project_root, "test/support/managed_claude_fixture.py"),
+                 root,
+                 Path.join(@project_root, "priv/kogen/claude_code/install.py")
+               ],
+               stderr_to_stdout: true
+             )
+
+    shared = Path.join(root, "accounts/shared")
+    File.mkdir_p!(shared)
+    File.write!(Path.join(shared, ".fake-login"), "claude.ai\n")
+
+    on_exit(fn ->
+      System.delete_env("KOGEN_CLAUDE_ROOT")
+      System.delete_env("KOGEN_CODEX_ROOT")
+      System.delete_env("KOGEN_TEST_NATIVE_TRACE")
+    end)
 
     trace
   end

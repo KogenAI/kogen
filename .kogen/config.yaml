@@ -18,5 +18,32 @@ routes:
       scout:  {model: gpt-6-luna, effort: low}
       worker: {model: gpt-6-luna, effort: high}
       expert: {model: gpt-6-sol, effort: high}
+  # Hybrid routes assign each role its own harness. Shaping and Developer run
+  # on the dominant harness; Reviewer and Expert run on the adversarial one.
+  # Helpers stay native to the harness of the role that launches them.
+  claude-dominant-adversarial-codex:
+    shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+    developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+    reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
+    expert:    {harness: codex, model: gpt-6-sol, effort: high}
+    helpers:
+      claude:
+        scout:  {model: claude-sonnet-5, effort: low}
+        worker: {model: claude-sonnet-5, effort: medium}
+      codex:
+        scout:  {model: gpt-6-luna, effort: low}
+        worker: {model: gpt-6-luna, effort: high}
+  codex-dominant-adversarial-claude:
+    shaping:   {harness: codex, model: gpt-6-sol, effort: medium}
+    developer: {harness: codex, model: gpt-6-sol, effort: medium}
+    reviewer:  {harness: claude, model: claude-opus-5-5, effort: medium}
+    expert:    {harness: claude, model: claude-opus-5-5, effort: high}
+    helpers:
+      codex:
+        scout:  {model: gpt-6-luna, effort: low}
+        worker: {model: gpt-6-luna, effort: high}
+      claude:
+        scout:  {model: claude-sonnet-5, effort: low}
+        worker: {model: claude-sonnet-5, effort: medium}
 outer_resumptions: 2
 verification_retries: 2

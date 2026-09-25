@@ -1,7 +1,10 @@
+Code.require_file("../support/review_packet_audit.ex", __DIR__)
+
 defmodule Kogen.BuildEvidenceTest do
   use ExUnit.Case, async: true
 
-  alias Kogen.Build.Evidence
+  alias Kogen.Build.{Evidence, Tracking}
+  alias Kogen.ReviewPacketAudit
 
   test "resolves only the exact bound archive and rejects absence, corruption, identity, and versions" do
     root = Path.join(System.tmp_dir!(), "kogen-evidence-#{System.unique_integer([:positive])}")
@@ -295,6 +298,101 @@ defmodule Kogen.BuildEvidenceTest do
     File.rm!(Path.join(root, sidecar))
     assert {:error, missing} = resolve.(sidecar_form)
     assert missing =~ "sidecar unavailable"
+  end
+
+  test "retained evidence copied out of a deleted fixture resolves its record-version sidecars beside the record" do
+    base =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-evidence-relocate-#{System.unique_integer([:positive])}"
+      )
+
+    on_exit(fn -> File.rm_rf(base) end)
+    fixture = Path.join(base, "fixture")
+    tracking_dir = Path.join(fixture, ".kogen/runtime/scenario-tracking/build-3")
+    File.mkdir_p!(tracking_dir)
+    record_path = Path.join(tracking_dir, "record.json")
+
+    # The Reviewer cited the record itself, so Tracking retains a sidecar.
+    cited = Jason.encode!(%{"schema_version" => 2, "status" => "in_progress"})
+    assert {:ok, snapshot} = Tracking.retain_record_version(%{path: record_path}, cited)
+    assert File.regular?(Path.join([tracking_dir, "record-versions", sha256(cited) <> ".json"]))
+
+    attempt = %{
+      "number" => 0,
+      "attempt_token" => "token-3",
+      "status" => "accepted",
+      "developer_session_id" => "developer-3",
+      "reviewer_session" => "reviewer-3",
+      "candidate_id" => "candidate-3",
+      "reviewer_reference_snapshots" => %{snapshot["path"] => snapshot}
+    }
+
+    record =
+      Jason.encode!(%{
+        "schema_version" => 2,
+        "status" => "accepted",
+        "intent" => %{"id" => "intent-3"},
+        "attempts" => [attempt]
+      })
+
+    File.write!(record_path, record)
+
+    summary = %{
+      "format" => "kogen-build-summary",
+      "schema_version" => 1,
+      "intent" => %{"id" => "intent-3"},
+      "build_id" => "build-3",
+      "candidate_id" => "candidate-3",
+      "developer_session_id" => "developer-3",
+      "attempts" => [Map.put(attempt, "reviewer_session_id", "reviewer-3")],
+      "full_record" => %{
+        "format" => "kogen-scenario-tracking-record",
+        "schema_version" => 2,
+        "path" => Path.relative_to(record_path, fixture),
+        "sha256" => sha256(record),
+        "byte_count" => byte_size(record)
+      }
+    }
+
+    # In place, the sidecar resolves at its checkout-relative locator.
+    in_place = Path.join(fixture, "build-summary.json")
+    write_summary!(in_place, summary)
+    assert {:ok, _record} = Evidence.resolve(in_place, fixture)
+
+    # Retain record, sidecars and summary the way the rework fixture does.
+    retain = fn log_dir, copy_sidecars? ->
+      destination = Path.join([log_dir, "scenario-tracking", "build-3", "record.json"])
+      File.mkdir_p!(Path.dirname(destination))
+      File.cp!(record_path, destination)
+
+      if copy_sidecars?,
+        do: ReviewPacketAudit.preserve_record_versions!(record_path, destination)
+
+      summary_path = Path.join(log_dir, "build-summary.json")
+      write_summary!(summary_path, put_in(summary, ["full_record", "path"], destination))
+      summary_path
+    end
+
+    retained = retain.(Path.join(base, "logs"), true)
+    control = retain.(Path.join(base, "logs-without-sidecars"), false)
+    File.rm_rf!(fixture)
+
+    assert {:ok, %{"status" => "accepted"}} = Evidence.resolve(retained, Path.join(base, "logs"))
+
+    assert {:error, missing} = Evidence.resolve(control, Path.join(base, "logs-without-sidecars"))
+    assert missing =~ "sidecar unavailable"
+
+    retained_sidecar =
+      Path.join([
+        base,
+        "logs/scenario-tracking/build-3/record-versions",
+        sha256(cited) <> ".json"
+      ])
+
+    File.write!(retained_sidecar, cited <> " ")
+    assert {:error, altered} = Evidence.resolve(retained, Path.join(base, "logs"))
+    assert altered =~ "sidecar mismatch"
   end
 
   defp write_summary!(path, summary), do: File.write!(path, Jason.encode!(summary))

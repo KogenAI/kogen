@@ -1,0 +1,244 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "PHvXt_1wY5YVhGNLL9y-aqt-sZv6F9J7",
+      "candidate_id": "ee9aaa70aec43cd92160f1bc6001f9727c781559",
+      "developer_session_id": "1586a143-b323-4366-9403-94c2b0e9756e",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "c20c4d2d-c725-48ec-9091-704764d2dd49",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "PHvXt_1wY5YVhGNLL9y-aqt-sZv6F9J7",
+          "candidate_id": "ee9aaa70aec43cd92160f1bc6001f9727c781559",
+          "exit_code": 0,
+          "finished_at": "2026-09-25T12:43:55Z",
+          "session_id": "1586a143-b323-4366-9403-94c2b0e9756e",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "PHvXt_1wY5YVhGNLL9y-aqt-sZv6F9J7",
+          "candidate_id": "ee9aaa70aec43cd92160f1bc6001f9727c781559",
+          "exit_code": 0,
+          "finished_at": "2026-09-25T12:46:44Z",
+          "session_id": "1586a143-b323-4366-9403-94c2b0e9756e",
+          "status": "passed",
+          "target": "live-native"
+        },
+        {
+          "attempt_token": "PHvXt_1wY5YVhGNLL9y-aqt-sZv6F9J7",
+          "candidate_id": "ee9aaa70aec43cd92160f1bc6001f9727c781559",
+          "exit_code": 0,
+          "finished_at": "2026-09-25T12:59:20Z",
+          "session_id": "1586a143-b323-4366-9403-94c2b0e9756e",
+          "status": "passed",
+          "target": "live-reviewer-rework"
+        }
+      ]
+    }
+  ],
+  "build_id": "mJwJiwfKxf5FQsXjt3MY6tBO",
+  "candidate_id": "ee9aaa70aec43cd92160f1bc6001f9727c781559",
+  "developer_session_id": "1586a143-b323-4366-9403-94c2b0e9756e",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 6904888,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/mJwJiwfKxf5FQsXjt3MY6tBO/record.json",
+    "schema_version": 2,
+    "sha256": "863cd1832f6f3da7357e75c80295dc2afbfdc72b33a29722748360600c7b1593"
+  },
+  "intent": {
+    "id": "01a0d2c5-e2aa-7138-9548-975e49df3ea2",
+    "slug": "cross-harness-adversarial-roles",
+    "title": "Add cross-harness adversarial Reviewer and Expert routes"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "c20c4d2d-c725-48ec-9091-704764d2dd49"
+  },
+  "risks": [
+    {
+      "id": "stale-test-reliability-bindings"
+    },
+    {
+      "id": "depends-on-bounded-reviewer-evidence"
+    },
+    {
+      "id": "compatibility-live-variance"
+    },
+    {
+      "id": "default-route-flip-deferred"
+    },
+    {
+      "id": "baseline-moves-before-build"
+    },
+    {
+      "id": "reference-candidate-predates-dependency"
+    }
+  ],
+  "route": {
+    "harness": "claude",
+    "name": "claude"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "git diff HEAD: only the two hybrid route blocks are added",
+          "path": ".kogen/config.yaml"
+        },
+        {
+          "locator": "@roles line 26; role_harness/role_config lines 287-300; refusals lines 191-265; proven_models lines 375-411",
+          "path": "lib/kogen/intent.ex"
+        },
+        {
+          "locator": "lines 902-992 incomplete-assignment refusals and Claude-only proven-model checks",
+          "path": "test/kogen/intent_test.exs"
+        },
+        {
+          "locator": "lines 57-86 clean-route mixed refusal and codex_route! one-or-refuse",
+          "path": "test/kogen/configuration_support_contract_test.exs"
+        },
+        {
+          "locator": "hash-only refresh of 89 declarations; source_sha256 spot-checked against the current files",
+          "path": "priv/kogen/test-reliability.yaml"
+        }
+      ],
+      "id": "four-route-selection",
+      "reason": "Only the two hybrid routes are added. The claude and codex routes and default_route are unchanged. role_harness/2 and role_config/2 are limited to shaping, developer, reviewer and expert, and there is no auditor anywhere in lib, priv or the config. Incomplete hybrid routes are refused naming the key path, and a clean route with a role-level harness is refused. Proven-model checks apply only to Claude-assigned roles and helpers. codex_route! resolves exactly one codex route and refuses a config with two. The ledger diff changes only source_sha256 values, and the refreshed hashes match the current files. Makefile and verification_targets.yaml are unchanged. Check passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "role_context lines 74-79; expert_environment lines 88-111",
+          "path": "lib/kogen/harness.ex"
+        },
+        {
+          "locator": "tool_output_token_limit set in config_args, lines 12 and 438",
+          "path": "lib/kogen/codex/environment.ex"
+        },
+        {
+          "locator": "launch/3 via Harness.open, launch_context and launch_expert; no config read",
+          "path": "lib/mix/tasks/kogen.expert.ex"
+        },
+        {
+          "locator": "disallowed_tools lines 172-175; launch_reader lines 85-95",
+          "path": "lib/kogen/harness/claude.ex"
+        },
+        {
+          "locator": "lines 29-38 setup guard refuses expert",
+          "path": "test/kogen/codex_management_test.exs"
+        },
+        {
+          "locator": "lines 66-131 subprocess hybrid Codex Expert case, passed in the live-native receipt",
+          "path": "test/kogen/native_helper_live_test.exs"
+        }
+      ],
+      "id": "adversarial-role-dispatch",
+      "reason": "Each role takes its launch context from its own harness selection. The prepared Codex environment always sets tool_output_token_limit, including for the Expert, and kogen.expert never builds its own argv. The expert environment is frozen into KOGEN_EXPERT only for a cross-harness Expert, and the execution policy tells the Developer to use mix kogen.expert. The Expert runs with KOGEN_ROLE expert, with the verification variables and KOGEN_EXPERT stripped, and with editing tools denied on Claude. Both setup guards refuse the expert role. There is no auditor plumbing, and reviewer.md is unchanged. The live-native hybrid Expert case runs as a subprocess, retains cross-harness-expert.json and passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "freeze_role_assignment lines 358-380; initial_record lines 299-322",
+          "path": "lib/kogen/build/tracking.ex"
+        },
+        {
+          "locator": "assigned_config lines 880-908; role_label lines 911-917",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "lines 56-57 read_config with the hybrid route; lines 83-84 both login checks; line 108 --route",
+          "path": "test/support/live_reviewer_rework_fixture.ex"
+        },
+        {
+          "locator": "role_assignment and route claude-dominant-adversarial-codex",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-57762-7/build-summary.json"
+        },
+        {
+          "locator": "two reviewer sessions, gpt-6-sol at high",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-57762-7/build-root-profile-audit/reviewer/root-profile-receipt.json"
+        }
+      ],
+      "id": "role-boundary-preservation",
+      "reason": "role_assignment is frozen once in the initial record, and assigned_config derives every launch from it. The route key shape is unchanged, and failure labels name the frozen harness, model and effort. lifecycle_test covers a config edit in the middle of a Build. The fixture loads the hybrid route explicitly, runs the Build with --route, and checks both the Claude and Codex logins. The root-profile audit resolves each role's store. review_packet.ex is unchanged. Retained live evidence shows a Claude Developer and two fresh Codex Reviewers (rework, then accept) within the timeout.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "open_roles lines 46-68",
+          "path": "lib/kogen/harness.ex"
+        },
+        {
+          "locator": "line 47 opens [:shaping, :expert]",
+          "path": "lib/mix/tasks/kogen.shape.ex"
+        },
+        {
+          "locator": "lines 832-950 hybrid readiness failures and no fallback",
+          "path": "test/kogen/build_preconditions_test.exs"
+        },
+        {
+          "locator": "lines 645-703 Expert readiness and missing or invalid KOGEN_EXPERT with an unreadable config",
+          "path": "test/kogen/shape_task_test.exs"
+        }
+      ],
+      "id": "readiness-and-failure-ownership",
+      "reason": "Shape opens the shaping and expert harnesses, and Build opens the developer, reviewer and expert harnesses. open_roles fails before any launch, names the roles and harness, and closes selections it already holds. There is no fallback. kogen.expert fails naming the missing or invalid KOGEN_EXPERT assignment and does not read the config, even when the config is unreadable.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "exercise/5 lines 387-396; run_attempts lines 84-113; retry_decision lines 143-146",
+          "path": "lib/kogen/codex/compatibility.ex"
+        },
+        {
+          "locator": "lines 123-303",
+          "path": "test/kogen/codex_compatibility_test.exs"
+        },
+        {
+          "locator": "line 61",
+          "path": "test/kogen/isolated_target_evidence_test.exs"
+        },
+        {
+          "locator": "attempts[0].class passed; retry.started false; turn_timeout_seconds 240",
+          "path": ".kogen/runtime/codex-compatibility/run-1790340404372-674/summary.json"
+        }
+      ],
+      "id": "reliable-codex-compatibility",
+      "reason": "The runner runs only developer and resume turns, and a fixed rework request drives the resume. verify_evidence keeps every native-boundary check from HEAD. The 240 s limit is passed explicitly, bounded_exec.py is unchanged, and the ExUnit timeout stays at 900_000. Retry is limited to timed_out with at least 300_000 ms left before the deadline minus the 60_000 ms reserve, and a test covers each rule. The manifest frame is not echoed twice. The live run passed on its first attempt in 166.8 s.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "record_version lines 165-181; matching_sidecar lines 183-194",
+          "path": "lib/kogen/build/evidence.ex"
+        },
+        {
+          "locator": "line 251 preserve_record_versions!",
+          "path": "test/support/live_reviewer_rework_fixture.ex"
+        },
+        {
+          "locator": "lines 303-397",
+          "path": "test/kogen/build_evidence_test.exs"
+        },
+        {
+          "locator": "retained record with its record-versions/ sidecar alongside",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-57762-7/scenario-tracking/9dD5yzBnJLugRQAAPF8C4qWh/record.json"
+        }
+      ],
+      "id": "retained-evidence-with-record-sidecars",
+      "reason": "Sidecars are found in record-versions/<sha256>.json next to the resolved record, with a fallback to the checkout-relative path. Byte count and digest are verified. The fixture copies record-versions/. The offline relocation regression passes, and the control without the copied sidecar and the altered-sidecar case both fail. The retained live evidence includes the copied sidecar.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

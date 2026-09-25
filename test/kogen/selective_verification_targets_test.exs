@@ -14,7 +14,7 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
     "live-native" => %{
       "test/kogen/codex_native_live_test.exs" => 2,
       "test/kogen/codex_compatibility_test.exs" => 1,
-      "test/kogen/native_helper_live_test.exs" => 1
+      "test/kogen/native_helper_live_test.exs" => 2
     },
     "cold-offline" => %{"test/kogen/cold_offline_test.exs" => 1}
   }

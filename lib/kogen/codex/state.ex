@@ -1,6 +1,9 @@
 defmodule Kogen.Codex.State do
   @moduledoc false
 
+  # Resolved from the source tree, like the managed installer.
+  @native_settings Path.expand("../../../priv/kogen/codex/native_settings.py", __DIR__)
+
   def project_id(project),
     do: :crypto.hash(:sha256, Path.expand(project)) |> Base.encode16(case: :lower)
 
@@ -101,7 +104,7 @@ defmodule Kogen.Codex.State do
       System.find_executable("python3") ||
         raise "Kogen requires Python 3.11 or newer; use the project mise environment"
 
-    script = Application.app_dir(:kogen, "priv/kogen/codex/native_settings.py")
+    script = @native_settings
 
     case System.cmd(python, [script, config], stderr_to_stdout: true) do
       {output, 0} ->

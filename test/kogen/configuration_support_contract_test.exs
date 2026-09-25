@@ -1,11 +1,174 @@
+Code.require_file("../support/route_config.ex", __DIR__)
+
 defmodule Kogen.ConfigurationSupportContractTest do
   use ExUnit.Case, async: true
 
   @config_path ".kogen/config.yaml"
   @readme Path.expand("../../README.md", __DIR__) |> File.read!()
 
-  test "the tracked config keeps Claude as the repository default" do
-    assert {:ok, config} = Kogen.Intent.read_config(@config_path)
+  # The default stays the clean Claude route in this Build; flipping it to the
+  # Claude-dominant hybrid is a separate follow-up.
+  test "the tracked config keeps the clean claude route as default_route" do
+    assert {:ok, default} = Kogen.Intent.read_config(@config_path)
+    assert {:ok, explicit} = Kogen.Intent.read_config(@config_path, "claude")
+
+    assert default == explicit
+    assert default.route == "claude"
+    assert default.harness == "claude"
+  end
+
+  # The existing clean routes keep their exact bytes; the hybrids are additive.
+  test "the tracked config keeps main's clean route bytes and adds only the two hybrids" do
+    tracked = File.read!(@config_path)
+
+    main_clean = """
+    default_route: claude
+    routes:
+      claude:
+        harness: claude
+        shaping:   {model: claude-opus-5-5, effort: medium}
+        developer: {model: claude-opus-5-5, effort: medium}
+        reviewer:  {model: claude-opus-5-5, effort: medium}
+        helpers:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+          expert: {model: claude-opus-5-5, effort: high}
+      codex:
+        harness: codex
+        shaping:   {model: gpt-6-sol, effort: medium}
+        developer: {model: gpt-6-sol, effort: medium}
+        reviewer:  {model: gpt-6-sol, effort: high}
+        helpers:
+          scout:  {model: gpt-6-luna, effort: low}
+          worker: {model: gpt-6-luna, effort: high}
+          expert: {model: gpt-6-sol, effort: high}
+    """
+
+    assert String.starts_with?(tracked, main_clean)
+    assert String.ends_with?(tracked, "outer_resumptions: 2\nverification_retries: 2\n")
+
+    {:ok, data} = YamlElixir.read_from_string(tracked)
+
+    assert data["routes"] |> Map.keys() |> Enum.sort() ==
+             ~w(claude claude-dominant-adversarial-codex codex codex-dominant-adversarial-claude)
+
+    assert Enum.count(data["routes"], fn {_name, route} -> route["harness"] == "codex" end) == 1
+
+    for hybrid <- ~w(claude-dominant-adversarial-codex codex-dominant-adversarial-claude) do
+      refute Map.has_key?(data["routes"][hybrid], "harness")
+    end
+
+    for {_name, route} <- data["routes"] do
+      refute Map.has_key?(route, "auditor")
+    end
+  end
+
+  # Codex-only live owners and the shaping-evaluation driver resolve the one
+  # route with a top-level codex harness; the hybrids declare none.
+  test "the four-route config still resolves exactly one top-level codex route" do
+    assert %{route: "codex", harness: "codex"} = Kogen.RouteConfig.codex_route!(@config_path)
+
+    root = Path.join(System.tmp_dir!(), "kogen-codex-route-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf(root) end)
+    path = Path.join(root, "config.yaml")
+
+    tracked = File.read!(@config_path)
+    [_before, codex_body] = String.split(tracked, "  codex:\n", parts: 2)
+    [codex_body, _hybrids] = String.split(codex_body, "  # Hybrid routes", parts: 2)
+
+    second = "  second-codex:\n" <> codex_body <> "  # Hybrid routes"
+    File.write!(path, String.replace(tracked, "  # Hybrid routes", second, global: false))
+
+    assert_raise RuntimeError, ~r/exactly one route with harness codex/, fn ->
+      Kogen.RouteConfig.codex_route!(path)
+    end
+  end
+
+  test "the tracked config exposes the four-route role-to-harness matrix" do
+    matrix =
+      for route <-
+            ~w(claude codex claude-dominant-adversarial-codex codex-dominant-adversarial-claude),
+          into: %{} do
+        assert {:ok, config} = Kogen.Intent.read_config(@config_path, route)
+        {route, config.roles}
+      end
+
+    all = fn harness ->
+      %{
+        shaping: harness,
+        developer: harness,
+        reviewer: harness,
+        expert: harness
+      }
+    end
+
+    assert matrix == %{
+             "claude" => all.("claude"),
+             "codex" => all.("codex"),
+             "claude-dominant-adversarial-codex" => %{
+               shaping: "claude",
+               developer: "claude",
+               reviewer: "codex",
+               expert: "codex"
+             },
+             "codex-dominant-adversarial-claude" => %{
+               shaping: "codex",
+               developer: "codex",
+               reviewer: "claude",
+               expert: "claude"
+             }
+           }
+
+    for {_route, roles} <- matrix do
+      refute Map.has_key?(roles, :auditor)
+    end
+
+    {:ok, claude_dominant} =
+      Kogen.Intent.read_config(@config_path, "claude-dominant-adversarial-codex")
+
+    assert claude_dominant.shaping == %{model: "claude-opus-5-5", effort: "medium"}
+    assert claude_dominant.developer == %{model: "claude-opus-5-5", effort: "medium"}
+    assert claude_dominant.reviewer == %{model: "gpt-6-sol", effort: "high"}
+    assert claude_dominant.expert == %{model: "gpt-6-sol", effort: "high"}
+    refute Map.has_key?(claude_dominant, :auditor)
+
+    reviewer = Kogen.Intent.role_config(claude_dominant, :reviewer)
+    assert reviewer.harness == "codex"
+    assert reviewer.helpers.scout == %{model: "gpt-6-luna", effort: "low"}
+    assert reviewer.helpers.worker == %{model: "gpt-6-luna", effort: "high"}
+    assert reviewer.helpers.expert == %{model: "gpt-6-sol", effort: "high"}
+
+    developer = Kogen.Intent.role_config(claude_dominant, :developer)
+    assert developer.harness == "claude"
+
+    assert developer.helpers == %{
+             scout: %{model: "claude-sonnet-5", effort: "low"},
+             worker: %{model: "claude-sonnet-5", effort: "medium"}
+           }
+
+    {:ok, codex_dominant} =
+      Kogen.Intent.read_config(@config_path, "codex-dominant-adversarial-claude")
+
+    assert codex_dominant.developer == %{model: "gpt-6-sol", effort: "medium"}
+    assert codex_dominant.reviewer == %{model: "claude-opus-5-5", effort: "medium"}
+    assert codex_dominant.expert == %{model: "claude-opus-5-5", effort: "high"}
+    refute Map.has_key?(codex_dominant, :auditor)
+
+    for clean <- ~w(claude codex) do
+      {:ok, config} = Kogen.Intent.read_config(@config_path, clean)
+      assert config.expert == config.helpers.expert
+      refute Map.has_key?(config, :auditor)
+    end
+
+    assert Kogen.Intent.role_config(codex_dominant, :reviewer).helpers.scout.model ==
+             "claude-sonnet-5"
+
+    assert Kogen.Intent.role_config(codex_dominant, :shaping).helpers.worker.model == "gpt-6-luna"
+  end
+
+  test "the tracked config keeps the clean Claude route unchanged" do
+    assert {:ok, config} = Kogen.Intent.read_config(@config_path, "claude")
 
     assert config.route == "claude"
     assert config.harness == "claude"

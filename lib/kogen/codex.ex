@@ -8,6 +8,11 @@ defmodule Kogen.Codex do
 
   alias Kogen.Codex.{Environment, State}
 
+  # Resolved from the source tree like Kogen.ClaudeCode's installer, never from
+  # the code path: a code-path entry named `kogen-*` would otherwise shadow the
+  # application directory and hide the installer.
+  @installer Path.expand("../../priv/kogen/codex/install.py", __DIR__)
+
   @doc "The user-local managed root. The override is for private integration fixtures."
   def root do
     System.get_env("KOGEN_CODEX_ROOT") ||
@@ -98,7 +103,7 @@ defmodule Kogen.Codex do
 
   @doc false
   def installer(command, arguments \\ []) do
-    script = Application.app_dir(:kogen, "priv/kogen/codex/install.py")
+    script = @installer
 
     python =
       System.find_executable("python3") ||
@@ -283,7 +288,7 @@ defmodule Kogen.Codex do
   end
 
   def management_allowed!(command) do
-    if System.get_env("KOGEN_ROLE") in ["developer", "reviewer", "shaper"] do
+    if System.get_env("KOGEN_ROLE") in ["developer", "reviewer", "shaper", "expert"] do
       raise "mix kogen.codex.#{command} is an explicit user operation; managed roles cannot run setup or compatibility verification"
     end
   end

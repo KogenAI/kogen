@@ -1,0 +1,56 @@
+- path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/ROADMAP.md
+  note: >-
+    Order 2 (ID 1) is the scope of this Intent (narrowed by the Shaper on 2026-09-25: no auditor), covering four routes, Reviewer, Expert and auditor on the
+    adversarial harness, the Codex compatibility fix, and live-native plus live-reviewer-rework. Order
+    1 is the dependency, and order 3 is the auditor's consumer.
+- path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/features/HAR-02.md
+  note: Feature outcome for cross-harness adversarial roles.
+- path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/features/HAR-03.md
+  note: Feature outcome for the reliable Codex compatibility test.
+- path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/DIRECTION.md
+  note: D8 sets the paid-check policy and D9 the self-hosting two-step rule. Section 1.4 sets the harness direction.
+- intent: bounded-reviewer-evidence
+  relation: depends_on
+  note: >-
+    Roadmap order 1. It provides the bounded review packet, metadata-only citations, the Codex
+    tool_output_token_limit, the external live fixture root and the superseded-objection fix. It
+    must be on main before this Build.
+- intent: shaping-preflight-audit
+  relation: consumer
+  note: >-
+    Roadmap order 3. Since the Shaper's 2026-09-25 direction it owns the whole auditor: slot, readiness,
+    launch, identity, guards, prompt, invocation, findings and Jev classification. Its staged package
+    still assumes this Intent provides the slot and needs a Shaping continuation.
+- intent: fortify-paid-verification
+  relation: coordinates
+  note: >-
+    Roadmap order 4, approved against 2909f557. It gave the compatibility retry and turn budget to
+    this Intent. After this Intent lands it re-runs its preflight. Superseded: an earlier note said its
+    live-shape-to-build would run on a hybrid default. The default stays claude here, and the flip is
+    ROADMAP row 10a.
+- commit: 30b96fa0e2c954e4804733df805a36823262e875
+  build: sjqVuqHRgv3YXUVdET-YlksA
+  note: >-
+    Reuse base. The accepted Build of this Intent, committed on main and then reset away because it
+    carried the auditor plumbing. Reflog only until it gets a ref. Restore files with git show and
+    remove every auditor part.
+- stash: cross-harness-candidate-2026-09-25b
+  commit: 2294e64a1a2461dbc163c2f1bffead5f56192cfa
+  note: >-
+    Superseded by 30b96fa0. Candidate of Build o-DlRi_iHnqIwmxfcCz-obe0, built on post-#1 main 22a2db95. Restore
+    files with git show; never apply, pop or drop it.
+- path: evidence/build-failure-o-DlRi.md
+  note: The latest failed Build; its only failure was the sidecar defect fixed by retained-evidence-with-record-sidecars.
+- stash: cross-harness-candidate-2026-09-25
+  commit: 6905e9a4d3608393edbd3010da0da0471fcd5be6
+  note: >-
+    Superseded reference Candidate of Build kdUszVF4Gw71QsxsppvSKc2b. It predates Intent #1. Never
+    apply, pop or drop it.
+- path: .kogen/runtime/scenario-tracking/kdUszVF4Gw71QsxsppvSKc2b/record.json
+  note: The last failed Build. Cycle 3 passed every target, but a stale objection ended it cannot_comply.
+- path: lib/kogen/intent.ex
+  note: Current route schema and selected-route validation boundary.
+- path: lib/kogen/harness.ex
+  note: Current single-harness dispatch boundary, which this Intent generalizes per role.
+- path: test/support/route_config.ex
+  note: codex_route! resolves the one route with a top-level codex harness. The hybrid routes must not add a second one.

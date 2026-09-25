@@ -109,15 +109,56 @@ defmodule Kogen.ExecutionPolicyTest do
 
     for invalid <- ["pi", "", nil] do
       assert_raise ArgumentError, ~r/unsupported harness/, fn ->
-        Kogen.ExecutionPolicy.render(%{codex | harness: invalid}, "developer")
+        Kogen.ExecutionPolicy.render(
+          %{Map.drop(codex, [:roles, :native_helpers]) | harness: invalid},
+          "developer"
+        )
       end
     end
 
     assert_raise KeyError, fn ->
       Kogen.ExecutionPolicy.render(
-        Map.delete(codex, String.to_existing_atom("harness")),
+        Map.drop(codex, [String.to_existing_atom("harness"), :roles, :native_helpers]),
         "developer"
       )
     end
+  end
+
+  test "hybrid roles render their own harness's native helpers and never a substituted expert" do
+    {:ok, config} =
+      Kogen.Intent.read_config(".kogen/config.yaml", "claude-dominant-adversarial-codex")
+
+    for role <- ["shaping", "developer"] do
+      policy = Kogen.ExecutionPolicy.render(config, role)
+      assert policy =~ "- **scout:** `claude-sonnet-5` at `low`; Claude Code agent `kogen-scout`."
+
+      assert policy =~
+               "- **worker:** `claude-sonnet-5` at `medium`; Claude Code agent `kogen-worker`."
+
+      assert policy =~ "- **expert:** `gpt-6-sol` at `high` on the Codex harness"
+      assert policy =~ "`mix kogen.expert`"
+      refute policy =~ "kogen-expert"
+      refute policy =~ "gpt-6-luna"
+    end
+
+    reviewer = Kogen.ExecutionPolicy.render(config, "reviewer")
+    assert reviewer =~ "Configured root (reviewer): `gpt-6-sol` at `high`."
+    assert reviewer =~ "- **scout:** `gpt-6-luna` at `low`; native kind `explorer`."
+    assert reviewer =~ "- **expert:** `gpt-6-sol` at `high`; native kind `default`."
+    refute reviewer =~ "claude-"
+    refute reviewer =~ "mix kogen.expert"
+
+    {:ok, codex_dominant} =
+      Kogen.Intent.read_config(".kogen/config.yaml", "codex-dominant-adversarial-claude")
+
+    developer = Kogen.ExecutionPolicy.render(codex_dominant, "developer")
+    assert developer =~ "- **scout:** `gpt-6-luna` at `low`; native kind `explorer`."
+    assert developer =~ "- **expert:** `claude-opus-5-5` at `high` on the Claude Code harness"
+    refute developer =~ "native kind `default`"
+
+    reviewer = Kogen.ExecutionPolicy.render(codex_dominant, "reviewer")
+
+    assert reviewer =~
+             "- **expert:** `claude-opus-5-5` at `high`; Claude Code agent `kogen-expert`."
   end
 end

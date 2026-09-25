@@ -44,7 +44,7 @@ defmodule Mix.Tasks.Kogen.Shape do
   defp shape(config, selection) do
     with {:ok, branch} <- Kogen.Git.current_branch(),
          {:ok, head} <- Kogen.Git.head_sha(),
-         {:ok, runtime} <- Kogen.Harness.open(config) do
+         {:ok, runtime} <- Kogen.Harness.open_roles(config, [:shaping, :expert]) do
       try do
         launch(config, selection, branch, head, runtime)
       after
@@ -74,7 +74,7 @@ defmodule Mix.Tasks.Kogen.Shape do
       "checkout_head" => head,
       "slug" => if(selection, do: selection.slug, else: "<slug>"),
       "route" => config.route,
-      "harness" => config.harness,
+      "harness" => Kogen.Intent.role_harness(config, :shaping),
       "model" => config.shaping.model,
       "effort" => config.shaping.effort,
       "started" => started
@@ -101,7 +101,7 @@ defmodule Mix.Tasks.Kogen.Shape do
         config.shaping.model,
         config.shaping.effort,
         prompt_file,
-        Kogen.Harness.launch_context(runtime)
+        Kogen.Harness.role_context(runtime, :shaping)
       )
 
     File.rm(prompt_file)
