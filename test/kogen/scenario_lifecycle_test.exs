@@ -3,6 +3,7 @@ defmodule Kogen.ScenarioLifecycleTest do
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.Build
+  alias Kogen.Build.Evidence
 
   @slug "scenario-lifecycle"
   @root Path.expand("../..", __DIR__)
@@ -226,25 +227,76 @@ defmodule Kogen.ScenarioLifecycleTest do
     assert record["status"] == "accepted"
     assert [%{"id" => "F1", "status" => "closed"}] = record["findings"]
     path = records(dir) |> List.first() |> Path.relative_to(dir)
+    record_bytes = File.read!(Path.join(dir, path))
 
-    for {attempt, call} <- Enum.with_index(record["attempts"], 1) do
-      snapshot = attempt["reviewer_reference_snapshots"][path]
-      assert snapshot["binding"] == "controller_record_version"
-      inspected = File.read!(Path.join(dir, ".kogen/runtime/reviewer-inspected-#{call}.json"))
-      assert Base.decode64!(snapshot["content_base64"]) == inspected
-      assert snapshot["sha256"] == Base.encode16(:crypto.hash(:sha256, inspected))
+    inspected =
+      for {attempt, call} <- Enum.with_index(record["attempts"], 1) do
+        inspected = File.read!(Path.join(dir, ".kogen/runtime/reviewer-inspected-#{call}.json"))
+        sidecar = Path.join(Path.dirname(path), "record-versions/#{sha256(inspected)}.json")
 
-      # A record path in the Developer's notes is never parsed into a citation;
-      # the controller report cites only Candidate files and selectors.
-      assert attempt["developer_notes"]["text"] =~ path
-      refute Map.has_key?(attempt["developer_reference_snapshots"], path)
+        for key <- ~w(reviewer_reference_snapshots reference_snapshots) do
+          assert attempt[key][path] == %{
+                   "path" => path,
+                   "sha256" => sha256(inspected),
+                   "byte_count" => byte_size(inspected),
+                   "binding" => "controller_record_version",
+                   "sidecar" => sidecar
+                 }
+        end
+
+        # The sidecar holds exactly the version the Reviewer inspected.
+        assert File.read!(Path.join(dir, sidecar)) == inspected
+
+        # Ordinary cited files keep their inline snapshots.
+        makefile = attempt["reviewer_reference_snapshots"]["Makefile"]
+
+        assert Base.decode64!(makefile["content_base64"]) ==
+                 File.read!(Path.join(dir, "Makefile"))
+
+        # A record path in the Developer's notes is never parsed into a citation;
+        # the controller report cites only Candidate files and selectors.
+        assert attempt["developer_notes"]["text"] =~ path
+        refute Map.has_key?(attempt["developer_reference_snapshots"], path)
+        inspected
+      end
+
+    # No record version contains an earlier one, so the record stays smaller
+    # than the versions it cites.
+    versions = Path.wildcard(Path.join(dir, Path.dirname(path) <> "/record-versions/*.json"))
+    assert Enum.sort(Enum.map(versions, &File.read!/1)) == Enum.sort(inspected)
+    assert byte_size(record_bytes) < Enum.sum(Enum.map(inspected, &byte_size/1))
+
+    for version <- inspected ++ Enum.map(versions, &File.read!/1) do
+      refute record_bytes =~ Base.encode64(version)
     end
 
     [summary] =
       Path.wildcard(Path.join(dir, ".kogen/intents/complete/#{@slug}/build-summary*.json"))
 
-    assert Jason.decode!(File.read!(summary))["full_record"]["sha256"] ==
-             sha256(File.read!(List.first(records(dir))))
+    assert Jason.decode!(File.read!(summary))["full_record"]["sha256"] == sha256(record_bytes)
+    assert {:ok, _record} = File.cd!(dir, fn -> Evidence.resolve(summary) end)
+
+    # Evidence resolution validates every referenced sidecar.
+    [first_sidecar | _] = versions
+    File.write!(first_sidecar, "edited")
+
+    assert {:error, reason} = File.cd!(dir, fn -> Evidence.resolve(summary) end)
+    assert reason =~ "sidecar"
+  end
+
+  for {mode, message} <- [
+        record_sidecar_delete: "record version sidecar missing",
+        record_sidecar_edit: "record version sidecar mutated"
+      ] do
+    test "#{mode} of a retained record version before publication stops the Build" do
+      dir = fixture!()
+      on_exit(fn -> File.rm_rf(dir) end)
+      assert {:error, reason} = run(dir, unquote(Atom.to_string(mode)))
+      assert reason =~ unquote(message)
+      assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "2"
+      assert File.dir?(Path.join(dir, ".kogen/intents/approved/#{@slug}"))
+      refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    end
   end
 
   test "citing the record never permits a Reviewer to change it" do

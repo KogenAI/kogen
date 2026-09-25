@@ -1,0 +1,30 @@
+id: 01a0d7a3-972b-74de-b986-a0fd25a7fede
+slug: bounded-reviewer-evidence
+title: Give the Reviewer bounded, Candidate-bound evidence
+status: approved
+shaped_against:
+  branch: main
+  head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+shaping:
+  route: driver
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-25T07:40:00Z"
+may_change_guarded_paths:
+  - README.md
+  - priv/kogen/prompts/reviewer.md
+  - lib/kogen/build.ex
+  - lib/kogen/build/*.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/*.ex
+  - lib/kogen/codex/environment.ex
+  - priv/kogen/test-reliability.yaml
+  - test/kogen/**
+  - test/support/**
+approval:
+  approved_by: Shaper (Almir Sarajčić), batch approval carried by the driver session
+  statement: "so yeah, I approve: 1. bounded-reviewer-evidence ... that should count as my explicit approval; I approve whatever you guys decide!"
+  approved_at: "2026-09-25"
+  approved_against_head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+  scope: ROADMAP order 1 (ID 33) outcome

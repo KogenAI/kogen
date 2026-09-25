@@ -1,0 +1,16 @@
+- kind: evidence
+  path: .kogen/intents/drafts/cross-harness-adversarial-roles/evidence/reviewer-context-diagnosis-2026-09-25.md
+- kind: evidence
+  path: .kogen/intents/drafts/cross-harness-adversarial-roles/evidence/external-analysis-gpt-6-sol-high.md
+- kind: evidence
+  path: .kogen/intents/drafts/cross-harness-adversarial-roles/evidence/external-analysis-gpt-6-astra-medium.md
+- kind: evidence
+  path: .kogen/intents/drafts/cross-harness-adversarial-roles/evidence/build-failure-2026-09-25.md
+- kind: build
+  id: kdUszVF4Gw71QsxsppvSKc2b
+  note: stale objection discarded a Candidate whose Stop cycle 3 passed every target
+- kind: plan
+  path: "iCloud Areas/Kogen/plan/ROADMAP.md order 1 (ID 33)"
+- kind: dependent
+  slug: cross-harness-adversarial-roles
+  note: builds next and depends on this Intent

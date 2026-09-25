@@ -116,6 +116,22 @@ verdicts, findings, receipts, source snapshots, and historical exact bytes stay
 in that record. Missing or conflicting required evidence is an integrity failure;
 unfinished optional Draft files remain valid shaping work.
 
+Before each Review the controller writes one immutable review packet per
+attempt, `.kogen/runtime/scenario-tracking/<build-id>/review-packets/<attempt-number>.json`.
+It is canonical JSON of at most 64 KiB (65,536 bytes), bound to the attempt
+token and Candidate, holding the scenario and risk IDs, the controller handoff
+report, the Developer notes, a summary of each receipt with a bounded output
+tail, the open findings with their prior dispositions, any superseded
+objection, and an `omitted` list. Long fields are cut at a UTF-8 boundary
+(notes 16 KiB, handoff 24 KiB, each receipt output 2 KiB of its tail); every
+cut or left-out item carries its full source SHA-256, byte count and a JSON
+pointer into the record, and the required IDs are never dropped (Build stops
+instead). The controller keeps the packet digest in its state and in the
+attempt and verifies it before launch, after Review and during publication.
+The Reviewer's `KOGEN_TASK_CONTEXT` names the packet as its evidence source;
+`tracking_path` stays as an audit locator. The packet never narrows the
+Reviewer's inspection of Candidate files or read-only commands.
+
 After Stop verification settles, controller code deterministically builds the
 handoff report, bound to the fresh attempt token and the Candidate, from the
 Approved contract, the Candidate's Git changes relative to HEAD, the declared
@@ -128,7 +144,12 @@ each item — unfinished, done, pending external verification, resolved or
 historical, unclear — and whether the Developer objects that the approved
 contract cannot be met. An objection at 0.85 confidence or higher stops the
 Build immediately, without Review, and returns it to Shaping, quoting the
-Developer's words and Jev's confidence. Every other Jev reading, including a
+Developer's words and Jev's confidence. The one exception is a superseded
+objection: when an earlier Stop cycle of the same attempt (same attempt token
+and Developer session) failed and the final cycle then passed on the settled
+Candidate, the objection is recorded on the attempt as `superseded_objection`
+(items, confidences, failed and passing cycle sequences) and reaches the fresh
+Reviewer as a labelled advisory item in the review packet. Every other Jev reading, including a
 confident "unfinished" answer, and any runtime Jev failure, reaches the
 Reviewer only as a labelled advisory note; a confident "unfinished" answer
 never routes rework by itself, and the Reviewer alone decides acceptance or
@@ -152,7 +173,15 @@ package before any new Build. Do not edit these controller-owned records.
 Citations retain separate Developer and Reviewer versions of the exact inspected
 bytes in each attempt's `developer_reference_snapshots` and
 `reviewer_reference_snapshots`; a later citation cannot replace an earlier role's
-version. Subsequent controller updates
+version. Ordinary cited files keep an inline `content_base64` snapshot. A
+citation of the Build's own record never copies the record into itself: it is
+kept as metadata (path, SHA-256, byte count, `controller_record_version`
+binding) plus an immutable, exclusively created sidecar
+`.kogen/runtime/scenario-tracking/<build-id>/record-versions/<sha256>.json`
+holding the exact cited bytes. Build, publication and
+`Kogen.Build.Evidence.resolve/2` verify every referenced sidecar; a deleted or
+edited sidecar stops Build. Older records with inline record snapshots stay
+readable. Subsequent controller updates
 are checked against Build's latest owned bytes. External edits still stop Build.
 Successful publication links concise Complete evidence to the bound local full
 record; generated names never replace supplied evidence. Failed publication
@@ -421,7 +450,7 @@ Device authorization still requires a human. `--project` selects a private proje
 
 `mix kogen.codex.status` reports the checkout pin, installation and actual active-use records, effective scope, and native local login state. It does not install, authenticate, call a model, expose secrets, or claim remote entitlement. Fresh/continued Shaping and Build stop before provider work when the pinned runtime or selected login is missing.
 
-Managed distributions, accounts, selectors, settings generations, sessions, and compatibility evidence live under `~/Library/Application Support/Kogen/codex`. Per-launch discovery homes exclude personal Codex settings while project guidance and tracked hooks remain available. Shell tools and hooks retain the caller's HOME and exact set/unset XDG semantics. Active operations retain their concrete runtime and session across Review and exact resume; new checkouts select their own pin.
+Managed distributions, accounts, selectors, settings generations, sessions, and compatibility evidence live under `~/Library/Application Support/Kogen/codex`. Per-launch discovery homes exclude personal Codex settings while project guidance and tracked hooks remain available. Shell tools and hooks retain the caller's HOME and exact set/unset XDG semantics. Every managed Codex role and native helper launch carries one central `-c tool_output_token_limit=4000`, about Claude Code's Bash result cap, so a large tool result is not re-sent in full on every later step. Active operations retain their concrete runtime and session across Review and exact resume; new checkouts select their own pin.
 
 When upgrading Kogen's pinned Codex runtime, follow the [Codex runtime upgrade workflow](workflows/codex-runtime-upgrade.md).
 
@@ -462,7 +491,12 @@ run on `default_route`'s harness only and require network access, its installed 
 and Kogen login, `expect`, and `rsync`; create disposable
 fixtures; and retains evidence under `.kogen/runtime/`. It covers real failed-check
 correction, exact Developer resume, reviewer-directed rework, and fresh independent
-Review. Separately selected `make cold-offline` owns the empty-cache offline run. Set
+Review. The Build-only Reviewer-rework fixture creates its project in a
+canonical (symlink-resolved) directory under the system temporary directory,
+outside the checkout, asserts that before the nested Build together with a
+logged-in Kogen Claude Code scope, and retains its records, sidecars, review
+packets, Complete package and a review-packet audit summary (including
+per-Review elapsed seconds) in the owned log directory. Separately selected `make cold-offline` owns the empty-cache offline run. Set
 `KOGEN_LIVE_LOG_DIR` to retain lifecycle or cold evidence elsewhere.
 
 ## Project and contact

@@ -356,6 +356,74 @@ defmodule Kogen.ScenarioTrackingTest do
     end)
   end
 
+  test "a record citation is a digest-bound sidecar, never an inline copy of the record" do
+    in_private_cwd(fn ->
+      assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())
+      assert {:ok, state} = Tracking.start_attempt(state, "attempt-1", 0)
+      cited = state.bytes
+      digest = Base.encode16(:crypto.hash(:sha256, cited), case: :lower)
+      sidecar = Path.join(Path.dirname(state.path), "record-versions/#{digest}.json")
+
+      assert {:ok, snapshot} = Tracking.retain_record_version(state, cited)
+
+      assert snapshot == %{
+               "path" => state.path,
+               "sha256" => digest,
+               "byte_count" => byte_size(cited),
+               "binding" => "controller_record_version",
+               "sidecar" => sidecar
+             }
+
+      assert File.read!(sidecar) == cited
+
+      # Identical bytes reuse the exclusive file; a second citation adds nothing.
+      assert {:ok, ^snapshot} = Tracking.retain_record_version(state, cited)
+      assert File.ls!(Path.dirname(sidecar)) == ["#{digest}.json"]
+
+      attempts =
+        List.update_at(
+          state.record["attempts"],
+          -1,
+          &Map.put(&1, "reference_snapshots", %{state.path => snapshot})
+        )
+
+      assert {:ok, state} = Tracking.update(state, Map.put(state.record, "attempts", attempts))
+      refute state.bytes =~ Base.encode64(cited)
+      assert :ok = Tracking.verify_reference(state, state.path, snapshot)
+      assert :ok = Tracking.verify_record_versions(state)
+
+      File.write!(sidecar, cited <> " edited")
+      assert {:error, reason} = Tracking.verify_record_versions(state)
+      assert reason =~ "record version sidecar mutated"
+      assert {:error, _} = Tracking.verify_reference(state, state.path, snapshot)
+
+      # Different bytes under an existing digest name are an integrity failure.
+      assert {:error, reason} = Tracking.retain_record_version(state, cited)
+      assert reason =~ "record version sidecar integrity failure"
+
+      File.rm!(sidecar)
+      assert {:error, reason} = Tracking.verify_record_versions(state)
+      assert reason =~ "record version sidecar missing"
+
+      # A snapshot cannot point its sidecar anywhere but its digest name.
+      File.write!(sidecar, cited)
+      moved = Path.join(Path.dirname(state.path), "elsewhere.json")
+      File.write!(moved, cited)
+
+      assert {:error, _} =
+               Tracking.verify_reference(state, state.path, %{snapshot | "sidecar" => moved})
+
+      # Older records inline the cited version and stay valid as written.
+      legacy = %{
+        "sha256" => Base.encode16(:crypto.hash(:sha256, cited)),
+        "content_base64" => Base.encode64(cited),
+        "binding" => "controller_record_version"
+      }
+
+      assert :ok = Tracking.verify_reference(state, state.path, legacy)
+    end)
+  end
+
   test "Reviewer citation preserves the Developer's earlier bytes for the same path" do
     in_private_cwd(fn ->
       assert {:ok, state} = Tracking.new(intent(), contract(), approved_entries(), route())

@@ -9,8 +9,12 @@ defmodule Kogen.Build do
   (`Kogen.Build.Report`). The Developer's final message is free prose that no
   Kogen code parses: Build records it as unverified notes and asks TypeSafe Jev
   (`Kogen.Jev`) once what the Developer says about each item. Only a confident
-  contract objection stops the Build; every other reading, and any Jev
-  failure, reaches the fresh Reviewer as advisory notes.
+  contract objection stops the Build, unless an earlier Stop cycle of the same
+  attempt failed and its final cycle passed on the settled Candidate: that
+  objection is superseded and reaches the Reviewer as an advisory item. Every
+  other reading, and any Jev failure, reaches the fresh Reviewer as advisory
+  notes. Each Reviewer starts from one bounded review packet per attempt
+  (`Kogen.Build.ReviewPacket`).
   """
   use Boundary,
     deps: [
@@ -28,6 +32,7 @@ defmodule Kogen.Build do
     FailureSignature,
     GuardedPaths,
     Report,
+    ReviewPacket,
     TargetEvidence,
     Tracking,
     Verification,
@@ -223,6 +228,7 @@ defmodule Kogen.Build do
         token: nil,
         reviewers: [],
         references: %{},
+        review_packet: nil,
         runtime: runtime
       }
 
@@ -269,6 +275,7 @@ defmodule Kogen.Build do
               tracking: tracking,
               token: token,
               references: %{},
+              review_packet: nil,
               execution: execution
             })
 
@@ -403,12 +410,35 @@ defmodule Kogen.Build do
   defp settle_outcome(ctx, candidate_id, session_id, number, notes, verification, jev) do
     objections = Kogen.Jev.objections(jev)
     exhausted? = verification["terminal_state"] != "passed"
+
+    superseded =
+      ReviewPacket.superseded_objection(
+        verification,
+        %{attempt_token: ctx.token, developer_session_id: session_id, candidate_id: candidate_id},
+        objections,
+        Kogen.Jev.objection_threshold()
+      )
+
+    cond do
+      objections == [] ->
+        settle_passing(ctx, candidate_id, session_id, number, verification, jev)
+
+      superseded ->
+        case record_attempt(ctx, %{"superseded_objection" => superseded}) do
+          {:ok, ctx} -> settle_passing(ctx, candidate_id, session_id, number, verification, jev)
+          {:error, error} -> stop(ctx, error)
+        end
+
+      true ->
+        cannot_comply(ctx, number, notes, objections, exhausted?, verification)
+    end
+  end
+
+  defp settle_passing(ctx, candidate_id, session_id, number, verification, jev) do
+    exhausted? = verification["terminal_state"] != "passed"
     missing = VerificationPlan.missing_selectors(ctx.plan, ctx.catalog)
 
     cond do
-      objections != [] ->
-        cannot_comply(ctx, number, notes, objections, exhausted?, verification)
-
       exhausted? ->
         stop(ctx, terminal_exhaustion_reason(ctx, verification))
 
@@ -684,7 +714,9 @@ defmodule Kogen.Build do
            record_attempt(ctx, %{
              "scenario_receipts" => scenario_receipts(ctx),
              "reference_snapshots" => ctx.references
-           }) do
+           }),
+         {:ok, ctx} <- write_review_packet(ctx, candidate_id, number),
+         :ok <- bound_inputs_unchanged(ctx, candidate_id, session_id) do
       prompt =
         render_reviewer_prompt(ctx.intent, candidate_id, ctx.config) <>
           reviewer_notes_section(ctx) <> task_context(ctx, candidate_id, "reviewer")
@@ -702,6 +734,53 @@ defmodule Kogen.Build do
       {:error, reason} -> stop(ctx, reason)
     end
   end
+
+  # One immutable packet per attempt, written before launch. Its binding lives
+  # in controller state and in the attempt, and every later input check
+  # verifies it, so a rebuilt or edited packet stops the Build.
+  defp write_review_packet(ctx, candidate_id, number) do
+    input = %{
+      record: ctx.tracking.record,
+      record_path: ctx.tracking.path,
+      record_bytes: ctx.tracking.bytes,
+      candidate_id: candidate_id,
+      open_findings: Enum.map(Tracking.open_findings(ctx.tracking), & &1["id"])
+    }
+
+    with {:ok, bytes} <- ReviewPacket.build(input),
+         {:ok, binding} <-
+           ReviewPacket.write(ctx.tracking.path, number, bytes, ctx.token, candidate_id),
+         {:ok, ctx} <- record_attempt(ctx, %{"review_packet" => binding}) do
+      {:ok, %{ctx | review_packet: binding}}
+    end
+  end
+
+  defp review_packets_unchanged(ctx) do
+    attempts = ctx.tracking.record["attempts"]
+    current = List.last(attempts)["review_packet"]
+
+    if ctx.review_packet != nil and ctx.review_packet != current do
+      {:error, "review packet binding changed after it was written"}
+    else
+      Enum.reduce_while(attempts, :ok, &review_packet_unchanged/2)
+    end
+  end
+
+  defp review_packet_unchanged(attempt, :ok) do
+    case review_packet_unchanged(attempt) do
+      :ok -> {:cont, :ok}
+      error -> {:halt, error}
+    end
+  end
+
+  defp review_packet_unchanged(%{"review_packet" => binding} = attempt) do
+    if binding["attempt_token"] == attempt["attempt_token"] and
+         binding["candidate_id"] == attempt["candidate_id"],
+       do: ReviewPacket.verify(binding),
+       else: {:error, "review packet is not bound to its attempt and Candidate"}
+  end
+
+  defp review_packet_unchanged(_attempt), do: :ok
 
   defp receive_review(ctx, candidate_id, session_id, number, {:ok, verdict}) do
     binding = %{candidate_id: candidate_id, attempt_token: ctx.token}
@@ -798,7 +877,9 @@ defmodule Kogen.Build do
   defp inputs_unchanged(ctx) do
     with :ok <- Tracking.verify(ctx.tracking),
          :ok <- approved_unchanged(ctx),
-         :ok <- references_unchanged(ctx.references, ctx.tracking) do
+         :ok <- references_unchanged(ctx.references, ctx.tracking),
+         :ok <- Tracking.verify_record_versions(ctx.tracking),
+         :ok <- review_packets_unchanged(ctx) do
       target_evidence_unchanged(ctx.tracking)
     end
   end
@@ -893,8 +974,9 @@ defmodule Kogen.Build do
       "KOGEN_TASK_CONTEXT\n" <> Jason.encode!(context) <> "\n"
   end
 
-  @report_statement "The handoff report (current attempt `handoff`) is controller-built and contains no Developer self-assessment; you are responsible for finding unfinished or plausible-looking-only scenarios."
-  @notes_statement "The Developer's notes (current attempt `developer_notes`), including prose responses to open findings, are unverified claims."
+  @report_statement "The handoff report (review packet `handoff`) is controller-built and contains no Developer self-assessment; you are responsible for finding unfinished or plausible-looking-only scenarios."
+  @notes_statement "The Developer's notes (review packet `developer_notes`), including prose responses to open findings, are unverified claims."
+  @packet_statement "Start from the review packet: it is your evidence source, bound to this attempt and Candidate. A cut or left-out item carries its digest and a record locator. The full tracking record is an audit locator only; never dump it whole. The packet never replaces inspecting the Candidate: read any Candidate file and run read-only commands."
   @jev_statement "Jev only read the Developer's words and never judged the code. Its readings are advisory, never findings or verification; a confident \"unfinished\" reading never routes rework by itself, only your verdict does."
   @changes_statement "`changed_affected_paths` lists files that changed relative to HEAD, not where each behaviour lives."
 
@@ -902,6 +984,14 @@ defmodule Kogen.Build do
     jev = current_attempt(ctx)["jev"] || %{}
 
     %{
+      "evidence_source" => "review_packet",
+      "review_packet" => Map.take(ctx.review_packet, ["path", "sha256", "byte_count"]),
+      "review_packet_use" => @packet_statement,
+      "tracking_record" => %{
+        "path" => ctx.tracking.path,
+        "byte_count" => byte_size(ctx.tracking.bytes),
+        "use" => "audit locator only; never dump the whole record"
+      },
       "handoff_report" => @report_statement,
       "developer_notes" => @notes_statement,
       "changed_affected_paths" => @changes_statement,
@@ -923,7 +1013,16 @@ defmodule Kogen.Build do
       end)
 
     "\n\n## Controller report, Developer notes and advisory Jev reading\n\n" <>
-      Enum.join([@report_statement, @notes_statement, @changes_statement], "\n") <>
+      Enum.join(
+        [
+          "Review packet: `#{ctx.review_packet["path"]}` (#{ctx.review_packet["byte_count"]} bytes, sha256 #{ctx.review_packet["sha256"]}). " <>
+            @packet_statement,
+          @report_statement,
+          @notes_statement,
+          @changes_statement
+        ],
+        "\n"
+      ) <>
       "\n\nAdvisory Jev (#{Kogen.Jev.model()}) reading of the Developer's notes. " <>
       @jev_statement <> "\n\n" <> lines <> "\n"
   end
@@ -934,15 +1033,12 @@ defmodule Kogen.Build do
     |> Enum.map(&Path.relative_to(Path.expand(&1), File.cwd!()))
     |> Enum.uniq()
     |> Enum.reduce_while({:ok, %{}}, fn path, {:ok, acc} ->
-      case cited_bytes(path, tracking) do
-        {:ok, bytes} ->
-          snapshot = %{
-            "sha256" => Base.encode16(:crypto.hash(:sha256, bytes)),
-            "content_base64" => Base.encode64(bytes),
-            "binding" => reference_binding(path, tracking.path)
-          }
-
+      case snapshot_reference(path, tracking) do
+        {:ok, snapshot} ->
           {:cont, {:ok, Map.put(acc, path, snapshot)}}
+
+        {:error, reason} when is_binary(reason) ->
+          {:halt, {:error, "could not retain reference #{path}: #{reason}"}}
 
         {:error, reason} ->
           {:halt, {:error, "could not retain reference #{path}: #{inspect(reason)}"}}
@@ -950,16 +1046,21 @@ defmodule Kogen.Build do
     end)
   end
 
-  defp cited_bytes(path, tracking) do
-    if Path.expand(path) == Path.expand(tracking.path),
-      do: {:ok, tracking.bytes},
-      else: File.read(path)
-  end
-
-  defp reference_binding(path, tracking_path) do
-    if Path.expand(path) == Path.expand(tracking_path),
-      do: "controller_record_version",
-      else: "fixed_file"
+  # A citation of this Build's own record keeps metadata and an immutable
+  # sidecar of the exact cited version, never an inline copy of the record.
+  defp snapshot_reference(path, tracking) do
+    if Path.expand(path) == Path.expand(tracking.path) do
+      Tracking.retain_record_version(tracking, tracking.bytes)
+    else
+      with {:ok, bytes} <- File.read(path) do
+        {:ok,
+         %{
+           "sha256" => Base.encode16(:crypto.hash(:sha256, bytes)),
+           "content_base64" => Base.encode64(bytes),
+           "binding" => "fixed_file"
+         }}
+      end
+    end
   end
 
   defp collect_references(%{"path" => path, "locator" => _locator}), do: [path]
@@ -1149,6 +1250,8 @@ defmodule Kogen.Build do
 
     with :ok <- Tracking.verify(ctx.tracking),
          :ok <- references_unchanged(references, ctx.tracking),
+         :ok <- Tracking.verify_record_versions(ctx.tracking),
+         :ok <- review_packets_unchanged(ctx),
          :ok <- target_evidence_unchanged(ctx.tracking) do
       cond do
         File.exists?(publication.approved_dir) ->

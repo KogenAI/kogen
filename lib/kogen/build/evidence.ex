@@ -20,7 +20,8 @@ defmodule Kogen.Build.Evidence do
          {:ok, record} <- Jason.decode(record_bytes),
          :ok <- matching_record_version(full, record),
          :ok <- matching_identity(summary, record, record_path),
-         :ok <- matching_route(summary, record) do
+         :ok <- matching_route(summary, record),
+         :ok <- record_versions(record, checkout_root) do
       {:ok, record}
     else
       {:error, %Jason.DecodeError{} = error} ->
@@ -128,6 +129,43 @@ defmodule Kogen.Build.Evidence do
       "candidate_id" => attempt["candidate_id"]
     }
   end
+
+  # A citation of the record itself is retained as metadata plus an immutable
+  # sidecar holding the exact cited bytes. Earlier records inline those bytes
+  # as `content_base64` and carry no sidecar; they stay readable unchanged.
+  defp record_versions(record, root) do
+    record
+    |> Map.get("attempts", [])
+    |> Enum.flat_map(fn attempt ->
+      ~w(developer_reference_snapshots reviewer_reference_snapshots reference_snapshots)
+      |> Enum.flat_map(&snapshot_values(Map.get(attempt, &1)))
+    end)
+    |> Enum.filter(&(is_map(&1) and Map.has_key?(&1, "sidecar")))
+    |> Enum.reduce_while(:ok, fn snapshot, :ok ->
+      case record_version(snapshot, root) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp snapshot_values(snapshots) when is_map(snapshots), do: Map.values(snapshots)
+  defp snapshot_values(_snapshots), do: []
+
+  defp record_version(%{"sidecar" => sidecar} = snapshot, root) when is_binary(sidecar) do
+    with {:ok, path} <- resolve_path(sidecar, root),
+         {:ok, bytes} <- File.read(path) do
+      if byte_size(bytes) == snapshot["byte_count"] and
+           Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == snapshot["sha256"],
+         do: :ok,
+         else: {:error, "bound record version sidecar mismatch: #{sidecar}"}
+    else
+      _ -> {:error, "bound record version sidecar unavailable: #{sidecar}"}
+    end
+  end
+
+  defp record_version(_snapshot, _root),
+    do: {:error, "bound record version sidecar has an invalid locator"}
 
   defp matching_record_version(full, record) do
     if record["schema_version"] == full["schema_version"],

@@ -2,6 +2,7 @@ defmodule Kogen.Codex.EnvironmentTest do
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.Codex.Environment
+  alias Kogen.Harness.Codex, as: CodexHarness
 
   test "prepares a private launch and removes inherited provider settings" do
     root = temporary_root!()
@@ -425,6 +426,96 @@ defmodule Kogen.Codex.EnvironmentTest do
                      operation
                    )
                  end
+  end
+
+  test "every Codex role and helper launch carries exactly one central tool output limit" do
+    root = temporary_root!()
+    on_exit(fn -> File.rm_rf(root) end)
+    %{project: project, operation: operation, scope: scope} = paths!(root)
+    home = Path.join(root, "caller-home")
+    caller = %{"HOME" => home}
+
+    context =
+      Environment.prepare(
+        %{"executable" => "codex"},
+        scope,
+        profiles(),
+        project,
+        operation,
+        caller
+      )
+
+    generation = Path.dirname(value!(context.env, "HOME"))
+    toml = &Jason.encode!/1
+
+    base =
+      [
+        "cli_auth_credentials_store=\"file\"",
+        "check_for_update_on_startup=false",
+        "project_root_markers=[\".git\"]",
+        "projects.#{toml.(project)}.trust_level=\"trusted\"",
+        "shell_environment_policy.inherit=\"all\"",
+        "shell_environment_policy.exclude=[\"XDG_CONFIG_HOME\", \"XDG_DATA_HOME\", \"XDG_CACHE_HOME\", \"XDG_STATE_HOME\"]",
+        "shell_environment_policy.set.HOME=#{toml.(home)}",
+        "shell_environment_policy.experimental_use_profile=false",
+        "sqlite_home=#{toml.(Path.join([operation, "state", "sqlite"]))}",
+        "tool_output_token_limit=4000"
+      ]
+      |> Enum.flat_map(&["-c", &1])
+
+    prefix =
+      ["--disable", "apps", "--disable", "plugins", "--disable", "shell_snapshot"] ++ base
+
+    # Existing arguments keep their values and relative order; the limit sits
+    # in the central list before the per-helper profile arguments.
+    assert Enum.take(context.args, length(prefix)) == prefix
+    helper_args = Enum.drop(context.args, length(prefix))
+
+    assert Enum.map(Enum.chunk_every(helper_args, 2), fn ["-c", setting] ->
+             setting |> String.split("=", parts: 2) |> hd()
+           end) == [
+             "agents.scout.config_file",
+             "agents.scout.description",
+             "agents.worker.config_file",
+             "agents.worker.description",
+             "agents.expert.config_file",
+             "agents.expert.description"
+           ]
+
+    for role <- ~w(scout worker expert) do
+      assert "agents.#{role}.config_file=#{toml.(Path.join(generation, "#{role}.toml"))}" in helper_args
+    end
+
+    # Native helpers are spawned by the root Codex process and inherit its -c
+    # overrides, so each root launch carries the one limit for its helpers.
+    launches = %{
+      "shaping" => CodexHarness.shaper_args("astra", "low", write_prompt!(root)),
+      "developer" => CodexHarness.developer_args("astra", "low"),
+      "developer resume" => CodexHarness.developer_args("astra", "low", "session-1"),
+      "reviewer" => CodexHarness.reviewer_args("astra", "low")
+    }
+
+    for {role, role_args} <- launches do
+      argv = context.args ++ role_args
+      assert limit_count(argv) == 1, role
+      assert "tool_output_token_limit=4000" not in role_args, role
+    end
+
+    # A setup (login) preparation uses the same central list.
+    setup = Environment.prepare(%{"executable" => "codex"}, scope, :setup, project, operation)
+    assert limit_count(setup.args) == 1
+  end
+
+  defp limit_count(argv) do
+    argv
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.count(&(&1 == ["-c", "tool_output_token_limit=4000"]))
+  end
+
+  defp write_prompt!(root) do
+    path = Path.join(root, "shaping-prompt.md")
+    File.write!(path, "shape\n")
+    path
   end
 
   defp profiles do

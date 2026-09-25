@@ -159,6 +159,26 @@ defmodule Kogen.LifecycleTest do
 
     refute initial_attempt["reviewer_session"] == accepted_attempt["reviewer_session"]
 
+    # Each fresh Reviewer starts from a bounded packet bound to its attempt,
+    # though the record itself is over 1 MiB.
+    for {attempt, n} <- [{initial_attempt, 1}, {accepted_attempt, 2}] do
+      binding = attempt["review_packet"]
+      packet_bytes = File.read!(Path.join(dest, binding["path"]))
+      assert byte_size(packet_bytes) <= 65_536
+      assert binding["byte_count"] == byte_size(packet_bytes)
+      assert binding["sha256"] == Base.encode16(:crypto.hash(:sha256, packet_bytes), case: :lower)
+      packet = Jason.decode!(packet_bytes)
+      assert packet["attempt_token"] == attempt["attempt_token"]
+      assert packet["candidate_id"] == attempt["candidate_id"]
+
+      prompt = File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-#{n}"))
+      [_before, context_line | _] = String.split(prompt, "KOGEN_TASK_CONTEXT\n")
+      context = context_line |> String.split("\n") |> hd() |> Jason.decode!()
+      assert context["evidence_source"] == "review_packet"
+      assert context["review_packet"] == Map.take(binding, ["path", "sha256", "byte_count"])
+      assert context["tracking_path"] == Path.relative_to(tracking_path, dest)
+    end
+
     invalid_receipt =
       initial_attempt["verification"]["cycles"]
       |> Enum.flat_map(& &1["receipts"])

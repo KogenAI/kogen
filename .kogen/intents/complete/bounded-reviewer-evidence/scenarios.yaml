@@ -1,0 +1,172 @@
+- id: record-never-embeds-itself
+  given: >-
+    a Build whose Developer handoff or Reviewer verdict cites the Build's own tracking record.json, across two attempts with rework
+  when: >-
+    the controller retains the citation in developer_reference_snapshots, reviewer_reference_snapshots and reference_snapshots
+  then: >-
+    The snapshot entry for the record path contains path, sha256, byte_count, binding controller_record_version and sidecar (a path relative to the checkout), and no content_base64.
+    The sidecar is `.kogen/runtime/scenario-tracking/<build-id>/record-versions/<sha256>.json`, written once with exclusive create.
+    Its bytes are exactly the cited record version and match sha256 and byte_count.
+    Writing identical bytes again reuses the file.
+    Different bytes under an existing name are an integrity failure.
+    No record contains the bytes of an earlier record version, so after two attempts that cite the record, its size is below the sum of its cited versions.
+    Ordinary cited files keep their inline content_base64 snapshots.
+    Tracking.verify_reference/3, Evidence.resolve/2 and the publication integrity check each validate every sidecar that a record references (it exists, and its sha256 and byte count match).
+    Each still accepts records that use the older inline form for record citations.
+    Deleting or editing a sidecar before publication stops the Build.
+    An external edit to the record still stops the Build, as today.
+  wrong_result: >-
+    the record still inlines a base64 copy of itself; or the citation is dropped, so the exact bytes a Reviewer inspected are lost; or sidecars are written but never verified, so a tampered or deleted sidecar goes unnoticed; or older records with inline snapshots no longer verify or resolve
+  verified_by: [check]
+  evidence: >-
+    fake-lifecycle tests through the real Build route that cite the record across two attempts and assert size, sidecar bytes, digest binding, tamper and deletion stops, and legacy readability; Evidence.resolve tests for both forms
+  proof:
+    offline: [test/kogen/scenario_lifecycle_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/build_evidence_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the fake lifecycle drives the real controller retention, verification and publication path and inspects the written record and sidecar bytes"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/tracking.ex, lib/kogen/build/evidence.ex, test/kogen/scenario_lifecycle_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/build_evidence_test.exs, priv/kogen/test-reliability.yaml, README.md]
+
+- id: bounded-review-packet
+  given: >-
+    a settled attempt about to launch a fresh Reviewer, with Developer notes over 32 KiB, receipt outputs over 64 KiB, three open findings with disposition history, and a tracking record over 1 MiB
+  when: >-
+    the controller prepares the Review
+  then: >-
+    Before launch, the controller writes one review packet per attempt at `.kogen/runtime/scenario-tracking/<build-id>/review-packets/<attempt-number>.json`.
+    It is canonical JSON (Jason, keys sorted), at most 65,536 bytes, with exactly these top-level keys: schema_version, build_id, attempt_number, attempt_token, candidate_id, scenario_ids, risk_ids, handoff, developer_notes, receipts, open_findings, superseded_objection, omitted, record.
+    Long string fields are cut at a UTF-8 boundary with a per-field cap: developer_notes 16 KiB, each receipt output 2 KiB of its tail, and handoff 24 KiB.
+    A cut field is replaced by {text, truncated: true, sha256, byte_count, locator}, where sha256 and byte_count describe the full source and locator is a JSON pointer into the record.
+    Serialized JSON is never byte-sliced.
+    Every scenario id, risk id and open finding id is always present.
+    omitted lists each cut or left-out item with its sha256 and locator.
+    record names the record path and byte count as an audit locator only.
+    If the required ids alone would exceed the bound, the Build stops with an integrity error; it never drops them.
+    The controller keeps the packet's path, sha256, byte count, attempt token and Candidate id in its state and in the attempt, and verifies them before launch, after the Review returns, and during publication.
+    Any change stops the Build.
+    The Reviewer's KOGEN_TASK_CONTEXT gains review_packet (path, sha256, byte_count) as its evidence source; tracking_path stays present as the audit locator, so existing consumers keep working.
+    reviewer.md tells the Reviewer to read the packet first, not to dump the whole record, and that it must still inspect the Candidate files and may run read-only commands.
+    reviewer.md ends with a mandatory completeness step: before returning, the Reviewer lists every Approved scenario id (the packet's scenario_ids) and every finding open at Review start, and confirms each appears exactly once in scenarios or dispositions. A focused test asserts that reviewer.md contains this step and names both lists.
+  wrong_result: >-
+    the packet exceeds the bound when notes or receipts are large; truncation byte-slices JSON or silently drops findings or ids without a digest and locator; the Reviewer context loses tracking_path and breaks existing fake Reviewers; the context still sends the Reviewer to the raw record as its primary source; the packet is rebuilt or edited after launch without detection; or the prompt steers the Reviewer away from inspecting Candidate files; or reviewer.md has no completeness step, so a Reviewer can drop a scenario id from an otherwise accepting verdict (Build qWusXkQn failed exactly this way)
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    offline packet tests with oversized inputs that parse the packet, check the required keys and every truncation digest against its source, and a mutation control through the real Review route; lifecycle tests asserting the Reviewer context; in the live Build-only fixture, a dedicated packet audit
+  proof:
+    offline: [test/kogen/review_packet_test.exs, test/kogen/controller_handoff_test.exs, test/kogen/lifecycle_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: real Reviewers launched with the packet locator find the fixture's planted omission (the missing reviewer-notes.md), send rework, and a fresh Reviewer accepts, with each Reviewer's raw stream showing a tool call that reads the packet path; offline-limit: fake Reviewers are scripts and cannot show that a real model follows the packet-first instruction and still inspects the Candidate"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/review_packet.ex, priv/kogen/prompts/reviewer.md, test/kogen/review_packet_test.exs, test/kogen/controller_handoff_test.exs, test/kogen/lifecycle_test.exs, test/support/review_packet_audit.ex, test/support/live_reviewer_rework_fixture.ex, priv/kogen/test-reliability.yaml, README.md]
+
+- id: live-packet-audit
+  given: >-
+    the live Build-only Reviewer-rework fixture running the Candidate's code in its nested Build
+  when: >-
+    the nested Build finishes and the outer live test audits the retained evidence
+  then: >-
+    A new support module, test/support/review_packet_audit.ex, called only by the Reviewer-rework fixture, asserts the following from retained files.
+    Each attempt's review packet exists, is at most 65,536 bytes, parses, and matches the digest and bindings the record holds for it.
+    Each real Reviewer's retained raw stream contains at least one tool call whose input names that attempt's packet path.
+    The accepting Reviewer's verdict cites at least one Candidate file.
+    The nested record holds no inline content_base64 for its own record path.
+    The audit writes per-Review elapsed seconds into its summary as retained evidence, with no pass/fail threshold on time.
+    test/support/live_rework_audit.ex, which live-shape-to-build also uses, is not modified.
+  wrong_result: >-
+    the audit only checks that files exist; or it passes when the Reviewer never opened the packet; or it edits the shared live_rework_audit.ex, which drags live-shape-to-build into this Intent; or it fails the run on elapsed time, adding flakiness without cause
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    offline tests for the audit module against synthetic retained evidence (a passing case, a missing packet tool call, a packet digest mismatch, an inline record copy); the live run's retained audit summary
+  proof:
+    offline: [test/kogen/review_packet_audit_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: tool calls in real Reviewer raw streams; offline-limit: only a real provider run produces those streams"
+    affected_paths: [test/support/review_packet_audit.ex, test/kogen/review_packet_audit_test.exs, test/support/live_reviewer_rework_fixture.ex]
+
+- id: codex-tool-output-limit
+  given: >-
+    launch-argument construction for every Codex root role (shaping, developer, reviewer) and every native helper profile (scout, worker, expert)
+  when: >-
+    Kogen prepares the native Codex configuration arguments through the Codex environment
+  then: >-
+    The arguments contain exactly one `-c tool_output_token_limit=4000`, added in the central config_args for every root role and helper launch.
+    Every existing argument keeps its value and relative order.
+    This Intent claims only this deterministic argument construction.
+    The effect on a real Codex Review is proved by cross-harness-adversarial-roles, whose live-native and live-reviewer-rework run on the adversarial route.
+  wrong_result: >-
+    the limit appears only in a prompt; it is missing from helper launches or one of the roles; it is duplicated; or it changes or reorders the bypass, trust, shell-environment or helper-profile arguments
+  verified_by: [check]
+  evidence: >-
+    offline tests calling the Codex environment's preparation for each role and helper and asserting the exact argument list; the Shaping probe (evidence/codex-output-limit-probe.md) showing the pinned 0.156.1 runtime accepts the key
+  proof:
+    offline: [test/kogen/codex_environment_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: argument construction is deterministic and fully observable offline; the claim is limited to it"
+    affected_paths: [lib/kogen/codex/environment.ex, test/kogen/codex_environment_test.exs, priv/kogen/test-reliability.yaml]
+
+- id: fixture-outside-checkout
+  given: >-
+    the live Build-only Reviewer-rework fixture
+  when: >-
+    it creates its disposable project
+  then: >-
+    The project root is created under System.tmp_dir!() and then resolved to its canonical, symlink-free path (for example /private/var/folders/...), and that exact path is used for rsync, precompile and `mix kogen.build`.
+    Nothing is created under the checkout's .kogen/runtime/live-reviewer-rework.
+    Before the nested Build starts, the fixture asserts that the root lies outside the checkout.
+    It also asserts that the fixture resolves to a logged-in Kogen Claude Code login scope, and fails before any provider dispatch otherwise.
+    Retained evidence lands in the owned log directory under the checkout's .kogen/runtime/live-evidence (or KOGEN_LIVE_LOG_DIR) and survives fixture removal: build console, raw streams, fixture path, the complete package, the record, sidecars, review packets and the packet audit summary.
+    The fixture directory is removed on exit.
+  wrong_result: >-
+    the fixture still sits under the checkout; it moves out but its evidence is deleted with it; the root keeps a /var or /tmp symlink alias, so Codex rejects it or scope selection differs; a missing login is discovered only after a paid launch; or the outside-checkout check is only a comment
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    the live run's retained fixture-path.txt showing a canonical path outside the checkout, plus retained packets and sidecars; offline test of the path check and evidence copy in the audit test
+  proof:
+    offline: [test/kogen/review_packet_audit_test.exs]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: a real Build with real provider roles completes from a canonical fixture outside the checkout; offline-limit: the fake lifecycle does not launch the managed harness from that location"
+    affected_paths: [test/support/live_reviewer_rework_fixture.ex, test/support/review_packet_audit.ex, test/kogen/review_packet_audit_test.exs]
+
+- id: superseded-objection-reaches-review
+  given: >-
+    an attempt whose Developer notes carry a contract objection that Jev reads at or above 0.85
+  when: >-
+    Build settles the attempt
+  then: >-
+    The objection is superseded only when the attempt's settled verification is passed, and an earlier cycle in the same verification history failed.
+    That history means the same attempt_token and the same developer_session_id.
+    The passing cycle must also be the final cycle, and its candidate_id must equal the settled Candidate.
+    Build then does not stop.
+    It records superseded_objection on the attempt, with items, Jev confidences, the failed cycle sequences and the passing cycle sequence.
+    It includes that record in the review packet as a labelled advisory item and launches a fresh Reviewer as usual.
+    Every other confident objection stops with cannot_comply before Review, with today's reason text and record fields.
+    That covers four cases: verification did not pass or was exhausted, only one cycle ran, the earlier failure belongs to a different attempt, or the passing Candidate differs from the settled one.
+    Readings below the threshold are unchanged.
+  wrong_result: >-
+    every objection is ignored whenever verification passes; a failed cycle from an earlier attempt supersedes a later objection; superseded objections vanish instead of reaching the Reviewer and the record; or an exhausted verification with an objection reaches Review
+  verified_by: [check]
+  evidence: >-
+    fake-lifecycle tests with a stubbed Jev transport through the real settle route: failed-then-passed in one attempt reaches Review, and the packet and record contain the superseded item; a single passing cycle with an objection stops; an exhausted run with an objection stops; a prior attempt's failed cycle followed by a first-cycle pass with an objection stops; the existing cannot_comply tests are unchanged
+  proof:
+    offline: [test/kogen/superseded_objection_test.exs, test/kogen/developer_handoff_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: cycle history and Jev answers are controller data; the stubbed Jev transport and fake Stop cycles exercise the real settle_outcome route"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/review_packet.ex, test/kogen/superseded_objection_test.exs, test/kogen/developer_handoff_test.exs, priv/kogen/test-reliability.yaml, README.md]
+
+- id: planted-defect-review-preserved
+  given: >-
+    the maintained planted-defect Reviewer controls: reviewer_mutation_test, scenario_semantic_test's incomplete fixture, and two_outer_resumptions_test (live-reviewer-rework's rehearsal)
+  when: >-
+    they run with the controller that now builds a review packet
+  then: >-
+    They pass, and none of their assertions is weakened or removed relative to HEAD.
+    The Reviewer must diff these files against HEAD.
+    The real planted-defect check is live-reviewer-rework's first Review, which must still find the deliberately missing reviewer-notes.md with the packet in place.
+  wrong_result: >-
+    the controls are edited to accept the new packet by weakening an assertion; or the packet's instructions steer the Reviewer away from inspecting the Candidate, so the live first Review accepts
+  verified_by: [check]
+  evidence: >-
+    unchanged or strictly strengthened planted-defect tests pass in check; the live first Review's rework verdict is covered by bounded-review-packet's paid target
+  proof:
+    offline: [test/kogen/reviewer_mutation_test.exs, test/kogen/scenario_semantic_test.exs, test/kogen/two_outer_resumptions_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: these are the maintained offline rehearsals; the paid Review boundary is already selected by bounded-review-packet"
+    affected_paths: [test/kogen/reviewer_mutation_test.exs, test/kogen/scenario_semantic_test.exs, test/kogen/two_outer_resumptions_test.exs]

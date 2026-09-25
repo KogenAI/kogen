@@ -218,6 +218,85 @@ defmodule Kogen.BuildEvidenceTest do
     assert mismatch =~ "route mismatch"
   end
 
+  test "record citations resolve in both the sidecar form and the older inline form" do
+    root = Path.join(System.tmp_dir!(), "kogen-evidence-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(root) end)
+    dir = ".kogen/runtime/scenario-tracking/build-1"
+    record_path = Path.join(dir, "record.json")
+    File.mkdir_p!(Path.join(root, dir <> "/record-versions"))
+    cited = ~s({"attempts":[]}\n)
+    sidecar = Path.join(dir, "record-versions/#{sha256(cited)}.json")
+    File.write!(Path.join(root, sidecar), cited)
+
+    sidecar_form = %{
+      "path" => record_path,
+      "sha256" => sha256(cited),
+      "byte_count" => byte_size(cited),
+      "binding" => "controller_record_version",
+      "sidecar" => sidecar
+    }
+
+    inline_form = %{
+      "sha256" => Base.encode16(:crypto.hash(:sha256, cited)),
+      "content_base64" => Base.encode64(cited),
+      "binding" => "controller_record_version"
+    }
+
+    resolve = fn snapshot ->
+      attempt = %{
+        "number" => 0,
+        "attempt_token" => "token-1",
+        "status" => "accepted",
+        "developer_session_id" => "developer-1",
+        "reviewer_session" => "reviewer-1",
+        "candidate_id" => "candidate-1",
+        "reviewer_reference_snapshots" => %{record_path => snapshot},
+        "reference_snapshots" => %{record_path => snapshot}
+      }
+
+      record =
+        Jason.encode!(%{
+          "schema_version" => 2,
+          "intent" => %{"id" => "intent-1"},
+          "attempts" => [attempt]
+        })
+
+      File.write!(Path.join(root, record_path), record)
+      summary_path = Path.join(root, "build-summary.json")
+
+      write_summary!(summary_path, %{
+        "format" => "kogen-build-summary",
+        "schema_version" => 1,
+        "intent" => %{"id" => "intent-1"},
+        "build_id" => "build-1",
+        "candidate_id" => "candidate-1",
+        "developer_session_id" => "developer-1",
+        "attempts" => [Map.put(attempt, "reviewer_session_id", "reviewer-1")],
+        "full_record" => %{
+          "format" => "kogen-scenario-tracking-record",
+          "schema_version" => 2,
+          "path" => record_path,
+          "sha256" => sha256(record),
+          "byte_count" => byte_size(record)
+        }
+      })
+
+      Evidence.resolve(summary_path, root)
+    end
+
+    assert {:ok, _record} = resolve.(sidecar_form)
+    assert {:ok, _record} = resolve.(inline_form)
+
+    File.write!(Path.join(root, sidecar), cited <> " ")
+    assert {:error, mismatch} = resolve.(sidecar_form)
+    assert mismatch =~ "sidecar mismatch"
+    assert {:ok, _record} = resolve.(inline_form)
+
+    File.rm!(Path.join(root, sidecar))
+    assert {:error, missing} = resolve.(sidecar_form)
+    assert missing =~ "sidecar unavailable"
+  end
+
   defp write_summary!(path, summary), do: File.write!(path, Jason.encode!(summary))
   defp sha256(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
 end

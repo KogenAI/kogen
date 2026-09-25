@@ -288,6 +288,23 @@ defmodule Kogen.ControllerHandoffTest do
     context = task_context!(prompt)
     assert context["handoff_report"] =~ "controller-built"
     assert context["developer_notes"] =~ "unverified claims"
+
+    # The bounded review packet is the evidence source; the record stays an
+    # audit locator under its existing key.
+    [attempt] = record!(dir)["attempts"]
+    assert context["evidence_source"] == "review_packet"
+
+    assert context["review_packet"] ==
+             Map.take(attempt["review_packet"], ["path", "sha256", "byte_count"])
+
+    assert context["tracking_path"] == Path.relative_to(List.first(records(dir)), dir)
+    assert context["tracking_record"]["use"] =~ "audit locator only"
+    packet_bytes = File.read!(Path.join(dir, context["review_packet"]["path"]))
+    assert sha256(packet_bytes) == context["review_packet"]["sha256"]
+    packet = Jason.decode!(packet_bytes)
+    assert packet["handoff"] == attempt["handoff"]
+    assert packet["developer_notes"] == "s-change still lacks its edge case; the rest is done."
+    assert prompt =~ "Review packet: `#{context["review_packet"]["path"]}`"
     assert context["jev_reading"]["advisory"] =~ "never findings or verification"
 
     assert %{"kind" => "scenario", "id" => "s-change", "notes" => notes} =

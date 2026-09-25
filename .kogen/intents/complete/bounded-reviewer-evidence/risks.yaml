@@ -1,0 +1,27 @@
+- id: packet-hides-evidence
+  scenario_ids: [bounded-review-packet, planted-defect-review-preserved]
+  description: A bounded packet could leave out something the Reviewer needs. Every truncation or omission carries a digest and a locator, and the Reviewer may still open the record and any Candidate file. The planted-defect controls guard against a weaker Review.
+- id: legacy-records
+  scenario_ids: [record-never-embeds-itself]
+  description: Records and committed build summaries from earlier Builds use inline content_base64 for record citations. Readers must accept both forms. No migration or rewrite of old records.
+  ownership:
+    - paths: .kogen/runtime/scenario-tracking/<build-id>/record-versions/<sha256>.json
+      when_exists: an identical file (same sha256) is reused; different bytes under the same name are an integrity failure
+      owner_after_creation: the Build controller
+      owner_during_operation: the Build controller; roles read only
+      permitted_mutation: none after creation
+      validation: sha256 and byte count against the record's snapshot entry, on every inputs_unchanged check
+      git_state: ignored under .kogen/runtime and never staged (publication already rejects .kogen/runtime paths)
+      upgrade_behavior: older records keep inline snapshots and stay readable; no conversion
+- id: fixture-path-canonical
+  scenario_ids: [fixture-outside-checkout]
+  description: On macOS, /tmp and /var/folders are symlinks. The Codex environment requires canonical directories and Claude scopes are keyed by path, so the fixture root must be resolved (e.g. with realpath) before use. The fixture must also keep the owned log directory in the checkout, so evidence survives cleanup.
+- id: no-timeout-change
+  scenario_ids: [bounded-review-packet, fixture-outside-checkout]
+  description: The live-reviewer-rework ExUnit timeout (1,200,000 ms) and all turn limits stay unchanged. Raising a timeout or lowering Reviewer effort to pass is forbidden (Shaper, 2026-09-25).
+- id: self-hosting-freeze
+  scenario_ids: [bounded-review-packet, fixture-outside-checkout, record-never-embeds-itself]
+  description: The Build runs under main's controller. The Makefile, priv/kogen/verification_targets.yaml and the Stop scripts (.codex/hooks/*) are outside the guarded paths and must not change. Editing cataloged tests requires refreshing priv/kogen/test-reliability.yaml with scripts/check/refresh_test_reliability_sources.py, and check's ledger validation must pass.
+- id: objection-rule-too-broad
+  scenario_ids: [superseded-objection-reaches-review]
+  description: If "verification passed" alone overruled objections, a genuine contract objection could reach Review and be accepted. The rule requires an earlier failed cycle in the same attempt, which is the observed stale case. The objection stays visible to the Reviewer and in the record.

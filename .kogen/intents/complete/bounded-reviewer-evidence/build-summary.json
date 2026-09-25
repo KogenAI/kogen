@@ -1,0 +1,250 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "huA9xdzHn5tUPgzE62AufdQJ_6t7PSly",
+      "candidate_id": "4896f6a472bcf754a32719fb128c5db2918d5785",
+      "developer_session_id": "f08f7659-1e89-4a5a-b631-f0b04a3f4f64",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "a7b6c9f1-ddf3-4910-9055-b499069547ce",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "huA9xdzHn5tUPgzE62AufdQJ_6t7PSly",
+          "candidate_id": "4896f6a472bcf754a32719fb128c5db2918d5785",
+          "exit_code": 0,
+          "finished_at": "2026-09-25T09:34:01Z",
+          "session_id": "f08f7659-1e89-4a5a-b631-f0b04a3f4f64",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "huA9xdzHn5tUPgzE62AufdQJ_6t7PSly",
+          "candidate_id": "4896f6a472bcf754a32719fb128c5db2918d5785",
+          "exit_code": 0,
+          "finished_at": "2026-09-25T09:35:54Z",
+          "session_id": "f08f7659-1e89-4a5a-b631-f0b04a3f4f64",
+          "status": "passed",
+          "target": "live-reviewer-rework"
+        }
+      ]
+    }
+  ],
+  "build_id": "wj17waszg5fFtMUmXhiBKbyz",
+  "candidate_id": "4896f6a472bcf754a32719fb128c5db2918d5785",
+  "developer_session_id": "f08f7659-1e89-4a5a-b631-f0b04a3f4f64",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 5314630,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/wj17waszg5fFtMUmXhiBKbyz/record.json",
+    "schema_version": 2,
+    "sha256": "f7a53a69d90cd228c72de24686d02584f19fb194dc9d451aeadb321c786d63af"
+  },
+  "intent": {
+    "id": "01a0d7a3-972b-74de-b986-a0fd25a7fede",
+    "slug": "bounded-reviewer-evidence",
+    "title": "Give the Reviewer bounded, Candidate-bound evidence"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "a7b6c9f1-ddf3-4910-9055-b499069547ce"
+  },
+  "risks": [
+    {
+      "id": "packet-hides-evidence"
+    },
+    {
+      "id": "legacy-records"
+    },
+    {
+      "id": "fixture-path-canonical"
+    },
+    {
+      "id": "no-timeout-change"
+    },
+    {
+      "id": "self-hosting-freeze"
+    },
+    {
+      "id": "objection-rule-too-broad"
+    }
+  ],
+  "route": {
+    "harness": "claude",
+    "name": "claude"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "retain_record_version/2, verify_record_versions/1, verify_record_version/2, write_record_version/2",
+          "path": "lib/kogen/build/tracking.ex"
+        },
+        {
+          "locator": "snapshot_reference/2; inputs_unchanged/1 and the publication check both call Tracking.verify_record_versions",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "resolve -> record_versions/2 and record_version/2",
+          "path": "lib/kogen/build/evidence.ex"
+        },
+        {
+          "locator": "sidecar assertions across two attempts; record_sidecar_delete/record_sidecar_edit tests",
+          "path": "test/kogen/scenario_lifecycle_test.exs"
+        },
+        {
+          "locator": "test \"a record citation is a digest-bound sidecar, never an inline copy of the record\"",
+          "path": "test/kogen/scenario_tracking_test.exs"
+        },
+        {
+          "locator": "test \"record citations resolve in both the sidecar form and the older inline form\"",
+          "path": "test/kogen/build_evidence_test.exs"
+        }
+      ],
+      "id": "record-never-embeds-itself",
+      "reason": "When a role cites the Build's own record, snapshot_reference now calls Tracking.retain_record_version. That returns path, sha256, byte_count, binding controller_record_version and a checkout-relative sidecar at record-versions/<sha256>.json, with no content_base64. The sidecar is written with exclusive create. Identical bytes reuse it, and different bytes are an integrity failure. Other cited files keep their inline snapshots. verify_reference/3, verify_record_versions/1 (called by inputs_unchanged and at publication) and Evidence.resolve validate each sidecar's existence, sha256 and byte count, and still accept the legacy inline form. The lifecycle test drives two cited attempts. It asserts the exact snapshot maps, the sidecar bytes, that the record is smaller than the sum of its cited versions, that no version's base64 appears in the record, and that Evidence.resolve rejects an edited sidecar. It also checks that deleting or editing a sidecar before publication stops the Build without publishing. The tracking test covers reuse, integrity failure, a wrong sidecar location and the legacy form. Stop's check receipt passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "@keys, @profiles, build/1, write/5, verify/1, fit/5, utf8_prefix/utf8_suffix",
+          "path": "lib/kogen/build/review_packet.ex"
+        },
+        {
+          "locator": "write_review_packet/3, review_packets_unchanged/1, reviewer_context/1, task_context/3 keeps tracking_path",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "KOGEN_TASK_CONTEXT packet paragraph and final section '## Mandatory completeness step'",
+          "path": "priv/kogen/prompts/reviewer.md"
+        },
+        {
+          "locator": "oversized/bound/integrity tests; 'a Reviewer that edits its packet stops the Build'; 'reviewer.md ends with a mandatory completeness step'",
+          "path": "test/kogen/review_packet_test.exs"
+        },
+        {
+          "locator": "per-attempt packet binding and context assertions including tracking_path",
+          "path": "test/kogen/lifecycle_test.exs"
+        },
+        {
+          "locator": "packets for attempts 0 and 1; reviewer tool calls",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-23024-12994/review-packet-audit.json"
+        },
+        {
+          "locator": "attempt 0 verdict rework (reviewer-notes.md missing), attempt 1 accept",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-23024-12994/scenario-tracking/0kj6TaBwP94FPdzrp1VkKFY0/record.json"
+        }
+      ],
+      "id": "bounded-review-packet",
+      "reason": "ReviewPacket.build emits canonical JSON with sorted keys and exactly the 14 required keys. It tries profiles whose first caps are notes 16 KiB, receipt-output tail 2 KiB and handoff 24 KiB, and only tightens them further. Strings are cut at UTF-8 boundaries into {text, truncated, sha256, byte_count, locator} stubs listed in omitted, and serialized JSON is never byte-sliced. It returns an integrity error if the ids alone cannot fit. Before launch, write_review_packet writes review-packets/<n>.json with exclusive create and keeps the binding in both ctx and the attempt. review_packets_unchanged runs in inputs_unchanged (before launch, after the Review returns) and at publication. reviewer_context adds review_packet (path, sha256, byte_count) and keeps tracking_path. reviewer.md says to read the packet first, never to dump the record, and still to inspect Candidate files. It ends with the mandatory completeness step, which a focused test asserts. Tests cover oversized inputs, a packet edited by the Reviewer, a deleted packet, and the lifecycle context with a record over 1 MiB. The live-reviewer-rework receipt passed. The retained nested run shows two bound packets (4549 and 6585 bytes). Its first real Review sent rework for the missing reviewer-notes.md, and a fresh Reviewer accepted. This current Review received no packet because main's controller runs this Build, as risk self-hosting-freeze expects; that does not count against the Candidate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "audit!/4, verify_packet!/3, verify_reviewer_tool_call!/3, verify_candidate_citation!/2, refute_inline_self_reference!/2",
+          "path": "test/support/review_packet_audit.ex"
+        },
+        {
+          "locator": "describe packet audit: passing, prompt-text-only, digest mismatch, inline self copy, no Candidate citation",
+          "path": "test/kogen/review_packet_audit_test.exs"
+        },
+        {
+          "locator": "ReviewPacketAudit.audit!(log_dir, build_id, {:git, fixture, audit.candidate})",
+          "path": "test/support/live_reviewer_rework_fixture.ex"
+        },
+        {
+          "locator": "reviewer_tool_calls / reviews elapsed_seconds 17.263 and 15.51",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-23024-12994/review-packet-audit.json"
+        }
+      ],
+      "id": "live-packet-audit",
+      "reason": "The new test/support/review_packet_audit.ex is required only by the Reviewer-rework fixture, and live_rework_audit.ex is unchanged relative to HEAD. The audit checks each bound packet's layout path, existence, size of at most 65,536 bytes, parse, sha256, byte_count, attempt_token, candidate_id and attempt number against the record. It requires a Reviewer tool call (tool_use input or Codex tool item, not prompt text) that names the packet path. It requires the accepting verdict to cite a Candidate file that exists in the Candidate git tree, and it refutes an inline content_base64 for the record's own path. Per-Review elapsed seconds are written to the summary with no threshold. Offline tests cover a passing case, a prompt-only mention, a digest mismatch, an inline record copy and a missing Candidate citation. The retained live summary shows both Reviewers' tool calls and elapsed seconds.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "@tool_output_token_limit 4000; config_args list final entry",
+          "path": "lib/kogen/codex/environment.ex"
+        },
+        {
+          "locator": "test \"every Codex role and helper launch carries exactly one central tool output limit\"",
+          "path": "test/kogen/codex_environment_test.exs"
+        }
+      ],
+      "id": "codex-tool-output-limit",
+      "reason": "config_args in the Codex environment adds tool_output_token_limit=4000 once, at the end of the central list, after sqlite_home and before the helper-profile arguments. The test asserts the exact ordered prefix of existing arguments, the order of the helper-profile arguments, exactly one limit for the shaping, developer, developer-resume and reviewer launches, its absence from role-specific arguments, and exactly one limit in the setup preparation. Helpers inherit the limit from the root process's -c overrides.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "raw_fixture under System.tmp_dir!(); assert_outside_checkout!; assert_logged_in!; retain_evidence!",
+          "path": "test/support/live_reviewer_rework_fixture.ex"
+        },
+        {
+          "locator": "canonical_path!/1, assert_outside_checkout!/2, assert_logged_in!/1, retain_evidence!/3",
+          "path": "test/support/review_packet_audit.ex"
+        },
+        {
+          "locator": "canonical path, inside-checkout rejection and evidence-copy tests",
+          "path": "test/kogen/review_packet_audit_test.exs"
+        },
+        {
+          "locator": "/private/var/folders/r7/.../T/kogen-reviewer-rework-23024-13058",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-23024-12994/fixture-path.txt"
+        }
+      ],
+      "id": "fixture-outside-checkout",
+      "reason": "The fixture is created under System.tmp_dir!() and canonicalized with pwd -P. assert_outside_checkout! is a real assertion. assert_logged_in! calls Kogen.ClaudeCode.open before precompile or the Build. The checkout's .kogen/runtime/live-reviewer-rework is no longer created. retain_evidence! copies the tracking trees (records, sidecars, packets) and the complete package into the owned log_dir before the status assertion, and on_exit removes the fixture. The retained fixture-path.txt shows /private/var/folders/.../kogen-reviewer-rework-..., and the retained scenario-tracking contains both packets. The live test's timeout is untouched, since live_reviewer_rework_test.exs is not in the diff.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "settle_outcome/7 and settle_passing/6",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "superseded_objection/4, same_history?/2, final_pass?/2, superseded/1 label",
+          "path": "lib/kogen/build/review_packet.ex"
+        },
+        {
+          "locator": "five Build-route tests and 'the superseded rule' describe block",
+          "path": "test/kogen/superseded_objection_test.exs"
+        }
+      ],
+      "id": "superseded-objection-reaches-review",
+      "reason": "settle_outcome calls ReviewPacket.superseded_objection. It supersedes only when terminal_state is passed, every cycle shares the attempt token and developer session, an earlier cycle failed, and the final cycle passed on the settled Candidate. The superseded record (items, confidences, threshold, failed and passing sequences) is saved on the attempt and placed in the packet with an advisory label. Every other case falls through to the unchanged cannot_comply path. Fake-lifecycle tests through the real route cover failed-then-passed reaching Review with the record and packet contents, a single pass stopping, exhaustion stopping, a prior attempt's failed cycle not superseding, and below-threshold readings being unchanged. Unit tests cover different-session and different-Candidate histories.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "git diff --quiet HEAD: unchanged",
+          "path": "test/kogen/reviewer_mutation_test.exs"
+        },
+        {
+          "locator": "git diff --quiet HEAD: unchanged",
+          "path": "test/kogen/scenario_semantic_test.exs"
+        },
+        {
+          "locator": "git diff --quiet HEAD: unchanged",
+          "path": "test/kogen/two_outer_resumptions_test.exs"
+        },
+        {
+          "locator": "attempts[0].verdict.findings: reviewer-notes.md is missing",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-23024-12994/scenario-tracking/0kj6TaBwP94FPdzrp1VkKFY0/record.json"
+        }
+      ],
+      "id": "planted-defect-review-preserved",
+      "reason": "git diff HEAD shows reviewer_mutation_test.exs, scenario_semantic_test.exs and two_outer_resumptions_test.exs are byte-identical to HEAD, so no assertion was weakened. Stop's check receipt shows the scenario_semantic and two_outer_resumptions rehearsals passing within the full suite, which passed. In the retained live-reviewer-rework nested record, the first real Review with the packet found the missing reviewer-notes.md and sent rework.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

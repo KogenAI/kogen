@@ -96,7 +96,7 @@ def developer(snapshot, call, mode):
 def verdict(snapshot, review, mode):
     ids = [item["id"] for item in snapshot.get("scenarios", [])]
     open_ids = [item["id"] for item in snapshot.get("open_findings", [])]
-    rework = mode in {"exhaust", "target_history"} or (mode == "partial_dispute" and review < 3) or (mode == "regression" and review < 3) or (mode in {"review_evidence", "omitted_disposition", "record_citations", "verdict_diagnostics"} and review == 1)
+    rework = mode in {"exhaust", "target_history"} or (mode == "partial_dispute" and review < 3) or (mode == "regression" and review < 3) or (mode in {"review_evidence", "omitted_disposition", "record_citations", "record_sidecar_delete", "record_sidecar_edit", "verdict_diagnostics"} and review == 1)
     status = "needs_rework" if rework else "satisfied"
     dispositions = [
         {"id": finding, "status": "open" if rework else "closed", "reason": "fixture disposition", "evidence": refs()}
@@ -147,8 +147,13 @@ def main():
         if mode == "verdict_diagnostics" and review_number == 2:
             response["scenarios"][0]["evidence"] = [{"path": "lib", "locator": "source directory"}]
             response["dispositions"][0]["evidence"] = [{"path": "/etc/hosts", "locator": "absolute path"}]
-        if mode in {"record_citations", "record_citation_tamper"}:
+        if mode in {"record_citations", "record_citation_tamper", "record_sidecar_delete", "record_sidecar_edit"}:
             record = next((RUNTIME / "scenario-tracking").glob("*/record.json"))
+            if mode in {"record_sidecar_delete", "record_sidecar_edit"} and review_number == 2:
+                # The first Review cited the record; its sidecar is retained history.
+                sidecar = next(record.parent.glob("record-versions/*.json"))
+                if mode == "record_sidecar_delete": sidecar.unlink()
+                else: sidecar.write_bytes(sidecar.read_bytes() + b" edited")
             (RUNTIME / f"reviewer-inspected-{review_number}.json").write_bytes(record.read_bytes())
             response["scenarios"][0]["evidence"].append({"path": str(record.relative_to(ROOT)), "locator": "current attempt Check receipt"})
             if mode == "record_citation_tamper":

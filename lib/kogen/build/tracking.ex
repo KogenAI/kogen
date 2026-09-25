@@ -84,11 +84,128 @@ defmodule Kogen.Build.Tracking do
   @spec verify_reference(state(), Path.t(), map()) :: :ok | {:error, String.t()}
   def verify_reference(state, path, snapshot) do
     if Path.expand(path) == Path.expand(state.path) do
-      verify(state)
+      with :ok <- verify(state), do: verify_record_version(state, snapshot)
     else
       verify_frozen_reference(path, snapshot)
     end
   end
+
+  @doc """
+  Retains `bytes`, one cited version of this Build's own record, as an
+  immutable sidecar next to the record and returns the metadata snapshot that
+  replaces an inline copy. The record therefore never contains an earlier
+  version of itself. The sidecar is created exclusively: identical bytes reuse
+  it, and different bytes under the same digest name are an integrity failure.
+  """
+  @spec retain_record_version(state(), binary()) :: {:ok, map()} | {:error, String.t()}
+  def retain_record_version(%{path: path}, bytes) when is_binary(bytes) do
+    sha256 = Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+    sidecar = record_version_path(path, sha256)
+
+    with :ok <- mkdir_owned(Path.dirname(sidecar)),
+         :ok <- write_record_version(sidecar, bytes) do
+      {:ok,
+       %{
+         "path" => checkout_relative(path),
+         "sha256" => sha256,
+         "byte_count" => byte_size(bytes),
+         "binding" => "controller_record_version",
+         "sidecar" => checkout_relative(sidecar)
+       }}
+    end
+  end
+
+  @doc """
+  Verifies every record-version sidecar that any attempt of the record
+  references: it exists at its digest name and its exact bytes match the
+  snapshot's SHA-256 and byte count. Older inline snapshots carry no sidecar
+  and stay valid as written.
+  """
+  @spec verify_record_versions(state()) :: :ok | {:error, String.t()}
+  def verify_record_versions(%{record: record} = state) do
+    record
+    |> Map.get("attempts", [])
+    |> Enum.flat_map(fn attempt ->
+      ~w(developer_reference_snapshots reviewer_reference_snapshots reference_snapshots)
+      |> Enum.flat_map(&Map.values(Map.get(attempt, &1) || %{}))
+    end)
+    |> Enum.filter(&(is_map(&1) and Map.has_key?(&1, "sidecar")))
+    |> Enum.uniq()
+    |> Enum.reduce_while(:ok, fn snapshot, :ok ->
+      case verify_record_version(state, snapshot) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp verify_record_version(state, %{"sidecar" => sidecar} = snapshot) do
+    expected = checkout_relative(record_version_path(state.path, snapshot["sha256"]))
+
+    with true <- is_binary(sidecar) and sidecar == expected,
+         {:ok, bytes} <- File.read(sidecar),
+         true <- byte_size(bytes) == snapshot["byte_count"],
+         true <- Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == snapshot["sha256"] do
+      :ok
+    else
+      {:error, _reason} -> {:error, "record version sidecar missing: #{inspect(sidecar)}"}
+      false -> {:error, "record version sidecar mutated: #{inspect(sidecar)}"}
+    end
+  end
+
+  # Records written before sidecars inline the cited record version.
+  defp verify_record_version(_state, _legacy_snapshot), do: :ok
+
+  defp record_version_path(record_path, sha256) when is_binary(sha256),
+    do: Path.join([Path.dirname(record_path), "record-versions", sha256 <> ".json"])
+
+  defp record_version_path(record_path, _sha256),
+    do: Path.join([Path.dirname(record_path), "record-versions", "invalid"])
+
+  defp write_record_version(sidecar, bytes) do
+    case File.open(sidecar, [:write, :exclusive, :binary]) do
+      {:ok, io} ->
+        try do
+          with :ok <- IO.binwrite(io, bytes), :ok <- :file.sync(io) do
+            :ok
+          else
+            {:error, reason} ->
+              {:error, "could not write record version sidecar: #{inspect(reason)}"}
+          end
+        after
+          File.close(io)
+        end
+
+      {:error, :eexist} ->
+        case File.read(sidecar) do
+          {:ok, ^bytes} ->
+            :ok
+
+          _ ->
+            {:error, "record version sidecar integrity failure: different bytes under #{sidecar}"}
+        end
+
+      {:error, reason} ->
+        {:error, "could not create record version sidecar: #{inspect(reason)}"}
+    end
+  end
+
+  defp mkdir_owned(directory) do
+    case File.mkdir(directory) do
+      :ok ->
+        File.chmod(directory, 0o700)
+
+      {:error, :eexist} ->
+        if File.dir?(directory),
+          do: :ok,
+          else: {:error, "controller evidence directory is not a directory: #{directory}"}
+
+      {:error, reason} ->
+        {:error, "could not create controller evidence directory: #{inspect(reason)}"}
+    end
+  end
+
+  defp checkout_relative(path), do: Path.relative_to(Path.expand(path), File.cwd!())
 
   defp verify_frozen_reference(path, snapshot) do
     case File.read(path) do

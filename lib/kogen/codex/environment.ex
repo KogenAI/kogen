@@ -9,6 +9,8 @@ defmodule Kogen.Codex.Environment do
 
   @blocked_prefixes ["CODEX_", "OPENAI_", "AZURE_", "ANTHROPIC_", "CHATGPT_"]
 
+  @tool_output_token_limit 4000
+
   @executor_environment "environments.toml"
   @executor_entrypoint "executor"
   @executor_variables [
@@ -423,7 +425,10 @@ defmodule Kogen.Codex.Environment do
       "shell_environment_policy.exclude=[#{shell_excludes}]",
       "shell_environment_policy.set.HOME=#{toml(caller.home)}",
       "shell_environment_policy.experimental_use_profile=false",
-      "sqlite_home=#{toml(sqlite_home)}"
+      "sqlite_home=#{toml(sqlite_home)}",
+      # One central bound, about Claude Code's Bash result cap, so a role or
+      # helper tool result cannot be re-sent in full on every later step.
+      "tool_output_token_limit=#{@tool_output_token_limit}"
     ]
 
     caller_xdg =
