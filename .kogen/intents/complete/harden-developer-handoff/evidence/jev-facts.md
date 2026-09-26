@@ -5,7 +5,7 @@ read the retained audit scripts and results under
 `.kogen/runtime/shaping-followups/test-reliability-audit/` and fetched the
 public docs without authentication. The worker never read the API key and made
 no Jev API call. Separately, the root checked only that the Keychain item
-`ai.typesafe.api` exists, without reading its value.
+`dev.kogen.jev` exists, without reading its value.
 
 ## API (docs.typesafe.ai/api.md; jev_focused_runner.py:44-52)
 

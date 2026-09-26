@@ -44,7 +44,7 @@ How the new design handles each kind:
 
 This starts from a clean branch at HEAD with an Approved Intent, the
 configured route installed and logged in, and the Keychain item
-`ai.typesafe.api` present.
+`dev.kogen.jev` present.
 
 1. Build freezes the contract, issues token T and launches the Developer
    without a schema.

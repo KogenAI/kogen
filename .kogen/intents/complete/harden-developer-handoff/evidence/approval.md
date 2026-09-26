@@ -3,7 +3,7 @@
 The Shaper approved the Intent `harden-developer-handoff`
 (`01a0ce42-08f3-78e5-99bb-4fe3a664d100`) on 2026-09-23T17:06:16Z. They replied "I approve" in the
 continuation Shaping conversation, after the Controller summarized the draft and
-added the README update, including the `ai.typesafe.api` Keychain requirement
+added the README update, including the `dev.kogen.jev` Keychain requirement
 (decision 19 in `questions.md`).
 
 The approved contract is `intent.yaml`, `scenarios.yaml`, `risks.yaml`,

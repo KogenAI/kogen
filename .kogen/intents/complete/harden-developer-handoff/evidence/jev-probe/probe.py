@@ -24,7 +24,7 @@ def request(scen, diff):
           "criteria":{"yes":"scenario fully implemented","no":"scenario not fully implemented","insufficient_evidence":"cannot tell from the diff"}}
     return {"model":"jev-1.13.0","state":state,"questions":qs}
 def call(body):
-    key=subprocess.run(["security","find-generic-password","-w","-s","ai.typesafe.api"],capture_output=True,text=True,check=True).stdout.strip()
+    key=subprocess.run(["security","find-generic-password","-w","-s","dev.kogen.jev"],capture_output=True,text=True,check=True).stdout.strip()
     data=json.dumps(body).encode()
     req=urllib.request.Request("https://api.typesafe.ai/v1/systemone",data=data,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"})
     t=time.time()

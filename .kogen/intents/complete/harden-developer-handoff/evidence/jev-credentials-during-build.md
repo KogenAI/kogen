@@ -8,7 +8,7 @@ This is part of Draft `harden-developer-handoff`, which is **not approved**.
 
 - The Developer only writes code. The scenario `jev-reads-developer-notes`
   tells it exactly where the key is: the macOS Keychain item
-  `ai.typesafe.api`, read when the call is made and used only in the
+  `dev.kogen.jev`, read when the call is made and used only in the
   `Authorization: Bearer` header.
 - The Developer's own tests use a fake Jev, with no key and no network.
 - Real Jev calls happen only in the two paid targets, `live-reviewer-rework`
@@ -17,7 +17,7 @@ This is part of Draft `harden-developer-handoff`, which is **not approved**.
 
 ## What must be set up
 
-- Only the Keychain item `ai.typesafe.api` on the Mac that runs the Build.
+- Only the Keychain item `dev.kogen.jev` on the Mac that runs the Build.
   It was checked during Shaping on 2026-09-23 and exists on this Mac. Its
   value was not read.
 - Nothing else is needed: no environment variable, no config file, no login.
@@ -25,7 +25,7 @@ This is part of Draft `harden-developer-handoff`, which is **not approved**.
 ## If the key is missing
 
 - **Updated after review (Shaper agreed):** the Build stops **before it
-  starts**, with a clear message naming `ai.typesafe.api`, like a logged-out
+  starts**, with a clear message naming `dev.kogen.jev`, like a logged-out
   harness. The check only tests that the item exists and never reads the
   value (scenario `jev-key-required-before-build`).
 - If Jev fails during a Build (timeout, errors, rejected key, rate limit,

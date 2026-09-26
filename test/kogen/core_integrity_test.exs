@@ -99,7 +99,7 @@ defmodule Kogen.CoreIntegrityTest do
   # Developer's final message is free prose Kogen never parses, Jev reads it
   # once per handoff, an objection at 0.85 stops the Build back to Shaping,
   # a missing proof selector is unfinished work worth one outer resumption,
-  # and the ai.typesafe.api Keychain requirement is documented. It must no
+  # and the dev.kogen.jev Keychain requirement is documented. It must no
   # longer describe invalid or malformed Developer handoffs, controller
   # handoff schemas, or schema-validated Developer turns.
   defp run_scenario(:handoff_report_documentation) do
@@ -116,8 +116,8 @@ defmodule Kogen.CoreIntegrityTest do
           "the Reviewer alone decides acceptance or rework",
           "unfinished work decided by code",
           "one outer resumption",
-          "ai.typesafe.api",
-          "security add-generic-password -s ai.typesafe.api -a <account> -w",
+          "dev.kogen.jev",
+          "security add-generic-password -s dev.kogen.jev -a <account> -w",
           "Build stops before launching the Developer",
           "Build sends the Developer's notes and the contract's scenario, risk, and finding IDs to TypeSafe"
         ] do

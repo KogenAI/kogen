@@ -119,7 +119,7 @@
     work alone is not an objection. Build validates every returned option
     against the options it sent. The API
     key is read at call time from the macOS Keychain service
-    `ai.typesafe.api` and used only in the `Authorization: Bearer` header. It
+    `dev.kogen.jev` and used only in the `Authorization: Bearer` header. It
     is never logged, retained, placed in any role's context, or included in an
     error. Build retains the exact request bytes and their digest, the
     response, HTTP status, usage, latency and outcome in the tracking record,
@@ -159,14 +159,14 @@
 - id: jev-key-required-before-build
   given: >-
     A Build is requested on a machine where the macOS Keychain has no generic
-    password for service `ai.typesafe.api` (or the item cannot be looked up).
+    password for service `dev.kogen.jev` (or the item cannot be looked up).
   when: "`mix kogen.build <slug>` runs its preconditions."
   then: >-
     Build fails before any Developer launch, tracking record or verification
     context is created. The message names the missing Keychain service
-    `ai.typesafe.api` and says how to add it. The check only tests whether the
+    `dev.kogen.jev` and says how to add it. The check only tests whether the
     item exists, for example `security find-generic-password -s
-    ai.typesafe.api` without `-w`. It never reads, prints or retains the
+    dev.kogen.jev` without `-w`. It never reads, prints or retains the
     value. With the item present, preconditions pass exactly as today. A key
     that is present but rejected during the Build (HTTP 401), and every other
     runtime Jev failure, still goes to Review marked "Jev unavailable", as in
@@ -352,9 +352,9 @@
     (today around line 387) no longer says the Developer's final message is a
     validated handoff. The Get started prerequisites and the Build
     instructions both say `mix kogen.build` needs a macOS Keychain generic
-    password for service `ai.typesafe.api` (the TypeSafe API key). They say
+    password for service `dev.kogen.jev` (the TypeSafe API key). They say
     how to add it, for example `security add-generic-password -s
-    ai.typesafe.api -a <account> -w`, and that without it Build stops before
+    dev.kogen.jev -a <account> -w`, and that without it Build stops before
     launch. They say Build sends the Developer's notes and item IDs to
     TypeSafe. No README text still describes invalid or malformed Developer
     handoffs, controller handoff schemas, or handoff validation as a Build
@@ -365,7 +365,7 @@
     answers route rework without Review. Or the prompts still describe a JSON
     handoff. Or verdict validation is loosened. Or the README still says an
     invalid Developer handoff uses an outer resumption, or never mentions the
-    `ai.typesafe.api` Keychain requirement, so someone running
+    `dev.kogen.jev` Keychain requirement, so someone running
     `mix kogen.build` on another machine hits the precondition stop without
     documentation.
   verified_by: [check]
@@ -374,7 +374,7 @@
     and advisory labels for each Jev outcome. A preservation test shows
     verdicts and dispositions validate and apply as before. A README claim
     test, in the style of `core_integrity_test.exs` `:harness_documentation`,
-    asserts the new claims, including `ai.typesafe.api`. It refutes the
+    asserts the new claims, including `dev.kogen.jev`. It refutes the
     superseded "invalid Developer handoff" and schema-validated handoff
     wording.
   proof:

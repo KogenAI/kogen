@@ -12,7 +12,7 @@ defmodule Kogen.Jev do
   `harden-developer-handoff`).
 
   The API key is read at call time from the macOS Keychain service
-  `ai.typesafe.api` and used only in the `Authorization: Bearer` header. It is
+  `dev.kogen.jev` and used only in the `Authorization: Bearer` header. It is
   never logged, retained, returned or included in an error. Every failure is an
   explicit `unavailable` outcome with a precise reason; nothing here ever
   reports a failure as "no objection".
@@ -27,7 +27,7 @@ defmodule Kogen.Jev do
 
   @model "jev-1.13.0"
   @endpoint "https://api.typesafe.ai/v1/systemone"
-  @keychain_service "ai.typesafe.api"
+  @keychain_service "dev.kogen.jev"
   @timeout_ms 60_000
   # Only a timeout, HTTP 429 or HTTP 529 is retried, and at most once.
   @max_retries 1

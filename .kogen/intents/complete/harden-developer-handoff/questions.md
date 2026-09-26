@@ -79,7 +79,7 @@ Status: **Approved** by the Shaper on 2026-09-23T17:06:16Z (see `evidence/approv
 
 18. **A missing Jev key stops the Build before launch** (refining 11). The
     Shaper agreed with the review: "I agree with the review". A missing
-    Keychain item `ai.typesafe.api` is treated like a logged-out harness, and
+    Keychain item `dev.kogen.jev` is treated like a logged-out harness, and
     the precondition checks only that the item exists, without reading it.
     Runtime Jev failures (timeouts, transport errors, 401, rate limits,
     `max_tokens_exceeded`, malformed answers) still go to Review marked "Jev
@@ -92,7 +92,7 @@ Status: **Approved** by the Shaper on 2026-09-23T17:06:16Z (see `evidence/approv
     the new behaviour. The Shaper accepted adding the fix to
     `reviewer-owns-completeness` as documentation only, with no scope change.
     The reviewing session the Shaper relayed added that the README must also
-    document the `ai.typesafe.api` Keychain requirement, so that anyone
+    document the `dev.kogen.jev` Keychain requirement, so that anyone
     running `mix kogen.build` on another machine knows why the precondition
     stops.
 

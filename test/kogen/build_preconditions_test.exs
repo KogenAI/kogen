@@ -469,7 +469,7 @@ defmodule Kogen.BuildPreconditionsTest do
                           case: "TypeSafe Jev Keychain item is missing",
                           operation: :jev_key_missing,
                           expected:
-                            "the macOS Keychain has no generic password for service `ai.typesafe.api`"
+                            "the macOS Keychain has no generic password for service `dev.kogen.jev`"
                         }
                       ]
                       |> Enum.map(&Map.put(&1, :template, @template))
@@ -499,14 +499,14 @@ defmodule Kogen.BuildPreconditionsTest do
     System.put_env("FAKE_SECURITY_ITEM", "missing")
 
     assert {:error, reason} = File.cd!(dir, fn -> Kogen.Build.run(@slug) end)
-    assert reason =~ "`ai.typesafe.api`"
-    assert reason =~ "security add-generic-password -s ai.typesafe.api -a <account> -w"
+    assert reason =~ "`dev.kogen.jev`"
+    assert reason =~ "security add-generic-password -s dev.kogen.jev -a <account> -w"
     refute File.exists?(marker), "the Developer harness must never launch"
     refute File.exists?(Path.join(dir, ".kogen/runtime/scenario-tracking"))
     assert Path.wildcard(Path.join(dir, ".kogen/runtime/**/context.json")) == []
     refute File.exists?(Path.join(dir, ".kogen/build.lock"))
     # The existence check never asks for the value (-w).
-    assert File.read!(log) == "find-generic-password -s ai.typesafe.api\n"
+    assert File.read!(log) == "find-generic-password -s dev.kogen.jev\n"
 
     # With the item present the same precondition passes; every Build fixture
     # in the offline suite runs with the present fake item.

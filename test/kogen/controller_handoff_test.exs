@@ -496,7 +496,7 @@ defmodule Kogen.ControllerHandoffTest do
   test "a Keychain item that disappears after preconditions makes Jev unavailable, not a stop" do
     dir = fixture!()
     assert :ok = run(dir, security_item: "unreadable")
-    assert_unavailable!(dir, 0, "Keychain item `ai.typesafe.api` could not be read at call time")
+    assert_unavailable!(dir, 0, "Keychain item `dev.kogen.jev` could not be read at call time")
     assert FakeJev.requests(jev_log(dir)) == []
   end
 

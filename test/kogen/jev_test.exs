@@ -136,7 +136,7 @@ defmodule Kogen.JevTest do
            ]
 
     refute request.body =~ FakeJev.sentinel_key()
-    assert File.read!(log) == "find-generic-password -s ai.typesafe.api -w\n"
+    assert File.read!(log) == "find-generic-password -s dev.kogen.jev -w\n"
     refute inspect(outcome) =~ FakeJev.sentinel_key()
     refute Jason.encode!(outcome) =~ FakeJev.sentinel_key()
   end
@@ -147,13 +147,13 @@ defmodule Kogen.JevTest do
     on_exit(fn -> File.rm(log) end)
 
     assert :ok = Jev.key_present(security: FakeJev.security_path())
-    assert File.read!(log) == "find-generic-password -s ai.typesafe.api\n"
+    assert File.read!(log) == "find-generic-password -s dev.kogen.jev\n"
     refute File.read!(log) =~ "-w"
 
     System.put_env("FAKE_SECURITY_ITEM", "missing")
     assert {:error, reason} = Jev.key_present(security: FakeJev.security_path())
-    assert reason =~ "`ai.typesafe.api`"
-    assert reason =~ "security add-generic-password -s ai.typesafe.api -a <account> -w"
+    assert reason =~ "`dev.kogen.jev`"
+    assert reason =~ "security add-generic-password -s dev.kogen.jev -a <account> -w"
     assert reason =~ "stops before launch"
 
     assert {:error, _reason} = Jev.key_present(security: "/nonexistent/security")
@@ -241,7 +241,7 @@ defmodule Kogen.JevTest do
     System.put_env("FAKE_SECURITY_ITEM", "unreadable")
     outcome = read([{200, FakeJev.answer_body(@items)}])
     assert outcome["outcome"] == "unavailable"
-    assert outcome["reason"] == "Keychain item `ai.typesafe.api` could not be read at call time"
+    assert outcome["reason"] == "Keychain item `dev.kogen.jev` could not be read at call time"
     System.delete_env("FAKE_SECURITY_ITEM")
     refute_received {:jev_request, _}
 
