@@ -1,0 +1,11 @@
+# Second Build reconciliation
+
+The Shaper reported that the approved package was manually returned to Draft after a second failed Build. The retained record is `.kogen/runtime/scenario-tracking/_8QpvuipdJ9PYvl3NKP3KgjG/record.json`. No paid target ran.
+
+Cycle one failed six offline cases. Four disposable repositories lacked the newly required warm `deps/` and `_build/` seeds, one tracking assertion combined `./` with an absolute controller path, and the nested lifecycle failed. Cycles two and three failed only the nested lifecycle: its target-evidence test loaded `test/test_helper.exs`, whose `mise which python3` could not activate Python because the shared disposable fixture omitted tracked `mise.toml`. The Developer added `MISE_DATA_DIR`, but that alone did not repair the missing project selection. The retained handoff then claimed all scenarios ready despite the repeated failing receipt; the controller correctly rejected it.
+
+Fable-medium and Sol-medium read-only audits independently identified the missing shared owner `test/support/compiled_fixture.exs` and the unstated nested-environment composition requirement. They also found materially weak seed controls and causal failure signatures. Their recommendations were reconciled into the maintained scenarios and risks; no implementation was copied from the failed Candidate.
+
+A disposable control at `/tmp/kogen-mise-probe.cl2iyt` used a private HOME and the admitted `/Users/almirsarajcic/.local/share/mise` data root. Without project configuration, `mise which python3` failed with “not currently active”; after copying the repository's byte-identical `mise.toml` into the fixture, it resolved `/Users/almirsarajcic/.local/share/mise/installs/python/3.14.7/bin/python3`. This supports retaining Candidate-private HOME and treating tracked project configuration plus installed tool data as separate inputs. The probe did not exercise Kogen orchestration.
+
+Historical conclusion later superseded by paid verification: this reconciliation selected rejection of every seed symlink. A subsequent real connected lifecycle proved ordinary Mix `_build` output contains required relative links, so the current Draft replaces that impossible rule with contained relative-link admission and fail-closed unsafe-link controls.

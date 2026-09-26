@@ -10,12 +10,16 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 response_helper="$script_dir/scenario_response.py"
 stream="$script_dir/claude_stream.py"
-state_dir=.kogen/runtime; mkdir -p "$state_dir"
+# Scratch state lives in the Build's harness home (inside the write
+# boundary, and kept after publication removes the Candidate); outside a
+# Build it falls back to the cwd's ignored .kogen/runtime.
+state_dir="${KOGEN_HARNESS_HOME:+$KOGEN_HARNESS_HOME/fake-state}"; state_dir="${state_dir:-.kogen/runtime}"; mkdir -p "$state_dir"
 log="$state_dir/fake-harness-log"
 printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
 printf 'env: CLAUDE_CONFIG_DIR=%s DISABLE_AUTOUPDATER=%s CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=%s ANTHROPIC_API_KEY=%s KOGEN_ROLE=%s\n' \
   "${CLAUDE_CONFIG_DIR:-}" "${DISABLE_AUTOUPDATER:-}" "${CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT:-unset}" "${ANTHROPIC_API_KEY:-unset}" "${KOGEN_ROLE:-}" >>"$log"
 if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+  python3 "$script_dir/launch_receipt.py" "$@" </dev/null
   if [ "${FAKE_CLAUDE_LOGGED_OUT:-0}" = 1 ]; then
     printf '{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}\n'; exit 1
   fi
@@ -31,6 +35,7 @@ stop_check() {
  exit 1
 }
 input="$(cat)"
+printf '%s' "$input" | python3 "$script_dir/launch_receipt.py" "$@"
 session=; resume=; model=; previous=
 for a in "$@"; do
  [ "$previous" = --session-id ] && session="$a"
@@ -73,7 +78,7 @@ if [ -n "$resume" ]; then
  case "$input" in
   'Controller verification failed after your turn'*)
    printf '%s' "$input" >> "$state_dir/verification-resume-prompts"
-   [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ] || rm -f "$state_dir/kogen_fake_break"
+   [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ] || rm -f .kogen/runtime/kogen_fake_break
    ;;
   *'Rework required (category: declared_target;'*)
    printf '%s' "$input" >> "$state_dir/developer-resume-prompts" ;;
@@ -94,7 +99,7 @@ n=0; [ -f "$state_dir/fake-dev-calls" ] && n="$(cat "$state_dir/fake-dev-calls")
 printf '%s' "$input" > "$state_dir/developer-launch-prompt"
 printf 'initial fixture value\n' > dummy.txt
 if [ "${FAKE_CLAUDE_STOP_BLOCK:-1}" = 1 ]; then
- printf 'bounded fixture break\n' > "$state_dir/kogen_fake_break"
+ mkdir -p .kogen/runtime; printf 'bounded fixture break\n' > .kogen/runtime/kogen_fake_break
 fi
 stop_check
 printf '%s' "$input" | python3 "$response_helper" developer | python3 "$stream" developer "$sid" "$model"

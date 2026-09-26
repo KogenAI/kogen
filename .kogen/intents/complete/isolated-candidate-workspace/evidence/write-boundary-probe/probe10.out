@@ -1,0 +1,13 @@
+[version] exit=0 out=codex-cli 0.156.1 
+[login-status] exit=1 out=Not logged in 
+[exec-no-auth] exit=1 out={"type":"error","message":"Reconnecting... 4/5 (unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, cf-ray: a40c55f2bc6d65ec-MBA, request id: req_d4bb35076f634eafa46c26f8ebae438c)"} {"
+[own-seatbelt-nested] exit=71 out=sandbox-exec: sandbox_apply: Operation not permitted 
+[own-seatbelt-unconfined-control] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/probe/p10 space/cand/unconfined.txt: Operation not permitted 
+[codex-home] . ./.sandbox_migration ./.tmp ./.tmp/plugins-clone-myFy8Z ./.tmp/plugins.sync.lock ./config.toml ./goals_1.sqlite ./goals_1.sqlite-shm ./goals_1.sqlite-wal ./installation_id ./logs_2.sqlite ./logs_2.sqlite-shm ./logs_2.sqlite-wal ./memories_1.sqlite ./memories_1.sqlite-shm ./memories_1.sqlite-wal ./queue_1.sqlite ./queue_1.sqlite-shm ./queue_1.sqlite-wal ./sessions ./sessions/2026 ./shell_snapshots ./skills ./skills/.system ./state_5.sqlite ./state_5.sqlite-shm ./state_5.sqlite-wal ./thread-writer-locks ./thread-writer-locks/.coordination.lock ./thread_history_1.sqlite ./thread_history_1.sqlite-shm ./thread_history_1.sqlite-wal ./tmp ./tmp/arg0 
+[cand] .git 
+[sandbox denials since 2026-09-25 22:11:22]
+   1 bash deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p10 space/cand/…
+   1 bash deny(1) file-write-data /dev/tty
+   1 bash deny(1) file-write-data /dev/…
+   2 contactsd deny(1) file-write-create /private/var/db/neuralengine/…
+   1 sh deny(1) file-write-data /dev/…

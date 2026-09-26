@@ -299,7 +299,11 @@ defmodule Kogen.Build.ProofSelectors do
           "started_at" => facts["started_at"],
           "finished_at" => facts["finished_at"],
           "elapsed_ms" => facts["elapsed_ms"],
-          "log_path" => Path.relative_to(facts["log_path"], Path.expand(env.root)),
+          "log_path" =>
+            Path.relative_to(
+              facts["log_path"],
+              Path.expand(Map.get(env, :control_root, env.root))
+            ),
           "log_sha256" => facts["log_sha256"],
           "output" => tail(facts["log_bytes"])
         })

@@ -181,6 +181,8 @@ defmodule Kogen.CodexPublicTasksTest do
   end
 
   defp init_git!(fixture) do
+    # Build admission copies control deps/ into each Candidate.
+    File.mkdir_p!(Path.join(fixture, "deps"))
     {_, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: fixture)
     {_, 0} = System.cmd("git", ["add", "."], cd: fixture)
 

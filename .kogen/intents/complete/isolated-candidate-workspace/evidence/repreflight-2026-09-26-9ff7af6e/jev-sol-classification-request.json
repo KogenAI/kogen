@@ -1,0 +1,121 @@
+{
+ "state": {
+  "context": "Classify adversarial audit findings (GPT-6 Sol high) on a Kogen Intent package that moves each Build into its own git worktree Candidate with a per-Build harness home and a macOS write boundary, re-preflighted against code where the Build controller runs make check and targets itself. blocking = the Build would likely fail, or a wrong implementation would pass the proofs, or the package contradicts the Shaper's requirement; advisory = worth noting, no Build or acceptance impact.",
+  "findings": {
+   "f1": "Receipt, proof and base-suite log paths and ledger diff paths are computed relative to one env.root; if that root becomes the Candidate while settlement reads them from control, settlement fails. The package names ledger and proof paths but not base-suite receipts, and doesn't require a third-cwd settlement check.",
+   "f2": "TargetEvidence.verify is later called during settlement and publication with no Candidate root; the persisted verification context stores only the control project_root, so re-verification of Candidate-side target evidence has no root to use unless the package requires the context to record the Candidate root.",
+   "f3": "The package describes KOGEN_WRITE_BOUNDARY as joining VerificationRunner's scrub list and a default KOGEN_LIVE_LOG_DIR for verification children, but neither exists at the landed code; the wording reads as if already present rather than as acceptance conditions.",
+   "f4": "VerificationRunner children and role launches inherit MIX_BUILD_PATH, MIX_DEPS_PATH and MIX_EXS from the controller; an inherited value could redirect the Candidate's make check or a role's compile into control's build paths. The package does not require scrubbing them.",
+   "f5": "Kogen.Build.run and mix kogen.build take no control-root argument; the scenario's 'Build started from a third directory behaves identically' has no defined way to capture the control root, and Git.candidate_id/0, candidate_changes/1 and Verification.project_root/1 rely on the process cwd.",
+   "f6": "Report.build defaults its selector-existence predicate to File.regular? on the process cwd, and snapshot_references relativizes against File.cwd!(); the package's explicit-root list doesn't name them, so a Candidate-only selector could look missing.",
+   "f7": "Role-facing locators (failure prompt receipt, reviewer notes packet path) are control-relative today; the package requires absolute role-facing paths but not a way for the Reviewer to resolve control-relative locators inside the review packet itself (receipt log paths, ledger diffs, sidecars).",
+   "f8": "expert_environment/2 today carries only route, harness, model, effort and helpers, and mix kogen.expert re-resolves the scope from its project; the package requires the binding in KOGEN_EXPERT but mix kogen.expert run from the Candidate loads the Candidate's own Kogen code, which the preloaded controller doesn't cover."
+  }
+ },
+ "questions": {
+  "f1": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: Receipt, proof and base-suite log paths and ledger diff paths are computed relative to one env.root; if that root becomes the Candidate while settlement reads them from control, settlement fails. The package names ledger and proof paths but not base-suite receipts, and doesn't require a third-cwd settlement check.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f2": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: TargetEvidence.verify is later called during settlement and publication with no Candidate root; the persisted verification context stores only the control project_root, so re-verification of Candidate-side target evidence has no root to use unless the package requires the context to record the Candidate root.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f3": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: The package describes KOGEN_WRITE_BOUNDARY as joining VerificationRunner's scrub list and a default KOGEN_LIVE_LOG_DIR for verification children, but neither exists at the landed code; the wording reads as if already present rather than as acceptance conditions.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f4": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: VerificationRunner children and role launches inherit MIX_BUILD_PATH, MIX_DEPS_PATH and MIX_EXS from the controller; an inherited value could redirect the Candidate's make check or a role's compile into control's build paths. The package does not require scrubbing them.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f5": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: Kogen.Build.run and mix kogen.build take no control-root argument; the scenario's 'Build started from a third directory behaves identically' has no defined way to capture the control root, and Git.candidate_id/0, candidate_changes/1 and Verification.project_root/1 rely on the process cwd.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f6": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: Report.build defaults its selector-existence predicate to File.regular? on the process cwd, and snapshot_references relativizes against File.cwd!(); the package's explicit-root list doesn't name them, so a Candidate-only selector could look missing.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f7": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: Role-facing locators (failure prompt receipt, reviewer notes packet path) are control-relative today; the package requires absolute role-facing paths but not a way for the Reviewer to resolve control-relative locators inside the review packet itself (receipt log paths, ledger diffs, sidecars).",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f8": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: expert_environment/2 today carries only route, harness, model, effort and helpers, and mix kogen.expert re-resolves the scope from its project; the package requires the binding in KOGEN_EXPERT but mix kogen.expert run from the Candidate loads the Candidate's own Kogen code, which the preloaded controller doesn't cover.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  }
+ }
+}

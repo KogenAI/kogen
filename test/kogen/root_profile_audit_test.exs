@@ -4,6 +4,7 @@ Code.require_file("../support/route_config.ex", __DIR__)
 defmodule Kogen.RootProfileAuditTest do
   use Kogen.IsolatedCase, async: true
 
+  alias Kogen.Build.Workspace
   alias Kogen.RouteConfig
 
   test "retains and validates every turn context for exact requested root ids" do
@@ -232,7 +233,16 @@ defmodule Kogen.RootProfileAuditTest do
         {Kogen.RootProfileAudit.sessions_root(project), Path.join(base, "evidence")}
       end)
 
-    assert sessions_root == {:claude, Path.expand(projects)}
+    harness_glob =
+      Path.join([
+        Workspace.project_dir(project),
+        "harness",
+        "*",
+        "claude",
+        "projects"
+      ])
+
+    assert sessions_root == {:claude, [Path.expand(projects), harness_glob]}
     profile = %{model: "claude-opus-5-5", effort: "medium", role: "reviewer"}
 
     assert %{"harness" => "claude", "sessions" => [receipt]} =
@@ -268,6 +278,62 @@ defmodule Kogen.RootProfileAuditTest do
     assert_raise ArgumentError, ~r/expected exactly fresh and continued/, fn ->
       Kogen.RootProfileAudit.audit_shape!(evidence, fixture, profile, sessions_root)
     end
+  end
+
+  test "Claude sessions_root also covers a Build harness home's claude/projects, not only the scope" do
+    base =
+      Path.join(
+        System.tmp_dir!(),
+        "claude-harness-home-audit-#{System.unique_integer([:positive])}"
+      )
+
+    project = Path.join(base, "project")
+    root = Path.join(base, "Kogen/claude")
+    scope_projects = Path.join(root, "accounts/shared/projects")
+    File.mkdir_p!(Path.join(project, ".kogen"))
+    File.mkdir_p!(scope_projects)
+    on_exit(fn -> File.rm_rf!(base) end)
+    System.put_env("KOGEN_CLAUDE_ROOT", root)
+
+    RouteConfig.write!(
+      Path.join(project, ".kogen/config.yaml"),
+      [{"claude", RouteConfig.claude_route()}]
+    )
+
+    build_id = "b-#{System.unique_integer([:positive])}"
+
+    harness_projects =
+      Path.join([
+        Workspace.project_dir(project),
+        "harness",
+        build_id,
+        "claude",
+        "projects",
+        "-fixture"
+      ])
+
+    File.mkdir_p!(harness_projects)
+
+    File.write!(
+      Path.join(harness_projects, "developer-id.jsonl"),
+      transcript!(project, "claude-opus-5-5", "medium")
+    )
+
+    assert {:claude, roots} = Kogen.RootProfileAudit.sessions_root(project)
+    assert length(roots) == 2
+
+    evidence = Path.join(base, "evidence")
+    profile = %{model: "claude-opus-5-5", effort: "medium", role: "developer"}
+
+    assert %{"harness" => "claude", "sessions" => [receipt]} =
+             Kogen.RootProfileAudit.audit!(
+               evidence,
+               %{"developer-id" => profile},
+               {:claude, roots}
+             )
+
+    assert receipt["id"] == "developer-id"
+    refute File.exists?(Path.join(scope_projects, "-fixture"))
   end
 
   test "sessions_root is role-aware: a hybrid route splits stores, a clean route does not" do

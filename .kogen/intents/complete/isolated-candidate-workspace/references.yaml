@@ -1,0 +1,49 @@
+- kind: prerequisite
+  path: .kogen/intents/complete/fortify-paid-verification
+  note: Landed as 9ff7af6e. The parent controller is the only verification authority (Kogen.Build.Verification, VerificationRunner, BaseWorkspace, Ledger, ProofSelectors, CatalogChange), with Candidate-bound receipts and Kogen.LiveTrackingRetention; this Intent gives that code explicit Candidate and control roots.
+- kind: prerequisite
+  path: .kogen/intents/complete/bounded-reviewer-evidence
+  note: Landed as 22a2db95 (review packet, record-version sidecars).
+- kind: prerequisite
+  path: .kogen/intents/complete/cross-harness-adversarial-roles
+  note: Landed as 363c20af without an auditor role; hybrid Reviewer/Expert routes, Harness.open_roles/3, expert_environment/2 and mix kogen.expert; default_route stays claude.
+- kind: not-a-prerequisite
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/staging/shaping-preflight-audit-PARKED.md
+  note: shaping-preflight-audit (#3) is parked and not landed at 9ff7af6e. This Intent assumes none of it (no mix kogen.audit, Shaping Stop hook or auditor launch).
+- kind: failure-analysis
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/research/build-failure-lessons-2026-09-25.md
+  note: Lessons 1 (artifact consumers), 13 (volatile state), 16 (machine load) and 17 (preloaded controller) shape this re-preflight.
+- kind: reference-implementation
+  note: Stashes by SHA (never apply, pop or drop) eb76a872006296c143e2229f82997e4e7dbe41eb (cFnHwg7P, closest), ccfa9e48a2b258fccee4e5ca77a68b14043166a3 (JendTonO), 3f5059b09558ce00ea4765e032b838002723d23a and 85bf47200eb14da7b760e6f5db2239796cfc48c2 (unmatched).
+- kind: probe
+  path: evidence/write-boundary-probe-2026-09-25.md
+  note: Seatbelt write boundary probes on macOS 26.6.2 arm64 (probe scripts, outputs and the rendered profiles in evidence/write-boundary-probe/).
+- kind: reference-implementation
+  note: Stash d6d184f8872c367c6e62172cd7e4285f4a16f4cc (failed prevent-intent-mutation candidate, 2026-09-19), ^3:lib/kogen/containment.ex; read-only.
+- kind: failure-analysis
+  path: ~/Areas/Kogen/kogen/.kogen/runtime/shaping-followups/archive/drafts/prevent-intent-mutation/evidence/
+  note: 2026-09-18/19 Seatbelt probes and failed containment Builds (nested sandbox_apply refusal failing 47 fixture tests; fixture ownership; deny-default capability gaps).
+- kind: shaper-direction
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/BATCH-REPORT-2026-09-25.md
+  note: 'Shaper decision about 21:45: "Keep it in #5" (BLD-12 write boundary stays; row 7b withdrawn).'
+- kind: feature
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/features/BLD-12.md
+  note: Role write containment; this Intent delivers the Build-role half.
+- kind: probe
+  path: evidence/harness-home-credential-probe-2026-09-25.md
+  note: Claude Code Keychain keying by CLAUDE_SECURESTORAGE_CONFIG_DIR, private-HOME login loss, empty-override personal-login leak, real model call and resume from a per-Build config dir; Codex auth.json in CODEX_HOME.
+- kind: failure-analysis
+  path: evidence/failed-attempts-lessons-2026-09-25.md
+  note: Lessons from 20 failed isolation Builds and stashes isolated-candidate-workspace*, Isolation, ISOLATION, ISolation.
+- kind: failed-build
+  path: .kogen/runtime/scenario-tracking/cFnHwg7P2oNe1wMMnK7jxeMH/record.json
+  note: 2026-09-24 B1 Build; both paid targets passed, then main's preflight refused the rewritten hook command.
+- kind: failed-build
+  path: .kogen/runtime/scenario-tracking/l5Ur5WAvyOJvG1lpq92XjGv_/record.json
+  note: A Shaping session's ignored package writes failed an unrelated Build (brief 23).
+- kind: shaper-direction
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/ROADMAP.md
+  note: Order 5, ID 7; features EXE-01, SEC-01, BLD-12; one lifecycle target.
+- kind: historical-contract
+  path: historical/2026-09-24-b1-reshape/
+  note: The approved 2026-09-24 B1 contract whose Build failed; not Build input.

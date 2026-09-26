@@ -17,13 +17,20 @@
 #   FAKE_HYBRID_REVIEWER_MUTATES=1     writes a file the Reviewer must never write.
 #   FAKE_HYBRID_REVIEWER_MALFORMED=1   writes a non-schema verdict body.
 #
-# FAKE_HYBRID_MIDBUILD_CONFIG=<path>   once, on the Developer's first fresh
-#   launch (never on a resume), copies that file over `.kogen/config.yaml` so
-#   a test can prove a mid-Build edit never reaches a later launch.
+# FAKE_HYBRID_MIDBUILD_CONFIG=<anything>   once, on the Developer's first
+#   fresh launch (never on a resume), signals the harness home
+#   (`fake-hybrid-midbuild-signal`) and waits for the trusted test process to
+#   ack (`fake-hybrid-midbuild-ack`) after it has edited CONTROL's own
+#   `.kogen/config.yaml` (never this role's Candidate cwd, which would be a
+#   guarded-path write by the role and prove nothing about control), so a
+#   test can prove a mid-Build edit of control's tracked config never reaches
+#   a later launch.
 set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-state_dir=.kogen/runtime
-mkdir -p "$state_dir"
+# Scratch state lives in the Build's harness home (inside the write
+# boundary, and kept after publication removes the Candidate); outside a
+# Build it falls back to the cwd's ignored .kogen/runtime.
+state_dir="${KOGEN_HARNESS_HOME:+$KOGEN_HARNESS_HOME/fake-state}"; state_dir="${state_dir:-.kogen/runtime}"; mkdir -p "$state_dir"
 log="$state_dir/hybrid-dispatch-log"
 
 {
@@ -39,6 +46,7 @@ fi
 
 if [ "${KOGEN_ROLE:-}" = reviewer ]; then
   input="$(cat)"
+  printf '%s' "$input" | python3 "$script_dir/launch_receipt.py" "$@"
   output_file=; previous=
   for a in "$@"; do
     [ "$previous" = --output-last-message ] && output_file="$a"
@@ -87,8 +95,9 @@ if [ "${KOGEN_ROLE:-}" = developer ] && [ -n "${FAKE_HYBRID_MIDBUILD_CONFIG:-}" 
   if [ "$is_resume" -eq 0 ]; then
     stage="$state_dir/fake-hybrid-midbuild-done"
     if [ ! -f "$stage" ]; then
-      cp "$FAKE_HYBRID_MIDBUILD_CONFIG" .kogen/config.yaml
       : >"$stage"
+      : >"$state_dir/fake-hybrid-midbuild-signal"
+      while [ ! -f "$state_dir/fake-hybrid-midbuild-ack" ]; do sleep 0.05; done
     fi
   fi
 fi

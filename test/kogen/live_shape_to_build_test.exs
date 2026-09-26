@@ -4,6 +4,7 @@ Code.require_file("../support/dependency_fixture.ex", __DIR__)
 Code.require_file("../support/root_profile_audit.ex", __DIR__)
 Code.require_file("../support/claude_trust.ex", __DIR__)
 Code.require_file("../support/live_tracking_retention.ex", __DIR__)
+Code.require_file("../support/boundary_probe_fixture.ex", __DIR__)
 
 defmodule Kogen.LiveShapeToBuildTest do
   @moduledoc """
@@ -48,7 +49,7 @@ defmodule Kogen.LiveShapeToBuildTest do
   real Reviewer accepts. It does not substitute for the connected Shape proof.
   """
   use ExUnit.Case, async: true
-  alias Kogen.Build.{Contract, VerificationPlan}
+  alias Kogen.Build.{Contract, VerificationPlan, Workspace}
   alias Kogen.Intent
 
   @moduletag :live
@@ -305,7 +306,10 @@ defmodule Kogen.LiveShapeToBuildTest do
             {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
             {"MIX_BUILD_PATH", Path.join(fixture, "_build")},
             {"KOGEN_JEV_TRANSPORT", nil},
-            {"KOGEN_JEV_SECURITY", nil}
+            {"KOGEN_JEV_SECURITY", nil},
+            # Only the nested Build's roles run the fixture's SessionStart
+            # probe; the unconfined Shape session above skipped it.
+            {"KOGEN_BOUNDARY_PROBE_OUTSIDE", Kogen.BoundaryProbeFixture.outside(fixture)}
           ],
           stderr_to_stdout: true
         )
@@ -484,6 +488,15 @@ defmodule Kogen.LiveShapeToBuildTest do
       assert "failed" in initial_cycle_statuses and List.last(initial_cycle_statuses) == "passed",
              "the initial attempt's own controller verification cycles must show failed-then-passed for the same Developer session"
 
+      assert_candidate_build!(
+        fixture,
+        tracking,
+        initial_attempt,
+        developer_session_id,
+        reviewer_session_id,
+        raw_stream_dir
+      )
+
       subject = git!(fixture, ["log", "-1", "--format=%s"])
       assert subject == "Shape to build probe"
 
@@ -599,6 +612,101 @@ defmodule Kogen.LiveShapeToBuildTest do
     dir
   end
 
+  # The nested Build ran in its own Candidate worktree with its own harness
+  # home, logged in through the scope reference, inside the write boundary,
+  # and published: the Candidate worktree and branch are gone.
+  defp assert_candidate_build!(fixture, tracking, attempt, developer, reviewer, raw_stream_dir) do
+    candidate = tracking["candidate"]
+    worktree = candidate["worktree_path"]
+    assert candidate["disposition"] == "published"
+    assert candidate["control_root"] == Workspace.canonical(fixture)
+
+    assert System.get_env("KOGEN_WORKSPACES_ROOT") =~ " ",
+           "the live workspaces root must contain a space"
+
+    refute File.exists?(worktree), "the published Candidate worktree must be removed"
+
+    refute match?(
+             {_, 0},
+             System.cmd("git", ["show-ref", "--verify", "refs/heads/" <> candidate["branch"]],
+               cd: fixture,
+               stderr_to_stdout: true
+             )
+           ),
+           "the published Candidate branch must be removed"
+
+    for receipt <- attempt["receipts"],
+        do: assert(receipt["candidate_id"] == attempt["candidate_id"])
+
+    # The Claude binding names the scope resolved from control; transcripts of
+    # the Build's roles live in the per-Build config dir, never in the scope.
+    {:ok, scope} = Kogen.ClaudeCode.effective_scope(fixture)
+
+    assert [%{"scope_path" => scope_path}] =
+             Enum.filter(candidate["credential_bindings"], &(&1["harness"] == "claude"))
+
+    assert scope_path == scope.path
+    projects = Path.join([candidate["harness_home"], "claude", "projects"])
+
+    for session <- [developer, reviewer] do
+      assert [transcript] = Path.wildcard(Path.join(projects, "*/#{session}.jsonl")),
+             "session #{session} must be recorded under the Build's harness home"
+
+      assert Path.wildcard(Path.join([scope.path, "projects", "*", "#{session}.jsonl"])) == [],
+             "session #{session} must not be recorded under the login scope"
+
+      cwds = transcript_cwds(transcript)
+      assert cwds != [], "the transcript of #{session} records no cwd"
+
+      # Claude Code records the Bash tool's current directory, which a role
+      # may move within its Candidate; the session starts in the Candidate
+      # and never leaves it.
+      assert hd(cwds) == worktree, "session #{session} did not start in the Candidate"
+
+      assert Enum.all?(cwds, &(&1 == worktree or String.starts_with?(&1, worktree <> "/"))),
+             "session #{session} ran outside the Candidate: #{inspect(Enum.uniq(cwds))}"
+    end
+
+    # The Developer's first turn and its controller resume share one session.
+    assert developer |> then(&Path.wildcard(Path.join(projects, "*/#{&1}.jsonl"))) |> length() ==
+             1
+
+    # The interactive Shape session before it used the scope's own config dir.
+    assert Path.wildcard(Path.join([scope.path, "projects", "*", "*.jsonl"]))
+           |> Enum.any?(&(Workspace.canonical(fixture) in transcript_cwds(&1))),
+           "the Shape transcript must be recorded under the login scope"
+
+    # Every role process tree ran inside the Build's boundary.
+    assert tracking["boundary"]["mode"] == "applied"
+    lines = Kogen.BoundaryProbeFixture.lines(raw_stream_dir)
+    developer_lines = Enum.filter(lines, &(&1["session_id"] == developer))
+    reviewer_lines = Enum.filter(lines, &(&1["session_id"] == reviewer))
+
+    assert length(developer_lines) >= 2,
+           "expected the fresh and the resumed Developer session to run the probe"
+
+    assert reviewer_lines != [], "expected the Reviewer session to run the probe"
+
+    Enum.each(
+      developer_lines ++ reviewer_lines,
+      &Kogen.BoundaryProbeFixture.assert_bounded!(&1, worktree)
+    )
+
+    Kogen.BoundaryProbeFixture.assert_nothing_escaped!(fixture)
+  end
+
+  defp transcript_cwds(path) do
+    path
+    |> File.read!()
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(fn line ->
+      case Jason.decode(line) do
+        {:ok, %{"cwd" => cwd}} when is_binary(cwd) -> [cwd]
+        _ -> []
+      end
+    end)
+  end
+
   defp assert_developer_invocation!(attempt, session_id) do
     invocation = attempt["developer_invocation"]
     notes = attempt["developer_notes"]
@@ -673,6 +781,7 @@ defmodule Kogen.LiveShapeToBuildTest do
       |> VerificationPlan.render_target_declarations()
 
     File.write!(Path.join(fixture, "Makefile"), check_rule <> other_targets)
+    Kogen.BoundaryProbeFixture.install_claude!(fixture)
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},

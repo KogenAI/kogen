@@ -3,7 +3,9 @@ Code.require_file("../support/live_tracking_retention.ex", __DIR__)
 Code.require_file("../support/live_rework_audit.ex", __DIR__)
 
 defmodule Kogen.BuildEvidenceTest do
-  use ExUnit.Case, async: true
+  # One case changes the VM-global working directory, so each case runs in
+  # its own isolated VM.
+  use Kogen.IsolatedCase, async: true
 
   alias Kogen.Build.{Evidence, Tracking}
   alias Kogen.{LiveReworkAudit, LiveTrackingRetention, ReviewPacketAudit}
@@ -395,6 +397,102 @@ defmodule Kogen.BuildEvidenceTest do
     File.write!(retained_sidecar, cited <> " ")
     assert {:error, altered} = Evidence.resolve(retained, Path.join(base, "logs"))
     assert altered =~ "sidecar mismatch"
+  end
+
+  test "a record-version sidecar locator relative to control resolves from a different cwd after a sibling Candidate directory is deleted, and a deleted or altered retained sidecar still fails" do
+    base =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-evidence-cwd-#{System.unique_integer([:positive])}"
+      )
+
+    on_exit(fn -> File.rm_rf!(base) end)
+
+    control = Path.join(base, "control")
+    # A sibling directory standing in for a leftover Candidate worktree next
+    # to control -- deleted below, before resolution, to show resolution
+    # never reaches for it.
+    candidate = Path.join(base, "candidate")
+    elsewhere = Path.join(base, "elsewhere")
+    File.mkdir_p!(elsewhere)
+
+    tracking_dir = Path.join(control, ".kogen/runtime/scenario-tracking/build-cwd")
+    File.mkdir_p!(tracking_dir)
+    File.mkdir_p!(candidate)
+    record_path = Path.join(tracking_dir, "record.json")
+
+    cited = Jason.encode!(%{"schema_version" => 2, "status" => "in_progress"})
+    assert {:ok, snapshot} = Tracking.retain_record_version(%{path: record_path}, cited)
+
+    attempt = %{
+      "number" => 0,
+      "attempt_token" => "token-cwd",
+      "status" => "accepted",
+      "developer_session_id" => "developer-cwd",
+      "reviewer_session" => "reviewer-cwd",
+      "candidate_id" => "candidate-cwd",
+      "reviewer_reference_snapshots" => %{snapshot["path"] => snapshot}
+    }
+
+    record =
+      Jason.encode!(%{
+        "schema_version" => 2,
+        "status" => "accepted",
+        "intent" => %{"id" => "intent-cwd"},
+        "attempts" => [attempt]
+      })
+
+    File.write!(record_path, record)
+    summary_path = Path.join(control, "build-summary.json")
+
+    summary = %{
+      "format" => "kogen-build-summary",
+      "schema_version" => 1,
+      "intent" => %{"id" => "intent-cwd"},
+      "build_id" => "build-cwd",
+      "candidate_id" => "candidate-cwd",
+      "developer_session_id" => "developer-cwd",
+      "attempts" => [Map.put(attempt, "reviewer_session_id", "reviewer-cwd")],
+      "full_record" => %{
+        "format" => "kogen-scenario-tracking-record",
+        "schema_version" => 2,
+        "path" => Path.relative_to(record_path, control),
+        "sha256" => sha256(record),
+        "byte_count" => byte_size(record)
+      }
+    }
+
+    write_summary!(summary_path, summary)
+
+    # The sibling Candidate is gone; resolution is called from a cwd that is
+    # neither control nor the deleted Candidate.
+    File.rm_rf!(candidate)
+
+    assert {:ok, %{"status" => "accepted"}} =
+             File.cd!(elsewhere, fn -> Evidence.resolve(summary_path, control) end)
+
+    sidecar_path =
+      Path.join([
+        control,
+        ".kogen/runtime/scenario-tracking/build-cwd/record-versions",
+        sha256(cited) <> ".json"
+      ])
+
+    assert File.regular?(sidecar_path)
+
+    File.write!(sidecar_path, File.read!(sidecar_path) <> " ")
+
+    assert {:error, altered} =
+             File.cd!(elsewhere, fn -> Evidence.resolve(summary_path, control) end)
+
+    assert altered =~ "sidecar mismatch"
+
+    File.rm!(sidecar_path)
+
+    assert {:error, missing} =
+             File.cd!(elsewhere, fn -> Evidence.resolve(summary_path, control) end)
+
+    assert missing =~ "sidecar unavailable"
   end
 
   test "Kogen.LiveTrackingRetention.preserve! retains a nested Build's whole scenario-tracking tree, including record-version sidecars, so the retained evidence still resolves after the fixture is deleted" do

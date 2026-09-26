@@ -2,9 +2,14 @@
 set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 response_helper="$script_dir/scenario_response.py"
-mkdir -p .kogen/runtime; log=.kogen/runtime/fake-harness-log; state=.kogen/runtime/fake-reviewer-calls
+# Scratch state lives in the Build's harness home (inside the write
+# boundary, and kept after publication removes the Candidate); outside a
+# Build it falls back to the cwd's ignored .kogen/runtime.
+state_dir="${KOGEN_HARNESS_HOME:+$KOGEN_HARNESS_HOME/fake-state}"; state_dir="${state_dir:-.kogen/runtime}"; mkdir -p "$state_dir"
+log="$state_dir/fake-harness-log"; state="$state_dir/fake-reviewer-calls"
 printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
 input="$(cat)"
+printf '%s' "$input" | python3 "$script_dir/launch_receipt.py" "$@"
 reviewer=0; resume_id=; output_file=; previous=; is_resume=0; penultimate=; last=
 [ "${KOGEN_ROLE:-}" = reviewer ] && reviewer=1
 for a in "$@"; do

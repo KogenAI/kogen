@@ -1,0 +1,6 @@
+[mix test test/kogen/verification_policy_test.exs] exit=2 Finished in 0.7 seconds (0.7s async, 0.00s sync) 
+[mix test test/kogen/harness_role_test.exs] exit=2      Finished in 0.00 seconds (0.00s async, 0.00s sync)      Finished in 0.7 seconds (0.7s async, 0.00s sync)      Finished in 0.3 seconds (0.3s async, 0.00s sync)      Finished in 0.6 seconds (0.6s async, 0.00s sync)      Finished in 0.2 seconds (0.2s async, 0.00s sync) Finished in 3.7 seconds (3.7s async, 0.00s sync) 
+   1           pipe success: terminal probe failed: [Errno 1] Operation not permitted: '/bin/ps'
+   5      PermissionError: [Errno 1] Operation not permitted: '/bin/ps'
+[mix test test/kogen/lifecycle_test.exs] exit=2 Finished in 6.8 seconds (6.8s async, 0.00s sync) 
+[sandbox denials since 2026-09-25 21:55:47]

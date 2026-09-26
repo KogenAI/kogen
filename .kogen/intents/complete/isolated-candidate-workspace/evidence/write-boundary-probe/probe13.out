@@ -1,0 +1,11 @@
+[fresh] exit=0 False ok 5cbb2ef9-3da2-42b0-8e5e-ff6a9897039a 0.0207
+[resume] exit=0 False again 5cbb2ef9-3da2-42b0-8e5e-ff6a9897039a 0.041600399999999996
+[session-start receipts]
+{"role":"developer","pid":816,"cwd":"/private/tmp/claude-501/kogen-prep5b/probe/p13 space/cand","inside_exit":0,"outside_exit":1}
+{"role":"developer","pid":1141,"cwd":"/private/tmp/claude-501/kogen-prep5b/probe/p13 space/cand","inside_exit":0,"outside_exit":1}
+[control runtime] 
+[candidate runtime] boundary-inside 
+[transcripts] ./-private-tmp-claude-501-kogen-prep5b-probe-p13-space-cand/5cbb2ef9-3da2-42b0-8e5e-ff6a9897039a.jsonl 
+[sandbox denials since 2026-09-25 22:15:26]
+   1 bash deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p13 space/control/.kogen/runtime/escape-1141
+   1 bash deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p13 space/control/.kogen/runtime/escape-816

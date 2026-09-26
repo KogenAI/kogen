@@ -1,0 +1,8 @@
+[version] 2.1.281 (Claude Code)  exit=0
+[auth-status] exit=0 loggedIn=True claude.ai
+[sandbox denials since 2026-09-25 21:53:18]
+   1 2026-09-25 21:53:20.605 Df log[69184:1df63f2] [com.apple.log:] log run noninteractively, parent: 69139 (bash), args: 'log' 'show' '--start' '2026-09-25 21:53:18' '--style' 'compact' '--predicate' 'eventMessage CONTAINS "deny(1) file-write"'
+[config dir]
+.claude.json
+.claude.json.lock
+backups

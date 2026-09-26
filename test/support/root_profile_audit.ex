@@ -1,4 +1,6 @@
 defmodule Kogen.RootProfileAudit do
+  alias Kogen.Build.Workspace
+
   @moduledoc false
 
   # Native rollout metadata, rather than a root's text or an argv claim, is the
@@ -104,19 +106,41 @@ defmodule Kogen.RootProfileAudit do
     end
   end
 
+  # Shape (no Build) writes its transcript straight into the scope's own
+  # `projects/`. A Build's Developer and Reviewer write into that Build's
+  # harness home instead (`Kogen.ClaudeCode.config_dir/1`,
+  # `<workspaces-root>/<project-id>/harness/<build id>/claude/projects/`),
+  # never into the scope, so an audit that only reads the scope would find no
+  # Build transcripts at all. `sessions_root` therefore covers both: the
+  # scope's `projects/` (a concrete directory, checked to exist) and every
+  # Build harness home's `claude/projects/` under this project's workspace
+  # (a glob; a project with no Builds yet simply contributes no matches).
   defp claude_sessions_root(project) do
     {:ok, %{path: path}} = Kogen.ClaudeCode.effective_scope(project)
-    Path.join(path, "projects")
+
+    harness_projects =
+      Path.join([
+        Workspace.project_dir(project),
+        "harness",
+        "*",
+        "claude",
+        "projects"
+      ])
+
+    [Path.join(path, "projects"), harness_projects]
   end
 
   # The shared scope also holds unrelated sessions: select by transcript id
   # (its file name) or by the first recorded cwd before reading a whole file.
-  defp claude_index!(root, selection) do
-    require!(File.dir?(root), "Claude Code session directory is missing: #{root}")
+  # `roots` is the scope's `projects/` alone, or that plus the project's
+  # harness-home glob (see `claude_sessions_root/1`); only the first (always
+  # concrete) root is required to exist.
+  defp claude_index!(roots, selection) do
+    [primary | _] = roots = List.wrap(roots)
+    require!(File.dir?(primary), "Claude Code session directory is missing: #{primary}")
 
-    root
-    |> Path.join("*/*.jsonl")
-    |> Path.wildcard()
+    roots
+    |> Enum.flat_map(&Path.wildcard(Path.join(&1, "*/*.jsonl")))
     |> Enum.filter(&claude_selected?(&1, selection))
     |> Enum.reduce(%{}, fn path, index ->
       id = Path.basename(path, ".jsonl")

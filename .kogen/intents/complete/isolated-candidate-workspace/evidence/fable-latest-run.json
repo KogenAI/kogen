@@ -1,0 +1,25 @@
+{
+  "modelUsage": {
+    "claude-fable-5-1": {
+      "inputTokens": 194,
+      "outputTokens": 38069,
+      "cacheReadInputTokens": 406285,
+      "cacheCreationInputTokens": 147381,
+      "webSearchRequests": 0,
+      "costUSD": 4.95458125,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 23591,
+      "canonicalModel": "claude-fable-5-1",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "duration_ms": 498316,
+  "num_turns": 33,
+  "is_error": false,
+  "total_cost_usd": 4.95458125,
+  "requested_model": "fable",
+  "requested_effort": "high",
+  "scope": "read-only diagnosis; final report only; no private reasoning or session logs"
+}

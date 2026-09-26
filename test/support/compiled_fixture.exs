@@ -18,6 +18,9 @@ defmodule Kogen.CompiledFixture do
     "test/support/codex",
     "test/support/fake_codex",
     "test/support/scenario_response.py",
+    "test/support/launch_receipt.py",
+    "test/support/candidate_fixture.ex",
+    "test/support/workspace_fixture.ex",
     "test/support/fake_codex_shaper",
     "test/support/claude",
     "test/support/fake_claude",
@@ -54,6 +57,8 @@ defmodule Kogen.CompiledFixture do
 
     File.mkdir_p!(root)
     File.mkdir_p!(Path.join(root, "lib"))
+    # Build admission copies control deps/ into each Candidate.
+    File.mkdir_p!(Path.join(root, "deps"))
 
     Enum.each(@fixture_files, fn relative ->
       destination = Path.join(root, relative)

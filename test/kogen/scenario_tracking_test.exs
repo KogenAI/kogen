@@ -326,7 +326,11 @@ defmodule Kogen.ScenarioTrackingTest do
 
       assert {:ok, updated} = Tracking.start_attempt(state, "next-attempt", 1)
       refute updated.bytes == cited_bytes
-      assert :ok = Tracking.verify_reference(updated, "./" <> updated.path, snapshot)
+
+      # A differently-spelled but equivalent absolute path still resolves to
+      # the same file (`state.path` is absolute).
+      equivalent_path = Path.join(Path.dirname(updated.path), "./" <> Path.basename(updated.path))
+      assert :ok = Tracking.verify_reference(updated, equivalent_path, snapshot)
       assert Base.decode64!(snapshot["content_base64"]) == cited_bytes
 
       other = Path.join(Path.dirname(updated.path), "ordinary-evidence.json")
@@ -458,12 +462,18 @@ defmodule Kogen.ScenarioTrackingTest do
 
       assert {:ok, snapshot} = Tracking.retain_record_version(state, cited)
 
+      # A citation's "path"/"sidecar" locators are control-relative, never
+      # the state's own absolute path.
       assert snapshot == %{
-               "path" => state.path,
+               "path" => Tracking.relative_path(state),
                "sha256" => digest,
                "byte_count" => byte_size(cited),
                "binding" => "controller_record_version",
-               "sidecar" => sidecar
+               "sidecar" =>
+                 Path.join(
+                   Path.dirname(Tracking.relative_path(state)),
+                   "record-versions/#{digest}.json"
+                 )
              }
 
       assert File.read!(sidecar) == cited

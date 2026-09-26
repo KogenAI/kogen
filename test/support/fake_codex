@@ -8,15 +8,19 @@ response_helper="$script_dir/scenario_response.py"
 # must answer continue and record nothing. Verification is the controller's.
 stop_check() {
  response="$(printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":false}' "$sid" "$sid" | sh .codex/hooks/check.sh)"
- printf '%s\n' "$response" >> .kogen/runtime/fake-hook-responses
+ printf '%s\n' "$response" >> "$state_dir/fake-hook-responses"
  [ "$response" = '{"continue":true}' ] && return 0
  printf 'Unexpected Stop response (expected inactive continue): %s\n' "$response" >&2
  exit 1 # unexpected-stop-response
 }
-state_dir=.kogen/runtime; mkdir -p "$state_dir"
+# Scratch state lives in the Build's harness home (inside the write
+# boundary, and kept after publication removes the Candidate); outside a
+# Build it falls back to the cwd's ignored .kogen/runtime.
+state_dir="${KOGEN_HARNESS_HOME:+$KOGEN_HARNESS_HOME/fake-state}"; state_dir="${state_dir:-.kogen/runtime}"; mkdir -p "$state_dir"
 log="$state_dir/fake-harness-log"; dev_state="$state_dir/fake-dev-calls"; rev_state="$state_dir/fake-reviewer-calls"
 printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
 input="$(cat)"
+printf '%s' "$input" | python3 "$script_dir/launch_receipt.py" "$@"
 reviewer=0; resume_id=; output_file=; previous=; is_resume=0; penultimate=; last=
 [ "${KOGEN_ROLE:-}" = reviewer ] && reviewer=1
 for a in "$@"; do
@@ -91,7 +95,7 @@ if [ -n "$resume_id" ]; then
  case "$input" in
   'Controller verification failed after your turn'*)
    printf '%s' "$input" >> "$state_dir/verification-resume-prompts"
-   [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ] || rm -f "$state_dir/kogen_fake_break"
+   [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ] || rm -f .kogen/runtime/kogen_fake_break
    ;;
   *'Rework required (category: declared_target;'*)
    printf '%s' "$input" >> "$state_dir/developer-resume-prompts" ;;
@@ -115,7 +119,7 @@ printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
 printf 'initial fixture value\n' > dummy.txt
 # The turn ends with a Candidate whose fixture `check` fails (an ignored
 # marker), so the controller's first cycle fails and resumes this session.
-[ "${FAKE_CHECK_FAIL:-1}" = 1 ] && printf 'bounded fixture break\n' > "$state_dir/kogen_fake_break"
+[ "${FAKE_CHECK_FAIL:-1}" = 1 ] && mkdir -p .kogen/runtime && printf 'bounded fixture break\n' > .kogen/runtime/kogen_fake_break
 # An offline fixture hook: when set, runs inside each Developer turn (fresh
 # and resumed) before it ends, so a test can edit .kogen/config.yaml
 # mid-Build and assert every later launch still uses the Build's

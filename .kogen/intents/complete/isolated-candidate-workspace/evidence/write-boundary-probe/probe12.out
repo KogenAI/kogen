@@ -1,0 +1,6 @@
+[add inside boundary] exit=161
+[update inside boundary] exit=161
+[item exists, checked outside] exit=44
+[cleanup delete outside] exit=44
+   1 security deny(1) file-write-create /Users/almirsarajcic/Library/Keychains/login.keychain-db.sb-32ef3dba-7wtF2G
+   1 security deny(1) file-write-create /Users/almirsarajcic/Library/Keychains/login.keychain-db.sb-32ef3dba-Msc4m5

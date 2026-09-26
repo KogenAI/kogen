@@ -74,6 +74,40 @@ mix kogen.build <slug>
 
 Start Build on a clean branch with a commit at HEAD. Kogen implements the approved feature, runs verification, obtains an independent review, and commits the accepted result with its completed Intent and evidence. A stopped Build returns an error and keeps its work available for inspection. Review the error and working tree before starting again. `mix kogen.build` needs a macOS Keychain generic password for service `dev.kogen.jev`, the TypeSafe API key Jev uses to read the Developer's handoff notes; add it with `security add-generic-password -s dev.kogen.jev -a <account> -w`. Without it, Build stops before launching the Developer. Once running, Build sends the Developer's notes and the contract's scenario, risk, and finding IDs to TypeSafe; it never sends the diff or Candidate files, although the notes themselves may quote code.
 
+Every Build runs in its own Candidate: a linked Git worktree at
+`<workspaces-root>/<project-id>/<slug>-<build-id>/`, on branch
+`kogen/<slug>/<build-id>`, outside the invoking checkout. `<workspaces-root>`
+is `~/Library/Application Support/Kogen/build-workspaces`, or
+`KOGEN_WORKSPACES_ROOT` when set. Each Build also gets its own harness home,
+`<workspaces-root>/<project-id>/harness/<build-id>/`, and an owner record at
+`<workspaces-root>/<project-id>/candidates/<build-id>.json`. The Candidate
+receives a plain copy of control's `deps/` (admission stops and names `mix
+deps.get` if `deps/` is missing, never falling back to the network), no
+`_build/` (it compiles cold), and the controller's frozen Approved package
+bytes; nothing else from control's ignored state. Shaping keeps working in
+control while a Build runs — saving Drafts, editing other packages,
+approving one — because those paths are ignored and never dirty control; an
+edit to a tracked control file still makes publication refuse. Publication
+commits in the Candidate, then, only if the admitted branch has not moved
+and control is clean, fast-forwards it there (`git merge --ff-only`) and
+removes control's ignored Approved copy of the slug, the Candidate worktree
+(`git worktree remove`, never `--force`), its branch (`git branch -d`) and
+its owner record; the harness home is kept as session evidence. A refused
+publication keeps the Candidate, its branch and the harness home, and the
+Build's exit message names `mix kogen.candidates.remove <build-id>
+--discard-accepted`. Any other stop keeps the same three and names `mix
+kogen.candidates.remove <build-id>`. If cleanup after a successful
+fast-forward is refused (for example an untracked file left in the
+Candidate), publication itself still stands: the Build exits zero with a
+warning naming the kept worktree and `mix kogen.candidates.remove
+<build-id>`. `mix kogen.candidates` lists this project's Candidates (build
+id, slug, title, status, start time, branch, path); `mix
+kogen.candidates.remove <build-id> [--discard-accepted]` force-removes one
+worktree, its branch, harness home and owner record, refusing a `running`
+Candidate and, without the flag, one holding a commit unreachable from its
+admitted branch. Neither command prunes. Still one Build at a time: the
+global `.kogen/build.lock` stays in control.
+
 ## The loop
 
 - **Shaper** is the human who shapes the feature with Kogen and approves the Intent.
@@ -128,7 +162,11 @@ Developers and their delegated helpers must not run `make <goal>` for any
 catalog target, or `.codex/hooks/check.sh`, including for early signal;
 focused non-gate tests remain allowed. A tracked PreToolUse Bash guard blocks
 `make <goal>` for every catalog target — not a hardcoded `check`/`live`
-pair — and the Stop-script forms, before Bash dispatch. This bounded guard
+pair — and the Stop-script forms, before Bash dispatch. This guard is a
+courtesy against running gates by hand, not a judge: the Build controller
+runs `make -C <Candidate>` itself, outside every role's process tree, and
+that run is what settles verification, whatever the guard does or a Candidate
+edit to it changes. This bounded guard
 deliberately does not inspect indirect execution through non-gate Make
 dependencies, wrappers, shell expansion, `sh -c`, or later stdin; the Developer
 contract still forbids those routes. Existing configurations using legacy
@@ -626,6 +664,31 @@ cached account connectors (`--strict-mcp-config`), and remove inherited provider
 variables such as `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, base URLs and
 Bedrock/Vertex switches.
 
+Each Build gets its own harness home,
+`<workspaces-root>/<project-id>/harness/<build-id>/` (see the Build paragraph
+above), and every Claude Code role of that Build launches with
+`CLAUDE_CONFIG_DIR=<harness home>/claude`. The login itself is never copied
+there: `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set to the resolved login scope
+path (the shared or project scope, resolved once from control at admission,
+never the Candidate), and `HOME` stays the user's real home. A private `HOME`
+for Claude Code loses the Keychain login even with the right scope, which is
+why Kogen never sets one for it. Every Kogen Claude Code launch — every Build
+role, Shape, `mix kogen.claude.login` and `mix kogen.claude.status` — removes
+an inherited `CLAUDE_SECURESTORAGE_CONFIG_DIR` before setting its own: an
+empty inherited value would silently authenticate with the personal Claude
+Code login instead of Kogen's scope. Claude launches also remove the Codex
+adapter's credential prefixes (`CODEX_`, `OPENAI_`, `AZURE_`, `CHATGPT_`),
+mirroring Codex's removal of `ANTHROPIC_`. A scope-native launch (Shape,
+login, status) sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` equal to
+`CLAUDE_CONFIG_DIR`, selecting the same Keychain item as today. Codex roles
+keep `CODEX_HOME` as the scope itself, because Codex has no separate
+auth-home variable, and get their own operation root (private `HOME`,
+`XDG_*` and sqlite) under `<harness home>/codex`. Every binding is resolved
+once at admission, from the control checkout, and written to the Candidate's
+owner record before any readiness check or other harness process starts;
+readiness then checks those recorded bindings, and the whole Build uses
+them. Changing the login selector while a Build runs does not affect it.
+
 Interactive Claude Code asks once per new repository whether to trust it (the
 default answer exits), even in bypass mode. Answer it for your own repositories;
 Kogen never answers it.
@@ -676,6 +739,69 @@ Managed distributions, accounts, selectors, settings generations, sessions, and 
 The `live-native` compatibility runner drives discovery, interactive Shaping, the Developer with its controller verification, and the exact Developer resume with its scout helper. The resume is driven by a fixed rework request held in the runner. The real Reviewer is proved by `live-reviewer-rework`, not by a scripted stand-in. The runner owns its own timing: it passes each native turn the unchanged 240 s limit explicitly, and the whole test must finish within 15 minutes. A `timed_out` attempt is rerun once in a fresh fixture, and only if a typical run still fits before that deadline. No other failure is retried. Both attempts' class, provider session ids, elapsed time and cleanup are kept in one repository-relative summary under `.kogen/runtime/codex-compatibility/`, which the test emits as its target evidence manifest.
 
 When upgrading Kogen's pinned Codex runtime, follow the [Codex runtime upgrade workflow](workflows/codex-runtime-upgrade.md).
+
+## Role write boundary
+
+On macOS, every role process tree of a Build — the Developer, every resume,
+the Reviewer, their native helpers, hooks (including Stop and any `make` it
+or the Developer starts), `mix kogen.expert` and the Expert it launches, and
+anything any of them spawns — runs inside one macOS Seatbelt profile, applied
+by the kernel at launch (`/usr/bin/sandbox-exec -p <profile>`). Descendants
+inherit the profile and cannot remove it. Writes are allowed only under: the
+Candidate; the Build's harness home; a spaceless per-Build temp dir (set as
+`TMPDIR`, `TMPPREFIX` and `CLAUDE_CODE_TMPDIR`); the stdio and pty devices;
+and shared login state the login needs to keep working — the login keychain
+file and its `.sb-` temp files, the Claude scope's `.oauth_refresh.lock` when
+the route uses Claude Code, and the Codex scope minus the entries Kogen owns
+or refuses (`hooks.json`, `plugins/`, `rules/`, `config.d/`, `AGENTS.md`,
+`AGENTS.override.md`, `environments.toml`, `agents/`, `.kogen-owned`) when the
+route uses Codex. Role launches get `KOGEN_RAW_LOG_DIR=<harness home>/raw-log`,
+copied into the controller's own `KOGEN_RAW_LOG_DIR` at Build exit; the
+controller's own log directory is not itself granted. `/bin/ps` is the one
+executable run outside the profile, because sandboxed processes cannot exec
+setuid binaries; LaunchServices opens and Apple Events are denied.
+
+Everything else fails closed with `EPERM` ("Operation not permitted"),
+including writes through symlinks, hardlinks, renames and `/tmp` aliases: the
+control checkout (its Git metadata lives there too, so a role's `git add`,
+`commit`, `stash` or similar fail — the controller stages and commits),
+other Candidates, other harness homes, owner records, the Claude scope
+directory itself, and the user's home. Reads, network access and process
+execution stay open, and `git status`/`git diff` still work in the Candidate.
+
+Kogen keeps `--dangerously-skip-permissions` for Claude Code and
+`--dangerously-bypass-approvals-and-sandbox`/`--dangerously-bypass-hook-trust`
+for Codex: the enclosing kernel profile is the actual enforcement and already
+covers what those harness layers would, including the harness's own writes
+(the Write tool, `apply_patch`, session files), and Codex's own Seatbelt
+cannot nest inside another profile. The tracking record's `boundary` block
+records `applied` or `inherited` — `inherited` only for a fixture Build with
+`KOGEN_HARNESS` test roles started inside another Build's role boundary; a
+Build with managed-runtime roles refuses to start confined at all ("a Build
+cannot start inside another Build's role boundary"). Confinement is decided
+by the kernel's own self-test, never by an environment variable. Every grant
+is resolved to its canonical, symlink-resolved path first; if
+`/usr/bin/sandbox-exec` is missing, a grant cannot be resolved or is
+forbidden (`/`, `/private/tmp`, `/private/var`, `$HOME`, the control root or
+an ancestor of it), or the admission self-test fails, the Build stops before
+any launch — there is no unwrapped fallback. After a macOS upgrade, re-run
+the boundary probes (`evidence/write-boundary-probe-2026-09-25.md` under this
+Intent's evidence) before relying on the mechanism again; kernel denials show
+up with `log show --predicate 'eventMessage CONTAINS "deny(1) file-write"'`.
+
+The write boundary is macOS only. The parent controller and its verification
+children (`make check` and the selected targets) run unconfined, because the
+controller must write the record, the lock and receipts, and a fixture Build
+started inside `check` or a live target has to apply its own profile; Shaping
+sessions are outside it too (their containment is a separate, later piece of
+work).
+
+**Limits.** The controller still runs from control's own compiled code and
+`priv/` at every Build, so editing Kogen's own engine files in control during
+a Build can affect that Build (pinned generations are future work). Codex
+keeps its rollouts, login refresh and bookkeeping inside its granted scope, so
+that scope, and the shared login keychain item, stay writable by roles for as
+long as logins need them to. Reads are never confined by this boundary.
 
 ## Run the checks
 

@@ -1,0 +1,20 @@
+[inside-write] exit=0 
+[home-write] exit=0 
+[tmp-write] exit=0 
+[outside-write] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/probe/p1/outside/b: Operation not permitted 
+[outside-python] exit=1 out=Traceback (most recent call last):   File "<string>", line 1, in <module>     open('/private/tmp/claude-501/kogen-prep5b/probe/p1/outside/c','w').write('x')    
+[outside-make-grandchild] exit=2 out=sh: /private/tmp/claude-501/kogen-prep5b/probe/p1/outside/d: Operation not permitted make: *** [all] Error 1 
+[outside-via-tmp-alias] exit=1 out=sh: /tmp/claude-501/kogen-prep5b/probe/p1/outside/e: Operation not permitted 
+[outside-via-symlink] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/probe/p1/cand/link/f: Operation not permitted 
+[hardlink-create] exit=1 out=ln: /private/tmp/claude-501/kogen-prep5b/probe/p1/cand/hl: Operation not permitted 
+[outside-rename-in] exit=1 out=mv: rename /private/tmp/claude-501/kogen-prep5b/probe/p1/outside/mv to /private/tmp/claude-501/kogen-prep5b/probe/p1/cand/mv: Operation not permitted 
+[outside-unlink] exit=1 out=rm: /private/tmp/claude-501/kogen-prep5b/probe/p1/outside/target: Operation not permitted 
+[outside-chmod] exit=1 out=chmod: Unable to change file mode on /private/tmp/claude-501/kogen-prep5b/probe/p1/outside/target: Operation not permitted 
+[outside-touch] exit=1 out=touch: /private/tmp/claude-501/kogen-prep5b/probe/p1/outside/target: Operation not permitted 
+[outside-xattr] exit=1 out=xattr: [Errno 1] Operation not permitted: '/private/tmp/claude-501/kogen-prep5b/probe/p1/outside/target' 
+[outside-mkdir] exit=1 out=mkdir: /private/tmp/claude-501/kogen-prep5b/probe/p1/outside/dir: Operation not permitted 
+[nested-sandbox-exec] exit=0 
+[nested-then-outside] exit=71 out=sandbox-exec: sandbox_apply: Operation not permitted 
+[background-daemonized] exit=0 
+outside after: mv target  target=orig
+cand after: Makefile a link n 

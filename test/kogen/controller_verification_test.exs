@@ -26,8 +26,7 @@ defmodule Kogen.ControllerVerificationTest do
   """
   use Kogen.IsolatedCase, async: true
 
-  alias Kogen.Build.Verification
-  alias Kogen.Build.VerificationRunner
+  alias Kogen.Build.{ReviewPacket, Tracking, Verification, VerificationRunner}
   alias Kogen.ControllerBuildFixture, as: F
   alias Kogen.ScriptedBuildFixture, as: Fixture
 
@@ -37,10 +36,15 @@ defmodule Kogen.ControllerVerificationTest do
     dir = Fixture.fixture!()
     runtime = Path.join(dir, ".kogen/runtime")
 
+    # The real verification and tracking directories live only in control
+    # (never copied into the Candidate), so a forgery attempt can only ever
+    # write inside the Candidate's own tree, superficially resembling the
+    # controller's layout; the controller's real record on control must stay
+    # unaffected regardless.
     forge = """
-    F=$(ls -d .kogen/runtime/scenario-tracking/*/verification/attempt-*)
+    mkdir -p .kogen/runtime/scenario-tracking/forged-build/verification/attempt-0-forged
     printf '{"candidate":"forged","status":"passed","target":"check","exit_code":0,"session_id":"forged","attempt_token":"forged","finished_at":"1970-01-01T00:00:00.000Z"}\n' > .kogen/runtime/verification.json
-    printf '{"schema_version":2,"context_sha256":"forged","attempt_token":"forged","outer_attempt":0,"developer_session_id":"forged","candidate_id":"forged","cycles":[],"failures_since_pass":0,"terminal_state":"passed"}' > "$F/state.json"
+    printf '{"schema_version":2,"context_sha256":"forged","attempt_token":"forged","outer_attempt":0,"developer_session_id":"forged","candidate_id":"forged","cycles":[],"failures_since_pass":0,"terminal_state":"passed"}' > .kogen/runtime/scenario-tracking/forged-build/verification/attempt-0-forged/state.json
     """
 
     assert {:error, reason} =
@@ -210,9 +214,9 @@ defmodule Kogen.ControllerVerificationTest do
 
     assert :ok = Fixture.run(dir, fail_first: [1], reviews: "accept")
 
-    assert File.read!(Path.join(dir, ".kogen/runtime/verification-resumes")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "verification-resumes")) == "1"
 
-    prompt = File.read!(Path.join(dir, ".kogen/runtime/verification-resume-1"))
+    prompt = File.read!(Kogen.CandidateFixture.fake_state(dir, "verification-resume-1"))
     assert String.starts_with?(prompt, "Controller verification failed after your turn")
     assert prompt =~ "`make check` failed"
     assert prompt =~ ~r{receipts/cycle-1-check\.json}
@@ -233,9 +237,9 @@ defmodule Kogen.ControllerVerificationTest do
     assert {:error, reason} = Fixture.run(dir, fail_all: [1])
 
     assert String.starts_with?(reason, "verification retries exhausted after cycle 3")
-    refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+    refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
     refute File.exists?(Path.join(dir, ".kogen/runtime/fake-jev"))
-    assert File.read!(Path.join(dir, ".kogen/runtime/verification-resumes")) == "2"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "verification-resumes")) == "2"
 
     tracking = Fixture.record!(dir)
     [attempt] = tracking["attempts"]
@@ -261,6 +265,166 @@ defmodule Kogen.ControllerVerificationTest do
              &Map.has_key?(&1, "reused_from")
            ),
            "a new outer attempt reuses nothing from a prior attempt"
+  end
+
+  # --- candidate-routing ---------------------------------------------------
+  #
+  # Scenario `candidate-routing`: the review packet binding `path` in the
+  # record and a record-version `sidecar` locator stay control-relative
+  # (`Tracking` and `ReviewPacket` compute them from the explicit control
+  # root, never `File.cwd!()`), a controller-verification receipt's
+  # `log_path` resolves under control's attempt directory even when the
+  # Candidate is a different tree, and a Build started from a third cwd
+  # settles and publishes with capture and verify reading the recorded
+  # Candidate root throughout.
+
+  test "candidate-routing: the review packet binding path and a record-version sidecar locator are control-relative" do
+    control = F.repo!(%{"dummy.txt" => "baseline\n"})
+    candidate = F.repo!(%{"dummy.txt" => "changed\n"})
+
+    assert {:ok, state} =
+             Tracking.new(
+               %{"id" => "intent-1", "slug" => "sample", "title" => "Sample"},
+               %{"scenarios" => [], "risks" => []},
+               [],
+               %{
+                 route: "codex",
+                 harness: "codex",
+                 shaping: %{model: "m", effort: "low"},
+                 developer: %{model: "m", effort: "low"},
+                 reviewer: %{model: "m", effort: "low"},
+                 helpers: %{
+                   scout: %{model: "m", effort: "low"},
+                   worker: %{model: "m", effort: "medium"},
+                   expert: %{model: "m", effort: "medium"}
+                 }
+               },
+               control
+             )
+
+    assert {:ok, state} = Tracking.start_attempt(state, "tok-1", 0)
+    build_id = state.path |> Path.dirname() |> Path.basename()
+
+    assert {:ok, binding} =
+             ReviewPacket.write(state.path, 0, "{}", "tok-1", "cand-1", control)
+
+    assert binding["path"] ==
+             ".kogen/runtime/scenario-tracking/#{build_id}/review-packets/0.json"
+
+    refute Path.type(binding["path"]) == :absolute
+    resolved_packet = Path.expand(binding["path"], control)
+    assert File.read!(resolved_packet) == "{}"
+
+    assert {:ok, snapshot} = Tracking.retain_record_version(state, state.bytes)
+    refute Path.type(snapshot["path"]) == :absolute
+    refute Path.type(snapshot["sidecar"]) == :absolute
+    resolved_sidecar = Path.expand(snapshot["sidecar"], control)
+    assert File.read!(resolved_sidecar) == state.bytes
+
+    # Both locators resolve under control's own scenario-tracking directory,
+    # never under the (distinct) Candidate.
+    tracking_dir = Path.join([control, ".kogen/runtime/scenario-tracking", build_id])
+    assert String.starts_with?(resolved_packet, tracking_dir)
+    assert String.starts_with?(resolved_sidecar, tracking_dir)
+    refute String.starts_with?(resolved_packet, candidate)
+    refute String.starts_with?(resolved_sidecar, candidate)
+  end
+
+  test "candidate-routing: a failed cycle's receipt log_path resolves under control's attempt directory even when the Candidate is a different tree, and settlement accepts it" do
+    control =
+      F.repo!(%{
+        "dummy.txt" => "baseline\n",
+        "priv/kogen/verification_targets.yaml" => """
+        targets:
+          - name: check
+            cost_class: offline-complete
+            rank: 0
+            dependencies: []
+            provider_backed: false
+            owner: fixture
+        """
+      })
+
+    candidate =
+      F.repo!(%{
+        "Makefile" => ".PHONY: check\ncheck:\n\t@exit 1\n",
+        "priv/kogen/verification_targets.yaml" => """
+        targets:
+          - name: check
+            cost_class: offline-complete
+            rank: 0
+            dependencies: []
+            provider_backed: false
+            owner: fixture
+        """,
+        "proof.txt" => "focused selector\n",
+        "dummy.txt" => "baseline\n"
+      })
+
+    catalog = F.load_catalog!(candidate)
+    scenario = F.scenario("s1", ["check"], offline: ["proof.txt"], affected_paths: ["dummy.txt"])
+    plan = F.build_plan!(candidate, [scenario], catalog, guards: ["dummy.txt"])
+
+    execution =
+      F.initialize!(control, plan.targets, plan: plan, candidate_root: candidate)
+
+    env = F.env(candidate, catalog, plan, [scenario], control_root: control)
+    candidate_id = F.candidate_id!(candidate)
+
+    {execution, state} = F.run_cycle!(execution, "dev-1", candidate_id, env)
+    cycle = List.last(state["cycles"])
+    assert cycle["status"] == "failed"
+    [receipt] = cycle["receipts"]
+
+    refute Path.type(receipt["log_path"]) == :absolute
+
+    resolved_log = Path.expand(receipt["log_path"], control)
+    assert File.regular?(resolved_log)
+
+    assert String.starts_with?(
+             resolved_log,
+             Path.join(control, ".kogen/runtime/scenario-tracking")
+           )
+
+    refute String.starts_with?(resolved_log, candidate)
+
+    # `check` always fails in this fixture: run the remaining cycles until
+    # verification is terminal (exhausted), so settlement has something to
+    # settle.
+    {execution, state} = F.run_cycle!(execution, "dev-1", candidate_id, env)
+    assert state["terminal_state"] == "pending"
+    {execution, state} = F.run_cycle!(execution, "dev-1", candidate_id, env)
+    assert state["terminal_state"] == "exhausted"
+
+    refute String.starts_with?(resolved_log, candidate)
+
+    assert {:ok, _execution, _state} = Verification.settle(execution, "dev-1", candidate_id)
+  end
+
+  test "candidate-routing: a Build run from a third cwd whose target emits target evidence settles and publishes, capturing and verifying against the recorded Candidate root" do
+    dir = Fixture.fixture!(target_evidence: true)
+
+    third_cwd =
+      Path.join(System.tmp_dir!(), "kogen-third-cwd-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(third_cwd)
+    on_exit(fn -> File.rm_rf(third_cwd) end)
+
+    assert :ok =
+             Fixture.run(dir, cwd: third_cwd, edits: %{1 => "printf 'changed\\n' > dummy.txt"})
+
+    record = Fixture.record!(dir)
+    [attempt] = record["attempts"]
+    assert attempt["outcome"] == "settled"
+
+    receipt =
+      attempt["verification"]["cycles"]
+      |> List.last()
+      |> Map.fetch!("receipts")
+      |> Enum.find(&(&1["target"] == "check"))
+
+    assert receipt["target_evidence"]["required_evidence"] != []
+    assert File.dir?(Path.join(dir, ".kogen/intents/complete/#{Fixture.slug()}"))
   end
 
   # --- bound-per-target-receipts ----------------------------------------
@@ -668,7 +832,7 @@ defmodule Kogen.ControllerVerificationTest do
     Enum.each(env, fn {key, value} -> System.put_env(key, value) end)
 
     try do
-      File.cd!(dir, fn -> Kogen.Build.run(Fixture.slug()) end)
+      File.cd!(dir, fn -> Kogen.Build.run(Fixture.slug(), nil, dir) end)
     after
       Enum.each(previous, fn
         {key, nil} -> System.delete_env(key)

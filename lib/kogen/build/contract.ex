@@ -9,11 +9,16 @@ defmodule Kogen.Build.Contract do
   alias Kogen.Check
 
   @approved_base ".kogen/intents/approved"
+  @roots_key {__MODULE__, :verdict_roots}
   @scenario_fields ~w(id given when then wrong_result verified_by evidence proof)
   @ownership_fields ~w(paths when_exists owner_after_creation owner_during_operation permitted_mutation validation git_state upgrade_behavior)
 
   @spec load(String.t()) :: {:ok, map()} | {:error, String.t()}
-  def load(slug_or_path) when is_binary(slug_or_path) do
+  # `root` is the checkout whose Makefile declares the targets (the control
+  # root in a Build).
+  def load(slug_or_path, root \\ ".")
+
+  def load(slug_or_path, root) when is_binary(slug_or_path) do
     VerificationPlan.trace("Kogen.Build.Contract.load")
     path = approved_path(slug_or_path)
     scenarios_path = Path.join(path, "scenarios.yaml")
@@ -25,7 +30,7 @@ defmodule Kogen.Build.Contract do
          {:ok, risks, supplied?} <- load_risks(path, scenario_ids(scenarios)),
          {:ok, added} <- declared_additions(path),
          targets = scenarios |> Enum.flat_map(& &1["verified_by"]) |> Enum.uniq(),
-         :ok <- Check.validate_targets(targets -- added) do
+         :ok <- Check.validate_targets(targets -- added, Path.join(root, "Makefile")) do
       {:ok,
        %{
          scenarios: scenarios,
@@ -37,7 +42,7 @@ defmodule Kogen.Build.Contract do
     end
   end
 
-  def load(_), do: {:error, "Approved contract path is missing or invalid"}
+  def load(_, _root), do: {:error, "Approved contract path is missing or invalid"}
 
   @spec handoff(String.t(), map(), String.t(), [map()]) :: {:ok, map()} | {:error, String.t()}
   def handoff(text, contract, attempt_token, open_findings)
@@ -118,12 +123,33 @@ defmodule Kogen.Build.Contract do
   def verdict(
         message,
         contract,
-        %{candidate_id: candidate_id, attempt_token: attempt_token},
+        %{candidate_id: candidate_id, attempt_token: attempt_token} = binding,
         open_findings,
         ledger_paths
       )
       when is_map(message) and is_binary(candidate_id) and is_binary(attempt_token) and
              is_list(ledger_paths) do
+    # A Build binding names the Candidate root (evidence paths are relative
+    # to it) and the Build's own tracking record, which lives in control and
+    # may be cited absolutely or relative to control.
+    Process.put(@roots_key, Map.take(binding, [:root, :control, :tracking_path]))
+
+    try do
+      validate_verdict(message, contract, binding, open_findings, ledger_paths)
+    after
+      Process.delete(@roots_key)
+    end
+  end
+
+  def verdict(_, _, _, _, _), do: {:error, "Reviewer verdict is malformed or contradictory"}
+
+  defp validate_verdict(
+         message,
+         contract,
+         %{candidate_id: candidate_id, attempt_token: attempt_token},
+         open_findings,
+         ledger_paths
+       ) do
     VerificationPlan.trace("Kogen.Build.Contract.verdict")
     keys = ~w(candidate_id attempt_token verdict scenarios dispositions findings)
     keys = if ledger_paths == [], do: keys, else: keys ++ ["ledger"]
@@ -150,8 +176,6 @@ defmodule Kogen.Build.Contract do
       _ -> {:error, "Reviewer verdict is malformed or contradictory"}
     end
   end
-
-  def verdict(_, _, _, _, _), do: {:error, "Reviewer verdict is malformed or contradictory"}
 
   defp validate_ledger(nil, [], _contract, _open_findings), do: :ok
 
@@ -621,6 +645,10 @@ defmodule Kogen.Build.Contract do
     do: [prefix <> ": field path must be nonblank text"]
 
   defp reference_path_errors(path, prefix) do
+    if record_citation?(path), do: [], else: local_reference_path_errors(path, prefix)
+  end
+
+  defp local_reference_path_errors(path, prefix) do
     if String.trim(path) == "" do
       [prefix <> ": field path must be nonblank text"]
     else
@@ -645,7 +673,7 @@ defmodule Kogen.Build.Contract do
         [prefix <> ": file does not exist"]
 
       :ok ->
-        case File.lstat(path) do
+        case File.lstat(in_root(path)) do
           {:ok, %{type: :regular}} -> []
           {:ok, %{type: :directory}} -> [prefix <> ": expected a regular file; found directory"]
           {:ok, %{type: type}} -> [prefix <> ": expected a regular file; found #{type}"]
@@ -660,7 +688,7 @@ defmodule Kogen.Build.Contract do
     |> Enum.reduce_while({:ok, []}, fn component, {:ok, prefix} ->
       current = prefix ++ [component]
 
-      case File.lstat(Path.join(current)) do
+      case File.lstat(in_root(Path.join(current))) do
         {:ok, %{type: :symlink}} -> {:halt, {:symlink, component}}
         {:ok, _} -> {:cont, {:ok, current}}
         {:error, :enoent} -> {:halt, {:missing, component}}
@@ -694,16 +722,43 @@ defmodule Kogen.Build.Contract do
   defp ref?(_), do: false
 
   defp safe_local_regular?(path) when is_binary(path) do
-    with {:ok, components} <- local_path_components(path),
+    with false <- record_citation?(path),
+         {:ok, components} <- local_path_components(path),
          :ok <- no_symlink_components(components),
-         {:ok, %{type: :regular}} <- File.lstat(path) do
+         {:ok, %{type: :regular}} <- File.lstat(in_root(path)) do
       true
     else
+      true -> true
       _ -> false
     end
   end
 
   defp safe_local_regular?(_), do: false
+
+  # Relative evidence paths resolve under the Build's Candidate root when
+  # the binding names one, and under the process cwd otherwise.
+  defp in_root(path) do
+    case Process.get(@roots_key) do
+      %{root: root} when is_binary(root) -> Path.join(root, path)
+      _ -> path
+    end
+  end
+
+  # A citation of the Build's own tracking record, named absolutely or
+  # relative to the Candidate or control root.
+  defp record_citation?(path) when is_binary(path) do
+    case Process.get(@roots_key) do
+      %{tracking_path: tracking} = roots when is_binary(tracking) ->
+        record = Path.expand(tracking)
+
+        [roots[:root], roots[:control]]
+        |> Enum.filter(&is_binary/1)
+        |> Enum.any?(&(Path.expand(path, &1) == record))
+
+      _ ->
+        false
+    end
+  end
 
   defp local_path_components(path) do
     components = Path.split(path)
@@ -719,7 +774,7 @@ defmodule Kogen.Build.Contract do
     |> Enum.reduce_while({:ok, []}, fn component, {:ok, prefix} ->
       current = prefix ++ [component]
 
-      case File.lstat(Path.join(current)) do
+      case File.lstat(in_root(Path.join(current))) do
         {:ok, %{type: :symlink}} -> {:halt, :error}
         {:ok, _stat} -> {:cont, {:ok, current}}
         _ -> {:halt, :error}

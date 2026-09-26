@@ -1,0 +1,11 @@
+You are an independent read-only auditor of the Kogen Draft at `/Users/almirsarajcic/Areas/Kogen/kogen/.kogen/intents/drafts/isolated-candidate-workspace`, shaped against `main` at `7c7c3426c61c80753043d51766f53ba877c22674`. Do not edit files, run paid verification, approve the Intent, or expand scope.
+
+Read the complete current Draft, relevant current source, and prior audit/reconciliation evidence. Focus only on this challenge:
+
+1. Candidate self-judgment: can the installing Candidate change, replace, bypass, reinterpret, or select different `.codex/hooks/**` or `.codex/hooks.json` bytes and thereby alter the current Stop-owned judge?
+2. Hook immutability: confirm `.codex/hooks/stop_runner.py` and every hook/config path are absent from `may_change_guarded_paths` and all scenario `affected_paths`; assess whether full-tree path/type/mode/byte/hash preservation and a malicious mutation negative control are explicit and actually assigned to evidence.
+3. Installing-controller behavior: distinguish the current admitted controller/hook authority judging this installing Build from offline/live evidence that proves the newly installed future workspace route. Find any wording that still hot-loads Candidate controller code or lets Candidate-authored state judge installation.
+4. Explicit-root feasibility without hook changes: inspect `lib/kogen/build.ex`, `lib/kogen/harness.ex`, `lib/kogen/codex.ex`, `lib/kogen/codex/environment.ex`, `lib/kogen/build/verification.ex`, `lib/kogen/check.ex`, and `.codex/hooks/stop_runner.py`. Determine whether controller-owned Elixir can supply process `cd`, project/Git root, generated environment/context, verification initialization, and absolute state paths while the unchanged Stop runner derives Candidate Git root and consumes those paths.
+5. Authority cutover: ensure future Builds may temporarily execute the unchanged hook from Candidate, while moving verification out of Stop remains a separate next Intent; reject compatibility, dual-path, or early authority changes.
+
+Return a concise audit with observed source locators, any blocking contradiction, and exactly one final verdict: READY or NOT READY. Historical passing receipts are not current proof.

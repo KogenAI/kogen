@@ -1,0 +1,733 @@
+# Re-shaped 2026-09-25 on top of controller-owned verification (Intent #4).
+# The 2026-09-24 scenarios are in historical/2026-09-24-b1-reshape/scenarios.yaml.
+# 2026-09-25 (late): the Shaper kept the launch-time write boundary (BLD-12) in this Intent
+# ("Keep it in #5"); scenarios role-write-boundary, write-boundary-fails-closed and
+# codex-roles-inside-boundary added.
+# Re-preflighted 2026-09-26 against main 9ff7af6e, where #1 (22a2db95), #2 (363c20af) and #4
+# fortify-paid-verification (9ff7af6e, controller-owned verification) have landed.
+# shaping-preflight-audit (#3) is parked and NOT landed; nothing here assumes it.
+# proof.base is omitted on purpose: at 9ff7af6e a contract without it validates and is
+# labelled unproven-on-base (fortify-paid-verification, scenario controller-runs-proof-selectors).
+# Reshaped 2026-09-26 against main 98ebcfb2 (Jev Keychain rename only); candidate-creation now
+# pins the credential-binding order (Review finding of Build 8Bs51yZP).
+- id: candidate-creation
+  given: >-
+    A clean control checkout attached to branch B at commit A, with control `deps/` and
+    `_build/` present, a frozen Approved package in control's ignored
+    `.kogen/intents/approved/<slug>/`, and an unrelated linked worktree created by plain git
+    (for example under `.kogen/runtime/build-worktrees/`).
+  when: >-
+    `mix kogen.build <slug>` is admitted with `KOGEN_WORKSPACES_ROOT` set to a directory whose
+    path contains a space.
+  then: >-
+    Before any provider launch, exactly one new linked worktree exists at
+    `<workspaces-root>/<project-id>/<slug>-<build-id>/` on new branch `kogen/<slug>/<build-id>`
+    at A, where `<project-id>` equals `Kogen.ClaudeCode.project_id(control)` and `<build-id>` is
+    the scenario-tracking record id. The harness home
+    `<workspaces-root>/<project-id>/harness/<build-id>/` exists outside the Candidate and outside
+    control. The owner record `<workspaces-root>/<project-id>/candidates/<build-id>.json` has
+    status `running` and names the worktree, branch, admitted commit, control root, harness home
+    and credential bindings. Those bindings (harness, scope name and path, runtime version for
+    each harness the route's roles use) are nonempty in the owner record before
+    `Kogen.Harness.open_roles/4`, readiness or any other harness process starts; readiness then
+    checks the recorded bindings. The Candidate has a plain copy of control `deps/`, no `_build/`, and
+    the Approved bytes at its ignored `.kogen/intents/approved/<slug>/`. It receives nothing else
+    from control's ignored state: no `.kogen/build.lock`, `.kogen/runtime/`, `.kogen/codex/` or
+    `.codex/sessions/` (GuardedPaths' volatile set other than `deps/`), so a hook or test in the
+    Candidate never sees the running Build's lock or runtime. Control's HEAD, index,
+    tracked bytes and `git status --porcelain` are unchanged, the foreign worktree is untouched,
+    and a sentinel real Kogen root stays empty. A pre-existing path, branch or owner record with
+    that name, a missing control `deps/` (message names `mix deps.get`), or a failed
+    `git worktree add` stops before any launch, removes only what this admission created, and
+    never falls back to control.
+  wrong_result: >-
+    Build keeps running in the invoking checkout, nests the worktree in the repository, writes
+    under the real Kogen directory while `KOGEN_WORKSPACES_ROOT` is set, copies `_build/`, reuses
+    an existing directory or branch, fetches dependencies from the network, deletes a foreign
+    worktree during admission, or writes the owner record with an empty `credential_bindings`
+    list and fills it only after readiness (Review finding of Build 8Bs51yZP).
+  verified_by: [check]
+  evidence: >-
+    Focused workspace tests with a real Git fixture, a spaced `KOGEN_WORKSPACES_ROOT`, a
+    real-root sentinel directory, a foreign worktree and a launch sentinel assert the paths,
+    branch, owner record fields, base commit, deps copy, absence of `_build/`, Approved bytes,
+    byte-identical control state, the absence of the volatile paths in the Candidate while
+    control holds a `.kogen/build.lock`, and each refusal case with no launch. A fake harness
+    whose readiness step reads the owner record at the moment it starts asserts that record
+    already holds nonempty `credential_bindings`; asserting the bindings only after the Build
+    finishes does not catch the 8Bs51yZP ordering defect.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/build_preconditions_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: real git worktree fixture with foreign-worktree, collision,
+      missing-deps, real-root-sentinel and launch-sentinel controls; no provider semantics
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/git.ex, lib/mix/tasks/kogen.build.ex, test/kogen/build_workspace_test.exs, test/kogen/build_preconditions_test.exs, test/test_helper.exs, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: per-build-harness-home
+  given: >-
+    A control project whose Claude Code login selector names a scope (shared or project), a
+    Codex login scope, and a caller environment that sets `HOME`, `CLAUDE_CONFIG_DIR`,
+    `CLAUDE_SECURESTORAGE_CONFIG_DIR` (to an empty string), `CLAUDE_CODE_OAUTH_TOKEN`,
+    `ANTHROPIC_API_KEY`, `CODEX_HOME` and `OPENAI_API_KEY`.
+  when: >-
+    A Build is admitted and launches its Claude Code Developer, a resume and helpers, and its
+    Reviewer on the route's harness; during the Build the project's login selector is switched
+    with `mix kogen.claude.login --use-default` or `--project`.
+  then: >-
+    Every Claude Code launch of the Build has `CLAUDE_CONFIG_DIR` equal to
+    `<harness home>/claude`, `CLAUDE_SECURESTORAGE_CONFIG_DIR` equal to the scope path resolved
+    from the control root at admission, and the caller's real `HOME`; every variable that
+    `Kogen.ClaudeCode.environment/2` removes at 9ff7af6e (the `ANTHROPIC_`, `CLAUDE_CODE_`,
+    `CLAUDE_CONFIG_DIR` and `CLAUDECODE` prefixes, `AWS_BEARER_TOKEN_BEDROCK`,
+    `VERTEX_REGION_CLAUDE`), the Codex adapter's blocked prefixes (`CODEX_`, `OPENAI_`, `AZURE_`,
+    `CHATGPT_`, so an inherited `OPENAI_API_KEY` cannot fund a Claude role's shell) and the inherited
+    `CLAUDE_SECURESTORAGE_CONFIG_DIR` is absent or replaced, asserted in the environment the launched child process actually sees. Every Codex
+    launch has `CODEX_HOME` equal to its scope, its operation root (private `HOME`, `XDG_*`,
+    sqlite) under `<harness home>/codex`, and every variable in Codex's existing blocked set
+    (including `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`) removed. Readiness ran with the Build's own launch environment before any
+    model launch. The switched selector does not change any later launch of the running Build.
+    The owner record and tracking record name each binding (harness, scope name and path,
+    runtime version). A Claude scope directory's file list is identical before and after a fake
+    Build, and a Codex scope differs at most by the two deterministic files Kogen already
+    maintains there (`environments.toml`, `agents/kogen_boundary.toml`), pre-seeded in the fixture;
+    no credential file in either scope is created, copied, linked, moved, renamed or rewritten by
+    Kogen, no Kogen code path invokes
+    `security` or opens a credential file, and a marker written into one Build's harness home is
+    absent from a second Build's launch environment and home. On a route whose Expert runs on the
+    other harness, the frozen Expert assignment the Build hands the Developer
+    (`Kogen.Harness.expert_environment/2`, variable `KOGEN_EXPERT`, which at 9ff7af6e carries only
+    route, harness, model, effort and helpers) also carries the control root, the Candidate path,
+    the Build's binding for the Expert's harness and the harness home, and `mix kogen.expert`
+    refuses to launch when its cwd is not that Candidate. `mix kogen.expert`, run by
+    the Developer from the Candidate, launches the Expert with cwd equal to the Candidate, that
+    bound scope (never one re-resolved from the Candidate path) and its operation root or config
+    dir under `<harness home>`. Every other Kogen Claude Code launch (Shape, `mix kogen.expert` outside a
+    Build, login and status) sets
+    `CLAUDE_SECURESTORAGE_CONFIG_DIR` equal to its `CLAUDE_CONFIG_DIR`, overriding an inherited
+    value; all of them go through `Kogen.ClaudeCode.environment/2`. In the real fixture, the Build's Developer
+    transcript (with its session id from the tracking record) exists under
+    `<harness home>/claude/projects/` and not under the scope's `projects/`, the Developer
+    completed a turn and a resume there, the tracking record's Claude binding names the scope
+    path, and the Shape session's transcripts are under that scope's `projects/`.
+  wrong_result: >-
+    A private `HOME` is set for Claude Code and every role reports not logged in; a fresh
+    `CLAUDE_CONFIG_DIR` is used without the secure-storage reference; the credential file or
+    Keychain item is copied into the harness home; the scope is keyed on the Candidate path or
+    re-resolved per launch so a mid-Build selector change switches logins; or an inherited empty
+    `CLAUDE_SECURESTORAGE_CONFIG_DIR` is left in place and the personal login is used.
+  verified_by: [check, live-shape-to-build]
+  evidence: >-
+    Offline: claude_code_management_test.exs asserts the environment of the Shape terminal, login
+    and status launches (each with an inherited empty `CLAUDE_SECURESTORAGE_CONFIG_DIR` planted),
+    harness_home_test.exs asserts the Build's Claude deltas and that the fake `claude auth status`
+    readiness call receives the Build's own environment before the first model launch, and
+    codex_environment_test.exs asserts the Codex deltas and operation-root location; fake-harness Builds record every
+    launch's `HOME`, `CLAUDE_CONFIG_DIR`, `CLAUDE_SECURESTORAGE_CONFIG_DIR` and `CODEX_HOME`, flip
+    the selector mid-Build, snapshot the scope directory's file list before and after, put a
+    recording fake `security` first on PATH to assert it is never invoked by Kogen code, and run
+    two Builds in sequence with a planted marker. Paid: live_shape_to_build_test.exs asserts the
+    transcript locations and the binding named in `then`, using
+    `RootProfileAudit.sessions_root/3` (project, role, route, as cross-harness-adversarial-roles
+    left it), whose Claude branch must cover both the scope's `projects/` and the project's
+    harness homes (`<workspaces-root>/<project-id>/harness/*/claude/projects`).
+    harness_role_test.exs asserts the Expert assignment's extra fields, spawns `mix kogen.expert` as
+    a real subprocess from a Candidate cwd with that assignment, and asserts from the fake harness's
+    own environment receipt the bound scope, the harness home and the refusal from a wrong cwd. The
+    task runs the Candidate's compiled Kogen code (the code under review, not the controller's), and
+    inside a Build it runs within the Build's boundary, so code that ignored the binding still could
+    not write outside the grants.
+  proof:
+    offline: [test/kogen/harness_home_test.exs, test/kogen/claude_code_management_test.exs, test/kogen/codex_environment_test.exs, test/kogen/root_profile_audit_test.exs, test/kogen/harness_role_test.exs]
+    paid_target: live-shape-to-build
+    paid_reason: >-
+      provider-required: live-shape-to-build; observation: the managed Claude Code runtime
+      authenticates a real Developer, and resumes its session, from a per-Build
+      CLAUDE_CONFIG_DIR through CLAUDE_SECURESTORAGE_CONFIG_DIR pointing at the Shape session's
+      scope, with the real Keychain; offline-limit: a fake harness cannot show that the real
+      runtime resolves the Keychain item and refresh lock from the reference instead of the
+      config dir
+    affected_paths: [lib/kogen/claude_code.ex, lib/kogen/codex.ex, lib/kogen/codex/environment.ex, lib/kogen/codex/state.ex, lib/kogen/harness.ex, lib/kogen/harness/claude.ex, lib/kogen/harness/codex.ex, lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/build/tracking.ex, lib/mix/tasks/kogen.expert.ex, test/kogen/harness_role_test.exs, test/kogen/harness_home_test.exs, test/kogen/claude_code_management_test.exs, test/kogen/codex_environment_test.exs, test/kogen/root_profile_audit_test.exs, test/kogen/live_shape_to_build_test.exs, test/support/root_profile_audit.ex, test/support/fake_claude, test/support/fake_codex, README.md, workflows/claude-code-runtime-upgrade.md, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: candidate-routing
+  given: >-
+    An admitted Build whose control checkout and Candidate hold different sentinel files, a
+    Candidate edit that adds a proof selector file and changes a guarded path, a control-only
+    edit to an ignored file, and a controller process whose cwd is a third directory.
+  when: >-
+    The controller runs the fresh Developer, its controller verification, the report, the review
+    packet and Jev, an exact-session resume, and each fresh Reviewer.
+  then: >-
+    Every role launch (Claude and Codex adapters) has cwd and Git toplevel equal to the
+    Candidate, and Codex trusts the Candidate as its project root. Candidate id, changed paths,
+    guarded-path capture, proof-selector existence, report entries, review packet contents,
+    citation snapshots, staging and commit are computed from the Candidate root passed
+    explicitly: the Candidate-only selector counts as present and the control-only edit never
+    appears. Lock, tracking record, verification context, state, history and receipts, prompts,
+    route and config, and login-scope identity stay on the control root passed explicitly.
+    `Harness.open`, `Harness.open_roles/3` (the route's per-role open from
+    cross-harness-adversarial-roles), both adapters' `open`, `VerificationPolicy.preflight/2`,
+    `VerificationPolicy.environment`, `GuardedPaths.capture`, `Git.changed_paths`,
+    `VerificationPlan.load/build/missing_selectors` and `Build.Evidence.resolve` receive their root
+    explicitly from Build (no `File.cwd!()` or `"."` default is used on any Build path), and a Build
+    started from the third directory behaves identically: `mix kogen.build` is the only place that
+    reads the process cwd, once, to find the control checkout (it must be a main worktree, not a
+    linked one), and passes that control root to `Kogen.Build.run`; a test calls `Build.run` with an
+    explicit control root from the third cwd, and an absent or non-checkout root fails before
+    admission. This Intent makes these changes to the controller-owned verification that
+    fortify-paid-verification landed (none of them exists at 9ff7af6e). The environment `Build`
+    hands `Kogen.Build.Verification.run_cycle/4` and the persisted verification context both name
+    `candidate_root` and `control_root`. The Candidate root is used for `make -C` through
+    `Kogen.Build.VerificationRunner.run_target/4`, `CatalogChange.check`, `TargetEvidence.capture`
+    and every later `TargetEvidence.verify` (settlement, state validation and publication read the
+    Candidate root from the context, never `"."`). The control root holds the attempt's verification
+    directory, so every receipt's, proof receipt's, base-suite receipt's and ledger diff's `log_path`
+    or `path` is relative to control, and `Verification.settle`, `Ledger.verify` and the
+    publication re-checks read them from control. `Kogen.Git.candidate_id`, the Report's changed
+    paths and `Report.build`'s selector-existence predicate use the Candidate root; the
+    `snapshot_references` citations resolve against the Candidate, while the tracking-record
+    citation resolves against control. `Verification.project_root/1`'s `File.cwd!()` fallback is
+    removed.
+    GuardedPaths' snapshot of `.git/config` and `.git/info/exclude` resolves through Git
+    (`git rev-parse --git-path`), because a linked worktree's `.git` is a file, and a change to
+    control's `.git/config` during the Build is still detected. `VerificationPolicy.environment`'s
+    `KOGEN_PROJECT_ROOT` names the Candidate, whose hook the PreToolUse guard runs.
+    `KOGEN_TASK_CONTEXT` `working_directory` names
+    the Candidate, and a new `control_root` field names control as an absolute path. Every
+    control-side locator handed to a role (the task context's `tracking_path`, the Reviewer's
+    review-packet path in the task context and the notes section, and the verification-failure
+    prompt's retained receipt and log) is an absolute control path that opens from the Candidate
+    cwd. The control-relative locators recorded in the record and inside the review packet (receipt
+    `log_path`, ledger diffs, sidecars, the packet binding `path`) resolve against `control_root`.
+    Ordinary citations are Candidate-relative; the tracking-record citation and
+    `build-summary.json` `full_record.path` resolve from control. Review packets stay at
+    control's `.kogen/runtime/scenario-tracking/<build-id>/review-packets/<n>.json`, and the
+    record's packet `path` and record-version `sidecar` locators stay relative to control
+    (today `ReviewPacket` and `Tracking` compute them from `File.cwd!()`; they take the control
+    root explicitly), because the unedited Reviewer-rework support
+    (`Kogen.ReviewPacketAudit.audit!/4`) asserts that exact layout.
+  wrong_result: >-
+    Roles run in the Candidate but the report says "no changes", or a missing selector looks
+    present, because Git and file checks still read control; the Codex Reviewer trusts control
+    and ignores the Candidate's project files; a fallback `File.cwd!()` hides a missing root; the
+    controller runs `make` in the Candidate but writes receipts whose `log_path` is relative to the
+    Candidate, so settlement looks for logs in the wrong tree; or the Reviewer and a resumed
+    Developer get control-relative packet, record and log paths they cannot open from the Candidate.
+  verified_by: [check]
+  evidence: >-
+    Each fake harness (`fake_claude*`, `fake_codex*`) writes, from inside the launched process,
+    its `pwd -P` and `git rev-parse --show-toplevel` to a per-launch receipt under the Build's
+    harness home (inside the role write boundary), so the assertion is on
+    the OS process state, not on launch arguments or environment. The fake-harness lifecycle
+    asserts those receipts, the report's changed paths, selector checks and packet against the
+    Candidate-only sentinel, with a control-only sentinel as the negative control, and runs one
+    Build from a third cwd whose own sentinel must never appear. It also asserts the review
+    packet path and a record-version sidecar locator are control-relative. The fake roles open, from
+    their own cwd, the `tracking_path`, review packet and failure-prompt receipt and log they were
+    given, plus one receipt `log_path` from the packet joined to `control_root`, and record success
+    in the receipt (fake_codex already reads `tracking_path` this way), together with the task
+    context's `working_directory`, which must equal the Candidate. The controller-verification
+    fixture settles and publishes a Build whose target emits a target-evidence frame, run from a
+    third cwd, so capture and every later verify must use the recorded Candidate root.
+    A controller-verification fixture whose Candidate `make check` fails asserts the receipt's
+    `log_path` resolves under control's attempt directory and that settlement accepts it. A guarded
+    paths case edits control's `.git/config` mid-Build and expects the stop.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/lifecycle_test.exs, test/kogen/controller_handoff_test.exs, test/kogen/harness_contract_test.exs, test/kogen/guarded_paths_test.exs, test/kogen/controller_verification_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: fake-harness lifecycle with control and Candidate sentinels and a
+      third-directory cwd control; the real-provider cwd is covered by same-candidate-rework
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/**, lib/kogen/git.ex, lib/kogen/harness.ex, lib/kogen/harness/**, lib/kogen/claude_code.ex, lib/kogen/codex.ex, lib/kogen/codex/**, lib/kogen/verification_policy.ex, test/kogen/build_workspace_test.exs, test/kogen/lifecycle_test.exs, test/kogen/controller_handoff_test.exs, test/kogen/harness_contract_test.exs, test/kogen/guarded_paths_test.exs, test/kogen/controller_verification_test.exs, test/support/**, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: controller-judges-candidate
+  given: >-
+    A fixture project whose control `make check` passes, and a fixture Intent whose
+    `may_change_guarded_paths` includes `.codex/hooks/**`, so that the Developer's turn leaves the
+    Candidate's `make check` failing and its copies of `.codex/hooks/check.sh`, `stop_runner.py` and
+    `verification_policy.py` edited to always pass or allow. A second fixture Intent does not
+    guard `.codex/hooks/**`.
+  when: The Developer's turn ends and the controller settles verification.
+  then: >-
+    The parent controller runs `make check` and each selected target with cwd equal to the
+    Candidate, records a failed receipt bound to the Candidate id, and resumes the same Developer
+    session through the normal retry path. The tampered hook copies change no receipt or verdict.
+    With the second fixture Intent the same tampering stops the Build on the guarded-path check
+    before any verification, as today. Build calls `VerificationPolicy.preflight(targets,
+    candidate_root)` with the Candidate root explicitly. The controller still runs every target
+    through `Kogen.Build.VerificationRunner` (its own supervised child, outside every role's
+    process tree). This Intent adds two environment rules to that runner (neither exists at
+    9ff7af6e). The child and every role launch drop inherited `MIX_BUILD_PATH`, `MIX_DEPS_PATH` and
+    `MIX_EXS`, so the Candidate's `make check` and a role's compile use the Candidate's own
+    `deps/` and `_build/` and never control's. Unless the caller set one, the child's environment has `KOGEN_LIVE_LOG_DIR`
+    equal to control's `.kogen/runtime/live-evidence`, so evidence that live owners retain for a
+    Candidate Build is still in control after publication removes the worktree (a
+    `git worktree remove` deletes the Candidate's ignored files). After this Intent's own Candidate,
+    `.codex/hooks.json`, `.codex/hooks/**` and `priv/kogen/claude_code/settings.json` are
+    byte-identical to the admission commit, and the registered PreToolUse command still equals
+    the `@hook_command` main's controller compares against.
+  wrong_result: >-
+    The controller runs targets in control or in `File.cwd!()` and a failing Candidate passes on
+    control's clean tree; or the Candidate rewrites the hook commands or Claude settings to
+    "run from control", which main's controller then refuses at the next launch, as in Build
+    cFnHwg7P2oNe1wMMnK7jxeMH; or live targets retain their evidence inside the Candidate, where
+    publication silently deletes it.
+  verified_by: [check]
+  evidence: >-
+    A controller test with a fixture whose control passes and Candidate fails asserts the failed
+    receipt, the Candidate id and the resumed session, and repeats it with tampered Candidate hook
+    copies. A fixture target that writes a marker under `$KOGEN_LIVE_LOG_DIR` must leave it in
+    control's `.kogen/runtime/live-evidence` after the Build publishes and its Candidate is gone,
+    and a caller-set `KOGEN_LIVE_LOG_DIR` must win. With `MIX_BUILD_PATH`, `MIX_DEPS_PATH` and
+    `MIX_EXS` planted in the controller's environment and pointing into control, the child's
+    environment lacks them and the compiled artifacts appear only under the Candidate's `_build/`.
+    A byte-comparison test asserts the three hook and settings paths are unchanged from
+    the admission commit and that the PreToolUse registration matches.
+  proof:
+    offline: [test/kogen/candidate_verification_test.exs, test/kogen/verification_policy_test.exs, test/kogen/verification_ownership_lifecycle_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: the controller runs real Make targets in a fixture with a passing
+      control and a failing, hook-tampered Candidate; the verdict path has no provider semantics
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/**, lib/kogen/verification_policy.ex, test/kogen/candidate_verification_test.exs, test/kogen/verification_policy_test.exs, test/kogen/verification_ownership_lifecycle_test.exs, test/support/**, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: same-candidate-rework
+  given: >-
+    A Build on the default route whose first controller verification fails and whose first Review
+    requests rework.
+  when: >-
+    The controller resumes the exact Developer session for the failed verification, resumes it
+    again for the Review finding, and a fresh Reviewer reviews the reworked Candidate.
+  then: >-
+    In the fake lifecycle, the Developer, both resumes and both Reviewers run with cwd equal to the
+    same single Candidate and use the same harness home; no second worktree or harness home is
+    created; both resumes carry the first session id; each Review is a new Reviewer session; and
+    the outer-attempt and verification-retry counters equal those two_outer_resumptions_test
+    expects today. In the real fixture Build (which exercises a controller-failed verification
+    and its resume, not a Review rework), the Claude Code Developer's transcript records the
+    Candidate path as its cwd for both the first turn and the resumed turn under one session id,
+    the real Reviewer session on the default route's Reviewer harness (Claude Code while
+    `default_route` is `claude`; Codex if a later Intent flips it) records the same Candidate cwd in
+    its native session metadata, the fixture's main is
+    fast-forwarded to the Intent commit, and no Candidate worktree or branch remains.
+  wrong_result: >-
+    Each outer attempt creates a new worktree and loses the Developer's edits; resume runs in
+    another cwd or config dir where Claude Code cannot find the session; or the Reviewer reads
+    control instead of the Candidate.
+  verified_by: [check, live-shape-to-build]
+  evidence: >-
+    The fake lifecycle's per-launch receipts (written by the fake harness from inside each launched
+    process: `pwd -P`, `CLAUDE_CONFIG_DIR`, session id) assert one Candidate, one harness home and
+    one Developer session id across both resumptions and a distinct Reviewer session per Review,
+    and the worktree list shows a single Candidate throughout. The live fixture's `KOGEN_WORKSPACES_ROOT` path contains a space; the live test
+    reads the Candidate path from the tracking record's `candidate` block and asserts the cwd
+    recorded in the Developer transcript (both turns) and in the Reviewer's native session equals
+    it, plus the single Developer session id, controller receipts bound to the Candidate id, the
+    final fixture HEAD, and that the worktree and branch are gone.
+  proof:
+    offline: [test/kogen/two_outer_resumptions_test.exs, test/kogen/lifecycle_test.exs, rehearse-live-shape-to-build]
+    paid_target: live-shape-to-build
+    paid_reason: >-
+      provider-required: live-shape-to-build; observation: a real Claude Code Developer resumes
+      its exact session in a Candidate worktree cwd after a controller-failed verification, the
+      real Reviewer runs there, and publication fast-forwards the fixture main; offline-limit:
+      fake harnesses cannot show that the managed runtimes find and resume a session from a
+      worktree cwd with a per-Build config dir
+    affected_paths: [lib/kogen/build.ex, lib/kogen/harness/**, test/kogen/two_outer_resumptions_test.exs, test/kogen/lifecycle_test.exs, test/kogen/live_shape_to_build_test.exs, test/support/root_profile_audit.ex, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: publication-unmoved-main
+  given: An accepted Candidate while control is clean, attached to B, and B is still at A.
+  when: The controller publishes.
+  then: >-
+    One commit with the Intent title, source changes and Complete package is created in the
+    Candidate under today's size limits, `.kogen/runtime/` rejection, index-flag refusal, trailers
+    and commit hooks. B is fast-forwarded to it with control's index and working tree
+    synchronized, and control's HEAD, tree and clean status are asserted. Control's ignored
+    Approved copy of this slug is removed. The Candidate worktree is removed without `--force`,
+    the branch with `git branch -d`, and the owner record is deleted; the harness home is kept.
+    `git worktree list` is back to its pre-Build entries. `build-summary.json` and `evidence.md`
+    resolve the full record from control. No merge commit, rebase or re-verification happens. If
+    worktree removal is refused after the fast-forward (for example the Candidate holds an
+    untracked file), B stays published, the Candidate worktree, branch and owner record are kept
+    with owner status `published: cleanup refused: <reason>` and the tracking record's
+    disposition `published-retained`, the Build exits zero with a warning that names the path and
+    `mix kogen.candidates.remove <build-id>`, and that command later removes it without
+    `--discard-accepted` because the commit is reachable from B.
+  wrong_result: >-
+    It commits in control from Candidate bytes; updates the ref with `update-ref` and leaves
+    control's index stale; force-removes a Candidate holding untracked files; leaves the branch
+    behind; or deletes the harness home before the transcripts can be audited.
+  verified_by: [check]
+  evidence: >-
+    Offline publication tests assert the commit parent is A, control status after the
+    fast-forward, removal of the Approved copy, worktree, branch and owner record, the kept harness
+    home, the untracked-file refusal, and fault injection before the fast-forward.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/commit_provenance_test.exs, test/kogen/commit_failure_rollback_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: real git fixtures for commit, fast-forward, synchronization and
+      cleanup; the real publication is also observed by same-candidate-rework's live run
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/build/evidence.ex, lib/kogen/git.ex, test/kogen/build_workspace_test.exs, test/kogen/commit_provenance_test.exs, test/kogen/commit_failure_rollback_test.exs, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: publication-refused
+  given: An accepted Candidate while B has moved, control is dirty, or control is on another branch.
+  when: The controller attempts publication.
+  then: >-
+    B, control's index, working tree and ignored Approved package are unchanged. The Candidate
+    worktree, branch (with the accepted commit) and harness home are kept. The Build exits
+    non-zero with a message naming the reason, admitted and current commits, worktree path,
+    branch, Candidate commit, tracking record and `mix kogen.candidates.remove <build-id>
+    --discard-accepted`. The tracking record's `candidate.disposition` is `retained`, and the
+    owner record's status is `accepted-unpublished: <reason>` with the Candidate commit.
+  wrong_result: >-
+    It publishes because the fast-forward happens to apply over non-overlapping dirty edits;
+    merges or rebases onto the moved main; or discards the accepted commit.
+  verified_by: [check]
+  evidence: >-
+    Offline tests cover each refusal cause and fault injection between the checks and the
+    fast-forward, asserting refs, control bytes, the retained Candidate and the exact message
+    fields.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/commit_failure_rollback_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: real git fixtures for moved-branch, dirty-control and other-branch
+      refusals with retained-Candidate and message assertions
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/git.ex, test/kogen/build_workspace_test.exs, test/kogen/commit_failure_rollback_test.exs, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: failure-retention
+  given: >-
+    Builds stopped by verification exhaustion, outer-allowance exhaustion, a Jev cannot-comply
+    stop, an integrity failure, a provider failure and a malformed Review.
+  when: Each Build stops, and afterwards a new Build of the same Intent is started.
+  then: >-
+    Each stopped Build keeps its Candidate worktree, branch and harness home unchanged. The stop
+    message names the slug, build id, worktree path and branch next to the tracking record path,
+    plus `mix kogen.candidates.remove <build-id>`. The record's `candidate.disposition` is
+    `retained` and the owner record's status is `stopped: <category>`. Control is unchanged and
+    the Approved package stays in control. The new Build creates a new Candidate and harness home
+    and never adopts, reuses or deletes a retained one or any foreign worktree.
+  wrong_result: >-
+    A stop deletes the Candidate and loses the evidence; the message omits it; or the next Build
+    reuses the old worktree or harness home and inherits its edits or sessions.
+  verified_by: [check]
+  evidence: >-
+    Fake-lifecycle stops for each category assert the retained paths, message and record fields,
+    then run a second Build and assert distinct Candidates and homes and the untouched earlier
+    one.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/scenario_lifecycle_test.exs, test/kogen/core_integrity_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: fake-lifecycle stop categories with retained-Candidate and second-Build
+      controls
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/build/tracking.ex, test/kogen/build_workspace_test.exs, test/kogen/scenario_lifecycle_test.exs, test/kogen/core_integrity_test.exs, README.md, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: shaping-during-build
+  given: >-
+    A running Build of slug S, and a control checkout in which, while the Developer's turn is in
+    progress, another session writes a new Draft under `.kogen/intents/drafts/`, edits another
+    Draft, moves another package into `.kogen/intents/approved/`, and runs a fake Shape session
+    against the same login scope.
+  when: The Build verifies, is reviewed and publishes.
+  then: >-
+    The Build is accepted and published: none of those control writes appears in changed paths,
+    guarded-path capture, the Candidate id or the report, and control is clean for publication.
+    The other packages are untouched by publication, and only S's Approved copy is removed from
+    control. An edit to S's own Approved copy inside the Candidate still fails the Build as an
+    approved mutation. A tracked-file edit in control during the Build makes publication refuse
+    with the Candidate retained.
+  wrong_result: >-
+    Guard capture or changed paths still read control, so the mid-Build Draft fails the Build as
+    in Build l5Ur5WAvyOJvG1lpq92XjGv_; publication removes or moves another package; or the
+    Build's own Approved copy becomes editable.
+  verified_by: [check]
+  evidence: >-
+    A fake-harness Build whose fake Developer signals mid-turn (a marker inside the Candidate) and
+    waits while the test process, outside the role write boundary, performs the control-side
+    writes, asserts acceptance and publication, the untouched other packages, and two negative
+    controls: an own-package mutation in the Candidate and a tracked edit in control (made by the
+    test process). A fake role cannot make control-side writes itself (scenario
+    role-write-boundary).
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/approved_mutation_test.exs, test/kogen/guarded_paths_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: guard capture, changed paths and publication are controller code over a
+      real git fixture; no provider semantics
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/guarded_paths.ex, lib/kogen/build/workspace.ex, test/kogen/build_workspace_test.exs, test/kogen/approved_mutation_test.exs, test/kogen/guarded_paths_test.exs, test/support/**, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: candidate-commands
+  given: >-
+    Two control checkouts of different projects share one spaced `KOGEN_WORKSPACES_ROOT`. Project
+    P has a stopped Candidate with uncommitted edits, an accepted-unpublished Candidate whose commit
+    is not reachable from its admitted branch, a second accepted-unpublished Candidate whose commit
+    the Shaper has since fast-forwarded onto that branch, a
+    `running` Candidate whose Build holds the lock, and a stale `running` record whose Build is
+    gone. Project Q has a stopped Candidate. P also has a foreign worktree.
+  when: >-
+    From P the Shaper runs `mix kogen.candidates` and `mix kogen.candidates.remove <id>`, with and
+    without `--discard-accepted`.
+  then: >-
+    List shows only P's Candidates with build id, slug, title, status (the stale one as
+    `stopped: interrupted`), start time, branch and path. Remove deletes a stopped Candidate's
+    worktree, branch, harness home and owner record; refuses the running one. For a Candidate
+    holding a commit, the matrix is exact: commit reachable from the admitted branch (for example
+    after the Shaper fast-forwarded it, or `published: cleanup refused`) is removed without a flag;
+    commit not reachable is refused without `--discard-accepted` and removed with it. Remove
+    refuses an id that is not P's, and a path that does not
+    match its owner record or is not registered in P's `git worktree list`. Q's Candidate, the
+    running Candidate and the foreign worktree survive. Each command prints what it removed or
+    refused.
+  wrong_result: >-
+    List shows every project's worktrees or unnamed git paths; or remove deletes another project's
+    Candidate, a foreign worktree, a running Candidate or an accepted commit without the flag.
+  verified_by: [check]
+  evidence: >-
+    Offline command tests with two real Git projects, a live-lock control and path and owner-record
+    mismatch controls assert exact outputs and the surviving and removed paths, refs, homes and
+    records.
+  proof:
+    offline: [test/kogen/candidates_command_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: real two-project git fixtures with running-lock, accepted-unpublished,
+      foreign-worktree and owner-record mismatch controls
+    affected_paths: [lib/kogen/build/workspace.ex, lib/mix/tasks/kogen.candidates.ex, lib/mix/tasks/kogen.candidates.remove.ex, test/kogen/candidates_command_test.exs, README.md, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: shape-to-build-retains-record-sidecars
+  given: >-
+    A nested fixture Build that now runs in a Candidate worktree and cites its own tracking
+    record, so `Kogen.Build.Tracking.retain_record_version/2` (bounded-reviewer-evidence) writes a
+    sidecar under control's `.kogen/runtime/scenario-tracking/<build-id>/record-versions/`, plus
+    the retention paths the live fixtures use after fortify-paid-verification and
+    cross-harness-adversarial-roles: `Kogen.LiveTrackingRetention.preserve!/3` (Shape fixture,
+    whole tracking directory) and `Kogen.ReviewPacketAudit.retain_evidence!/3` with
+    `preserve_record_versions!/2` (Reviewer-rework fixture, unedited here).
+  when: >-
+    The fixture Build publishes (its Candidate worktree is removed), the fixture retains the
+    evidence, deletes the fixture, and resolves the retained `build-summary.json` with
+    `Kogen.Build.Evidence.resolve/2`.
+  then: >-
+    Everything retention copies is control-side and stays where those helpers look: the record,
+    its `record-versions/` sidecars and `review-packets/` under control's
+    `.kogen/runtime/scenario-tracking/<build-id>/`, never in the Candidate or the harness home.
+    Each record-version `sidecar` locator is relative to control, so after both the fixture and
+    the Candidate worktree are gone, `Evidence.resolve/2` finds the sidecar beside the retained
+    record and verifies its digest and byte count. A missing or altered retained sidecar still
+    fails resolution. `Evidence.resolve/2` takes its checkout root explicitly and is otherwise
+    unchanged.
+  wrong_result: >-
+    Sidecars or packets are written under the Candidate (or relative to it) and disappear when
+    the worktree is removed at publication, so the retained evidence of a real fixture Build no
+    longer resolves; or resolution is weakened to skip missing sidecars.
+  verified_by: [check, live-shape-to-build]
+  evidence: >-
+    A fake-harness Build in build_workspace_test cites its own record from a Candidate, publishes,
+    retains the tracking directory with `Kogen.LiveTrackingRetention.preserve!/3`, deletes the
+    fixture, and asserts `Evidence.resolve/2` succeeds, with a deleted-sidecar and an
+    altered-sidecar control. build_evidence_test keeps #2's relocation regression. The paid
+    live-shape-to-build run retains and resolves a real Candidate Build's tree after cleanup.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/build_evidence_test.exs]
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: the retained tree of a real nested Build run in a Candidate worktree resolves after the worktree and fixture are deleted; offline-limit: whether a real run cites its record is model behaviour, so the fake-harness case carries the sidecar controls"
+    affected_paths: [lib/kogen/build/tracking.ex, lib/kogen/build/review_packet.ex, lib/kogen/build/evidence.ex, test/kogen/build_workspace_test.exs, test/kogen/build_evidence_test.exs, test/kogen/live_shape_to_build_test.exs, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: role-write-boundary
+  given: >-
+    An admitted Build with its Candidate worktree, harness home and a spaceless per-Build temp
+    directory, on a route whose roles use both Claude Code and Codex. Outside the grants there are
+    the control checkout (tracked files, `.kogen/`, Git metadata), a second retained Candidate and
+    its harness home, the owner records, both login scopes, a symlink and a `/tmp` alias path that
+    point outside, and a test-owned sentinel directory. The fake role executable
+    `test/support/fake_boundary_role` tries the writes below and records each result in a receipt
+    under the harness home.
+  when: >-
+    The controller launches the fresh Developer, a helper child and a `make` grandchild, an exact
+    resume, the Reviewer and a cross-harness Expert through `mix kogen.expert`, each through the
+    real adapter launch path.
+  then: >-
+    Every role process runs as `/usr/bin/sandbox-exec -p <profile> ...`. The profile is one
+    Build-wide profile, `Kogen.Build.WriteBoundary.render/1`, built at admission from canonical
+    paths. It has `(allow default)` and `(deny file-write*)`, and writes are allowed only under these
+    paths: the Candidate; the harness home; the Build temp dir, which is also every launch's
+    `TMPDIR`, `TMPPREFIX` and `CLAUDE_CODE_TMPDIR`; the stdio devices; and the named
+    shared-login-state exceptions (the login keychain file and its `.sb-` temp files,
+    `<Claude scope>/.oauth_refresh.lock`, and the Codex scope as scenario codex-roles-inside-boundary
+    states). The controller's `KOGEN_RAW_LOG_DIR` is not granted; role launches get
+    `KOGEN_RAW_LOG_DIR=<harness home>/raw-log`, which the controller copies into its own at every
+    Build exit. `/bin/ps` is the only
+    no-sandbox exec. `lsopen` and `appleevent-send` are denied. From inside each role, a helper,
+    the `make` grandchild and a background child that outlives the role, writes into the Candidate,
+    the harness home and the temp dir succeed. Each of these writes fails with EPERM and leaves
+    the bytes unchanged: create, append, delete, rename, chmod, hardlink or symlink-follow into
+    the control checkout (including `.kogen/` and `.kogen/build.lock`); `git commit`,
+    `git update-ref` and `git config` against control's Git metadata; the controller's own
+    `KOGEN_RAW_LOG_DIR` (placed inside control's `.kogen/runtime/` in the test); the other Candidate and its
+    harness home; an owner record; the Claude scope's `settings.json`; the sentinel; the same
+    paths through their `/tmp` aliases. A nested `sandbox-exec` with a permissive profile exits
+    71. The tracking record's `boundary` block has mode `applied`, the profile's sha256 and the
+    grant list. In the real fixture Build, a project SessionStart hook (in the fixture only) inside
+    the real Claude Code Developer (fresh and resumed) and Reviewer process trees records
+    successful writes inside the grants: the Build temp dir for every session, and the Candidate's
+    ignored `.kogen/runtime/` for Developer sessions only, so the Reviewer never changes the
+    Candidate. The same hook's write into an existing directory of the fixture's control checkout
+    (`.kogen/runtime/boundary-escape/`) and its `git update-ref` into control's refs are refused
+    with "Operation not permitted". Neither the file nor the ref exists afterwards, and the nested
+    record's boundary mode is `applied`.
+  wrong_result: >-
+    The boundary wraps only the first Developer launch, not resumes, the Reviewer or the Expert; it
+    uses non-canonical paths, so the grants silently never match; it grants `/private/tmp`, `$HOME`
+    or control; it relies on Claude Code permissions or Codex's own sandbox, which don't cover the
+    harness process's own writes; or Kogen asserts on the launch arguments while the real process
+    is unconfined.
+  verified_by: [check, live-shape-to-build]
+  evidence: >-
+    write_boundary_test.exs renders the profile for Claude-only, Codex-only and hybrid routes and
+    asserts the exact grant list. It then runs real `sandbox-exec` launches through the Claude and
+    Codex adapters with `KOGEN_HARNESS` naming `fake_boundary_role`, which runs every write, a
+    `make` grandchild, a `nohup` child, a nested `sandbox-exec`, an `open -g -a` of a test app
+    (LaunchServices) and an `osascript` Apple Event, and writes a JSON receipt of exit codes and
+    errno values to the harness home. The receipt must show `open` and `osascript` failing. The test asserts each result, the unchanged bytes (sha256) of
+    every protected path, the absence of every attempted outside file and ref, and a control launch
+    where the same inside writes succeed. harness_role_test.exs covers the Expert launch from the
+    Developer's tree. The paid run adds the fixture-only `.claude/settings.json` SessionStart probe
+    through `KOGEN_RAW_LOG_DIR`, and live_shape_to_build_test.exs asserts the receipts per session
+    id, the absent escape file and ref, and the record's boundary block.
+  proof:
+    offline: [test/kogen/write_boundary_test.exs, test/kogen/harness_role_test.exs, test/kogen/claude_code_harness_test.exs, rehearse-live-shape-to-build]
+    paid_target: live-shape-to-build
+    paid_reason: >-
+      provider-required: live-shape-to-build; observation: the real managed Claude Code 2.1.281
+      Developer (fresh and exact resume) and Reviewer run to acceptance inside the boundary, and a
+      write from their own process trees into the fixture's control checkout is refused while a
+      write into the Candidate succeeds; offline-limit: a fake harness cannot show that the real
+      runtime's own writes (sessions, OAuth refresh, shell snapshots, task output) stay inside the
+      grants, or that the real launch path wraps the real process tree
+    affected_paths: [lib/kogen/build/write_boundary.ex, lib/kogen/build.ex, lib/kogen/build/tracking.ex, lib/kogen/harness.ex, lib/kogen/harness/claude.ex, lib/kogen/harness/codex.ex, lib/kogen/claude_code.ex, lib/kogen/codex/environment.ex, lib/mix/tasks/kogen.expert.ex, test/kogen/write_boundary_test.exs, test/kogen/harness_role_test.exs, test/kogen/claude_code_harness_test.exs, test/kogen/live_shape_to_build_test.exs, test/support/fake_boundary_role, test/support/fake_claude, test/support/fake_codex, README.md, workflows/claude-code-runtime-upgrade.md, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: write-boundary-fails-closed
+  given: >-
+    Build admissions where `/usr/bin/sandbox-exec` is replaced by a missing path; where
+    `KOGEN_WORKSPACES_ROOT` is given through the `/tmp` alias of a `/private/tmp` directory; where
+    a grant can't be resolved to an existing directory; where the
+    rendered grants would include `/`, `/private/tmp`, `/private/var`, `$HOME`, the control root or
+    an ancestor of it; and where the
+    admission self-test of the profile fails. There are also a controller that already runs inside
+    a Kogen boundary (with `KOGEN_WRITE_BOUNDARY` set by it), one inside a foreign sandbox (no
+    marker), and an unconfined controller with a spoofed `KOGEN_WRITE_BOUNDARY`.
+  when: Each Build is admitted and reaches its first role launch.
+  then: >-
+    Every grant is rendered from its resolved canonical path, so the aliased root admits normally,
+    its profile names only `/private/tmp/...` forms, and a fake role's write inside its Candidate
+    succeeds. The unresolvable grant, the forbidden grants, the
+    missing `sandbox-exec` and the failed self-test stop before any readiness call or role launch,
+    with a message naming the reason and the path. Nothing is launched unconfined, and the Candidate is kept as in
+    failure-retention. Confinement is detected by the kernel self-test: applying
+    `(version 1)(allow default)` to `/usr/bin/true` exits 71 only inside a sandbox. An env var alone
+    never decides confinement. When the self-test reports confinement and the marker is set, a
+    `mix kogen.expert` launch and every role of a fixture Build whose roles are `KOGEN_HARNESS`
+    test executables run without re-applying a profile, the record's boundary mode is `inherited`,
+    and a fake role of that nested Build still can't write outside the enclosing profile's grants.
+    A confined `mix kogen.build` whose roles use a managed runtime stops before admission with
+    "a Build cannot start inside another Build's role boundary". With confinement and no marker,
+    the Build stops naming the foreign sandbox. With no confinement,
+    the marker is ignored and the profile is applied (`applied`). Every role launch sets
+    `KOGEN_WRITE_BOUNDARY` to the profile sha256. The controller's own verification children
+    (`make check`, the selected targets and any proof-selector or base-workspace run, all started by
+    `Kogen.Build.VerificationRunner`) run outside the boundary with `KOGEN_WRITE_BOUNDARY` removed
+    from their environment (this Intent adds it to `VerificationRunner.scrubbed_names/0`, which
+    lacks it at 9ff7af6e), so fixture Builds inside
+    them apply their own boundary.
+    At every Build exit, including stops, the controller copies `<harness home>/raw-log/` into its
+    own `KOGEN_RAW_LOG_DIR` when one is set.
+  wrong_result: >-
+    A missing or failing `sandbox-exec` falls back to an unwrapped launch; a `/tmp` alias is
+    accepted and never matches; the marker alone switches the boundary off; a real nested Build
+    runs `inherited` with another Build's grants; or the controller's
+    `make check` runs inside a role boundary, so every fixture Build's `sandbox-exec` fails with
+    `sandbox_apply: Operation not permitted` (the 2026-09-19 failure of 47 tests).
+  verified_by: [check]
+  evidence: >-
+    write_boundary_test.exs covers each refusal with a launch sentinel that must stay absent,
+    plus a Build whose workspaces root is given through the `/tmp` alias: its rendered profile
+    must contain only canonical paths and its fake role's inside write must succeed (a grant the
+    kernel never matches would make it fail),
+    starts one fake-harness fixture Build from inside a real outer `sandbox-exec` (with and without
+    the marker, asserting `inherited` and a refused write outside the enclosing grants), and a
+    managed-runtime Build (a fake runtime executable under a disposable `KOGEN_CLAUDE_ROOT`) from
+    inside it, asserting the refusal. It also spoofs the marker in an unconfined run and asserts
+    the raw-log copy on success and on a stop. candidate_verification_test.exs asserts that the
+    environment of the controller's verification child lacks `KOGEN_WRITE_BOUNDARY` and that a
+    fixture Build started by that child records `applied`. Every fake role's receipt records the
+    `KOGEN_WRITE_BOUNDARY` it saw, which must equal the record's profile sha256.
+  proof:
+    offline: [test/kogen/write_boundary_test.exs, test/kogen/candidate_verification_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: activation failures, grant validation, kernel confinement detection and
+      the controller's unconfined verification children are host facts exercised with the real
+      sandbox-exec; no provider semantics
+    affected_paths: [lib/kogen/build/write_boundary.ex, lib/kogen/build.ex, lib/kogen/build/**, lib/kogen/harness.ex, test/kogen/write_boundary_test.exs, test/kogen/candidate_verification_test.exs, test/test_helper.exs, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]
+
+- id: codex-roles-inside-boundary
+  given: >-
+    A Build on `claude-dominant-adversarial-codex` (Claude Code Developer; Codex Reviewer and
+    Expert). Its Codex scope is pre-seeded with `environments.toml`, `agents/kogen_boundary.toml`
+    and `.kogen-owned`.
+  when: >-
+    The Codex Reviewer and the Expert (through `mix kogen.expert` from the Developer's tree) are
+    launched inside the Build's boundary.
+  then: >-
+    The Build-wide profile also allows writes under the Codex scope (rollouts, `auth.json` refresh,
+    `config.toml` bookkeeping, history, state databases, locks). Inside the scope it denies
+    creating or changing `hooks.json`, `plugins/`, `rules/`, `config.d/`, `AGENTS.md`,
+    `AGENTS.override.md`, `environments.toml`, `agents/` and `.kogen-owned`. A fake Codex role's
+    write to each denied entry, including by rename, fails with EPERM, and its rollout and history
+    writes succeed. Codex launches keep `--dangerously-bypass-approvals-and-sandbox` and
+    `--dangerously-bypass-hook-trust`, because the enclosing Seatbelt profile is the enforcement
+    and Codex's own Seatbelt can't be applied inside it (`codex sandbox` inside the boundary exits
+    71). README says so. Every Codex launch's `TMPDIR` is the Build temp dir. The Codex Expert
+    started by `mix kogen.expert` from the Developer's tree runs inside the Developer's profile
+    (mode `inherited`) and writes nothing under Kogen's state root: no `active/` lease and no
+    `operations/` dir there. Its operation root is under the harness home, and the Build
+    controller's Codex lease covers it. In the real hybrid
+    fixture Build (live-reviewer-rework), the Codex Reviewer returns its rework verdict and its
+    accepting verdict with the nested record's boundary mode `applied` and the Codex scope in its
+    grants. A fixture-only `.codex/hooks.json` SessionStart probe (Kogen's PreToolUse registration
+    unchanged), in each real Codex Reviewer session's process tree, records a successful write to
+    its `TMPDIR`. The same probe's write into the fixture control's
+    `.kogen/runtime/boundary-escape/` and its `git update-ref` into control's refs are refused
+    ("Operation not permitted"), and neither exists afterwards. None of the denied names that
+    were absent from the scope before the Build exists in it afterwards.
+  wrong_result: >-
+    The Codex scope is not granted, so the real Reviewer can't write its rollout or refresh its
+    login and every hybrid Build fails at Review; the scope is fully writable, so a role can plant
+    `hooks.json` or `plugins/` and break or hijack later Codex sessions (lesson 3); or the bypass
+    flags are dropped and Codex's own sandbox fails to nest.
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    write_boundary_test.exs runs the fake Codex role against a disposable scope-shaped directory
+    and asserts each denied entry, the allowed writes and the retained flags. harness_role_test.exs
+    runs `mix kogen.expert` inside a real outer profile against a fake managed Codex runtime under
+    a disposable `KOGEN_CODEX_ROOT` (the managed open path, since `KOGEN_HARNESS` skips leases),
+    and asserts that the Expert launch succeeds and the `active/` and `operations/` entries there
+    are unchanged; codex_environment_test.exs
+    asserts the Build temp `TMPDIR` and flags on Codex launches. The paid live-reviewer-rework run
+    asserts, in `test/support/live_reviewer_rework_fixture.ex`, the retained nested record's
+    boundary block, one SessionStart receipt per Codex Reviewer session id (from the retained
+    raw-log copy) with the refused outside attempts, the absent escape file and ref, and the denied
+    names against a pre-Build snapshot of the scope's top-level entries. Probe 20 showed real Codex
+    0.156.1 runs a project SessionStart hook on `exec` and `exec resume` inside the profile.
+  proof:
+    offline: [test/kogen/write_boundary_test.exs, test/kogen/codex_environment_test.exs, test/kogen/harness_role_test.exs, rehearse-live-reviewer-rework]
+    paid_target: live-reviewer-rework
+    paid_reason: >-
+      provider-required: live-reviewer-rework; observation: the real managed Codex 0.156.1 Reviewer
+      of the hybrid route every batch Build uses completes two Reviews inside the boundary with its
+      rollouts, login refresh and bookkeeping in the granted Codex scope and its operation root in
+      the harness home; offline-limit: which files the real Codex runtime writes during an
+      authenticated turn cannot be shown by a fake, and live-shape-to-build runs no Codex role
+    affected_paths: [lib/kogen/build/write_boundary.ex, lib/kogen/harness/codex.ex, lib/kogen/codex.ex, lib/kogen/codex/state.ex, lib/kogen/codex/environment.ex, lib/mix/tasks/kogen.expert.ex, test/kogen/write_boundary_test.exs, test/kogen/codex_environment_test.exs, test/kogen/harness_role_test.exs, test/support/live_reviewer_rework_fixture.ex, test/support/fake_codex, README.md, workflows/codex-runtime-upgrade.md, priv/kogen/test-reliability.yaml, priv/kogen/test-reliability-remediation.yaml]

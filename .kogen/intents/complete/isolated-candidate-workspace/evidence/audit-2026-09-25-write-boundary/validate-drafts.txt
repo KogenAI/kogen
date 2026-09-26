@@ -1,0 +1,34 @@
+Compiling 40 files (.ex)
+Generated kogen app
+Intent.read: :ok
+Contract.load: {:ok,
+ %{
+   text: "# Re-shaped 2026-09-25 on top of controller-owned verification (Intent #4).\n# The 2026-09-24 scenarios are in historical/2026-09-24-b1-reshape/scenarios.yaml.\n# Re-preflighted 2026-09-25 against main " <> ...,
+   ...
+ }}
+VerificationPlan.build: {:ok,
+ %{
+   targets: ["check", "live-reviewer-rework", "live-shape-to-build"],
+   offline: ["test/kogen/build_workspace_test.exs",
+    "test/kogen/build_preconditions_test.exs",
+    "test/kogen/harness_home_test.exs",
+    "test/kogen/claude_code_management_test.exs",
+    "test/kogen/codex_environment_test.exs",
+    "test/kogen/root_profile_audit_test.exs",
+    "test/kogen/harness_role_test.exs", "test/kogen/lifecycle_test.exs",
+    "test/kogen/controller_handoff_test.exs",
+    "test/kogen/harness_contract_test.exs", "test/kogen/guarded_paths_test.exs",
+    "test/kogen/candidate_verification_test.exs",
+    "test/kogen/verification_policy_test.exs",
+    "test/kogen/verification_ownership_lifecycle_test.exs",
+    "test/kogen/two_outer_resumptions_test.exs", "rehearse-live-shape-to-build",
+    "test/kogen/commit_provenance_test.exs",
+    "test/kogen/commit_failure_rollback_test.exs",
+    "test/kogen/scenario_lifecycle_test.exs",
+    "test/kogen/core_integrity_test.exs",
+    "test/kogen/approved_mutation_test.exs",
+    "test/kogen/candidates_command_test.exs",
+    "test/kogen/build_evidence_test.exs", "test/kogen/write_boundary_test.exs",
+    "test/kogen/claude_code_harness_test.exs", "rehearse-live-reviewer-rework"]
+ }}
+VerificationPolicy.preflight: :ok

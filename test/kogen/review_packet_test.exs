@@ -208,6 +208,7 @@ defmodule Kogen.ReviewPacketTest do
       assert File.stat!(record_path).size > 1_048_576
       record = Fixture.record!(dir)
       assert length(record["attempts"]) == 4
+      real_record_path = Path.join(realpath(dir), Path.relative_to(record_path, dir))
 
       for {attempt, index} <- Enum.with_index(record["attempts"]) do
         n = index + 1
@@ -225,7 +226,8 @@ defmodule Kogen.ReviewPacketTest do
         assert binding["candidate_id"] == attempt["candidate_id"]
 
         # The Reviewer read exactly the bytes written before its launch.
-        assert File.read!(Path.join(dir, ".kogen/runtime/reviewer-packet-#{n}.json")) == bytes
+        assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-packet-#{n}.json")) ==
+                 bytes
 
         packet = Jason.decode!(bytes)
         assert packet["attempt_token"] == attempt["attempt_token"]
@@ -235,13 +237,20 @@ defmodule Kogen.ReviewPacketTest do
         assert hd(packet["receipts"])["output"]["truncated"]
         assert String.valid?(hd(packet["receipts"])["output"]["text"])
 
-        # The Reviewer's context names the packet as its evidence source and
-        # keeps the record path as an audit locator for existing consumers.
+        # The Reviewer's context names the packet as its evidence source.
+        # Every control-side locator handed to a role is an absolute control
+        # path (it must open from the Candidate cwd); the record and packet
+        # keep the control-relative locator.
         context = Fixture.task_context!(Fixture.reviewer_prompt!(dir, n))
         assert context["evidence_source"] == "review_packet"
-        assert context["review_packet"] == Map.take(binding, ["path", "sha256", "byte_count"])
-        assert context["tracking_path"] == relative
-        assert context["tracking_record"]["path"] == relative
+        assert context["review_packet"]["sha256"] == binding["sha256"]
+        assert context["review_packet"]["byte_count"] == binding["byte_count"]
+
+        assert context["review_packet"]["path"] ==
+                 Path.join(realpath(dir), binding["path"])
+
+        assert context["tracking_path"] == real_record_path
+        assert context["tracking_record"]["path"] == real_record_path
         assert context["tracking_record"]["use"] =~ "audit locator only"
         assert is_integer(context["tracking_record"]["byte_count"])
       end
@@ -257,8 +266,13 @@ defmodule Kogen.ReviewPacketTest do
     test "a Reviewer that edits its packet stops the Build without publication" do
       dir = Fixture.fixture!()
 
+      # The review packet is an absolute control-side path handed to the
+      # Reviewer, physically outside its Candidate write boundary: the
+      # mutation attempt itself is refused by the sandbox, never merely
+      # caught after the fact.
       assert {:error, reason} = Fixture.run(dir, packet_mutation: 1)
-      assert reason =~ "Reviewer failure: review packet mutated"
+      assert reason =~ "Reviewer failure:"
+      refute reason =~ "review packet mutated"
       refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{Fixture.slug()}"))
       [attempt] = Fixture.record!(dir)["attempts"]
       refute Map.has_key?(attempt, "verdict")
@@ -267,11 +281,26 @@ defmodule Kogen.ReviewPacketTest do
     test "a deleted earlier packet stops the next attempt before its Developer launch" do
       dir = Fixture.fixture!()
 
-      assert {:error, reason} =
-               Fixture.run(dir,
-                 reviews: "rework",
-                 edits: %{2 => "rm .kogen/runtime/scenario-tracking/*/review-packets/0.json"}
-               )
+      # Review packets live only in control, physically outside the
+      # Developer's write boundary, so deleting an earlier one to prove the
+      # controller's audit catches it must run in the trusted test process
+      # itself, timed after the Reviewer has read attempt 0's packet (its
+      # rework verdict is recorded) and before the next Developer launch's
+      # preflight (both happen inside this one call).
+      watcher =
+        Task.async(fn ->
+          wait_for_verdict!(dir, 0)
+
+          [packet] =
+            Path.wildcard(
+              Path.join(dir, ".kogen/runtime/scenario-tracking/*/review-packets/0.json")
+            )
+
+          File.rm!(packet)
+        end)
+
+      assert {:error, reason} = Fixture.run(dir, reviews: "rework")
+      Task.await(watcher)
 
       assert reason =~ "review packet missing"
       refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{Fixture.slug()}"))
@@ -441,4 +470,29 @@ defmodule Kogen.ReviewPacketTest do
   end
 
   defp sha256(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+
+  defp realpath(path) do
+    {out, 0} = System.cmd("/bin/pwd", ["-P"], cd: path)
+    String.trim(out)
+  end
+
+  defp wait_for_verdict!(dir, index, tries \\ 500) do
+    attempts =
+      case Path.wildcard(Path.join(dir, ".kogen/runtime/scenario-tracking/*/record.json")) do
+        [path] -> path |> File.read!() |> Jason.decode!() |> Map.get("attempts", [])
+        [] -> []
+      end
+
+    case Enum.at(attempts, index) do
+      %{"verdict" => _} ->
+        :ok
+
+      _ when tries > 0 ->
+        Process.sleep(10)
+        wait_for_verdict!(dir, index, tries - 1)
+
+      _ ->
+        raise "attempt #{index} never got a verdict under #{dir}"
+    end
+  end
 end

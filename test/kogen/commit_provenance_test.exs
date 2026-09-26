@@ -44,7 +44,7 @@ defmodule Kogen.CommitProvenanceTest do
 
     write_intent(dest, "intent-one", "Intent one")
     original_parent = git!(dest, ["rev-parse", "HEAD"])
-    assert :ok = File.cd!(dest, fn -> Kogen.Build.run("intent-one") end)
+    assert :ok = File.cd!(dest, fn -> Kogen.Build.run("intent-one", nil, dest) end)
 
     assert_commit_message!(dest, "Intent one", intent_id("intent-one"), "intent-one")
     assert git!(dest, ["rev-parse", "HEAD^"]) == original_parent
@@ -67,7 +67,7 @@ defmodule Kogen.CommitProvenanceTest do
     assert first_evidence =~ "## Reviewer Verdict"
 
     write_intent(dest, "intent-two", "Intent two")
-    assert :ok = File.cd!(dest, fn -> Kogen.Build.run("intent-two") end)
+    assert :ok = File.cd!(dest, fn -> Kogen.Build.run("intent-two", nil, dest) end)
 
     assert_commit_message!(dest, "Intent two", intent_id("intent-two"), "intent-two")
 
@@ -75,7 +75,7 @@ defmodule Kogen.CommitProvenanceTest do
     write_intent(dest, "intent-one", "Duplicate intent")
 
     assert {:error, "Complete Intent already exists: intent-one"} =
-             File.cd!(dest, fn -> Kogen.Build.run("intent-one") end)
+             File.cd!(dest, fn -> Kogen.Build.run("intent-one", nil, dest) end)
 
     assert File.read!(complete_evidence) == "original evidence\n"
   end
@@ -117,6 +117,8 @@ defmodule Kogen.CommitProvenanceTest do
     end
 
     File.write!(Path.join(dest, "Makefile"), @makefile)
+    # Admission copies control deps/ into each Candidate.
+    File.mkdir_p!(Path.join(dest, "deps"))
     Kogen.VerificationFixture.install!(dest)
 
     File.write!(

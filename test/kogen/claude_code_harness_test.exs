@@ -6,6 +6,7 @@ defmodule Kogen.ClaudeCodeHarnessTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  alias Kogen.Build.WriteBoundary
   alias Kogen.ClaudeCode
   alias Kogen.Harness
   alias Kogen.Harness.Claude
@@ -510,6 +511,171 @@ defmodule Kogen.ClaudeCodeHarnessTest do
         assert env =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1\n"
         refute env =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=0"
       end
+    end
+  end
+
+  describe "role write boundary" do
+    @describetag :unconfined
+
+    @boundary_role_script """
+    #!/bin/sh
+    write_result() {
+      label="$1"; path="$2"
+      msg=$( (echo hi > "$path") 2>&1 )
+      status=$?
+      printf '%s|%s|%s\\n' "$label" "$status" "$msg" >> "$RECEIPT_PATH"
+    }
+
+    write_result inside_candidate "$CANDIDATE_DIR/inside-candidate.txt"
+    write_result inside_harness_home "$HARNESS_HOME_DIR/inside-harness-home.txt"
+    write_result inside_tmp "$TMPDIR/inside-tmp.txt"
+    write_result outside_control "$CONTROL_DIR/outside-control.txt"
+    write_result outside_sentinel "$SENTINEL_DIR/outside-sentinel.txt"
+
+    nested_out=$(/usr/bin/sandbox-exec -p '(version 1)(allow default)' /usr/bin/true 2>&1)
+    nested_status=$?
+    printf 'nested_sandbox|%s|%s\\n' "$nested_status" "$nested_out" >> "$RECEIPT_PATH"
+
+    cat > /dev/null
+
+    session=; previous=
+    for a in "$@"; do
+      [ "$previous" = --session-id ] && session="$a"
+      [ "$previous" = --resume ] && session="$a"
+      previous="$a"
+    done
+
+    printf '{"type":"system","subtype":"init","session_id":"%s"}\\n' "$session"
+    printf '{"type":"assistant","session_id":"%s","parent_tool_use_id":null,"message":{"model":"claude-opus-5-5","content":[]}}\\n' "$session"
+    printf '{"type":"result","subtype":"success","is_error":false,"session_id":"%s","result":"done"}\\n' "$session"
+    """
+
+    setup do
+      base =
+        Path.join(
+          System.tmp_dir!(),
+          "kogen-write-boundary-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
+      candidate = Path.join(base, "candidate")
+      harness_home = Path.join(base, "harness-home")
+      tmp_dir = Path.join(base, "tmp")
+      control = Path.join(base, "control")
+      sentinel = Path.join(base, "sentinel")
+
+      Enum.each([candidate, harness_home, tmp_dir, control, sentinel], &File.mkdir_p!/1)
+      on_exit(fn -> File.rm_rf!(base) end)
+
+      executable = Path.join(base, "claude")
+      File.write!(executable, @boundary_role_script)
+      File.chmod!(executable, 0o755)
+
+      assert {:ok, boundary} =
+               WriteBoundary.prepare(%{
+                 candidate: candidate,
+                 harness_home: harness_home,
+                 tmp_dir: tmp_dir,
+                 control: control
+               })
+
+      %{
+        base: base,
+        candidate: candidate,
+        harness_home: harness_home,
+        tmp_dir: tmp_dir,
+        control: control,
+        sentinel: sentinel,
+        executable: executable,
+        boundary: boundary
+      }
+    end
+
+    defp boundary_context(fixture, receipt_path, prefix) do
+      %{
+        harness: "claude",
+        executable: fixture.executable,
+        args: [],
+        env: [
+          {"CANDIDATE_DIR", fixture.candidate},
+          {"HARNESS_HOME_DIR", fixture.harness_home},
+          {"TMPDIR", fixture.tmp_dir},
+          {"CONTROL_DIR", fixture.control},
+          {"SENTINEL_DIR", fixture.sentinel},
+          {"RECEIPT_PATH", receipt_path}
+        ],
+        config: @config,
+        project: fixture.candidate,
+        cwd: fixture.candidate,
+        prefix: prefix
+      }
+    end
+
+    defp receipt_lines(path) do
+      path
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Map.new(fn line ->
+        [label, status, message] = String.split(line, "|", parts: 3)
+        {label, {String.to_integer(status), message}}
+      end)
+    end
+
+    test "a fake role's writes are confined to the Candidate, harness home and Build temp dir, and a nested sandbox-exec reports confinement",
+         %{} = fixture do
+      receipt = Path.join(fixture.harness_home, "receipt.txt")
+
+      prefix = WriteBoundary.prefix(fixture.boundary)
+      context = boundary_context(fixture, receipt, prefix)
+
+      assert {:ok, turn} =
+               Claude.launch_build_developer(
+                 "PROMPT",
+                 "claude-opus-5-5",
+                 "medium",
+                 [],
+                 context
+               )
+
+      assert turn.message == "done"
+
+      results = receipt_lines(receipt)
+      assert {0, _} = results["inside_candidate"]
+      assert {0, _} = results["inside_harness_home"]
+      assert {0, _} = results["inside_tmp"]
+
+      assert {status, message} = results["outside_control"]
+      assert status != 0
+      assert message =~ "Operation not permitted"
+      refute File.exists?(Path.join(fixture.control, "outside-control.txt"))
+
+      assert {status, message} = results["outside_sentinel"]
+      assert status != 0
+      assert message =~ "Operation not permitted"
+      refute File.exists?(Path.join(fixture.sentinel, "outside-sentinel.txt"))
+
+      assert {71, _} = results["nested_sandbox"]
+    end
+
+    test "a control launch without the boundary prefix lets the same outside write through",
+         %{} = fixture do
+      receipt = Path.join(fixture.harness_home, "control-receipt.txt")
+      context = boundary_context(fixture, receipt, [])
+
+      assert {:ok, turn} =
+               Claude.launch_build_developer(
+                 "PROMPT",
+                 "claude-opus-5-5",
+                 "medium",
+                 [],
+                 context
+               )
+
+      assert turn.message == "done"
+
+      results = receipt_lines(receipt)
+      assert {0, _} = results["outside_control"]
+      assert File.read!(Path.join(fixture.control, "outside-control.txt")) == "hi\n"
+      assert {0, _} = results["outside_sentinel"]
     end
   end
 

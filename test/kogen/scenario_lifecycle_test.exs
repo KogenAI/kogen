@@ -15,10 +15,10 @@ defmodule Kogen.ScenarioLifecycleTest do
       on_exit(fn -> File.rm_rf(dir) end)
 
       assert :ok = run(dir, unquote(mode))
-      assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
-      refute File.exists?(Path.join(dir, ".kogen/runtime/resume-sessions"))
+      assert File.read!(fake_state_path(dir, "reviews")) == "1"
+      refute File.exists?(fake_state_path(dir, "resume-sessions"))
       [attempt] = record!(dir)["attempts"]
-      notes = File.read!(Path.join(dir, ".kogen/runtime/developer-notes-1"))
+      notes = File.read!(fake_state_path(dir, "developer-notes-1"))
       assert attempt["developer_notes"]["text"] == notes
       assert attempt["handoff"]["built_by"] == "controller"
       assert Enum.map(attempt["handoff"]["scenarios"], & &1["id"]) == ["first"]
@@ -36,13 +36,13 @@ defmodule Kogen.ScenarioLifecycleTest do
       expected =
         if unquote(mode) == "output_missing",
           do: "",
-          else: File.read!(Path.join(dir, ".kogen/runtime/developer-notes-1"))
+          else: File.read!(fake_state_path(dir, "developer-notes-1"))
 
       assert Base.decode64!(attempt["developer_notes"]["content_base64"]) == expected
       assert attempt["developer_notes"]["label"] =~ "unverified"
       refute attempt["failure"]
-      refute File.exists?(Path.join(dir, ".kogen/runtime/resume-sessions"))
-      assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+      refute File.exists?(fake_state_path(dir, "resume-sessions"))
+      assert File.read!(fake_state_path(dir, "reviews")) == "1"
     end
   end
 
@@ -56,8 +56,9 @@ defmodule Kogen.ScenarioLifecycleTest do
       [attempt] = record!(dir)["attempts"]
       assert attempt["developer_invocation"]["outcome"] == "provider_failure"
       refute Map.has_key?(attempt["developer_invocation"], "message")
-      refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+      refute File.exists?(fake_state_path(dir, "reviews"))
       refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+      assert_retained!(dir, reason, "provider-failure")
     end
   end
 
@@ -74,7 +75,7 @@ defmodule Kogen.ScenarioLifecycleTest do
       refute Map.has_key?(invocation, "schema_sha256")
       assert invocation["outcome"] == "settled"
       assert invocation["session_id"] == "developer-session"
-      notes = File.read!(Path.join(dir, ".kogen/runtime/developer-notes-#{call}"))
+      notes = File.read!(fake_state_path(dir, "developer-notes-#{call}"))
       assert invocation["message"] == notes
       assert attempt["developer_notes"]["text"] == notes
       assert invocation["message_sha256"] == sha256(notes)
@@ -96,8 +97,9 @@ defmodule Kogen.ScenarioLifecycleTest do
     record = record!(dir)
     assert List.last(record["attempts"])["failure"] =~ "found directory"
     assert [%{"id" => "F1", "status" => "open", "disposition_history" => []}] = record["findings"]
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "2"
+    assert File.read!(fake_state_path(dir, "reviews")) == "2"
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    assert_retained!(dir, reason, "review-failure")
   end
 
   test "target failure preserves cumulative findings through the last allowed rework" do
@@ -116,6 +118,8 @@ defmodule Kogen.ScenarioLifecycleTest do
              record["attempts"],
              &String.contains?(&1["failure"] || "", "verification retries exhausted")
            )
+
+    assert_retained!(dir, reason, "verification-exhausted")
   end
 
   test "partial repair and dispute retain finding identities and dispositions" do
@@ -156,9 +160,10 @@ defmodule Kogen.ScenarioLifecycleTest do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
 
-    assert {:error, _} = run(dir, "exhaust")
+    assert {:error, reason} = run(dir, "exhaust")
     [first] = records(dir)
     refute File.exists?(Path.join(dir, ".kogen/runtime/raw"))
+    assert_retained!(dir, reason, "outer-allowance-exhausted")
 
     assert {:error, _} = run(dir, "exhaust")
     assert Enum.count(records(dir)) == 2
@@ -186,9 +191,16 @@ defmodule Kogen.ScenarioLifecycleTest do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
 
-    assert {:error, reason} = run(dir, "record_mutation")
+    {result, candidate} =
+      run_with_control_mutation!(dir, "record_mutation", fn ->
+        [record_path] = records(dir)
+        File.write!(record_path, File.read!(record_path) <> " tampered")
+      end)
+
+    assert {:error, reason} = result
     assert reason =~ "scenario tracking record changed outside Build"
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    assert_retained_snapshot!(candidate, reason, "integrity")
   end
 
   test "a malformed later verdict cannot partially close retained findings" do
@@ -199,8 +211,9 @@ defmodule Kogen.ScenarioLifecycleTest do
     assert reason =~ "finding dispositions: missing expected ID \"F1\""
     record = record!(dir)
     assert [%{"id" => "F1", "status" => "open", "disposition_history" => []}] = record["findings"]
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "2"
+    assert File.read!(fake_state_path(dir, "reviews")) == "2"
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    assert_retained!(dir, reason, "review-failure")
   end
 
   test "rework reference bytes remain self-contained after the original runtime evidence disappears" do
@@ -223,7 +236,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
     assert :ok = run(dir, "record_citations")
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "2"
+    assert File.read!(fake_state_path(dir, "reviews")) == "2"
     record = record!(dir)
     assert record["status"] == "accepted"
     assert [%{"id" => "F1", "status" => "closed"}] = record["findings"]
@@ -232,7 +245,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
     inspected =
       for {attempt, call} <- Enum.with_index(record["attempts"], 1) do
-        inspected = File.read!(Path.join(dir, ".kogen/runtime/reviewer-inspected-#{call}.json"))
+        inspected = File.read!(fake_state_path(dir, "reviewer-inspected-#{call}.json"))
         sidecar = Path.join(Path.dirname(path), "record-versions/#{sha256(inspected)}.json")
 
         for key <- ~w(reviewer_reference_snapshots reference_snapshots) do
@@ -292,21 +305,47 @@ defmodule Kogen.ScenarioLifecycleTest do
     test "#{mode} of a retained record version before publication stops the Build" do
       dir = fixture!()
       on_exit(fn -> File.rm_rf(dir) end)
-      assert {:error, reason} = run(dir, unquote(Atom.to_string(mode)))
+      mode_string = unquote(Atom.to_string(mode))
+
+      {result, _candidate} =
+        run_with_control_mutation!(dir, mode_string, fn ->
+          [record_path] = records(dir)
+
+          [sidecar] =
+            Path.wildcard(Path.join(Path.dirname(record_path), "record-versions/*.json"))
+
+          case mode_string do
+            "record_sidecar_delete" -> File.rm!(sidecar)
+            "record_sidecar_edit" -> File.write!(sidecar, File.read!(sidecar) <> " edited")
+          end
+        end)
+
+      assert {:error, reason} = result
       assert reason =~ unquote(message)
-      assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "2"
+      assert File.read!(fake_state_path(dir, "reviews")) == "2"
       assert File.dir?(Path.join(dir, ".kogen/intents/approved/#{@slug}"))
       refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+      # Only a retained sidecar was mutated; the tracking record itself
+      # stays valid JSON, so the ordinary retention assertion applies.
+      assert_retained!(dir, reason, "review-failure")
     end
   end
 
   test "citing the record never permits a Reviewer to change it" do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
-    assert {:error, reason} = run(dir, "record_citation_tamper")
+
+    {result, candidate} =
+      run_with_control_mutation!(dir, "record_citation_tamper", fn ->
+        [record_path] = records(dir)
+        File.write!(record_path, File.read!(record_path) <> " tampered by Reviewer")
+      end)
+
+    assert {:error, reason} = result
     assert reason =~ "scenario tracking record changed outside Build"
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+    assert File.read!(Path.join(candidate["harness_home"], "fake-state/reviews")) == "1"
+    assert_retained_snapshot!(candidate, reason, "review-failure")
   end
 
   test "declared target evidence retains all artifacts separately from Reviewer citations" do
@@ -363,6 +402,40 @@ defmodule Kogen.ScenarioLifecycleTest do
     assert reason =~ "bound target evidence changed"
     assert File.dir?(Path.join(dir, ".kogen/intents/approved/#{@slug}"))
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    assert_retained!(dir, reason, "review-failure")
+  end
+
+  # A second Build of the same Intent, started after the first was stopped
+  # and its Candidate retained, gets its own new Candidate and harness home;
+  # the first Build's Candidate (worktree, branch, harness home, owner
+  # record) is left exactly as it was.
+  test "a second Build after a stop gets a new Candidate and leaves the first retained" do
+    dir = fixture!()
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    assert {:error, _reason} = run(dir, "developer_exit")
+    first = Kogen.CandidateFixture.candidate(dir)
+    first_owner_before = first["owner_record"] |> File.read!()
+    first_worktree_files_before = File.ls!(first["worktree_path"]) |> Enum.sort()
+
+    assert {:error, _reason} = run(dir, "developer_exit")
+    second = Kogen.CandidateFixture.candidate(dir)
+
+    refute second["worktree_path"] == first["worktree_path"]
+    refute second["harness_home"] == first["harness_home"]
+    refute second["owner_record"] == first["owner_record"]
+    assert second["disposition"] == "retained"
+
+    # The first Candidate's worktree, branch, harness home and owner record
+    # are untouched by the second Build.
+    assert File.dir?(first["worktree_path"])
+    assert File.ls!(first["worktree_path"]) |> Enum.sort() == first_worktree_files_before
+    assert File.read!(first["owner_record"]) == first_owner_before
+    assert File.dir?(first["harness_home"])
+
+    worktrees = Kogen.CandidateFixture.registered_worktrees(dir)
+    assert first["worktree_path"] in worktrees
+    assert second["worktree_path"] in worktrees
   end
 
   defp run(dir, mode) do
@@ -374,7 +447,7 @@ defmodule Kogen.ScenarioLifecycleTest do
     System.delete_env("KOGEN_RAW_LOG_DIR")
 
     try do
-      File.cd!(dir, fn -> Build.run(@slug) end)
+      File.cd!(dir, fn -> Build.run(@slug, nil, dir) end)
     after
       restore("KOGEN_HARNESS", previous_harness)
       restore("SCENARIO_LIFECYCLE_MODE", previous_mode)
@@ -389,6 +462,11 @@ defmodule Kogen.ScenarioLifecycleTest do
     File.mkdir_p!(Path.join(dir, ".codex/hooks"))
     File.mkdir_p!(Path.join(dir, "priv/kogen/prompts"))
     File.mkdir_p!(Path.join(dir, "lib"))
+    # Git never tracks an empty directory; without a committed file inside
+    # it, `lib` would exist in control but not in the Candidate worktree
+    # checked out from Git objects, breaking scenarios that cite it as a
+    # directory.
+    File.write!(Path.join(dir, "lib/.gitkeep"), "")
 
     for path <- [
           ".codex/hooks/check.sh",
@@ -448,6 +526,10 @@ defmodule Kogen.ScenarioLifecycleTest do
       "- id: lifecycle-risk\n  scenario_ids: [first]\n  description: fixture ownership\n"
     )
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dir, "deps"))
+
     git!(dir, ["init", "-q", "-b", "main"])
     git!(dir, ["add", "-A"])
     git!(dir, ["commit", "-q", "-m", "baseline"])
@@ -502,4 +584,109 @@ defmodule Kogen.ScenarioLifecycleTest do
 
   defp restore(key, nil), do: System.delete_env(key)
   defp restore(key, value), do: System.put_env(key, value)
+
+  # Scratch the fake harness must still find after the Build (kept in the
+  # harness home; a successful publish removes the Candidate worktree).
+  defp fake_state_path(dir, name), do: Kogen.CandidateFixture.fake_state(dir, name)
+
+  # A stop keeps the Candidate worktree, branch and harness home exactly as
+  # they are: control (its checkout and Approved package) is unchanged, the
+  # tracking record's `candidate` block is `retained`, the stop message names
+  # the slug, build id, worktree, branch and harness home next to the
+  # tracking record path plus the removal command, and the Candidate's own
+  # owner record independently agrees on `stopped: <category>`.
+  defp assert_retained!(dir, reason, expected_category) do
+    candidate = Kogen.CandidateFixture.candidate(dir)
+    assert candidate["disposition"] == "retained"
+
+    worktree = candidate["worktree_path"]
+    assert File.dir?(worktree)
+    assert File.dir?(candidate["harness_home"])
+    assert worktree in Kogen.CandidateFixture.registered_worktrees(dir)
+
+    owner_record = candidate["owner_record"] |> File.read!() |> Jason.decode!()
+    build_id = owner_record["build_id"]
+    assert owner_record["status"] == "stopped: #{expected_category}"
+
+    assert reason =~
+             "Candidate kept: slug #{@slug}, build id #{build_id}, worktree #{worktree}, " <>
+               "branch #{candidate["branch"]}, harness home #{candidate["harness_home"]}; " <>
+               "remove it with `mix kogen.candidates.remove #{build_id}`"
+  end
+
+  # The four modes below tamper with control's own tracking record or one of
+  # its retained sidecars, a control-side write that is outside the launched
+  # fake role's write boundary. The role signals the intended mutation from
+  # inside its own writable Candidate; only the trusted test process (never
+  # sandboxed, holding control) may perform it. Returns `{result, candidate}`,
+  # `candidate` being the record's `candidate` block read just before the
+  # mutation (a record-corrupting mutation, unlike a sidecar-only one, leaves
+  # the tracking record permanently unparseable, since `Tracking.update`
+  # refuses to persist over bytes it no longer recognizes as its own).
+  defp run_with_control_mutation!(dir, mode, mutate) do
+    task = Task.async(fn -> run(dir, mode) end)
+    candidate = wait_for_candidate!(dir)
+    worktree = candidate["worktree_path"]
+    marker = Path.join(worktree, ".kogen/runtime/mutation-request-#{mode}")
+    wait_for_file!(marker)
+    mutate.()
+    File.write!(Path.join(worktree, ".kogen/runtime/mutation-ack-#{mode}"), "go")
+    {Task.await(task, 30_000), candidate}
+  end
+
+  defp wait_for_candidate!(dir, attempts \\ 500)
+
+  defp wait_for_candidate!(_dir, 0),
+    do: flunk("Candidate worktree did not appear in time")
+
+  defp wait_for_candidate!(dir, attempts) do
+    case records(dir) do
+      [] ->
+        Process.sleep(20)
+        wait_for_candidate!(dir, attempts - 1)
+
+      paths ->
+        record = paths |> List.last() |> File.read!() |> Jason.decode!()
+
+        case record["candidate"] do
+          %{"worktree_path" => _path} = candidate ->
+            candidate
+
+          _ ->
+            Process.sleep(20)
+            wait_for_candidate!(dir, attempts - 1)
+        end
+    end
+  end
+
+  # Like `assert_retained!/3`, but from a `candidate` block captured before a
+  # mutation that leaves the tracking record permanently unparseable: only
+  # the Candidate's own owner record (a separate file, updated unconditionally
+  # by every stop) can still be read afterward.
+  defp assert_retained_snapshot!(candidate, reason, expected_category) do
+    worktree = candidate["worktree_path"]
+    assert File.dir?(worktree)
+    assert File.dir?(candidate["harness_home"])
+
+    owner_record = candidate["owner_record"] |> File.read!() |> Jason.decode!()
+    build_id = owner_record["build_id"]
+    assert owner_record["status"] == "stopped: #{expected_category}"
+
+    assert reason =~
+             "Candidate kept: slug #{@slug}, build id #{build_id}, worktree #{worktree}, " <>
+               "branch #{candidate["branch"]}, harness home #{candidate["harness_home"]}; " <>
+               "remove it with `mix kogen.candidates.remove #{build_id}`"
+  end
+
+  defp wait_for_file!(path, attempts \\ 1000)
+  defp wait_for_file!(path, 0), do: flunk("expected marker file did not appear: #{path}")
+
+  defp wait_for_file!(path, attempts) do
+    if File.exists?(path) do
+      :ok
+    else
+      Process.sleep(20)
+      wait_for_file!(path, attempts - 1)
+    end
+  end
 end

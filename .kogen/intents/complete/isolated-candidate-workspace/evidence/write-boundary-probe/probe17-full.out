@@ -1,0 +1,9 @@
+[launchctl-submit] exit=1 
+[launchagent-plist] exit=1 out=cp: /Users/almirsarajcic/Library/LaunchAgents/kogen.wb.probe.plist: Operation not permitted 
+[open-command] exit=0 
+[outside after] 
+[launchctl-bootstrap plist in Candidate, inside boundary] exit=5 (Bootstrap failed: 5: Input/output error); outside file not created
+[launchctl-bootstrap same plist, unsandboxed control] exit=0; outside file 'bootstrap' created (then booted out and removed)
+[open -a Calculator with (deny lsopen)] exit=1 (_LSOpenURLsWithCompletionHandler error -54)
+[osascript Apple Event to Finder with (deny appleevent-send)] exit=1 (-600); unsandboxed control exit=0
+Note: the first run (without deny lsopen) activated Terminal.app once through open -a (exit 0): LaunchServices is reachable from inside unless denied.

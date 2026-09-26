@@ -1,20 +1,55 @@
 defmodule Kogen.Build.GuardedPaths do
-  @moduledoc "Controller-memory snapshot used to reject Candidate topology outside Approved guards."
+  @moduledoc """
+  Controller-memory snapshot used to reject Candidate topology outside Approved guards.
+
+  Capture reads only the root it is given (the Candidate in a Build), so
+  ignored files written in the control checkout during a Build never reach
+  it. Git's own configuration and exclude file are located through
+  `git rev-parse --git-path`, because a linked worktree's `.git` is a file:
+  a Candidate's `config` and `info/exclude` are control's, and a change to
+  them during the Build is still detected.
+  """
 
   @volatile ~w(.kogen/runtime .kogen/build.lock .kogen/codex .codex/sessions _build deps cover .elixir_ls)
 
-  def capture(root \\ File.cwd!()) do
+  def capture(root) do
     with {:ok, head} <- git(root, ["rev-parse", "HEAD^{tree}"]),
-         {:ok, config} <-
-           snapshot_files(root, [".git/config", ".git/info/exclude", ".gitmodules", ".gitignore"]),
+         {:ok, files} <- config_files(root),
+         {:ok, config} <- snapshot_files(root, files),
          {:ok, ignored} <- ignored_manifest(root) do
       {:ok,
-       %{root: Path.expand(root), head_tree: String.trim(head), config: config, ignored: ignored}}
+       %{
+         root: Path.expand(root),
+         head_tree: String.trim(head),
+         files: files,
+         config: config,
+         ignored: ignored
+       }}
     end
   end
 
+  # `{label, path}` pairs: Git's own files through `--git-path`, the tracked
+  # policy files at the worktree root.
+  defp config_files(root) do
+    with {:ok, config} <- git_path(root, "config"),
+         {:ok, exclude} <- git_path(root, "info/exclude") do
+      {:ok,
+       [
+         {".git/config", config},
+         {".git/info/exclude", exclude},
+         {".gitmodules", Path.join(root, ".gitmodules")},
+         {".gitignore", Path.join(root, ".gitignore")}
+       ]}
+    end
+  end
+
+  defp git_path(root, name) do
+    with {:ok, out} <- git(root, ["rev-parse", "--git-path", name]),
+         do: {:ok, Path.expand(String.trim(out), root)}
+  end
+
   def check(snapshot, guards) when is_map(snapshot) and is_list(guards) do
-    with {:ok, config} <- snapshot_files(snapshot.root, Map.keys(snapshot.config)),
+    with {:ok, config} <- snapshot_files(snapshot.root, snapshot.files),
          :ok <- same_config(config, snapshot.config),
          {:ok, paths} <- changed_paths(snapshot.root, snapshot.head_tree, snapshot.ignored),
          invalid <- Enum.reject(paths, &allowed?(&1, guards)),
@@ -112,10 +147,8 @@ defmodule Kogen.Build.GuardedPaths do
     end
   end
 
-  defp snapshot_files(root, paths) do
-    Enum.reduce_while(paths, {:ok, %{}}, fn path, {:ok, acc} ->
-      full = Path.join(root, path)
-
+  defp snapshot_files(_root, files) do
+    Enum.reduce_while(files, {:ok, %{}}, fn {path, full}, {:ok, acc} ->
       value =
         case File.read(full) do
           {:ok, bytes} -> {:file, bytes}

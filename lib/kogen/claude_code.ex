@@ -12,6 +12,14 @@ defmodule Kogen.ClaudeCode do
   login by its path, so Kogen never moves or renames a scope, and it never
   reads, copies or prints credential values: readiness uses only the
   `loggedIn` and `authMethod` metadata of `claude auth status`.
+
+  Every launch removes an inherited `CLAUDE_SECURESTORAGE_CONFIG_DIR` and sets
+  its own: equal to `CLAUDE_CONFIG_DIR` for scope-native launches (Shape,
+  login, status), which selects the scope's own Keychain item. A Build launch
+  uses the Build's harness home (`<harness home>/claude`) as its
+  `CLAUDE_CONFIG_DIR` and references the login scope, bound once from the
+  control root at admission, through `CLAUDE_SECURESTORAGE_CONFIG_DIR`; `HOME`
+  stays the caller's. Nothing is copied, linked or moved.
   """
   use Boundary, deps: [], exports: []
 
@@ -20,8 +28,23 @@ defmodule Kogen.ClaudeCode do
 
   # Provider credentials and routing switches must never fund or redirect a
   # Kogen launch, and an inherited Claude Code session must not leak into one.
-  @removed_prefixes ["ANTHROPIC_", "CLAUDE_CODE_", "CLAUDE_CONFIG_DIR", "CLAUDECODE"]
-  @removed_names ["AWS_BEARER_TOKEN_BEDROCK", "VERTEX_REGION_CLAUDE"]
+  # The Codex adapter's credential prefixes are removed too, mirroring Codex's
+  # removal of `ANTHROPIC_`, so an inherited key cannot fund a Claude role's shell.
+  @removed_prefixes [
+    "ANTHROPIC_",
+    "CLAUDE_CODE_",
+    "CLAUDE_CONFIG_DIR",
+    "CLAUDECODE",
+    "CODEX_",
+    "OPENAI_",
+    "AZURE_",
+    "CHATGPT_"
+  ]
+  @removed_names [
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "VERTEX_REGION_CLAUDE",
+    "CLAUDE_SECURESTORAGE_CONFIG_DIR"
+  ]
 
   @doc "The exact Claude Code release this checkout supports."
   def pinned_version, do: @pinned_version
@@ -33,56 +56,110 @@ defmodule Kogen.ClaudeCode do
   end
 
   @doc """
-  Selects the runtime and scope and checks readiness before any model launch.
-  `config` is a resolved route whose harness is `claude`. `KOGEN_HARNESS` only
-  replaces the Claude Code executable for offline fixtures.
+  Resolves the runtime and the login scope of the control `project` once,
+  without any login check: the Build's binding, recorded at admission and used
+  by every launch of that Build.
   """
-  def open(config, project \\ File.cwd!())
-
-  def open(%{harness: "claude"} = config, project) do
+  def bind(project) do
     with {:ok, runtime} <- runtime(),
-         {:ok, scope} <- effective_scope(project),
-         :ok <- require_login(runtime, scope) do
-      {:ok,
-       %{harness: "claude", runtime: runtime, scope: scope, config: config, project: project}}
+         {:ok, scope} <- effective_scope(project) do
+      {:ok, %{harness: "claude", runtime: runtime, scope: scope}}
     end
   rescue
     error -> {:error, Exception.message(error)}
   end
 
-  def open(config, _project),
+  @doc """
+  Selects the runtime and scope and checks readiness before any model launch.
+  `config` is a resolved route whose harness is `claude`; `project` is the
+  control checkout, passed explicitly. `launch` is `nil` for scope-native
+  launches, or a Build launch (`:root` the Candidate, `:harness_home`,
+  `:binding`, and the write boundary's argv `:prefix`, `:env` and `:tmp_dir`):
+  readiness then runs with the Build's own launch environment, in the
+  Candidate, inside the Build's boundary, using the bound scope and never one
+  re-resolved. `KOGEN_HARNESS` only replaces the Claude Code executable for
+  offline fixtures.
+  """
+  def open(config, project, launch \\ nil)
+
+  def open(%{harness: "claude"} = config, project, launch) do
+    with {:ok, %{runtime: runtime, scope: scope}} <- binding(project, launch),
+         selection = %{
+           harness: "claude",
+           runtime: runtime,
+           scope: scope,
+           config: config,
+           project: project,
+           launch: launch
+         },
+         :ok <- require_login(runtime, scope, selection) do
+      {:ok, selection}
+    end
+  rescue
+    error -> {:error, Exception.message(error)}
+  end
+
+  def open(config, _project, _launch),
     do:
       {:error,
        "Kogen Claude Code requires a claude route, got harness: #{inspect(Map.get(config, :harness))}"}
 
+  defp binding(_project, %{binding: %{harness: "claude"} = binding}), do: {:ok, binding}
+  defp binding(project, _launch), do: bind(project)
+
   @doc "Fresh launch settings for the selected runtime and scope."
   def launch_context(%{harness: "claude", runtime: runtime, scope: scope} = selection) do
+    launch = Map.get(selection, :launch)
+
     %{
       harness: "claude",
       executable: Map.fetch!(runtime, "executable"),
       args: [],
-      env: environment(scope),
+      env: launch_environment(scope, launch),
       config: selection.config,
-      project: selection.project
+      project: selection.project,
+      cwd: launch && launch.root,
+      prefix: if(launch, do: launch.prefix, else: []),
+      tmp_dir: launch && launch.tmp_dir
     }
   end
+
+  @doc "The Build's Claude Code config dir inside its harness home."
+  def config_dir(harness_home), do: Path.join(harness_home, "claude")
+
+  defp launch_environment(scope, nil), do: environment(scope)
+
+  # The write boundary's environment (`Kogen.Build.WriteBoundary`) comes last,
+  # so its temp dir, raw-log dir and marker win over any inherited value.
+  defp launch_environment(scope, launch) do
+    merge(
+      environment(scope, System.get_env(), config_dir(launch.harness_home)),
+      launch.env
+    )
+  end
+
+  defp merge(base, overrides), do: Map.merge(Map.new(base), Map.new(overrides)) |> Map.to_list()
 
   @doc "Selections hold no leases; runtimes, scopes and sessions are retained."
   def close(_selection), do: :ok
 
   @doc """
-  The launch environment delta: the scope's config dir, no self-update, no
-  auto memory shared across role sessions, no confirmation prompt for a
-  recursive `rm` of command-substitution output, and every inherited provider
-  credential, base URL, Bedrock/Vertex switch or Claude Code variable removed.
+  The launch environment delta: the config dir (the scope's own, or
+  `config_dir` for a Build launch) with the scope as its secure storage, no
+  self-update, no auto memory shared across role sessions, no confirmation
+  prompt for a recursive `rm` of command-substitution output, and every
+  inherited provider credential (Claude's and the Codex adapter's), base URL,
+  Bedrock/Vertex switch, secure-storage reference or Claude Code variable
+  removed.
   """
-  def environment(scope, caller_env \\ System.get_env()) do
+  def environment(scope, caller_env \\ System.get_env(), config_dir \\ nil) do
     removed =
       for {name, _value} <- caller_env, removed?(name), do: {name, nil}
 
     (removed ++
        [
-         {"CLAUDE_CONFIG_DIR", scope.path},
+         {"CLAUDE_CONFIG_DIR", config_dir || scope.path},
+         {"CLAUDE_SECURESTORAGE_CONFIG_DIR", scope.path},
          {"DISABLE_AUTOUPDATER", "1"},
          {"CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1"},
          {"CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT", "1"}
@@ -303,8 +380,8 @@ defmodule Kogen.ClaudeCode do
   end
 
   @doc false
-  def require_login(runtime, scope) do
-    case login_status(runtime, scope) do
+  def require_login(runtime, scope, selection \\ nil) do
+    case login_status(runtime, scope, selection) do
       {:configured, _metadata} ->
         :ok
 
@@ -325,12 +402,11 @@ defmodule Kogen.ClaudeCode do
   `authMethod`. Native output is never printed; it is not an entitlement or
   remaining-quota check.
   """
-  def login_status(runtime, scope) do
+  def login_status(runtime, scope, selection \\ nil) do
     if File.dir?(scope.path) do
-      case System.cmd(Map.fetch!(runtime, "executable"), ["auth", "status"],
-             env: environment(scope),
-             stderr_to_stdout: false
-           ) do
+      {executable, args, options} = status_command(runtime, scope, selection)
+
+      case System.cmd(executable, args, [stderr_to_stdout: false] ++ options) do
         {output, _status} -> auth_metadata(output, scope)
       end
     else
@@ -339,6 +415,18 @@ defmodule Kogen.ClaudeCode do
   rescue
     error -> {:error, Exception.message(error)}
   end
+
+  # A Build's readiness runs with its own launch environment, in the
+  # Candidate, inside its boundary, so a grant the runtime needs fails here,
+  # before any model launch.
+  defp status_command(runtime, _scope, %{launch: launch} = selection) when is_map(launch) do
+    context = launch_context(selection)
+    [executable | args] = context.prefix ++ [Map.fetch!(runtime, "executable"), "auth", "status"]
+    {executable, args, env: context.env, cd: context.cwd}
+  end
+
+  defp status_command(runtime, scope, _selection),
+    do: {Map.fetch!(runtime, "executable"), ["auth", "status"], env: environment(scope)}
 
   defp auth_metadata(output, scope) do
     case Jason.decode(String.trim(output)) do

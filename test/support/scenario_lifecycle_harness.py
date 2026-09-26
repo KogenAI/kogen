@@ -1,19 +1,36 @@
 #!/usr/bin/env python3
-"""Controlled offline provider for scenario-tracking lifecycle fixtures."""
+"""Controlled offline provider for scenario-tracking lifecycle fixtures.
+
+Runs with cwd set to the Build's Candidate (a linked worktree outside the
+repository); the tracking record and its history always live in control,
+named by `KOGEN_TASK_CONTEXT`'s `control_root`. Scratch state this script
+must still find after the Build (counters, retained notes, inspected
+snapshots) lives under `$KOGEN_HARNESS_HOME/fake-state/` (kept even after a
+successful publish removes the Candidate); ordinary evidence files a verdict
+or handoff cites (e.g. `review-proof.txt`, target evidence, `dummy.txt`) stay
+Candidate-relative, since ordinary citations resolve under the Candidate.
+A control-side write (the tracking record or one of its sidecars) is outside
+this sandboxed process's write boundary; those two fixture modes hand the
+actual byte mutation to the trusted test process via a request/ack marker
+pair inside the Candidate.
+"""
 import base64
 import json
 import os
 import pathlib
 import subprocess
 import sys
+import time
 
 MARKER = "KOGEN_TASK_CONTEXT"
 LEGACY_MARKER = "KOGEN_TRACKING_CONTEXT"
 ROOT = pathlib.Path.cwd()
 RUNTIME = ROOT / ".kogen/runtime"
+HARNESS_HOME = os.environ.get("KOGEN_HARNESS_HOME")
+STATE = pathlib.Path(HARNESS_HOME) / "fake-state" if HARNESS_HOME else RUNTIME
 
 
-def context(prompt):
+def raw_context(prompt):
     lines = prompt.splitlines()
     snapshots = []
     for index, line in enumerate(lines[:-1]):
@@ -22,7 +39,16 @@ def context(prompt):
                 snapshots.append(json.loads(lines[index + 1]))
             except json.JSONDecodeError:
                 pass
-    value = snapshots[-1] if snapshots else {}
+    return snapshots[-1] if snapshots else {}
+
+
+def control_root(prompt):
+    value = raw_context(prompt).get("control_root")
+    return pathlib.Path(value) if value else ROOT
+
+
+def context(prompt):
+    value = raw_context(prompt)
     path = value.get("tracking_path")
     if path:
         try:
@@ -63,10 +89,29 @@ def review_refs(snapshot, mode):
 
 
 def count(name):
-    path = RUNTIME / name
+    STATE.mkdir(parents=True, exist_ok=True)
+    path = STATE / name
     value = int(path.read_text()) if path.exists() else 0
     path.write_text(str(value + 1))
     return value + 1
+
+
+# A control-side byte mutation (the tracking record itself, or one of its
+# retained sidecars) is outside this sandboxed role's write boundary: it
+# names the mutation kind under the Candidate's own `.kogen/runtime/`, then
+# waits for the trusted test process (unconfined, holding control) to make
+# the mutation and ack it, since a fake role can never legitimately mutate
+# control from inside a Build.
+def request_test_mutation(kind, timeout=20):
+    RUNTIME.mkdir(parents=True, exist_ok=True)
+    request = RUNTIME / f"mutation-request-{kind}"
+    ack = RUNTIME / f"mutation-ack-{kind}"
+    request.write_text("go")
+    deadline = time.time() + timeout
+    while not ack.exists():
+        if time.time() > deadline:
+            raise TimeoutError(f"trusted test process never acked mutation request: {kind}")
+        time.sleep(0.02)
 
 
 def developer(snapshot, call, mode):
@@ -134,6 +179,7 @@ def main():
     mode = os.environ.get("SCENARIO_LIFECYCLE_MODE", "accept")
     reviewer = os.environ.get("KOGEN_ROLE") == "reviewer"
     resume = "resume" in args
+    control = control_root(prompt)
     if reviewer:
         output = args[args.index("--output-last-message") + 1]
         snapshot = context(prompt)
@@ -149,24 +195,25 @@ def main():
             response["scenarios"][0]["evidence"] = [{"path": "lib", "locator": "source directory"}]
             response["dispositions"][0]["evidence"] = [{"path": "/etc/hosts", "locator": "absolute path"}]
         if mode in {"record_citations", "record_citation_tamper", "record_sidecar_delete", "record_sidecar_edit"}:
-            record = next((RUNTIME / "scenario-tracking").glob("*/record.json"))
+            record = next((control / ".kogen/runtime/scenario-tracking").glob("*/record.json"))
             if mode in {"record_sidecar_delete", "record_sidecar_edit"} and review_number == 2:
-                # The first Review cited the record; its sidecar is retained history.
-                sidecar = next(record.parent.glob("record-versions/*.json"))
-                if mode == "record_sidecar_delete": sidecar.unlink()
-                else: sidecar.write_bytes(sidecar.read_bytes() + b" edited")
-            (RUNTIME / f"reviewer-inspected-{review_number}.json").write_bytes(record.read_bytes())
-            response["scenarios"][0]["evidence"].append({"path": str(record.relative_to(ROOT)), "locator": "current attempt Check receipt"})
+                # The first Review cited the record; its sidecar is retained
+                # history in control. Neither the sidecar nor the record are
+                # writable from here: the trusted test process makes the
+                # mutation once it sees this request.
+                request_test_mutation(mode)
+            (STATE / f"reviewer-inspected-{review_number}.json").write_bytes(record.read_bytes())
+            response["scenarios"][0]["evidence"].append({"path": str(record.relative_to(control)), "locator": "current attempt Check receipt"})
             if mode == "record_citation_tamper":
-                record.write_text(record.read_text() + " tampered by Reviewer")
+                request_test_mutation(mode)
         pathlib.Path(output).write_text(json.dumps(response))
-        review = (RUNTIME / "reviews").read_text()
+        review = (STATE / "reviews").read_text()
         print(json.dumps({"type": "thread.started", "thread_id": f"review-{review}"}))
         print(json.dumps({"type": "turn.completed", "thread_id": f"review-{review}"}))
         return
     call = count("developer-calls")
     if resume:
-        (RUNTIME / "resume-sessions").open("a").write(args[-2] + "\n")
+        (STATE / "resume-sessions").open("a").write(args[-2] + "\n")
         # From the outer rework resume onward, `verify` keeps failing every
         # controller cycle: the declared target never recovers within this
         # outer attempt, so the controller must exhaust `verification_retries`
@@ -181,14 +228,17 @@ def main():
         result = json.loads(hook.stdout)
         if result.get("continue") is True or result.get("continue") is False:
             break
-    response = developer(context(prompt), call, mode)
+    snapshot = context(prompt)
+    response = developer(snapshot, call, mode)
     if mode == "record_citations":
-        record = next((RUNTIME / "scenario-tracking").glob("*/record.json"))
-        (RUNTIME / f"developer-inspected-{call}.json").write_bytes(record.read_bytes())
-        response["scenarios"][0]["evidence"].append({"path": str(record.relative_to(ROOT)), "locator": "Build supplied attempt state"})
+        record = next((control / ".kogen/runtime/scenario-tracking").glob("*/record.json"))
+        (STATE / f"developer-inspected-{call}.json").write_bytes(record.read_bytes())
+        response["scenarios"][0]["evidence"].append({"path": str(record.relative_to(control)), "locator": "Build supplied attempt state"})
     if mode == "record_mutation":
-        records = list((RUNTIME / "scenario-tracking").glob("*/record.json"))
-        if records: records[0].write_text(records[0].read_text() + " tampered")
+        # The tracking record lives in control, outside this sandboxed
+        # process's write boundary; the trusted test process performs the
+        # actual "changed outside Build" mutation once it sees this request.
+        request_test_mutation(mode)
     # Build Developer turns own no output file; the final agent message is
     # the Developer's notes, which Build records verbatim and never parses.
     if "--output-last-message" in args or "--output-schema" in args:
@@ -205,7 +255,7 @@ def main():
         print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
         return
     notes = {"output_empty": "", "output_truncated": '{"attempt_token":'}.get(mode, json.dumps(response))
-    (RUNTIME / f"developer-notes-{call}").write_text(notes)
+    (STATE / f"developer-notes-{call}").write_text(notes)
     print(json.dumps({"type": "thread.started", "thread_id": "developer-session"}))
     if mode != "output_missing":
         print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": notes}}))

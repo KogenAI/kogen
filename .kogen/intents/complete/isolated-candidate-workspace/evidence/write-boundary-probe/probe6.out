@@ -1,0 +1,22 @@
+control gitdir: /private/tmp/claude-501/kogen-prep5b/kogen/.git/worktrees/cand
+[git-status] exit=0 
+[git-diff] exit=0 
+[edit-tracked] exit=0 
+[git-status-after] exit=0 out= M README.md 
+[git-add] exit=128 out=fatal: Unable to create '/private/tmp/claude-501/kogen-prep5b/kogen/.git/worktrees/cand/index.lock': Operation not permitted 
+[git-commit] exit=128 out=fatal: Unable to create '/private/tmp/claude-501/kogen-prep5b/kogen/.git/worktrees/cand/index.lock': Operation not permitted 
+[git-stash] exit=1 out=error: Unable to create '/private/tmp/claude-501/kogen-prep5b/kogen/.git/worktrees/cand/index.lock': Operation not permitted error: could not write index 
+[git-checkout-b] exit=128 out=fatal: Unable to create '/private/tmp/claude-501/kogen-prep5b/kogen/.git/worktrees/cand/index.lock': Operation not permitted 
+[git-update-ref] exit=128 out=fatal: update_ref failed for ref 'refs/heads/main': cannot lock ref 'refs/heads/main': Unable to create '/private/tmp/claude-501/kogen-prep5b/kogen/.git/refs/heads/main.lock': Operation not permitted 
+[git-config-write] exit=255 out=error: could not lock config file /private/tmp/claude-501/kogen-prep5b/kogen/.git/config: Operation not permitted 
+[control-file] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/kogen/README.md: Operation not permitted 
+[control-gitdir] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/kogen/.git/probe: Operation not permitted 
+[mix-compile] exit=0 out===> kogen Compiling 40 files (.ex) Generated kogen app 
+[mix-test-one] exit=1 out=** (ErlangError) Erlang error: :enoent     (elixir 1.20.2) lib/system.ex:1141: System.cmd("mise", ["which", "python3"], [stderr_to_stdout: true])     test/test_helper.exs:4: (file) 
+control status:  main=363c20af branches=+ kogen/probe/p6 
+[sandbox denials since 2026-09-25 21:55:26]
+   1 bash deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/kogen/.git/probe
+   1 bash deny(1) file-write-data /private/tmp/claude-501/kogen-prep5b/kogen/…
+   1 git deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/kogen/.git/refs/heads/…
+   6 git deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/kogen/.git/worktrees/cand/…
+   1 git deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/kogen/.git/…

@@ -19,7 +19,9 @@ else
 
   support =
     Code.require_file("support/isolated_case.ex", __DIR__) ++
-      if(File.regular?(fixture_support), do: Code.require_file(fixture_support), else: [])
+      if(File.regular?(fixture_support), do: Code.require_file(fixture_support), else: []) ++
+      Code.require_file("support/candidate_fixture.ex", __DIR__) ++
+      Code.require_file("support/workspace_fixture.ex", __DIR__)
 
   Code.require_file("support/timing_formatter.ex", __DIR__)
 
@@ -65,6 +67,20 @@ else
   end)
 
   Code.prepend_path(cache)
+
+  # Every fixture Build creates its Candidate worktrees and harness homes in a
+  # disposable per-run workspaces root whose path contains a space, never
+  # under the real Kogen directory. Child VMs and fixture Builds inherit it; a
+  # test that needs its own sets it explicitly.
+  workspaces =
+    Path.join(
+      System.tmp_dir!(),
+      "kogen workspaces #{System.pid()}-#{System.unique_integer([:positive])}"
+    )
+
+  File.mkdir_p!(workspaces)
+  System.at_exit(fn _ -> File.rm_rf(workspaces) end)
+  System.put_env("KOGEN_WORKSPACES_ROOT", workspaces)
 end
 
 # Capture this once while the test VM is still at the checkout root.  Child
@@ -95,8 +111,21 @@ formatters =
     do: [ExUnit.CLIFormatter],
     else: [ExUnit.CLIFormatter, Kogen.TimingFormatter]
 
+# Tests that must observe an applied write boundary run only where the kernel
+# can apply one: inside another Seatbelt profile (a role's shell) the kernel
+# refuses a second profile, which its own self-test reports (exit 71). No
+# environment variable decides this.
+confined? =
+  File.regular?("/usr/bin/sandbox-exec") and
+    match?(
+      {_, 71},
+      System.cmd("/usr/bin/sandbox-exec", ["-p", "(version 1)(allow default)", "/usr/bin/true"],
+        stderr_to_stdout: true
+      )
+    )
+
 ExUnit.start(
-  exclude: [:live],
+  exclude: if(confined?, do: [:live, :unconfined], else: [:live]),
   formatters: formatters,
   max_cases: System.schedulers_online()
 )

@@ -62,10 +62,10 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
 
     # The controller, not Stop, resumed the exact Developer session and ran
     # every cycle as its own children.
-    assert File.read!(Path.join(dir, ".kogen/runtime/verification-resumes")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "verification-resumes")) == "1"
 
     verification_resume =
-      File.read!(Path.join(dir, ".kogen/runtime/verification-resume-1"))
+      File.read!(Kogen.CandidateFixture.fake_state(dir, "verification-resume-1"))
 
     assert String.starts_with?(
              verification_resume,
@@ -75,7 +75,7 @@ defmodule Kogen.VerificationOwnershipLifecycleTest do
     assert verification_resume =~ "`make check` failed"
 
     # Review ran once and accepted; the Build reached Commit.
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
 
     head_after =
       dir

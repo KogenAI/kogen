@@ -1,7 +1,9 @@
 defmodule Mix.Tasks.Kogen.Expert do
   use Mix.Task
 
-  use Boundary, deps: [Kogen.Harness, Kogen.ExecutionPolicy, Mix]
+  use Boundary, deps: [Kogen.Build, Kogen.Harness, Kogen.ExecutionPolicy, Mix]
+
+  alias Kogen.Build.{Workspace, WriteBoundary}
 
   @shortdoc "Consults the route's Expert on its assigned harness (run by a Kogen role)"
   @moduledoc """
@@ -14,6 +16,15 @@ defmodule Mix.Tasks.Kogen.Expert do
   reads `.kogen/config.yaml`, never substitutes another harness, model or
   effort, and fails naming the Expert role and harness when that harness is
   not ready or the launch fails.
+
+  Inside a Build the assignment also names the control root, the Candidate,
+  the harness home, the Build's login binding for the Expert's harness and
+  the write boundary. The task then refuses any cwd other than that
+  Candidate, launches the Expert with the Candidate as cwd, the bound scope
+  (never one re-resolved) and its operation root or config dir under the
+  harness home, takes no Codex lease (the Build controller holds it) and
+  runs inside the Build's boundary: `inherited` when the kernel reports this
+  process is already confined by it, otherwise the same grants applied anew.
   """
 
   @prompt_path "priv/kogen/prompts/expert.md"
@@ -21,8 +32,9 @@ defmodule Mix.Tasks.Kogen.Expert do
   @impl Mix.Task
   def run(args) do
     with {:ok, config} <- assignment(System.get_env(Kogen.Harness.expert_variable())),
-         {:ok, question} <- question(args) do
-      consult(config, question)
+         {:ok, question} <- question(args),
+         {:ok, project, launch} <- build_launch(config) do
+      consult(config, question, project, launch)
     else
       {:error, reason} -> fail(reason)
     end
@@ -40,7 +52,8 @@ defmodule Mix.Tasks.Kogen.Expert do
          {:ok, route} <- field(data, "route"),
          {:ok, caller} <- field(data, "caller"),
          {:ok, expert} <- profile(data),
-         {:ok, helpers} <- helpers(data) do
+         {:ok, helpers} <- helpers(data),
+         {:ok, build} <- build(data, harness) do
       {:ok,
        %{
          route: route,
@@ -49,7 +62,8 @@ defmodule Mix.Tasks.Kogen.Expert do
          expert: expert,
          helpers: helpers,
          roles: %{expert: harness},
-         native_helpers: %{harness => helpers}
+         native_helpers: %{harness => helpers},
+         build: build
        }}
     else
       _invalid ->
@@ -79,6 +93,123 @@ defmodule Mix.Tasks.Kogen.Expert do
 
   defp helpers(_data), do: :error
 
+  # Outside a Build the assignment carries no Build fields.
+  defp build(data, harness) do
+    case Map.take(data, ["control_root", "candidate", "harness_home", "binding", "write_boundary"]) do
+      empty when map_size(empty) == 0 ->
+        {:ok, nil}
+
+      %{
+        "control_root" => control,
+        "candidate" => candidate,
+        "harness_home" => home,
+        "binding" => %{"harness" => ^harness} = binding,
+        "write_boundary" => %{"sha256" => sha} = boundary
+      }
+      when is_binary(control) and is_binary(candidate) and is_binary(home) and is_binary(sha) ->
+        {:ok,
+         %{
+           control: control,
+           candidate: candidate,
+           harness_home: home,
+           binding: binding,
+           boundary: boundary
+         }}
+
+      _partial ->
+        :error
+    end
+  end
+
+  @doc """
+  The project and Build launch of an Expert consultation: outside a Build,
+  the cwd and no launch; inside one, the recorded control root and a launch
+  bound to the Build's Candidate, harness home, login binding and boundary.
+  """
+  def build_launch(%{build: nil}), do: {:ok, File.cwd!(), nil}
+
+  def build_launch(%{build: build, harness: harness}) do
+    cwd = Workspace.canonical(File.cwd!())
+
+    with :ok <- candidate_cwd(cwd, build.candidate),
+         {:ok, boundary} <- boundary(build) do
+      record_launch(build, boundary, harness)
+
+      {:ok, build.control,
+       %{
+         root: build.candidate,
+         control: build.control,
+         harness_home: build.harness_home,
+         tmp_dir: boundary.grants.tmp_dir,
+         prefix: WriteBoundary.prefix(boundary),
+         env:
+           WriteBoundary.environment(boundary) ++
+             [{"KOGEN_HARNESS_HOME", build.harness_home}] ++
+             Enum.map(~w(MIX_BUILD_PATH MIX_DEPS_PATH MIX_EXS), &{&1, nil}),
+         bindings: %{harness => Kogen.Harness.binding_from_record(build.binding)},
+         lease: false
+       }}
+    end
+  end
+
+  defp candidate_cwd(cwd, candidate) do
+    if cwd == candidate,
+      do: :ok,
+      else:
+        {:error,
+         "mix kogen.expert: run it from the Build's Candidate #{candidate}; the current directory is #{cwd}"}
+  end
+
+  # Confinement comes from the kernel, never from the environment: inside
+  # the Build's own profile the Expert inherits it; unconfined, the same
+  # grants are applied anew; a foreign sandbox is refused.
+  defp boundary(build) do
+    input = %{
+      candidate: build.boundary["candidate"],
+      harness_home: build.boundary["harness_home"],
+      tmp_dir: build.boundary["tmp_dir"],
+      control: build.boundary["control"],
+      claude_scope: build.boundary["claude_scope"],
+      codex_scope: build.boundary["codex_scope"]
+    }
+
+    case WriteBoundary.confinement() do
+      {:ok, :unconfined} ->
+        WriteBoundary.prepare(input)
+
+      {:ok, :confined} ->
+        case System.get_env(WriteBoundary.marker()) do
+          marker when is_binary(marker) and marker != "" ->
+            {:ok, WriteBoundary.inherited(marker, input)}
+
+          _ ->
+            {:error,
+             "mix kogen.expert: this process is confined by a foreign sandbox, not a Kogen Build boundary"}
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  # The Expert's launch record: its boundary mode, in the harness home's
+  # raw-log directory the controller copies at Build exit.
+  defp record_launch(build, boundary, harness) do
+    directory = Path.join(build.harness_home, "raw-log")
+
+    line =
+      Jason.encode!(%{
+        "role" => "expert",
+        "harness" => harness,
+        "boundary" => boundary.mode,
+        "profile_sha256" => boundary.sha256,
+        "cwd" => build.candidate
+      })
+
+    with :ok <- File.mkdir_p(directory),
+         do: File.write(Path.join(directory, "expert-launches.jsonl"), line <> "\n", [:append])
+  end
+
   defp question([]) do
     case IO.read(:stdio, :eof) do
       text when is_binary(text) -> nonblank(text)
@@ -94,8 +225,8 @@ defmodule Mix.Tasks.Kogen.Expert do
       else: {:ok, text}
   end
 
-  defp consult(config, question) do
-    case launch(config, question) do
+  defp consult(config, question, project, launch) do
+    case launch(config, question, project, launch) do
       {:ok, %{message: message}} -> IO.puts(message)
       {:error, reason} -> fail(reason)
     end
@@ -106,8 +237,8 @@ defmodule Mix.Tasks.Kogen.Expert do
   rendered Expert prompt and releases the selection. Returns the Expert's
   session and final message, or an error naming the Expert role and harness.
   """
-  def launch(config, question, project \\ File.cwd!()) do
-    case Kogen.Harness.open(config, project) do
+  def launch(config, question, project, launch \\ nil) do
+    case Kogen.Harness.open(config, project, launch) do
       {:ok, selection} ->
         try do
           launch_selected(config, question, selection)

@@ -45,6 +45,10 @@ defmodule Kogen.IntegrityFixture do
     write!(dir, "priv/kogen/verification_targets.yaml", catalog_yaml(opts))
     write!(dir, ".gitignore", "_build/\n.kogen/\n.DS_Store\n")
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dir, "deps"))
+
     git!(dir, ["init", "-q", "-b", "main"])
     git!(dir, ["add", "-A"])
     git!(dir, ["commit", "-q", "-m", "admission"])

@@ -125,6 +125,171 @@ defmodule Kogen.VerificationPolicyTest do
     end)
   end
 
+  test "VerificationPolicy.environment names the Candidate in KOGEN_PROJECT_ROOT" do
+    candidate = "/tmp/kogen candidate root"
+    env = VerificationPolicy.environment(@targets, candidate)
+    assert {"KOGEN_PROJECT_ROOT", ^candidate} = List.keyfind(env, "KOGEN_PROJECT_ROOT", 0)
+  end
+
+  test "preflight(targets, candidate_root) reads the Candidate's own hook files, independent of control" do
+    control = fixture_pair_dir("control")
+    candidate = fixture_pair_dir("candidate")
+    populate_policy_fixture!(control)
+    populate_policy_fixture!(candidate)
+
+    assert VerificationPolicy.preflight(["check"], control) == :ok
+    assert VerificationPolicy.preflight(["check"], candidate) == :ok
+
+    # The Candidate's registration is broken; control's stays intact. Passing
+    # the Candidate root explicitly must fail even though control passes.
+    File.write!(
+      Path.join(candidate, ".codex/hooks.json"),
+      ~s({"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo not-registered"}]}]}})
+    )
+
+    assert VerificationPolicy.preflight(["check"], control) == :ok
+    assert {:error, reason} = VerificationPolicy.preflight(["check"], candidate)
+    assert reason =~ "verification-policy hook is not registered"
+
+    # And the reverse: break control's registration, the Candidate's own
+    # copy (read explicitly from the Candidate root) still passes.
+    File.write!(
+      Path.join(control, ".codex/hooks.json"),
+      ~s({"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo not-registered"}]}]}})
+    )
+
+    File.write!(
+      Path.join(candidate, ".codex/hooks.json"),
+      File.read!(Path.join(root_for_test(), ".codex/hooks.json"))
+    )
+
+    assert {:error, _reason} = VerificationPolicy.preflight(["check"], control)
+    assert VerificationPolicy.preflight(["check"], candidate) == :ok
+  end
+
+  test "the tracked PreToolUse hook, hook scripts and Claude settings are byte-identical to the admission commit, and the registered command matches @hook_command" do
+    admission_commit = "9ff7af6e02b3f291f0196e2ec2665a1d8cb2b4b5"
+    root = root_for_test()
+
+    case resolvable_commit(admission_commit) do
+      nil ->
+        IO.puts(
+          :stderr,
+          "skipping byte-identity check: admission commit #{admission_commit} is unavailable " <>
+            "in this checkout (likely a shallow clone) and no merge-base could be found"
+        )
+
+      commit ->
+        paths =
+          [".codex/hooks.json", "priv/kogen/claude_code/settings.json"] ++ hook_scripts(root)
+
+        for path <- paths do
+          assert {:ok, committed} = git_show(commit, path)
+          assert File.read!(Path.join(root, path)) == committed, "#{path} changed since #{commit}"
+        end
+    end
+
+    hooks = root |> Path.join(".codex/hooks.json") |> File.read!() |> Jason.decode!()
+
+    registered =
+      hooks
+      |> get_in(["hooks", "PreToolUse"])
+      |> Enum.find_value(fn
+        %{"matcher" => "Bash", "hooks" => entries} ->
+          Enum.find_value(entries, fn
+            %{"type" => "command", "command" => command} -> command
+            _ -> nil
+          end)
+
+        _ ->
+          nil
+      end)
+
+    hook_command_literal =
+      "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/verification_policy.py\""
+
+    # As it appears in the module's own Elixir source (an escaped string
+    # literal), not the decoded runtime value.
+    hook_command_source_literal =
+      ~S{python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/verification_policy.py\"}
+
+    module_source = File.read!(Path.join(root, "lib/kogen/verification_policy.ex"))
+
+    assert module_source =~ hook_command_source_literal,
+           "expected @hook_command literal in lib/kogen/verification_policy.ex"
+
+    assert registered == hook_command_literal
+  end
+
+  defp resolvable_commit(commit) do
+    root = root_for_test()
+
+    cond do
+      match?(
+        {_, 0},
+        System.cmd("git", ["cat-file", "-e", commit], cd: root, stderr_to_stdout: true)
+      ) ->
+        commit
+
+      match?(
+        {_, 0},
+        System.cmd("git", ["merge-base", "HEAD", commit], cd: root, stderr_to_stdout: true)
+      ) ->
+        {merge_base, 0} =
+          System.cmd("git", ["merge-base", "HEAD", commit], cd: root, stderr_to_stdout: true)
+
+        String.trim(merge_base)
+
+      true ->
+        nil
+    end
+  end
+
+  defp git_show(commit, path) do
+    case System.cmd("git", ["show", "#{commit}:#{path}"],
+           cd: root_for_test(),
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> {:ok, out}
+      {_out, _status} -> :error
+    end
+  end
+
+  defp hook_scripts(root) do
+    root
+    |> Path.join(".codex/hooks/**")
+    |> Path.wildcard(match_dot: true)
+    |> Enum.filter(&File.regular?/1)
+    |> Enum.reject(&String.contains?(&1, "__pycache__"))
+    |> Enum.map(&Path.relative_to(&1, root))
+  end
+
+  defp fixture_pair_dir(label) do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-policy-pair-#{label}-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(Path.join(dir, ".codex/hooks"))
+    on_exit(fn -> File.rm_rf(dir) end)
+    dir
+  end
+
+  defp populate_policy_fixture!(dir) do
+    root = root_for_test()
+
+    File.cp!(Path.join(root, ".codex/hooks.json"), Path.join(dir, ".codex/hooks.json"))
+
+    File.cp!(
+      Path.join(root, ".codex/hooks/verification_policy.py"),
+      Path.join(dir, ".codex/hooks/verification_policy.py")
+    )
+
+    File.chmod!(Path.join(dir, ".codex/hooks/verification_policy.py"), 0o755)
+    File.mkdir_p!(Path.join(dir, "deps"))
+  end
+
   defp dispatches?(dir, command, targets \\ @targets) do
     dispatches_with_environment?(
       dir,
@@ -188,6 +353,8 @@ defmodule Kogen.VerificationPolicyTest do
 
     File.write!(Path.join(dir, ".codex/hooks/check.sh"), "#!/bin/sh\n")
     File.chmod!(Path.join(dir, ".codex/hooks/verification_policy.py"), 0o755)
+    # Build admission copies control deps/ into each Candidate.
+    File.mkdir_p!(Path.join(dir, "deps"))
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dir)
     fun.(dir)
   end

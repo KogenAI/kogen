@@ -44,7 +44,7 @@ defmodule Kogen.ControllerHandoffTest do
         refute Map.has_key?(attempt["developer_invocation"], "schema")
         assert attempt["outcome"] == "settled"
         assert attempt["jev"]["outcome"] == "answered"
-        assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+        assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
         assert File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
 
         report = attempt["handoff"]
@@ -247,7 +247,7 @@ defmodule Kogen.ControllerHandoffTest do
 
     # Nothing Jev-related reaches the Developer's context.
     for call <- [1, 2] do
-      prompt = File.read!(Path.join(dir, ".kogen/runtime/developer-prompt-#{call}"))
+      prompt = File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-prompt-#{call}"))
       refute prompt =~ "systemone"
       refute prompt =~ "objection:scenario"
       refute prompt =~ first["jev"]["request"]["sha256"]
@@ -266,7 +266,7 @@ defmodule Kogen.ControllerHandoffTest do
                jev_answers: %{"status:s-change" => ["unfinished", 0.93]}
              )
 
-    prompt = File.read!(Path.join(dir, ".kogen/runtime/reviewer-prompt-1"))
+    prompt = File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-prompt-1"))
     assert prompt =~ "is controller-built and contains no Developer self-assessment"
 
     assert prompt =~
@@ -295,12 +295,17 @@ defmodule Kogen.ControllerHandoffTest do
     [attempt] = record!(dir)["attempts"]
     assert context["evidence_source"] == "review_packet"
 
-    assert context["review_packet"] ==
-             Map.take(attempt["review_packet"], ["path", "sha256", "byte_count"])
+    # The Reviewer's context names an absolute control path (it must open
+    # from the Candidate cwd); the record keeps the control-relative locator.
+    binding = Map.take(attempt["review_packet"], ["sha256", "byte_count"])
+    assert Map.take(context["review_packet"], ["sha256", "byte_count"]) == binding
 
-    assert context["tracking_path"] == Path.relative_to(List.first(records(dir)), dir)
+    assert context["review_packet"]["path"] ==
+             realpath!(Path.join(dir, attempt["review_packet"]["path"]))
+
+    assert context["tracking_path"] == realpath!(List.first(records(dir)))
     assert context["tracking_record"]["use"] =~ "audit locator only"
-    packet_bytes = File.read!(Path.join(dir, context["review_packet"]["path"]))
+    packet_bytes = File.read!(context["review_packet"]["path"])
     assert sha256(packet_bytes) == context["review_packet"]["sha256"]
     packet = Jason.decode!(packet_bytes)
     assert packet["handoff"] == attempt["handoff"]
@@ -316,7 +321,7 @@ defmodule Kogen.ControllerHandoffTest do
     # A confident "unfinished" reading never routes rework by itself.
     record = record!(dir)
     assert [%{"verdict" => %{"verdict" => "accept"}}] = record["attempts"]
-    refute File.exists?(Path.join(dir, ".kogen/runtime/developer-prompt-2"))
+    refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "developer-prompt-2"))
   end
 
   for {label, kind, id, confidence} <- [
@@ -347,11 +352,15 @@ defmodule Kogen.ControllerHandoffTest do
                "#{unquote(kind)} `#{unquote(id)}` (Jev confidence #{Kogen.Jev.format(confidence)})"
 
       assert reason =~ "Developer's notes: \"#{notes}\""
-      refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
-      assert File.read!(Path.join(dir, ".kogen/runtime/developer-calls")) == "1"
+      refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
+      assert File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-calls")) == "1"
       refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
-      # The Candidate is kept for inspection like any stopped Build.
-      assert File.read!(Path.join(dir, "dummy.txt")) == "changed\n"
+      # The Candidate (never control) is kept for inspection like any
+      # stopped Build.
+      assert File.read!(Path.join(dir, "dummy.txt")) == "baseline\n"
+
+      assert File.read!(Path.join(Kogen.CandidateFixture.worktree(dir), "dummy.txt")) ==
+               "changed\n"
 
       [attempt] = record!(dir)["attempts"]
       assert attempt["status"] == "failed"
@@ -372,7 +381,7 @@ defmodule Kogen.ControllerHandoffTest do
     assert :ok =
              run(dir, jev_answers: %{"objection:scenario:s-change" => ["objection", 0.84]})
 
-    prompt = File.read!(Path.join(dir, ".kogen/runtime/reviewer-prompt-1"))
+    prompt = File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-prompt-1"))
     assert prompt =~ "possible objection (confidence 0.84)"
     [attempt] = record!(dir)["attempts"]
     assert attempt["outcome"] == "settled"
@@ -390,8 +399,8 @@ defmodule Kogen.ControllerHandoffTest do
 
     assert String.starts_with?(reason, @prefix)
     assert reason =~ "finding `F1` (Jev confidence 0.95)"
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
-    assert File.read!(Path.join(dir, ".kogen/runtime/developer-calls")) == "2"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-calls")) == "2"
     [_reworked, stopped] = record!(dir)["attempts"]
     assert stopped["outcome"] == "cannot_comply"
   end
@@ -407,10 +416,9 @@ defmodule Kogen.ControllerHandoffTest do
              )
 
     [record_path] = records(dir)
-    relative = Path.relative_to(record_path, dir)
 
     assert reason =~
-             "[notes truncated at 2000 of #{String.length(notes)} characters; full notes in #{relative} attempt 0 developer_notes]"
+             "[notes truncated at 2000 of #{String.length(notes)} characters; full notes in #{realpath!(record_path)} attempt 0 developer_notes]"
 
     refute reason =~ notes
     [attempt] = record!(dir)["attempts"]
@@ -427,7 +435,7 @@ defmodule Kogen.ControllerHandoffTest do
     assert {:error, reason} =
              run(dir,
                notes: ["I cannot meet s-change as approved."],
-               edits: %{1 => "touch .kogen/runtime/fail-check"},
+               edits: %{1 => "mkdir -p .kogen/runtime && touch .kogen/runtime/fail-check"},
                jev_answers: %{"objection:scenario:s-change" => ["objection", 0.95]}
              )
 
@@ -436,18 +444,20 @@ defmodule Kogen.ControllerHandoffTest do
     assert Enum.empty?(FakeJev.requests(jev_log(dir)))
     [attempt] = record!(dir)["attempts"]
     refute Map.has_key?(attempt, "jev")
-    refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+    refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
   end
 
   test "exhausted verification without an objection still asks Jev and keeps the exhaustion reason" do
     dir = fixture!()
 
-    assert {:error, reason} = run(dir, edits: %{1 => "touch .kogen/runtime/fail-check"})
+    assert {:error, reason} =
+             run(dir, edits: %{1 => "mkdir -p .kogen/runtime && touch .kogen/runtime/fail-check"})
+
     assert reason =~ ~r/^verification retries exhausted/
     [attempt] = record!(dir)["attempts"]
     refute Map.has_key?(attempt, "jev")
     assert Enum.empty?(FakeJev.requests(jev_log(dir)))
-    refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+    refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
   end
 
   @unavailable [
@@ -521,12 +531,12 @@ defmodule Kogen.ControllerHandoffTest do
     refute Map.has_key?(unfinished, "verdict")
     refute Map.has_key?(unfinished, "handoff")
     assert finished["verdict"]["verdict"] == "accept"
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
     # The next attempt settled a fresh Stop verification of its own.
     assert finished["verification"]["cycles"] != []
     assert finished["attempt_token"] != unfinished["attempt_token"]
 
-    resume = File.read!(Path.join(dir, ".kogen/runtime/developer-prompt-2"))
+    resume = File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-prompt-2"))
     assert resume =~ "category: unfinished_work"
 
     [summary] =
@@ -550,14 +560,59 @@ defmodule Kogen.ControllerHandoffTest do
     assert reason =~
              "stopped after 2 outer resumptions without an accepting Review: Unfinished work: missing declared proof selector #{@late_selector}"
 
-    assert File.read!(Path.join(dir, ".kogen/runtime/developer-calls")) == "3"
-    refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-calls")) == "3"
+    refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
   end
 
   test "a declared proof selector that exists is not unfinished work" do
     dir = fixture!(late_selector: true)
     assert :ok = run(dir, edits: %{1 => "printf '# late\\n' > #{@late_selector}"})
     assert [%{"outcome" => "settled"}] = record!(dir)["attempts"]
+  end
+
+  # Scenario `candidate-routing`: "the Candidate-only selector counts as
+  # present and the control-only edit never appears" (Candidate id, changed
+  # paths, proof-selector existence, report entries and review packet
+  # contents are all computed from the Candidate root, never control's).
+  test "candidate-routing: a Candidate-only proof selector file counts as present, and a control-only ignored edit never appears in changed paths, report or packet" do
+    dir = fixture!(late_selector: true)
+
+    # An edit to control's own ignored state (never copied into the
+    # Candidate at admission): must never surface anywhere Build-visible.
+    File.mkdir_p!(Path.join(dir, ".kogen/runtime"))
+    File.write!(Path.join(dir, ".kogen/runtime/control-only-sentinel.txt"), "control only\n")
+
+    assert :ok =
+             run(dir,
+               edits: %{
+                 1 => "printf 'changed\\n' > dummy.txt; printf '# late\\n' > #{@late_selector}"
+               }
+             )
+
+    [attempt] = record!(dir)["attempts"]
+    assert attempt["outcome"] == "settled"
+    report = attempt["handoff"]
+    late = Enum.find(report["scenarios"], &(&1["id"] == "s-late"))
+
+    # The late selector, written only inside the Candidate by the edit,
+    # counts as present: no "missing declared proof selector" unfinished
+    # work and the selector is listed.
+    assert Enum.any?(late["offline_selectors"], &(&1["selector"] == @late_selector))
+
+    all_paths =
+      report["scenarios"]
+      |> Enum.flat_map(& &1["changed_affected_paths"])
+      |> Enum.map(& &1["path"])
+
+    refute Enum.any?(all_paths, &(&1 =~ "control-only-sentinel"))
+    refute Jason.encode!(report) =~ "control-only-sentinel"
+
+    binding = attempt["review_packet"]
+    packet_bytes = File.read!(Path.join(dir, binding["path"]))
+    refute packet_bytes =~ "control-only-sentinel"
+
+    # The control-side sentinel was never copied into the Candidate at all.
+    refute File.exists?(Path.join(Kogen.CandidateFixture.worktree(dir), ".kogen/runtime"))
   end
 
   test "a cannot-comply reading takes precedence over a missing declared proof selector" do
@@ -568,7 +623,166 @@ defmodule Kogen.ControllerHandoffTest do
 
     assert String.starts_with?(reason, @prefix)
     refute reason =~ "Unfinished work"
-    assert File.read!(Path.join(dir, ".kogen/runtime/developer-calls")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "developer-calls")) == "1"
+  end
+
+  # Scenario `candidate-routing`: every role launch's cwd is the Candidate,
+  # `control_root` names control, and every control locator a role is handed
+  # (`tracking_path`, the review packet path, the verification-failure
+  # prompt's retained receipt and log, and one packet `log_path` joined to
+  # `control_root`) opens from that Candidate cwd. Asserted on the shared
+  # fakes' own per-launch receipts (`test/support/launch_receipt.py`), on OS
+  # process state, never on launch arguments.
+  test "candidate-routing: launch receipts show the Candidate cwd, control_root, and every handed control locator opening from it" do
+    dir = shared_fake_fixture!()
+    commit_all!(dir)
+
+    claude_root = Path.join(dir <> "-claude-root", "claude")
+    File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
+    on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
+    System.put_env("KOGEN_CLAUDE_ROOT", claude_root)
+    System.put_env("KOGEN_HARNESS", Path.join(@root, "test/support/fake_codex"))
+    System.delete_env("KOGEN_ROLE")
+
+    assert :ok = File.cd!(dir, fn -> Kogen.Build.run(@slug, nil, dir) end)
+
+    control = realpath!(dir)
+    receipts = Kogen.CandidateFixture.receipts(dir)
+    assert receipts != []
+
+    candidate = realpath!(Kogen.CandidateFixture.worktree(dir))
+
+    for receipt <- receipts, receipt["role"] in ["developer", "reviewer"] do
+      assert receipt["pwd"] == candidate
+
+      # The verification-failure resume prompt deliberately carries no
+      # `KOGEN_TASK_CONTEXT` block (the controller's context/state/history
+      # paths are never given out), so that one receipt alone has no
+      # `working_directory`/`control_root`; every other developer/reviewer
+      # receipt does, and always names the Candidate and control.
+      if receipt["working_directory"] do
+        assert receipt["working_directory"] == candidate
+        assert receipt["control_root"] == control
+      end
+
+      for {_label, opened?} <- receipt["opens"] do
+        assert opened?, "receipt #{inspect(receipt["locators"])} failed to open a control locator"
+      end
+    end
+
+    # At least one Developer receipt saw the verification-failure prompt's
+    # retained receipt and log (this fixture's Developer always breaks
+    # `check` once), and at least one Reviewer receipt resolved a packet
+    # `log_path` joined to `control_root`.
+    developer_locators = for r <- receipts, r["role"] == "developer", do: r["locators"]
+    assert Enum.any?(developer_locators, &Map.has_key?(&1, "failure_receipt"))
+    assert Enum.any?(developer_locators, &Map.has_key?(&1, "failure_log"))
+
+    reviewer_locators = for r <- receipts, r["role"] == "reviewer", do: r["locators"]
+    assert Enum.any?(reviewer_locators, &Map.has_key?(&1, "packet_log_path"))
+    assert Enum.any?(reviewer_locators, &Map.has_key?(&1, "tracking_path"))
+    assert Enum.any?(reviewer_locators, &Map.has_key?(&1, "review_packet"))
+  end
+
+  defp shared_fake_fixture! do
+    dest =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-controller-handoff-shared-fake-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dest)
+    on_exit(fn -> File.rm_rf(dest) end)
+
+    for relative <- [
+          ".codex/hooks.json",
+          ".codex/hooks/check.sh",
+          ".codex/hooks/stop_runner.py",
+          ".codex/hooks/environment.py",
+          ".codex/hooks/verification_policy.py",
+          "priv/kogen/prompts/developer.md",
+          "priv/kogen/prompts/reviewer.md",
+          "priv/kogen/prompts/execution-policy.md"
+        ] do
+      File.mkdir_p!(Path.dirname(Path.join(dest, relative)))
+      File.cp!(Path.join(@root, relative), Path.join(dest, relative))
+    end
+
+    File.chmod!(Path.join(dest, ".codex/hooks/check.sh"), 0o755)
+    File.write!(Path.join(dest, "proof.txt"), "focused fixture selector\n")
+    File.write!(Path.join(dest, "dummy.txt"), "baseline\n")
+
+    File.write!(
+      Path.join(dest, "Makefile"),
+      ".PHONY: check\ncheck:\n\t@test ! -f .kogen/runtime/kogen_fake_break || { echo bounded fixture check: kogen_fake_break remains >&2; exit 1; }\n"
+    )
+
+    File.mkdir_p!(Path.join(dest, "priv/kogen"))
+
+    File.write!(Path.join(dest, "priv/kogen/verification_targets.yaml"), """
+    targets:
+      - name: check
+        cost_class: offline-complete
+        rank: 0
+        dependencies: []
+        provider_backed: false
+        owner: fixture
+    """)
+
+    File.write!(Path.join(dest, ".gitignore"), ".kogen/build.lock\n.kogen/runtime/\n")
+    File.mkdir_p!(Path.join(dest, ".kogen"))
+
+    File.write!(Path.join(dest, ".kogen/config.yaml"), """
+    default_route: codex
+    routes:
+      codex:
+        harness: codex
+        shaping:   {model: gpt-5.6-sol, effort: low}
+        developer: {model: gpt-5.6-sol, effort: low}
+        reviewer:  {model: gpt-5.6-terra, effort: medium}
+        helpers:
+          scout:  {model: gpt-5.6-luna, effort: low}
+          worker: {model: gpt-5.6-luna, effort: medium}
+          expert: {model: gpt-5.6-sol, effort: medium}
+    outer_resumptions: 2
+    verification_retries: 2
+    """)
+
+    intent_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
+    File.mkdir_p!(intent_dir)
+
+    File.write!(Path.join(intent_dir, "intent.yaml"), """
+    id: 01960000-0000-7000-8000-0000000c0de3
+    slug: #{@slug}
+    title: Controller handoff shared-fake fixture
+    may_change_guarded_paths: [dummy.txt, reviewer-rework-marker.txt]
+    """)
+
+    File.write!(Path.join(intent_dir, "scenarios.yaml"), """
+    - id: shared-fake-scenario
+      given: a fixture Candidate built through the shared fake Codex
+      when: Build settles Check and Review
+      then: dummy.txt is reviewed and the Build commits
+      wrong_result: a role writes or reads outside the Candidate's write boundary
+      verified_by: [check]
+      evidence: shared fake harness lifecycle
+      proof:
+        offline: [proof.txt]
+        paid_target: none
+        paid_reason: "offline-sufficient: shared fake harness drives the real Build consumer"
+        affected_paths: [dummy.txt]
+    """)
+
+    File.write!(
+      Path.join(intent_dir, "requirement.json"),
+      ~s({"path":"dummy.txt","expected":"reviewed fixture value"})
+    )
+
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
+    {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
+    dest
   end
 
   defp assert_unavailable!(dir, exchanges, reason) do
@@ -579,10 +793,10 @@ defmodule Kogen.ControllerHandoffTest do
     assert jev["answers"] == nil
     assert length(jev["exchanges"]) == exchanges
     assert attempt["outcome"] == "settled"
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
     assert File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
 
-    prompt = File.read!(Path.join(dir, ".kogen/runtime/reviewer-prompt-1"))
+    prompt = File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-prompt-1"))
 
     for item <- base_items() do
       assert prompt =~
@@ -680,7 +894,7 @@ defmodule Kogen.ControllerHandoffTest do
     end)
 
     try do
-      File.cd!(dir, fn -> Kogen.Build.run(@slug) end)
+      File.cd!(dir, fn -> Kogen.Build.run(@slug, nil, dir) end)
     after
       Enum.each(previous, fn
         {key, nil} -> System.delete_env(key)
@@ -773,6 +987,10 @@ defmodule Kogen.ControllerHandoffTest do
     File.write!(Path.join(intent, "scenarios.yaml"), Jason.encode!(scenarios))
     File.write!(Path.join(intent, "risks.yaml"), Jason.encode!(risks_data()))
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dir, "deps"))
+
     git!(dir, ["init", "-q", "-b", "main"])
     git!(dir, ["add", "-A"])
     git!(dir, ["commit", "-q", "-m", "baseline"])
@@ -842,7 +1060,12 @@ defmodule Kogen.ControllerHandoffTest do
     ~S'''
     #!/usr/bin/env python3
     import json, os, pathlib, subprocess, sys
-    runtime = pathlib.Path(".kogen/runtime"); runtime.mkdir(parents=True, exist_ok=True)
+    # Scratch state a test reads back after the Build lives in the Build's
+    # harness home (publication removes the Candidate); outside a Build it
+    # falls back to the cwd's ignored .kogen/runtime.
+    home = os.environ.get("KOGEN_HARNESS_HOME")
+    runtime = pathlib.Path(home) / "fake-state" if home else pathlib.Path(".kogen/runtime")
+    runtime.mkdir(parents=True, exist_ok=True)
     args = sys.argv[1:]; prompt = sys.stdin.read()
     def count(name):
         path = runtime / name
@@ -892,6 +1115,16 @@ defmodule Kogen.ControllerHandoffTest do
     do: Path.wildcard(Path.join(dir, ".kogen/runtime/scenario-tracking/*/record.json"))
 
   defp sha256(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+
+  defp realpath!(path) do
+    {out, 0} = System.cmd("/bin/pwd", ["-P"], cd: Path.dirname(path))
+    Path.join(String.trim(out), Path.basename(path))
+  end
+
+  defp commit_all!(dir) do
+    git!(dir, ["add", "-A"])
+    git!(dir, ["commit", "-q", "-m", "fixture baseline"])
+  end
 
   defp git!(dir, args) do
     {_output, 0} =

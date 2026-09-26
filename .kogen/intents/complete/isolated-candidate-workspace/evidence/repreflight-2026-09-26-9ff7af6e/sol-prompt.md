@@ -1,0 +1,13 @@
+READ-ONLY AUDIT. Do not modify, create or delete any file. Do not run make, mix test, mix compile or any build. Read files and run read-only commands (cat, sed, grep, git show/log/diff) only.
+
+You audit a Kogen Intent package before its Build: `.kogen/intents/drafts/isolated-candidate-workspace/` (INTENT.md, scenarios.yaml, risks.yaml, intent.yaml, questions.md). The repository is at main 9ff7af6e. Its latest commit (`git show 9ff7af6e --stat`) landed "fortify-paid-verification": the Build controller owns verification (lib/kogen/build.ex, lib/kogen/build/verification.ex, verification_runner.ex, base_workspace.ex, ledger.ex, proof_selectors.ex, catalog_change.ex, target_evidence.ex, review_packet.ex). "shaping-preflight-audit" is NOT landed and must not be assumed. The Build of this Intent runs under main's controller (self-hosting): it must not change the Makefile, priv/kogen/verification_targets.yaml, .codex/hooks.json, .codex/hooks/**, priv/kogen/claude_code/settings.json, prompts or .kogen/config.yaml. It runs with `--route claude-dominant-adversarial-codex` (Claude Code Developer, Codex Reviewer and Expert), launched with every Kogen module preloaded so the controller never lazily loads Candidate code. Paid targets per scenario: `check` plus at most one justified provider target.
+
+Focus on the landed #4 code. Find, with file:line evidence:
+1. Places where #4's controller-owned verification (run_cycle env, VerificationRunner, receipts, log paths, TargetEvidence, Ledger, ProofSelectors, BaseWorkspace, CatalogChange, review packet, verification-failure prompt, task context) would break or silently misbehave once the Candidate is a separate linked worktree, and which the package does not already require.
+2. Whether the package's claim holds that the controller's own `make check` and targets (and proof-selector runs) stay outside the role write boundary with KOGEN_WRITE_BOUNDARY scrubbed.
+3. Stale or wrong anchors (file:line, function names) in the package vs 9ff7af6e.
+4. Remaining assumptions about shaping-preflight-audit (#3).
+5. Conflicts with the hybrid route or the preloaded-module launch.
+6. Infeasible or contradictory scenarios, a plausible wrong implementation that passes the named proofs, missing guarded paths, nonexistent selectors (new test files listed in affected_paths are allowed), unnecessary paid targets, scope creep, and anything the Intent adds without a caller in the same Intent.
+
+Output: a numbered list of findings. For each: severity (blocking/advisory), evidence (file:line), and the minimal fix to the package text. End with "No further findings." if done. Be concise.

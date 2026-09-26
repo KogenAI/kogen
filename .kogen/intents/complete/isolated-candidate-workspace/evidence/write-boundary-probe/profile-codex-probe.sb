@@ -1,0 +1,28 @@
+(version 1)
+;; Kogen role write boundary, Codex route rendering (probe). Build-wide grants plus the Codex scope
+;; minus the discovery entries Kogen's scope validation refuses and the Kogen-owned entries.
+(allow default)
+(deny file-write*)
+(allow file-write*
+  (subpath (param "CANDIDATE"))
+  (subpath (param "HARNESS_HOME"))
+  (subpath (param "BUILD_TMP"))
+  (subpath (param "CODEX_SCOPE"))
+  (literal (param "LOGIN_KEYCHAIN"))
+  (prefix (string-append (param "LOGIN_KEYCHAIN") ".sb-"))
+  (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (literal "/dev/ptmx")
+  (literal "/dev/dtracehelper")
+  (regex #"^/dev/fd/[0-9]+$") (regex #"^/dev/ttys[0-9]+$"))
+(deny file-write*
+  (literal (string-append (param "CODEX_SCOPE") "/hooks.json"))
+  (subpath (string-append (param "CODEX_SCOPE") "/plugins"))
+  (subpath (string-append (param "CODEX_SCOPE") "/rules"))
+  (subpath (string-append (param "CODEX_SCOPE") "/config.d"))
+  (literal (string-append (param "CODEX_SCOPE") "/AGENTS.md"))
+  (literal (string-append (param "CODEX_SCOPE") "/AGENTS.override.md"))
+  (literal (string-append (param "CODEX_SCOPE") "/environments.toml"))
+  (subpath (string-append (param "CODEX_SCOPE") "/agents"))
+  (literal (string-append (param "CODEX_SCOPE") "/.kogen-owned")))
+(allow process-exec (with no-sandbox) (literal "/bin/ps"))
+(deny lsopen)
+(deny appleevent-send)

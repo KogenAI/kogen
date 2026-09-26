@@ -1,0 +1,252 @@
+# B1 scenarios, reshaped 2026-09-24 against main 5b44ceb4. The pre-reshape
+# scenarios are in historical/2026-09-22-warm-seed-revision/scenarios.yaml.
+
+- id: candidate-creation
+  given: >-
+    A clean control checkout attached to branch B at commit A, with control `deps/` and
+    `_build/` present, a frozen Approved package in control's ignored
+    `.kogen/intents/approved/<slug>/`, and unrelated pre-existing linked worktrees
+    (for example under `.kogen/runtime/build-worktrees/`).
+  when: "`mix kogen.build <slug>` is admitted."
+  then: >-
+    Before any provider launch, exactly one new linked worktree exists outside the repository at
+    `<workspaces-root>/<project-id>/<slug>-<build-id>/` on new branch `kogen/<slug>/<build-id>`
+    at A. `<workspaces-root>` is `~/Library/Application Support/Kogen/build-workspaces` unless
+    `KOGEN_WORKSPACES_ROOT` is set, `<project-id>` is the SHA-256 of the expanded control path,
+    and `<build-id>` is the scenario-tracking record id. An owner record
+    `<workspaces-root>/<project-id>/candidates/<build-id>.json` with status `running` exists. Nothing new appears inside the control
+    checkout's tree except controller runtime state. The Candidate has a plain recursive
+    copy of control `deps/`, no copied `_build/`, and the Approved package bytes at its ignored
+    `.kogen/intents/approved/<slug>/`. Control's HEAD, index, tracked bytes and
+    `git status --porcelain` are unchanged. The unrelated worktrees are untouched. The creation
+    step is one function in one module. A pre-existing path or branch with that name, a missing
+    control `deps/`, or a failed `git worktree add` stops before any launch with a message
+    naming the cause, removes nothing it did not create, and never reuses or falls back to
+    control.
+  wrong_result: >-
+    Build keeps running in the invoking checkout, nests the worktree in the repository, writes
+    to the real Kogen directory while `KOGEN_WORKSPACES_ROOT` points elsewhere, copies `_build/` (carrying links or stale
+    artifacts from control), reuses an existing directory or branch, fetches dependencies from
+    the network, or deletes another worktree during admission.
+  verified_by: [check]
+  evidence: >-
+    Focused workspace tests with a real Git fixture, a disposable `KOGEN_WORKSPACES_ROOT` whose
+    path contains a space, and a sentinel real-root directory that must stay empty assert the
+    path, branch, owner records, base commit,
+    deps copy, absence of `_build/`, Approved bytes, byte-identical control state, untouched
+    foreign worktrees, and each refusal case with no provider-launch sentinel.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/build_preconditions_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: real git worktree fixture with foreign-worktree, collision, missing-deps and launch-sentinel controls"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/git.ex, test/kogen/build_workspace_test.exs, test/kogen/build_preconditions_test.exs]
+
+- id: candidate-routing
+  given: >-
+    An admitted Build whose control checkout and Candidate contain different sentinel files,
+    a Candidate edit that adds a proof selector and changes a guarded path, and a clean
+    control checkout at A.
+  when: >-
+    The controller runs the fresh Developer, Stop verification, the controller-built handoff
+    report, Jev, an exact-session resume and each fresh Reviewer.
+  then: >-
+    Every role process has cwd and Git toplevel equal to the Candidate. Candidate identity,
+    changed paths, guarded-path capture, proof-selector existence, report entries, citation
+    snapshots, staging and commit are computed from the Candidate root passed explicitly.
+    Lock, tracking record, verification context/state/history, prompts, route/config and
+    harness login scope stay on the control root passed explicitly: `Harness.open` requires the
+    project, and neither root is derived from `File.cwd!()`. `KOGEN_TASK_CONTEXT`
+    `working_directory` names the Candidate. Ordinary citations are Candidate-relative, and the
+    tracking-record citation uses its advertised control locator. The tracking record's
+    `candidate` block names worktree path, branch, admitted branch/commit and control root.
+  wrong_result: >-
+    Roles run in the Candidate but the report says "no changes", or a missing selector looks
+    present, because Git and file checks still read control. Or the login scope keys on the
+    Candidate path and finds no login. Or a fallback `File.cwd!()` hides a missing root.
+  verified_by: [check]
+  evidence: >-
+    The fake-harness lifecycle records each launch's cwd and `git rev-parse --show-toplevel`,
+    and asserts the report's changed paths and selector checks against the Candidate-only
+    sentinel. A control-only sentinel must never appear as a Candidate change. A test that
+    calls Build with a process cwd different from both roots proves nothing reads the cwd.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/lifecycle_test.exs, test/kogen/controller_handoff_test.exs, test/kogen/harness_contract_test.exs, test/kogen/guarded_paths_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake-harness lifecycle with control/Candidate sentinels and a third-directory cwd control; real-provider cwd is proved by same-candidate-rework"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/**, lib/kogen/git.ex, lib/kogen/harness.ex, lib/kogen/harness/**, lib/kogen/claude_code.ex, lib/kogen/codex.ex, lib/kogen/verification_policy.ex, test/kogen/**, test/support/**]
+
+- id: judge-from-control
+  given: >-
+    A Build whose Candidate copy of `.codex/hooks/check.sh`, `stop_runner.py` and
+    `verification_policy.py` has been edited to always pass or allow, while the control copies
+    are unchanged and the Candidate's `make check` fails.
+  when: The Developer finishes a turn, Stop fires, and the Developer tries a gated command.
+  then: >-
+    The control checkout's hook scripts run: PreToolUse blocks the gated command and Stop runs
+    `make -C <Candidate> check`, records the failure in control-owned verification state bound
+    to the Candidate identity, and continues the retry. The verification context
+    `project_root` is the Candidate. A missing or invalid control or Candidate root in the hook
+    environment blocks or stops fail-closed with a named reason, and no hook re-resolves
+    `git rev-parse --show-toplevel` for either root. The Claude Code settings passed through
+    `--settings` and the fake harnesses use the same mechanism. The Codex route uses the same
+    root mechanism. README documents that native Codex reads `.codex/hooks.json` configuration
+    from the Candidate, which is structural separation, not containment (Shaper's Q3 choice).
+  wrong_result: >-
+    The hook command still expands `$(git rev-parse --show-toplevel)`, so the Candidate's
+    edited `check.sh` prints `{"continue":true}` and a failing Candidate passes. Or an unset
+    root silently falls back to the toplevel.
+  verified_by: [check]
+  evidence: >-
+    Hook tests run the real `check.sh`/`stop_runner.py`/`verification_policy.py` from a control
+    fixture against a Candidate fixture with tampered hook copies and a failing target. They
+    include unset/invalid-root controls and a grep-level assertion that the tracked hook
+    commands contain no toplevel resolution.
+  proof:
+    offline: [test/kogen/stop_hook_test.exs, test/kogen/verification_policy_test.exs, test/kogen/claude_code_harness_test.exs, test/kogen/lifecycle_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: real hook scripts against tampered Candidate copies with unset-root controls; real Claude Code hook dispatch is proved by same-candidate-rework"
+    affected_paths: [.codex/hooks.json, .codex/hooks/**, priv/kogen/claude_code/settings.json, lib/kogen/verification_policy.ex, lib/kogen/build/verification.ex, lib/kogen/harness/**, test/kogen/stop_hook_test.exs, test/kogen/verification_policy_test.exs, test/kogen/claude_code_harness_test.exs, test/kogen/lifecycle_test.exs, test/support/**]
+
+- id: same-candidate-rework
+  given: A Build on the default route whose first Stop check fails and whose first Review requests rework.
+  when: >-
+    Stop retries, the controller resumes the exact Developer session for the Review finding,
+    and a fresh Reviewer reviews the reworked Candidate.
+  then: >-
+    The real Claude Code Developer, its resume, and both Reviewers run with cwd equal to the
+    same single Candidate. The tracked Stop hook fires from control and verifies that
+    Candidate. No second worktree is created. The resumed session is the same Claude Code
+    session. The Build then publishes to the fixture's main and removes the Candidate.
+    Allowance counting, Jev handling and Review freshness are unchanged from `5b44ceb4`.
+  wrong_result: >-
+    Each outer attempt creates a new worktree and loses the Developer's edits. Or resume runs
+    in another cwd, where Claude Code cannot find the session. Or the Stop hook silently does
+    not fire in the worktree and the controller accepts an unverified Candidate.
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    The live fixture's `KOGEN_WORKSPACES_ROOT` path contains a space. The live owner retains the native streams and asserts every launch's cwd equals the one
+    Candidate, the resumed session id, Stop receipts bound to the Candidate identity, and the
+    final fixture HEAD. The offline rehearsal and fake lifecycle cover the same sequence
+    deterministically.
+  proof:
+    offline: [test/kogen/two_outer_resumptions_test.exs, test/kogen/lifecycle_test.exs, rehearse-live-reviewer-rework]
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: real Claude Code Developer, exact-session resume and fresh Reviewers run in one Candidate worktree cwd while the settings-driven Stop hook fires from control against it; offline-limit: fake harnesses cannot establish that the managed Claude Code runtime passes Kogen's environment to hook commands and resumes a session from a worktree cwd"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/harness/**, test/kogen/two_outer_resumptions_test.exs, test/kogen/lifecycle_test.exs, test/kogen/live_reviewer_rework_test.exs, test/support/live_reviewer_rework_fixture.ex, test/support/live_rework_audit.ex, test/support/root_profile_audit.ex]
+
+- id: publication-unmoved-main
+  given: >-
+    An accepted Candidate while control is clean, still attached to B, and B is still at A.
+  when: The controller publishes.
+  then: >-
+    One commit with the Intent title, source changes and Complete package is created in the
+    Candidate, under today's size limits, `.kogen/runtime/` rejection, index-flag refusal,
+    trailers and ordinary commit hooks. B is then fast-forwarded to that commit with control's
+    index and working tree synchronized: control HEAD, tree and clean status are asserted.
+    Control's ignored Approved copy is removed. Then the Candidate worktree and branch are
+    removed without `--force`, and `git worktree list` is back to its pre-Build entries.
+    The owner record is deleted.
+    `build-summary.json` and `evidence.md` keep resolving the full record from the control
+    root. No merge commit, rebase or re-verification happens. The real Shape-to-Build fixture
+    ends with its main at the Intent commit and no Candidate left.
+  wrong_result: >-
+    It commits in control from Candidate bytes, or updates the ref with `update-ref` and leaves
+    control's index and working tree stale. Or it force-removes a Candidate that holds
+    untracked files, or leaves the branch behind.
+  verified_by: [check, live-shape-to-build]
+  evidence: >-
+    Offline publication tests assert the commit parent is A, control status after
+    synchronization, removal of the Approved copy, worktree and branch, the untracked-file
+    refusal (the Candidate is retained and reported), and fault injection before the
+    fast-forward. The live fixture's `KOGEN_WORKSPACES_ROOT` path contains a space. The live owner asserts the real fixture main, trailers and that no Candidate
+    worktree or branch remains.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/commit_provenance_test.exs, test/kogen/commit_failure_rollback_test.exs, test/kogen/verification_ownership_lifecycle_test.exs, rehearse-live-shape-to-build]
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: a real Shape-approved package built by the managed Claude Code Developer and Reviewer publishes from its Candidate onto the fixture main and the Candidate is removed; offline-limit: fake roles cannot establish that a real provider-produced Candidate commit survives Complete packaging, commit hooks and fast-forward end to end"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/build/evidence.ex, lib/kogen/git.ex, test/kogen/build_workspace_test.exs, test/kogen/commit_provenance_test.exs, test/kogen/commit_failure_rollback_test.exs, test/kogen/verification_ownership_lifecycle_test.exs, test/kogen/live_shape_to_build_test.exs, test/support/root_profile_audit.ex]
+
+- id: publication-refused
+  given: An accepted Candidate while B has moved, control is dirty, or control is on another branch.
+  when: The controller attempts publication.
+  then: >-
+    B, control's index, working tree and ignored Approved package are unchanged. The Candidate
+    worktree and branch are kept with the accepted commit on the branch. The Build exits
+    non-zero with a message naming the reason, admitted and current commits, worktree path,
+    branch, Candidate commit, tracking record and `mix kogen.candidates.remove <build-id>
+    --discard-accepted`. The tracking record's `candidate.disposition` is `retained` and the
+    owner record's status is `accepted-unpublished: <reason>` with the Candidate commit.
+  wrong_result: >-
+    It publishes anyway because the fast-forward happens to apply (dirty non-overlapping
+    control, see the probe). Or it merges or rebases onto the moved main, or discards the
+    accepted commit.
+  verified_by: [check]
+  evidence: >-
+    Offline tests cover each refusal cause and fault injection between the checks and the
+    fast-forward, asserting refs, control bytes, the retained Candidate and the exact message
+    fields.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/commit_failure_rollback_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: real git fixture for moved-branch, dirty-control and other-branch refusals with retained Candidate and message assertions"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/git.ex, test/kogen/build_workspace_test.exs, test/kogen/commit_failure_rollback_test.exs]
+
+- id: failure-retention
+  given: >-
+    Builds stopped by verification exhaustion, outer-allowance exhaustion, a Jev cannot-comply
+    stop, an integrity failure, a provider failure and a malformed Review.
+  when: Each Build stops, and afterwards a new Build of the same Intent is started.
+  then: >-
+    Each stopped Build keeps its Candidate worktree and branch unchanged (no commit, no
+    cleanup). The stop message names the slug, build id, worktree path and branch next to the
+    tracking record path, plus `mix kogen.candidates.remove <build-id>`. The record's
+    `candidate.disposition` is `retained` and the owner record's status is
+    `stopped: <category>`. Control is unchanged and the
+    Approved package stays in control. The new Build creates a new Candidate and never adopts,
+    reuses or deletes a retained one or any other worktree.
+  wrong_result: >-
+    A stop deletes the Candidate and loses the evidence. Or the message omits it and the
+    Shaper cannot find it. Or the next Build reuses the old worktree and inherits its edits.
+  verified_by: [check]
+  evidence: >-
+    Fake-lifecycle stops for each category assert the retained paths, message and record
+    fields, then run a second Build and assert distinct Candidates and the untouched earlier
+    one.
+  proof:
+    offline: [test/kogen/build_workspace_test.exs, test/kogen/scenario_lifecycle_test.exs, test/kogen/core_integrity_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake-lifecycle stop categories with retained-Candidate and second-Build controls"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/workspace.ex, lib/kogen/build/tracking.ex, test/kogen/build_workspace_test.exs, test/kogen/scenario_lifecycle_test.exs, test/kogen/core_integrity_test.exs, README.md]
+
+- id: candidate-commands
+  given: >-
+    Two control checkouts of different projects share one `KOGEN_WORKSPACES_ROOT` whose path
+    contains a space. Project P has a stopped Candidate with uncommitted edits, an
+    accepted-unpublished Candidate, a `running` Candidate whose Build holds the lock, and a stale
+    `running` record whose Build is gone. Project Q has a stopped Candidate. P also has foreign
+    worktrees not created by Kogen.
+  when: >-
+    From P the Shaper runs `mix kogen.candidates` and `mix kogen.candidates.remove <id>`, with
+    and without `--discard-accepted`.
+  then: >-
+    List shows only P's Candidates, each with build id, slug, title, status (the stale record as
+    `stopped: interrupted`), start time, branch and path. Remove deletes a stopped Candidate's
+    worktree, branch and owner record. It refuses the running one, and refuses the
+    accepted-unpublished one without `--discard-accepted`; once that commit is reachable from the
+    admitted branch it deletes it without the flag. Remove refuses an id that is not P's, and a
+    path that does not match its owner record or is not registered in P's `git worktree list`.
+    Q's Candidate, the running Candidate and the foreign worktrees survive. Each command prints
+    what it removed or refused.
+  wrong_result: >-
+    List shows every project's worktrees or unnamed git paths. Or remove deletes another
+    project's Candidate or a foreign worktree, removes an accepted commit silently, or deletes a
+    Candidate whose Build is running.
+  verified_by: [check]
+  evidence: >-
+    Offline command tests with two real Git projects, a live-lock control and path/owner-record
+    mismatch controls assert exact outputs and surviving and removed paths, refs and records.
+  proof:
+    offline: [test/kogen/candidates_command_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: real two-project git fixtures with running-lock, accepted-unpublished, foreign-worktree and owner-record mismatch controls"
+    affected_paths: [lib/kogen/build/workspace.ex, lib/mix/tasks/kogen.candidates.ex, lib/mix/tasks/kogen.candidates.remove.ex, test/kogen/candidates_command_test.exs, README.md]

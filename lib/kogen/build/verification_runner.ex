@@ -14,7 +14,11 @@ defmodule Kogen.Build.VerificationRunner do
   controller never loads or executes supervisor code from the Candidate.
   """
 
-  @scrubbed ~w(KOGEN_VERIFICATION_CONTEXT KOGEN_TRACKING_CONTEXT KOGEN_VERIFICATION_RETRY_LIMIT KOGEN_ROLE)
+  # The write-boundary marker is removed so fixture Builds inside `check` and
+  # live targets apply their own boundary; the Mix redirections are removed so
+  # a Candidate's `make check` compiles with the Candidate's own `deps/` and
+  # `_build/`, never control's.
+  @scrubbed ~w(KOGEN_VERIFICATION_CONTEXT KOGEN_TRACKING_CONTEXT KOGEN_VERIFICATION_RETRY_LIMIT KOGEN_ROLE KOGEN_WRITE_BOUNDARY MIX_BUILD_PATH MIX_DEPS_PATH MIX_EXS)
 
   @supervisor ~S"""
   import datetime, json, os, signal, subprocess, sys, time
@@ -84,15 +88,36 @@ defmodule Kogen.Build.VerificationRunner do
   def scrubbed_names, do: @scrubbed
 
   @doc """
-  Runs `make <target>` in `root`, writing combined output to `log_path`.
-  Returns the run facts and the log's bytes and digest.
+  Runs `make <target>` in `root` (the Candidate), writing combined output to
+  `log_path`. Returns the run facts and the log's bytes and digest.
+
+  Option `:control_root` names the control checkout: unless the caller set
+  one, the child's `KOGEN_LIVE_LOG_DIR` is control's
+  `.kogen/runtime/live-evidence`, so evidence a live owner retains for a
+  Candidate Build survives the Candidate's removal at publication.
   """
   @spec run_target(Path.t(), String.t(), Path.t(), keyword()) ::
           {:ok, map()} | {:error, String.t()}
   def run_target(root, target, log_path, opts \\ []) do
     if Kogen.Check.valid_target_name?(target),
-      do: run(["make", "-C", Path.expand(root), target], root, log_path, opts),
+      do: run(["make", "-C", Path.expand(root), target], root, log_path, live_log_dir(opts)),
       else: {:error, "refused unsafe target name: #{inspect(target)}"}
+  end
+
+  @doc "The live-evidence directory a target child gets under `control_root`."
+  @spec live_evidence_dir(Path.t()) :: Path.t()
+  def live_evidence_dir(control_root),
+    do: Path.join([control_root, ".kogen", "runtime", "live-evidence"])
+
+  defp live_log_dir(opts) do
+    case {Keyword.get(opts, :control_root), System.get_env("KOGEN_LIVE_LOG_DIR")} do
+      {control, caller} when is_binary(control) and caller in [nil, ""] ->
+        env = [{"KOGEN_LIVE_LOG_DIR", live_evidence_dir(control)}]
+        Keyword.update(opts, :env, env, &(&1 ++ env))
+
+      _ ->
+        opts
+    end
   end
 
   @doc """

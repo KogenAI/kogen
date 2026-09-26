@@ -1,0 +1,90 @@
+# B1 risks, reshaped 2026-09-24. Pre-reshape risks: historical/2026-09-22-warm-seed-revision/risks.yaml.
+
+- id: candidate-worktree-lifecycle
+  scenario_ids: [candidate-creation, publication-unmoved-main, publication-refused, failure-retention, candidate-commands]
+  description: >-
+    Kogen creates worktrees for many projects in one shared Kogen directory, registered in each
+    project's Git metadata. If ownership is unclear, a command could delete another project's
+    work or a foreign worktree, keep stale Candidates forever, or reuse one by accident.
+  ownership:
+    - paths: "<workspaces-root>/<project-id>/<slug>-<build-id>/ and its registration under the control repository's .git/worktrees/"
+      when_exists: "Admission refuses a pre-existing path, registered worktree or branch with that name and never reuses it."
+      owner_after_creation: "The Build controller that created it, bound by its owner record (build id, control root, branch, base commit A)."
+      owner_during_operation: "The controller owns topology; the Developer may edit Candidate files; Stop and Review read them."
+      permitted_mutation: "Developer edits inside the Candidate; the controller writes the Approved copy, Complete package and commit. Automatic removal only after successful publication (git worktree remove without --force). Otherwise only mix kogen.candidates.remove on the Shaper's request."
+      validation: "Every removal checks that the path is under <workspaces-root>/<project-id>/, matches its owner record, and is registered in this control repository. Running Candidates and accepted-unpublished ones without --discard-accepted are refused."
+      git_state: "Outside the control tree; appears in the control repository's git worktree list until removed; control status unaffected."
+      upgrade_behavior: "Worktrees without a Kogen owner record, including .kogen/runtime/build-worktrees/** from earlier experiments and sibling recovery worktrees, are foreign and never touched; no migration."
+    - paths: "refs/heads/kogen/<slug>/<build-id>"
+      when_exists: "Admission refuses an existing branch with that name."
+      owner_after_creation: "The Build controller, then the Shaper through the Candidate commands."
+      owner_during_operation: "The controller makes the one publication commit; the Developer commits nothing."
+      permitted_mutation: "git branch -d after successful publication; git branch -D only through remove under the guards above."
+      validation: "An accepted commit not reachable from the admitted branch is deleted only with --discard-accepted."
+      git_state: "Local branch; never pushed."
+      upgrade_behavior: "Branches from earlier experiments (kogen/build/<intent-id>/<id>) are foreign and untouched."
+    - paths: "<workspaces-root>/<project-id>/candidates/<build-id>.json"
+      when_exists: "An existing owner record for the new build id refuses admission; a record naming a different control root under this project id stops admission (hash collision or tampering)."
+      owner_after_creation: "The Build controller writes and updates status at every exit; the Candidate commands read and delete."
+      owner_during_operation: "Outside the Candidate, so roles have no reason to touch it; not hostile containment."
+      permitted_mutation: "Status transitions running -> stopped/accepted-unpublished or deletion on publication/removal. A running status counts only while the project's build lock is held by a live Build."
+      validation: "Malformed or mismatched records are reported and skipped, never used to delete a path."
+      git_state: "Not in any repository."
+      upgrade_behavior: "Versioned schema field; no earlier records exist."
+    - paths: "A retained Candidate after a stop or refused publication"
+      when_exists: "Stays until the Shaper runs remove (or deletes it with git); a new Build never adopts it. Orphans of deleted checkouts stay until the parked prune follow-up."
+      owner_after_creation: "The Shaper, as inspection evidence."
+      owner_during_operation: "No Kogen process mutates it after the Build exits, except the Candidate commands."
+      permitted_mutation: "mix kogen.candidates.remove (guarded as above) or the Shaper's own git commands."
+      validation: "Stop message, tracking record and owner record name slug, build id, path, branch and any Candidate commit."
+      git_state: "Registered worktree plus local branch, possibly holding the accepted commit."
+      upgrade_behavior: "Continuation or adoption of retained Candidates is a later Intent (briefs 20/22)."
+
+- id: approved-copy-in-candidate
+  scenario_ids: [candidate-creation, publication-unmoved-main, publication-refused]
+  description: >-
+    Roles read the Approved package in their cwd, but it is ignored and not in the worktree
+    checkout. A missing copy breaks roles, and an editable copy used as authority lets a
+    Developer rewrite the contract.
+  ownership:
+    - paths: "<Candidate>/.kogen/intents/approved/<slug>/"
+      when_exists: "Written at admission from the controller's frozen in-memory Approved bytes; a pre-existing path means the Candidate is not fresh and admission refuses."
+      owner_after_creation: "The controller."
+      owner_during_operation: "Read-only for roles; the controller's frozen bytes remain authority and publication packages from them, not from this copy."
+      permitted_mutation: "None by roles. The controller removes it with the Candidate."
+      validation: "Existing approved-mutation checks apply to this copy; a mismatch is an integrity failure."
+      git_state: "Ignored in the Candidate; control's own Approved copy is unchanged until successful publication removes it."
+      upgrade_behavior: "None."
+
+- id: judge-integrity
+  scenario_ids: [judge-from-control, same-candidate-rework]
+  description: >-
+    Hooks resolved from the Candidate would let the Developer edit what judges the Build. With
+    the Codex route, native Codex reads the hook configuration file (.codex/hooks.json) from
+    the Candidate; the Shaper accepted this as a documented limit (questions.md Q3). Control hook bytes can also change mid-Build if
+    the Shaper edits engine files in control (engine pinning is B2).
+
+- id: shared-cwd-assumptions
+  scenario_ids: [candidate-routing, publication-unmoved-main]
+  description: >-
+    About fifteen offline test files run Build.run inside File.cd!(repo) and assert on repo's
+    HEAD. They can keep passing if Build silently commits in the invoking checkout, so they
+    must also assert that a Candidate existed and was the role cwd. Updating them requires
+    their test-reliability catalog rows to be refreshed.
+
+- id: provider-session-location
+  scenario_ids: [same-candidate-rework]
+  description: >-
+    Claude Code stores sessions per encoded cwd in the Kogen scope. Every Build now has a new
+    cwd, so resume must reuse the exact Candidate cwd, and live audits
+    (test/support/root_profile_audit.ex) must find sessions under Candidate paths. Scope
+    entries accumulate per Build path; pruning them is out of scope.
+
+- id: space-in-workspace-path
+  scenario_ids: [candidate-creation, judge-from-control, same-candidate-rework]
+  description: >-
+    The default root "~/Library/Application Support/Kogen/build-workspaces" contains a space.
+    Any unquoted path in a hook command, shell script, sh -c string, Makefile recipe or test
+    helper breaks Stop or targets only in real use. Offline and both live fixtures' roots contain a space. The 2026-09-24 probe already found one:
+    the lifecycle fixture's target_evidence recipe (test/kogen/lifecycle_test.exs:357-367).
+    Tests must use a root with a space.

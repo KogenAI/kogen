@@ -1,0 +1,397 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "E17AjU4DxcfHNq0oSAvs4N6Yc7zwxZkC",
+      "candidate_id": "934d18b3f1a765538424ea48367de3d7c1a0bc5a",
+      "developer_session_id": "b6803a9c-1f1b-4d23-a30c-d8f843e9b859",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "01a0dc92-ee79-76a1-b6d9-e73b5dc99852",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "E17AjU4DxcfHNq0oSAvs4N6Yc7zwxZkC",
+          "candidate_id": "934d18b3f1a765538424ea48367de3d7c1a0bc5a",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-26T07:03:40.497Z",
+          "session_id": "b6803a9c-1f1b-4d23-a30c-d8f843e9b859",
+          "started_at": "2026-09-26T06:59:33.590Z",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "E17AjU4DxcfHNq0oSAvs4N6Yc7zwxZkC",
+          "candidate_id": "934d18b3f1a765538424ea48367de3d7c1a0bc5a",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-26T07:12:53.301Z",
+          "session_id": "b6803a9c-1f1b-4d23-a30c-d8f843e9b859",
+          "started_at": "2026-09-26T07:03:40.595Z",
+          "status": "passed",
+          "target": "live-reviewer-rework"
+        },
+        {
+          "attempt_token": "E17AjU4DxcfHNq0oSAvs4N6Yc7zwxZkC",
+          "candidate_id": "934d18b3f1a765538424ea48367de3d7c1a0bc5a",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-26T07:16:49.314Z",
+          "session_id": "b6803a9c-1f1b-4d23-a30c-d8f843e9b859",
+          "started_at": "2026-09-26T07:12:53.385Z",
+          "status": "passed",
+          "target": "live-shape-to-build"
+        }
+      ]
+    }
+  ],
+  "build_id": "Mka6arFhvEgJ_mrDmTzsdaz9",
+  "candidate_id": "934d18b3f1a765538424ea48367de3d7c1a0bc5a",
+  "developer_session_id": "b6803a9c-1f1b-4d23-a30c-d8f843e9b859",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 6098814,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/Mka6arFhvEgJ_mrDmTzsdaz9/record.json",
+    "schema_version": 2,
+    "sha256": "a19c09f1d3ad81f2293356ad146cd5461a3c203cce4ce8ece21144ebf830c62f"
+  },
+  "intent": {
+    "id": "01a0c467-54c1-7a5a-9cee-58d70920d780",
+    "slug": "isolated-candidate-workspace",
+    "title": "Isolate each Build in its own Candidate worktree and harness home"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0dc92-ee79-76a1-b6d9-e73b5dc99852"
+  },
+  "risks": [
+    {
+      "id": "self-hosting-running-controller"
+    },
+    {
+      "id": "undocumented-secure-storage-variable"
+    },
+    {
+      "id": "shared-login-refresh"
+    },
+    {
+      "id": "candidate-worktree-lifecycle"
+    },
+    {
+      "id": "approved-copy-in-candidate"
+    },
+    {
+      "id": "shared-cwd-assumptions"
+    },
+    {
+      "id": "boundary-breaks-existing-fixtures"
+    },
+    {
+      "id": "seatbelt-interface-deprecated"
+    },
+    {
+      "id": "harness-write-drift"
+    },
+    {
+      "id": "role-writable-login-state"
+    },
+    {
+      "id": "controller-verification-unconfined"
+    },
+    {
+      "id": "inherited-mode"
+    },
+    {
+      "id": "service-delegation"
+    },
+    {
+      "id": "unrun-live-targets"
+    },
+    {
+      "id": "space-in-workspace-path"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "medium",
+      "harness": "claude",
+      "model": "claude-opus-5-5"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "claude": {
+        "scout": {
+          "effort": "low",
+          "model": "claude-sonnet-5"
+        },
+        "worker": {
+          "effort": "medium",
+          "model": "claude-sonnet-5"
+        }
+      },
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "claude",
+      "model": "claude-opus-5-5"
+    }
+  },
+  "route": {
+    "harness": "claude",
+    "name": "claude-dominant-adversarial-codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "Workspace admission creates isolated worktree, owner record, deps copy and frozen Approved copy; tests cover spaced roots and volatile-state exclusion.",
+          "path": "lib/kogen/build/workspace.ex"
+        },
+        {
+          "locator": "Real-Git assertions cover path, branch, bindings, deps, absence of _build and control immutability.",
+          "path": "test/kogen/build_workspace_test.exs"
+        }
+      ],
+      "id": "candidate-creation",
+      "reason": "Admission is performed before provider launch with collision and missing-deps refusal, isolated worktree and harness paths, frozen bindings, plain deps copy, and no copied controller state.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Build launch contexts bind per-Build Claude/Codex homes, scopes and operation roots.",
+          "path": "lib/kogen/harness.ex"
+        },
+        {
+          "locator": "Offline launch-environment tests and the paid live fixture assert frozen credential bindings and transcript locations.",
+          "path": "test/kogen/harness_home_test.exs"
+        },
+        {
+          "locator": "Retained live evidence records the hybrid route and accepted real sessions.",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-74082-3/evidence.md"
+        }
+      ],
+      "id": "per-build-harness-home",
+      "reason": "Each Build uses its own harness home while preserving control-resolved credential bindings; environment scrubbing, selector freezing, cross-harness Expert routing and live session behavior are covered.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Build threads explicit control and Candidate roots through role launches, verification and evidence.",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "Third-cwd and Candidate receipt assertions verify process cwd, Git toplevel and control-side locator behavior.",
+          "path": "test/kogen/build_workspace_test.exs"
+        }
+      ],
+      "id": "candidate-routing",
+      "reason": "Roles, reports, verification, selectors and citations use the Candidate root explicitly, while tracking and retained artifacts remain control-side; third-cwd behavior is tested.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Controller verification runs Candidate targets through its own supervised runner with scrubbed boundary and Mix context.",
+          "path": "lib/kogen/build/verification_runner.ex"
+        },
+        {
+          "locator": "Candidate tampering and failing-target tests assert Candidate-bound receipts and controller judgment.",
+          "path": "test/kogen/candidate_verification_test.exs"
+        }
+      ],
+      "id": "controller-judges-candidate",
+      "reason": "The parent controller runs verification in the Candidate outside role process trees, binds receipts to the Candidate and ignores tampered Candidate hook copies for judging.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Build retry and rework paths retain the same Candidate and session while creating fresh Reviewer sessions.",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "Lifecycle tests assert one Candidate/home across verification and Review rework; live evidence records the accepted real Build.",
+          "path": "test/kogen/two_outer_resumptions_test.exs"
+        },
+        {
+          "locator": "Paid live fixture evidence records the hybrid route's resumed Build and acceptance.",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-74082-3/evidence.md"
+        }
+      ],
+      "id": "same-candidate-rework",
+      "reason": "Verification retries, Developer resumes and fresh Reviews reuse the same Candidate and harness home, with outer-attempt accounting preserved.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Fast-forward publication validates branch attachment, unmoved baseline, clean control and synchronized HEAD/tree before non-forced cleanup.",
+          "path": "lib/kogen/build/workspace.ex"
+        },
+        {
+          "locator": "Publication tests assert commit provenance, control synchronization, Approved-copy removal, Candidate removal and harness-home retention.",
+          "path": "test/kogen/build_workspace_test.exs"
+        }
+      ],
+      "id": "publication-unmoved-main",
+      "reason": "Accepted output is committed in the Candidate, fast-forwarded only onto an unmoved clean admitted branch, then cleaned up without deleting harness evidence.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Publication refusal retains accepted Candidate state and reports baseline/current commits and removal command.",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "Tests cover moved branch, dirty control and wrong branch while asserting unchanged control and retained Candidate.",
+          "path": "test/kogen/build_workspace_test.exs"
+        }
+      ],
+      "id": "publication-refused",
+      "reason": "Moved, dirty or differently attached control checkouts refuse publication without altering control, the Approved package or the accepted Candidate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Stop handling records retained disposition and names Candidate/worktree/branch/removal details.",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "Failure-retention tests cover verification, outer allowance, Jev, integrity, provider and malformed-review stops plus fresh subsequent Candidates.",
+          "path": "test/kogen/build_workspace_test.exs"
+        }
+      ],
+      "id": "failure-retention",
+      "reason": "Non-publication stops retain Candidate, branch and harness evidence, preserve control, and ensure later Builds create distinct resources.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Guard capture and publication operate on Candidate while control-side edits are checked separately.",
+          "path": "lib/kogen/build/guarded_paths.ex"
+        },
+        {
+          "locator": "Shaping-during-build tests perform Draft/package/login writes in control and assert successful publication plus negative controls.",
+          "path": "test/kogen/build_workspace_test.exs"
+        }
+      ],
+      "id": "shaping-during-build",
+      "reason": "Concurrent Shaping writes to unrelated control-side ignored state do not enter Candidate verification or publication; own Approved mutation and tracked control edits remain guarded.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Candidate listing/removal validates project ownership, live lock, path topology, worktree registration and accepted-commit reachability.",
+          "path": "lib/kogen/build/workspace.ex"
+        },
+        {
+          "locator": "CLI tests cover multi-project isolation, stale/running records, foreign worktrees and discard rules.",
+          "path": "test/kogen/candidates_command_test.exs"
+        }
+      ],
+      "id": "candidate-commands",
+      "reason": "List and remove commands are scoped to the current project and enforce running, ownership, registration and accepted-commit safeguards.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Tracking and evidence code keeps record versions, packets and sidecars control-relative and verifies their digests.",
+          "path": "lib/kogen/build/tracking.ex"
+        },
+        {
+          "locator": "Retention test removes the fixture/Candidate and verifies successful, altered and missing-sidecar resolution.",
+          "path": "test/kogen/build_workspace_test.exs"
+        }
+      ],
+      "id": "shape-to-build-retains-record-sidecars",
+      "reason": "Retained records, packets and sidecars stay under control and remain resolvable after Candidate removal, with integrity failures preserved.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "WriteBoundary renders one canonical Build-wide Seatbelt profile and launch environment.",
+          "path": "lib/kogen/build/write_boundary.ex"
+        },
+        {
+          "locator": "Boundary tests exercise role trees, helpers, grandchildren, aliases, protected paths and launch-service/Apple-event denials.",
+          "path": "test/kogen/write_boundary_test.exs"
+        },
+        {
+          "locator": "Paid evidence records the real hybrid route's accepted Reviewer run under the retained fixture.",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-74082-3/evidence.md"
+        }
+      ],
+      "id": "role-write-boundary",
+      "reason": "All Build role launches use the kernel-enforced profile with grants limited to Candidate, harness, temp and required login state; tested process descendants and escape paths are denied.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Admission validates sandbox executable, canonical grants, forbidden roots and kernel self-test before readiness.",
+          "path": "lib/kogen/build/write_boundary.ex"
+        },
+        {
+          "locator": "Tests cover missing/failing sandbox, aliases, foreign confinement, nested inheritance and unconfined verification children.",
+          "path": "test/kogen/write_boundary_test.exs"
+        }
+      ],
+      "id": "write-boundary-fails-closed",
+      "reason": "Boundary activation failures and unsafe grants stop before role readiness with no unwrapped fallback; confinement mode is kernel-detected and controller verification is scrubbed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Codex launch contexts place operation roots under the Build harness and preserve required bypass flags and Candidate trust root.",
+          "path": "lib/kogen/codex.ex"
+        },
+        {
+          "locator": "Expert and Codex-scope boundary tests assert inherited Expert execution, denied Kogen-owned scope entries and unchanged state roots.",
+          "path": "test/kogen/harness_role_test.exs"
+        },
+        {
+          "locator": "Paid hybrid evidence records the real Codex Reviewer route reaching acceptance.",
+          "path": ".kogen/runtime/live-evidence/reviewer-rework-74082-3/evidence.md"
+        }
+      ],
+      "id": "codex-roles-inside-boundary",
+      "reason": "Codex Reviewer and cross-harness Expert launches operate inside the Build boundary with scoped operation roots, denied protected entries and preserved native flags.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

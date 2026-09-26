@@ -1,0 +1,5 @@
+plain make check exit=2 seconds=120
+Result: 800/805 passed, 10 excluded
+sb make check exit=2 seconds=113
+Result: 800/805 passed, 10 excluded
+   1 bash deny(1) file-write-data /private/tmp/claude-501/kogen-prep5b/probe/p7b

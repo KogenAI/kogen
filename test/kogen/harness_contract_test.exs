@@ -8,6 +8,8 @@ defmodule Kogen.HarnessContractTest do
   """
   use Kogen.IsolatedCase, async: true
 
+  alias Kogen.Codex.Environment
+
   @moduletag timeout: 180_000
 
   @slug "harness-contract"
@@ -42,7 +44,7 @@ defmodule Kogen.HarnessContractTest do
   }
 
   for harness <- ["codex", "claude"] do
-    test "the #{harness} adapter settles Stop, Review, exact resume and Commit through one Build" do
+    test "the #{harness} adapter settles Stop, Review, exact resume and Commit through one Build, and candidate-routing: every role launch's receipts show cwd and Git toplevel equal to the Candidate, never control" do
       run_contract!(unquote(harness))
     end
   end
@@ -70,7 +72,7 @@ defmodule Kogen.HarnessContractTest do
     System.put_env("KOGEN_HARNESS", Path.join(File.cwd!(), "test/support/fake_codex"))
 
     assert {:error, "unsupported harness: opencode; expected codex or claude"} =
-             File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
+             File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
 
     refute File.exists?(Path.join(dest, ".kogen/runtime/fake-harness-log"))
   end
@@ -114,6 +116,60 @@ defmodule Kogen.HarnessContractTest do
     refute rendered_reviewer =~ "{{"
   end
 
+  # candidate-routing: the managed Codex environment trusts the Candidate,
+  # never control, as its Codex `project_root` (the `-c
+  # projects."<path>".trust_level="trusted"` config argument). The offline
+  # `KOGEN_HARNESS` fixtures used elsewhere in this file bypass
+  # `Kogen.Codex.Environment` entirely (`Kogen.Codex.open/3` only replaces
+  # the executable), so this exercises `prepare/6` directly, the one place
+  # that argument is built, with a project root standing in for the
+  # Candidate and a distinct sentinel standing in for control.
+  test "candidate-routing: the managed Codex environment trusts the Candidate as project_root, never control" do
+    candidate =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-codex-trust-candidate-#{System.unique_integer([:positive])}"
+      )
+
+    control =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-codex-trust-control-#{System.unique_integer([:positive])}"
+      )
+
+    scope_home =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-codex-trust-scope-#{System.unique_integer([:positive])}"
+      )
+
+    invocation_root =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-codex-trust-invocation-#{System.unique_integer([:positive])}"
+      )
+
+    for dir <- [candidate, control, scope_home, invocation_root], do: File.mkdir_p!(dir)
+    on_exit(fn -> Enum.each([candidate, control, scope_home, invocation_root], &File.rm_rf/1) end)
+    File.write!(Path.join(scope_home, ".kogen-owned"), "account-v1\n")
+
+    context =
+      Environment.prepare(
+        %{"executable" => "/usr/bin/true", "version" => "test"},
+        %{path: scope_home},
+        :setup,
+        candidate,
+        invocation_root,
+        %{}
+      )
+
+    assert ~s(projects.#{Jason.encode!(candidate)}.trust_level="trusted") in context.args,
+           "expected the Candidate to be named trusted: #{inspect(context.args)}"
+
+    refute Enum.any?(context.args, &String.contains?(&1, control)),
+           "control must never be named in the Codex trust arguments: #{inspect(context.args)}"
+  end
+
   for {label, keys, expected} <- [
         {"missing harness", [], "harness selection has no harness; expected codex or claude"},
         {"blank harness", [harness: ""], "unsupported harness: \"\"; expected codex or claude"},
@@ -122,7 +178,7 @@ defmodule Kogen.HarnessContractTest do
       ] do
     test "Harness.open refuses a selection with #{label} before any launch" do
       config = Map.new(unquote(Macro.escape(keys)))
-      assert {:error, unquote(expected)} = Kogen.Harness.open(config)
+      assert {:error, unquote(expected)} = Kogen.Harness.open(config, File.cwd!())
     end
   end
 
@@ -453,14 +509,32 @@ defmodule Kogen.HarnessContractTest do
     raw_log_dir = Path.join(Path.dirname(claude_root), "raw")
     System.put_env("KOGEN_RAW_LOG_DIR", raw_log_dir)
 
-    assert :ok = File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
+    assert :ok = File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
+
+    # candidate-routing: every role launch (readiness, Developer, Reviewer,
+    # resumes) ran with cwd and Git toplevel equal to the Candidate, computed
+    # from the OS process state each fake role observes from inside itself,
+    # never from launch arguments or environment; control (`dest`) itself is
+    # the negative control that must never appear as either.
+    candidate_path = Kogen.CandidateFixture.worktree(dest)
+    receipts = Kogen.CandidateFixture.receipts(dest)
+    assert receipts != [], "expected at least one per-launch receipt"
+
+    assert Enum.all?(receipts, &(&1["pwd"] == candidate_path)),
+           "every role launch's cwd must be the Candidate, never control: #{inspect(receipts)}"
+
+    assert Enum.all?(receipts, &(&1["toplevel"] == candidate_path)),
+           "every role launch's Git toplevel must be the Candidate, never control: #{inspect(receipts)}"
+
+    refute Enum.any?(receipts, &(&1["pwd"] == dest or &1["toplevel"] == dest)),
+           "control must never appear as a role launch's cwd or Git toplevel"
 
     assert git!(dest, ["show", "HEAD:dummy.txt"]) == "reviewed fixture value"
     assert git!(dest, ["rev-parse", "HEAD^"]) == head_before
     evidence = File.read!(Path.join(dest, ".kogen/intents/complete/#{@slug}/evidence.md"))
     assert evidence =~ "Outer resumptions used: 1"
     assert evidence =~ "Reviewer verdict: accept"
-    assert File.read!(Path.join(dest, ".kogen/runtime/fake-reviewer-calls")) == "2\n"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dest, "fake-reviewer-calls")) == "2\n"
 
     [developer_session] =
       Regex.run(~r/Developer session id: `([^`]+)`/, evidence, capture: :all_but_first)
@@ -493,7 +567,7 @@ defmodule Kogen.HarnessContractTest do
     assert Enum.map(initial, & &1["status"]) |> Enum.take(2) == ["failed", "passed"],
            "the controller must resume the same Developer session until verification passes"
 
-    log = File.read!(Path.join(dest, ".kogen/runtime/fake-harness-log"))
+    log = File.read!(Kogen.CandidateFixture.fake_state(dest, "fake-harness-log"))
     assert_adapter_transport!(harness, log, developer_session)
   end
 
@@ -610,6 +684,10 @@ defmodule Kogen.HarnessContractTest do
       Path.join(intent_dir, "requirement.json"),
       ~s({"path":"dummy.txt","expected":"reviewed fixture value"})
     )
+
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
 
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
     dest

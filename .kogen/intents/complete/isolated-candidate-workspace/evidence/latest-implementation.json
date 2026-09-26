@@ -1,0 +1,338 @@
+{
+  "format": "kogen-shaping-source-inputs",
+  "version": 1,
+  "baseline": "c1f085324f78d5030c8d3d7b6efc2df248ff01c2",
+  "previous_checkpoint": "913ba174bffd864e0940c49d36d9e5d022333565",
+  "encoding": "base64-gzip",
+  "file_count": 41,
+  "files": [
+    {
+      "path": "lib/kogen/build.ex",
+      "byte_count": 47196,
+      "sha256": "d415e090d60cf9d2b52a682a39a387064b7eeaab7a8a07b1d6bd4e04270d8774",
+      "mode": "100644",
+      "baseline_blob": "e20c7f1c6a673a0431138007ef39f31793c05319",
+      "payload": "implementation-inputs/lib/kogen/build.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/build/contract.ex",
+      "byte_count": 27146,
+      "sha256": "00b15c66ac7ff7a9077903a27a2572809d49ee2ecb66560ca1a4db7a0ab24422",
+      "mode": "100644",
+      "baseline_blob": "a7f0d24a1a7380adf4c01ee894af68d297a8bd6c",
+      "payload": "implementation-inputs/lib/kogen/build/contract.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/build/evidence.ex",
+      "byte_count": 5194,
+      "sha256": "3a2d8b90d1bcfc40112318875d11ba42f97766c97d278c605763a5bd3c72962b",
+      "mode": "100644",
+      "baseline_blob": "6c5f2a6895487dfbb4a5deb5ba1963d7d7134655",
+      "payload": "implementation-inputs/lib/kogen/build/evidence.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/build/guarded_paths.ex",
+      "byte_count": 7588,
+      "sha256": "767fef743a8e99f9900019d11995d7844b472c0ca59d7dede423a2069851de1e",
+      "mode": "100644",
+      "baseline_blob": "8eb322003b91778f755db656d48932609421a99c",
+      "payload": "implementation-inputs/lib/kogen/build/guarded_paths.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/build/tracking.ex",
+      "byte_count": 20953,
+      "sha256": "9a0598f720b105eca0644e71ff7aaeb822980bf11226dc70ce81d39bc4109af9",
+      "mode": "100644",
+      "baseline_blob": "6e7d717032b1c6db84f589888853d68ba7aecc29",
+      "payload": "implementation-inputs/lib/kogen/build/tracking.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/build/verification.ex",
+      "byte_count": 10720,
+      "sha256": "5ec134275e88b7b39803c88928079c9aaef83c8a24eb9abb96025cf56ab8b508",
+      "mode": "100644",
+      "baseline_blob": "77ea2f35db266b3edefabd918e0bb10ac160e98b",
+      "payload": "implementation-inputs/lib/kogen/build/verification.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/build/workspace.ex",
+      "byte_count": 17386,
+      "sha256": "1715d7d783365f00bed88cc4a79f3b9faffcf345e8d1c9e84cc332011c9cbf08",
+      "mode": "100644",
+      "baseline_blob": null,
+      "payload": "implementation-inputs/lib/kogen/build/workspace.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/codex.ex",
+      "byte_count": 9141,
+      "sha256": "8bb48a58367a35f21f82498da13a503b1348369113f036c23d6b7ee08708d788",
+      "mode": "100644",
+      "baseline_blob": "3cf5c2ad0e23b527ba46cda2f0bcb47f28778ccb",
+      "payload": "implementation-inputs/lib/kogen/codex.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/codex/compatibility.ex",
+      "byte_count": 31780,
+      "sha256": "8d68e6f13e6b0da6e6ae86b2b9fc654842e885f64cec73d589645c8ce0c5b404",
+      "mode": "100644",
+      "baseline_blob": "853bf9347f6054f70af425974b333cdac67c956f",
+      "payload": "implementation-inputs/lib/kogen/codex/compatibility.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/codex/state.ex",
+      "byte_count": 6659,
+      "sha256": "8bc10c9ef6012b2e50a085621f9c31158f350af486bd3bb92bad753b56b12950",
+      "mode": "100644",
+      "baseline_blob": "fe3f11d956c55efdff193167f25f77e81e00bab8",
+      "payload": "implementation-inputs/lib/kogen/codex/state.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/git.ex",
+      "byte_count": 19823,
+      "sha256": "652cda4a5cc5f90be7d545d16db82c975fdfbe366d9008e8ce8e1c78745da20f",
+      "mode": "100644",
+      "baseline_blob": "da1f5d165b233c5862f59f77b7a4f9af9c49b17d",
+      "payload": "implementation-inputs/lib/kogen/git.ex.gz.base64"
+    },
+    {
+      "path": "lib/kogen/harness.ex",
+      "byte_count": 21341,
+      "sha256": "a74f5a1640b46c045c11ae23de70c089b8251feba283f0993148a037493b2c15",
+      "mode": "100644",
+      "baseline_blob": "1ef893e7209a981c7aa7299cde64f076c2adf4d2",
+      "payload": "implementation-inputs/lib/kogen/harness.ex.gz.base64"
+    },
+    {
+      "path": "priv/kogen/clone_tree.py",
+      "byte_count": 1184,
+      "sha256": "09c50a12c8414885129f2683d0ceb16c3c9f414702eeb7844d0d8b1aa431ef85",
+      "mode": "100644",
+      "baseline_blob": null,
+      "payload": "implementation-inputs/priv/kogen/clone_tree.py.gz.base64"
+    },
+    {
+      "path": "priv/kogen/test-reliability-remediation.yaml",
+      "byte_count": 120054,
+      "sha256": "9950bf5ba10c3406b12cc73bef2aed3764e2f5f1e2af591c1315b89cb3901258",
+      "mode": "100644",
+      "baseline_blob": "eae00abf8e3541c5344b211bf540e865d961eef6",
+      "payload": "implementation-inputs/priv/kogen/test-reliability-remediation.yaml.gz.base64"
+    },
+    {
+      "path": "priv/kogen/test-reliability.yaml",
+      "byte_count": 394943,
+      "sha256": "2271aad2d61010eebb14c3ccf2699c2f5166215d1d8b6965baea428288fe5e77",
+      "mode": "100644",
+      "baseline_blob": "1cde291788da2e543ff593d71024093d1d113460",
+      "payload": "implementation-inputs/priv/kogen/test-reliability.yaml.gz.base64"
+    },
+    {
+      "path": "scripts/check/generate_test_reliability.py",
+      "byte_count": 7345,
+      "sha256": "36072d751d7d555d7dae04767f2ac71e5fd91b349509b3a7d776f10b7f92f80a",
+      "mode": "100644",
+      "baseline_blob": "2d8bbebefef14169ccabea5b349330b8913b7bde",
+      "payload": "implementation-inputs/scripts/check/generate_test_reliability.py.gz.base64"
+    },
+    {
+      "path": "test/kogen/approved_mutation_test.exs",
+      "byte_count": 6358,
+      "sha256": "ec00093d855ea50f2364b006fa815674411bc87afe561ff33f33894c20e7ed0f",
+      "mode": "100644",
+      "baseline_blob": "4318752d6d428f1b2487785046e741111f1125b0",
+      "payload": "implementation-inputs/test/kogen/approved_mutation_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/build_workspace_test.exs",
+      "byte_count": 6899,
+      "sha256": "a8886c83fde3b8fc2ac826b93b50b1913364a97fa0ecb7f853401f167264b32c",
+      "mode": "100644",
+      "baseline_blob": null,
+      "payload": "implementation-inputs/test/kogen/build_workspace_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/codex_environment_test.exs",
+      "byte_count": 13469,
+      "sha256": "5abe317599d37832d11cd47d6d6ad8a0bf498c491b1ffa83caff683386b31e78",
+      "mode": "100644",
+      "baseline_blob": "39665c499c931edd5e564285a3a404050ec1a689",
+      "payload": "implementation-inputs/test/kogen/codex_environment_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/codex_public_tasks_test.exs",
+      "byte_count": 8935,
+      "sha256": "8ebfecafbecedcd7f55bbf96d8b5092365f7ec23c86bfa56410939c46e1802ef",
+      "mode": "100644",
+      "baseline_blob": "b3f54cc9a382ac702b9e15d1f092111bfa4aa37f",
+      "payload": "implementation-inputs/test/kogen/codex_public_tasks_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/commit_failure_rollback_test.exs",
+      "byte_count": 9280,
+      "sha256": "a6232229ad2dab000b631da4916f4e18818b0b0b94291e3a8348867b8e5447a8",
+      "mode": "100644",
+      "baseline_blob": "ec3a6394aa05029fb2e8bc274161da8fda16b39d",
+      "payload": "implementation-inputs/test/kogen/commit_failure_rollback_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/commit_provenance_test.exs",
+      "byte_count": 6900,
+      "sha256": "651dc445ea843be932879091989d03c88d26b850d6da2122822fa5fa466ff1bc",
+      "mode": "100644",
+      "baseline_blob": "65fa110d43a92abde9c73e1b5189689e6d010be4",
+      "payload": "implementation-inputs/test/kogen/commit_provenance_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/core_integrity_test.exs",
+      "byte_count": 11588,
+      "sha256": "f6fb0b2e0527bbf0eddf4dfef9040422b91e5f9598ffcfc86369299690e31cc0",
+      "mode": "100644",
+      "baseline_blob": "54eb4b96b6092596dd9722f68bfef37c5f44a38d",
+      "payload": "implementation-inputs/test/kogen/core_integrity_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/lifecycle_test.exs",
+      "byte_count": 19395,
+      "sha256": "1e374ca25026618b958619539399085612e703ca6e6610ff2810b2d4760a3a63",
+      "mode": "100644",
+      "baseline_blob": "46432cd0168205a4a9c06dfc3d46d5c8bfa0893d",
+      "payload": "implementation-inputs/test/kogen/lifecycle_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/live_reviewer_rework_test.exs",
+      "byte_count": 934,
+      "sha256": "929a3ef33157a3d959b6e89f1f098e983d525a2c1bcec0f6108292c9b6756f22",
+      "mode": "100644",
+      "baseline_blob": "10fc42e844f6b5bf558f361ecaf07c8fada5a67d",
+      "payload": "implementation-inputs/test/kogen/live_reviewer_rework_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/live_shape_to_build_test.exs",
+      "byte_count": 26351,
+      "sha256": "ec6683b0081e5a2210b50c6a23f72c7c2a04eea5ebd6626d5ae3a02f2ebd1da1",
+      "mode": "100644",
+      "baseline_blob": "1a042f000dfbca007dba44e09327ec8f7444fbf4",
+      "payload": "implementation-inputs/test/kogen/live_shape_to_build_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/reviewer_mutation_test.exs",
+      "byte_count": 5215,
+      "sha256": "330a64dd9be0b6ad420ac65e59fc920bde0471cbce5f096ac53d682aefd2449f",
+      "mode": "100644",
+      "baseline_blob": "e59d169b848799625a1390ecc43de5f97be33b9d",
+      "payload": "implementation-inputs/test/kogen/reviewer_mutation_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/scenario_lifecycle_test.exs",
+      "byte_count": 19153,
+      "sha256": "a7d63000d991c41085c5ca2c23b51bb0149d895e0cab6f8985101f470a47204e",
+      "mode": "100644",
+      "baseline_blob": "114a0a3520ef4f44168a9b54b00f2bbb9d45860a",
+      "payload": "implementation-inputs/test/kogen/scenario_lifecycle_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/scenario_tracking_test.exs",
+      "byte_count": 9369,
+      "sha256": "57027ffdc0e3aefcca9694c3a033c8d1bfad580cbaffedfcf9a8b83b0c57aedd",
+      "mode": "100644",
+      "baseline_blob": "56e72ba9ca5e027359e0f27d3a81def99eb5fbe6",
+      "payload": "implementation-inputs/test/kogen/scenario_tracking_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/settlement_regression_test.exs",
+      "byte_count": 3940,
+      "sha256": "685a98d183a990efd93c68674c4b38eafe6b081dc33a062710fef1833e810dbb",
+      "mode": "100644",
+      "baseline_blob": "5f61a6ece052e3e61f690b26b036e9acf74e3024",
+      "payload": "implementation-inputs/test/kogen/settlement_regression_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/test_reliability_catalog_test.exs",
+      "byte_count": 3040,
+      "sha256": "ec006ef345e7b3ec51727049935b95e487472070d32b39ab96cf7ef3ff38f04b",
+      "mode": "100644",
+      "baseline_blob": "acb160d1839c2a86e96f3a394659ea77e985a72d",
+      "payload": "implementation-inputs/test/kogen/test_reliability_catalog_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/two_outer_resumptions_test.exs",
+      "byte_count": 7080,
+      "sha256": "b6dc749b2a02a0e8c850b0fe243af742345aa91281495889457482b23e9300e5",
+      "mode": "100644",
+      "baseline_blob": "1abc3429b94c60533f09a0f45bc75e08fbb5c46c",
+      "payload": "implementation-inputs/test/kogen/two_outer_resumptions_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/verification_ownership_lifecycle_test.exs",
+      "byte_count": 12625,
+      "sha256": "ecab586622f6ca9bfb81addd450f19662e3a29bfbc35e7efd10d22b4ca1142cd",
+      "mode": "100644",
+      "baseline_blob": "33fd947f0e2aadb66a3b92181db03dc6b9cb735b",
+      "payload": "implementation-inputs/test/kogen/verification_ownership_lifecycle_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/workspace_dependency_test.exs",
+      "byte_count": 1084,
+      "sha256": "4df6b4f72ad30a15587eabcd68d6461b2eba6d58e456e04da8ca0e10e72545c9",
+      "mode": "100644",
+      "baseline_blob": null,
+      "payload": "implementation-inputs/test/kogen/workspace_dependency_test.exs.gz.base64"
+    },
+    {
+      "path": "test/kogen/worktree_publication_recovery_test.exs",
+      "byte_count": 3368,
+      "sha256": "a877ddd7a72581eea003d67833be5411066b79cb53b4499b51bcb52295859855",
+      "mode": "100644",
+      "baseline_blob": null,
+      "payload": "implementation-inputs/test/kogen/worktree_publication_recovery_test.exs.gz.base64"
+    },
+    {
+      "path": "test/support/compiled_fixture.exs",
+      "byte_count": 3845,
+      "sha256": "9ccae9659b2b617ee9f05ce2ea625526e2fddf3ec3a6ec1a13a5082e2d4341d4",
+      "mode": "100644",
+      "baseline_blob": "74522541029443f1a75ec9cdf7e9dd471e37884f",
+      "payload": "implementation-inputs/test/support/compiled_fixture.exs.gz.base64"
+    },
+    {
+      "path": "test/support/fake_codex",
+      "byte_count": 5941,
+      "sha256": "d408d843e66a1af8b2267ceb3452e4b41e6bbf7d82c20b355c413600a2643654",
+      "mode": "100755",
+      "baseline_blob": "567346bd7abeafe43d50287458d9af0e5b135256",
+      "payload": "implementation-inputs/test/support/fake_codex.gz.base64"
+    },
+    {
+      "path": "test/support/live_reviewer_rework_fixture.ex",
+      "byte_count": 9014,
+      "sha256": "be7ad799a365d3f49b5d2f3a18ac8aa35217f88cb4a9de798c9bed5271325874",
+      "mode": "100644",
+      "baseline_blob": "72df291dbdd0e3f6b9da21b4201a11d8c3a2a4fa",
+      "payload": "implementation-inputs/test/support/live_reviewer_rework_fixture.ex.gz.base64"
+    },
+    {
+      "path": "test/support/live_rework_audit.ex",
+      "byte_count": 17242,
+      "sha256": "4a5528219d0ef5008982a88ebbaf927b23beb1e338b318523e22e45db72ad259",
+      "mode": "100644",
+      "baseline_blob": "5ff54054b6784577d3e52caba63ca89824fcaba6",
+      "payload": "implementation-inputs/test/support/live_rework_audit.ex.gz.base64"
+    },
+    {
+      "path": "test/support/scenario_lifecycle_harness.py",
+      "byte_count": 11435,
+      "sha256": "dfa51b9f8fbab543589c4b148a80716226db71480e3a7448812b83755e64a573",
+      "mode": "100644",
+      "baseline_blob": "b1e737addf1ad945e9832933e7761fac038e86d2",
+      "payload": "implementation-inputs/test/support/scenario_lifecycle_harness.py.gz.base64"
+    },
+    {
+      "path": "test/support/test_reliability_catalog.ex",
+      "byte_count": 6449,
+      "sha256": "5e021756ec93cf3c55d3b87d2054e08e559523d6722c6b2c2530e0291b3b5f66",
+      "mode": "100644",
+      "baseline_blob": "1e1c1dd94bab90c3ca76f97ac0a7f346ad7f888c",
+      "payload": "implementation-inputs/test/support/test_reliability_catalog.ex.gz.base64"
+    }
+  ]
+}

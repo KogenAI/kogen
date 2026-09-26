@@ -1,8 +1,140 @@
+Code.require_file("../support/route_config.ex", __DIR__)
+
 defmodule Kogen.Codex.EnvironmentTest do
   use Kogen.IsolatedCase, async: true
 
-  alias Kogen.Codex.Environment
+  alias Kogen.Codex.{Environment, State}
   alias Kogen.Harness.Codex, as: CodexHarness
+  alias Kogen.RouteConfig
+
+  # Scenario `codex-roles-inside-boundary` and `per-build-harness-home`: a
+  # Build's Codex launch (`Kogen.Codex.open/3` with a `launch:` map) must key
+  # `CODEX_HOME` on the bound scope, put its private operation root (`HOME`,
+  # `XDG_*`, sqlite) under the harness home, remove every blocked provider
+  # credential, use the Build's own `TMPDIR`, trust the Candidate (not the
+  # control project) and keep the two unattended-bypass flags the enclosing
+  # Seatbelt profile is standing in for.
+  describe "a Build launch's Codex deltas" do
+    # `Kogen.IsolatedCase` also runs setup in the parent VM; these global
+    # environment changes belong only to the child that runs the test.
+    setup do
+      if Kogen.WorkspaceFixture.isolated_child?(), do: build_launch_fixture(), else: :ok
+    end
+
+    defp build_launch_fixture do
+      source = File.cwd!()
+      root = temporary_root!()
+      workspaces = temporary_root!()
+      candidate = Path.join(workspaces, "candidate")
+      harness_home = Path.join(workspaces, "harness")
+      tmp = Path.join(workspaces, "tmp")
+      for dir <- [candidate, harness_home, tmp], do: File.mkdir_p!(dir)
+
+      System.put_env("KOGEN_CODEX_ROOT", root)
+      System.put_env("KOGEN_TEST_NATIVE_TRACE", Path.join(root, "trace.jsonl"))
+      System.delete_env("KOGEN_HARNESS")
+      System.delete_env("KOGEN_ROLE")
+
+      for {name, value} <- [
+            {"OPENAI_API_KEY", "inherited-personal-key"},
+            {"ANTHROPIC_API_KEY", "inherited-anthropic-key"},
+            {"CLAUDE_CODE_OAUTH_TOKEN", "inherited-oauth-token"}
+          ],
+          do: System.put_env(name, value)
+
+      on_exit(fn ->
+        File.rm_rf(root)
+        File.rm_rf(workspaces)
+
+        for name <- ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
+            do: System.delete_env(name)
+      end)
+
+      {output, status} =
+        System.cmd(
+          "python3",
+          [
+            Path.join(source, "test/support/managed_codex_fixture.py"),
+            root,
+            Path.join(source, "priv/kogen/codex/install.py")
+          ],
+          stderr_to_stdout: true
+        )
+
+      assert status == 0, output
+
+      scope = Path.join([root, "accounts", "shared"])
+      State.ensure_scope!(scope)
+      File.write!(Path.join(scope, "auth.json"), "shared-account")
+
+      config_path = Path.join(candidate, ".kogen/config.yaml")
+      RouteConfig.write!(config_path, [{"codex", RouteConfig.codex_route()}])
+      {:ok, config} = Kogen.Intent.read_config(config_path, "codex")
+
+      launch = %{
+        root: candidate,
+        control: candidate,
+        harness_home: harness_home,
+        tmp_dir: tmp,
+        prefix: [],
+        env: [{"TMPDIR", tmp}, {"TMPPREFIX", Path.join(tmp, "zsh")}],
+        bindings: %{},
+        lease: true
+      }
+
+      {:ok,
+       scope: scope,
+       candidate: candidate,
+       harness_home: harness_home,
+       tmp: tmp,
+       config: config,
+       launch: launch}
+    end
+
+    test "CODEX_HOME, private operation root, blocked vars, TMPDIR, trust and retained flags",
+         ctx do
+      assert {:ok, selection} = Kogen.Codex.open(ctx.config, ctx.candidate, ctx.launch)
+      context = Kogen.Codex.launch_context(selection)
+
+      assert context.cwd == ctx.candidate
+      assert value!(context.env, "CODEX_HOME") == ctx.scope
+
+      operation_root = Path.expand(Path.join(ctx.harness_home, "codex"))
+      home = value!(context.env, "HOME")
+      assert home && String.starts_with?(Path.expand(home), operation_root)
+
+      for name <- ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"] do
+        value = value!(context.env, name)
+        assert value && String.starts_with?(Path.expand(value), operation_root)
+      end
+
+      assert value!(context.env, "SQLITE_HOME")
+             |> Path.expand()
+             |> String.starts_with?(operation_root)
+
+      assert value!(context.env, "TMPDIR") == ctx.tmp
+
+      for blocked <- ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"] do
+        assert {blocked, nil} in context.env
+      end
+
+      assert Enum.any?(
+               context.args,
+               &(&1 == "projects.#{toml(ctx.candidate)}.trust_level=\"trusted\"")
+             )
+
+      refute Enum.any?(context.args, &(&1 == "projects.#{toml(ctx.candidate)}"))
+
+      harness_context = %{context | harness: "codex"}
+
+      assert {:ok, verdict} =
+               Kogen.Harness.launch_reviewer("review", "gpt-6-sol", "high", harness_context)
+
+      assert verdict.verdict == "accept"
+    end
+
+    defp toml(value), do: Jason.encode!(value)
+  end
 
   test "prepares a private launch and removes inherited provider settings" do
     root = temporary_root!()

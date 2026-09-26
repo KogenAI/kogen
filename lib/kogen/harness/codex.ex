@@ -59,7 +59,9 @@ defmodule Kogen.Harness.Codex do
   end
 
   defp review(prompt, model, effort, context) do
-    dir = temporary_directory("review")
+    # Codex writes the last message itself, so inside a Build it lives in the
+    # Build temp dir the boundary grants.
+    dir = temporary_directory("review", Map.get(context, :tmp_dir))
     schema_path = Path.join(dir, "verdict.schema.json")
     message_path = Path.join(dir, "verdict.json")
     ledger_paths = Map.get(context, :ledger_paths, [])
@@ -72,7 +74,7 @@ defmodule Kogen.Harness.Codex do
 
       {output, exit_code} =
         run_with_stdin(
-          context.executable,
+          context,
           context.args ++ args,
           prompt,
           merge_environment(context.env, [{"KOGEN_ROLE", "reviewer"}])
@@ -148,7 +150,7 @@ defmodule Kogen.Harness.Codex do
 
       {output, exit_code} =
         run_with_stdin(
-          selected.executable,
+          selected,
           selected.args ++ expert_args(model, effort),
           prompt,
           merge_environment(selected.env, [{"KOGEN_ROLE", role} | removed])
@@ -191,7 +193,7 @@ defmodule Kogen.Harness.Codex do
   defp run_turn(args, stdin_text, policy_environment, context) do
     {output, exit_code} =
       run_with_stdin(
-        context.executable,
+        context,
         context.args ++ args,
         stdin_text,
         merge_environment(context.env, [{"KOGEN_ROLE", "developer"} | policy_environment])
@@ -206,7 +208,7 @@ defmodule Kogen.Harness.Codex do
   defp notes_turn(args, stdin_text, policy_environment, context) do
     {output, exit_code} =
       run_with_stdin(
-        context.executable,
+        context,
         context.args ++ args,
         stdin_text,
         merge_environment(context.env, [{"KOGEN_ROLE", "developer"} | policy_environment])
@@ -331,10 +333,10 @@ defmodule Kogen.Harness.Codex do
 
   defp different_thread?(_event, _session_id), do: false
 
-  defp temporary_directory(label) do
+  defp temporary_directory(label, base \\ nil) do
     dir =
       Path.join(
-        System.tmp_dir!(),
+        base || System.tmp_dir!(),
         "kogen-#{label}-#{System.pid()}-#{System.unique_integer([:positive, :monotonic])}"
       )
 
@@ -343,20 +345,28 @@ defmodule Kogen.Harness.Codex do
     dir
   end
 
-  defp run_with_stdin(exe, args, stdin_text, extra_env) do
+  # A Build launch runs in its Candidate (`:cwd`) under the write boundary's
+  # argv `:prefix` (`sandbox-exec -p <profile>`), so the harness process and
+  # everything it spawns are confined by the kernel.
+  defp run_with_stdin(context, args, stdin_text, extra_env) do
     dir = temporary_directory("stdin")
     tmp = Path.join(dir, "prompt")
     File.write!(tmp, stdin_text)
 
     try do
-      cmd = Enum.map_join([exe | args], " ", &shell_quote/1) <> " < " <> shell_quote(tmp)
-      result = System.cmd("sh", ["-c", cmd], stderr_to_stdout: false, env: extra_env)
+      argv = Map.get(context, :prefix, []) ++ [context.executable | args]
+      cmd = Enum.map_join(argv, " ", &shell_quote/1) <> " < " <> shell_quote(tmp)
+      options = [stderr_to_stdout: false, env: extra_env] ++ cwd_option(context)
+      result = System.cmd("sh", ["-c", cmd], options)
       persist_raw_stream(result)
       result
     after
       File.rm_rf(dir)
     end
   end
+
+  defp cwd_option(%{cwd: cwd}) when is_binary(cwd), do: [cd: cwd]
+  defp cwd_option(_context), do: []
 
   defp persist_raw_stream({output, _exit_code}) do
     case System.get_env("KOGEN_RAW_LOG_DIR") do

@@ -104,7 +104,7 @@ defmodule Kogen.ReviewerMutationTest do
     System.put_env("FAKE_HYBRID_REVIEWER_MUTATES", "1")
 
     head_before = git!(dest, ["rev-parse", "HEAD"])
-    result = File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
+    result = File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
 
     assert {:error, reason} = result
     assert reason =~ "Candidate mutated during verification or Review"
@@ -114,8 +114,13 @@ defmodule Kogen.ReviewerMutationTest do
 
     refute File.dir?(Path.join(dest, ".kogen/intents/complete/#{@slug}"))
 
-    assert File.exists?(Path.join(dest, "tampered.txt")),
-           "sanity: the hybrid route's Codex Reviewer mutation really happened"
+    worktree = Kogen.CandidateFixture.worktree(dest)
+
+    assert File.exists?(Path.join(worktree, "tampered.txt")),
+           "sanity: the hybrid route's Codex Reviewer mutation really happened, in the retained Candidate"
+
+    refute File.exists?(Path.join(dest, "tampered.txt")),
+           "the Reviewer's mutation must never reach control"
   end
 
   # Scenario "reviewer-verdict-must-be-schema-valid" on the same hybrid route:
@@ -127,7 +132,7 @@ defmodule Kogen.ReviewerMutationTest do
     System.put_env("FAKE_HYBRID_REVIEWER_MALFORMED", "1")
 
     head_before = git!(dest, ["rev-parse", "HEAD"])
-    result = File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
+    result = File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
 
     assert {:error, reason} = result
     assert reason =~ "Reviewer failure: "
@@ -200,6 +205,10 @@ defmodule Kogen.ReviewerMutationTest do
       {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
     ]
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
+
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dest)
     {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "fixture baseline"], cd: dest, env: env)
@@ -230,7 +239,7 @@ defmodule Kogen.ReviewerMutationTest do
         else: System.delete_env("KOGEN_HARNESS")
     end)
 
-    result = File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
+    result = File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
 
     assert {:error, reason} = result
     assert reason =~ "Candidate mutated during verification or Review"
@@ -240,8 +249,13 @@ defmodule Kogen.ReviewerMutationTest do
 
     refute File.dir?(Path.join(dest, ".kogen/intents/complete/#{@slug}"))
 
-    assert File.exists?(Path.join(dest, "tampered.txt")),
-           "sanity: the fake reviewer's mutation really happened"
+    worktree = Kogen.CandidateFixture.worktree(dest)
+
+    assert File.exists?(Path.join(worktree, "tampered.txt")),
+           "sanity: the fake reviewer's mutation really happened, in the retained Candidate"
+
+    refute File.exists?(Path.join(dest, "tampered.txt")),
+           "the Reviewer's mutation must never reach control"
   end
 
   # Shared fixture for the two hybrid-route Reviewer tests: a Developer on
@@ -299,6 +313,10 @@ defmodule Kogen.ReviewerMutationTest do
       {"GIT_COMMITTER_NAME", "Kogen Fixture"},
       {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
     ]
+
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
 
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dest)

@@ -1,11 +1,12 @@
 Code.require_file("review_packet_audit.ex", __DIR__)
+Code.require_file("boundary_probe_fixture.ex", __DIR__)
 
 defmodule Kogen.LiveReviewerReworkFixture do
   @moduledoc false
   import ExUnit.Assertions
   import ExUnit.Callbacks, only: [on_exit: 1]
 
-  alias Kogen.Build.{Contract, VerificationPlan}
+  alias Kogen.Build.{Contract, VerificationPlan, Workspace, WriteBoundary}
   alias Kogen.{Intent, LiveReworkAudit, ReviewPacketAudit, RootProfileAudit}
 
   @slug "live-reviewer-rework-probe"
@@ -103,6 +104,8 @@ defmodule Kogen.LiveReviewerReworkFixture do
              )
 
     raw_stream_dir = Path.join(log_dir, "build-raw-streams")
+    {:ok, codex_scope} = Kogen.Codex.effective_scope(fixture)
+    scope_before = File.ls!(codex_scope.path)
 
     {output, status} =
       System.cmd("mix", ["kogen.build", @slug, "--route", @route],
@@ -111,7 +114,9 @@ defmodule Kogen.LiveReviewerReworkFixture do
           {"KOGEN_RAW_LOG_DIR", raw_stream_dir},
           {"MIX_BUILD_PATH", Path.join(fixture, "_build")},
           {"KOGEN_JEV_TRANSPORT", nil},
-          {"KOGEN_JEV_SECURITY", nil}
+          {"KOGEN_JEV_SECURITY", nil},
+          # Only the nested Build's roles run the fixture's SessionStart probe.
+          {"KOGEN_BOUNDARY_PROBE_OUTSIDE", Kogen.BoundaryProbeFixture.outside(fixture)}
         ],
         stderr_to_stdout: true
       )
@@ -156,10 +161,60 @@ defmodule Kogen.LiveReviewerReworkFixture do
 
     assert [build_id] = retained.build_ids, "expected exactly one nested Build tracking id"
 
+    assert_codex_bounded!(
+      log_dir,
+      build_id,
+      fixture,
+      codex_scope.path,
+      scope_before,
+      raw_stream_dir,
+      [audit.rework_reviewer_session_id, audit.accepting_reviewer_session_id]
+    )
+
     ReviewPacketAudit.audit!(log_dir, build_id, {:git, fixture, audit.candidate})
 
     File.rm_rf!(fixture)
     assert :ok = LiveReworkAudit.audit_retained!(log_dir)
+  end
+
+  # The real Codex Reviewer returned both verdicts inside the nested Build's
+  # applied boundary, which granted the Codex scope; its SessionStart probe
+  # wrote inside and was refused outside; no refused scope entry appeared.
+  defp assert_codex_bounded!(log_dir, build_id, fixture, scope, scope_before, raw, reviewers) do
+    record =
+      [log_dir, "scenario-tracking", build_id, "record.json"]
+      |> Path.join()
+      |> File.read!()
+      |> Jason.decode!()
+
+    boundary = record["boundary"]
+    worktree = record["candidate"]["worktree_path"]
+    assert boundary["mode"] == "applied"
+    assert boundary["grants"]["codex_scope"] == Workspace.canonical(scope)
+    assert "hooks.json" in boundary["denied_scope_entries"]
+
+    reviewer_lines =
+      Enum.filter(Kogen.BoundaryProbeFixture.lines(raw), &(&1["role"] == "reviewer"))
+
+    assert length(reviewer_lines) >= 2, "expected one probe receipt per Codex Reviewer session"
+
+    with_ids = Enum.filter(reviewer_lines, &is_binary(&1["session_id"]))
+    for line <- with_ids, do: assert(line["session_id"] in reviewers, inspect(line))
+
+    if length(with_ids) == length(reviewer_lines),
+      do:
+        assert(
+          Enum.sort(Enum.uniq(Enum.map(with_ids, & &1["session_id"]))) == Enum.sort(reviewers)
+        )
+
+    Enum.each(reviewer_lines, &Kogen.BoundaryProbeFixture.assert_bounded!(&1, worktree))
+    Kogen.BoundaryProbeFixture.assert_nothing_escaped!(fixture)
+
+    appeared = File.ls!(scope) -- scope_before
+    denied = WriteBoundary.codex_denied_entries()
+
+    assert Enum.filter(appeared, &(&1 in denied)) == [],
+           "refused scope entries appeared: #{inspect(appeared)}"
   end
 
   def write_package!(fixture) do
@@ -200,6 +255,7 @@ defmodule Kogen.LiveReviewerReworkFixture do
       |> VerificationPlan.render_target_declarations()
 
     File.write!(Path.join(fixture, "Makefile"), @check_rule <> other_targets)
+    Kogen.BoundaryProbeFixture.install_codex!(fixture)
 
     env = [
       {"GIT_AUTHOR_NAME", "Kogen Fixture"},

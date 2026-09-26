@@ -37,6 +37,10 @@ defmodule Kogen.ControllerBuildFixture do
       File.write!(full, content)
     end)
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dir, "deps"))
+
     git!(dir, ["init", "-q", "-b", "main"])
     git!(dir, ["add", "-A"])
     git!(dir, ["commit", "-q", "-m", "baseline"])
@@ -95,7 +99,12 @@ defmodule Kogen.ControllerBuildFixture do
     }
   end
 
-  @doc "Initializes a controller verification execution for one outer attempt."
+  @doc """
+  Initializes a controller verification execution for one outer attempt.
+  `dir` is the tracking-record location (control); pass `:candidate_root`
+  when the Candidate differs from control (candidate-routing coverage), else
+  the two roots are the same.
+  """
   def initialize!(dir, targets, opts \\ []) do
     build_id = Keyword.get(opts, :build_id, "build-#{System.unique_integer([:positive])}")
     tracking_path = Path.join(dir, ".kogen/runtime/scenario-tracking/#{build_id}/record.json")
@@ -105,17 +114,27 @@ defmodule Kogen.ControllerBuildFixture do
     retries = Keyword.get(opts, :retries, 2)
     outer_attempt = Keyword.get(opts, :outer_attempt, 0)
     plan = Keyword.get(opts, :plan)
+    candidate_root = Keyword.get(opts, :candidate_root)
+
+    roots =
+      if candidate_root, do: %{control_root: dir, candidate_root: candidate_root}, else: nil
 
     {:ok, execution} =
-      Verification.initialize(tracking_path, token, outer_attempt, targets, retries, plan)
+      Verification.initialize(tracking_path, token, outer_attempt, targets, retries, plan, roots)
 
     execution
   end
 
-  @doc "The verification `env` map `Verification.run_cycle/4` expects."
+  @doc """
+  The verification `env` map `Verification.run_cycle/4` expects. These
+  fixtures never admit a separate Candidate, so `control_root` equals the
+  Candidate root `dir` unless the caller names a different control root
+  (candidate-routing coverage).
+  """
   def env(dir, catalog, plan, scenarios, opts \\ []) do
     %{
       root: dir,
+      control_root: Keyword.get(opts, :control_root, dir),
       catalog: catalog,
       plan: plan,
       scenarios: scenarios,

@@ -1,0 +1,44 @@
+new selector (in affected_paths) candidate-creation test/kogen/build_workspace_test.exs
+exists candidate-creation test/kogen/build_preconditions_test.exs
+new selector (in affected_paths) per-build-harness-home test/kogen/harness_home_test.exs
+exists per-build-harness-home test/kogen/claude_code_management_test.exs
+exists per-build-harness-home test/kogen/codex_environment_test.exs
+exists per-build-harness-home test/kogen/root_profile_audit_test.exs
+exists per-build-harness-home test/kogen/harness_role_test.exs
+new selector (in affected_paths) candidate-routing test/kogen/build_workspace_test.exs
+exists candidate-routing test/kogen/lifecycle_test.exs
+exists candidate-routing test/kogen/controller_handoff_test.exs
+exists candidate-routing test/kogen/harness_contract_test.exs
+exists candidate-routing test/kogen/guarded_paths_test.exs
+exists candidate-routing test/kogen/controller_verification_test.exs
+new selector (in affected_paths) controller-judges-candidate test/kogen/candidate_verification_test.exs
+exists controller-judges-candidate test/kogen/verification_policy_test.exs
+exists controller-judges-candidate test/kogen/verification_ownership_lifecycle_test.exs
+exists same-candidate-rework test/kogen/two_outer_resumptions_test.exs
+exists same-candidate-rework test/kogen/lifecycle_test.exs
+rehearsal same-candidate-rework rehearse-live-shape-to-build
+new selector (in affected_paths) publication-unmoved-main test/kogen/build_workspace_test.exs
+exists publication-unmoved-main test/kogen/commit_provenance_test.exs
+exists publication-unmoved-main test/kogen/commit_failure_rollback_test.exs
+new selector (in affected_paths) publication-refused test/kogen/build_workspace_test.exs
+exists publication-refused test/kogen/commit_failure_rollback_test.exs
+new selector (in affected_paths) failure-retention test/kogen/build_workspace_test.exs
+exists failure-retention test/kogen/scenario_lifecycle_test.exs
+exists failure-retention test/kogen/core_integrity_test.exs
+new selector (in affected_paths) shaping-during-build test/kogen/build_workspace_test.exs
+exists shaping-during-build test/kogen/approved_mutation_test.exs
+exists shaping-during-build test/kogen/guarded_paths_test.exs
+new selector (in affected_paths) candidate-commands test/kogen/candidates_command_test.exs
+new selector (in affected_paths) shape-to-build-retains-record-sidecars test/kogen/build_workspace_test.exs
+exists shape-to-build-retains-record-sidecars test/kogen/build_evidence_test.exs
+new selector (in affected_paths) role-write-boundary test/kogen/write_boundary_test.exs
+exists role-write-boundary test/kogen/harness_role_test.exs
+exists role-write-boundary test/kogen/claude_code_harness_test.exs
+rehearsal role-write-boundary rehearse-live-shape-to-build
+new selector (in affected_paths) write-boundary-fails-closed test/kogen/write_boundary_test.exs
+new selector (in affected_paths) write-boundary-fails-closed test/kogen/candidate_verification_test.exs
+new selector (in affected_paths) codex-roles-inside-boundary test/kogen/write_boundary_test.exs
+exists codex-roles-inside-boundary test/kogen/codex_environment_test.exs
+exists codex-roles-inside-boundary test/kogen/harness_role_test.exs
+rehearsal codex-roles-inside-boundary rehearse-live-reviewer-rework
+problems: 0

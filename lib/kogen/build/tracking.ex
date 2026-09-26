@@ -7,6 +7,13 @@ defmodule Kogen.Build.Tracking do
   external boundary, and `update/2` refuses to replace a record that changed
   underneath the controller. Records are evidence only; this module never
   reloads one as Build state.
+
+  The record lives under the control checkout's
+  `.kogen/runtime/scenario-tracking/<build-id>/`, whose root the Build passes
+  explicitly (`root`); the state's `path` is absolute, while every locator
+  the record stores (record-version `path` and `sidecar`) is relative to
+  that control root, so retained evidence resolves after the Candidate
+  worktree is gone.
   """
 
   @runtime_base ".kogen/runtime/scenario-tracking"
@@ -14,7 +21,12 @@ defmodule Kogen.Build.Tracking do
   @schema_version 2
 
   @type tracking_record :: %{required(String.t()) => term()}
-  @type state :: %{path: Path.t(), bytes: binary(), record: tracking_record()}
+  @type state :: %{
+          required(:path) => Path.t(),
+          required(:bytes) => binary(),
+          required(:record) => tracking_record(),
+          optional(:root) => Path.t()
+        }
 
   @doc """
   Creates one exclusively-owned runtime record for this Build.
@@ -26,16 +38,20 @@ defmodule Kogen.Build.Tracking do
   name, harness and every role and helper profile are frozen in the record,
   and its complete role matrix under `role_assignment`.
   """
-  @spec new(map(), map(), list(), map()) :: {:ok, state()} | {:error, String.t()}
-  def new(intent, contract, approved_entries, route)
+  @spec new(map(), map(), list(), map(), Path.t()) :: {:ok, state()} | {:error, String.t()}
+  def new(intent, contract, approved_entries, route, root \\ File.cwd!())
+
+  def new(intent, contract, approved_entries, route, root)
       when is_map(intent) and is_map(contract) and is_map(route) do
+    root = Path.expand(root)
+
     with {:ok, frozen_intent} <- freeze_intent(intent),
          {:ok, frozen_route} <- freeze_route(route),
          {:ok, role_assignment} <- freeze_role_assignment(route),
          {:ok, scenarios} <- required_json_value(contract, "scenarios"),
          {:ok, risks, risks_supplied} <- frozen_risks(contract),
          true <- is_list(scenarios),
-         {:ok, path} <- create_record_path(),
+         {:ok, path} <- create_record_path(root),
          record <-
            initial_record(
              frozen_intent,
@@ -47,14 +63,14 @@ defmodule Kogen.Build.Tracking do
              approved_entries
            ),
          {:ok, state} <- write_initial(path, record) do
-      {:ok, state}
+      {:ok, Map.put(state, :root, root)}
     else
       false -> {:error, "scenario tracking contract has invalid scenarios"}
       {:error, _reason} = error -> error
     end
   end
 
-  def new(_intent, _contract, _approved_entries, _route),
+  def new(_intent, _contract, _approved_entries, _route, _root),
     do: {:error, "scenario tracking requires intent, contract and route maps"}
 
   @doc """
@@ -101,7 +117,7 @@ defmodule Kogen.Build.Tracking do
   it, and different bytes under the same digest name are an integrity failure.
   """
   @spec retain_record_version(state(), binary()) :: {:ok, map()} | {:error, String.t()}
-  def retain_record_version(%{path: path}, bytes) when is_binary(bytes) do
+  def retain_record_version(%{path: path} = state, bytes) when is_binary(bytes) do
     sha256 = Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
     sidecar = record_version_path(path, sha256)
 
@@ -109,11 +125,11 @@ defmodule Kogen.Build.Tracking do
          :ok <- write_record_version(sidecar, bytes) do
       {:ok,
        %{
-         "path" => checkout_relative(path),
+         "path" => checkout_relative(state, path),
          "sha256" => sha256,
          "byte_count" => byte_size(bytes),
          "binding" => "controller_record_version",
-         "sidecar" => checkout_relative(sidecar)
+         "sidecar" => checkout_relative(state, sidecar)
        }}
     end
   end
@@ -143,10 +159,10 @@ defmodule Kogen.Build.Tracking do
   end
 
   defp verify_record_version(state, %{"sidecar" => sidecar} = snapshot) do
-    expected = checkout_relative(record_version_path(state.path, snapshot["sha256"]))
+    expected = checkout_relative(state, record_version_path(state.path, snapshot["sha256"]))
 
     with true <- is_binary(sidecar) and sidecar == expected,
-         {:ok, bytes} <- File.read(sidecar),
+         {:ok, bytes} <- File.read(Path.expand(sidecar, root(state))),
          true <- byte_size(bytes) == snapshot["byte_count"],
          true <- Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == snapshot["sha256"] do
       :ok
@@ -208,7 +224,16 @@ defmodule Kogen.Build.Tracking do
     end
   end
 
-  defp checkout_relative(path), do: Path.relative_to(Path.expand(path), File.cwd!())
+  # Locators are relative to the control root the Build passed; a state built
+  # without one (a legacy caller) keeps its checkout-relative form.
+  defp checkout_relative(state, path),
+    do: Path.relative_to(Path.expand(path), root(state))
+
+  @doc "The control root a tracking state's locators are relative to."
+  def root(state), do: Map.get(state, :root) || File.cwd!()
+
+  @doc "The record path relative to its control root, as summaries and citations name it."
+  def relative_path(state), do: checkout_relative(state, state.path)
 
   defp verify_frozen_reference(path, snapshot) do
     case File.read(path) do
@@ -239,7 +264,7 @@ defmodule Kogen.Build.Tracking do
          :ok <- preserve_finding_history(previous, record),
          {:ok, bytes} <- encode(record),
          :ok <- atomic_replace(path, bytes) do
-      {:ok, %{path: path, bytes: bytes, record: record}}
+      {:ok, %{state | bytes: bytes, record: record}}
     end
   end
 
@@ -565,19 +590,21 @@ defmodule Kogen.Build.Tracking do
 
   defp preserved_finding?(_finding, _current), do: false
 
-  defp create_record_path do
-    case File.mkdir_p(@runtime_base) do
+  defp create_record_path(root) do
+    base = Path.join(root, @runtime_base)
+
+    case File.mkdir_p(base) do
       :ok ->
-        create_record_directory(0)
+        create_record_directory(base, 0)
 
       {:error, reason} ->
         {:error, "could not create scenario tracking runtime root: #{inspect(reason)}"}
     end
   end
 
-  defp create_record_directory(attempt) when attempt < 10 do
+  defp create_record_directory(base, attempt) when attempt < 10 do
     id = Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
-    directory = Path.join(@runtime_base, id)
+    directory = Path.join(base, id)
 
     case File.mkdir(directory) do
       :ok ->
@@ -585,14 +612,14 @@ defmodule Kogen.Build.Tracking do
         {:ok, Path.join(directory, @record_name)}
 
       {:error, :eexist} ->
-        create_record_directory(attempt + 1)
+        create_record_directory(base, attempt + 1)
 
       {:error, reason} ->
         {:error, "could not create exclusive scenario tracking directory: #{inspect(reason)}"}
     end
   end
 
-  defp create_record_directory(_attempt),
+  defp create_record_directory(_base, _attempt),
     do: {:error, "could not create a unique scenario tracking directory"}
 
   defp write_initial(path, record) do

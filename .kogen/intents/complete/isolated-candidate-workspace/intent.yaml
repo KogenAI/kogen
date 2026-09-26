@@ -1,0 +1,313 @@
+id: 01a0c467-54c1-7a5a-9cee-58d70920d780
+slug: isolated-candidate-workspace
+title: Isolate each Build in its own Candidate worktree and harness home
+status: approved
+shaped_against:
+  branch: main
+  head: 98ebcfb2280098964c8a12286ba4a27eed7cb54d
+  note: >-
+    Reshaped 2026-09-26 against main 98ebcfb2 on the Shaper's direction in the continuation
+    conversation ("reshape against the latest head etc."). 98ebcfb2 only renames the Jev
+    Keychain service; no contract change followed from it
+    (evidence/reshape-2026-09-26-98ebcfb2/). Everything from the 9ff7af6e re-preflight
+    below still holds: #1, #2 and #4 landed, shaping-preflight-audit parked and not assumed,
+    every Build runs with --route claude-dominant-adversarial-codex and all Kogen modules
+    preloaded.
+historical_shaped_against:
+  - branch: main
+    head: 9ff7af6e02b3f291f0196e2ec2665a1d8cb2b4b5
+    note: >-
+      Re-preflighted 2026-09-26 against main 9ff7af6e, where bounded-reviewer-evidence
+      (22a2db95), cross-harness-adversarial-roles (363c20af, no auditor role,
+      default_route claude) and fortify-paid-verification (9ff7af6e, controller-owned
+      verification) have landed. shaping-preflight-audit is parked and not landed;
+      nothing in this package assumes it. Every Build runs with
+      --route claude-dominant-adversarial-codex and all Kogen modules preloaded.
+  - branch: main
+    head: 363c20af202c8702d76ddcb1dadcf6a21996779c
+    note: 2026-09-25 driver re-preflight baseline (assumed #3 and #4 landed; #3 was later parked).
+  - branch: main
+    head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+    note: 2026-09-25 driver re-shape baseline (assumed #1-#4 landed).
+  - branch: main
+    head: c1f085324f78d5030c8d3d7b6efc2df248ff01c2
+    note: Original baseline of this identity (2026-09-21).
+  - branch: main
+    head: 5b44ceb4dfb62c07296c1a799246c125f252ac69
+    note: 2026-09-24 B1 reshape (reshaped_against); its Build cFnHwg7P2oNe1wMMnK7jxeMH failed.
+shaping:
+  route: codex
+  route_note: Added 2026-09-25; this visit predates named routes (5af11273) and ran on the Codex harness, which the codex route names today.
+  harness: codex
+  model: gpt-5.6-sol
+  effort: low
+  started: "2026-09-19T18:48:54.688830Z"
+shaping_continuations:
+  - harness: codex
+    model: gpt-5.6-sol
+    effort: low
+    started: '2026-09-20T03:23:37.855229Z'
+    checkout:
+      branch: main
+      head: 7c7c3426c61c80753043d51766f53ba877c22674
+  - harness: codex
+    model: gpt-5.6-sol
+    effort: low
+    started: '2026-09-21T14:28:52.102710Z'
+    checkout:
+      branch: main
+      head: c1f085324f78d5030c8d3d7b6efc2df248ff01c2
+  - harness: codex
+    model: gpt-5.6-sol
+    effort: low
+    started: '2026-09-21T18:22:28.862811Z'
+    checkout:
+      branch: main
+      head: c1f085324f78d5030c8d3d7b6efc2df248ff01c2
+  - harness: claude
+    model: claude-opus-5-5
+    effort: medium
+    started: '2026-09-23T07:23:23.423682Z'
+    checkout:
+      branch: main
+      head: 6cdb29122fe662c7908aa50a179cac0697639a4a
+  - route: claude
+    harness: claude
+    model: claude-opus-5-5
+    effort: medium
+    started: '2026-09-24T04:48:45.346068Z'
+    checkout:
+      branch: main
+      head: 5b44ceb4dfb62c07296c1a799246c125f252ac69
+  - route: driver
+    harness: claude
+    model: claude-opus-5-5
+    effort: high
+    started: '2026-09-25T08:05:00Z'
+    checkout:
+      branch: main
+      head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+    note: >-
+      Driver-delegated re-shape on top of controller-owned verification (Intent #4),
+      adding the per-Build harness home and credential binding. See decisions.md.
+  - route: driver
+    harness: claude
+    model: claude-opus-5-5
+    effort: high
+    started: '2026-09-25T18:12:00Z'
+    checkout:
+      branch: main
+      head: 363c20af202c8702d76ddcb1dadcf6a21996779c
+    note: >-
+      Driver re-preflight against 363c20af with shaping-preflight-audit and
+      fortify-paid-verification assumed landed: Expert launches on hybrid
+      routes use the Build's binding and harness home, Candidate creation
+      copies no controller volatile state, review packets and sidecar
+      locators stay control-relative, anchors re-read, stashes by SHA.
+  - route: driver
+    harness: claude
+    model: claude-opus-5-5
+    effort: high
+    started: '2026-09-25T21:50:00Z'
+    checkout:
+      branch: main
+      head: 363c20af202c8702d76ddcb1dadcf6a21996779c
+    note: >-
+      The Shaper kept BLD-12's launch-time write boundary in this Intent ("Keep it in
+      #5"). Adds outcome 13 (a Build-wide macOS Seatbelt profile around every role
+      launch, designed by probing this host), scenarios role-write-boundary,
+      write-boundary-fails-closed and codex-roles-inside-boundary, the paid target
+      live-reviewer-rework for the Codex observable, and the write-boundary risks.
+  - route: driver
+    harness: claude
+    model: claude-opus-5-5
+    effort: high
+    started: '2026-09-26T05:00:00Z'
+    checkout:
+      branch: main
+      head: 9ff7af6e02b3f291f0196e2ec2665a1d8cb2b4b5
+    note: >-
+      Driver re-preflight against the landed fortify-paid-verification (9ff7af6e) with
+      shaping-preflight-audit parked: every #3 assumption removed; #4's controller-owned
+      verification (Verification.run_cycle, VerificationRunner, TargetEvidence, Ledger,
+      BaseWorkspace) gets its Candidate and control roots explicitly; role-facing control
+      locators are absolute; live owners retain evidence in control through
+      KOGEN_LIVE_LOG_DIR; GuardedPaths reads Git metadata through git-path; anchors
+      re-read at 9ff7af6e.
+  - route: claude-dominant-adversarial-codex
+    harness: claude
+    model: claude-opus-5-5
+    effort: medium
+    started: '2026-09-26T06:38:14.026096Z'
+    checkout:
+      branch: main
+      head: 98ebcfb2280098964c8a12286ba4a27eed7cb54d
+    note: >-
+      Continuation after Build 8Bs51yZP. Shaper directed "reshape against the latest head":
+      shaped_against moved from 9ff7af6e to 98ebcfb2 (Jev Keychain rename; no contract
+      change). candidate-creation now requires nonempty credential bindings in the owner
+      record before open_roles/readiness, proved by an ordering assertion inside a fake
+      readiness step. Stash rebase probe: two mechanical conflicts, compile clean, 440
+      focused tests pass (evidence/reshape-2026-09-26-98ebcfb2/).
+approval:
+  actor: human Shaper
+  approved_by: Shaper (Almir Sarajčić)
+  approved_at: "2026-09-26T06:50:54Z"
+  source: 'Explicit current-conversation user message: "I approve"'
+  route: claude-dominant-adversarial-codex
+  statement: approval.md
+  reviewed_against:
+    branch: main
+    head: 98ebcfb2280098964c8a12286ba4a27eed7cb54d
+  scope: >-
+    ROADMAP order 5, ID 7 (EXE-01, SEC-01, BLD-12) as reshaped against 98ebcfb2: 14 scenarios,
+    15 risks, targets check, live-reviewer-rework and live-shape-to-build, guarded paths
+    unchanged. Grants no source, test or configuration write beyond what a Build of this
+    Intent performs within may_change_guarded_paths.
+batch_approval_2026_09_25:
+  note: Historical; the approval block as it stood before the 2026-09-26 approval.
+  actor: human Shaper
+  approved_by: Shaper (Almir Sarajčić)
+  approved_at: "2026-09-25"
+  quotes:
+    - "so yeah, I approve: 1. bounded-reviewer-evidence 2. cross-harness-adversarial-roles 3. shaping-preflight-audit 4. verification-fortification 5. isolated-candidate-workspace"
+    - "that should count as my explicit approval"
+    - "you gotta make sure all the intents are ready to build tho … I approve whatever you guys decide! so you can build, drive this without me"
+  scope: >-
+    ROADMAP order 5, ID 7: Isolated Candidate workspace: a worktree, harness
+    home and credentials per Build; Shaping keeps working during Builds; one
+    lifecycle target. Features EXE-01, SEC-01 and BLD-12; the Shaper kept
+    BLD-12's launch-time write boundary here ("Keep it in #5", see
+    shaper_decisions).
+  statement: approval.md
+  lifecycle_note: >-
+    Recorded while the package is still a Draft. Build admission reads only
+    .kogen/intents/approved/; the driver moves the package there, with status
+    approved, after the pre-Build recheck on the then-current main.
+  approved_against_head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+  repreflight_9ff7af6e:
+    actor: human Shaper, delegated to the driver session
+    date: "2026-09-26"
+    head: 9ff7af6e02b3f291f0196e2ec2665a1d8cb2b4b5
+    quotes:
+      - "you don't need me for anything, you can do everything yourself … I approve everything"
+      - "NO STOPPING THE BATCH … YOU FIX AND RESHAPE AND SHIT UNTIL ALL GOES WELL"
+    note: >-
+      Driver re-preflight against main 9ff7af6e with shaping-preflight-audit parked;
+      changes listed in approval.md ("Driver re-preflight at 9ff7af6e"). Scope unchanged.
+  repreflight:
+    actor: human Shaper, delegated to the driver session
+    date: "2026-09-25"
+    head: 363c20af202c8702d76ddcb1dadcf6a21996779c
+    quotes:
+      - "you don't need me for anything, you can do everything yourself … I approve everything"
+      - "NO STOPPING THE BATCH … YOU FIX AND RESHAPE AND SHIT UNTIL ALL GOES WELL"
+    note: >-
+      Driver re-preflight against main 363c20af; changes listed in approval.md
+      ("Driver re-preflight at 363c20af").
+  shaper_decisions:
+    - date: "2026-09-25"
+      actor: human Shaper
+      quote: "Keep it in #5"
+      question: >-
+        Keep BLD-12's launch-time write boundary in isolated-candidate-workspace, or
+        split it into ROADMAP row 7b?
+      effect: >-
+        Row 7b withdrawn. Build roles and helpers must be physically unable to write
+        outside their Build's worktree, enforced by macOS (INTENT.md outcome 13).
+        Approval scope is ROADMAP order 5 with EXE-01, SEC-01 and BLD-12.
+      source: plan/BATCH-REPORT-2026-09-25.md (Shaper decisions, about 21:45)
+  build_order_note: >-
+    Build after bounded-reviewer-evidence, cross-harness-adversarial-roles and
+    fortify-paid-verification (all landed at 9ff7af6e). shaping-preflight-audit is
+    parked and is not a prerequisite. The driver moves the package to approved/ only
+    after re-checking it against the then-current main.
+historical_identity:
+  id: 01a0bb00-009d-7f17-9fdc-3c7ac0e86a9c
+  shaped_against:
+    branch: main
+    head: 7c7c3426c61c80753043d51766f53ba877c22674
+  note: Accepted historical requirements and investigation only; superseded by the current reshape and not executable authority.
+historical_approvals:
+  - approved_at: "2026-09-24T05:48:08Z"
+    approved_by: human Shaper
+    source: "Explicit current-conversation user message: I approve"
+    statement: approval.md
+    reviewed_against:
+      branch: main
+      head: 5b44ceb4dfb62c07296c1a799246c125f252ac69
+    superseded_by_failed_build: cFnHwg7P2oNe1wMMnK7jxeMH
+  - approved_at: "2026-09-19T19:41:11Z"
+    approved_by: human Shaper
+    source: "Explicit historical user message: approve"
+    statement: approval.md
+  - approved_at: "2026-09-20T03:42:06Z"
+    approved_by: human Shaper
+    source: "Explicit historical user message: I approve."
+    statement: approval.md
+  - approved_at: "2026-09-21T15:31:54Z"
+    approved_by: human Shaper
+    source: "Explicit approval in the prior shaping conversation: alright, I approve; the subsequent failed Build was manually returned to drafts"
+    statement: approval.md
+  - approved_at: "2026-09-21T18:40:19Z"
+    approved_by: human Shaper
+    source: "Explicit approval of the prior revision: Approved.; the subsequent Build failed paid verification and the package was reopened"
+    statement: approval.md
+  - approved_at: "2026-09-22T06:13:22Z"
+    approved_by: human Shaper
+    source: "Explicit current-conversation user message: approved"
+    statement: approval.md
+  - approved_at: "2026-09-22T09:36:37Z"
+    approved_by: human Shaper
+    source: "Explicit current-conversation instruction to preserve the 38-file implementation and fix the intent then approve it"
+    statement: approval.md
+  - approved_at: "2026-09-22T11:06:18Z"
+    approved_by: human Shaper
+    source: "Explicit approval of the previous Fable-high revision: I approve.; Build 181SwyyMv5aW2U838Wh8xXIt failed and the Shaper requested this Draft repair"
+    statement: approval.md
+reference_implementation_sources:
+  note: >-
+    Reference only, never Build input; never apply, pop or drop these stashes.
+    Refer to them by SHA (stash@{n} indices shift). Read with
+    `git diff <sha>^1 <sha>` and `git show <sha>^3:<path>` for untracked files.
+    Their hook, settings and prompt rewrites must not be reused. The older
+    41-file snapshot (evidence/latest-implementation.json,
+    evidence/implementation-inputs/) and checkpoint 913ba174 predate the
+    pluggable harness and must not be applied.
+  stashes:
+    - sha: eb76a872006296c143e2229f82997e4e7dbe41eb
+      build: cFnHwg7P2oNe1wMMnK7jxeMH
+      note: Closest. Passed both paid targets; died on its .codex/hooks.json rewrite. Based on 5b44ceb4.
+    - sha: ccfa9e48a2b258fccee4e5ca77a68b14043166a3
+      build: JendTonO
+    - sha: 3f5059b09558ce00ea4765e032b838002723d23a
+      build: unmatched
+    - sha: 85bf47200eb14da7b760e6f5db2239796cfc48c2
+      build: unmatched (backup)
+    - sha: d6d184f8872c367c6e62172cd7e4285f4a16f4cc
+      build: failed prevent-intent-mutation candidate (2026-09-19)
+      note: >-
+        Seatbelt containment attempt; ^3:lib/kogen/containment.ex for canonical-path
+        checks and SBPL quoting only. Its deny-default profile and in-Candidate Intent
+        protections are not this design.
+may_change_guarded_paths:
+  - README.md
+  - workflows/claude-code-runtime-upgrade.md
+  - workflows/codex-runtime-upgrade.md
+  - lib/kogen/build.ex
+  - lib/kogen/build/**
+  - lib/kogen/git.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/**
+  - lib/kogen/claude_code.ex
+  - lib/kogen/codex.ex
+  - lib/kogen/codex/**
+  - lib/kogen/verification_policy.ex
+  - lib/mix/tasks/kogen.build.ex
+  - lib/mix/tasks/kogen.expert.ex
+  - lib/mix/tasks/kogen.candidates*.ex
+  - priv/kogen/test-reliability.yaml
+  - priv/kogen/test-reliability-remediation.yaml
+  - test/test_helper.exs
+  - test/kogen/**
+  - test/support/**

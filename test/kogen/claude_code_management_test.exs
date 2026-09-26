@@ -46,6 +46,13 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     System.put_env("CLAUDE_CODE_USE_BEDROCK", "1")
     System.put_env("CLAUDECODE", "1")
     System.put_env("CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT", "0")
+    # Scenario per-build-harness-home: a scope-native launch (Shape, login,
+    # status) must override an inherited, EMPTY CLAUDE_SECURESTORAGE_CONFIG_DIR
+    # with the scope, and the Codex adapter's blocked prefixes must never fund
+    # a Claude role's shell even when a Codex login is also on the machine.
+    System.put_env("CLAUDE_SECURESTORAGE_CONFIG_DIR", "")
+    System.put_env("OPENAI_API_KEY", "INHERITED-OPENAI-KEY")
+    System.put_env("CODEX_HOME", "/inherited/codex/home")
     System.delete_env("KOGEN_HARNESS")
     System.delete_env("KOGEN_ROLE")
     {:ok, config} = Kogen.Intent.read_config()
@@ -74,6 +81,15 @@ defmodule Kogen.ClaudeCode.ManagementTest do
 
   defp shared(ctx), do: Path.join([ctx.root, "accounts", "shared"])
 
+  # A scope-native launch's child sees its scope as both config dir and
+  # secure storage (never the inherited empty value), and no Codex credential.
+  defp assert_scope_native!(env, scope) do
+    assert env["CLAUDE_CONFIG_DIR"] == scope
+    assert env["CLAUDE_SECURESTORAGE_CONFIG_DIR"] == scope
+    assert env["OPENAI_API_KEY"] == nil
+    assert env["CODEX_HOME"] == nil
+  end
+
   defp personal_unchanged!(ctx) do
     for dir <- ctx.personal, {name, bytes} <- @personal_markers do
       assert File.read!(Path.join(dir, name)) == bytes
@@ -83,25 +99,42 @@ defmodule Kogen.ClaudeCode.ManagementTest do
   end
 
   test "readiness stops before any model launch with the exact fix", ctx do
-    assert {:error, reason} = ClaudeCode.open(ctx.config)
+    assert {:error, reason} = ClaudeCode.open(ctx.config, File.cwd!())
     assert reason == "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
     assert trace(ctx) == []
 
     install_fixture!(ctx)
-    assert {:error, reason} = ClaudeCode.open(ctx.config)
+    assert {:error, reason} = ClaudeCode.open(ctx.config, File.cwd!())
     assert reason =~ "Selected shared Kogen Claude Code login is not configured"
     assert reason =~ "Run mix kogen.claude.login"
     assert trace(ctx) == []
 
     File.mkdir_p!(shared(ctx))
-    assert {:error, _logged_out} = ClaudeCode.open(ctx.config)
+    assert {:error, _logged_out} = ClaudeCode.open(ctx.config, File.cwd!())
     assert Enum.map(trace(ctx), & &1["args"]) == [["auth", "status"]]
 
     File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
-    assert {:ok, selection} = ClaudeCode.open(ctx.config)
+    assert {:ok, selection} = ClaudeCode.open(ctx.config, File.cwd!())
     assert selection.scope.path == Path.expand(shared(ctx))
     assert Enum.all?(trace(ctx), &(&1["args"] == ["auth", "status"]))
     personal_unchanged!(ctx)
+
+    # In the environment the launched status child actually saw.
+    for call <- trace(ctx), do: assert_scope_native!(call["env"], selection.scope.path)
+
+    # The exact function every scope-native launch (Shape, login, status)
+    # builds its environment through: an inherited, empty
+    # CLAUDE_SECURESTORAGE_CONFIG_DIR is overridden with the scope, and the
+    # Codex adapter's blocked prefixes (funded here by an inherited
+    # OPENAI_API_KEY/CODEX_HOME) are absent.
+    env = ClaudeCode.environment(selection.scope) |> Map.new()
+    assert env["CLAUDE_CONFIG_DIR"] == selection.scope.path
+    assert env["CLAUDE_SECURESTORAGE_CONFIG_DIR"] == selection.scope.path
+
+    for name <- ~w(OPENAI_API_KEY CODEX_HOME ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN) do
+      assert env[name] == nil and Map.has_key?(env, name),
+             "#{name} must be removed, not merely inherited"
+    end
   end
 
   test "shared login opens interactive managed claude in the Kogen scope and forwards arguments",
@@ -114,6 +147,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     assert {:ok, 0} = ClaudeCode.login(["--", "--console"])
     [call] = trace(ctx)
     assert call["args"] == ["--dangerously-skip-permissions", "--console"]
+    assert_scope_native!(call["env"], Path.expand(shared(ctx)))
     assert call["scope"] == Path.expand(shared(ctx))
     assert call["executable"] =~ Path.join(ctx.root, "runtimes/2.1.281-")
     assert File.read!(existing) == ~s({"existing":"scope state"})
@@ -125,6 +159,17 @@ defmodule Kogen.ClaudeCode.ManagementTest do
 
     assert call["env"]["DISABLE_AUTOUPDATER"] == "1"
     assert call["env"]["CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT"] == "1"
+
+    # The login launch is built by the same `environment/2` the fixture's
+    # native trace can't watch for `CLAUDE_SECURESTORAGE_CONFIG_DIR`/Codex
+    # names; assert the exact function call the delegate makes.
+    scope = %{name: :shared, path: Path.expand(shared(ctx))}
+    env = ClaudeCode.environment(scope) |> Map.new()
+    assert env["CLAUDE_SECURESTORAGE_CONFIG_DIR"] == scope.path
+
+    for name <- ~w(OPENAI_API_KEY CODEX_HOME) do
+      assert env[name] == nil and Map.has_key?(env, name)
+    end
 
     assert {:ok, %{login: {:configured, %{auth_method: "console"}}}} =
              ClaudeCode.status()
@@ -143,11 +188,11 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     assert project_path =~ Path.join(ctx.root, "accounts/projects/")
     assert File.stat!(project_path).mode |> Bitwise.band(0o777) == 0o700
 
-    assert {:error, reason} = ClaudeCode.open(ctx.config)
+    assert {:error, reason} = ClaudeCode.open(ctx.config, File.cwd!())
     assert reason =~ "Run mix kogen.claude.login --project"
 
     assert {:ok, 0} = ClaudeCode.login(["--project"])
-    assert {:ok, %{scope: %{name: :project}}} = ClaudeCode.open(ctx.config)
+    assert {:ok, %{scope: %{name: :project}}} = ClaudeCode.open(ctx.config, File.cwd!())
     assert File.read!(Path.join(shared(ctx), ".fake-login")) == "claude.ai\n"
 
     assert {:ok, 0} = ClaudeCode.login(["--use-default"])
@@ -164,7 +209,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
     config = Map.put(ctx.config, :harness, "claude")
 
-    assert {:ok, selection} = Kogen.Harness.open(config)
+    assert {:ok, selection} = Kogen.Harness.open(config, File.cwd!())
     context = Kogen.Harness.launch_context(selection)
 
     assert {:ok, verdict} =
@@ -195,7 +240,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     [old] = Path.wildcard(Path.join(ctx.root, "runtimes/2.1.280-*/claude"))
     old_bytes = File.read!(old)
 
-    assert {:error, reason} = ClaudeCode.open(ctx.config)
+    assert {:error, reason} = ClaudeCode.open(ctx.config, File.cwd!())
     assert reason == "Kogen Claude Code 2.1.281 is not installed. Run mix kogen.claude.install"
     assert trace(ctx) == []
 
@@ -204,7 +249,7 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     assert File.read!(old) == old_bytes
     assert File.read!(Path.join(shared(ctx), ".fake-login")) == "claude.ai\n"
 
-    assert {:ok, selection} = ClaudeCode.open(ctx.config)
+    assert {:ok, selection} = ClaudeCode.open(ctx.config, File.cwd!())
     assert selection.runtime["executable"] =~ Path.join(ctx.root, "runtimes/2.1.281-")
     assert selection.scope.path == Path.expand(shared(ctx))
     assert Enum.all?(trace(ctx), &(&1["executable"] =~ "runtimes/2.1.281-"))
@@ -220,11 +265,23 @@ defmodule Kogen.ClaudeCode.ManagementTest do
     File.mkdir_p!(shared(ctx))
     File.write!(Path.join(shared(ctx), ".fake-login"), "claude.ai\n")
     output = capture_io(fn -> CLI.run(:status, []) end)
+    assert_scope_native!(List.last(trace(ctx))["env"], Path.expand(shared(ctx)))
     assert output =~ "Installed: 2.1.281"
     assert output =~ "Effective login: shared (#{Path.expand(shared(ctx))})"
     assert output =~ "loggedIn: true, authMethod: claude.ai"
     refute output =~ "SYNTHETIC-SECRET"
     refute output =~ "SYNTHETIC-ORG"
+
+    # `status` reaches readiness through the same `login_status`/`environment`
+    # path as `open`; assert the built environment directly since the fixture
+    # trace does not watch CLAUDE_SECURESTORAGE_CONFIG_DIR or Codex names.
+    scope = %{name: :shared, path: Path.expand(shared(ctx))}
+    env = ClaudeCode.environment(scope) |> Map.new()
+    assert env["CLAUDE_SECURESTORAGE_CONFIG_DIR"] == scope.path
+
+    for name <- ~w(OPENAI_API_KEY CODEX_HOME) do
+      assert env[name] == nil and Map.has_key?(env, name)
+    end
   end
 
   test "claude setup commands ignore routes: status and project login work under a codex-only routes config",

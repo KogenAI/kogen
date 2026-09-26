@@ -38,6 +38,10 @@ defmodule Kogen.VerificationCycleFixture do
     File.write!(Path.join(root, ".gitignore"), "#{@counter}\n#{@marker}\n.kogen/\n")
     File.write!(Path.join(root, "tracked.txt"), "original\n")
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(root, "deps"))
+
     git!(root, ["init", "-q", "-b", "main"])
     git!(root, ["config", "user.name", "Fixture"])
     git!(root, ["config", "user.email", "fixture@example.invalid"])
@@ -58,7 +62,13 @@ defmodule Kogen.VerificationCycleFixture do
     File.write!(Path.join(root, "tracked.txt"), "changed-#{System.unique_integer([:positive])}\n")
   end
 
-  @doc "The ordered list of target names that ran, oldest first."
+  @doc """
+  The ordered list of target names that ran, oldest first. Make recipes
+  append to `target-calls.log` under `$KOGEN_LIVE_LOG_DIR` (the controller
+  sets it to control's `.kogen/runtime/live-evidence` for every target
+  child unless the caller already set one), so this survives a Candidate's
+  removal at publication; it is read from control here.
+  """
   def calls(root) do
     case File.read(counter_path(root)) do
       {:ok, bytes} -> bytes |> String.split("\n", trim: true)
@@ -81,6 +91,7 @@ defmodule Kogen.VerificationCycleFixture do
 
     %{
       root: root,
+      control_root: root,
       catalog: catalog,
       plan: plan,
       scenarios: plan.scenarios,
@@ -171,15 +182,25 @@ defmodule Kogen.VerificationCycleFixture do
   end
 
   defp marker_path(root), do: Path.join(root, @marker)
-  defp counter_path(root), do: Path.join(root, @counter)
+
+  defp counter_path(root),
+    do: Path.join([root, ".kogen", "runtime", "live-evidence", @counter])
+
+  # Appends to `target-calls.log` under `$KOGEN_LIVE_LOG_DIR` (falling back
+  # to the recipe's own cwd, so direct-env tests with no controller-set
+  # variable still work) instead of the `make` root, which is the Candidate
+  # under a full `Kogen.Build.run/1` and is deleted at publication.
+  defp append_call(name),
+    do:
+      "\t@dir=\"$${KOGEN_LIVE_LOG_DIR:-.}\"; mkdir -p \"$$dir\"; echo #{name} >> \"$$dir/#{@counter}\""
 
   defp makefile_for(names) do
     Enum.map_join(names, "\n", fn
       "b" ->
-        "b:\n\t@echo b >> #{@counter}\n\t@test ! -f #{@marker}"
+        "b:\n#{append_call("b")}\n\t@test ! -f #{@marker}"
 
       name ->
-        "#{name}:\n\t@echo #{name} >> #{@counter}"
+        "#{name}:\n#{append_call(name)}"
     end) <> "\n"
   end
 
@@ -188,13 +209,13 @@ defmodule Kogen.VerificationCycleFixture do
     .PHONY: check a b
 
     check:
-    \t@echo check >> #{@counter}
+    #{append_call("check")}
 
     a:
-    \t@echo a >> #{@counter}
+    #{append_call("a")}
 
     b:
-    \t@echo b >> #{@counter}
+    #{append_call("b")}
     \t@test ! -f #{@marker}
     """
   end
@@ -321,6 +342,10 @@ defmodule Kogen.VerificationCycleFixture do
     File.write!(Path.join(intent_dir, "intent.yaml"), harness_intent(declared_add))
     File.write!(Path.join(intent_dir, "scenarios.yaml"), Jason.encode!([harness_scenario()]))
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dir, "deps"))
+
     git!(dir, ["init", "-q", "-b", "main"])
     git!(dir, ["config", "user.name", "Fixture"])
     git!(dir, ["config", "user.email", "fixture@example.invalid"])
@@ -368,7 +393,7 @@ defmodule Kogen.VerificationCycleFixture do
     end)
 
     try do
-      File.cd!(dir, fn -> Kogen.Build.run(@harness_slug) end)
+      File.cd!(dir, fn -> Kogen.Build.run(@harness_slug, nil, dir) end)
     after
       Enum.each(previous, fn
         {key, nil} -> System.delete_env(key)
@@ -385,9 +410,16 @@ defmodule Kogen.VerificationCycleFixture do
     path |> File.read!() |> Jason.decode!()
   end
 
-  @doc "The ordered list of `n` for every `.kogen/runtime/verification-resume-<n>` file."
+  @doc """
+  The ordered list of every retained `verification-resume-<n>` prompt. The
+  fake harness provider writes its scratch state (including these prompts)
+  under the Build's harness home, since publication removes the Candidate
+  where a plain `.kogen/runtime` relative write would otherwise land.
+  """
   def harness_resume_prompts(dir) do
-    Path.wildcard(Path.join(dir, ".kogen/runtime/verification-resume-*"))
+    Kogen.CandidateFixture.fake_state(dir)
+    |> Path.join("verification-resume-*")
+    |> Path.wildcard()
     |> Enum.sort()
     |> Enum.map(&File.read!/1)
   end
@@ -524,7 +556,12 @@ defmodule Kogen.VerificationCycleFixture do
     ~S'''
     #!/usr/bin/env python3
     import json, os, pathlib, subprocess, sys
-    runtime = pathlib.Path(".kogen/runtime"); runtime.mkdir(parents=True, exist_ok=True)
+    # Scratch state lives in the Build's harness home (kept after publication
+    # removes the Candidate); outside a Build it falls back to the cwd's
+    # ignored .kogen/runtime.
+    home = os.environ.get("KOGEN_HARNESS_HOME")
+    runtime = pathlib.Path(home) / "fake-state" if home else pathlib.Path(".kogen/runtime")
+    runtime.mkdir(parents=True, exist_ok=True)
     args = sys.argv[1:]; prompt = sys.stdin.read()
     def count(name):
         path = runtime / name

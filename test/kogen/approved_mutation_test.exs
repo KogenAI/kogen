@@ -128,6 +128,10 @@ defmodule Kogen.ApprovedMutationTest do
       {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
     ]
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
+
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dest)
 
@@ -142,6 +146,11 @@ defmodule Kogen.ApprovedMutationTest do
     File.cp!(
       Path.join(@project_root, "test/support/scenario_response.py"),
       Path.join(Path.dirname(fake_harness), "scenario_response.py")
+    )
+
+    File.cp!(
+      Path.join(@project_root, "test/support/launch_receipt.py"),
+      Path.join(Path.dirname(fake_harness), "launch_receipt.py")
     )
 
     provider = File.read!(Path.join(@project_root, "test/support/fake_codex_simple_accept"))
@@ -167,7 +176,7 @@ defmodule Kogen.ApprovedMutationTest do
         else: System.delete_env("KOGEN_HARNESS")
     end)
 
-    result = File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
+    result = File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
 
     assert {:error, reason} = result
     assert reason =~ "Approved Intent changed during Build"
@@ -179,7 +188,35 @@ defmodule Kogen.ApprovedMutationTest do
 
     assert git!(dest, ["status", "--porcelain"]) == "", "the mutation is invisible to Git"
 
-    assert_mutation_happened(intent_dir, mutation)
+    # The edit happened inside the Build's own Candidate copy of the Approved
+    # package (the fake Developer/Reviewer's cwd), never in control: control's
+    # Approved package is untouched and the Candidate is retained for
+    # inspection, named next to the tracking record.
+    candidate = Kogen.CandidateFixture.candidate(dest)
+    assert candidate["disposition"] == "retained"
+    worktree = candidate["worktree_path"]
+    assert File.dir?(worktree)
+
+    owner_record = candidate["owner_record"] |> File.read!() |> Jason.decode!()
+    assert owner_record["status"] =~ ~r/^stopped: /
+    assert owner_record["build_id"] == candidate["owner_record"] |> Path.basename(".json")
+
+    assert reason =~
+             "Candidate kept: slug #{@slug}, build id #{owner_record["build_id"]}"
+
+    assert reason =~ "worktree #{worktree}"
+    assert reason =~ "branch #{candidate["branch"]}"
+    assert reason =~ "harness home #{candidate["harness_home"]}"
+    assert reason =~ "tracking record:"
+    assert reason =~ "mix kogen.candidates.remove #{owner_record["build_id"]}"
+
+    assert File.read!(Path.join(intent_dir, "evidence.md")) == "original user evidence",
+           "control's own Approved package must stay untouched"
+
+    refute File.exists?(Path.join(intent_dir, "new-evidence.md"))
+
+    worktree_intent_dir = Path.join(worktree, ".kogen/intents/approved/#{@slug}")
+    assert_mutation_happened(worktree_intent_dir, mutation)
   end
 
   defp mutation_command(mutation) do

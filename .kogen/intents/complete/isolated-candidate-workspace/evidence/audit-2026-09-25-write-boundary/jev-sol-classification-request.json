@@ -1,0 +1,149 @@
+{
+ "state": {
+  "context": "Classify adversarial audit findings on a Kogen Intent package (a macOS Seatbelt write boundary for Build roles) before the Build. blocking = the Build would likely fail, or a wrong implementation would pass the proofs, or the package contradicts the Shaper's requirement; advisory = worth noting, no Build or acceptance impact.",
+  "findings": {
+   "f1": "Outcome 13 grants writes to the harness home, temp dir, raw-log dir, Keychain file, Claude refresh lock and most of the Codex scope, while the Shaper's rule says roles cannot write outside their Build's worktree.",
+   "f2": "The raw-log grant (KOGEN_RAW_LOG_DIR) is checked only for containing control, so it may sit inside control or another Candidate, and live fixtures default it inside the installing checkout.",
+   "f3": "inherited mode lets a nested Build launched from a role shell run with the outer Build's grants while claiming its own boundary, based on a role-controlled marker.",
+   "f4": "The live-reviewer-rework paid proof checks verdicts and a self-reported applied record but no attempted outside write from the real Codex process tree, so an implementation wrapping only fake Codex could pass.",
+   "f5": "Wrapping every fake role needs an inventory of existing fake roles' and hooks' write destinations; only two are named, while the earlier attempt failed 47 tests, and probe 9 was not a passing gate.",
+   "a1": "The no-escape claim is broader than the tested routes (other IPC/services, pre-existing hardlinks).",
+   "a2": "live-reviewer-rework is justified under D8 but its assertion is too weak.",
+   "a3": "Codex scope and Keychain grants are security exceptions and should be described as such.",
+   "a4": "No missing guarded paths or unexplained selectors.",
+   "a5": "D9 controller constraints are correctly identified and remain a build gate."
+  }
+ },
+ "questions": {
+  "f1": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: Outcome 13 grants writes to the harness home, temp dir, raw-log dir, Keychain file, Claude refresh lock and most of the Codex scope, while the Shaper's rule says roles cannot write outside their Build's worktree.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f2": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: The raw-log grant (KOGEN_RAW_LOG_DIR) is checked only for containing control, so it may sit inside control or another Candidate, and live fixtures default it inside the installing checkout.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f3": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: inherited mode lets a nested Build launched from a role shell run with the outer Build's grants while claiming its own boundary, based on a role-controlled marker.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f4": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: The live-reviewer-rework paid proof checks verdicts and a self-reported applied record but no attempted outside write from the real Codex process tree, so an implementation wrapping only fake Codex could pass.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "f5": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: Wrapping every fake role needs an inventory of existing fake roles' and hooks' write destinations; only two are named, while the earlier attempt failed 47 tests, and probe 9 was not a passing gate.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "a1": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: The no-escape claim is broader than the tested routes (other IPC/services, pre-existing hardlinks).",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "a2": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: live-reviewer-rework is justified under D8 but its assertion is too weak.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "a3": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: Codex scope and Keychain grants are security exceptions and should be described as such.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "a4": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: No missing guarded paths or unexplained selectors.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  },
+  "a5": {
+   "type": "choice",
+   "instructions": {
+    "task": "Classify this finding: D9 controller constraints are correctly identified and remain a build gate.",
+    "rules": [
+     "Use only the finding text and context."
+    ]
+   },
+   "criteria": {
+    "blocking": "Build failure, a passing wrong implementation, or a contradiction with the Shaper's requirement",
+    "advisory": "No Build or acceptance impact"
+   }
+  }
+ }
+}

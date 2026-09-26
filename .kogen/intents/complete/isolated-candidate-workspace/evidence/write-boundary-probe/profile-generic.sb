@@ -1,0 +1,18 @@
+(version 1)
+; Kogen role write boundary (probe profile). Everything is allowed except file writes,
+; which are allowed only under the launch's Candidate, harness home and temp dir.
+(allow default)
+(deny file-write*)
+(allow file-write*
+  (subpath (param "CANDIDATE"))
+  (subpath (param "HARNESS_HOME"))
+  (subpath (param "TMP"))
+  (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (literal "/dev/ptmx")
+  (literal "/dev/dtracehelper")
+  (regex #"^/dev/fd/[0-9]+$") (regex #"^/dev/ttys[0-9]+$"))
+; Sandboxed processes cannot exec setuid binaries; Kogen's own code reads the process table
+; with /bin/ps, which writes nothing.
+(allow process-exec (with no-sandbox) (literal "/bin/ps"))
+;; LaunchServices and Apple Events would hand work to processes outside this sandbox.
+(deny lsopen)
+(deny appleevent-send)

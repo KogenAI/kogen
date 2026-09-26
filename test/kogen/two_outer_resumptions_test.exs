@@ -169,6 +169,10 @@ defmodule Kogen.TwoOuterResumptionsTest do
       {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
     ]
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
+
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dest)
     {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "fixture baseline"], cd: dest, env: env)
@@ -201,7 +205,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     result =
       File.cd!(dest, fn ->
-        Kogen.Build.run(@slug)
+        Kogen.Build.run(@slug, nil, dest)
       end)
 
     assert {:error, reason} = result
@@ -217,7 +221,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
     refute File.exists?(Path.join(dest, ".kogen/build.lock")), "the lock must be released"
 
     log_lines =
-      Path.join(dest, ".kogen/runtime/fake-harness-log")
+      Kogen.CandidateFixture.fake_state(dest, "fake-harness-log")
       |> File.read!()
       |> String.split("\n", trim: true)
       |> Enum.filter(&String.starts_with?(&1, "argv:"))
@@ -233,7 +237,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
     # `outer_resumptions`.
     verification_resumes =
       dest
-      |> Path.join(".kogen/runtime/verification-resume-prompts")
+      |> Kogen.CandidateFixture.fake_state("verification-resume-prompts")
       |> File.read()
       |> case do
         {:ok, content} ->
@@ -250,7 +254,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     reviewer_calls =
       dest
-      |> Path.join(".kogen/runtime/fake-reviewer-calls")
+      |> Kogen.CandidateFixture.fake_state("fake-reviewer-calls")
       |> File.read()
       |> reviewer_call_count()
       |> String.trim()
@@ -310,7 +314,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
     assert reason =~
              "stopped after 2 outer resumptions without an accepting Review: Unfinished work: missing declared proof selector #{@missing_selector}"
 
-    refute File.exists?(Path.join(dest, ".kogen/runtime/fake-reviewer-calls")),
+    refute File.exists?(Kogen.CandidateFixture.fake_state(dest, "fake-reviewer-calls")),
            "unfinished work never reaches Review"
 
     [record_path] =
@@ -454,7 +458,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
   verification_retries: 2
   """
 
-  test "a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it" do
+  test "a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it; same-candidate-rework holds" do
     project_root = File.cwd!()
     dest = Path.join(System.tmp_dir!(), "kogen-route-hold-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dest)
@@ -519,6 +523,10 @@ defmodule Kogen.TwoOuterResumptionsTest do
       {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
     ]
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
+
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dest)
     {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "fixture baseline"], cd: dest, env: env)
@@ -530,26 +538,33 @@ defmodule Kogen.TwoOuterResumptionsTest do
     on_exit(fn -> File.rm_rf(hook_dir) end)
     hook_path = Path.join(hook_dir, "midbuild-config-mutation.sh")
 
-    # The fake Developer runs this after each of its turns. The edits persist
-    # for the rest of the Build: the first changes the selected route's models
-    # and default_route, the second removes the selected route entirely, so a
-    # Build that re-read config would launch mutated models or fail.
-    # `.kogen/config.yaml` is in this fixture's guarded paths so the edited
-    # Candidate is admissible.
+    # The fake Developer runs this after each of its turns, editing
+    # `.kogen/config.yaml` in its own cwd (the Candidate: a guarded path in
+    # this fixture's Intent, so the edit is admissible and travels with the
+    # Candidate's eventual commit and publish). The edits persist for the
+    # rest of the Build: the first changes the selected route's models and
+    # default_route, the second removes the selected route entirely, so a
+    # Build that re-read config would launch mutated models or fail. Its
+    # bookkeeping (`stage`) used to live under the test's own
+    # `System.tmp_dir!()`, an absolute path outside every grant; it now
+    # lives in the harness home instead, which the write boundary grants and
+    # which (unlike the Candidate) survives the successful publish below.
     edited = Path.join(hook_dir, "edited.yaml")
     removed = Path.join(hook_dir, "removed.yaml")
-    stage = Path.join(hook_dir, "stage")
     File.write!(edited, @route_config_edited)
     File.write!(removed, @route_config_after)
 
     File.write!(hook_path, """
     #!/bin/sh
-    if [ -f #{stage} ]; then
+    state_dir="$KOGEN_HARNESS_HOME/fake-state"
+    mkdir -p "$state_dir"
+    stage="$state_dir/midbuild-stage"
+    if [ -f "$stage" ]; then
       cp #{removed} .kogen/config.yaml
-      echo removed >> #{stage}
+      echo removed >> "$stage"
     else
       cp #{edited} .kogen/config.yaml
-      echo edited > #{stage}
+      echo edited > "$stage"
     fi
     """)
 
@@ -573,7 +588,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     result =
       File.cd!(dest, fn ->
-        Kogen.Build.run(@route_slug, "other")
+        Kogen.Build.run(@route_slug, "other", dest)
       end)
 
     assert result == :ok, "expected the Build to accept: #{inspect(result)}"
@@ -587,14 +602,15 @@ defmodule Kogen.TwoOuterResumptionsTest do
     # it, and the Reviewer's one rework resume -- one more than outer
     # resumptions alone, proving the verification-failure resume happened
     # without spending the single outer resumption this Build used.
-    assert File.read!(stage) == "edited\nremoved\nremoved\n"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dest, "midbuild-stage")) ==
+             "edited\nremoved\nremoved\n"
 
-    assert File.read!(Path.join(dest, ".kogen/runtime/verification-resume-prompts")) =~
+    assert File.read!(Kogen.CandidateFixture.fake_state(dest, "verification-resume-prompts")) =~
              "Controller verification failed after your turn",
            "the controller's own verification-failure resume must have fixed the first cycle"
 
     resume_argv_count =
-      Path.join(dest, ".kogen/runtime/fake-harness-log")
+      Kogen.CandidateFixture.fake_state(dest, "fake-harness-log")
       |> File.read!()
       |> String.split("\n", trim: true)
       |> Enum.count(&String.contains?(&1, "exec resume"))
@@ -603,10 +619,28 @@ defmodule Kogen.TwoOuterResumptionsTest do
            "one controller verification-failure resume plus exactly one outer Review-rework " <>
              "resume, never a second outer resumption"
 
+    # same-candidate-rework: the Developer, its verification-failure resume
+    # and its Review-rework resume, and both Reviewers, all ran in the same
+    # single Candidate, using the same harness home; both resumes carry the
+    # same session (asserted above via `--resume`/`exec resume` naming the
+    # exact fresh session), and each Review is its own Reviewer launch.
+    developer_receipts = Kogen.CandidateFixture.receipts(dest, "developer", [])
+    reviewer_receipts = Kogen.CandidateFixture.receipts(dest, "reviewer", [])
+    assert length(developer_receipts) == 3, "fresh, verification-failure resume, rework resume"
+    assert length(reviewer_receipts) == 2, "the rework Reviewer and the accepting Reviewer"
+
+    candidate_path = Kogen.CandidateFixture.worktree(dest)
+    harness_home = Kogen.CandidateFixture.harness_home(dest)
+
+    for receipt <- developer_receipts ++ reviewer_receipts do
+      assert receipt["pwd"] == candidate_path
+      assert receipt["env"]["KOGEN_HARNESS_HOME"] == harness_home
+    end
+
     assert File.read!(Path.join(dest, ".kogen/config.yaml")) == @route_config_after
 
     log_lines =
-      Path.join(dest, ".kogen/runtime/fake-harness-log")
+      Kogen.CandidateFixture.fake_state(dest, "fake-harness-log")
       |> File.read!()
       |> String.split("\n", trim: true)
       |> Enum.filter(&String.starts_with?(&1, "argv:"))
@@ -625,12 +659,12 @@ defmodule Kogen.TwoOuterResumptionsTest do
     end
 
     developer_prompt =
-      Path.join(dest, ".kogen/runtime/developer-launch-prompt") |> File.read!()
+      Kogen.CandidateFixture.fake_state(dest, "developer-launch-prompt") |> File.read!()
 
     assert developer_prompt =~ "gpt-other-worker",
            "the execution policy in the Developer prompt must name the frozen route's helper profiles"
 
-    reviewer_prompt = Path.join(dest, ".kogen/runtime/reviewer-prompt-1") |> File.read!()
+    reviewer_prompt = Kogen.CandidateFixture.fake_state(dest, "reviewer-prompt-1") |> File.read!()
 
     assert reviewer_prompt =~ "gpt-other-worker",
            "the execution policy in the Reviewer prompt must name the frozen route's helper profiles"

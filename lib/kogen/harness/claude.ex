@@ -448,20 +448,24 @@ defmodule Kogen.Harness.Claude do
   defp merge_environment(base, overrides),
     do: Map.merge(Map.new(base), Map.new(overrides)) |> Map.to_list()
 
+  # A Build launch runs in its Candidate (`:cwd`) under the write boundary's
+  # argv `:prefix` (`sandbox-exec -p <profile>`), so the harness process and
+  # everything it spawns are confined by the kernel.
   defp run_with_stdin(context, args, stdin_text, role_environment) do
     dir = temporary_directory("stdin")
     tmp = Path.join(dir, "prompt")
     File.write!(tmp, stdin_text)
 
     try do
-      cmd =
-        Enum.map_join([context.executable | context.args ++ args], " ", &shell_quote/1) <>
-          " < " <> shell_quote(tmp)
+      argv = Map.get(context, :prefix, []) ++ [context.executable | context.args ++ args]
+      cmd = Enum.map_join(argv, " ", &shell_quote/1) <> " < " <> shell_quote(tmp)
 
       result =
-        System.cmd("sh", ["-c", cmd],
-          stderr_to_stdout: false,
-          env: merge_environment(context.env, role_environment)
+        System.cmd(
+          "sh",
+          ["-c", cmd],
+          [stderr_to_stdout: false, env: merge_environment(context.env, role_environment)] ++
+            cwd_option(context)
         )
 
       persist_raw_stream(result)
@@ -470,6 +474,9 @@ defmodule Kogen.Harness.Claude do
       File.rm_rf(dir)
     end
   end
+
+  defp cwd_option(%{cwd: cwd}) when is_binary(cwd), do: [cd: cwd]
+  defp cwd_option(_context), do: []
 
   defp persist_raw_stream({output, _exit_code}) do
     case System.get_env("KOGEN_RAW_LOG_DIR") do

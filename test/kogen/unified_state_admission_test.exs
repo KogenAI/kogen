@@ -173,6 +173,10 @@ defmodule Kogen.UnifiedStateAdmissionTest do
       "check:\n\t@echo check >> dispatches\n\t@grep -q '^pass' mode\n"
     )
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(root, "deps"))
+
     {_, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: root)
     {_, 0} = System.cmd("git", ["config", "user.name", "Fixture"], cd: root)
     {_, 0} = System.cmd("git", ["config", "user.email", "fixture@example.invalid"], cd: root)

@@ -1,0 +1,23 @@
+Compiling 257 files (.ex)
+Generated credo app
+==> kogen
+Compiling 50 files (.ex)
+Generated kogen app
+compile_exit=0
+Running ExUnit with seed: 398874, max_cases: 12
+Excluding tags: [:live]
+
+........................................................................................................................................................................................................................................................................................................................................................................................................................................................
+Slowest individual cases (includes isolated process startup):
+
+Finished in 127.8 seconds (127.8s async, 0.00s sync)
+
+Result: 440 passed
+  17.335s Kogen.ControllerHandoffTest test every Developer message variant yields the same controller report and reaches Review
+  11.08s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles
+  11.043s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles
+  10.851s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles
+  10.826s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles
+  10.619s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles
+  10.322s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles
+  10.229s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles

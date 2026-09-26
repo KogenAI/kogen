@@ -1,0 +1,6 @@
+[add inside boundary] exit=0
+[update inside boundary] exit=0
+[other file in Keychains dir] exit=1
+[item exists, checked outside] exit=0
+[cleanup delete outside] exit=0
+   1 bash deny(1) file-write-create /Users/almirsarajcic/Library/Keychains/kogen-probe-other-file

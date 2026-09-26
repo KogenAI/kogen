@@ -9,6 +9,12 @@ defmodule Mix.Tasks.Kogen.Build do
   Review, bounded Rework, and one ordinary Git Commit. The whole Build runs on
   the named route from `.kogen/config.yaml`, or on its `default_route` without
   `--route`.
+
+  The Build runs in its own Candidate worktree and harness home outside the
+  repository (`mix kogen.candidates` lists kept ones). This task is the only
+  place that reads the process working directory, once, to find the control
+  checkout (a main worktree, never a linked one); `Kogen.Build.run/3` gets it
+  explicitly.
   """
 
   @usage "usage: mix kogen.build [--route <name>] <slug>"
@@ -30,7 +36,7 @@ defmodule Mix.Tasks.Kogen.Build do
   end
 
   defp build(slug, route) do
-    case Kogen.Build.run(slug, route) do
+    case Kogen.Build.run(slug, route, File.cwd!()) do
       :ok -> :ok
       {:error, reason} -> fail(reason)
     end

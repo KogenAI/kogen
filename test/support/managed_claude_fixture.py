@@ -25,7 +25,8 @@ scope = pathlib.Path(os.environ["CLAUDE_CONFIG_DIR"])
 watched = ["HOME", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
            "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
            "CLAUDECODE", "DISABLE_AUTOUPDATER", "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT",
-           "KOGEN_ROLE"]
+           "KOGEN_ROLE", "CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR", "CODEX_HOME",
+           "OPENAI_API_KEY"]
 with pathlib.Path(os.environ["KOGEN_TEST_NATIVE_TRACE"]).open("a") as trace:
     trace.write(json.dumps({"args": args, "scope": str(scope), "executable": sys.argv[0],
                             "env": {name: os.environ.get(name) for name in watched}}) + "\n")

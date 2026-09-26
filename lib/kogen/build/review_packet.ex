@@ -81,9 +81,9 @@ defmodule Kogen.Build.ReviewPacket do
   `<record dir>/review-packets/<attempt-number>.json` and returns the binding
   the controller keeps in its state and in the attempt.
   """
-  @spec write(Path.t(), non_neg_integer(), binary(), String.t(), String.t()) ::
+  @spec write(Path.t(), non_neg_integer(), binary(), String.t(), String.t(), Path.t()) ::
           {:ok, map()} | {:error, String.t()}
-  def write(record_path, number, bytes, token, candidate_id) do
+  def write(record_path, number, bytes, token, candidate_id, root \\ File.cwd!()) do
     directory = Path.join(Path.dirname(record_path), @directory)
     path = Path.join(directory, "#{number}.json")
 
@@ -91,7 +91,7 @@ defmodule Kogen.Build.ReviewPacket do
          :ok <- exclusive_write(path, bytes) do
       {:ok,
        %{
-         "path" => Path.relative_to(Path.expand(path), File.cwd!()),
+         "path" => Path.relative_to(Path.expand(path), Path.expand(root)),
          "sha256" => sha256(bytes),
          "byte_count" => byte_size(bytes),
          "attempt_token" => token,
@@ -100,11 +100,16 @@ defmodule Kogen.Build.ReviewPacket do
     end
   end
 
-  @doc "Confirms that a written packet still has exactly its bound bytes."
-  @spec verify(map()) :: :ok | {:error, String.t()}
-  def verify(%{"path" => path, "sha256" => digest, "byte_count" => count})
+  @doc """
+  Confirms that a written packet still has exactly its bound bytes. Its
+  control-relative `path` resolves against `root`, the control checkout.
+  """
+  @spec verify(map(), Path.t()) :: :ok | {:error, String.t()}
+  def verify(binding, root \\ ".")
+
+  def verify(%{"path" => path, "sha256" => digest, "byte_count" => count}, root)
       when is_binary(path) do
-    case File.read(path) do
+    case File.read(Path.expand(path, root)) do
       {:ok, bytes} ->
         if byte_size(bytes) == count and sha256(bytes) == digest,
           do: :ok,
@@ -115,7 +120,7 @@ defmodule Kogen.Build.ReviewPacket do
     end
   end
 
-  def verify(_binding), do: {:error, "review packet binding is malformed"}
+  def verify(_binding, _root), do: {:error, "review packet binding is malformed"}
 
   @doc """
   Returns the superseded-objection record, or `nil` when `objections` must

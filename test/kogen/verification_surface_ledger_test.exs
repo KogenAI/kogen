@@ -591,6 +591,12 @@ defmodule Kogen.VerificationSurfaceLedgerTest do
       File.mkdir_p!(Path.join(dir, ".kogen/runtime"))
       claude = Path.join(dir, "fake_claude")
       File.cp!(Path.join(root(), "test/support/fake_claude"), claude)
+      # Every shared fake writes its per-launch receipt through this helper.
+      File.cp!(
+        Path.join(root(), "test/support/launch_receipt.py"),
+        Path.join(dir, "launch_receipt.py")
+      )
+
       File.cp!(Path.join(root(), "test/support/fake_ledger.py"), Path.join(dir, "fake_ledger.py"))
 
       File.cp!(
@@ -674,6 +680,12 @@ defmodule Kogen.VerificationSurfaceLedgerTest do
       File.mkdir_p!(Path.join(dir, ".kogen/runtime"))
       codex = Path.join(dir, "fake_codex")
       File.cp!(Path.join(root(), "test/support/fake_codex"), codex)
+      # Every shared fake writes its per-launch receipt through this helper.
+      File.cp!(
+        Path.join(root(), "test/support/launch_receipt.py"),
+        Path.join(dir, "launch_receipt.py")
+      )
+
       File.cp!(Path.join(root(), "test/support/fake_ledger.py"), Path.join(dir, "fake_ledger.py"))
 
       File.cp!(

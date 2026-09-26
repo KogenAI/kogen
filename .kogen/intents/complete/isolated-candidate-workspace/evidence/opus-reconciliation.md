@@ -1,0 +1,9 @@
+# Opus audit reconciliation
+
+- **B1 resolved:** publication now has a fixed Candidate Approved copy, Candidate Complete construction, hook-free accepted commit, controller-owned journal, CAS main transition, checked-out control synchronization, control Approved cleanup, pre-main refusal/nonreuse, and post-main idempotent recovery. `lib/mix/tasks/kogen.build.ex` is guarded.
+- **B2 resolved:** Candidate owns verification state/history/receipts; controller tracking remains controller-owned and carries explicit Candidate/control roots. `Kogen.Check`, Stop runner, Stop tests and lifecycle consumers are guarded.
+- **B3 resolved:** shared Git common state is explicitly control-owned, snapshotted, mutation-tested, and checked before verification/publication. Role limits are detection/refusal claims, not containment. Publication uses hook-free plumbing with explicit hardened configuration.
+- **B4 resolved:** the observed production, consumer, rehearsal, support, catalog and prompt paths were added to guarded paths and scenario affected paths where causally relevant.
+- **B5 resolved:** Candidate parent is `.kogen/runtime/build-workspaces/checkouts/<build-id>`; private mutable state is under Candidate. Cold inputs are the existing authorized admitted control dependency/tool sources used by the installed cold recipe, copied independently and hashed before/after. The selected cold target must be rewritten to exercise the stated empty Candidate state.
+- **B6 resolved:** the live-tagged cold driver was removed from `proof.offline`; it remains the selected catalog target, while `workspace_dependency_test.exs` is the focused offline selector.
+- Historical language remains limited to the observed stranded result. Global prune/reuse are forbidden, macOS canonicalization is required, Candidate-authored Stop/check code is disclosed and deferred, and success/failure cleanup policy is explicit.

@@ -1,0 +1,37 @@
+claude exit=0
+is_error: False num_turns: 7 cost_usd: 0.07247619999999999
+models: ['claude-sonnet-5']
+result:
+1. Write inside: success, file created.
+2. Write outside: `EPERM: operation not permitted, open '/private/tmp/claude-501/kogen-prep5b/probe/p5 space/outside/write-outside.txt.tmp.72286.ae019c4d7646'`
+3. Bash inside: success, no output.
+4. Bash outside: `(eval):1: operation not permitted: /private/tmp/claude-501/kogen-prep5b/probe/p5 space/outside/bash-outside.txt`
+5. kogen-worker outside: the same error, `(eval):1: operation not permitted: /private/tmp/claude-501/kogen-prep5b/probe/p5 space/outside/helper-outside.txt`
+6. Python write to home dir: `PermissionError: [Errno 1] Operation not permitted: '/Users/almirsarajcic/.kogen-wb-probe-should-not-exist'`
+
+Only the two writes inside `cand` succeeded. Everything outside it was blocked.
+[outside dir] 
+[home file] ls: /Users/almirsarajcic/.kogen-wb-probe-should-not-exist: No such file or directory
+[cand dir] .git Makefile bash-inside.txt stop-inside.txt stop.log write-inside.txt 
+[stop.log]
+stop-inside exit=0
+sh: /private/tmp/claude-501/kogen-prep5b/probe/p5 space/outside/stop-outside.txt: Operation not permitted
+stop-outside exit=1
+[config dir] .claude.json .last-cleanup backups projects session-env sessions shell-snapshots 
+[sandbox denials since 2026-09-25 21:54:30]
+   1 Python deny(1) file-write-create /Users/almirsarajcic/.kogen-wb-probe-should-not-exist
+   1 bash deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p5 space/outside/stop-outside.txt
+   1 claude deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p5 space/outside/write-outside.txt.tmp.72286.ae019c4d7646
+   1 diff deny(1) file-write-create /private/tmp/diff.4G7CSwuG
+   1 mise deny(1) file-write* /Users/almirsarajcic/.local/share/mise
+   1 mkdir deny(1) file-write-create /Users/almirsarajcic/.cache/oh-my-zsh
+   1 rm deny(1) file-write-unlink /Users/almirsarajcic/.zcompdump-Almirs-MacBook-Pro-5.9
+   1 zsh deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p5 space/outside/bash-outside.txt
+   1 zsh deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p5 space/outside/helper-outside.txt
+   1 zsh deny(1) file-write-create /private/tmp/zsh7aa6Mv
+   1 zsh deny(1) file-write-create /private/tmp/zshDUTHJ1
+   1 zsh deny(1) file-write-create /private/tmp/zshhYv27N
+   1 zsh deny(1) file-write-create /private/tmp/zshmOIk17
+   1 zsh deny(1) file-write-create /private/tmp/zshuPmTJ5
+   1 zsh deny(1) file-write-create /private/tmp/zshxB5sec
+   1 zsh deny(1) file-write-create /private/tmp/zshxjXONR

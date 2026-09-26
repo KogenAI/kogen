@@ -1,0 +1,245 @@
+/usr/bin/time -p python3 scripts/check/offline.py
+Resolved Git executable: /Library/Developer/CommandLineTools/usr/bin/git
+Offline gate: macOS-26.6.2-arm64-arm-64bit; installed dependencies; build path=_build; warm=False
++ elixir --version
+Erlang/OTP 29 [erts-17.0.3] [source] [64-bit] [smp:12:12] [ds:12:12:10] [async-threads:1] [jit]
+
+Elixir 1.20.2 (compiled with Erlang/OTP 29)
+Stage elapsed (elixir --version): 0.129s
++ mix format --check-formatted
++ mix compile --warnings-as-errors --force
++ xcrun clang -dynamiclib -Wall -Werror /private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/test/support/process_group.c -o /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-check-support-u6g0gkz4/process_group.dylib
+Stage elapsed (xcrun clang -dynamiclib -Wall -Werror /private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/test/support/process_group.c -o /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-check-support-u6g0gkz4/process_group.dylib): 0.072s
+Stage elapsed (mix format --check-formatted): 0.345s
+==> boundary
+Compiling 15 files (.ex)
+Generated boundary app
+==> file_system
+Compiling 7 files (.ex)
+Generated file_system app
+==> bunt
+Compiling 2 files (.ex)
+Generated bunt app
+==> jason
+Compiling 10 files (.ex)
+Generated jason app
+==> kogen
+===> Analyzing applications...
+===> Compiling yamerl
+/private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/deps/yamerl/src/yamerl_node_binary.erl:65:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   65|    case catch base64:decode(Text) of
+%     |         ^
+
+/private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/deps/yamerl/src/yamerl_node_binary.erl:72:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   72|    case catch base64:decode(Text) of
+%     |         ^
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 65 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 72 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+/private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/deps/yamerl/src/yamerl_constr.erl:801:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  801|     catch Mod:module_info(),
+%     |     ^
+
+     ┌─ src/yamerl_constr.erl:
+     │
+ 801 │      catch Mod:module_info(),
+     │      ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+==> yaml_elixir
+Compiling 6 files (.ex)
+Generated yaml_elixir app
+==> credo
+Compiling 257 files (.ex)
+Generated credo app
+==> kogen
+Compiling 40 files (.ex)
+Generated kogen app
+Stage elapsed (mix compile --warnings-as-errors --force): 3.411s
++ mix credo --strict
++ mix test --exclude live --warnings-as-errors
+Checking 141 source files (this might take a while) ...
+
+Please report incorrect results: https://github.com/rrrene/credo/issues
+
+Analysis took 0.7 seconds (0.07s to load, 0.7s running 69 checks on 141 files)
+1874 mods/funs, found no issues.
+
+Use `mix credo explain` to explain issues, `mix credo --help` for options.
+Stage elapsed (mix credo --strict): 1.154s
+Running ExUnit with seed: 698078, max_cases: 12
+Excluding tags: [:live]
+
+............................................................................................................
+
+  1) test stops after two outer resumptions when Review never accepts (Kogen.TwoOuterResumptionsTest)
+     test/kogen/two_outer_resumptions_test.exs:79
+     isolated test /private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/test/kogen/two_outer_resumptions_test.exs:test stops after two outer resumptions when Review never accepts failed ({:exit_status, 1})
+     Running ExUnit with seed: 606220, max_cases: 2
+     Excluding tags: [:test]
+     Including tags: [test: :"test stops after two outer resumptions when Review never accepts"]
+
+
+
+       1) test stops after two outer resumptions when Review never accepts (Kogen.TwoOuterResumptionsTest)
+          test/kogen/two_outer_resumptions_test.exs:79
+          every Reviewer invocation must own a distinct output path
+          code: stops_after_two_resumptions!("codex")
+          stacktrace:
+            test/kogen/two_outer_resumptions_test.exs:304: Kogen.TwoOuterResumptionsTest.assert_owned_output_paths!/1
+            test/kogen/two_outer_resumptions_test.exs:80: (test)
+
+
+     Finished in 2.0 seconds (2.0s async, 0.00s sync)
+
+     Result: 0/1 passed, 3 excluded
+     Failed: 1 test
+     expected exactly one passing isolated test: %{total: 4, skipped: 0, failures: 1, excluded: 3}
+     isolated children terminated; private fixture still present
+     KOGEN_ISOLATED_COMPLETION	1	HCm2g5UvvHy2ZIsLVN4_vETiPNK7j3_Y	L3ByaXZhdGUvdG1wL2NsYXVkZS01MDEva29nZW4tcHJlcDViL3Byb2JlL3A3YiBzcGFjZS9jYW5kL3Rlc3Qva29nZW4vdHdvX291dGVyX3Jlc3VtcHRpb25zX3Rlc3QuZXhz	dGVzdCBzdG9wcyBhZnRlciB0d28gb3V0ZXIgcmVzdW1wdGlvbnMgd2hlbiBSZXZpZXcgbmV2ZXIgYWNjZXB0cw==	1	true	passed
+
+     code: test "stops after two outer resumptions when Review never accepts" do
+     stacktrace:
+       test/support/isolated_case.ex:262: Kogen.IsolatedCase.run!/3
+       test/kogen/two_outer_resumptions_test.exs:79: (test)
+
+...................................................................
+
+  2) test a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it (Kogen.TwoOuterResumptionsTest)
+     test/kogen/two_outer_resumptions_test.exs:419
+     isolated test /private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/test/kogen/two_outer_resumptions_test.exs:test a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it failed ({:exit_status, 1})
+     Running ExUnit with seed: 285916, max_cases: 2
+     Excluding tags: [:test]
+     Including tags: [test: :"test a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it"]
+
+     /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-isolated-99486-1790363096752207000-3908/kogen-route-hold-hook-594/midbuild-config-mutation.sh: line 2: [: /private/tmp/claude-501/kogen-prep5b/probe/p7b: binary operator expected
+     cp: .kogen/config.yaml: Not a directory
+     /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-isolated-99486-1790363096752207000-3908/kogen-route-hold-hook-594/midbuild-config-mutation.sh: line 2: [: /private/tmp/claude-501/kogen-prep5b/probe/p7b: binary operator expected
+     cp: .kogen/config.yaml: Not a directory
+
+
+       1) test a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it (Kogen.TwoOuterResumptionsTest)
+          test/kogen/two_outer_resumptions_test.exs:419
+          ** (File.Error) could not read file "/private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-isolated-99486-1790363096752207000-3908/kogen-route-hold-hook-594/stage": no such file or directory
+          code: assert File.read!(stage) == "edited\nremoved\n"
+          stacktrace:
+            (elixir 1.20.2) lib/file.ex:451: File.read!/2
+            test/kogen/two_outer_resumptions_test.exs:544: (test)
+
+
+     Finished in 2.1 seconds (2.1s async, 0.00s sync)
+
+     Result: 0/1 passed, 3 excluded
+     Failed: 1 test
+     expected exactly one passing isolated test: %{total: 4, skipped: 0, failures: 1, excluded: 3}
+     isolated children terminated; private fixture still present
+     KOGEN_ISOLATED_COMPLETION	1	v0dw-H05-iSFc9HhO8bEoVCK8Vy9Eao3	L3ByaXZhdGUvdG1wL2NsYXVkZS01MDEva29nZW4tcHJlcDViL3Byb2JlL3A3YiBzcGFjZS9jYW5kL3Rlc3Qva29nZW4vdHdvX291dGVyX3Jlc3VtcHRpb25zX3Rlc3QuZXhz	dGVzdCBhIEJ1aWxkIG9uIGEgbm9uLWRlZmF1bHQgcm91dGUgaG9sZHMgaXRzIGZyb3plbiByb3V0ZSBhY3Jvc3MgYSBtaWQtQnVpbGQgY29uZmlnIGVkaXQsIHJlY29yZGluZyBhbmQgcHVibGlzaGluZyBpdA==	1	true	passed
+
+     code: test "a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it" do
+     stacktrace:
+       test/support/isolated_case.ex:262: Kogen.IsolatedCase.run!/3
+       test/kogen/two_outer_resumptions_test.exs:419: (test)
+
+.........................................................................
+
+  3) test the production PreToolUse policy blocks every covered explicit gate before fake dispatch (Kogen.VerificationPolicyTest)
+     test/kogen/verification_policy_test.exs:8
+     unexpected dispatch for "zsh /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-policy-99486-18562/.codex/hooks/check.sh"
+     code: in_policy_fixture!(fn dir ->
+     stacktrace:
+       test/kogen/verification_policy_test.exs:26: anonymous fn/2 in Kogen.VerificationPolicyTest."test the production PreToolUse policy blocks every covered explicit gate before fake dispatch"/1
+       (elixir 1.20.2) lib/enum.ex:1725: Enum."-map/2-lists^map/1-1-"/2
+       (elixir 1.20.2) lib/enum.ex:1725: Enum."-map/2-lists^map/1-1-"/2
+       test/kogen/verification_policy_test.exs:9: (test)
+
+..................................................................................................................................................................................
+
+  4) test the codex adapter settles Stop, Review, exact resume and Commit through one Build (Kogen.HarnessContractTest)
+     test/kogen/harness_contract_test.exs:45
+     isolated test /private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/test/kogen/harness_contract_test.exs:test the codex adapter settles Stop, Review, exact resume and Commit through one Build failed ({:exit_status, 1})
+     Running ExUnit with seed: 694671, max_cases: 2
+     Excluding tags: [:test]
+     Including tags: [test: :"test the codex adapter settles Stop, Review, exact resume and Commit through one Build"]
+
+
+
+       1) test the codex adapter settles Stop, Review, exact resume and Commit through one Build (Kogen.HarnessContractTest)
+          test/kogen/harness_contract_test.exs:45
+          Refute with =~ failed
+          code:  refute log =~ "claude"
+          left:  "argv: exec --model gpt-5.6-sol -c model_reasoning_effort=\"low\" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json -\nargv: exec --model gpt-5.6-terra -c model_reasoning_effort=\"medium\" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json --output-schema /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-isolated-99486-1790363121132109000-27586/kogen-review-10777-6/verdict.schema.json --output-last-message /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-isolated-99486-1790363121132109000-27586/kogen-review-10777-6/verdict.json -\nargv: exec resume --model gpt-5.6-sol -c model_reasoning_effort=\"low\" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json dev-session-1 -\nargv: exec --model gpt-5.6-terra -c model_reasoning_effort=\"medium\" --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --json --output-schema /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-isolated-99486-1790363121132109000-27586/kogen-review-10777-18/verdict.schema.json --output-last-message /private/tmp/claude-501/kogen-prep5b/probe/p7b space/home/tmp/kogen-isolated-99486-1790363121132109000-27586/kogen-review-10777-18/verdict.json -\n"
+          right: "claude"
+          stacktrace:
+            test/kogen/harness_contract_test.exs:459: Kogen.HarnessContractTest.assert_adapter_transport!/3
+            test/kogen/harness_contract_test.exs:46: (test)
+
+
+     Finished in 2.2 seconds (2.2s async, 0.00s sync)
+
+     Result: 0/1 passed, 13 excluded
+     Failed: 1 test
+     expected exactly one passing isolated test: %{total: 14, skipped: 0, failures: 1, excluded: 13}
+     isolated children terminated; private fixture still present
+     KOGEN_ISOLATED_COMPLETION	1	s-558j6uGlzHtEjXw87V5KrkxL9RY6gu	L3ByaXZhdGUvdG1wL2NsYXVkZS01MDEva29nZW4tcHJlcDViL3Byb2JlL3A3YiBzcGFjZS9jYW5kL3Rlc3Qva29nZW4vaGFybmVzc19jb250cmFjdF90ZXN0LmV4cw==	dGVzdCB0aGUgY29kZXggYWRhcHRlciBzZXR0bGVzIFN0b3AsIFJldmlldywgZXhhY3QgcmVzdW1lIGFuZCBDb21taXQgdGhyb3VnaCBvbmUgQnVpbGQ=	1	true	passed
+
+     code: test "the #{harness} adapter settles Stop, Review, exact resume and Commit through one Build" do
+     stacktrace:
+       test/support/isolated_case.ex:262: Kogen.IsolatedCase.run!/3
+       test/kogen/harness_contract_test.exs:45: (test)
+
+........................
+
+  5) test public Shape, explicit fixture approval, and public Build form one offline lifecycle (Kogen.LifecycleTest)
+     test/kogen/lifecycle_test.exs:21
+     mix kogen.build failed:
+     Unexpected Stop response (expected pass): {"continue":false,"stopReason":"verification retry budget exhausted"}
+     {"candidate":"f7b28a72c44fb1d6c60051f0b68d59253274b4b2","status":"failed","target":"check","exit_code":2,"session_id":"dev-session-1","attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","finished_at":"2026-09-25T19:05:29Z","reason":"No file named space/cand/_build/test/lib/kogen/ebin\nmake[1]: *** [target_evidence] Error 1\n","state":{"schema_version":1,"context_sha256":"70903448b76e8f1cc45c32fe4d199a35da2876c1c298279a9734bef518fcace8","attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","outer_attempt":0,"developer_session_id":"dev-session-1","candidate_id":"f7b28a72c44fb1d6c60051f0b68d59253274b4b2","cycles":[{"sequence":1,"attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","outer_attempt":0,"developer_session_id":"dev-session-1","candidate_id":"933aca72f4ed132220e9fd40b4b335f1eb25081c","failures_before":0,"failures_after":1,"status":"failed","finished_at":"2026-09-25T19:05:28Z","receipts":[{"target":"check","status":"failed","exit_code":2,"output":"bounded fixture check: lib/kogen_fake_break.ex remains\nmake[1]: *** [check] Error 1\n","finished_at":"2026-09-25T19:05:28Z","candidate_id":"933aca72f4ed132220e9fd40b4b335f1eb25081c","developer_session_id":"dev-session-1","attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","cycle_sequence":1}]},{"sequence":2,"attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","outer_attempt":0,"developer_session_id":"dev-session-1","candidate_id":"f7b28a72c44fb1d6c60051f0b68d59253274b4b2","failures_before":1,"failures_after":2,"status":"failed","finished_at":"2026-09-25T19:05:28Z","receipts":[{"target":"check","status":"passed","exit_code":0,"output":"","finished_at":"2026-09-25T19:05:28Z","candidate_id":"f7b28a72c44fb1d6c60051f0b68d59253274b4b2","developer_session_id":"dev-session-1","attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","cycle_sequence":2},{"target":"target_evidence","status":"failed","exit_code":2,"output":"No file named space/cand/_build/test/lib/kogen/ebin\nmake[1]: *** [target_evidence] Error 1\n","finished_at":"2026-09-25T19:05:28Z","candidate_id":"f7b28a72c44fb1d6c60051f0b68d59253274b4b2","developer_session_id":"dev-session-1","attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","cycle_sequence":2}]},{"sequence":3,"attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","outer_attempt":0,"developer_session_id":"dev-session-1","candidate_id":"f7b28a72c44fb1d6c60051f0b68d59253274b4b2","failures_before":2,"failures_after":3,"status":"failed","finished_at":"2026-09-25T19:05:29Z","receipts":[{"target":"check","status":"passed","exit_code":0,"output":"","finished_at":"2026-09-25T19:05:28Z","candidate_id":"f7b28a72c44fb1d6c60051f0b68d59253274b4b2","developer_session_id":"dev-session-1","attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","cycle_sequence":3},{"target":"target_evidence","status":"failed","exit_code":2,"output":"No file named space/cand/_build/test/lib/kogen/ebin\nmake[1]: *** [target_evidence] Error 1\n","finished_at":"2026-09-25T19:05:29Z","candidate_id":"f7b28a72c44fb1d6c60051f0b68d59253274b4b2","developer_session_id":"dev-session-1","attempt_token":"t8l_ie4Hh14hKukYy1eL6Q4abIXSqChf","cycle_sequence":3}]}],"failures_since_pass":3,"terminal_state":"exhausted"}}
+     harness failure during Developer turn: {:provider_exit, 1, "{\"type\":\"thread.started\",\"thread_id\":\"dev-session-1\"}\n"} (developer on harness codex, fixture-developer at developer-effort); unresolved scenarios: shaped-scenario; tracking record: .kogen/runtime/scenario-tracking/B_f5hDhdHzqJq0SmCcEsLveG/record.json
+
+     code: assert exit_code == 0, "mix kogen.build failed:\n#{output}"
+     stacktrace:
+       test/kogen/lifecycle_test.exs:62: (test)
+
+..............................................................................................................................................................................................................................................................................................................................................................
+Slowest individual cases (includes isolated process startup):
+
+Finished in 115.3 seconds (115.3s async, 0.00s sync)
+
+Result: 800/805 passed, 10 excluded
+Failed: 5 tests
+  23.768s Kogen.ShapingEvaluationTest test offline rehearsal exercises the maintained driver without provider access
+  19.583s Kogen.HarnessRoleTest test every Codex launch overrides a hostile inherited role
+  9.229s Kogen.Codex.CompatibilityPreparationTest test PTY trust response is limited to the explicitly selected compatibility fixture
+  9.207s Kogen.ControllerHandoffTest test every Developer message variant yields the same controller report and reaches Review
+  8.054s Kogen.ShapeTaskTest test invalid selections fail before harness launch
+  6.88s Kogen.ScenarioLifecycleTest test exhaustion preserves unique records without raw logs and publication copies closure evidence
+  6.764s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles
+  6.663s Kogen.BuildPreconditionsTest test --route selects a non-default route's Developer, Reviewer, and execution-policy profiles
+Stage elapsed (mix test --exclude live --warnings-as-errors): 116.463s
+Offline receipt: /private/tmp/claude-501/kogen-prep5b/probe/p7b space/cand/.kogen/runtime/offline-results/1d3a5bf1fac40c74dfc3f4ab3a7af62f.json
+Complete offline gate: 120.096s; exit=2
+real 120.17
+user 24.30
+sys 13.70
+make: *** [check] Error 2

@@ -15,17 +15,18 @@ defmodule Kogen.Git do
   @publication_total_limit 10_485_760
 
   @doc "Validates added/modified blobs in the real staged tree against Kogen's fixed publication budget."
-  @spec validate_staged_publication() :: :ok | {:error, String.t()}
-  def validate_staged_publication do
-    with :ok <- reject_candidate_blinding_index_flags(),
+  @spec validate_staged_publication(Path.t()) :: :ok | {:error, String.t()}
+  def validate_staged_publication(root \\ ".") do
+    with :ok <- reject_candidate_blinding_index_flags(root),
          {paths, 0} <-
            System.cmd("git", ["diff", "--cached", "--name-only", "-z", "HEAD"],
+             cd: root,
              stderr_to_stdout: true
            ) do
       entries =
         paths
         |> String.split(<<0>>, trim: true)
-        |> Enum.flat_map(&staged_blob/1)
+        |> Enum.flat_map(&staged_blob(&1, root))
 
       runtime =
         Enum.filter(entries, fn {path, _size} -> String.starts_with?(path, ".kogen/runtime/") end)
@@ -59,22 +60,25 @@ defmodule Kogen.Git do
     end
   end
 
-  defp staged_blob(path) do
-    case System.cmd("git", ["ls-files", "--stage", "-z", "--", path], stderr_to_stdout: true) do
+  defp staged_blob(path, root) do
+    case System.cmd("git", ["ls-files", "--stage", "-z", "--", path],
+           cd: root,
+           stderr_to_stdout: true
+         ) do
       {"", 0} ->
         []
 
       {entry, 0} ->
         [metadata | _] = String.split(entry, <<0>>, trim: true)
         [mode, object | _] = String.split(metadata, " ", parts: 3)
-        [{path, staged_object_size!(path, mode, object)}]
+        [{path, staged_object_size!(path, mode, object, root)}]
     end
   end
 
-  defp staged_object_size!(_path, "160000", _object), do: 0
+  defp staged_object_size!(_path, "160000", _object, _root), do: 0
 
-  defp staged_object_size!(path, _mode, object) do
-    case System.cmd("git", ["cat-file", "-s", object], stderr_to_stdout: true) do
+  defp staged_object_size!(path, _mode, object, root) do
+    case System.cmd("git", ["cat-file", "-s", object], cd: root, stderr_to_stdout: true) do
       {size, 0} -> String.trim(size) |> String.to_integer()
       {out, _code} -> raise "could not size staged blob #{inspect(path)}: #{String.trim(out)}"
     end
@@ -83,19 +87,19 @@ defmodule Kogen.Git do
   defp format_sizes(entries),
     do: Enum.map_join(entries, ", ", fn {path, size} -> "#{inspect(path)}=#{size}" end)
 
-  @doc "Raw `git status --porcelain` output."
-  def status_porcelain! do
-    {out, 0} = System.cmd("git", ["--no-optional-locks", "status", "--porcelain"])
+  @doc "Raw `git status --porcelain` output of the checkout at `root`."
+  def status_porcelain!(root \\ ".") do
+    {out, 0} = System.cmd("git", ["--no-optional-locks", "status", "--porcelain"], cd: root)
     out
   end
 
-  @doc "True when the worktree has no staged, unstaged, or untracked changes."
-  def clean_worktree? do
-    status_porcelain!() == ""
+  @doc "True when the checkout at `root` has no staged, unstaged, or untracked changes."
+  def clean_worktree?(root \\ ".") do
+    status_porcelain!(root) == ""
   end
 
   @doc "Repository-relative tracked and untracked paths changed from HEAD."
-  def changed_paths(root \\ File.cwd!()) do
+  def changed_paths(root) do
     with {tracked, 0} <-
            System.cmd("git", mode_aware(["diff", "--name-only", "-z", "HEAD", "--"]),
              cd: root,
@@ -113,8 +117,11 @@ defmodule Kogen.Git do
   end
 
   @doc "The attached branch name, or `{:error, reason}` on a detached HEAD."
-  def current_branch do
-    case System.cmd("git", ["symbolic-ref", "--short", "-q", "HEAD"], stderr_to_stdout: true) do
+  def current_branch(root \\ ".") do
+    case System.cmd("git", ["symbolic-ref", "--short", "-q", "HEAD"],
+           cd: root,
+           stderr_to_stdout: true
+         ) do
       {out, 0} -> {:ok, String.trim(out)}
       {_out, _code} -> {:error, "detached HEAD"}
     end
@@ -126,9 +133,9 @@ defmodule Kogen.Git do
   ignored files while still capturing ordinary untracked files and honoring
   `.gitignore`, and never touches the real index.
   """
-  @spec candidate_id() :: {:ok, String.t()} | {:error, String.t()}
-  def candidate_id do
-    with :ok <- reject_candidate_blinding_index_flags() do
+  @spec candidate_id(Path.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def candidate_id(root \\ ".") do
+    with :ok <- reject_candidate_blinding_index_flags(root) do
       tmp_dir = tmp_directory!("index")
       tmp_index = Path.join(tmp_dir, "index")
       env = [{"GIT_INDEX_FILE", tmp_index}]
@@ -136,17 +143,24 @@ defmodule Kogen.Git do
       try do
         with {index_path, 0} <-
                System.cmd("git", mode_aware(["rev-parse", "--git-path", "index"]),
+                 cd: root,
                  stderr_to_stdout: true
                ),
-             :ok <- File.cp(String.trim(index_path), tmp_index),
-             :ok <- keep_index_mtime(String.trim(index_path), tmp_index),
+             index_path = Path.expand(String.trim(index_path), root),
+             :ok <- File.cp(index_path, tmp_index),
+             :ok <- keep_index_mtime(index_path, tmp_index),
              {_out, 0} <-
                System.cmd("git", mode_aware(["add", "-A"]),
+                 cd: root,
                  env: env,
                  stderr_to_stdout: true
                ),
              {tree, 0} <-
-               System.cmd("git", mode_aware(["write-tree"]), env: env, stderr_to_stdout: true) do
+               System.cmd("git", mode_aware(["write-tree"]),
+                 cd: root,
+                 env: env,
+                 stderr_to_stdout: true
+               ) do
           {:ok, String.trim(tree)}
         else
           {:error, reason} -> {:error, "could not copy Git index: #{:file.format_error(reason)}"}
@@ -172,12 +186,13 @@ defmodule Kogen.Git do
   @doc "Stages the final tree and confirms only Kogen lifecycle paths differ from the Candidate."
   @spec stage_and_verify_candidate(String.t(), String.t() | [String.t()]) ::
           :ok | {:error, term()}
-  def stage_and_verify_candidate(candidate_tree, allowed_prefixes) do
-    with :ok <- reject_candidate_blinding_index_flags(),
-         {_out, 0} <- System.cmd("git", mode_aware(["add", "-A"]), stderr_to_stdout: true),
+  def stage_and_verify_candidate(candidate_tree, allowed_prefixes, root \\ ".") do
+    with :ok <- reject_candidate_blinding_index_flags(root),
+         {_out, 0} <-
+           System.cmd("git", mode_aware(["add", "-A"]), cd: root, stderr_to_stdout: true),
          {staged_tree, 0} <-
-           System.cmd("git", mode_aware(["write-tree"]), stderr_to_stdout: true) do
-      assert_tree_diff_only(candidate_tree, String.trim(staged_tree), allowed_prefixes)
+           System.cmd("git", mode_aware(["write-tree"]), cd: root, stderr_to_stdout: true) do
+      assert_tree_diff_only(candidate_tree, String.trim(staged_tree), allowed_prefixes, root)
     else
       {:error, _reason} = error -> error
       {out, _code} -> {:error, String.trim(out)}
@@ -185,11 +200,11 @@ defmodule Kogen.Git do
   end
 
   @doc "Confirms the current staged tree exactly matches the expected Candidate tree."
-  @spec assert_staged_tree(String.t()) :: :ok | {:error, String.t()}
-  def assert_staged_tree(expected_tree) do
-    with :ok <- reject_candidate_blinding_index_flags(),
+  @spec assert_staged_tree(String.t(), Path.t()) :: :ok | {:error, String.t()}
+  def assert_staged_tree(expected_tree, root \\ ".") do
+    with :ok <- reject_candidate_blinding_index_flags(root),
          {staged_tree, 0} <-
-           System.cmd("git", mode_aware(["write-tree"]), stderr_to_stdout: true) do
+           System.cmd("git", mode_aware(["write-tree"]), cd: root, stderr_to_stdout: true) do
       assert_expected_tree("staged", expected_tree, String.trim(staged_tree))
     else
       {:error, _reason} = error -> error
@@ -198,10 +213,11 @@ defmodule Kogen.Git do
   end
 
   @doc "Confirms the current HEAD tree exactly matches the expected Candidate tree."
-  @spec assert_head_tree(String.t()) :: :ok | {:error, String.t()}
-  def assert_head_tree(expected_tree) do
-    with :ok <- reject_candidate_blinding_index_flags(),
-         {head_tree, 0} <- System.cmd("git", ["rev-parse", "HEAD^{tree}"], stderr_to_stdout: true) do
+  @spec assert_head_tree(String.t(), Path.t()) :: :ok | {:error, String.t()}
+  def assert_head_tree(expected_tree, root \\ ".") do
+    with :ok <- reject_candidate_blinding_index_flags(root),
+         {head_tree, 0} <-
+           System.cmd("git", ["rev-parse", "HEAD^{tree}"], cd: root, stderr_to_stdout: true) do
       assert_expected_tree("HEAD", expected_tree, String.trim(head_tree))
     else
       {:error, _reason} = error -> error
@@ -235,10 +251,10 @@ defmodule Kogen.Git do
   The message contains only the subject and its trailers; publication evidence
   belongs in the Complete Intent rather than a generated commit body.
   """
-  @spec commit_staged(String.t(), [{String.t(), String.t()}]) ::
+  @spec commit_staged(String.t(), [{String.t(), String.t()}], Path.t()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def commit_staged(subject, trailers) do
-    with :ok <- reject_candidate_blinding_index_flags() do
+  def commit_staged(subject, trailers, root \\ ".") do
+    with :ok <- reject_candidate_blinding_index_flags(root) do
       trailer_lines = Enum.map_join(trailers, "\n", fn {k, v} -> "#{k}: #{v}" end)
       message = Enum.join([subject, trailer_lines], "\n\n")
       tmp_dir = tmp_directory!("commit-msg")
@@ -246,9 +262,10 @@ defmodule Kogen.Git do
 
       try do
         with :ok <- File.write(msg_file, message),
-             result <- System.cmd("git", ["commit", "-F", msg_file], stderr_to_stdout: true) do
+             result <-
+               System.cmd("git", ["commit", "-F", msg_file], cd: root, stderr_to_stdout: true) do
           case result do
-            {_out, 0} -> head_sha()
+            {_out, 0} -> head_sha(root)
             {out, _code} -> {:error, String.trim(out)}
           end
         else
@@ -262,9 +279,9 @@ defmodule Kogen.Git do
   end
 
   @doc "The current `HEAD` commit sha."
-  @spec head_sha() :: {:ok, String.t()} | {:error, String.t()}
-  def head_sha do
-    case System.cmd("git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+  @spec head_sha(Path.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def head_sha(root \\ ".") do
+    case System.cmd("git", ["rev-parse", "HEAD"], cd: root, stderr_to_stdout: true) do
       {out, 0} -> {:ok, String.trim(out)}
       {out, _code} -> {:error, String.trim(out)}
     end
@@ -277,7 +294,7 @@ defmodule Kogen.Git do
   `added`/`deleted` are line counts (`nil` for binary files).
   """
   @spec tree_changes(String.t(), String.t(), Path.t()) :: {:ok, [map()]} | {:error, String.t()}
-  def tree_changes(base, tree, root \\ File.cwd!()) do
+  def tree_changes(base, tree, root) do
     with {raw, 0} <-
            System.cmd("git", mode_aware(["diff", "--raw", "-z", "-M", "--no-abbrev", base, tree]),
              cd: root,
@@ -365,7 +382,7 @@ defmodule Kogen.Git do
   @doc "The full diff of one change between two tree-ish ids."
   @spec path_diff(String.t(), String.t(), [String.t()], Path.t()) ::
           {:ok, binary()} | {:error, String.t()}
-  def path_diff(base, tree, paths, root \\ File.cwd!()) do
+  def path_diff(base, tree, paths, root) do
     case System.cmd(
            "git",
            mode_aware(["diff", "-M", "--no-color", base, tree, "--" | paths]),
@@ -379,7 +396,7 @@ defmodule Kogen.Git do
 
   @doc "The bytes of `path` in tree-ish `tree`, or `:absent`."
   @spec blob(String.t(), String.t(), Path.t()) :: {:ok, binary()} | :absent
-  def blob(tree, path, root \\ File.cwd!()) do
+  def blob(tree, path, root) do
     case System.cmd("git", ["cat-file", "blob", "#{tree}:#{path}"],
            cd: root,
            stderr_to_stdout: true
@@ -391,7 +408,7 @@ defmodule Kogen.Git do
 
   @doc "Every file path in tree-ish `tree`."
   @spec tree_files(String.t(), Path.t()) :: {:ok, [String.t()]} | {:error, String.t()}
-  def tree_files(tree, root \\ File.cwd!()) do
+  def tree_files(tree, root) do
     case System.cmd("git", ["ls-tree", "-r", "-z", "--name-only", tree],
            cd: root,
            stderr_to_stdout: true
@@ -407,9 +424,9 @@ defmodule Kogen.Git do
   `git commit` failed, so a retried Build sees the same clean-index state
   as before the failed attempt.
   """
-  @spec unstage_all() :: :ok
-  def unstage_all do
-    System.cmd("git", ["reset"], stderr_to_stdout: true)
+  @spec unstage_all(Path.t()) :: :ok
+  def unstage_all(root \\ ".") do
+    System.cmd("git", ["reset", "--quiet"], cd: root, stderr_to_stdout: true)
     :ok
   end
 
@@ -422,11 +439,12 @@ defmodule Kogen.Git do
   @spec assert_commit_diff_only(String.t(), String.t() | [String.t()]) ::
           :ok | {:error, {:paths_outside_allowed, [String.t()]}}
   def assert_commit_diff_only(candidate_tree, allowed_prefixes) do
-    assert_tree_diff_only(candidate_tree, "HEAD", allowed_prefixes)
+    assert_tree_diff_only(candidate_tree, "HEAD", allowed_prefixes, ".")
   end
 
-  defp assert_tree_diff_only(left, right, allowed_prefixes) do
+  defp assert_tree_diff_only(left, right, allowed_prefixes, root) do
     case System.cmd("git", mode_aware(["diff", "--name-only", "-z", left, right]),
+           cd: root,
            stderr_to_stdout: true
          ) do
       {out, 0} ->
@@ -478,9 +496,9 @@ defmodule Kogen.Git do
   Refuses Candidate-sensitive work when the real index has assume-unchanged or
   skip-worktree entries, without clearing those flags or changing the index.
   """
-  @spec reject_candidate_blinding_index_flags() :: :ok | {:error, String.t()}
-  def reject_candidate_blinding_index_flags do
-    case System.cmd("git", ["ls-files", "-v", "-z"], stderr_to_stdout: true) do
+  @spec reject_candidate_blinding_index_flags(Path.t()) :: :ok | {:error, String.t()}
+  def reject_candidate_blinding_index_flags(root \\ ".") do
+    case System.cmd("git", ["ls-files", "-v", "-z"], cd: root, stderr_to_stdout: true) do
       {out, 0} ->
         flagged =
           out

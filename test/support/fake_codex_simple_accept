@@ -2,9 +2,14 @@
 set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 response_helper="$script_dir/scenario_response.py"
-mkdir -p .kogen/runtime; log=.kogen/runtime/fake-harness-log
+# Scratch state lives in the Build's harness home (inside the write
+# boundary, and kept after publication removes the Candidate); outside a
+# Build it falls back to the cwd's ignored .kogen/runtime.
+state_dir="${KOGEN_HARNESS_HOME:+$KOGEN_HARNESS_HOME/fake-state}"; state_dir="${state_dir:-.kogen/runtime}"; mkdir -p "$state_dir"
+log="$state_dir/fake-harness-log"
 printf 'argv:' >>"$log"; for a in "$@"; do printf ' %s' "$a" >>"$log"; done; printf '\n' >>"$log"
 input="$(cat)"
+printf '%s' "$input" | python3 "$script_dir/launch_receipt.py" "$@"
 is_reviewer=0; resume_id=; output_file=; previous=; is_resume=0; penultimate=; last=
 [ "${KOGEN_ROLE:-}" = reviewer ] && is_reviewer=1
 for a in "$@"; do
@@ -14,7 +19,7 @@ for a in "$@"; do
 done
 [ "$is_resume" -eq 1 ] && resume_id="$penultimate"
 if [ "$is_reviewer" -eq 1 ]; then
-  n=0; [ -f .kogen/runtime/fake-reviewer-calls ] && n="$(cat .kogen/runtime/fake-reviewer-calls)"; n=$((n + 1)); echo "$n" > .kogen/runtime/fake-reviewer-calls
+  n=0; [ -f "$state_dir/fake-reviewer-calls" ] && n="$(cat "$state_dir/fake-reviewer-calls")"; n=$((n + 1)); echo "$n" > "$state_dir/fake-reviewer-calls"
   printf '%s' "$input" | python3 "$response_helper" reviewer accept >"$output_file"
   printf '{"type":"thread.started","thread_id":"reviewer-session-%s"}\n{"type":"turn.completed","thread_id":"reviewer-session-%s"}\n' "$n" "$n"
   exit 0

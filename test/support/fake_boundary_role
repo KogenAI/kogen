@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""Offline fake role that probes the Build's write boundary from inside.
+
+Kogen launches it as `KOGEN_HARNESS` for every role (readiness, fresh and
+resumed Developer, Reviewer). Before delegating to the real fake named by
+`FIXTURE_NEXT_ROLE` (default `fake_codex`, same directory), each model launch
+tries every write the role-write-boundary scenario names and records the
+outcome (exit status or errno) in a JSON receipt under
+`$KOGEN_HARNESS_HOME/boundary-receipts/`, which is inside the grants:
+
+* inside writes: the Candidate's ignored `.kogen/runtime/` (Developer only,
+  so the Reviewer never changes the Candidate), the harness home, `$TMPDIR`,
+  a helper child, a `make` grandchild and a background child that outlives
+  the role (its result lands in the harness home later);
+* outside writes, each of which must fail with EPERM and leave no trace:
+  create, append, delete, rename, chmod, hardlink and symlink-follow into the
+  control checkout (including `.kogen/` and `.kogen/build.lock`), `git
+  commit`, `git update-ref` and `git config` against control's metadata, the
+  controller's own raw-log dir, another Candidate and its harness home, an
+  owner record, the Claude scope's `settings.json`, a sentinel directory, and
+  the same sentinel through its `/tmp` alias;
+* a nested `sandbox-exec` with a permissive profile (exit 71 when confined),
+  a LaunchServices `open -g -a` and an Apple Event through `osascript`.
+
+Every target comes from `FIXTURE_*` variables the test sets; a missing one is
+skipped. Readiness calls (`auth status`, `login status`) are delegated
+without probing.
+"""
+
+import errno
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+NEXT = os.environ.get("FIXTURE_NEXT_ROLE") or os.path.join(HERE, "fake_codex")
+ARGS = sys.argv[1:]
+
+
+def delegate(stdin_path=None):
+    if stdin_path is not None:
+        fd = os.open(stdin_path, os.O_RDONLY)
+        os.dup2(fd, 0)
+        os.close(fd)
+    os.execv(NEXT, [NEXT] + ARGS)
+
+
+readiness = ARGS[:2] in (["auth", "status"], ["login", "status"])
+home = os.environ.get("KOGEN_HARNESS_HOME")
+if readiness or not home:
+    delegate()
+
+prompt = sys.stdin.buffer.read()
+role = os.environ.get("KOGEN_ROLE", "")
+pid = os.getpid()
+tmp = os.environ.get("TMPDIR", "")
+results = {}
+
+
+def record(name, action):
+    try:
+        outcome = action()
+        results[name] = {"ok": True, "detail": outcome}
+    except OSError as error:
+        results[name] = {
+            "ok": False,
+            "errno": errno.errorcode.get(error.errno, str(error.errno)),
+            "error": str(error),
+        }
+
+
+def command(name, argv, **kwargs):
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=30, **kwargs)
+        results[name] = {
+            "ok": done.returncode == 0,
+            "exit": done.returncode,
+            "stderr": (done.stderr or "")[-2000:],
+        }
+    except (OSError, subprocess.TimeoutExpired) as error:
+        results[name] = {"ok": False, "exit": None, "stderr": str(error)}
+
+
+def write(path, data="boundary probe\n", mode="w"):
+    with open(path, mode) as handle:
+        handle.write(data)
+    return path
+
+
+env = os.environ
+control = env.get("FIXTURE_CONTROL")
+
+# Inside the grants.
+if role == "developer":
+    os.makedirs(".kogen/runtime", exist_ok=True)
+    record("candidate_write", lambda: write(".kogen/runtime/boundary-inside-%d" % pid))
+record("home_write", lambda: write(os.path.join(home, "boundary-inside-%d" % pid)))
+if tmp:
+    record("tmp_write", lambda: write(os.path.join(tmp, "boundary-inside-%d" % pid)))
+    command("helper_child_inside", ["/bin/sh", "-c", 'echo helper > "$TMPDIR/helper-%d"' % pid])
+    makefile = os.path.join(tmp, "Makefile-%d" % pid)
+    sentinel = env.get("FIXTURE_SENTINEL", "/nonexistent-sentinel")
+    write(
+        makefile,
+        "inside:\n\t@echo grandchild > \"$$TMPDIR/grandchild-%d\"\n"
+        "outside:\n\t@echo grandchild > \"%s/grandchild-%d\"\n" % (pid, sentinel, pid),
+    )
+    command("make_grandchild_inside", ["make", "-s", "-f", makefile, "inside"])
+    if env.get("FIXTURE_SENTINEL"):
+        command("make_grandchild_outside", ["make", "-s", "-f", makefile, "outside"])
+
+# A background child that outlives this role: it writes its own outcome into
+# the harness home once it has tried the sentinel.
+if env.get("FIXTURE_SENTINEL"):
+    background = (
+        'sleep 1; if echo late > "%s/background-%d" 2>/dev/null; then r=0; else r=1; fi; '
+        'echo "$r" > "%s/background-%d"' % (env["FIXTURE_SENTINEL"], pid, home, pid)
+    )
+    subprocess.Popen(
+        ["nohup", "/bin/sh", "-c", background],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    results["background_child"] = {"result_path": os.path.join(home, "background-%d" % pid)}
+
+# Outside the grants: every attempt must be refused.
+if control:
+    readme = os.path.join(control, "README.md")
+    record("control_create", lambda: write(os.path.join(control, "boundary-escape-%d" % pid)))
+    record("control_append", lambda: write(readme, "escaped\n", "a"))
+    record("control_delete", lambda: os.remove(readme))
+    record("control_rename", lambda: os.rename(readme, readme + ".moved"))
+    record("control_chmod", lambda: os.chmod(readme, 0o777))
+    record(
+        "control_kogen",
+        lambda: write(os.path.join(control, ".kogen/runtime/boundary-escape/escape-%d" % pid)),
+    )
+    record("control_lock", lambda: write(os.path.join(control, ".kogen/build.lock"), "x", "a"))
+    if role == "developer":
+        inside = ".kogen/runtime/hardlink-source-%d" % pid
+        write(inside)
+        record(
+            "control_hardlink",
+            lambda: os.link(inside, os.path.join(control, "boundary-hardlink-%d" % pid)),
+        )
+        link = ".kogen/runtime/symlink-%d" % pid
+        os.symlink(os.path.join(control, "boundary-symlink-target-%d" % pid), link)
+        record("control_symlink_follow", lambda: write(link))
+    command("git_commit", ["git", "-C", control, "commit", "-q", "--allow-empty", "-m", "escape"])
+    command("git_candidate_commit", ["git", "commit", "-q", "--allow-empty", "-m", "escape"])
+    command("git_update_ref", ["git", "-C", control, "update-ref", "refs/heads/boundary-escape", "HEAD"])
+    command("git_config", ["git", "-C", control, "config", "kogen.boundaryescape", "1"])
+
+for name, variable, target in [
+    ("controller_raw_log", "FIXTURE_CONTROLLER_RAW_LOG", "escape-%d"),
+    ("other_candidate", "FIXTURE_OTHER_CANDIDATE", "escape-%d"),
+    ("other_harness_home", "FIXTURE_OTHER_HOME", "escape-%d"),
+    ("sentinel", "FIXTURE_SENTINEL", "escape-%d"),
+    ("tmp_alias", "FIXTURE_TMP_ALIAS", "escape-%d"),
+]:
+    if env.get(variable):
+        path = os.path.join(env[variable], target % pid)
+        record(name, lambda path=path: write(path))
+
+for name, variable in [("owner_record", "FIXTURE_OWNER_RECORD"), ("claude_scope_settings", "FIXTURE_CLAUDE_SETTINGS")]:
+    if env.get(variable):
+        record(name, lambda path=env[variable]: write(path, "escaped\n", "a"))
+
+command("nested_sandbox", ["/usr/bin/sandbox-exec", "-p", "(version 1)(allow default)", "/usr/bin/true"])
+if env.get("FIXTURE_PROBE_SERVICES") == "1":
+    command("lsopen", ["/usr/bin/open", "-g", "-j", "-a", "Calculator"])
+    command("appleevent", ["/usr/bin/osascript", "-e", 'tell application "Finder" to count windows'])
+
+receipt = {
+    "role": role,
+    "pid": pid,
+    "argv": ARGS,
+    "pwd": os.path.realpath(os.getcwd()),
+    "write_boundary": env.get("KOGEN_WRITE_BOUNDARY"),
+    "tmpdir": tmp,
+    "results": results,
+}
+directory = os.path.join(home, "boundary-receipts")
+os.makedirs(directory, exist_ok=True)
+write(os.path.join(directory, "%d-%d-%s.json" % (time.time_ns(), pid, role or "launch")), json.dumps(receipt, sort_keys=True))
+
+raw_log = env.get("KOGEN_RAW_LOG_DIR")
+if raw_log:
+    os.makedirs(raw_log, exist_ok=True)
+    write(os.path.join(raw_log, "boundary-role-note-%d" % pid), "from inside the role\n")
+
+handle, stdin_copy = tempfile.mkstemp(prefix="boundary-stdin-", dir=tmp or None)
+with os.fdopen(handle, "wb") as saved:
+    saved.write(prompt)
+delegate(stdin_copy)

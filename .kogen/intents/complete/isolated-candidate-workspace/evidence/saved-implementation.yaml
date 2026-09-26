@@ -1,0 +1,316 @@
+{
+  "format": "kogen-shaping-saved-implementation",
+  "version": 1,
+  "baseline": "c1f085324f78d5030c8d3d7b6efc2df248ff01c2",
+  "checkpoint": "913ba174bffd864e0940c49d36d9e5d022333565",
+  "checkpoint_tree": "626f636347ac3507351a28ee49d2dd6d5233b529",
+  "retaining_branch": "recovery/isolated-candidate-workspace-20260922",
+  "file_count": 38,
+  "authority": "Human Shaper explicitly requested reuse of all38 saved implementation files on2026-09-22. Source input only; no acceptance or baseline update.",
+  "files": [
+    {
+      "path": "lib/kogen/build.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "e20c7f1c6a673a0431138007ef39f31793c05319",
+      "saved_blob": "a6ee7d11e8a4395662ea52a49cfd14bcbede29fc"
+    },
+    {
+      "path": "lib/kogen/build/contract.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "a7f0d24a1a7380adf4c01ee894af68d297a8bd6c",
+      "saved_blob": "80185b7ff107d286ccb1bf4815adcf16ea3f4ec0"
+    },
+    {
+      "path": "lib/kogen/build/evidence.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "6c5f2a6895487dfbb4a5deb5ba1963d7d7134655",
+      "saved_blob": "51361c035e3f8f61c32dcb3c1a77069b5f0878ca"
+    },
+    {
+      "path": "lib/kogen/build/guarded_paths.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "8eb322003b91778f755db656d48932609421a99c",
+      "saved_blob": "95e35f6ab9b7af45a0647c2e77aeeb134e10114f"
+    },
+    {
+      "path": "lib/kogen/build/tracking.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "6e7d717032b1c6db84f589888853d68ba7aecc29",
+      "saved_blob": "b6097c4000402d66f2c20990c3a08b7d5eb84a1d"
+    },
+    {
+      "path": "lib/kogen/build/verification.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "77ea2f35db266b3edefabd918e0bb10ac160e98b",
+      "saved_blob": "cbe49be4ee79d84a662483a67fffd24d07e3ebdd"
+    },
+    {
+      "path": "lib/kogen/build/workspace.ex",
+      "change": "A",
+      "base_mode": "000000",
+      "saved_mode": "100644",
+      "base_blob": null,
+      "saved_blob": "0296b0e7bb011d2c7083318ba7780b593280a38a"
+    },
+    {
+      "path": "lib/kogen/codex.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "3cf5c2ad0e23b527ba46cda2f0bcb47f28778ccb",
+      "saved_blob": "21e62b19563d05d160412fa3346c81b58dbf03fa"
+    },
+    {
+      "path": "lib/kogen/codex/compatibility.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "853bf9347f6054f70af425974b333cdac67c956f",
+      "saved_blob": "05e535d9f0ca09a94c80364f4c652b46300f6c61"
+    },
+    {
+      "path": "lib/kogen/codex/state.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "fe3f11d956c55efdff193167f25f77e81e00bab8",
+      "saved_blob": "7043706171720ed2ae3fd70179b9b9fd7427770a"
+    },
+    {
+      "path": "lib/kogen/git.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "da1f5d165b233c5862f59f77b7a4f9af9c49b17d",
+      "saved_blob": "9b5b2e9a2b43a56aa735cb0ae85180cc45a102b6"
+    },
+    {
+      "path": "lib/kogen/harness.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "1ef893e7209a981c7aa7299cde64f076c2adf4d2",
+      "saved_blob": "b7e6dc6baecb65fe373d8d9ce5f9679a0cae3208"
+    },
+    {
+      "path": "priv/kogen/test-reliability-remediation.yaml",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "eae00abf8e3541c5344b211bf540e865d961eef6",
+      "saved_blob": "091bdd0e5068da439e3cbdf22b16a93e16b54989"
+    },
+    {
+      "path": "priv/kogen/test-reliability.yaml",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "1cde291788da2e543ff593d71024093d1d113460",
+      "saved_blob": "95dd5c21b51bd188545d5faa65fb77810adb7584"
+    },
+    {
+      "path": "scripts/check/generate_test_reliability.py",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "2d8bbebefef14169ccabea5b349330b8913b7bde",
+      "saved_blob": "d28729fc80e7d3a2c949677a48208057f889c12e"
+    },
+    {
+      "path": "test/kogen/approved_mutation_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "4318752d6d428f1b2487785046e741111f1125b0",
+      "saved_blob": "6f825fc5844f664fba2a0d411dd55fed577fb23e"
+    },
+    {
+      "path": "test/kogen/build_workspace_test.exs",
+      "change": "A",
+      "base_mode": "000000",
+      "saved_mode": "100644",
+      "base_blob": null,
+      "saved_blob": "ab90c8fde98d06ffab39bd65c68115515c1941bc"
+    },
+    {
+      "path": "test/kogen/codex_environment_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "39665c499c931edd5e564285a3a404050ec1a689",
+      "saved_blob": "0aa280e6f5bb209b29c3630bd9ba0951b7565b57"
+    },
+    {
+      "path": "test/kogen/codex_public_tasks_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "b3f54cc9a382ac702b9e15d1f092111bfa4aa37f",
+      "saved_blob": "e84d02fea58398ee42c302ff4b02fdbe4cded814"
+    },
+    {
+      "path": "test/kogen/commit_failure_rollback_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "ec3a6394aa05029fb2e8bc274161da8fda16b39d",
+      "saved_blob": "64c52c1905199b731be7b1cd4be7deb047c7f723"
+    },
+    {
+      "path": "test/kogen/commit_provenance_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "65fa110d43a92abde9c73e1b5189689e6d010be4",
+      "saved_blob": "4c791f3d45b99b1ef1507ea89e09d7b42bcfcce3"
+    },
+    {
+      "path": "test/kogen/core_integrity_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "54eb4b96b6092596dd9722f68bfef37c5f44a38d",
+      "saved_blob": "a8fd29c93d849bba2218f01adeea32b1fc66766a"
+    },
+    {
+      "path": "test/kogen/lifecycle_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "46432cd0168205a4a9c06dfc3d46d5c8bfa0893d",
+      "saved_blob": "0f4333cfc7caf959de96056cd6c1856e246820d0"
+    },
+    {
+      "path": "test/kogen/live_reviewer_rework_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "10fc42e844f6b5bf558f361ecaf07c8fada5a67d",
+      "saved_blob": "e3e7f873bb87356b3c54731ee52896fb495448f2"
+    },
+    {
+      "path": "test/kogen/reviewer_mutation_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "e59d169b848799625a1390ecc43de5f97be33b9d",
+      "saved_blob": "c56248f3c0b359986d11329e4b8024373a190329"
+    },
+    {
+      "path": "test/kogen/scenario_lifecycle_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "114a0a3520ef4f44168a9b54b00f2bbb9d45860a",
+      "saved_blob": "ee56377b3b7b738d513776559d58bd3e0937b7aa"
+    },
+    {
+      "path": "test/kogen/scenario_tracking_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "56e72ba9ca5e027359e0f27d3a81def99eb5fbe6",
+      "saved_blob": "a880bd08c754cdf879ac6cddfb68c811d4ae93df"
+    },
+    {
+      "path": "test/kogen/settlement_regression_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "5f61a6ece052e3e61f690b26b036e9acf74e3024",
+      "saved_blob": "e3578114f921dda10a664907e11fe1fc3417b7aa"
+    },
+    {
+      "path": "test/kogen/test_reliability_catalog_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "acb160d1839c2a86e96f3a394659ea77e985a72d",
+      "saved_blob": "536cda1ca7a57eec5dd373a9957f4bca6afa0999"
+    },
+    {
+      "path": "test/kogen/two_outer_resumptions_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "1abc3429b94c60533f09a0f45bc75e08fbb5c46c",
+      "saved_blob": "203d27b38f2fc4fd3264f772ec05e2f5f120b3d6"
+    },
+    {
+      "path": "test/kogen/verification_ownership_lifecycle_test.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "33fd947f0e2aadb66a3b92181db03dc6b9cb735b",
+      "saved_blob": "95b92c86a11f100d695be42b5b080ad733868283"
+    },
+    {
+      "path": "test/kogen/workspace_dependency_test.exs",
+      "change": "A",
+      "base_mode": "000000",
+      "saved_mode": "100644",
+      "base_blob": null,
+      "saved_blob": "fa3136b7aa272cda7a510c01b56b3ba18f792d87"
+    },
+    {
+      "path": "test/kogen/worktree_publication_recovery_test.exs",
+      "change": "A",
+      "base_mode": "000000",
+      "saved_mode": "100644",
+      "base_blob": null,
+      "saved_blob": "4da6b25edac8fe78fc6215c57948b941b789e3cd"
+    },
+    {
+      "path": "test/support/compiled_fixture.exs",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "74522541029443f1a75ec9cdf7e9dd471e37884f",
+      "saved_blob": "f52ed46e6634793d37ce1776b32334296a714a08"
+    },
+    {
+      "path": "test/support/fake_codex",
+      "change": "M",
+      "base_mode": "100755",
+      "saved_mode": "100755",
+      "base_blob": "567346bd7abeafe43d50287458d9af0e5b135256",
+      "saved_blob": "d4886cf7d9718d4321019dac3720da8dba19d025"
+    },
+    {
+      "path": "test/support/live_reviewer_rework_fixture.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "72df291dbdd0e3f6b9da21b4201a11d8c3a2a4fa",
+      "saved_blob": "20791f464adc7d7184b45c2925aa12b473adde34"
+    },
+    {
+      "path": "test/support/scenario_lifecycle_harness.py",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "b1e737addf1ad945e9832933e7761fac038e86d2",
+      "saved_blob": "fa78d331a3bd00256ea175dfa3003b7925679055"
+    },
+    {
+      "path": "test/support/test_reliability_catalog.ex",
+      "change": "M",
+      "base_mode": "100644",
+      "saved_mode": "100644",
+      "base_blob": "1e1c1dd94bab90c3ca76f97ac0a7f346ad7f888c",
+      "saved_blob": "2cf6c6c7dd207376ba9ecba5e8995d341f635af9"
+    }
+  ]
+}

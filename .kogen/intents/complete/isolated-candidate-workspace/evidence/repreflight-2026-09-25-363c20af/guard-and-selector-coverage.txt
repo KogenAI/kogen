@@ -1,0 +1,24 @@
+## fortify-paid-verification 13 scenarios
+  new selector (in affected_paths) controller-owns-verification test/kogen/controller_verification_test.exs
+  new selector (in affected_paths) failed-verification-resumes-same-developer test/kogen/controller_verification_test.exs
+  new selector (in affected_paths) same-candidate-failed-only-retry test/kogen/verification_reuse_test.exs
+  new selector (in affected_paths) bound-per-target-receipts test/kogen/controller_verification_test.exs
+  new selector (in affected_paths) stop-route-bootstrap-only test/kogen/shaping_audit_checks_test.exs
+  new selector (in affected_paths) no-special-gate-target test/kogen/shaping_audit_checks_test.exs
+  new selector (in affected_paths) no-special-gate-target test/kogen/controller_verification_test.exs
+  new selector (in affected_paths) same-intent-catalog-change test/kogen/catalog_change_test.exs
+  new selector (in affected_paths) same-intent-catalog-change test/kogen/shaping_audit_checks_test.exs
+  new selector (in affected_paths) controller-runs-proof-selectors test/kogen/proof_selector_verification_test.exs
+  new selector (in affected_paths) verification-surface-ledger test/kogen/verification_surface_ledger_test.exs
+  new selector (in affected_paths) self-hosting-two-step-guidance test/kogen/readme_guidance_test.exs
+## isolated-candidate-workspace 11 scenarios
+  new selector (in affected_paths) candidate-creation test/kogen/build_workspace_test.exs
+  new selector (in affected_paths) per-build-harness-home test/kogen/harness_home_test.exs
+  new selector (in affected_paths) candidate-routing test/kogen/build_workspace_test.exs
+  new selector (in affected_paths) controller-judges-candidate test/kogen/candidate_verification_test.exs
+  new selector (in affected_paths) publication-unmoved-main test/kogen/build_workspace_test.exs
+  new selector (in affected_paths) publication-refused test/kogen/build_workspace_test.exs
+  new selector (in affected_paths) failure-retention test/kogen/build_workspace_test.exs
+  new selector (in affected_paths) shaping-during-build test/kogen/build_workspace_test.exs
+  new selector (in affected_paths) candidate-commands test/kogen/candidates_command_test.exs
+  new selector (in affected_paths) shape-to-build-retains-record-sidecars test/kogen/build_workspace_test.exs

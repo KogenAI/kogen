@@ -18,9 +18,10 @@ defmodule Kogen.LifecycleTest do
 
   @slug "fake-shaped-intent"
 
-  test "public Shape, explicit fixture approval, and public Build form one offline lifecycle" do
+  test "public Shape, explicit fixture approval and public Build form one offline lifecycle; candidate-routing and same-candidate-rework hold" do
     src = File.cwd!()
     dest = Kogen.CompiledFixture.create!(src, "lifecycle")
+    copy_launch_receipt!(src, dest)
 
     on_exit(fn -> File.rm_rf(dest) end)
 
@@ -61,6 +62,40 @@ defmodule Kogen.LifecycleTest do
 
     assert exit_code == 0, "mix kogen.build failed:\n#{output}"
 
+    # candidate-routing: every role launch's receipt (written from inside the
+    # launched process, never from launch arguments) shows the Candidate as
+    # both cwd and Git toplevel; control (`dest`) is the negative control
+    # that must never appear as either.
+    candidate_path = Kogen.CandidateFixture.worktree(dest)
+    receipts = Kogen.CandidateFixture.receipts(dest)
+    assert receipts != [], "expected at least one per-launch receipt"
+
+    assert Enum.all?(receipts, &(&1["pwd"] == candidate_path)),
+           "every role launch's cwd must be the Candidate, never control: #{inspect(receipts)}"
+
+    assert Enum.all?(receipts, &(&1["toplevel"] == candidate_path)),
+           "every role launch's Git toplevel must be the Candidate, never control: #{inspect(receipts)}"
+
+    refute Enum.any?(receipts, &(&1["pwd"] == dest or &1["toplevel"] == dest)),
+           "control must never appear as a role launch's cwd or Git toplevel"
+
+    # same-candidate-rework: the Developer (fresh, the controller's
+    # verification-failure resume, and the Reviewer-rework resume) and both
+    # Reviewers all ran in the same single Candidate, using the same harness
+    # home; the worktree existed exactly once (removed by publication), never
+    # a second one.
+    developer_receipts = Kogen.CandidateFixture.receipts(dest, "developer", [])
+    reviewer_receipts = Kogen.CandidateFixture.receipts(dest, "reviewer", [])
+    assert length(developer_receipts) == 3
+    assert length(reviewer_receipts) == 2
+
+    harness_home = Kogen.CandidateFixture.harness_home(dest)
+
+    for receipt <- developer_receipts ++ reviewer_receipts do
+      assert receipt["pwd"] == candidate_path
+      assert receipt["env"]["KOGEN_HARNESS_HOME"] == harness_home
+    end
+
     refute File.exists?(Path.join(dest, ".kogen/runtime/path-shim-invoked")),
            "a codex binary other than the fake harness was executed"
 
@@ -97,7 +132,7 @@ defmodule Kogen.LifecycleTest do
     assert trailer_out =~ "Kogen-Intent: #{@slug}"
 
     log_lines =
-      Path.join(dest, ".kogen/runtime/fake-harness-log")
+      Kogen.CandidateFixture.fake_state(dest, "fake-harness-log")
       |> File.read!()
       |> String.split("\n", trim: true)
 
@@ -111,7 +146,7 @@ defmodule Kogen.LifecycleTest do
     # Only the two Reviewers own an output schema; Developer turns carry none.
     assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 2
     assert Enum.count(log_lines, &String.contains?(&1, "--output-last-message")) == 2
-    assert File.read!(Path.join(dest, ".kogen/runtime/fake-reviewer-calls")) == "2\n"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dest, "fake-reviewer-calls")) == "2\n"
     assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 2
 
     assert Enum.any?(log_lines, fn line ->
@@ -123,7 +158,8 @@ defmodule Kogen.LifecycleTest do
     assert length(resume_lines) == 2
     assert Enum.all?(resume_lines, &String.ends_with?(&1, " dev-session-1 -"))
 
-    resume_feedback = File.read!(Path.join(dest, ".kogen/runtime/developer-resume-prompts"))
+    resume_feedback =
+      File.read!(Kogen.CandidateFixture.fake_state(dest, "developer-resume-prompts"))
 
     resumed_prompts =
       resume_feedback
@@ -177,12 +213,22 @@ defmodule Kogen.LifecycleTest do
       assert packet["attempt_token"] == attempt["attempt_token"]
       assert packet["candidate_id"] == attempt["candidate_id"]
 
-      prompt = File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-#{n}"))
+      prompt = File.read!(Kogen.CandidateFixture.fake_state(dest, "reviewer-prompt-#{n}"))
       [_before, context_line | _] = String.split(prompt, "KOGEN_TASK_CONTEXT\n")
       context = context_line |> String.split("\n") |> hd() |> Jason.decode!()
       assert context["evidence_source"] == "review_packet"
-      assert context["review_packet"] == Map.take(binding, ["path", "sha256", "byte_count"])
-      assert context["tracking_path"] == Path.relative_to(tracking_path, dest)
+
+      # The task context hands the Reviewer an absolute control path (it
+      # opens from the Candidate cwd); the tracking record's own binding
+      # stays control-relative, since it is read by later control-side code.
+      # `dest` may be a symlinked path (e.g. macOS `/var` -> `/private/var`)
+      # while the context path is canonical, so compare by suffix.
+      assert String.ends_with?(context["review_packet"]["path"], binding["path"])
+
+      assert Map.take(context["review_packet"], ["sha256", "byte_count"]) ==
+               Map.take(binding, ["sha256", "byte_count"])
+
+      assert String.ends_with?(context["tracking_path"], Path.relative_to(tracking_path, dest))
     end
 
     for {attempt, expected} <- [
@@ -239,19 +285,23 @@ defmodule Kogen.LifecycleTest do
     assert Enum.at(log_lines, 4) =~ "model_reasoning_effort=\"reviewer-effort\""
 
     assert_delegation_prompt!(
-      File.read!(Path.join(dest, ".kogen/runtime/developer-launch-prompt")),
+      File.read!(Kogen.CandidateFixture.fake_state(dest, "developer-launch-prompt")),
       :developer
     )
 
-    refute File.read!(Path.join(dest, ".kogen/runtime/developer-launch-prompt")) =~ bulk_sentinel
+    refute File.read!(Kogen.CandidateFixture.fake_state(dest, "developer-launch-prompt")) =~
+             bulk_sentinel
 
     assert_delegation_prompt!(
-      File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-1")),
+      File.read!(Kogen.CandidateFixture.fake_state(dest, "reviewer-prompt-1")),
       :reviewer
     )
 
-    refute File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-1")) =~ bulk_sentinel
-    refute File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-2")) =~ bulk_sentinel
+    refute File.read!(Kogen.CandidateFixture.fake_state(dest, "reviewer-prompt-1")) =~
+             bulk_sentinel
+
+    refute File.read!(Kogen.CandidateFixture.fake_state(dest, "reviewer-prompt-2")) =~
+             bulk_sentinel
 
     check_histories =
       (verification_history_archives(raw_log_dir) ++
@@ -395,6 +445,7 @@ defmodule Kogen.LifecycleTest do
   test "a hybrid route launches the Developer on Claude Code and Review on Codex, resumes exactly, and freezes the role matrix" do
     project_root = File.cwd!()
     dest = Kogen.CompiledFixture.create!(project_root, "hybrid-lifecycle")
+    copy_launch_receipt!(project_root, dest)
     on_exit(fn -> File.rm_rf(dest) end)
 
     install_hybrid_fixture_files!(project_root, dest)
@@ -437,6 +488,8 @@ defmodule Kogen.LifecycleTest do
       {"FAKE_HYBRID_MIDBUILD_CONFIG", mutated_config}
     ]
 
+    midbuild_task = mutate_control_config_midbuild!(dest, mutated_config)
+
     {output, exit_code} =
       Kogen.CompiledFixture.mix_task!(
         dest,
@@ -446,11 +499,14 @@ defmodule Kogen.LifecycleTest do
 
     assert exit_code == 0, "expected the hybrid Build to accept:\n#{output}"
 
-    assert File.read!(Path.join(dest, ".kogen/config.yaml")) == @hybrid_config_mutated,
+    harness_home = Task.await(midbuild_task, 60_000)
+
+    assert File.read!(Path.join(harness_home, "fake-state/fake-hybrid-midbuild-evidence.yaml")) ==
+             @hybrid_config_mutated,
            "sanity: the mid-Build config mutation really happened"
 
     dispatch_lines =
-      Path.join(dest, ".kogen/runtime/hybrid-dispatch-log")
+      Kogen.CandidateFixture.fake_state(dest, "hybrid-dispatch-log")
       |> File.read!()
       |> String.split("\n", trim: true)
 
@@ -473,7 +529,12 @@ defmodule Kogen.LifecycleTest do
       assert line =~ "--dangerously-skip-permissions"
       refute line =~ "argv: exec", "the Developer must never run under the Codex protocol"
 
-      assert expert_assignment!(line) == @frozen_expert_assignment,
+      # `KOGEN_EXPERT` now also names the launch's Candidate, control root,
+      # harness home and write boundary (every Build root passed explicitly,
+      # never a `File.cwd!()` default); those vary per Build and are asserted
+      # elsewhere. Only the frozen route assignment itself is compared here.
+      assert Map.take(expert_assignment!(line), Map.keys(@frozen_expert_assignment)) ==
+               @frozen_expert_assignment,
              "the Developer must carry the frozen cross-harness Expert assignment: #{line}"
 
       # The Developer's native Claude Code helpers keep their frozen profiles
@@ -503,11 +564,13 @@ defmodule Kogen.LifecycleTest do
     # The adversarial Codex Reviewer gets the same bounded review packet the
     # dominant harness's Reviewer would get, bound to its attempt.
     for n <- 1..2 do
-      prompt = File.read!(Path.join(dest, ".kogen/runtime/reviewer-prompt-#{n}"))
+      prompt = File.read!(Kogen.CandidateFixture.fake_state(dest, "reviewer-prompt-#{n}"))
       [_prompt, context] = String.split(prompt, "KOGEN_TASK_CONTEXT\n", parts: 2)
       context = context |> String.split("\n", parts: 2) |> hd() |> Jason.decode!()
       assert context["evidence_source"] == "review_packet"
-      packet = Path.join(dest, context["review_packet"]["path"])
+      # The task context now names the review packet by an absolute control
+      # path (it opens from the Candidate cwd), never one relative to `dest`.
+      packet = context["review_packet"]["path"]
       assert packet =~ "/review-packets/#{n - 1}.json"
       assert File.exists?(packet)
     end
@@ -523,7 +586,7 @@ defmodule Kogen.LifecycleTest do
     refute fresh_line =~ "--resume", "the fresh Developer launch must never carry --resume"
 
     hook_responses =
-      Path.join(dest, ".kogen/runtime/fake-hook-responses")
+      Kogen.CandidateFixture.fake_state(dest, "fake-hook-responses")
       |> File.read!()
       |> String.split("\n", trim: true)
 
@@ -618,6 +681,7 @@ defmodule Kogen.LifecycleTest do
   test "a failing hybrid Reviewer's stop reason names its frozen harness, model and effort" do
     project_root = File.cwd!()
     dest = Kogen.CompiledFixture.create!(project_root, "hybrid-failure")
+    copy_launch_receipt!(project_root, dest)
     on_exit(fn -> File.rm_rf(dest) end)
 
     install_hybrid_fixture_files!(project_root, dest)
@@ -639,6 +703,8 @@ defmodule Kogen.LifecycleTest do
     File.mkdir_p!(Path.join(claude_root, "accounts/shared"))
     on_exit(fn -> File.rm_rf(Path.dirname(claude_root)) end)
 
+    midbuild_task = mutate_control_config_midbuild!(dest, mutated_config)
+
     {output, exit_code} =
       Kogen.CompiledFixture.mix_task!(dest, ["kogen.build", "--route", "hybrid", @hybrid_slug], [
         {"KOGEN_HARNESS", Path.join(dest, "test/support/fake_hybrid")},
@@ -649,11 +715,92 @@ defmodule Kogen.LifecycleTest do
       ])
 
     assert exit_code != 0
-    assert File.read!(Path.join(dest, ".kogen/config.yaml")) == @hybrid_config_mutated
+    harness_home = Task.await(midbuild_task, 60_000)
+
+    assert File.read!(Path.join(harness_home, "fake-state/fake-hybrid-midbuild-evidence.yaml")) ==
+             @hybrid_config_mutated
+
     assert output =~ "Reviewer failure: "
     assert output =~ "(reviewer on harness codex, gpt-6-sol at high)"
     refute output =~ "reviewer on harness claude"
     refute File.dir?(Path.join(dest, ".kogen/intents/complete/#{@hybrid_slug}"))
+  end
+
+  # `Kogen.CompiledFixture.create!/2`'s fixture-file manifest predates the
+  # per-launch receipt mechanism: every fake role (`fake_claude`, `fake_codex`,
+  # `fake_hybrid`) invokes `test/support/launch_receipt.py` by a path relative
+  # to its own script directory, so the fixture's copy of that directory must
+  # carry it too, or every role launch fails closed with a Python
+  # `FileNotFoundError` before ever reaching the fake's own logic.
+  defp copy_launch_receipt!(project_root, dest) do
+    File.cp!(
+      Path.join(project_root, "test/support/launch_receipt.py"),
+      Path.join(dest, "test/support/launch_receipt.py")
+    )
+  end
+
+  # `fake_hybrid`'s Developer role now only *signals* (from inside the write
+  # boundary, in the harness home's `fake-state/`) that it reached its
+  # one-shot mid-Build point; a role write to control's tracked
+  # `.kogen/config.yaml` would be a guarded-path violation (and prove nothing
+  # about control, since the Candidate is what a role can reach). This task,
+  # running in the trusted test process (never sandboxed, never a role),
+  # polls for that signal, edits CONTROL's own config file directly, records
+  # a copy of what it wrote in the harness home as durable evidence (the live
+  # file is restored immediately after, since `Kogen.Build`'s own
+  # precondition and its eventual fast-forward publication both require a
+  # clean control checkout), and finally acks so the waiting role continues.
+  defp mutate_control_config_midbuild!(dest, mutated_config_path) do
+    config_path = Path.join(dest, ".kogen/config.yaml")
+    original = File.read!(config_path)
+
+    Task.async(fn ->
+      harness_home = await_harness_home!(dest)
+      state_dir = Path.join(harness_home, "fake-state")
+      await_file!(Path.join(state_dir, "fake-hybrid-midbuild-signal"))
+
+      mutated = File.read!(mutated_config_path)
+      File.write!(config_path, mutated)
+      File.write!(Path.join(state_dir, "fake-hybrid-midbuild-evidence.yaml"), mutated)
+      File.write!(config_path, original)
+
+      File.write!(Path.join(state_dir, "fake-hybrid-midbuild-ack"), "")
+      harness_home
+    end)
+  end
+
+  defp await_harness_home!(dest, attempts \\ 1500) do
+    # Records unrelated to a Build (e.g. a prior `mix kogen.shape`) carry no
+    # `candidate` block; find the Build's own record specifically.
+    dest
+    |> Kogen.CandidateFixture.records()
+    |> Enum.reverse()
+    |> Enum.find_value(&Map.get(&1, "candidate"))
+    |> case do
+      nil when attempts > 0 ->
+        Process.sleep(20)
+        await_harness_home!(dest, attempts - 1)
+
+      nil ->
+        raise "no Build tracking record with a candidate block appeared under #{dest}"
+
+      candidate ->
+        Map.fetch!(candidate, "harness_home")
+    end
+  end
+
+  defp await_file!(path, attempts \\ 1500) do
+    cond do
+      File.exists?(path) ->
+        :ok
+
+      attempts > 0 ->
+        Process.sleep(20)
+        await_file!(path, attempts - 1)
+
+      true ->
+        raise "timed out waiting for #{path}"
+    end
   end
 
   defp expert_assignment!(dispatch_line) do
@@ -698,6 +845,10 @@ defmodule Kogen.LifecycleTest do
       {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
     ]
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
+
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dest)
     {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "fixture baseline"], cd: dest, env: env)
@@ -728,7 +879,9 @@ defmodule Kogen.LifecycleTest do
           "test/test_helper.exs",
           "test/support/isolated_case.ex",
           "test/support/isolated_process.py",
-          "test/support/timing_formatter.ex"
+          "test/support/timing_formatter.ex",
+          "test/support/candidate_fixture.ex",
+          "test/support/workspace_fixture.ex"
         ] do
       destination = Path.join(dest, relative)
       File.mkdir_p!(Path.dirname(destination))
@@ -782,7 +935,7 @@ defmodule Kogen.LifecycleTest do
       |> Enum.map(&List.to_string/1)
       |> Enum.filter(&(Path.type(&1) == :absolute and Path.basename(&1) == "ebin"))
       |> Enum.uniq()
-      |> Enum.map_join(" ", &("-pa " <> &1))
+      |> Enum.map_join(" ", &("-pa " <> inspect(&1)))
 
     File.write!(
       Path.join(dest, "Makefile"),

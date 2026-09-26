@@ -1,0 +1,213 @@
+# Re-shaped 2026-09-25. The 2026-09-24 risks are in historical/2026-09-24-b1-reshape/risks.yaml.
+# 2026-09-25 (late): structural-not-hostile-containment replaced by the write-boundary risks
+# after the Shaper kept BLD-12 here ("Keep it in #5").
+
+- id: self-hosting-running-controller
+  scenario_ids: [controller-judges-candidate, same-candidate-rework]
+  description: >-
+    The installing Build runs under the then-main controller in the one checkout. That
+    controller reads `.codex/hooks.json` (byte-compared PreToolUse command,
+    lib/kogen/verification_policy.ex:20,34-49,66-92 at 9ff7af6e), `priv/kogen/claude_code/settings.json` (passed by
+    path, lib/kogen/harness/claude.ex:26,165-166 at 9ff7af6e), the role prompts, the Makefile, the catalog and
+    `.kogen/config.yaml` from disk while it runs. Build cFnHwg7P2oNe1wMMnK7jxeMH passed both paid
+    targets and then died at the rework launch because its Candidate rewrote the hook commands.
+    Mitigation: none of those paths is in may_change_guarded_paths, and controller-judges-candidate
+    asserts they stay byte-identical. The controller may also lazily load modules from `_build/dev`
+    that a Developer `mix compile` in dev rewrote (evidence/engine-stability-probe-2026-09-23.md);
+    the Developer compiles only in the test environment or in fixture build paths, and pinned
+    generations (ROADMAP order 6) remove the hazard. The driver launches every Build with all Kogen
+    modules preloaded (build-failure lesson 17), which also covers the late-called modules this
+    Intent edits (Report, Tracking, ReviewPacket, Verification, Evidence, Git, publication).
+    Nobody may write in the checkout while this Build runs, and no CPU-heavy work may run on the
+    host during it (lesson 16).
+
+- id: undocumented-secure-storage-variable
+  scenario_ids: [per-build-harness-home]
+  description: >-
+    The per-Build Claude Code home depends on `CLAUDE_SECURESTORAGE_CONFIG_DIR`, an undocumented
+    variable read in the managed 2.1.281 binary
+    (evidence/harness-home-credential-probe-2026-09-25.md). A later runtime could rename or drop
+    it. Failure is closed and loses nothing: Build readiness runs `claude auth status` with the
+    Build's own environment and stops with "not logged in" before any model launch, and no Keychain
+    item or scope file is touched. The Claude Code runtime-upgrade workflow gains the re-probe of
+    cases A, D2 and F. Fallback if it disappears: CLAUDE_CONFIG_DIR stays the scope and only Codex
+    keeps a per-Build operation root, a documented regression of this outcome.
+
+- id: shared-login-refresh
+  scenario_ids: [per-build-harness-home, shaping-during-build]
+  description: >-
+    A Shaping session (scope as its config dir) and a Build (per-Build config dir) use one OAuth
+    login at the same time. Claude Code serializes refreshes with `.oauth_refresh.lock` in the
+    secure-storage dir, which is the scope for both, and re-reads the Keychain item (30 s cache);
+    this is the same mechanism several concurrent sessions of one scope already use. A copied
+    credential would fork the refresh token and can log the other session out, which is why
+    nothing is copied. Codex refreshes `auth.json` in its scope exactly as today.
+
+- id: candidate-worktree-lifecycle
+  scenario_ids: [candidate-creation, publication-unmoved-main, publication-refused, failure-retention, candidate-commands]
+  description: >-
+    Kogen creates worktrees and harness homes for many projects under one Kogen directory,
+    registered in each project's Git metadata. Unclear ownership could delete another project's
+    work or a foreign worktree, keep stale Candidates forever, or reuse one by accident.
+  ownership:
+    - paths: "<workspaces-root>/<project-id>/<slug>-<build-id>/ and its registration under the control repository's .git/worktrees/"
+      when_exists: "Admission refuses a pre-existing path, registered worktree or branch with that name and never reuses it."
+      owner_after_creation: "The Build controller that created it, bound by its owner record (build id, control root, branch, base commit A)."
+      owner_during_operation: "The controller owns topology; the Developer may edit Candidate files; verification, Jev and Review read them."
+      permitted_mutation: "Developer edits inside the Candidate; the controller writes the Approved copy, Complete package and commit. Automatic removal only after successful publication (git worktree remove without --force). Otherwise only mix kogen.candidates.remove on the Shaper's request."
+      validation: "Every removal checks the path is under <workspaces-root>/<project-id>/, matches its owner record and is registered in this control repository. Running Candidates, and accepted-unpublished ones without --discard-accepted, are refused."
+      git_state: "Outside the control tree; listed by the control repository's git worktree list until removed; control status unaffected."
+      upgrade_behavior: "Worktrees without a Kogen owner record, including .kogen/runtime/build-worktrees/** from earlier experiments, are foreign and never touched; no migration."
+    - paths: "refs/heads/kogen/<slug>/<build-id>"
+      when_exists: "Admission refuses an existing branch with that name."
+      owner_after_creation: "The Build controller, then the Shaper through the Candidate commands."
+      owner_during_operation: "The controller makes the one publication commit; the Developer commits nothing."
+      permitted_mutation: "git branch -d after successful publication; git branch -D only through remove under the guards above."
+      validation: "An accepted commit not reachable from the admitted branch is deleted only with --discard-accepted."
+      git_state: "Local branch; never pushed."
+      upgrade_behavior: "Branches from earlier experiments (kogen/build/<intent-id>/<id>) are foreign and untouched."
+    - paths: "<workspaces-root>/<project-id>/candidates/<build-id>.json"
+      when_exists: "An existing owner record for the new build id refuses admission; a record naming a different control root under this project id stops admission."
+      owner_after_creation: "The Build controller writes it and updates the status at every exit; the Candidate commands read and delete it."
+      owner_during_operation: "Outside the Candidate; roles have no reason to touch it; not hostile containment."
+      permitted_mutation: "Status transitions running -> stopped/accepted-unpublished, or deletion on publication or removal. A running status counts only while the project's build lock is held by a live process."
+      validation: "Malformed or mismatched records are reported and skipped, never used to delete a path."
+      git_state: "Not in any repository."
+      upgrade_behavior: "Versioned schema field; no earlier records exist."
+    - paths: "<workspaces-root>/<project-id>/harness/<build-id>/ (claude/ as the Build's CLAUDE_CONFIG_DIR, codex/ as its Codex operation root)"
+      when_exists: "Admission refuses a pre-existing harness home for the new build id."
+      owner_after_creation: "The Build controller; Claude Code and Codex write their own session state inside it."
+      owner_during_operation: "Every role launch of this Build and nothing else; it never holds a credential."
+      permitted_mutation: "Harness-native writes during the Build. Kept after publication as session evidence; removed only with a retained Candidate by mix kogen.candidates.remove."
+      validation: "Removal uses the same owner-record and path checks as the worktree; a home without an owner record is never deleted by Kogen."
+      git_state: "Not in any repository."
+      upgrade_behavior: "No earlier homes exist; accumulation after publication is parked with Candidate prune (SHAPE_CANDIDATE_PRUNE.md)."
+    - paths: "Kogen login scopes: ~/Library/Application Support/Kogen/claude/accounts/** and ~/Library/Application Support/Kogen/codex/accounts/**"
+      when_exists: "Referenced by path only: CLAUDE_SECURESTORAGE_CONFIG_DIR for Claude Code, CODEX_HOME for Codex."
+      owner_after_creation: "The Shaper through mix kogen.{claude,codex}.login; the harness runtimes own their contents."
+      owner_during_operation: "Build roles reach them only through the runtime's own credential lookup and refresh lock; the write boundary lets a role write only the Claude refresh lock and the Codex scope minus its refused and Kogen-owned entries (role-write-boundary, codex-roles-inside-boundary)."
+      permitted_mutation: "Kogen never creates, copies, links, moves or renames anything in a scope for this Intent; harness-native writes (token refresh, Codex rollouts) continue as today."
+      validation: "per-build-harness-home snapshots the scope's file list before and after a fake Build and asserts no Kogen-made change."
+      git_state: "Not in any repository."
+      upgrade_behavior: "Existing logins keep working unchanged; no migration."
+
+- id: approved-copy-in-candidate
+  scenario_ids: [candidate-creation, publication-unmoved-main, publication-refused, shaping-during-build]
+  description: >-
+    Roles read the Approved package in their cwd, but it is ignored and not in the worktree
+    checkout. A missing copy breaks roles, and an editable copy used as authority would let a
+    Developer rewrite the contract.
+  ownership:
+    - paths: "<Candidate>/.kogen/intents/approved/<slug>/"
+      when_exists: "Written at admission from the controller's frozen in-memory Approved bytes; a pre-existing path means the Candidate is not fresh and admission refuses."
+      owner_after_creation: "The controller."
+      owner_during_operation: "Read-only for roles; the frozen bytes remain authority, and publication packages from them."
+      permitted_mutation: "None by roles. The controller removes it with the Candidate."
+      validation: "The existing approved-mutation check applies to this copy; a mismatch is an integrity failure."
+      git_state: "Ignored in the Candidate; control's own Approved copy is unchanged until successful publication removes it."
+      upgrade_behavior: "None."
+
+- id: shared-cwd-assumptions
+  scenario_ids: [candidate-routing, publication-unmoved-main]
+  description: >-
+    About fifteen offline test files run Build.run inside File.cd!(repo) and assert on repo's
+    HEAD. They keep passing if Build silently works in the invoking checkout, so they must also
+    assert that a Candidate existed and was the role cwd. Their test-reliability source_sha256
+    bindings must be refreshed with scripts/check/refresh_test_reliability_sources.py.
+
+- id: boundary-breaks-existing-fixtures
+  scenario_ids: [role-write-boundary, write-boundary-fails-closed, shaping-during-build]
+  description: >-
+    Every fake-harness Build in check now runs its fake roles inside a real Seatbelt profile. Any
+    existing fixture whose fake role, fake hook or helper script writes outside the Candidate, the
+    harness home or the Build temp dir gets EPERM (known at 9ff7af6e: the midbuild-config-mutation.sh
+    hook of two_outer_resumptions_test.exs and the control-side writes of shaping-during-build). In
+    the 2026-09-19 containment attempt, 47 tests failed when fixture Builds ran inside an outer
+    profile. Mitigation: the controller's make check is unconfined, so fixture Builds apply their own
+    profile; moved writes go to the trusted test process; no grant is widened and no fake executable
+    is special-cased; the Developer first inventories every fake role and hook with its write paths
+    (handoff notes, checked by Review). Inside the Developer's own shell, fixture Builds run inherited;
+    probe 9 showed today's whole suite gives the same result inside and outside the profile (800/805,
+    the same five pre-existing environment failures, so not a pass).
+
+- id: seatbelt-interface-deprecated
+  scenario_ids: [role-write-boundary, write-boundary-fails-closed]
+  description: >-
+    `sandbox-exec` and SBPL are undocumented and marked deprecated, although Apple still ships them
+    and uses the same kernel profiles. A macOS release could remove or change them. Failure is
+    closed: a missing binary or a failed admission self-test stops the Build before any launch,
+    naming the reason, and there is no unwrapped fallback. Both runtime-upgrade workflows re-run the
+    boundary probes, and a macOS upgrade on the Build host should too (README).
+
+- id: harness-write-drift
+  scenario_ids: [role-write-boundary, codex-roles-inside-boundary]
+  description: >-
+    The grants cover what Claude Code 2.1.281 and Codex 0.156.1 wrote in the probes. A new runtime
+    could write elsewhere, for example a new cache dir under the real HOME, and the role would then
+    fail on EPERM. Kogen gives no broader grant. Readiness runs inside the boundary, both
+    runtime-upgrade workflows re-probe, and the denial is logged by the kernel
+    (`log show --predicate 'eventMessage CONTAINS "deny(1) file-write"'`, named in README).
+    Denials of a role's own shell-profile writes (zsh completion caches, mise state under HOME) are
+    harmless and expected noise.
+
+- id: role-writable-login-state
+  scenario_ids: [role-write-boundary, codex-roles-inside-boundary]
+  description: >-
+    For logins to keep working, roles can write the login keychain file (Claude Code's OAuth
+    refresh runs /usr/bin/security in-process; probe 12), the Claude refresh lock, and most of the
+    Codex scope (auth.json refresh, rollouts, config.toml bookkeeping). A role could therefore add a
+    keychain item or corrupt its own login, but not take over another tool: Keychain item ACLs
+    still apply; the Codex discovery and Kogen-owned entries are denied; config.toml is validated
+    by native_settings.py at every Kogen open. Reads, including of credentials, are not confined by
+    this Intent (SEC-01 read isolation and SEC-02 are later).
+
+- id: controller-verification-unconfined
+  scenario_ids: [write-boundary-fails-closed, controller-judges-candidate]
+  description: >-
+    The controller runs `make check` and the selected targets on Candidate code outside the
+    boundary. A Developer can't confine that code, but it can write it, so a malicious test would
+    run with the user's full write access during verification. This is deliberate: fixture Builds
+    inside check and the live targets must apply their own profile, which the kernel refuses inside
+    another profile, and live targets must update logins and retained evidence. Review and the
+    guarded-path check see such code before publication; confining verification needs a
+    nesting-free design (for example per-target profiles with fixture Builds disabled) and belongs
+    with process custody (ROADMAP order 7).
+
+- id: inherited-mode
+  scenario_ids: [write-boundary-fails-closed]
+  description: >-
+    Inside a role profile the kernel refuses a second profile, so `mix kogen.expert` from a role and
+    offline fixture Builds whose roles are KOGEN_HARNESS test executables run `inherited`: they are
+    bounded by the enclosing Build's grants, not their own. A managed-runtime Build refuses to start
+    confined, so no real Build ever runs with another Build's grants. Only the kernel self-test plus
+    the marker enables inherited; a foreign sandbox without the marker stops, and a marker without
+    confinement is ignored.
+
+- id: service-delegation
+  scenario_ids: [role-write-boundary]
+  description: >-
+    The profile allows everything except file writes. Tested delegation routes are closed (launchctl
+    bootstrap and submit refused; LaunchServices and Apple Events denied by rule), but other XPC or
+    Mach services a role can reach might write on its behalf; no such route was found and none is
+    claimed closed. A hardlink already present in a granted tree would let a role write its target;
+    admission creates every granted tree fresh without hardlinks (deps copy never `cp -l`). A
+    deny-default profile would narrow this but failed Builds on 2026-09-18/19; it is a candidate for
+    SEC-02.
+
+- id: unrun-live-targets
+  scenario_ids: [same-candidate-rework, per-build-harness-home]
+  description: >-
+    live-general runs native launches (no Build) that now go through the changed Claude
+    environment; it is not run here, and its owner file is not edited. live-reviewer-rework is now
+    selected (scenario codex-roles-inside-boundary), so its hybrid nested Build, with a worktree, a
+    per-Build home, the write boundary and a Codex Reviewer whose operation root is in that home,
+    has a real run in this Intent. The next Build that selects live-general is its first real run
+    on this code.
+
+- id: space-in-workspace-path
+  scenario_ids: [candidate-creation, same-candidate-rework, per-build-harness-home]
+  description: >-
+    The default root contains a space ("Application Support"). Any unquoted path in a Make recipe,
+    sh -c string, hook command or test helper breaks only in real use. test_helper.exs uses a
+    spaced root for every run, including the live fixture. Known instance:
+    test/kogen/lifecycle_test.exs:724-792 (install_target_evidence_fixture!/1, -pa join at line 785, at 9ff7af6e) splices unquoted -pa paths.

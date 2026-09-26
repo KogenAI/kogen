@@ -1,0 +1,195 @@
+/usr/bin/time -p python3 scripts/check/offline.py
+Resolved Git executable: /Library/Developer/CommandLineTools/usr/bin/git
+Offline gate: macOS-26.6.2-arm64-arm-64bit-Mach-O; installed dependencies; build path=_build; warm=False
++ elixir --version
+Erlang/OTP 29 [erts-17.0.3] [source] [64-bit] [smp:12:12] [ds:12:12:10] [async-threads:1] [jit]
+
+Elixir 1.20.2 (compiled with Erlang/OTP 29)
+Stage elapsed (elixir --version): 0.163s
++ mix format --check-formatted
++ mix compile --warnings-as-errors --force
++ xcrun clang -dynamiclib -Wall -Werror /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/test/support/process_group.c -o /var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-check-support-iy2c3n34/process_group.dylib
+Stage elapsed (xcrun clang -dynamiclib -Wall -Werror /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/test/support/process_group.c -o /var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-check-support-iy2c3n34/process_group.dylib): 0.227s
+Stage elapsed (mix format --check-formatted): 0.388s
+==> boundary
+Compiling 15 files (.ex)
+Generated boundary app
+==> file_system
+Compiling 7 files (.ex)
+Generated file_system app
+==> bunt
+Compiling 2 files (.ex)
+Generated bunt app
+==> jason
+Compiling 10 files (.ex)
+Generated jason app
+==> kogen
+===> Analyzing applications...
+===> Compiling yamerl
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/deps/yamerl/src/yamerl_node_binary.erl:65:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   65|    case catch base64:decode(Text) of
+%     |         ^
+
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/deps/yamerl/src/yamerl_node_binary.erl:72:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   72|    case catch base64:decode(Text) of
+%     |         ^
+
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/deps/yamerl/src/yamerl_constr.erl:801:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  801|     catch Mod:module_info(),
+%     |     ^
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 65 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 72 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+     ┌─ src/yamerl_constr.erl:
+     │
+ 801 │      catch Mod:module_info(),
+     │      ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+==> yaml_elixir
+Compiling 6 files (.ex)
+Generated yaml_elixir app
+==> credo
+Compiling 257 files (.ex)
+Generated credo app
+==> kogen
+Compiling 38 files (.ex)
+Generated kogen app
+Stage elapsed (mix compile --warnings-as-errors --force): 3.634s
++ mix credo --strict
++ mix test --exclude live --warnings-as-errors
+Checking 134 source files (this might take a while) ...
+
+Please report incorrect results: https://github.com/rrrene/credo/issues
+
+Analysis took 0.7 seconds (0.09s to load, 0.6s running 69 checks on 134 files)
+1633 mods/funs, found no issues.
+
+Use `mix credo explain` to explain issues, `mix credo --help` for options.
+Stage elapsed (mix credo --strict): 1.126s
+==> boundary
+Compiling 15 files (.ex)
+Generated boundary app
+==> file_system
+Compiling 7 files (.ex)
+Generated file_system app
+==> bunt
+Compiling 2 files (.ex)
+Generated bunt app
+==> jason
+Compiling 10 files (.ex)
+Generated jason app
+==> kogen
+===> Analyzing applications...
+===> Compiling yamerl
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/deps/yamerl/src/yamerl_node_binary.erl:65:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   65|    case catch base64:decode(Text) of
+%     |         ^
+
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/deps/yamerl/src/yamerl_node_binary.erl:72:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   72|    case catch base64:decode(Text) of
+%     |         ^
+
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/deps/yamerl/src/yamerl_constr.erl:801:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  801|     catch Mod:module_info(),
+%     |     ^
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 65 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 72 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+     ┌─ src/yamerl_constr.erl:
+     │
+ 801 │      catch Mod:module_info(),
+     │      ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+==> yaml_elixir
+Compiling 6 files (.ex)
+Generated yaml_elixir app
+==> credo
+Compiling 257 files (.ex)
+Generated credo app
+==> kogen
+Compiling 38 files (.ex)
+Generated kogen app
+Running ExUnit with seed: 721215, max_cases: 12
+Excluding tags: [:live]
+
+...............................................................
+
+  1) test public Shape, explicit fixture approval, and public Build form one offline lifecycle (Kogen.LifecycleTest)
+     test/kogen/lifecycle_test.exs:21
+     mix kogen.build failed:
+     Unexpected Stop response (expected pass): {"continue":false,"stopReason":"verification retry budget exhausted"}
+     {"candidate":"2646e49df5a13c00c5055f8af96626cbd87ae60d","status":"failed","target":"check","exit_code":2,"session_id":"dev-session-1","attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","finished_at":"2026-09-24T05:35:45Z","reason":"No file named probe/Application\nmake[1]: *** [target_evidence] Error 1\n","state":{"schema_version":1,"context_sha256":"f2e27b175a1a9770fd3d63bad2f41a1662e815f3a615fb6347255b906f2daed1","attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","outer_attempt":0,"developer_session_id":"dev-session-1","candidate_id":"2646e49df5a13c00c5055f8af96626cbd87ae60d","cycles":[{"sequence":1,"attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","outer_attempt":0,"developer_session_id":"dev-session-1","candidate_id":"c1a8e6478bd762569d30268198508e71f4fb1222","failures_before":0,"failures_after":1,"status":"failed","finished_at":"2026-09-24T05:35:44Z","receipts":[{"target":"check","status":"failed","exit_code":2,"output":"bounded fixture check: lib/kogen_fake_break.ex remains\nmake[1]: *** [check] Error 1\n","finished_at":"2026-09-24T05:35:44Z","candidate_id":"c1a8e6478bd762569d30268198508e71f4fb1222","developer_session_id":"dev-session-1","attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","cycle_sequence":1}]},{"sequence":2,"attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","outer_attempt":0,"developer_session_id":"dev-session-1","candidate_id":"2646e49df5a13c00c5055f8af96626cbd87ae60d","failures_before":1,"failures_after":2,"status":"failed","finished_at":"2026-09-24T05:35:44Z","receipts":[{"target":"check","status":"passed","exit_code":0,"output":"","finished_at":"2026-09-24T05:35:44Z","candidate_id":"2646e49df5a13c00c5055f8af96626cbd87ae60d","developer_session_id":"dev-session-1","attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","cycle_sequence":2},{"target":"target_evidence","status":"failed","exit_code":2,"output":"No file named probe/Application\nmake[1]: *** [target_evidence] Error 1\n","finished_at":"2026-09-24T05:35:44Z","candidate_id":"2646e49df5a13c00c5055f8af96626cbd87ae60d","developer_session_id":"dev-session-1","attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","cycle_sequence":2}]},{"sequence":3,"attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","outer_attempt":0,"developer_session_id":"dev-session-1","candidate_id":"2646e49df5a13c00c5055f8af96626cbd87ae60d","failures_before":2,"failures_after":3,"status":"failed","finished_at":"2026-09-24T05:35:45Z","receipts":[{"target":"check","status":"passed","exit_code":0,"output":"","finished_at":"2026-09-24T05:35:44Z","candidate_id":"2646e49df5a13c00c5055f8af96626cbd87ae60d","developer_session_id":"dev-session-1","attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","cycle_sequence":3},{"target":"target_evidence","status":"failed","exit_code":2,"output":"No file named probe/Application\nmake[1]: *** [target_evidence] Error 1\n","finished_at":"2026-09-24T05:35:45Z","candidate_id":"2646e49df5a13c00c5055f8af96626cbd87ae60d","developer_session_id":"dev-session-1","attempt_token":"1Sq2jNfxsBmfDA_5qAQ8nREntLVzEBIZ","cycle_sequence":3}]}],"failures_since_pass":3,"terminal_state":"exhausted"}}
+     harness failure during Developer turn: {:provider_exit, 1, "{\"type\":\"thread.started\",\"thread_id\":\"dev-session-1\"}\n"}; unresolved scenarios: shaped-scenario; tracking record: .kogen/runtime/scenario-tracking/GBjzlo8g7eZIxWk9FULxwLZC/record.json
+
+     code: assert exit_code == 0, "mix kogen.build failed:\n#{output}"
+     stacktrace:
+       test/kogen/lifecycle_test.exs:62: (test)
+
+....................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+Slowest individual cases (includes isolated process startup):
+
+Finished in 121.6 seconds (121.6s async, 0.00s sync)
+
+Result: 723/724 passed, 9 excluded
+Failed: 1 test
+  32.559s Kogen.ShapingEvaluationTest test offline rehearsal exercises the maintained driver without provider access
+  20.873s Kogen.HarnessRoleTest test every Codex launch overrides a hostile inherited role
+  11.624s Kogen.ShapeTaskTest test invalid selections fail before harness launch
+  9.887s Kogen.ControllerHandoffTest test every Developer message variant yields the same controller report and reaches Review
+  8.601s Kogen.VerificationOwnershipLifecycleTest test Stop owns fresh Check while outer Build owns ordered gates across gate and Reviewer rework
+  8.481s Kogen.SettlementRegressionTest test a corrected Check block cannot masquerade as a completed Developer turn
+  8.478s Kogen.SettlementRegressionTest test a corrected Check block cannot masquerade as a completed Developer turn
+  8.238s Kogen.ScenarioLifecycleTest test exhaustion preserves unique records without raw logs and publication copies closure evidence
+Stage elapsed (mix test --exclude live --warnings-as-errors): 125.872s
+Offline receipt: /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/space probe/Application Support/Kogen/build-workspaces/pid/isolated-candidate-workspace-01TEST/.kogen/runtime/offline-results/28b65613f6836689e1f0b991b3f29b87.json
+Complete offline gate: 129.736s; exit=2
+real 129.79
+user 32.58
+sys 15.41
+make: *** [check] Error 2
+make check  32.59s user 15.42s system 36% cpu 2:09.81 total
+EXIT=2

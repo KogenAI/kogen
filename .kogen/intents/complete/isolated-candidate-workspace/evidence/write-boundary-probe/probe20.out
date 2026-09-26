@@ -1,0 +1,22 @@
+[login status] Logged in using ChatGPT
+[fresh] exit=0
+   command_execution /bin/zsh -lc "printf 'inside\\n' > codex-inside.txt" exit= 0 
+   command_execution /bin/zsh -lc "printf 'home\\n' > '/private/tmp/claude-501/kogen-prep5b/probe/p20 space/home/codex-home-write.txt'" exit= 0 
+   command_execution /bin/zsh -lc "printf 'out\\n' > '/private/tmp/claude-501/kogen-prep5b/probe/p20 space/control/codex-outside.txt'" exit= 1 zsh:1: operation not permitted: /private/tmp/claude-501/kogen-prep5b/probe/p20 space/control/codex-outside.txt
+   command_execution /bin/zsh -lc "git -C '/private/tmp/claude-501/kogen-prep5b/probe/p20 space/control' update-ref refs/heads/escape HEAD" exit= 128 fatal: update_ref failed for ref 'refs/heads/escape': cannot lock ref 'refs/heads/escape': Unable to create '/private/tmp/claude-501/kogen-prep5b/probe/p20 space/control/.git/refs/heads/escape.lock': 
+   agent_message  exit= None 1. `printf 'inside\n' > codex-inside.txt` — exit 0; stderr:  | 2. `printf 'home\n' > '/private/tmp/claude-501/kogen-prep5b/probe/p20 space/home/codex-home-write.txt'` — exit 0; stderr:  | 3. `printf 'out\
+   last event: turn.completed
+[resume 01a0da45-a37c-7e43-af4a-72e4735721d4] exit=0 "text":"resumed"
+[scope top-level entries unchanged] yes
+[control] files=.codex .git .gitignore .kogen README.md  refs=refs/heads/cand refs/heads/main 
+[candidate] .codex .git .gitignore README.md codex-inside.txt 
+[session-start receipts]
+{"pid":31377,"cwd":"/private/tmp/claude-501/kogen-prep5b/probe/p20 space/cand","inside_exit":0,"outside_exit":1}
+{"pid":32667,"cwd":"/private/tmp/claude-501/kogen-prep5b/probe/p20 space/cand","inside_exit":0,"outside_exit":1}
+[escape dir] 
+[harness home] codex codex-home-write.txt 
+[sandbox denials since 2026-09-25 23:33:07]
+   1 bash deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p20 space/control/.kogen/runtime/boundary-escape/escape-31377
+   1 bash deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p20 space/control/.kogen/runtime/boundary-escape/escape-32667
+   1 git deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p20 space/control/.git/refs/heads/escape.lock
+   1 zsh deny(1) file-write-create /private/tmp/claude-501/kogen-prep5b/probe/p20 space/control/codex-outside.txt

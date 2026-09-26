@@ -201,7 +201,9 @@ defmodule Kogen.CatalogChangeTest do
                ["check", "paid"]
 
       assert Fixture.harness_resume_prompts(dir) == []
-      assert length(Path.wildcard(Path.join(dir, ".kogen/runtime/developer-prompt-*"))) == 1
+      # The fake Developer's scratch state lives in the Build's harness home.
+      assert length(Path.wildcard(Kogen.CandidateFixture.fake_state(dir, "developer-prompt-*"))) ==
+               1
     end
 
     test "a selected target removed from the Candidate resumes the same Developer session and does not stop the Build" do
@@ -228,7 +230,9 @@ defmodule Kogen.CatalogChangeTest do
       assert hd(resumes) =~ "Controller verification failed after your turn"
       assert hd(resumes) =~ "paid"
 
-      assert length(Path.wildcard(Path.join(dir, ".kogen/runtime/developer-prompt-*"))) == 1
+      # The fake Developer's scratch state lives in the Build's harness home.
+      assert length(Path.wildcard(Kogen.CandidateFixture.fake_state(dir, "developer-prompt-*"))) ==
+               1
     end
   end
 

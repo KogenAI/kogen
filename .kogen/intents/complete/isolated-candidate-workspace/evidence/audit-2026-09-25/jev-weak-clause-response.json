@@ -1,0 +1,1 @@
+{"model":"jev-1.13.0","answers":{"weak:per-build-harness-home":{"type":"choice","choice":"c6","confidence":0.47,"probabilities":{"c7":0.02,"c3":0.03,"c4":0.02,"c6":0.54,"c2":0.15,"c5":0.09,"c0":0.01,"c1":0.14}},"weak:same-candidate-rework":{"type":"choice","choice":"c0","confidence":0.43,"probabilities":{"c0":0.71,"c1":0.29}}},"usage":{"input_tokens":2984,"output_tokens":128}}

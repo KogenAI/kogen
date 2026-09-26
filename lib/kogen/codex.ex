@@ -20,66 +20,142 @@ defmodule Kogen.Codex do
   end
 
   @doc """
-  Selects once, checks local native readiness, and holds an active-use receipt.
-  `config` is a resolved route whose harness is `codex`. `KOGEN_HARNESS` only
-  replaces the Codex executable for offline fixtures.
+  Resolves the runtime and the login scope of the control `project` once,
+  without any login check: the Build's binding, recorded at admission and used
+  by every launch of that Build. With `KOGEN_HARNESS` the binding names the
+  test executable and no scope.
   """
-  def open(config, project \\ File.cwd!())
-
-  def open(%{harness: "codex"} = config, project) do
+  def bind(project) do
     case System.get_env("KOGEN_HARNESS") do
       nil ->
-        open_managed(config, project)
+        with {:ok, runtime} <- installed(),
+             {:ok, scope} <- effective_scope(project) do
+          {:ok, %{harness: "codex", runtime: runtime, scope: scope}}
+        end
 
       executable ->
         {:ok,
-         %{harness: "codex", executable: resolve_test_executable(executable), args: [], env: []}}
+         %{
+           harness: "codex",
+           runtime: %{"executable" => resolve_test_executable(executable), "version" => "test"},
+           scope: nil
+         }}
     end
   rescue
     error -> {:error, Exception.message(error)}
   end
 
-  def open(config, _project),
+  @doc """
+  Selects once, checks local native readiness, and holds an active-use receipt.
+  `config` is a resolved route whose harness is `codex`; `project` is the
+  control checkout, whose id keys the login scope. `launch` is `nil` for
+  launches outside a Build, or a Build launch (`:root` the Candidate, which
+  Codex trusts as its project root; `:harness_home`, whose `codex/` holds the
+  operation root; `:binding`; the write boundary's argv `:prefix`, `:env` and
+  `:tmp_dir`; and `:lease`, false when the Build controller already holds the
+  lease). `KOGEN_HARNESS` only replaces the Codex executable for offline
+  fixtures.
+  """
+  def open(config, project, launch \\ nil)
+
+  def open(%{harness: "codex"} = config, project, launch) do
+    case System.get_env("KOGEN_HARNESS") do
+      nil ->
+        open_managed(config, project, launch)
+
+      executable ->
+        {:ok,
+         %{
+           harness: "codex",
+           executable: resolve_test_executable(executable),
+           args: [],
+           env: if(launch, do: launch.env, else: []),
+           cwd: launch && launch.root,
+           prefix: if(launch, do: launch.prefix, else: []),
+           tmp_dir: launch && launch.tmp_dir
+         }}
+    end
+  rescue
+    error -> {:error, Exception.message(error)}
+  end
+
+  def open(config, _project, _launch),
     do:
       {:error,
        "Kogen Codex requires a codex route, got harness: #{inspect(Map.get(config, :harness))}"}
 
-  defp open_managed(config, project) do
-    with {:ok, runtime} <- installed(),
-         {:ok, scope} <- effective_scope(project),
-         :ok <- require_login(runtime, scope, project) do
-      operation = State.operation!(root())
-      lease = State.lease!(root(), runtime, project)
+  defp open_managed(config, project, launch) do
+    with {:ok, %{runtime: runtime, scope: scope}} <- binding(project, launch),
+         selection = %{
+           harness: "codex",
+           runtime: runtime,
+           scope: scope,
+           config: config,
+           project: project,
+           launch: launch,
+           operation: operation_root(launch)
+         },
+         :ok <- require_login(runtime, scope, project, selection) do
+      lease =
+        if launch == nil or Map.get(launch, :lease, true),
+          do: State.lease!(root(), runtime, project)
 
-      {:ok,
-       %{
-         harness: "codex",
-         runtime: runtime,
-         scope: scope,
-         config: config,
-         project: project,
-         operation: operation,
-         lease: lease
-       }}
+      {:ok, Map.put(selection, :lease, lease)}
     end
+  end
+
+  defp binding(_project, %{binding: %{harness: "codex", scope: %{}} = binding}),
+    do: {:ok, binding}
+
+  defp binding(project, _launch), do: bind(project)
+
+  # A Build's operation root (private HOME, XDG_* and sqlite) lives in its
+  # harness home, never under Kogen's state root.
+  defp operation_root(nil), do: State.operation!(root())
+
+  defp operation_root(launch) do
+    path = Path.join(launch.harness_home, "codex")
+    State.private_directory!(path)
+    path
   end
 
   @doc "Fresh immutable settings for a launch, retaining the concrete runtime and native state."
   def launch_context(%{harness: "codex", runtime: runtime} = selection) do
+    launch = Map.get(selection, :launch)
+
     runtime
     |> Environment.prepare(
       selection.scope,
       selection.config,
-      selection.project,
+      trust_root(selection),
       selection.operation
     )
+    |> launch_fields(launch)
     |> Map.put(:harness, "codex")
   end
 
   def launch_context(%{harness: "codex"} = context), do: context
 
+  # Codex trusts the Candidate as its project root in a Build; its login
+  # scope still keys on the control project.
+  defp trust_root(%{launch: %{root: root}}), do: root
+  defp trust_root(selection), do: selection.project
+
+  defp launch_fields(context, nil), do: context
+
+  defp launch_fields(context, launch) do
+    env = Map.merge(Map.new(context.env), Map.new(launch.env)) |> Map.to_list()
+
+    Map.merge(context, %{
+      env: env,
+      cwd: launch.root,
+      prefix: launch.prefix,
+      tmp_dir: launch.tmp_dir
+    })
+  end
+
   @doc "Releases only this operation's active receipt; runtimes and native sessions are retained."
-  def close(%{lease: lease}), do: File.rm(lease)
+  def close(%{lease: lease}) when is_binary(lease), do: File.rm(lease)
   def close(_context), do: :ok
 
   @doc false
@@ -208,8 +284,8 @@ defmodule Kogen.Codex do
   end
 
   @doc false
-  def require_login(runtime, scope, project) do
-    case login_status(runtime, scope, project) do
+  def require_login(runtime, scope, project, selection \\ nil) do
+    case login_status(runtime, scope, project, selection) do
       :configured ->
         :ok
 
@@ -226,21 +302,32 @@ defmodule Kogen.Codex do
   defp login_command(_scope), do: "mix kogen.codex.login"
 
   @doc "Native local status is not a remote entitlement check; native text is never printed."
-  def login_status(runtime, scope, project) do
+  def login_status(runtime, scope, project, selection \\ nil) do
     if File.dir?(scope.path) do
       State.validate_scope!(scope.path)
-      operation = State.operation!(root())
+      operation = if selection, do: selection.operation, else: State.operation!(root())
+      launch = selection && selection.launch
       # A shaping-evaluation context receipt belongs to the actual interactive
       # launch, not this prerequisite status probe. Letting the inherited test
       # boundary reach both preparations would publish the probe context first
       # and make the real launch's exclusive receipt fail.
       caller_env = Map.delete(System.get_env(), "KOGEN_CODEX_CONTEXT_RECEIPT")
-      context = Environment.prepare(runtime, scope, :setup, project, operation, caller_env)
+      trust = if launch, do: launch.root, else: project
 
-      case System.cmd(context.executable, context.args ++ ["login", "status"],
-             env: context.env,
-             stderr_to_stdout: true
-           ) do
+      context =
+        runtime
+        |> Environment.prepare(scope, :setup, trust, operation, caller_env)
+        |> launch_fields(launch)
+
+      # A Build's readiness runs with its own launch environment, in the
+      # Candidate, inside its boundary.
+      [executable | args] =
+        Map.get(context, :prefix, []) ++
+          [context.executable | context.args ++ ["login", "status"]]
+
+      options = if launch, do: [cd: launch.root], else: []
+
+      case System.cmd(executable, args, [env: context.env, stderr_to_stdout: true] ++ options) do
         {_output, 0} ->
           :configured
 

@@ -61,8 +61,9 @@ defmodule Kogen.ScriptedBuildFixture do
     .PHONY: check
 
     check:
-    \t@python3 -c "import pathlib; p = pathlib.Path('.kogen/runtime/check-output-chars'); print(chr(233) * int(p.read_text()) if p.exists() else 'check')"
+    \t@python3 -c "import os; n = os.environ.get('KOGEN_CHECK_OUTPUT_CHARS'); print(chr(233) * int(n) if n else 'check')"
     \t@test ! -f .kogen/runtime/fail-check
+    #{if Keyword.get(opts, :target_evidence), do: target_evidence_recipe(), else: ""}
     """)
 
     File.mkdir_p!(Path.join(dir, "priv/kogen"))
@@ -101,16 +102,30 @@ defmodule Kogen.ScriptedBuildFixture do
     id: 01960000-0000-7000-8000-0000000c0de2
     slug: #{@slug}
     title: Scripted Build fixture
-    may_change_guarded_paths: [dummy.txt]
+    may_change_guarded_paths: [dummy.txt, target-evidence.txt, target-evidence-manifest.json]
     """)
 
     File.write!(Path.join(intent, "scenarios.yaml"), Jason.encode!(scenarios()))
     File.write!(Path.join(intent, "risks.yaml"), Jason.encode!(risks()))
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dir, "deps"))
+
     git!(dir, ["init", "-q", "-b", "main"])
     git!(dir, ["add", "-A"])
     git!(dir, ["commit", "-q", "-m", "baseline"])
     dir
+  end
+
+  @doc """
+  Appended to the `check` recipe's shell line when `:target_evidence` is set:
+  writes an evidence file and its manifest under the Candidate and prints the
+  `KOGEN_TARGET_EVIDENCE_MANIFEST` frame `Kogen.Build.TargetEvidence.capture/4`
+  reads.
+  """
+  def target_evidence_recipe do
+    "\t@python3 -c \"import hashlib, json; open('target-evidence.txt','w').write('reviewed behavior\\n'); body = open('target-evidence.txt','rb').read(); digest = hashlib.sha256(body).hexdigest(); manifest = json.dumps({'schema_version': 1, 'required_evidence': [{'path': 'target-evidence.txt', 'sha256': digest}]}); open('target-evidence-manifest.json','w').write(manifest); mdigest = hashlib.sha256(manifest.encode()).hexdigest(); print('KOGEN_TARGET_EVIDENCE_MANIFEST\\t' + json.dumps({'manifest_path': 'target-evidence-manifest.json', 'sha256': mdigest}))\"\n"
   end
 
   def run(dir, opts \\ []) do
@@ -124,9 +139,6 @@ defmodule Kogen.ScriptedBuildFixture do
     |> Enum.each(fn {notes, call} ->
       File.write!(Path.join(notes_dir, "notes-#{call}"), notes)
     end)
-
-    if chars = Keyword.get(opts, :check_output),
-      do: File.write!(Path.join(runtime, "check-output-chars"), Integer.to_string(chars))
 
     jev_responses =
       case Keyword.get(opts, :jev_results) do
@@ -148,7 +160,12 @@ defmodule Kogen.ScriptedBuildFixture do
         {"FAKE_JEV_RESPONSES", jev_responses},
         {"FAKE_SECURITY_ITEM", "present"},
         {"KOGEN_JEV_TRANSPORT", FakeJev.transport_path()},
-        {"KOGEN_JEV_SECURITY", FakeJev.security_path()}
+        {"KOGEN_JEV_SECURITY", FakeJev.security_path()},
+        {"KOGEN_CHECK_OUTPUT_CHARS",
+         case Keyword.get(opts, :check_output) do
+           nil -> nil
+           chars -> Integer.to_string(chars)
+         end}
       ] ++
         Enum.map(Keyword.get(opts, :edits, %{}), fn {call, command} ->
           {"HANDOFF_EDIT_#{call}", command}
@@ -163,8 +180,10 @@ defmodule Kogen.ScriptedBuildFixture do
       {key, value} -> System.put_env(key, value)
     end)
 
+    cwd = Keyword.get(opts, :cwd, dir)
+
     try do
-      File.cd!(dir, fn -> Kogen.Build.run(@slug) end)
+      File.cd!(cwd, fn -> Kogen.Build.run(@slug, nil, dir) end)
     after
       Enum.each(previous, fn
         {key, nil} -> System.delete_env(key)
@@ -190,7 +209,7 @@ defmodule Kogen.ScriptedBuildFixture do
   def record!(dir), do: dir |> record_path!() |> File.read!() |> Jason.decode!()
 
   def reviewer_prompt!(dir, n),
-    do: File.read!(Path.join(dir, ".kogen/runtime/reviewer-prompt-#{n}"))
+    do: File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-prompt-#{n}"))
 
   def task_context!(prompt) do
     lines = String.split(prompt, "\n")
@@ -250,21 +269,30 @@ defmodule Kogen.ScriptedBuildFixture do
     ~S'''
     #!/usr/bin/env python3
     import json, os, pathlib, shutil, subprocess, sys
-    runtime = pathlib.Path(".kogen/runtime"); runtime.mkdir(parents=True, exist_ok=True)
+    # Scratch state a test reads back after the Build lives in the Build's
+    # harness home, since publication removes the Candidate (where a plain
+    # `.kogen/runtime` relative write would otherwise land); outside a Build
+    # it falls back to the cwd's ignored .kogen/runtime. The fail-check
+    # marker is Candidate-local on purpose: it is written and read back
+    # inside the same running Candidate only.
+    home = os.environ.get("KOGEN_HARNESS_HOME")
+    state = pathlib.Path(home) / "fake-state" if home else pathlib.Path(".kogen/runtime")
+    state.mkdir(parents=True, exist_ok=True)
+    candidate_runtime = pathlib.Path(".kogen/runtime"); candidate_runtime.mkdir(parents=True, exist_ok=True)
     args = sys.argv[1:]; prompt = sys.stdin.read()
     def count(name):
-        path = runtime / name
+        path = state / name
         value = int(path.read_text()) + 1 if path.exists() else 1
         path.write_text(str(value)); return value
     def listed(name, call):
         return str(call) in [item for item in os.environ.get(name, "").split(",") if item]
     if os.environ.get("KOGEN_ROLE") == "reviewer":
         n = count("reviews")
-        (runtime / f"reviewer-prompt-{n}").write_text(prompt)
+        (state / f"reviewer-prompt-{n}").write_text(prompt)
         lines = prompt.splitlines()
         context = json.loads(lines[lines.index("KOGEN_TASK_CONTEXT") + 1])
         packet = pathlib.Path(context["review_packet"]["path"])
-        shutil.copyfile(packet, runtime / f"reviewer-packet-{n}.json")
+        shutil.copyfile(packet, state / f"reviewer-packet-{n}.json")
         if os.environ.get("HANDOFF_PACKET_MUTATION") == str(n):
             packet.write_bytes(packet.read_bytes().replace(b'"schema_version":1', b'"schema_version":2'))
         verdicts = os.environ.get("HANDOFF_REVIEWS", "accept").split(",")
@@ -278,17 +306,17 @@ defmodule Kogen.ScriptedBuildFixture do
         raise SystemExit(0)
     if "--output-last-message" in args or "--output-schema" in args:
         raise SystemExit("Developer turn carried a handoff output schema")
-    marker = runtime / "fail-check"
+    marker = candidate_runtime / "fail-check"
     session = "developer-session"
     if prompt.startswith("Controller verification failed after your turn"):
         # The controller resumed this same Developer call after a failed cycle.
-        call = int((runtime / "developer-calls").read_text())
+        call = int((state / "developer-calls").read_text())
         n = count("verification-resumes")
-        (runtime / f"verification-resume-{n}").write_text(prompt)
+        (state / f"verification-resume-{n}").write_text(prompt)
         if not listed("HANDOFF_FAIL_ALL", call): marker.unlink(missing_ok=True)
     else:
         call = count("developer-calls")
-        (runtime / f"developer-prompt-{call}").write_text(prompt)
+        (state / f"developer-prompt-{call}").write_text(prompt)
         edit = os.environ.get(f"HANDOFF_EDIT_{call}")
         if edit: subprocess.run(["sh", "-c", edit], check=True)
         if listed("HANDOFF_FAIL_FIRST", call) or listed("HANDOFF_FAIL_ALL", call): marker.touch()

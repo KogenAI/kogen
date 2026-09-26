@@ -48,25 +48,25 @@ defmodule Kogen.Codex.ManagementTest do
     on_exit(fn -> Code.delete_path(shadow) end)
     assert to_string(:code.lib_dir(:kogen)) == shadow
 
-    assert {:error, reason} = Codex.open(ctx.config)
+    assert {:error, reason} = Codex.open(ctx.config, File.cwd!())
     assert reason =~ "mix kogen.codex.install"
     install_fixture!(ctx)
-    assert {:error, reason} = Codex.open(ctx.config)
+    assert {:error, reason} = Codex.open(ctx.config, File.cwd!())
     assert reason =~ "mix kogen.codex.login"
   end
 
   test "missing runtime and explicit scope preflight never call a provider", ctx do
-    assert {:error, reason} = Codex.open(ctx.config)
+    assert {:error, reason} = Codex.open(ctx.config, File.cwd!())
     assert reason =~ "mix kogen.codex.install"
     refute File.exists?(Path.join(ctx.root, "trace.jsonl"))
     install_fixture!(ctx)
-    assert {:error, reason} = Codex.open(ctx.config)
+    assert {:error, reason} = Codex.open(ctx.config, File.cwd!())
     assert reason =~ "mix kogen.codex.login"
     refute File.exists?(Path.join(ctx.root, "trace.jsonl"))
 
     authenticate_shared!(ctx)
     State.select_scope!(ctx.root, ctx.source, :project)
-    assert {:error, reason} = Codex.open(ctx.config)
+    assert {:error, reason} = Codex.open(ctx.config, File.cwd!())
     assert reason =~ "mix kogen.codex.login --project"
     assert trace(ctx.root) == []
   end
@@ -80,7 +80,7 @@ defmodule Kogen.Codex.ManagementTest do
     bytes = "[tui.model_availability_nux]\n\"gpt-5.6-sol\" = 1\n"
     File.write!(path, bytes)
     assert {:ok, %{login: :configured}} = Codex.status()
-    assert {:ok, selection} = Codex.open(ctx.config)
+    assert {:ok, selection} = Codex.open(ctx.config, File.cwd!())
     Codex.close(selection)
     assert File.read!(path) == bytes
     assert File.read!(Path.join(scope.path, "auth.json")) == "shared-account"
@@ -92,7 +92,7 @@ defmodule Kogen.Codex.ManagementTest do
     receipt = Path.join(ctx.root, "managed-launch-context.json")
     System.put_env("KOGEN_CODEX_CONTEXT_RECEIPT", receipt)
 
-    assert {:ok, selection} = Codex.open(ctx.config)
+    assert {:ok, selection} = Codex.open(ctx.config, File.cwd!())
     refute File.exists?(receipt)
     context = Codex.launch_context(selection)
     assert File.regular?(receipt)
@@ -107,11 +107,11 @@ defmodule Kogen.Codex.ManagementTest do
     {:ok, project_scope} = Codex.effective_scope()
     State.ensure_scope!(project_scope.path)
     File.write!(Path.join(project_scope.path, "auth.json"), "project-account")
-    assert {:ok, selection} = Codex.open(ctx.config)
+    assert {:ok, selection} = Codex.open(ctx.config, File.cwd!())
     assert selection.scope == project_scope
     Codex.close(selection)
     File.rm!(Path.join(project_scope.path, "auth.json"))
-    assert {:error, reason} = Codex.open(ctx.config)
+    assert {:error, reason} = Codex.open(ctx.config, File.cwd!())
     assert reason =~ "--project"
     File.write!(Path.join(project_scope.path, "auth.json"), "retained-project-account")
     assert {:ok, 0} = Codex.login(["--use-default"])
@@ -149,7 +149,7 @@ defmodule Kogen.Codex.ManagementTest do
     assert {:ok, %{login: {:error, reason}}} = Codex.status()
     assert reason =~ "Python 3.11"
     refute reason =~ "unexpected discovery"
-    assert {:error, reason} = Codex.open(ctx.config)
+    assert {:error, reason} = Codex.open(ctx.config, File.cwd!())
     assert reason =~ "Python 3.11"
     assert File.read!(settings) == bytes
     assert File.read!(Path.join(scope.path, "auth.json")) == "shared-account"
@@ -168,7 +168,7 @@ defmodule Kogen.Codex.ManagementTest do
     assert {:ok, %{runtime: nil, active: [], login: :unavailable}} = Codex.status()
     install_fixture!(ctx)
     authenticate_shared!(ctx)
-    assert {:ok, selection} = Codex.open(ctx.config)
+    assert {:ok, selection} = Codex.open(ctx.config, File.cwd!())
     assert {:ok, %{active: [active], login: :configured}} = Codex.status()
     assert active["runtime"]["version"] == "0.156.1"
     assert Enum.all?(trace(ctx.root), &(Enum.take(&1["args"], -2) == ["login", "status"]))
@@ -181,10 +181,10 @@ defmodule Kogen.Codex.ManagementTest do
     install_fixture!(ctx)
     authenticate_shared!(ctx)
     System.put_env("OPENAI_API_KEY", "hostile-personal-override")
-    assert {:ok, old} = Codex.open(ctx.config)
+    assert {:ok, old} = Codex.open(ctx.config, File.cwd!())
     old_context = Codex.launch_context(old)
     assert {:ok, _} = Codex.installer("activate", ["0.200.0", "0.154.0"])
-    assert {:ok, fresh} = Codex.open(ctx.config)
+    assert {:ok, fresh} = Codex.open(ctx.config, File.cwd!())
     assert old.runtime["executable"] == fresh.runtime["executable"]
     assert fresh.runtime["version"] == "0.156.1"
     personal_bin = Path.join(ctx.root, "personal-bin")
@@ -255,7 +255,7 @@ defmodule Kogen.Codex.ManagementTest do
                Codex.launch_context(in_flight)
              )
 
-    assert {:ok, fresh} = Codex.open(ctx.config)
+    assert {:ok, fresh} = Codex.open(ctx.config, File.cwd!())
     assert fresh.runtime == upgraded
 
     assert {:ok, %{session_id: "managed-developer"}} =

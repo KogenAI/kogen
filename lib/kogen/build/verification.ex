@@ -18,6 +18,12 @@ defmodule Kogen.Build.Verification do
   Within one attempt a provider-backed target's passed receipt is reused only
   on a byte-identical Candidate id and catalog digest, marked `reused_from`;
   every offline target runs fresh every cycle. A new attempt reuses nothing.
+
+  Two roots are named explicitly in the persisted context: the Candidate
+  (`candidate_root`), where `make -C` runs, the catalog is read as data and
+  target evidence is captured and verified; and control (`control_root`,
+  also `project_root`), which holds the attempt's verification directory, so
+  every receipt, proof and failure `log_path` is relative to control.
   """
 
   alias Kogen.Build.{
@@ -32,9 +38,44 @@ defmodule Kogen.Build.Verification do
   @output_tail 16_384
   @digest ~r/^[0-9a-f]{64}$/
 
-  def initialize(tracking_path, token, outer_attempt, targets, retries, plan \\ nil) do
+  def initialize(tracking_path, token, outer_attempt, targets, retries, plan \\ nil, roots \\ nil) do
     VerificationPlan.trace("Kogen.Build.Verification.initialize")
-    root = project_root(tracking_path)
+
+    case roots_for(tracking_path, roots) do
+      {:ok, control, candidate} ->
+        initialize_in(
+          tracking_path,
+          token,
+          outer_attempt,
+          targets,
+          retries,
+          plan,
+          control,
+          candidate
+        )
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp roots_for(_tracking_path, %{control_root: control, candidate_root: candidate})
+       when is_binary(control) and is_binary(candidate),
+       do: {:ok, Path.expand(control), Path.expand(candidate)}
+
+  defp roots_for(tracking_path, nil) do
+    case project_root(tracking_path) do
+      nil ->
+        {:error,
+         "could not initialize controller verification context: no control root for #{tracking_path}"}
+
+      root ->
+        {:ok, root, root}
+    end
+  end
+
+  # credo:disable-for-next-line Credo.Check.Refactor.FunctionArity
+  defp initialize_in(tracking_path, token, outer_attempt, targets, retries, plan, root, candidate) do
     build_id = tracking_path |> Path.dirname() |> Path.basename()
 
     directory =
@@ -51,6 +92,8 @@ defmodule Kogen.Build.Verification do
       "outer_attempt" => outer_attempt,
       "attempt_token" => token,
       "project_root" => root,
+      "control_root" => root,
+      "candidate_root" => candidate,
       "targets" => targets,
       "verification_retries" => retries,
       "catalog_sha256" => plan && plan.catalog_sha256,
@@ -142,6 +185,8 @@ defmodule Kogen.Build.Verification do
       "context_sha256" => execution.context_sha256,
       "started_at" => started_at
     }
+
+    env = Map.put_new(env, :control_root, execution.context["project_root"])
 
     {cycle, execution} =
       case CatalogChange.check(env.root, env.catalog, env.plan, env.scenarios) do
@@ -253,9 +298,9 @@ defmodule Kogen.Build.Verification do
   defp run_target(execution, base, target, catalog, env) do
     log = Path.join(execution.log_root, "cycle-#{base["sequence"]}-#{target}.log")
 
-    case VerificationRunner.run_target(env.root, target, log) do
+    case VerificationRunner.run_target(env.root, target, log, control_root: env.control_root) do
       {:ok, facts} ->
-        receipt = receipt(execution, base, target, catalog, facts, env.root)
+        receipt = receipt(execution, base, target, catalog, facts, env)
         {receipt, receipt_failure(receipt, base, env)}
 
       {:error, reason} ->
@@ -286,7 +331,7 @@ defmodule Kogen.Build.Verification do
     })
   end
 
-  defp receipt(execution, base, target, catalog, facts, root) do
+  defp receipt(execution, base, target, catalog, facts, env) do
     output = facts["log_bytes"]
 
     receipt =
@@ -300,12 +345,12 @@ defmodule Kogen.Build.Verification do
         "started_at" => facts["started_at"],
         "finished_at" => facts["finished_at"],
         "elapsed_ms" => facts["elapsed_ms"],
-        "log_path" => relative(facts["log_path"], root),
+        "log_path" => relative(facts["log_path"], env.control_root),
         "log_sha256" => facts["log_sha256"],
         "output" => tail(output)
       })
 
-    case TargetEvidence.capture(output, target, execution.context["attempt_token"], root) do
+    case TargetEvidence.capture(output, target, execution.context["attempt_token"], env.root) do
       {:ok, nil} -> receipt
       {:ok, evidence} -> Map.put(receipt, "target_evidence", evidence)
       {:error, reason} -> Map.put(receipt, "target_evidence_error", reason)
@@ -381,7 +426,7 @@ defmodule Kogen.Build.Verification do
   defp candidate_id(env) do
     case Map.get(env, :candidate_id) do
       fun when is_function(fun, 0) -> fun.()
-      _ -> Kogen.Git.candidate_id()
+      _ -> Kogen.Git.candidate_id(env.root)
     end
   end
 
@@ -596,15 +641,22 @@ defmodule Kogen.Build.Verification do
       receipt["cycle_sequence"] == cycle["sequence"] and
       valid_timestamp?(receipt["finished_at"]) and is_binary(receipt["log_path"]) and
       is_binary(receipt["log_sha256"]) and Regex.match?(@digest, receipt["log_sha256"]) and
-      valid_evidence?(receipt) and valid_reuse?(receipt, cycle, cycles)
+      valid_evidence?(receipt, candidate_root(execution)) and
+      valid_reuse?(receipt, cycle, cycles)
   end
 
-  defp valid_evidence?(%{"target_evidence" => evidence} = receipt),
+  # Target evidence is Candidate-relative: it is verified against the
+  # Candidate root the context names, never the process working directory.
+  defp valid_evidence?(%{"target_evidence" => evidence} = receipt, root),
     do:
       evidence["attempt_token"] == receipt["attempt_token"] and
-        evidence["target"] == receipt["target"] and TargetEvidence.verify(evidence) == :ok
+        evidence["target"] == receipt["target"] and TargetEvidence.verify(evidence, root) == :ok
 
-  defp valid_evidence?(_receipt), do: true
+  defp valid_evidence?(_receipt, _root), do: true
+
+  @doc "The Candidate root an execution's context names."
+  def candidate_root(execution),
+    do: execution.context["candidate_root"] || execution.context["project_root"]
 
   # One conjunction binds a reused receipt to the earlier passed run it names,
   # so no partial validator can accept a forged or stale reuse.
@@ -692,7 +744,7 @@ defmodule Kogen.Build.Verification do
 
     case String.split(expanded, marker, parts: 2) do
       [prefix, _suffix] when prefix != "" -> String.trim_trailing(prefix, "/")
-      _ -> File.cwd!() |> Path.expand()
+      _ -> nil
     end
   end
 

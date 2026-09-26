@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-22",
+  "command": "claude -p --model fable --effort high --dangerously-skip-permissions --safe-mode --no-session-persistence --strict-mcp-config --tools Read,Glob,Grep --output-format json <review request>",
+  "model_usage": {
+    "claude-fable-5-1": {
+      "inputTokens": 450,
+      "outputTokens": 61464,
+      "cacheReadInputTokens": 1791301,
+      "cacheCreationInputTokens": 227787,
+      "webSearchRequests": 0,
+      "costUSD": 8.08126525,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 40152,
+      "canonicalModel": "claude-fable-5-1",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "duration_ms": 818804,
+  "total_cost_usd": 8.08126525,
+  "terminal_reason": "completed",
+  "num_turns": 116,
+  "permission_denials": [],
+  "scope": "Read-only review; no source/test/gate writes. Report is advisory, reconciled by root. Requested effort high; output metadata does not independently report effort. External Fable call only; root/native-helper usage unavailable, not zero."
+}

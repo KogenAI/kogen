@@ -22,6 +22,10 @@ defmodule Kogen.PreconditionFixture do
     copy!(source, template, ".codex/hooks/stop_runner.py")
     copy!(source, template, ".codex/hooks/environment.py")
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(template, "deps"))
+
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: template)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: template)
 

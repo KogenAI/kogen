@@ -218,8 +218,15 @@ defmodule Kogen.BuildPreconditionsTest do
                         },
                         %{
                           case: "missing configuration",
+                          # Build now takes the control checkout explicitly (never the
+                          # process cwd), so every control-relative path it reads,
+                          # including this one, is named absolutely; a Regex here
+                          # cannot round-trip through the isolated child process's
+                          # `KOGEN_ISOLATED_PARAMETERS` (its compiled pattern is a NIF
+                          # resource, private to this OS process), so match a literal
+                          # path suffix instead.
                           operation: :missing_config,
-                          expected: "missing .kogen/config.yaml"
+                          expected: "/.kogen/config.yaml"
                         },
                         %{
                           case: "missing required helper profile",
@@ -498,7 +505,7 @@ defmodule Kogen.BuildPreconditionsTest do
     System.put_env("FAKE_SECURITY_LOG", log)
     System.put_env("FAKE_SECURITY_ITEM", "missing")
 
-    assert {:error, reason} = File.cd!(dir, fn -> Kogen.Build.run(@slug) end)
+    assert {:error, reason} = File.cd!(dir, fn -> Kogen.Build.run(@slug, nil, dir) end)
     assert reason =~ "`dev.kogen.jev`"
     assert reason =~ "security add-generic-password -s dev.kogen.jev -a <account> -w"
     refute File.exists?(marker), "the Developer harness must never launch"
@@ -512,6 +519,48 @@ defmodule Kogen.BuildPreconditionsTest do
     # in the offline suite runs with the present fake item.
     System.put_env("FAKE_SECURITY_ITEM", "present")
     assert :ok = Kogen.Jev.key_present()
+  end
+
+  # candidate-creation: a control missing `deps/` stops before any launch,
+  # names `mix deps.get`, and creates no Candidate, owner record or harness
+  # home -- the check runs before `Kogen.Build.Workspace.admit/2` writes any
+  # of those, so control is never a fallback for a role's own dependencies.
+  test "candidate-creation: a control without deps/ stops before any launch, names mix deps.get, and creates no Candidate" do
+    dir = tmp_repo!()
+    File.rm_rf!(Path.join(dir, "deps"))
+
+    harness_dir =
+      Path.join(System.tmp_dir!(), "kogen-missing-deps-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(harness_dir)
+    on_exit(fn -> File.rm_rf(harness_dir) end)
+    marker = Path.join(harness_dir, "harness-invoked")
+    System.put_env("KOGEN_HARNESS", write_fake_harness!(harness_dir, marker))
+    on_exit(fn -> System.delete_env("KOGEN_HARNESS") end)
+
+    assert {:error, reason} = File.cd!(dir, fn -> Kogen.Build.run(@slug, nil, dir) end)
+    assert reason =~ "mix deps.get"
+    assert reason =~ "control deps/ is missing"
+
+    refute File.exists?(marker),
+           "no role may ever launch, and control's own deps/ is never a fallback"
+
+    refute File.exists?(Path.join(dir, ".kogen/build.lock"))
+
+    project_id = Kogen.ClaudeCode.project_id(dir)
+    project_root = Path.join(System.fetch_env!("KOGEN_WORKSPACES_ROOT"), project_id)
+
+    assert Path.wildcard(Path.join(project_root, "*-*")) == [],
+           "no Candidate worktree may be created"
+
+    assert Path.wildcard(Path.join(project_root, "candidates/*.json")) == [],
+           "no owner record may be created"
+
+    assert Path.wildcard(Path.join(project_root, "harness/*")) == [],
+           "no harness home may be created"
+
+    assert length(Kogen.CandidateFixture.registered_worktrees(dir)) == 1,
+           "control's own worktree is the only one git knows about"
   end
 
   test "a flat-shaped config.yaml is refused before any launch and no tracking record is created" do
@@ -608,7 +657,7 @@ defmodule Kogen.BuildPreconditionsTest do
       )
 
     default_prompt =
-      File.read!(Path.join(default_fixture, ".kogen/runtime/developer-launch-prompt"))
+      File.read!(Kogen.CandidateFixture.fake_state(default_fixture, "developer-launch-prompt"))
 
     # The default route's developer root and helper profiles are named.
     assert default_prompt =~ "gpt-5.6-sol"
@@ -616,7 +665,7 @@ defmodule Kogen.BuildPreconditionsTest do
     refute default_prompt =~ "gpt-route-b"
 
     default_reviewer_prompt =
-      File.read!(Path.join(default_fixture, ".kogen/runtime/reviewer-prompt-1"))
+      File.read!(Kogen.CandidateFixture.fake_state(default_fixture, "reviewer-prompt-1"))
 
     assert default_reviewer_prompt =~ "gpt-5.6-terra"
     refute default_reviewer_prompt =~ "gpt-route-b"
@@ -633,14 +682,16 @@ defmodule Kogen.BuildPreconditionsTest do
         route_env(other_fixture)
       )
 
-    other_prompt = File.read!(Path.join(other_fixture, ".kogen/runtime/developer-launch-prompt"))
+    other_prompt =
+      File.read!(Kogen.CandidateFixture.fake_state(other_fixture, "developer-launch-prompt"))
+
     assert other_prompt =~ "gpt-route-b-dev"
     assert other_prompt =~ "gpt-route-b-worker"
     refute other_prompt =~ "gpt-5.6-sol"
     refute other_prompt =~ "gpt-5.6-luna"
 
     other_reviewer_prompt =
-      File.read!(Path.join(other_fixture, ".kogen/runtime/reviewer-prompt-1"))
+      File.read!(Kogen.CandidateFixture.fake_state(other_fixture, "reviewer-prompt-1"))
 
     assert other_reviewer_prompt =~ "gpt-route-b-review"
     refute other_reviewer_prompt =~ "gpt-5.6-terra"
@@ -682,14 +733,14 @@ defmodule Kogen.BuildPreconditionsTest do
 
     result =
       File.cd!(dir, fn ->
-        Kogen.Build.run(@slug)
+        Kogen.Build.run(@slug, nil, dir)
       end)
 
     assert {:error, reason} = result
     assert reason =~ expected
     assert File.exists?(Path.join(dir, ".kogen/build.lock")) == lock_was_present
     refute File.exists?(marker), "the fake harness marker exists: the harness was invoked"
-    refute_role_launch!(trace)
+    refute_role_launch!(candidate_trace_path(dir, trace))
     assert approved_bytes(dir) == approved_before
     assert {"", 0} = System.cmd("git", ["diff", "--cached", "--"], cd: dir)
     assert real_index_bytes(dir) == index_before
@@ -865,7 +916,13 @@ defmodule Kogen.BuildPreconditionsTest do
   defp claude_readiness!(dir, harness_dir, {:claude, state}) do
     System.delete_env("KOGEN_HARNESS")
     root = Path.join(harness_dir, "claude")
-    trace = Path.join(harness_dir, "claude-trace.jsonl")
+    # Readiness (`claude auth status`) now launches inside the Build's write
+    # boundary (cwd = the Candidate); a trace path outside the Candidate,
+    # harness home or Build temp dir fails closed with EPERM. A relative
+    # filename resolves against the launched process's cwd, landing inside
+    # the Candidate the boundary grants; the retained Candidate (kept on
+    # every stop) is where the trace is read back from.
+    trace = "claude-trace.jsonl"
     File.mkdir_p!(root)
     System.put_env("KOGEN_CLAUDE_ROOT", root)
     System.put_env("KOGEN_TEST_NATIVE_TRACE", trace)
@@ -902,6 +959,12 @@ defmodule Kogen.BuildPreconditionsTest do
                  end)
       after
         if role, do: System.put_env("KOGEN_ROLE", role)
+        # This login call runs with cwd = the control checkout (outside any
+        # Build boundary), so the relative trace name above lands in `dir`
+        # itself; remove it immediately so the later `Kogen.Build.run` sees
+        # the clean control checkout it requires. The readiness call the
+        # Build performs writes its own trace, inside the Candidate.
+        File.rm(Path.join(dir, trace))
       end
     end
 
@@ -919,7 +982,9 @@ defmodule Kogen.BuildPreconditionsTest do
   defp claude_readiness!(_dir, harness_dir, {:hybrid, :codex_not_installed}) do
     System.delete_env("KOGEN_HARNESS")
     root = Path.join(harness_dir, "claude")
-    trace = Path.join(harness_dir, "claude-trace.jsonl")
+    # See the `{:claude, state}` clause above: readiness now launches inside
+    # the Candidate, so the trace must be a relative path.
+    trace = "claude-trace.jsonl"
     File.mkdir_p!(root)
     System.put_env("KOGEN_CLAUDE_ROOT", root)
     System.put_env("KOGEN_TEST_NATIVE_TRACE", trace)
@@ -950,6 +1015,18 @@ defmodule Kogen.BuildPreconditionsTest do
   end
 
   defp claude_readiness!(_dir, _harness_dir, _operation), do: nil
+
+  # A relative trace name (set by `claude_readiness!`) resolves against the
+  # retained Candidate worktree, which every stop keeps; `nil` (no readiness
+  # trace expected for this case) passes through unchanged.
+  defp candidate_trace_path(_dir, nil), do: nil
+
+  defp candidate_trace_path(dir, relative) do
+    case Kogen.CandidateFixture.records(dir) do
+      [] -> nil
+      _ -> Path.join(Kogen.CandidateFixture.worktree(dir), relative)
+    end
+  end
 
   defp refute_role_launch!(nil), do: :ok
 
@@ -1030,9 +1107,19 @@ defmodule Kogen.BuildPreconditionsTest do
 
   @route_slug "route-fixture-intent"
 
+  # `Kogen.CompiledFixture.create!/2`'s fixture-file manifest predates the
+  # per-launch receipt mechanism: `fake_codex` invokes
+  # `test/support/launch_receipt.py` by a path relative to its own script
+  # directory, so the fixture's copy of that directory must carry it too.
   defp route_fixture!(label) do
     fixture = Kogen.CompiledFixture.create!(@project_root, label)
     on_exit(fn -> File.rm_rf(fixture) end)
+
+    File.cp!(
+      Path.join(@project_root, "test/support/launch_receipt.py"),
+      Path.join(fixture, "test/support/launch_receipt.py")
+    )
+
     fixture
   end
 
@@ -1077,6 +1164,8 @@ defmodule Kogen.BuildPreconditionsTest do
   end
 
   defp init_route_git!(fixture) do
+    # Build admission copies control deps/ into each Candidate.
+    File.mkdir_p!(Path.join(fixture, "deps"))
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: fixture)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: fixture)
 

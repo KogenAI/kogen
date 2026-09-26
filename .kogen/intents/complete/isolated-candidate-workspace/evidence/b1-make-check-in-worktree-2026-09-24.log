@@ -1,0 +1,256 @@
+/usr/bin/time -p python3 scripts/check/offline.py
+Resolved Git executable: /Library/Developer/CommandLineTools/usr/bin/git
+Offline gate: macOS-26.6.2-arm64-arm-64bit-Mach-O; installed dependencies; build path=_build; warm=False
++ elixir --version
+Erlang/OTP 29 [erts-17.0.3] [source] [64-bit] [smp:12:12] [ds:12:12:10] [async-threads:1] [jit]
+
+Elixir 1.20.2 (compiled with Erlang/OTP 29)
+Stage elapsed (elixir --version): 0.135s
++ mix format --check-formatted
++ mix compile --warnings-as-errors --force
++ xcrun clang -dynamiclib -Wall -Werror /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/test/support/process_group.c -o /var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-check-support-a99si1nj/process_group.dylib
+Stage elapsed (xcrun clang -dynamiclib -Wall -Werror /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/test/support/process_group.c -o /var/folders/r7/0tzq_ynx5qn9ny3km3xlxhzm0000gn/T/kogen-check-support-a99si1nj/process_group.dylib): 0.239s
+Stage elapsed (mix format --check-formatted): 0.339s
+==> boundary
+Compiling 15 files (.ex)
+Generated boundary app
+==> file_system
+Compiling 7 files (.ex)
+Generated file_system app
+==> bunt
+Compiling 2 files (.ex)
+Generated bunt app
+==> jason
+Compiling 10 files (.ex)
+Generated jason app
+==> kogen
+===> Analyzing applications...
+===> Compiling yamerl
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/deps/yamerl/src/yamerl_node_binary.erl:65:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   65|    case catch base64:decode(Text) of
+%     |         ^
+
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/deps/yamerl/src/yamerl_node_binary.erl:72:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   72|    case catch base64:decode(Text) of
+%     |         ^
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 65 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 72 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/deps/yamerl/src/yamerl_constr.erl:801:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  801|     catch Mod:module_info(),
+%     |     ^
+
+     ┌─ src/yamerl_constr.erl:
+     │
+ 801 │      catch Mod:module_info(),
+     │      ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+==> yaml_elixir
+Compiling 6 files (.ex)
+Generated yaml_elixir app
+==> credo
+Compiling 257 files (.ex)
+Generated credo app
+==> kogen
+Compiling 38 files (.ex)
+Generated kogen app
+Stage elapsed (mix compile --warnings-as-errors --force): 3.410s
++ mix credo --strict
++ mix test --exclude live --warnings-as-errors
+Checking 134 source files (this might take a while) ...
+
+Please report incorrect results: https://github.com/rrrene/credo/issues
+
+Analysis took 0.6 seconds (0.07s to load, 0.5s running 69 checks on 134 files)
+1633 mods/funs, found no issues.
+
+Use `mix credo explain` to explain issues, `mix credo --help` for options.
+Stage elapsed (mix credo --strict): 0.990s
+==> boundary
+Compiling 15 files (.ex)
+Generated boundary app
+==> file_system
+Compiling 7 files (.ex)
+Generated file_system app
+==> bunt
+Compiling 2 files (.ex)
+Generated bunt app
+==> jason
+Compiling 10 files (.ex)
+Generated jason app
+==> kogen
+===> Analyzing applications...
+===> Compiling yamerl
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/deps/yamerl/src/yamerl_node_binary.erl:65:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   65|    case catch base64:decode(Text) of
+%     |         ^
+
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/deps/yamerl/src/yamerl_node_binary.erl:72:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   72|    case catch base64:decode(Text) of
+%     |         ^
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 65 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 72 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/deps/yamerl/src/yamerl_constr.erl:801:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  801|     catch Mod:module_info(),
+%     |     ^
+
+     ┌─ src/yamerl_constr.erl:
+     │
+ 801 │      catch Mod:module_info(),
+     │      ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+==> yaml_elixir
+Compiling 6 files (.ex)
+Generated yaml_elixir app
+==> credo
+Compiling 257 files (.ex)
+Generated credo app
+==> kogen
+Compiling 38 files (.ex)
+Generated kogen app
+Running ExUnit with seed: 509887, max_cases: 12
+Excluding tags: [:live]
+
+....................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+Slowest individual cases (includes isolated process startup):
+
+Finished in 109.8 seconds (109.8s async, 0.00s sync)
+
+Result: 724 passed, 9 excluded
+  30.995s Kogen.ShapingEvaluationTest test offline rehearsal exercises the maintained driver without provider access
+  19.14s Kogen.HarnessRoleTest test every Codex launch overrides a hostile inherited role
+  17.668s Kogen.LifecycleTest test public Shape, explicit fixture approval, and public Build form one offline lifecycle
+  10.591s Kogen.ShapeTaskTest test invalid selections fail before harness launch
+  9.397s Kogen.ControllerHandoffTest test every Developer message variant yields the same controller report and reaches Review
+  9.026s Kogen.CommitFailureRollbackTest test restores the Approved Intent and leaves a clean worktree when git commit fails
+  8.46s Kogen.CoreIntegrityTest test preserves core integrity for each scenario
+  8.405s Kogen.CoreIntegrityTest test preserves core integrity for each scenario
+Stage elapsed (mix test --exclude live --warnings-as-errors): 113.597s
++ mix run scripts/check/rehearsals.exs
++ rehearsal live-general: mix test --exclude live test/kogen/scenario_semantic_test.exs
+Running ExUnit with seed: 147409, max_cases: 12
+Excluding tags: [:live]
+
+.....
+Slowest individual cases (includes isolated process startup):
+
+Finished in 3.1 seconds (3.1s async, 0.00s sync)
+
+Result: 5 passed
+  1.645s Kogen.ScenarioSemanticTest test complete-looking source and partial-routing claims fail all required focused proofs
+  0.406s Kogen.ScenarioSemanticTest test corrected route fixture accepts only exact configured three-field profiles
+  0.347s Kogen.ScenarioSemanticTest test accepts the corrected counterpart only when every scenario is evidenced
+  0.345s Kogen.ScenarioSemanticTest test rejects an accept-shaped response that has no scenario evidence
+  0.341s Kogen.ScenarioSemanticTest test requires a rework verdict to name the failing scenario and byte location
++ rehearsal live-shaping-quality: mix test --exclude live test/kogen/shaping_evaluation_test.exs
+Running ExUnit with seed: 700233, max_cases: 12
+Excluding tags: [:live]
+
+......
+
+Slowest individual cases (includes isolated process startup):
+Finished in 20.0 seconds (20.0s async, 0.00s sync)
+
+Result: 6 passed
+  16.455s Kogen.ShapingEvaluationTest test offline rehearsal exercises the maintained driver without provider access
+  2.29s Kogen.ShapingEvaluationTest test Draft provenance projection parses supported YAML forms and rejects partial data
+  0.348s Kogen.ShapingEvaluationTest test native binding controls reject ambiguous, reused, and interrupted turns
+  0.343s Kogen.ShapingEvaluationTest test rollout trigger accepts the string paths returned by session discovery
+  0.307s Kogen.ShapingEvaluationTest test compact fixture inputs are local, frozen and source-bound
+  0.307s Kogen.ShapingEvaluationTest test compact five-case evaluation uses local CLI facts and preserves the native boundary
++ rehearsal live-native: mix test --exclude live test/kogen/codex_compatibility_preparation_test.exs test/kogen/live_native_receipt_audit_test.exs
+Running ExUnit with seed: 191831, max_cases: 12
+Excluding tags: [:live]
+
+....................
+Slowest individual cases (includes isolated process startup):
+
+Finished in 16.9 seconds (16.9s async, 0.00s sync)
+
+Result: 20 passed
+  4.782s Kogen.Codex.CompatibilityPreparationTest test PTY trust response is limited to the explicitly selected compatibility fixture
+  2.207s Kogen.Codex.CompatibilityPreparationTest test bounded wrapper performs owned cleanup when it receives SIGTERM
+  2.205s Kogen.Codex.CompatibilityPreparationTest test PTY driver bounds a quiet child that ignores terminal and group termination
+  2.191s Kogen.Codex.CompatibilityPreparationTest test bounded wrapper kills an ignored turn and its descendant within its own process group
+  0.687s Kogen.Codex.CompatibilityPreparationTest test PTY cleanup drains and hangs up a flooding child without waiting for timeout
+  0.605s Kogen.Codex.CompatibilityPreparationTest test PTY driver records a natural marker exit and verified cleanup
+  0.485s Kogen.Codex.CompatibilityPreparationTest test compatibility fixture preparation fails loudly on a config lacking the shaping model, never writing gpt-5.6-sol
+  0.481s Kogen.Codex.CompatibilityPreparationTest test compatibility fixture preparation seeds discovery without model work
++ rehearsal live-reviewer-rework: mix test --exclude live test/kogen/two_outer_resumptions_test.exs
+Running ExUnit with seed: 603412, max_cases: 12
+Excluding tags: [:live]
+
+....
+Slowest individual cases (includes isolated process startup):
+
+Finished in 6.1 seconds (6.1s async, 0.00s sync)
+
+Result: 4 passed
+  1.684s Kogen.TwoOuterResumptionsTest test a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it
+  1.616s Kogen.TwoOuterResumptionsTest test stops after two outer resumptions when Claude Code Review never accepts
+  1.602s Kogen.TwoOuterResumptionsTest test stops after two outer resumptions when Review never accepts
+  1.22s Kogen.TwoOuterResumptionsTest test a declared proof selector missing on every attempt spends the outer resumptions without Review
++ rehearsal live-shape-to-build: mix test --exclude live test/kogen/verification_ownership_lifecycle_test.exs
+Running ExUnit with seed: 184233, max_cases: 12
+Excluding tags: [:live]
+
+.
+Slowest individual cases (includes isolated process startup):
+
+Finished in 2.2 seconds (2.2s async, 0.00s sync)
+
+Result: 1 passed
+  2.256s Kogen.VerificationOwnershipLifecycleTest test Stop owns fresh Check while outer Build owns ordered gates across gate and Reviewer rework
+Stage elapsed (mix run scripts/check/rehearsals.exs): 51.113s
+Offline receipt: /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/0184bad9-9f53-41f3-a25a-2c3c5245b035/scratchpad/wtprobe/control/.kogen/runtime/build-workspaces/CHK/.kogen/runtime/offline-results/1898356c8f6d2f0f0109696544418343.json
+Complete offline gate: 168.311s; exit=0
+real 168.35
+user 32.51
+sys 16.83
+make check  32.51s user 16.84s system 29% cpu 2:48.37 total
+EXIT=0

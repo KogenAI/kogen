@@ -1,0 +1,7 @@
+[nested-same-params] exit=0 
+[nested-narrower-inner-write] exit=71 out=sandbox-exec: sandbox_apply: Operation not permitted 
+[nested-narrower-outer-cand] exit=71 out=sandbox-exec: sandbox_apply: Operation not permitted 
+[nested-wider-param-outside] exit=71 out=sandbox-exec: sandbox_apply: Operation not permitted 
+[nested-allow-default-string] exit=71 out=sandbox-exec: sandbox_apply: Operation not permitted 
+[unsandboxed-string-control] exit=0 
+outside:  cand: same  inner: 

@@ -45,6 +45,10 @@ defmodule Kogen.SettlementRegressionTest do
     Kogen.VerificationFixture.install!(fixture)
     File.write!(Path.join(fixture, "dummy.txt"), "")
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(fixture, "deps"))
+
     git!(fixture, ["init", "-q", "-b", "main"])
     git!(fixture, ["config", "user.name", "Kogen Fixture"])
     git!(fixture, ["config", "user.email", "fixture@example.invalid"])

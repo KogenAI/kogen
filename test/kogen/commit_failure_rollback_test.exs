@@ -82,7 +82,7 @@ defmodule Kogen.CommitFailureRollbackTest do
 
     head_before = git!(dest, ["rev-parse", "HEAD"])
 
-    result = File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
+    result = File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
 
     assert {:error, reason} = result
     assert reason =~ "commit failed"
@@ -94,7 +94,9 @@ defmodule Kogen.CommitFailureRollbackTest do
     approved_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
     complete_dir = Path.join(dest, ".kogen/intents/complete/#{@slug}")
 
-    assert File.dir?(approved_dir), "the Approved Intent must be restored, not lost"
+    # A failed accept/commit happens entirely inside the Candidate; control's
+    # own on-disk checkout, including its Approved copy, is never touched.
+    assert File.dir?(approved_dir), "control's Approved Intent must stay exactly as it was"
     refute File.dir?(complete_dir), "no uncommitted Complete may be left looking like success"
 
     restored_files = approved_dir |> File.ls!() |> Enum.sort()
@@ -116,8 +118,45 @@ defmodule Kogen.CommitFailureRollbackTest do
     assert git!(dest, ["status", "--porcelain"]) == "",
            "the worktree must be exactly as clean as before this failed attempt"
 
+    # The actual accept/commit/restore cycle ran in the Candidate: its own
+    # copy of the Approved Intent (staged into Complete, then restored after
+    # the rejected commit) is what the "Approved Intent restored" message
+    # describes, and the retained Candidate proves the restoration happened
+    # for real rather than trivially (control's copy was never touched).
+    candidate = Kogen.CandidateFixture.candidate(dest)
+    assert candidate["disposition"] == "retained"
+    worktree = candidate["worktree_path"]
+    assert File.dir?(worktree)
+    assert worktree in Kogen.CandidateFixture.registered_worktrees(dest)
+
+    candidate_approved_dir = Path.join(worktree, ".kogen/intents/approved/#{@slug}")
+    candidate_complete_dir = Path.join(worktree, ".kogen/intents/complete/#{@slug}")
+
+    assert File.dir?(candidate_approved_dir),
+           "the Candidate's Approved Intent must be restored, not lost"
+
+    refute File.dir?(candidate_complete_dir),
+           "no uncommitted Complete may be left in the Candidate looking like success"
+
+    candidate_restored_files = candidate_approved_dir |> File.ls!() |> Enum.sort()
+    assert candidate_restored_files == intent_dir_original_files
+    assert File.read!(Path.join(candidate_approved_dir, "intent.yaml")) == @intent_yaml
+    assert File.read!(Path.join(candidate_approved_dir, "evidence.md")) == <<0, 255, 10, 13>>
+
+    assert File.read!(Path.join(candidate_approved_dir, "build-evidence-1.md")) ==
+             "also supplied"
+
+    owner_record = candidate["owner_record"] |> File.read!() |> Jason.decode!()
+    build_id = owner_record["build_id"]
+    assert owner_record["status"] == "stopped: publication-failed"
+
+    assert reason =~
+             "Candidate kept: slug #{@slug}, build id #{build_id}, worktree #{worktree}, " <>
+               "branch #{candidate["branch"]}, harness home #{candidate["harness_home"]}; " <>
+               "remove it with `mix kogen.candidates.remove #{build_id}`"
+
     File.rm!(Path.join(dest, ".git/hooks/commit-msg"))
-    assert :ok = File.cd!(dest, fn -> Kogen.Build.run(@slug) end)
+    assert :ok = File.cd!(dest, fn -> Kogen.Build.run(@slug, nil, dest) end)
     refute File.exists?(approved_dir)
     assert File.read!(Path.join(complete_dir, "evidence.md")) == <<0, 255, 10, 13>>
     assert File.read!(Path.join(complete_dir, "build-evidence-1.md")) == "also supplied"
@@ -204,6 +243,10 @@ defmodule Kogen.CommitFailureRollbackTest do
       {"GIT_COMMITTER_NAME", "Kogen Fixture"},
       {"GIT_COMMITTER_EMAIL", "kogen-fixture@example.invalid"}
     ]
+
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dest, "deps"))
 
     {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dest)
     {_out, 0} = System.cmd("git", ["add", "-A"], cd: dest)

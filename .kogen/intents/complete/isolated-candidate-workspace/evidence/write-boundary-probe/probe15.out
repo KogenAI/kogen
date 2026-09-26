@@ -1,0 +1,5 @@
+[zsh-heredoc-TMPDIR-only] exit=1 out=zsh:1: can't create temp file for here document: operation not permitted 
+[zsh-heredoc-with-TMPPREFIX] exit=0 out=heredoc-ok 
+[zsh-procsub-with-TMPPREFIX] exit=0 out=procsub-ok 
+[bash-heredoc-TMPDIR] exit=1 out=/bin/bash: cannot create temp file for here document: Operation not permitted 
+[sh-heredoc-TMPDIR] exit=1 out=/bin/sh: cannot create temp file for here document: Operation not permitted 

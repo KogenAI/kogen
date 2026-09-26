@@ -1,10 +1,476 @@
+Code.require_file("../support/compiled_fixture.exs", __DIR__)
+
 defmodule Kogen.HarnessRoleTest do
   use Kogen.IsolatedCase, async: true
 
+  alias Kogen.Build.{Workspace, WriteBoundary}
+  alias Kogen.Codex.State
   alias Kogen.Harness.Claude
   alias Mix.Tasks.Kogen.Expert
 
   @moduletag timeout: 120_000
+
+  @hybrid_config """
+  default_route: hybrid
+  routes:
+    hybrid:
+      shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
+      developer: {harness: claude, model: claude-opus-5-5, effort: medium}
+      reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
+      expert:    {harness: codex, model: gpt-6-sol, effort: high}
+      helpers:
+        claude:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+        codex:
+          scout:  {model: gpt-6-luna, effort: low}
+          worker: {model: gpt-6-luna, effort: high}
+  outer_resumptions: 2
+  verification_retries: 2
+  """
+
+  # Claude Code speaks `-p` stream-json and Codex speaks `exec` JSONL; one
+  # offline executable answers either protocol and logs argv and role env.
+  @dual_protocol """
+  #!/bin/sh
+  printf 'argv:' >> "$DISPATCH_LOG"; for a in "$@"; do printf ' %s' "$a" >> "$DISPATCH_LOG"; done
+  printf '\\nenv: KOGEN_ROLE=%s KOGEN_EXPERT=%s KOGEN_VERIFICATION_CONTEXT=%s\\n' "${KOGEN_ROLE:-}" "${KOGEN_EXPERT:-unset}" "${KOGEN_VERIFICATION_CONTEXT:-unset}" >> "$DISPATCH_LOG"
+  if [ "${1:-}" = auth ]; then
+    printf '%s\\n' '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}'
+    exit 0
+  fi
+  cat > /dev/null
+  protocol=
+  for a in "$@"; do
+    case "$a" in -p|exec) protocol="$a"; break ;; esac
+  done
+  if [ "$protocol" = exec ]; then
+    printf '%s\\n' '{"type":"thread.started","thread_id":"codex-expert"}' '{"type":"item.completed","item":{"type":"agent_message","text":"codex expert answer"}}' '{"type":"turn.completed"}'
+    exit 0
+  fi
+  sid=; model=; prev=
+  for a in "$@"; do
+    [ "$prev" = --session-id ] && sid="$a"
+    [ "$prev" = --model ] && model="$a"
+    prev="$a"
+  done
+  printf '{"type":"system","subtype":"init","session_id":"%s"}\\n' "$sid"
+  printf '{"type":"assistant","session_id":"%s","message":{"model":"%s","content":[]}}\\n' "$sid" "${FAKE_ROOT_MODEL:-$model}"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"claude expert answer","session_id":"%s"}\\n' "$sid"
+  """
+
+  # `@dual_protocol` plus one line: when launched as the Expert, dump the full
+  # environment the process actually received to `$ENV_LOG`, so a test can
+  # assert `CLAUDE_CONFIG_DIR`/`CLAUDE_SECURESTORAGE_CONFIG_DIR`/`HOME`/`cwd`
+  # from the fake harness's own receipt rather than from launch arguments.
+  @expert_receipt_protocol """
+  #!/bin/sh
+  printf 'argv:' >> "$DISPATCH_LOG"; for a in "$@"; do printf ' %s' "$a" >> "$DISPATCH_LOG"; done
+  printf '\\n' >> "$DISPATCH_LOG"
+  if [ "${KOGEN_ROLE:-}" = expert ] && [ -n "${ENV_LOG:-}" ]; then
+    { echo "PWD=$(pwd -P)"; env; } > "$ENV_LOG"
+  fi
+  if [ "${1:-}" = auth ]; then
+    printf '%s\\n' '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}'
+    exit 0
+  fi
+  cat > /dev/null
+  protocol=
+  for a in "$@"; do
+    case "$a" in -p|exec) protocol="$a"; break ;; esac
+  done
+  if [ "$protocol" = exec ]; then
+    printf '%s\\n' '{"type":"thread.started","thread_id":"codex-expert"}' '{"type":"item.completed","item":{"type":"agent_message","text":"codex expert answer"}}' '{"type":"turn.completed"}'
+    exit 0
+  fi
+  sid=; model=; prev=
+  for a in "$@"; do
+    [ "$prev" = --session-id ] && sid="$a"
+    [ "$prev" = --model ] && model="$a"
+    prev="$a"
+  done
+  printf '{"type":"system","subtype":"init","session_id":"%s"}\\n' "$sid"
+  printf '{"type":"assistant","session_id":"%s","message":{"model":"%s","content":[]}}\\n' "$sid" "${FAKE_ROOT_MODEL:-$model}"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"claude expert answer","session_id":"%s"}\\n' "$sid"
+  """
+
+  # Scenario `per-build-harness-home`: inside a Build the frozen Expert
+  # assignment `Kogen.Harness.expert_environment/3` hands the caller role also
+  # carries the control root, the Candidate, the harness home, the Build's own
+  # binding for the Expert's harness (never re-resolved) and the write
+  # boundary, so `mix kogen.expert` launches bound and confined exactly as the
+  # rest of that Build. Outside a Build (`launch: nil`) none of those fields
+  # is present.
+  test "inside a Build the Expert assignment also carries control root, Candidate, harness home, binding and write boundary" do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-expert-assignment-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    config_path = Path.join(dir, "config.yaml")
+    File.write!(config_path, @hybrid_config)
+    {:ok, config} = Kogen.Intent.read_config(config_path)
+
+    codex_binding = %{
+      harness: "codex",
+      runtime: %{"executable" => "/managed/codex", "version" => "0.156.1"},
+      scope: %{name: :shared, path: "/scope/codex"}
+    }
+
+    launch = %{
+      control: "/control/root",
+      root: "/candidate/path",
+      harness_home: "/harness/home",
+      bindings: %{"codex" => codex_binding},
+      boundary: %{"sha256" => "abc123", "candidate" => "/candidate/path"}
+    }
+
+    [{"KOGEN_EXPERT", json}] = Kogen.Harness.expert_environment(config, :developer, launch)
+    assignment = Jason.decode!(json)
+
+    assert assignment["control_root"] == "/control/root"
+    assert assignment["candidate"] == "/candidate/path"
+    assert assignment["harness_home"] == "/harness/home"
+    assert assignment["binding"] == Kogen.Harness.binding_record(codex_binding)
+
+    assert assignment["write_boundary"] == %{
+             "sha256" => "abc123",
+             "candidate" => "/candidate/path"
+           }
+
+    [{"KOGEN_EXPERT", plain_json}] = Kogen.Harness.expert_environment(config, :developer)
+    plain = Jason.decode!(plain_json)
+    refute Map.has_key?(plain, "control_root")
+    refute Map.has_key?(plain, "candidate")
+    refute Map.has_key?(plain, "harness_home")
+    refute Map.has_key?(plain, "binding")
+    refute Map.has_key?(plain, "write_boundary")
+  end
+
+  # Scenario `per-build-harness-home` and `role-write-boundary`: `mix
+  # kogen.expert`, run by the Developer from the Candidate, refuses any other
+  # cwd, and otherwise launches the Expert with cwd the Candidate, the frozen
+  # binding (never re-resolved from the Candidate path) and its config dir
+  # under the harness home -- observed from the fake harness's own receipt of
+  # the process it actually ran in, not from launch arguments. Applying the
+  # write boundary here runs a real `sandbox-exec` self-test.
+  @tag :unconfined
+  test "mix kogen.expert launches on the Build's bound scope and harness home, and refuses a wrong cwd" do
+    candidate =
+      File.cwd!()
+      |> Kogen.CompiledFixture.create!("expert-candidate")
+      |> Workspace.canonical()
+
+    File.mkdir_p!(Path.join(candidate, "priv/kogen/prompts"))
+
+    File.cp!(
+      Path.join(File.cwd!(), "priv/kogen/prompts/expert.md"),
+      Path.join(candidate, "priv/kogen/prompts/expert.md")
+    )
+
+    dir =
+      Path.join(System.tmp_dir!(), "kogen-expert-build-#{System.unique_integer([:positive])}")
+
+    harness_home = Path.join(dir, "harness-home")
+    scope = Path.join(dir, "claude-scope")
+    control = Path.join(dir, "control")
+    tmp_dir = Path.join(dir, "tmp")
+
+    for d <- [harness_home, scope, control, tmp_dir], do: File.mkdir_p!(d)
+
+    on_exit(fn ->
+      File.rm_rf!(candidate)
+      File.rm_rf!(dir)
+    end)
+
+    executable = Path.join(dir, "provider")
+    File.write!(executable, @expert_receipt_protocol)
+    File.chmod!(executable, 0o755)
+
+    dispatch_log = Path.join(harness_home, "dispatch.log")
+    env_log = Path.join(harness_home, "expert-env.log")
+
+    binding = %{
+      "harness" => "claude",
+      "scope_name" => "shared",
+      "scope_path" => scope,
+      "runtime_version" => "test",
+      "runtime_executable" => executable
+    }
+
+    assignment = %{
+      "route" => "hybrid",
+      "caller" => "developer",
+      "harness" => "claude",
+      "model" => "claude-opus-5-5",
+      "effort" => "high",
+      "helpers" => %{
+        "scout" => %{"model" => "claude-sonnet-5", "effort" => "low"},
+        "worker" => %{"model" => "claude-sonnet-5", "effort" => "medium"}
+      },
+      "control_root" => control,
+      "candidate" => candidate,
+      "harness_home" => harness_home,
+      "binding" => binding,
+      "write_boundary" => %{
+        "sha256" => "placeholder",
+        "candidate" => candidate,
+        "harness_home" => harness_home,
+        "tmp_dir" => tmp_dir,
+        "control" => control
+      }
+    }
+
+    base_env = [
+      {"KOGEN_EXPERT", Jason.encode!(assignment)},
+      {"DISPATCH_LOG", dispatch_log},
+      {"ENV_LOG", env_log}
+    ]
+
+    {output, status} =
+      run_expert_task!(candidate, "Which lock order is safe?", base_env)
+
+    assert status == 0, output
+    assert File.exists?(env_log), "the Expert never ran: #{output}"
+    receipt = File.read!(env_log)
+
+    assert receipt =~ "PWD=#{candidate}"
+    assert receipt =~ "CLAUDE_CONFIG_DIR=#{Path.join(harness_home, "claude")}"
+    assert receipt =~ "CLAUDE_SECURESTORAGE_CONFIG_DIR=#{scope}"
+    assert receipt =~ "HOME=#{System.get_env("HOME")}"
+    assert receipt =~ "KOGEN_HARNESS_HOME=#{harness_home}"
+
+    # A wrong cwd is refused before any launch: the candidate the assignment
+    # names does not match this process's own cwd.
+    wrong_assignment = %{assignment | "candidate" => Path.join(dir, "elsewhere")}
+    File.rm!(env_log)
+
+    {wrong_output, wrong_status} =
+      run_expert_task!(candidate, "Which lock order is safe?", [
+        {"KOGEN_EXPERT", Jason.encode!(wrong_assignment)},
+        {"DISPATCH_LOG", dispatch_log}
+      ])
+
+    assert wrong_status != 0
+    assert wrong_output =~ "run it from the Build's Candidate"
+    refute File.exists?(env_log)
+  end
+
+  # `Kogen.CompiledFixture.mix_task!/3` plus one `-e`: a documented core
+  # defect (see this packet's report) makes a *completely fresh* `mix
+  # kogen.expert` process -- exactly how the real task always starts, since
+  # native Claude Code/Codex invoke it as a brand-new OS process -- crash in
+  # `Kogen.Harness.binding_from_record/1` (`String.to_existing_atom/1` on a
+  # scope name no code path has interned yet). Pre-loading the two modules
+  # that define `:shared`/`:project` works around it here so the rest of this
+  # test's real assertions (bound scope, harness home, cwd refusal) can run;
+  # it does not touch the behavior under test.
+  defp run_expert_task!(fixture, question, env, prefix \\ []) do
+    env = Kogen.CompiledFixture.offline_jev_env(env) ++ env
+
+    ebins =
+      :code.get_path()
+      |> Enum.map(&List.to_string/1)
+      |> Enum.filter(
+        &(Path.type(&1) == :absolute and Path.basename(&1) == "ebin" and File.dir?(&1))
+      )
+      |> Enum.sort()
+
+    preload = "Code.ensure_loaded!(Kogen.ClaudeCode); Code.ensure_loaded!(Kogen.Codex.State)"
+
+    [cmd | args] =
+      prefix ++
+        ["elixir", "--erl", "+S 2:2 +SDcpu 1 +SDio 1"] ++
+        Enum.flat_map(ebins, &["-pa", &1]) ++
+        ["-e", preload, "-S", "mix", "kogen.expert", question]
+
+    System.cmd(
+      cmd,
+      args,
+      cd: fixture,
+      env: [{"MIX_BUILD_PATH", Path.join(fixture, "_build")} | env],
+      stderr_to_stdout: true
+    )
+  end
+
+  # Scenario `codex-roles-inside-boundary`: the Codex Expert `mix kogen.expert`
+  # starts from the Developer's tree runs inside the Developer's own profile
+  # (`inherited`), never re-applies one, takes no Codex lease (the Build
+  # controller already holds it) and writes nothing under Kogen's Codex state
+  # root -- no `active/` lease and no `operations/` dir there -- since its
+  # operation root lives under the harness home. This exercises the managed
+  # open path (`KOGEN_HARNESS` skips leases entirely) inside a real, already
+  # -applied outer `sandbox-exec` profile standing in for the enclosing Build.
+  #
+  # KNOWN CORE DEFECT (reported, not fixed here -- see this packet's report):
+  # `Kogen.Codex.close/1` (lib/kogen/codex.ex:157) unconditionally matches
+  # `%{lease: lease}` and calls `File.rm(lease)`; when a launch sets
+  # `lease: false` (every cross-harness Codex Expert consultation,
+  # lib/mix/tasks/kogen.expert.ex:150), `lease` is `nil` and `File.rm(nil)`
+  # raises `FunctionClauseError` in `IO.chardata_to_string/1` from inside
+  # `Mix.Tasks.Kogen.Expert.launch/4`'s `after` clause
+  # (lib/mix/tasks/kogen.expert.ex:246), right after a successful answer --
+  # so this test currently fails at `assert status == 0`. Fix proposal: add
+  # `def close(%{lease: nil}), do: :ok` before the existing clause.
+  @tag :unconfined
+  test "the Codex Expert's managed launch runs inherited inside the enclosing profile and touches no Codex state root" do
+    source = File.cwd!()
+
+    candidate =
+      source
+      |> Kogen.CompiledFixture.create!("expert-codex-candidate")
+      |> Workspace.canonical()
+
+    File.mkdir_p!(Path.join(candidate, "priv/kogen/prompts"))
+
+    File.cp!(
+      Path.join(source, "priv/kogen/prompts/expert.md"),
+      Path.join(candidate, "priv/kogen/prompts/expert.md")
+    )
+
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-expert-codex-build-#{System.unique_integer([:positive])}"
+      )
+
+    codex_root = Path.join(dir, "codex-root")
+    harness_home = Path.join(dir, "harness-home")
+    control = Path.join(dir, "control")
+    tmp_dir = Path.join(dir, "tmp")
+    for d <- [codex_root, harness_home, control, tmp_dir], do: File.mkdir_p!(d)
+
+    on_exit(fn ->
+      File.rm_rf!(candidate)
+      File.rm_rf!(dir)
+    end)
+
+    {install_output, install_status} =
+      System.cmd(
+        "python3",
+        [
+          Path.join(source, "test/support/managed_codex_fixture.py"),
+          codex_root,
+          Path.join(source, "priv/kogen/codex/install.py")
+        ],
+        stderr_to_stdout: true
+      )
+
+    assert install_status == 0, install_output
+    trace_path = Path.join(harness_home, "codex-trace.jsonl")
+
+    scope = Path.join([codex_root, "accounts", "shared"])
+    State.ensure_scope!(scope)
+    File.write!(Path.join(scope, "auth.json"), "shared-account")
+
+    # Scenario `codex-roles-inside-boundary`: the scope is pre-seeded (here,
+    # by one unconfined readiness probe, exactly like the real Build
+    # controller's own binding/readiness call before any role launches)
+    # with its deterministic bookkeeping files (`environments.toml`,
+    # `agents/kogen_boundary.toml`) *before* the boundary is applied, because
+    # those exact names are in the boundary's denied set: a role running
+    # inside the boundary must never create or change them.
+    with_env([{"KOGEN_CODEX_ROOT", codex_root}, {"KOGEN_TEST_NATIVE_TRACE", trace_path}], fn ->
+      System.delete_env("KOGEN_HARNESS")
+      assert {:ok, priming} = Kogen.Codex.open(%{harness: "codex"}, candidate)
+      Kogen.Codex.close(priming)
+    end)
+
+    assert File.regular?(Path.join(scope, "environments.toml"))
+
+    active_before = Path.wildcard(Path.join([codex_root, "active", "*"]))
+    operations_before = Path.wildcard(Path.join([codex_root, "operations", "*"]))
+
+    # The enclosing Build's own boundary: rendered and applied for real, then
+    # wrapped around the whole `mix kogen.expert` subprocess, standing in for
+    # the Developer's already-confined process tree. Scenario
+    # `codex-roles-inside-boundary`: the Build-wide profile also grants the
+    # Codex scope, so the Expert's own login/environment bookkeeping there
+    # (never its operation root, which lives under the harness home) succeeds.
+    assert {:ok, enclosing} =
+             WriteBoundary.prepare(%{
+               candidate: candidate,
+               harness_home: harness_home,
+               tmp_dir: tmp_dir,
+               control: control,
+               codex_scope: scope
+             })
+
+    codex_binding =
+      with_env([{"KOGEN_CODEX_ROOT", codex_root}, {"KOGEN_TEST_NATIVE_TRACE", trace_path}], fn ->
+        System.delete_env("KOGEN_HARNESS")
+        Kogen.Codex.bind(candidate)
+      end)
+
+    assert {:ok, binding} = codex_binding
+    binding_record = Kogen.Harness.binding_record(binding)
+
+    assignment = %{
+      "route" => "hybrid",
+      "caller" => "developer",
+      "harness" => "codex",
+      "model" => "gpt-6-sol",
+      "effort" => "high",
+      "helpers" => %{
+        "scout" => %{"model" => "gpt-6-luna", "effort" => "low"},
+        "worker" => %{"model" => "gpt-6-luna", "effort" => "high"}
+      },
+      "control_root" => control,
+      "candidate" => candidate,
+      "harness_home" => harness_home,
+      "binding" => binding_record,
+      "write_boundary" => %{
+        "sha256" => "placeholder",
+        "candidate" => candidate,
+        "harness_home" => harness_home,
+        "tmp_dir" => tmp_dir,
+        "control" => control
+      }
+    }
+
+    env = [
+      {"KOGEN_EXPERT", Jason.encode!(assignment)},
+      {"KOGEN_CODEX_ROOT", codex_root},
+      {"KOGEN_TEST_NATIVE_TRACE", trace_path},
+      {WriteBoundary.marker(), enclosing.sha256}
+    ]
+
+    prefix = WriteBoundary.prefix(enclosing)
+
+    {output, status} =
+      run_expert_task!(candidate, "Which lock order is safe?", env, prefix)
+
+    assert status == 0, output
+
+    launches =
+      harness_home
+      |> Path.join("raw-log/expert-launches.jsonl")
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&Jason.decode!/1)
+
+    assert [%{"role" => "expert", "harness" => "codex", "boundary" => "inherited"}] = launches
+
+    assert Path.wildcard(Path.join([codex_root, "active", "*"])) == active_before
+    assert Path.wildcard(Path.join([codex_root, "operations", "*"])) == operations_before
+  end
+
+  defp with_env(env, fun) do
+    previous = Enum.map(env, fn {name, _value} -> {name, System.get_env(name)} end)
+    Enum.each(env, fn {name, value} -> System.put_env(name, value) end)
+
+    try do
+      fun.()
+    after
+      Enum.each(previous, fn
+        {name, nil} -> System.delete_env(name)
+        {name, value} -> System.put_env(name, value)
+      end)
+    end
+  end
 
   test "every Codex launch overrides a hostile inherited role" do
     dir = Path.join(System.tmp_dir!(), "kogen roles-#{System.unique_integer([:positive])}")
@@ -110,55 +576,6 @@ defmodule Kogen.HarnessRoleTest do
     assert Enum.take(roles, 3) == ["developer", "developer", "reviewer"]
     assert Enum.count(roles, &(&1 == "shaper")) == 12
   end
-
-  @hybrid_config """
-  default_route: hybrid
-  routes:
-    hybrid:
-      shaping:   {harness: claude, model: claude-opus-5-5, effort: medium}
-      developer: {harness: claude, model: claude-opus-5-5, effort: medium}
-      reviewer:  {harness: codex, model: gpt-6-sol, effort: high}
-      expert:    {harness: codex, model: gpt-6-sol, effort: high}
-      helpers:
-        claude:
-          scout:  {model: claude-sonnet-5, effort: low}
-          worker: {model: claude-sonnet-5, effort: medium}
-        codex:
-          scout:  {model: gpt-6-luna, effort: low}
-          worker: {model: gpt-6-luna, effort: high}
-  outer_resumptions: 2
-  verification_retries: 2
-  """
-
-  # Claude Code speaks `-p` stream-json and Codex speaks `exec` JSONL; one
-  # offline executable answers either protocol and logs argv and role env.
-  @dual_protocol """
-  #!/bin/sh
-  printf 'argv:' >> "$DISPATCH_LOG"; for a in "$@"; do printf ' %s' "$a" >> "$DISPATCH_LOG"; done
-  printf '\\nenv: KOGEN_ROLE=%s KOGEN_EXPERT=%s KOGEN_VERIFICATION_CONTEXT=%s\\n' "${KOGEN_ROLE:-}" "${KOGEN_EXPERT:-unset}" "${KOGEN_VERIFICATION_CONTEXT:-unset}" >> "$DISPATCH_LOG"
-  if [ "${1:-}" = auth ]; then
-    printf '%s\\n' '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}'
-    exit 0
-  fi
-  cat > /dev/null
-  protocol=
-  for a in "$@"; do
-    case "$a" in -p|exec) protocol="$a"; break ;; esac
-  done
-  if [ "$protocol" = exec ]; then
-    printf '%s\\n' '{"type":"thread.started","thread_id":"codex-expert"}' '{"type":"item.completed","item":{"type":"agent_message","text":"codex expert answer"}}' '{"type":"turn.completed"}'
-    exit 0
-  fi
-  sid=; model=; prev=
-  for a in "$@"; do
-    [ "$prev" = --session-id ] && sid="$a"
-    [ "$prev" = --model ] && model="$a"
-    prev="$a"
-  done
-  printf '{"type":"system","subtype":"init","session_id":"%s"}\\n' "$sid"
-  printf '{"type":"assistant","session_id":"%s","message":{"model":"%s","content":[]}}\\n' "$sid" "${FAKE_ROOT_MODEL:-$model}"
-  printf '{"type":"result","subtype":"success","is_error":false,"result":"claude expert answer","session_id":"%s"}\\n' "$sid"
-  """
 
   test "a hybrid route launches each role only through its assigned harness and profile" do
     dir = Path.join(System.tmp_dir!(), "kogen-hybrid-#{System.unique_integer([:positive])}")

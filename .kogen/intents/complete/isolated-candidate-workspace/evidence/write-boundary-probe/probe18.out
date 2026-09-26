@@ -1,0 +1,16 @@
+[rollout-write] exit=0 
+[history-append] exit=0 
+[config-toml-write] exit=0 
+[auth-json-refresh] exit=0 
+[hooks-json-create] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/hooks.json: Operation not permitted 
+[plugins-dir-create] exit=1 out=mkdir: /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/plugins: Operation not permitted 
+[rules-dir-create] exit=1 out=mkdir: /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/rules: Operation not permitted 
+[config-d-create] exit=1 out=mkdir: /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/config.d: Operation not permitted 
+[agents-md-create] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/AGENTS.md: Operation not permitted 
+[env-toml-overwrite] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/environments.toml: Operation not permitted 
+[env-toml-rename-away] exit=1 out=mv: rename /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/environments.toml to /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/en
+[agents-def-overwrite] exit=1 out=sh: /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/agents/kogen_boundary.toml: Operation not permitted 
+[agents-dir-rename] exit=1 out=mv: rename /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/agents to /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/agents.bak: O
+[owned-marker-delete] exit=1 out=rm: /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/.kogen-owned: Operation not permitted 
+[hooks-via-rename] exit=1 out=mv: rename /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/h.tmp to /private/tmp/claude-501/kogen-prep5b/probe/p18/scope/hooks.json: Op
+[scope after] . ./.kogen-owned ./agents ./agents/kogen_boundary.toml ./auth.json ./config.toml ./environments.toml ./h.tmp ./history.jsonl ./sessions ./sessions/rollout.jsonl 

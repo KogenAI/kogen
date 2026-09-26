@@ -1,0 +1,16 @@
+(version 1)
+;; Kogen role write boundary, Claude Code role (probe rendering of the design).
+(allow default)
+(deny file-write*)
+(allow file-write*
+  (subpath (param "CANDIDATE"))
+  (subpath (param "HARNESS_HOME"))
+  (subpath (param "BUILD_TMP"))
+  (subpath (param "RETAINED_EVIDENCE"))
+  (subpath (string-append (param "CLAUDE_SCOPE") "/.oauth_refresh.lock"))
+  (literal (param "LOGIN_KEYCHAIN"))
+  (prefix (string-append (param "LOGIN_KEYCHAIN") ".sb-"))
+  (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (literal "/dev/ptmx")
+  (literal "/dev/dtracehelper")
+  (regex #"^/dev/fd/[0-9]+$") (regex #"^/dev/ttys[0-9]+$"))
+(allow process-exec (with no-sandbox) (literal "/bin/ps"))

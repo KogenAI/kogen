@@ -32,7 +32,7 @@ defmodule Kogen.SupersededObjectionTest do
                edits: %{1 => "printf 'changed\\n' > dummy.txt"}
              )
 
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
     [attempt] = Fixture.record!(dir)["attempts"]
     assert attempt["outcome"] == "settled"
     refute Map.has_key?(attempt, "cannot_comply")
@@ -53,7 +53,9 @@ defmodule Kogen.SupersededObjectionTest do
     assert superseded["candidate_id"] == attempt["candidate_id"]
 
     # The Reviewer's packet carries it as a labelled advisory item.
-    packet = Jason.decode!(File.read!(Path.join(dir, ".kogen/runtime/reviewer-packet-1.json")))
+    packet =
+      Jason.decode!(File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-packet-1.json")))
+
     assert packet["superseded_objection"]["label"] =~ "advisory"
     assert packet["superseded_objection"]["label"] =~ "Judge every scenario yourself"
 
@@ -71,7 +73,7 @@ defmodule Kogen.SupersededObjectionTest do
     assert String.starts_with?(reason, @prefix)
     assert reason =~ "scenario `s-change` (Jev confidence 0.95)"
     assert reason =~ "Developer's notes: \"#{@objection}\""
-    refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+    refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
     [attempt] = Fixture.record!(dir)["attempts"]
     assert attempt["outcome"] == "cannot_comply"
     refute Map.has_key?(attempt, "superseded_objection")
@@ -87,9 +89,9 @@ defmodule Kogen.SupersededObjectionTest do
     # Exhaustion stops the Build before Jev and Review, ahead of other routing.
     assert String.starts_with?(reason, "verification retries exhausted after cycle 3")
     refute reason =~ @prefix
-    refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+    refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
     refute File.exists?(Path.join(dir, ".kogen/runtime/fake-jev"))
-    assert File.read!(Path.join(dir, ".kogen/runtime/verification-resumes")) == "2"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "verification-resumes")) == "2"
     [attempt] = Fixture.record!(dir)["attempts"]
     assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ~w(failed failed failed)
     refute Map.has_key?(attempt, "outcome")
@@ -116,7 +118,7 @@ defmodule Kogen.SupersededObjectionTest do
              )
 
     assert String.starts_with?(reason, @prefix)
-    assert File.read!(Path.join(dir, ".kogen/runtime/reviews")) == "1"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
     [first, second] = Fixture.record!(dir)["attempts"]
     assert Enum.map(first["verification"]["cycles"], & &1["status"]) == ["failed", "passed"]
     assert Enum.map(second["verification"]["cycles"], & &1["status"]) == ["passed"]
@@ -137,7 +139,10 @@ defmodule Kogen.SupersededObjectionTest do
     [attempt] = Fixture.record!(dir)["attempts"]
     refute Map.has_key?(attempt, "superseded_objection")
     assert Fixture.reviewer_prompt!(dir, 1) =~ "possible objection (confidence 0.84)"
-    packet = Jason.decode!(File.read!(Path.join(dir, ".kogen/runtime/reviewer-packet-1.json")))
+
+    packet =
+      Jason.decode!(File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-packet-1.json")))
+
     assert packet["superseded_objection"] == nil
   end
 

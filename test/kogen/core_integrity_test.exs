@@ -15,6 +15,7 @@ defmodule Kogen.CoreIntegrityTest do
     ]
 
   alias Kogen.{Build, Check}
+  alias Kogen.Build.Workspace
 
   @slug "core-integrity-intent"
 
@@ -168,6 +169,7 @@ defmodule Kogen.CoreIntegrityTest do
 
     refute match?({:ok, _}, File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}")))
     assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
+    assert_retained!(fixture, reason, "review-failure")
   end
 
   defp run_scenario(:stale_verification_record) do
@@ -179,6 +181,7 @@ defmodule Kogen.CoreIntegrityTest do
     assert reason =~ "could not clear stale Verification Record"
     refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-harness-log"))
     refute File.exists?(Path.join(fixture, ".kogen/build.lock"))
+    assert_retained!(fixture, reason, "integrity")
   end
 
   defp run_scenario(:symlinked_approved_entry) do
@@ -203,9 +206,18 @@ defmodule Kogen.CoreIntegrityTest do
     assert reason =~ "Candidate changed paths outside Approved guards"
     assert reason =~ "tracking record:"
 
-    assert {:ok, stat} = File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
-    assert stat.type == :symlink
+    # The dangling `complete/<slug>` symlink was fabricated by the fake
+    # Developer inside its own Candidate cwd; control's reserved Complete
+    # path was never created, and its Approved package stays untouched.
+    refute match?({:ok, _}, File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}")))
     assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
+
+    assert_retained!(fixture, reason, "integrity")
+
+    candidate = Kogen.CandidateFixture.candidate(fixture)
+    worktree = candidate["worktree_path"]
+    assert {:ok, stat} = File.lstat(Path.join(worktree, ".kogen/intents/complete/#{@slug}"))
+    assert stat.type == :symlink
   end
 
   defp run_scenario(:malformed_reviewer_verdict) do
@@ -215,6 +227,7 @@ defmodule Kogen.CoreIntegrityTest do
     assert {:error, reason} = run_build_with_fixture_harness(fixture)
     assert reason =~ "Reviewer failure"
     assert_unpublished!(fixture, head_before)
+    assert_retained!(fixture, reason, "review-failure")
   end
 
   defp run_scenario(:reviewer_exits_nonzero) do
@@ -224,6 +237,7 @@ defmodule Kogen.CoreIntegrityTest do
     assert {:error, reason} = run_build_with_fixture_harness(fixture)
     assert reason =~ "Reviewer failure"
     assert_unpublished!(fixture, head_before)
+    assert_retained!(fixture, reason, "review-failure")
   end
 
   defp run_scenario(:empty_rework_findings) do
@@ -233,6 +247,7 @@ defmodule Kogen.CoreIntegrityTest do
     assert {:error, reason} = run_build_with_fixture_harness(fixture)
     assert reason =~ "Reviewer failure"
     assert_unpublished!(fixture, head_before)
+    assert_retained!(fixture, reason, "review-failure")
   end
 
   defp setup_fixture!(mode) do
@@ -302,6 +317,10 @@ defmodule Kogen.CoreIntegrityTest do
     File.write!(harness, fake_harness(mode))
     File.chmod!(harness, 0o755)
 
+    # Build admission copies control deps/ into each Candidate.
+
+    File.mkdir_p!(Path.join(dir, "deps"))
+
     assert {_out, 0} = System.cmd("git", ["init", "-q", "-b", "main"], cd: dir)
     assert {_out, 0} = System.cmd("git", ["add", "-A"], cd: dir)
 
@@ -315,7 +334,7 @@ defmodule Kogen.CoreIntegrityTest do
     prior_harness = System.get_env("KOGEN_HARNESS")
     System.put_env("KOGEN_HARNESS", Path.join(fixture, "fake-codex"))
     on_exit(fn -> restore_env("KOGEN_HARNESS", prior_harness) end)
-    File.cd!(fixture, fn -> Build.run(@slug) end)
+    File.cd!(fixture, fn -> Build.run(@slug, nil, fixture) end)
   end
 
   defp fake_harness(:same_reviewer_session), do: fake_harness_body("", "dev-session-1")
@@ -399,6 +418,32 @@ defmodule Kogen.CoreIntegrityTest do
     assert git!(fixture, ["rev-parse", "HEAD"]) == head_before
     assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
     refute match?({:ok, _}, File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}")))
+  end
+
+  # A stop keeps the Candidate worktree, branch and harness home exactly as
+  # they are: control (its checkout and Approved package) is unchanged, the
+  # tracking record's `candidate` block is `retained`, the stop message names
+  # the slug, build id, worktree, branch and harness home next to the
+  # tracking record path plus the removal command, and the Candidate's own
+  # owner record independently agrees on `stopped: <category>`.
+  defp assert_retained!(fixture, reason, expected_category) do
+    candidate = Kogen.CandidateFixture.candidate(fixture)
+    assert candidate["disposition"] == "retained"
+
+    worktree = candidate["worktree_path"]
+    assert File.dir?(worktree)
+    assert File.dir?(candidate["harness_home"])
+    assert worktree in Kogen.CandidateFixture.registered_worktrees(fixture)
+
+    owner_record = candidate["owner_record"] |> File.read!() |> Jason.decode!()
+    build_id = owner_record["build_id"]
+    assert owner_record["status"] == "stopped: #{expected_category}"
+    assert owner_record["control_root"] == Workspace.canonical(fixture)
+
+    assert reason =~
+             "Candidate kept: slug #{@slug}, build id #{build_id}, worktree #{worktree}, " <>
+               "branch #{candidate["branch"]}, harness home #{candidate["harness_home"]}; " <>
+               "remove it with `mix kogen.candidates.remove #{build_id}`"
   end
 
   defp git!(dir, args) do
