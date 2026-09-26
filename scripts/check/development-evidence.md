@@ -1,7 +1,8 @@
 # Offline check development evidence
 
-This is a focused development receipt, not a Kogen Verification Record. The Stop
-hook remains the owner of the complete gate; its log is the timing authority.
+This is a focused development receipt, not a Kogen Verification Record. The
+Build controller owns the complete gate; its retained target logs are the timing
+authority.
 
 ## Current integration receipt
 

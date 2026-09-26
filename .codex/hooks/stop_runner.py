@@ -28,27 +28,48 @@ def append_locked(path, value):
     with open(path, "a", encoding="utf-8") as stream:
         fcntl.flock(stream.fileno(), fcntl.LOCK_EX); stream.write(value); stream.flush(); os.fsync(stream.fileno()); fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
+def read_context_object(value):
+    """Best-effort parse of the raw KOGEN_VERIFICATION_CONTEXT value.
+
+    Returns the decoded object, or None if it can't be read as a JSON object
+    at all (missing/unreadable file, invalid JSON, or not an object).
+    """
+    if not value:
+        return None
+    try:
+        path = Path(value)
+        obj = json.loads(path.read_text() if value.startswith("/") and path.is_file() else value)
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+def looks_v1_unified(value):
+    obj = read_context_object(value)
+    return isinstance(obj, dict) and obj.get("schema_version") == 1 and obj.get("mode") == "unified"
+
 def load_context():
-    for key, legacy in (("KOGEN_VERIFICATION_CONTEXT", False), ("KOGEN_TRACKING_CONTEXT", True)):
-        value = os.environ.get(key)
-        if not value: continue
-        try:
-            path = Path(value)
-            obj = json.loads(path.read_text() if value.startswith("/") and path.is_file() else value)
-            if not isinstance(obj, dict): raise ValueError("context is not an object")
-            if not legacy and obj.get("schema_version") != 1: raise ValueError("unsupported schema_version")
-            if not legacy and obj.get("mode") != "unified": raise ValueError("invalid unified mode")
-            if not legacy and any(key not in obj for key in ("attempt_token", "outer_attempt", "project_root", "verification_retries", "state_path", "history_path")):
-                raise ValueError("unified context is missing required fields")
-            targets = obj.get("targets", obj.get("verification_targets", ["check"]))
-            if not isinstance(targets, list) or any(not isinstance(x, str) or not x.strip() for x in targets): raise ValueError("invalid targets")
-            if not legacy and Path(obj.get("project_root", "")).resolve() != ROOT.resolve():
-                raise ValueError("project_root does not match the active repository")
-            obj["_unified"] = not legacy
-            return obj, None
-        except Exception as exc:
-            return {}, f"invalid {key}: {exc}"
-    return {"_unified": False}, None
+    """Validate a context already known to look like a v1 unified context.
+
+    Only called once a v1-shaped context has been detected. Any remaining
+    defect (missing fields, invalid targets, a project_root mismatch) is an
+    integrity failure reported through today's `continue:false` stopReason.
+    """
+    value = os.environ.get("KOGEN_VERIFICATION_CONTEXT")
+    try:
+        obj = read_context_object(value)
+        if not isinstance(obj, dict): raise ValueError("context is not an object")
+        if obj.get("schema_version") != 1: raise ValueError("unsupported schema_version")
+        if obj.get("mode") != "unified": raise ValueError("invalid unified mode")
+        if any(key not in obj for key in ("attempt_token", "outer_attempt", "project_root", "verification_retries", "state_path", "history_path")):
+            raise ValueError("unified context is missing required fields")
+        targets = obj.get("targets", obj.get("verification_targets", ["check"]))
+        if not isinstance(targets, list) or any(not isinstance(x, str) or not x.strip() for x in targets): raise ValueError("invalid targets")
+        if Path(obj.get("project_root", "")).resolve() != ROOT.resolve():
+            raise ValueError("project_root does not match the active repository")
+        obj["_unified"] = True
+        return obj, None
+    except Exception as exc:
+        return {}, f"invalid KOGEN_VERIFICATION_CONTEXT: {exc}"
 
 def candidate():
     listing = subprocess.run(["git", "ls-files", "-v"], cwd=ROOT, text=True, capture_output=True)
@@ -144,7 +165,7 @@ def main():
     reason = context_error
     expected_session = ctx.get("session_id", ctx.get("developer_session_id"))
     if not reason and not session: reason = "Kogen Stop Check did not receive the Developer session id."
-    if not reason and ctx.get("_unified") and not token: reason = "versioned verification context is missing attempt binding."
+    if not reason and not token: reason = "versioned verification context is missing attempt binding."
     if not reason and expected_session and expected_session != session: reason = "Developer session does not match the supplied verification context."
     if not session:
         print(json.dumps({"decision": "block", "reason": reason}, separators=(",", ":")))
@@ -156,7 +177,7 @@ def main():
     targets = list(dict.fromkeys(ctx.get("targets", ctx.get("verification_targets", ["check"]))))
     if "check" not in targets: targets.insert(0, "check")
     prior = {"cycles": [], "failures_since_pass": 0}
-    if not reason and ctx.get("_unified"):
+    if not reason:
         try:
             context_bytes = Path(os.environ["KOGEN_VERIFICATION_CONTEXT"]).read_bytes()
             state_path, history_path = Path(ctx["state_path"]), Path(ctx["history_path"])
@@ -168,12 +189,9 @@ def main():
             print(json.dumps({"continue":False,"stopReason":f"verification already terminal: {prior['terminal_state']}"}, separators=(",", ":")))
             return
     cid, candidate_error = candidate()
-    if candidate_error and ctx.get("_unified"):
+    if candidate_error:
         print(json.dumps({"continue":False,"stopReason":f"Candidate identity integrity failure: {candidate_error}"}, separators=(",", ":")))
         return
-    reason = reason or candidate_error
-    if candidate_error:
-        status, code = "failed", 1
     if not reason:
         for target in targets:
             if not re.fullmatch(r"[a-z][a-z0-9_-]*", target): reason, status, code = f"invalid target: {target}", "failed", 1; break
@@ -190,12 +208,6 @@ def main():
                 reason, status, code = current_error or "Candidate mutated during verification", "failed", 1
                 item["status"], item["exit_code"], item["output"] = "failed", 1, item["output"] + "\n" + reason + "\n"
                 break
-    if not ctx.get("_unified"):
-        result = {"candidate": cid, "status": status, "target": "check", "exit_code": 0 if status == "passed" else 1, "session_id": session, "finished_at": now(), "reason": (reason or "\n".join(x["output"] for x in outputs)).rstrip("\n")}
-        line = json.dumps(result, separators=(",", ":")) + "\n"; atomic(RECORD, line); append_locked(HISTORY, line); atomic(LOG, result["reason"] + "\n")
-        if status == "passed": print('{"continue":true}')
-        else: print(json.dumps({"decision":"block", "reason":"Kogen Stop Check failed. Read .kogen/runtime/stop-check.log, fix the Candidate, and finish only after this hook passes."}, separators=(",", ":")))
-        return
     sequence = len(prior.get("cycles", [])) + 1; before = prior.get("failures_since_pass", 0); after = 0 if status == "passed" else before + 1
     receipts = [{"target": x["target"], "status": "passed" if x["exit_code"] == 0 else "failed", "exit_code": x["exit_code"], "output": x["output"], "finished_at": x["finished_at"], "candidate_id": cid, "developer_session_id": session, "attempt_token": token, "cycle_sequence": sequence, **({"target_evidence": x["target_evidence"]} if x.get("target_evidence") else {})} for x in outputs]
     cycle = {"sequence": sequence, "attempt_token": token, "outer_attempt": ctx["outer_attempt"], "developer_session_id": session, "candidate_id": cid, "failures_before": before, "failures_after": after, "status": status, "finished_at": now(), "receipts": receipts}
@@ -209,7 +221,15 @@ def main():
     else: print('{"continue":true}')
 
 if __name__ == "__main__":
-    RUNTIME.mkdir(parents=True, exist_ok=True)
-    with open(RUNTIME / "verification-hook.lock", "a", encoding="utf-8") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        main()
+    # Bootstrap-only: this Stop runner settles only an older controller's v1
+    # unified KOGEN_VERIFICATION_CONTEXT. Without one, it must run no Make
+    # target and write nothing at all -- not even `.kogen/runtime` itself -- so
+    # a Build under the new controller (which never supplies this context) sees
+    # an inert hook.
+    if not looks_v1_unified(os.environ.get("KOGEN_VERIFICATION_CONTEXT")):
+        print('{"continue":true}')
+    else:
+        RUNTIME.mkdir(parents=True, exist_ok=True)
+        with open(RUNTIME / "verification-hook.lock", "a", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            main()

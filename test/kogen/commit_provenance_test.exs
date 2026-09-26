@@ -60,8 +60,10 @@ defmodule Kogen.CommitProvenanceTest do
     assert first_evidence =~ "Developer session id:"
     assert first_evidence =~ "Reviewer session id:"
     assert first_evidence =~ "Outer resumptions used:"
-    assert first_evidence =~ "## Check"
-    assert first_evidence =~ "## Declared targets"
+
+    assert first_evidence =~
+             "## Verification receipts (controller-owned, bound to this Candidate)"
+
     assert first_evidence =~ "## Reviewer Verdict"
 
     write_intent(dest, "intent-two", "Intent two")

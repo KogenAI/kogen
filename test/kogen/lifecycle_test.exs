@@ -101,12 +101,18 @@ defmodule Kogen.LifecycleTest do
       |> File.read!()
       |> String.split("\n", trim: true)
 
-    assert length(log_lines) == 4
+    # The initial attempt's first controller verification cycle fails at
+    # `check` while the ignored `kogen_fake_break` marker exists; the
+    # controller resumes the exact Developer session, the marker is removed,
+    # and the second cycle passes both `check` and `target_evidence`. A
+    # further Reviewer-driven outer resumption then produces a controller
+    # pass on the first cycle of a fresh verification context.
+    assert length(log_lines) == 5
     # Only the two Reviewers own an output schema; Developer turns carry none.
     assert Enum.count(log_lines, &String.contains?(&1, "--output-schema")) == 2
     assert Enum.count(log_lines, &String.contains?(&1, "--output-last-message")) == 2
     assert File.read!(Path.join(dest, ".kogen/runtime/fake-reviewer-calls")) == "2\n"
-    assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 1
+    assert Enum.count(log_lines, &String.contains?(&1, "exec resume")) == 2
 
     assert Enum.any?(log_lines, fn line ->
              String.contains?(line, "exec resume ") and
@@ -114,7 +120,7 @@ defmodule Kogen.LifecycleTest do
            end)
 
     resume_lines = Enum.filter(log_lines, &String.contains?(&1, "exec resume "))
-    assert length(resume_lines) == 1
+    assert length(resume_lines) == 2
     assert Enum.all?(resume_lines, &String.ends_with?(&1, " dev-session-1 -"))
 
     resume_feedback = File.read!(Path.join(dest, ".kogen/runtime/developer-resume-prompts"))
@@ -179,18 +185,11 @@ defmodule Kogen.LifecycleTest do
       assert context["tracking_path"] == Path.relative_to(tracking_path, dest)
     end
 
-    invalid_receipt =
-      initial_attempt["verification"]["cycles"]
-      |> Enum.flat_map(& &1["receipts"])
-      |> Enum.find(&(&1["status"] == "failed" and &1["target"] == "target_evidence"))
-
-    assert invalid_receipt["output"] =~ "duplicate evidence manifest frames"
-
     for {attempt, expected} <- [
           {initial_attempt, "behavior still violates scenario\n"},
           {accepted_attempt, "reviewed behavior\n"}
         ] do
-      receipt = List.first(attempt["targets"])
+      receipt = Enum.find(attempt["receipts"], &(&1["target"] == "target_evidence"))
       assert receipt["target"] == "target_evidence"
       refute receipt["output"] =~ "PRIVATE_TARGET_SENTINEL"
       retained = receipt["target_evidence"]
@@ -204,16 +203,16 @@ defmodule Kogen.LifecycleTest do
 
     assert Map.has_key?(
              initial_attempt["reviewer_reference_snapshots"],
-             ".kogen/runtime/target-evidence/2-initial/semantic.txt"
+             ".kogen/runtime/target-evidence/1-initial/semantic.txt"
            )
 
     accepted_refs = accepted_attempt["reviewer_reference_snapshots"]
-    assert Map.has_key?(accepted_refs, ".kogen/runtime/target-evidence/3-reviewed/semantic.txt")
-    refute Map.has_key?(accepted_refs, ".kogen/runtime/target-evidence/3-reviewed/uncited.bin")
+    assert Map.has_key?(accepted_refs, ".kogen/runtime/target-evidence/2-reviewed/semantic.txt")
+    refute Map.has_key?(accepted_refs, ".kogen/runtime/target-evidence/2-reviewed/uncited.bin")
 
     uncited =
-      accepted_attempt["targets"]
-      |> List.first()
+      accepted_attempt["receipts"]
+      |> Enum.find(&(&1["target"] == "target_evidence"))
       |> get_in(["target_evidence", "required_evidence"])
       |> Enum.find(&String.ends_with?(&1["path"], "uncited.bin"))
 
@@ -225,14 +224,19 @@ defmodule Kogen.LifecycleTest do
     refute resume_feedback =~ "settled Check failure:",
            "a failed Check settlement would consume a second outer resumption"
 
+    # Launch order: fresh Developer, one controller verification resume of
+    # that same session (fixing `check`), the rework Reviewer, one outer
+    # resume of the same Developer session, and the accepting Reviewer.
     assert Enum.at(log_lines, 0) =~ "--model fixture-developer"
     assert Enum.at(log_lines, 0) =~ "model_reasoning_effort=\"developer-effort\""
-    assert Enum.at(log_lines, 1) =~ "--model fixture-reviewer"
-    assert Enum.at(log_lines, 1) =~ "model_reasoning_effort=\"reviewer-effort\""
-    assert Enum.at(log_lines, 2) =~ "--model fixture-developer"
-    assert Enum.at(log_lines, 2) =~ "model_reasoning_effort=\"developer-effort\""
-    assert Enum.at(log_lines, 3) =~ "--model fixture-reviewer"
-    assert Enum.at(log_lines, 3) =~ "model_reasoning_effort=\"reviewer-effort\""
+    assert Enum.at(log_lines, 1) =~ "--model fixture-developer"
+    assert Enum.at(log_lines, 1) =~ "model_reasoning_effort=\"developer-effort\""
+    assert Enum.at(log_lines, 2) =~ "--model fixture-reviewer"
+    assert Enum.at(log_lines, 2) =~ "model_reasoning_effort=\"reviewer-effort\""
+    assert Enum.at(log_lines, 3) =~ "--model fixture-developer"
+    assert Enum.at(log_lines, 3) =~ "model_reasoning_effort=\"developer-effort\""
+    assert Enum.at(log_lines, 4) =~ "--model fixture-reviewer"
+    assert Enum.at(log_lines, 4) =~ "model_reasoning_effort=\"reviewer-effort\""
 
     assert_delegation_prompt!(
       File.read!(Path.join(dest, ".kogen/runtime/developer-launch-prompt")),
@@ -262,7 +266,7 @@ defmodule Kogen.LifecycleTest do
 
     initial_history =
       Enum.find(check_histories, fn records ->
-        Enum.any?(records, &String.contains?(&1["reason"] || "", "lib/kogen_fake_break.ex"))
+        Enum.any?(records, &String.contains?(&1["reason"] || "", "kogen_fake_break"))
       end)
 
     assert is_list(initial_history), "the initial Developer Check history must be retained"
@@ -278,7 +282,7 @@ defmodule Kogen.LifecycleTest do
 
     failed_reason = initial_history |> Enum.at(failed_check_index) |> Map.fetch!("reason")
 
-    assert failed_reason =~ "lib/kogen_fake_break.ex",
+    assert failed_reason =~ "kogen_fake_break",
            "the retained failed settlement reason must identify the bounded fixture check"
   end
 
@@ -741,11 +745,7 @@ defmodule Kogen.LifecycleTest do
         invocation = invocation + 1
         File.write!(counter_path, Integer.to_string(invocation))
         reviewed? = File.read!("dummy.txt") == "reviewed fixture value\n"
-        state = cond do
-          invocation == 1 -> "invalid"
-          reviewed? -> "reviewed"
-          true -> "initial"
-        end
+        state = if reviewed?, do: "reviewed", else: "initial"
         run = "#{invocation}-#{state}"
         semantic = if reviewed?, do: "reviewed behavior\n", else: "behavior still violates scenario\n"
         root = Path.join(".kogen/runtime/target-evidence", run)
@@ -768,7 +768,6 @@ defmodule Kogen.LifecycleTest do
         File.write!(manifest_path, manifest, [:exclusive])
         locator = ~s({"manifest_path":"#{manifest_path}","sha256":"#{sha256(manifest)}"})
         IO.write("progress without newline")
-        if invocation == 1, do: IO.puts("KOGEN_TARGET_EVIDENCE_MANIFEST\t{malformed}")
         IO.puts("KOGEN_TARGET_EVIDENCE_MANIFEST\t" <> locator)
         IO.write(String.duplicate("PRIVATE_TARGET_SENTINEL", 500))
       end

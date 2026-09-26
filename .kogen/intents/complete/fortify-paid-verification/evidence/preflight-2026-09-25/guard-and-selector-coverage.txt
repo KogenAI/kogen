@@ -1,0 +1,68 @@
+affected new file   bound-per-target-receipts: lib/kogen/build/verification_runner.ex
+affected new file   bound-per-target-receipts: test/kogen/controller_verification_test.exs
+affected new file   controller-owns-verification: lib/kogen/build/verification_runner.ex
+affected new file   controller-owns-verification: test/kogen/controller_verification_test.exs
+affected new file   controller-runs-proof-selectors: lib/kogen/build/base_workspace.ex
+affected new file   controller-runs-proof-selectors: lib/kogen/build/verification_runner.ex
+affected new file   controller-runs-proof-selectors: test/kogen/proof_selector_verification_test.exs
+affected new file   controller-runs-proof-selectors: test/support/**
+affected new file   failed-verification-resumes-same-developer: lib/kogen/build/review_packet.ex
+affected new file   failed-verification-resumes-same-developer: test/kogen/controller_verification_test.exs
+affected new file   failed-verification-resumes-same-developer: test/kogen/superseded_objection_test.exs
+affected new file   no-special-gate-target: lib/kogen/build/review_packet.ex
+affected new file   no-special-gate-target: test/kogen/controller_verification_test.exs
+affected new file   same-candidate-failed-only-retry: lib/kogen/build/review_packet.ex
+affected new file   same-candidate-failed-only-retry: lib/kogen/build/verification_runner.ex
+affected new file   same-candidate-failed-only-retry: test/kogen/verification_reuse_test.exs
+affected new file   same-intent-catalog-change: lib/kogen/build/catalog_change.ex
+affected new file   same-intent-catalog-change: test/kogen/catalog_change_test.exs
+affected new file   self-hosting-two-step-guidance: test/kogen/readme_guidance_test.exs
+affected new file   verification-surface-ledger: lib/kogen/build/base_workspace.ex
+affected new file   verification-surface-ledger: lib/kogen/build/ledger.ex
+affected new file   verification-surface-ledger: lib/kogen/build/review.ex
+affected new file   verification-surface-ledger: lib/kogen/build/review_packet.ex
+affected new file   verification-surface-ledger: test/kogen/review_packet_test.exs
+affected new file   verification-surface-ledger: test/kogen/verification_surface_ledger_test.exs
+guard with no affected path (ok if support): .codex/hooks.json
+guard with no affected path (ok if support): .codex/hooks/environment.py
+guard with no affected path (ok if support): lib/kogen/claude_code.ex
+guard with no affected path (ok if support): lib/kogen/codex.ex
+guard with no affected path (ok if support): lib/kogen/harness.ex
+guard with no affected path (ok if support): lib/kogen/harness/*.ex
+guard with no affected path (ok if support): lib/kogen/provider_outcome.ex
+guard with no affected path (ok if support): priv/kogen/claude_code/settings.json
+guard with no affected path (ok if support): priv/kogen/codex/**
+guard with no affected path (ok if support): scripts/check/README.md
+guard with no affected path (ok if support): scripts/check/development-evidence.md
+guard with no affected path (ok if support): workflows/*.md
+selector PLANNED    bound-per-target-receipts: test/kogen/controller_verification_test.exs
+selector PLANNED    controller-owns-verification: test/kogen/controller_verification_test.exs
+selector PLANNED    controller-runs-proof-selectors: test/kogen/proof_selector_verification_test.exs
+selector PLANNED    failed-verification-resumes-same-developer: test/kogen/controller_verification_test.exs
+selector PLANNED    failed-verification-resumes-same-developer: test/kogen/superseded_objection_test.exs
+selector PLANNED    no-special-gate-target: test/kogen/controller_verification_test.exs
+selector PLANNED    same-candidate-failed-only-retry: test/kogen/verification_reuse_test.exs
+selector PLANNED    same-intent-catalog-change: test/kogen/catalog_change_test.exs
+selector PLANNED    self-hosting-two-step-guidance: test/kogen/readme_guidance_test.exs
+selector PLANNED    verification-surface-ledger: test/kogen/review_packet_test.exs
+selector PLANNED    verification-surface-ledger: test/kogen/verification_surface_ledger_test.exs
+selector exists     bound-per-target-receipts: test/kogen/target_evidence_test.exs
+selector exists     controller-owns-verification: test/kogen/verification_ownership_lifecycle_test.exs
+selector exists     controller-runs-proof-selectors: test/kogen/intent_test.exs
+selector exists     failed-verification-resumes-same-developer: test/kogen/two_outer_resumptions_test.exs
+selector exists     no-special-gate-target: test/kogen/check_test.exs
+selector exists     no-special-gate-target: test/kogen/selective_verification_targets_test.exs
+selector exists     no-special-gate-target: test/kogen/verification_policy_test.exs
+selector exists     offline-first-target-selection: test/kogen/scenario_contract_test.exs
+selector exists     offline-first-target-selection: test/kogen/shape_task_test.exs
+selector exists     same-intent-catalog-change: test/kogen/intent_test.exs
+selector exists     same-intent-catalog-change: test/kogen/selective_verification_targets_test.exs
+selector exists     stop-free-compatibility-fixture: test/kogen/codex_compatibility_preparation_test.exs
+selector exists     stop-free-compatibility-fixture: test/kogen/codex_compatibility_test.exs
+selector exists     stop-route-bootstrap-only: scripts/check/rehearsals.exs
+selector exists     stop-route-bootstrap-only: test/kogen/core_integrity_test.exs
+selector exists     stop-route-bootstrap-only: test/kogen/harness_contract_test.exs
+selector exists     stop-route-bootstrap-only: test/kogen/stop_hook_test.exs
+selector exists     stop-route-bootstrap-only: test/kogen/test_reliability_catalog_test.exs
+selector exists     stop-route-bootstrap-only: test/kogen/verification_policy_test.exs
+selector exists     verification-surface-ledger: test/kogen/check_settlement_test.exs

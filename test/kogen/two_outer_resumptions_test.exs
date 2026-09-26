@@ -226,6 +226,28 @@ defmodule Kogen.TwoOuterResumptionsTest do
     resume_marker = if harness == "claude", do: " --resume ", else: "exec resume"
     resume_calls = Enum.count(log_lines, &String.contains?(&1, resume_marker))
 
+    # A controller verification-failure resume of the very first Developer
+    # turn (the fixture `check` fails while `kogen_fake_break` exists) is a
+    # separate Codex/Claude resume launch, but it must never consume an
+    # outer resumption: only the Review-rework resumes below count against
+    # `outer_resumptions`.
+    verification_resumes =
+      dest
+      |> Path.join(".kogen/runtime/verification-resume-prompts")
+      |> File.read()
+      |> case do
+        {:ok, content} ->
+          content
+          |> String.split("Controller verification failed after your turn")
+          |> length()
+          |> Kernel.-(1)
+
+        {:error, :enoent} ->
+          0
+      end
+
+    outer_resumptions_consumed = resume_calls - verification_resumes
+
     reviewer_calls =
       dest
       |> Path.join(".kogen/runtime/fake-reviewer-calls")
@@ -234,14 +256,27 @@ defmodule Kogen.TwoOuterResumptionsTest do
       |> String.trim()
       |> String.to_integer()
 
-    assert resume_calls == 2,
-           "expected exactly two Codex resume launches, log:\n#{Enum.join(log_lines, "\n")}"
+    assert verification_resumes == expected_verification_resumes(harness),
+           "a verification failure of the first Developer turn must resume the same session " <>
+             "exactly once and never consume an outer resumption, log:\n#{Enum.join(log_lines, "\n")}"
+
+    assert outer_resumptions_consumed == 2,
+           "expected exactly two outer-resumption (Review-rework) Codex resume launches, " <>
+             "log:\n#{Enum.join(log_lines, "\n")}"
 
     assert reviewer_calls == expected_reviews(mode),
            "expected exactly three Reviewer launches (all rework), log:\n#{Enum.join(log_lines, "\n")}"
 
-    assert_output_paths!(harness, mode, log_lines)
+    assert_output_paths!(harness, mode, log_lines, verification_resumes)
   end
+
+  # Neither fixture harness used here (`fake_codex_always_rework`, and
+  # `fake_claude` with `FAKE_CLAUDE_STOP_BLOCK=0`) ever breaks the fixture's
+  # trivially-passing `check`, so no controller verification-failure resume
+  # happens in this scenario: every resume below is an outer, Review-driven
+  # resumption. (The route-holding test below drives an actual
+  # verification-failure resume alongside an outer resumption.)
+  defp expected_verification_resumes(_harness), do: 0
 
   defp contract_yaml(:review), do: {@intent_yaml, @scenarios_yaml}
 
@@ -263,10 +298,10 @@ defmodule Kogen.TwoOuterResumptionsTest do
   defp expected_reviews(:missing_selector), do: 0
   defp expected_reviews(:review), do: 3
 
-  defp assert_output_paths!("codex", :review, log_lines),
-    do: assert_owned_output_paths!(log_lines)
+  defp assert_output_paths!("codex", :review, log_lines, verification_resumes),
+    do: assert_owned_output_paths!(log_lines, verification_resumes)
 
-  defp assert_output_paths!(_harness, _mode, _log_lines), do: :ok
+  defp assert_output_paths!(_harness, _mode, _log_lines, _verification_resumes), do: :ok
 
   defp reviewer_call_count({:ok, calls}), do: calls
   defp reviewer_call_count({:error, :enoent}), do: "0"
@@ -285,13 +320,16 @@ defmodule Kogen.TwoOuterResumptionsTest do
     assert Enum.map(attempts, & &1["outcome"]) == List.duplicate("unfinished_work", 3)
   end
 
-  defp assert_owned_output_paths!(log_lines) do
+  defp assert_owned_output_paths!(log_lines, verification_resumes) do
     # Developer turns (fresh and resumed) carry no handoff schema and own no
-    # output file; only each Reviewer owns its verdict output.
+    # output file; only each Reviewer owns its verdict output. One extra
+    # Developer resume (never an outer resumption) fixes the controller's
+    # first-cycle verification failure before the three outer-resumption
+    # turns.
     {reviewer_lines, developer_lines} =
       Enum.split_with(log_lines, &String.contains?(&1, " --output-last-message "))
 
-    assert length(developer_lines) == 3
+    assert length(developer_lines) == 3 + verification_resumes
     assert length(reviewer_lines) == 3
     refute Enum.any?(developer_lines, &String.contains?(&1, "--output-schema"))
 
@@ -445,7 +483,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     File.write!(
       Path.join(dest, "Makefile"),
-      ".PHONY: check\n\ncheck:\n\t@test ! -f lib/kogen_fake_break.ex || { echo 'bounded fixture check: lib/kogen_fake_break.ex remains' >&2; exit 1; }\n"
+      ".PHONY: check\n\ncheck:\n\t@test ! -f .kogen/runtime/kogen_fake_break || { echo 'bounded fixture check: kogen_fake_break remains' >&2; exit 1; }\n"
     )
 
     File.write!(Path.join(dest, "proof.txt"), "route hold fixture selector\n")
@@ -540,8 +578,31 @@ defmodule Kogen.TwoOuterResumptionsTest do
 
     assert result == :ok, "expected the Build to accept: #{inspect(result)}"
 
-    # Both mid-Build edits happened and stayed in place for later launches.
-    assert File.read!(stage) == "edited\nremoved\n"
+    # This fixture's `check` fails while `.kogen/runtime/kogen_fake_break`
+    # exists, which the fake harness writes on every fresh Developer launch
+    # (default `FAKE_CHECK_FAIL=1`) and only the controller's resume of that
+    # failed verification cycle removes. So the midbuild hook (which every
+    # Developer turn, fresh or resumed, runs) fires three times here: the
+    # fresh launch, the controller's verification-failure resume that fixes
+    # it, and the Reviewer's one rework resume -- one more than outer
+    # resumptions alone, proving the verification-failure resume happened
+    # without spending the single outer resumption this Build used.
+    assert File.read!(stage) == "edited\nremoved\nremoved\n"
+
+    assert File.read!(Path.join(dest, ".kogen/runtime/verification-resume-prompts")) =~
+             "Controller verification failed after your turn",
+           "the controller's own verification-failure resume must have fixed the first cycle"
+
+    resume_argv_count =
+      Path.join(dest, ".kogen/runtime/fake-harness-log")
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.count(&String.contains?(&1, "exec resume"))
+
+    assert resume_argv_count == 2,
+           "one controller verification-failure resume plus exactly one outer Review-rework " <>
+             "resume, never a second outer resumption"
+
     assert File.read!(Path.join(dest, ".kogen/config.yaml")) == @route_config_after
 
     log_lines =

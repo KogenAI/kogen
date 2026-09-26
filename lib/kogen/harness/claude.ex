@@ -11,7 +11,7 @@ defmodule Kogen.Harness.Claude do
   `--json-schema` and no pasted schema block. Build turns return the settled
   session and its final assistant message, which may be empty, as the
   Developer's unverified notes; Kogen code never parses them. The Reviewer,
-  which has no Stop verification, uses `--json-schema`.
+  which is never verified, uses `--json-schema`, chosen per launch.
 
   Executed identity comes from stream metadata: the model of each assistant
   message, and helper messages linked to their parent `Agent` tool use. A root
@@ -69,7 +69,7 @@ defmodule Kogen.Harness.Claude do
         run_with_stdin(resolved, args, prompt, [{"KOGEN_ROLE", "reviewer"}])
 
       case parse_stream(output, exit_code, session_id, model) do
-        {:ok, turn} -> reviewer_response(turn)
+        {:ok, turn} -> reviewer_response(turn, Map.get(resolved, :ledger_paths, []) != [])
         {:error, _reason} = error -> error
       end
     end)
@@ -129,7 +129,8 @@ defmodule Kogen.Harness.Claude do
   def reviewer_args(model, effort, context, session_id) do
     ["-p", "--output-format", "stream-json", "--verbose"] ++
       common_args(model, effort, context, "reviewer") ++
-      ["--json-schema", Verdict.schema()] ++ session_args({:fresh, session_id})
+      ["--json-schema", Verdict.schema(Map.get(context, :ledger_paths, []))] ++
+      session_args({:fresh, session_id})
   end
 
   @doc false
@@ -272,11 +273,11 @@ defmodule Kogen.Harness.Claude do
 
   # As documented for structured outputs, a success result without
   # structured_output is a failure; so is a turn a hook stopped.
-  defp reviewer_response(%{result: result} = turn) do
+  defp reviewer_response(%{result: result} = turn, ledger?) do
     structured = result["structured_output"]
     stopped = result["terminal_reason"] == "hook_stopped"
 
-    case if(stopped, do: :error, else: Verdict.validate(structured)) do
+    case if(stopped, do: :error, else: Verdict.validate(structured, ledger?)) do
       {:ok, verdict} ->
         message = Jason.encode!(structured)
 

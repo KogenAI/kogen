@@ -2,12 +2,14 @@ Code.require_file("../support/scripted_build_fixture.ex", __DIR__)
 
 defmodule Kogen.SupersededObjectionTest do
   @moduledoc """
-  A confident Developer objection written before Stop verification of the same
-  attempt passed is superseded: it no longer stops the Build, it is recorded on
-  the attempt and it reaches the fresh Reviewer as a labelled advisory item in
-  the review packet. Every other confident objection stops as cannot-comply.
-  The Build route tests drive the real `settle_outcome` with fake Stop cycles
-  and a stubbed Jev transport.
+  A confident Developer objection in an attempt whose settled controller
+  verification passed after an earlier controller cycle of the same attempt
+  failed is superseded: it no longer stops the Build, it is recorded on the
+  attempt and it reaches the fresh Reviewer as a labelled advisory item in the
+  review packet. Every other confident objection stops as cannot-comply. The
+  Build route tests drive the real controller-written cycles, with a fake
+  Developer that fixes the Candidate on the controller's resume of the same
+  session, and a stubbed Jev transport.
   """
   use Kogen.IsolatedCase, async: true
 
@@ -82,11 +84,16 @@ defmodule Kogen.SupersededObjectionTest do
     assert {:error, reason} =
              Fixture.run(dir, notes: [@objection], fail_all: [1], jev_answers: @answers)
 
-    assert String.starts_with?(reason, @prefix)
-    assert reason =~ "verification retries exhausted"
+    # Exhaustion stops the Build before Jev and Review, ahead of other routing.
+    assert String.starts_with?(reason, "verification retries exhausted after cycle 3")
+    refute reason =~ @prefix
     refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
+    refute File.exists?(Path.join(dir, ".kogen/runtime/fake-jev"))
+    assert File.read!(Path.join(dir, ".kogen/runtime/verification-resumes")) == "2"
     [attempt] = Fixture.record!(dir)["attempts"]
-    assert attempt["outcome"] == "cannot_comply"
+    assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ~w(failed failed failed)
+    refute Map.has_key?(attempt, "outcome")
+    refute Map.has_key?(attempt, "jev")
     refute Map.has_key?(attempt, "superseded_objection")
   end
 

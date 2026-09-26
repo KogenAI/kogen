@@ -4,6 +4,7 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
   alias Kogen.Build.Contract
   alias Kogen.Build.VerificationPlan
   alias Kogen.Check
+  alias Kogen.Intent
 
   @root Path.expand("../..", __DIR__)
   @owners %{
@@ -232,6 +233,185 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
     assert guide =~ "causal reason"
     assert guide =~ "not by edited filenames"
     assert guide =~ "provider-backed"
+  end
+
+  # -- a catalog with no `check` at all ------------------------------------
+
+  describe "VerificationPlan.build/5 against a catalog with an offline test target and no check" do
+    setup do
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "kogen-no-check-catalog-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(Path.join(root, "priv/kogen"))
+
+      File.write!(Path.join(root, "Makefile"), """
+      .PHONY: test helper paid extra
+      test:
+      \t@true
+      helper:
+      \t@true
+      paid:
+      \t@true
+      extra:
+      \t@true
+      """)
+
+      File.write!(
+        Path.join(root, "priv/kogen/verification_targets.yaml"),
+        Jason.encode!(%{
+          "targets" => [
+            no_check_entry("test", 0, []),
+            no_check_entry("helper", 10, ["test"]),
+            paid_entry("paid", 15, ["test"]),
+            no_check_entry("extra", 20, ["helper"])
+          ]
+        })
+      )
+
+      File.write!(Path.join(root, "selector.txt"), "selector\n")
+      on_exit(fn -> File.rm_rf(root) end)
+
+      {:ok, catalog} = VerificationPlan.load(root)
+      refute Map.has_key?(catalog.targets, "check")
+      {:ok, root: root, catalog: catalog}
+    end
+
+    test "a verified_by naming only the provider-backed target is rejected for lacking an offline target",
+         %{root: root, catalog: catalog} do
+      scenario = no_check_scenario(["paid"], "paid")
+
+      assert {:error, "scenario proof map is missing, unsafe, or inconsistent"} =
+               VerificationPlan.build([scenario], ["selector.txt"], catalog, root)
+    end
+
+    test "a verified_by omitting a listed target's dependency is rejected", %{
+      root: root,
+      catalog: catalog
+    } do
+      scenario = no_check_scenario(["test", "extra"], "none")
+
+      assert {:error, "scenario proof map is missing, unsafe, or inconsistent"} =
+               VerificationPlan.build([scenario], ["selector.txt"], catalog, root)
+    end
+
+    test "a verified_by out of catalog rank order is rejected", %{root: root, catalog: catalog} do
+      scenario = no_check_scenario(["helper", "test"], "none")
+
+      assert {:error, "scenario proof map is missing, unsafe, or inconsistent"} =
+               VerificationPlan.build([scenario], ["selector.txt"], catalog, root)
+    end
+
+    test "a single offline target is accepted with no implicit check added", %{
+      root: root,
+      catalog: catalog
+    } do
+      scenario = no_check_scenario(["test"], "none")
+
+      assert {:ok, plan} = VerificationPlan.build([scenario], ["selector.txt"], catalog, root)
+      assert plan.targets == ["test"]
+      refute "check" in plan.targets
+    end
+  end
+
+  # -- preservation: every proof-bearing Intent package still validates ----
+
+  describe "preservation: every Approved and Complete proof-bearing package still validates" do
+    test "Contract.load and VerificationPlan.build accept every package's scenarios against the current catalog" do
+      {:ok, catalog} = VerificationPlan.load(@root)
+
+      packages =
+        (Path.wildcard(Path.join(@root, ".kogen/intents/approved/*/scenarios.yaml")) ++
+           Path.wildcard(Path.join(@root, ".kogen/intents/complete/*/scenarios.yaml")))
+        |> Enum.map(&Path.dirname/1)
+
+      failures =
+        packages
+        |> Enum.map(&package_result(&1, catalog))
+        |> Enum.reject(&(elem(&1, 1) in [:ok, :no_proof]))
+
+      assert failures == [],
+             "package(s) with a proof declaration no longer validate against the current catalog: " <>
+               inspect(failures)
+    end
+  end
+
+  defp package_result(path, catalog) do
+    slug = Path.basename(path)
+    scenarios = YamlElixir.read_from_file!(Path.join(path, "scenarios.yaml"))
+
+    if Enum.all?(scenarios, &Map.has_key?(&1, "proof")) do
+      {slug, plan_status(path, catalog)}
+    else
+      {slug, :no_proof}
+    end
+  end
+
+  defp plan_status(path, catalog) do
+    intent_data =
+      case File.read(Path.join(path, "intent.yaml")) do
+        {:ok, text} -> YamlElixir.read_from_string!(text)
+        _ -> %{}
+      end
+
+    guards = intent_data["may_change_guarded_paths"] || []
+    {:ok, %{add: added}} = Intent.catalog_changes(intent_data)
+
+    case Contract.load(path) do
+      {:ok, contract} -> plan_build_status(contract, guards, catalog, added)
+      {:error, reason} -> {:contract_error, reason}
+    end
+  end
+
+  defp plan_build_status(contract, guards, catalog, added) do
+    case VerificationPlan.build(contract.scenarios, guards, catalog, @root, added: added) do
+      {:ok, _plan} -> :ok
+      {:error, reason} -> {:plan_error, reason}
+    end
+  end
+
+  defp no_check_entry(name, rank, deps) do
+    %{
+      "name" => name,
+      "cost_class" => "offline",
+      "rank" => rank,
+      "dependencies" => deps,
+      "provider_backed" => false,
+      "owner" => "fixture"
+    }
+  end
+
+  defp paid_entry(name, rank, deps) do
+    no_check_entry(name, rank, deps)
+    |> Map.put("provider_backed", true)
+    |> Map.put("rehearsal", %{
+      "id" => "rehearse-#{name}",
+      "command" => "true",
+      "shared_entrypoints" => ["#{name}.entrypoint"],
+      "correct_fixture" => "#{name}-correct",
+      "wrong_fixture" => "#{name}-wrong",
+      "trace_assertions" => ["#{name}-trace"]
+    })
+  end
+
+  defp no_check_scenario(verified_by, paid_target) do
+    reason =
+      if paid_target == "none",
+        do: "offline-sufficient: a fixture without check exercises plan rules directly",
+        else:
+          "provider-required: #{paid_target}; observation: fixture; offline-limit: fixture cannot substitute"
+
+    %{
+      "verified_by" => verified_by,
+      "proof" => %{
+        "offline" => ["selector.txt"],
+        "paid_target" => paid_target,
+        "paid_reason" => reason,
+        "affected_paths" => ["selector.txt"]
+      }
+    }
   end
 
   defp recipe(makefile, target) do

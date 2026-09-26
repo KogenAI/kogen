@@ -1,0 +1,373 @@
+--- /private/tmp/claude-501/kogen-shape-fortify/scenarios.orig.yaml	2026-09-25 11:23:50
++++ /private/tmp/claude-501/kogen-shape-fortify/kogen/.kogen/intents/drafts/fortify-paid-verification/scenarios.yaml	2026-09-25 11:48:19
+@@ -1,6 +1,7 @@
+ - id: controller-owns-verification
+   given: >-
+-    A Build started under the new controller, on either harness route, whose
++    A Build started under the new controller, on any configured route
++    (including the hybrid routes from cross-harness-adversarial-roles), whose
+     Developer turn has just ended. The Stop registration still exists, but no
+     v1 context is supplied.
+   when: The controller settles verification for that turn.
+@@ -12,6 +13,17 @@
+     process tree. It re-checks the Candidate id after each target; a mutation
+     fails the cycle. It writes the only context, state and history files, and no
+     Developer-launched process gets their paths or `KOGEN_VERIFICATION_CONTEXT`.
++    It is also the only writer of the local Verification Record and its history
++    (`Kogen.Check.record_path/0`, `Kogen.Check.history_path/0`). After each cycle
++    it writes them in today's line format (candidate, status, target, exit_code,
++    session_id, attempt_token, finished_at), and it archives and resets them only
++    at each outer attempt, as today. The record's `target` field keeps the
++    constant `check` as a format value for existing readers; it selects nothing.
++    So the unedited live-reviewer-rework owner and its support files
++    (`test/kogen/live_reviewer_rework_test.exs`,
++    `test/support/live_reviewer_rework_fixture.ex`,
++    `test/support/live_rework_audit.ex`) keep working, and this Intent leaves
++    them byte-identical, because it doesn't run that target.
+     This holds even when the controller itself inherited one: for example, a
+     nested `mix kogen.build` started by a target under main's Stop runner
+     inherits the outer v1 context. The new controller explicitly removes `KOGEN_VERIFICATION_CONTEXT`
+@@ -26,14 +38,20 @@
+     The controller loads or executes verification code from the Candidate;
+     reads success from a Candidate- or Developer-writable file; the Stop hook
+     runs checks or blocks; the Developer gets a verification context, including
+-    one inherited from an outer Build's Stop runner; or
+-    live_shape_to_build still asserts Stop-hook history.
++    one inherited from an outer Build's Stop runner;
++    live_shape_to_build still asserts Stop-hook history; or no process writes the
++    local Verification Record and history any more (or they are archived on every
++    inner cycle), so the unedited live-reviewer-rework audit fails in the next
++    Build that runs it.
+   verified_by: [check, live-shape-to-build]
+   evidence: >-
+     A new controller verification test uses a fake harness to drive a turn end,
+     controller-run check and targets, and forged Candidate state files that are
+     ignored. It also plants an inherited outer `KOGEN_VERIFICATION_CONTEXT` and
+-    asserts that no launched child sees it and the outer state is untouched. The
++    asserts that no launched child sees it and the outer state is untouched. It
++    asserts that a failed-then-passed cycle pair leaves local Verification Record
++    and history lines with the fields `Kogen.LiveReworkAudit` reads, and that the
++    history is archived only when an outer attempt starts. The
+     updated verification_ownership_lifecycle test runs a complete fake-harness
+     Build through `Kogen.Build`, with real Make targets and a git fixture: a
+     failed verification, a resume of the same session, a passed verification,
+@@ -41,18 +59,21 @@
+     controller-owned failed-then-passed history for the same real Developer
+     session. The value the Developer needs (`shape2build-k4q9z`) must now reach
+     it through the controller's resume message, not through Stop output. The
+-    fixture Build runs the Candidate's new controller, so the paid run observes
+-    the new route with a real Claude Code session.
++    live test rsyncs the Candidate into its fixture and runs `mix kogen.build`
++    there, which compiles and runs the Candidate's new controller (not main's,
++    which only runs the outer Build). So the paid run observes the new route
++    with a real Claude Code session.
+   proof:
+     offline:
+       - test/kogen/controller_verification_test.exs
+       - test/kogen/verification_ownership_lifecycle_test.exs
+     paid_target: live-shape-to-build
+-    paid_reason: "provider-required: live-shape-to-build; observation: a real Claude Code Developer ends a turn with the Stop hook inactive, receives the controller's failed verification through a resume of the same session, fixes it, and a later controller verification passes before real Review and commit; offline-limit: a fake harness cannot show that a real model session acts on a controller resume message or that the real CLI accepts the inactive Stop hook"
++    paid_reason: "provider-required: live-shape-to-build; observation: a real Claude Code Developer (on main's default route, which after cross-harness-adversarial-roles pairs it with a real Codex Reviewer) ends a turn with the Stop hook inactive, receives the controller's failed verification through a resume of the same session, fixes it, and a later controller verification passes before real Review and commit; offline-limit: a fake harness cannot show that a real model session acts on a controller resume message or that the real CLI accepts the inactive Stop hook"
+     affected_paths:
+       - lib/kogen/build.ex
+       - lib/kogen/build/verification.ex
+       - lib/kogen/build/verification_runner.ex
++      - lib/kogen/check.ex
+       - test/kogen/controller_verification_test.exs
+       - test/kogen/verification_ownership_lifecycle_test.exs
+       - test/kogen/live_shape_to_build_test.exs
+@@ -70,26 +91,38 @@
+     verification exhausted and stops the Build, before Jev and Review and ahead
+     of other routing. A Review or unfinished-work outer resumption starts a new
+     verification context, and its handoff needs a fresh controller pass.
++    The superseded-objection rule from bounded-reviewer-evidence keeps working
++    on controller cycles: a confident Developer objection in an attempt whose
++    settled controller verification passed after an earlier controller cycle
++    of the same attempt failed reaches the review packet as a labelled advisory.
++    Every other confident objection still stops with `cannot_comply` as before.
+   wrong_result: >-
+     A verification failure consumes an outer resumption, launches a fresh
+-    Developer, reaches Review, or keeps retrying past the limit; or an outer
+-    resumption reaches Review on the prior attempt's pass.
++    Developer, reaches Review, or keeps retrying past the limit; an outer
++    resumption reaches Review on the prior attempt's pass; or the
++    superseded-objection rule still reads Stop-written cycles, so under the new
++    controller every stale objection stops the Build again.
+   verified_by: [check]
+   evidence: >-
+     Fake-harness lifecycle tests count exact resumes, allowance counters,
+-    exhaustion precedence and the fresh context per outer attempt.
++    exhaustion precedence and the fresh context per outer attempt. The
++    superseded-objection tests from bounded-reviewer-evidence run their three
++    cases on controller-written cycles.
+   proof:
+     offline:
+       - test/kogen/controller_verification_test.exs
+       - test/kogen/two_outer_resumptions_test.exs
++      - test/kogen/superseded_objection_test.exs
+     paid_target: none
+     paid_reason: "offline-sufficient: fake-harness resume counting and exhaustion precedence through Kogen.Build; resume_build_developer itself is unchanged"
+     affected_paths:
+       - lib/kogen/build.ex
+       - lib/kogen/build/verification.ex
++      - lib/kogen/build/review_packet.ex
+       - priv/kogen/prompts/developer.md
+       - test/kogen/controller_verification_test.exs
+       - test/kogen/two_outer_resumptions_test.exs
++      - test/kogen/superseded_objection_test.exs
+ 
+ - id: same-candidate-failed-only-retry
+   given: >-
+@@ -102,7 +135,7 @@
+     (a) Cycle 2 runs `check` fresh and reuses A's receipt, marked with
+     `reused_from` pointing to cycle 1 and with an identical Candidate id and
+     catalog digest. It runs only B. The final receipts list every target, and
+-    the handoff report shows A as reused.
++    the handoff report and the review packet show A as reused.
+     (b) Every target runs.
+     (c) The new context runs every target and reuses nothing.
+     More generally, every selected target with `provider_backed: false` runs fresh
+@@ -128,6 +161,7 @@
+       - lib/kogen/build/verification.ex
+       - lib/kogen/build/verification_runner.ex
+       - lib/kogen/build/report.ex
++      - lib/kogen/build/review_packet.ex
+       - test/kogen/verification_reuse_test.exs
+ 
+ - id: bound-per-target-receipts
+@@ -179,9 +213,32 @@
+     `priv/kogen/verification_targets.yaml` stay byte-identical to main, because
+     main's controller stops a Build whose catalog changed after admission.
+     `live-native` stays in the catalog unchanged. The target split belongs to
+-    the follow-up verification Intent. `VerificationPolicy.preflight` still finds
+-    `.codex/hooks/check.sh`, `.codex/hooks/verification_policy.py` and the
+-    PreToolUse registration.
++    the follow-up verification Intent. Main's `VerificationPolicy.preflight` still
++    finds `.codex/hooks/check.sh`, `.codex/hooks/verification_policy.py` and the
++    PreToolUse registration. The Candidate's own preflight requires only
++    `.codex/hooks/verification_policy.py` and the PreToolUse registration, so the
++    follow-up can delete the Stop scripts under this Intent's controller.
++    Main's frozen catalog still runs every rehearsal inside `check`, so each
++    rehearsal still observes its catalog trace identities, including
++    `Kogen.Build.Verification.initialize` and `Kogen.Build.Verification.settle`
++    through `test/kogen/verification_ownership_lifecycle_test.exs`,
++    `Kogen.Build.Report.build` and `Kogen.Build.Contract.verdict` through
++    `test/kogen/two_outer_resumptions_test.exs`, and
++    `Kogen.Codex.Compatibility.prepare_fixture` through
++    `test/kogen/codex_compatibility_preparation_test.exs`.
++    Main's controller renders the Candidate's `priv/kogen/prompts/developer.md`
++    at every Developer launch and outer resumption of this Build, and
++    `priv/kogen/prompts/reviewer.md` at every Review. So the Candidate's
++    prompts keep every placeholder main substitutes, describe verification
++    truthfully for both routes (Stop settles when a v1 context is supplied, the
++    controller otherwise), and request a verdict that main's
++    `Kogen.Build.Contract.verdict/4` still accepts when no ledger is supplied.
++    Every edited cataloged test gets only its `source_sha256` refreshed in
++    `priv/kogen/test-reliability.yaml` through
++    `scripts/check/refresh_test_reliability_sources.py`. Declarations,
++    dispositions, controls and consumer witnesses are unchanged. The consumer
++    modules keep their witness text (for example `defmodule Kogen.Check do`),
++    and `--check` reports nothing.
+     The no-context check-and-block mode and the `KOGEN_TRACKING_CONTEXT` path
+     are gone. The Bash PreToolUse gate guard is still registered in both
+     harnesses and still blocks `make check` and every selected target. The
+@@ -193,19 +250,32 @@
+     controller); the v1 path is broken so this Build can't settle; the scripts
+     or registrations are deleted in this Build; the Makefile or catalog changes
+     (main's controller would stop the Build before Review, as in failed Build
+-    G8XQmw8OuNa-fPqe0TlQ0p35); or the gate guard is removed.
++    G8XQmw8OuNa-fPqe0TlQ0p35); the gate guard is removed; the Candidate's
++    preflight still requires the Stop script, so the follow-up can't delete it;
++    a rehearsal trace identity disappears, so `check` fails under main's frozen
++    catalog; the Candidate prompts lose a placeholder or ask for a verdict key
++    that main's controller rejects while it reviews this Build; or the
++    reliability ledger is regenerated, or a consumer witness is lost, instead of
++    a hash-only refresh.
+   verified_by: [check]
+   evidence: >-
+     A rewritten stop_hook test drives both cases with a real git fixture and
+     counting fake targets. Harness contract and core integrity tests assert the
+     hook sets for both harnesses, and the verification_policy tests keep the
+-    guard's denial controls.
++    guard's denial controls and assert that the new preflight no longer needs
++    the Stop script. The existing reliability-catalog test validates the
++    refreshed ledger. `scripts/check/rehearsals.exs` (run by `check`) fails
++    when a catalog trace identity is no longer observed, and a
++    prompt-rendering assertion in the harness contract test renders both
++    prompts with main's placeholder set.
+   proof:
+     offline:
+       - test/kogen/stop_hook_test.exs
+       - test/kogen/harness_contract_test.exs
+       - test/kogen/core_integrity_test.exs
+       - test/kogen/verification_policy_test.exs
++      - test/kogen/test_reliability_catalog_test.exs
++      - scripts/check/rehearsals.exs
+     paid_target: none
+     paid_reason: "offline-sufficient: stop_hook drives the real scripts in both context cases with a counting fake target; the inactive path prints the same {\"continue\":true} the real CLIs already accept"
+     affected_paths:
+@@ -216,6 +286,7 @@
+       - priv/kogen/prompts/developer.md
+       - priv/kogen/prompts/reviewer.md
+       - README.md
++      - priv/kogen/test-reliability.yaml
+       - test/kogen/stop_hook_test.exs
+       - test/kogen/harness_contract_test.exs
+       - test/kogen/core_integrity_test.exs
+@@ -229,18 +300,24 @@
+   then: >-
+     The fixture no longer copies Stop scripts or relies on the deleted
+     no-context Stop mode. Its evidence no longer requires `hook_receipt`,
+-    `checks` or `checks_before_resume`. The PreToolUse blocked-gate,
+-    discovery, Developer, resume and fresh Reviewer requirements remain. The
+-    owner's turn budget and its one fresh-fixture retry after a timeout are
+-    owned by `cross-harness-adversarial-roles`, which lands first. This Intent
+-    keeps them unchanged and doesn't add or remove any provider retry. Kogen
+-    core sees one target result.
++    `checks` or `checks_before_resume`, and its prompts no longer tell the model
++    that a Stop hook settles a Check. The PreToolUse blocked-gate, hostile
++    discovery, interactive Shaping, Developer, exact-session resume (driven by
++    the owner's fixed rework request) and scout-helper requirements remain.
++    `cross-harness-adversarial-roles` already removed the scripted stand-in
++    Reviewer turns, and this Intent doesn't bring a Reviewer back. The owner's
++    turn budget, its one fresh-fixture retry after a timeout and its
++    two-attempt evidence manifest are owned by
++    `cross-harness-adversarial-roles`, which lands first. This Intent keeps
++    them unchanged and doesn't add or remove any provider retry. Kogen core
++    sees one target result.
+   wrong_result: >-
+     The fixture still depends on Stop-hook receipts, so it fails once the
+     no-context mode is gone; the Stop portion is removed by weakening the
+-    PreToolUse or fresh-Reviewer requirements; provider retries or timeouts
+-    are added to Kogen core or config; or the owner's retry and budget from
+-    cross-harness are changed.
++    PreToolUse, discovery, resume or helper requirements; a stand-in Reviewer
++    comes back; provider retries or timeouts are added to Kogen core or
++    config; or the owner's retry, budget or manifest from cross-harness are
++    changed.
+   verified_by: [check, live-native]
+   evidence: >-
+     Offline preparation tests assert the Stop-free fixture and the reduced
+@@ -252,7 +329,7 @@
+       - test/kogen/codex_compatibility_test.exs
+       - test/kogen/codex_compatibility_preparation_test.exs
+     paid_target: live-native
+-    paid_reason: "provider-required: live-native; observation: the real managed Codex runtime completes the bounded compatibility run in a fixture without Stop hooks, with the PreToolUse gate denial, resume and fresh Reviewer intact; offline-limit: offline preparation tests cannot show that the real Codex CLI works without the Stop hooks; live-native is the only catalog target owning this file until the follow-up split"
++    paid_reason: "provider-required: live-native; observation: the real managed Codex runtime completes the bounded compatibility run in a fixture without Stop hooks, with the PreToolUse gate denial, exact-session resume and scout helper intact; offline-limit: offline preparation tests cannot show that the real Codex CLI works without the Stop hooks; live-native is the only catalog target owning this file until the follow-up split"
+     affected_paths:
+       - lib/kogen/codex/compatibility.ex
+       - test/kogen/codex_compatibility_test.exs
+@@ -263,7 +340,9 @@
+     A repository whose Makefile and catalog declare offline and provider-backed
+     Make targets under any names. For example, an offline `test` target with no
+     dependencies and no `check` target at all. The approved scenarios each list
+-    their targets in `verified_by`.
++    their targets in `verified_by`. (This is a fixture repository built under
++    this Intent's controller. Kogen's own Makefile and catalog keep `check`
++    unchanged in this Build, because main's controller runs it.)
+   when: "`mix kogen.build` admits the Intent and verifies each Developer turn."
+   then: >-
+     No target name is special; Make stays the only runner. Admission no longer
+@@ -277,7 +356,7 @@
+     The Build runs exactly the union of the approved `verified_by` lists, in rank
+     order, and never silently adds a target. Receipts form one uniform list,
+     with no separate `check` field in the tracking record, handoff report or
+-    Review input. The Bash gate guard blocks `make <goal>` for every catalog
++    review packet. The Bash gate guard blocks `make <goal>` for every catalog
+     target, not a hardcoded `check`/`live` pair. The catalog validator requires
+     at least one offline target with no dependencies, instead of `check`. This
+     repository's existing contracts (`[check]` and `[check, <paid>]`, including
+@@ -307,6 +386,7 @@
+       - lib/kogen/build/verification_plan.ex
+       - lib/kogen/build/verification.ex
+       - lib/kogen/build/report.ex
++      - lib/kogen/build/review_packet.ex
+       - lib/kogen/check.ex
+       - lib/kogen/verification_policy.ex
+       - .codex/hooks/verification_policy.py
+@@ -323,7 +403,10 @@
+   given: >-
+     An approved Intent whose `intent.yaml` declares `catalog_changes.add` with
+     new target names. Its guarded paths cover the Makefile and catalog, and a
+-    scenario selects one added target.
++    scenario selects one added target. (This is a later Intent, or a fixture
++    Intent in this Intent's tests, built under this Intent's controller. This
++    Build itself changes neither the Makefile nor the catalog, because main's
++    controller byte-freezes the catalog.)
+   when: The Build admits the Intent, and the controller verifies each Developer turn.
+   then: >-
+     The catalog is no longer byte-frozen after admission. At admission,
+@@ -455,32 +538,49 @@
+     it is runner-class. It marks every target receipt that ran with changed
+     runner-class files, and includes the catalog digest change. Added
+     test-class files are left out; added runner-class files are included. The
+-    ledger goes into the handoff report and Review input, never to Jev. The
++    ledger goes into the handoff report and the review packet from
++    bounded-reviewer-evidence, never to Jev. Each item's full diff is a
++    controller-retained file under the attempt's verification directory. The
++    packet carries one complete index entry per item (path, status,
++    runner-class flag, diff stat, base and Candidate blob ids), plus a locator
++    and sha256 for its full diff. It stays within the packet's 65,536-byte
++    bound, and it never inlines a diff that would exceed it. The
+     controller also runs base's test suite against the Candidate's
+     implementation. Base's test files and runner go into the base workspace,
+     with only the Candidate's implementation (non-surface) files overlaid. The
+-    result goes to Review as a report, not a gate. The Reviewer must return
+-    exactly one disposition per ledger item: `justified: <scenario-id or
+-    finding-id>` or `weakening`. A missing or extra disposition makes the
+-    Review malformed, through the existing malformed-verdict path. A
++    result goes to Review as a packet summary with a log locator, a report and
++    not a gate. The Reviewer must return exactly one disposition per ledger
++    item, `justified: <scenario-id or finding-id>` or `weakening`, in a new
++    `ledger` verdict field, kept separate from the existing finding
++    `dispositions`. The field is required exactly when the packet carries a
++    nonempty ledger. Without a ledger (for example when main's controller
++    reviews this Build with the Candidate's `reviewer.md`), the verdict keeps
++    today's exact keys. A missing or extra disposition makes the Review
++    malformed, through the existing malformed-verdict path. A
+     `weakening` disposition opens a blocking finding that goes back to the same
+     Developer as Review rework. If the Developer objects to the contract, the
+     existing cannot-comply path returns the Intent to Shaping.
+   wrong_result: >-
+     A weakened test outside `affected_paths` never reaches Review; the ledger
+     or diff goes to Jev; the Reviewer can skip items; a `weakening` verdict
+-    doesn't block; or the base-suite report acts as a gate or is missing.
++    doesn't block; the base-suite report acts as a gate or is missing; full
++    diffs are inlined until the packet exceeds its bound; ledger dispositions
++    are folded into the finding `dispositions`; or `ledger` is demanded when no
++    ledger was supplied, so main's controller rejects this Build's own verdict.
+   verified_by: [check]
+   evidence: >-
+     Report and Review tests use a fixture Candidate that edits a test outside
+     `affected_paths`, weakens a runner file and adds a test file. They assert
+     the ledger contents, that the Jev request excludes them, the malformed
+-    verdict on a missing disposition, the blocking finding on `weakening`, and
+-    the base-suite report.
++    verdict on a missing disposition, the blocking finding on `weakening`, the
++    base-suite report, a packet within its bound for a ledger with large diffs
++    (with locators and digests), and a verdict without `ledger` accepted when
++    no ledger was supplied.
+   proof:
+     offline:
+       - test/kogen/verification_surface_ledger_test.exs
+       - test/kogen/check_settlement_test.exs
++      - test/kogen/review_packet_test.exs
+     paid_target: none
+     paid_reason: "offline-sufficient: ledger computation, verdict schema enforcement and routing are controller logic exercised with a fake Reviewer; no provider semantics"
+     affected_paths:
+@@ -488,12 +588,15 @@
+       - lib/kogen/build/report.ex
+       - lib/kogen/build/ledger.ex
+       - lib/kogen/build/review.ex
++      - lib/kogen/build/review_packet.ex
++      - lib/kogen/build/contract.ex
+       - lib/kogen/build/base_workspace.ex
+       - lib/kogen/jev.ex
+       - priv/kogen/prompts/reviewer.md
+       - README.md
+       - test/kogen/verification_surface_ledger_test.exs
+       - test/kogen/check_settlement_test.exs
++      - test/kogen/review_packet_test.exs
+ 
+ - id: offline-first-target-selection
+   given: >-

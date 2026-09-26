@@ -1,20 +1,29 @@
 defmodule Kogen.Build do
   @moduledoc """
-  The synchronous Build loop: preconditions, one Developer launch, Stop-hook
-  Check settlement, declared-target verification, a fresh Review, bounded
-  Rework (at most `outer_resumptions` resumes of the exact Developer
+  The synchronous Build loop: preconditions, one Developer launch,
+  controller-owned verification after every Developer turn, a fresh Review,
+  bounded Rework (at most `outer_resumptions` resumes of the exact Developer
   thread), and one ordinary Git Commit carrying the Intent identity.
 
-  After Stop verification settles, controller code builds the handoff report
-  (`Kogen.Build.Report`). The Developer's final message is free prose that no
-  Kogen code parses: Build records it as unverified notes and asks TypeSafe Jev
-  (`Kogen.Jev`) once what the Developer says about each item. Only a confident
-  contract objection stops the Build, unless an earlier Stop cycle of the same
-  attempt failed and its final cycle passed on the settled Candidate: that
-  objection is superseded and reaches the Reviewer as an advisory item. Every
-  other reading, and any Jev failure, reaches the fresh Reviewer as advisory
-  notes. Each Reviewer starts from one bounded review packet per attempt
-  (`Kogen.Build.ReviewPacket`).
+  After each Developer turn this controller (the code loaded when the Build
+  started, never code from the Candidate) computes the Candidate id and runs
+  exactly the approved `verified_by` targets itself
+  (`Kogen.Build.Verification`). A failed cycle resumes the exact Developer
+  session with the failed target's receipt and log paths, counting against
+  `verification_retries` and never the outer allowance; exhaustion stops the
+  Build before Jev and Review. No child process ever receives a verification
+  or tracking context.
+
+  After controller verification settles, controller code builds the handoff
+  report (`Kogen.Build.Report`). The Developer's final message is free prose
+  that no Kogen code parses: Build records it as unverified notes and asks
+  TypeSafe Jev (`Kogen.Jev`) once what the Developer says about each item.
+  Only a confident contract objection stops the Build, unless an earlier
+  controller cycle of the same attempt failed and its final cycle passed on
+  the settled Candidate: that objection is superseded and reaches the Reviewer
+  as an advisory item. Every other reading, and any Jev failure, reaches the
+  fresh Reviewer as advisory notes. Each Reviewer starts from one bounded
+  review packet per attempt (`Kogen.Build.ReviewPacket`).
   """
   use Boundary,
     deps: [
@@ -28,16 +37,23 @@ defmodule Kogen.Build do
     ]
 
   alias Kogen.Build.{
+    BaseWorkspace,
     Contract,
     FailureSignature,
     GuardedPaths,
+    Ledger,
     Report,
+    Review,
     ReviewPacket,
     TargetEvidence,
     Tracking,
     Verification,
     VerificationPlan
   }
+
+  # Removed from every Developer, Reviewer and target child, including when
+  # this controller itself inherited one from an outer Build's Stop runner.
+  @context_variables ~w(KOGEN_VERIFICATION_CONTEXT KOGEN_TRACKING_CONTEXT KOGEN_VERIFICATION_RETRY_LIMIT)
 
   @lock_path ".kogen/build.lock"
   @approved_base ".kogen/intents/approved"
@@ -52,7 +68,7 @@ defmodule Kogen.Build do
   Runs one Build of the Approved Intent `slug` on the named `route`, or on the
   configured `default_route` when `route` is `nil`. Configuration is resolved
   exactly once, before any harness readiness or launch; every later launch,
-  resumption, Stop verification context and Review uses that frozen route.
+  resumption, controller verification cycle and Review uses that frozen route.
   """
   @spec run(String.t(), String.t() | nil) :: :ok | {:error, String.t()}
   def run(slug, route \\ nil) do
@@ -68,9 +84,7 @@ defmodule Kogen.Build do
       case acquire_lock() do
         :ok ->
           try do
-            with :ok <- check_make_check_target() do
-              do_build(slug, intent, config, approved_entries)
-            end
+            do_build(slug, intent, config, approved_entries)
           after
             release_lock()
           end
@@ -195,27 +209,34 @@ defmodule Kogen.Build do
     :ok
   end
 
-  defp check_make_check_target do
-    if MapSet.member?(Kogen.Check.declared_targets("Makefile"), "check") do
-      :ok
-    else
-      {:error, "Makefile has no check target"}
-    end
-  end
+  @doc "Environment entries that remove every verification or tracking context from a child."
+  def context_scrub, do: Enum.map(@context_variables, &{&1, nil})
 
   # The static, unchanging-for-the-whole-Build inputs, bundled so the
   # settle/review/rework chain below stays under a sane arity as it
   # threads per-attempt state (candidate id, session id, resumption count,
   # Check record, target results) through the loop.
   defp do_build(slug, intent, config, approved_entries) do
+    added = added_targets(intent)
+    guard_targets = catalog_guard_targets(added)
+
     with {:ok, contract} <- Contract.load(Path.join(@approved_base, slug)),
          {:ok, catalog} <- VerificationPlan.load(),
          {:ok, plan} <-
-           VerificationPlan.build(contract.scenarios, intent.may_change_guarded_paths, catalog),
-         :ok <- Kogen.VerificationPolicy.preflight(catalog.ordered_targets),
+           VerificationPlan.build(
+             contract.scenarios,
+             intent.may_change_guarded_paths,
+             catalog,
+             File.cwd!(),
+             added: added
+           ),
+         :ok <- Kogen.VerificationPolicy.preflight(guard_targets.(catalog)),
          {:ok, guarded_snapshot} <- GuardedPaths.capture(),
-         {:ok, runtime} <- Kogen.Harness.open_roles(config, @build_roles),
-         {:ok, tracking} <- new_tracking(intent, contract, approved_entries, config, runtime) do
+         {:ok, base_commit} <- Kogen.Git.head_sha(),
+         {:ok, workspace} <- base_workspace(catalog, base_commit),
+         {:ok, runtime} <- open_roles(config, workspace),
+         {:ok, tracking} <-
+           new_tracking(intent, contract, approved_entries, config, runtime, workspace) do
       config = assigned_config(config, tracking.record)
       runtime = %{runtime | route: config}
 
@@ -227,8 +248,10 @@ defmodule Kogen.Build do
         targets: plan.targets,
         plan: plan,
         catalog: catalog,
+        base_commit: base_commit,
+        workspace: workspace,
         guarded_snapshot: guarded_snapshot,
-        policy_environment: Kogen.VerificationPolicy.environment(catalog.ordered_targets),
+        policy_environment: Kogen.VerificationPolicy.environment(guard_targets.(catalog)),
         approved_entries: approved_entries,
         tracking: tracking,
         token: nil,
@@ -242,7 +265,39 @@ defmodule Kogen.Build do
         begin_attempt(ctx, nil, 0, nil)
       after
         Kogen.Harness.close(runtime)
+        BaseWorkspace.remove(Process.delete(:kogen_base_workspace) || workspace)
       end
+    else
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp added_targets(intent) do
+    case Map.get(intent, :catalog_changes) do
+      %{add: add} when is_list(add) -> add
+      _ -> []
+    end
+  end
+
+  # The Bash gate guard blocks `make <goal>` for every catalog target and
+  # every declared addition; no target name is special.
+  defp catalog_guard_targets(added), do: &Enum.uniq(&1.ordered_targets ++ added)
+
+  # Built at admission, outside the repository, only when the admission
+  # catalog declares the integrity fields.
+  defp base_workspace(%{integrity: nil}, _commit), do: {:ok, nil}
+
+  defp base_workspace(%{integrity: integrity}, commit),
+    do: BaseWorkspace.create(File.cwd!(), commit, integrity["base_cache"])
+
+  defp open_roles(config, workspace) do
+    case Kogen.Harness.open_roles(config, @build_roles) do
+      {:ok, runtime} ->
+        {:ok, runtime}
+
+      error ->
+        BaseWorkspace.remove(workspace)
+        error
     end
   end
 
@@ -290,7 +345,7 @@ defmodule Kogen.Build do
           # credo:disable-for-next-line Credo.Check.Refactor.Nesting
           case record_attempt(ctx, %{
                  "verification_context" => %{
-                   "path" => Path.relative_to(execution.context_path, File.cwd!()),
+                   "file" => "context.json",
                    "sha256" => execution.context_sha256,
                    "content_base64" => Base.encode64(execution.context_bytes)
                  }
@@ -307,38 +362,53 @@ defmodule Kogen.Build do
     end
   end
 
+  # The local Verification Record and its history are archived and reset only
+  # here, once per outer attempt, never between verification cycles.
   defp launch_attempt(ctx, session_id, number, reason) do
     with :ok <- inputs_unchanged(ctx),
-         true <- VerificationPlan.unchanged?(ctx.catalog),
          :ok <- Kogen.VerificationPolicy.preflight(ctx.catalog.ordered_targets),
          :ok <- Kogen.Check.invalidate!() do
       prompt = developer_prompt(ctx, reason)
 
       result =
         if session_id do
-          Kogen.Harness.resume_build_developer(
-            session_id,
-            prompt,
-            ctx.config.developer.model,
-            ctx.config.developer.effort,
-            ctx.policy_environment ++ Verification.environment(ctx.execution),
-            Kogen.Harness.role_context(ctx.runtime, :developer)
-          )
+          resume_developer(ctx, session_id, prompt)
         else
           Kogen.Harness.launch_build_developer(
             prompt,
             ctx.config.developer.model,
             ctx.config.developer.effort,
-            ctx.policy_environment ++ Verification.environment(ctx.execution),
-            Kogen.Harness.role_context(ctx.runtime, :developer)
+            developer_environment(ctx),
+            developer_context(ctx)
           )
         end
 
       receive_developer(ctx, session_id, number, result)
     else
-      false -> stop(ctx, "verification target catalog changed after admission")
       {:error, reason} -> stop(ctx, reason)
     end
+  end
+
+  defp resume_developer(ctx, session_id, prompt) do
+    Kogen.Harness.resume_build_developer(
+      session_id,
+      prompt,
+      ctx.config.developer.model,
+      ctx.config.developer.effort,
+      developer_environment(ctx),
+      developer_context(ctx)
+    )
+  end
+
+  # A Developer never receives a verification context: the policy guard's
+  # immutable inputs only, with every inherited context removed.
+  defp developer_environment(ctx), do: ctx.policy_environment ++ context_scrub()
+
+  defp developer_context(ctx), do: scrubbed_context(ctx, :developer)
+
+  defp scrubbed_context(ctx, role) do
+    context = Kogen.Harness.role_context(ctx.runtime, role)
+    %{context | env: context.env ++ context_scrub()}
   end
 
   defp receive_developer(ctx, expected, number, {:ok, turn}) do
@@ -353,7 +423,7 @@ defmodule Kogen.Build do
         }
       )
     else
-      settle(
+      verify_turn(
         ctx,
         turn.session_id,
         number,
@@ -394,14 +464,109 @@ defmodule Kogen.Build do
     end
   end
 
+  # After every Developer turn this controller verifies the Candidate itself.
+  # A failed cycle with retries left resumes the exact Developer session; it
+  # never consumes the outer allowance and never reaches Jev or Review.
+  defp verify_turn(ctx, session_id, number, notes, invocation) do
+    with :ok <- post_developer_inputs_unchanged(ctx),
+         {:ok, candidate_id} <- Kogen.Git.candidate_id(),
+         {:ok, execution, state} <-
+           Verification.run_cycle(ctx.execution, session_id, candidate_id, cycle_env(ctx)) do
+      ctx = %{ctx | execution: execution, workspace: execution.workspace || ctx.workspace}
+      # The newest base workspace is removed when the Build ends.
+      Process.put(:kogen_base_workspace, ctx.workspace)
+
+      if state["terminal_state"] == "pending" do
+        resume_after_failed_cycle(ctx, session_id, number, state, notes, invocation)
+      else
+        settle(ctx, session_id, number, notes, invocation, candidate_id)
+      end
+    else
+      {:error, reason} -> stop(ctx, reason)
+    end
+  end
+
+  defp cycle_env(ctx) do
+    %{
+      root: File.cwd!(),
+      catalog: ctx.catalog,
+      plan: ctx.plan,
+      scenarios: ctx.contract.scenarios,
+      base_commit: ctx.base_commit,
+      workspace: ctx.workspace
+    }
+  end
+
+  defp resume_after_failed_cycle(ctx, session_id, number, state, notes, invocation) do
+    cycle = List.last(state["cycles"])
+
+    case record_attempt(ctx, %{
+           "developer_session_id" => session_id,
+           "developer_notes" => notes_record(notes),
+           "developer_invocation" => invocation
+         }) do
+      {:ok, ctx} ->
+        prompt = verification_failure_prompt(ctx, state, cycle)
+        result = resume_developer(ctx, session_id, prompt)
+        receive_developer(ctx, session_id, number, result)
+
+      {:error, reason} ->
+        stop(ctx, reason)
+    end
+  end
+
+  # Names the failed target and its retained receipt and log paths. The
+  # controller's context, state and history paths are never given out.
+  defp verification_failure_prompt(ctx, state, cycle) do
+    failure = cycle["failure"]
+    retries = ctx.execution.context["verification_retries"]
+    left = retries + 1 - state["failures_since_pass"]
+
+    receipt =
+      case Enum.find(cycle["receipts"], &(&1["target"] == failure["target"])) do
+        nil ->
+          "none (the cycle failed before `make #{failure["target"]}` produced a receipt)"
+
+        _receipt ->
+          Path.relative_to(
+            Verification.receipt_path(ctx.execution, cycle["sequence"], failure["target"]),
+            File.cwd!()
+          )
+      end
+
+    target_line =
+      case failure["kind"] do
+        "target" -> "`make #{failure["target"]}` failed"
+        "catalog" -> "the Candidate's verification-target catalog check failed"
+        "proof" -> "the controller-run proof selectors of scenario `#{failure["target"]}` failed"
+        kind -> "`#{failure["target"]}` failed (#{kind})"
+      end
+
+    """
+    Controller verification failed after your turn (cycle #{cycle["sequence"]}, Candidate `#{cycle["candidate_id"]}`): #{target_line}.
+
+    - Failed target: `#{failure["target"]}` (#{failure["kind"]})
+    - Retained receipt: `#{receipt}`
+    - Retained log: `#{failure["log_path"]}` (sha256 #{failure["log_sha256"]})
+    - Verification retries left after this one: #{max(left - 1, 0)} of #{retries}
+
+    Read the log, fix the Candidate, and end your turn. Kogen's Build controller runs `check` and the selected targets again after your turn; do not run them yourself.
+
+    Log tail:
+
+    ```text
+    #{String.slice(failure["output"] || "", -6_000, 6_000)}
+    ```
+    """
+  end
+
   # No Kogen code parses `notes`: they are recorded verbatim as unverified
   # claims and only Jev reads them. Every outcome below is decided by
   # controller code from settled verification, the Candidate and Jev's
-  # validated answers, so no handoff-format failure exists.
-  defp settle(ctx, session_id, number, notes, invocation) do
-    with :ok <- post_developer_inputs_unchanged(ctx),
-         {:ok, candidate_id} <- Kogen.Git.candidate_id(),
-         {:ok, ctx, verification} <- settle_verification(ctx, session_id, candidate_id),
+  # validated answers, so no handoff-format failure exists. Exhausted
+  # verification stops the Build before Jev and Review.
+  defp settle(ctx, session_id, number, notes, invocation, candidate_id) do
+    with {:ok, ctx, verification} <- settle_verification(ctx, session_id, candidate_id),
          receipts = normalized_final_receipts(verification),
          {:ok, ctx} <-
            record_attempt(ctx, %{
@@ -409,13 +574,23 @@ defmodule Kogen.Build do
              "developer_session_id" => session_id,
              "developer_notes" => notes_record(notes),
              "developer_invocation" => invocation,
-             "check" => List.first(receipts),
-             "targets" => Enum.drop(receipts, 1)
-           }),
-         {:ok, ctx, jev} <- read_notes(ctx, candidate_id, notes) do
-      settle_outcome(ctx, candidate_id, session_id, number, notes, verification, jev)
+             "receipts" => receipts
+           }) do
+      if verification["terminal_state"] == "passed",
+        do: settle_notes(ctx, candidate_id, session_id, number, notes, verification),
+        else: stop(ctx, terminal_exhaustion_reason(ctx, verification))
     else
       {:error, reason} -> stop(ctx, reason)
+    end
+  end
+
+  defp settle_notes(ctx, candidate_id, session_id, number, notes, verification) do
+    case read_notes(ctx, candidate_id, notes) do
+      {:ok, ctx, jev} ->
+        settle_outcome(ctx, candidate_id, session_id, number, notes, verification, jev)
+
+      {:error, reason} ->
+        stop(ctx, reason)
     end
   end
 
@@ -552,8 +727,13 @@ defmodule Kogen.Build do
 
   defp report_and_review(ctx, candidate_id, session_id, number, jev) do
     attempt = current_attempt(ctx)
+    cycle = List.last(ctx.execution.state["cycles"])
+    proofs = List.wrap(cycle["proofs"])
 
     with {:ok, changes} <- candidate_changes(candidate_id),
+         {:ok, ledger} <- verification_ledger(ctx, candidate_id, attempt, cycle),
+         {base_suite, workspace} = base_suite(ctx, candidate_id),
+         ctx = %{ctx | workspace: workspace || ctx.workspace},
          report =
            Report.build(%{
              contract: ctx.contract,
@@ -561,8 +741,11 @@ defmodule Kogen.Build do
              candidate_id: candidate_id,
              open_findings: Tracking.open_findings(ctx.tracking),
              changes: changes,
-             check: attempt["check"],
-             targets: Map.get(attempt, "targets", []),
+             receipts: attempt["receipts"],
+             proofs: proofs,
+             labels: Map.new(ctx.plan.scenarios, &{&1["id"], &1["label"]}),
+             ledger: ledger,
+             base_suite: base_suite,
              jev: jev
            }),
          {:ok, references} <- snapshot_references(report, ctx.tracking),
@@ -570,12 +753,54 @@ defmodule Kogen.Build do
            record_attempt(ctx, %{
              "outcome" => "settled",
              "handoff" => report,
+             "verification_ledger" => ledger,
+             "base_suite" => base_suite,
              "developer_reference_snapshots" => references
            }) do
+      Process.put(:kogen_base_workspace, ctx.workspace)
       review(%{ctx | references: references}, candidate_id, session_id, number)
     else
       {:error, reason} -> stop(ctx, reason)
     end
+  end
+
+  # The verification-surface ledger exists only when the admission catalog
+  # declares the integrity fields. It goes to the handoff report and the
+  # review packet, never to Jev.
+  defp verification_ledger(%{catalog: %{integrity: nil}}, _candidate_id, _attempt, _cycle),
+    do: {:ok, nil}
+
+  defp verification_ledger(ctx, candidate_id, attempt, cycle) do
+    preservation =
+      for proof <- List.wrap(cycle["proofs"]),
+          proof["kind"] == "base_preservation",
+          path <- List.wrap(proof["changed_selectors"]),
+          do: path
+
+    Ledger.compute(%{
+      root: File.cwd!(),
+      base_commit: ctx.base_commit,
+      candidate_id: candidate_id,
+      integrity: ctx.catalog.integrity,
+      admission_sha256: ctx.catalog.sha256,
+      candidate_sha256: cycle["catalog_sha256"],
+      receipts: attempt["receipts"],
+      directory: ctx.execution.directory,
+      preservation: Enum.uniq(preservation)
+    })
+  end
+
+  defp base_suite(%{catalog: %{integrity: nil}}, _candidate_id), do: {nil, nil}
+
+  defp base_suite(ctx, candidate_id) do
+    Ledger.base_suite(%{
+      root: File.cwd!(),
+      base_commit: ctx.base_commit,
+      candidate_id: candidate_id,
+      integrity: ctx.catalog.integrity,
+      workspace: ctx.workspace,
+      directory: ctx.execution.directory
+    })
   end
 
   # Paths that differ between the settled Candidate tree and HEAD.
@@ -611,64 +836,33 @@ defmodule Kogen.Build do
   defp change_kind("D"), do: "deleted"
   defp change_kind(_status), do: "modified"
 
+  # A failed provider turn is not a verification cycle; the Build stops with
+  # the harness failure (a guarded-path violation still takes precedence).
   defp settle_transport_failure(ctx, number, reason, evidence) do
     session_id = evidence[:session_id]
 
-    candidate =
-      case post_developer_inputs_unchanged(ctx) do
-        :ok -> Kogen.Git.candidate_id()
-        {:error, _reason} = error -> error
-      end
-
-    case candidate do
-      {:ok, candidate_id} ->
-        case settle_verification(ctx, session_id, candidate_id) do
-          {:ok, ctx, %{"terminal_state" => "exhausted"} = verification} ->
-            stop(ctx, terminal_exhaustion_reason(ctx, verification), %{
-              "developer_session_id" => session_id,
-              "developer_invocation" => invocation_evidence(evidence)
-            })
-
-          {:ok, ctx, _passed} ->
-            stop(
-              ctx,
-              "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}",
-              %{
-                "developer_session_id" => session_id,
-                "developer_invocation" => invocation_evidence(evidence),
-                "outer_attempt" => number
-              }
-            )
-
-          {:error, _settlement_reason} ->
-            stop(
-              ctx,
-              "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}",
-              %{
-                "developer_invocation" => invocation_evidence(evidence)
-              }
-            )
-        end
-
-      {:error, _} ->
+    case post_developer_inputs_unchanged(ctx) do
+      :ok ->
         stop(
           ctx,
           "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}",
           %{
-            "developer_invocation" => invocation_evidence(evidence)
+            "developer_session_id" => session_id,
+            "developer_invocation" => invocation_evidence(evidence),
+            "outer_attempt" => number
           }
         )
+
+      {:error, guard_reason} ->
+        stop(ctx, guard_reason, %{"developer_invocation" => invocation_evidence(evidence)})
     end
   end
 
+  # The catalog is no longer byte-frozen: each cycle checks the Candidate's
+  # catalog as data and a violation returns to the same Developer.
   defp post_developer_inputs_unchanged(ctx) do
-    with :ok <- inputs_unchanged(ctx),
-         true <- VerificationPlan.unchanged?(ctx.catalog),
-         :ok <- GuardedPaths.check(ctx.guarded_snapshot, ctx.intent.may_change_guarded_paths) do
-      :ok
-    else
-      false -> {:error, "verification target catalog changed after admission"}
-      {:error, _} = error -> error
+    with :ok <- inputs_unchanged(ctx) do
+      GuardedPaths.check(ctx.guarded_snapshot, ctx.intent.may_change_guarded_paths)
     end
   end
 
@@ -693,7 +887,7 @@ defmodule Kogen.Build do
                "verification" => verification,
                "failure_signatures" => signatures,
                "verification_state" => %{
-                 "path" => Path.relative_to(execution.state_path, File.cwd!()),
+                 "file" => "state.json",
                  "sha256" => Base.encode16(:crypto.hash(:sha256, execution.state_bytes)),
                  "content_base64" => Base.encode64(execution.state_bytes)
                }
@@ -709,7 +903,10 @@ defmodule Kogen.Build do
 
   defp terminal_exhaustion_reason(ctx, verification) do
     cycle = List.last(verification["cycles"])
-    target = cycle["failed_target"] || List.last(cycle["receipts"])["target"]
+
+    target =
+      get_in(cycle, ["failure", "target"]) ||
+        (List.last(cycle["receipts"]) || %{})["target"] || "unknown"
 
     signature =
       ctx.tracking.record["attempts"]
@@ -745,12 +942,19 @@ defmodule Kogen.Build do
         render_reviewer_prompt(ctx.intent, candidate_id, ctx.config) <>
           reviewer_notes_section(ctx) <> task_context(ctx, candidate_id, "reviewer")
 
+      # The verdict schema is chosen per launch: `ledger` is required exactly
+      # when this attempt's packet carries a nonempty ledger.
+      context =
+        ctx
+        |> scrubbed_context(:reviewer)
+        |> Kogen.Harness.with_ledger(ledger_paths(ctx))
+
       result =
         Kogen.Harness.launch_reviewer(
           prompt,
           ctx.config.reviewer.model,
           ctx.config.reviewer.effort,
-          Kogen.Harness.role_context(ctx.runtime, :reviewer)
+          context
         )
 
       receive_review(ctx, candidate_id, session_id, number, result)
@@ -758,6 +962,8 @@ defmodule Kogen.Build do
       {:error, reason} -> stop(ctx, reason)
     end
   end
+
+  defp ledger_paths(ctx), do: Ledger.paths(current_attempt(ctx)["verification_ledger"])
 
   # One immutable packet per attempt, written before launch. Its binding lives
   # in controller state and in the attempt, and every later input check
@@ -816,7 +1022,14 @@ defmodule Kogen.Build do
              verdict.response,
              ctx.contract,
              binding,
-             Tracking.open_findings(ctx.tracking)
+             Tracking.open_findings(ctx.tracking),
+             ledger_paths(ctx)
+           ),
+         response =
+           Review.apply_ledger(
+             response,
+             current_attempt(ctx)["verification_ledger"],
+             ctx.contract
            ),
          {:ok, references} <- snapshot_references(response, ctx.tracking),
          :ok <- bound_inputs_unchanged(ctx, candidate_id, session_id),
@@ -865,13 +1078,14 @@ defmodule Kogen.Build do
 
   # The record is written before any launch; a failure releases every held
   # harness selection.
-  defp new_tracking(intent, contract, approved_entries, config, runtime) do
+  defp new_tracking(intent, contract, approved_entries, config, runtime, workspace) do
     case Tracking.new(intent, contract, approved_entries, config) do
       {:ok, tracking} ->
         {:ok, tracking}
 
       {:error, _reason} = error ->
         Kogen.Harness.close(runtime)
+        BaseWorkspace.remove(workspace)
         error
     end
   end
@@ -947,9 +1161,8 @@ defmodule Kogen.Build do
     with :ok <- bound_inputs_unchanged(ctx, candidate_id, session_id),
          {:ok, ctx} <- record_attempt(ctx, %{"reference_snapshots" => ctx.references}) do
       attempt = current_attempt(ctx)
-      targets = Enum.map(Map.get(attempt, "targets", []), &{&1["target"], &1["output"]})
 
-      case accept(ctx, candidate_id, session_id, verdict, number, attempt["check"], targets, nil) do
+      case accept(ctx, candidate_id, session_id, verdict, number, attempt_receipts(attempt)) do
         :ok -> :ok
         {:error, reason} -> stop(ctx, reason)
       end
@@ -963,7 +1176,8 @@ defmodule Kogen.Build do
          :ok <- approved_unchanged(ctx),
          :ok <- references_unchanged(ctx.references, ctx.tracking),
          :ok <- Tracking.verify_record_versions(ctx.tracking),
-         :ok <- review_packets_unchanged(ctx) do
+         :ok <- review_packets_unchanged(ctx),
+         :ok <- Ledger.verify(current_attempt(ctx)["verification_ledger"], File.cwd!()) do
       target_evidence_unchanged(ctx.tracking)
     end
   end
@@ -1019,9 +1233,15 @@ defmodule Kogen.Build do
      "#{reason}#{suffix}; unresolved scenarios: #{ids}; tracking record: #{ctx.tracking.path}"}
   end
 
+  # Receipts are one uniform list; records written before it keep separate
+  # `check` and `targets` fields.
+  defp attempt_receipts(%{"receipts" => receipts}) when is_list(receipts), do: receipts
+
+  defp attempt_receipts(attempt),
+    do: Enum.reject([attempt["check"] | Map.get(attempt, "targets", [])], &is_nil/1)
+
   defp scenario_receipts(ctx) do
-    attempt = current_attempt(ctx)
-    receipts = [attempt["check"] | Map.get(attempt, "targets", [])]
+    receipts = attempt_receipts(current_attempt(ctx))
 
     Map.new(ctx.contract.scenarios, fn scenario ->
       {scenario["id"], Enum.filter(receipts, &(&1["target"] in scenario["verified_by"]))}
@@ -1167,7 +1387,7 @@ defmodule Kogen.Build do
   defp target_evidence_unchanged(tracking) do
     tracking.record["attempts"]
     |> Enum.flat_map(fn attempt ->
-      direct = Map.get(attempt, "targets", [])
+      direct = attempt_receipts(attempt)
 
       cycles =
         attempt
@@ -1194,28 +1414,10 @@ defmodule Kogen.Build do
   # Publication copies frozen inputs and adds noncolliding generated evidence.
   # A failed stage/commit restores Approved bytes from controller memory, never
   # from a Complete copy that an external Git hook might have changed.
-  defp accept(
-         ctx,
-         candidate_id,
-         session_id,
-         verdict,
-         resumptions_used,
-         check_record,
-         target_results,
-         dev_result
-       ) do
+  defp accept(ctx, candidate_id, session_id, verdict, resumptions_used, receipts) do
     with :ok <- approved_unchanged(ctx),
          :ok <- check_complete_absent(ctx.slug) do
-      do_accept(
-        ctx,
-        candidate_id,
-        session_id,
-        verdict,
-        resumptions_used,
-        check_record,
-        target_results,
-        dev_result
-      )
+      do_accept(ctx, candidate_id, session_id, verdict, resumptions_used, receipts)
     end
   rescue
     error in File.Error ->
@@ -1223,16 +1425,7 @@ defmodule Kogen.Build do
       {:error, "publication failed, Approved Intent restored: #{Exception.message(error)}"}
   end
 
-  defp do_accept(
-         ctx,
-         candidate_id,
-         session_id,
-         verdict,
-         resumptions_used,
-         check_record,
-         target_results,
-         _dev_result
-       ) do
+  defp do_accept(ctx, candidate_id, session_id, verdict, resumptions_used, receipts) do
     %{slug: slug, intent: intent} = ctx
     complete_dir = Path.join(@complete_base, slug)
     approved_dir = Path.join(@approved_base, slug)
@@ -1247,8 +1440,7 @@ defmodule Kogen.Build do
         session_id,
         verdict,
         resumptions_used,
-        check_record,
-        target_results,
+        receipts,
         ctx.config
       )
 
@@ -1430,7 +1622,7 @@ defmodule Kogen.Build do
   end
 
   defp summary_attempt(attempt) do
-    receipts = [attempt["check"] | Map.get(attempt, "targets", [])] |> Enum.reject(&is_nil/1)
+    receipts = attempt_receipts(attempt)
 
     %{
       "number" => attempt["number"],
@@ -1451,7 +1643,9 @@ defmodule Kogen.Build do
             "finished_at",
             "candidate_id",
             "attempt_token",
-            "session_id"
+            "session_id",
+            "cycle_sequence",
+            "reused_from"
           ])
         )
     }
@@ -1488,35 +1682,31 @@ defmodule Kogen.Build do
          developer_session_id,
          verdict,
          resumptions_used,
-         check_record,
-         target_results,
+         receipts,
          route
        ) do
     findings_text = Enum.map_join(verdict.findings, ", ", &Map.get(&1, "id", "finding"))
     findings_text = if findings_text == "", do: "(none)", else: findings_text
 
-    check_section = """
-    ## Check (Stop hook Verification Record, bound to this Candidate)
+    bodies =
+      Enum.map_join(receipts, "\n", fn receipt ->
+        reuse =
+          case receipt["reused_from"] do
+            %{"cycle_sequence" => cycle} -> "; reused from cycle #{cycle}"
+            _ -> ""
+          end
 
-    - status: `#{Map.get(check_record, "status")}`
-    - exit_code: `#{Map.get(check_record, "exit_code")}`
-    - finished_at: `#{Map.get(check_record, "finished_at")}`
-    - session_id: `#{Map.get(check_record, "session_id")}`
-    """
+        "- `make #{receipt["target"]}`: `#{receipt["status"]}` (exit_code `#{receipt["exit_code"]}`, " <>
+          "cycle #{receipt["cycle_sequence"]}, finished_at `#{receipt["finished_at"]}`, " <>
+          "session_id `#{receipt["session_id"] || receipt["developer_session_id"]}`#{reuse})"
+      end)
 
-    targets_section =
-      case target_results do
-        [] ->
-          "## Declared targets\n\n(none beyond `check`)\n"
+    check_section =
+      "## Verification receipts (controller-owned, bound to this Candidate)\n\n" <>
+        "Exact output remains in the full local record and its retained logs.\n\n" <>
+        bodies <> "\n"
 
-        results ->
-          bodies =
-            Enum.map_join(results, "\n", fn {name, _out} ->
-              "- `make #{name}`: settled (exact output remains in the full local record)"
-            end)
-
-          "## Declared targets (beyond `check`)\n\n" <> bodies
-      end
+    targets_section = ""
 
     """
     # Complete evidence: #{intent.title}
@@ -1550,7 +1740,9 @@ defmodule Kogen.Build do
               case VerificationPlan.build(
                      contract.scenarios,
                      intent.may_change_guarded_paths,
-                     catalog
+                     catalog,
+                     File.cwd!(),
+                     added: added_targets(intent)
                    ) do
                 {:ok, plan} ->
                   changed =

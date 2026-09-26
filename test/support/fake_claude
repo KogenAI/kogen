@@ -1,9 +1,11 @@
 #!/bin/sh
 # Offline Claude Code fixture: `auth status` metadata, Developer stream-json
-# turns with real tracked Stop-hook invocations, and Reviewer structured output.
+# turns that see the inactive tracked Stop script, and Reviewer structured output.
 # FAKE_CLAUDE_REVIEW=accept|rework fixes the verdict; FAKE_CLAUDE_REVIEWER_MUTATES=1
 # makes the Reviewer write a file it must never write; FAKE_CLAUDE_STOP_BLOCK=0
-# skips the deliberately failing first Stop for fixtures whose Check always passes.
+# skips the deliberately failing first controller cycle (an ignored
+# `.kogen/runtime/kogen_fake_break` marker the fixture check rejects) for
+# fixtures whose Check always passes.
 set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 response_helper="$script_dir/scenario_response.py"
@@ -19,18 +21,13 @@ if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
   fi
   printf '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","email":"secret@example.invalid"}\n'; exit 0
 fi
+# The registered Stop script is a bootstrap remnant: without a v1 context it
+# must answer continue and record nothing. Verification is the controller's.
 stop_check() {
- expected="$1"; active="$2"
- response="$(printf '{"session_id":"%s","stop_hook_active":%s,"hook_event_name":"Stop"}' "$sid" "$active" | sh .codex/hooks/check.sh)"
+ response="$(printf '{"session_id":"%s","stop_hook_active":false,"hook_event_name":"Stop"}' "$sid" | sh .codex/hooks/check.sh)"
  printf '%s\n' "$response" >> "$state_dir/fake-hook-responses"
- if [ "$expected" = pass ] && printf '%s' "$response" | grep -q '"decision":"block"'; then
-  stop_check pass true
-  return
- fi
- case "$expected:$response" in
-  block:*'"decision":"block"'*|pass:*'"continue":true'*) return 0 ;;
- esac
- printf 'Unexpected Stop response (expected %s): %s\n' "$expected" "$response" >&2
+ [ "$response" = '{"continue":true}' ] && return 0
+ printf 'Unexpected Stop response (expected inactive continue): %s\n' "$response" >&2
  exit 1
 }
 input="$(cat)"
@@ -58,7 +55,14 @@ raise SystemExit(0 if actual == requirement["expected"] else 1)
 PY
   fi
  fi
- printf '%s' "$input" | python3 "$response_helper" reviewer "$decision" | python3 "$stream" reviewer "$session" "$model"
+ schema=; prev=
+ for a in "$@"; do [ "$prev" = --json-schema ] && schema="$a"; prev="$a"; done
+ printf '%s' "$schema" > "$state_dir/reviewer-schema-$n.json"
+ if [ -f "$script_dir/fake_ledger.py" ]; then
+  printf '%s' "$input" | python3 "$response_helper" reviewer "$decision" | python3 "$script_dir/fake_ledger.py" "$state_dir/reviewer-schema-$n.json" | python3 "$stream" reviewer "$session" "$model"
+ else
+  printf '%s' "$input" | python3 "$response_helper" reviewer "$decision" | python3 "$stream" reviewer "$session" "$model"
+ fi
  exit 0
 fi
 if [ -n "$resume" ]; then
@@ -66,17 +70,22 @@ if [ -n "$resume" ]; then
   printf 'No conversation found with session ID: %s\n' "$resume" >&2; exit 1
  fi
  sid="$resume"
- printf '%s' "$input" >> "$state_dir/developer-resume-prompts"
  case "$input" in
-  *'Rework required (category: declared_target;'*) ;;
+  'Controller verification failed after your turn'*)
+   printf '%s' "$input" >> "$state_dir/verification-resume-prompts"
+   [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ] || rm -f "$state_dir/kogen_fake_break"
+   ;;
+  *'Rework required (category: declared_target;'*)
+   printf '%s' "$input" >> "$state_dir/developer-resume-prompts" ;;
   *)
+   printf '%s' "$input" >> "$state_dir/developer-resume-prompts"
    if [ "${FAKE_CLAUDE_RESUME_EDITS:-1}" = 1 ]; then
     printf 'reviewed fixture value\n' > dummy.txt
     printf 'Reviewer-directed rework applied\n' > reviewer-rework-marker.txt
    fi
    ;;
  esac
- stop_check pass false
+ stop_check
  printf '%s' "$input" | python3 "$response_helper" developer | python3 "$stream" developer "$sid" "$model"
  exit 0
 fi
@@ -85,11 +94,7 @@ n=0; [ -f "$state_dir/fake-dev-calls" ] && n="$(cat "$state_dir/fake-dev-calls")
 printf '%s' "$input" > "$state_dir/developer-launch-prompt"
 printf 'initial fixture value\n' > dummy.txt
 if [ "${FAKE_CLAUDE_STOP_BLOCK:-1}" = 1 ]; then
- printf 'defmodule Kogen.FakeBreak do\n  this is not valid elixir(((\nend\n' > lib/kogen_fake_break.ex
- stop_check block false
- rm -f lib/kogen_fake_break.ex
- stop_check pass true
-else
- stop_check pass false
+ printf 'bounded fixture break\n' > "$state_dir/kogen_fake_break"
 fi
+stop_check
 printf '%s' "$input" | python3 "$response_helper" developer | python3 "$stream" developer "$sid" "$model"

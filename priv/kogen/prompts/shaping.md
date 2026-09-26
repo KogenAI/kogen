@@ -107,9 +107,11 @@ observable result, including prerequisites, authority, lifetime, cleanup, failur
 and preservation controls. Trace changed producer-to-consumer boundaries and
 rehearse deterministic orchestration before paid execution. Synthetic controls do
 not prove real external access, and component assertions do not prove an unexercised
-combined route. Select targets by affected existing workflows and evidence
-sufficiency, even when their live test files are unchanged, rather than by the
-files edited in the eventual Build.
+combined route. Select a provider-backed target only when the scenario claims a
+provider-only observable that offline proof can't establish. That an existing live
+test exercises the changed path is not, on its own, a reason to select it.
+Deterministic orchestration is proved offline, including through a complete
+fake-harness run.
 
 Assign each observation to an evidence owner that can actually retain and inspect it
 at the relevant phase. If an outer driver alone observes an ephemeral interaction,
@@ -158,11 +160,16 @@ Under `.kogen/intents/drafts/<slug>/` (later moved as a whole to
   - `id`: short stable identifier
   - `given` / `when` / `then`: the behavior in Given/When/Then form
   - `wrong_result`: what a plausible-but-wrong implementation would do instead
-  - `verified_by`: a YAML list of **make target names** that must pass for
-    this scenario to count as verified — e.g. `[check]`, `[check, live-native]`, or
-    other targets actually declared in the Makefile. This is a list of make
-    targets, never the free word "review"; the Reviewer's verdict is a
-    separate, always-run step and is not itself a `verified_by` entry.
+  - `verified_by`: a YAML list of **make target names** — the complete,
+    explicit list of targets this scenario needs, with no implicit `check` and
+    no target name treated as special. It must be a nonempty list of distinct
+    catalog targets: at least one offline (`provider_backed: false`) target,
+    and at most one provider-backed (`provider_backed: true`) target, which
+    must equal this scenario's `proof.paid_target`. Every listed target's
+    declared `dependencies` must also be listed, and the list must follow
+    catalog rank order. This is a list of make targets, never the free word
+    "review"; the Reviewer's verdict is a separate, always-run step and is not
+    itself a `verified_by` entry.
   - `evidence`: a short note on how the scenario will be demonstrated (test
     name, probe, transcript, etc.)
   - `proof`: a required map describing focused proof and any paid boundary:
@@ -176,14 +183,42 @@ Under `.kogen/intents/drafts/<slug>/` (later moved as a whole to
     `offline` is a nonempty list of repository-relative maintained selectors
     (a test file/directory, stable named test, or cataloged rehearsal), never a
     line selector, repository root, whole-suite glob, absolute path, or `..`.
-    `paid_target` is `none` or one narrow catalog target. Use
-    `offline-sufficient: <consumer/control>` when it is `none`; otherwise use
+    `paid_target` is `none` or one narrow catalog target. Select a
+    provider-backed target only when the scenario claims a provider-only
+    observable that offline proof can't establish; an existing live test
+    exercising the changed path is not, on its own, a reason. Deterministic
+    orchestration — including a complete fake-harness run — is proved offline.
+    Use `offline-sufficient: <consumer/control>` when `paid_target` is `none`;
+    otherwise use
     `provider-required: <exact-target>; observation: <provider-only observable>; offline-limit: <why offline cannot establish it>`.
     `affected_paths` is a nonempty list of implementation, assertion, and
     fixture paths required by this scenario and must be covered by guarded
-    paths. Keep `verified_by` exactly `[check]` plus the selected paid target,
-    if any. Do not select every paid target by default or claim that offline
-    proof establishes provider semantics.
+    paths. Keep `verified_by` limited to the targets this scenario actually
+    needs, including the selected paid target if any. Do not select every
+    paid target by default or claim that offline proof establishes provider
+    semantics.
+
+    `proof` may also carry an optional `base: fail | pass`. Use `fail` for
+    new or changed behavior whose `offline` file selectors must also fail when
+    run against the admission base (so an empty, `assert true`, or otherwise
+    vacuous proof is caught); use `pass` for preservation, where an edited
+    selector's base bytes must still pass against the Candidate. A contract
+    without `proof.base` still validates; it is labelled `unproven-on-base`.
+
+    An `intent.yaml` may declare `catalog_changes.add` (a list of new Make
+    target names) to add targets to the catalog and select them in the same
+    Intent. A scenario that selects an added provider-backed target must list
+    that target's rehearsal test among its `affected_paths` file selectors.
+
+    A repository's admission catalog may also declare optional integrity
+    fields, consumed only by the controller, never by Candidate code:
+    `verification_surface` (`tests` and `runner` globs identifying test and
+    runner files), `focused_runner` (an argv template with a `{paths}`
+    placeholder for running focused selectors), and `base_cache` (paths copied
+    into a controller-owned base workspace outside the repository). A
+    `base_cache` entry must never name the controller's volatile state:
+    `.kogen/runtime`, `.kogen/build.lock`, `.kogen/codex`, or
+    `.codex/sessions`.
 
 You may also produce, as needed:
 

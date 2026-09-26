@@ -5,16 +5,22 @@ defmodule Kogen.VerificationPolicy do
   The PreToolUse hook performs command classification before Codex dispatches a
   Bash request. This module derives the immutable policy passed to that hook
   and proves the tracked hook is installed before a Developer is launched.
+
+  No target name is special: the guard blocks `make <goal>` for every selected
+  catalog target, whatever it is named, never a hardcoded `check`/`live` pair.
+  Preflight requires only this Build's own PreToolUse guard files and
+  registration — never the bootstrap Stop script (`.codex/hooks/check.sh`),
+  which a follow-up Intent deletes once the Build controller owns every
+  verification gate.
   """
   use Boundary, deps: [Kogen.Check]
 
   @hooks_path ".codex/hooks.json"
   @script_path ".codex/hooks/verification_policy.py"
-  @stop_script_path ".codex/hooks/check.sh"
   @hook_command "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/verification_policy.py\""
 
   @spec normalized_targets([String.t()]) :: [String.t()]
-  def normalized_targets(targets), do: Enum.uniq(["check", "live" | targets])
+  def normalized_targets(targets), do: Enum.uniq(targets)
 
   @spec environment([String.t()], Path.t()) :: [{String.t(), String.t()}]
   def environment(targets, root \\ File.cwd!()) do
@@ -28,9 +34,10 @@ defmodule Kogen.VerificationPolicy do
   def preflight(targets, root \\ ".")
 
   def preflight(targets, root) when is_list(targets) do
-    with true <- Enum.all?(normalized_targets(targets), &Kogen.Check.valid_target_name?/1),
+    normalized = normalized_targets(targets)
+
+    with true <- normalized != [] and Enum.all?(normalized, &Kogen.Check.valid_target_name?/1),
          :ok <- required_file(@script_path, root),
-         :ok <- required_file(@stop_script_path, root),
          :ok <- registered_hook(root) do
       :ok
     else
@@ -45,9 +52,9 @@ defmodule Kogen.VerificationPolicy do
   def developer_instruction(targets) do
     names = Enum.map_join(normalized_targets(targets), ", ", &"`make #{&1}`")
 
-    "Kogen machinery owns verification gates. Do not run #{names}, the Stop script " <>
-      "`.codex/hooks/check.sh`, or any indirect equivalent — including for early signal " <>
-      "or through delegated helpers. Focused non-gate tests remain allowed."
+    "Kogen's Build controller owns verification gates. Do not run #{names}, the bootstrap " <>
+      "Stop script `.codex/hooks/check.sh`, or any indirect equivalent — including for early " <>
+      "signal or through delegated helpers. Focused non-gate tests remain allowed."
   end
 
   defp required_file(path, root) do

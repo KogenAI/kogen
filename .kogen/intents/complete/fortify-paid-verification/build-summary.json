@@ -1,0 +1,445 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "TYeX0pbOZD8xfY-b0C1hOxfbJ-asttMb",
+      "candidate_id": "fe4c269ced7db9ef4adfa9ce1feebfb75c3680a7",
+      "developer_session_id": "c6bdec6e-273b-47ea-817f-2500e49a46a5",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "01a0db2b-dfc4-7290-bed1-3f9ee59dfeb4",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "TYeX0pbOZD8xfY-b0C1hOxfbJ-asttMb",
+          "candidate_id": "fe4c269ced7db9ef4adfa9ce1feebfb75c3680a7",
+          "exit_code": 0,
+          "finished_at": "2026-09-26T00:38:06Z",
+          "session_id": "c6bdec6e-273b-47ea-817f-2500e49a46a5",
+          "status": "passed",
+          "target": "check"
+        },
+        {
+          "attempt_token": "TYeX0pbOZD8xfY-b0C1hOxfbJ-asttMb",
+          "candidate_id": "fe4c269ced7db9ef4adfa9ce1feebfb75c3680a7",
+          "exit_code": 0,
+          "finished_at": "2026-09-26T00:41:49Z",
+          "session_id": "c6bdec6e-273b-47ea-817f-2500e49a46a5",
+          "status": "passed",
+          "target": "live-native"
+        },
+        {
+          "attempt_token": "TYeX0pbOZD8xfY-b0C1hOxfbJ-asttMb",
+          "candidate_id": "fe4c269ced7db9ef4adfa9ce1feebfb75c3680a7",
+          "exit_code": 0,
+          "finished_at": "2026-09-26T00:44:37Z",
+          "session_id": "c6bdec6e-273b-47ea-817f-2500e49a46a5",
+          "status": "passed",
+          "target": "live-shape-to-build"
+        }
+      ]
+    }
+  ],
+  "build_id": "zHsp56EtL99NjugOzL5vYhjA",
+  "candidate_id": "fe4c269ced7db9ef4adfa9ce1feebfb75c3680a7",
+  "developer_session_id": "c6bdec6e-273b-47ea-817f-2500e49a46a5",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 5222933,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/zHsp56EtL99NjugOzL5vYhjA/record.json",
+    "schema_version": 2,
+    "sha256": "2756511c8886be47c96be9cc2c5403e3eb4ca9fc6331031196b945a68dc9a1ed"
+  },
+  "intent": {
+    "id": "01a0d3f7-1a75-72d3-905c-10b1bb6d1d55",
+    "slug": "fortify-paid-verification",
+    "title": "Own verification in the Build controller with Candidate-bound receipts"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0db2b-dfc4-7290-bed1-3f9ee59dfeb4"
+  },
+  "risks": [
+    {
+      "id": "self-hosting-settlement"
+    },
+    {
+      "id": "nested-context-inheritance"
+    },
+    {
+      "id": "native-paid-evidence-owner"
+    },
+    {
+      "id": "overlapping-intents"
+    },
+    {
+      "id": "integrity-limits"
+    },
+    {
+      "id": "appetite"
+    },
+    {
+      "id": "baseline-moves-before-build"
+    },
+    {
+      "id": "controller-owned-artifacts"
+    },
+    {
+      "id": "live-targets-on-hybrid-default-route"
+    },
+    {
+      "id": "shaping-audit-rule-drift"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "medium",
+      "harness": "claude",
+      "model": "claude-opus-5-5"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "claude": {
+        "scout": {
+          "effort": "low",
+          "model": "claude-sonnet-5"
+        },
+        "worker": {
+          "effort": "medium",
+          "model": "claude-sonnet-5"
+        }
+      },
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "claude",
+      "model": "claude-opus-5-5"
+    }
+  },
+  "route": {
+    "harness": "claude",
+    "name": "claude-dominant-adversarial-codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "controller verification flow, context scrubbing, and same-cycle record/history persistence",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "controller-owned cycle execution and local Verification Record write",
+          "path": "lib/kogen/build/verification.ex"
+        },
+        {
+          "locator": "fake lifecycle coverage of failed-then-passed verification and Stop inactivity",
+          "path": "test/kogen/controller_verification_test.exs"
+        },
+        {
+          "locator": "recorded receipts: /attempts/0/check and /attempts/0/targets/1 both passed",
+          "path": ".kogen/runtime/scenario-tracking/zHsp56EtL99NjugOzL5vYhjA/review-packets/0.json"
+        }
+      ],
+      "id": "controller-owns-verification",
+      "reason": "The controller runs verification outside the Developer process, scrubs inherited contexts, owns verification state/history, and the recorded check and live-shape-to-build targets passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "failed-cycle resume path uses the same Developer session and verification retry budget",
+          "path": "lib/kogen/build.ex"
+        },
+        {
+          "locator": "retry exhaustion and outer-attempt reset implementation",
+          "path": "lib/kogen/build/verification.ex"
+        },
+        {
+          "locator": "resume, exhaustion, fresh-context, and superseded-objection tests",
+          "path": "test/kogen/controller_verification_test.exs"
+        },
+        {
+          "locator": "outer resumption behavior tests",
+          "path": "test/kogen/two_outer_resumptions_test.exs"
+        }
+      ],
+      "id": "failed-verification-resumes-same-developer",
+      "reason": "Failed verification resumes the exact Developer session, counts against verification retries, exhausts before Review, and starts a fresh context on outer resumption.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "provider-only passed receipt reuse and fresh offline-target execution",
+          "path": "lib/kogen/build/verification.ex"
+        },
+        {
+          "locator": "counting-target tests cover unchanged, changed, failed, and new-attempt cases plus forged bindings",
+          "path": "test/kogen/verification_reuse_test.exs"
+        },
+        {
+          "locator": "handoff and review-packet reuse reporting assertions",
+          "path": "lib/kogen/build/report.ex"
+        }
+      ],
+      "id": "same-candidate-failed-only-retry",
+      "reason": "The implementation reuses only passed provider-backed receipts bound to the same Candidate, catalog, and context; check and offline targets rerun fresh, and the reuse marker is surfaced in reports and packets.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "per-target process-group runner, exit/timeout/cleanup status, output log digest",
+          "path": "lib/kogen/build/verification_runner.ex"
+        },
+        {
+          "locator": "receipt binding, evidence capture, and settlement integrity validation",
+          "path": "lib/kogen/build/verification.ex"
+        },
+        {
+          "locator": "binding, lingering-process, status, and failed-evidence tests",
+          "path": "test/kogen/controller_verification_test.exs"
+        },
+        {
+          "locator": "target-evidence manifest snapshot and validation tests",
+          "path": "test/kogen/target_evidence_test.exs"
+        }
+      ],
+      "id": "bound-per-target-receipts",
+      "reason": "Receipts contain the required Candidate, attempt, context, catalog, cycle, timing, log, cleanup, and evidence bindings; status is derived from runner facts and tampering controls are tested.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "inert no-context branch and retained v1 unified protocol",
+          "path": ".codex/hooks/stop_runner.py"
+        },
+        {
+          "locator": "PreToolUse-only Candidate preflight and unchanged gate registration",
+          "path": "lib/kogen/verification_policy.ex"
+        },
+        {
+          "locator": "Stop hook context-case tests",
+          "path": "test/kogen/stop_hook_test.exs"
+        },
+        {
+          "locator": "Makefile and verification catalog inspected with no Candidate diff",
+          "path": "Makefile"
+        },
+        {
+          "locator": "verification catalog inspected with no Candidate diff",
+          "path": "priv/kogen/verification_targets.yaml"
+        }
+      ],
+      "id": "stop-route-bootstrap-only",
+      "reason": "The Stop runner is inert without a valid v1 context, preserves the older v1 path, keeps the gate registration, and the Makefile and catalog remain unchanged.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "fixture creation omits Stop scripts and retains PreToolUse, discovery, resume, and helper requirements",
+          "path": "lib/kogen/codex/compatibility.ex"
+        },
+        {
+          "locator": "offline compatibility contract and evidence assertions",
+          "path": "test/kogen/codex_compatibility_test.exs"
+        },
+        {
+          "locator": "recorded native evidence shows blocked gate and same-session resume without hook receipts",
+          "path": ".kogen/runtime/codex-compatibility/run-1790383309500-674/attempt-1-evidence.json"
+        },
+        {
+          "locator": "recorded live-native target passed",
+          "path": ".kogen/runtime/scenario-tracking/zHsp56EtL99NjugOzL5vYhjA/review-packets/0.json"
+        }
+      ],
+      "id": "stop-free-compatibility-fixture",
+      "reason": "The compatibility fixture no longer copies or depends on Stop scripts, while retained evidence shows the blocked gate and exact-session resume; the live-native target passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "explicit target-union planning and no implicit check requirement",
+          "path": "lib/kogen/build/verification_plan.ex"
+        },
+        {
+          "locator": "uniform target execution and policy environment",
+          "path": "lib/kogen/build/verification.ex"
+        },
+        {
+          "locator": "target selection and renamed-gate guard tests",
+          "path": "test/kogen/selective_verification_targets_test.exs"
+        },
+        {
+          "locator": "catalog and Check validation tests",
+          "path": "test/kogen/check_test.exs"
+        }
+      ],
+      "id": "no-special-gate-target",
+      "reason": "Target selection is explicit, dependency- and rank-validated, uses one uniform receipt list, and the guard derives all catalog target names instead of special-casing check or live.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Candidate catalog-as-data validation and declared-addition rules",
+          "path": "lib/kogen/build/catalog_change.ex"
+        },
+        {
+          "locator": "Intent catalog_changes.add parsing and validation",
+          "path": "lib/kogen/intent.ex"
+        },
+        {
+          "locator": "added, removed, edited, and missing-selected-target fixture tests",
+          "path": "test/kogen/catalog_change_test.exs"
+        },
+        {
+          "locator": "same-Developer failure routing for invalid selected targets",
+          "path": "test/kogen/selective_verification_targets_test.exs"
+        }
+      ],
+      "id": "same-intent-catalog-change",
+      "reason": "Declared additions are admitted and checked against Candidate catalog/Make data each cycle, while invalid selected targets fail verification and return to the same Developer.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Candidate and base focused selector execution, red classification, preservation checks, and workspace rebuild",
+          "path": "lib/kogen/build/proof_selectors.ex"
+        },
+        {
+          "locator": "git-archive workspace creation, digest validation, volatile-cache rejection, and isolated environments",
+          "path": "lib/kogen/build/base_workspace.ex"
+        },
+        {
+          "locator": "fixture tests for real red proofs, empty/assert-true/live rejection, base runner isolation, tampering, preservation, legacy labels, and timeout errors",
+          "path": "test/kogen/proof_selector_verification_test.exs"
+        },
+        {
+          "locator": "fixture contract and catalog integrity validation",
+          "path": "test/kogen/intent_test.exs"
+        }
+      ],
+      "id": "controller-runs-proof-selectors",
+      "reason": "The controller runs Candidate selectors itself and enforces base fail/pass semantics with an isolated, digest-checked admission workspace; timeout and infrastructure errors are not treated as red proof.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "surface diff computation, retained full diffs, catalog digest, and base-suite report",
+          "path": "lib/kogen/build/ledger.ex"
+        },
+        {
+          "locator": "per-launch ledger schema and exact disposition validation",
+          "path": "lib/kogen/harness/verdict.ex"
+        },
+        {
+          "locator": "weakening dispositions converted to blocking Review findings",
+          "path": "lib/kogen/build/review.ex"
+        },
+        {
+          "locator": "ledger, packet bound, base-suite, and harness-schema tests",
+          "path": "test/kogen/verification_surface_ledger_test.exs"
+        },
+        {
+          "locator": "bounded packet index and retained diff assertions",
+          "path": "test/kogen/review_packet_test.exs"
+        }
+      ],
+      "id": "verification-surface-ledger",
+      "reason": "The controller retains and indexes surface diffs, reports the base suite without gating on it, and enforces exact Reviewer ledger dispositions with weakening routed to blocking rework.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "offline-first paid-target selection wording and explicit verified_by contract",
+          "path": "priv/kogen/prompts/shaping.md"
+        },
+        {
+          "locator": "maintained Kogen policy and one-paid-target rule",
+          "path": "README.md"
+        },
+        {
+          "locator": "prompt and README contract assertions",
+          "path": "test/kogen/shape_task_test.exs"
+        },
+        {
+          "locator": "scenario contract wording assertions",
+          "path": "test/kogen/scenario_contract_test.exs"
+        }
+      ],
+      "id": "offline-first-target-selection",
+      "reason": "The shared prompt and maintained README reserve paid targets for provider-only observables, make verified_by explicit, and state the offline-first policy.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "maintained self-hosting expand-and-contract guidance and concrete controller inputs",
+          "path": "README.md"
+        },
+        {
+          "locator": "README source-location and worked-example assertions",
+          "path": "test/kogen/readme_guidance_test.exs"
+        }
+      ],
+      "id": "self-hosting-two-step-guidance",
+      "reason": "README documents the two-step self-hosting migration, lists the Candidate inputs and source locations, and gives the Stop-removal/live-native follow-up example without adding this guidance to the shared prompt.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "shared retention module copies full scenario-tracking trees and rewrites summary record paths",
+          "path": "test/support/live_tracking_retention.ex"
+        },
+        {
+          "locator": "both Shape fixture retention call sites use the shared module",
+          "path": "test/kogen/live_shape_to_build_test.exs"
+        },
+        {
+          "locator": "sidecar preservation, deletion, alteration, and post-cleanup resolution controls",
+          "path": "test/kogen/build_evidence_test.exs"
+        },
+        {
+          "locator": "recorded live-shape-to-build target passed",
+          "path": ".kogen/runtime/scenario-tracking/zHsp56EtL99NjugOzL5vYhjA/review-packets/0.json"
+        }
+      ],
+      "id": "shape-to-build-retains-record-sidecars",
+      "reason": "The Shape fixture now retains complete tracking directories, including sidecars, packets, and verification artifacts; offline controls preserve strict sidecar resolution and the live target passed.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

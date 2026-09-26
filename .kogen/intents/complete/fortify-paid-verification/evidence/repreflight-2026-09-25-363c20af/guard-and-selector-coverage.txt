@@ -1,0 +1,10 @@
+13 scenarios at 363c20af
+new selector (in affected_paths) controller-owns-verification test/kogen/controller_verification_test.exs
+new selector (in affected_paths) failed-verification-resumes-same-developer test/kogen/controller_verification_test.exs
+new selector (in affected_paths) same-candidate-failed-only-retry test/kogen/verification_reuse_test.exs
+new selector (in affected_paths) bound-per-target-receipts test/kogen/controller_verification_test.exs
+new selector (in affected_paths) no-special-gate-target test/kogen/controller_verification_test.exs
+new selector (in affected_paths) same-intent-catalog-change test/kogen/catalog_change_test.exs
+new selector (in affected_paths) controller-runs-proof-selectors test/kogen/proof_selector_verification_test.exs
+new selector (in affected_paths) verification-surface-ledger test/kogen/verification_surface_ledger_test.exs
+new selector (in affected_paths) self-hosting-two-step-guidance test/kogen/readme_guidance_test.exs

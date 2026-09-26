@@ -12,8 +12,9 @@ defmodule Kogen.ReviewPacketTest do
   alias Kogen.Build.ReviewPacket
   alias Kogen.ScriptedBuildFixture, as: Fixture
 
-  @keys ~w(attempt_number attempt_token build_id candidate_id developer_notes handoff omitted
-           open_findings receipts record risk_ids scenario_ids schema_version superseded_objection)
+  @keys ~w(attempt_number attempt_token base_suite build_id candidate_id developer_notes handoff
+           omitted open_findings receipts record risk_ids scenario_ids schema_version
+           superseded_objection verification_ledger)
 
   describe "packet construction" do
     test "oversized notes, receipts, findings and handoff fit the bound with digest-bound stubs" do
@@ -60,7 +61,10 @@ defmodule Kogen.ReviewPacketTest do
       assert check["target"] == "check"
       assert target["target"] == "live"
 
-      for {receipt, locator} <- [{check, "/attempts/1/check"}, {target, "/attempts/1/targets/0"}] do
+      for {receipt, locator} <- [
+            {check, "/attempts/1/receipts/0"},
+            {target, "/attempts/1/receipts/1"}
+          ] do
         output = resolve!(record, locator <> "/output")
         assert receipt["status"] == "passed"
         assert receipt["candidate_id"] == "candidate-1"
@@ -119,15 +123,15 @@ defmodule Kogen.ReviewPacketTest do
       attempt = List.last(record["attempts"])
       assert packet["developer_notes"] == attempt["developer_notes"]["text"]
       assert packet["handoff"] == attempt["handoff"]
-      assert hd(packet["receipts"])["output"] == attempt["check"]["output"]
+      assert hd(packet["receipts"])["output"] == hd(attempt["receipts"])["output"]
       assert Enum.all?(packet["omitted"], &(&1["kind"] == "left_out"))
     end
 
     test "a packet grows tighter rather than exceeding the bound" do
       record =
         oversized_record()
-        |> update_in(["attempts", Access.at(1), "targets"], fn targets ->
-          for index <- 1..40, do: %{hd(targets) | "target" => "live-#{index}"}
+        |> update_in(["attempts", Access.at(1), "receipts"], fn [check, live] ->
+          [check | for(index <- 1..40, do: %{live | "target" => "live-#{index}"})]
         end)
 
       assert {:ok, bytes} = ReviewPacket.build(input(record, Jason.encode!(record)))
@@ -168,6 +172,21 @@ defmodule Kogen.ReviewPacketTest do
       assert notes_stub["truncated"]
       assert notes_stub["sha256"] == sha256(notes)
       assert notes_stub["locator"] == "/attempts/1/developer_notes/content_base64"
+    end
+
+    test "a reused receipt (reused_from) appears in the packet receipts" do
+      record =
+        update_in(small_record(), ["attempts", Access.at(1), "receipts"], fn [receipt] ->
+          [
+            receipt,
+            Map.put(receipt, "reused_from", %{"cycle_sequence" => 1, "log_sha256" => "abc"})
+          ]
+        end)
+
+      assert {:ok, bytes} = ReviewPacket.build(input(record, Jason.encode!(record)))
+      packet = Jason.decode!(bytes)
+      assert [_first, reused] = packet["receipts"]
+      assert reused["reused_from"] == %{"cycle_sequence" => 1, "log_sha256" => "abc"}
     end
   end
 
@@ -358,8 +377,7 @@ defmodule Kogen.ReviewPacketTest do
           "attempt_token" => "token-1",
           "candidate_id" => "candidate-1",
           "developer_notes" => %{"text" => "All done."},
-          "check" => receipt,
-          "targets" => [],
+          "receipts" => [receipt],
           "verification" => %{"cycles" => [%{"sequence" => 1, "receipts" => [receipt]}]},
           "handoff" => %{"format" => "kogen-controller-handoff-report", "scenarios" => []}
         }
@@ -372,7 +390,7 @@ defmodule Kogen.ReviewPacketTest do
     notes = String.duplicate("notes ünïcödé ", 3_000)
 
     receipt = %{
-      hd([small_record()["attempts"] |> List.last() |> Map.fetch!("check")])
+      hd(small_record()["attempts"] |> List.last() |> Map.fetch!("receipts"))
       | "output" => output
     }
 
@@ -412,8 +430,7 @@ defmodule Kogen.ReviewPacketTest do
     |> update_in(["attempts", Access.at(1)], fn attempt ->
       Map.merge(attempt, %{
         "developer_notes" => %{"text" => notes},
-        "check" => receipt,
-        "targets" => [%{receipt | "target" => "live"}],
+        "receipts" => [receipt, %{receipt | "target" => "live"}],
         "verification" => %{
           "cycles" =>
             for(sequence <- 1..6, do: %{"sequence" => sequence, "receipts" => [receipt]})

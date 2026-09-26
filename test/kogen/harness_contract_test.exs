@@ -75,6 +75,45 @@ defmodule Kogen.HarnessContractTest do
     refute File.exists?(Path.join(dest, ".kogen/runtime/fake-harness-log"))
   end
 
+  test "the Developer and Reviewer prompts keep main's full placeholder set" do
+    developer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/developer.md"))
+    reviewer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+
+    developer_placeholders = [
+      "{{intent_title}}",
+      "{{intent_id}}",
+      "{{approved_path}}",
+      "{{may_change_guarded_paths}}",
+      "{{verification_ownership}}",
+      "{{readiness_commands}}",
+      "{{execution_policy}}"
+    ]
+
+    reviewer_placeholders = [
+      "{{intent_title}}",
+      "{{intent_id}}",
+      "{{approved_path}}",
+      "{{candidate_id}}",
+      "{{execution_policy}}"
+    ]
+
+    for placeholder <- developer_placeholders, do: assert(developer =~ placeholder)
+    for placeholder <- reviewer_placeholders, do: assert(reviewer =~ placeholder)
+
+    rendered_developer =
+      Enum.reduce(developer_placeholders, developer, fn placeholder, acc ->
+        String.replace(acc, placeholder, "x", global: true)
+      end)
+
+    rendered_reviewer =
+      Enum.reduce(reviewer_placeholders, reviewer, fn placeholder, acc ->
+        String.replace(acc, placeholder, "x", global: true)
+      end)
+
+    refute rendered_developer =~ "{{"
+    refute rendered_reviewer =~ "{{"
+  end
+
   for {label, keys, expected} <- [
         {"missing harness", [], "harness selection has no harness; expected codex or claude"},
         {"blank harness", [harness: ""], "unsupported harness: \"\"; expected codex or claude"},
@@ -441,30 +480,44 @@ defmodule Kogen.HarnessContractTest do
 
     assert Enum.all?(List.flatten(histories), &(&1["session_id"] == developer_session))
 
+    # The controller-owned Verification Record and history are the only
+    # place a failed-then-passed cycle pair is retained: the first cycle
+    # fails at the ignored `kogen_fake_break` marker, and the controller
+    # resumes the exact same Developer session to settle a passing cycle,
+    # before Jev, Review and Commit ever run.
     initial =
       Enum.find(histories, fn records ->
-        Enum.any?(records, &String.contains?(&1["reason"] || "", "lib/kogen_fake_break.ex"))
+        Enum.any?(records, &String.contains?(&1["reason"] || "", "kogen_fake_break"))
       end)
 
     assert Enum.map(initial, & &1["status"]) |> Enum.take(2) == ["failed", "passed"],
-           "a Stop block must continue the same Developer turn until Check passes"
+           "the controller must resume the same Developer session until verification passes"
 
     log = File.read!(Path.join(dest, ".kogen/runtime/fake-harness-log"))
     assert_adapter_transport!(harness, log, developer_session)
   end
 
   defp assert_adapter_transport!("codex", log, session) do
-    assert log =~ "exec resume"
-    assert log =~ " #{session} -"
+    # Two resumes of the exact Developer session: the controller's
+    # verification resume (fixing the ignored `kogen_fake_break` marker) and
+    # the Reviewer's one outer-rework resume.
+    resumes = log |> String.split("\n", trim: true) |> Enum.filter(&(&1 =~ "exec resume"))
+    assert length(resumes) == 2
+    assert Enum.all?(resumes, &(&1 =~ " #{session} -"))
     refute log =~ "claude"
+    refute log =~ "KOGEN_VERIFICATION_CONTEXT"
   end
 
   defp assert_adapter_transport!("claude", log, session) do
     lines = String.split(log, "\n", trim: true)
     argv = Enum.filter(lines, &String.starts_with?(&1, "argv:"))
     launches = Enum.reject(argv, &(&1 =~ "argv: auth status"))
-    assert length(launches) == 4
-    assert Enum.count(launches, &(&1 =~ "--resume #{session}")) == 1
+    # Fresh Developer, the controller's verification resume of that same
+    # session, the rework Reviewer, the outer-rework resume of that same
+    # session, and the accepting Reviewer: five non-auth launches with two
+    # `--resume` calls naming the exact Developer session.
+    assert length(launches) == 5
+    assert Enum.count(launches, &(&1 =~ "--resume #{session}")) == 2
     assert Enum.count(launches, &(&1 =~ "--session-id #{session}")) == 1
     assert Enum.count(launches, &(&1 =~ "--json-schema")) == 2
     assert Enum.all?(launches, &(&1 =~ "--model claude-opus-5-5 --effort medium"))
@@ -474,6 +527,7 @@ defmodule Kogen.HarnessContractTest do
     env = Enum.filter(lines, &String.starts_with?(&1, "env:"))
     assert env != []
     assert Enum.all?(env, &(&1 =~ "CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT=1 "))
+    refute log =~ "KOGEN_VERIFICATION_CONTEXT"
   end
 
   defp config(harness) do
@@ -530,7 +584,7 @@ defmodule Kogen.HarnessContractTest do
 
     File.write!(
       Path.join(dest, "Makefile"),
-      ".PHONY: check\ncheck:\n\t@test ! -f lib/kogen_fake_break.ex || { echo 'bounded fixture check: lib/kogen_fake_break.ex remains' >&2; exit 1; }\n"
+      ".PHONY: check\ncheck:\n\t@test ! -f .kogen/runtime/kogen_fake_break || { echo 'bounded fixture check: kogen_fake_break remains' >&2; exit 1; }\n"
     )
 
     File.write!(Path.join(dest, "priv/kogen/verification_targets.yaml"), """

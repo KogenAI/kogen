@@ -62,7 +62,8 @@ defmodule Kogen.Harness.Codex do
     dir = temporary_directory("review")
     schema_path = Path.join(dir, "verdict.schema.json")
     message_path = Path.join(dir, "verdict.json")
-    File.write!(schema_path, Verdict.schema())
+    ledger_paths = Map.get(context, :ledger_paths, [])
+    File.write!(schema_path, Verdict.schema(ledger_paths))
 
     try do
       args =
@@ -78,7 +79,7 @@ defmodule Kogen.Harness.Codex do
         )
 
       case parse_turn(decode_events(output), exit_code, output) do
-        {:ok, turn} -> reviewer_response(turn, message_path)
+        {:ok, turn} -> reviewer_response(turn, message_path, ledger_paths != [])
         {:error, _reason} = error -> error
       end
     after
@@ -86,10 +87,10 @@ defmodule Kogen.Harness.Codex do
     end
   end
 
-  defp reviewer_response(turn, message_path) do
+  defp reviewer_response(turn, message_path, ledger?) do
     message = reviewer_message(message_path, turn.events)
 
-    case Verdict.parse(message) do
+    case Verdict.parse(message, ledger?) do
       {:ok, verdict} ->
         Verdict.persist(message, turn.session_id)
         {:ok, Map.put(verdict, :session_id, turn.session_id)}

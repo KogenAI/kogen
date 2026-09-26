@@ -3,6 +3,7 @@ Code.require_file("../support/live_native_receipt_audit.ex", __DIR__)
 Code.require_file("../support/dependency_fixture.ex", __DIR__)
 Code.require_file("../support/root_profile_audit.ex", __DIR__)
 Code.require_file("../support/claude_trust.ex", __DIR__)
+Code.require_file("../support/live_tracking_retention.ex", __DIR__)
 
 defmodule Kogen.LiveShapeToBuildTest do
   @moduledoc """
@@ -17,11 +18,14 @@ defmodule Kogen.LiveShapeToBuildTest do
   Every transition is enforced against real disk state, not swallowed:
   Draft files must exist before the scripted approval is sent; Approved
   files must exist and Draft must be gone afterward, carrying the same
-  minted UUIDv7 identity that was printed at the start; the real Stop
-  hook's Verification Record history must show an actual `failed` record
-  followed by an actual `passed` record for the *same* Developer session
-  before its first handoff (a higher `num_turns` alone is not proof, since
-  ordinary tool use also produces multiple turns). Ordinary independent
+  minted UUIDv7 identity that was printed at the start; the real controller's
+  own Verification Record history (the Stop hook stays inactive; the
+  controller runs `make` targets itself and is the only writer) must show an
+  actual `failed` record followed by an actual `passed` record for the *same*
+  Developer session before its first handoff (a higher `num_turns` alone is
+  not proof, since ordinary tool use also produces multiple turns). The value
+  the Developer needs to fix the failing target reaches it only through the
+  controller's resume message, not through any Stop-hook output. Ordinary independent
   Review/rework may then use the configured outer budget; eventual Review
   must accept and the resulting Commit must carry the Intent's trailers.
 
@@ -259,9 +263,10 @@ defmodule Kogen.LiveShapeToBuildTest do
              "the real minted identity (#{minted_uuid}) must be preserved into the Approved intent.yaml"
 
       # The Shaping Controller may describe the outcome, but the exact remediation value is
-      # deliberately available only from the failing Stop-hook output.  If it
-      # leaks into the shaped package, this would no longer demonstrate an
-      # in-turn hook correction.
+      # deliberately available only from the failing Make target's own output,
+      # which the Build controller later carries into its resume prompt. If it
+      # leaks into the shaped package, this would no longer demonstrate a
+      # controller-driven correction.
       refute approved_intent_content =~ "shape2build-k4q9z"
       refute approved_scenarios_content =~ "shape2build-k4q9z"
 
@@ -320,7 +325,7 @@ defmodule Kogen.LiveShapeToBuildTest do
         File.cp!(evidence_path, Path.join(log_dir, "evidence.md"))
       end
 
-      preserve_tracking(fixture, complete_dir, log_dir)
+      Kogen.LiveTrackingRetention.preserve!(fixture, complete_dir, log_dir)
 
       {git_log, _} =
         System.cmd("git", ["log", "--format=%H%n%B", "-3"], cd: fixture, stderr_to_stdout: true)
@@ -360,23 +365,8 @@ defmodule Kogen.LiveShapeToBuildTest do
         Kogen.RootProfileAudit.sessions_root(fixture)
       )
 
-      native_summary =
-        Kogen.LiveNativeReceiptAudit.audit!(
-          raw_stream_dir,
-          %{
-            developer_session_id => 1,
-            reviewer_session_id => 1
-          },
-          [reviewer_session_id]
-        )
-
-      File.write!(
-        Path.join(log_dir, "native-receipt-summary.json"),
-        Jason.encode!(native_summary) <> "\n"
-      )
-
       assert File.exists?(history_path),
-             "the Verification Record history must exist -- the real Stop hook must have fired"
+             "the Verification Record history must exist -- the real controller must have run verification itself"
 
       records =
         history_path
@@ -401,6 +391,33 @@ defmodule Kogen.LiveShapeToBuildTest do
              "the failed record must precede the passed record within the same session"
 
       tracking = read_tracking!(fixture, complete_dir)
+
+      # Every controller verification cycle follows exactly one Developer turn
+      # of the same session: the first turn of each outer attempt and every
+      # controller resume after a failed cycle. So the Developer session has
+      # one completed native capture per recorded cycle.
+      developer_turns =
+        tracking["attempts"]
+        |> Enum.flat_map(&get_in(&1, ["verification", "cycles"]))
+        |> length()
+
+      assert developer_turns >= 2,
+             "the fixture's failing check must force at least one controller resume of the Developer"
+
+      native_summary =
+        Kogen.LiveNativeReceiptAudit.audit!(
+          raw_stream_dir,
+          %{
+            developer_session_id => developer_turns,
+            reviewer_session_id => 1
+          },
+          [reviewer_session_id]
+        )
+
+      File.write!(
+        Path.join(log_dir, "native-receipt-summary.json"),
+        Jason.encode!(native_summary) <> "\n"
+      )
 
       assert tracking["route"] == %{
                "name" => config.route,
@@ -445,8 +462,12 @@ defmodule Kogen.LiveShapeToBuildTest do
       assert_controller_handoff!(initial_attempt, contract)
       assert_jev_no_objection!(initial_attempt)
 
-      {:ok, initial_check_finished, 0} =
-        DateTime.from_iso8601(initial_attempt["check"]["finished_at"])
+      initial_check_finished_at =
+        initial_attempt["receipts"]
+        |> List.last()
+        |> Map.fetch!("finished_at")
+
+      {:ok, initial_check_finished, 0} = DateTime.from_iso8601(initial_check_finished_at)
 
       before_initial_handoff =
         Enum.filter(same_session, fn record ->
@@ -456,7 +477,12 @@ defmodule Kogen.LiveShapeToBuildTest do
 
       assert Enum.map(before_initial_handoff, & &1["status"]) |> Enum.take(-2) ==
                ["failed", "passed"],
-             "outer driver must observe failed-then-passed Stop history before the initial handoff"
+             "outer driver must observe controller-owned failed-then-passed Verification Record history before the initial handoff"
+
+      initial_cycle_statuses = Enum.map(initial_attempt["verification"]["cycles"], & &1["status"])
+
+      assert "failed" in initial_cycle_statuses and List.last(initial_cycle_statuses) == "passed",
+             "the initial attempt's own controller verification cycles must show failed-then-passed for the same Developer session"
 
       subject = git!(fixture, ["log", "-1", "--format=%s"])
       assert subject == "Shape to build probe"
@@ -522,7 +548,7 @@ defmodule Kogen.LiveShapeToBuildTest do
 
     preserve_if_present(history_path, Path.join(log_dir, "verification-history.jsonl"))
     preserve_if_present(evidence_path, Path.join(log_dir, "evidence.md"))
-    preserve_tracking(fixture, complete_dir, log_dir)
+    Kogen.LiveTrackingRetention.preserve!(fixture, complete_dir, log_dir)
 
     assert build_exit == 0, """
     real reviewer-rework Build failed (exit #{build_exit}); no provider result is inferred.
@@ -681,31 +707,6 @@ defmodule Kogen.LiveShapeToBuildTest do
     File.write!(Path.join(dir, "intent.yaml"), @review_rework_intent)
     File.write!(Path.join(dir, "scenarios.yaml"), @review_rework_scenarios)
     File.write!(Path.join(dir, "risks.yaml"), @review_rework_risks)
-  end
-
-  defp preserve_tracking(fixture, complete_dir, log_dir) do
-    records = Path.wildcard(Path.join(fixture, ".kogen/runtime/scenario-tracking/*/record.json"))
-
-    retained =
-      for path <- records do
-        build_id = path |> Path.dirname() |> Path.basename()
-        destination = Path.join([log_dir, "scenario-tracking", build_id, "record.json"])
-        File.mkdir_p!(Path.dirname(destination))
-        File.cp!(path, destination)
-        {Path.relative_to(path, fixture), destination}
-      end
-
-    for path <- Path.wildcard(Path.join(complete_dir, "build-summary*.json")) do
-      summary = path |> File.read!() |> Jason.decode!()
-      source = summary["full_record"]["path"]
-      destination = retained |> Map.new() |> Map.fetch!(source)
-      updated = put_in(summary, ["full_record", "path"], destination)
-      File.write!(Path.join(log_dir, Path.basename(path)), Jason.encode!(updated) <> "\n")
-    end
-
-    for path <- Path.wildcard(Path.join(complete_dir, "scenario-tracking*.json")) do
-      File.cp!(path, Path.join(log_dir, Path.basename(path)))
-    end
   end
 
   defp read_tracking!(fixture, _complete_dir) do

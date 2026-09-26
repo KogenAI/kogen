@@ -106,6 +106,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
     assert {:error, reason} = run(dir, "target_history")
     assert reason =~ "verification retries exhausted"
+    refute reason =~ "outer resumption"
 
     record = record!(dir)
     assert Enum.map(record["findings"], & &1["id"]) == ["F1", "F2"]
@@ -314,7 +315,13 @@ defmodule Kogen.ScenarioLifecycleTest do
     assert :ok = run(dir, "target_evidence")
 
     record = record!(dir)
-    receipt = record["attempts"] |> List.last() |> Map.fetch!("targets") |> List.first()
+
+    receipt =
+      record["attempts"]
+      |> List.last()
+      |> Map.fetch!("receipts")
+      |> Enum.find(&(&1["target"] == "verify"))
+
     retained = receipt["target_evidence"]
     assert retained["target"] == "verify"
     assert retained["attempt_token"] == List.last(record["attempts"])["attempt_token"]
@@ -342,8 +349,8 @@ defmodule Kogen.ScenarioLifecycleTest do
     complete_retained =
       complete_record["attempts"]
       |> List.last()
-      |> Map.fetch!("targets")
-      |> List.first()
+      |> Map.fetch!("receipts")
+      |> Enum.find(&(&1["target"] == "verify"))
       |> Map.fetch!("target_evidence")
 
     assert complete_retained == retained

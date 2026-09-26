@@ -81,6 +81,7 @@ defmodule Kogen.CheckSettlementTest do
 
   use ExUnit.Case, async: true, parameterize: @settlement_cases
 
+  alias Kogen.Build.Contract
   alias Kogen.Check
 
   test "Verification Record settles only its matching Candidate and session",
@@ -102,6 +103,50 @@ defmodule Kogen.CheckSettlementTest do
         assert Check.settlement_failure_reason(@candidate_id, @session_id, dir) == failure_reason
       end
     end)
+  end
+
+  # This module's tests run once per `@settlement_cases` entry
+  # (`parameterize:`); ledger enforcement is unrelated to any one case, so
+  # this only actually asserts on the last (arbitrary, but fixed) entry.
+  test "Contract.verdict/5 accepts or rejects the ledger disposition exactly when a ledger was supplied",
+       settlement_case do
+    if settlement_case[:case] == "matching passed check" do
+      contract = %{scenarios: [%{"id" => "s1"}]}
+      binding = %{candidate_id: "cand-1", attempt_token: "tok-1"}
+
+      message = %{
+        "candidate_id" => "cand-1",
+        "attempt_token" => "tok-1",
+        "verdict" => "accept",
+        "scenarios" => [
+          %{
+            "id" => "s1",
+            "status" => "satisfied",
+            "reason" => "verified",
+            "evidence" => [%{"path" => "Makefile", "locator" => "check"}]
+          }
+        ],
+        "dispositions" => [],
+        "findings" => []
+      }
+
+      # Without a ledger, verdict/4 and verdict/5 with `[]` accept the exact
+      # keys of today's verdict.
+      assert {:ok, _} = Contract.verdict(message, contract, binding, [])
+      assert {:ok, _} = Contract.verdict(message, contract, binding, [], [])
+
+      # With a ledger, the verdict must carry exactly one disposition per path.
+      with_ledger =
+        Map.put(message, "ledger", [%{"path" => "test/a_test.exs", "disposition" => "weakening"}])
+
+      assert {:ok, _} =
+               Contract.verdict(with_ledger, contract, binding, [], ["test/a_test.exs"])
+
+      assert {:error, _} = Contract.verdict(message, contract, binding, [], ["test/a_test.exs"])
+      assert {:error, _} = Contract.verdict(with_ledger, contract, binding, [], [])
+    else
+      assert true
+    end
   end
 
   defp write_record(dir, record) do

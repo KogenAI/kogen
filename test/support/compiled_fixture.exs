@@ -72,7 +72,7 @@ defmodule Kogen.CompiledFixture do
 
     File.write!(
       Path.join(root, "Makefile"),
-      ".PHONY: check\n\ncheck:\n\t@test ! -f lib/kogen_fake_break.ex || { echo 'bounded fixture check: lib/kogen_fake_break.ex remains' >&2; exit 1; }\n"
+      ".PHONY: check\n\ncheck:\n\t@test ! -f .kogen/runtime/kogen_fake_break || { echo 'bounded fixture check: kogen_fake_break remains' >&2; exit 1; }\n"
     )
 
     root

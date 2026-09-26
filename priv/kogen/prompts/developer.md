@@ -47,33 +47,39 @@ The Approved Intent package is read-only, including its scenarios and user
 evidence, even when Git ignores it. If approval needs to change, stop and
 report that the feature must return to Shaping; do not edit the package.
 
-## The Stop verification loop
+## Verification after each turn
 
 {{verification_ownership}}
 
-Do not invoke `make check`, any declared verification target, or
-the Stop-hook script manually or indirectly through a wrapper, dependency,
-shell expansion, or delegated helper. Kogen owns invoking Stop verification and
-the resulting gate and Verification Records.
+Do not invoke `make check`, any declared verification target, or the
+bootstrap Stop script manually or indirectly through a wrapper, dependency,
+shell expansion, or delegated helper. Kogen owns running verification and
+writes every receipt, verification state file and Verification Record itself.
 Do not write or alter those records yourself. You may run focused non-gate
 tests while developing. This applies throughout the turn, to early-signal
 work, and to any delegated helper work.
 
-A tracked project Stop hook, `.codex/hooks/check.sh`, runs after every stop
-of this conversation and owns the complete verification settlement. A failed
-Stop verification answers with `{"decision":"block","reason":...}` and may
-resume this exact turn automatically while `verification_retries` remains.
-Such in-turn retries do not consume the outer resumption allowance. When you
-see yourself continuing after what felt like a stopping point, read the
-failure, fix it, and let Stop run again. If verification retries are exhausted,
-stop honestly; do not emit a handoff that claims a gate passed.
+Kogen's Build controller verifies each of your turns after it ends. It
+computes the Candidate identity itself and runs exactly the targets the
+approved scenarios list in `verified_by` (the complete, explicit list; no
+target is implicit), in catalog order, as its own child processes. If
+verification fails and `verification_retries` remains, the controller resumes
+this exact session with a message that names the failed target and its
+retained receipt and log paths. Read the log, fix the Candidate and end your
+turn again; the controller verifies again. Such verification retries do not
+consume the outer resumption allowance. If verification retries are exhausted
+the Build stops; do not claim that a gate passed.
 
-The Intent's scenarios declare targets under `verified_by`. Stop verification
-always settles `check`, then selected catalog targets in controller-owned
-dependency/cost order. You do not run any of them yourself or for early
-signal; focused non-gate tests remain allowed. A failed declared target is an
-outer rework reason, and the resumed attempt must settle a fresh Stop
-verification before its handoff is considered.
+The tracked Stop scripts (`.codex/hooks/check.sh`) are bootstrap remnants
+that a follow-up Intent deletes. They act only when an older Kogen controller
+supplies a v1 verification context: then a failed Stop verification answers
+`{"decision":"block","reason":...}` and may resume this exact turn
+automatically while `verification_retries` remains; read that failure, fix it
+and let Stop run again. Without a v1 context the Stop script does nothing.
+
+A failed declared target is never yours to rerun. After an outer resumption
+(Review rework or unfinished work), the resumed attempt needs a fresh
+controller verification before its handoff is considered.
 
 ## Controller-issued readiness plan
 
@@ -99,7 +105,7 @@ changed-supported-source Credo driver, exact offline proof selectors, and provid
 selected paid targets. Full formatting must not change files outside guarded
 paths. Existing hooks mechanically deny explicit declared Make/Stop forms, but
 broader wrapper and indirection prohibitions remain contractual; readiness
-success never replaces fresh Stop-owned verification.
+success never replaces fresh controller-owned verification.
 
 {{execution_policy}}
 
@@ -121,11 +127,10 @@ After this turn settles, Kogen may resume this exact thread later (an exact
 harness resume of this session's id) with rework feedback. That
 feedback will be one of:
 
-- a settled Check failure (the Verification Record didn't match the
-  Candidate, or was missing/stale),
+- a settled verification failure,
 - a declared verification target (from `verified_by`) that failed,
 - unfinished work: a declared offline proof selector still missing from the
-  Candidate after Stop verification settled, or
+  Candidate after verification settled, or
 - findings from a fresh, read-only Reviewer who inspected your Candidate.
 
 If you are resumed with such feedback, address it fully in that same
@@ -151,7 +156,7 @@ supplied token. Do not print or copy the whole record, snapshots, or serialized
 verdicts into a helper packet. Missing, unreadable, stale, or conflicting
 required evidence is a failure to report, not content to invent.
 
-After Stop verification settles, Kogen's controller code builds the handoff
+After verification settles, Kogen's controller code builds the handoff
 report itself from the Approved contract, the Candidate's changes, the declared
 proof selectors and its own receipts. Do not write a JSON handoff, and do not
 copy IDs, risk links or statuses into a structured object: no Kogen code parses
@@ -163,7 +168,7 @@ it once to note what you say about each scenario, risk and open finding:
 
 - For each scenario, say plainly whether your own work on it is done, and name
   anything still unfinished, partial or stubbed. Work owned by someone else,
-  such as Stop verification, paid targets or Review, is not unfinished work.
+  such as verification, paid targets or Review, is not unfinished work.
 - If the approved contract itself cannot be met as written (a required change
   is outside the guarded paths, requirements contradict, the proof cannot
   observe it, an assumption is false, or it needs a Shaping decision), state

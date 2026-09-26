@@ -2,7 +2,7 @@ defmodule Kogen.Build.Report do
   @moduledoc """
   The controller-built Developer handoff report.
 
-  After Stop verification settles, Build derives the report deterministically
+  After controller verification settles, Build derives the report deterministically
   from the Approved contract, the Candidate's Git changes relative to `HEAD`,
   the declared proof selectors and Kogen's own receipts. The Developer's final
   message is never parsed: it is recorded separately as unverified notes, and
@@ -19,9 +19,11 @@ defmodule Kogen.Build.Report do
   @doc """
   Builds the report. `inputs` holds `:contract`, `:attempt_token`,
   `:candidate_id`, `:open_findings`, `:changes` (`[{path, change}]` with change
-  `added`, `modified` or `deleted`), `:check` and `:targets` (settled receipts)
-  and `:existing?` (a predicate for existing regular files). Any other input,
-  such as the Developer's notes or Jev's outcome, is deliberately ignored.
+  `added`, `modified` or `deleted`), `:receipts` (the settled receipts, one
+  uniform list in run order), optionally `:proofs`, `:labels` (scenario id to
+  proof label), `:ledger` and `:base_suite`, and `:existing?` (a predicate
+  for existing regular files). Any other input, such as the Developer's notes
+  or Jev's outcome, is deliberately ignored.
   """
   @spec build(map()) :: map()
   def build(inputs) do
@@ -29,7 +31,9 @@ defmodule Kogen.Build.Report do
     contract = inputs.contract
     changes = Enum.sort(inputs.changes)
     existing? = Map.get(inputs, :existing?, &File.regular?/1)
-    receipts = Enum.reject([inputs.check | List.wrap(inputs.targets)], &is_nil/1)
+    receipts = List.wrap(inputs.receipts)
+    labels = Map.get(inputs, :labels, %{})
+    proofs = List.wrap(Map.get(inputs, :proofs))
 
     %{
       "format" => "kogen-controller-handoff-report",
@@ -41,10 +45,16 @@ defmodule Kogen.Build.Report do
         "none: the Developer's final message is recorded separately as unverified notes",
       "changed_affected_paths_meaning" =>
         "files under a scenario's declared affected paths that changed relative to HEAD; not where each behaviour lives",
-      "check" => receipt_binding(inputs.check),
-      "targets" => Enum.map(List.wrap(inputs.targets), &receipt_binding/1),
+      "receipts" => Enum.map(receipts, &receipt_binding/1),
+      "reused_receipts" =>
+        for(receipt <- receipts, receipt["reused_from"], do: receipt_binding(receipt)),
+      "verification_ledger" => ledger_index(Map.get(inputs, :ledger)),
+      "base_suite" => Map.get(inputs, :base_suite),
       "scenarios" =>
-        Enum.map(contract.scenarios, &scenario_entry(&1, changes, receipts, existing?)),
+        Enum.map(
+          contract.scenarios,
+          &scenario_entry(&1, changes, receipts, existing?, labels, proofs)
+        ),
       "risks" =>
         Enum.map(contract.risks, fn risk ->
           %{"id" => risk["id"], "scenario_ids" => risk["scenario_ids"]}
@@ -66,7 +76,7 @@ defmodule Kogen.Build.Report do
     }
   end
 
-  defp scenario_entry(scenario, changes, receipts, existing?) do
+  defp scenario_entry(scenario, changes, receipts, existing?, labels, proofs) do
     proof = scenario["proof"] || %{}
     affected = List.wrap(proof["affected_paths"])
     offline = List.wrap(proof["offline"])
@@ -87,6 +97,9 @@ defmodule Kogen.Build.Report do
       "verified_by" => scenario["verified_by"],
       "offline_selectors" => Enum.map(offline, &selector(&1, existing?)),
       "paid_target" => proof["paid_target"],
+      "proof_label" => Map.get(labels, scenario["id"], "integrity-not-configured"),
+      "proof_runs" =>
+        for(run <- proofs, run["scenario"] == scenario["id"], do: proof_binding(run)),
       "affected_paths" => affected,
       "changed_affected_paths" => changed,
       "affected_paths_note" => if(changed == [], do: @no_change_note),
@@ -113,7 +126,25 @@ defmodule Kogen.Build.Report do
   defp receipt_binding(receipt) do
     Map.take(
       receipt,
-      ~w(target status exit_code candidate_id attempt_token session_id finished_at)
+      ~w(target status exit_code candidate_id attempt_token session_id developer_session_id
+         context_sha256 catalog_sha256 cycle_sequence started_at finished_at elapsed_ms
+         log_path log_sha256 cleanup reused_from)
     )
+  end
+
+  defp proof_binding(run) do
+    Map.take(
+      run,
+      ~w(scenario kind label status exit_code red red_kind base_commit overlay_sha256
+         workspace_sha256 log_path log_sha256 cycle_sequence reused_from)
+    )
+  end
+
+  # Only the index travels in the report; each full diff stays a retained
+  # file bound by its locator and digest.
+  defp ledger_index(nil), do: nil
+
+  defp ledger_index(ledger) do
+    Map.take(ledger, ~w(base_commit candidate_id items receipts_with_changed_runner catalog))
   end
 end

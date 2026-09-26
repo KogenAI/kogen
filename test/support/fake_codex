@@ -1,22 +1,16 @@
 #!/bin/sh
 # Offline Codex fixture: developer NDJSON turns, reviewer structured output,
-# and real tracked stop-hook invocations.
+# and the tracked Stop script, which must stay inactive without a v1 context.
 set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 response_helper="$script_dir/scenario_response.py"
+# The registered Stop script is a bootstrap remnant: without a v1 context it
+# must answer continue and record nothing. Verification is the controller's.
 stop_check() {
- expected="$1"; active="$2"
- response="$(printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":%s}' "$sid" "$sid" "$active" | sh .codex/hooks/check.sh)"
+ response="$(printf '{"session_id":"%s","thread_id":"%s","stop_hook_active":false}' "$sid" "$sid" | sh .codex/hooks/check.sh)"
  printf '%s\n' "$response" >> .kogen/runtime/fake-hook-responses
- if [ "$expected" = pass ] && printf '%s' "$response" | grep -q '"decision":"block"'; then
-  stop_check pass true
-  return
- fi
- case "$expected:$response" in
-  block:*'"decision":"block"'*|pass:*'"continue":true'*) return 0 ;;
- esac
- printf 'Unexpected Stop response (expected %s): %s\n' "$expected" "$response" >&2
- cat .kogen/runtime/verification.json >&2
+ [ "$response" = '{"continue":true}' ] && return 0
+ printf 'Unexpected Stop response (expected inactive continue): %s\n' "$response" >&2
  exit 1 # unexpected-stop-response
 }
 state_dir=.kogen/runtime; mkdir -p "$state_dir"
@@ -44,16 +38,18 @@ if [ "$reviewer" -eq 1 ]; then
 import json, pathlib, sys
 record = json.loads(pathlib.Path(sys.argv[1]).read_text())
 attempt = record["attempts"][-1]
-targets = attempt.get("targets", [])
-if targets and "target_evidence" in targets[0]:
-    print(targets[0]["target_evidence"]["required_evidence"][0]["path"])
+receipts = [r for r in attempt.get("receipts", attempt.get("targets", [])) if "target_evidence" in r]
+if receipts:
+    print(receipts[0]["target_evidence"]["required_evidence"][0]["path"])
 PY
 )"
  if [ -n "$semantic_path" ]; then
   python3 - "$tracking_path" <<'PY' || source_matches=$?
 import base64, json, pathlib, sys
 record = json.loads(pathlib.Path(sys.argv[1]).read_text())
-entry = record["attempts"][-1]["targets"][0]["target_evidence"]["required_evidence"][0]
+attempt = record["attempts"][-1]
+receipts = [r for r in attempt.get("receipts", attempt.get("targets", [])) if "target_evidence" in r]
+entry = receipts[0]["target_evidence"]["required_evidence"][0]
 actual = base64.b64decode(entry["content_base64"])
 raise SystemExit(0 if actual == b"reviewed behavior\n" else 1)
 PY
@@ -75,24 +71,38 @@ PY
  if [ -n "$semantic_path" ]; then
   verdict="$(printf '%s' "$verdict" | python3 -c 'import json,sys; value=json.load(sys.stdin); evidence=[{"path":sys.argv[1],"locator":"retained semantic behavior bytes"}]; value["scenarios"][0]["evidence"]=evidence; [item.__setitem__("evidence", evidence) for item in value["findings"]]; print(json.dumps(value))' "$semantic_path")"
  fi
+ # Record the per-launch verdict schema and answer its `ledger` when required.
+ schema_file=; prev=
+ for a in "$@"; do [ "$prev" = --output-schema ] && schema_file="$a"; prev="$a"; done
+ if [ -n "$schema_file" ]; then
+  cp "$schema_file" "$state_dir/reviewer-schema-$n.json"
+  [ -f "$script_dir/fake_ledger.py" ] && verdict="$(printf '%s' "$verdict" | python3 "$script_dir/fake_ledger.py" "$schema_file")"
+ fi
  printf '%s\n' "$verdict" >"$output_file"
  printf '{"type":"thread.started","thread_id":"reviewer-session-%s"}\n{"type":"turn.completed","thread_id":"reviewer-session-%s"}\n' "$n" "$n"; exit 0
 fi
 if [ -n "$resume_id" ]; then
- printf '%s' "$input" >> "$state_dir/developer-resume-prompts"
  sid="$resume_id"
  printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
- # A declared-target protocol failure resumes first without changing the
- # Candidate. The later semantic Reviewer finding drives the real repair.
+ # A failed controller verification cycle resumes this same session: repair
+ # the Candidate only. A declared-target protocol failure resumes first
+ # without changing the Candidate. The later semantic Reviewer finding drives
+ # the real repair.
  case "$input" in
-  *'Rework required (category: declared_target;'*) ;;
+  'Controller verification failed after your turn'*)
+   printf '%s' "$input" >> "$state_dir/verification-resume-prompts"
+   [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ] || rm -f "$state_dir/kogen_fake_break"
+   ;;
+  *'Rework required (category: declared_target;'*)
+   printf '%s' "$input" >> "$state_dir/developer-resume-prompts" ;;
   *)
+   printf '%s' "$input" >> "$state_dir/developer-resume-prompts"
    printf 'reviewed fixture value\n' > dummy.txt
    printf 'Reviewer-directed rework applied\n' > reviewer-rework-marker.txt
    ;;
  esac
  [ -n "${KOGEN_MIDBUILD_HOOK:-}" ] && sh "$KOGEN_MIDBUILD_HOOK"
- stop_check pass false
+ stop_check
  response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
  if [ -n "$output_file" ]; then printf '%s\n' "$response" > "$output_file"; fi
  printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
@@ -103,15 +113,15 @@ n=0; [ -f "$dev_state" ] && n="$(cat "$dev_state")"; n=$((n+1)); echo "$n" >"$de
 printf '%s' "$input" > "$state_dir/developer-launch-prompt"
 printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
 printf 'initial fixture value\n' > dummy.txt
-printf 'defmodule Kogen.FakeBreak do\n  this is not valid elixir(((\nend\n' > lib/kogen_fake_break.ex
+# The turn ends with a Candidate whose fixture `check` fails (an ignored
+# marker), so the controller's first cycle fails and resumes this session.
+[ "${FAKE_CHECK_FAIL:-1}" = 1 ] && printf 'bounded fixture break\n' > "$state_dir/kogen_fake_break"
 # An offline fixture hook: when set, runs inside each Developer turn (fresh
-# and resumed) before its Stop checks, so a test can edit .kogen/config.yaml
+# and resumed) before it ends, so a test can edit .kogen/config.yaml
 # mid-Build and assert every later launch still uses the Build's
 # already-resolved route.
 [ -n "${KOGEN_MIDBUILD_HOOK:-}" ] && sh "$KOGEN_MIDBUILD_HOOK"
-stop_check block false
-rm -f lib/kogen_fake_break.ex
-stop_check pass true
+stop_check
 response="$(printf '%s' "$input" | python3 "$response_helper" developer)"
 if [ -n "$output_file" ]; then printf '%s\n' "$response" > "$output_file"; fi
 printf '{"type":"item.completed","item":{"type":"agent_message","text":%s}}\n' "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"

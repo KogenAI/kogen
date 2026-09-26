@@ -15,8 +15,7 @@ defmodule Kogen.Codex.CompatibilityTest do
     "helper_receipt" => true,
     "helper_environment" => true,
     "helper_context" => true,
-    "resume_rework" => true,
-    "hook_receipt" => true
+    "resume_rework" => true
   }
 
   @evidence %{
@@ -24,12 +23,6 @@ defmodule Kogen.Codex.CompatibilityTest do
     "developer" => %{"session_id" => "developer-1"},
     "resume" => %{"session_id" => "developer-1"},
     "hostile_discovery" => @hostile_discovery,
-    "checks" => [
-      %{"session_id" => "developer-1", "status" => "failed"},
-      %{"session_id" => "developer-1", "status" => "passed"},
-      %{"session_id" => "developer-1", "status" => "passed"}
-    ],
-    "checks_before_resume" => 2,
     "discovery_controls" => %{"ok" => true},
     "blocked_gate" => true
   }
@@ -40,42 +33,25 @@ defmodule Kogen.Codex.CompatibilityTest do
     # No stand-in Reviewer receipt is part of the runner's contract.
     refute Enum.any?(Map.keys(@evidence), &String.contains?(&1, "reviewer"))
 
-    stale = Map.put(@evidence, "checks_before_resume", 3)
-    assert {:error, :resume_check_missing} = Compatibility.verify_evidence(stale)
+    # The Stop-hook evidence this fixture used to require is gone from both
+    # the contract and its verifier: no Check history, no prior-check count,
+    # and no Stop-hook receipt inside hostile discovery. Kogen core, not this
+    # owner, now settles the Check.
+    refute Map.has_key?(@evidence, "checks")
+    refute Map.has_key?(@evidence, "checks_before_resume")
+    refute Map.has_key?(@evidence["hostile_discovery"], "hook_receipt")
 
-    unrelated =
-      Map.update!(stale, "checks", &(&1 ++ [%{"session_id" => "other", "status" => "passed"}]))
+    mismatched_resume = put_in(@evidence, ["resume", "session_id"], "developer-2")
 
-    assert {:error, _} = Compatibility.verify_evidence(unrelated)
+    assert {:error, :incomplete_compatibility_evidence} =
+             Compatibility.verify_evidence(mismatched_resume)
 
-    failed =
-      put_in(
-        @evidence,
-        ["checks"],
-        Enum.take(@evidence["checks"], 2) ++
-          [%{"session_id" => "developer-1", "status" => "failed"}]
-      )
-
-    assert {:error, _} = Compatibility.verify_evidence(failed)
-
-    uncorrected =
-      Map.put(@evidence, "checks", [
-        %{"session_id" => "developer-1", "status" => "passed"},
-        %{"session_id" => "developer-1", "status" => "passed"}
-      ])
-
-    assert {:error, :missing_failed_check_correction_or_resume} =
-             Compatibility.verify_evidence(uncorrected)
+    assert {:error, _} = Compatibility.verify_evidence(Map.delete(@evidence, "developer"))
   end
 
   test "evidence rejects a missing resume check, a fresh resume, or a missing helper receipt" do
-    missing_resume_check =
-      Map.merge(@evidence, %{
-        "checks" => Enum.take(@evidence["checks"], 2),
-        "checks_before_resume" => 2
-      })
-
-    assert {:error, _} = Compatibility.verify_evidence(missing_resume_check)
+    missing_resume = Map.delete(@evidence, "resume")
+    assert {:error, _} = Compatibility.verify_evidence(missing_resume)
 
     fresh_resume = put_in(@evidence, ["resume", "session_id"], "developer-2")
 
@@ -342,7 +318,7 @@ defmodule Kogen.Codex.CompatibilityTest do
     source = File.cwd!()
 
     for path <-
-          ~w(README.md .codex/hooks.json .codex/hooks/check.sh .codex/hooks/stop_runner.py .codex/hooks/verification_policy.py .codex/hooks/environment.py) do
+          ~w(README.md .codex/hooks.json .codex/hooks/verification_policy.py .codex/hooks/environment.py) do
       File.cp!(Path.join(source, path), Path.join(root, path))
     end
 

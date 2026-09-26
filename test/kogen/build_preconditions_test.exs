@@ -243,9 +243,9 @@ defmodule Kogen.BuildPreconditionsTest do
                           expected: "helpers.worker.effort"
                         },
                         %{
-                          case: "missing check target",
+                          case: "scenario verification target absent from the Makefile",
                           operation: :missing_check_target,
-                          expected: "Makefile has no check target"
+                          expected: "undeclared make target: check"
                         },
                         %{
                           case: "missing verification policy",

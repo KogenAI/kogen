@@ -1,0 +1,134 @@
+id: 01a0d3f7-1a75-72d3-905c-10b1bb6d1d55
+slug: fortify-paid-verification
+title: Own verification in the Build controller with Candidate-bound receipts
+status: approved
+approval:
+  approved_by: Shaper (Almir Sarajčić)
+  statement: "so yeah, I approve: ... 4. verification-fortification"
+  approved_at: "2026-09-25"
+  conversation_started: "2026-09-25T04:28:26.887967Z"
+  approved_against_head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+  build_order_note: >-
+    Originally fourth, after bounded-reviewer-evidence, cross-harness-adversarial-roles
+    and shaping-preflight-audit; since 2026-09-26 third, on 363c20af, because
+    shaping-preflight-audit is parked (reordering only); re-run the Build preflight on the then-current
+    main first (risk baseline-moves-before-build).
+  scope: >-
+    ROADMAP order 4 (IDs 2+3) outcome: controller-owned verification,
+    Candidate-bound receipts, failed-only paid reuse, no hardcoded check,
+    in-Intent target additions, controller-run red-on-base proof tests, the
+    Review ledger; live checks live-shape-to-build and live-native.
+  reapproval:
+    actor: human Shaper, delegated to the driver session
+    date: "2026-09-25"
+    quotes:
+      - "so yeah, I approve: 1. bounded-reviewer-evidence 2. cross-harness-adversarial-roles 3. shaping-preflight-audit 4. verification-fortification 5. isolated-candidate-workspace"
+      - "that should count as my explicit approval"
+      - "you gotta make sure all the intents are ready to build tho … utilize jev, Astra medium, Sol high … I approve whatever you guys decide! so you can build, drive this without me … make sure you don't stop for any bullshit"
+    note: >-
+      Revised by the driver after the Build preflight of 2026-09-25 against
+      main 2909f557 and the designs of bounded-reviewer-evidence,
+      cross-harness-adversarial-roles and shaping-preflight-audit. Every change
+      is listed in approval.md ("Revision by the driver after preflight").
+  repreflight:
+    actor: human Shaper, delegated to the driver session
+    date: "2026-09-25"
+    head: 363c20af202c8702d76ddcb1dadcf6a21996779c
+    quotes:
+      - "you don't need me for anything, you can do everything yourself … I approve everything"
+      - "NO STOPPING THE BATCH … YOU FIX AND RESHAPE AND SHIT UNTIL ALL GOES WELL"
+    note: >-
+      Driver re-preflight against main 363c20af (bounded-reviewer-evidence and
+      cross-harness-adversarial-roles landed; the latter without an auditor
+      role and with default_route claude). shaping-preflight-audit is parked,
+      so this Intent builds third, on 363c20af, without its code. Every change
+      is listed in approval.md ("Driver re-preflight at 363c20af").
+historical_approvals:
+  # Covered the superseded contract (with the native target split). The Build
+  # G8XQmw8OuNa-fPqe0TlQ0p35 failed with cannot_comply, and the package was
+  # reopened as a Draft. This is not approval of the current revision.
+  - approved_by: Shaper (Almir Sarajčić)
+    statement: "I approve"
+    approved_at: "2026-09-24"
+    conversation_started: "2026-09-24T15:09:41.881577Z"
+    approved_against_head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+    superseded_by_failed_build: G8XQmw8OuNa-fPqe0TlQ0p35
+shaped_against:
+  branch: main
+  head: 363c20af202c8702d76ddcb1dadcf6a21996779c
+baseline_history:
+  - head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+    branch: main
+    note: Shaped and approved (2026-09-24, 2026-09-25) and first preflighted against this commit.
+shaping:
+  route: claude
+  harness: claude
+  model: claude-opus-5-5
+  effort: medium
+  started: "2026-09-24T15:09:41.881577Z"
+may_change_guarded_paths:
+  - README.md
+  - scripts/check/README.md
+  - scripts/check/development-evidence.md
+  - workflows/*.md
+  - priv/kogen/claude_code/settings.json
+  - priv/kogen/prompts/*.md
+  - priv/kogen/codex/**
+  - .codex/hooks.json
+  - .codex/hooks/check.sh
+  - .codex/hooks/stop_runner.py
+  - .codex/hooks/environment.py
+  - .codex/hooks/verification_policy.py
+  - lib/kogen/intent.ex
+  - lib/kogen/jev.ex
+  - lib/kogen/git.ex
+  - lib/kogen/make_inventory.ex
+  - lib/kogen/build.ex
+  - lib/kogen/build/*.ex
+  - lib/kogen/check.ex
+  - lib/kogen/verification_policy.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/*.ex
+  - lib/kogen/claude_code.ex
+  - lib/kogen/codex.ex
+  - lib/kogen/codex/*.ex
+  - lib/kogen/provider_outcome.ex
+  - priv/kogen/test-reliability.yaml
+  - test/kogen/**
+  - test/support/**
+shaping_continuations:
+  - route: claude
+    harness: claude
+    model: claude-opus-5-5
+    effort: medium
+    started: '2026-09-25T04:28:26.887967Z'
+    checkout:
+      branch: main
+      head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+  - route: driver
+    harness: claude
+    model: claude-opus-5-5
+    effort: high
+    started: '2026-09-25T08:05:00Z'
+    purpose: >-
+      Build preflight re-run (risk baseline-moves-before-build) against main and
+      the designs of bounded-reviewer-evidence, cross-harness-adversarial-roles
+      and shaping-preflight-audit; minimal revision under the Shaper's delegated
+      approval.
+    checkout:
+      branch: main
+      head: 2909f557c57f49b32e4453a0264e9e48c6fc1676
+  - route: driver
+    harness: claude
+    model: claude-opus-5-5
+    effort: high
+    started: '2026-09-25T18:11:00Z'
+    purpose: >-
+      Driver re-preflight against main 363c20af (shaping-preflight-audit
+      parked; this Intent builds on 363c20af without it): Shape fixture
+      retention of record-version sidecars, per-launch Reviewer verdict
+      schema for the ledger on both harnesses, base_cache volatile-state
+      exclusion, route and anchor fixes.
+    checkout:
+      branch: main
+      head: 363c20af202c8702d76ddcb1dadcf6a21996779c

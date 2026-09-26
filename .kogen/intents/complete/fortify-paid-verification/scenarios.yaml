@@ -1,0 +1,792 @@
+- id: controller-owns-verification
+  given: >-
+    A Build started under the new controller, on any configured route
+    (including the hybrid routes from cross-harness-adversarial-roles), whose
+    Developer turn has just ended. The Stop registration still exists, but no
+    v1 context is supplied.
+  when: The controller settles verification for that turn.
+  then: >-
+    The parent controller, running the trusted code the Build started with,
+    computes the Candidate id itself (a private-index git write-tree, refusing
+    assume-unchanged and skip-worktree entries). It runs `make check`, then the
+    selected targets in catalog order, as child processes outside the Developer
+    process tree. It re-checks the Candidate id after each target; a mutation
+    fails the cycle. It writes the only context, state and history files, and no
+    Developer-launched process gets their paths or `KOGEN_VERIFICATION_CONTEXT`.
+    It is also the only writer of the local Verification Record and its history
+    (`Kogen.Check.record_path/0`, `Kogen.Check.history_path/0`). After each cycle
+    it writes them in today's line format (candidate, status, target, exit_code,
+    session_id, attempt_token, finished_at), and it archives and resets them only
+    at each outer attempt, as today. The record's `target` field keeps the
+    constant `check` as a format value for existing readers; it selects nothing.
+    So the unedited live-reviewer-rework owner and its support files
+    (`test/kogen/live_reviewer_rework_test.exs`,
+    `test/support/live_reviewer_rework_fixture.ex`,
+    `test/support/live_rework_audit.ex`) keep working, and this Intent leaves
+    them byte-identical, because it doesn't run that target.
+    This holds even when the controller itself inherited one: for example, a
+    nested `mix kogen.build` started by a target under main's Stop runner
+    inherits the outer v1 context. The new controller explicitly removes `KOGEN_VERIFICATION_CONTEXT`
+    and `KOGEN_TRACKING_CONTEXT` from every Developer, Reviewer and target child
+    environment. That way a nested fixture's Stop hook can't write to the outer
+    Build's state.
+    The Stop hook does nothing. Handoff, Jev and Review read only this
+    controller settlement. A complete Build through the new controller shows a
+    failed-then-passed controller verification across a resume of the same
+    Developer session, followed by Review and commit.
+  wrong_result: >-
+    The controller loads or executes verification code from the Candidate;
+    reads success from a Candidate- or Developer-writable file; the Stop hook
+    runs checks or blocks; the Developer gets a verification context, including
+    one inherited from an outer Build's Stop runner;
+    live_shape_to_build still asserts Stop-hook history; or no process writes the
+    local Verification Record and history any more (or they are archived on every
+    inner cycle), so the unedited live-reviewer-rework audit fails in the next
+    Build that runs it.
+  verified_by: [check, live-shape-to-build]
+  evidence: >-
+    A new controller verification test uses a fake harness to drive a turn end,
+    controller-run check and targets, and forged Candidate state files that are
+    ignored. A Candidate-planted module and script with the controller's
+    verification names leave a sentinel only if loaded or run; the test asserts
+    no sentinel, and that a counting Stop script run with no context runs no
+    target and never blocks. It also plants an inherited outer `KOGEN_VERIFICATION_CONTEXT` and
+    asserts that no launched child sees it and the outer state is untouched. It
+    asserts that a failed-then-passed cycle pair leaves local Verification Record
+    and history lines with the fields `Kogen.LiveReworkAudit` reads, and that the
+    history is archived only when an outer attempt starts. The
+    updated verification_ownership_lifecycle test runs a complete fake-harness
+    Build through `Kogen.Build`, with real Make targets and a git fixture: a
+    failed verification, a resume of the same session, a passed verification,
+    Review and commit. `live_shape_to_build_test.exs` is updated to assert
+    controller-owned failed-then-passed history for the same real Developer
+    session. The value the Developer needs (`shape2build-k4q9z`) must now reach
+    it through the controller's resume message, not through Stop output. The
+    live test rsyncs the Candidate into its fixture and runs `mix kogen.build`
+    there, which compiles and runs the Candidate's new controller (not main's,
+    which only runs the outer Build). So the paid run observes the new route
+    with a real Claude Code session.
+  proof:
+    offline:
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/verification_ownership_lifecycle_test.exs
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: a real Claude Code Developer (the nested fixture Build runs on the repository's `default_route: claude`, so its Developer and Reviewer are Claude Code; the default-route flip is ROADMAP 10a, not this Intent) ends a turn with the Stop hook inactive, receives the controller's failed verification through a resume of the same session, fixes it, and a later controller verification passes before real Review and commit; offline-limit: a fake harness cannot show that a real model session acts on a controller resume message or that the real CLI accepts the inactive Stop hook"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/verification_runner.ex
+      - lib/kogen/check.ex
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/verification_ownership_lifecycle_test.exs
+      - test/kogen/live_shape_to_build_test.exs
+      - test/support/fake_claude
+
+- id: failed-verification-resumes-same-developer
+  given: >-
+    `verification_retries: 2` and a controller verification cycle that has failed.
+  when: The controller handles the failed cycle.
+  then: >-
+    The controller resumes the exact Developer session with
+    `resume_build_developer`. The resume names the failed target and its receipt
+    and log paths. It counts against `verification_retries` and never the outer
+    allowance. The third consecutive failure since the last pass marks
+    verification exhausted and stops the Build, before Jev and Review and ahead
+    of other routing. A Review or unfinished-work outer resumption starts a new
+    verification context, and its handoff needs a fresh controller pass.
+    The superseded-objection rule from bounded-reviewer-evidence keeps working
+    on controller cycles: a confident Developer objection in an attempt whose
+    settled controller verification passed after an earlier controller cycle
+    of the same attempt failed reaches the review packet as a labelled advisory.
+    Every other confident objection still stops with `cannot_comply` as before.
+  wrong_result: >-
+    A verification failure consumes an outer resumption, launches a fresh
+    Developer, reaches Review, or keeps retrying past the limit; an outer
+    resumption reaches Review on the prior attempt's pass; or the
+    superseded-objection rule still reads Stop-written cycles, so under the new
+    controller every stale objection stops the Build again.
+  verified_by: [check]
+  evidence: >-
+    Fake-harness lifecycle tests count exact resumes, allowance counters,
+    exhaustion precedence and the fresh context per outer attempt. The
+    superseded-objection tests from bounded-reviewer-evidence run their three
+    cases on controller-written cycles.
+  proof:
+    offline:
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/two_outer_resumptions_test.exs
+      - test/kogen/superseded_objection_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: fake-harness resume counting and exhaustion precedence through Kogen.Build; resume_build_developer itself is unchanged"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/review_packet.ex
+      - priv/kogen/prompts/developer.md
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/two_outer_resumptions_test.exs
+      - test/kogen/superseded_objection_test.exs
+
+- id: same-candidate-failed-only-retry
+  given: >-
+    Selected targets `check`, paid target A, and paid target B, in catalog order.
+    In cycle 1, `check` and A passed and B failed.
+  when: >-
+    The Developer's resumed turn ends (a) with a byte-identical Candidate,
+    (b) with any changed byte, or (c) in a new outer attempt.
+  then: >-
+    (a) Cycle 2 runs `check` fresh and reuses A's receipt, marked with
+    `reused_from` pointing to cycle 1 and with an identical Candidate id and
+    catalog digest. It runs only B. The final receipts list every target, and
+    the handoff report and the review packet show A as reused.
+    (b) Every target runs.
+    (c) The new context runs every target and reuses nothing.
+    More generally, every selected target with `provider_backed: false` runs fresh
+    every cycle, whatever its name. Only `provider_backed: true` receipts are
+    ever reused.
+    A failed or never-run target is never reused. A reused receipt whose Candidate
+    id, catalog digest, context or cycle binding doesn't match is rejected as an
+    integrity failure.
+  wrong_result: >-
+    A reruns on an unchanged Candidate; `check` is skipped; A is reused after a
+    change or across outer attempts; a failed receipt is reused; or the report
+    hides the reuse.
+  verified_by: [check]
+  evidence: >-
+    A focused test with counting fake Make targets records exactly which targets
+    ran in each case, plus forged and stale reuse controls.
+  proof:
+    offline:
+      - test/kogen/verification_reuse_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: counting fake targets through the controller runner, with stale and forged reuse controls; reuse is decided purely by the controller"
+    affected_paths:
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/verification_runner.ex
+      - lib/kogen/build/report.ex
+      - lib/kogen/build/review_packet.ex
+      - test/kogen/verification_reuse_test.exs
+
+- id: bound-per-target-receipts
+  given: A controller verification cycle in which targets pass, fail, or leave processes behind.
+  when: Each target finishes.
+  then: >-
+    Each receipt records the target, status, exit code, Candidate id, attempt
+    token, context sha256, catalog sha256, cycle sequence, start and finish time,
+    elapsed milliseconds, the output log path and sha256, and cleanup status. The
+    controller runs each target in its own process group and, after exit,
+    terminates any remaining group members. A target that leaves members that
+    can't be reaped gets `cleanup: failed` and a failed receipt. Status comes from
+    the exit code and cleanup only. A target-evidence manifest is snapshotted on
+    pass *and* fail. Settlement rejects receipts with a mismatched binding, a
+    rolled-back history or an altered log digest.
+  wrong_result: >-
+    A receipt lacks its Candidate or catalog binding; owner-printed text changes
+    the status; a leftover process is ignored; or failed-target evidence is
+    dropped.
+  verified_by: [check]
+  evidence: >-
+    Focused tests with fake targets that pass, fail, spawn a lingering child,
+    and emit a manifest. They assert every binding field of each receipt, that
+    a target printing "PASS" with a nonzero exit gets a failed receipt, and that
+    settlement rejects a receipt whose Candidate id or catalog digest was
+    edited.
+  proof:
+    offline:
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/target_evidence_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: controller runner with real child processes and a manifest-emitting fake target; no provider semantics are involved"
+    affected_paths:
+      - lib/kogen/build/verification_runner.ex
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/target_evidence.ex
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/target_evidence_test.exs
+
+- id: stop-route-bootstrap-only
+  given: >-
+    The Candidate after this Build, with the Stop scripts still registered in
+    `priv/kogen/claude_code/settings.json` and `.codex/hooks.json`.
+  when: >-
+    The Stop hook fires (a) with no context or a non-v1 context, as under the
+    new controller or in the compatibility fixture, or (b) with a valid v1
+    unified `KOGEN_VERIFICATION_CONTEXT` from an older controller, as in the
+    Build that installs this Intent.
+  then: >-
+    (a) It prints `{"continue":true}`, runs no Make target, and writes no
+    verification record, state, history or log.
+    (b) It behaves exactly as today's unified protocol, so the older controller
+    can settle, review and commit this Build automatically. `Makefile` and
+    `priv/kogen/verification_targets.yaml` stay byte-identical to main, because
+    main's controller stops a Build whose catalog changed after admission.
+    `live-native` stays in the catalog unchanged. The target split belongs to
+    the follow-up verification Intent. Main's `VerificationPolicy.preflight` still
+    finds `.codex/hooks/check.sh`, `.codex/hooks/verification_policy.py` and the
+    PreToolUse registration. The Candidate's own preflight requires only
+    `.codex/hooks/verification_policy.py` and the PreToolUse registration, so the
+    follow-up can delete the Stop scripts under this Intent's controller.
+    Main's frozen catalog still runs every rehearsal inside `check`, so each
+    rehearsal still observes its catalog trace identities, including
+    `Kogen.Build.Verification.initialize` and `Kogen.Build.Verification.settle`
+    through `test/kogen/verification_ownership_lifecycle_test.exs`,
+    `Kogen.Build.Report.build` and `Kogen.Build.Contract.verdict` through
+    `test/kogen/two_outer_resumptions_test.exs`, and
+    `Kogen.Codex.Compatibility.prepare_fixture` through
+    `test/kogen/codex_compatibility_preparation_test.exs`.
+    Main's controller renders the Candidate's `priv/kogen/prompts/developer.md`
+    at every Developer launch and outer resumption of this Build, and
+    `priv/kogen/prompts/reviewer.md` at every Review. So the Candidate's
+    prompts keep every placeholder main substitutes, describe verification
+    truthfully for both routes (Stop settles when a v1 context is supplied, the
+    controller otherwise), and request a verdict that main's
+    `Kogen.Build.Contract.verdict/4` still accepts when no ledger is supplied.
+    Every edited cataloged test gets only its `source_sha256` refreshed in
+    `priv/kogen/test-reliability.yaml` through
+    `scripts/check/refresh_test_reliability_sources.py`. Declarations,
+    dispositions, controls and consumer witnesses are unchanged. The consumer
+    modules keep their witness text (for example `defmodule Kogen.Check do`),
+    and `--check` reports nothing.
+    The no-context check-and-block mode and the `KOGEN_TRACKING_CONTEXT` path
+    are gone. The Bash PreToolUse gate guard is still registered in both
+    harnesses and still blocks `make check` and every selected target. The
+    Developer and Reviewer prompts and the README describe controller-owned
+    verification. They mention the Stop scripts only as bootstrap remnants that
+    the follow-up Intent deletes.
+  wrong_result: >-
+    Stop runs checks or blocks without a v1 context (a dual writer under the new
+    controller); the v1 path is broken so this Build can't settle; the scripts
+    or registrations are deleted in this Build; the Makefile or catalog changes
+    (main's controller would stop the Build before Review, as in failed Build
+    G8XQmw8OuNa-fPqe0TlQ0p35); the gate guard is removed; the Candidate's
+    preflight still requires the Stop script, so the follow-up can't delete it;
+    a rehearsal trace identity disappears, so `check` fails under main's frozen
+    catalog; the Candidate prompts lose a placeholder or ask for a verdict key
+    that main's controller rejects while it reviews this Build; or the
+    reliability ledger is regenerated, or a consumer witness is lost, instead of
+    a hash-only refresh.
+  verified_by: [check]
+  evidence: >-
+    A rewritten stop_hook test drives both cases with a real git fixture and
+    counting fake targets. Harness contract and core integrity tests assert the
+    hook sets for both harnesses, and the verification_policy tests keep the
+    guard's denial controls and assert that the new preflight no longer needs
+    the Stop script. The existing reliability-catalog test validates the
+    refreshed ledger. The three catalog rehearsals (selected by id, and run
+    inside `check` by `scripts/check/rehearsals.exs`) fail when a trace
+    identity is no longer observed, and a
+    prompt-rendering assertion in the harness contract test renders both
+    prompts with main's placeholder set.
+  proof:
+    offline:
+      - test/kogen/stop_hook_test.exs
+      - test/kogen/harness_contract_test.exs
+      - test/kogen/core_integrity_test.exs
+      - test/kogen/verification_policy_test.exs
+      - test/kogen/test_reliability_catalog_test.exs
+      - rehearse-live-shape-to-build
+      - rehearse-live-reviewer-rework
+      - rehearse-live-native
+    paid_target: none
+    paid_reason: "offline-sufficient: stop_hook drives the real scripts in both context cases with a counting fake target; the inactive path prints the same {\"continue\":true} the real CLIs already accept"
+    affected_paths:
+      - .codex/hooks/check.sh
+      - .codex/hooks/stop_runner.py
+      - .codex/hooks/verification_policy.py
+      - lib/kogen/verification_policy.ex
+      - priv/kogen/prompts/developer.md
+      - priv/kogen/prompts/reviewer.md
+      - README.md
+      - priv/kogen/test-reliability.yaml
+      - test/kogen/stop_hook_test.exs
+      - test/kogen/harness_contract_test.exs
+      - test/kogen/core_integrity_test.exs
+      - test/kogen/verification_policy_test.exs
+
+- id: stop-free-compatibility-fixture
+  given: >-
+    The Codex compatibility owner's live test, after this Intent deletes the Stop
+    runner's no-context check-and-block mode.
+  when: The owner's live test runs through `live-native`.
+  then: >-
+    The fixture no longer copies Stop scripts or relies on the deleted
+    no-context Stop mode. Its evidence no longer requires `hook_receipt`,
+    `checks` or `checks_before_resume`, and its prompts no longer tell the model
+    that a Stop hook settles a Check. The PreToolUse blocked-gate, hostile
+    discovery, interactive Shaping, Developer, exact-session resume (driven by
+    the owner's fixed rework request) and scout-helper requirements remain.
+    `cross-harness-adversarial-roles` already removed the scripted stand-in
+    Reviewer turns, and this Intent doesn't bring a Reviewer back. The owner's
+    turn budget, its one fresh-fixture retry after a timeout and its
+    two-attempt evidence manifest are owned by
+    `cross-harness-adversarial-roles`, which lands first. This Intent keeps
+    them unchanged and doesn't add or remove any provider retry. Kogen core
+    sees one target result.
+  wrong_result: >-
+    The fixture still depends on Stop-hook receipts, so it fails once the
+    no-context mode is gone; the Stop portion is removed by weakening the
+    PreToolUse, discovery, resume or helper requirements; a stand-in Reviewer
+    comes back; provider retries or timeouts are added to Kogen core or
+    config; or the owner's retry, budget or manifest from cross-harness are
+    changed.
+  verified_by: [check, live-native]
+  evidence: >-
+    Offline preparation tests assert the Stop-free fixture and the reduced
+    evidence schema. The cross-harness assertions already in
+    codex_compatibility_test (no stand-in Reviewer turn, the 240 s turn limit,
+    one timed_out rerun, the two-attempt manifest) and the PreToolUse, discovery,
+    resume and helper requirements stay and pass unedited. The paid `live-native` run exercises the Stop-free fixture
+    with the real managed Codex runtime. `live-native` is still the unsplit
+    target, because this Build can't change the catalog.
+  proof:
+    offline:
+      - test/kogen/codex_compatibility_test.exs
+      - test/kogen/codex_compatibility_preparation_test.exs
+    paid_target: live-native
+    paid_reason: "provider-required: live-native; observation: the real managed Codex runtime completes the bounded compatibility run in a fixture without Stop hooks, with the PreToolUse gate denial, exact-session resume and scout helper intact; offline-limit: offline preparation tests cannot show that the real Codex CLI works without the Stop hooks; live-native is the only catalog target owning this file until the follow-up split"
+    affected_paths:
+      - lib/kogen/codex/compatibility.ex
+      - test/kogen/codex_compatibility_test.exs
+      - test/kogen/codex_compatibility_preparation_test.exs
+
+- id: no-special-gate-target
+  given: >-
+    A repository whose Makefile and catalog declare offline and provider-backed
+    Make targets under any names. For example, an offline `test` target with no
+    dependencies and no `check` target at all. The approved scenarios each list
+    their targets in `verified_by`. (This is a fixture repository built under
+    this Intent's controller. Kogen's own Makefile and catalog keep `check`
+    unchanged in this Build, because main's controller runs it.)
+  when: "`mix kogen.build` admits the Intent and verifies each Developer turn."
+  then: >-
+    No target name is special; Make stays the only runner. Admission no longer
+    requires a `check` target. The plan loader accepts a scenario's
+    `verified_by` when all of these hold:
+    it is a nonempty list of distinct catalog targets;
+    it contains at least one `provider_backed: false` target and at most one
+    `provider_backed: true` target, which must equal `proof.paid_target`;
+    every listed target's `dependencies` are also listed;
+    and the list follows catalog rank order.
+    The Build runs exactly the union of the approved `verified_by` lists, in rank
+    order, and never silently adds a target. Receipts form one uniform list,
+    with no separate `check` field in the tracking record, handoff report or
+    review packet. The Bash gate guard blocks `make <goal>` for every catalog
+    target, not a hardcoded `check`/`live` pair. The catalog validator requires
+    at least one offline target with no dependencies, instead of `check`. This
+    repository's existing contracts (`[check]` and `[check, <paid>]`, including
+    this Intent's own) still validate unchanged. Maintained prompts and docs
+    describe `verified_by` as the complete, explicit list.
+  wrong_result: >-
+    Admission still needs `make check`; `check` is still added implicitly or
+    stored in its own field; a paid-only or dependency-incomplete `verified_by`
+    is accepted; an unlisted target runs; the guard misses a renamed gate; or
+    existing approved contracts stop validating.
+  verified_by: [check]
+  evidence: >-
+    Plan-loader and controller tests use a fixture repository whose catalog has
+    an offline `test` target and no `check`. They include paid-only, missing
+    dependency and out-of-order negative controls, a gate-guard control that
+    blocks `make test` for the renamed gate, plus the current repository
+    catalog and every Intent package under `approved/` as preservation controls.
+  proof:
+    offline:
+      - test/kogen/selective_verification_targets_test.exs
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/check_test.exs
+      - test/kogen/verification_policy_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: plan loading, target selection and guard naming are pure controller logic exercised through Kogen.Build with a fake harness; no provider semantics"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification_plan.ex
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/report.ex
+      - lib/kogen/build/review_packet.ex
+      - lib/kogen/check.ex
+      - lib/kogen/verification_policy.ex
+      - .codex/hooks/verification_policy.py
+      - priv/kogen/prompts/shaping.md
+      - priv/kogen/prompts/developer.md
+      - priv/kogen/prompts/reviewer.md
+      - README.md
+      - test/kogen/selective_verification_targets_test.exs
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/check_test.exs
+      - test/kogen/verification_policy_test.exs
+
+- id: same-intent-catalog-change
+  given: >-
+    An approved Intent whose `intent.yaml` declares `catalog_changes.add` with
+    new target names. Its guarded paths cover the Makefile and catalog, and a
+    scenario selects one added target. (This is a later Intent, or a fixture
+    Intent in this Intent's tests, built under this Intent's controller. This
+    Build itself changes neither the Makefile nor the catalog, because main's
+    controller byte-freezes the catalog.)
+  when: The Build admits the Intent, and the controller verifies each Developer turn.
+  then: >-
+    The catalog is no longer byte-frozen after admission. At admission,
+    `verified_by` may name a declared added target. It is rejected when it names
+    an undeclared unknown target, or when `add` names a target that already
+    exists. Each cycle, the controller reads the Candidate's catalog and
+    Makefile only as data; it never loads Candidate code. Every selected target
+    must exist in both. Every added target must meet every catalog rule (unique
+    rank, dependencies, owner, and a rehearsal when provider-backed). A scenario
+    that selects an added provider-backed target lists that target's rehearsal
+    test as a file selector, so `controller-runs-proof-selectors` covers it.
+    Removing, renaming or editing unselected targets needs no declaration; it
+    appears in the verification-surface ledger. A missing or invalid selected
+    target is a verification failure that resumes the same Developer. It
+    doesn't stop the Build. The trust anchor for each rule is the admission
+    catalog, never the Candidate's.
+  wrong_result: >-
+    Any catalog change still stops the Build; an undeclared new target is
+    selectable; a selected target can disappear; Candidate catalog fields
+    reconfigure the checks of the same Build; or a failure stops the Build
+    instead of returning to the Developer.
+  verified_by: [check]
+  evidence: >-
+    Controller tests use a fixture repository with a fake harness and real Make
+    targets. They cover: a declared added target that is selected and run; an
+    undeclared target that is selected; a selected target removed from the
+    Candidate (asserting the same Developer session is resumed and the Build
+    does not stop); an unselected target removed or edited (allowed, and shown
+    in the ledger); and an invalid added entry.
+  proof:
+    offline:
+      - test/kogen/catalog_change_test.exs
+      - test/kogen/selective_verification_targets_test.exs
+      - test/kogen/intent_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: catalog comparison and failure routing run through the controller with real Make targets in a fixture repository; no provider semantics"
+    affected_paths:
+      - lib/kogen/intent.ex
+      - lib/kogen/make_inventory.ex
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification_plan.ex
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/catalog_change.ex
+      - priv/kogen/prompts/shaping.md
+      - README.md
+      - test/kogen/catalog_change_test.exs
+      - test/kogen/selective_verification_targets_test.exs
+      - test/kogen/intent_test.exs
+
+- id: controller-runs-proof-selectors
+  given: >-
+    An admission catalog that declares `verification_surface` (`tests` and
+    `runner` globs), `focused_runner` (an argv template with `{paths}`) and
+    `base_cache` (paths to copy). A contract whose scenarios carry the new
+    `proof.base` field: `fail` for new or changed behaviour, `pass` for
+    preservation.
+  when: The controller verifies each Developer turn.
+  then: >-
+    After the targets pass, the controller itself runs each scenario's file
+    selectors on the Candidate, using the admission `focused_runner`. A failure
+    is a verification failure through the normal retry path. This replaces the
+    existence-only check (`verification_plan.ex:94-103`).
+    For `base: fail`, it also runs them against the base. At admission it builds
+    a controller-owned workspace outside the repository: `git archive` of the
+    admission commit plus copies of `base_cache`. It records the workspace's
+    digest and re-checks it before each use; on a mismatch it rebuilds the
+    workspace. The catalog loader rejects a `base_cache` entry inside the
+    controller's volatile state (`.kogen/runtime`, `.kogen/build.lock`,
+    `.kogen/codex`, `.codex/sessions`), so the base workspace never inherits
+    the running Build's lock or runtime. Every focused run there uses the
+    workspace's own `MIX_BUILD_PATH` and resolves `priv/` and prompts inside
+    the workspace, never from the parent checkout or the controller's
+    application directory. Each cycle it overlays only the Candidate's bytes for that
+    scenario's selector files and changed test-class files, never runner-class
+    or implementation files. It runs the admission `focused_runner` there with a
+    time limit. The run must exit nonzero. Exit zero fails verification as
+    "proof cannot detect the change". A timeout or infrastructure error is an
+    error, never a red result. The red receipt records the base commit, overlay
+    digest, exit code, log path and digest, and a `red_kind` label (`assertion`
+    or `load`). It is reused while the overlay digest is unchanged.
+    For `base: pass`, a selector that differs from base becomes a ledger item.
+    The controller also runs base's bytes of that selector on the Candidate,
+    and they must pass there.
+    A contract without `proof.base` still validates. Its base checks are
+    skipped, and the report labels it `unproven-on-base`. A catalog without the
+    integrity fields labels every scenario `integrity-not-configured`. Non-file
+    selectors (rehearsal ids, root `.txt` fixtures, `scripts/check` files)
+    stay existence-checked, and are labelled as such.
+  wrong_result: >-
+    An empty selector, `assert true`, or a scenario test hidden behind `:live`
+    or a skip counts as proof; the red run uses the Candidate's runner or
+    Candidate implementation files; a timeout counts as red; a tampered base
+    workspace is reused; an edited preservation test passes without running
+    base's bytes; or legacy contracts are rejected instead of labelled.
+  verified_by: [check]
+  evidence: >-
+    Controller tests use a fixture repository with a small ExUnit project and
+    an admission catalog with the integrity fields. They cover: a real `fail`
+    selector that is red on base and green on the Candidate; an empty selector
+    and an `assert true` selector (both rejected); a `:live`-tagged selector
+    (rejected); a runner file edited in the Candidate (the red run still uses
+    base's runner); a tampered workspace digest; a `pass` selector weakened in
+    the Candidate (base bytes fail on the Candidate); a legacy contract
+    (labelled); a timeout (error, not red); removal of the temporary
+    workspace; a `base_cache` entry naming `.kogen/build.lock` (rejected); and
+    a base run whose `priv/` file differs from the parent checkout's, which
+    must read the workspace's copy.
+  proof:
+    offline:
+      - test/kogen/proof_selector_verification_test.exs
+      - test/kogen/intent_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: the controller runs real focused tests in a fixture project against a real git-archive base; no provider semantics"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/contract.ex
+      - lib/kogen/build/verification_plan.ex
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/verification_runner.ex
+      - lib/kogen/build/base_workspace.ex
+      - lib/kogen/build/report.ex
+      - lib/kogen/git.ex
+      - priv/kogen/prompts/shaping.md
+      - README.md
+      - test/kogen/proof_selector_verification_test.exs
+      - test/kogen/intent_test.exs
+      - test/support/**
+
+- id: verification-surface-ledger
+  given: >-
+    A Candidate that changes, adds, deletes or renames files matching the
+    admission catalog's `verification_surface` globs, including paths outside
+    every scenario's `affected_paths`.
+  when: The controller prepares the handoff report and Review.
+  then: >-
+    The controller computes a ledger from git (Candidate against base). For
+    every changed surface path it records the status, the full diff and whether
+    it is runner-class. It marks every target receipt that ran with changed
+    runner-class files, and includes the catalog digest change. Added
+    test-class files are left out; added runner-class files are included. The
+    ledger goes into the handoff report and the review packet from
+    bounded-reviewer-evidence, never to Jev. Each item's full diff is a
+    controller-retained file under the attempt's verification directory. The
+    packet carries one complete index entry per item (path, status,
+    runner-class flag, diff stat, base and Candidate blob ids), plus a locator
+    and sha256 for its full diff. It stays within the packet's 65,536-byte
+    bound, and it never inlines a diff that would exceed it. The
+    controller also runs base's test suite against the Candidate's
+    implementation. Base's test files and runner go into the base workspace,
+    with only the Candidate's implementation (non-surface) files overlaid. The
+    result goes to Review as a packet summary with a log locator, a report and
+    not a gate. The Reviewer must return exactly one disposition per ledger
+    item, `justified: <scenario-id or finding-id>` or `weakening`, in a new
+    `ledger` verdict field, kept separate from the existing finding
+    `dispositions`. The field is required exactly when the packet carries a
+    nonempty ledger. Without a ledger (for example when main's controller
+    reviews this Build with the Candidate's `reviewer.md`), the verdict keeps
+    today's exact keys. Both harnesses constrain the Reviewer's output with
+    `Kogen.Harness.Verdict.schema/0` (Claude `--json-schema`, Codex
+    `--output-schema`, both `additionalProperties: false`) and check exact keys
+    in `Verdict.validate/1`. So the schema handed to a fresh Reviewer on either
+    harness is chosen per launch: with a nonempty ledger it adds a required
+    `ledger` array (one item per ledger path, `path` and `disposition`);
+    without one it is byte-identical to today's schema. `Verdict.validate/1`
+    and `Contract.verdict/4` accept `ledger` exactly when it was requested. A
+    missing or extra disposition makes the Review malformed, through the
+    existing malformed-verdict path. A
+    `weakening` disposition opens a blocking finding that goes back to the same
+    Developer as Review rework. If the Developer objects to the contract, the
+    existing cannot-comply path returns the Intent to Shaping.
+  wrong_result: >-
+    A weakened test outside `affected_paths` never reaches Review; the ledger
+    or diff goes to Jev; the Reviewer can skip items; a `weakening` verdict
+    doesn't block; the base-suite report acts as a gate or is missing; full
+    diffs are inlined until the packet exceeds its bound; ledger dispositions
+    are folded into the finding `dispositions`; or `ledger` is demanded when no
+    ledger was supplied, so main's controller rejects this Build's own verdict.
+  verified_by: [check]
+  evidence: >-
+    Report and Review tests use a fixture Candidate that edits a test outside
+    `affected_paths`, weakens a runner file and adds a test file. They assert
+    the ledger contents, that the Jev request excludes them, the malformed
+    verdict on a missing disposition, the blocking finding on `weakening`, the
+    base-suite report, a packet within its bound for a ledger with large diffs
+    (with locators and digests), and a verdict without `ledger` accepted when
+    no ledger was supplied. The fake Claude and fake Codex Reviewers record the
+    schema argument they were launched with: it contains `ledger` only with a
+    ledger, and equals today's `Verdict.schema/0` bytes without one.
+  proof:
+    offline:
+      - test/kogen/verification_surface_ledger_test.exs
+      - test/kogen/check_settlement_test.exs
+      - test/kogen/review_packet_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: ledger computation, verdict schema enforcement and routing are controller logic exercised with a fake Reviewer; no provider semantics"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/report.ex
+      - lib/kogen/build/ledger.ex
+      - lib/kogen/build/review.ex
+      - lib/kogen/build/review_packet.ex
+      - lib/kogen/build/contract.ex
+      - lib/kogen/build/base_workspace.ex
+      - lib/kogen/harness/verdict.ex
+      - lib/kogen/harness/claude.ex
+      - lib/kogen/harness/codex.ex
+      - test/support/fake_claude
+      - test/support/fake_codex
+      - lib/kogen/jev.ex
+      - priv/kogen/prompts/reviewer.md
+      - README.md
+      - test/kogen/verification_surface_ledger_test.exs
+      - test/kogen/check_settlement_test.exs
+      - test/kogen/review_packet_test.exs
+
+- id: offline-first-target-selection
+  given: >-
+    A Shaper shaping an Intent in Kogen or another repository, with provider-backed
+    targets in the catalog.
+  when: The Shaping Controller chooses each scenario's `verified_by`.
+  then: >-
+    Kogen's shared Shaping prompt (`priv/kogen/prompts/shaping.md`) describes
+    `verified_by` as the complete explicit list, with no implicit `check`. It
+    says to select a provider-backed target only when the scenario claims a
+    provider-only observable that offline proof can't establish. The fact that
+    an existing live test exercises the changed path isn't a reason on its own.
+    Deterministic orchestration is proved offline, including through a
+    complete fake-harness run. The prompt replaces the current wording "Select
+    targets by affected existing workflows ... even when their live test files
+    are unchanged" and keeps the `provider-required` or `offline-sufficient`
+    reason format. Kogen's own README gains a maintained "Choosing verification
+    targets" section, read by Shaping as repository context. Kogen's
+    orchestration (controller, plan, receipts, tracking, reports, Jev plumbing,
+    guards and catalog rules) is offline-only. Prompt wording is offline-only
+    unless the scenario claims a model-behaviour outcome. A paid target is
+    reserved for native harness launch, resume or flags; native hook
+    registration consumed by a real CLI; managed runtime upgrades; and parsing
+    new provider output shapes. An Intent that edits a live test's owner file
+    selects that test's target in the same Intent, because an edited live test
+    that never runs is unverified. Otherwise an Intent selects at most one paid
+    target, unless the Shaper explicitly accepts more, with the reason recorded
+    in `questions.md`.
+  wrong_result: >-
+    The prompt still steers toward live targets for unchanged live tests; still
+    shows `[check]` as mandatory; drops the paid-reason format; or the Kogen
+    policy lives only in the transcript and not in maintained README text.
+  verified_by: [check]
+  evidence: >-
+    Existing prompt-contract tests (scenario_contract, shape_task) assert the new
+    selection wording, the removed "even when their live test files are
+    unchanged" wording, and the README section headings and rules.
+  proof:
+    offline:
+      - test/kogen/scenario_contract_test.exs
+      - test/kogen/shape_task_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: maintained prompt and README content is asserted by prompt-contract tests; whether a future model follows it is not a claim of this scenario"
+    affected_paths:
+      - priv/kogen/prompts/shaping.md
+      - README.md
+      - test/kogen/scenario_contract_test.exs
+      - test/kogen/shape_task_test.exs
+
+- id: self-hosting-two-step-guidance
+  given: >-
+    A future Shaping session in this repository for an Intent that removes or
+    replaces something Kogen's own Build process depends on while that Build is
+    running.
+  when: The Shaping Controller reads `README.md`, as every Kogen Shaping session does.
+  then: >-
+    Kogen's `README.md`, not the shared Shaping prompt, has a maintained
+    section explaining that Kogen builds itself. A Build runs main's controller,
+    the code loaded when `mix kogen.build` started, against a Candidate that is
+    changing the same machinery. Removals therefore follow expand and contract,
+    like a zero-downtime database migration. One Intent adds the new path,
+    switches the new controller to it, and keeps the old path working for the
+    running controller. The next Intent, built under the new controller,
+    removes the old path. The section lists, with source locations as of this
+    commit, what the running controller reads or runs from the Candidate during
+    a Build:
+    the catalog and its change rules;
+    the Make target definitions;
+    the admission catalog's integrity fields;
+    the files and registrations `VerificationPolicy.preflight` requires;
+    the Stop scripts and registrations (bootstrap only);
+    the guarded-path check;
+    and the approved package.
+    It gives this Intent and its follow-up verification Intent as the worked
+    example: the Stop scripts are kept for the v1 context and removed next, and
+    the `live-native` split is done next through declared catalog changes. It tells
+    Shaping to check each Intent that touches these inputs, and to split it
+    when one Build can't both change the input and still settle, review and
+    commit.
+  wrong_result: >-
+    The guidance goes into `priv/kogen/prompts/shaping.md`, so it affects other
+    projects; it names no concrete inputs; it describes main's pre-Intent
+    freeze instead of the controller this Intent ships; or it lives only in this
+    Intent package.
+  verified_by: [check]
+  evidence: >-
+    A README content test asserts the section heading, each listed input with
+    its source location, and the worked example, and asserts that the shared
+    Shaping prompt doesn't contain the Kogen-specific section.
+  proof:
+    offline:
+      - test/kogen/readme_guidance_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: maintained README content asserted by a focused test; no provider semantics"
+    affected_paths:
+      - README.md
+      - test/kogen/readme_guidance_test.exs
+
+- id: shape-to-build-retains-record-sidecars
+  given: >-
+    The live Shape-to-Build fixture (`test/kogen/live_shape_to_build_test.exs`),
+    whose nested Build may cite its own tracking record. Since
+    bounded-reviewer-evidence, such a citation is stored as metadata plus an
+    immutable sidecar at
+    `.kogen/runtime/scenario-tracking/<build-id>/record-versions/<sha256>.json`
+    (`Kogen.Build.Tracking.retain_record_version/2`), and
+    cross-harness-adversarial-roles made `Kogen.Build.Evidence.resolve/2`
+    verify every bound sidecar, found beside the resolved record
+    (`record-versions/<sha256>.json`) or at its checkout-relative locator. That
+    Intent fixed only the Reviewer-rework fixture
+    (`Kogen.ReviewPacketAudit.preserve_record_versions!/2`, called from
+    `test/support/live_reviewer_rework_fixture.ex`). At 363c20af the Shape
+    fixture's private `preserve_tracking/3` still copies only `record.json`.
+  when: >-
+    The live test retains the nested Build's evidence, deletes the fixture, and
+    calls `Kogen.LiveReworkAudit.audit_retained!/1` on the retained copy.
+  then: >-
+    A new support module `test/support/live_tracking_retention.ex`
+    (`Kogen.LiveTrackingRetention.preserve!/3`) replaces the test's private
+    `preserve_tracking/3`, and both of the test's retention call sites call it.
+    For each nested Build it copies the whole
+    `.kogen/runtime/scenario-tracking/<build-id>/` directory into
+    `<log_dir>/scenario-tracking/<build-id>/`: `record.json`, its
+    `record-versions/` sidecars, `review-packets/`, and the controller
+    verification directory this Intent writes there (receipts, logs, ledger
+    diffs). It rewrites each `build-summary*.json` `full_record.path` to the
+    retained record, as today. After the fixture is deleted,
+    `Evidence.resolve/2` of the retained summary succeeds. A missing or altered
+    retained sidecar still fails resolution with "sidecar unavailable" or
+    "sidecar mismatch". `Evidence.resolve/2` itself is unchanged.
+  wrong_result: >-
+    Only `record.json` is copied, so a nested Build that cited its record fails
+    the retained-evidence audit after cleanup (the failure of Build
+    o-DlRi_iHnqIwmxfcCz-obe0 in the Reviewer-rework fixture); the live test
+    keeps its own copy loop beside the new module; or resolution is weakened
+    to skip missing sidecars.
+  verified_by: [check, live-shape-to-build]
+  evidence: >-
+    A focused offline case in build_evidence_test builds a synthetic fixture
+    whose record cites itself (a real sidecar written by
+    `Tracking.retain_record_version/2`) plus a `build-summary.json`, runs
+    `Kogen.LiveTrackingRetention.preserve!/3`, deletes the fixture, and asserts
+    `LiveReworkAudit.audit_retained!/1` returns `:ok`. Two controls follow: a
+    retained sidecar deleted (raises, "sidecar unavailable"), and one altered
+    (raises, "sidecar mismatch"). The same case asserts that
+    `test/kogen/live_shape_to_build_test.exs` no longer defines
+    `preserve_tracking` and calls `Kogen.LiveTrackingRetention.preserve!`. The
+    paid run retains the real nested Build's tree and resolves it after
+    cleanup.
+  proof:
+    offline: [test/kogen/build_evidence_test.exs]
+    paid_target: live-shape-to-build
+    paid_reason: "provider-required: live-shape-to-build; observation: the retained tree of a real nested Shape-to-Build run, including any record-version sidecars its real roles produced, resolves after the fixture is deleted; offline-limit: whether a real run cites its record is model behaviour, so the synthetic offline case carries the sidecar controls"
+    affected_paths: [test/support/live_tracking_retention.ex, test/kogen/live_shape_to_build_test.exs, test/kogen/build_evidence_test.exs, priv/kogen/test-reliability.yaml]

@@ -47,7 +47,8 @@ def refs():
 
 def review_refs(snapshot, mode):
     if mode.startswith("target_evidence"):
-        target = snapshot.get("attempt", {}).get("targets", [])[0]
+        receipts = snapshot.get("attempt", {}).get("receipts", [])
+        target = next((r for r in receipts if r.get("target") == "verify"), receipts[0] if receipts else {})
         retained = target.get("target_evidence", {})
         entries = retained.get("required_evidence", [])
         if len(entries) != 2:
@@ -166,7 +167,12 @@ def main():
     call = count("developer-calls")
     if resume:
         (RUNTIME / "resume-sessions").open("a").write(args[-2] + "\n")
-        if mode == "target_history" and call == 2: (RUNTIME / "fail-target").touch()
+        # From the outer rework resume onward, `verify` keeps failing every
+        # controller cycle: the declared target never recovers within this
+        # outer attempt, so the controller must exhaust `verification_retries`
+        # by itself, resuming this same session each time, well before any
+        # further Reviewer turn.
+        if mode == "target_history" and call >= 2: (RUNTIME / "fail-target").touch()
         else: (RUNTIME / "fail-target").unlink(missing_ok=True)
         if mode == "regression": (ROOT / "dummy.txt").write_text(f"candidate {call}\n")
         if mode == "review_evidence": (RUNTIME / "review-proof.txt").unlink(missing_ok=True)

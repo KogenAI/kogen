@@ -54,6 +54,7 @@ defmodule Kogen.Intent do
           slug: String.t(),
           title: String.t(),
           may_change_guarded_paths: [String.t()],
+          catalog_changes: %{add: [String.t()]},
           raw: map()
         }
 
@@ -572,20 +573,68 @@ defmodule Kogen.Intent do
     with {:ok, id} <- require_string(data, "id", "id"),
          {:ok, title} <- require_string(data, "title", "title"),
          {:ok, guarded} <- require_nonempty_list(data, "may_change_guarded_paths"),
-         {:ok, ^slug} <- require_string(data, "slug", "slug") do
+         {:ok, ^slug} <- require_string(data, "slug", "slug"),
+         {:ok, changes} <- catalog_changes(data) do
       {:ok,
        %{
          id: id,
          slug: slug,
          title: title,
          may_change_guarded_paths: guarded,
+         catalog_changes: changes,
          raw: data
        }}
     else
+      {:error, {:invalid, reason}} -> {:error, "intent.yaml #{reason}"}
       {:error, missing_key} -> {:error, "intent.yaml missing required key: #{missing_key}"}
       {:ok, _other_slug} -> {:error, "intent.yaml slug does not match selected slug: #{slug}"}
     end
   end
+
+  @doc """
+  The Intent's declared verification-target catalog changes. Only `add` is
+  supported: a list of new, safe Make target names the Intent may add to the
+  catalog and select in `verified_by`. Absent means no additions.
+  """
+  @spec catalog_changes(map()) :: {:ok, %{add: [String.t()]}} | {:error, {:invalid, String.t()}}
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
+  def catalog_changes(data) when is_map(data) do
+    case fetch(data, "catalog_changes") do
+      :error ->
+        {:ok, %{add: []}}
+
+      {:ok, changes} when is_map(changes) ->
+        keys = changes |> Map.keys() |> Enum.map(&to_string/1)
+
+        add =
+          case fetch(changes, "add") do
+            {:ok, value} -> value
+            :error -> []
+          end
+
+        cond do
+          keys -- ["add"] != [] ->
+            {:error, {:invalid, "catalog_changes supports only add"}}
+
+          not (is_list(add) and Enum.all?(add, &safe_target_name?/1)) ->
+            {:error, {:invalid, "catalog_changes.add must list safe Make target names"}}
+
+          Enum.uniq(add) != add ->
+            {:error, {:invalid, "catalog_changes.add lists a target twice"}}
+
+          true ->
+            {:ok, %{add: add}}
+        end
+
+      {:ok, _other} ->
+        {:error, {:invalid, "catalog_changes must be a mapping"}}
+    end
+  end
+
+  def catalog_changes(_data), do: {:ok, %{add: []}}
+
+  defp safe_target_name?(name),
+    do: is_binary(name) and Regex.match?(~r/^[a-z][a-z0-9_-]*$/, name)
 
   defp require_role(data, role) do
     case fetch(data, role) do

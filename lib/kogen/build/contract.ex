@@ -23,8 +23,9 @@ defmodule Kogen.Build.Contract do
          {:ok, scenarios} <- yaml_list(text, "scenarios.yaml"),
          :ok <- validate_scenarios(scenarios),
          {:ok, risks, supplied?} <- load_risks(path, scenario_ids(scenarios)),
+         {:ok, added} <- declared_additions(path),
          targets = scenarios |> Enum.flat_map(& &1["verified_by"]) |> Enum.uniq(),
-         :ok <- Check.validate_targets(targets) do
+         :ok <- Check.validate_targets(targets -- added) do
       {:ok,
        %{
          scenarios: scenarios,
@@ -104,22 +105,32 @@ defmodule Kogen.Build.Contract do
       {:error, "rehearsal evidence has foreign authority, incomplete trace, or failed settlement"}
 
   @spec verdict(map(), map(), map(), [map()]) :: {:ok, map()} | {:error, String.t()}
+  def verdict(message, contract, binding, open_findings),
+    do: verdict(message, contract, binding, open_findings, [])
+
+  @doc """
+  Like `verdict/4` for a Review whose packet carried a verification-surface
+  ledger of `ledger_paths`. With a nonempty ledger the verdict must also hold
+  `ledger`: exactly one `%{"path", "disposition"}` per ledger path, where the
+  disposition is `weakening` or `justified: <scenario-id or finding-id>`.
+  Without a ledger the verdict keeps exactly today's keys.
+  """
   def verdict(
         message,
         contract,
         %{candidate_id: candidate_id, attempt_token: attempt_token},
-        open_findings
+        open_findings,
+        ledger_paths
       )
-      when is_map(message) and is_binary(candidate_id) and is_binary(attempt_token) do
+      when is_map(message) and is_binary(candidate_id) and is_binary(attempt_token) and
+             is_list(ledger_paths) do
     VerificationPlan.trace("Kogen.Build.Contract.verdict")
+    keys = ~w(candidate_id attempt_token verdict scenarios dispositions findings)
+    keys = if ledger_paths == [], do: keys, else: keys ++ ["ledger"]
 
     with {:ok, message} <- stringify_map(message),
-         :ok <-
-           require_exact_keys(
-             message,
-             ~w(candidate_id attempt_token verdict scenarios dispositions findings),
-             "Reviewer verdict"
-           ),
+         :ok <- require_exact_keys(message, keys, "Reviewer verdict"),
+         :ok <- validate_ledger(message["ledger"], ledger_paths, contract, open_findings),
          :ok <-
            match_binding(Map.get(message, "candidate_id"), candidate_id, "Reviewer candidate_id"),
          :ok <-
@@ -140,7 +151,58 @@ defmodule Kogen.Build.Contract do
     end
   end
 
-  def verdict(_, _, _, _), do: {:error, "Reviewer verdict is malformed or contradictory"}
+  def verdict(_, _, _, _, _), do: {:error, "Reviewer verdict is malformed or contradictory"}
+
+  defp validate_ledger(nil, [], _contract, _open_findings), do: :ok
+
+  defp validate_ledger(ledger, paths, contract, open_findings) when is_list(ledger) do
+    ids =
+      Enum.map(contract.scenarios, & &1["id"]) ++
+        Enum.map(open_findings, &(Map.get(&1, "id") || Map.get(&1, :id)))
+
+    entries_valid? =
+      Enum.all?(ledger, fn
+        %{"path" => path, "disposition" => disposition} = entry ->
+          Enum.sort(Map.keys(entry)) == ["disposition", "path"] and is_binary(path) and
+            valid_disposition?(disposition, ids)
+
+        _ ->
+          false
+      end)
+
+    covered = if entries_valid?, do: Enum.map(ledger, & &1["path"]), else: nil
+
+    if entries_valid? and Enum.sort(covered) == Enum.sort(paths) and
+         Enum.uniq(covered) == covered,
+       do: :ok,
+       else:
+         {:error,
+          "Reviewer verdict ledger must give exactly one `justified: <scenario-id or finding-id>` or `weakening` disposition per ledger item"}
+  end
+
+  defp validate_ledger(_ledger, _paths, _contract, _open_findings),
+    do: {:error, "Reviewer verdict ledger is missing or malformed"}
+
+  defp valid_disposition?("weakening", _ids), do: true
+
+  defp valid_disposition?("justified: " <> id, ids), do: String.trim(id) in ids
+  defp valid_disposition?(_disposition, _ids), do: false
+
+  # Targets the Intent declares in `catalog_changes.add` do not exist in the
+  # admission Makefile yet; the controller checks them in each Candidate.
+  defp declared_additions(path) do
+    intent_path = Path.join(path, "intent.yaml")
+
+    with {:ok, text} <- File.read(intent_path),
+         {:ok, data} when is_map(data) <- YamlElixir.read_from_string(text) do
+      case Kogen.Intent.catalog_changes(data) do
+        {:ok, %{add: add}} -> {:ok, add}
+        {:error, {:invalid, reason}} -> {:error, "intent.yaml #{reason}"}
+      end
+    else
+      _ -> {:ok, []}
+    end
+  end
 
   defp approved_path(path) do
     if Path.type(path) == :absolute or String.contains?(path, "/"),
@@ -192,9 +254,13 @@ defmodule Kogen.Build.Contract do
 
   defp scenario?(_), do: false
 
+  # `base` is optional so contracts written before it keep validating; the
+  # controller labels them `unproven-on-base`.
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp proof?(proof) when is_map(proof) do
-    Map.keys(proof) |> Enum.sort() ==
+    (Map.keys(proof) -- ["base"]) |> Enum.sort() ==
       Enum.sort(~w(offline paid_target paid_reason affected_paths)) and
+      Map.get(proof, "base", "fail") in ["fail", "pass"] and
       is_list(proof["offline"]) and proof["offline"] != [] and
       Enum.all?(proof["offline"], &nonblank?/1) and nonblank?(proof["paid_target"]) and
       nonblank?(proof["paid_reason"]) and is_list(proof["affected_paths"]) and

@@ -139,6 +139,7 @@ defmodule Kogen.Git do
                  stderr_to_stdout: true
                ),
              :ok <- File.cp(String.trim(index_path), tmp_index),
+             :ok <- keep_index_mtime(String.trim(index_path), tmp_index),
              {_out, 0} <-
                System.cmd("git", mode_aware(["add", "-A"]),
                  env: env,
@@ -154,6 +155,17 @@ defmodule Kogen.Git do
       after
         File.rm_rf(tmp_dir)
       end
+    end
+  end
+
+  # A copied index gets a fresh mtime, which would make entries written in the
+  # same instant as the original index look racily clean. Keeping the copy no
+  # newer than the original lets Git re-hash those entries.
+  defp keep_index_mtime(original, copy) do
+    case File.stat(original, time: :posix) do
+      {:ok, %{mtime: mtime}} -> File.touch(copy, mtime)
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -255,6 +267,137 @@ defmodule Kogen.Git do
     case System.cmd("git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
       {out, 0} -> {:ok, String.trim(out)}
       {out, _code} -> {:error, String.trim(out)}
+    end
+  end
+
+  @doc """
+  The raw changes between two tree-ish ids in `root`, with rename detection:
+  `%{status, path, old_path, base_blob, candidate_blob, added, deleted}` per
+  path, where `status` is `added`, `modified`, `deleted` or `renamed` and
+  `added`/`deleted` are line counts (`nil` for binary files).
+  """
+  @spec tree_changes(String.t(), String.t(), Path.t()) :: {:ok, [map()]} | {:error, String.t()}
+  def tree_changes(base, tree, root \\ File.cwd!()) do
+    with {raw, 0} <-
+           System.cmd("git", mode_aware(["diff", "--raw", "-z", "-M", "--no-abbrev", base, tree]),
+             cd: root,
+             stderr_to_stdout: true
+           ),
+         {numstat, 0} <-
+           System.cmd("git", mode_aware(["diff", "--numstat", "-z", "-M", base, tree]),
+             cd: root,
+             stderr_to_stdout: true
+           ) do
+      {:ok, merge_numstat(parse_raw(String.split(raw, <<0>>, trim: true)), numstat)}
+    else
+      {out, _code} -> {:error, "could not diff #{base}..#{tree}: #{String.trim(out)}"}
+    end
+  end
+
+  defp parse_raw([meta, path | rest]) do
+    [_old_mode, _new_mode, old_blob, new_blob, status] =
+      meta |> String.trim_leading(":") |> String.split(" ")
+
+    case String.first(status) do
+      kind when kind in ["R", "C"] ->
+        [new_path | rest] = rest
+
+        [
+          %{
+            "status" => "renamed",
+            "path" => new_path,
+            "old_path" => path,
+            "base_blob" => old_blob,
+            "candidate_blob" => new_blob
+          }
+          | parse_raw(rest)
+        ]
+
+      kind ->
+        [
+          %{
+            "status" => change_status(kind),
+            "path" => path,
+            "old_path" => nil,
+            "base_blob" => if(kind == "A", do: nil, else: old_blob),
+            "candidate_blob" => if(kind == "D", do: nil, else: new_blob)
+          }
+          | parse_raw(rest)
+        ]
+    end
+  end
+
+  defp parse_raw(_), do: []
+
+  defp change_status("A"), do: "added"
+  defp change_status("D"), do: "deleted"
+  defp change_status(_), do: "modified"
+
+  defp merge_numstat(entries, numstat) do
+    stats = parse_numstat(String.split(numstat, <<0>>), %{})
+
+    Enum.map(entries, fn entry ->
+      {added, deleted} = Map.get(stats, entry["path"], {nil, nil})
+      Map.merge(entry, %{"added" => added, "deleted" => deleted})
+    end)
+  end
+
+  defp parse_numstat([line | rest], acc) when line != "" do
+    case String.split(line, "\t", parts: 3) do
+      [added, deleted, ""] ->
+        [_old, new | rest] = rest
+        parse_numstat(rest, Map.put(acc, new, {count(added), count(deleted)}))
+
+      [added, deleted, path] ->
+        parse_numstat(rest, Map.put(acc, path, {count(added), count(deleted)}))
+
+      _ ->
+        parse_numstat(rest, acc)
+    end
+  end
+
+  defp parse_numstat([_ | rest], acc), do: parse_numstat(rest, acc)
+  defp parse_numstat([], acc), do: acc
+
+  defp count("-"), do: nil
+  defp count(value), do: String.to_integer(value)
+
+  @doc "The full diff of one change between two tree-ish ids."
+  @spec path_diff(String.t(), String.t(), [String.t()], Path.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def path_diff(base, tree, paths, root \\ File.cwd!()) do
+    case System.cmd(
+           "git",
+           mode_aware(["diff", "-M", "--no-color", base, tree, "--" | paths]),
+           cd: root,
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> {:ok, out}
+      {out, _code} -> {:error, "could not diff #{Enum.join(paths, ", ")}: #{String.trim(out)}"}
+    end
+  end
+
+  @doc "The bytes of `path` in tree-ish `tree`, or `:absent`."
+  @spec blob(String.t(), String.t(), Path.t()) :: {:ok, binary()} | :absent
+  def blob(tree, path, root \\ File.cwd!()) do
+    case System.cmd("git", ["cat-file", "blob", "#{tree}:#{path}"],
+           cd: root,
+           stderr_to_stdout: true
+         ) do
+      {bytes, 0} -> {:ok, bytes}
+      _ -> :absent
+    end
+  end
+
+  @doc "Every file path in tree-ish `tree`."
+  @spec tree_files(String.t(), Path.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def tree_files(tree, root \\ File.cwd!()) do
+    case System.cmd("git", ["ls-tree", "-r", "-z", "--name-only", tree],
+           cd: root,
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> {:ok, String.split(out, <<0>>, trim: true)}
+      {out, _code} -> {:error, "could not list #{tree}: #{String.trim(out)}"}
     end
   end
 

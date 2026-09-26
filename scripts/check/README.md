@@ -6,13 +6,16 @@ and dependencies already installed by `mix deps.get`. The supported timing machi
 is the shaping macOS machine; dependency installation is a prerequisite, not a
 verification step.
 
-The Stop hook owns verification settlement, including `make check` and the
-catalog-ordered targets selected by the Approved Intent. Developers and helpers
-use the controller-issued focused proof selectors and rehearsals as non-gate
-readiness work; they must not invoke this directory's recipe as a bypass around
-gate ownership.
-Bounded `verification_retries` applies to failed Stop verification inside the
-same Developer conversation; it is distinct from the outer Developer-rework
+Kogen's Build controller owns verification settlement: after each Developer
+turn it runs exactly the targets the Approved Intent lists in `verified_by`
+(here `make check` and any selected catalog target) in catalog order as its own
+child processes. The Stop scripts act only on an older controller's v1 context.
+Developers and helpers use the controller-issued focused proof selectors and
+rehearsals as non-gate readiness work; they must not invoke this directory's
+recipe as a bypass around gate ownership.
+Bounded `verification_retries` applies to failed controller verification: the
+controller resumes the same Developer conversation with the failed target's
+receipt and log paths. It is distinct from the outer Developer-rework
 allowance. Legacy outer-resumption configuration is a transition input only.
 
 The owner invokes `make check`, which runs [offline.py](offline.py) in this order:
@@ -146,12 +149,13 @@ removed, but elapsed improvement is not promised: provider contention and
 non-equivalent historical cache conditions prevent an honest speedup claim.
 
 After edits, use focused tests for the affected behavior. Let the normal owner
-capture complete Stop verification timing and run declared targets. On failure,
-read the failing stage and child diagnostics, fix the cause in the same Developer
-session, and let the owner retry while its verification allowance remains. Once
-verification settles, an invalid handoff or Review finding uses the separate
-outer allowance and requires fresh Stop verification on resume. Completion requires
-the Stop-owned warm gate and every target declared by the Approved Intent. The
+(the Build controller) capture complete verification timing and run declared
+targets. On failure, read the failing stage and child diagnostics named in the
+controller's resume message, fix the cause in the same Developer session, and
+let the owner retry while its verification allowance remains. Once verification
+settles, an invalid handoff or Review finding uses the separate outer allowance
+and requires fresh controller verification on resume. Completion requires the
+controller-owned warm gate and every target declared by the Approved Intent. The
 provider-backed lifecycle owners, `live-shaping-quality`, `live-native`, and
 `cold-offline` are separate selections, not components of an aggregate alias.
 
@@ -160,8 +164,10 @@ The lifecycle and first two specialized targets are provider-backed. `check` and
 and need network, its installed runtime and Kogen login, `expect`, and `rsync`; `live-shaping-quality` needs the
 provider route and maintained evaluation sources; `live-native` needs the pinned
 runtime and configured authentication; and `cold-offline` needs installed dependency
-sources, `rsync`, and the offline toolchain. Every Build begins with `check`; Stop
-then runs distinct selected targets in dependency-valid catalog cost order.
+sources, `rsync`, and the offline toolchain. The controller runs exactly the
+targets the approved scenarios list (Kogen's own contracts list `check` first)
+in dependency-valid catalog cost order, reusing only a provider-backed target's
+pass on a byte-identical Candidate within one attempt.
 
 `priv/kogen/test-reliability.yaml` binds each cataloged test declaration to its
 source bytes. After a reviewed change edits a cataloged test file, run

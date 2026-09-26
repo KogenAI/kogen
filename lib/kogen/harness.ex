@@ -172,9 +172,23 @@ defmodule Kogen.Harness do
     )
   end
 
-  @doc "Launches an independent Reviewer and requires a schema-valid Verdict."
+  @doc """
+  Launches an independent Reviewer and requires a schema-valid Verdict. The
+  verdict schema is chosen per launch: a context carrying `:ledger_paths` (the
+  verification-surface ledger in the Reviewer's packet, see
+  `with_ledger/2`) adds a required `ledger`; without one the schema is
+  exactly `Kogen.Harness.Verdict.schema/0`.
+  """
   def launch_reviewer(prompt, model, effort, context),
     do: adapter!(context).launch_reviewer(prompt, model, effort, context)
+
+  @doc "A Reviewer launch context whose verdict must disposition `ledger_paths`."
+  def with_ledger(context, ledger_paths) when is_map(context) and is_list(ledger_paths),
+    do: Map.put(context, :ledger_paths, ledger_paths)
+
+  @doc "The verification-surface ledger paths a launch context requests."
+  def ledger_paths(context) when is_map(context), do: Map.get(context, :ledger_paths, [])
+  def ledger_paths(_context), do: []
 
   @doc """
   Launches a fresh, read-only Expert for one question on stdin and returns its

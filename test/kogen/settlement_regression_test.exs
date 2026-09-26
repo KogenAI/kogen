@@ -1,6 +1,21 @@
 Code.require_file("../support/compiled_fixture.exs", __DIR__)
 
 defmodule Kogen.SettlementRegressionTest do
+  @moduledoc """
+  The former defect this file protects against was a corrected Stop block
+  masquerading as a completed turn: a Developer turn whose `check` still
+  failed was nonetheless treated as settled. Under the controller the
+  equivalent protection is: a Developer turn whose first controller
+  verification cycle fails is resumed, and only a later *passing* controller
+  cycle on the same Candidate ever settles the turn. `legacy: true` drives a
+  fake Developer that ignores the controller's resume (it never repairs the
+  ignored `.kogen/runtime/kogen_fake_break` marker the resumed session is
+  handed) and must therefore exhaust verification retries and never reach
+  Review; the controller decides this, not the fake. `legacy: false` drives
+  the well-behaved fake, which repairs the marker on resume and settles once
+  a later cycle genuinely passes, even though an intermediate cycle fails
+  again with a distinguishable sentinel that must never be read as success.
+  """
   use ExUnit.Case, async: true, parameterize: [%{legacy: true}, %{legacy: false}]
 
   @slug "fake-shaped-intent"
@@ -13,27 +28,22 @@ defmodule Kogen.SettlementRegressionTest do
     on_exit(fn -> File.rm_rf!(fixture) end)
     fake = Path.join(fixture, "test/support/fake_codex")
 
-    if legacy do
-      # Reproduce the former fake's exact defect: ignore a blocking response
-      # and emit turn.completed. This is only a private negative-control copy.
-      File.write!(
-        fake,
-        String.replace(
-          File.read!(fake),
-          "exit 1 # unexpected-stop-response",
-          "return 0 # legacy ignored block"
-        )
-      )
-    end
-
+    # `check` fails on cycle 1 because the fake's fresh Developer turn leaves
+    # the ignored marker; it fails again on cycle 2 regardless of the marker
+    # (the negative-control sentinel, standing in for a "corrected" block
+    # that is still broken); only a Candidate whose marker is gone and whose
+    # cycle isn't the sentinel cycle passes. A well-behaved fake resume
+    # removes the marker; the legacy (never-fixes) fake, driven by
+    # FAKE_CHECK_FAIL_ALWAYS below, never does.
     File.write!(Path.join(fixture, "Makefile"), """
     .PHONY: check
     check:
     \t@n=0; [ ! -f .kogen/runtime/check-count ] || n=$$(cat .kogen/runtime/check-count); n=$$((n+1)); echo $$n > .kogen/runtime/check-count; if [ $$n -eq 2 ]; then echo #{@sentinel}; exit 1; fi
-    \t@test ! -f lib/kogen_fake_break.ex
+    \t@test ! -f .kogen/runtime/kogen_fake_break
     """)
 
     Kogen.VerificationFixture.install!(fixture)
+    File.write!(Path.join(fixture, "dummy.txt"), "")
 
     git!(fixture, ["init", "-q", "-b", "main"])
     git!(fixture, ["config", "user.name", "Kogen Fixture"])
@@ -51,78 +61,110 @@ defmodule Kogen.SettlementRegressionTest do
     id: 01960000-0000-7000-8000-00000000cafe
     slug: #{@slug}
     title: Settlement negative control
-    may_change_guarded_paths: [dummy.txt, reviewer-rework-marker.txt]
+    may_change_guarded_paths: [dummy.txt]
     """)
 
     File.write!(Path.join(approved, "scenarios.yaml"), """
     - id: corrected-check
-      given: a bounded check that fails after the initial correction
-      when: the fake Developer receives a blocking response
-      then: it fails rather than reporting a completed turn
-      wrong_result: a settlement failure consumes Reviewer rework budget
+      given: a bounded check that keeps failing after a first controller resume
+      when: the controller settles verification for the Developer's turn
+      then: only a later genuinely-passing controller cycle settles it
+      wrong_result: a still-failing check is read as a completed, settled turn
       verified_by: [check]
-      evidence: retained hook response and exact launch counts
+      evidence: retained controller verification cycles and receipts
     """)
+
+    # A first-review accept (matching the fresh Developer's dummy.txt write)
+    # keeps this fixture scoped to controller verification retries, with no
+    # Reviewer-driven outer rework in play.
+    File.write!(
+      Path.join(approved, "requirement.json"),
+      Jason.encode!(%{"path" => "dummy.txt", "expected" => "initial fixture value"})
+    )
 
     Kogen.VerificationFixture.install!(fixture)
 
-    {output, status} =
-      Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", @slug], [
-        {"KOGEN_HARNESS", fake},
-        {"KOGEN_RAW_LOG_DIR", Path.join(fixture, ".kogen/runtime/raw")}
-      ])
+    env = [
+      {"KOGEN_HARNESS", fake},
+      {"KOGEN_RAW_LOG_DIR", Path.join(fixture, ".kogen/runtime/raw")}
+    ]
 
-    if legacy do
-      assert status == 0, output
-      evidence = File.read!(Path.join(fixture, ".kogen/intents/complete/#{@slug}/evidence.md"))
-      assert evidence =~ "Outer resumptions used: 1"
+    # `legacy: true` reproduces the former fake's exact defect in controller
+    # terms: it ignores the controller's resume and never repairs the
+    # Candidate, so every cycle keeps failing. `legacy: false` is the
+    # well-behaved fake: it repairs the marker on its first controller resume.
+    env = if legacy, do: [{"FAKE_CHECK_FAIL_ALWAYS", "1"} | env], else: env
 
-      record =
-        fixture
-        |> Path.join(".kogen/runtime/scenario-tracking/*/record.json")
-        |> Path.wildcard()
-        |> List.first()
-        |> File.read!()
-        |> Jason.decode!()
+    {output, status} = Kogen.CompiledFixture.mix_task!(fixture, ["kogen.build", @slug], env)
 
-      assert Enum.any?(record["attempts"], fn attempt ->
-               Enum.any?(get_in(attempt, ["verification", "cycles"]) || [], fn cycle ->
-                 Enum.any?(cycle["receipts"], &String.contains?(&1["output"], @sentinel))
-               end)
-             end)
-
-      assert record["status"] == "accepted"
-    else
-      assert status == 0, output
-      assert git!(fixture, ["rev-parse", "HEAD"]) != parent
-      assert File.exists?(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
-    end
-
-    # The published summary reports controller-decided failure kinds only;
-    # the former Developer-handoff kinds no longer exist.
-    summary =
+    record =
       fixture
-      |> Path.join(".kogen/intents/complete/#{@slug}/build-summary.json")
+      |> Path.join(".kogen/runtime/scenario-tracking/*/record.json")
+      |> Path.wildcard()
+      |> List.first()
       |> File.read!()
       |> Jason.decode!()
 
-    kinds = Enum.map(summary["attempts"], & &1["failure_kind"])
-    assert List.last(kinds) == nil
+    assert length(record["attempts"]) == 1,
+           "a verification failure must never consume an outer resumption"
 
-    assert Enum.all?(
-             kinds,
-             &(&1 in [
-                 nil,
-                 "check_settlement",
-                 "declared_target",
-                 "review_rework",
-                 "unfinished_work",
-                 "cannot_comply",
-                 "rework"
-               ])
-           )
+    [attempt] = record["attempts"]
+    cycles = get_in(attempt, ["verification", "cycles"]) || []
+    assert length(cycles) == 3, "expected two failed cycles then a decisive third"
+    [cycle1, cycle2, cycle3] = cycles
+    assert cycle1["status"] == "failed"
+    assert cycle2["status"] == "failed"
 
-    refute Enum.any?(kinds, &(&1 in ["handoff_structure", "handoff_semantic"]))
+    assert Enum.any?(cycle2["receipts"], &String.contains?(&1["output"] || "", @sentinel)),
+           "the sentinel cycle must genuinely run and fail, never be masked as a pass"
+
+    if legacy do
+      assert status == 1, output
+      assert output =~ "verification retries exhausted"
+      assert cycle3["status"] == "failed"
+      assert attempt["verification"]["terminal_state"] == "exhausted"
+      assert record["status"] == "failed"
+
+      assert git!(fixture, ["rev-parse", "HEAD"]) == parent,
+             "an exhausted verification must never commit"
+
+      refute File.exists?(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
+
+      refute File.exists?(Path.join(fixture, ".kogen/runtime/fake-reviewer-calls")),
+             "exhausted verification must stop before Review"
+    else
+      assert status == 0, output
+      assert cycle3["status"] == "passed"
+      assert attempt["verification"]["terminal_state"] == "passed"
+      assert git!(fixture, ["rev-parse", "HEAD"]) != parent
+      assert File.exists?(Path.join(fixture, ".kogen/intents/complete/#{@slug}"))
+
+      # The published summary reports controller-decided failure kinds only;
+      # the former Developer-handoff kinds no longer exist.
+      summary =
+        fixture
+        |> Path.join(".kogen/intents/complete/#{@slug}/build-summary.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      kinds = Enum.map(summary["attempts"], & &1["failure_kind"])
+      assert List.last(kinds) == nil
+
+      assert Enum.all?(
+               kinds,
+               &(&1 in [
+                   nil,
+                   "check_settlement",
+                   "declared_target",
+                   "review_rework",
+                   "unfinished_work",
+                   "cannot_comply",
+                   "rework"
+                 ])
+             )
+
+      refute Enum.any?(kinds, &(&1 in ["handoff_structure", "handoff_semantic"]))
+    end
   end
 
   defp git!(fixture, args) do

@@ -1,6 +1,7 @@
 defmodule Kogen.IntentTest do
   use ExUnit.Case, async: true
 
+  alias Kogen.Build.{Contract, VerificationPlan}
   alias Kogen.Intent
 
   # -- helpers ---------------------------------------------------------
@@ -496,6 +497,124 @@ defmodule Kogen.IntentTest do
       assert {:error, reason} = Intent.read("ghost-intent", base_dir)
       assert reason == "intent.yaml missing: #{expected_path}"
     end
+  end
+
+  # -- catalog_changes/1 ---------------------------------------------------
+
+  describe "catalog_changes/1" do
+    test "an absent catalog_changes key means no additions" do
+      assert Intent.catalog_changes(%{}) == {:ok, %{add: []}}
+    end
+
+    test "a valid add list is accepted" do
+      assert Intent.catalog_changes(%{"catalog_changes" => %{"add" => ["new-target"]}}) ==
+               {:ok, %{add: ["new-target"]}}
+    end
+
+    test "an unsafe target name in add is rejected" do
+      assert Intent.catalog_changes(%{"catalog_changes" => %{"add" => ["bad name!"]}}) ==
+               {:error, {:invalid, "catalog_changes.add must list safe Make target names"}}
+    end
+
+    test "a duplicate name in add is rejected" do
+      assert Intent.catalog_changes(%{"catalog_changes" => %{"add" => ["x", "x"]}}) ==
+               {:error, {:invalid, "catalog_changes.add lists a target twice"}}
+    end
+
+    test "a non-map catalog_changes value is rejected" do
+      assert Intent.catalog_changes(%{"catalog_changes" => ["add"]}) ==
+               {:error, {:invalid, "catalog_changes must be a mapping"}}
+    end
+
+    test "an unknown catalog_changes key is rejected" do
+      assert Intent.catalog_changes(%{
+               "catalog_changes" => %{"add" => ["x"], "remove" => ["y"]}
+             }) == {:error, {:invalid, "catalog_changes supports only add"}}
+    end
+  end
+
+  # -- Contract proof.base -------------------------------------------------
+
+  describe "Contract.load/1 optional proof.base" do
+    test "accepts proof.base: pass and proof.base: fail" do
+      for base <- ["pass", "fail"] do
+        path = contract_dir!()
+        write_yaml!(path, "scenarios.yaml", Jason.encode!([contract_scenario(base)]))
+
+        assert {:ok, %{scenarios: [scenario]}} = Contract.load(path)
+        assert scenario["proof"]["base"] == base
+      end
+    end
+
+    test "rejects any proof.base value other than fail or pass" do
+      path = contract_dir!()
+      write_yaml!(path, "scenarios.yaml", Jason.encode!([contract_scenario("maybe")]))
+
+      assert {:error, "scenarios.yaml missing or invalid"} = Contract.load(path)
+    end
+
+    test "keeps validating a contract written before proof.base existed" do
+      path = contract_dir!()
+      scenario = contract_scenario(nil) |> update_in(["proof"], &Map.delete(&1, "base"))
+      write_yaml!(path, "scenarios.yaml", Jason.encode!([scenario]))
+
+      assert {:ok, %{scenarios: [loaded]}} = Contract.load(path)
+      refute Map.has_key?(loaded["proof"], "base")
+    end
+  end
+
+  # -- VerificationPlan.proof_label/2 --------------------------------------
+
+  describe "VerificationPlan.proof_label/2" do
+    test "labels integrity-not-configured when the admission catalog has no integrity fields" do
+      assert VerificationPlan.proof_label(%{integrity: nil}, "fail") ==
+               "integrity-not-configured"
+
+      assert VerificationPlan.proof_label(%{integrity: nil}, nil) == "integrity-not-configured"
+    end
+
+    test "labels unproven-on-base for a contract without proof.base under a configured catalog" do
+      assert VerificationPlan.proof_label(%{integrity: %{}}, nil) == "unproven-on-base"
+    end
+
+    test "labels base-fail and base-pass under a configured catalog" do
+      assert VerificationPlan.proof_label(%{integrity: %{}}, "fail") == "base-fail"
+      assert VerificationPlan.proof_label(%{integrity: %{}}, "pass") == "base-pass"
+    end
+  end
+
+  defp contract_dir! do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-intent-contract-test-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(path)
+    on_exit(fn -> File.rm_rf!(path) end)
+    path
+  end
+
+  defp contract_scenario(base) do
+    proof = %{
+      "offline" => ["dummy-selector"],
+      "paid_target" => "none",
+      "paid_reason" => "offline-sufficient: a dummy contract only exercises proof.base parsing",
+      "affected_paths" => ["dummy-selector"]
+    }
+
+    proof = if base, do: Map.put(proof, "base", base), else: proof
+
+    %{
+      "id" => "s-#{base || "none"}",
+      "given" => "a fixture Candidate",
+      "when" => "the contract loads",
+      "then" => "proof.base parses",
+      "wrong_result" => "proof.base is silently dropped",
+      "verified_by" => ["check"],
+      "evidence" => "fixture",
+      "proof" => proof
+    }
   end
 
   # -- mint_uuid7/0 --------------------------------------------------------

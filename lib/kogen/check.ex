@@ -1,7 +1,8 @@
 defmodule Kogen.Check do
   @moduledoc """
-  The Verification Record (written by the tracked Stop hook,
-  `.codex/hooks/check.sh`) and declared-target verification. Never depends
+  The local Verification Record and its history, written by the Build
+  controller after each verification cycle (see `write_record/2`), and
+  declared-target name checks. Never depends
   on `Kogen.Harness`: whether a Verification Record is trustworthy must be
   decidable without knowing anything about how the Developer was launched.
   """
@@ -12,16 +13,15 @@ defmodule Kogen.Check do
   @history_path ".kogen/runtime/verification-history.jsonl"
   @target_name_re ~r/^[a-z][a-z0-9_-]*$/
 
-  @doc "Path to the ignored Verification Record the Stop hook writes."
+  @doc "Path to the ignored Verification Record the Build controller writes."
   def record_path, do: @record_path
 
   @doc """
-  Path to the ignored, append-only history of every hook invocation (one
-  JSON line each) for the current attempt. A later passing
-  `verification.json` overwrites the evidence that an earlier attempt
-  within the same turn failed; this file is what still has it, so a real
-  failed-Check -> in-turn-continuation -> pass arc can be proven after the
-  fact instead of merely inferred from a higher turn count.
+  Path to the ignored, append-only history of every controller verification
+  cycle (one JSON line each) for the current outer attempt. A later passing
+  `verification.json` overwrites the evidence that an earlier cycle failed;
+  this file is what still has it, so a failed -> resumed -> passed arc of the
+  same Developer session can be proven after the fact.
   """
   def history_path, do: @history_path
 
@@ -37,6 +37,31 @@ defmodule Kogen.Check do
     with :ok <- archive_history_if_requested(),
          :ok <- remove_stale_file(@record_path, "Verification Record") do
       remove_stale_file(@history_path, "Verification Record history")
+    end
+  end
+
+  @doc """
+  Writes one controller verification cycle as the current Verification
+  Record and appends the same line to its history, in the established line
+  format (`candidate`, `status`, `target`, `exit_code`, `session_id`,
+  `attempt_token`, `finished_at`, `reason`). The Build controller is the only
+  writer; `target` stays the constant `check` as a format value for existing
+  readers and selects nothing.
+  """
+  @spec write_record(map(), Path.t()) :: :ok | {:error, String.t()}
+  def write_record(record, root \\ ".") when is_map(record) do
+    line = Jason.encode!(record) <> "\n"
+    path = Path.join(root, @record_path)
+    temporary = path <> ".#{System.unique_integer([:positive])}.tmp"
+
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(temporary, line),
+         :ok <- File.rename(temporary, path),
+         :ok <- File.write(Path.join(root, @history_path), line, [:append]) do
+      :ok
+    else
+      {:error, reason} ->
+        {:error, "could not write Verification Record: #{:file.format_error(reason)}"}
     end
   end
 
@@ -98,9 +123,8 @@ defmodule Kogen.Check do
   end
 
   @doc """
-  Validates every name in `names` (excluding `"check"`, which already ran)
-  is both a safe shell token and a target actually declared in the
-  Makefile. Must be called, and must succeed, before the Developer is
+  Validates every name in `names` is both a safe shell token and a target
+  actually declared in the Makefile. No target name is special. Must be called, and must succeed, before the Developer is
   launched.
   """
   @spec validate_targets([String.t()], Path.t()) :: :ok | {:error, String.t()}
@@ -112,7 +136,6 @@ defmodule Kogen.Check do
 
   defp validate_declared_names(names, declared) do
     names
-    |> Enum.reject(&(&1 == "check"))
     |> Enum.uniq()
     |> Enum.reduce_while(:ok, fn name, :ok ->
       cond do

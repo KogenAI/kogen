@@ -49,9 +49,11 @@ defmodule Kogen.VerificationPolicyTest do
       refute dispatches?(dir, "make check", [])
       refute dispatches?(dir, nil)
 
+      # No target name is special any more (`policy_targets/0` no longer
+      # requires the hardcoded check/live pair), so an unset or invalid
+      # targets list is still what makes this deny, not the target names.
       refute dispatches_with_environment?(dir, "make check", [
                {"KOGEN_ROLE", "developer"},
-               {"KOGEN_VERIFICATION_TARGETS", "[\"fixture_gate\"]"},
                {"KOGEN_PROJECT_ROOT", dir}
              ])
 
@@ -67,9 +69,19 @@ defmodule Kogen.VerificationPolicyTest do
 
   test "Build-side policy has fixed check/live ownership and validates hook registration" do
     assert VerificationPolicy.normalized_targets(["fixture_gate", "check", "fixture_gate"]) ==
-             ["check", "live", "fixture_gate"]
+             ["fixture_gate", "check"]
+
+    assert VerificationPolicy.normalized_targets(["test"]) == ["test"]
 
     in_policy_fixture!(fn dir ->
+      assert VerificationPolicy.preflight(["check", "fixture_gate"], dir) ==
+               :ok
+
+      # Preflight no longer needs the bootstrap Stop script at all: the guard
+      # (verification_policy.py) and its PreToolUse registration are enough,
+      # so a follow-up Intent can delete `.codex/hooks/check.sh`.
+      File.rm!(Path.join(dir, ".codex/hooks/check.sh"))
+
       assert VerificationPolicy.preflight(["check", "fixture_gate"], dir) ==
                :ok
 
@@ -94,6 +106,22 @@ defmodule Kogen.VerificationPolicyTest do
                VerificationPolicy.preflight(["check"], dir)
 
       assert registration_reason =~ "verification-policy hook is not registered"
+    end)
+  end
+
+  test "the guard blocks a renamed catalog gate with no hardcoded check/live pair" do
+    in_policy_fixture!(fn dir ->
+      refute dispatches_with_environment?(dir, "make test", [
+               {"KOGEN_ROLE", "developer"},
+               {"KOGEN_VERIFICATION_TARGETS", Jason.encode!(["test"])},
+               {"KOGEN_PROJECT_ROOT", dir}
+             ])
+
+      assert dispatches_with_environment?(dir, "make check", [
+               {"KOGEN_ROLE", "developer"},
+               {"KOGEN_VERIFICATION_TARGETS", Jason.encode!(["test"])},
+               {"KOGEN_PROJECT_ROOT", dir}
+             ])
     end)
   end
 

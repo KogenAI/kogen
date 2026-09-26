@@ -136,7 +136,7 @@ defmodule Kogen.ShapeTaskTest do
           "material public choice is absent",
           "end the turn without asking for approval",
           "request for package review is not approval",
-          "Select targets by affected existing workflows",
+          "Select a provider-backed target only when the scenario claims a",
           "outer driver alone observes an ephemeral interaction",
           "zero questions is not itself a quality target"
         ] do
@@ -145,6 +145,59 @@ defmodule Kogen.ShapeTaskTest do
 
     refute compact =~ "JSON pairs or tab-separated lines"
     refute compact =~ "LF for a newly normalized CSV output"
+    refute compact =~ "even when their live test files are unchanged"
+  end
+
+  test "shaping prompt describes verified_by as the complete explicit target list and keeps the paid-reason format" do
+    prompt = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/shaping.md"))
+    compact = Regex.replace(~r/\s+/, prompt, " ")
+
+    for text <- [
+          "the complete, explicit list of targets this scenario needs, with no implicit `check`",
+          "at least one offline (`provider_backed: false`) target",
+          "at most one provider-backed (`provider_backed: true`) target",
+          "Every listed target's declared `dependencies` must also be listed",
+          "the list must follow catalog rank order",
+          "provider-required: <exact-target>; observation: <provider-only observable>; offline-limit:",
+          "offline-sufficient: <consumer/control>",
+          "`proof.base`",
+          "unproven-on-base",
+          "catalog_changes.add",
+          "verification_surface",
+          "focused_runner",
+          "base_cache",
+          ".kogen/runtime",
+          ".kogen/build.lock",
+          ".kogen/codex",
+          ".codex/sessions"
+        ] do
+      assert compact =~ text
+    end
+
+    refute compact =~ "even when their live test files are unchanged"
+  end
+
+  test "README documents the Choosing verification targets policy" do
+    readme = File.read!(Path.join(File.cwd!(), "README.md"))
+    compact = Regex.replace(~r/\s+/, readme, " ")
+
+    assert readme =~ "## Choosing verification targets"
+
+    for text <- [
+          "orchestration",
+          "offline-only",
+          "native harness launch, resume or flags",
+          "native hook registration consumed by a real CLI",
+          "managed runtime upgrades",
+          "parsing new provider output shapes",
+          "must select that test's target in the same Intent",
+          "unverified",
+          "at most",
+          "one paid target",
+          "questions.md"
+        ] do
+      assert compact =~ text
+    end
   end
 
   test "rendered shaping roles keep approval explicit and bookkeeping narrow" do

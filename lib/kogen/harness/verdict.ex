@@ -88,27 +88,69 @@ defmodule Kogen.Harness.Verdict do
   @doc "The encoded JSON Schema every Reviewer verdict must satisfy."
   def schema, do: @verdict_schema
 
+  @doc """
+  The schema for one Reviewer launch. Without ledger paths it is exactly
+  `schema/0`. With a nonempty verification-surface ledger it adds a required
+  `ledger` array holding one `path`/`disposition` item per ledger path.
+  """
+  def schema([]), do: @verdict_schema
+
+  def schema(ledger_paths) when is_list(ledger_paths) do
+    decoded = Jason.decode!(@verdict_schema)
+
+    ledger = %{
+      "type" => "array",
+      "minItems" => length(ledger_paths),
+      "maxItems" => length(ledger_paths),
+      "items" => %{
+        "type" => "object",
+        "properties" => %{
+          "path" => %{"type" => "string", "enum" => ledger_paths},
+          "disposition" => %{
+            "type" => "string",
+            "pattern" => "^(weakening|justified: \\S.*)$",
+            "description" =>
+              "`weakening`, or `justified: <scenario-id or finding-id>` naming what justifies the change."
+          }
+        },
+        "required" => ["path", "disposition"],
+        "additionalProperties" => false
+      }
+    }
+
+    decoded
+    |> put_in(["properties", "ledger"], ledger)
+    |> Map.update!("required", &(&1 ++ ["ledger"]))
+    |> Jason.encode!()
+  end
+
   @doc "Decodes and validates a verdict message."
-  def parse(output) when is_binary(output) do
+  def parse(output, ledger? \\ false)
+
+  def parse(output, ledger?) when is_binary(output) do
     case Jason.decode(String.trim(output)) do
-      {:ok, json} -> validate(json)
+      {:ok, json} -> validate(json, ledger?)
       _ -> :error
     end
   end
 
-  def parse(_output), do: :error
+  def parse(_output, _ledger?), do: :error
 
-  @doc "Validates an already decoded verdict value."
-  def validate(json) do
-    if valid_verdict?(json) do
+  @doc """
+  Validates an already decoded verdict value. `ledger?` says whether the
+  launch requested a `ledger`; the key is accepted exactly then.
+  """
+  def validate(json, ledger? \\ false) do
+    if valid_verdict?(json, ledger?) do
       {:ok, %{verdict: json["verdict"], findings: json["findings"], response: json}}
     else
       :error
     end
   end
 
-  defp valid_verdict?(json) when is_map(json) do
-    Map.keys(json) |> Enum.sort() == verdict_keys() and
+  defp valid_verdict?(json, ledger?) when is_map(json) do
+    Map.keys(json) |> Enum.sort() == verdict_keys(ledger?) and
+      (not ledger? or valid_ledger?(json["ledger"])) and
       nonblank?(json["candidate_id"]) and
       nonblank?(json["attempt_token"]) and
       json["verdict"] in ["accept", "rework"] and
@@ -117,7 +159,20 @@ defmodule Kogen.Harness.Verdict do
       valid_findings?(json["findings"])
   end
 
-  defp valid_verdict?(_json), do: false
+  defp valid_verdict?(_json, _ledger?), do: false
+
+  defp valid_ledger?(ledger) when is_list(ledger) do
+    Enum.all?(ledger, fn
+      %{"path" => path, "disposition" => disposition} = item ->
+        Map.keys(item) |> Enum.sort() == ["disposition", "path"] and nonblank?(path) and
+          nonblank?(disposition)
+
+      _ ->
+        false
+    end)
+  end
+
+  defp valid_ledger?(_ledger), do: false
 
   defp valid_scenarios?(scenarios) when is_list(scenarios) do
     Enum.all?(scenarios, fn
@@ -176,9 +231,11 @@ defmodule Kogen.Harness.Verdict do
 
   defp nonblank?(value), do: is_binary(value) and String.trim(value) != ""
 
-  defp verdict_keys do
+  defp verdict_keys(false) do
     ["attempt_token", "candidate_id", "dispositions", "findings", "scenarios", "verdict"]
   end
+
+  defp verdict_keys(true), do: Enum.sort(["ledger" | verdict_keys(false)])
 
   @doc "Retains the Reviewer's verdict and receipt when a raw log directory is configured."
   def persist(message, session_id, extra \\ %{}) do

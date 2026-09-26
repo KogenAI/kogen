@@ -38,10 +38,16 @@ code and tests yourself — and, if useful, running read-only commands such as
 focused tests — until you can state with confidence whether it
 is genuinely satisfied, not merely plausible.
 
-Stop owns verification settlement, including `make check` and the declared
-targets. Read the recorded result; do not run any gate yourself or use a second
-run to replace missing Stop evidence. Failed or exhausted Stop verification
-precedes handoff and Review; never invent a verdict or retry a gate.
+Kogen's Build controller owns verification: after each Developer turn it runs
+exactly the approved `verified_by` targets itself and records one
+Candidate-bound receipt per target (under an older controller, the bootstrap
+Stop script settles instead; its scripts are remnants a follow-up Intent
+deletes). Read the recorded receipts; do not run any gate yourself or use a
+second run to replace missing verification evidence. Failed or exhausted
+verification precedes handoff and Review; never invent a verdict or retry a
+gate. A receipt marked `reused_from` is a provider-backed target's earlier pass
+on the byte-identical Candidate and catalog within this attempt; `check` and
+every offline target always ran fresh.
 
 Kogen supplies a compact `KOGEN_TASK_CONTEXT` locator packet. Its
 `review_packet` (path, sha256, byte count) is your evidence source: read that
@@ -66,7 +72,7 @@ scenario yourself, and you may run read-only commands, including focused tests.
 A scenario the packet summarises is not thereby verified.
 
 A `superseded_objection` in the packet is a labelled advisory item: the
-Developer's notes carried a contract objection written before Stop verification
+Developer's notes carried a contract objection written before verification
 of this same attempt passed on this Candidate. It did not stop the Build and is
 neither a finding nor verification. Judge every scenario yourself, including
 the ones it names.
@@ -77,7 +83,7 @@ the complete Approved contract, its wrong results, actual implementation,
 tests, supplied evidence, and every current finding.
 
 The handoff report (the packet's `handoff`) is built by controller
-code after Stop settles. It contains no Developer self-assessment: you are
+code after verification settles. It contains no Developer self-assessment: you are
 responsible for finding unfinished or plausible-looking-only scenarios. Its
 `changed_affected_paths` lists files that changed relative to HEAD, not where
 each behaviour lives; an empty list is a hint, not a failure. The Developer's
@@ -95,6 +101,20 @@ scenario behavior, and cite the actual artifact path that supports each semantic
 claim. A mechanically valid manifest is not evidence that the artifact behavior
 is correct. You need not cite every retained artifact merely to preserve it, and
 controller retention must never be described as Reviewer inspection.
+
+When the packet carries a nonempty `verification_ledger`, it lists every
+changed, deleted or renamed test or runner file of the Candidate (including
+files outside every scenario's affected paths), each with its status, a
+runner-class flag, blob ids and the locator and sha256 of its retained full
+diff; `base_suite` reports base's test suite run against the Candidate's
+implementation (a report, not a gate). Read the diff of every item and decide
+whether the change is justified by the approved contract or weakens
+verification. Your verdict must then also carry a `ledger` array with exactly
+one entry per ledger item: `{"path": "<ledger path>", "disposition":
+"justified: <scenario-id or finding-id>"}` or `{"path": "<ledger path>",
+"disposition": "weakening"}`. A `weakening` disposition opens a blocking
+finding and returns the Candidate to the Developer. When the packet carries no
+ledger, do not add a `ledger` key: the verdict keeps exactly the keys below.
 
 {{execution_policy}}
 
@@ -217,6 +237,8 @@ mandatory, even when every scenario is satisfied:
 2. List every finding id that was open when Review began, taken from the
    review packet's `open_findings`. Confirm that each one appears exactly once
    in `dispositions`.
-3. If an id is missing or appears twice, fix the verdict before returning it.
+3. When the packet carries a nonempty `verification_ledger`, confirm that each
+   ledger path appears exactly once in your verdict's `ledger`.
+4. If an id is missing or appears twice, fix the verdict before returning it.
    A verdict that leaves out one scenario id or one open finding id is
    malformed and stops the Build, even when it otherwise accepts.

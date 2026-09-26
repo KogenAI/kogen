@@ -5,7 +5,12 @@ defmodule Kogen.Build.FailureSignature do
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def derive(cycle, context, catalog, previous \\ []) do
     receipts = cycle["receipts"] || []
-    failed = Enum.find(receipts, &(not passed?(&1))) || List.last(receipts) || %{}
+
+    # A controller cycle can also fail outside a target receipt (catalog,
+    # proof selector, target evidence or Candidate mutation).
+    failed =
+      Enum.find(receipts, &(not passed?(&1))) || cycle["failure"] || List.last(receipts) || %{}
+
     output = to_string(failed["output"] || failed["reason"] || "")
 
     head =
@@ -41,7 +46,8 @@ defmodule Kogen.Build.FailureSignature do
     Map.put(signature, "repeated", Enum.any?(previous, &(&1["digest"] == digest)))
   end
 
-  defp passed?(receipt), do: receipt["status"] in ["passed", "pass"] or receipt["exit_code"] == 0
+  defp passed?(%{"status" => status}) when is_binary(status), do: status in ["passed", "pass"]
+  defp passed?(receipt), do: receipt["exit_code"] == 0
 
   defp first_identity(output, fallback) do
     case Regex.run(~r/(?:test\/[^:\s]+(?::\d+)?|(?:mix|python3?|make) [^\n]+)/, output) do

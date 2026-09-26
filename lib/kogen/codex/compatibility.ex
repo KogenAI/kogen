@@ -303,14 +303,16 @@ defmodule Kogen.Codex.Compatibility do
     {:error, {:compatibility_failed, reason, evidence}}
   end
 
+  # Kogen core settles a Check; this fixture's evidence never asserts one. It
+  # asserts only the requirements this Intent keeps: the PreToolUse
+  # blocked-gate, hostile discovery, interactive Shaping, the Developer and
+  # its exact-session resume, and the scout helper.
   @doc false
   @spec verify_evidence(map()) :: :ok | {:error, term()}
   def verify_evidence(%{
         "shaping" => %{"status" => 0, "marker" => true, "cleanup" => true},
         "developer" => %{"session_id" => developer_id},
         "resume" => %{"session_id" => developer_id},
-        "checks" => checks,
-        "checks_before_resume" => prior_count,
         "discovery_controls" => %{"ok" => true},
         "blocked_gate" => true,
         "hostile_discovery" => %{
@@ -321,19 +323,10 @@ defmodule Kogen.Codex.Compatibility do
           "helper_receipt" => true,
           "helper_environment" => true,
           "helper_context" => true,
-          "resume_rework" => true,
-          "hook_receipt" => true
+          "resume_rework" => true
         }
-      })
-      when is_list(checks) and is_integer(prior_count) and prior_count >= 0 do
-    with :ok <- validate_sessions([developer_id]),
-         :ok <- check_state(checks, developer_id),
-         true <- fresh_resume_check?(checks, prior_count, developer_id) do
-      :ok
-    else
-      false -> {:error, :resume_check_missing}
-      {:error, _} = error -> error
-    end
+      }) do
+    validate_sessions([developer_id])
   end
 
   def verify_evidence(receipts) do
@@ -347,7 +340,7 @@ defmodule Kogen.Codex.Compatibility do
   defp evidence_failures(receipts) when is_map(receipts) do
     environment = Map.get(receipts, "hostile_discovery", %{})
 
-    for key <- ~w(root_receipt helper_environment hook_receipt shell_modes),
+    for key <- ~w(root_receipt helper_environment shell_modes),
         Map.get(environment, key) == false,
         do: {key, :caller_environment_mismatch}
   end
@@ -361,39 +354,14 @@ defmodule Kogen.Codex.Compatibility do
        else: {:error, :incomplete_compatibility_evidence}
   end
 
-  defp fresh_resume_check?(checks, prior_count, developer_id) do
-    case checks |> Enum.drop(prior_count) |> List.last() do
-      %{"session_id" => ^developer_id, "status" => "passed"} -> true
-      _ -> false
-    end
-  end
-
-  defp check_state(checks, developer_id) do
-    statuses =
-      checks
-      |> Enum.filter(&(&1["session_id"] == developer_id))
-      |> Enum.map(& &1["status"])
-
-    if "failed" in statuses and Enum.count(statuses, &(&1 == "passed")) >= 2 do
-      if Enum.find_index(statuses, &(&1 == "failed")) <
-           Enum.find_index(statuses, &(&1 == "passed")) and List.last(statuses) == "passed",
-         do: :ok,
-         else: {:error, :check_correction_order}
-    else
-      {:error, :missing_failed_check_correction_or_resume}
-    end
-  end
-
   defp exercise(context, config, fixture, discovery, deadline) do
     with {:ok, discovery_receipt} <- probe_discovery(context, fixture, discovery),
          {:ok, shaping} <- interactive_shaping(context, config, fixture),
          {:ok, developer_context} <- bounded(context, deadline),
          {:ok, developer} <- developer_turn(developer_context, config, fixture),
-         {:ok, before_resume} <- check_history(fixture),
          {:ok, resume_context} <- bounded(context, deadline),
          {:ok, resumed} <-
-           resume_turn(resume_context, config, fixture, developer.session_id, @rework_findings),
-         {:ok, checks} <- check_history(fixture) do
+           resume_turn(resume_context, config, fixture, developer.session_id, @rework_findings) do
       for {name, turn} <- [{"developer", developer}, {"resume", resumed}] do
         File.write!(
           Path.join(fixture, ".kogen/runtime/compatibility-#{name}.json"),
@@ -406,8 +374,6 @@ defmodule Kogen.Codex.Compatibility do
          "shaping" => shaping,
          "developer" => %{"session_id" => developer.session_id},
          "resume" => %{"session_id" => resumed.session_id},
-         "checks" => checks,
-         "checks_before_resume" => length(before_resume),
          "discovery_controls" => discovery_receipt,
          "blocked_gate" => blocked_gate?(developer),
          "hostile_discovery" => hostile_discovery(fixture, context, discovery)
@@ -498,10 +464,9 @@ defmodule Kogen.Codex.Compatibility do
     `.kogen/runtime/root-nonlogin-environment.json` and with tool-level shell=/bin/zsh in
     `.kogen/runtime/root-explicit-shell-environment.json`. The first root receipt must use
     login=true. Do not emulate explicit shell selection by running sh inside a different shell.
-    Report unsupported shell controls as failure, without fabricating receipts. Create
-    `state.txt` containing `broken` and finish. When the tracked Stop hook blocks on its owned
-    failed check, read its receipt, correct state.txt to exactly `corrected`, and finish in this
-    same Developer session. Do not ask a helper to write files or run a gate.
+    Report unsupported shell controls as failure, without fabricating receipts. Do not ask a
+    helper to write files or run a gate, and finish this turn once every receipt above is
+    written.
     """
 
     invoke_harness(:launch_developer, [
@@ -518,9 +483,9 @@ defmodule Kogen.Codex.Compatibility do
     This is the exact compatibility rework resume. Rework was requested with these findings:
     #{Jason.encode!(findings)}
 
-    Preserve `state.txt` as exactly `corrected`, add `.kogen/runtime/resume-rework.txt` containing
-    exactly `EXACT_RESUME_REWORK`, and repair the concrete missing resume/helper evidence named by
-    the rework request. Do not run any gate yourself; the Stop hook owns this fresh Check settlement.
+    Add `.kogen/runtime/resume-rework.txt` containing exactly `EXACT_RESUME_REWORK`, and repair
+    the concrete missing resume/helper evidence named by the rework request. Do not run `make
+    check` or any other gate yourself.
     Before finishing, ask one configured native scout helper using model
     #{config.helpers.scout.model} at effort #{config.helpers.scout.effort}, read-only, to identify
     the project skill from its automatically supplied catalog, state whether any personal skill
@@ -681,19 +646,23 @@ defmodule Kogen.Codex.Compatibility do
     end
   end
 
+  # This fixture never registers or copies the Stop scripts (`check.sh`,
+  # `stop_runner.py`). It exercises only the PreToolUse blocked-gate path, so
+  # its own hooks.json is authored here rather than copied from the project
+  # root, and it stays free of the deleted no-context Stop mode.
   defp write_fixture_files(fixture, root) do
     File.write!(Path.join(fixture, ".gitignore"), ".kogen/runtime/\ngenerations/\nstate/\n")
 
     File.write!(
       Path.join(fixture, "README.md"),
-      "# Kogen compatibility fixture\n\nDisposable native lifecycle proof. environment-receipt.py is a read-only focused probe. The tracked Stop hook exclusively owns the bounded check.\n"
+      "# Kogen compatibility fixture\n\nDisposable native lifecycle proof. environment-receipt.py is a read-only focused probe. Kogen machinery owns verification gates through the PreToolUse hook; this fixture has no Stop hook.\n"
     )
 
     File.write!(Path.join(fixture, "PROJECT_GUIDANCE.md"), "PROJECT_GUIDANCE_VISIBLE\n")
 
     File.write!(
       Path.join(fixture, "Makefile"),
-      "check:\n\t@python3 environment-receipt.py > .kogen/runtime/hook-environment.json\n\t@test \"$$(cat state.txt 2>/dev/null)\" = corrected || { echo 'Required state.txt content: corrected'; exit 1; }\n"
+      "check:\n\t@echo 'Kogen machinery owns verification gates.'\n\t@exit 1\n"
     )
 
     File.write!(
@@ -706,17 +675,7 @@ defmodule Kogen.Codex.Compatibility do
 
     File.write!(
       Path.join(fixture, ".codex/hooks.json"),
-      File.read!(Path.join(root, ".codex/hooks.json"))
-    )
-
-    File.cp!(
-      Path.join(root, ".codex/hooks/check.sh"),
-      Path.join(fixture, ".codex/hooks/check.sh")
-    )
-
-    File.cp!(
-      Path.join(root, ".codex/hooks/stop_runner.py"),
-      Path.join(fixture, ".codex/hooks/stop_runner.py")
+      Jason.encode!(fixture_hooks(), pretty: true)
     )
 
     File.cp!(
@@ -729,8 +688,27 @@ defmodule Kogen.Codex.Compatibility do
       Path.join(fixture, ".codex/hooks/environment.py")
     )
 
-    File.chmod!(Path.join(fixture, ".codex/hooks/check.sh"), 0o755)
     :ok
+  end
+
+  defp fixture_hooks do
+    %{
+      "description" => "Kogen owns Developer verification gates through the PreToolUse hook.",
+      "hooks" => %{
+        "PreToolUse" => [
+          %{
+            "matcher" => "Bash",
+            "hooks" => [
+              %{
+                "type" => "command",
+                "command" =>
+                  "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/verification_policy.py\""
+              }
+            ]
+          }
+        ]
+      }
+    }
   end
 
   defp initialize_git(fixture) do
@@ -754,15 +732,6 @@ defmodule Kogen.Codex.Compatibility do
       :ok
     else
       {output, status} -> {:error, {:compatibility_fixture_git, status, output}}
-    end
-  end
-
-  defp check_history(fixture) do
-    path = Path.join(fixture, ".kogen/runtime/verification-history.jsonl")
-
-    case File.read(path) do
-      {:ok, body} -> {:ok, body |> String.split("\n", trim: true) |> Enum.map(&Jason.decode!/1)}
-      {:error, reason} -> {:error, {:missing_check_history, reason}}
     end
   end
 
@@ -814,11 +783,6 @@ defmodule Kogen.Codex.Compatibility do
           fn name ->
             valid_root_receipt?(Path.join(fixture, ".kogen/runtime/" <> name), context.env)
           end
-        ),
-      "hook_receipt" =>
-        valid_root_receipt?(
-          Path.join(fixture, ".kogen/runtime/hook-environment.json"),
-          context.env
         ),
       "helper_environment" =>
         valid_root_receipt?(

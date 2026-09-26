@@ -1,0 +1,45 @@
+- path: .kogen/runtime/shaping-followups/SHAPE_PAID_VERIFICATION_FORTIFICATION.md
+  relevance: Planning brief (co-edited with another agent) this Intent narrows.
+- path: .kogen/runtime/shaping-followups/archive/superseded-paid-verification/02-controller-verification-cutover.md
+  relevance: Prior controller-authority cutover brief, incorporated here.
+- path: .kogen/runtime/scenario-tracking/btwokrNxL50md1z5Fb-GGYOO/verification/attempt-0-UbdggB74CEsreeABQEGbUxILfQnCH3ba/state.json
+  relevance: Motivating failure. Three cycles on one Candidate; check passed; live-native failed only in the compatibility case (exit 124).
+- path: .kogen/intents/complete/cross-harness-adversarial-roles
+  relevance: >-
+    Landed as 363c20af, without an auditor role. Hybrid routes (default_route stays claude), compatibility
+    owner without stand-in Reviewer, 240 s turn limit, one timed_out rerun within a 15-minute deadline,
+    Evidence.resolve/2 sidecar verification, ReviewPacketAudit.preserve_record_versions!/2. Not edited here.
+- path: .kogen/intents/complete/bounded-reviewer-evidence
+  relevance: >-
+    Landed as 22a2db95. Review packet (65,536-byte bound, lib/kogen/build/review_packet.ex),
+    record citations as metadata with record-version sidecars, superseded objections, live-reviewer-rework
+    fixture outside the checkout.
+- path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/staging/shaping-preflight-audit-PARKED.md
+  relevance: >-
+    shaping-preflight-audit is parked and builds after this Intent; its note carries the alignment of its
+    planned rule checks with this controller. This Intent uses none of its code.
+- path: lib/kogen/harness/verdict.ex
+  relevance: Verdict.schema/0 (lines 22-86 on 363c20af) is passed to both Reviewer harnesses (claude.ex:132 --json-schema, codex.ex:63-70 --output-schema); the ledger field extends it per launch.
+- path: lib/kogen/build.ex
+  relevance: >-
+    render_reviewer_prompt/3 (1617-1625) and render_developer_prompt/4 (1541-1590, via developer_prompt/2 at 1031-1039) read the Candidate's role
+    prompts; check_make_check_target/0 (198-204); post_developer_inputs_unchanged/1 (664-673, catalog freeze);
+    lines on main 363c20af.
+- path: scripts/check/rehearsals.exs
+  relevance: Runs every catalog rehearsal inside make check and requires each trace identity under main's frozen catalog.
+- path: test/support/live_rework_audit.ex
+  relevance: Reads the local Verification Record and history that the new controller keeps writing.
+- path: .kogen/intents/drafts/bind-controller-generation
+  relevance: Overlaps build.ex; assumes Stop scripts stay unchanged.
+- path: .kogen/intents/drafts/isolated-candidate-workspace
+  relevance: Overlaps build.ex; builds after this Intent and is re-shaped on top of it (staged in plan/staging).
+- path: .kogen/intents/complete/rehearsed-verification-plan
+  relevance: Introduced the catalog, rehearsals and 'no aggregate target' rule that live-native contradicted.
+- path: .kogen/runtime/scenario-tracking/G8XQmw8OuNa-fPqe0TlQ0p35/record.json
+  relevance: Failed Build of the historically approved contract. The Developer made no changes, and Jev stopped the Build before Review because main's controller rejects catalog changes after admission.
+- path: .kogen/runtime/shaping-followups/OVERNIGHT_HANDOFF_2026-09-25.md
+  relevance: Five-item roadmap (this Intent first) and the state left when the package was reopened.
+- path: test/support/review_packet_audit.ex
+  relevance: preserve_record_versions!/2 and retain_evidence!/3, the Reviewer-rework fixture's retention that the new Shape-fixture retention module mirrors (not edited).
+- path: lib/kogen/build/evidence.ex
+  relevance: record_versions/3 (lines 139-187 on 363c20af) verifies bound sidecars beside the resolved record; unchanged here.

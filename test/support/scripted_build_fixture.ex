@@ -12,9 +12,10 @@ defmodule Kogen.ScriptedBuildFixture do
   #   * `:reviews` - comma-separated Reviewer verdicts, in order
   #   * `:jev_answers` - one static fake Jev override map for every call
   #   * `:jev_results` - recorded fake Jev transport results, one per call
-  #   * `:fail_first` - Developer calls whose first Stop cycle fails before a
-  #     later cycle of the same turn passes on the same Candidate
-  #   * `:fail_all` - Developer calls whose every Stop cycle fails
+  #   * `:fail_first` - Developer calls whose first controller verification
+  #     cycle fails; the controller's resume of the same session fixes it and
+  #     a later cycle passes on the same Candidate
+  #   * `:fail_all` - Developer calls whose every controller cycle fails
   #   * `:check_output` - characters the check target prints (a two-byte
   #     UTF-8 character, so tails are cut at a code point boundary)
   #   * `:packet_mutation` - the Review number whose Reviewer edits its packet
@@ -241,8 +242,9 @@ defmodule Kogen.ScriptedBuildFixture do
     """
   end
 
-  # Developer turns apply HANDOFF_EDIT_<call>, settle the real Stop hook and
-  # end with notes-<call>; Reviewers keep a copy of the packet their context
+  # Developer turns apply HANDOFF_EDIT_<call>, see the inactive Stop script
+  # answer continue, and end with notes-<call>; a controller verification
+  # resume continues the same call; Reviewers keep a copy of the packet their context
   # names and answer HANDOFF_REVIEWS in order through scenario_response.py.
   defp provider do
     ~S'''
@@ -276,22 +278,26 @@ defmodule Kogen.ScriptedBuildFixture do
         raise SystemExit(0)
     if "--output-last-message" in args or "--output-schema" in args:
         raise SystemExit("Developer turn carried a handoff output schema")
-    call = count("developer-calls")
-    (runtime / f"developer-prompt-{call}").write_text(prompt)
-    edit = os.environ.get(f"HANDOFF_EDIT_{call}")
-    if edit: subprocess.run(["sh", "-c", edit], check=True)
-    fail_first = listed("HANDOFF_FAIL_FIRST", call)
-    fail_all = listed("HANDOFF_FAIL_ALL", call)
     marker = runtime / "fail-check"
-    if fail_first or fail_all: marker.touch()
-    else: marker.unlink(missing_ok=True)
     session = "developer-session"
-    for cycle in range(8):
-        hook = subprocess.run(["sh", ".codex/hooks/check.sh"], input=json.dumps({"session_id": session, "thread_id": session}).encode(),
-                              capture_output=True, check=True)
-        answer = json.loads(hook.stdout)
-        if fail_first: marker.unlink(missing_ok=True)
-        if "continue" in answer: break
+    if prompt.startswith("Controller verification failed after your turn"):
+        # The controller resumed this same Developer call after a failed cycle.
+        call = int((runtime / "developer-calls").read_text())
+        n = count("verification-resumes")
+        (runtime / f"verification-resume-{n}").write_text(prompt)
+        if not listed("HANDOFF_FAIL_ALL", call): marker.unlink(missing_ok=True)
+    else:
+        call = count("developer-calls")
+        (runtime / f"developer-prompt-{call}").write_text(prompt)
+        edit = os.environ.get(f"HANDOFF_EDIT_{call}")
+        if edit: subprocess.run(["sh", "-c", edit], check=True)
+        if listed("HANDOFF_FAIL_FIRST", call) or listed("HANDOFF_FAIL_ALL", call): marker.touch()
+        else: marker.unlink(missing_ok=True)
+    # The registered Stop script is a bootstrap remnant: with no v1 context it
+    # answers continue without running or recording anything.
+    hook = subprocess.run(["sh", ".codex/hooks/check.sh"], input=json.dumps({"session_id": session, "thread_id": session}).encode(),
+                          capture_output=True, check=True)
+    if json.loads(hook.stdout) != {"continue": True}: raise SystemExit("Stop hook acted without a v1 context")
     notes_file = pathlib.Path(os.environ["HANDOFF_NOTES_DIR"]) / f"notes-{call}"
     notes = notes_file.read_text() if notes_file.exists() else "All scenarios are done; nothing is unfinished."
     print(json.dumps({"type": "thread.started", "thread_id": session}))

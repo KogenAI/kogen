@@ -170,7 +170,6 @@ def policy_targets():
         not isinstance(decoded, list)
         or not decoded
         or not all(isinstance(item, str) and item for item in decoded)
-        or not {"check", "live"}.issubset(decoded)
     ):
         raise ValueError("required verification policy targets are invalid")
     return set(decoded)
@@ -196,7 +195,7 @@ def main():
         if (
             not root.is_dir()
             or not (root / ".git").exists()
-            or not (root / ".codex/hooks/check.sh").is_file()
+            or not (root / ".codex/hooks/verification_policy.py").is_file()
         ):
             raise ValueError("required verification policy project root is invalid")
         if any(prohibited(argv, targets, root) for argv in shell_words(command)):

@@ -50,10 +50,10 @@ defmodule Kogen.ControllerHandoffTest do
         report = attempt["handoff"]
         assert report["attempt_token"] == attempt["attempt_token"]
         assert report["candidate_id"] == attempt["candidate_id"]
-        assert report["check"]["target"] == "check"
-        assert report["check"]["status"] == "passed"
-        assert report["check"]["attempt_token"] == attempt["attempt_token"]
-        assert report["check"]["candidate_id"] == attempt["candidate_id"]
+        check = Enum.find(report["receipts"], &(&1["target"] == "check"))
+        assert check["status"] == "passed"
+        assert check["attempt_token"] == attempt["attempt_token"]
+        assert check["candidate_id"] == attempt["candidate_id"]
 
         assert Map.keys(attempt["developer_reference_snapshots"]) |> Enum.sort() ==
                  ["dummy.txt", @selector]
@@ -139,8 +139,9 @@ defmodule Kogen.ControllerHandoffTest do
       candidate_id: "candidate",
       open_findings: [%{"id" => "F1", "scenario_ids" => ["s-change"], "origin" => %{}}],
       changes: [{"dummy.txt", "modified"}, {"retired.txt", "deleted"}, {"other.txt", "added"}],
-      check: %{"target" => "check", "status" => "passed", "output" => "ok"},
-      targets: [],
+      receipts: [
+        %{"target" => "check", "status" => "passed", "output" => "ok"}
+      ],
       existing?: &(&1 in ["dummy.txt", @selector])
     }
 
@@ -417,6 +418,9 @@ defmodule Kogen.ControllerHandoffTest do
     assert attempt["developer_notes"]["text"] == notes
   end
 
+  # Controller verification exhaustion stops the Build before Jev and Review,
+  # ahead of every other routing decision: a confident objection in the
+  # Developer's notes is never even read, because Jev is never asked.
   test "an objection still leads the error when verification retries were exhausted" do
     dir = fixture!()
 
@@ -427,14 +431,12 @@ defmodule Kogen.ControllerHandoffTest do
                jev_answers: %{"objection:scenario:s-change" => ["objection", 0.95]}
              )
 
-    assert String.starts_with?(reason, @prefix)
-
-    {objection, exhaustion} =
-      :binary.match(reason, "verification retries exhausted") |> split(reason)
-
-    assert objection =~ "scenario `s-change` (Jev confidence 0.95)"
-    assert exhaustion =~ "verification retries exhausted"
-    assert length(FakeJev.requests(jev_log(dir))) == 1
+    refute String.starts_with?(reason, @prefix)
+    assert reason =~ ~r/^verification retries exhausted/
+    assert Enum.empty?(FakeJev.requests(jev_log(dir)))
+    [attempt] = record!(dir)["attempts"]
+    refute Map.has_key?(attempt, "jev")
+    refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
   end
 
   test "exhausted verification without an objection still asks Jev and keeps the exhaustion reason" do
@@ -443,7 +445,8 @@ defmodule Kogen.ControllerHandoffTest do
     assert {:error, reason} = run(dir, edits: %{1 => "touch .kogen/runtime/fail-check"})
     assert reason =~ ~r/^verification retries exhausted/
     [attempt] = record!(dir)["attempts"]
-    assert attempt["jev"]["outcome"] == "answered"
+    refute Map.has_key?(attempt, "jev")
+    assert Enum.empty?(FakeJev.requests(jev_log(dir)))
     refute File.exists?(Path.join(dir, ".kogen/runtime/reviews"))
   end
 
@@ -622,11 +625,6 @@ defmodule Kogen.ControllerHandoffTest do
     end
   end
 
-  defp split({position, _length}, reason),
-    do:
-      {binary_part(reason, 0, position),
-       binary_part(reason, position, byte_size(reason) - position)}
-
   defp base_items do
     [
       %{"kind" => "scenario", "id" => "s-change"},
@@ -639,7 +637,7 @@ defmodule Kogen.ControllerHandoffTest do
   # Fields that legitimately differ between otherwise identical Builds.
   defp normalize(report) do
     report
-    |> Map.drop(["attempt_token", "candidate_id", "check", "targets"])
+    |> Map.drop(["attempt_token", "candidate_id", "receipts", "reused_receipts"])
     |> Map.update!("scenarios", fn scenarios ->
       Enum.map(scenarios, &Map.delete(&1, "receipts"))
     end)

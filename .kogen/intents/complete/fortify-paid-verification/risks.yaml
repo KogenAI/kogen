@@ -1,0 +1,172 @@
+- id: self-hosting-settlement
+  scenario_ids: [controller-owns-verification, stop-route-bootstrap-only]
+  description: >-
+    This Build starts under main's controller, which runs only the code it
+    started with. After every Developer turn it enforces three things. First,
+    `priv/kogen/verification_targets.yaml` must be byte-identical to admission
+    (`VerificationPlan.unchanged?/1`, called from `post_developer_inputs_unchanged/1`,
+    `lib/kogen/build.ex:664-673` on main 363c20af). Second,
+    `VerificationPolicy.preflight` must still find `.codex/hooks/check.sh`,
+    `.codex/hooks/verification_policy.py` and the PreToolUse registration.
+    Third, it settles only from state written by the Candidate's own Stop
+    scripts. Those scripts are registered in `priv/kogen/claude_code/settings.json`
+    (passed with `--settings`) and `.codex/hooks.json`, and both run
+    `$(git rev-parse --show-toplevel)/.codex/hooks/check.sh`. If the Candidate
+    changes the catalog, breaks the v1 unified Stop path, or deletes or
+    unregisters the scripts, this Build stops without Review. The failed Build
+    G8XQmw8OuNa-fPqe0TlQ0p35 is the recorded catalog instance. So the Makefile
+    and catalog are outside `may_change_guarded_paths`, and the v1 path must stay
+    behaviourally unchanged until the follow-up verification Intent removes it.
+    A manual finish is not an accepted outcome. Three more inputs of main's
+    controller come from the Candidate (found in the 2026-09-25 driver
+    preflight). First, `make check` runs `scripts/check/rehearsals.exs` against the
+    frozen catalog, which requires the trace identities
+    `Kogen.Build.Verification.initialize`/`settle`, `Kogen.Build.Report.build`,
+    `Kogen.Build.Contract.verdict` and `Kogen.Codex.Compatibility.prepare_fixture`.
+    Second, `render_reviewer_prompt/3` and `developer_prompt/2` read the
+    Candidate's `priv/kogen/prompts/{reviewer,developer}.md` at every launch.
+    Main's `Contract.verdict/4` rejects any extra verdict key. Third, `check`
+    validates `priv/kogen/test-reliability.yaml` source hashes and consumer
+    witnesses. Scenario `stop-route-bootstrap-only` states all three.
+- id: nested-context-inheritance
+  scenario_ids: [controller-owns-verification, stop-route-bootstrap-only]
+  description: >-
+    Main's `stop_runner.py` runs `make <target>` with its whole environment,
+    including the outer v1 `KOGEN_VERIFICATION_CONTEXT`. So any nested
+    `mix kogen.build` started by a target inherits that context. This Build
+    selects `live-shape-to-build`, whose fixture runs exactly such a nested
+    Build, so the hazard is live here. The fixture
+    copies the Candidate's v1-capable Stop scripts. If the new controller only
+    omits the variable instead of removing it, a nested Developer's Stop hook
+    could run the v1 path against the outer Build's state. That would be a dual
+    writer, and it could corrupt this Build's own settlement. The controller must
+    remove both context variables from every child environment, and a focused
+    test must plant an inherited context as a control.
+- id: native-paid-evidence-owner
+  scenario_ids: [stop-free-compatibility-fixture, controller-owns-verification]
+  description: >-
+    The compatibility owner's paid proof runs through the unsplit `live-native`
+    target, which also reruns two unchanged native owners. Under main's Stop
+    runner, all of them rerun in every cycle and outer attempt (recorded runs:
+    4.1 min median, 10.1 min max). The owner's timeout reliability (root
+    cause, turn budget, one fresh-fixture retry) is delivered first by
+    `cross-harness-adversarial-roles`. The follow-up verification Intent
+    replaces `live-native` with a narrow compatibility target.
+- id: overlapping-intents
+  scenario_ids: [controller-owns-verification, stop-route-bootstrap-only, verification-surface-ledger, failed-verification-resumes-same-developer, stop-free-compatibility-fixture, no-special-gate-target, same-intent-catalog-change, shape-to-build-retains-record-sidecars]
+  description: >-
+    Two Intents landed before this one and touch its files.
+    `bounded-reviewer-evidence` (22a2db95) changed `lib/kogen/build.ex`, added
+    `lib/kogen/build/review_packet.ex` (`superseded_objection/4` reads the
+    verification state's `cycles`), `test/kogen/review_packet_test.exs`,
+    `test/kogen/superseded_objection_test.exs` and record-version sidecars.
+    `cross-harness-adversarial-roles` (363c20af, no auditor role) changed
+    `build.ex`, `tracking.ex`, `evidence.ex` (sidecar verification), the
+    harness modules, `lib/kogen/codex/compatibility.ex` (240 s turn limit, one
+    timed_out rerun, 15-minute owner deadline) and the Reviewer-rework fixture;
+    it left `default_route: claude` and did not edit
+    `live_shape_to_build_test.exs`. `shaping-preflight-audit` is parked and
+    builds after this Intent; its rule functions (`proof_errors/4`,
+    `frozen_paths/0`, `controller_paths/0`) must then be aligned with this
+    controller, which is recorded in its PARKED note, not done here. Draft
+    `isolated-candidate-workspace` builds after this Intent on top of it.
+    Draft `bind-controller-generation` still assumes the Stop scripts stay
+    unchanged.
+- id: integrity-limits
+  scenario_ids: [controller-runs-proof-selectors, verification-surface-ledger, same-intent-catalog-change]
+  description: >-
+    Red on base proves that a proof test reacts to the change, not that it is
+    adequate. A compile or load failure on base counts as red (labelled
+    `red_kind: load`), and a test written to detect which tree it runs on can
+    pass. Both are left to Review. The Developer runs unsandboxed and can reach
+    the controller's base workspace; the digest re-check catches tampering but
+    doesn't prevent it. The expert did not verify that copied Mix `_build`
+    caches work in the base workspace; the worst case is a one-time cold
+    compile of about 2 minutes. Until the follow-up adds the integrity fields to
+    Kogen's catalog, Kogen's own Builds are labelled `integrity-not-configured`
+    and rely on Review, as today.
+- id: appetite
+  scenario_ids: [controller-owns-verification, failed-verification-resumes-same-developer, same-candidate-failed-only-retry, bound-per-target-receipts, stop-route-bootstrap-only, stop-free-compatibility-fixture, no-special-gate-target, same-intent-catalog-change, controller-runs-proof-selectors, verification-surface-ledger, offline-first-target-selection, self-hosting-two-step-guidance]
+  description: >-
+    Thirteen scenarios: controller cutover, receipts, reuse, Stop bootstrap, the
+    Stop-free compatibility fixture, the gate made generic, catalog changes, controller-run proof
+    checks with a base workspace, the Review ledger with enforced dispositions,
+    and two maintained-text policies. The rough estimate is 30+ files and 4–6
+    thousand lines, including tests. That is likely more than one Developer
+    conversation with two outer resumptions. Recorded Builds of smaller Intents
+    (`isolated-candidate-workspace`, `harden-whole-test-suite`) needed several
+    Builds. Each verification cycle also costs about 9–18 minutes of paid time. The Shaper
+    directed that all verification-fortification work go in this Intent.
+- id: baseline-moves-before-build
+  scenario_ids: [controller-owns-verification, stop-route-bootstrap-only, stop-free-compatibility-fixture, same-intent-catalog-change]
+  description: >-
+    This package was shaped and approved against `main` at `2909f557`.
+    `bounded-reviewer-evidence` and `cross-harness-adversarial-roles` have
+    since landed (363c20af), changing `lib/kogen/build.ex`, the Reviewer
+    evidence path, harness routing and the Codex compatibility owner.
+    `shaping-preflight-audit` is parked, so this Intent builds third, on
+    363c20af. The driver re-ran the Build preflight (contract load,
+    verification plan, policy preflight) against 2909f557 and again against
+    363c20af on 2026-09-25/26, and revised the package (approval.md). If main
+    moves again before the Build, re-run it; a contradiction needs a Shaping
+    continuation and fresh approval, never a silent fix inside the Build.
+- id: controller-owned-artifacts
+  scenario_ids: [controller-owns-verification, bound-per-target-receipts, controller-runs-proof-selectors, verification-surface-ledger, shape-to-build-retains-record-sidecars]
+  description: >-
+    This Intent creates controller-owned runtime files: per-cycle receipts,
+    target logs and evidence manifests, ledger diffs, the base workspace, and
+    the Shape fixture's retained evidence tree. Their lifecycle is stated so
+    retention and cleanup stay consistent (build-failure lesson 1).
+  ownership:
+    - paths: .kogen/runtime/scenario-tracking/<build-id>/verification/ (receipts, target logs, evidence manifests, ledger diffs)
+      when_exists: A new attempt directory is created per outer attempt; an existing one is never reused or overwritten.
+      owner_after_creation: Kogen Build controller
+      owner_during_operation: Kogen Build controller; no Developer-launched process receives its path
+      permitted_mutation: Append-only per cycle; files are written once and bound by sha256 in the tracking record
+      validation: Settlement rejects a mismatched Candidate id, catalog digest, context, cycle or log digest
+      git_state: Ignored runtime state, never committed
+      upgrade_behavior: Older records without controller receipts stay readable; no migration
+    - paths: base workspace outside the repository (git archive of the admission commit plus base_cache copies)
+      when_exists: Rebuilt when its recorded digest does not match; never shared between Builds
+      owner_after_creation: Kogen Build controller
+      owner_during_operation: Kogen Build controller; focused runs use its own MIX_BUILD_PATH
+      permitted_mutation: Only the per-cycle overlay of selector and changed test-class files
+      validation: Digest re-check before each use
+      git_state: Outside the repository
+      upgrade_behavior: Removed at Build end; nothing persists across Kogen versions
+    - paths: <log_dir>/scenario-tracking/<build-id>/ written by Kogen.LiveTrackingRetention.preserve!/3
+      when_exists: Each live run writes a fresh log_dir; an existing destination is replaced
+      owner_after_creation: The live Shape-to-Build test
+      owner_during_operation: The live test, until its retained-evidence audit finishes
+      permitted_mutation: build-summary full_record.path rewritten to the retained record; nothing else
+      validation: Evidence.resolve/2 and LiveReworkAudit.audit_retained!/1 after the fixture is deleted
+      git_state: Ignored (.kogen/runtime/live-evidence)
+      upgrade_behavior: None; test evidence only
+- id: live-targets-on-hybrid-default-route
+  scenario_ids: [controller-owns-verification, stop-free-compatibility-fixture, shape-to-build-retains-record-sidecars]
+  description: >-
+    `cross-harness-adversarial-roles` landed with `default_route: claude`; the
+    flip is ROADMAP 10a. This outer Build runs on
+    `--route claude-dominant-adversarial-codex` (a Claude Code Developer and a
+    Codex GPT-6 Sol Reviewer), so both logins must be ready. The nested
+    `live-shape-to-build` fixture copies `.kogen/config.yaml` and runs
+    `mix kogen.shape` and `mix kogen.build` without `--route`, so its Shaper,
+    Developer and Reviewer are Claude Code, while this Build's own Reviews are
+    Codex, constrained by main's `Verdict.schema/0` through `--output-schema`.
+    The test's 1,200,000 ms ExUnit timeout stays unchanged. If the run
+    exceeds it, that is a contract objection for Shaping, not a reason to raise
+    the timeout or change the fixture's route. `live-native` carries the
+    compatibility owner's one timed_out rerun inside its 15-minute deadline.
+    The fixture stays under the checkout's `.kogen/runtime/live-shape2build`,
+    and its rsync already excludes `.kogen/runtime` and `.kogen/build.lock`.
+- id: shaping-audit-rule-drift
+  scenario_ids: [no-special-gate-target, same-intent-catalog-change, stop-route-bootstrap-only]
+  description: >-
+    `shaping-preflight-audit` (parked; builds after this Intent) plans
+    deterministic Shaping checks that read the controller's rules: the catalog
+    byte-freeze, the Stop and preflight files, and `verified_by` shape. This
+    Intent changes those rules (no implicit `check`, declared
+    `catalog_changes.add`, a preflight without the Stop script). Its PARKED
+    note carries "#4 landed first: align with its controller", so that Intent
+    reads the rules from this controller when it builds. Nothing here depends
+    on its code.

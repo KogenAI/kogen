@@ -8,8 +8,10 @@ defmodule Kogen.Build.ReviewPacket do
   with a per-field cap; a cut or left-out value is replaced by a stub carrying
   the SHA-256 and byte count of the full source and a JSON pointer into the
   record, and is listed in `omitted`. Serialized JSON is never byte-sliced.
-  The scenario, risk and open finding ids are always present: if they alone
-  cannot fit, building fails instead of dropping them.
+  The scenario, risk and open finding ids are always present, and so is one
+  complete index entry per verification-surface ledger item (its full diff
+  stays a retained file cited by locator and sha256, never inlined): if they
+  alone cannot fit, building fails instead of dropping them.
 
   Digests of structured values are over their canonical JSON encoding; digests
   of strings are over the string's bytes.
@@ -21,7 +23,7 @@ defmodule Kogen.Build.ReviewPacket do
 
   @keys ~w(schema_version build_id attempt_number attempt_token candidate_id scenario_ids
            risk_ids handoff developer_notes receipts open_findings superseded_objection
-           omitted record)
+           verification_ledger base_suite omitted record)
 
   # Tried in order until the whole packet fits. The first profile holds the
   # per-field caps; later profiles only tighten them, and the last one keeps
@@ -35,7 +37,7 @@ defmodule Kogen.Build.ReviewPacket do
 
   @inner_caps [4_096, 1_024, 256, 64]
 
-  @superseded_label "advisory: a contract objection Jev read in the Developer's notes was written before Stop verification of this same attempt passed; it did not stop the Build and is not a finding. Judge every scenario yourself."
+  @superseded_label "advisory: a contract objection Jev read in the Developer's notes was written before controller verification of this same attempt passed; it did not stop the Build and is not a finding. Judge every scenario yourself."
 
   @record_use "audit locator only: start from this packet and never dump the whole record; open a record section only through a locator named here"
 
@@ -49,7 +51,8 @@ defmodule Kogen.Build.ReviewPacket do
   Builds canonical packet bytes. `input` holds `:record` (the current tracking
   record map), `:record_path`, `:record_bytes`, `:candidate_id` and
   `:open_findings` (the open finding ids). The packet is bound to the
-  record's latest attempt.
+  record's latest attempt, whose `verification_ledger` and `base_suite` it
+  carries when present.
   """
   @spec build(map()) :: {:ok, binary()} | {:error, String.t()}
   def build(input) do
@@ -186,6 +189,8 @@ defmodule Kogen.Build.ReviewPacket do
       "receipts" => receipts,
       "open_findings" => findings,
       "superseded_objection" => superseded(attempt["superseded_objection"]),
+      "verification_ledger" => ledger_index(attempt["verification_ledger"], base),
+      "base_suite" => attempt["base_suite"],
       "omitted" =>
         handoff_omitted ++
           notes_omitted ++ receipt_omitted ++ finding_omitted ++ left_out(record, index),
@@ -221,7 +226,15 @@ defmodule Kogen.Build.ReviewPacket do
     end
   end
 
-  defp receipts(attempt, base, cap) do
+  # Controller receipts are one uniform list; records written before it keep
+  # their separate `check` and `targets` fields.
+  defp receipt_sources(%{"receipts" => receipts}, base) when is_list(receipts) do
+    receipts
+    |> Enum.with_index()
+    |> Enum.map(fn {receipt, j} -> {receipt, "#{base}/receipts/#{j}"} end)
+  end
+
+  defp receipt_sources(attempt, base) do
     check = if attempt["check"], do: [{attempt["check"], base <> "/check"}], else: []
 
     targets =
@@ -230,7 +243,35 @@ defmodule Kogen.Build.ReviewPacket do
       |> Enum.with_index()
       |> Enum.map(fn {receipt, j} -> {receipt, "#{base}/targets/#{j}"} end)
 
-    (check ++ targets)
+    check ++ targets
+  end
+
+  # One complete index entry per ledger item with the locator and digest of
+  # its retained full diff; diffs are never inlined.
+  defp ledger_index(nil, _base), do: nil
+
+  defp ledger_index(ledger, base) do
+    %{
+      "base_commit" => ledger["base_commit"],
+      "catalog" => ledger["catalog"],
+      "receipts_with_changed_runner" => ledger["receipts_with_changed_runner"],
+      "locator" => base <> "/verification_ledger",
+      "disposition_required" =>
+        "return exactly one `ledger` entry per item: `justified: <scenario-id or finding-id>` or `weakening`",
+      "items" =>
+        Enum.map(ledger["items"], fn item ->
+          Map.take(
+            item,
+            ~w(path status old_path runner_class preservation_selector diff_stat base_blob
+               candidate_blob diff)
+          )
+        end)
+    }
+  end
+
+  defp receipts(attempt, base, cap) do
+    attempt
+    |> receipt_sources(base)
     |> Enum.with_index()
     |> Enum.map(fn {{receipt, locator}, k} ->
       output = receipt["output"] || ""
@@ -238,7 +279,10 @@ defmodule Kogen.Build.ReviewPacket do
 
       summary =
         receipt
-        |> Map.take(~w(target status exit_code candidate_id attempt_token session_id finished_at))
+        |> Map.take(
+          ~w(target status exit_code candidate_id attempt_token session_id developer_session_id
+             cycle_sequence finished_at log_path log_sha256 cleanup reused_from)
+        )
         |> Map.merge(%{
           "output_sha256" => sha256(output),
           "output_byte_count" => byte_size(output),

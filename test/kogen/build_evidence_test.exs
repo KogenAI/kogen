@@ -1,10 +1,12 @@
 Code.require_file("../support/review_packet_audit.ex", __DIR__)
+Code.require_file("../support/live_tracking_retention.ex", __DIR__)
+Code.require_file("../support/live_rework_audit.ex", __DIR__)
 
 defmodule Kogen.BuildEvidenceTest do
   use ExUnit.Case, async: true
 
   alias Kogen.Build.{Evidence, Tracking}
-  alias Kogen.ReviewPacketAudit
+  alias Kogen.{LiveReworkAudit, LiveTrackingRetention, ReviewPacketAudit}
 
   test "resolves only the exact bound archive and rejects absence, corruption, identity, and versions" do
     root = Path.join(System.tmp_dir!(), "kogen-evidence-#{System.unique_integer([:positive])}")
@@ -393,6 +395,138 @@ defmodule Kogen.BuildEvidenceTest do
     File.write!(retained_sidecar, cited <> " ")
     assert {:error, altered} = Evidence.resolve(retained, Path.join(base, "logs"))
     assert altered =~ "sidecar mismatch"
+  end
+
+  test "Kogen.LiveTrackingRetention.preserve! retains a nested Build's whole scenario-tracking tree, including record-version sidecars, so the retained evidence still resolves after the fixture is deleted" do
+    base =
+      Path.join(
+        System.tmp_dir!(),
+        "kogen-tracking-retention-#{System.unique_integer([:positive])}"
+      )
+
+    on_exit(fn -> File.rm_rf(base) end)
+
+    # Main case: retain, delete the fixture, and the retained Build evidence
+    # still resolves.
+    main = build_self_citing_fixture!(base, "main")
+    log_dir = Path.join(base, "log-main")
+    File.mkdir_p!(log_dir)
+
+    assert :ok =
+             LiveTrackingRetention.preserve!(main.fixture, main.complete_dir, log_dir)
+
+    File.rm_rf!(main.fixture)
+    assert :ok = LiveReworkAudit.audit_retained!(log_dir)
+
+    # Control: a retained sidecar deleted afterward still fails resolution.
+    missing = build_self_citing_fixture!(base, "missing")
+    log_missing = Path.join(base, "log-missing")
+    File.mkdir_p!(log_missing)
+
+    assert :ok =
+             LiveTrackingRetention.preserve!(missing.fixture, missing.complete_dir, log_missing)
+
+    File.rm_rf!(missing.fixture)
+    File.rm!(retained_sidecar_path(log_missing, missing))
+
+    assert_raise ArgumentError, ~r/sidecar unavailable/, fn ->
+      LiveReworkAudit.audit_retained!(log_missing)
+    end
+
+    # Control: a retained sidecar altered afterward still fails resolution.
+    altered = build_self_citing_fixture!(base, "altered")
+    log_altered = Path.join(base, "log-altered")
+    File.mkdir_p!(log_altered)
+
+    assert :ok =
+             LiveTrackingRetention.preserve!(altered.fixture, altered.complete_dir, log_altered)
+
+    File.rm_rf!(altered.fixture)
+    sidecar_path = retained_sidecar_path(log_altered, altered)
+    File.write!(sidecar_path, File.read!(sidecar_path) <> " ")
+
+    assert_raise ArgumentError, ~r/sidecar mismatch/, fn ->
+      LiveReworkAudit.audit_retained!(log_altered)
+    end
+
+    # The live fixture no longer defines its own private retention helper and
+    # calls the shared support module at both retention call sites instead.
+    live_test_source = __DIR__ |> Path.join("live_shape_to_build_test.exs") |> File.read!()
+
+    refute live_test_source =~ "defp preserve_tracking",
+           "the live fixture must no longer define a private preserve_tracking/3"
+
+    assert live_test_source =~ "Kogen.LiveTrackingRetention.preserve!(",
+           "the live fixture must call Kogen.LiveTrackingRetention.preserve!/3"
+  end
+
+  # Builds a disposable fixture whose nested Build tracking record cites its
+  # own bytes -- a real `record-versions/` sidecar written by
+  # `Kogen.Build.Tracking.retain_record_version/2` -- plus the
+  # `build-summary.json` a real Build would leave beside it.
+  defp build_self_citing_fixture!(base, suffix) do
+    fixture = Path.join(base, "fixture-#{suffix}")
+    build_id = "build-#{suffix}"
+    tracking_dir = Path.join(fixture, ".kogen/runtime/scenario-tracking/#{build_id}")
+    File.mkdir_p!(tracking_dir)
+    record_path = Path.join(tracking_dir, "record.json")
+
+    cited = Jason.encode!(%{"schema_version" => 2, "status" => "in_progress"})
+    assert {:ok, snapshot} = Tracking.retain_record_version(%{path: record_path}, cited)
+
+    attempt = %{
+      "number" => 0,
+      "attempt_token" => "token-#{suffix}",
+      "status" => "accepted",
+      "developer_session_id" => "developer-#{suffix}",
+      "reviewer_session" => "reviewer-#{suffix}",
+      "candidate_id" => "candidate-#{suffix}",
+      "reviewer_reference_snapshots" => %{snapshot["path"] => snapshot}
+    }
+
+    record =
+      Jason.encode!(%{
+        "schema_version" => 2,
+        "status" => "accepted",
+        "intent" => %{"id" => "intent-#{suffix}"},
+        "attempts" => [attempt]
+      })
+
+    File.write!(record_path, record)
+
+    complete_dir = Path.join(fixture, ".kogen/intents/complete/tracking-retention-#{suffix}")
+    File.mkdir_p!(complete_dir)
+    summary_path = Path.join(complete_dir, "build-summary.json")
+
+    summary = %{
+      "format" => "kogen-build-summary",
+      "schema_version" => 1,
+      "intent" => %{"id" => "intent-#{suffix}"},
+      "build_id" => build_id,
+      "candidate_id" => "candidate-#{suffix}",
+      "developer_session_id" => "developer-#{suffix}",
+      "attempts" => [Map.put(attempt, "reviewer_session_id", "reviewer-#{suffix}")],
+      "full_record" => %{
+        "format" => "kogen-scenario-tracking-record",
+        "schema_version" => 2,
+        "path" => Path.relative_to(record_path, fixture),
+        "sha256" => sha256(record),
+        "byte_count" => byte_size(record)
+      }
+    }
+
+    write_summary!(summary_path, summary)
+
+    %{
+      fixture: fixture,
+      complete_dir: complete_dir,
+      build_id: build_id,
+      sidecar_sha256: sha256(cited)
+    }
+  end
+
+  defp retained_sidecar_path(log_dir, %{build_id: build_id, sidecar_sha256: sha256}) do
+    Path.join([log_dir, "scenario-tracking", build_id, "record-versions", sha256 <> ".json"])
   end
 
   defp write_summary!(path, summary), do: File.write!(path, Jason.encode!(summary))

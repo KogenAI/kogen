@@ -1,0 +1,32 @@
+Intent.read: :ok
+Contract.load: {:ok,
+ %{
+   text: "- id: controller-owns-verification\n  given: >-\n    A Build started under the new controller, on any configured route\n    (including the hybrid routes from cross-harness-adversarial-roles), whose\n    D" <> ...,
+   ...
+ }}
+VerificationPlan.build: {:ok,
+ %{
+   targets: ["check", "live-native", "live-shape-to-build"],
+   offline: ["test/kogen/controller_verification_test.exs",
+    "test/kogen/verification_ownership_lifecycle_test.exs",
+    "test/kogen/two_outer_resumptions_test.exs",
+    "test/kogen/superseded_objection_test.exs",
+    "test/kogen/verification_reuse_test.exs",
+    "test/kogen/target_evidence_test.exs", "test/kogen/stop_hook_test.exs",
+    "test/kogen/harness_contract_test.exs",
+    "test/kogen/core_integrity_test.exs",
+    "test/kogen/verification_policy_test.exs",
+    "test/kogen/test_reliability_catalog_test.exs",
+    "rehearse-live-shape-to-build", "rehearse-live-reviewer-rework",
+    "rehearse-live-native", "test/kogen/codex_compatibility_test.exs",
+    "test/kogen/codex_compatibility_preparation_test.exs",
+    "test/kogen/selective_verification_targets_test.exs",
+    "test/kogen/check_test.exs", "test/kogen/catalog_change_test.exs",
+    "test/kogen/intent_test.exs",
+    "test/kogen/proof_selector_verification_test.exs",
+    "test/kogen/verification_surface_ledger_test.exs",
+    "test/kogen/check_settlement_test.exs", "test/kogen/review_packet_test.exs",
+    "test/kogen/scenario_contract_test.exs", "test/kogen/shape_task_test.exs",
+    "test/kogen/readme_guidance_test.exs", "test/kogen/build_evidence_test.exs"]
+ }}
+VerificationPolicy.preflight: :ok

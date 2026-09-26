@@ -1,6 +1,8 @@
 defmodule Kogen.HarnessVerdictTest do
   use Kogen.IsolatedCase, async: true
 
+  alias Kogen.Harness.Verdict
+
   test "Reviewer returns the strict wire response and rejects malformed structures" do
     dir =
       Path.join(System.tmp_dir!(), "kogen reviewer verdict #{System.unique_integer([:positive])}")
@@ -209,6 +211,55 @@ defmodule Kogen.HarnessVerdictTest do
       refute argv =~ "--output-schema"
       refute argv =~ "--output-last-message"
     end
+  end
+
+  test "the verdict schema requires a ledger exactly when one is supplied" do
+    assert Verdict.schema([]) == Verdict.schema()
+
+    with_ledger = Verdict.schema(["test/a_test.exs", "test/b_test.exs"])
+    refute with_ledger == Verdict.schema()
+    decoded = Jason.decode!(with_ledger)
+    assert "ledger" in decoded["required"]
+    assert decoded["additionalProperties"] == false
+
+    ledger_schema = decoded["properties"]["ledger"]
+    assert ledger_schema["minItems"] == 2
+    assert ledger_schema["maxItems"] == 2
+
+    assert Enum.sort(ledger_schema["items"]["properties"]["path"]["enum"]) ==
+             ["test/a_test.exs", "test/b_test.exs"]
+
+    base_message = %{
+      "candidate_id" => "c",
+      "attempt_token" => "t",
+      "verdict" => "accept",
+      "scenarios" => [],
+      "dispositions" => [],
+      "findings" => []
+    }
+
+    # `validate/2` accepts `ledger` exactly when the launch requested one.
+    assert {:ok, _} = Verdict.validate(base_message, false)
+    assert :error = Verdict.validate(base_message, true)
+
+    with_ledger_message =
+      Map.put(base_message, "ledger", [
+        %{"path" => "test/a_test.exs", "disposition" => "weakening"},
+        %{"path" => "test/b_test.exs", "disposition" => "justified: some-scenario"}
+      ])
+
+    assert {:ok, _} = Verdict.validate(with_ledger_message, true)
+    assert :error = Verdict.validate(with_ledger_message, false)
+
+    # A malformed ledger entry (extra key, blank disposition) is rejected.
+    malformed =
+      put_in(with_ledger_message, ["ledger", Access.at(0)], %{
+        "path" => "test/a_test.exs",
+        "disposition" => "weakening",
+        "extra" => true
+      })
+
+    assert :error = Verdict.validate(malformed, true)
   end
 
   defp valid_verdict do
