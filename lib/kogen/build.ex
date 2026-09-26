@@ -48,7 +48,8 @@ defmodule Kogen.Build do
       Kogen.VerificationPolicy,
       Kogen.ExecutionPolicy,
       Kogen.Jev,
-      Kogen.ProcessCustody
+      Kogen.ProcessCustody,
+      Kogen.ProjectScope
     ],
     exports: [Workspace, WriteBoundary]
 

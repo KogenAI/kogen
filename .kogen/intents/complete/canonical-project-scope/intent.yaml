@@ -1,0 +1,33 @@
+id: 7e89da7d-5084-4101-b5e9-545ddf218745
+slug: canonical-project-scope
+title: Key project scopes by canonical checkout path
+commit_subject: Key project scopes by the canonical checkout path
+status: approved
+shaped_against:
+  branch: develop
+  head: 82ac435167e69a2442aea010ea43e5c6c7016e1c
+  note: Draft shaped 2026-09-26 by the Mac Studio orchestrator; re-preflight after build-reliability and guard-violation-rework land.
+shaping:
+  route: direct-package
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-26T16:40:00Z"
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_at: "2026-09-26T20:48:44Z"
+  approved_against_head: 82ac435167e69a2442aea010ea43e5c6c7016e1c
+  route: claude-dominant-adversarial-codex
+  source: approval.md
+  quotes:
+    - "shape and builds things that are in the roadmap hopefully without my involvement … drive everything without stopping"
+    - "you gotta handle EVERYTHING"
+  covers: ROADMAP row 5c; 2 scenarios; no auth change (every real caller's id unchanged).
+may_change_guarded_paths:
+  - lib/kogen/project_scope.ex
+  - lib/kogen/claude_code.ex
+  - lib/kogen/codex.ex
+  - lib/kogen/codex/state.ex
+  - lib/kogen/build.ex
+  - lib/kogen/build/workspace.ex
+  - test/kogen/project_scope_test.exs

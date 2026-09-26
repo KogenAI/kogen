@@ -21,7 +21,7 @@ defmodule Kogen.ClaudeCode do
   control root at admission, through `CLAUDE_SECURESTORAGE_CONFIG_DIR`; `HOME`
   stays the caller's. Nothing is copied, linked or moved.
   """
-  use Boundary, deps: [], exports: []
+  use Boundary, deps: [Kogen.ProjectScope], exports: []
 
   @pinned_version "2.1.281"
   @installer Path.expand("../../priv/kogen/claude_code/install.py", __DIR__)
@@ -240,7 +240,8 @@ defmodule Kogen.ClaudeCode do
 
   @doc false
   def project_id(project),
-    do: :crypto.hash(:sha256, Path.expand(project)) |> Base.encode16(case: :lower)
+    do:
+      :crypto.hash(:sha256, Kogen.ProjectScope.canonical(project)) |> Base.encode16(case: :lower)
 
   defp selector(project), do: Path.join([root(), "preferences", project_id(project)])
 

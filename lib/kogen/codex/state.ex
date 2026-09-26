@@ -5,7 +5,8 @@ defmodule Kogen.Codex.State do
   @native_settings Path.expand("../../../priv/kogen/codex/native_settings.py", __DIR__)
 
   def project_id(project),
-    do: :crypto.hash(:sha256, Path.expand(project)) |> Base.encode16(case: :lower)
+    do:
+      :crypto.hash(:sha256, Kogen.ProjectScope.canonical(project)) |> Base.encode16(case: :lower)
 
   def scope_name(root, project) do
     path = selector(root, project)

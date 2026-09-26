@@ -1,0 +1,35 @@
+# Reshaped after review round 1 (evidence/reviews/round-1). Offline only.
+- id: symlinked-spellings-share-one-id
+  given: >-
+    A directory created under `WorkspaceFixture.tmp_dir!/1` (canonical, inside the per-Build tmp dir; never write /tmp
+    directly, never override TMPDIR) plus a `File.ln_s` alias to it next to it, and a not-yet-existing child path
+    spelled through the alias.
+  when: Each project_id/1 (ClaudeCode, Codex.State, Build.Workspace) and Workspace.canonical/1 are computed for the real path, the alias, and the missing child through both spellings.
+  then: >-
+    The real path and the alias give one id in all three modules, equal to the sha256 of an INDEPENDENT expected path:
+    `File.cd!(alias, &File.cwd!/0)` (the physical path login uses) and `/bin/realpath`; Workspace.canonical/1 returns that
+    same path for both spellings; the missing child gets the same id and the same Workspace.canonical/1 result through
+    both spellings, equal to what it has after `File.mkdir_p!`. `File.cd!` into the alias and `File.cwd!()` equals the
+    realpath, which is why no existing login changes.
+  wrong_result: Any spelling or module yields a different id, or a missing path's id changes when it is created.
+  verified_by: [check]
+  evidence: Offline fixture test with a real symlink.
+  proof:
+    offline: [test/kogen/project_scope_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: filesystem only"
+    affected_paths: [lib/kogen/project_scope.ex, lib/kogen/claude_code.ex, lib/kogen/codex/state.ex, lib/kogen/codex.ex, lib/kogen/build.ex, lib/kogen/build/workspace.ex, test/kogen/project_scope_test.exs]
+- id: real-callers-unchanged
+  given: A plain fixture checkout path from `WorkspaceFixture.tmp_dir!/1` (no symlinked component), as login, Build and Shape pass today.
+  when: project_id/1 is computed, and the existing id-dependent tests run.
+  then: >-
+    The id equals today's sha256(Path.expand(path)); build_workspace_test.exs, build_preconditions_test.exs,
+    harness_home_test.exs and candidates_command_test.exs pass unedited.
+  wrong_result: A real checkout's id changes (its logins would be lost).
+  verified_by: [check]
+  evidence: Comparison with the old formula plus the unedited tests.
+  proof:
+    offline: [test/kogen/project_scope_test.exs, test/kogen/build_workspace_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/harness_home_test.exs, test/kogen/candidates_command_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: pure function and existing offline tests"
+    affected_paths: [lib/kogen/project_scope.ex, test/kogen/project_scope_test.exs]

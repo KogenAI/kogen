@@ -9,7 +9,7 @@ defmodule Kogen.Build.Workspace do
   `<workspaces-root>/<project-id>/candidates/<build-id>.json`.
   `<workspaces-root>` is `~/Library/Application Support/Kogen/build-workspaces`
   unless `KOGEN_WORKSPACES_ROOT` is set; `<project-id>` is the SHA-256 of the
-  expanded control path (`Kogen.ClaudeCode.project_id/1`). Every function
+  canonical control path (`Kogen.ClaudeCode.project_id/1`). Every function
   takes the control root explicitly; nothing here reads the process working
   directory.
 
@@ -42,14 +42,15 @@ defmodule Kogen.Build.Workspace do
   end
 
   @doc """
-  The project id: SHA-256 of the expanded control path, the same id the login
-  selectors use (`Kogen.ClaudeCode.project_id/1`).
+  The project id: SHA-256 of the canonical control path (`Kogen.ProjectScope.canonical/1`),
+  the same id the login selectors use (`Kogen.ClaudeCode.project_id/1`).
   """
   @spec project_id(Path.t()) :: String.t()
   def project_id(control),
-    do: :crypto.hash(:sha256, Path.expand(control)) |> Base.encode16(case: :lower)
+    do:
+      :crypto.hash(:sha256, Kogen.ProjectScope.canonical(control)) |> Base.encode16(case: :lower)
 
-  @doc "This control checkout's directory under the workspaces root (canonical once it exists)."
+  @doc "This control checkout's canonical directory under the workspaces root."
   @spec project_dir(Path.t()) :: Path.t()
   def project_dir(control), do: canonical(Path.join(root(), project_id(control)))
 
@@ -87,18 +88,12 @@ defmodule Kogen.Build.Workspace do
       else: {:ok, path}
   end
 
-  @doc "The canonical, symlink-resolved form of an existing path; the expanded path otherwise."
+  @doc """
+  The canonical, symlink-resolved form of a path (`Kogen.ProjectScope.canonical/1`):
+  the realpath of its nearest existing ancestor with any missing tail appended.
+  """
   @spec canonical(Path.t()) :: Path.t()
-  def canonical(path) do
-    expanded = Path.expand(path)
-
-    case System.cmd("/bin/realpath", [expanded], stderr_to_stdout: true) do
-      {out, 0} -> String.trim_trailing(out, "\n")
-      _ -> expanded
-    end
-  rescue
-    _ -> Path.expand(path)
-  end
+  def canonical(path), do: Kogen.ProjectScope.canonical(path)
 
   @doc """
   Creates the Candidate and harness home for an admitted Build, before any
