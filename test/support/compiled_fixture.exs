@@ -45,6 +45,7 @@ defmodule Kogen.CompiledFixture do
         expert: {model: gpt-5.6-sol, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @doc "Creates a private lifecycle fixture that loads this test build's BEAM files."

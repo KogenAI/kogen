@@ -61,7 +61,11 @@ defmodule Kogen.IntentTest do
     default_line <>
       "routes:\n" <>
       route_lines <>
-      Keyword.get(options, :tail, "outer_resumptions: 2\nverification_retries: 2\n")
+      Keyword.get(
+        options,
+        :tail,
+        "outer_resumptions: 2\nverification_retries: 2\noffline_retries: 4\n"
+      )
   end
 
   defp indent(text, prefix) do
@@ -84,6 +88,7 @@ defmodule Kogen.IntentTest do
         expert: {model: expert, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @flat_config_error "config.yaml uses the replaced flat configuration shape (top-level harness and roles); define default_route and routes instead"
@@ -173,7 +178,8 @@ defmodule Kogen.IntentTest do
                  }
                },
                outer_resumptions: 2,
-               verification_retries: 2
+               verification_retries: 2,
+               offline_retries: 4
              }
 
       refute Map.has_key?(codex, :auditor)
@@ -199,7 +205,8 @@ defmodule Kogen.IntentTest do
                   expert: %{model: "expert", effort: "medium"}
                 },
                 outer_resumptions: 2,
-                verification_retries: 2
+                verification_retries: 2,
+                offline_retries: 4
               }} = Intent.read_config(path)
     end
 
@@ -294,7 +301,9 @@ defmodule Kogen.IntentTest do
         write_yaml!(
           dir,
           "config.yaml",
-          routes_config([{"codex", @valid_route}], tail: "verification_retries: 2\n")
+          routes_config([{"codex", @valid_route}],
+            tail: "verification_retries: 2\noffline_retries: 4\n"
+          )
         )
 
       assert {:error, "config.yaml missing required key: outer_resumptions"} =
@@ -309,7 +318,7 @@ defmodule Kogen.IntentTest do
           dir,
           "config.yaml",
           routes_config([{"codex", @valid_route}],
-            tail: "outer_resumptions: \"two\"\nverification_retries: 2\n"
+            tail: "outer_resumptions: \"two\"\nverification_retries: 2\noffline_retries: 4\n"
           )
         )
 
@@ -324,6 +333,37 @@ defmodule Kogen.IntentTest do
 
       assert {:error, "config.yaml missing required key: verification_retries"} =
                Intent.read_config(path)
+    end
+
+    test "offline_retries is a required integer with no default, refused before any launch" do
+      dir = tmp_dir!()
+
+      assert {:ok, %{offline_retries: 4, verification_retries: 2}} =
+               Intent.read_config(write_yaml!(dir, "config.yaml", @valid_config))
+
+      for bad <- [
+            "",
+            "offline_retries: -1\n",
+            "offline_retries: four\n",
+            "offline_retries: 1.5\n"
+          ] do
+        path =
+          write_yaml!(
+            dir,
+            "missing.yaml",
+            String.replace(@valid_config, "offline_retries: 4\n", bad)
+          )
+
+        assert {:error, reason} = Intent.read_config(path)
+        assert reason =~ "config.yaml missing required key: offline_retries"
+        assert reason =~ ".kogen/config.yaml"
+        assert {:error, ^reason} = Intent.validate_config(path)
+      end
+    end
+
+    test "the tracked config passes whole-config validation and carries offline_retries" do
+      assert {:ok, config} = Intent.validate_config(".kogen/config.yaml")
+      assert is_integer(config.offline_retries)
     end
 
     test "refuses negative and noninteger verification_retries" do
@@ -677,6 +717,7 @@ defmodule Kogen.IntentTest do
           expert: {model: claude-opus-5-5, effort: high}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """
 
     test "codex and claude are both supported harness names" do
@@ -751,7 +792,7 @@ defmodule Kogen.IntentTest do
           routes_config(
             [{"codex", @valid_route}, {"other", @other_route}, {"claude", @claude_route}],
             default_route: "other",
-            tail: "outer_resumptions: 1\nverification_retries: 0\n"
+            tail: "outer_resumptions: 1\nverification_retries: 0\noffline_retries: 4\n"
           )
         )
 
@@ -784,7 +825,8 @@ defmodule Kogen.IntentTest do
                  }
                },
                outer_resumptions: 1,
-               verification_retries: 0
+               verification_retries: 0,
+               offline_retries: 4
              }
 
       assert {:ok, codex} = Intent.read_config(path, "codex")
@@ -804,7 +846,10 @@ defmodule Kogen.IntentTest do
 
     test "retries inside a route are not a substitute for the global retry policy" do
       dir = tmp_dir!()
-      route = @valid_route <> "outer_resumptions: 2\nverification_retries: 2\n"
+
+      route =
+        @valid_route <> "outer_resumptions: 2\nverification_retries: 2\noffline_retries: 4\n"
+
       path = write_yaml!(dir, "config.yaml", routes_config([{"codex", route}], tail: ""))
 
       assert {:error, "config.yaml missing required key: outer_resumptions"} =
@@ -816,10 +861,10 @@ defmodule Kogen.IntentTest do
       flat = "harness: codex\n" <> String.replace(@valid_route, "harness: codex\n", "")
 
       for yaml <- [
-            flat <> "outer_resumptions: 2\nverification_retries: 2\n",
+            flat <> "outer_resumptions: 2\nverification_retries: 2\noffline_retries: 4\n",
             String.replace(flat, "harness: codex\n", "") <> "outer_resumptions: 2\n",
             "default_route: codex\nharness: codex\n",
-            "outer_resumptions: 2\nverification_retries: 2\n"
+            "outer_resumptions: 2\nverification_retries: 2\noffline_retries: 4\n"
           ] do
         path = write_yaml!(dir, "flat.yaml", yaml)
         assert {:error, @flat_config_error} = Intent.read_config(path)
@@ -866,7 +911,7 @@ defmodule Kogen.IntentTest do
                Intent.read_config(path, "missing")
     end
 
-    test "a structurally broken unselected route is refused with its key path" do
+    test "a structurally broken route refuses only its own selection and whole-config validation" do
       dir = tmp_dir!()
 
       broken = [
@@ -897,8 +942,13 @@ defmodule Kogen.IntentTest do
           )
 
         expected = "config.yaml missing required key: #{key_path}"
-        assert {:error, ^expected} = Intent.read_config(path)
-        assert {:error, ^expected} = Intent.read_config(path, "codex")
+        # An incomplete route nobody selects blocks no other route.
+        assert {:ok, %{route: "codex"}} = Intent.read_config(path)
+        assert {:ok, %{route: "codex"}} = Intent.read_config(path, "codex")
+        # Selecting it still refuses with the same message, and whole-config
+        # mode (the tracked config's check) still names it.
+        assert {:error, ^expected} = Intent.read_config(path, "other")
+        assert {:error, ^expected} = Intent.validate_config(path)
       end
 
       not_a_map = write_yaml!(dir, "scalar.yaml", routes_config([{"codex", @valid_route}]) <> "")
@@ -946,7 +996,7 @@ defmodule Kogen.IntentTest do
       assert {:ok, config} = Intent.read_config(path)
 
       assert Map.keys(config) |> Enum.sort() ==
-               ~w(developer expert harness helpers native_helpers outer_resumptions reviewer roles route shaping verification_retries)a
+               ~w(developer expert harness helpers native_helpers offline_retries outer_resumptions reviewer roles route shaping verification_retries)a
 
       refute Map.has_key?(config, :auditor)
     end
@@ -1018,7 +1068,7 @@ defmodule Kogen.IntentTest do
       assert Intent.role_config(codex, :reviewer) == codex
     end
 
-    test "incomplete role assignments are refused with their key path" do
+    test "incomplete role assignments refuse their own selection and whole-config validation" do
       dir = tmp_dir!()
 
       broken = [
@@ -1056,8 +1106,9 @@ defmodule Kogen.IntentTest do
             routes_config([{"codex", @valid_route}, {"hybrid", route}])
           )
 
-        assert {:error, ^expected} = Intent.read_config(path)
+        assert {:ok, %{route: "codex"}} = Intent.read_config(path)
         assert {:error, ^expected} = Intent.read_config(path, "hybrid")
+        assert {:error, ^expected} = Intent.validate_config(path)
       end
 
       mixed =

@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -25,10 +26,84 @@ STAGES = (
     # Excluded live owners still compile; a stale call must fail, not warn.
     ("mix", "test", "--exclude", "live", "--warnings-as-errors"),
 )
+# Scenario test-warnings-fail-first: compiles and loads every non-live test
+# file with warnings as errors, running none of them (`--exclude test`
+# excludes ExUnit's own implicit tag). This must run before credo, the full
+# test run (STAGES[3]) and rehearsals, so a planted test-file warning fails
+# `check` within about a second instead of after the whole suite.
+# `--only <unused tag>` is not usable here: it exits 1 even on a clean tree
+# (evidence/probe-loaders P7).
+TEST_COMPILE_STAGE = ("mix", "test", "--exclude", "live", "--warnings-as-errors", "--exclude", "test")
 SOURCE_EXCLUDES = {".git", "_build", "deps"}
 SOURCE_EXCLUDED_PATHS = {
     ".kogen/runtime", ".kogen/intents", ".kogen/build.lock",
 }
+
+# `KOGEN_FAILURE_SIGNATURE` frame contract (documented in scripts/check/README.md
+# and lib/kogen/build/failure_signature.ex): one line, tag + TAB + JSON, for
+# offline.py's own failing stage. `stage` is offline.py's internal stage
+# name; `test_id` is the first failing ExUnit test's "file:line" or null;
+# `assertion` is the first informative reason line after that test's header,
+# or null when no ExUnit test header is found.
+FAILURE_SIGNATURE_TAG = "KOGEN_FAILURE_SIGNATURE"
+_EXUNIT_TEST_RE = re.compile(r"^[ \t]*\d+\)[ \t]+test .+?\(\S+\)[ \t]*\n[ \t]*(\S+\.exs?:\d+)", re.M)
+_ISOLATED_SKIP_PREFIXES = ("isolated test ", "Running ExUnit", "Excluding tags", "Including tags")
+# Progress lines ("E..", "..F") and rule lines ("=====", "-----") that a
+# nested runner (for example Python unittest) prints before its real reason.
+_NOISE_LINE_RE = re.compile(r"^(?:[.EFsx]+|[=\-]{5,})$")
+
+
+def _first_reason_line(output, after_idx):
+    """The first informative line after `after_idx`, skipping blank lines and
+    `Kogen.IsolatedCase`'s wrapper banner (and a nested repeat of the same
+    "N) test ..." + location header it reproduces) to reach the real reason,
+    which may be freeform text rather than one of ExUnit's own markers."""
+    lines = output[after_idx:].splitlines()
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx].strip()
+        if not line:
+            idx += 1
+            continue
+        if any(line.startswith(prefix) for prefix in _ISOLATED_SKIP_PREFIXES):
+            idx += 1
+            continue
+        break
+    if idx < len(lines) and re.match(r"^\d+\)\s+test ", lines[idx].strip()):
+        idx += 1
+        while idx < len(lines) and not lines[idx].strip():
+            idx += 1
+        if idx < len(lines) and re.match(r"^\S+\.exs?:\d+", lines[idx].strip()):
+            idx += 1
+    while idx < len(lines) and (not lines[idx].strip() or _NOISE_LINE_RE.match(lines[idx].strip())):
+        idx += 1
+    return lines[idx].strip() if idx < len(lines) else None
+
+
+def failure_signature_frame(stage, output):
+    """Builds the `KOGEN_FAILURE_SIGNATURE` JSON body (without the tag/TAB)
+    for `stage` from `output`, the failing stage's complete (unbounded) log."""
+    match = _EXUNIT_TEST_RE.search(output)
+    test_id = match.group(1) if match else None
+    assertion = _first_reason_line(output, match.end() if match else 0)
+    return json.dumps({"stage": stage, "test_id": test_id, "assertion": assertion})
+
+
+def _stage_name(command):
+    pair = tuple(command[:2])
+    names = {
+        ("mix", "format"): "format",
+        ("mix", "compile"): "compile",
+        ("mix", "credo"): "credo",
+    }
+    if pair == ("mix", "test"):
+        # Only the exact load-only stage is `test-compile`; every `mix test`
+        # command contains "test", so a membership test would misname the
+        # full test run.
+        return "test-compile" if tuple(command) == TEST_COMPILE_STAGE else "test"
+    if list(command) == ["mix", "run", "scripts/check/rehearsals.exs"]:
+        return "rehearsals"
+    return names.get(pair, command[0] if command else "unknown")
 
 
 def _bounded(text):
@@ -75,6 +150,9 @@ def run_stage(command, root, env):
     if output:
         print(output, end="" if output.endswith("\n") else "\n", flush=True)
     print(f"Stage elapsed ({' '.join(command)}): {duration:.3f}s", flush=True)
+    failure_frame = (
+        failure_signature_frame(_stage_name(command), raw_output) if returncode else None
+    )
     return {
         "command": command,
         "status": "passed" if returncode == 0 else "failed",
@@ -82,8 +160,39 @@ def run_stage(command, root, env):
         "duration_ms": round(duration * 1000),
         "bounded_log": output,
         "signature": _signature(command, returncode, output),
+        "failure_frame": failure_frame,
         "cleanup": {"status": "not-required"},
     }
+
+
+def run_ordered(phases, root, env, stage_results):
+    """Runs `phases` (each an ordered list of one or more argv commands, run
+    in parallel within a phase through a bounded `ThreadPoolExecutor`) in
+    order, stopping at the first phase carrying a failed stage. Appends every
+    run stage's result to `stage_results` (in the order it started within its
+    phase) and returns the exit code of the phase's earliest-listed failed
+    command, or 0 when every phase passed. On a failure it prints the failed
+    stage's `KOGEN_FAILURE_SIGNATURE` frame (scenario `signatures-identify-failures`).
+    Scenario `test-warnings-fail-first`: no later phase's command starts once
+    an earlier phase fails, so `TEST_COMPILE_STAGE` failing here means credo,
+    the full test run and rehearsals never start.
+    """
+    for phase in phases:
+        if len(phase) == 1:
+            results = [run_stage(phase[0], root, env)]
+        else:
+            with ThreadPoolExecutor(max_workers=len(phase)) as executor:
+                futures = [executor.submit(run_stage, command, root, env) for command in phase]
+                results = [future.result() for future in futures]
+        stage_results.extend(results)
+        # Earliest-listed failure in the phase, not earliest-completed, so a
+        # deterministic single stage's frame is always the one printed.
+        primary = next((entry for entry, command in zip(results, phase) if entry["exit_code"]), None)
+        if primary:
+            if primary["failure_frame"]:
+                print(f"{FAILURE_SIGNATURE_TAG}\t{primary['failure_frame']}", flush=True)
+            return primary["exit_code"]
+    return 0
 
 
 def settle_receipt(path, invocation, stages, cleanup, bindings=None):
@@ -196,6 +305,14 @@ def main():
     if sys.argv[1:] == ["--source-manifest-sha256"]:
         print(source_manifest_sha256(Path(__file__).resolve().parents[2]))
         return 0
+    if len(sys.argv) >= 3 and sys.argv[1] == "--signature-frame":
+        # CLI replay mode (scenario signatures-identify-failures): computes
+        # the same frame offline.py emits for its own failing stage, over an
+        # already-captured log on stdin, for another test's or tool's use.
+        stage = sys.argv[2]
+        log = sys.stdin.read()
+        print(f"{FAILURE_SIGNATURE_TAG}\t{failure_signature_frame(stage, log)}")
+        return 0
     started = time.monotonic()
     root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
@@ -250,11 +367,6 @@ def main():
             stage_results.append(binding_stage)
             result = 125
             return result
-        version_result = run_stage(["elixir", "--version"], root, env)
-        stage_results.append(version_result)
-        result = version_result["exit_code"]
-        if result:
-            return result
         # Format only reads sources. Compilation owns the build output; both
         # finish and propagate their status before Credo or tests can start.
         preparation = stages[:2] + [[
@@ -262,36 +374,20 @@ def main():
             str(root / "test/support/process_group.c"),
             "-o", env["KOGEN_TEST_PROCESS_GUARD"],
         ]]
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = [executor.submit(run_stage, command, root, env) for command in preparation]
-            results = [future.result() for future in futures]
-        stage_results.extend(results)
-        result = next((entry["exit_code"] for entry in results if entry["exit_code"]), 0)
-        if result:
-            return result
         if build_path:
             # An explicit build path can collapse Mix environments onto the
             # same writable directory, so keep these stages ordered there.
-            for command in stages[2:]:
-                stage = run_stage(command, root, env)
-                stage_results.append(stage)
-                result = stage["exit_code"]
-                if result:
-                    return result
+            credo_and_test = [[command] for command in stages[2:]]
         else:
             # Default Mix environments have independent dev/test build trees.
             # Credo uses the completed dev compilation; tests own _build/test.
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                futures = [executor.submit(run_stage, command, root, env)
-                           for command in stages[2:]]
-                results = [future.result() for future in futures]
-            stage_results.extend(results)
-            result = next((entry["exit_code"] for entry in results if entry["exit_code"]), 0)
-            if result:
-                return result
-        rehearsal = run_stage(["mix", "run", "scripts/check/rehearsals.exs"], root, env)
-        stage_results.append(rehearsal)
-        result = rehearsal["exit_code"]
+            credo_and_test = [stages[2:]]
+        phases = (
+            [[["elixir", "--version"]], preparation, [list(TEST_COMPILE_STAGE)]]
+            + credo_and_test
+            + [[["mix", "run", "scripts/check/rehearsals.exs"]]]
+        )
+        result = run_ordered(phases, root, env, stage_results)
         if result:
             return result
         if env.get("KOGEN_COLD_OFFLINE") == "1":

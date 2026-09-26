@@ -47,6 +47,7 @@ defmodule Kogen.CommitFailureRollbackTest do
         expert: {model: fake, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @makefile """

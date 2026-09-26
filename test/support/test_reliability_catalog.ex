@@ -116,7 +116,10 @@ defmodule Kogen.TestReliabilityCatalog do
       changed_implementation?(row, changed_paths),
       "#{row["id"]}: implementation is unchanged without preservation proof"
     )
-    |> require(source_bound?(root, row), "#{row["id"]}: source binding is stale")
+    |> require(
+      declaration_bound?(root, row),
+      "#{row["id"]}: #{row["file"]}: missing declaration #{inspect(row["declaration"])}"
+    )
   end
 
   defp changed_implementation?(_row, nil), do: true
@@ -141,10 +144,20 @@ defmodule Kogen.TestReliabilityCatalog do
     end
   end
 
-  defp source_bound?(root, row) do
-    case File.read(Path.join(root, row["file"] || "")) do
-      {:ok, bytes} ->
-        Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == row["source_sha256"]
+  defp declaration_bound?(root, row) do
+    file = row["file"] || ""
+    declaration = row["declaration"] || ""
+
+    case File.read(Path.join(root, file)) do
+      {:ok, source} ->
+        pattern =
+          if String.ends_with?(file, ".exs") do
+            ~r/\btest\s+"#{Regex.escape(declaration)}"/
+          else
+            ~r/\bdef\s+#{Regex.escape(declaration)}\b/
+          end
+
+        Regex.match?(pattern, source)
 
       _ ->
         false

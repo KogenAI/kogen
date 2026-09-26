@@ -426,10 +426,11 @@ defmodule Kogen.ControllerHandoffTest do
     assert attempt["developer_notes"]["text"] == notes
   end
 
-  # Controller verification exhaustion stops the Build before Jev and Review,
-  # ahead of every other routing decision: a confident objection in the
-  # Developer's notes is never even read, because Jev is never asked.
-  test "an objection still leads the error when verification retries were exhausted" do
+  # Scenario `notes-and-selectors-before-verification`: Jev reads the turn's
+  # notes before any verification cycle runs. An objection on the first turn
+  # (no cycle has failed yet in this attempt) stops the Build as
+  # `cannot_comply` at once, spending no verification cycle.
+  test "an objection on the first turn stops as cannot-comply before any verification cycle runs" do
     dir = fixture!()
 
     assert {:error, reason} =
@@ -439,24 +440,27 @@ defmodule Kogen.ControllerHandoffTest do
                jev_answers: %{"objection:scenario:s-change" => ["objection", 0.95]}
              )
 
-    refute String.starts_with?(reason, @prefix)
-    assert reason =~ ~r/^verification retries exhausted/
-    assert Enum.empty?(FakeJev.requests(jev_log(dir)))
+    assert String.starts_with?(reason, @prefix)
+    assert length(FakeJev.requests(jev_log(dir))) == 1
     [attempt] = record!(dir)["attempts"]
-    refute Map.has_key?(attempt, "jev")
+    assert Map.has_key?(attempt, "jev")
     refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
   end
 
+  # When no cycle of the attempt failed yet, Jev is read before verification
+  # runs. Since this attempt carries no objection, verification proceeds and
+  # (with `fail-check` never cleared) exhausts `offline_retries`; Jev keeps
+  # being read on every subsequent turn.
   test "exhausted verification without an objection still asks Jev and keeps the exhaustion reason" do
     dir = fixture!()
 
     assert {:error, reason} =
              run(dir, edits: %{1 => "mkdir -p .kogen/runtime && touch .kogen/runtime/fail-check"})
 
-    assert reason =~ ~r/^verification retries exhausted/
+    assert reason =~ ~r/^offline retries exhausted/
     [attempt] = record!(dir)["attempts"]
-    refute Map.has_key?(attempt, "jev")
-    assert Enum.empty?(FakeJev.requests(jev_log(dir)))
+    assert Map.has_key?(attempt, "jev")
+    assert FakeJev.requests(jev_log(dir)) != []
     refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
   end
 
@@ -746,6 +750,7 @@ defmodule Kogen.ControllerHandoffTest do
           expert: {model: gpt-5.6-sol, effort: medium}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """)
 
     intent_dir = Path.join(dest, ".kogen/intents/approved/#{@slug}")
@@ -873,13 +878,15 @@ defmodule Kogen.ControllerHandoffTest do
         {"KOGEN_HARNESS", Path.join(dir, "provider.py")},
         {"HANDOFF_NOTES_DIR", notes_dir},
         {"HANDOFF_REVIEWS", Keyword.get(opts, :reviews, "accept")},
+        {"HANDOFF_REASK", Enum.join(Keyword.get(opts, :reask, []), ",")},
         {"HANDOFF_RESPONSE_HELPER", Path.join(@root, "test/support/scenario_response.py")},
         {"FAKE_JEV_LOG_DIR", jev_log(dir)},
         {"FAKE_JEV_ANSWERS", Jason.encode!(Keyword.get(opts, :jev_answers, %{}))},
         {"FAKE_JEV_RESPONSES", Keyword.get(opts, :jev_responses)},
         {"FAKE_SECURITY_ITEM", Keyword.get(opts, :security_item, "present")},
         {"KOGEN_JEV_TRANSPORT", FakeJev.transport_path()},
-        {"KOGEN_JEV_SECURITY", FakeJev.security_path()}
+        {"KOGEN_JEV_SECURITY", FakeJev.security_path()},
+        {"HANDOFF_FREEZE_RESUME_EDIT", Enum.join(Keyword.get(opts, :freeze_resume_edit, []), ",")}
       ] ++
         Enum.map(Keyword.get(opts, :edits, %{}), fn {call, command} ->
           {"HANDOFF_EDIT_#{call}", command}
@@ -1050,6 +1057,7 @@ defmodule Kogen.ControllerHandoffTest do
           expert: {model: fake, effort: medium}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """
   end
 
@@ -1071,25 +1079,72 @@ defmodule Kogen.ControllerHandoffTest do
         path = runtime / name
         value = int(path.read_text()) + 1 if path.exists() else 1
         path.write_text(str(value)); return value
+    def listed(name, value):
+        return str(value) in [item for item in os.environ.get(name, "").split(",") if item]
     if os.environ.get("KOGEN_ROLE") == "reviewer":
         n = count("reviews")
+        # `reviewer-reask-once`: a resume reuses the exact requested thread
+        # id, never a freshly minted one.
+        is_resume = "resume" in args
+        resume_id = args[args.index("resume") + 1] if is_resume else None
+        sid = resume_id or f"review-{n}"
         (runtime / f"reviewer-prompt-{n}").write_text(prompt)
         verdicts = os.environ.get("HANDOFF_REVIEWS", "accept").split(",")
         verdict = verdicts[min(n, len(verdicts)) - 1]
         out = args[args.index("--output-last-message") + 1]
+        # A real Reviewer resume continues the same conversation, so it still
+        # has the original task context. This fake harness's re-ask prompt
+        # (the schema-error text) carries none, so it reuses the most recent
+        # fresh launch's stored prompt (never a resume's own, and never an
+        # older attempt's) to rebuild the same scenario/candidate context on
+        # resume.
+        fresh_prompt_path = runtime / "reviewer-prompt-latest-fresh"
+        if not is_resume:
+            fresh_prompt_path.write_text(prompt)
+        context_prompt = fresh_prompt_path.read_text() if is_resume else prompt
         response = subprocess.run([sys.executable, os.environ["HANDOFF_RESPONSE_HELPER"], "reviewer", verdict],
-                                  input=prompt, capture_output=True, text=True, check=True).stdout
+                                  input=context_prompt, capture_output=True, text=True, check=True).stdout
+        # A comma list, one entry per Review call (fresh launch, then its one
+        # resume): `valid`, `invalid` (strips the first evidence item's
+        # `receipt`, so it fails the per-launch schema) or `changed` (stays
+        # schema-valid but flips `verdict`, a control for "the repair must
+        # keep its verdict value").
+        reask_modes = [item for item in os.environ.get("HANDOFF_REASK", "").split(",") if item]
+        if len(reask_modes) >= n:
+            mode = reask_modes[n - 1]
+            value = json.loads(response)
+            if mode == "invalid":
+                del value["scenarios"][0]["evidence"][0]["receipt"]
+            elif mode == "missing_path":
+                # Schema-valid, but the Contract rejects a path that does not exist.
+                value["scenarios"][0]["evidence"][0]["path"] = "reask-probe-missing.md"
+            elif mode == "changed":
+                value["verdict"] = "rework" if value["verdict"] == "accept" else "accept"
+            response = json.dumps(value)
         pathlib.Path(out).write_text(response)
-        print(json.dumps({"type": "thread.started", "thread_id": f"review-{n}"}))
-        print(json.dumps({"type": "turn.completed", "thread_id": f"review-{n}"}))
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        print(json.dumps({"type": "turn.completed", "thread_id": sid}))
         raise SystemExit(0)
     if "--output-last-message" in args or "--output-schema" in args:
         raise SystemExit("Developer turn carried a handoff output schema")
-    call = count("developer-calls")
-    (runtime / f"developer-prompt-{call}").write_text(prompt)
-    edit = os.environ.get(f"HANDOFF_EDIT_{call}")
-    if edit: subprocess.run(["sh", "-c", edit], check=True)
     session = "developer-session"
+    if prompt.startswith("Controller verification failed after your turn"):
+        # The controller resumed this same Developer call after a failed
+        # cycle. A real Developer fixing a failure changes the Candidate;
+        # this fake one does too (unless the test freezes this resume
+        # number), so the controller's unchanged-Candidate stop is never hit
+        # by accident.
+        call = int((runtime / "developer-calls").read_text())
+        n = count("verification-resumes")
+        (runtime / f"verification-resume-{n}").write_text(prompt)
+        if not listed("HANDOFF_FREEZE_RESUME_EDIT", n):
+            with open("dummy.txt", "a") as f:
+                f.write(f"resume-{n}\n")
+    else:
+        call = count("developer-calls")
+        (runtime / f"developer-prompt-{call}").write_text(prompt)
+        edit = os.environ.get(f"HANDOFF_EDIT_{call}")
+        if edit: subprocess.run(["sh", "-c", edit], check=True)
     for _ in range(8):
         hook = subprocess.run(["sh", ".codex/hooks/check.sh"], input=json.dumps({"session_id": session, "thread_id": session}).encode(),
                               capture_output=True, check=True)
@@ -1137,5 +1192,279 @@ defmodule Kogen.ControllerHandoffTest do
           {"GIT_COMMITTER_EMAIL", "fixture@example.invalid"}
         ]
       )
+  end
+
+  # `reviewer-reask-once`: an invalid verdict with a known session id gets
+  # exactly one resume (`Kogen.Harness.resume_reviewer`), asking only for a
+  # corrected verdict in the same shape, never a new judgement. `provider()`'s
+  # `HANDOFF_REASK` scripts a fresh fake Reviewer's verdict per Review call
+  # (the fresh launch, then its one resume), each `invalid` (strips the first
+  # evidence item's `receipt`, so it fails the per-launch schema), `valid` or
+  # `changed` (schema-valid, but flips `verdict`).
+  describe "reviewer re-ask" do
+    test "an invalid verdict repaired on the one re-ask settles, in the same session id" do
+      dir = fixture!()
+
+      assert :ok = run(dir, reask: ["invalid", "valid"])
+
+      # One fresh Review, plus its one re-ask resume; both kept the same
+      # thread id (`provider()` echoes the requested resume id).
+      assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "2"
+      [attempt] = record!(dir)["attempts"]
+      assert attempt["verdict"]["verdict"] == "accept"
+      refute Map.has_key?(attempt, "invalid_verdict")
+      refute Map.has_key?(attempt, "invalid_verdict_reask")
+      assert File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    end
+
+    test "a second invalid verdict stops the Build, keeping both invalid payloads" do
+      dir = fixture!()
+
+      assert {:error, reason} = run(dir, reask: ["invalid", "invalid"])
+
+      assert reason =~ "Reviewer failure:"
+      assert reason =~ "unrepaired on re-ask"
+      assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "2"
+      [attempt] = record!(dir)["attempts"]
+      assert attempt["invalid_verdict"]["reviewer_session_id"] == "review-1"
+      assert attempt["invalid_verdict_reask"]["reviewer_session_id"] == "review-1"
+      refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    end
+
+    test "a schema-valid verdict the Contract rejects (a missing evidence path) gets the same one re-ask, naming the Contract's error" do
+      dir = fixture!()
+
+      assert :ok = run(dir, reask: ["missing_path", "valid"])
+
+      assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "2"
+      reask = File.read!(Kogen.CandidateFixture.fake_state(dir, "reviewer-prompt-2"))
+      assert reask =~ "Do not form a new judgement"
+      assert reask =~ "reask-probe-missing.md"
+      [attempt] = record!(dir)["attempts"]
+      assert attempt["verdict"]["verdict"] == "accept"
+      assert File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    end
+
+    test "a second Contract rejection after the re-ask stops the Build, keeping both payloads" do
+      dir = fixture!()
+
+      assert {:error, reason} = run(dir, reask: ["missing_path", "missing_path"])
+
+      assert reason =~ "unrepaired on re-ask"
+      assert reason =~ "reask-probe-missing.md"
+      assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "2"
+      [attempt] = record!(dir)["attempts"]
+      assert get_in(attempt, ["invalid_verdict", "verdict"]) == "accept"
+      assert get_in(attempt, ["invalid_verdict_reask", "verdict"]) == "accept"
+      refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    end
+
+    test "a repair that changes the verdict value stops the Build instead of settling it" do
+      dir = fixture!()
+
+      assert {:error, reason} = run(dir, reask: ["invalid", "changed"])
+
+      assert reason =~ "Reviewer failure:"
+      assert reason =~ "unrepaired on re-ask"
+      [attempt] = record!(dir)["attempts"]
+      assert attempt["invalid_verdict_reask"]["reason"] =~ "changed its verdict value"
+      refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
+    end
+  end
+
+  # handoff-lists-all-evidence: the resumed Developer's prompt is rendered
+  # from committed, verbatim excerpts of real mined receipts
+  # (test/support/mined_failures, each with its provenance header).
+  describe "verification failure handoff from real mined receipts" do
+    alias Kogen.Build.FailureHandoff
+
+    @mined Path.expand("../support/mined_failures", __DIR__)
+    @control "/control/root"
+    @candidate "/candidate/root"
+    @private ~w(context.json state.json state-history.jsonl verification-history)
+
+    test "every failed receipt, prepare receipt and manifest entry is listed with its class, locators, digests and primary lines" do
+      check = mined!("a2spfuvf_c2_check")
+      quality = mined!("r9oe4fcp_c2_live_shaping_quality")
+      suite = mined!("r9oe4fcp_suite_failure")
+      case_log = mined!("r9oe4fcp_stateful_flawed_case_log")
+
+      evidence = %{
+        "manifest" => %{"path" => "evidence/manifest.json", "sha256" => sha("manifest")},
+        "required_evidence" => [
+          entry("evidence/suite-failure.json", suite["output"]),
+          entry("evidence/stateful-flawed-output.log", case_log["output"])
+        ]
+      }
+
+      cycle = %{
+        "sequence" => 2,
+        "candidate_id" => String.duplicate("c", 40),
+        "class" => "paid",
+        "receipts" => [
+          receipt("check", "passed", "all good", false),
+          Map.put(
+            receipt("live-shaping-quality", "failed", quality["output"], true),
+            "target_evidence",
+            evidence
+          )
+        ],
+        "prepare" => [
+          Map.merge(receipt("live-reviewer-rework", "failed", check["output"], false), %{
+            "kind" => "prepare",
+            "class" => "offline"
+          }),
+          Map.merge(receipt("live-shaping-smoke", "passed", "", false), %{"kind" => "prepare"})
+        ],
+        "failure" => %{
+          "kind" => "target",
+          "target" => "live-shaping-quality",
+          "class" => "paid",
+          "log_path" => log("live-shaping-quality"),
+          "log_sha256" => sha("live-shaping-quality"),
+          "output" => quality["output"]
+        }
+      }
+
+      prompt = render(cycle, %{"failures_since_pass" => 1, "offline_failures" => 3})
+
+      # Every failed receipt of the cycle, and only those, with its class.
+      assert prompt =~ "### `prepare-live-reviewer-rework`"
+      assert prompt =~ "### `live-shaping-quality`"
+      refute prompt =~ "### `check`"
+      refute prompt =~ "### `prepare-live-shaping-smoke`"
+      assert prompt =~ "- Class: `offline`"
+      assert prompt =~ "- Class: `paid`"
+
+      # Retained receipt and log locators with their digests.
+      for name <- ["prepare-live-reviewer-rework", "live-shaping-quality"] do
+        assert prompt =~ "/receipts/cycle-2-#{name}.json"
+      end
+
+      for target <- ["live-reviewer-rework", "live-shaping-quality"] do
+        assert prompt =~ "`#{Path.join(@control, log(target))}` (sha256 #{sha(target)})"
+      end
+
+      # The manifest and each entry, alike, with its digest and an excerpt
+      # of its own content.
+      assert prompt =~
+               "`#{Path.join(@candidate, "evidence/manifest.json")}` (sha256 #{sha("manifest")})"
+
+      assert prompt =~
+               "`#{Path.join(@candidate, "evidence/suite-failure.json")}` (sha256 #{sha_of(suite["output"])})"
+
+      assert prompt =~
+               "`#{Path.join(@candidate, "evidence/stateful-flawed-output.log")}` (sha256 #{sha_of(case_log["output"])})"
+
+      assert prompt =~ "stateful-flawed: child exited 1"
+      assert prompt =~ "no .kogen/runtime/shaping-audits/eval-stateful-flawed was produced"
+
+      # Primary failure lines: the real assertion sits 232 of 262 non-blank
+      # lines from the end of a2sPFUvF's cycle-2 receipt, so a tail misses it.
+      assert prompt =~ "test/kogen/intent_test.exs:102"
+      assert prompt =~ ~s(assert config.route == "claude")
+      assert prompt =~ "five-session shaping evaluation failed"
+
+      # The remaining retries of both classes.
+      assert prompt =~ "Offline (`offline_retries`) retries left: 1 of 4"
+      assert prompt =~ "Paid (`verification_retries`) retries left: 1 of 2"
+
+      refute_private!(prompt)
+    end
+
+    test "a frame-carrying receipt gives the frame's lines, and the whole prompt stays within its bound" do
+      frame =
+        ~s(KOGEN_FAILURE_SIGNATURE\t{"stage":"mix test","test_id":"Kogen.IntentTest:102","assertion":"assert config.route == \\"claude\\""})
+
+      noise = String.duplicate("noise line that is not a failure\n", 4_000)
+
+      long = mined!("a2spfuvf_c2_check")["output"]
+
+      receipts =
+        [receipt("target-1", "failed", noise <> frame <> "\n" <> noise, false)] ++
+          for n <- 2..30, do: receipt("target-#{n}", "failed", long, false)
+
+      cycle = %{
+        "sequence" => 5,
+        "candidate_id" => String.duplicate("d", 40),
+        "class" => "offline",
+        "receipts" => receipts,
+        "failure" => %{
+          "kind" => "target",
+          "target" => "target-1",
+          "class" => "offline",
+          "log_path" => log("target-1"),
+          "log_sha256" => sha("target-1"),
+          "output" => noise
+        }
+      }
+
+      prompt = render(cycle, %{"failures_since_pass" => 0, "offline_failures" => 1})
+
+      assert byte_size(prompt) <= 24_000
+      assert prompt =~ "test: Kogen.IntentTest:102"
+      assert prompt =~ ~s(assertion: assert config.route == "claude")
+      assert prompt =~ "### `target-1`"
+      assert prompt =~ ~r/further failed receipt\(s\) omitted|section truncated/
+      refute_private!(prompt)
+    end
+
+    test "the mined excerpts carry their provenance headers" do
+      for name <-
+            ~w(a2spfuvf_c2_check r9oe4fcp_c2_live_shaping_quality r9oe4fcp_suite_failure r9oe4fcp_stateful_flawed_case_log) do
+        provenance = mined!(name)["provenance"]
+
+        for key <- ~w(build_id cycle source_record_path sha256),
+            do: assert(provenance[key], "#{name} lacks provenance #{key}")
+      end
+    end
+
+    defp render(cycle, state) do
+      FailureHandoff.render(%{
+        cycle: cycle,
+        state: state,
+        context: %{
+          "verification_retries" => 2,
+          "offline_retries" => 4,
+          "control_root" => @control,
+          "project_root" => @control
+        },
+        control: @control,
+        candidate_root: @candidate,
+        receipt_path: fn sequence, name ->
+          Path.join([@control, ".kogen/runtime/receipts", "cycle-#{sequence}-#{name}.json"])
+        end
+      })
+    end
+
+    defp refute_private!(prompt) do
+      for private <- @private, do: refute(prompt =~ private)
+    end
+
+    defp mined!(name), do: Path.join(@mined, name <> ".json") |> File.read!() |> Jason.decode!()
+
+    defp receipt(target, status, output, provider_backed?) do
+      %{
+        "target" => target,
+        "status" => status,
+        "exit_code" => if(status == "passed", do: 0, else: 2),
+        "timed_out" => false,
+        "provider_backed" => provider_backed?,
+        "log_path" => log(target),
+        "log_sha256" => sha(target),
+        "output" => output
+      }
+    end
+
+    defp entry(path, content),
+      do: %{
+        "path" => path,
+        "sha256" => sha_of(content),
+        "content_base64" => Base.encode64(content)
+      }
+
+    defp log(target), do: ".kogen/runtime/logs/cycle-2-#{target}.log"
+    defp sha(label), do: sha_of("log " <> label)
+    defp sha_of(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
   end
 end

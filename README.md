@@ -108,6 +108,27 @@ Candidate and, without the flag, one holding a commit unreachable from its
 admitted branch. Neither command prunes. Still one Build at a time: the
 global `.kogen/build.lock` stays in control.
 
+Every process a Build launches (Developer, Reviewer, Expert and their
+helpers, Jev's executable transport, make targets, `prepare`, and focused and
+base runs) starts through one supervisor, `priv/kogen/process_supervisor.py`
+(`Kogen.ProcessCustody`). The supervisor stays outside the child's process
+group, starts the child in a new session, records its pid, pgid and start
+time (`ps -o lstart=`) in the lock, removes the child's temporary prompt file
+when it ends, and watches its parent: when the controller's pipe closes or
+its parent pid becomes 1, it kills the whole group with TERM, then KILL after
+a short grace. So a Build that ends by stop, timeout, Ctrl-C, a closed
+terminal (SIGHUP), SIGTERM, a crash or `kill -9` leaves no role or target
+running. The controller also traps SIGHUP and SIGTERM to tear down its groups
+and release the lock. The lock records the controller's own pid and start
+time; a new Build refuses while that owner is alive, and otherwise reaps every
+recorded group whose leader's start time still matches, reclaims the lock and
+prints one line naming what it reaped, so nobody deletes a lock by hand. A pid
+reused by an unrelated process is never killed. For an immediate Ctrl-C with
+no BEAM BREAK menu, `mise.toml` sets `ELIXIR_ERL_OPTIONS = "+Bd"` (it only
+applies where mise is active, and it also makes Ctrl-C quit `iex -S mix` in
+this repository at once); without it the menu still appears, and the
+supervisors still reap every group however the VM ends.
+
 ## The loop
 
 - **Shaper** is the human who shapes the feature with Kogen and approves the Intent.
@@ -142,13 +163,60 @@ attempt. After controller verification settles, controller code builds the
 handoff report itself, so no handoff can be malformed or invalid; a declared
 proof selector still missing from the Candidate is unfinished work, decided by
 code, and uses one outer resumption. Jev (`jev-1.13.0`) reads the Developer's
-free prose once per handoff; an objection at 0.85 confidence or higher stops
+free prose once per Developer turn, before verification; an objection at 0.85 confidence or higher stops
 the Build immediately and returns it to Shaping, quoting the Developer's words
 and Jev's confidence. Otherwise, a settled verification failure, a failed
 declared target, or a Review finding uses one outer resumption of the same
 Developer, when allowance remains, and a resumed attempt must settle a fresh
 controller verification before the next handoff or Review. An exhausted
 verification or outer allowance stops the Build rather than claiming success.
+
+Each failed cycle carries a failure class, and each class spends its own
+budget. The controller knows only catalog classes (`provider_backed`), never a
+target name:
+
+- **Offline gate.** Every selected `provider_backed: false` target runs first,
+  in catalog order, before any `prepare` step or provider-backed target, even
+  when the catalog's dependencies would allow an earlier paid dispatch; the
+  controller-run proof selectors follow them, also before any paid work. A
+  failure there (or in the Candidate's catalog check) is `offline` and spends
+  only `offline_retries`; exceeding it stops the Build as `offline`, naming
+  `offline_retries`. The controller never formats or otherwise rewrites the
+  Candidate.
+- **Prepare.** Before the first paid dispatch, the controller runs the
+  optional `prepare` argv of every selected provider-backed target that will
+  be dispatched (see below). A nonzero exit is an `offline` failure; an
+  environment result stops the Build at once as `environment`, spending
+  nothing and dispatching nothing paid.
+- **Paid.** A provider-backed target's failure is `paid` and spends
+  `verification_retries`. Every timeout, whether a harness turn timeout or a
+  test timeout, stays a paid failure.
+- **Provider.** A paid target, Developer turn or Reviewer turn whose output
+  carries an explicit provider marker, recognised by the harness adapters
+  from structured fields (Claude's `api_error_status` 429/5xx or
+  `error: "rate_limit"` with `is_error: true`; Codex's `codex_error_info`
+  `server_overloaded`/`usage_limit_exceeded`, or an `error`/`turn.failed`
+  event saying "at capacity", "overloaded" or rate limit), is `provider` and
+  spends nothing. Overload, capacity and 5xx get one retry (the same target on
+  the same Candidate, the same Developer session resumed, or one fresh Review
+  with the same packet); a usage limit gets none. A second provider failure
+  stops the Build as `provider`, and stored stop evidence keeps the tail of
+  the stream.
+
+Before any cycle, Jev reads the Developer's notes once for that turn: a
+confident objection that no later cycle could supersede stops the Build as
+`cannot_comply`, and a declared proof selector missing from the Candidate
+returns the Developer as `unfinished_work`, neither running nor counting a
+cycle; a passing cycle reuses that reading. When the Developer's turn after a
+non-provider failure leaves the Candidate id unchanged, the Build stops with
+"Candidate unchanged since failed cycle N", the class and the previous
+signature, instead of re-running it. The resume prompt after a failed cycle
+lists every failed receipt of the cycle, a failed `prepare` receipt included,
+with its class, retained log and sha256, the target-evidence manifest and each
+entry with its digest and a bounded excerpt, the primary failure lines, and
+the remaining offline and paid retries, within a fixed bound. Stops carry
+their class (`offline`, `paid`, `environment`, `provider`, unchanged
+Candidate) in the tracking record.
 
 The Stop scripts (`.codex/hooks/check.sh`, `.codex/hooks/stop_runner.py`) are
 bootstrap remnants, not a second verification authority: they act only on a
@@ -237,6 +305,32 @@ snapshots preserve uncited required bytes; Reviewer citations remain separate
 evidence of semantic inspection. Targets without a frame keep their existing
 behavior.
 
+Two more optional, generic frames let any project's targets help the
+controller; a target that prints neither still works:
+
+- `KOGEN_FAILURE_SIGNATURE<TAB>{"stage":…,"test_id":…,"assertion":…}`: one
+  line naming the failing stage, first failing test and assertion. The failure
+  signature digest is then the target plus those fields, and they give the
+  resume prompt's primary failure lines. Without it the signature falls back
+  to the normalized failure tail (the last failure lines, with ANSI codes,
+  seeds, durations, timestamps, temporary paths, hex digests, per-run tokens
+  and the harness adapters' own warnings removed). This repository's
+  `scripts/check/offline.py` prints it for its failing stage.
+- `KOGEN_PREPARE_RESULT<TAB>{"class":"environment","reason":…}`: the result
+  contract of a catalog target's optional `prepare` field, a nonempty argv
+  list of nonempty strings (no shell, like `rehearsal.command`; the loader
+  refuses any other shape). The controller runs it in the Candidate through
+  the same runner as the targets, with a scrubbed environment, provider
+  dispatch denied (credentials removed, refusing `claude`/`codex` shims on
+  `PATH`, `KOGEN_PROVIDERS_DENIED=1`), its own process group and a
+  controller-owned log and receipt. Exit 0 passes; a nonzero exit is an
+  `offline` Candidate failure; a nonzero exit carrying this one frame stops
+  the Build as `environment`. The controller never requires `prepare`. This
+  repository declares it for `live-shaping-quality`, `live-shaping-smoke` and
+  `live-reviewer-rework`, whose setup lives outside the owner test, and
+  `scripts/check/rehearsals.exs` rehearses every declared `prepare` with
+  providers denied.
+
 Build validates the full Approved scenario contract before launching a provider.
 Each scenario needs a unique nonblank `id`, `given`, `when`, `then`,
 `wrong_result`, `evidence`, and a nonempty `verified_by` list of existing targets.
@@ -278,7 +372,7 @@ proof selectors, and Kogen's own receipts, so the report's format cannot fail.
 The Developer's final message is free prose; Kogen code never parses it. Build
 records it byte for byte as the Developer's notes and sends it, with the
 controller-listed scenario, risk, and finding IDs, to TypeSafe Jev
-(`jev-1.13.0`) once per handoff. Jev reports what the Developer says about
+(`jev-1.13.0`) once per Developer turn, before verification. Jev reports what the Developer says about
 each item — unfinished, done, pending external verification, resolved or
 historical, unclear — and whether the Developer objects that the approved
 contract cannot be met. An objection at 0.85 confidence or higher stops the
@@ -300,7 +394,16 @@ Candidate is unfinished work decided by code; it uses one outer resumption of
 the same Developer, and the next attempt needs a fresh controller verification.
 Verification exhaustion and a Jev cannot-comply stop both take precedence
 over ordinary Review routing, and outer-allowance exhaustion takes precedence
-over another launch. Malformed Review still stops without partial closures.
+over another launch. Each Review launch gets a verdict schema built for it:
+exactly the Approved Intent's scenario ids (an `enum`, with `minItems` and
+`maxItems` equal to their count), a lookaround-free evidence `path` pattern,
+and a separate `receipt` field for review-packet citations. A verdict that
+fails validation, against that schema or the controller's contract, gets one
+re-ask in the same Reviewer session (Claude Code `--resume`, Codex `exec
+resume`) with the exact error list, asking only for the corrected shape; the
+repair must keep its `verdict` value. A second invalid verdict, or a changed
+`verdict` value, stops the Build without partial closures, keeping both
+payloads.
 
 To inspect a stopped Build, start with the record path and unresolved scenario IDs
 in its error. Read `.kogen/runtime/scenario-tracking/<build-id>/record.json`:
@@ -352,8 +455,14 @@ Edit the tracked `.kogen/config.yaml` to define named **routes** and a
 `default_route`. A clean route pairs one `harness` (`claude` or `codex`) with the
 model and effort for `shaping`, `developer`, `reviewer` and each required
 helper profile (`helpers.scout`, `helpers.worker`, `helpers.expert`);
-`outer_resumptions` and `verification_retries` stay top-level, shared by every
-route:
+`outer_resumptions`, `verification_retries` and `offline_retries` stay
+top-level, shared by every route. All three are required integers with no
+default: `offline_retries` bounds offline verification failures per attempt
+(offline targets and Candidate-caused `prepare` failures), separately from the
+paid `verification_retries`. A config without `offline_retries`, including an
+existing project's config written before the key existed, is refused before
+any launch with a message naming the key; add it beside
+`verification_retries`:
 
 ```yaml
 default_route: claude
@@ -392,6 +501,7 @@ routes:
   # develops, Claude Code reviews and answers Expert questions.
 outer_resumptions: 2
 verification_retries: 2
+offline_retries: 4
 ```
 
 A hybrid (role-level) route has no top-level `harness`: each of `shaping`,
@@ -415,7 +525,12 @@ This repository's own `.kogen/config.yaml` defines these four routes: the clean
 <name>` flag on `mix kogen.shape` or `mix kogen.build` selects the route for
 that session; without it, the session uses `default_route`. An unknown route
 name fails before any harness open or provider launch, naming the unknown
-route and listing the available route names in sorted order. Only the
+route and listing the available route names in sorted order. The route map's
+shape and every route name are checked globally, but only the selected route
+is fully normalized, so an incomplete route nobody selects blocks no other
+route's Build, Shape or Expert call; selecting it still refuses with its key
+path. `Kogen.Intent.validate_config/1` normalizes every route, and this
+repository's `check` validates its tracked config that way. Only the
 selected route's harnesses and models are validated for support and readiness;
 another route may name an unsupported or unready harness without blocking a
 session on a different route. Shape checks the readiness of the Shaping
@@ -572,9 +687,12 @@ Candidate during a Build:
 - the approved package: `.kogen/intents/approved/<slug>/`, read by
   `lib/kogen/build.ex` and `lib/kogen/build/contract.ex`
 
-The running controller also renders the Candidate's role prompts,
-`priv/kogen/prompts/developer.md` and `priv/kogen/prompts/reviewer.md`, at
-every launch, and reads `priv/kogen/test-reliability.yaml`.
+The running controller renders the role prompts,
+`priv/kogen/prompts/developer.md` and `priv/kogen/prompts/reviewer.md`, from
+control (its own checkout), not from the Candidate. A Candidate's prompt
+change therefore reaches roles only in Builds started after it lands, and a
+Candidate prompt must stay valid under the running controller's verdict
+schema.
 
 **Worked example.** Intent `fortify-paid-verification` keeps the Stop scripts
 so this Build, started under the old controller, can still finish

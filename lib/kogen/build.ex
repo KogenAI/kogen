@@ -47,13 +47,15 @@ defmodule Kogen.Build do
       Kogen.Git,
       Kogen.VerificationPolicy,
       Kogen.ExecutionPolicy,
-      Kogen.Jev
+      Kogen.Jev,
+      Kogen.ProcessCustody
     ],
     exports: [Workspace, WriteBoundary]
 
   alias Kogen.Build.{
     BaseWorkspace,
     Contract,
+    FailureHandoff,
     FailureSignature,
     GuardedPaths,
     Ledger,
@@ -68,6 +70,8 @@ defmodule Kogen.Build do
     WriteBoundary
   }
 
+  alias Kogen.Harness.ProviderMarker
+
   # Removed from every Developer, Reviewer and target child, including when
   # this controller itself inherited one from an outer Build's Stop runner.
   @context_variables ~w(KOGEN_VERIFICATION_CONTEXT KOGEN_TRACKING_CONTEXT KOGEN_VERIFICATION_RETRY_LIMIT)
@@ -75,7 +79,6 @@ defmodule Kogen.Build do
   # own `deps/` and `_build/`, never control's.
   @mix_redirection ~w(MIX_BUILD_PATH MIX_DEPS_PATH MIX_EXS)
 
-  @lock_path ".kogen/build.lock"
   @config_path ".kogen/config.yaml"
   @approved_base ".kogen/intents/approved"
   @complete_base ".kogen/intents/complete"
@@ -250,39 +253,20 @@ defmodule Kogen.Build do
     end
   end
 
-  # The lock names this OS process (and, once admitted, the build id) so the
-  # Candidate commands can tell a live Build from a stale `running` record.
+  # The lock names this OS process's pid and start time (and, once admitted,
+  # the build id and every launched group's pid/pgid/start time), so the
+  # Candidate commands can tell a live Build from a stale record, and a later
+  # Build can reap an abandoned one (`Kogen.ProcessCustody`).
   defp acquire_lock(control) do
-    path = Path.join(control, @lock_path)
-    File.mkdir_p(Path.dirname(path))
-
-    case File.open(path, [:write, :exclusive]) do
-      {:ok, io} ->
-        IO.binwrite(io, Jason.encode!(%{"pid" => os_pid()}))
-        File.close(io)
-        :ok
-
-      {:error, :eexist} ->
-        {:error, "build lock already present: #{@lock_path}"}
-
-      {:error, reason} ->
-        {:error, "could not acquire build lock: #{inspect(reason)}"}
+    case Kogen.ProcessCustody.acquire(control) do
+      {:ok, _fresh_or_reclaimed} -> :ok
+      {:error, _reason} = error -> error
     end
   end
 
-  defp claim_lock(control, build_id) do
-    File.write(
-      Path.join(control, @lock_path),
-      Jason.encode!(%{"pid" => os_pid(), "build_id" => build_id})
-    )
-  end
+  defp claim_lock(control, build_id), do: Kogen.ProcessCustody.claim(control, build_id)
 
-  defp os_pid, do: System.pid() |> String.to_integer()
-
-  defp release_lock(control) do
-    File.rm(Path.join(control, @lock_path))
-    :ok
-  end
+  defp release_lock(control), do: Kogen.ProcessCustody.release(control)
 
   @doc "Environment entries that remove every verification or tracking context from a child."
   def context_scrub, do: Enum.map(@context_variables, &{&1, nil})
@@ -591,7 +575,7 @@ defmodule Kogen.Build do
                  token,
                  number,
                  ctx.targets,
-                 ctx.config.verification_retries,
+                 retry_budgets(ctx.config),
                  ctx.plan,
                  %{control_root: ctx.control, candidate_root: ctx.root}
                ) do
@@ -633,6 +617,7 @@ defmodule Kogen.Build do
          :ok <- Kogen.VerificationPolicy.preflight(ctx.catalog.ordered_targets, ctx.root),
          :ok <- invalidate_verification_record(ctx.control) do
       prompt = developer_prompt(ctx, reason)
+      ctx = Map.merge(ctx, %{developer_prompt: prompt, provider_retried: false})
 
       result =
         if session_id do
@@ -772,12 +757,28 @@ defmodule Kogen.Build do
     end
   end
 
-  # After every Developer turn this controller verifies the Candidate itself.
-  # A failed cycle with retries left resumes the exact Developer session; it
-  # never consumes the outer allowance and never reaches Jev or Review.
+  # After every Developer turn this controller settles what needs no
+  # verification first: Jev reads the turn's notes once, a confident
+  # objection that no later cycle could supersede stops the Build as
+  # `cannot_comply`, and a missing declared proof selector returns the
+  # Developer as `unfinished_work`, neither running nor counting a cycle. A
+  # Candidate id unchanged since a failed cycle stops rather than re-running
+  # it. Only then does the controller verify the Candidate itself. A failed
+  # cycle with its class's retries left resumes the exact Developer session;
+  # it never consumes the outer allowance and never reaches Review.
   defp verify_turn(ctx, session_id, number, notes, invocation) do
     with :ok <- post_developer_inputs_unchanged(ctx),
          {:ok, candidate_id} <- Kogen.Git.candidate_id(ctx.root),
+         {:ok, ctx} <-
+           record_attempt(ctx, %{
+             "developer_session_id" => session_id,
+             "developer_notes" => notes_record(notes),
+             "developer_invocation" => invocation
+           }),
+         {:ok, ctx, jev} <- read_notes(ctx, candidate_id, notes),
+         ctx = Map.put(ctx, :turn_jev, jev),
+         :verify <- pre_verification(ctx, session_id, number, notes, jev),
+         :verify <- unchanged_candidate(ctx, candidate_id),
          {:ok, execution, state} <-
            Verification.run_cycle(ctx.execution, session_id, candidate_id, cycle_env(ctx)) do
       ctx = %{ctx | execution: execution, workspace: execution.workspace || ctx.workspace}
@@ -791,6 +792,63 @@ defmodule Kogen.Build do
       end
     else
       {:error, reason} -> stop(ctx, reason)
+      {:settled, result} -> result
+    end
+  end
+
+  # The existing Jev and missing-selector rules, applied before any cycle. An
+  # objection is decided here only when no cycle of this attempt has failed:
+  # otherwise the existing supersession rule can still apply once this turn's
+  # cycle passes, so the decision waits for settlement as before.
+  defp pre_verification(ctx, session_id, number, notes, jev) do
+    objections = Kogen.Jev.objections(jev)
+
+    failed_before? =
+      Enum.any?(ctx.execution.state["cycles"] || [], &(&1["status"] == "failed"))
+
+    missing = VerificationPlan.missing_selectors(ctx.plan, ctx.catalog, ctx.root)
+
+    cond do
+      objections != [] and not failed_before? ->
+        {:settled, cannot_comply(ctx, number, notes, objections, false, nil)}
+
+      missing != [] ->
+        {:settled, unfinished_work(ctx, session_id, number, missing)}
+
+      true ->
+        :verify
+    end
+  end
+
+  # A Developer turn that leaves the Candidate id unchanged after a failed
+  # cycle would re-run the same failure; the Build stops with the previous
+  # cycle's class and signature instead. A provider failure never reaches
+  # here (it stops the Build), and a changed Candidate is verified normally.
+  defp unchanged_candidate(ctx, candidate_id) do
+    case List.last(ctx.execution.state["cycles"] || []) do
+      %{"status" => "failed", "candidate_id" => ^candidate_id} = cycle
+      when not is_map_key(cycle, "class") or :erlang.map_get("class", cycle) != "provider" ->
+        class = cycle["class"] || "paid"
+
+        signature = FailureSignature.derive(cycle, ctx.execution.context, ctx.catalog, [])
+
+        reason =
+          "Candidate unchanged since failed cycle #{cycle["sequence"]} (class #{class}); " <>
+            "the controller did not re-run it; signature: #{Jason.encode!(signature)}"
+
+        {:settled,
+         stop(ctx, reason, %{
+           "stop_class" => "unchanged_candidate",
+           "unchanged_candidate" => %{
+             "cycle" => cycle["sequence"],
+             "class" => class,
+             "candidate_id" => candidate_id,
+             "signature" => signature
+           }
+         })}
+
+      _ ->
+        :verify
     end
   end
 
@@ -806,6 +864,11 @@ defmodule Kogen.Build do
     }
   end
 
+  defp retry_budgets(%{offline_retries: offline} = config) when is_integer(offline),
+    do: %{verification: config.verification_retries, offline: offline}
+
+  defp retry_budgets(config), do: config.verification_retries
+
   defp resume_after_failed_cycle(ctx, session_id, number, state, notes, invocation) do
     cycle = List.last(state["cycles"])
 
@@ -816,6 +879,7 @@ defmodule Kogen.Build do
          }) do
       {:ok, ctx} ->
         prompt = verification_failure_prompt(ctx, state, cycle)
+        ctx = Map.merge(ctx, %{developer_prompt: prompt, provider_retried: false})
         result = resume_developer(ctx, session_id, prompt)
         receive_developer(ctx, session_id, number, result)
 
@@ -824,52 +888,19 @@ defmodule Kogen.Build do
     end
   end
 
-  # Names the failed target and its retained receipt and log paths, as
-  # absolute control paths that open from the Candidate cwd. The controller's
-  # context, state and history paths are never given out.
+  # Every failed receipt of the cycle with its class, retained locators and
+  # digests, target evidence and primary failure lines, as absolute control
+  # paths that open from the Candidate cwd. The controller's context, state
+  # and history paths are never given out.
   defp verification_failure_prompt(ctx, state, cycle) do
-    failure = cycle["failure"]
-    retries = ctx.execution.context["verification_retries"]
-    left = retries + 1 - state["failures_since_pass"]
-
-    receipt =
-      case Enum.find(cycle["receipts"], &(&1["target"] == failure["target"])) do
-        nil ->
-          "none (the cycle failed before `make #{failure["target"]}` produced a receipt)"
-
-        _receipt ->
-          Verification.receipt_path(ctx.execution, cycle["sequence"], failure["target"])
-      end
-
-    log =
-      if is_binary(failure["log_path"]),
-        do: Path.expand(failure["log_path"], ctx.control),
-        else: failure["log_path"]
-
-    target_line =
-      case failure["kind"] do
-        "target" -> "`make #{failure["target"]}` failed"
-        "catalog" -> "the Candidate's verification-target catalog check failed"
-        "proof" -> "the controller-run proof selectors of scenario `#{failure["target"]}` failed"
-        kind -> "`#{failure["target"]}` failed (#{kind})"
-      end
-
-    """
-    Controller verification failed after your turn (cycle #{cycle["sequence"]}, Candidate `#{cycle["candidate_id"]}`): #{target_line}.
-
-    - Failed target: `#{failure["target"]}` (#{failure["kind"]})
-    - Retained receipt: `#{receipt}`
-    - Retained log: `#{log}` (sha256 #{failure["log_sha256"]})
-    - Verification retries left after this one: #{max(left - 1, 0)} of #{retries}
-
-    Read the log, fix the Candidate, and end your turn. Kogen's Build controller runs `check` and the selected targets again after your turn; do not run them yourself.
-
-    Log tail:
-
-    ```text
-    #{String.slice(failure["output"] || "", -6_000, 6_000)}
-    ```
-    """
+    FailureHandoff.render(%{
+      cycle: cycle,
+      state: state,
+      context: ctx.execution.context,
+      control: ctx.control,
+      candidate_root: ctx.root,
+      receipt_path: &Verification.receipt_path(ctx.execution, &1, &2)
+    })
   end
 
   # No Kogen code parses `notes`: they are recorded verbatim as unverified
@@ -888,21 +919,40 @@ defmodule Kogen.Build do
              "developer_invocation" => invocation,
              "receipts" => receipts
            }) do
-      if verification["terminal_state"] == "passed",
-        do: settle_notes(ctx, candidate_id, session_id, number, notes, verification),
-        else: stop(ctx, terminal_exhaustion_reason(ctx, verification))
+      objections = Kogen.Jev.objections(ctx[:turn_jev] || %{})
+
+      cond do
+        verification["terminal_state"] == "passed" ->
+          settle_notes(ctx, candidate_id, session_id, number, notes, verification)
+
+        # An objection deferred past an earlier failed cycle stays the reason
+        # when this attempt's verification then stops.
+        objections != [] ->
+          cannot_comply(ctx, number, notes, objections, true, verification)
+
+        true ->
+          stop(ctx, terminal_stop_reason(ctx, verification), terminal_details(verification))
+      end
     else
       {:error, reason} -> stop(ctx, reason)
     end
   end
 
+  # Jev read this turn's notes once, before verification; a passing cycle
+  # reuses that reading rather than asking again.
   defp settle_notes(ctx, candidate_id, session_id, number, notes, verification) do
-    case read_notes(ctx, candidate_id, notes) do
-      {:ok, ctx, jev} ->
+    case ctx[:turn_jev] do
+      %{"candidate_id" => ^candidate_id} = jev ->
         settle_outcome(ctx, candidate_id, session_id, number, notes, verification, jev)
 
-      {:error, reason} ->
-        stop(ctx, reason)
+      _ ->
+        case read_notes(ctx, candidate_id, notes) do
+          {:ok, ctx, jev} ->
+            settle_outcome(ctx, candidate_id, session_id, number, notes, verification, jev)
+
+          {:error, reason} ->
+            stop(ctx, reason)
+        end
     end
   end
 
@@ -939,7 +989,7 @@ defmodule Kogen.Build do
 
     cond do
       exhausted? ->
-        stop(ctx, terminal_exhaustion_reason(ctx, verification))
+        stop(ctx, terminal_stop_reason(ctx, verification), terminal_details(verification))
 
       missing != [] ->
         unfinished_work(ctx, session_id, number, missing)
@@ -1001,7 +1051,7 @@ defmodule Kogen.Build do
 
     reason =
       if exhausted?,
-        do: reason <> "; " <> terminal_exhaustion_reason(ctx, verification),
+        do: reason <> "; " <> terminal_stop_reason(ctx, verification),
         else: reason
 
     case record_attempt(ctx, %{
@@ -1154,11 +1204,34 @@ defmodule Kogen.Build do
 
   # A failed provider turn is not a verification cycle; the Build stops with
   # the harness failure (a guarded-path violation still takes precedence).
+  # A turn whose output carries an explicit provider marker is labelled
+  # `provider` and spends nothing: overload, capacity and 5xx resume the same
+  # Developer session once with the same prompt; a usage limit, a second
+  # provider failure, or a failure without a session stops as `provider`.
   defp settle_transport_failure(ctx, number, reason, evidence) do
     session_id = evidence[:session_id]
+    marker = ProviderMarker.classify(provider_text(evidence))
 
-    case post_developer_inputs_unchanged(ctx) do
-      :ok ->
+    retry? = is_binary(session_id) and ctx[:provider_retried] != true
+
+    case {post_developer_inputs_unchanged(ctx), marker} do
+      {:ok, %{"retry" => true}} when retry? ->
+        retry_developer(ctx, number, session_id, marker, evidence)
+
+      {:ok, %{} = marker} ->
+        stop(
+          ctx,
+          "provider failure during Developer turn (class provider, #{marker["kind"]}): #{marker["marker"]} #{role_label(ctx, :developer)}",
+          %{
+            "stop_class" => "provider",
+            "provider" => marker,
+            "developer_session_id" => session_id,
+            "developer_invocation" => invocation_evidence(evidence),
+            "outer_attempt" => number
+          }
+        )
+
+      {:ok, nil} ->
         stop(
           ctx,
           "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}",
@@ -1169,9 +1242,34 @@ defmodule Kogen.Build do
           }
         )
 
-      {:error, guard_reason} ->
+      {{:error, guard_reason}, _marker} ->
         stop(ctx, guard_reason, %{"developer_invocation" => invocation_evidence(evidence)})
     end
+  end
+
+  defp retry_developer(ctx, number, session_id, marker, evidence) do
+    case record_attempt(ctx, %{
+           "provider_retries" =>
+             List.wrap(current_attempt(ctx)["provider_retries"]) ++
+               [%{"role" => "developer", "session_id" => session_id, "marker" => marker}],
+           "developer_invocation" => invocation_evidence(evidence)
+         }) do
+      {:ok, ctx} ->
+        ctx = Map.put(ctx, :provider_retried, true)
+        prompt = ctx[:developer_prompt] || developer_prompt(ctx, nil)
+        receive_developer(ctx, session_id, number, resume_developer(ctx, session_id, prompt))
+
+      {:error, reason} ->
+        stop(ctx, reason)
+    end
+  end
+
+  # The tail of a failed provider stream, wherever the adapter kept it.
+  defp provider_text(evidence) do
+    [:output_tail, :stderr_tail, :output, :reason]
+    |> Enum.map(&Map.get(evidence, &1))
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join("\n")
   end
 
   # The catalog is no longer byte-frozen: each cycle checks the Candidate's
@@ -1217,12 +1315,15 @@ defmodule Kogen.Build do
     end
   end
 
-  defp terminal_exhaustion_reason(ctx, verification) do
+  # The stop reason of a settled, non-passing attempt names its failure class:
+  # paid exhaustion keeps today's prefix; offline exhaustion names
+  # offline_retries; an environment or provider stop names its cause.
+  defp terminal_stop_reason(ctx, verification) do
     cycle = List.last(verification["cycles"])
+    failure = cycle["failure"] || %{}
 
     target =
-      get_in(cycle, ["failure", "target"]) ||
-        (List.last(cycle["receipts"]) || %{})["target"] || "unknown"
+      failure["target"] || (List.last(cycle["receipts"]) || %{})["target"] || "unknown"
 
     signature =
       ctx.tracking.record["attempts"]
@@ -1230,7 +1331,47 @@ defmodule Kogen.Build do
       |> Map.get("failure_signatures", [])
       |> List.last()
 
-    "verification retries exhausted after cycle #{cycle["sequence"]} failed at make #{target}; signature: #{Jason.encode!(signature)}"
+    at = "cycle #{cycle["sequence"]} failed at #{failure_place(failure, target)}"
+
+    stop_reason(
+      verification["terminal_state"],
+      at,
+      failure,
+      "signature: #{Jason.encode!(signature)}",
+      ctx.execution.context
+    )
+  end
+
+  defp stop_reason("offline_exhausted", at, _failure, signature, context),
+    do:
+      "offline retries exhausted (offline_retries: #{context["offline_retries"]}) after #{at} (class offline); #{signature}"
+
+  defp stop_reason("environment", at, failure, _signature, _context),
+    do:
+      "environment failure before any provider-backed target: #{at} (class environment): #{failure["reason"] || "prepare reported an environment result"}; no retry was spent"
+
+  defp stop_reason("provider", at, failure, _signature, _context) do
+    marker = failure["provider"] || %{}
+
+    "provider failure: #{at} (class provider, #{marker["kind"]}): #{marker["marker"]}; no retry was spent"
+  end
+
+  defp stop_reason(_paid, at, _failure, signature, _context),
+    do: "verification retries exhausted after #{at} (class paid); #{signature}"
+
+  defp failure_place(%{"kind" => "prepare"}, target), do: "the prepare step of #{target}"
+  defp failure_place(_failure, target), do: "make #{target}"
+
+  defp terminal_details(verification) do
+    class =
+      case verification["terminal_state"] do
+        "offline_exhausted" -> "offline"
+        "environment" -> "environment"
+        "provider" -> "provider"
+        _ -> "paid"
+      end
+
+    %{"stop_class" => class}
   end
 
   defp normalized_final_receipts(verification) do
@@ -1258,12 +1399,17 @@ defmodule Kogen.Build do
         render_reviewer_prompt(ctx.intent, candidate_id, ctx.config, ctx.control) <>
           reviewer_notes_section(ctx) <> task_context(ctx, candidate_id, "reviewer")
 
-      # The verdict schema is chosen per launch: `ledger` is required exactly
-      # when this attempt's packet carries a nonempty ledger.
+      # The verdict schema is chosen per launch (`per-launch-verdict-schema`):
+      # `ledger` is required exactly when this attempt's packet carries a
+      # nonempty ledger. `Kogen.Harness.with_scenarios/2` additionally
+      # constrains `scenarios` to exactly the Approved Intent's scenario ids
+      # (enum, minItems=maxItems=n) and requires the per-launch evidence
+      # `receipt` field.
       context =
         ctx
         |> scrubbed_context(:reviewer)
         |> Kogen.Harness.with_ledger(ledger_paths(ctx))
+        |> maybe_with_scenarios(ctx)
 
       result =
         Kogen.Harness.launch_reviewer(
@@ -1273,13 +1419,27 @@ defmodule Kogen.Build do
           context
         )
 
-      receive_review(ctx, candidate_id, session_id, number, result)
+      receive_review(
+        Map.put(ctx, :review_reasked, false),
+        candidate_id,
+        session_id,
+        number,
+        result
+      )
     else
       {:error, reason} -> stop(ctx, reason)
     end
   end
 
   defp ledger_paths(ctx), do: Ledger.paths(current_attempt(ctx)["verification_ledger"])
+
+  defp scenario_ids(ctx), do: Enum.map(ctx.contract.scenarios, & &1["id"])
+
+  # `per-launch-verdict-schema`: every Review launch gets the schema built
+  # for it, constrained to exactly this Approved Intent's scenario ids. The
+  # schema is never static.
+  defp maybe_with_scenarios(context, ctx),
+    do: Kogen.Harness.with_scenarios(context, scenario_ids(ctx))
 
   # One immutable packet per attempt, written before launch. Its binding lives
   # in controller state and in the attempt, and every later input check
@@ -1346,22 +1506,88 @@ defmodule Kogen.Build do
     }
 
     with :ok <- bound_inputs_unchanged(ctx, candidate_id, session_id),
-         :ok <- fresh_reviewer(ctx, verdict.session_id, session_id),
-         {:ok, response} <-
-           Contract.verdict(
+         :ok <- fresh_reviewer(ctx, verdict.session_id, session_id) do
+      case Contract.verdict(
              verdict.response,
              ctx.contract,
              binding,
              Tracking.open_findings(ctx.tracking),
              ledger_paths(ctx)
-           ),
-         response =
-           Review.apply_ledger(
-             response,
-             current_attempt(ctx)["verification_ledger"],
-             ctx.contract
-           ),
-         {:ok, references} <- snapshot_references(response, ctx),
+           ) do
+        {:ok, response} ->
+          accept_verdict(ctx, candidate_id, session_id, number, verdict, response)
+
+        {:error, reason} ->
+          invalid_verdict(ctx, candidate_id, session_id, number, verdict, reason)
+      end
+    else
+      {:error, reason} ->
+        stop(ctx, "Reviewer failure: #{reason} #{role_label(ctx, :reviewer)}", %{
+          "invalid_verdict" => verdict.response
+        })
+    end
+  end
+
+  # `reviewer-reask-once`: an invalid verdict with a known session id gets
+  # exactly one resume per Review launch, asking only for a corrected verdict
+  # in valid shape, never a new judgement. A valid repair that keeps its
+  # `verdict` value settles as usual; a second invalid verdict, or a changed
+  # `verdict` value, stops the Build as today, keeping both invalid payloads.
+  defp receive_review(
+         ctx,
+         candidate_id,
+         session_id,
+         number,
+         {:error, {:malformed_verdict, _code, details}} = error
+       )
+       when is_map(details) do
+    ctx = Map.put(ctx, :review_reasked, true)
+
+    case reask_malformed_verdict(ctx, details) do
+      {:ok, verdict} ->
+        receive_review(ctx, candidate_id, session_id, number, {:ok, verdict})
+
+      {:error, reask_details} ->
+        stop(
+          ctx,
+          "Reviewer failure: #{inspect(error)}, unrepaired on re-ask #{role_label(ctx, :reviewer)}",
+          %{"invalid_verdict" => details, "invalid_verdict_reask" => reask_details}
+        )
+    end
+  end
+
+  # `environment-and-provider-classes` point 2: a Review launch failure whose
+  # evidence carries a recognised provider marker is labelled `provider` and
+  # spends nothing. A retryable marker (overload, capacity, 5xx) gets one
+  # fresh Review with the same packet: the packet is never rewritten
+  # (`write_review_packet` already ran in `review/4`), so this rebuilds the
+  # same prompt and launches a new Reviewer session. A usage limit, or a
+  # second provider failure, stops the Build as `provider`.
+  defp receive_review(ctx, candidate_id, session_id, number, {:error, reason}) do
+    marker = ProviderMarker.classify(reviewer_provider_text(reason))
+    retry? = ctx[:review_provider_retried] != true
+
+    case marker do
+      %{"retry" => true} when retry? ->
+        retry_review(ctx, candidate_id, session_id, number, marker)
+
+      %{} = marker ->
+        stop(
+          ctx,
+          "provider failure during Review (class provider, #{marker["kind"]}): #{marker["marker"]} #{role_label(ctx, :reviewer)}",
+          %{"stop_class" => "provider", "provider" => marker}
+        )
+
+      nil ->
+        stop(ctx, "Reviewer failure: #{inspect(reason)} #{role_label(ctx, :reviewer)}")
+    end
+  end
+
+  defp accept_verdict(ctx, candidate_id, session_id, number, verdict, response) do
+    response =
+      Review.apply_ledger(response, current_attempt(ctx)["verification_ledger"], ctx.contract)
+
+    with {:ok, references} <- snapshot_references(response, ctx),
          :ok <- bound_inputs_unchanged(ctx, candidate_id, session_id),
          {:ok, tracking} <-
            Tracking.apply_verdict(
@@ -1390,21 +1616,176 @@ defmodule Kogen.Build do
     end
   end
 
-  defp receive_review(
-         ctx,
-         _candidate_id,
-         _session_id,
-         _number,
-         {:error, {:malformed_verdict, _code, details}} = error
-       )
-       when is_map(details) do
-    stop(ctx, "Reviewer failure: #{inspect(error)} #{role_label(ctx, :reviewer)}", %{
-      "invalid_verdict" => details
-    })
+  # A delivered verdict the Contract rejects (for example an evidence path
+  # that does not exist) failed validation too: its first rejection gets the
+  # same one re-ask, with the Contract's errors; a second stops the Build,
+  # keeping both payloads.
+  defp invalid_verdict(ctx, candidate_id, session_id, number, verdict, reason) do
+    if ctx[:review_reasked] do
+      stop(
+        ctx,
+        "Reviewer failure: #{reason}, unrepaired on re-ask #{role_label(ctx, :reviewer)}",
+        %{
+          "invalid_verdict" => ctx[:invalid_verdict] || verdict.response,
+          "invalid_verdict_reask" => verdict.response
+        }
+      )
+    else
+      details = %{
+        "reviewer_session_id" => verdict.session_id,
+        "message" => Jason.encode!(verdict.response),
+        "errors" => reason |> String.split("; ") |> Enum.map(&%{"pointer" => "", "rule" => &1})
+      }
+
+      ctx = Map.merge(ctx, %{review_reasked: true, invalid_verdict: verdict.response})
+
+      case reask_malformed_verdict(ctx, details) do
+        {:ok, repaired} ->
+          receive_review(ctx, candidate_id, session_id, number, {:ok, repaired})
+
+        {:error, reask_details} ->
+          stop(
+            ctx,
+            "Reviewer failure: #{reason}, unrepaired on re-ask #{role_label(ctx, :reviewer)}",
+            %{"invalid_verdict" => verdict.response, "invalid_verdict_reask" => reask_details}
+          )
+      end
+    end
   end
 
-  defp receive_review(ctx, _candidate_id, _session_id, _number, {:error, reason}),
-    do: stop(ctx, "Reviewer failure: #{inspect(reason)} #{role_label(ctx, :reviewer)}")
+  defp retry_review(ctx, candidate_id, session_id, number, marker) do
+    case record_attempt(ctx, %{
+           "provider_retries" =>
+             List.wrap(current_attempt(ctx)["provider_retries"]) ++
+               [%{"role" => "reviewer", "marker" => marker}]
+         }) do
+      {:ok, ctx} ->
+        ctx = Map.merge(ctx, %{review_provider_retried: true, review_reasked: false})
+
+        prompt =
+          render_reviewer_prompt(ctx.intent, candidate_id, ctx.config, ctx.control) <>
+            reviewer_notes_section(ctx) <> task_context(ctx, candidate_id, "reviewer")
+
+        context =
+          ctx
+          |> scrubbed_context(:reviewer)
+          |> Kogen.Harness.with_ledger(ledger_paths(ctx))
+          |> maybe_with_scenarios(ctx)
+
+        result =
+          Kogen.Harness.launch_reviewer(
+            prompt,
+            ctx.config.reviewer.model,
+            ctx.config.reviewer.effort,
+            context
+          )
+
+        receive_review(ctx, candidate_id, session_id, number, result)
+
+      {:error, reason} ->
+        stop(ctx, reason)
+    end
+  end
+
+  # The tail of a failed Review launch, drawn from whatever the adapter's
+  # error tuple carries (an `:output_tail`-bearing map, a binary tail, or
+  # neither), flattened the same way `provider_text/1` reads Developer
+  # transport evidence.
+  defp reviewer_provider_text(reason) when is_tuple(reason) do
+    reason
+    |> Tuple.to_list()
+    |> Enum.flat_map(&reviewer_provider_text_piece/1)
+    |> Enum.join("\n")
+  end
+
+  defp reviewer_provider_text(reason), do: inspect(reason)
+
+  defp reviewer_provider_text_piece(value) when is_binary(value), do: [value]
+  defp reviewer_provider_text_piece(value) when is_map(value), do: [provider_text(value)]
+  defp reviewer_provider_text_piece(_value), do: []
+
+  # Resumes the exact Reviewer session named in `details` once, with the
+  # schema errors from the invalid verdict, asking only for a corrected
+  # verdict in valid shape. Returns `{:ok, verdict}` only when the repair is
+  # schema-valid and keeps the same `verdict` value as the first (parsed)
+  # attempt; otherwise `{:error, details}` naming why not (a second invalid
+  # verdict's own details, a changed `verdict` value, or no session to
+  # resume).
+  defp reask_malformed_verdict(ctx, details) do
+    session_id = details["reviewer_session_id"]
+
+    if is_binary(session_id) and session_id != "" do
+      resume_reviewer_session(ctx, session_id, details)
+    else
+      {:error, %{"reason" => "no Reviewer session id to resume"}}
+    end
+  end
+
+  defp resume_reviewer_session(ctx, session_id, details) do
+    original_verdict = malformed_verdict_value(details["message"])
+
+    context =
+      ctx
+      |> scrubbed_context(:reviewer)
+      |> Kogen.Harness.with_ledger(ledger_paths(ctx))
+      |> maybe_with_scenarios(ctx)
+
+    result =
+      Kogen.Harness.resume_reviewer(
+        session_id,
+        reask_prompt(details),
+        ctx.config.reviewer.model,
+        ctx.config.reviewer.effort,
+        context
+      )
+
+    case result do
+      {:ok, verdict} ->
+        if is_nil(original_verdict) or verdict.response["verdict"] == original_verdict do
+          {:ok, verdict}
+        else
+          {:error,
+           %{
+             "reason" => "repaired verdict changed its verdict value",
+             "verdict" => verdict.response
+           }}
+        end
+
+      {:error, {:malformed_verdict, _code, reask_details}} ->
+        {:error, reask_details}
+
+      {:error, reason} ->
+        {:error, %{"reason" => inspect(reason)}}
+    end
+  end
+
+  defp malformed_verdict_value(message) when is_binary(message) do
+    case Jason.decode(message) do
+      {:ok, %{"verdict" => value}} -> value
+      _ -> nil
+    end
+  end
+
+  defp malformed_verdict_value(_message), do: nil
+
+  @doc """
+  The one same-session re-ask sent to a Reviewer whose verdict failed
+  validation: `details["errors"]` lists each error's JSON pointer and rule.
+  """
+  def reask_prompt(details) do
+    "Your previous verdict did not match the required per-launch schema. Return a " <>
+      "corrected verdict in the same shape you were asked for, in the same session, " <>
+      "with the same `verdict` value. Do not form a new judgement.\n\n" <>
+      "Schema errors:\n" <> Enum.map_join(schema_errors(details), "\n", &error_line/1)
+  end
+
+  defp schema_errors(%{"errors" => errors}) when is_list(errors), do: errors
+  defp schema_errors(_details), do: []
+
+  defp error_line(%{"pointer" => "", "rule" => rule}), do: "- #{rule}"
+  defp error_line(%{"pointer" => pointer, "rule" => rule}), do: "- #{pointer}: #{rule}"
+  defp error_line(%{pointer: pointer, rule: rule}), do: "- #{pointer}: #{rule}"
+  defp error_line(other), do: "- " <> inspect(other)
 
   # Every launch takes its role, Expert and native helper profiles
   # from the record's `role_assignment`, frozen once at Build start; nothing
@@ -1660,6 +2041,10 @@ defmodule Kogen.Build do
 
   @stop_categories [
     {"verification retries exhausted", "verification-exhausted"},
+    {"offline retries exhausted", "offline-exhausted"},
+    {"environment failure", "environment"},
+    {"provider failure", "provider"},
+    {"Candidate unchanged since failed cycle", "unchanged-candidate"},
     {"stopped after ", "outer-allowance-exhausted"},
     {@cannot_comply_prefix, "cannot-comply"},
     {"harness failure", "provider-failure"},

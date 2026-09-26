@@ -1,0 +1,10 @@
+  4.364s Kogen.CandidateVerificationTest test the verification child drops inherited MIX_BUILD_PATH, MIX_DEPS_PATH and MIX_EXS, so a Candidate mix compile lands only under its own _build/
+  2.884s Kogen.BuildWorkspaceTest test candidate-creation the Candidate has a plain deps/ copy, no _build/, and the Approved bytes in its ignored copy
+  0.0s Kogen.CandidateVerificationTest test the verification child's environment lacks KOGEN_WRITE_BOUNDARY even when the controller's own environment sets it
+  0.0s Kogen.CandidateVerificationTest test the same tampering stops the Build on the guarded-path check before any verification cycle when the Intent does not guard .codex/hooks/**
+  0.0s Kogen.CandidateVerificationTest test the controller runs make check against the Candidate and records a failed Candidate-bound receipt despite tampered hook copies, resuming the same Developer session, when the Intent guards .codex/hooks/**
+  0.0s Kogen.CandidateVerificationTest test the controller runs every target through VerificationRunner with cwd equal to the Candidate
+  0.0s Kogen.CandidateVerificationTest test a marker a target writes under KOGEN_LIVE_LOG_DIR survives publication in control's live-evidence directory, and a caller-set KOGEN_LIVE_LOG_DIR wins
+  0.0s Kogen.CandidateVerificationTest test a fixture Build started by the controller's verification child records an applied write boundary, proving the child itself runs unconfined
+mix test test/kogen/candidate_verification_test.exs:221  2>&1  3.32s user 1.10s system 77% cpu 5.670 total
+tail -8  0.00s user 0.00s system 0% cpu 5.670 total

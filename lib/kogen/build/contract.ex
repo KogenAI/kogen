@@ -431,7 +431,7 @@ defmodule Kogen.Build.Contract do
               "expected satisfied or needs_rework"
             ),
             value_check("reason", &nonblank?/1, "must be nonblank text"),
-            refs_check("evidence")
+            refs_check("evidence", true)
           ])
         end
       ) ++
@@ -443,7 +443,7 @@ defmodule Kogen.Build.Contract do
             entry_errors(entry, at, "finding dispositions", ~w(id status reason evidence), [
               value_check("status", &(&1 in ["closed", "open"]), "expected closed or open"),
               value_check("reason", &nonblank?/1, "must be nonblank text"),
-              refs_check("evidence")
+              refs_check("evidence", true)
             ])
           end
         )
@@ -607,17 +607,27 @@ defmodule Kogen.Build.Contract do
       else: [entry_label(label, entry, position) <> ": field #{field} #{reason}"]
   end
 
-  defp refs_check(field) do
-    fn entry, position, label -> reference_errors(entry[field], entry, position, label, field) end
+  # `receipt?` is true only for Reviewer verdict evidence (scenarios,
+  # dispositions, new findings). There the per-launch verdict schema
+  # (`Kogen.Harness.Verdict.schema/2`) adds a separate `receipt` field
+  # (`null`, or a review-packet pointer `^/receipts/[0-9]+(/.*)?$`); a verdict
+  # from a launch without that schema has none, so the field is accepted
+  # when present and validated, never required here. Developer handoff
+  # evidence never has it.
+  defp refs_check(field, receipt? \\ false) do
+    fn entry, position, label ->
+      reference_errors(entry[field], entry, position, label, field, receipt?)
+    end
   end
 
-  defp reference_errors(refs, entry, position, label, field) when not is_list(refs),
+  defp reference_errors(refs, entry, position, label, field, _receipt?)
+       when not is_list(refs),
+       do: [entry_label(label, entry, position) <> ": field #{field} expected a nonempty list"]
+
+  defp reference_errors([], entry, position, label, field, _receipt?),
     do: [entry_label(label, entry, position) <> ": field #{field} expected a nonempty list"]
 
-  defp reference_errors([], entry, position, label, field),
-    do: [entry_label(label, entry, position) <> ": field #{field} expected a nonempty list"]
-
-  defp reference_errors(refs, entry, position, label, field) do
+  defp reference_errors(refs, entry, position, label, field, receipt?) do
     refs
     |> Enum.with_index(1)
     |> Enum.flat_map(fn
@@ -628,18 +638,44 @@ defmodule Kogen.Build.Contract do
         prefix = entry_label(label, entry, position) <> ": #{field}[#{ref_position}]"
 
         key_errors =
-          if exact_keys(ref, ~w(path locator), "reference"),
+          if reference_keys?(ref, receipt?),
             do: [],
-            else: [prefix <> ": keys are invalid; expected path, locator"]
+            else: [prefix <> ": keys are invalid; expected #{reference_keys_text(receipt?)}"]
 
         locator_errors =
           if nonblank?(ref["locator"]),
             do: [],
             else: [prefix <> ": field locator must be nonblank text"]
 
-        key_errors ++ locator_errors ++ reference_path_errors(ref["path"], prefix)
+        receipt_errors =
+          if receipt?, do: receipt_field_errors(ref["receipt"], prefix), else: []
+
+        key_errors ++
+          locator_errors ++ receipt_errors ++ reference_path_errors(ref["path"], prefix)
     end)
   end
+
+  defp reference_keys?(ref, true),
+    do: exact_keys(ref, ~w(path locator), "reference") or reference_keys?(ref, :receipt)
+
+  defp reference_keys?(ref, :receipt), do: exact_keys(ref, ~w(locator path receipt), "reference")
+  defp reference_keys?(ref, false), do: exact_keys(ref, ~w(path locator), "reference")
+
+  defp reference_keys_text(true), do: "path, locator and optionally receipt"
+  defp reference_keys_text(false), do: "path, locator"
+
+  @receipt_pattern ~r/^\/receipts\/[0-9]+(\/.*)?$/
+
+  defp receipt_field_errors(nil, _prefix), do: []
+
+  defp receipt_field_errors(receipt, prefix) when is_binary(receipt) do
+    if Regex.match?(@receipt_pattern, receipt),
+      do: [],
+      else: [prefix <> ": field receipt must be null or a /receipts/<n> pointer"]
+  end
+
+  defp receipt_field_errors(_receipt, prefix),
+    do: [prefix <> ": field receipt must be null or a /receipts/<n> pointer"]
 
   defp reference_path_errors(path, prefix) when not is_binary(path) or path == "",
     do: [prefix <> ": field path must be nonblank text"]
@@ -710,12 +746,15 @@ defmodule Kogen.Build.Contract do
   defp errors_result([]), do: :ok
   defp errors_result(errors), do: {:error, Enum.join(errors, "; ")}
 
+  # Used only for a verdict's new findings, which may carry the per-launch
+  # schema's `receipt` field.
   defp refs?(refs) when is_list(refs) and refs != [], do: Enum.all?(refs, &ref?/1)
   defp refs?(_), do: false
 
   defp ref?(ref) when is_map(ref) do
-    exact_keys(ref, ~w(path locator), "reference") and nonblank?(ref["path"]) and
+    reference_keys?(ref, true) and nonblank?(ref["path"]) and
       nonblank?(ref["locator"]) and
+      receipt_field_errors(Map.get(ref, "receipt"), "") == [] and
       safe_local_regular?(ref["path"])
   end
 

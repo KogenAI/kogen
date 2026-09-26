@@ -289,6 +289,55 @@ class DriverRehearsalTest(unittest.TestCase):
             handle.write(json.dumps({"type": "event_msg", "payload": {"type": "task_complete", "turn_id": " "}}) + "\n")
         self.assertEqual((None, False), self.driver.user_turn_terminal(path, "bound"))
 
+    def test_turn_end_decision_advances_completes_and_fails_fast(self):
+        # Scripted messages remain: always advance, regardless of Draft state.
+        self.assertEqual(("advance", None),
+                          self.driver.turn_end_decision("csv-flawed", 0, ["one"], set()))
+        self.assertEqual(("advance", None),
+                          self.driver.turn_end_decision("csv-flawed", 0, ["one"], self.driver.REQUIRED_DRAFT_FILES))
+        # No scripted messages remain and the Draft reached its expected end state.
+        outcome, reason = self.driver.turn_end_decision(
+            "csv-complete", 0, [], self.driver.REQUIRED_DRAFT_FILES | {"INTENT.md", "decisions.md"})
+        self.assertEqual("complete", outcome)
+        self.assertIsNone(reason)
+        # No scripted messages remain and no Draft was saved at all: fail fast.
+        outcome, reason = self.driver.turn_end_decision("csv-complete", 0, [], set())
+        self.assertEqual("fail", outcome)
+        self.assertIn("csv-complete", reason)
+        self.assertIn("no scripted answer remains", reason)
+        # No scripted messages remain and the saved Draft is missing a
+        # required file (matches required_case_capture's own contract):
+        # fail fast, naming the case and the missing evidence.
+        outcome, reason = self.driver.turn_end_decision(
+            "stateful-flawed", 0, [], {"intent.yaml", "questions.md"})
+        self.assertEqual("fail", outcome)
+        self.assertIn("stateful-flawed", reason)
+        self.assertIn("scenarios.yaml", reason)
+
+    def test_setup_fixture_excludes_every_guarded_paths_volatile_path(self):
+        """Regression (a): a planted .kogen/build.lock (and every other
+        GuardedPaths @volatile path) must never reach a fixture copy."""
+        project = self.root / "planted-project"
+        (project / "lib").mkdir(parents=True)
+        (project / "lib" / "app.ex").write_text("defmodule App do end\n")
+        (project / ".git").mkdir()
+        (project / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+        for relative in self.driver.GUARDED_PATHS_VOLATILE:
+            path = project / relative
+            if relative in (".kogen/build.lock",):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('{"planted": true}\n')
+            else:
+                path.mkdir(parents=True, exist_ok=True)
+                (path / "sentinel.txt").write_text("planted volatile state\n")
+
+        fixture = self.root / "planted-fixture"
+        self.driver.copy_fixture_source_tree(project, fixture, "planted-fixture")
+
+        self.assertTrue((fixture / "lib" / "app.ex").is_file(), "genuine tracked sources must still be copied")
+        for relative in self.driver.GUARDED_PATHS_VOLATILE:
+            self.assertFalse((fixture / relative).exists(), f"volatile path leaked into fixture: {relative}")
+
     def test_monotonic_deadline_survives_wall_clock_adjustment(self):
         clock = Clock()
         with patch.object(self.driver.time, "time", clock.time), patch.object(self.driver.time, "monotonic", clock.monotonic):
@@ -425,9 +474,21 @@ class DriverRehearsalTest(unittest.TestCase):
         self.assertEqual([], launches)
         self.assertFalse((self.runtime / "evidence-manifest.json").exists())
 
-    def test_run_suite_dispatches_all_cases_before_collection_and_reaps_after_child_failure(self):
-        launches, polls, reaped, signals = [], [], [], []
+    def test_run_suite_dispatches_all_cases_and_finishes_every_case_without_cancelling_on_first_failure(self):
+        """No-cancel contract: a failing case never cancels its still-running
+        siblings. Every dispatched case runs to completion within the same
+        deadline; cases still running at the deadline are cancelled and
+        recorded as cancelled; every case's status lands in suite-failure.json;
+        one stdout failure line is printed per failed case."""
+        clock = Clock()
+        launches, reaped, signals, manifest_calls = [], [], [], []
         cases = self.driver.CASES
+        # csv-flawed and csv-complete finish cleanly (possibly after multiple
+        # polls, proving siblings keep running concurrently). booking-flawed
+        # exits nonzero. csv-continuation's own capture raises. The remaining
+        # three never settle and are only resolved by the deadline sweep.
+        never_settle = {"booking-complete", "stateful-flawed", "stateful-complete"}
+        poll_budget = {"csv-flawed": 1, "csv-complete": 3, "booking-flawed": 1, "csv-continuation": 1}
 
         def parser(argv, **kwargs):
             class Result:
@@ -439,16 +500,16 @@ class DriverRehearsalTest(unittest.TestCase):
         def popen(argv, **kwargs):
             case = argv[-1]
             launches.append((case, kwargs))
-            # Only the three cases reached by collection settle. The later two
-            # remain live until cancellation, modelling children blocked at the
-            # shared suite barrier while preserving the parent dispatch order.
+
             class SuiteChild(Child):
                 def poll(self):
                     if self.returncode is not None:
                         return self.returncode
-                    if case in ("booking-complete", "csv-continuation", "stateful-flawed", "stateful-complete"):
+                    if case in never_settle:
                         return None
-                    polls.append(case)
+                    remaining = poll_budget[case] = poll_budget[case] - 1
+                    if remaining > 0:
+                        return None
                     if case == "booking-flawed":
                         kwargs["stdout"].write("fixture child failed after native startup\n")
                         kwargs["stdout"].flush()
@@ -458,38 +519,55 @@ class DriverRehearsalTest(unittest.TestCase):
                     return self.returncode
             return SuiteChild()
 
+        def capture(case):
+            if case == "csv-continuation":
+                raise RuntimeError(f"{case}: required evaluation evidence missing: draft/intent.yaml")
+
         def reap(fixture, _before):
             reaped.append(fixture.name)
-            if fixture.name == "booking-complete":
-                raise RuntimeError("injected reaper cleanup failure")
             return {"roots": [], "before": [], "actions": [], "remaining_pids": [], "all_reaped": True}
 
-        with patch.object(self.driver.subprocess, "run", parser), \
+        def manifest(failure=False):
+            manifest_calls.append(failure)
+            return {"manifest_path": "fake", "sha256": "fake"}
+
+        with patch.object(self.driver.time, "time", clock.time), \
+             patch.object(self.driver.time, "monotonic", clock.monotonic), \
+             patch.object(self.driver.time, "sleep", clock.sleep), \
+             patch.object(self.driver.subprocess, "run", parser), \
              patch.object(self.driver.subprocess, "Popen", popen), \
              patch.object(self.driver, "setup_continuation_seed", lambda: self.runtime / "continuation-seed"), \
              patch.object(self.driver, "write_semantic_counterexamples", lambda: (self.runtime / "semantic-counterexamples.json").write_text("{}\n")), \
-             patch.object(self.driver, "required_case_capture", lambda _case: None), \
+             patch.object(self.driver, "required_case_capture", capture), \
              patch.object(self.driver, "owned_process_tree", lambda _fixture: []), \
              patch.object(self.driver, "reap_owned_cli", reap), \
+             patch.object(self.driver, "write_manifest", manifest), \
              patch.object(self.driver.os, "killpg", lambda pid, sig: signals.append((pid, sig))):
             self.assertEqual(1, self.driver.run_suite())
 
         self.assertEqual(list(cases), [case for case, _kwargs in launches])
         self.assertEqual(set(cases), {case for case, kwargs in launches if kwargs["start_new_session"] is True})
-        self.assertEqual("csv-flawed", polls[0])
         self.assertEqual(len(cases), len(launches), "collection began before all independent children were dispatched")
-        self.assertEqual(set(cases), set(reaped))
-        self.assertTrue(signals, "pending child process groups were not cancelled")
+        # Every never-settling case was cancelled and reaped at the deadline;
+        # cases that exited on their own were never reaped through cancellation.
+        self.assertEqual(never_settle, set(reaped))
+        self.assertTrue(signals, "pending child process groups were not cancelled at the deadline")
         failure = json.loads((self.runtime / "suite-failure.json").read_text())
-        # A cleanup problem stays additive: the original failing child remains
-        # the suite cause and its retained output remains inspectable.
-        self.assertEqual("booking-flawed", failure["case"])
-        self.assertIn("child exited 7", failure["message"])
-        self.assertEqual("booking-complete", failure["cleanup_errors"][0]["case"])
-        self.assertIn("injected reaper cleanup failure", failure["cleanup_errors"][0]["message"])
+        expected_failed = never_settle | {"booking-flawed", "csv-continuation"}
+        self.assertEqual(expected_failed, set(failure["failed_cases"]))
+        self.assertIn("child exited 7", failure["failed_cases"]["booking-flawed"])
+        self.assertIn("required evaluation evidence missing", failure["failed_cases"]["csv-continuation"])
+        for case in never_settle:
+            self.assertIn("deadline", failure["failed_cases"][case])
+        self.assertNotIn("csv-flawed", failure["failed_cases"])
+        self.assertNotIn("csv-complete", failure["failed_cases"])
         child_log = (self.runtime / "booking-flawed-output.log").read_text()
         self.assertIn("fixture child failed after native startup", child_log)
-        self.assertFalse((self.runtime / "evidence-manifest.json").exists())
+        stdout = self.output.getvalue()
+        # Failure lines print in dispatch (case-table) order, one per failed case.
+        printed_order = [line.split(": ", 2)[1] for line in stdout.splitlines() if line.startswith("FAILED: ")]
+        self.assertEqual([case for case in cases if case in expected_failed], printed_order)
+        self.assertEqual([True], manifest_calls, "manifest frame must still be written exactly once on failure")
 
     def test_run_suite_real_children_overlap_at_the_actual_barrier_before_collection(self):
         """Cheap OS children exercise the production file barrier, offline."""
@@ -678,12 +756,18 @@ events.mkdir(exist_ok=True)
             patch.object(self.driver, "reap_owned_cli", lambda *_args: {"roots":[],"before":[],"actions":[],"remaining_pids":[],"all_reaped":True}):
             status = self.driver.run_suite()
         if getattr(self, "corrupt_first_capture", False):
+            # No-cancel contract: one corrupted case's capture failure never
+            # stops its still-running siblings from dispatching or completing.
             self.assertEqual(1, status)
             failure = json.loads((self.runtime / "suite-failure.json").read_text())
-            self.assertIn("captured provenance differs from original Draft", failure["message"])
+            self.assertIn("captured provenance differs from original Draft", failure["failed_cases"]["csv-flawed"])
             self.assertEqual(len(self.driver.CASES), sum(Path(argv[1]).name == "shape_transport.exp" for argv in launches))
-            self.assertFalse((self.runtime / "evidence-manifest.json").exists())
-            self.assertNotIn("KOGEN_TARGET_EVIDENCE_MANIFEST\t", self.output.getvalue())
+            # A failure manifest is still written and printed exactly once,
+            # covering only artifacts that actually exist plus suite-failure.json.
+            self.assertTrue((self.runtime / "evidence-manifest.json").is_file())
+            manifest = json.loads((self.runtime / "evidence-manifest.json").read_text())
+            self.assertTrue(any(entry["path"].endswith("suite-failure.json") for entry in manifest["required_evidence"]))
+            self.assertEqual(1, self.output.getvalue().count("KOGEN_TARGET_EVIDENCE_MANIFEST\t"))
             return
         if status:
             self.fail((self.runtime / "suite-failure.json").read_text())

@@ -17,35 +17,19 @@ defmodule Kogen.ConfigurationSupportContractTest do
     assert default.harness == "claude"
   end
 
-  # The existing clean routes keep their exact bytes; the hybrids are additive.
-  test "the tracked config keeps main's clean route bytes and adds only the two hybrids" do
+  # The tracked config validates through the reader's whole-config mode: every
+  # route is normalized, not only the selected one, so a broken route in it
+  # still fails `check`. This checks behavior, not bytes: the default route
+  # resolves, every named route resolves with the harness and model each role
+  # needs, hybrids use role-level harnesses, and the retry-policy keys are
+  # integers. Appending a key, reordering keys or adding a fifth valid route
+  # to a copy still passes; a broken route in a copy still fails.
+  test "the tracked config validates in whole-config mode and resolves every route's roles" do
     tracked = File.read!(@config_path)
 
-    main_clean = """
-    default_route: claude
-    routes:
-      claude:
-        harness: claude
-        shaping:   {model: claude-opus-5-5, effort: medium}
-        developer: {model: claude-opus-5-5, effort: medium}
-        reviewer:  {model: claude-opus-5-5, effort: medium}
-        helpers:
-          scout:  {model: claude-sonnet-5, effort: low}
-          worker: {model: claude-sonnet-5, effort: medium}
-          expert: {model: claude-opus-5-5, effort: high}
-      codex:
-        harness: codex
-        shaping:   {model: gpt-6-sol, effort: medium}
-        developer: {model: gpt-6-sol, effort: medium}
-        reviewer:  {model: gpt-6-sol, effort: high}
-        helpers:
-          scout:  {model: gpt-6-luna, effort: low}
-          worker: {model: gpt-6-luna, effort: high}
-          expert: {model: gpt-6-sol, effort: high}
-    """
-
-    assert String.starts_with?(tracked, main_clean)
-    assert String.ends_with?(tracked, "outer_resumptions: 2\nverification_retries: 2\n")
+    assert {:ok, default} = Kogen.Intent.validate_config(@config_path)
+    assert default.route == "claude"
+    assert default.harness == "claude"
 
     {:ok, data} = YamlElixir.read_from_string(tracked)
 
@@ -61,6 +45,111 @@ defmodule Kogen.ConfigurationSupportContractTest do
     for {_name, route} <- data["routes"] do
       refute Map.has_key?(route, "auditor")
     end
+
+    for route <-
+          ~w(claude codex claude-dominant-adversarial-codex codex-dominant-adversarial-claude) do
+      assert {:ok, config} = Kogen.Intent.read_config(@config_path, route)
+      assert is_binary(config.harness)
+      assert is_integer(config.outer_resumptions)
+      assert is_integer(config.verification_retries)
+      assert is_integer(config.offline_retries)
+    end
+  end
+
+  test "an appended key, reordered keys, and a fifth valid route all pass whole-config validation" do
+    root =
+      Path.join(System.tmp_dir!(), "kogen-config-reorder-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf(root) end)
+
+    appended = Path.join(root, "appended.yaml")
+    File.write!(appended, File.read!(@config_path) <> "\n# a harmless trailing comment\n")
+    assert {:ok, _config} = Kogen.Intent.validate_config(appended)
+
+    reordered = Path.join(root, "reordered.yaml")
+
+    File.write!(reordered, """
+    verification_retries: 2
+    outer_resumptions: 2
+    offline_retries: 4
+    routes:
+      claude:
+        harness: claude
+        shaping:   {model: claude-opus-5-5, effort: medium}
+        developer: {model: claude-opus-5-5, effort: medium}
+        reviewer:  {model: claude-opus-5-5, effort: medium}
+        helpers:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+          expert: {model: claude-opus-5-5, effort: high}
+    default_route: claude
+    """)
+
+    assert {:ok, reordered_config} = Kogen.Intent.validate_config(reordered)
+    assert reordered_config.route == "claude"
+
+    fifth_route = Path.join(root, "fifth-route.yaml")
+
+    File.write!(fifth_route, """
+    default_route: claude
+    routes:
+      claude:
+        harness: claude
+        shaping:   {model: claude-opus-5-5, effort: medium}
+        developer: {model: claude-opus-5-5, effort: medium}
+        reviewer:  {model: claude-opus-5-5, effort: medium}
+        helpers:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+          expert: {model: claude-opus-5-5, effort: high}
+      fifth:
+        harness: claude
+        shaping:   {model: claude-opus-5-5, effort: medium}
+        developer: {model: claude-opus-5-5, effort: medium}
+        reviewer:  {model: claude-opus-5-5, effort: medium}
+        helpers:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+          expert: {model: claude-opus-5-5, effort: high}
+    outer_resumptions: 2
+    verification_retries: 2
+    offline_retries: 4
+    """)
+
+    assert {:ok, _config} = Kogen.Intent.validate_config(fifth_route)
+    assert {:ok, fifth} = Kogen.Intent.read_config(fifth_route, "fifth")
+    assert fifth.route == "fifth"
+
+    broken_route = Path.join(root, "broken-route.yaml")
+
+    File.write!(broken_route, """
+    default_route: claude
+    routes:
+      claude:
+        harness: claude
+        shaping:   {model: claude-opus-5-5, effort: medium}
+        developer: {model: claude-opus-5-5, effort: medium}
+        reviewer:  {model: claude-opus-5-5, effort: medium}
+        helpers:
+          scout:  {model: claude-sonnet-5, effort: low}
+          worker: {model: claude-sonnet-5, effort: medium}
+          expert: {model: claude-opus-5-5, effort: high}
+      other:
+        harness: claude
+    outer_resumptions: 2
+    verification_retries: 2
+    offline_retries: 4
+    """)
+
+    assert {:error, reason} = Kogen.Intent.validate_config(broken_route)
+    assert reason =~ "missing required key: routes.other"
+
+    assert {:ok, selected} = Kogen.Intent.read_config(broken_route, "claude")
+    assert selected.route == "claude"
+
+    assert {:error, selecting_reason} = Kogen.Intent.read_config(broken_route, "other")
+    assert selecting_reason =~ "missing required key: routes.other"
   end
 
   # Codex-only live owners and the shaping-evaluation driver resolve the one
@@ -217,6 +306,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
           expert: {model: expert, effort: high}
     outer_resumptions: 2
     verification_retries: 1
+    offline_retries: 4
     """)
 
     assert {:ok, config} = Kogen.Intent.read_config(path)
@@ -234,6 +324,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
         harness: codex
     outer_resumptions: 2
     verification_retries: 1
+    offline_retries: 4
     """)
 
     assert {:error, reason} = Kogen.Intent.read_config(path)

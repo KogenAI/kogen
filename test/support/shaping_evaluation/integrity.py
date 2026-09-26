@@ -7,6 +7,7 @@ CASES = ("csv-flawed", "csv-complete", "booking-flawed", "booking-complete", "cs
          "stateful-flawed", "stateful-complete")
 MAX_SECONDS = 600
 MAX_SCRIPTED_REPLIES = 6
+SMOKE_MAX_SECONDS = 300
 
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 def reject(condition, message):
@@ -22,6 +23,22 @@ def relative_safe(root, value):
 
 def case_root(evaluation_root, case): return evaluation_root / 'runs' / case
 
+_YAML_DRIVER = None
+
+
+def yaml_driver():
+    """The driver's parser boundary, loaded once so its parse memo is reused
+    across every Draft this module validates."""
+    global _YAML_DRIVER
+    if _YAML_DRIVER is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("integrity_yaml_driver", Path(__file__).with_name("driver.py"))
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        _YAML_DRIVER = driver
+    return _YAML_DRIVER
+
+
 def draft_identity(path):
     intent = path / 'intent.yaml'
     reject(intent.is_file(), 'draft intent.yaml missing')
@@ -31,12 +48,8 @@ def draft_identity(path):
     except json.JSONDecodeError:
         # Flow-map YAML may start with "{" without being JSON. Use the same
         # supported parser boundary, never a partial identity regex.
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("integrity_yaml_driver", Path(__file__).with_name("driver.py"))
-        driver = importlib.util.module_from_spec(spec)
         try:
-            spec.loader.exec_module(driver)
-            data = driver.parse_yaml_mapping(intent, case=path.parent.name)
+            data = yaml_driver().parse_yaml_mapping(intent, case=path.parent.name)
         except (RuntimeError, KeyError) as exc:
             raise ValueError(f"Draft YAML unavailable or invalid: {exc}") from exc
     reject(isinstance(data, dict) and isinstance(data.get('id'), str) and data['id'], 'draft identity missing')
@@ -201,6 +214,100 @@ def validate_booking_setup(old_receipt, inventory, observation):
     reject('.tmp/calendar-run-17/connection.json' in old_receipt.read_text(errors='replace') and
            ('absent' in inventory_text or 'no .tmp directory' in inventory_text),
            'stale booking setup gap not retained')
+
+def validate_smoke_receipt(receipt):
+    """Smoke is deliberately not a CASES member: transport mechanics only,
+    graded nothing, bounded at SMOKE_MAX_SECONDS rather than MAX_SECONDS."""
+    reject(receipt.get('case') == 'smoke', 'unknown smoke case')
+    reject(0 <= receipt.get('elapsed_seconds', -1) <= SMOKE_MAX_SECONDS, 'smoke session time bound')
+    reject(receipt.get('scripted_replies') == 1, 'smoke scripted reply bound')
+    reject(receipt.get('outcome') == 'completed', 'smoke session did not complete')
+    reject(receipt.get('git_status', {}).get('baseline_unchanged') is True, 'smoke fixture baseline changed')
+    reject(receipt.get('git_status', {}).get('draft_exists') is True, 'smoke saved draft missing')
+    identity = receipt.get('source_identity', {})
+    reject(identity.get('unchanged') is True and identity.get('baseline') and identity.get('baseline') == identity.get('after'), 'smoke fixture source identity changed')
+
+def validate_smoke_case(evaluation_root):
+    """Smoke mode: the same generic native/receipt/Draft-provenance controls
+    validate_case() uses, without CASES membership or any per-case (csv/
+    booking/stateful) evidence, since the smoke turn grades nothing."""
+    run = case_root(evaluation_root, 'smoke')
+    receipt_path, messages_path = run / 'receipt.json', run / 'messages.json'
+    delivery_path = run / 'input-delivery.json'
+    reject(receipt_path.is_file() and messages_path.is_file() and delivery_path.is_file(), 'missing smoke receipt')
+    receipt, messages = json.loads(receipt_path.read_text()), json.loads(messages_path.read_text())
+    delivery = json.loads(delivery_path.read_text())
+    validate_smoke_receipt(receipt)
+    reject(receipt['case'] == 'smoke', 'smoke receipt mismatch')
+    reject(isinstance(messages, list) and len(messages) == receipt['scripted_replies'] == 1, 'smoke scripted message count mismatch')
+    readme = run / 'fixture-source' / 'README.md'
+    reject(delivery.get('case') == 'smoke' and delivery.get('available_before_dispatch') is True and
+           delivery.get('request_path') == 'README.md' and readme.is_file() and
+           delivery.get('readme_sha256') == digest(readme) and
+           delivery.get('request') in readme.read_text(), 'smoke initial request was not frozen before dispatch')
+    validate_native(run, receipt, messages)
+    bindings = receipt.get('terminal_turn_bindings')
+    reject(isinstance(bindings, list) and len(bindings) == 1 and all(isinstance(value, str) and value.strip() for value in bindings), 'smoke terminal turn binding missing')
+    draft = run / 'draft'
+    identity = draft_identity(draft)
+    reject(all((draft / name).is_file() for name in ('scenarios.yaml', 'questions.md')), 'saved smoke Draft contract files missing')
+    reject(not (draft / 'approval.md').exists(), 'smoke Draft was approved')
+    state = json.loads((run / 'draft-state.json').read_text())
+    baseline_state = state.get('baseline')
+    reject(state.get('intent_id') == identity and isinstance(baseline_state, dict) and baseline_state.get('branch') and baseline_state.get('head') and state.get('visit_id') and state.get('unapproved') is True, 'smoke draft provenance state missing')
+    baseline = json.loads((run / 'source-baseline.json').read_text())
+    after = json.loads((run / 'source-after.json').read_text())
+    reject(isinstance(baseline, dict) and baseline and baseline == after == receipt['source_identity']['baseline'], 'frozen smoke source baseline differs')
+    fixture = evaluation_root / 'smoke'
+    evidence = run / 'evidence' if (run / 'evidence').is_dir() else fixture / 'evidence'
+    reject(evidence.is_dir() and (evidence / 'greeting.md').is_file(), 'smoke fixture source facts missing')
+    return identity
+
+def validate_smoke_manifest(root, manifest_path):
+    trace_path = os.environ.get("KOGEN_REHEARSAL_TRACE")
+    if trace_path:
+        with open(trace_path, "a", encoding="utf-8") as trace:
+            trace.write("Kogen.ShapingEvaluation.Integrity.validate_smoke_manifest\n")
+    payload = json.loads(manifest_path.read_text())
+    reject(set(payload) == {'schema_version', 'required_evidence'} and payload['schema_version'] == 1, 'manifest schema')
+    entries = payload['required_evidence']
+    reject(isinstance(entries, list) and entries, 'required evidence is empty')
+    seen = set()
+    for entry in entries:
+        reject(set(entry) == {'path', 'sha256'}, 'invalid manifest entry')
+        path = relative_safe(root, entry['path'])
+        reject(entry['path'] not in seen, 'duplicate evidence path'); seen.add(entry['path'])
+        reject(isinstance(entry['sha256'], str) and re.fullmatch(r'[0-9a-f]{64}', entry['sha256']) is not None, 'invalid evidence hash')
+        reject(digest(path) == entry['sha256'], 'evidence hash mismatch')
+        parts = Path(entry['path']).parts
+        reject('owned-rollouts' not in parts and 'private-raw-rollouts' not in parts,
+               'manifest includes private rollout stream')
+        reject(Path(entry['path']).name not in {'receipt.json', 'transport.log', 'pty.log'} and
+               not Path(entry['path']).name.startswith('resume-') and not Path(entry['path']).name.endswith('-pty.log'),
+               'manifest includes private runtime log or detailed receipt')
+    evaluation_root = manifest_path.parent
+    relative_root = evaluation_root.relative_to(root).as_posix()
+    required = [
+        f'{relative_root}/runs/smoke/review-receipt.json',
+        f'{relative_root}/runs/smoke/messages.json',
+        f'{relative_root}/runs/smoke/public-transcript.json',
+        f'{relative_root}/runs/smoke/owned-session-metadata.json',
+        f'{relative_root}/runs/smoke/draft/intent.yaml',
+        f'{relative_root}/runs/smoke/draft/scenarios.yaml',
+        f'{relative_root}/runs/smoke/draft/questions.md',
+        f'{relative_root}/runs/smoke/draft-state.json',
+    ]
+    run = case_root(evaluation_root, 'smoke')
+    required.extend(str(path.relative_to(root)) for path in (run / 'draft').rglob('*') if path.is_file())
+    required.extend(str(path.relative_to(root)) for path in (run / 'fixture-source').rglob('*') if path.is_file())
+    evidence_names = ('greeting.md', 'facts.json', 'fixture-contract.md',
+                      'complete-input-receipt.json', 'current-prerequisite-receipt.json', 'prerequisite_control.py')
+    required.extend(str((run / 'evidence' / name).relative_to(root)) for name in evidence_names
+                    if (run / 'evidence' / name).is_file())
+    reject(all(path in seen for path in required), 'manifest omits required smoke evidence')
+    validate_public_receipt(run, json.loads((run / 'receipt.json').read_text()))
+    validate_smoke_case(evaluation_root)
+    return payload
 
 def validate_case(evaluation_root, case):
     run = case_root(evaluation_root, case)
@@ -374,6 +481,37 @@ def validate_manifest(root, manifest_path):
     reject(isinstance(counters,list) and len(counters) >= 6 and all(isinstance(x,dict) and x.get('wrong_result') for x in counters), 'semantic counterexamples incomplete')
     return payload
 
+def validate_failure_manifest(root, manifest_path):
+    """Failure-mode manifest: no-cancel suite failures manifest whatever each
+    case already produced plus suite-failure.json itself, never a full
+    per-case coverage requirement (some cases may be cancelled/incomplete)."""
+    payload = json.loads(manifest_path.read_text())
+    reject(set(payload) == {'schema_version', 'required_evidence'} and payload['schema_version'] == 1,
+           'manifest schema')
+    entries = payload['required_evidence']
+    reject(isinstance(entries, list) and entries, 'required evidence is empty')
+    seen = set()
+    suite_failure_seen = False
+    for entry in entries:
+        reject(set(entry) == {'path', 'sha256'}, 'invalid manifest entry')
+        path = relative_safe(root, entry['path'])
+        reject(entry['path'] not in seen, 'duplicate evidence path'); seen.add(entry['path'])
+        reject(isinstance(entry['sha256'], str) and re.fullmatch(r'[0-9a-f]{64}', entry['sha256']) is not None,
+               'invalid evidence hash')
+        reject(path.is_file(), f"failure manifest entry does not exist: {entry['path']}")
+        reject(digest(path) == entry['sha256'], 'evidence hash mismatch')
+        parts = Path(entry['path']).parts
+        reject('owned-rollouts' not in parts and 'private-raw-rollouts' not in parts,
+               'manifest includes private rollout stream')
+        reject(Path(entry['path']).name not in {'receipt.json', 'transport.log', 'pty.log'} and
+               not Path(entry['path']).name.startswith('resume-') and not Path(entry['path']).name.endswith('-pty.log'),
+               'manifest includes private runtime log or detailed receipt')
+        if Path(entry['path']).name == 'suite-failure.json':
+            suite_failure_seen = True
+    reject(suite_failure_seen, 'failure manifest omits suite-failure.json')
+    return payload
+
+
 def write(path, content): path.parent.mkdir(parents=True, exist_ok=True); path.write_text(content)
 def fake_rollout(session, message, include_startup=False):
     messages = message if isinstance(message, list) else [message]
@@ -523,8 +661,14 @@ def self_test():
     print('shaping evaluation integrity controls: ok')
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser(); parser.add_argument('--self-test',action='store_true'); parser.add_argument('--validate-manifest'); parser.add_argument('--root'); options=parser.parse_args()
+    parser=argparse.ArgumentParser(); parser.add_argument('--self-test',action='store_true'); parser.add_argument('--validate-manifest'); parser.add_argument('--root')
+    parser.add_argument('--smoke', action='store_true', help='validate the standalone smoke manifest instead of the CASES suite manifest')
+    options=parser.parse_args()
     if options.self_test: self_test()
     elif options.validate_manifest:
         if not options.root: parser.error('--validate-manifest requires --root')
-        validate_manifest(Path(options.root),Path(options.validate_manifest)); print('shaping evaluation manifest: valid')
+        if options.smoke:
+            validate_smoke_manifest(Path(options.root),Path(options.validate_manifest))
+        else:
+            validate_manifest(Path(options.root),Path(options.validate_manifest))
+        print('shaping evaluation manifest: valid')

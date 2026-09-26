@@ -4,6 +4,7 @@ set fixture_dir [lindex $argv 0]
 set log_path [lindex $argv 1]
 set mailbox [lindex $argv 2]
 set continuation_slug [lindex $argv 3]
+set route [lindex $argv 4]
 set timeout 30
 set child_eof 0
 set pending_question 0
@@ -63,7 +64,7 @@ proc close_session {} {
 }
 
 cd $fixture_dir
-if {$continuation_slug eq ""} { spawn mix kogen.shape } else { spawn mix kogen.shape $continuation_slug }
+if {$continuation_slug eq ""} { spawn mix kogen.shape --route $route } else { spawn mix kogen.shape --route $route $continuation_slug }
 catch {stty rows 40 columns 120 < $spawn_out(slave,name)}
 match_max 200000
 pump 1

@@ -1,7 +1,14 @@
 defmodule Kogen.GuardedPathsTest do
-  use ExUnit.Case, async: true
+  # `Kogen.IsolatedCase`, not plain `ExUnit.Case`: the fake-harness Build test
+  # below calls `Kogen.WorkspaceFixture.build!/2`, which mutates process-wide
+  # environment (`System.put_env/2`, `KOGEN_HARNESS` among others). Sharing
+  # the outer async VM with another concurrent fake-harness Build races that
+  # environment, as every other `Fixture.build!` test in this suite already
+  # avoids by using `Kogen.IsolatedCase`.
+  use Kogen.IsolatedCase, async: true
 
   alias Kogen.Build.GuardedPaths
+  alias Kogen.WorkspaceFixture, as: Fixture
 
   test "rejects an unguarded executable-bit change when core.filemode is false" do
     root =
@@ -123,6 +130,113 @@ defmodule Kogen.GuardedPathsTest do
     # The Candidate's own working tree (a distinct directory) is unaffected.
     refute File.exists?(Path.join(candidate, ".kogen/intents/drafts/new-draft.md"))
     refute File.exists?(Path.join(candidate, ".kogen/intents/approved/moved-package"))
+  end
+
+  # Scenario `declared-gitignore-edit`: `.gitignore` is an ordinary guarded
+  # path, checked through `changed_paths/3` like any tracked file, not part
+  # of the frozen `same_config` set. This reproduces evidence/probe-gitignore's
+  # table.
+  describe "`.gitignore` as an ordinary guarded path" do
+    setup do
+      root = Path.join(System.tmp_dir!(), "kogen-guarded-gitignore-#{unique()}")
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf!(root) end)
+
+      File.write!(Path.join(root, ".gitignore"), "*.log\n")
+      File.write!(Path.join(root, "a.txt"), "a\n")
+
+      git!(root, ["init", "-q"])
+      git!(root, ["config", "user.email", "fixture@example.invalid"])
+      git!(root, ["config", "user.name", "Fixture"])
+      git!(root, ["add", "-A"])
+      git!(root, ["commit", "-qm", "base"])
+
+      assert {:ok, snapshot} = GuardedPaths.capture(root)
+      %{root: root, snapshot: snapshot}
+    end
+
+    test "a hiding edit with only `.gitignore` declared still names the hidden file", %{
+      root: root,
+      snapshot: snapshot
+    } do
+      File.write!(Path.join(root, ".gitignore"), "*.log\nhidden.txt\n")
+      File.write!(Path.join(root, "hidden.txt"), "sneaky\n")
+
+      assert {:error, reason} = GuardedPaths.check(snapshot, [".gitignore"])
+      assert reason =~ "hidden.txt"
+      refute reason =~ ".gitignore,"
+    end
+
+    test "a hiding edit with `.gitignore` undeclared names both the file and `.gitignore`", %{
+      root: root,
+      snapshot: snapshot
+    } do
+      File.write!(Path.join(root, ".gitignore"), "*.log\nhidden.txt\n")
+      File.write!(Path.join(root, "hidden.txt"), "sneaky\n")
+
+      assert {:error, reason} = GuardedPaths.check(snapshot, [])
+      assert reason =~ ".gitignore"
+      assert reason =~ "hidden.txt"
+    end
+
+    test "a hiding edit passes once both `.gitignore` and the hidden file are declared", %{
+      root: root,
+      snapshot: snapshot
+    } do
+      File.write!(Path.join(root, ".gitignore"), "*.log\nhidden.txt\n")
+      File.write!(Path.join(root, "hidden.txt"), "sneaky\n")
+
+      assert :ok = GuardedPaths.check(snapshot, [".gitignore", "hidden.txt"])
+    end
+
+    test "a declared `.gitignore`-only edit that hides nothing passes", %{
+      root: root,
+      snapshot: snapshot
+    } do
+      File.write!(Path.join(root, ".gitignore"), "*.log\n*.pid\n")
+
+      assert :ok = GuardedPaths.check(snapshot, [".gitignore"])
+    end
+
+    test "an undeclared `.gitignore`-only edit is refused as an ordinary guard violation", %{
+      root: root,
+      snapshot: snapshot
+    } do
+      File.write!(Path.join(root, ".gitignore"), "*.log\n*.pid\n")
+
+      assert {:error, reason} = GuardedPaths.check(snapshot, [])
+      assert reason == "Candidate changed paths outside Approved guards: .gitignore"
+    end
+
+    test "`.git/info/exclude` and `.git/config` stay frozen even when `.gitignore` is declared",
+         %{root: root, snapshot: snapshot} do
+      assert :ok = GuardedPaths.check(snapshot, [".gitignore"])
+
+      git!(root, ["config", "user.signingkey", "changed-after-capture"])
+
+      assert {:error, reason} = GuardedPaths.check(snapshot, [".gitignore"])
+      assert reason == "Git configuration or ignore policy changed during Developer turn"
+    end
+  end
+
+  test "a fake-harness Build whose Intent declares `.gitignore` and edits it reaches Review" do
+    control = Fixture.create!(guards: ["dummy.txt", ".gitignore"])
+    on_exit(fn -> File.rm_rf(control) end)
+
+    tools = Fixture.tmp_dir!("gitignore-edit-role")
+    role = Fixture.waiting_role!(tools, Fixture.support("fake_codex_simple_accept"))
+    edit = "printf '*.tmp\\n' >> .gitignore"
+
+    task =
+      Task.async(fn ->
+        Fixture.build!(control, harness: role, env: [{"FIXTURE_DEV_EDIT", edit}])
+      end)
+
+    home = Fixture.await_waiting!(control)
+    File.write!(Path.join(home, "go"), "")
+    assert :ok = Task.await(task, 180_000)
+
+    assert File.read!(Path.join(control, ".gitignore")) =~ "*.tmp"
   end
 
   defp unique, do: "#{System.pid()}-#{System.unique_integer([:positive])}"

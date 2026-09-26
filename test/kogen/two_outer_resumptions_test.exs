@@ -52,6 +52,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
         expert: {model: fake, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @claude_config_yaml """
@@ -68,6 +69,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
         expert: {model: claude-opus-5-5, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @makefile """
@@ -407,6 +409,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
         expert: {model: gpt-other-expert, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   # After the first Developer launch: the selected route's models change, the
@@ -439,6 +442,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
         expert: {model: gpt-mutated-expert, effort: low}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   # Second edit (after the resumed Developer turn): the selected route is gone.
@@ -456,6 +460,7 @@ defmodule Kogen.TwoOuterResumptionsTest do
         expert: {model: gpt-5.6-sol, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   test "a Build on a non-default route holds its frozen route across a mid-Build config edit, recording and publishing it; same-candidate-rework holds" do

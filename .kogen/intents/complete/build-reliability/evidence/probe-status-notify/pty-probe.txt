@@ -1,0 +1,1 @@
+'columns={:error, :enotsup} ansi_enabled=true terminal_opt=true\r\n  Developer turn 1        3s\r\n'

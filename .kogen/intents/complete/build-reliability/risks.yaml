@@ -1,0 +1,213 @@
+- id: self-hosting-review
+  scenario_ids: [per-launch-verdict-schema, reviewer-reask-once]
+  description: >-
+    This Build runs main 7ed41f66's controller, which is loaded code. Its Review
+    uses main's static `Verdict.schema/1` and `Contract.verdict/4`, which reject
+    any extra key (`lib/kogen/build/contract.ex:154-158`). At 7ed41f66 it
+    renders both role prompts from control (`build.ex:2260-2262`,
+    `:2312-2314`), so the Candidate's prompt changes (including
+    `role-prompt-tune-up`) don't reach this Build's own roles. README's
+    self-hosting list, which says otherwise, is corrected by
+    `docs-and-prompts-checked-by-meaning`. The Candidate prompt still stays
+    valid under main's schema. It
+    mentions `receipt` only as "when your verdict schema provides it". This
+    Build's own Review gets neither the per-launch schema nor the re-ask, so an
+    invalid verdict here still ends the Build as today. The new behaviour is
+    observed in this Build only through the nested fixture Build of
+    `live-reviewer-rework`, which compiles and runs the Candidate's controller.
+
+- id: self-hosting-accounting
+  scenario_ids: [offline-failures-own-budget, controller-runs-prepare-before-paid, unchanged-candidate-stops]
+  description: >-
+    Offline budgets, prepare-before-paid and the unchanged-Candidate stop take
+    effect only in Builds started after this commit. This Build still spends
+    `verification_retries: 2` on formatting and compile failures, so the
+    Developer should expect the old accounting. Main's loader ignores unknown
+    catalog keys (`valid_entry?/1`, `lib/kogen/build/verification_plan.ex:292-297`)
+    and unknown config keys (`lib/kogen/intent.ex:82-101`), so adding `prepare:`
+    and `offline_retries` does not break this Build's admission or cycles.
+    `CatalogChange.check/4` keeps each existing target's admission entry, so main
+    never reads `prepare` during this Build. That is safe: `prepare` is an early
+    rehearsal of setup each live owner performs itself, so this Build's paid
+    targets still run their own setup (Expert audit item 2, non-blocking). The
+    Ctrl-C behaviour from `mise.toml` likewise applies only to Builds started
+    after this lands (item 3).
+
+- id: nested-fixture-config
+  scenario_ids: [offline-failures-own-budget, reviewer-reask-once, generic-project-catalog]
+  description: >-
+    `offline_retries` is required with no default. Every fixture or test that
+    writes its own `.kogen/config.yaml` must carry it, or nested Builds (the
+    live-shape-to-build and live-reviewer-rework fixtures, the scripted fake
+    Builds) refuse to start. The live fixtures copy the Candidate's config, so
+    `.kogen/config.yaml` must carry the key in this Intent. Any other project's
+    config is refused until the key is added, and README says so.
+
+- id: provider-classifier-escape
+  scenario_ids: [environment-and-provider-classes, unchanged-candidate-stops]
+  description: >-
+    A `provider` label spends nothing, so it must never cover a failure that a
+    Candidate can cause. Only explicit provider markers qualify: usage or session
+    limit, overload or capacity, and 5xx. Every timeout stays a paid failure,
+    including Kogen's own harness turn timeout (btwokrNx's exit 124) and ExUnit
+    timeouts, because a Candidate hook, prompt or slow tool can cause them. The
+    compatibility runner already reruns `timed_out` once inside `live-native`
+    (cross-harness-adversarial-roles), and this Intent leaves that unchanged.
+
+- id: owner-edit-selection
+  scenario_ids: [shaping-suite-finishes-cases, prepare-rehearsed-in-check, shaping-smoke-target]
+  description: >-
+    README "Choosing verification targets": an Intent that edits a live owner
+    must run that target (lesson 9). This Intent edits the Shaping driver and the
+    live-reviewer-rework fixture. The driver's real-session mechanics are proven
+    by the new `live-shaping-smoke`, with the Shaper's direction to use the
+    cheapest check that observes the thing (DIRECTION §1.19). The 7-case
+    `live-shaping-quality` (whose owner file stays byte-identical) is not
+    selected. `live-reviewer-rework` is selected. The guarded glob `test/kogen/**` would let the
+    Developer edit the owners of unselected live targets:
+    `test/kogen/live_test.exs`, `test/kogen/live_shape_to_build_test.exs`,
+    `test/kogen/live_shaping_evaluation_test.exs`, and the live-native owners
+    `codex_native_live_test.exs`, `codex_compatibility_test.exs` and
+    `native_helper_live_test.exs`, and its module `lib/kogen/codex/compatibility.ex`.
+    These must stay byte-identical. `lib/kogen/codex/*` stays outside the guarded
+    paths. `lib/kogen/codex.ex` and `lib/kogen/claude_code.ex` are guarded only
+    for process custody (their `Port.open` launch sites). Their scope selection
+    (`project_id/1`, `effective_scope`) must stay byte-identical, because the
+    canonical scope key is a non-goal. Review should check the ledger for owner edits.
+
+- id: appetite
+  scenario_ids: [offline-failures-own-budget, prepare-rehearsed-in-check, handoff-lists-all-evidence, signatures-identify-failures, reviewer-reask-once, process-custody-teardown, role-prompt-tune-up]
+  description: >-
+    The Shaper settled A-E as one Intent. It touches the controller, both harness
+    adapters, the catalog, offline.py, rehearsals and three live fixtures, with
+    `outer_resumptions: 2`. After the Shaper's 2026-09-26 folds (prompt
+    tune-up, process custody, trash cleanup, and
+    refusal before verification) and the continuation's five rule relaxations
+    (2026-09-26), and after the status output and `--notify` moved to their
+    own Intent (Shaper, 2026-09-26), it has 26 scenarios. By the Shaper's
+    decision (DIRECTION §1.17) this is one Intent. It is the largest Build to
+    date. Every scenario is proven offline except two paid targets. A failed
+    `check` passes in about 184-271 s. Each paid cycle
+    adds live-shaping-smoke (duration measured in evidence/probe-shaping-smoke)
+    and live-reviewer-rework on the hybrid route (6-13 min). A failed Build keeps its
+    Candidate stash, per the batch practice.
+
+- id: mined-fixture-ownership
+  scenario_ids: [environment-and-provider-classes, handoff-lists-all-evidence, signatures-identify-failures, per-launch-verdict-schema]
+  description: >-
+    The mined receipts and verdicts live in ignored `.kogen/runtime/scenario-tracking/`
+    records on this machine. The Developer copies bounded verbatim excerpts into
+    committed test fixtures.
+  ownership:
+    - paths: "test/support/mined_failures/**, test/support/mined_verdicts/**, test/support/provider_tails/**"
+      when_exists: "Created by this Intent; none exist at 7ed41f66. If a path exists, the Build refuses to overwrite it and fails the scenario."
+      owner_after_creation: "Repository (tracked test fixtures), maintained with their tests."
+      owner_during_operation: "Read-only inputs to offline tests; no test writes them."
+      permitted_mutation: "Only by a later Intent that changes the matching test; each excerpt keeps its provenance header (Build id, cycle, source record path, original receipt or verdict sha256)."
+      validation: "Tests assert the provenance header is present and that the excerpt text still contains the classifying lines each scenario names."
+      git_state: "Tracked and committed with the Intent; no ignored or generated copies."
+      upgrade_behavior: "No migration; later formats add new fixtures rather than rewriting these."
+
+- id: lazy-controller-modules
+  scenario_ids: [per-launch-verdict-schema, reviewer-reask-once, offline-failures-own-budget, handoff-lists-all-evidence]
+  description: >-
+    Lesson 17. This Candidate changes modules main's controller loads late
+    (`Kogen.Harness.Verdict`, `Kogen.Build`, `Kogen.Build.Verification`,
+    `Kogen.Build.FailureSignature`). Since 7ed41f66, the Candidate compiles only
+    in its own worktree `_build/`. `VerificationRunner` scrubs the Mix
+    redirections, and the write boundary denies role writes to control. The
+    tests `candidate_verification_test.exs:221` and `build_workspace_test.exs:155`
+    passed on 7ed41f66 (evidence/probe-isolation). The one residual path is a
+    compile in the control checkout itself during the Build, by the human or a
+    Shaping session. Nobody compiles in control while this Build runs;
+    `pinned-engine-generations` closes this for good. No launch wrapper and no
+    prerequisite Intent is needed.
+
+- id: overlap-shaping-preflight-audit
+  scenario_ids: [shaping-smoke-target, shaping-suite-finishes-cases, driver-turn-end-replay]
+  description: >-
+    `shaping-preflight-audit` is parked in
+    `plan/staging/shaping-preflight-audit` and is no longer in
+    `.kogen/intents/approved/` (checked 2026-09-26). Its old Candidates (stashes
+    3-5) rewrite `test/support/shaping_evaluation/driver.py` and carry the same
+    `shape_transport.exp` `--route` fix that this Intent now lands. If it is
+    revived, it must be reshaped against this Intent's landed driver and
+    transport, with only one `--route` fix.
+
+- id: custody-ctrl-c-without-mise
+  scenario_ids: [process-custody-teardown]
+  description: >-
+    An instant Ctrl-C relies on `mise.toml` `[env] ELIXIR_ERL_OPTIONS = "+Bd"`,
+    so it holds only where mise is activated, as in the Shaper's zsh. It also
+    makes Ctrl-C quit `iex -S mix` in this repository at once, instead of showing
+    the menu. Without mise, the BREAK menu still appears. Teardown doesn't depend
+    on it: the supervisors' parent-death watchdogs reap every group however the
+    VM ends (evidence/probe-custody).
+
+- id: self-hosting-relaxations
+  scenario_ids: [test-catalog-binds-declarations, config-checked-by-reader, docs-and-prompts-checked-by-meaning, hooks-checked-by-behavior, helper-make-targets-allowed]
+  description: >-
+    This Build runs under main 7ed41f66's controller. The test-side changes
+    (catalog name binding, config, docs and prompts, hooks) take effect in this
+    Build's own `check`, because `check` runs the Candidate's tests. The
+    controller-side changes (`VerificationPlan`, `MakeInventory`,
+    `read_config`) take effect only in later Builds and in nested fixture
+    Builds that compile the Candidate. They are proven by the Candidate's own
+    offline tests in `check`, which exercise the Candidate's controller code on
+    fixture projects; the outer Build under main does not exhibit them, and no
+    scenario claims it does (Sol review). Main still calls
+    `VerificationPlan.load` on the Candidate at every cycle
+    (`catalog_change.ex:23-48`), so this Candidate must not add a non-catalog
+    Make target or a pattern or double-colon rule; its fixtures prove the
+    relaxation on fixture Makefiles only. The tracked `.kogen/config.yaml` must
+    not gain an incomplete route. Main's admission reads control's config, and
+    the nested fixtures copy the Candidate's.
+
+- id: quality-floor
+  scenario_ids: [test-catalog-binds-declarations, config-checked-by-reader, docs-and-prompts-checked-by-meaning, hooks-checked-by-behavior, helper-make-targets-allowed]
+  description: >-
+    The Shaper wants flexibility and high code quality together. A relaxation
+    that passes by deleting protection is wrong even if every test is green.
+    Each scenario names the protection it keeps and a negative control for it:
+    a renamed or deleted catalogued test, a broken route in the tracked
+    config, a missing cited path or placeholder or safety rule, a hook that
+    stops blocking, a missing or shadowed catalog target. Formatting,
+    `credo --strict`, warnings as errors, Boundary, guarded paths, proof.base,
+    Review, and the binding and publication integrity checks are untouched.
+    Review should check that no assertion was removed without its replacement.
+
+- id: smoke-timing
+  scenario_ids: [shaping-smoke-target]
+  description: >-
+    The smoke case ran once at low effort in 156 s, and once at medium effort in
+    410 s, against the owner's 300 s bound (evidence/probe-shaping-smoke). It
+    was run through `driver.py` directly, never through `make` inside a Build.
+    The offline rehearsal proves the Make wiring; only the real run proves the
+    time. A timeout is a paid failure and spends `verification_retries`, by the
+    Shaper's rule that timeouts are never `provider`. The fixture pins `low`
+    effort, and the bound is not raised (Opus review, 2026-09-26).
+- id: python-bytecode-in-approved-copy
+  scenario_ids: [offline-failures-own-budget]
+  description: >-
+    Build GGqa8gzTbYy4rhPqVOLoFkVg stopped at publication ("Approved Intent changed during Build") because a helper ran
+    `python3 -c "sys.path.insert(0, '.kogen/intents/approved/build-reliability/evidence/probe-signals'); import sig_proto"`,
+    and CPython wrote `__pycache__/sig_proto.cpython-314.pyc` into the Candidate's ignored Approved copy, which Kogen
+    compares byte-for-byte with its admission snapshot (lib/kogen/build.ex:183-228). Never import or execute anything
+    from `.kogen/intents/**`; copy a probe elsewhere first, and always run Python with `-B`
+    (the launcher also sets PYTHONDONTWRITEBYTECODE=1). Also: `catalog_changes.add` declares live-shaping-smoke, so add
+    its catalog entry and Makefile target exactly once (two helpers both added it in that Build).
+- id: jhzm-findings
+  scenario_ids: [shaping-smoke-target, offline-failures-own-budget]
+  description: >-
+    Build jhzmOMHWVd13K4liYJQMQk9i (fix these before anything else): (1) cycle 1 check: test/kogen/shaping_smoke_rehearsal_test.exs:12
+    "evidence outside repository …/project/.kogen/runtime/smoke-rehearsal/runs/smoke/review-receipt.json" from driver.py
+    write_smoke_manifest — the rehearsal patches driver.PROJECT but a manifested path resolves outside it; resolve every
+    smoke path from one root. (2) cycle 1 check: test/kogen/write_boundary_test.exs:622 (assert :652) still expects
+    "verification retries exhausted" while the Candidate prints "offline retries exhausted (offline_retries: 4)…"; update the
+    assertion to the new class wording. (3) cycle 2 check: test/kogen/shaping_evaluation_test.exs:90 ExUnit.TimeoutError
+    (60 s) under full-suite load (max_cases 12); split or reduce its parser-spawn work as done for its heaviest siblings —
+    never raise the timeout. (4) cycle 3 live-shaping-smoke: receipt outcome infrastructure-error, "smoke: initial request
+    turn did not save Draft", 303.5 s vs SMOKE_MAX_SECONDS=300; the real Codex session used ~144k tokens and one
+    task_complete but never wrote the Draft. Make the smoke brief ask for the Draft to be written in the first turn and
+    verify the fixture's low effort is actually applied to the launched session; the bound stays 300 s. Retained evidence:
+    .kogen/runtime/shaping-evaluation-1790367240956-586 .kogen/runtime/shaping-evaluation-1790365642188-586 . Never reproduce live cases inside the Candidate root (lesson 20 class).

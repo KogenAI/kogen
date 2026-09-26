@@ -45,6 +45,14 @@ def evidence(path="Makefile", locator="check"):
     return [{"path": path, "locator": locator}]
 
 
+def verdict_evidence(path="Makefile", locator="check", receipt=None):
+    # Reviewer verdict evidence, unlike Developer handoff evidence, carries
+    # the per-launch schema's separate `receipt` field (null, or a
+    # review-packet pointer `/receipts/<n>...`).
+    path = os.environ.get("KOGEN_SCENARIO_EVIDENCE_PATH", path)
+    return [{"path": path, "locator": locator, "receipt": receipt}]
+
+
 def developer(context):
     scenarios = context.get("scenarios", [])
     risks = context.get("risks", [])
@@ -93,12 +101,12 @@ def reviewer(context, verdict, finding_id=None):
             "id": scenario_id,
             "status": "needs_rework" if rework else "satisfied",
             "reason": "fixture review requires a correction" if rework else "fixture review verified the candidate",
-            "evidence": evidence(),
+            "evidence": verdict_evidence(),
         }
         for scenario_id in ids
     ]
     findings = (
-        [{"scenario_ids": ids or ["fixture-scenario"], "reason": "fixture rework", "evidence": evidence()}]
+        [{"scenario_ids": ids or ["fixture-scenario"], "reason": "fixture rework", "evidence": verdict_evidence()}]
         if rework
         else []
     )
@@ -107,7 +115,7 @@ def reviewer(context, verdict, finding_id=None):
             "id": item["id"],
             "status": "open" if rework else "closed",
             "reason": "fixture finding remains" if rework else "fixture finding is addressed",
-            "evidence": evidence(),
+            "evidence": verdict_evidence(),
         }
         for item in context.get("open_findings", [])
     ]
@@ -117,7 +125,7 @@ def reviewer(context, verdict, finding_id=None):
                 "id": finding_id,
                 "status": "open" if rework else "closed",
                 "reason": "fixture finding remains" if rework else "fixture finding is addressed",
-                "evidence": evidence(),
+                "evidence": verdict_evidence(),
             }
         ]
     return {

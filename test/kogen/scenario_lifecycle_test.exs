@@ -88,16 +88,20 @@ defmodule Kogen.ScenarioLifecycleTest do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
 
+    # The per-launch verdict schema (`per-launch-verdict-schema`) rejects the
+    # absolute `/etc/hosts` path before the verdict ever reaches
+    # `Contract.verdict`'s own file checks, so the controller re-asks this
+    # exact session once (`reviewer-reask-once`); this fixture repeats the
+    # same bad evidence on the re-ask, so the Build still stops.
     assert {:error, reason} = run(dir, "verdict_diagnostics")
     assert reason =~ "Reviewer failure"
-    assert reason =~ "path \"lib\""
-    assert reason =~ "found directory"
-    assert reason =~ "path \"/etc/hosts\""
-    assert reason =~ "unsafe path"
+    assert reason =~ "unrepaired on re-ask"
+    assert reason =~ "/dispositions/0/evidence/0/path"
+    assert reason =~ "pattern"
     record = record!(dir)
-    assert List.last(record["attempts"])["failure"] =~ "found directory"
     assert [%{"id" => "F1", "status" => "open", "disposition_history" => []}] = record["findings"]
-    assert File.read!(fake_state_path(dir, "reviews")) == "2"
+    # One fresh Review, plus its one re-ask resume.
+    assert File.read!(fake_state_path(dir, "reviews")) == "3"
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
     assert_retained!(dir, reason, "review-failure")
   end
@@ -206,12 +210,16 @@ defmodule Kogen.ScenarioLifecycleTest do
   test "a malformed later verdict cannot partially close retained findings" do
     dir = fixture!()
     on_exit(fn -> File.rm_rf(dir) end)
+    # The Contract's rejection gets the one same-session re-ask
+    # (`reviewer-reask-once`); the fixture repeats the omission there, so the
+    # Build still stops without closing anything.
     assert {:error, reason} = run(dir, "omitted_disposition")
     assert reason =~ "Reviewer failure"
     assert reason =~ "finding dispositions: missing expected ID \"F1\""
+    assert reason =~ "unrepaired on re-ask"
     record = record!(dir)
     assert [%{"id" => "F1", "status" => "open", "disposition_history" => []}] = record["findings"]
-    assert File.read!(fake_state_path(dir, "reviews")) == "2"
+    assert File.read!(fake_state_path(dir, "reviews")) == "3"
     refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{@slug}"))
     assert_retained!(dir, reason, "review-failure")
   end
@@ -542,7 +550,7 @@ defmodule Kogen.ScenarioLifecycleTest do
 
   defp config,
     do:
-      "default_route: codex\nroutes:\n  codex:\n    harness: codex\n    shaping: {model: fake, effort: low}\n    developer: {model: fake, effort: low}\n    reviewer: {model: fake, effort: low}\n    helpers:\n      scout: {model: fake, effort: low}\n      worker: {model: fake, effort: medium}\n      expert: {model: fake, effort: medium}\nouter_resumptions: 2\nverification_retries: 2\n"
+      "default_route: codex\nroutes:\n  codex:\n    harness: codex\n    shaping: {model: fake, effort: low}\n    developer: {model: fake, effort: low}\n    reviewer: {model: fake, effort: low}\n    helpers:\n      scout: {model: fake, effort: low}\n      worker: {model: fake, effort: medium}\n      expert: {model: fake, effort: medium}\nouter_resumptions: 2\nverification_retries: 2\noffline_retries: 4\n"
 
   defp target_evidence_producer do
     ~S'''

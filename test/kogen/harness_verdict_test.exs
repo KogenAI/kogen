@@ -240,7 +240,7 @@ defmodule Kogen.HarnessVerdictTest do
 
     # `validate/2` accepts `ledger` exactly when the launch requested one.
     assert {:ok, _} = Verdict.validate(base_message, false)
-    assert :error = Verdict.validate(base_message, true)
+    assert {:error, [_ | _]} = Verdict.validate(base_message, true)
 
     with_ledger_message =
       Map.put(base_message, "ledger", [
@@ -249,7 +249,7 @@ defmodule Kogen.HarnessVerdictTest do
       ])
 
     assert {:ok, _} = Verdict.validate(with_ledger_message, true)
-    assert :error = Verdict.validate(with_ledger_message, false)
+    assert {:error, [_ | _]} = Verdict.validate(with_ledger_message, false)
 
     # A malformed ledger entry (extra key, blank disposition) is rejected.
     malformed =
@@ -259,7 +259,185 @@ defmodule Kogen.HarnessVerdictTest do
         "extra" => true
       })
 
-    assert :error = Verdict.validate(malformed, true)
+    assert {:error, [_ | _]} = Verdict.validate(malformed, true)
+  end
+
+  # `per-launch-verdict-schema`: the schema is built for the launch, from the
+  # Approved Intent's scenario ids.
+  describe "per-launch verdict schema" do
+    test "scenarios is constrained to exactly n items, each id from the enum, for n = 1 and n = 7" do
+      for scenario_ids <- [["only-scenario"], Enum.map(1..7, &"scenario-#{&1}")] do
+        n = length(scenario_ids)
+        decoded = Verdict.schema([], scenario_ids) |> Jason.decode!()
+
+        assert decoded["properties"]["scenarios"]["minItems"] == n
+        assert decoded["properties"]["scenarios"]["maxItems"] == n
+
+        assert decoded["properties"]["scenarios"]["items"]["properties"]["id"]["enum"] ==
+                 scenario_ids
+      end
+    end
+
+    test "an empty scenario_ids list is exactly schema/1" do
+      assert Verdict.schema([], []) == Verdict.schema([])
+      assert Verdict.schema(["a_test.exs"], []) == Verdict.schema(["a_test.exs"])
+    end
+
+    test "no generated evidence path pattern contains a lookaround (Codex rejects them with 400 invalid_json_schema)" do
+      for scenario_ids <- [[], ["a"], Enum.map(1..7, &"s-#{&1}")],
+          ledger_paths <- [[], ["a_test.exs"]] do
+        schema = Verdict.schema(ledger_paths, scenario_ids)
+        refute schema =~ "(?="
+        refute schema =~ "(?!"
+        refute schema =~ "(?<="
+        refute schema =~ "(?<!"
+      end
+    end
+
+    test "the evidence path pattern accepts and rejects the Codex probe's cases" do
+      pattern = Verdict.evidence_path_pattern()
+      regex = Regex.compile!(pattern)
+
+      for accepted <- ["calc.py", "lib/a.ex", ".kogen/x.yaml"] do
+        assert Regex.match?(regex, accepted), "expected #{inspect(accepted)} to be accepted"
+      end
+
+      for rejected <- ["/receipts/0 x", "../calc.py", "a/../b", "a//b", "", "a/./b"] do
+        refute Regex.match?(regex, rejected), "expected #{inspect(rejected)} to be rejected"
+      end
+    end
+
+    test "evidence items carry a separate required receipt field: null or a review-packet pointer" do
+      decoded = Verdict.schema([], ["s"]) |> Jason.decode!()
+      evidence = decoded["properties"]["scenarios"]["items"]["properties"]["evidence"]["items"]
+
+      assert "receipt" in evidence["required"]
+      assert is_binary(evidence["properties"]["receipt"]["description"])
+      assert Regex.match?(~r/\/receipts\/\[0-9\]/, evidence["properties"]["receipt"]["pattern"])
+
+      # Every collection (scenarios, dispositions, findings) gets the same
+      # per-launch evidence schema.
+      for key <- ["dispositions", "findings"] do
+        assert decoded["properties"][key]["items"]["properties"]["evidence"] ==
+                 decoded["properties"]["scenarios"]["items"]["properties"]["evidence"]
+      end
+    end
+
+    test "validate_launch/2 returns {:error, [errors]}, each naming a JSON pointer and a rule" do
+      valid = valid_verdict_with_receipts()
+      ids = ["scenario-1"]
+
+      assert {:ok, _} =
+               Verdict.validate_launch(valid, %{
+                 ledger?: false,
+                 ledger_paths: [],
+                 scenario_ids: ids
+               })
+
+      missing_id = put_in(valid, ["scenarios"], [])
+
+      assert {:error, errors} =
+               Verdict.validate_launch(missing_id, %{
+                 ledger?: false,
+                 ledger_paths: [],
+                 scenario_ids: ids
+               })
+
+      assert Enum.any?(errors, fn %{"pointer" => pointer, "rule" => rule} ->
+               pointer == "/scenarios" and rule =~ "missing scenario id"
+             end)
+    end
+
+    test "replaying qWusXkQn's mined invalid verdict names the omitted scenario id" do
+      fixture =
+        "test/support/mined_verdicts/qwusxkqn_invalid.json"
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert fixture["provenance"]["build_id"] == "qWusXkQnvl77VkiH2xEfuMdz"
+
+      verdict = fixture["verdict"]
+      # The full Approved scenario id set of that Build; the invalid verdict
+      # omits `codex-tool-output-limit`.
+      scenario_ids = [
+        "record-never-embeds-itself",
+        "bounded-review-packet",
+        "live-packet-audit",
+        "codex-tool-output-limit",
+        "fixture-outside-checkout",
+        "superseded-objection-reaches-review",
+        "planted-defect-review-preserved"
+      ]
+
+      assert {:error, errors} =
+               Verdict.validate_launch(verdict, %{
+                 ledger?: false,
+                 ledger_paths: [],
+                 scenario_ids: scenario_ids
+               })
+
+      assert Enum.any?(errors, fn %{"pointer" => pointer, "rule" => rule} ->
+               pointer == "/scenarios" and
+                 rule == ~s(required: missing scenario id "codex-tool-output-limit")
+             end)
+    end
+
+    test "replaying 8Bs51yZP's mined invalid verdict names its bad /receipts/0 ... evidence path" do
+      fixture =
+        "test/support/mined_verdicts/8bs51yzp_invalid.json"
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert fixture["provenance"]["build_id"] == "8Bs51yZPDl4HH1djvfmhxQa9"
+
+      verdict = fixture["verdict"]
+      scenario_ids = Enum.map(verdict["scenarios"], & &1["id"])
+
+      assert {:error, errors} =
+               Verdict.validate_launch(verdict, %{
+                 ledger?: false,
+                 ledger_paths: [],
+                 scenario_ids: scenario_ids
+               })
+
+      assert Enum.any?(errors, fn
+               %{"pointer" => pointer, "rule" => rule} ->
+                 pointer =~ ~r|^/scenarios/\d+/evidence/\d+/path$| and rule =~ "pattern"
+
+               _ ->
+                 false
+             end)
+
+      # The exact mined path defect: `/receipts/0 target check status passed`
+      # in the `path` field (the real bug this scenario fixes: a free-form
+      # citation, not the separate `receipt` field this schema now provides).
+      bad_path_pointer =
+        verdict["scenarios"]
+        |> Enum.with_index()
+        |> Enum.find_value(fn {scenario, i} ->
+          scenario["evidence"]
+          |> Enum.with_index()
+          |> Enum.find_value(fn {evidence, j} ->
+            if evidence["path"] == "/receipts/0 target check status passed",
+              do: "/scenarios/#{i}/evidence/#{j}/path"
+          end)
+        end)
+
+      assert bad_path_pointer != nil
+      assert Enum.any?(errors, &(&1["pointer"] == bad_path_pointer and &1["rule"] =~ "pattern"))
+    end
+  end
+
+  # `valid_verdict/0`'s evidence has no `receipt` key, matching the legacy
+  # (non-per-launch) shape `Kogen.Harness.launch_reviewer`'s boolean-`ledger?`
+  # path still validates. The per-launch schema requires `receipt`
+  # (`null` or a review-packet pointer) on every evidence item.
+  defp valid_verdict_with_receipts do
+    add_receipt = fn evidence -> Enum.map(evidence, &Map.put(&1, "receipt", nil)) end
+
+    valid_verdict()
+    |> update_in(["scenarios", Access.all(), "evidence"], add_receipt)
+    |> update_in(["dispositions", Access.all(), "evidence"], add_receipt)
   end
 
   defp valid_verdict do

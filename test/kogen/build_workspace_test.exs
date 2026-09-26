@@ -238,6 +238,7 @@ defmodule Kogen.BuildWorkspaceTest do
           expert: {model: claude-opus-5-5, effort: high}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """
 
     test "the owner record names nonempty credential bindings when readiness starts",
@@ -658,7 +659,7 @@ defmodule Kogen.BuildWorkspaceTest do
 
   describe "failure-retention" do
     for {category, status, opts} <- [
-          {"verification exhaustion", "stopped: verification-exhausted",
+          {"offline exhaustion", "stopped: offline-exhausted",
            harness: "fake_codex", env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]},
           {"outer-allowance exhaustion", "stopped: outer-allowance-exhausted",
            harness: "fake_codex_always_rework", env: []},
@@ -828,7 +829,7 @@ defmodule Kogen.BuildWorkspaceTest do
       for a in "$@"; do [ "$prev" = --output-last-message ] && out="$a"; prev="$a"; done
       tracking="$(printf '%s' "$input" | python3 -c 'import json,sys; lines=sys.stdin.read().splitlines(); i=max(i for i,v in enumerate(lines) if v=="KOGEN_TASK_CONTEXT"); print(json.loads(lines[i+1])["tracking_path"])')"
       printf '%s' "$input" | python3 #{inspect(Fixture.support("scenario_response.py"))} reviewer accept |
-        python3 -c 'import json,sys; v=json.load(sys.stdin); ev=[{"path":sys.argv[1],"locator":"the Build own tracking record"}]; v["scenarios"][0]["evidence"]=ev; print(json.dumps(v))' "$tracking" >"$out"
+        python3 -c 'import json,sys; v=json.load(sys.stdin); t=sys.argv[1]; ev=[{"path":t[t.index(".kogen/runtime/"):],"locator":"the Build own tracking record","receipt":None}]; v["scenarios"][0]["evidence"]=ev; print(json.dumps(v))' "$tracking" >"$out"
       printf '{"type":"thread.started","thread_id":"citing-reviewer"}\\n{"type":"turn.completed","thread_id":"citing-reviewer"}\\n'
       exit 0
     fi

@@ -1,0 +1,1472 @@
+# Scenarios for build-reliability. Letters A-E follow the brief's outcome
+# sections. Every paid selection is justified in its proof.paid_reason; the
+# Paid targets: live-shaping-smoke (added by this Intent) and live-reviewer-rework.
+# live-shaping-quality stays in the catalog, unselected (Shaper, DIRECTION §1.19).
+
+# --- A. Separate budgets per failure class ---------------------------------
+
+- id: offline-failures-own-budget
+  given: >-
+    A Build under the new controller with `.kogen/config.yaml` carrying the
+    required top-level keys `verification_retries: 2` and `offline_retries: 4`
+    (4; questions.md Q1), selected targets `check`, `cold-offline` and at least
+    one provider-backed target, and a Developer turn that has just ended.
+  when: >-
+    A cycle fails at an offline target (`provider_backed: false` in the
+    admission catalog entry, for example `check` or `cold-offline`), or at a
+    `prepare` step whose failure the Candidate caused (scenario
+    `controller-runs-prepare-before-paid`).
+  then: >-
+    The failed cycle is labelled `offline`. It increments only the attempt's
+    offline-failure count and leaves the paid-failure count
+    (`verification_retries` accounting) unchanged. The same Developer session is
+    resumed while offline failures stay within `offline_retries`. When they
+    exceed 4, the Build stops with reason class `offline` and names
+    `offline_retries`. A later paid failure in the same attempt still has all of
+    its `verification_retries`. The cycle, the record and the stop reason carry
+    the failure class, and existing readers of records and receipts keep working.
+    `offline_retries` is a required integer: a config without it is refused
+    before any launch, with a message naming `offline_retries` and where to add
+    it, like `verification_retries` today. There is no default. README's
+    configuration section documents the key, and notes that an existing
+    project's config is refused until the key is added.
+  wrong_result: >-
+    Offline failures still increment `failures_since_pass`, so three formatting
+    or compile failures exhaust the paid budget. Or offline failures are
+    unbounded. Or `offline_retries` silently defaults when missing. Or a paid
+    failure after two offline failures stops the Build as exhausted.
+  verified_by: [check]
+  evidence: >-
+    A controller verification test drives a fake harness through: offline fail,
+    offline fail, paid fail, pass. It asserts the counters after each cycle, the
+    resumed session id, that the Build settles, and that offline exhaustion at
+    the fifth offline failure stops with class `offline` while paid retries stay unspent. A config test
+    shows that a missing `offline_retries` is refused.
+  proof:
+    offline:
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/intent_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: fake-harness Build through Kogen.Build with real Make targets, asserting both counters, the resumed session and the stop class"
+    affected_paths:
+      - lib/kogen/intent.ex
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification.ex
+      - .kogen/config.yaml
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/intent_test.exs
+      - test/support/verification_cycle_fixture.ex
+    base: fail
+
+- id: offline-gate-before-paid-dispatch
+  given: >-
+    A plan with offline and provider-backed targets. The catalog may declare a
+    provider-backed target without depending on an offline target. No target
+    name is special to the controller.
+  when: The controller runs a cycle.
+  then: >-
+    Every selected offline target runs, in catalog order, before any
+    provider-backed target or `prepare` step is dispatched. No provider-backed
+    target or `prepare` step starts unless every selected offline target has
+    passed for the same Candidate id in this cycle. This holds even when the
+    catalog's dependencies alone would have allowed an earlier paid dispatch.
+    The controller never formats or otherwise rewrites the Candidate.
+  wrong_result: >-
+    A paid target runs before, or despite, a failed offline target. Or the gate
+    is hard-coded to the name `check`. Or the controller runs `mix format` on
+    the Candidate.
+  verified_by: [check]
+  evidence: >-
+    A fake catalog where a provider-backed target has no dependency and a lower
+    rank than an offline target. Counters prove the paid recipe never ran when
+    the offline target failed, and that it ran after the offline target passed.
+    A format-dirty Candidate is left byte-identical.
+  proof:
+    offline:
+      - test/kogen/controller_verification_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: fake catalog and Make counters show dispatch order and no paid dispatch after an offline failure"
+    affected_paths:
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/verification_plan.ex
+      - test/kogen/controller_verification_test.exs
+      - test/support/verification_cycle_fixture.ex
+    base: fail
+
+- id: environment-and-provider-classes
+  given: >-
+    A Build whose failure is not the Candidate's: (1) a `prepare` step reports
+    an environment failure (missing or logged-out harness scope, hook toolchain
+    below its required version); or (2) the output tail of a paid target, a
+    Developer turn or a Reviewer turn carries a recognised provider marker.
+    Structured fields come first (evidence/probe-signals):
+    - Claude: `api_error_status`/`apiErrorStatus` 429 or 5xx, or
+      `error: "rate_limit"`, with `is_error: true`. Never `subtype`, which reads
+      "success" on the real 429.
+    - Codex: `codex_error_info` `server_overloaded` or `usage_limit_exceeded`.
+      Otherwise an `error` or `turn.failed` event whose message says "at
+      capacity", "overloaded" or rate limit.
+
+    There is no whole-output regex, because a bare `5\d\d` matched timestamps in
+    the probe. A timeout is never a provider marker.
+  when: The controller settles that failure.
+  then: >-
+    (1) A `prepare` command reports an environment failure through the generic
+    result contract (scenario `controller-runs-prepare-before-paid`). The Build
+    stops at once with class `environment` and the prepare step's reason. It spends no offline or paid retry and dispatches no paid target.
+    (2) The failure is labelled `provider` and spends nothing. Overload, capacity
+    (`server_overloaded`) and 5xx failures are retried once: the same paid target on the same Candidate, the
+    same Developer session resumed, or one fresh Review with the same packet.
+    A 429 or `usage_limit_exceeded` (usage or session limit) is not retried,
+    because waiting out a limit is a non-goal. A
+    second provider failure at the same point stops the Build with class
+    `provider`. Provider stop and exit evidence keeps the tail of the stream,
+    not its first 4,000 characters, so the classifying line survives. The
+    markers belong to the harness adapters (Claude Code and Codex), not to any
+    project's test framework. So a project whose paid targets never print them
+    simply gets ordinary paid failures. Every timeout, whether a Kogen harness
+    turn timeout or a test timeout, stays a paid failure. It goes back to the
+    Developer with its retained evidence, because a Candidate change (a hook, a
+    prompt, a slow tool) can cause it.
+  wrong_result: >-
+    A logged-out scope spends a paid cycle, or reads as a Candidate failure. A
+    usage limit is retried in a loop. Overload ends the Build without a retry,
+    or is retried more than once. A harness turn timeout or an ExUnit timeout is
+    labelled `provider` and escapes the budget. The stored stop evidence still lacks the reason at the
+    end of the stream.
+  verified_by: [check]
+  evidence: >-
+    Fake harness and target scripts emit the recorded tails, each as a
+    committed excerpt:
+    - BE-N9cRQ: Claude 429 "You've hit your session limit", with
+      `subtype: success` as a trap;
+    - hJeqtBSg: the Codex stream `error`/`turn.failed` "Selected model is at
+      capacity", plus the rollout's `codex_error_info: server_overloaded`.
+
+    No real 5xx sample exists locally, so the 5xx fixture is the BE-N9cRQ result
+    event with only `api_error_status` changed to 529, labelled synthetic. The tests assert the class, the retry
+    count, the unchanged counters and the retained tail. Negative controls
+    are btwokrNx's exit-124 turn timeout and an ExUnit timeout. Both stay paid
+    failures and resume the Developer. A fake prepare step emits an
+    environment result and the test asserts no paid dispatch.
+  proof:
+    offline:
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/provider_outcome_test.exs
+      - test/kogen/harness_args_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: recorded provider tails replayed through fake harness and target scripts; classification is controller code over text"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification.ex
+      - lib/kogen/provider_outcome.ex
+      - lib/kogen/harness/claude.ex
+      - lib/kogen/harness/codex.ex
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/provider_outcome_test.exs
+      - test/kogen/harness_args_test.exs
+      - test/support/provider_tails
+    base: fail
+
+- id: test-warnings-fail-first
+  given: >-
+    This repository's own `check` (repository-specific; the controller is
+    unchanged by it). The Candidate's only defect is a compile warning in a
+    test file.
+  when: "`make check` runs `scripts/check/offline.py`."
+  then: >-
+    An early stage compiles and loads every non-live test file with warnings as
+    errors, before credo, the full test run and rehearsals. The probed command is
+    `mix test --exclude live --warnings-as-errors --exclude test`: it loads all
+    910 tests and runs none, taking about 1.0 s both clean (exit 0) and with a
+    planted warning (exit 1). `--only <unused tag>` is not usable, because it
+    exits 1 on a clean tree (evidence/probe-loaders). It fails `check`
+    within seconds, naming the warning's file and line. The full suite does not
+    run first. A clean Candidate's `check` still runs every existing stage, with
+    the same strictness.
+  wrong_result: >-
+    The warning is still found only after the whole test run ("Test suite
+    aborted after successful execution due to warnings"). Or the new stage
+    replaces or weakens `--warnings-as-errors` on the test run.
+  verified_by: [check]
+  evidence: >-
+    The offline stage test runs offline.py's stage plan against a fixture with
+    one test-file warning. It asserts that the failing stage is the new compile
+    stage, and that the test and rehearsal stages never started.
+  proof:
+    offline:
+      - test/kogen/offline_stage_results_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: offline.py stage plan on a warning fixture with stage-start markers"
+    affected_paths:
+      - scripts/check/offline.py
+      - scripts/check/README.md
+      - test/kogen/offline_stage_results_test.exs
+    base: fail
+
+# --- B. One prepare step per live owner, with two callers ------------------
+
+- id: prepare-rehearsed-in-check
+  given: >-
+    This repository's own policy: the provider-backed targets where the mined
+    setup defects occurred, and whose setup already lives outside the owner test
+    file, declare the optional `prepare` field. These are `live-shaping-quality`
+    and `live-shaping-smoke` (driver.py), and `live-reviewer-rework`
+    (test/support/live_reviewer_rework_fixture.ex). The
+    `prepare` field is declared in `priv/kogen/verification_targets.yaml`. The field is an
+    argv with no shell, like `rehearsal.command`, and needs no Makefile target.
+    The controller does not require `prepare`. Only this repository's
+    rehearsals.exs does.
+  when: "`make check` runs `scripts/check/rehearsals.exs` with providers denied."
+  then: >-
+    Each `prepare` runs its owner's own setup, the same functions the live owner
+    calls before its first provider call, never a copy:
+    - fixture copy excluding `Kogen.Build.GuardedPaths`' volatile set, including
+      `.kogen/build.lock`;
+    - warm seed;
+    - compiling the fixture in its isolated copy;
+    - catalog and Makefile match;
+    - login-scope resolution;
+    - hook-toolchain resolution.
+
+    It then cleans up. In `check`, the login-scope and toolchain steps run
+    against a controlled passing scope and a controlled failing scope. So `check`
+    needs no real login, and the failing control must be reported as
+    `environment` through the generic result contract. In this repository,
+    rehearsals.exs rehearses every declared `prepare`. `live-general`,
+    `live-shape-to-build` and `live-native` declare none, so their owners stay byte-identical.
+    Adding their `prepare` is a non-goal.
+
+    `check` also carries a regression for each of three overnight defects:
+    - (a) no fixture copier, including
+      `test/support/shaping_evaluation/driver.py`'s `setup_fixture`, copies
+      `.kogen/build.lock` or any other volatile path;
+    - (b) receipt and record `finished_at` come from one clock;
+    - (c) when a Shaping-evaluation case's turn completes and its saved Draft
+      has not reached the case's expected end state, with no scripted message
+      left, the case fails at once, naming the case and the missing answer,
+      instead of running to the suite deadline. The probe found that the driver
+      already sees turn completion and Draft stability offline. A turn that never
+      completes still ends at the unchanged `MAX_SECONDS`.
+    The canonical path defect (d) and live-native's `prepare` are not in this
+    Intent. Both change `lib/kogen/codex/*`, scope selection in
+    `lib/kogen/claude_code.ex`, or login-scope selection, which `live-native`
+    owns. `isolated-candidate-workspace` landed without them, so they go to a
+    later Intent, not yet shaped. The probe evidence stays in evidence/probe-prepare for that
+    package.
+  wrong_result: >-
+    `prepare` re-implements setup, so it passes while the owner's own copy still
+    includes build.lock. Or `check` requires a real login. Or a declared `prepare`
+    is never rehearsed. Or a regression asserts against a fixture the real code never uses.
+  verified_by: [check]
+  evidence: >-
+    rehearsals.exs asserts, for each target, a trace of the owner's own setup
+    entry points (as `trace_assertions` does today). A fixture with a planted
+    `.kogen/build.lock` shows that every copier excludes it. A driver rehearsal
+    with a missing scripted answer fails within the rehearsal budget. A
+    timestamp
+    regression binds receipt and record clocks.
+  proof:
+    offline:
+      - test/kogen/prepare_test.exs
+      - test/kogen/shaping_evaluation_test.exs
+      - test/kogen/live_scheduling_test.exs
+      - test/kogen/controller_verification_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: provider-denied rehearsal of every owner's own setup with passing and failing scope controls"
+    affected_paths:
+      - priv/kogen/verification_targets.yaml
+      - scripts/check/rehearsals.exs
+      - lib/kogen/build/verification_plan.ex
+      - test/support/shaping_evaluation/driver.py
+      - test/support/live_reviewer_rework_fixture.ex
+      - test/support/review_packet_audit.ex
+      - test/kogen/shaping_evaluation_test.exs
+      - test/kogen/live_scheduling_test.exs
+      - test/kogen/controller_verification_test.exs
+      - test/kogen/prepare_test.exs
+    base: fail
+
+- id: controller-runs-prepare-before-paid
+  given: >-
+    A cycle whose selected offline targets have passed, with one or more
+    provider-backed targets selected.
+  when: The controller is about to dispatch the first provider-backed target.
+  then: >-
+    It first runs the `prepare` command of every selected provider-backed target
+    that declares one. The catalog loader (`VerificationPlan.valid_entry?`)
+    validates an optional `prepare` as a nonempty argv list of nonempty strings,
+    and refuses any other shape (Expert audit). Each `prepare` is taken from
+    the admission catalog entry (a target the Intent adds takes its Candidate
+    entry, as today). Targets without `prepare`
+    need no step. It runs the commands through `Kogen.Build.VerificationRunner`,
+    the same contract as targets since 7ed41f66: cwd is the Candidate worktree,
+    with a scrubbed environment (Mix redirections and controller context
+    removed), provider dispatch denied, its own process group and a
+    controller-owned log. It records a receipt for each.
+
+    The result contract is generic and documented in README:
+    - exit 0 passes;
+    - a nonzero exit is a Candidate failure, labelled `offline`, which spends
+      `offline_retries`;
+    - a nonzero exit whose output carries one
+      `KOGEN_PREPARE_RESULT\t{"class":"environment","reason":…}` frame stops the
+      Build as `environment`.
+
+    In the two failure cases, no provider-backed target is dispatched in that
+    cycle. When every `prepare` passes, paid targets run in catalog order as
+    today.
+  wrong_result: >-
+    Prepare runs lazily inside each target, so a fixture failure again surfaces
+    after 20 minutes of earlier targets. Or a prepare failure spends a paid retry.
+    Or prepare runs with provider access.
+  verified_by: [check]
+  evidence: >-
+    A fake catalog with three paid targets. One has no `prepare`, and the third
+    target's prepare fails. Make counters show that no paid recipe ran, the cycle
+    class is `offline`, and the prepare receipt is retained. The environment
+    variant emits the frame and stops with no counters. A catalog with no
+    `prepare` at all runs its paid targets directly.
+  proof:
+    offline:
+      - test/kogen/controller_verification_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: fake prepare commands and Make counters through the controller"
+    affected_paths:
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/verification_runner.ex
+      - lib/kogen/build/verification_plan.ex
+      - lib/kogen/build/catalog_change.ex
+      - test/kogen/controller_verification_test.exs
+      - test/support/verification_cycle_fixture.ex
+    base: fail
+
+# --- C. Handoff with the root cause -----------------------------------------
+
+- id: handoff-lists-all-evidence
+  given: >-
+    A failed cycle that has several receipts: one failed and some passed. It may
+    have a target-evidence manifest, and, for `live-shaping-quality`, a
+    `suite-failure.json` and per-case logs.
+  when: The controller resumes the Developer (`verification_failure_prompt/3`).
+  then: >-
+    The prompt lists every failed receipt of the cycle, including a failed
+    `prepare` receipt, with its class. For each it gives the retained log path
+    and sha256, the target-evidence manifest path and sha256, and each manifest
+    entry (for example `suite-failure.json` and each failed case's log) with its
+    digest. It also gives a bounded excerpt of the primary failure lines. These
+    come from the receipt's `KOGEN_FAILURE_SIGNATURE` frame when present.
+    Otherwise the excerpt is the first failure block, found by generic markers
+    (error, fail, assert), plus the output's tail, within the bound. A tail
+    alone is not enough: in a2sPFUvF cycle 2 the assertion sits 232 of 262
+    non-blank lines from the end (evidence/probe-signals). Manifest entries are listed with a bounded
+    excerpt of their own content. The controller treats every manifest entry
+    alike and knows no file name such as `suite-failure.json`. It states the
+    remaining offline and paid retries.
+
+    The prompt stays within a fixed total bound, never names the controller's
+    context, state or history paths, and there is no separate dossier file.
+  wrong_result: >-
+    Only the first failed receipt is shown. Or the excerpt is the offline.py
+    preamble or a 6,000-character tail without the failing assertion. Or
+    controller-private paths leak. Or a new dossier artifact appears with no
+    consumer. Or the controller special-cases this repository's file names or
+    ExUnit output.
+  verified_by: [check]
+  evidence: >-
+    A handoff test builds a failed cycle from committed excerpts of real mined
+    receipts, including R9Oe4Fcp's suite-failure and case log. It asserts every
+    locator and digest, the primary failure lines, the bound, and the absence of
+    private paths.
+  proof:
+    offline:
+      - test/kogen/controller_handoff_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: prompt rendered from real retained receipt and manifest excerpts"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/target_evidence.ex
+      - priv/kogen/prompts/developer.md
+      - test/kogen/controller_handoff_test.exs
+      - test/support/mined_failures
+    base: fail
+
+- id: shaping-suite-finishes-cases
+  given: >-
+    The Shaping-quality driver runs its cases in parallel under the existing
+    `SUITE_SECONDS` deadline. One case fails early.
+  when: The driver handles the failure.
+  then: >-
+    It lets the remaining cases run to completion within the same deadline,
+    without cancelling them. It records every case's status in
+    `suite-failure.json` and prints one failure line per failed case to stdout.
+    It still writes and prints the evidence manifest frame, covering the failure
+    record and case logs. `integrity.py`'s `validate_manifest` today requires
+    every case's full evidence (review receipt, Draft), so a failure manifest
+    gets its own validated mode. It lists only artifacts that exist, plus
+    `suite-failure.json`. The existing rehearsal
+    `test_run_suite_dispatches_all_cases_before_collection_and_reaps_after_child_failure`
+    relies on cancel-on-first-failure and hung against the probe's patched
+    driver, so it is rewritten to the no-cancel contract
+    (evidence/probe-prepare/driver-no-cancel.diff). Cases still running at the unchanged deadline are
+    cancelled and recorded as such. No timeout or case budget is raised. The live
+    owner file `test/kogen/live_shaping_evaluation_test.exs` stays
+    byte-identical, so its assertion message carries the driver's output and the
+    manifest frame reaches the receipt. The real-session mechanics of the edited
+    driver are proven by `live-shaping-smoke` (scenario
+    `shaping-smoke-target`), not by the 7-case suite.
+  wrong_result: >-
+    The driver still cancels on the first failure. Or it raises the deadline. Or
+    it prints the manifest twice on the passing path. Or the change is proven only by
+    rerunning the 7-case paid suite.
+  verified_by: [check]
+  evidence: >-
+    A driver rehearsal with two failing fake cases and one slow passing case. No
+    case is cancelled, both failure lines are printed, one manifest frame is
+    emitted and validates, and a case past the deadline is recorded as cancelled.
+  proof:
+    offline:
+      - test/kogen/shaping_evaluation_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: driver rehearsal with fake cases exercises the real orchestration; real-session mechanics are live-shaping-smoke's (scenario shaping-smoke-target)"
+    affected_paths:
+      - test/support/shaping_evaluation/driver.py
+      - test/support/shaping_evaluation/integrity.py
+      - test/support/shaping_evaluation/driver_rehearsal_test.py
+      - test/kogen/shaping_evaluation_test.exs
+    base: fail
+
+- id: driver-turn-end-replay
+  given: >-
+    Committed, trimmed excerpts of real retained `live-shaping-quality`
+    rollouts, each with provenance (run directory, case, original file sha256).
+    They are:
+    - every case of the passing run `shaping-evaluation-1789998731105-554`;
+    - the two real missing-answer failures from the SQyTuy3C window:
+      `shaping-evaluation-1790361927352-586` `stateful-complete` and
+      `shaping-evaluation-1790363015551-586` `stateful-flawed`. Each has one
+      completed turn, no scripted message left, and no `draft/scenarios.yaml`.
+  when: >-
+    `check` replays them through `driver.py`'s own turn-end code
+    (`task_complete_count` and `user_turn_terminal`) and the new fail-fast
+    decision, by importing the driver module. No copy of its logic is used.
+  then: >-
+    Every case of the passing run reaches its recorded outcome, meaning its
+    recorded completed turns, scripted answers sent and final Draft state, and
+    fail-fast never fires. For each real missing-answer failure, fail-fast fires
+    at that turn's end and names the case and the missing answer.
+  wrong_result: >-
+    The test re-implements the turn-end logic, so the driver can drift without
+    failing it. Or fail-fast fires on a passing real case, for example between a
+    turn end and the Draft settling. Or it never fires on the recorded failure,
+    so the case runs to the deadline.
+  verified_by: [check]
+  evidence: >-
+    The Shaping probe (evidence/probe-shaping-smoke/replay-probe.txt) imported the
+    real driver and ran `task_complete_count` over the retained rollouts:
+    - the passing run's 7 cases had task_complete counts [2,1,1], [1], [2,1], [1],
+      [3], [1,1] and [1,1,1], each with `scenarios.yaml`;
+    - both failures had [1], no scenarios and 0 scripted messages.
+  proof:
+    offline:
+      - test/kogen/shaping_evaluation_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: the driver's own turn-end and fail-fast code over real recorded rollouts"
+    affected_paths:
+      - test/support/shaping_evaluation/driver.py
+      - test/support/shaping_evaluation/driver_rehearsal_test.py
+      - test/support/shaping_evaluation/replay
+      - test/kogen/shaping_evaluation_test.exs
+    base: fail
+
+- id: shaping-smoke-target
+  given: >-
+    This Intent adds the provider-backed catalog target `live-shaping-smoke`
+    (`catalog_changes.add`). It has:
+    - rank 150 and `dependencies: [check]`;
+    - owner `test/kogen/live_shaping_smoke_test.exs`;
+    - a Makefile target `live-shaping-smoke`, running
+      `mix test --only live test/kogen/live_shaping_smoke_test.exs`;
+    - a rehearsal block whose command runs
+      `mix test --exclude live test/kogen/shaping_smoke_rehearsal_test.exs`;
+    - a `prepare` step.
+
+    The owner runs one tiny `smoke` case through the real `driver.py`. The case
+    is outside `CASES`, and it has:
+    - a one-file greeting fixture;
+    - a fixture config whose Codex Shaping effort is `low`;
+    - a transport-smoke request: a minimal Draft, the punctuation question in
+      plain text, and no inspection of lib/, priv/ or test/;
+    - one scripted answer, and a trigger that grades nothing.
+
+    The 7-case `live-shaping-quality` stays in the catalog, unselected.
+
+    The driver's transport (`shape_transport.exp`) passes the resolved Codex
+    route (`mix kogen.shape --route <codex route>`). Today it spawns plain
+    `mix kogen.shape`, which since 6cdb2912 starts the fixture's
+    `default_route` (claude) and hangs at Claude Code's trust prompt, while the
+    driver captures Codex. The Shaping probe's first smoke run hung exactly so.
+    The fix applies to the smoke case and to the 7-case suite.
+  when: "`make live-shaping-smoke` runs against the real provider."
+  then: >-
+    It checks mechanics only, with no quality grading:
+    - the public Shape session starts;
+    - turns end on real `task_complete` events;
+    - the scripted answer is delivered;
+    - fail-fast does not fire;
+    - the evidence manifest is written and validates in the smoke mode of
+      `integrity.py`;
+    - the driver exits cleanly, with every owned process reaped and the fixture
+      cleaned.
+
+    The probe measured it at 156 s wall, 151 s for the case
+    (evidence/probe-shaping-smoke, run 3). The owner test bounds the case at
+    300 s. The smoke case is not part of `CASES`, so the 7-case suite and its
+    barrier are unchanged.
+  wrong_result: >-
+    Smoke reuses a 7-case run or grades Draft quality. Or it runs longer than
+    300 s. Or the transport still spawns the default route, so it hangs at a
+    trust prompt. Or the owner test asserts only exit
+    status without the mechanics above. Or the catalog entry lacks its
+    rehearsal, so the added target is refused.
+  verified_by: [check, live-shaping-smoke]
+  evidence: >-
+    Offline: the rehearsal runs the smoke path with the fake transport, and
+    rehearsals.exs traces its shared entry points. Paid: one real smoke run on
+    the Candidate.
+  proof:
+    offline:
+      - test/kogen/shaping_smoke_rehearsal_test.exs
+    paid_target: live-shaping-smoke
+    paid_reason: "provider-required: live-shaping-smoke; observation: a real public Shape session under the edited driver starts, ends turns on real task_complete events, receives the scripted answer, writes a valid manifest and exits cleanly; offline-limit: the replay and fake transport cannot show that a live Codex session today still emits these events and accepts the transport's answer delivery"
+    affected_paths:
+      - Makefile
+      - priv/kogen/verification_targets.yaml
+      - test/kogen/live_shaping_smoke_test.exs
+      - test/kogen/shaping_smoke_rehearsal_test.exs
+      - test/support/shaping_evaluation/driver.py
+      - test/support/shaping_evaluation/compact_prerequisites.py
+      - test/support/shaping_evaluation/integrity.py
+      - test/support/shaping_evaluation/shape_transport.exp
+    base: fail
+
+# --- D. Useful signatures, and a stop on unchanged Candidates ---------------
+
+- id: signatures-identify-failures
+  given: >-
+    Committed verbatim excerpts of mined failed receipts. `check` failures with
+    different causes include ZJDgU9wo, _8Qpvuip and a2sPFUvF, which share today's
+    digest `e3c761c920…`. There are also hAOGGjSC's cycle 1 (PTY EBADF) and
+    cycle 2 (120 s timeout), and btwokrNx's three identical `live-native`
+    failures with different seeds.
+  when: "`FailureSignature.derive/4` computes signatures."
+  then: >-
+    The controller derives the signature generically, knowing no target name,
+    runner or test framework. A target may print one
+    `KOGEN_FAILURE_SIGNATURE\t{"stage":…,"test_id":…,"assertion":…}` frame (the
+    contract is documented in README next to the evidence manifest frame). When
+    it does, the digest is target plus those fields, and those fields also give
+    the handoff's primary failure lines. A target without the frame falls back to
+    the normalized failure tail:
+    - it takes the last failure lines, not the first 320 characters;
+    - it strips ANSI codes, seeds, durations, timestamps, temporary paths and
+      hex digests;
+    - it strips the harness adapters' own warning items, such as Codex's
+      bypass-hook-trust notice.
+
+    In this repository, offline.py emits the frame for its failing stage, with
+    the first failing ExUnit test id and assertion. Against the mined excerpts,
+    different causes get different digests, and identical failures with
+    different seeds get equal digests. The prototype run on the real receipts
+    (evidence/probe-signals) found:
+    - ZJDgU9wo, _8Qpvuip and a2sPFUvF split by their failing test, although all
+      share today's `e3c761c920…`;
+    - _8Qpvuip's cycles 2 and 3 (the same LifecycleTest:21) share a frame
+      signature, so cycle 3 is `repeated`;
+    - hAOGGjSC's cycle 1 (PTY EBADF) differs from cycle 2 (120 s timeout);
+    - btwokrNx's cycle 3 equals cycle 1 through the fallback, so it is
+      `repeated`, while cycle 2 stays distinct because it failed in a different
+      phase (`:launch_developer` rather than `:launch_reviewer`).
+
+    The fallback normalization also replaces fixture directories named with an
+    epoch or port, and opaque per-run tokens (for example
+    `KOGEN_ISOLATED_COMPLETION`), with placeholders. The frame parser looks past
+    `Kogen.IsolatedCase`'s wrapper banner to the real reason line.
+  wrong_result: >-
+    The digest is still over the preamble. Or it includes the seed. Or the
+    warning text becomes `error_head`. Or the controller parses offline.py or
+    ExUnit output itself, so another project's targets get useless signatures.
+  verified_by: [check]
+  evidence: >-
+    A signature test over the committed excerpts, each carrying its Build id,
+    cycle and original receipt sha256 as provenance. It runs both with the frame
+    (the check excerpts replayed through offline.py's new frame emitter) and
+    without it (the live-native excerpts, plus a plain `make test` output from a
+    non-Elixir fixture).
+  proof:
+    offline:
+      - test/kogen/failure_signature_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: signatures computed on real mined receipt excerpts"
+    affected_paths:
+      - lib/kogen/build/failure_signature.ex
+      - scripts/check/offline.py
+      - README.md
+      - test/kogen/failure_signature_test.exs
+      - test/support/mined_failures
+    base: fail
+
+- id: unchanged-candidate-stops
+  given: >-
+    A cycle failed with a non-provider class. The resumed Developer turn ends
+    with the same Candidate id, for example because it made no changes.
+  when: The controller would start the next cycle.
+  then: >-
+    The controller does not run the cycle. It stops the Build with the reason
+    "Candidate unchanged since failed cycle N", the failure class and the
+    previous signature. When the previous failure was `provider`, the provider
+    rule applies instead. A changed Candidate whose new failure repeats the
+    signature is verified normally and spends its budget.
+  wrong_result: >-
+    The unchanged Candidate is re-run three times, as in btwokrNx and K9Fu72yG.
+    Or a provider-class failure on an unchanged Candidate is refused its one
+    retry. Or a changed Candidate is refused.
+  verified_by: [check]
+  evidence: >-
+    A fake-harness Build whose Developer makes no change after a failed cycle.
+    Counters show no second run, and the stop reason carries the signature.
+    Controls: a provider failure gets its retry, and a changed Candidate runs.
+  proof:
+    offline:
+      - test/kogen/controller_verification_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: fake-harness Build with Make counters and a no-op Developer turn"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification.ex
+      - test/kogen/controller_verification_test.exs
+    base: fail
+
+# --- E. Verdicts that are hard to get wrong, plus one repair ----------------
+
+- id: per-launch-verdict-schema
+  given: >-
+    An Approved Intent with n scenario ids, and a review packet with receipts.
+  when: >-
+    The controller launches a Reviewer on either harness, and later validates its
+    verdict.
+  then: >-
+    The schema is built for that launch:
+    - `scenarios` has exactly n items (`minItems` = `maxItems` = n), each `id`
+      from an `enum` of the Approved ids;
+    - evidence `path` has a lookaround-free pattern
+      (`^(?:[^/.][^/]*|\.[^/.][^/]*)(?:/(?:[^/.][^/]*|\.[^/.][^/]*))*$`) that
+      rejects a leading `/`, `..`, `.` and empty segments. Codex's API rejects any
+      lookaround with 400 `invalid_json_schema`, so no generated pattern may
+      contain one (evidence/probe-codex-verdict-schema);
+    - evidence items carry a separate required `receipt` field for packet
+      citations. It must be `null` or match a review-packet pointer pattern
+      (`^/receipts/[0-9]+(/.*)?$`) and carries a description, because the Claude
+      probe showed that a free-form `receipt` string gets filled with quotes
+      (evidence/probe-claude-verdict-schema).
+
+    `validate` returns `{:error, [errors]}`, each error naming the JSON pointer
+    and the rule. Replaying the two real bad verdicts (qWusXkQn's omitted
+    scenario id and 8Bs51yZP's `/receipts/0 …` path) gives exact errors.
+
+    Self-hosting: main 7ed41f66 renders the Reviewer prompt from control, not
+    from the Candidate (`build.ex:2312-2314`), so this Build's own Review uses
+    main's prompt and schema. The Candidate's `reviewer.md` still describes
+    the `receipt` field only as used "when your verdict schema provides it",
+    so it stays valid for any controller, and the controller-built schema
+    carries the field's description.
+  wrong_result: >-
+    The schema is static. Or `validate` still returns a bare `:error`. Or the
+    Candidate prompt tells this Build's Reviewer to emit a key that main's
+    `Contract.verdict/4` rejects.
+  verified_by: [check]
+  evidence: >-
+    A verdict test over committed copies of the two real invalid verdicts, plus
+    generated schemas for n = 1 and n = 7. It asserts that no generated pattern
+    contains a lookaround, and checks the path pattern against the accept and
+    reject cases from the Codex probe. A prompt test renders the Candidate
+    reviewer.md against the old and new schema shapes.
+  proof:
+    offline:
+      - test/kogen/harness_verdict_test.exs
+      - test/kogen/review_packet_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: schema generation and validation over the two real invalid verdicts"
+    affected_paths:
+      - lib/kogen/harness/verdict.ex
+      - lib/kogen/build/contract.ex
+      - lib/kogen/build/review_packet.ex
+      - lib/kogen/harness/claude.ex
+      - lib/kogen/harness/codex.ex
+      - priv/kogen/prompts/reviewer.md
+      - test/kogen/harness_verdict_test.exs
+      - test/kogen/review_packet_test.exs
+      - test/support/mined_verdicts
+    base: fail
+
+- id: reviewer-reask-once
+  given: >-
+    A Reviewer's verdict fails validation. The session id is known, as both
+    adapters already return it with `:malformed_verdict`.
+  when: The controller settles the Review.
+  then: >-
+    A new `Kogen.Harness.resume_reviewer`, implemented in both adapters (Claude
+    `--resume`, Codex `exec resume`) with the same per-launch schema, resumes that
+    same session once, with the exact error list. The re-ask asks only for a
+    corrected verdict in valid shape, never a new judgement. When the invalid
+    verdict parsed, the repaired one must keep its `verdict` value. A valid
+    repaired verdict settles the Review as usual. A second invalid verdict, or a
+    changed `verdict` value, stops the Build as today, keeping both invalid
+    payloads. On the Codex-Reviewer route, a real Codex Reviewer accepts the
+    per-launch schema with `enum`, `pattern`, `minItems` and `maxItems`, returns a
+    verdict whose scenario ids are exactly the enum, and answers one real re-ask
+    in the same session.
+  wrong_result: >-
+    The re-ask opens a fresh Reviewer, which is a new judgement. Or it loops. Or
+    it drops the schema on resume. Or it changes accept into rework. Or Codex
+    rejects the schema keywords, so every hybrid Review fails.
+  verified_by: [check, live-reviewer-rework]
+  evidence: >-
+    Offline: a scripted fake Reviewer returns invalid then valid (settles), and
+    invalid then invalid (stops), in the same session id. It also covers a
+    changed verdict value (stops). Paid: the live-reviewer-rework fixture already
+    runs `claude-dominant-adversarial-codex`. Since 7ed41f66, its nested Build
+    runs in an isolated Candidate worktree under a Codex write boundary and a
+    per-Build harness home, so its Codex Reviewer runs under the new schema
+    there. `resume_reviewer` must resume in the same harness home and
+    boundary as the launch. After the real Review, the fixture calls `resume_reviewer` on that
+    real session with a controller-format error list naming a nonexistent
+    evidence path. It observes the same session id and a schema-valid verdict with
+    the unchanged `verdict`.
+  proof:
+    offline:
+      - test/kogen/harness_verdict_test.exs
+      - test/kogen/controller_handoff_test.exs
+      - test/kogen/two_outer_resumptions_test.exs
+    paid_target: live-reviewer-rework
+    paid_reason: "provider-required: live-reviewer-rework; observation: a real Codex Reviewer accepts --output-schema with enum/pattern/minItems/maxItems, returns exactly the enum ids, and a real exec-resume re-ask returns a schema-valid verdict in the same session; offline-limit: whether the Codex CLI and model honour these schema keywords on launch and on resume is provider behaviour a fake harness cannot establish"
+    affected_paths:
+      - lib/kogen/harness.ex
+      - lib/kogen/harness/claude.ex
+      - lib/kogen/harness/codex.ex
+      - lib/kogen/harness/verdict.ex
+      - lib/kogen/build.ex
+      - test/kogen/harness_verdict_test.exs
+      - test/kogen/controller_handoff_test.exs
+      - test/kogen/two_outer_resumptions_test.exs
+      - test/kogen/live_reviewer_rework_test.exs
+      - test/support/live_reviewer_rework_fixture.ex
+      - test/support/fake_claude
+    base: fail
+
+# --- Settle the Developer's refusal and missing proofs before verifying --
+
+- id: notes-and-selectors-before-verification
+  given: >-
+    A Developer turn has just ended. At 7ed41f66, `verify_turn/5`
+    (`lib/kogen/build.ex:778`) runs `Verification.run_cycle` first. Only after a
+    passing cycle do `settle_notes` (Jev reads the notes, then `cannot_comply`,
+    `build.ex:895-933`) and `settle_passing`
+    (`VerificationPlan.missing_selectors`, then `unfinished_work`,
+    `build.ex:936-948`) run. The evidence is Build IEf3rtZ8xYuvEPSj_gtdanD8
+    (shaping-preflight-audit, supplied by the Shaper). Its first Developer turn
+    wrote a contract objection ("fix3 unreachable, return to Shaping") and 7 of
+    19 declared proof tests were missing. The controller still ran `check` three
+    times and paid `live-shaping-quality` once, then stopped with "verification
+    retries exhausted", which hid the real reason.
+  when: The controller settles the Developer turn.
+  then: >-
+    Before any verification cycle, the controller does two things. First, Jev
+    reads the Developer's notes once for this turn (the same
+    `Kogen.Jev.read_notes/2` and the same threshold). An objection at or above
+    the threshold, not superseded under the existing
+    `ReviewPacket.superseded_objection` rule using the attempt's settled cycles
+    so far, stops the Build as `cannot_comply`, with the Developer's reason. It
+    runs no target and dispatches nothing paid. Second, if any declared proof
+    selector is missing in the Candidate
+    (`VerificationPlan.missing_selectors/3`), the controller returns the
+    Developer to work as `unfinished_work`, naming the selectors, exactly as
+    today but without running or counting a verification cycle.
+
+    Only then does the verification cycle run. After a passing cycle, the turn's
+    Jev reading is reused, not re-requested, and the rest of settlement (Report,
+    Review) is unchanged. `cannot_comply` and `unfinished_work` keep their
+    record shapes and stop-reason prefixes. This is a reordering of existing
+    checks plus its tests, with no new mechanism.
+  wrong_result: >-
+    Verification still runs first, so an objection or a missing proof test spends
+    `check` and paid cycles and ends as "verification retries exhausted". Or Jev
+    is called twice per turn. Or `unfinished_work` spends an offline or paid
+    retry. Or a superseded objection now stops the Build.
+  verified_by: [check]
+  evidence: >-
+    Fake-harness Builds (fake Jev, Make counters) through `Kogen.Build`:
+    - a Developer that objects on turn 1 gives no `check` run and no paid
+      dispatch, and the `cannot_comply` reason names the objection;
+    - a Developer that leaves a declared proof test missing gives
+      `unfinished_work`, no verification cycle and unchanged retry counters.
+      After it adds the test, the next turn verifies normally and passes;
+    - a control with no objection and all selectors present is verified exactly
+      as today, with one Jev call for the turn.
+  proof:
+    offline:
+      - test/kogen/pre_verification_settlement_test.exs
+      - test/kogen/superseded_objection_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: fake Developer, fake Jev and Make counters through Kogen.Build; pure controller ordering"
+    affected_paths:
+      - lib/kogen/build.ex
+      - test/kogen/pre_verification_settlement_test.exs
+      - test/kogen/superseded_objection_test.exs
+      - test/support/scripted_build_fixture.ex
+    base: fail
+
+# --- Guarded paths: .gitignore is an ordinary guarded file -----------------
+
+- id: declared-gitignore-edit
+  given: >-
+    At 7ed41f66, `Kogen.Build.GuardedPaths` freezes `.gitignore` with
+    `.git/config`, `.git/info/exclude` and `.gitmodules` (`config_files/1`,
+    `guarded_paths.ex:33-44`). Any change stops the Build with "Git
+    configuration or ignore policy changed during Developer turn"
+    (`same_config`, `:51-67`), even when the Intent declares `.gitignore` in
+    `may_change_guarded_paths`. Separately, the ignored-file manifest frozen at
+    admission (`ignored_manifest/1`, `:115-135`) already flags any file whose
+    ignored state or content changes.
+  when: A Candidate edits `.gitignore`.
+  then: >-
+    `.gitignore` is no longer part of the frozen configuration. It is checked
+    like any other tracked path:
+    - allowed when the Intent declares it in `may_change_guarded_paths`;
+    - refused as an ordinary guard violation ("Candidate changed paths outside
+      Approved guards: .gitignore") when it doesn't.
+
+    A new ignore rule that hides a changed or new file still flags that file
+    through the frozen ignored manifest, unless the file is declared too.
+    `.git/config`, `.git/info/exclude` and `.gitmodules` stay frozen exactly as
+    today. This Build runs under main's controller, so it doesn't edit
+    `.gitignore` itself. Adding the trash patterns is left to the next Intent.
+  wrong_result: >-
+    Declared `.gitignore` edits still stop the Build. Or an undeclared edit is
+    allowed. Or a file hidden by a new rule is no longer detected. Or
+    `.git/config` or `.git/info/exclude` stop being frozen.
+  verified_by: [check]
+  evidence: >-
+    A GuardedPaths test on a fixture repository reproduces the probe table
+    (evidence/probe-gitignore):
+    - a hiding edit with only `.gitignore` declared names the hidden file;
+    - with both declared, it passes;
+    - an undeclared `.gitignore` edit is refused;
+    - a declared `.gitignore`-only edit passes;
+    - `.git/info/exclude` and `.git/config` edits still stop the Build.
+
+    A fake-harness Build whose Intent declares `.gitignore` and edits it reaches
+    Review.
+  proof:
+    offline:
+      - test/kogen/guarded_paths_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: GuardedPaths on a fixture repository plus a fake-harness Build"
+    affected_paths:
+      - lib/kogen/build/guarded_paths.ex
+      - test/kogen/guarded_paths_test.exs
+    base: fail
+
+# --- No tracked caches ----------------------------------------------------
+
+- id: no-tracked-caches
+  given: >-
+    At 7ed41f66 the repository tracks trash, all verified on 2026-09-26:
+    - six Python bytecode files that `.gitignore` already ignores
+      (`test/support/shaping_evaluation/__pycache__/*.cpython-314.pyc`, from
+      2890d86f). Running a Python helper without `-B` rewrites them and dirties
+      the checkout;
+    - two `sol-high.md.last` files that are byte-identical duplicates of the
+      adjacent `sol-high.md`;
+    - two raw Codex consult transcripts, `sol-high.md.log` (1.1 MB and 1.5 MB),
+      that nothing references;
+    - four Jev runner stubs (`jev-audit-run.log` ×2, `jev-after-sol/run.log`,
+      `jev-after-sol-run.log`), unreferenced;
+    - two `probe9-make-check-{plain,boundary}.log`, unreferenced;
+    - two process markers `*ready-marker-*.pid` under
+      compact-shaping-quality, whose `RESULTS.md` cites only their runtime paths.
+
+    All of these are under `.kogen/intents/complete/isolated-candidate-workspace/evidence/`
+    and `.kogen/intents/complete/compact-shaping-quality/evidence/amendment-probes/cleanup/`,
+    apart from the bytecode. Logs that a package document cites stay:
+    `b1-make-check-{in-worktree,space-path}-2026-09-24.log` and
+    `reshape-2026-09-26-98ebcfb2/focused-tests.log`.
+  when: The Build lands.
+  then: >-
+    Those 18 files are deleted (`git rm`), and the cited logs stay
+    byte-identical. The whole test, including the cited-log assertion, skips
+    with a stated reason when the tree has no Git: the gitless `cold-offline`
+    copy has neither Git nor `.kogen/intents` (`cold_offline_test.exs:36-40`). `.gitignore` is **not** edited. `Kogen.Build.GuardedPaths`
+    freezes it as ignore policy, and any change stops the Build ("ignore policy
+    changed", `guarded_paths.ex:33-67`; Expert audit). Instead, a `check` test
+    fails, naming the file, on either of two conditions:
+    - a tracked file matches an existing ignore rule
+      (`git ls-files -ci --exclude-standard`), which covers the bytecode that
+      `.gitignore` already ignores;
+    - a tracked file matches a repository trash pattern: `*.pid`, `*.md.last`,
+      `*.md.log`, `.kogen/intents/**/*run.log` or `.DS_Store`.
+
+    The test hard-codes these patterns, not paths. Adding the same patterns to
+    `.gitignore` is the next Intent's job, once scenario
+    `declared-gitignore-edit` has landed. This Build still runs under main's
+    frozen `.gitignore`. Running a Python helper without `-B` afterwards leaves `git status`
+    clean.
+  wrong_result: >-
+    `.gitignore` is edited, which stops the Build. Or the files are deleted with
+    no guard, so the next cache gets committed again. Or the test hard-codes
+    the paths. Or a cited evidence log is deleted.
+  verified_by: [check]
+  evidence: >-
+    The test runs `git ls-files -ci --exclude-standard` in the repository and
+    expects empty output. It fails on base, which lists the six `.pyc` files.
+    A control fixture repository with one tracked ignored file makes it fail,
+    naming that file. A second assertion checks that the three cited logs still
+    exist. A fake-harness Build whose Candidate deletes a tracked `__pycache__`
+    file carries the deletion into its published commit, even though
+    GuardedPaths treats `__pycache__` as volatile.
+  proof:
+    offline:
+      - test/kogen/tracked_ignored_files_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: git index query in the repository and in a control fixture, plus fake-Build publication of a deletion"
+    affected_paths:
+      - test/kogen/tracked_ignored_files_test.exs
+      - test/support/shaping_evaluation
+      - .kogen/intents/complete/isolated-candidate-workspace/evidence/**/*.log
+      - .kogen/intents/complete/isolated-candidate-workspace/evidence/**/*.last
+      - .kogen/intents/complete/compact-shaping-quality/evidence/amendment-probes/cleanup/*.pid
+    base: fail
+
+# --- Developer and Reviewer prompt tune-up (ROADMAP 4b, BLD-09) -----------
+
+- id: role-prompt-tune-up
+  given: >-
+    At 7ed41f66, the Developer's finish line in `priv/kogen/prompts/developer.md`
+    is implicit ("genuinely satisfied — not just plausible-looking", in "Your
+    job"), and there is no self-review step before a turn ends. Scenarios reach
+    the Developer only as the path to `scenarios.yaml`. Its final notes are
+    free prose that Jev reads (`## Final Developer notes`). Reviewer findings
+    are `{scenario_ids, reason, evidence}` (reviewer.md). Both prompts are one
+    harness-neutral file each, rendered by `render_developer_prompt/5` and
+    `render_reviewer_prompt/4` for every harness (evidence/probe-prompts).
+  when: The controller renders the Developer and Reviewer prompts, on any harness.
+  then: >-
+    `developer.md` gets an explicit "Done when" list:
+    - every scenario's `then` is genuinely true, not just plausible;
+    - every declared proof selector is present and passes when run focused;
+    - no path outside the Intent's guards is changed;
+    - the notes are written, with any objection stated as an objection.
+
+    Before ending each turn, the Developer reviews `git diff` against main for
+    every scenario's `then` and `wrong_result` and fixes gaps first, because
+    that is cheaper than a verification or Review cycle. Its notes say, per
+    scenario, what that self-review checked. They reuse the existing
+    per-scenario prose Jev already reads, not a new structured section.
+
+    In `reviewer.md`, each finding's existing `reason` says what was checked and
+    what wasn't, citing the evidence locators. The verdict schema gets no new
+    field, so this Build's own Review, under main's static schema, stays valid.
+
+    The prompts stay harness-neutral: one text for Claude Code and Codex, with
+    no model-specific variants. Nothing claims this improves outcomes; that is
+    measured later (CTX-01, CTX-06).
+  wrong_result: >-
+    Harness-specific prompt variants. Or a new required verdict key, which
+    would break this Build's own Review. Or a structured "self-review" section
+    that nothing reads (§1.16). Or the prompt says outcomes improve.
+  verified_by: [check]
+  evidence: >-
+    Offline prompt-contract tests on the rendered prompts, for both harnesses
+    (the pattern in `test/kogen/harness_contract_test.exs:80-108,645-647`). They
+    assert the Done-when items, the self-review instruction naming `then` and
+    `wrong_result`, the checked/not-checked instruction for findings, identical
+    text across harnesses, and an unchanged verdict schema key set.
+  proof:
+    offline:
+      - test/kogen/harness_contract_test.exs
+      - test/kogen/role_prompt_contract_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: rendered prompt contracts for both harnesses; outcome effects are measured later (CTX-01, CTX-06)"
+    affected_paths:
+      - priv/kogen/prompts/developer.md
+      - priv/kogen/prompts/reviewer.md
+      - test/kogen/harness_contract_test.exs
+      - test/kogen/role_prompt_contract_test.exs
+    base: fail
+
+# --- Process custody (ROADMAP 7, EXE-03) ------------------------------------
+
+- id: process-custody-teardown
+  given: >-
+    Real incidents:
+    - 2026-09-24: `mix kogen.build upgrade-codex-gpt-6` was closed with the
+      terminal. `mix` exited, but its Claude Code Developer
+      (`sh -c '<managed claude>'`, PID 3328/3329) kept running under init,
+      spending paid allowance, and `.kogen/build.lock` stayed behind.
+    - 2026-09-25: 18 orphaned Codex processes, up to 3.5 days old.
+
+    At 7ed41f66, roles launch through `System.cmd("sh", ["-c", …])`
+    (`harness/claude.ex:454`, `harness/codex.ex:351`), and other launches use
+    `Port.open` (`claude_code.ex:455`, `codex.ex:361`, `jev.ex:607`). There is
+    no process group, no recorded pid, pgid or start time, and no teardown on
+    abnormal exit. Only `VerificationRunner` supervises its target in its own
+    group.
+  when: >-
+    A Build ends in any way: finish, stop, a turn or target timeout, Ctrl-C,
+    closing the terminal (SIGHUP), SIGTERM, a BEAM crash, or `kill -9` of the
+    controller.
+  then: >-
+    Every process a Build launches runs in its own process group: Developer,
+    Reviewer, Expert, their helpers (as descendants), Jev, every make target,
+    `prepare`, focused and base runs, and live tests. Each is started through
+    one supervisor, `priv/kogen/process_supervisor.py`, generalised from
+    `VerificationRunner`'s:
+    - the supervisor stays outside the group and starts the child with a new
+      session;
+    - it records the child's pid, pgid and start time (`ps -o lstart=`) in the
+      controller's lock state;
+    - it removes the child's temporary prompt files when the child ends;
+    - it is a parent-death watchdog: when the controller's pipe closes or its
+      ppid becomes 1, it `killpg`s TERM, then KILL after a short grace, and
+      exits.
+
+    The controller kills every recorded group the same way on turn end, stop
+    and timeout. It traps SIGHUP and SIGTERM (`:os.set_signal`) to tear down,
+    release the lock and exit. Ctrl-C stops immediately, with no BEAM BREAK
+    menu, for Builds started from the control checkout after this lands. This
+    Build's own controller predates the change. The repository's `mise.toml` sets `ELIXIR_ERL_OPTIONS = "+Bd"`,
+    because `system_flag(break_ignored)` is not settable at runtime and a
+    relaunch can't take the terminal's foreground group. The watchdogs reap on
+    Ctrl-C and on `kill -9`. The Candidate worktree is kept as today, because
+    isolation owns it. All of this works inside the Seatbelt write boundary,
+    which already wraps every role launch.
+  wrong_result: >-
+    Only the direct child is killed, so a forked grandchild that ignores SIGTERM
+    survives. Or the supervisor puts itself in the group and kills itself first,
+    which the probe hit. Or teardown runs only in `after` blocks, which
+    `kill -9` and Ctrl-C skip. Or orphans are identified through `ps` environment
+    variables, which macOS doesn't show. Or a timeout is raised.
+  verified_by: [check]
+  evidence: >-
+    Offline, provider-independent. A fake provider ignores stdin EOF and forks a
+    grandchild that ignores SIGTERM, launched through every launch site's real
+    path. The controller is killed with each of Ctrl-C (under a pty, with
+    `+Bd`), SIGHUP, SIGTERM and `kill -9`, plus a normal stop and a timeout.
+    After a bounded wait (5 s), no process of any recorded group is alive, the
+    lock is released or reclaimable, and the temporary prompt files are gone.
+    Mechanisms are from evidence/probe-custody.
+  proof:
+    offline:
+      - test/kogen/process_custody_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: process groups are provider-independent; fake provider and grandchild killed by every exit path"
+    affected_paths:
+      - priv/kogen/process_supervisor.py
+      - lib/kogen/process_custody.ex
+      - lib/kogen/harness/claude.ex
+      - lib/kogen/harness/codex.ex
+      - lib/kogen/claude_code.ex
+      - lib/kogen/codex.ex
+      - lib/kogen/jev.ex
+      - lib/mix/tasks/kogen.expert.ex
+      - lib/mix/tasks/kogen.build.ex
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification_runner.ex
+      - mise.toml
+      - README.md
+      - test/kogen/process_custody_test.exs
+      - test/support/fake_orphaning_provider
+    base: fail
+
+- id: stale-lock-and-orphan-sweep
+  given: >-
+    A previous controller died without teardown, for example from `kill -9`
+    before its watchdogs acted, or a crash. It left `.kogen/build.lock` and
+    possibly live process groups. At 7ed41f66, the lock records only a pid, and
+    the next Build refuses until someone deletes it by hand.
+  when: A new `mix kogen.build` starts.
+  then: >-
+    The lock records the controller's pid and start time, plus each launched
+    group's pid, pgid and start time. That is the pattern
+    `lib/kogen/codex/state.ex:130-164` already uses. At start, if the owner is
+    alive (pid present with a matching start time), the Build refuses as today.
+    If the owner is dead or its pid was reused, the Build kills every recorded
+    group whose leader's start time still matches, TERM then KILL. It then
+    reclaims the lock automatically and prints one line naming what it reaped.
+    At Build end it sweeps its own recorded groups again. Nobody kills processes
+    or deletes a lock by hand.
+  wrong_result: >-
+    A reused pid gets killed, or a live Build's lock gets reclaimed. Or the lock
+    is deleted without reaping its groups. Or it still needs a manual `rm`.
+  verified_by: [check]
+  evidence: >-
+    A fake dead controller's lock with a live orphan group (a fake grandchild
+    that ignores SIGTERM): the next Build reaps it and starts. A live owner is
+    refused. A lock whose pid was reused (start time mismatch) is reclaimed
+    without killing the unrelated process.
+  proof:
+    offline:
+      - test/kogen/process_custody_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: recorded pid/pgid/lstart and fake processes"
+    affected_paths:
+      - lib/kogen/process_custody.ex
+      - lib/kogen/build.ex
+      - test/kogen/process_custody_test.exs
+    base: fail
+
+# --- Generic: nothing above depends on this repository's checks -------------
+
+- id: generic-project-catalog
+  given: >-
+    A fixture project that is not Kogen and has none of its checks: no `check`,
+    no `cold-offline`, no offline.py, no rehearsals.exs, no ExUnit and no live
+    Shaping driver. Its catalog has one offline target `test` and one
+    provider-backed target `e2e`, with arbitrary ranks, no `prepare` and no
+    Kogen frames in any output. Its config carries `offline_retries` and
+    `verification_retries`.
+  when: >-
+    A fake-harness Build runs through `Kogen.Build`. `test` fails twice with
+    plain shell output, then passes. `e2e` fails once, then passes.
+  then: >-
+    The two `test` failures are `offline` and spend only `offline_retries`. `e2e`
+    never starts while `test` is failing. The `e2e` failure spends one
+    `verification_retries`. Each handoff lists the failed receipt and log with
+    the normalized failure tail. Signatures come from the fallback. The Build
+    settles and reaches Review. No step looks for a target, file or output
+    format that only this repository has.
+  wrong_result: >-
+    The controller requires a target named `check`, a `prepare` field or a
+    signature frame. Or it misclassifies `test` because it is not called `check`.
+    Or the handoff or signature is empty without Kogen's frames.
+  verified_by: [check]
+  evidence: >-
+    A scripted fake-harness Build over a minimal non-Elixir fixture project
+    (Makefile and shell recipes only) asserts the counters, the classes, the
+    handoff contents, the signatures and settlement.
+  proof:
+    offline:
+      - test/kogen/generic_project_build_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: complete fake-harness Build on a non-Kogen catalog with Make counters"
+    affected_paths:
+      - lib/kogen/build.ex
+      - lib/kogen/build/verification.ex
+      - lib/kogen/build/failure_signature.ex
+      - test/kogen/generic_project_build_test.exs
+      - test/support/generic_project_fixture.ex
+    base: fail
+
+# --- Flexible rules that still hold quality (continuation 2026-09-26) -------
+# Shaper: "it needs to be flexible enough that it can be changed on the fly,
+# that the builds pass, but we have to make the builds also follow certain
+# rules so that the code quality is great at the end". Each scenario keeps the
+# protection a rule really gives and drops only the frozen bytes, wording,
+# counts or commit. Evidence: evidence/probe-rigidity/REPORT.md.
+
+- id: test-catalog-binds-declarations
+  given: >-
+    At 7ed41f66, every row in `priv/kogen/test-reliability.yaml` (346 rows)
+    carries `source_sha256`, the SHA-256 of its test file. The validator
+    (`test/support/test_reliability_catalog.ex`, `source_bound?` :144-152)
+    fails `check` with "<id>: source binding is stale" after any edit to a
+    catalogued file, even a new assertion or a comment. The only fix is
+    `scripts/check/refresh_test_reliability_sources.py`, which rewrites every
+    hash unconditionally. No check ties a row's `declaration` to a real test:
+    `discover/1` and `exunit_declarations/1` exist but have no callers. So 5
+    rows already name tests that were renamed or deleted
+    (`codex_compatibility_test.exs` t001-t004 in 363c20af,
+    `lifecycle_test.exs` t001), and 2 were cut off at an apostrophe upstream of
+    the generator, in the ignored runtime coverage matrix it copies from
+    (`harness_args_test.exs` t004, `scenario_tracking_test.exs` t007).
+    `priv/kogen/test-reliability-remediation.yaml` mirrors each row's id,
+    disposition, scenario, implementation, wrong-control locator and
+    resolution, and `validate_remediation/2` requires the two to agree. `check` passes anyway. This trap stopped zYsany_w and K9Fu72yG and
+    broke a Bg1qobsC handoff (mining P10).
+  when: A Candidate edits a catalogued test file, renames or deletes a catalogued test, or leaves the catalog untouched.
+  then: >-
+    The validator binds each row to its test by name, not by bytes:
+    - an ExUnit row (`*.exs`) resolves when its file has `test "<declaration>"`;
+    - a Python row resolves when its file has `def <declaration>`;
+    - a row that doesn't resolve fails `check`, naming the row id, the file
+      and the missing declaration.
+
+    `source_sha256` is removed from every row and from what
+    `scripts/check/generate_test_reliability.py` writes.
+    `refresh_test_reliability_sources.py` is deleted, and
+    `scripts/check/README.md` stops mentioning it. The seven stale rows are
+    repaired by hand: each names the current test that carries its declared
+    behavior, or is removed when that behavior no longer has a test. A removal
+    updates `test-reliability-remediation.yaml` so `validate_remediation/2`
+    still agrees, and the handoff lists each repair. The generator's upstream
+    matrix is ignored runtime state, so the truncation is not fixed there; the
+    name binding catches any repeat.
+
+    Every other semantic check stays unchanged: the required fields, the
+    allowed dispositions, the evidence paths existing and not aliasing, the
+    consumer witness, the unique outcome text, and the changed-implementation
+    rule. `declaration_count` is checked against the rows, not pinned to 346
+    (`test_reliability_catalog_test.exs:15`), so a repaired removal passes.
+    Editing a catalogued test's body, or adding a test, passes with no
+    catalog change. `offline.py` still records the catalog's digest in the
+    receipt, and that digest is of the revised catalog. No file in `lib/`,
+    `scripts/` or `test/` still reads `source_sha256` from this catalog (the
+    unrelated native-helper receipt field of the same name stays).
+  wrong_result: >-
+    The hash stays, and `check` regenerates it, so the rule checks nothing. Or
+    the hash goes with no name binding, so renamed and deleted tests go
+    unnoticed as they do today. Or the seven stale rows are deleted without
+    checking whether their behavior still has a test. Or other semantic checks
+    are dropped along with the hash.
+  verified_by: [check]
+  evidence: >-
+    The catalog test runs the validator on the repository (all rows resolve,
+    no `source_sha256` left) and on fixture catalogs: a comment added to a
+    catalogued file passes; a renamed test fails naming the row; a deleted
+    file fails; a Python row resolves by `def`; a declaration with an
+    apostrophe resolves; a missing consumer witness still fails. On base, the
+    comment-edit fixture fails with "source binding is stale".
+  proof:
+    offline:
+      - test/kogen/test_reliability_catalog_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: validator over the repository catalog and fixture catalogs, with rename, delete and witness negative controls"
+    affected_paths:
+      - test/support/test_reliability_catalog.ex
+      - test/kogen/test_reliability_catalog_test.exs
+      - test/kogen/whole_suite_remediation_test.exs
+      - priv/kogen/test-reliability.yaml
+      - priv/kogen/test-reliability-remediation.yaml
+      - scripts/check/generate_test_reliability.py
+      - scripts/check/refresh_test_reliability_sources.py
+      - scripts/check/README.md
+    base: fail
+
+- id: config-checked-by-reader
+  given: >-
+    At 7ed41f66, `test/kogen/configuration_support_contract_test.exs:47-60`
+    requires the tracked `.kogen/config.yaml` to start with main's exact clean
+    route bytes, to end exactly with
+    `outer_resumptions: 2\nverification_retries: 2\n`, and to have exactly four
+    routes, one of them Codex. Appending `offline_retries: 4` fails it
+    (evidence/probe-rigidity §2), although `Kogen.Intent.read_config/2`
+    accepts it. Separately, `read_config` normalizes every route before
+    selecting one (`lib/kogen/intent.ex:115-127`), so an incomplete route that
+    nobody selects refuses every Build, Shape and Expert call with "config.yaml
+    missing required key: routes.<name>.<key>" (probe §6).
+  when: >-
+    The tracked config gains a key, reorders or reformats its YAML, or adds a
+    valid route, or a config carries an incomplete route that isn't selected.
+  then: >-
+    Runtime: `read_config` still checks the route map's shape and every route
+    name globally. It fully normalizes and validates only the selected route
+    (harness, roles, models, efforts, as today). An incomplete unselected route
+    no longer blocks another route's Build, Shape or Expert call. Selecting
+    the incomplete route still refuses with today's message.
+
+    `check`: the tracked config is validated through the reader's whole-config
+    mode, which normalizes every route. So the repository's own config stays
+    fully valid, and a broken route in it still fails `check`. The contract
+    test asserts behavior, not bytes: the default route resolves; each named
+    route resolves with the harness and model each role needs; the hybrids use
+    role-level harnesses; `offline_retries`, `outer_resumptions` and
+    `verification_retries` are integers. There is no byte prefix, no byte
+    suffix and no route count.
+  wrong_result: >-
+    The byte suffix is just updated to include `offline_retries`, so the next
+    key breaks it again. Or runtime validation is dropped for the selected
+    route too. Or the tracked config is no longer fully validated anywhere, so
+    a broken route in it goes unnoticed.
+  verified_by: [check]
+  evidence: >-
+    The contract test on the tracked config, plus fixture configs: an appended
+    key and reordered keys pass; a fifth valid route passes; a broken route
+    fails whole-config validation. Intent tests: selecting `claude` with a
+    broken `other` route succeeds; selecting the broken route refuses with the
+    same message; a malformed route map still refuses. On base, the tracked
+    config lacks `offline_retries`, and the broken-unselected-route case
+    refuses.
+  proof:
+    offline:
+      - test/kogen/configuration_support_contract_test.exs
+      - test/kogen/intent_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: the reader on the tracked config and on fixture configs, with broken-route and malformed-map controls"
+    affected_paths:
+      - lib/kogen/intent.ex
+      - .kogen/config.yaml
+      - test/kogen/configuration_support_contract_test.exs
+      - test/kogen/intent_test.exs
+    base: fail
+
+- id: docs-and-prompts-checked-by-meaning
+  given: >-
+    At 7ed41f66, tests pin whole sentences of README and the role prompts:
+    `readme_guidance_test.exs:8-58`, `execution_policy_test.exs:44-48`,
+    `core_integrity_test.exs:74-96,106-139` (including an exact `jev-1.13.0`),
+    `shape_task_test.exs:123-207`, `review_packet_test.exs:305-334`,
+    `scenario_contract_test.exs:123-125,162-163` and
+    `selective_verification_targets_test.exs:213-230`. Paths and modules
+    quoted in README are matched as text and never resolved. This Intent
+    rewrites README, `developer.md` and `reviewer.md`, so several of these fail
+    on its own Candidate (evidence/probe-rigidity §3).
+  when: A Candidate rewords README or a role prompt without changing what it requires.
+  then: >-
+    These tests check what code or a role depends on, not sentences:
+    - every `{{placeholder}}` the renderer substitutes is present;
+    - every format that code parses or validates (for example the
+      `provider-required:` / `offline-sufficient:` reasons) is present in the
+      form the validator accepts;
+    - every repository path README or a prompt names in backticks exists, when
+      it starts with `lib/`, `priv/`, `scripts/`, `test/`, `.codex/` or
+      `.claude/`, or is `Makefile`, `mix.exs` or `mise.toml`. Paths with a
+      `<placeholder>` segment or a glob are skipped, and so are runtime and
+      ignored locations (`.kogen/runtime/`, `.kogen/build.lock`,
+      `.kogen/codex`, `.codex/sessions`, `deps/`, `_build/`, the same set
+      `GuardedPaths` treats as volatile). The rule reads the file system, not Git, so it holds in the
+      gitless `cold-offline` copy;
+    - every `Module.function/arity` it names is exported, where a short name
+      such as `VerificationPlan.load/1` must resolve to exactly one `Kogen.*`
+      module;
+    - each role's safety rules stay present, as short anchors kept in one list
+      per prompt: the Reviewer never modifies the Candidate and writes its own
+      schema-valid verdict; Shaping approval is same-conversation and explicit;
+      the Developer does not run gate targets; the Shaping prompt carries no
+      self-hosting section;
+    - a pinned version named in README (Jev) matches the version the code
+      pins, instead of a literal.
+
+    Historical phrases, past Intent slugs and long sentences are no longer
+    asserted. README's self-hosting list is corrected while it is rewritten:
+    at 7ed41f66 the controller renders the role prompts from control
+    (`build.ex:2260-2262`, `:2312-2314`), not from the Candidate. The Makefile recipe checks
+    (`selective_verification_targets_test.exs:59-70`) and placeholder checks
+    (`harness_contract_test.exs:80-95`) stay unchanged.
+  wrong_result: >-
+    The pinned sentences are updated to the new wording, so the next rewrite
+    fails again. Or the tests are deleted, so a prompt loses a safety rule or
+    README cites a path that no longer exists, and `check` still passes. Or
+    anchors are so long that they are sentences again.
+  verified_by: [check]
+  evidence: >-
+    The listed tests pass on the rewritten README and prompts. Negative
+    controls on fixture copies: a README citing a missing path fails naming
+    it; a removed placeholder fails; a Reviewer prompt without its read-only
+    rule fails; a README Jev version that differs from the code's fails.
+    Rewording a paragraph passes. No `proof.base`: these tests change how they
+    check, and the admission base's README would also satisfy them.
+  proof:
+    offline:
+      - test/kogen/readme_guidance_test.exs
+      - test/kogen/execution_policy_test.exs
+      - test/kogen/core_integrity_test.exs
+      - test/kogen/shape_task_test.exs
+      - test/kogen/review_packet_test.exs
+      - test/kogen/scenario_contract_test.exs
+      - test/kogen/selective_verification_targets_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: the real README and prompts, with missing-path, missing-placeholder, missing-rule and version-mismatch controls"
+    affected_paths:
+      - test/kogen/readme_guidance_test.exs
+      - test/kogen/execution_policy_test.exs
+      - test/kogen/core_integrity_test.exs
+      - test/kogen/shape_task_test.exs
+      - test/kogen/review_packet_test.exs
+      - test/kogen/scenario_contract_test.exs
+      - test/kogen/selective_verification_targets_test.exs
+      - test/support/document_references.ex
+
+- id: hooks-checked-by-behavior
+  given: >-
+    At 7ed41f66, `test/kogen/verification_policy_test.exs:170-222` requires
+    `.codex/hooks.json`, the Claude settings and every hook script to be
+    byte-identical to 9ff7af6e, and pins an Elixir source literal. A trailing
+    comment in `.codex/hooks/verification_policy.py` fails it
+    ("… changed since 9ff7af6e…"; evidence/probe-rigidity §4). The same file
+    already tests that every covered gate is blocked, focused tests are
+    permitted, missing data denies, and registration is required.
+  when: An Intent that declares a hook path edits it without weakening it.
+  then: >-
+    The byte and source-literal comparison is removed. In its place: every
+    registered hook command resolves to an existing executable script; the
+    command `Kogen.VerificationPolicy` requires is the one registered for
+    PreToolUse Bash in both harness configs; each Python hook compiles. The
+    behavior tests stay and remain the protection: a hook edit that lets a
+    gate through fails them. `lib/kogen/verification_policy.ex`'s own
+    registration check (`:60-91`) is unchanged, and undeclared hook edits are
+    still refused by guarded paths during a Build.
+  wrong_result: >-
+    The commit is bumped to a newer one, so the next hook fix fails again. Or
+    the behavior tests are weakened along with the byte test. Or registration
+    is no longer checked.
+  verified_by: [check]
+  evidence: >-
+    `verification_policy_test.exs` passes with a comment added to a hook
+    script in a fixture copy, and fails when the fixture's hook stops blocking
+    `make check`, when its registration is removed, or when its script is
+    missing. No `proof.base`: the change removes a check, and the remaining
+    tests pass on base.
+  proof:
+    offline:
+      - test/kogen/verification_policy_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: fixture hook copies with comment, weakened-hook, missing-registration and missing-script controls"
+    affected_paths:
+      - test/kogen/verification_policy_test.exs
+
+- id: helper-make-targets-allowed
+  given: >-
+    At 7ed41f66, `VerificationPlan` requires the Makefile's targets to equal
+    the catalog's exactly (`verification_plan.ex:262-278`), and
+    `MakeInventory` rejects any double-colon or pattern rule anywhere
+    (`make_inventory.ex:64-95`). A harmless `fmt:` target gives "verification
+    target catalog does not match declared Make targets", and `%.txt: ;` gives
+    "pattern Make rule at line N is unsupported" (evidence/probe-rigidity §5).
+    The check runs at admission, at prompt rendering, every cycle through
+    `CatalogChange.check/4`, and in the live-reviewer-rework fixture before
+    dispatch, where E8wJA-G0 died 20.2 min in with the same message.
+  when: A project's Makefile has targets or rules that are not verification targets.
+  then: >-
+    Every catalog target must still exist in the Makefile as an ordinary
+    single-colon rule, and a missing one refuses with a message naming it.
+    Other targets are allowed. A pattern or double-colon rule is refused only
+    when it could define or shadow a catalog target (it matches a catalog
+    target's name), with a message naming both. Otherwise it is ignored.
+    Unique ranks, the rank-order rule for `verified_by`, dependency checks,
+    admission-catalog freezing and `CatalogChange` rules stay unchanged.
+    `Kogen.Check` keeps its own inventory checks for the repository's
+    verification entry points.
+  wrong_result: >-
+    The rule is dropped entirely, so a catalog target that isn't in the
+    Makefile is only found when `make` fails mid-Build. Or a pattern rule that
+    matches `check` is accepted. Or the Makefile of this Build's Candidate gains
+    a helper target, which main's controller refuses mid-Build.
+  verified_by: [check]
+  evidence: >-
+    Plan tests on fixture Makefiles: an extra `fmt:` target loads; an unrelated
+    `%.txt:` rule loads; a missing catalog target refuses naming it; `%: ;` or
+    `check::` refuses naming the rule and the target. The repository's own
+    catalog and Makefile still load. On base, the `fmt:` fixture refuses.
+  proof:
+    offline:
+      - test/kogen/selective_verification_targets_test.exs
+      - test/kogen/check_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: VerificationPlan and MakeInventory over fixture Makefiles, with missing-target and shadowing-rule controls"
+    affected_paths:
+      - lib/kogen/build/verification_plan.ex
+      - lib/kogen/make_inventory.ex
+      - lib/kogen/check.ex
+      - test/kogen/selective_verification_targets_test.exs
+      - test/kogen/check_test.exs
+    base: fail

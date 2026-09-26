@@ -47,3 +47,4 @@ routes:
         worker: {model: claude-sonnet-5, effort: medium}
 outer_resumptions: 2
 verification_retries: 2
+offline_retries: 4

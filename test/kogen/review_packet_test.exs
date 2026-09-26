@@ -319,29 +319,51 @@ defmodule Kogen.ReviewPacketTest do
       assert prompt =~ "Start from the review packet"
     end
 
-    test "reviewer.md ends with a mandatory completeness step over both id lists" do
+    # `docs-and-prompts-checked-by-meaning`: this checks what the completeness
+    # step requires (checked for meaning), not its exact sentences, so
+    # rewording the section keeps passing while a section that drops the
+    # requirement, or is no longer the prompt's last instruction, fails.
+    test "reviewer.md's last section forces completeness over both id lists" do
       source = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+
+      assert completeness_meets_requirements?(source),
+             "reviewer.md must still require every scenario_ids id in `scenarios` " <>
+               "and every open_findings id in `dispositions`, exactly once each, " <>
+               "before the verdict is returned"
 
       # The step is the prompt's last section, so it is the final instruction
       # a Reviewer reads before returning (Build qWusXkQn dropped a scenario id).
       [_before, step] = String.split(source, "## Mandatory completeness step\n")
       refute step =~ ~r/^#/m
-      step = String.replace(step, ~r/\s+/, " ")
-
-      assert step =~ "Before you return the verdict"
-      assert step =~ "This step is mandatory"
-      assert step =~ "every Approved scenario id, taken from the review packet's `scenario_ids`"
-      assert step =~ "each one appears exactly once in `scenarios`"
-      assert step =~ "every finding id that was open when Review began"
-      assert step =~ "`open_findings`"
-      assert step =~ "each one appears exactly once in `dispositions`"
-      assert step =~ "fix the verdict before returning it"
 
       dir = Fixture.fixture!()
       assert :ok = Fixture.run(dir)
-      prompt = String.replace(Fixture.reviewer_prompt!(dir, 1), ~r/\s+/, " ")
-      assert prompt =~ "Mandatory completeness step"
+      prompt = Fixture.reviewer_prompt!(dir, 1)
+      assert completeness_meets_requirements?(prompt)
     end
+
+    # Negative control: a reviewer.md missing the completeness requirement no
+    # longer satisfies the meaning check, even though it is still well-formed
+    # markdown.
+    test "negative control: reviewer.md without the completeness requirement fails the meaning check" do
+      source = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+      [before, _step] = String.split(source, "## Mandatory completeness step\n")
+
+      refute completeness_meets_requirements?(before)
+    end
+  end
+
+  # Meaning, not sentences: the prompt names the two id lists the packet
+  # supplies (`scenario_ids`, `open_findings`) and requires every id of each
+  # to appear exactly once in the matching verdict collection (`scenarios`,
+  # `dispositions`), then says to fix the verdict before returning it.
+  # `open_findings` names only the completeness step anywhere in the prompt,
+  # so this fails whenever that step (or its requirement) is missing, without
+  # pinning its sentences.
+  defp completeness_meets_requirements?(text) do
+    text =~ ~r/scenario_ids.{0,120}exactly once.{0,60}scenarios/is and
+      text =~ ~r/open_findings.{0,120}exactly once.{0,60}dispositions/is and
+      text =~ ~r/fix the verdict|before (you return|returning)/i
   end
 
   defp assert_stub!(stub, record, source, locator) do

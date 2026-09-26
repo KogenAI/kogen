@@ -24,6 +24,12 @@ defmodule Kogen.Harness.Claude do
   @read_tools ~w(Read Grep Glob)
   @synthetic_model "<synthetic>"
   @settings_path Path.expand("../../../priv/kogen/claude_code/settings.json", __DIR__)
+  # Provider stop, exit and failure evidence keeps the last
+  # `@output_tail_bytes` bytes of the stream, not its head, so a classifying
+  # line (a rate-limit or overload marker near the end of a long capture,
+  # itself up to ~10 KB for a Claude `result` event) survives whole for
+  # `Kogen.Harness.ProviderMarker` to classify.
+  @output_tail_bytes 16_384
 
   @doc "Launches a fresh Developer turn with the prompt on stdin."
   def launch_developer(prompt, model, effort, policy_environment, context) do
@@ -69,10 +75,45 @@ defmodule Kogen.Harness.Claude do
         run_with_stdin(resolved, args, prompt, [{"KOGEN_ROLE", "reviewer"}])
 
       case parse_stream(output, exit_code, session_id, model) do
-        {:ok, turn} -> reviewer_response(turn, Map.get(resolved, :ledger_paths, []) != [])
+        {:ok, turn} -> reviewer_response(turn, verdict_opts(resolved), output)
         {:error, _reason} = error -> error
       end
     end)
+  end
+
+  @doc """
+  Resumes the exact Reviewer session once (`--resume`) with the schema-error
+  re-ask on stdin, and requires a schema-valid verdict against the same
+  per-launch schema (the context's `:ledger_paths` and `:scenario_ids`).
+  """
+  def resume_reviewer(session_id, prompt, model, effort, context) do
+    with_context(context, fn resolved ->
+      args = resume_reviewer_args(model, effort, resolved, session_id)
+
+      {output, exit_code} =
+        run_with_stdin(resolved, args, prompt, [{"KOGEN_ROLE", "reviewer"}])
+
+      case parse_stream(output, exit_code, session_id, model) do
+        {:ok, turn} -> reviewer_response(turn, verdict_opts(resolved), output)
+        {:error, _reason} = error -> error
+      end
+    end)
+  end
+
+  # A context with no per-launch scenario ids keeps the legacy validation
+  # shape (a bare boolean), which never requires the per-launch evidence
+  # `receipt` field or lookaround-free `path` pattern. Threading
+  # `Kogen.Harness.with_scenarios/2` opts into the per-launch schema and its
+  # `{:error, [errors]}` validation.
+  defp verdict_opts(context) do
+    ledger_paths = Map.get(context, :ledger_paths, [])
+    scenario_ids = Map.get(context, :scenario_ids, [])
+
+    if scenario_ids == [] do
+      ledger_paths != []
+    else
+      %{ledger?: ledger_paths != [], ledger_paths: ledger_paths, scenario_ids: scenario_ids}
+    end
   end
 
   @doc """
@@ -129,8 +170,18 @@ defmodule Kogen.Harness.Claude do
   def reviewer_args(model, effort, context, session_id) do
     ["-p", "--output-format", "stream-json", "--verbose"] ++
       common_args(model, effort, context, "reviewer") ++
-      ["--json-schema", Verdict.schema(Map.get(context, :ledger_paths, []))] ++
-      session_args({:fresh, session_id})
+      ["--json-schema", verdict_schema(context)] ++ session_args({:fresh, session_id})
+  end
+
+  @doc false
+  def resume_reviewer_args(model, effort, context, session_id) do
+    ["-p", "--output-format", "stream-json", "--verbose"] ++
+      common_args(model, effort, context, "reviewer") ++
+      ["--json-schema", verdict_schema(context)] ++ session_args({:resume, session_id})
+  end
+
+  defp verdict_schema(context) do
+    Verdict.schema(Map.get(context, :ledger_paths, []), Map.get(context, :scenario_ids, []))
   end
 
   @doc false
@@ -267,17 +318,23 @@ defmodule Kogen.Harness.Claude do
          {:developer_transport_failure, reason,
           evidence_base
           |> Map.put(:outcome, :provider_failure)
-          |> Map.put(:session_id, observed_session(output))}}
+          |> Map.put(:session_id, observed_session(output))
+          |> Map.put(:output_tail, output_tail(output))}}
     end
   end
 
   # As documented for structured outputs, a success result without
   # structured_output is a failure; so is a turn a hook stopped.
-  defp reviewer_response(%{result: result} = turn, ledger?) do
+  defp reviewer_response(%{result: result} = turn, verdict_opts, output) do
     structured = result["structured_output"]
     stopped = result["terminal_reason"] == "hook_stopped"
 
-    case if(stopped, do: :error, else: Verdict.validate(structured, ledger?)) do
+    validation =
+      if stopped,
+        do: {:error, [%{"pointer" => "", "rule" => "terminal_reason: a hook stopped the turn"}]},
+        else: Verdict.validate(structured, verdict_opts)
+
+    case validation do
       {:ok, verdict} ->
         message = Jason.encode!(structured)
 
@@ -290,13 +347,15 @@ defmodule Kogen.Harness.Claude do
          |> Map.put(:session_id, turn.session_id)
          |> Map.put(:executed_models, turn.executed_models)}
 
-      :error ->
+      {:error, errors} ->
         {:error,
          {:malformed_verdict, 0,
           %{
             "reviewer_session_id" => turn.session_id,
             "message" => if(is_nil(structured), do: "", else: Jason.encode!(structured)),
-            "terminal_reason" => result["terminal_reason"]
+            "terminal_reason" => result["terminal_reason"],
+            "output_tail" => output_tail(output),
+            "errors" => errors
           }}}
     end
   end
@@ -332,12 +391,12 @@ defmodule Kogen.Harness.Claude do
   defp exit_status(0, _output), do: :ok
 
   defp exit_status(exit_code, output),
-    do: {:error, {:provider_exit, exit_code, String.slice(output, 0, 4000)}}
+    do: {:error, {:provider_exit, exit_code, output_tail(output)}}
 
   defp init_session(events, exit_code, output) do
     case Enum.find(events, &(&1["type"] == "system" and &1["subtype"] == "init")) do
       %{"session_id" => id} when is_binary(id) and id != "" -> {:ok, id}
-      nil -> {:error, {:no_init_event, exit_code, String.slice(output, 0, 4000)}}
+      nil -> {:error, {:no_init_event, exit_code, output_tail(output)}}
       _init -> {:error, :missing_session_id}
     end
   end
@@ -356,7 +415,7 @@ defmodule Kogen.Harness.Claude do
   defp result_event(events, exit_code, output) do
     case Enum.filter(events, &(&1["type"] == "result")) do
       [] ->
-        {:error, {:no_result_event, exit_code, String.slice(output, 0, 4000)}}
+        {:error, {:no_result_event, exit_code, output_tail(output)}}
 
       results ->
         result = List.last(results)
@@ -366,13 +425,15 @@ defmodule Kogen.Harness.Claude do
           else:
             {:error,
              {:provider_error,
-              Map.take(result, [
+              result
+              |> Map.take([
                 "subtype",
                 "is_error",
                 "result",
                 "terminal_reason",
                 "api_error_status"
-              ])}}
+              ])
+              |> Map.put("output_tail", output_tail(output))}}
     end
   end
 
@@ -451,32 +512,47 @@ defmodule Kogen.Harness.Claude do
   # A Build launch runs in its Candidate (`:cwd`) under the write boundary's
   # argv `:prefix` (`sandbox-exec -p <profile>`), so the harness process and
   # everything it spawns are confined by the kernel.
+  # Runs the role process through `Kogen.ProcessCustody`, in its own process
+  # group: a stray grandchild the CLI forks cannot outlive this turn, and the
+  # controller's death (Ctrl-C, SIGHUP, SIGTERM, `kill -9`, a crash) reaps it
+  # too, through the supervisor's own parent-death watchdog.
   defp run_with_stdin(context, args, stdin_text, role_environment) do
     dir = temporary_directory("stdin")
     tmp = Path.join(dir, "prompt")
     File.write!(tmp, stdin_text)
 
-    try do
-      argv = Map.get(context, :prefix, []) ++ [context.executable | context.args ++ args]
-      cmd = Enum.map_join(argv, " ", &shell_quote/1) <> " < " <> shell_quote(tmp)
+    argv = Map.get(context, :prefix, []) ++ [context.executable | context.args ++ args]
 
-      result =
-        System.cmd(
-          "sh",
-          ["-c", cmd],
-          [stderr_to_stdout: false, env: merge_environment(context.env, role_environment)] ++
-            cwd_option(context)
-        )
+    custody_opts =
+      [stdin_path: tmp, tmp_dir: dir, env: merge_environment(context.env, role_environment)] ++
+        custody_registration(context, role_environment)
 
-      persist_raw_stream(result)
-      result
-    after
-      File.rm_rf(dir)
-    end
+    result =
+      case Kogen.ProcessCustody.run(argv, context[:cwd] || File.cwd!(), custody_opts) do
+        {:ok, facts} -> {facts["output"] || "", facts["exit_code"]}
+        {:error, reason} -> {reason, 1}
+      end
+
+    persist_raw_stream(result)
+    result
   end
 
-  defp cwd_option(%{cwd: cwd}) when is_binary(cwd), do: [cd: cwd]
-  defp cwd_option(_context), do: []
+  # Inside a Build the launch context carries `:control` (the control
+  # checkout); the launched group is then recorded on the Build's lock, so a
+  # later Build (or this one's own sweep) can find and reap it. Outside a
+  # Build (Shaping's readiness probes, tests with no launch) there is no
+  # control root, and no registration is possible or needed.
+  defp custody_registration(%{control: control}, role_environment) when is_binary(control),
+    do: [control: control, role: role_label(role_environment)]
+
+  defp custody_registration(_context, _role_environment), do: []
+
+  defp role_label(role_environment) do
+    case List.keyfind(role_environment, "KOGEN_ROLE", 0) do
+      {_key, role} when is_binary(role) -> role
+      _ -> "process"
+    end
+  end
 
   defp persist_raw_stream({output, _exit_code}) do
     case System.get_env("KOGEN_RAW_LOG_DIR") do
@@ -544,5 +620,16 @@ defmodule Kogen.Harness.Claude do
   end
 
   defp digest(value), do: Base.encode16(:crypto.hash(:sha256, value), case: :lower)
-  defp shell_quote(s), do: "'" <> String.replace(s, "'", "'\\''") <> "'"
+
+  # The last `@output_tail_bytes` bytes of the raw stream, byte-accurate
+  # (never splitting a multi-byte codepoint), carried on transport and
+  # Reviewer failure evidence for `Kogen.Harness.ProviderMarker.classify/1`.
+  defp output_tail(bytes) when byte_size(bytes) <= @output_tail_bytes, do: valid_utf8(bytes)
+
+  defp output_tail(bytes),
+    do: valid_utf8(binary_part(bytes, byte_size(bytes) - @output_tail_bytes, @output_tail_bytes))
+
+  defp valid_utf8(bytes) do
+    if String.valid?(bytes), do: bytes, else: String.replace_invalid(bytes)
+  end
 end

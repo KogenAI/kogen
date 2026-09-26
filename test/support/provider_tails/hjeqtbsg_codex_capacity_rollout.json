@@ -1,0 +1,13 @@
+{
+  "provenance": {
+    "build_id": "hJeqtBSgm52RC3xO6fMza8gq",
+    "cycle": null,
+    "cycle_note": "Not cycle-scoped: the native Codex rollout referenced by the same attempt's developer_invocation.",
+    "source_record_path": "~/Library/Application Support/Kogen/codex/accounts/shared/sessions/2026/09/24/rollout-2026-09-24T12-05-10-01a0d2a9-5e20-7bb1-ad2e-64393bc25d33.jsonl (last 2 lines of 56)",
+    "sha256": "bf82e66d34bae0a77377296d699cf5ba45be5b310e79f92535dcc9f176811728",
+    "sha256_note": "sha256 of the source rollout JSONL file"
+  },
+  "description": "Codex rollout form: the terminal `task_complete` event carries the structured `error.codex_error_info:\"server_overloaded\"` field, strictly more reliable than the freeform message alone.",
+  "harness": "codex",
+  "output": "{\"timestamp\":\"2026-09-24T09:07:11.803Z\",\"ordinal\":54,\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":131478,\"cached_input_tokens\":89088,\"cache_write_input_tokens\":0,\"output_tokens\":910,\"reasoning_output_tokens\":80,\"total_tokens\":132388},\"last_token_usage\":{\"input_tokens\":30098,\"cached_input_tokens\":25344,\"cache_write_input_tokens\":0,\"output_tokens\":178,\"reasoning_output_tokens\":12,\"total_tokens\":30276},\"model_context_window\":258400},\"rate_limits\":{\"limit_id\":\"codex\",\"limit_name\":null,\"primary\":{\"used_percent\":2.0,\"window_minutes\":10080,\"resets_at\":1790771783},\"secondary\":null,\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individual_limit\":null,\"spend_control_reached\":null,\"plan_type\":\"prolite\",\"rate_limit_reached_type\":null}}}\n{\"timestamp\":\"2026-09-24T09:07:11.806Z\",\"ordinal\":55,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"01a0d2a9-621c-71f2-9463-7970391350e3\",\"last_agent_message\":null,\"error\":{\"message\":\"Selected model is at capacity. Please try a different model.\",\"codex_error_info\":\"server_overloaded\"},\"started_at\":1790240711,\"completed_at\":1790240831,\"duration_ms\":120609,\"time_to_first_token_ms\":18225}}\n"
+}

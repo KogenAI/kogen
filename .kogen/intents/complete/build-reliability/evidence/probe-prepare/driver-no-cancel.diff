@@ -1,0 +1,81 @@
+diff --git a/test/support/shaping_evaluation/driver.py b/test/support/shaping_evaluation/driver.py
+index e5e343b6..fa669d8e 100644
+--- a/test/support/shaping_evaluation/driver.py
++++ b/test/support/shaping_evaluation/driver.py
+@@ -1118,38 +1118,47 @@ def run_suite():
+     # log so a verbose native transport cannot deadlock a PIPE.
+     cases=CASES
+     env={**os.environ, "KOGEN_SHAPING_EVALUATION_SUITE_BARRIER":"1"}
+-    children={}; logs={}; pending=set(cases); failure=None
+-    try:
+-        for case in cases:
+-            log=(RUNTIME/f"{case}-output.log").open("w")
+-            logs[case]=log
+-            children[case]=subprocess.Popen(["python3", "-B", str(Path(__file__).resolve()), case], env=env, stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)
+-        deadline = monotonic_now() + SUITE_SECONDS
+-        while pending and failure is None:
+-            if monotonic_now() >= deadline:
+-                raise TimeoutError("parallel cases exceeded the existing case deadline")
+-            for case in cases:
+-                child=children[case]
+-                if case not in pending or child.poll() is None: continue
+-                pending.remove(case)
+-                if child.returncode:
+-                    failure=(case, f"child exited {child.returncode}; see {case}-output.log")
+-                    break
+-                required_case_capture(case)
+-            if pending and failure is None: time.sleep(.05)
+-        if failure: raise RuntimeError(f"{failure[0]}: {failure[1]}")
+-    except Exception as exc:
+-        cleanup_errors = []
+-        for case, child in children.items():
++    children={}; logs={}; pending=set(cases); failures={}
++    for case in cases:
++        log=(RUNTIME/f"{case}-output.log").open("w")
++        logs[case]=log
++        children[case]=subprocess.Popen(["python3", "-B", str(Path(__file__).resolve()), case], env=env, stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)
++    # Every dispatched case runs to completion within the same deadline: a
++    # failing case no longer cancels its still-running siblings, so every
++    # case keeps a complete, inspectable evidence trail.
++    deadline = monotonic_now() + SUITE_SECONDS
++    while pending and monotonic_now() < deadline:
++        for case in list(pending):
++            child=children[case]
++            if child.poll() is None: continue
++            pending.discard(case)
++            if child.returncode:
++                failures[case]=f"child exited {child.returncode}; see {case}-output.log"
++                continue
+             try:
+-                cancel_case_process(case, child)
+-            except Exception as cleanup_exc:
+-                cleanup_errors.append({"case":case,"type":type(cleanup_exc).__name__,"message":str(cleanup_exc)})
+-        failure_record={"case": failure[0] if failure else "parallel suite", "type":type(exc).__name__,"message":str(exc),"cancelled_children":sorted(pending),"cleanup_errors":cleanup_errors}
++                required_case_capture(case)
++            except Exception as exc:
++                failures[case]=f"{type(exc).__name__}: {exc}"
++        if pending: time.sleep(.05)
++    cleanup_errors=[]
++    for case in sorted(pending):
++        failures[case]="parallel cases exceeded the existing case deadline"
++        try:
++            cancel_case_process(case, children[case])
++        except Exception as cleanup_exc:
++            cleanup_errors.append({"case":case,"type":type(cleanup_exc).__name__,"message":str(cleanup_exc)})
++    for log in logs.values(): log.close()
++    if failures:
++        for case in cases:
++            if case in failures:
++                print(f"FAILED: {case}: {failures[case]}", flush=True)
++        failure_record={"failed_cases":failures,"cleanup_errors":cleanup_errors}
+         (RUNTIME/"suite-failure.json").write_text(json.dumps(failure_record,indent=2)+"\n")
++        try:
++            write_manifest()
++        except Exception:
++            pass
+         return 1
+-    finally:
+-        for log in logs.values(): log.close()
+     try:
+         write_manifest()
+     except Exception as exc:

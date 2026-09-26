@@ -78,7 +78,21 @@ if [ -n "$resume" ]; then
  case "$input" in
   'Controller verification failed after your turn'*)
    printf '%s' "$input" >> "$state_dir/verification-resume-prompts"
-   [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ] || rm -f .kogen/runtime/kogen_fake_break
+   # Every repair changes a tracked file too, so the controller sees a new
+   # Candidate id (an unchanged Candidate after a failed cycle stops the
+   # Build). The n-th repair writes the fixture value with n trailing
+   # newlines: the first leaves exactly `initial fixture value\n`, and the
+   # requirement check ignores trailing newlines. A failing-always run keeps
+   # changing it until retries run out.
+   if [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ]; then
+    printf 'verification attempt\n' >> dummy.txt
+   else
+    rm -f .kogen/runtime/kogen_fake_break
+    repairs=$(( $(cat "$state_dir/verification-repairs" 2>/dev/null || echo 0) + 1 ))
+    echo "$repairs" > "$state_dir/verification-repairs"
+    printf 'initial fixture value' > dummy.txt
+    i=0; while [ "$i" -lt "$repairs" ]; do printf '\n' >> dummy.txt; i=$((i+1)); done
+   fi
    ;;
   *'Rework required (category: declared_target;'*)
    printf '%s' "$input" >> "$state_dir/developer-resume-prompts" ;;
@@ -100,6 +114,7 @@ printf '%s' "$input" > "$state_dir/developer-launch-prompt"
 printf 'initial fixture value\n' > dummy.txt
 if [ "${FAKE_CLAUDE_STOP_BLOCK:-1}" = 1 ]; then
  mkdir -p .kogen/runtime; printf 'bounded fixture break\n' > .kogen/runtime/kogen_fake_break
+ printf 'bounded fixture break\n' >> dummy.txt
 fi
 stop_check
 printf '%s' "$input" | python3 "$response_helper" developer | python3 "$stream" developer "$sid" "$model"

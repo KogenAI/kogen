@@ -1,0 +1,145 @@
+{
+  "provenance": {
+    "build_id": "qWusXkQnvl77VkiH2xEfuMdz",
+    "cycle": null,
+    "cycle_note": "A Reviewer verdict is not cycle-scoped; this is the first (and only) Review of attempt 0.",
+    "sha256": "a7abacd5d15602befe1efcd7c55a788f8294a1f642711cdc8d6ba43565aa6146",
+    "sha256_note": "sha256 of json.dumps(invalid_verdict, sort_keys=True)",
+    "source_record_path": ".kogen/runtime/scenario-tracking/qWusXkQnvl77VkiH2xEfuMdz/record.json (attempts[0].invalid_verdict)"
+  },
+  "verdict": {
+    "attempt_token": "AHxpwjZYmWg0kjKw3opQzQqt7HNC1oxn",
+    "candidate_id": "754053548fc4058b73c5e226eb89efb098267ee9",
+    "dispositions": [],
+    "findings": [],
+    "scenarios": [
+      {
+        "evidence": [
+          {
+            "locator": "retain_record_version/2, verify_record_versions/1, write_record_version/2",
+            "path": "lib/kogen/build/tracking.ex"
+          },
+          {
+            "locator": "snapshot_reference/2; inputs_unchanged and publication call Tracking.verify_record_versions",
+            "path": "lib/kogen/build.ex"
+          },
+          {
+            "locator": "record_versions/2 in resolve",
+            "path": "lib/kogen/build/evidence.ex"
+          },
+          {
+            "locator": "record citation test; record_sidecar_delete/edit tests",
+            "path": "test/kogen/scenario_lifecycle_test.exs"
+          }
+        ],
+        "id": "record-never-embeds-itself",
+        "reason": "A citation of the Build's own record is retained as metadata: path, sha256, byte_count, binding controller_record_version and a checkout-relative sidecar, with no content_base64. The sidecar is written with an exclusive create at record-versions/<sha256>.json. Identical bytes reuse it; different bytes are an integrity failure. Ordinary cited files keep their inline snapshots. Sidecars are validated by verify_reference/3, inputs_unchanged, the publication check and Evidence.resolve. The older inline form is still accepted. The lifecycle tests assert the exact metadata across two attempts, sidecar bytes, a record smaller than the sum of the versions it cites, no embedded base64, and delete/edit stops before publication.",
+        "status": "satisfied"
+      },
+      {
+        "evidence": [
+          {
+            "locator": "@keys, @profiles, build/1, write/5, verify/1, fit/5",
+            "path": "lib/kogen/build/review_packet.ex"
+          },
+          {
+            "locator": "review/4 write_review_packet; review_packets_unchanged; reviewer_context",
+            "path": "lib/kogen/build.ex"
+          },
+          {
+            "locator": "KOGEN_TASK_CONTEXT paragraph",
+            "path": "priv/kogen/prompts/reviewer.md"
+          },
+          {
+            "locator": "packet construction and real Review route tests",
+            "path": "test/kogen/review_packet_test.exs"
+          },
+          {
+            "locator": "per-attempt review_packet binding assertions",
+            "path": "test/kogen/lifecycle_test.exs"
+          }
+        ],
+        "id": "bounded-review-packet",
+        "reason": "The packet is canonical key-sorted JSON with exactly the 14 required keys. Fields are capped per profile (notes 16 KiB, receipt tail 2 KiB, handoff 24 KiB) and cut at UTF-8 boundaries, with digest and pointer stubs listed in omitted. Tighter profiles are tried in turn, and building fails with an integrity error rather than dropping ids. The packet is written once with an exclusive create before launch. Its binding is kept in state and in the attempt, and verified before launch, in inputs_unchanged and at publication. The context adds review_packet and keeps tracking_path. reviewer.md tells the Reviewer to read the packet first and still inspect the Candidate. Tests cover oversized inputs, mutation, deletion and the context. Stop's check and live-reviewer-rework receipts passed.",
+        "status": "satisfied"
+      },
+      {
+        "evidence": [
+          {
+            "locator": "verify_packet!/3, verify_reviewer_tool_call!/3, verify_candidate_citation!/2, refute_inline_self_reference!/2",
+            "path": "test/support/review_packet_audit.ex"
+          },
+          {
+            "locator": "negative cases ~lines 105-148",
+            "path": "test/kogen/review_packet_audit_test.exs"
+          },
+          {
+            "locator": "git diff HEAD empty",
+            "path": "test/support/live_rework_audit.ex"
+          }
+        ],
+        "id": "live-packet-audit",
+        "reason": "The helper inspected these files; the reason relays its report. ReviewPacketAudit is called only by the Reviewer-rework fixture. It verifies each packet's size, parsing, digest and bindings against the record. It requires a tool call naming the packet path, excluding plain assistant text. It requires the accepting verdict to cite a Candidate file, checked with git cat-file. It forbids an inline copy of the record in any of the three snapshot maps. Elapsed seconds are recorded with no threshold. live_rework_audit.ex is unchanged. The offline tests cover a passing case, a missing tool call, a digest mismatch, an inline copy and a missing citation.",
+        "status": "satisfied"
+      },
+      {
+        "evidence": [
+          {
+            "locator": "lines ~55-144",
+            "path": "test/support/live_reviewer_rework_fixture.ex"
+          },
+          {
+            "locator": "canonical_path!/1, assert_outside_checkout!/2, assert_logged_in!/1, retain_evidence!/3",
+            "path": "test/support/review_packet_audit.ex"
+          },
+          {
+            "locator": "path check and evidence-copy tests ~lines 10-101",
+            "path": "test/kogen/review_packet_audit_test.exs"
+          }
+        ],
+        "id": "fixture-outside-checkout",
+        "reason": "The helper inspected these files; the reason relays its report. The fixture root is created under System.tmp_dir!() and resolved with pwd -P. The resolved path is used for setup, precompile and mix kogen.build. The in-checkout runtime path is removed. A real refute asserts the root is outside the checkout, and the Claude Code login is checked before the Build dispatch. Evidence is copied to the log dir before removal: build console, raw streams, fixture path, the complete package, the record, sidecars, packets and the audit summary. The fixture is removed on exit, and the timeout is unchanged.",
+        "status": "satisfied"
+      },
+      {
+        "evidence": [
+          {
+            "locator": "superseded_objection/4, same_history?/2, final_pass?/2, superseded/1",
+            "path": "lib/kogen/build/review_packet.ex"
+          },
+          {
+            "locator": "settle_outcome/7 cond",
+            "path": "lib/kogen/build.ex"
+          },
+          {
+            "locator": "end-to-end and rule tests",
+            "path": "test/kogen/superseded_objection_test.exs"
+          }
+        ],
+        "id": "superseded-objection-reaches-review",
+        "reason": "superseded_objection supersedes an objection only when all of these hold: verification passed; every cycle has the same attempt token and session; a non-final cycle failed; and the final cycle passed on the settled Candidate. It records the items, confidences, failed sequences and passing sequence. settle_outcome stores the record and proceeds to Review, and the cannot_comply body is untouched. The packet carries the labelled advisory item. The tests drive the real Build with a stubbed Jev and real Stop cycles. They cover failed-then-passed, a single pass, exhaustion, a different attempt, a differing Candidate and a reading below the threshold.",
+        "status": "satisfied"
+      },
+      {
+        "evidence": [
+          {
+            "locator": "git diff HEAD empty",
+            "path": "test/kogen/two_outer_resumptions_test.exs"
+          },
+          {
+            "locator": "git diff HEAD empty",
+            "path": "test/kogen/scenario_semantic_test.exs"
+          },
+          {
+            "locator": "git diff HEAD empty",
+            "path": "test/kogen/reviewer_mutation_test.exs"
+          }
+        ],
+        "id": "planted-defect-review-preserved",
+        "reason": "The three control test files are identical to HEAD, and the scenario_semantic and two_outer_resumptions rehearsals passed in Stop's check receipt. The prompt still requires the Reviewer to inspect Candidate files.",
+        "status": "satisfied"
+      }
+    ],
+    "verdict": "accept"
+  }
+}

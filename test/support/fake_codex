@@ -73,7 +73,7 @@ PY
   verdict="$(printf '%s' "$input" | python3 "$response_helper" reviewer accept)"
  fi
  if [ -n "$semantic_path" ]; then
-  verdict="$(printf '%s' "$verdict" | python3 -c 'import json,sys; value=json.load(sys.stdin); evidence=[{"path":sys.argv[1],"locator":"retained semantic behavior bytes"}]; value["scenarios"][0]["evidence"]=evidence; [item.__setitem__("evidence", evidence) for item in value["findings"]]; print(json.dumps(value))' "$semantic_path")"
+  verdict="$(printf '%s' "$verdict" | python3 -c 'import json,sys; value=json.load(sys.stdin); evidence=[{"path":sys.argv[1],"locator":"retained semantic behavior bytes","receipt":None}]; value["scenarios"][0]["evidence"]=evidence; [item.__setitem__("evidence", evidence) for item in value["findings"]]; print(json.dumps(value))' "$semantic_path")"
  fi
  # Record the per-launch verdict schema and answer its `ledger` when required.
  schema_file=; prev=
@@ -95,7 +95,21 @@ if [ -n "$resume_id" ]; then
  case "$input" in
   'Controller verification failed after your turn'*)
    printf '%s' "$input" >> "$state_dir/verification-resume-prompts"
-   [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ] || rm -f .kogen/runtime/kogen_fake_break
+   # Every repair changes a tracked file too, so the controller sees a new
+   # Candidate id (an unchanged Candidate after a failed cycle stops the
+   # Build). The n-th repair writes the fixture value with n trailing
+   # newlines: the first leaves exactly `initial fixture value\n`, and the
+   # requirement check ignores trailing newlines. A failing-always run keeps
+   # changing it until retries run out.
+   if [ "${FAKE_CHECK_FAIL_ALWAYS:-0}" = 1 ]; then
+    printf 'verification attempt\n' >> dummy.txt
+   else
+    rm -f .kogen/runtime/kogen_fake_break
+    repairs=$(( $(cat "$state_dir/verification-repairs" 2>/dev/null || echo 0) + 1 ))
+    echo "$repairs" > "$state_dir/verification-repairs"
+    printf 'initial fixture value' > dummy.txt
+    i=0; while [ "$i" -lt "$repairs" ]; do printf '\n' >> dummy.txt; i=$((i+1)); done
+   fi
    ;;
   *'Rework required (category: declared_target;'*)
    printf '%s' "$input" >> "$state_dir/developer-resume-prompts" ;;
@@ -119,7 +133,10 @@ printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
 printf 'initial fixture value\n' > dummy.txt
 # The turn ends with a Candidate whose fixture `check` fails (an ignored
 # marker), so the controller's first cycle fails and resumes this session.
-[ "${FAKE_CHECK_FAIL:-1}" = 1 ] && mkdir -p .kogen/runtime && printf 'bounded fixture break\n' > .kogen/runtime/kogen_fake_break
+if [ "${FAKE_CHECK_FAIL:-1}" = 1 ]; then
+ mkdir -p .kogen/runtime && printf 'bounded fixture break\n' > .kogen/runtime/kogen_fake_break
+ printf 'bounded fixture break\n' >> dummy.txt
+fi
 # An offline fixture hook: when set, runs inside each Developer turn (fresh
 # and resumed) before it ends, so a test can edit .kogen/config.yaml
 # mid-Build and assert every later launch still uses the Build's

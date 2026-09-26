@@ -1,0 +1,138 @@
+# Moved out of build-reliability on 2026-09-26 by the Shaper's decision (continuation visit):
+# "builds status output - yes, it should go into a separate intent, but everything else should be this one".
+# Verbatim scenarios as they stood at the move, for the new Intent to reshape. Not part of this Intent's contract.
+
+# --- Build status output and --notify -----------------------------------
+
+- id: build-status-output
+  given: >-
+    `mix kogen.build [--route <name>] [--notify] <slug>` at 7ed41f66 prints
+    nothing during a Build apart from warnings, then a stop reason that can be
+    a wall of JSON (Build IEf3rtZ8xYuvEPSj_gtdanD8). Receipts carry
+    `started_at` and `finished_at`, but Developer turns, Review and publishing
+    are not timed.
+  when: A Build runs, and ends by acceptance or by a stop.
+  then: >-
+    The controller writes this shape to stdout (the Shaper chose this layout):
+
+        build-reliability · started Sat 26 Sep 11:42
+
+          Developer turn 1        49m
+          check                    3m  ✗ verdict_schema_test:88
+          Developer turn 2         6m
+          check                    3m
+          live-shaping-smoke       2m
+          live-reviewer-rework     9m
+          Review                   8m
+        ▸ Publishing…
+
+        Accepted · Sat 26 Sep 13:03 · 1h21m
+        Developer 56m · checks 6m · live 11m · Review 8m
+
+    - **Header:** the slug and the local start date and time (`Sat 26 Sep 11:42`).
+    - **Finished stages:** one line per finished stage, in order:
+      `Developer turn n`, each verification target and `prepare <target>` by
+      its catalog name, `Review` (a re-ask is part of it), and `Publish`. Each
+      line has its duration and, on failure, `✗` plus the first failing test
+      id (from the signature frame, else the normalized failure) or the reason,
+      one line and nothing more. Durations are `Ns` under a minute, `Nm` under
+      an hour, and `XhYm` otherwise.
+    - **Current stage:** one line, `▸ <name>… <elapsed>`, updated in place,
+      which becomes its finished line when the stage ends.
+    - **End:** `Accepted`, or `Stopped (<class>)` with the class `offline`,
+      `paid`, `environment`, `provider`, `unchanged Candidate`,
+      `cannot_comply` or `unfinished_work`. Then the finish date and time, the
+      total duration, and a line of time per phase: Developer, checks (offline
+      targets and prepare), live (provider-backed targets), Review. A stop adds
+      one line with the one-line reason and the record or log path. The full
+      JSON stays in the record, never on screen.
+    - **Not a terminal** (`:io.getopts(:standard_io)[:terminal]` is false,
+      which the probe showed; `:io.columns()` is unreliable under mix): only
+      finished lines and the end summary, with no `\r` or escape codes.
+    - **Record:** each attempt gets the same stage timeline (name, kind,
+      `started_at`, `finished_at`, status, detail) in the Build record. The
+      screen is rendered from those timings.
+    - **Generic:** every line comes from catalog target names and controller
+      stage kinds, never from repository-specific names.
+  wrong_result: >-
+    Stages are printed with no duration, or in-place updates are written to a
+    pipe. Or JSON still reaches the screen on a stop. Or a Kogen-specific name
+    is hard-coded. Or the record's timings differ from the screen's.
+  verified_by: [check]
+  evidence: >-
+    Scripted fake-harness Builds on a generic catalog: one accepted, and one
+    stopped for each class (offline, paid, environment, provider, unchanged
+    Candidate, cannot_comply, unfinished_work). Each runs under a pty, where
+    the in-place line and its replacement appear, and under a pipe, where
+    only the finished lines appear with no `\r`. They assert the exact lines
+    (with a fixed clock), the summary, the stop line and the recorded
+    timeline. Terminal detection is from evidence/probe-status-notify.
+  proof:
+    offline:
+      - test/kogen/build_status_output_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: fake-harness Builds under a pty and a pipe, with a fixed clock"
+    affected_paths:
+      - lib/mix/tasks/kogen.build.ex
+      - lib/kogen/build.ex
+      - lib/kogen/build/status.ex
+      - lib/kogen/build/tracking.ex
+      - README.md
+      - test/kogen/build_status_output_test.exs
+      - test/support/scripted_build_fixture.ex
+    base: fail
+
+- id: build-notify
+  given: >-
+    The Shaper appends `say "Done"` to every Build by hand, and that can't tell
+    accepted from stopped.
+  when: "`mix kogen.build [--route <name>] --notify <slug>` ends, however it ends."
+  then: >-
+    Off by default, `--notify` is opt-in per Build. After the final summary
+    line, the controller (not inside the write boundary or any role's process
+    group, so custody teardown can't kill it first) runs the notifier once:
+    The Shaper picked these exact commands by ear:
+    - **Accepted:** `afplay -v 6 -r 0.6 /System/Library/Sounds/Glass.aiff`, and
+      the banner
+      `osascript -e 'display notification "Accepted · 1h21m" with title "Kogen" subtitle "<slug>"'`.
+    - **Stopped:** `afplay -v 6 -r 0.6 /System/Library/Sounds/Basso.aiff`, and
+      the banner
+      `osascript -e 'display notification "Stopped (<failure class>) · 42m" with title "Kogen" subtitle "<slug>"'`.
+
+    The duration is the Build's total, in the status summary's format. Quotes
+    and backslashes in the slug and reason are escaped for AppleScript. The
+    banner is shown, then the sound played.
+
+    It uses built-in macOS tools only, with no new dependency and no speech.
+    It fires on every end path the status summary covers, including a stop
+    before the Developer launches. Off macOS, or when the sound or banner
+    command fails, it prints the terminal bell (`\a`) and continues. A failing
+    notifier never changes the Build's result or exit code, and is not a Build
+    failure. The record gets only `notify: true|false`, no evidence. The
+    notifier commands are injectable, like the harness executables, for tests.
+  wrong_result: >-
+    The notifier runs without `--notify`. Or a notifier failure changes the exit
+    code. Or it runs inside a role's process group and is killed by teardown.
+    Or it fires twice. Or it uses speech.
+  verified_by: [check]
+  evidence: >-
+    A fake notifier command records its exact arguments (`-v 6 -r 0.6`,
+    Glass or Basso, and the banner text, title and subtitle) for: accepted,
+    each stop class, a stop before the Developer launches, and a slug and reason
+    containing `"` and `\\`. A failing notifier
+    leaves the result and exit code unchanged and prints `\a`. No notifier
+    runs without `--notify`. The command shapes and exit codes come from
+    evidence/probe-status-notify.
+  proof:
+    offline:
+      - test/kogen/build_notify_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: an injected fake notifier records its invocations"
+    affected_paths:
+      - lib/mix/tasks/kogen.build.ex
+      - lib/kogen/build.ex
+      - lib/kogen/build/notify.ex
+      - README.md
+      - test/kogen/build_notify_test.exs
+    base: fail
+

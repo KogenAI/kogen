@@ -10,7 +10,7 @@ defmodule Kogen.SettlementRegressionTest do
   cycle on the same Candidate ever settles the turn. `legacy: true` drives a
   fake Developer that ignores the controller's resume (it never repairs the
   ignored `.kogen/runtime/kogen_fake_break` marker the resumed session is
-  handed) and must therefore exhaust verification retries and never reach
+  handed) and must therefore exhaust its offline retries and never reach
   Review; the controller decides this, not the fake. `legacy: false` drives
   the well-behaved fake, which repairs the marker on resume and settles once
   a later cycle genuinely passes, even though an intermediate cycle fails
@@ -114,8 +114,13 @@ defmodule Kogen.SettlementRegressionTest do
 
     [attempt] = record["attempts"]
     cycles = get_in(attempt, ["verification", "cycles"]) || []
-    assert length(cycles) == 3, "expected two failed cycles then a decisive third"
-    [cycle1, cycle2, cycle3] = cycles
+
+    # `check` is an offline target, so a never-repairing Developer spends
+    # `offline_retries: 4` (five failed cycles) and never a paid retry; the
+    # well-behaved one settles on its decisive third cycle.
+    expected = if legacy, do: 5, else: 3
+    assert length(cycles) == expected, "expected two failed cycles then a decisive later one"
+    [cycle1, cycle2, cycle3 | _] = cycles
     assert cycle1["status"] == "failed"
     assert cycle2["status"] == "failed"
 
@@ -124,9 +129,10 @@ defmodule Kogen.SettlementRegressionTest do
 
     if legacy do
       assert status == 1, output
-      assert output =~ "verification retries exhausted"
-      assert cycle3["status"] == "failed"
-      assert attempt["verification"]["terminal_state"] == "exhausted"
+      assert output =~ "offline retries exhausted (offline_retries: 4)"
+      assert Enum.all?(cycles, &(&1["status"] == "failed" and &1["class"] == "offline"))
+      assert Enum.map(cycles, & &1["failures_after"]) == [0, 0, 0, 0, 0]
+      assert attempt["verification"]["terminal_state"] == "offline_exhausted"
       assert record["status"] == "failed"
 
       assert git!(fixture, ["rev-parse", "HEAD"]) == parent,

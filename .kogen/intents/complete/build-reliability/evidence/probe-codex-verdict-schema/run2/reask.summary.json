@@ -1,0 +1,41 @@
+{
+  "exit": 0,
+  "label": "reask",
+  "message": {
+    "scenarios": [
+      {
+        "evidence": [
+          {
+            "locator": "calc.py:2",
+            "path": "calc.py",
+            "receipt": null
+          }
+        ],
+        "id": "alpha-fix",
+        "status": "unsatisfied"
+      },
+      {
+        "evidence": [
+          {
+            "locator": "calc.py:1",
+            "path": "calc.py",
+            "receipt": null
+          }
+        ],
+        "id": "beta-docs",
+        "status": "unsatisfied"
+      }
+    ],
+    "verdict": "rework"
+  },
+  "errors": [
+    "{\"item\":{\"id\":\"item_0\",\"message\":\"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.\",\"type\":\"error\"},\"type\":\"item.completed\"}",
+    "{\"item\":{\"id\":\"item_1\",\"message\":\"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.\",\"type\":\"error\"},\"type\":\"item.completed\"}"
+  ],
+  "ms": 11509,
+  "thread_id": "01a0dc4b-4c36-70e2-924d-9bad8023ffaa",
+  "nonjson_tail": [
+    "2026-09-26T05:58:59.971344Z ERROR codex_models_manager::manager: failed to refresh available models: request timed out",
+    ""
+  ]
+}

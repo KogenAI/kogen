@@ -175,13 +175,26 @@ scenario requiring the absent file, with the result of your current Candidate
 tree inspection. Never put the absent filename in an evidence `path`, even
 when its locator says it is absent. Check each evidence path exists before
 returning the final verdict; an unusable reference invalidates the whole
-verdict and stops Build without a Reviewer retry.
+verdict. If Kogen resumes your session with a list of validation errors,
+return the same judgement and `verdict` value in a corrected shape; a second
+invalid verdict stops the Build.
+
+When your verdict schema provides it, each evidence item also carries a
+`receipt` field: the review-packet pointer (for example `/receipts/3`) this
+evidence relies on, or `null` when it cites no packet receipt. Never put a
+receipt pointer, or any other packet citation, into `path` or `locator`
+instead; when your schema does not include a `receipt` field, omit it
+entirely rather than inventing one.
 
 ## What you must output
 
 Your entire output must be **only** a structured verdict matching this JSON
 schema — no prose, no explanation outside the JSON, no markdown fencing
-around it beyond what your harness's structured-output mechanism requires:
+around it beyond what your harness's structured-output mechanism requires.
+Each `reason` — for a scenario, a disposition, or a new finding — states
+plainly what you actually checked and what you did not reach, citing the
+evidence locators for what you did check; never imply coverage you did not
+perform:
 
 ```json
 {

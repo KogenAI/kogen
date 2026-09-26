@@ -23,7 +23,7 @@ defmodule Kogen.Jev do
   Without `KOGEN_JEV_TRANSPORT`, the request goes to the real endpoint with
   verified TLS.
   """
-  use Boundary, deps: []
+  use Boundary, deps: [Kogen.ProcessCustody]
 
   @model "jev-1.13.0"
   @endpoint "https://api.typesafe.ai/v1/systemone"
@@ -537,11 +537,22 @@ defmodule Kogen.Jev do
         case System.get_env("KOGEN_JEV_TRANSPORT") do
           nil -> &network_post/1
           "" -> &network_post/1
-          executable -> &executable_post(executable, &1)
+          executable -> &executable_post(executable, &1, custody_opts(opts))
         end
 
       function when is_function(function, 1) ->
         function
+    end
+  end
+
+  # Custody's lock registration only happens when a caller passes `:control`
+  # (the control checkout); Jev's real (`:network`) transport spawns no OS
+  # process at all, so only this offline/test `KOGEN_JEV_TRANSPORT`
+  # substitution ever needs it.
+  defp custody_opts(opts) do
+    case Keyword.get(opts, :control) do
+      control when is_binary(control) -> [control: control, role: "jev"]
+      _ -> []
     end
   end
 
@@ -594,7 +605,15 @@ defmodule Kogen.Jev do
 
   # An alternate transport executable for offline tests. The request goes over
   # stdin as a length-prefixed JSON line so no request material touches disk.
-  defp executable_post(executable, %{url: url, headers: headers, body: body, timeout: timeout}) do
+  # Runs through `Kogen.ProcessCustody`'s passthrough mode, in its own
+  # process group with a parent-death watchdog and this call's own timeout as
+  # a second, process-level bound: a stray descendant the fake transport
+  # forks cannot outlive this ask, however the controller ends.
+  defp executable_post(
+         executable,
+         %{url: url, headers: headers, body: body, timeout: timeout},
+         custody_opts
+       ) do
     payload =
       Jason.encode!(%{
         "url" => url,
@@ -604,12 +623,11 @@ defmodule Kogen.Jev do
       })
 
     port =
-      Port.open({:spawn_executable, String.to_charlist(executable)}, [
-        :binary,
-        :exit_status,
-        :use_stdio,
-        :hide
-      ])
+      Kogen.ProcessCustody.open_passthrough(
+        [executable],
+        File.cwd!(),
+        [timeout_ms: timeout] ++ custody_opts
+      )
 
     Port.command(port, [Integer.to_string(byte_size(payload)), "\n", payload])
     collect(port, [], System.monotonic_time(:millisecond) + timeout)

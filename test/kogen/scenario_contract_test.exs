@@ -30,6 +30,9 @@ defmodule Kogen.ScenarioContractTest do
   }
 
   @ref %{"path" => "README.md", "locator" => "Kogen"}
+  # Verdict evidence (unlike handoff evidence) requires a `receipt` field
+  # (`per-launch-verdict-schema`); `null` matches no packet citation.
+  @verdict_ref %{"path" => "README.md", "locator" => "Kogen", "receipt" => nil}
   @scenario_yaml """
   - id: one
     given: a valid input
@@ -130,7 +133,8 @@ defmodule Kogen.ScenarioContractTest do
 
     evidence = %{
       "path" => "test/kogen/scenario_contract_test.exs",
-      "locator" => "missing-file finding test; current tree inspection found #{missing} absent"
+      "locator" => "missing-file finding test; current tree inspection found #{missing} absent",
+      "receipt" => nil
     }
 
     verdict = %{
@@ -216,8 +220,10 @@ defmodule Kogen.ScenarioContractTest do
       candidate_id: "candidate-1",
       attempt_token: "attempt-1",
       verdict: "accept",
-      scenarios: [%{id: "one", status: "satisfied", reason: "Inspected", evidence: [@ref]}],
-      dispositions: [%{id: "old", status: "closed", reason: "Fixed", evidence: [@ref]}],
+      scenarios: [
+        %{id: "one", status: "satisfied", reason: "Inspected", evidence: [@verdict_ref]}
+      ],
+      dispositions: [%{id: "old", status: "closed", reason: "Fixed", evidence: [@verdict_ref]}],
       findings: []
     }
 
@@ -248,7 +254,7 @@ defmodule Kogen.ScenarioContractTest do
       accepted
       |> Map.put(:verdict, "rework")
       |> Map.put(:dispositions, [
-        %{id: "old", status: "closed", reason: "Fixed", evidence: [@ref]}
+        %{id: "old", status: "closed", reason: "Fixed", evidence: [@verdict_ref]}
       ])
       |> put_in([:scenarios, Access.at(0), :status], "needs_rework")
 
@@ -270,11 +276,13 @@ defmodule Kogen.ScenarioContractTest do
       attempt_token: "attempt-1",
       verdict: "rework",
       scenarios: [
-        %{id: "one", status: "needs_rework", reason: "New defect", evidence: [@ref]},
-        %{id: "two", status: "satisfied", reason: "Looks good", evidence: [@ref]}
+        %{id: "one", status: "needs_rework", reason: "New defect", evidence: [@verdict_ref]},
+        %{id: "two", status: "satisfied", reason: "Looks good", evidence: [@verdict_ref]}
       ],
-      dispositions: [%{id: "old", status: "open", reason: "Still broken", evidence: [@ref]}],
-      findings: [%{scenario_ids: ["one"], reason: "New defect", evidence: [@ref]}]
+      dispositions: [
+        %{id: "old", status: "open", reason: "Still broken", evidence: [@verdict_ref]}
+      ],
+      findings: [%{scenario_ids: ["one"], reason: "New defect", evidence: [@verdict_ref]}]
     }
 
     assert {:error, reason} =
@@ -512,8 +520,10 @@ defmodule Kogen.ScenarioContractTest do
       candidate_id: "candidate-1",
       attempt_token: "attempt-1",
       verdict: "accept",
-      scenarios: [%{id: "one", status: "satisfied", reason: "Inspected", evidence: [@ref]}],
-      dispositions: [%{id: "old", status: "closed", reason: "Fixed", evidence: [@ref]}],
+      scenarios: [
+        %{id: "one", status: "satisfied", reason: "Inspected", evidence: [@verdict_ref]}
+      ],
+      dispositions: [%{id: "old", status: "closed", reason: "Fixed", evidence: [@verdict_ref]}],
       findings: []
     }
   end

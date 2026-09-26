@@ -1,0 +1,116 @@
+id: 01a0dc14-070e-75b3-8669-e12ce5f65229
+slug: build-reliability
+title: Harden Build reliability
+status: draft
+shaped_against:
+  branch: main
+  head: 6dad9430907a291f4b8902e707e0eb1c622ec2e5
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_at: "2026-09-26T14:47:18Z"
+  approved_against_head: 6dad9430907a291f4b8902e707e0eb1c622ec2e5
+  route: claude-dominant-adversarial-codex
+  source: approval.md
+  quotes:
+    - "You can build build reliability and shaping quality at the same time so whichever goes it's good rather than wait and waste time"
+    - "shape and builds things that are in the roadmap hopefully without my involvement … drive everything without stopping"
+  covers: The current revision (post Expert audit), re-baselined to 6dad9430 with no contract change.
+historical_approvals:
+  # Superseded: the Expert audit (evidence/expert-audit) found that a
+  # `.gitignore` edit stops any Build (GuardedPaths same_config), so the
+  # trash scenario was revised. Not approval of the current revision.
+  - approved_by: Shaper (Almir Sarajčić)
+    statement: "I approve."
+    approved_at: "2026-09-26T09:14:56Z"
+    approved_against_head: 7ed41f660f379a092437464b84d5eac2392073a8
+    superseded_by: Expert audit blocking finding (.gitignore is frozen ignore policy)
+  # Covered the package before the Shaper added the controller-preload fix
+  # ("brosky as part of this intent we need to fix that shit", 2026-09-26).
+  # Superseded by that scope change; this is not approval of the current revision.
+  - approved_by: Shaper (Almir Sarajčić)
+    statement: "I approve"
+    approved_at: "2026-09-26T06:19:07Z"
+    approved_against_head: 98ebcfb2280098964c8a12286ba4a27eed7cb54d
+    superseded_by: scope change (controller preload added, then dropped after isolation landed) and re-baseline to 7ed41f66
+baseline_history:
+  - head: 7ed41f660f379a092437464b84d5eac2392073a8
+    branch: main
+    note: >-
+      Replaced 2026-09-26 by the Mac Studio orchestrator (delegated) after caller-independent-check landed as
+      6dad9430. That commit changes only test/kogen/candidate_verification_test.exs (+14 lines after :216, so
+      risks.yaml's `candidate_verification_test.exs:221` anchor moved; re-derive it),
+      test/kogen/verification_reuse_test.exs, test/support/verification_cycle_fixture.ex (new run_cycle/4 that
+      clears an inherited KOGEN_LIVE_LOG_DIR; this package's scenarios name that fixture; keep using run_cycle/4)
+      and test/support/workspace_fixture.ex. No contract change.
+  - head: 9ff7af6e02b3f291f0196e2ec2665a1d8cb2b4b5
+    branch: main
+    note: Original shaping baseline for this conversation; updated to 98ebcfb2 at approval.
+  - head: 98ebcfb2280098964c8a12286ba4a27eed7cb54d
+    branch: main
+    note: Probed and first approved against this head; re-baselined to 7ed41f66 after isolated-candidate-workspace landed (evidence/probe-isolation).
+launch: >-
+  mix kogen.build --route claude-dominant-adversarial-codex build-reliability
+  (plain command; isolation in 7ed41f66 keeps the controller's _build untouched,
+  evidence/probe-isolation).
+baseline_note: >-
+  Main moved during Shaping to 98ebcfb2 (the Jev Keychain rename, unrelated) and
+  then to 7ed41f66 (isolated-candidate-workspace). The Draft was re-baselined and
+  its schema and isolation probes re-run on 7ed41f66 (evidence/probe-isolation).
+shaping:
+  route: claude-dominant-adversarial-codex
+  harness: claude
+  model: claude-opus-5-5
+  effort: medium
+  started: "2026-09-26T04:58:15.185531Z"
+source_brief: >-
+  ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/briefs/build-reliability.md
+  (revised 2026-09-26 after the Astra and Opus reviews), with evidence in
+  plan/research/build-failure-mining-2026-09-26.md. Size settled by the Shaper
+  on 2026-09-26: all of A-E in one Intent ("nah, all of them together").
+catalog_changes:
+  add: [live-shaping-smoke]
+may_change_guarded_paths:
+  - Makefile
+  - .kogen/intents/complete/compact-shaping-quality/evidence/amendment-probes/cleanup/*.pid
+  - .kogen/intents/complete/isolated-candidate-workspace/evidence/**/*.log
+  - .kogen/intents/complete/isolated-candidate-workspace/evidence/**/*.last
+  - README.md
+  - scripts/check/README.md
+  - scripts/check/offline.py
+  - scripts/check/rehearsals.exs
+  - scripts/check/generate_test_reliability.py
+  - scripts/check/refresh_test_reliability_sources.py
+  - .kogen/config.yaml
+  - priv/kogen/verification_targets.yaml
+  - priv/kogen/prompts/developer.md
+  - priv/kogen/prompts/reviewer.md
+  - priv/kogen/test-reliability.yaml
+  - priv/kogen/test-reliability-remediation.yaml
+  - lib/kogen/intent.ex
+  - lib/kogen/jev.ex
+  - lib/kogen/claude_code.ex
+  - lib/kogen/codex.ex
+  - lib/kogen/process_custody.ex
+  - lib/kogen/process_custody/*.ex
+  - lib/mix/tasks/kogen.build.ex
+  - lib/mix/tasks/kogen.expert.ex
+  - priv/kogen/process_supervisor.py
+  - mise.toml
+  - lib/kogen/check.ex
+  - lib/kogen/make_inventory.ex
+  - lib/kogen/build.ex
+  - lib/kogen/build/*.ex
+  - lib/kogen/harness.ex
+  - lib/kogen/harness/*.ex
+  - lib/kogen/provider_outcome.ex
+  - test/kogen/**
+  - test/support/**
+shaping_continuations:
+  - route: claude-dominant-adversarial-codex
+    harness: claude
+    model: claude-opus-5-5
+    effort: medium
+    started: '2026-09-26T10:02:01.822152Z'
+    checkout:
+      branch: main
+      head: 7ed41f660f379a092437464b84d5eac2392073a8

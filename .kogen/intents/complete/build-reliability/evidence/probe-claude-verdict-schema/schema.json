@@ -1,0 +1,12 @@
+{"type":"object","additionalProperties":false,"required":["verdict","scenarios"],
+ "properties":{
+  "verdict":{"type":"string","enum":["accept","rework"]},
+  "scenarios":{"type":"array","minItems":2,"maxItems":2,
+   "items":{"type":"object","additionalProperties":false,"required":["id","status","evidence"],
+    "properties":{
+     "id":{"type":"string","enum":["alpha-fix","beta-docs"]},
+     "status":{"type":"string","enum":["satisfied","unsatisfied"]},
+     "evidence":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["path","locator","receipt"],
+       "properties":{"path":{"type":"string","minLength":1,"pattern":"^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"},
+                     "locator":{"type":"string","minLength":1},
+                     "receipt":{"type":["string","null"]}}}}}}}}}

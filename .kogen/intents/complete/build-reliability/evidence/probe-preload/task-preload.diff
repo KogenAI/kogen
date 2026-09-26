@@ -1,0 +1,17 @@
+diff --git a/lib/mix/tasks/kogen.build.ex b/lib/mix/tasks/kogen.build.ex
+index 5d224147..70f900d9 100644
+--- a/lib/mix/tasks/kogen.build.ex
++++ b/lib/mix/tasks/kogen.build.ex
+@@ -30,6 +30,12 @@ defmodule Mix.Tasks.Kogen.Build do
+   end
+ 
+   defp build(slug, route) do
++    # Pin this controller's code before the Developer can recompile _build.
++    :ok = Application.load(:kogen) |> then(&if(&1 in [:ok, {:error, {:already_loaded, :kogen}}], do: :ok, else: &1))
++    modules = Application.spec(:kogen, :modules)
++    Enum.each(modules, &Code.ensure_loaded!/1)
++    if System.get_env("KOGEN_PRELOAD_PROBE"), do: IO.puts("preloaded=#{length(modules)} unloaded=#{Enum.count(modules, &(:code.is_loaded(&1) == false))}")
++
+     case Kogen.Build.run(slug, route) do
+       :ok -> :ok
+       {:error, reason} -> fail(reason)

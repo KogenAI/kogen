@@ -1,4 +1,4 @@
-.PHONY: check live-shape-to-build live-reviewer-rework live-general live-shaping-quality live-native cold-offline
+.PHONY: check live-shape-to-build live-reviewer-rework live-general live-shaping-quality live-shaping-smoke live-native cold-offline
 
 # Complete offline gate. The normal Stop hook owns invoking this target.
 check:
@@ -19,6 +19,10 @@ live-general:
 # Provider-backed maintained public Shaping evaluation and evidence manifest.
 live-shaping-quality:
 	mix test --only live test/kogen/live_shaping_evaluation_test.exs
+
+# Provider-backed public Shaping transport smoke case (mechanics only, no grading).
+live-shaping-smoke:
+	mix test --only live test/kogen/live_shaping_smoke_test.exs
 
 # Provider-backed managed runtime, authenticated compatibility, and native helpers.
 live-native:

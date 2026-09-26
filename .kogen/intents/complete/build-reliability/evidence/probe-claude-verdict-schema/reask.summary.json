@@ -1,0 +1,37 @@
+{
+  "exit": 0,
+  "label": "reask",
+  "subtype": "success",
+  "ms": 6265,
+  "init_session": "11111111-2222-4333-8444-2a327e140517",
+  "result_session": "11111111-2222-4333-8444-2a327e140517",
+  "is_error": false,
+  "structured_output": {
+    "scenarios": [
+      {
+        "evidence": [
+          {
+            "locator": "calc.py:2",
+            "path": "calc.py",
+            "receipt": null
+          }
+        ],
+        "id": "alpha-fix",
+        "status": "unsatisfied"
+      },
+      {
+        "evidence": [
+          {
+            "locator": "calc.py:1",
+            "path": "calc.py",
+            "receipt": null
+          }
+        ],
+        "id": "beta-docs",
+        "status": "unsatisfied"
+      }
+    ],
+    "verdict": "rework"
+  },
+  "result_text": "{\"verdict\":\"rework\",\"scenarios\":[{\"id\":\"alpha-fix\",\"status\":\"unsatisfied\",\"evidence\":[{\"path\":\"calc.py\",\"locator\":\"calc.py:2\",\"receipt\":null}]},{\"id\":\"beta-docs\",\"status\":\"unsatisfied\",\"evidence\":[{\"path\":\"calc.py\",\"locator\":\"calc.py:1\",\"receipt\":null}]}]}"
+}

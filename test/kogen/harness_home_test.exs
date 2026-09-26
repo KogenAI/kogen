@@ -42,6 +42,7 @@ defmodule Kogen.HarnessHomeTest do
         expert: {model: claude-opus-5-5, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @removed_var_plants [

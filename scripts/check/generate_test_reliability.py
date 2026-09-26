@@ -5,7 +5,6 @@ The matrix supplies identities and advisory evidence only. This writer resolves
 every provisional disposition, chooses existing independent witnesses, and
 emits deterministic tracked JSON (valid YAML) for repository consumers.
 """
-import hashlib
 import json
 from pathlib import Path
 
@@ -78,7 +77,6 @@ def resolve(row):
         "implementation": implementation,
         "preservation_control": "test/kogen/whole_suite_remediation_test.exs" if disposition == "keep" else None,
         "resolution": "source-specific preservation challenge" if disposition == "keep" else "provisional obligation repaired by final-Candidate adversarial control",
-        "source_sha256": hashlib.sha256((ROOT / source).read_bytes()).hexdigest(),
     }
 
 

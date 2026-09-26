@@ -117,3 +117,94 @@ defmodule Kogen.HarnessArgsTest do
     refute "--json" in args
   end
 end
+
+defmodule Kogen.Harness.OutputTailTest do
+  @moduledoc """
+  Provider stop/exit evidence keeps the TAIL of a long stream, not its first
+  4,000 characters, and Developer transport-failure evidence carries an
+  `:output_tail` (last ~16 KB) `Kogen.Harness.ProviderMarker` can classify
+  (environment-and-provider-classes). Driven with scripted fake executables
+  that print > 16 KB of padding before the classifying line, exactly like a
+  paid target's make log embeds a nested harness stream.
+  """
+  use ExUnit.Case, async: true
+
+  alias Kogen.Harness
+  alias Kogen.Harness.ProviderMarker
+
+  defp fake_executable(dir, name, script) do
+    path = Path.join(dir, name)
+    File.write!(path, script)
+    File.chmod!(path, 0o755)
+    path
+  end
+
+  setup do
+    dir = Path.join(System.tmp_dir!(), "kogen-output-tail-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    %{dir: dir}
+  end
+
+  test "Claude: a provider_exit marker past the first 4,000 characters survives", %{dir: dir} do
+    executable =
+      fake_executable(dir, "claude", """
+      #!/bin/sh
+      cat > /dev/null
+      head -c 20000 /dev/zero | tr '\\0' 'p'
+      printf '\\n'
+      printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"session_id":"s"}\\n'
+      exit 1
+      """)
+
+    context = %{
+      harness: "claude",
+      executable: executable,
+      args: [],
+      env: [],
+      config: %{helpers: %{}}
+    }
+
+    assert {:error, {:developer_transport_failure, {:provider_exit, 1, evidence_tail}, evidence}} =
+             Harness.launch_build_developer("p", "claude-opus-5-5", "medium", [], context)
+
+    # A head-truncated (first 4,000 characters) evidence would never carry
+    # the classifying line, since it sits after 20,000 bytes of padding.
+    assert evidence_tail =~ "api_error_status"
+    assert byte_size(evidence_tail) <= 16_384
+    assert ProviderMarker.classify(evidence_tail)["kind"] == "usage_limit"
+    assert byte_size(evidence.diagnostics) > 16_384
+    assert byte_size(evidence.output_tail) <= 16_384
+    assert evidence.output_tail =~ "api_error_status"
+
+    assert %{"kind" => "usage_limit", "retry" => false} =
+             ProviderMarker.classify(evidence.output_tail)
+  end
+
+  test "Codex: a turn.failed provider marker past 16 KB of padding survives on transport-failure evidence",
+       %{dir: dir} do
+    executable =
+      fake_executable(dir, "codex", """
+      #!/bin/sh
+      cat > /dev/null
+      head -c 20000 /dev/zero | tr '\\0' 'p'
+      printf '\\n'
+      printf '{"type":"thread.started","thread_id":"t1"}\\n'
+      printf '{"type":"turn.failed","error":{"message":"Selected model is at capacity. Please try a different model.","codex_error_info":"server_overloaded"}}\\n'
+      exit 0
+      """)
+
+    context = %{harness: "codex", executable: executable, args: [], env: []}
+
+    assert {:error, {:developer_transport_failure, {:provider_error, failure}, evidence}} =
+             Harness.launch_build_developer("p", "gpt-6-sol", "medium", [], context)
+
+    assert failure["output_tail"] =~ "server_overloaded"
+    assert byte_size(evidence.diagnostics) > 16_384
+    assert byte_size(evidence.output_tail) <= 16_384
+    assert evidence.output_tail =~ "server_overloaded"
+
+    assert %{"kind" => "overload", "retry" => true} =
+             ProviderMarker.classify(evidence.output_tail)
+  end
+end

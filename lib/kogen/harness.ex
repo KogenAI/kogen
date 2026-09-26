@@ -28,7 +28,9 @@ defmodule Kogen.Harness do
   admission): every launch of that Build, readiness included, then runs with
   the Candidate as its cwd, inside the boundary, with the bound scope.
   """
-  use Boundary, deps: [Kogen.Codex, Kogen.ClaudeCode, Kogen.Intent]
+  use Boundary,
+    deps: [Kogen.Codex, Kogen.ClaudeCode, Kogen.Intent, Kogen.ProcessCustody],
+    exports: [ProviderMarker]
 
   alias Kogen.Harness.{Claude, Codex}
 
@@ -287,6 +289,17 @@ defmodule Kogen.Harness do
   def launch_reviewer(prompt, model, effort, context),
     do: adapter!(context).launch_reviewer(prompt, model, effort, context)
 
+  @doc """
+  Resumes the exact Reviewer session once with `prompt` (the schema-error
+  re-ask text) and requires a schema-valid Verdict against the same per-launch
+  schema the original launch used (the context's `:ledger_paths` and
+  `:scenario_ids`, see `with_ledger/2` and `with_scenarios/2`). Claude resumes
+  with `--resume`; Codex resumes with `exec resume`. Both run in the same
+  harness home and write boundary as the original launch.
+  """
+  def resume_reviewer(session_id, prompt, model, effort, context),
+    do: adapter!(context).resume_reviewer(session_id, prompt, model, effort, context)
+
   @doc "A Reviewer launch context whose verdict must disposition `ledger_paths`."
   def with_ledger(context, ledger_paths) when is_map(context) and is_list(ledger_paths),
     do: Map.put(context, :ledger_paths, ledger_paths)
@@ -294,6 +307,19 @@ defmodule Kogen.Harness do
   @doc "The verification-surface ledger paths a launch context requests."
   def ledger_paths(context) when is_map(context), do: Map.get(context, :ledger_paths, [])
   def ledger_paths(_context), do: []
+
+  @doc """
+  A Reviewer launch context whose per-launch verdict schema constrains
+  `scenarios` to exactly these Approved Intent scenario ids
+  (`per-launch-verdict-schema`): `minItems`/`maxItems` equal to their count,
+  and each `id` from an `enum` of them.
+  """
+  def with_scenarios(context, scenario_ids) when is_map(context) and is_list(scenario_ids),
+    do: Map.put(context, :scenario_ids, scenario_ids)
+
+  @doc "The Approved Intent scenario ids a launch context requests, or `[]`."
+  def scenario_ids(context) when is_map(context), do: Map.get(context, :scenario_ids, [])
+  def scenario_ids(_context), do: []
 
   @doc """
   Launches a fresh, read-only Expert for one question on stdin and returns its

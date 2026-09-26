@@ -87,11 +87,57 @@ defmodule Kogen.ShapingEvaluationTest do
     assert output =~ "OK"
   end
 
-  test "offline rehearsal exercises the maintained driver without provider access" do
+  # driver_rehearsal_test.py spawns the real YAML parser dozens of times.
+  # Under the full suite's parallel load one run of every method exceeded
+  # ExUnit's 60 s budget, so its two heaviest methods run as their own
+  # tests. Together the three tests run every method exactly once; the
+  # split is derived from the file, so a new method lands in the first.
+  @heavy_rehearsals [
+    "test_composed_suite_uses_main_routes_and_real_drive_before_manifest",
+    "test_valid_yaml_with_null_first_capture_stops_real_suite_before_later_dispatch"
+  ]
+
+  defp rehearsal_methods do
+    ~r/^    def (test_\w+)\(/m
+    |> Regex.scan(File.read!(Path.join(@support, "driver_rehearsal_test.py")),
+      capture: :all_but_first
+    )
+    |> List.flatten()
+  end
+
+  defp run_rehearsal!(methods) do
     rehearsal = Path.join(@support, "driver_rehearsal_test.py")
+    names = Enum.map(methods, &"DriverRehearsalTest.#{&1}")
 
     {output, status} =
-      System.cmd("python3", ["-B", rehearsal], stderr_to_stdout: true, env: parser_env())
+      System.cmd("python3", ["-B", rehearsal | names], stderr_to_stdout: true, env: parser_env())
+
+    assert status == 0, output
+    assert output =~ "Ran #{length(methods)} test"
+    assert output =~ "OK"
+  end
+
+  test "offline rehearsal exercises the maintained driver without provider access" do
+    methods = rehearsal_methods()
+    assert Enum.all?(@heavy_rehearsals, &(&1 in methods))
+    assert length(methods) == length(Enum.uniq(methods))
+    run_rehearsal!(methods -- @heavy_rehearsals)
+  end
+
+  test "offline rehearsal composes the real suite through main routes before the manifest" do
+    run_rehearsal!(["test_composed_suite_uses_main_routes_and_real_drive_before_manifest"])
+  end
+
+  test "offline rehearsal stops the real suite on a null first capture before later dispatch" do
+    run_rehearsal!([
+      "test_valid_yaml_with_null_first_capture_stops_real_suite_before_later_dispatch"
+    ])
+  end
+
+  test "driver-turn-end-replay replays real retained rollouts through the driver's own fail-fast decision" do
+    replay = Path.join(@support, "driver_turn_end_replay_test.py")
+
+    {output, status} = System.cmd("python3", ["-B", replay], stderr_to_stdout: true)
 
     assert status == 0, output
     assert output =~ "Ran "

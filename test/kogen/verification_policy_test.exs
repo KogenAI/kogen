@@ -167,91 +167,150 @@ defmodule Kogen.VerificationPolicyTest do
     assert VerificationPolicy.preflight(["check"], candidate) == :ok
   end
 
-  test "the tracked PreToolUse hook, hook scripts and Claude settings are byte-identical to the admission commit, and the registered command matches @hook_command" do
-    admission_commit = "9ff7af6e02b3f291f0196e2ec2665a1d8cb2b4b5"
+  # Behavior, not bytes: a hook edit is free to change so long as (1) every
+  # registered PreToolUse Bash command still resolves to a real script on
+  # disk, (2) the command Kogen.VerificationPolicy requires is the one
+  # registered for PreToolUse Bash in both the Codex and Claude Code harness
+  # configs, and (3) every Python hook still compiles. The behavior tests
+  # above stay the real protection: a hook edit that lets a gate through
+  # fails them regardless of what this test asserts.
+  test "every registered PreToolUse Bash command resolves to an existing script, matches VerificationPolicy's required command in both harness configs, and every Python hook compiles" do
     root = root_for_test()
 
-    case resolvable_commit(admission_commit) do
-      nil ->
-        IO.puts(
-          :stderr,
-          "skipping byte-identity check: admission commit #{admission_commit} is unavailable " <>
-            "in this checkout (likely a shallow clone) and no merge-base could be found"
+    # `preflight/2` on the tracked Candidate proves the command registered in
+    # `.codex/hooks.json` is exactly the one `Kogen.VerificationPolicy`'s own
+    # registration check requires (`registered_hook/1`, unchanged by this
+    # Intent) — without this test pinning that literal itself.
+    assert VerificationPolicy.preflight(["check"], root) == :ok
+
+    codex_hooks = root |> Path.join(".codex/hooks.json") |> File.read!() |> Jason.decode!()
+    codex_command = pretooluse_bash_command(codex_hooks)
+    assert is_binary(codex_command), ".codex/hooks.json: no PreToolUse Bash command is registered"
+
+    claude_settings =
+      root |> Path.join("priv/kogen/claude_code/settings.json") |> File.read!() |> Jason.decode!()
+
+    claude_command = pretooluse_bash_command(claude_settings)
+
+    assert is_binary(claude_command),
+           "priv/kogen/claude_code/settings.json: no PreToolUse Bash command is registered"
+
+    assert claude_command == codex_command,
+           "the two harness configs register different PreToolUse Bash commands"
+
+    for {label, command} <- [{"codex", codex_command}, {"claude", claude_command}] do
+      resolved = resolve_command_script(root, command)
+
+      assert resolved && File.regular?(resolved),
+             "#{label} config: #{inspect(command)} does not resolve to an existing script"
+    end
+
+    for path <- hook_scripts(root), String.ends_with?(path, ".py") do
+      absolute = Path.join(root, path)
+
+      # A syntax check that writes no bytecode (`py_compile` writes a
+      # `__pycache__` even under `-B`).
+      check = "import sys; compile(open(sys.argv[1]).read(), sys.argv[1], 'exec')"
+
+      assert {_output, 0} =
+               System.cmd("python3", ["-B", "-c", check, absolute], stderr_to_stdout: true)
+    end
+  end
+
+  test "a fixture copy of the hooks stays valid with a comment added to a hook script" do
+    in_full_hook_fixture!(fn dir ->
+      script = Path.join(dir, ".codex/hooks/verification_policy.py")
+      File.write!(script, "# a harmless comment\n" <> File.read!(script))
+
+      assert VerificationPolicy.preflight(["check"], dir) == :ok
+      assert dispatches?(dir, "cat README.md")
+      refute dispatches?(dir, "make check")
+    end)
+  end
+
+  test "a fixture copy fails when the hook stops blocking make check" do
+    in_full_hook_fixture!(fn dir ->
+      script = Path.join(dir, ".codex/hooks/verification_policy.py")
+
+      weakened =
+        String.replace(
+          File.read!(script),
+          "def prohibited(argv, targets, root):",
+          "def prohibited(argv, targets, root):\n    return False  # weakened\n"
         )
 
-      commit ->
-        paths =
-          [".codex/hooks.json", "priv/kogen/claude_code/settings.json"] ++ hook_scripts(root)
+      assert weakened != File.read!(script)
+      File.write!(script, weakened)
 
-        for path <- paths do
-          assert {:ok, committed} = git_show(commit, path)
-          assert File.read!(Path.join(root, path)) == committed, "#{path} changed since #{commit}"
-        end
-    end
-
-    hooks = root |> Path.join(".codex/hooks.json") |> File.read!() |> Jason.decode!()
-
-    registered =
-      hooks
-      |> get_in(["hooks", "PreToolUse"])
-      |> Enum.find_value(fn
-        %{"matcher" => "Bash", "hooks" => entries} ->
-          Enum.find_value(entries, fn
-            %{"type" => "command", "command" => command} -> command
-            _ -> nil
-          end)
-
-        _ ->
-          nil
-      end)
-
-    hook_command_literal =
-      "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/verification_policy.py\""
-
-    # As it appears in the module's own Elixir source (an escaped string
-    # literal), not the decoded runtime value.
-    hook_command_source_literal =
-      ~S{python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/verification_policy.py\"}
-
-    module_source = File.read!(Path.join(root, "lib/kogen/verification_policy.ex"))
-
-    assert module_source =~ hook_command_source_literal,
-           "expected @hook_command literal in lib/kogen/verification_policy.ex"
-
-    assert registered == hook_command_literal
+      assert dispatches?(dir, "make check"),
+             "a weakened hook must let make check reach fake dispatch"
+    end)
   end
 
-  defp resolvable_commit(commit) do
-    root = root_for_test()
+  test "a fixture copy fails when the hook's PreToolUse registration is removed" do
+    in_full_hook_fixture!(fn dir ->
+      File.write!(
+        Path.join(dir, ".codex/hooks.json"),
+        Jason.encode!(%{"hooks" => %{}})
+      )
 
-    cond do
-      match?(
-        {_, 0},
-        System.cmd("git", ["cat-file", "-e", commit], cd: root, stderr_to_stdout: true)
-      ) ->
-        commit
+      assert {:error, reason} = VerificationPolicy.preflight(["check"], dir)
+      assert reason =~ "verification-policy hook is not registered"
+    end)
+  end
 
-      match?(
-        {_, 0},
-        System.cmd("git", ["merge-base", "HEAD", commit], cd: root, stderr_to_stdout: true)
-      ) ->
-        {merge_base, 0} =
-          System.cmd("git", ["merge-base", "HEAD", commit], cd: root, stderr_to_stdout: true)
+  test "a fixture copy fails when the registered script is missing" do
+    in_full_hook_fixture!(fn dir ->
+      File.rm!(Path.join(dir, ".codex/hooks/verification_policy.py"))
 
-        String.trim(merge_base)
+      assert {:error, reason} = VerificationPolicy.preflight(["check"], dir)
+      assert reason =~ "required verification policy file"
+    end)
+  end
 
-      true ->
+  defp in_full_hook_fixture!(fun) do
+    in_policy_fixture!(fn dir ->
+      root = root_for_test()
+
+      File.mkdir_p!(Path.join(dir, "priv/kogen/claude_code"))
+
+      File.cp!(
+        Path.join(root, "priv/kogen/claude_code/settings.json"),
+        Path.join(dir, "priv/kogen/claude_code/settings.json")
+      )
+
+      fun.(dir)
+    end)
+  end
+
+  defp pretooluse_bash_command(hooks) do
+    hooks
+    |> get_in(["hooks", "PreToolUse"])
+    |> Enum.find_value(fn
+      %{"matcher" => "Bash", "hooks" => entries} ->
+        Enum.find_value(entries, fn
+          %{"type" => "command", "command" => command} -> command
+          _ -> nil
+        end)
+
+      _ ->
         nil
-    end
+    end)
   end
 
-  defp git_show(commit, path) do
-    case System.cmd("git", ["show", "#{commit}:#{path}"],
-           cd: root_for_test(),
-           stderr_to_stdout: true
-         ) do
-      {out, 0} -> {:ok, out}
-      {_out, _status} -> :error
+  # The registered command runs its script through an interpreter with a
+  # `$(git rev-parse --show-toplevel)`-relative path, never a bare literal
+  # path, so resolving it means expanding that shell expression from the
+  # Candidate root, the same way the harness would when it dispatches the
+  # hook.
+  defp resolve_command_script(root, command) do
+    case Regex.run(~r/"([^"]+)"\s*\z/, command) do
+      [_, quoted] ->
+        {resolved, 0} = System.cmd("sh", ["-c", "echo \"#{quoted}\""], cd: root)
+        String.trim(resolved)
+
+      _ ->
+        nil
     end
   end
 

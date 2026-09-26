@@ -129,7 +129,7 @@ defmodule Kogen.Check do
   """
   @spec validate_targets([String.t()], Path.t()) :: :ok | {:error, String.t()}
   def validate_targets(names, makefile_path \\ "Makefile") do
-    with {:ok, declared} <- MakeInventory.load(makefile_path) do
+    with {:ok, %{targets: declared}} <- MakeInventory.load(makefile_path) do
       validate_declared_names(names, declared)
     end
   end

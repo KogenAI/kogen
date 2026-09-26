@@ -9,6 +9,7 @@ defmodule Kogen.HarnessContractTest do
   use Kogen.IsolatedCase, async: true
 
   alias Kogen.Codex.Environment
+  alias Kogen.Harness.Verdict
 
   @moduletag timeout: 180_000
 
@@ -114,6 +115,32 @@ defmodule Kogen.HarnessContractTest do
 
     refute rendered_developer =~ "{{"
     refute rendered_reviewer =~ "{{"
+  end
+
+  # `role-prompt-tune-up`: one harness-neutral prompt file each, with no
+  # harness-specific branch, and the verdict schema's required key set
+  # unchanged by the tune-up (a new required key would break this Build's
+  # own self-hosted Review under main's static schema).
+  test "the Developer and Reviewer prompts render identical text for every harness, and the verdict schema keys are unchanged" do
+    developer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/developer.md"))
+    reviewer = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/reviewer.md"))
+
+    for harness <- ["codex", "claude"] do
+      dest = fixture!(harness)
+
+      assert File.read!(Path.join(dest, "priv/kogen/prompts/developer.md")) == developer,
+             "#{harness} fixture's copied developer.md must be byte-identical (harness-neutral)"
+
+      assert File.read!(Path.join(dest, "priv/kogen/prompts/reviewer.md")) == reviewer,
+             "#{harness} fixture's copied reviewer.md must be byte-identical (harness-neutral)"
+    end
+
+    decoded = Jason.decode!(Verdict.schema())
+
+    assert Enum.sort(decoded["required"]) ==
+             Enum.sort(~w(candidate_id attempt_token verdict scenarios dispositions findings))
+
+    assert decoded["additionalProperties"] == false
   end
 
   # candidate-routing: the managed Codex environment trusts the Candidate,
@@ -329,6 +356,7 @@ defmodule Kogen.HarnessContractTest do
           expert: {model: claude-unproven-9, effort: low}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """)
 
     # The default (selected) route resolves and readies successfully, without
@@ -622,6 +650,7 @@ defmodule Kogen.HarnessContractTest do
           expert: {model: #{developer}, effort: high}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """
   end
 

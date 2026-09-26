@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Evidence-local public Shape driver; run only after the coordinated START."""
-import argparse, hashlib, json, os, pty, re, select, shutil, signal, subprocess, threading, time
+import argparse, hashlib, json, os, pty, re, select, shutil, signal, subprocess, sys, threading, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -107,6 +107,43 @@ class TriggerMismatch(RuntimeError):
     pass
 
 
+# The minimum set of saved-Draft files that establish a reviewable end state.
+# Matches the files required_case_capture() already demands of every captured
+# case, so a case missing any of them is not a genuine terminal Draft.
+REQUIRED_DRAFT_FILES = frozenset({"intent.yaml", "scenarios.yaml", "questions.md"})
+
+
+def turn_end_decision(case, next_msg, messages, draft_files):
+    """Pure fail-fast decision for a completed turn's end state.
+
+    Called the instant a native turn completes, with no I/O of its own, so it
+    is directly importable by both the driver and offline/replay tests.
+    ``draft_files`` is the set of file names the caller observed directly in
+    the saved Draft directory at that instant (empty if no Draft directory
+    exists at all). This never inspects wall time: a turn that never
+    completes is unaffected and keeps running to the caller's unchanged
+    MAX_SECONDS timeout.
+
+    Returns an ("advance" | "complete" | "fail", reason) pair:
+      - "advance": scripted messages remain; the caller should send the next one.
+      - "complete": no scripted message is left; the completed turn's saved
+        Draft reached the expected end state (every required file present).
+      - "fail": no scripted message is left, and the completed turn's Draft
+        did not reach that expected end state (it is missing entirely, or is
+        missing one of its required files). The caller must fail this case
+        immediately, naming the case and the missing evidence, rather than
+        let the suite discover the same gap only after spending its full
+        deadline on every case.
+    """
+    if next_msg < len(messages):
+        return "advance", None
+    missing = sorted(REQUIRED_DRAFT_FILES - set(draft_files))
+    if missing:
+        return "fail", (f"{case}: completed turn's saved Draft is missing "
+                        f"{', '.join(missing)} and no scripted answer remains")
+    return "complete", None
+
+
 def bounded_output(value):
     if isinstance(value, bytes):
         value = value.decode(errors="replace")
@@ -139,6 +176,8 @@ def canonical_case(label):
     return "csv-complete" if label.startswith("csv") else "booking-complete"
 
 def current_request(label):
+    if label == "smoke":
+        return SMOKE_REQUEST
     return CURRENT_REQUESTS[canonical_case(label)]
 
 # The public evaluation transport only observes completed native turns. Keep
@@ -238,6 +277,20 @@ def configured_profiles(fixture):
             "scout":(helpers["scout"]["model"],helpers["scout"]["effort"]),
             "worker":(helpers["worker"]["model"],helpers["worker"]["effort"]),
             "expert":(helpers["expert"]["model"],helpers["expert"]["effort"])}, {"bytes_sha256":hashlib.sha256((fixture/".kogen/config.yaml").read_bytes()).hexdigest(),"normalized":config}
+
+
+def resolved_codex_route(fixture):
+    """The one route whose harness is codex, resolved the same way the
+    managed launch context is: never default_route, matching the Codex-only
+    live owners' contract. Passed explicitly to `mix kogen.shape --route` so
+    the transport never depends on whichever harness default_route names."""
+    code = CODEX_ROUTE_ELIXIR + 'IO.write(route_name)'
+    result = subprocess.run(["mix", "run", "--no-compile", "--no-start", "-e", code], cwd=fixture,
+                            capture_output=True, text=True, timeout=30,
+                            env={**os.environ, "MIX_BUILD_PATH": str(fixture / "_build")})
+    if result.returncode:
+        raise RuntimeError(f"could not resolve codex route: {result.stderr.strip()}")
+    return result.stdout.strip()
 
 
 def observed_role(summary):
@@ -341,12 +394,40 @@ def copy_dependency_sources(source, target):
             raise RuntimeError(f"dependency copy retained symlink: {path}")
 
 
+# Kept in sync with the @volatile list in lib/kogen/build/guarded_paths.ex.
+# A fixture copy is a fresh Candidate-like checkout: it must never inherit the
+# controller's own volatile state (lockfiles, runtime caches, harness/native
+# session homes, build artifacts), only tracked and other genuine sources.
+GUARDED_PATHS_VOLATILE = (".kogen/runtime", ".kogen/build.lock", ".kogen/codex", ".codex/sessions",
+                          "_build", "deps", "cover", ".elixir_ls")
+
+
+def copy_fixture_source_tree(project, fixture, label):
+    """rsync a fresh writable fixture tree, excluding every GuardedPaths
+    volatile path plus the fixture-only exclusions below. Isolated so it is
+    directly testable with a small planted tree, without also exercising
+    setup_fixture's git/mix bootstrap."""
+    excludes = [f"--exclude={path}" for path in GUARDED_PATHS_VOLATILE]
+    subprocess.run(["rsync", "-a", *excludes, "--exclude=.git",
+                    "--exclude=.kogen/intents", "--exclude=test/support/shaping_evaluation", str(project)+"/", str(fixture)+"/"], check=True)
+    volatile_copied = [path for path in GUARDED_PATHS_VOLATILE if (fixture / path).exists()]
+    if volatile_copied:
+        raise RuntimeError(f"{label}: fixture copy retained volatile GuardedPaths state: {volatile_copied}")
+
+
+def append_rehearsal_trace(name):
+    trace_path = os.environ.get("KOGEN_REHEARSAL_TRACE")
+    if trace_path:
+        with open(trace_path, "a", encoding="utf-8") as handle:
+            handle.write(name + "\n")
+
+
 def setup_fixture(label, extra_files):
+    append_rehearsal_trace("driver.setup_fixture")
     fixture = RUNTIME / label
     if fixture.exists(): raise RuntimeError(f"fixture exists: {fixture}")
     fixture.mkdir(parents=True)
-    subprocess.run(["rsync", "-a", "--exclude=_build", "--exclude=deps", "--exclude=.git",
-                    "--exclude=.kogen/runtime", "--exclude=.kogen/intents", "--exclude=test/support/shaping_evaluation", str(PROJECT)+"/", str(fixture)+"/"], check=True)
+    copy_fixture_source_tree(PROJECT, fixture, label)
     if (PROJECT/"deps").exists(): copy_dependency_sources(PROJECT / "deps", fixture / "deps")
     for rel, data in extra_files.items():
         path=fixture/rel; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data if isinstance(data,bytes) else data.encode())
@@ -376,7 +457,19 @@ def setup_fixture(label, extra_files):
 
 def write_fixture_readme(fixture, label):
     domain = ("CSV normalization" if label.startswith("csv") else
-              "calendar availability" if label.startswith("booking") else "stateful verification guardrail")
+              "calendar availability" if label.startswith("booking") else
+              "transport smoke greeting" if label == "smoke" else "stateful verification guardrail")
+    if label == "smoke":
+        fixture.joinpath("README.md").write_text(f"""# {domain}
+
+## Current user request
+
+{current_request(label)}
+
+This is a transport-smoke fixture. [The brief](evidence/greeting.md) and
+[settled facts](evidence/facts.json) are complete except punctuation.
+""")
+        return
     fixture.joinpath("README.md").write_text(f"""# {domain}
 
 ## Current user request
@@ -467,6 +560,63 @@ def stateful_files(complete=False):
         "The source and action marker are fixture-owned and must remain unchanged.\n"
     ).encode()
     return files
+
+# The smoke case exercises transport mechanics only (session start, one
+# completed scripted turn, cleanup); it is deliberately not a CASES member
+# and its scripted turn grades nothing product-shaped.
+# The request names the slug the driver waits on and asks for the Draft in
+# the first turn: without both, a real session saves elsewhere or later and
+# the initial-turn wait runs out the bound (probe-shaping-smoke run 3).
+SMOKE_REQUEST = ('Transport smoke test. Shape the one-sentence greeting described in '
+                 'evidence/greeting.md with exact slug eval-smoke. Do not inspect lib/, priv/ '
+                 'or test/; the brief is complete except punctuation. In your first reply, save a '
+                 'minimal Draft (intent.yaml and one scenario in scenarios.yaml) and ask in plain '
+                 'text what punctuation to end the greeting with. After the answer, update that '
+                 'Draft and stop. Save without approval.')
+SMOKE_ANSWER = 'Use a period. Save the Draft now without approval; keep it minimal.'
+# The smoke fixture's Codex Shaping effort (scenario shaping-smoke-target).
+# The case bound was probed at low effort only (156 s low, 410 s medium).
+SMOKE_EFFORT = "low"
+SMOKE_SHAPING_LINE = re.compile(r"^(    shaping:\s*\{[^}\n]*\beffort:\s*)([\w-]+)", re.M)
+
+
+def pinned_smoke_config(config):
+    """The project config with only its one Codex route's Shaping effort set
+    to SMOKE_EFFORT. Any other shape is refused rather than guessed."""
+    routes = re.split(r"^(?=  \S[^\n]*:\s*$)", config, flags=re.M)
+    codex = [index for index, block in enumerate(routes)
+             if index and re.search(r"^    harness:\s*codex\s*$", block, re.M)]
+    if len(codex) != 1:
+        raise RuntimeError(f"smoke: expected exactly one block-style codex route, found {len(codex)}")
+    block, count = SMOKE_SHAPING_LINE.subn(lambda m: m.group(1) + SMOKE_EFFORT, routes[codex[0]])
+    if count != 1:
+        raise RuntimeError("smoke: the codex route has no single flow-map shaping line to pin")
+    routes[codex[0]] = block
+    return "".join(routes)
+
+
+def require_smoke_effort(receipt):
+    """The pinned effort reached the launched session: configured, and
+    observed on the root rollout's turns."""
+    configured = (((receipt.get("configured_profiles") or {}).get("normalized") or {}).get("shaping") or {}).get("effort")
+    roots = [summary for summary in (receipt.get("correlation") or {}).get("owned", []) if observed_role(summary) == "root"]
+    observed = [summary.get("efforts") for summary in roots]
+    if configured != SMOKE_EFFORT or observed != [[SMOKE_EFFORT]]:
+        raise RuntimeError(f"smoke: Shaping effort not applied; configured {configured!r}, "
+                           f"observed root efforts {observed!r}, expected {SMOKE_EFFORT!r}")
+
+
+def smoke_files():
+    config = pinned_smoke_config((PROJECT / ".kogen/config.yaml").read_text())
+    return {".kogen/config.yaml": config,
+            "evidence/greeting.md": "Say hello in one short sentence.\n",
+            "evidence/facts.json": json.dumps({
+                "feature": "transport-smoke greeting",
+                "scope": "session mechanics only; not a product feature and not semantically graded",
+            }, indent=2) + "\n",
+            "evidence/fixture-contract.md": ("This is a transport-smoke fixture: it establishes session "
+                "mechanics (start, one scripted turn, task_complete, cleanup), not product behavior. No "
+                "lib/, priv/, or test/ inspection is required or expected.\n")}
 
 def draft_dir(fixture, slug): return fixture/".kogen/intents/drafts"/slug
 
@@ -562,9 +712,19 @@ def parser_code_paths(case, source):
     return list(dict.fromkeys(paths))
 
 
+# Successful parses keyed by the exact bytes and compiled code paths. The
+# parser is a pure function of both, so re-reading unchanged Draft bytes
+# (every turn check and the final projection) never re-spawns a BEAM.
+# Failures are never cached; each one re-runs and keeps its own evidence.
+PARSED_YAML = {}
+
+
 def parse_yaml_document(contents, *, case, source):
     """Parse original Draft bytes through the current compiled YAML dependency."""
     paths = parser_code_paths(case, source)
+    key = (tuple(paths), bytes(contents))
+    if key in PARSED_YAML:
+        return json.loads(PARSED_YAML[key])
     code=("try do case YamlElixir.read_from_string(IO.binread(:stdio, :eof)) do "
           "{:ok, value} when is_map(value) -> IO.write(Jason.encode!(value)); "
           "{:ok, _} -> IO.write(:stderr, \"KOGEN_YAML_NON_MAP\\n\"); System.halt(23); "
@@ -609,6 +769,7 @@ def parse_yaml_document(contents, *, case, source):
         raise DraftParseError("non-map YAML", case, source,
                               "supported YAML parser did not return a mapping", command=command,
                               stdout=result.stdout, stderr=result.stderr)
+    PARSED_YAML[key] = json.dumps(decoded)
     return decoded
 
 
@@ -684,7 +845,8 @@ def write_stateful_control_result(fixture, out, case):
 def copy_fixture_sources(fixture,case,out):
     target=out/"fixture-source"; target.mkdir()
     shutil.copy2(fixture/"README.md",target/"README.md")
-    kind="csv" if case.startswith("csv") else "booking" if case.startswith("booking") else "stateful"
+    kind=("csv" if case.startswith("csv") else "booking" if case.startswith("booking") else
+          "smoke" if case == "smoke" else "stateful")
     for relative in (Path("app")/kind,Path("test")/kind):
         source=fixture/relative
         if source.is_dir(): shutil.copytree(source,target/relative,ignore=shutil.ignore_patterns("__pycache__","*.pyc","*.pyo",".DS_Store"))
@@ -718,8 +880,12 @@ def require_cleanup(fixture,case,receipt):
     run=RUNTIME/"runs"/case
     (run/"receipt.json").write_text(json.dumps(receipt,indent=2)+"\n")
 
-def drive(case, fixture, slug, messages, triggers, continuation=False):
+def drive(case, fixture, slug, messages, triggers, continuation=False, max_seconds=None):
+    # CASES sessions keep the unchanged module-level MAX_SECONDS budget; only
+    # the standalone smoke case (never a CASES member) passes its own bound.
+    max_seconds = MAX_SECONDS if max_seconds is None else max_seconds
     profiles, profile_configuration = configured_profiles(fixture)
+    route = resolved_codex_route(fixture)
     out=RUNTIME/"runs"/case; out.mkdir(parents=True)
     if case.startswith("stateful-"):
         write_stateful_control_result(fixture, out, case)
@@ -740,7 +906,7 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
     session_root=selected_session_root(fixture)
     before=inventory(session_root); start_wall=wall_now(); start_monotonic=monotonic_now(); sent=[]; terminal_observed=[]; outcome="inconclusive"; failure=None
     transport_log=(out/"transport.log").open("w")
-    cmd=["expect",str(HERE/"shape_transport.exp"),str(fixture),str(out/"pty.log"),str(mailbox),slug if continuation else ""]
+    cmd=["expect",str(HERE/"shape_transport.exp"),str(fixture),str(out/"pty.log"),str(mailbox),slug if continuation else "",route]
     transport_argv=[cmd]; cleanup_receipts=[]
     launch_context_path = out / "managed-launch-context.json"
     proc=subprocess.Popen(cmd,cwd=fixture,stdout=transport_log,stderr=subprocess.STDOUT,text=True,env={**os.environ,"MIX_BUILD_PATH":str(fixture/"_build"),"KOGEN_CODEX_CONTEXT_RECEIPT":str(launch_context_path)})
@@ -774,7 +940,7 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
         sent.append({"at":wall_now(),"text":text,"submitted_text":submitted_text,"transport":active_kind})
     intermediate_draft_sha256=None
     try:
-        startup_deadline=start_monotonic+MAX_SECONDS
+        startup_deadline=start_monotonic+max_seconds
         while monotonic_now()<startup_deadline:
             roots=exact_root_rollout(before,fixture,session_root)
             if len(roots)==1 and task_complete_count(roots[0])>=1: break
@@ -785,7 +951,7 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
         startup_turn_id=next((event.get("payload", {}).get("turn_id") for event in json.loads("[" + ",".join(Path(roots[0]).read_text().splitlines()) + "]") if event.get("type")=="turn_context"), None)
         last_digest=None; stable_since=None; intermediate_draft_sha256=None
         completed_without_draft=False; uncorrelated_user_event=False
-        while monotonic_now()-start_monotonic < MAX_SECONDS:
+        while monotonic_now()-start_monotonic < max_seconds:
             text=read_draft(fixture,slug); digest=hashlib.sha256(text.encode()).hexdigest()
             if digest != last_digest: last_digest=digest; stable_since=monotonic_now()
             if text and stable_since and monotonic_now()-stable_since>=3: break
@@ -802,7 +968,7 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
             stop_active()
             resume_exact(messages[0],0,root_id)
         next_msg=0
-        while monotonic_now()-start_monotonic < MAX_SECONDS:
+        while monotonic_now()-start_monotonic < max_seconds:
             if not messages:
                 break
             text=read_draft(fixture,slug); digest=hashlib.sha256(text.encode()).hexdigest()
@@ -819,6 +985,11 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
                 uncorrelated_user_event=True
             if complete and not text:
                 completed_without_draft=True
+                decision, reason = turn_end_decision(case, next_msg, messages, set())
+                if decision == "fail":
+                    failure={"type":"TurnEndFailFast","message":reason}
+                    outcome="inconclusive"
+                    break
             if complete and text and stable_since and monotonic_now()-stable_since>=3:
                 terminal_observed.append({"at":wall_now(),"root_rollout":roots[0],"turn_id":turn_id,"draft_sha256":digest})
                 current_draft=draft_dir(fixture,slug)
@@ -840,8 +1011,19 @@ def drive(case, fixture, slug, messages, triggers, continuation=False):
                     resume_exact(messages[next_msg],next_msg,rollout_summary(roots[0])["id"])
                     stable_since=monotonic_now(); last_digest=digest
                 else:
-                    # The driver only establishes a completed, retained session.
-                    # Semantic satisfaction is judged later by the independent Reviewer.
+                    # The driver only establishes a completed, retained session;
+                    # full semantic satisfaction is judged later by the independent
+                    # Reviewer. It still fails fast, right here, if the terminal
+                    # Draft is missing a required file and no scripted answer is
+                    # left to advance it further, instead of only discovering
+                    # that gap once the whole suite's manifest is validated.
+                    draft_files = ({path.name for path in current_draft.iterdir() if path.is_file()}
+                                   if current_draft.is_dir() else set())
+                    decision, reason = turn_end_decision(case, next_msg, messages, draft_files)
+                    if decision == "fail":
+                        failure={"type":"TurnEndFailFast","message":reason}
+                        outcome="inconclusive"
+                        break
                     outcome="completed"; break
             if proc.poll() is not None: raise RuntimeError(f"Expect transport exited {proc.returncode}")
             time.sleep(1)
@@ -967,7 +1149,13 @@ def required_artifacts():
             required.append(path)
     return list(dict.fromkeys(required))
 
-def write_manifest():
+def write_manifest(failure=False):
+    # In the no-cancel suite contract a failed dispatch still leaves every
+    # already-produced case artifact on disk; required_artifacts() only lists
+    # paths that currently exist, so the manifest frame is well-formed either
+    # way. On failure we additionally manifest suite-failure.json itself and
+    # validate under the failure-mode contract, which requires every listed
+    # entry to exist rather than requiring full per-case coverage.
     entries = []
     for path in required_artifacts():
         if not path.is_relative_to(PROJECT):
@@ -976,12 +1164,19 @@ def write_manifest():
     counterexamples = RUNTIME / "semantic-counterexamples.json"
     if counterexamples.is_file():
         entries.append({"path": str(counterexamples.relative_to(PROJECT)), "sha256": sha256(counterexamples)})
+    if failure:
+        suite_failure = RUNTIME / "suite-failure.json"
+        if suite_failure.is_file():
+            entries.append({"path": str(suite_failure.relative_to(PROJECT)), "sha256": sha256(suite_failure)})
     if not entries:
         raise RuntimeError("no shaping-evaluation evidence to manifest")
     manifest = RUNTIME / "evidence-manifest.json"
     manifest.write_text(json.dumps({"schema_version": 1, "required_evidence": entries}, indent=2) + "\n")
     try:
-        integrity_module().validate_manifest(PROJECT, manifest)
+        if failure:
+            integrity_module().validate_failure_manifest(PROJECT, manifest)
+        else:
+            integrity_module().validate_manifest(PROJECT, manifest)
     except Exception as exc:
         raise RuntimeError(f"manifest integrity validation failed: {exc}") from exc
     locator = {"manifest_path": str(manifest.relative_to(PROJECT)), "sha256": sha256(manifest)}
@@ -990,6 +1185,70 @@ def write_manifest():
 
 def write_semantic_counterexamples():
     shutil.copy2(HERE / "semantic-counterexamples.json", RUNTIME / "semantic-counterexamples.json")
+
+SMOKE_MAX_SECONDS = 300
+
+def required_smoke_artifacts():
+    # Smoke's own manifest bundle: the same shape as required_artifacts()
+    # scoped to the single standalone "smoke" run, never a CASES member and
+    # never mixed into the five/seven-case suite manifest.
+    required = []
+    run = RUNTIME / "runs" / "smoke"
+    public_names = ("review-receipt.json", "messages.json", "input-delivery.json",
+                    "owned-session-metadata.json", "public-transcript.json", "draft-state.json",
+                    "fixture-cleanup.json")
+    for name in public_names:
+        path = run / name
+        if path.is_file(): required.append(path)
+    for base in (run / "draft", run / "fixture-source", run / "initial-draft"):
+        for path in sorted(base.rglob("*")) if base.exists() else ():
+            if path.is_file() and not path.is_symlink() and path.name not in {".DS_Store"} and "__pycache__" not in path.parts and path.suffix not in {".pyc", ".pyo"}:
+                required.append(path)
+    evidence_names = ("greeting.md", "facts.json", "fixture-contract.md",
+                      "complete-input-receipt.json", "current-prerequisite-receipt.json", "prerequisite_control.py")
+    for name in evidence_names:
+        path = run / "evidence" / name
+        if path.is_file(): required.append(path)
+    return list(dict.fromkeys(required))
+
+def write_smoke_manifest():
+    entries = []
+    # Every smoke path resolves from one root, so a symlinked PROJECT or
+    # temporary directory never places RUNTIME evidence "outside" it.
+    root = PROJECT.resolve()
+    for path in required_smoke_artifacts():
+        path = path.resolve()
+        if not path.is_relative_to(root):
+            raise RuntimeError(f"evidence outside repository: {path} (root {root})")
+        entries.append({"path": str(path.relative_to(root)), "sha256": sha256(path)})
+    if not entries:
+        raise RuntimeError("no smoke evidence to manifest")
+    manifest = RUNTIME.resolve() / "evidence-manifest.json"
+    manifest.write_text(json.dumps({"schema_version": 1, "required_evidence": entries}, indent=2) + "\n")
+    try:
+        integrity_module().validate_smoke_manifest(root, manifest)
+    except Exception as exc:
+        raise RuntimeError(f"smoke manifest integrity validation failed: {exc}") from exc
+    locator = {"manifest_path": str(manifest.relative_to(root)), "sha256": sha256(manifest)}
+    print("\nKOGEN_TARGET_EVIDENCE_MANIFEST\t" + json.dumps(locator, separators=(",", ":")), flush=True)
+    return locator
+
+def run_smoke():
+    """Transport-mechanics-only smoke case, outside CASES: one real public
+    Shape session, one scripted answer, nothing graded. Bounded at
+    SMOKE_MAX_SECONDS, then exits cleanly with every owned process reaped and
+    the fixture cleaned, writing and printing its own manifest frame once."""
+    append_rehearsal_trace("driver.run_smoke")
+    fixture = setup_fixture("smoke", smoke_files())
+    receipt = drive("smoke", fixture, "eval-smoke", [SMOKE_ANSWER], [lambda _t, _root: True],
+                    max_seconds=SMOKE_MAX_SECONDS)
+    require_cleanup(fixture, "smoke", receipt)
+    print(json.dumps(receipt, indent=2))
+    require_smoke_effort(receipt)
+    if not case_succeeded(receipt):
+        return 1
+    write_smoke_manifest()
+    return 0
 
 def validate_captured_provenance(case, run):
     source = run / "draft" / "intent.yaml"
@@ -1072,6 +1331,7 @@ def preflight_yaml_parser():
 
 def setup_continuation_seed():
     """Freeze a compact test-authored Draft against its own committed fixture."""
+    append_rehearsal_trace("driver.setup_continuation_seed")
     fixture = setup_fixture("csv-continuation", csv_files(continuation=True))
     profiles, _configuration = configured_profiles(fixture)
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=fixture, capture_output=True, text=True, check=True).stdout.strip()
@@ -1118,38 +1378,45 @@ def run_suite():
     # log so a verbose native transport cannot deadlock a PIPE.
     cases=CASES
     env={**os.environ, "KOGEN_SHAPING_EVALUATION_SUITE_BARRIER":"1"}
-    children={}; logs={}; pending=set(cases); failure=None
-    try:
+    children={}; logs={}; pending=set(cases); failures={}
+    for case in cases:
+        log=(RUNTIME/f"{case}-output.log").open("w")
+        logs[case]=log
+        children[case]=subprocess.Popen(["python3", "-B", str(Path(__file__).resolve()), case], env=env, stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)
+    # Every dispatched case runs to completion within the same deadline: a
+    # failing case no longer cancels its still-running siblings, so every
+    # case keeps a complete, inspectable evidence trail.
+    deadline = monotonic_now() + SUITE_SECONDS
+    while pending and monotonic_now() < deadline:
         for case in cases:
-            log=(RUNTIME/f"{case}-output.log").open("w")
-            logs[case]=log
-            children[case]=subprocess.Popen(["python3", "-B", str(Path(__file__).resolve()), case], env=env, stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)
-        deadline = monotonic_now() + SUITE_SECONDS
-        while pending and failure is None:
-            if monotonic_now() >= deadline:
-                raise TimeoutError("parallel cases exceeded the existing case deadline")
-            for case in cases:
-                child=children[case]
-                if case not in pending or child.poll() is None: continue
-                pending.remove(case)
-                if child.returncode:
-                    failure=(case, f"child exited {child.returncode}; see {case}-output.log")
-                    break
-                required_case_capture(case)
-            if pending and failure is None: time.sleep(.05)
-        if failure: raise RuntimeError(f"{failure[0]}: {failure[1]}")
-    except Exception as exc:
-        cleanup_errors = []
-        for case, child in children.items():
+            if case not in pending: continue
+            child=children[case]
+            if child.poll() is None: continue
+            pending.discard(case)
+            if child.returncode:
+                failures[case]=f"child exited {child.returncode}; see {case}-output.log"
+                continue
             try:
-                cancel_case_process(case, child)
-            except Exception as cleanup_exc:
-                cleanup_errors.append({"case":case,"type":type(cleanup_exc).__name__,"message":str(cleanup_exc)})
-        failure_record={"case": failure[0] if failure else "parallel suite", "type":type(exc).__name__,"message":str(exc),"cancelled_children":sorted(pending),"cleanup_errors":cleanup_errors}
+                required_case_capture(case)
+            except Exception as exc:
+                failures[case]=f"{type(exc).__name__}: {exc}"
+        if pending: time.sleep(.05)
+    cleanup_errors=[]
+    for case in sorted(pending):
+        failures[case]="parallel cases exceeded the existing case deadline"
+        try:
+            cancel_case_process(case, children[case])
+        except Exception as cleanup_exc:
+            cleanup_errors.append({"case":case,"type":type(cleanup_exc).__name__,"message":str(cleanup_exc)})
+    for log in logs.values(): log.close()
+    if failures:
+        for case in cases:
+            if case in failures:
+                print(f"FAILED: {case}: {failures[case]}", flush=True)
+        failure_record={"failed_cases":failures,"cleanup_errors":cleanup_errors}
         (RUNTIME/"suite-failure.json").write_text(json.dumps(failure_record,indent=2)+"\n")
+        write_manifest(failure=True)
         return 1
-    finally:
-        for log in logs.values(): log.close()
     try:
         write_manifest()
     except Exception as exc:
@@ -1203,8 +1470,97 @@ def case_succeeded(receipt):
             receipt["correlation"]["all_profiles_match"] and
             all(item.get("all_reaped") is True for item in receipt["cleanup"]))
 
+def prepare_login_scope_ok(force=None):
+    """Resolve the Codex login scope for --prepare, with no provider call of
+    its own. `force` ("pass"/"fail") substitutes a controlled input so `check`
+    can rehearse both outcomes without a real login."""
+    append_rehearsal_trace("driver.prepare_login_scope_ok")
+    if force == "pass":
+        return True, None
+    if force == "fail":
+        return False, "no Codex login scope is available (forced failing scope)"
+    code = CODEX_ROUTE_ELIXIR + '''
+    {:ok, runtime} = Kogen.Codex.installed()
+    case Kogen.Codex.effective_scope(File.cwd!()) do
+      {:ok, _scope} -> IO.write("ok")
+      {:error, reason} -> IO.write(:stderr, inspect(reason)); System.halt(1)
+    end
+    '''
+    result = subprocess.run(["mix", "run", "--no-compile", "--no-start", "-e", code], cwd=PROJECT,
+                            capture_output=True, text=True, timeout=30)
+    if result.returncode:
+        return False, f"no Codex login scope is available: {bounded_output(result.stderr)}"
+    return True, None
+
+
+def prepare_toolchain_ok(force=None):
+    """Resolve the installed Codex hook toolchain for --prepare, with no
+    provider call of its own. `force` ("pass"/"fail") substitutes a
+    controlled input so `check` can rehearse both outcomes offline."""
+    append_rehearsal_trace("driver.prepare_toolchain_ok")
+    if force == "pass":
+        return True, None
+    if force == "fail":
+        return False, "installed Codex toolchain is below the required version (forced failing toolchain)"
+    code = '{:ok, _runtime} = Kogen.Codex.installed(); IO.write("ok")'
+    result = subprocess.run(["mix", "run", "--no-compile", "--no-start", "-e", code], cwd=PROJECT,
+                            capture_output=True, text=True, timeout=30)
+    if result.returncode:
+        return False, f"installed Codex toolchain is below the required version: {bounded_output(result.stderr)}"
+    return True, None
+
+
+def run_prepare(mode):
+    """`--prepare suite|smoke`: runs the driver's own setup functions (login
+    scope, hook toolchain, fixture copy, warm seed / isolated compile) with no
+    provider call, then cleans up. Exit 0 on success. On a Candidate failure,
+    exit nonzero with no special frame. On an environment failure (logged-out
+    or missing scope, or a toolchain below the required version), print one
+    line `KOGEN_PREPARE_RESULT\\t{"class":"environment","reason":"..."}` and
+    exit nonzero."""
+    ok, reason = prepare_login_scope_ok(os.environ.get("KOGEN_PREPARE_FORCE_SCOPE"))
+    if not ok:
+        print("KOGEN_PREPARE_RESULT\t" + json.dumps({"class": "environment", "reason": reason}, separators=(",", ":")))
+        return 1
+    ok, reason = prepare_toolchain_ok(os.environ.get("KOGEN_PREPARE_FORCE_TOOLCHAIN"))
+    if not ok:
+        print("KOGEN_PREPARE_RESULT\t" + json.dumps({"class": "environment", "reason": reason}, separators=(",", ":")))
+        return 1
+    fixture = None
+    try:
+        if mode == "suite":
+            setup_continuation_seed()
+            fixture = RUNTIME / "csv-continuation"
+        elif mode == "smoke":
+            fixture = setup_fixture("smoke", smoke_files())
+        else:
+            raise RuntimeError(f"unknown --prepare mode: {mode}")
+    except Exception as exc:
+        print(f"prepare failed: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        if fixture is not None and fixture.exists():
+            shutil.rmtree(fixture, ignore_errors=True)
+        if mode == "suite":
+            for extra in (RUNTIME / "continuation-seed", ):
+                if extra.exists(): shutil.rmtree(extra, ignore_errors=True)
+            metadata = RUNTIME / "continuation-seed-metadata.json"
+            if metadata.exists(): metadata.unlink()
+    return 0
+
+
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument("case",choices=[*CASES, "suite"]); args=ap.parse_args()
+    ap=argparse.ArgumentParser()
+    ap.add_argument("case", nargs="?", choices=[*CASES, "suite"])
+    ap.add_argument("--prepare", choices=["suite", "smoke"])
+    ap.add_argument("--smoke", action="store_true")
+    args=ap.parse_args()
+    if args.prepare:
+        return run_prepare(args.prepare)
+    if args.smoke:
+        return run_smoke()
+    if args.case is None:
+        ap.error("case is required unless --prepare is given")
     if args.case == "suite":
         return run_suite()
     suite_barrier(args.case)

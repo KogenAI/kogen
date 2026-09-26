@@ -22,6 +22,7 @@ defmodule Kogen.CommitProvenanceTest do
         expert: {model: fake, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   test "first and subsequent Builds record truthful automated provenance" do

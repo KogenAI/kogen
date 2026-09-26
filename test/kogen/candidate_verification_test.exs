@@ -69,6 +69,8 @@ defmodule Kogen.CandidateVerificationTest do
   printf '%s' "$input" > "$KOGEN_HARNESS_HOME/captured-resume-prompt"
   fi
   rm -f .kogen/runtime/kogen_fake_break
+  # A repair changes the Candidate; an unchanged one stops the Build.
+  printf 'repaired\n' >> dummy.txt
   fi
 
   printf '%s' "$input" | exec __DELEGATE__ "$@"

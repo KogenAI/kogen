@@ -12,6 +12,7 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
     "live-reviewer-rework" => %{"test/kogen/live_reviewer_rework_test.exs" => 1},
     "live-general" => %{"test/kogen/live_test.exs" => 1},
     "live-shaping-quality" => %{"test/kogen/live_shaping_evaluation_test.exs" => 1},
+    "live-shaping-smoke" => %{"test/kogen/live_shaping_smoke_test.exs" => 1},
     "live-native" => %{
       "test/kogen/codex_native_live_test.exs" => 2,
       "test/kogen/codex_compatibility_test.exs" => 1,
@@ -40,10 +41,10 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
         {path, target}
       end
 
-    assert length(selected) == 8
+    assert length(selected) == 9
 
     assert selected |> Enum.map(&elem(&1, 0)) |> Enum.frequencies() |> Map.values() ==
-             List.duplicate(1, 8)
+             List.duplicate(1, 9)
 
     all_live_owners =
       Path.wildcard(Path.join(@root, "test/kogen/*_test.exs"))
@@ -83,6 +84,7 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
              "check",
              "cold-offline",
              "live-general",
+             "live-shaping-smoke",
              "live-shaping-quality",
              "live-native",
              "live-reviewer-rework",
@@ -108,23 +110,119 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
     end
   end
 
-  test "catalog admission rejects a declared Make target without metadata" do
-    root =
-      Path.join(System.tmp_dir!(), "kogen-target-catalog-#{System.unique_integer([:positive])}")
+  test "a helper Make target with no catalog metadata is allowed to load" do
+    root = target_catalog_fixture!()
 
-    File.mkdir_p!(Path.join(root, "priv/kogen"))
-    on_exit(fn -> File.rm_rf!(root) end)
+    makefile = File.read!(Path.join(@root, "Makefile")) <> "\nfmt:\n\t@true\n"
+    File.write!(Path.join(root, "Makefile"), makefile)
 
-    File.cp!(
-      Path.join(@root, "priv/kogen/verification_targets.yaml"),
-      Path.join(root, "priv/kogen/verification_targets.yaml")
-    )
+    assert {:ok, _catalog} = VerificationPlan.load(root)
+  end
 
-    makefile = File.read!(Path.join(@root, "Makefile")) <> "\nmissing-metadata:\n\t@true\n"
+  test "an unrelated pattern rule with no catalog name overlap is allowed to load" do
+    root = target_catalog_fixture!()
+
+    makefile = File.read!(Path.join(@root, "Makefile")) <> "\n%.txt:\n\t@true\n"
+    File.write!(Path.join(root, "Makefile"), makefile)
+
+    assert {:ok, _catalog} = VerificationPlan.load(root)
+  end
+
+  test "a missing catalog target refuses, naming it" do
+    root = target_catalog_fixture!()
+
+    makefile =
+      File.read!(Path.join(@root, "Makefile"))
+      |> String.replace(~r/^cold-offline:\s*\n(?:\t.*\n?)*/m, "")
+
     File.write!(Path.join(root, "Makefile"), makefile)
 
     assert {:error, reason} = VerificationPlan.load(root)
-    assert reason =~ "does not match declared Make targets"
+    assert reason =~ "cold-offline"
+  end
+
+  test "a pattern or double-colon rule that could shadow a catalog target refuses, naming the rule and the target" do
+    pattern_root = target_catalog_fixture!()
+
+    File.write!(
+      Path.join(pattern_root, "Makefile"),
+      File.read!(Path.join(@root, "Makefile")) <> "\n%: ;\n"
+    )
+
+    assert {:error, pattern_reason} = VerificationPlan.load(pattern_root)
+    assert pattern_reason =~ "pattern"
+    assert pattern_reason =~ "check"
+
+    double_colon_root = target_catalog_fixture!()
+
+    File.write!(
+      Path.join(double_colon_root, "Makefile"),
+      File.read!(Path.join(@root, "Makefile")) <> "\ncheck::\n\t@true\n"
+    )
+
+    assert {:error, double_colon_reason} = VerificationPlan.load(double_colon_root)
+    assert double_colon_reason =~ "double-colon"
+    assert double_colon_reason =~ "check"
+  end
+
+  describe "an optional prepare argv on a catalog entry" do
+    test "a valid argv loads and is preserved on the entry" do
+      root =
+        one_target_catalog_fixture!(
+          no_check_entry("test", 0, [])
+          |> Map.put("prepare", ["python3", "-B", "prepare.py"])
+        )
+
+      assert {:ok, catalog} = VerificationPlan.load(root)
+      assert catalog.targets["test"]["prepare"] == ["python3", "-B", "prepare.py"]
+    end
+
+    test "an entry without prepare loads" do
+      root = one_target_catalog_fixture!(no_check_entry("test", 0, []))
+
+      assert {:ok, catalog} = VerificationPlan.load(root)
+      refute Map.has_key?(catalog.targets["test"], "prepare")
+    end
+
+    for {label, bad_prepare} <- [
+          {"a string instead of an argv", "make x"},
+          {"an empty list", []},
+          {"a list with a blank string", [""]},
+          {"a list with a non-string element", [1]}
+        ] do
+      test "prepare as #{label} is refused, naming the target and prepare" do
+        root =
+          one_target_catalog_fixture!(
+            no_check_entry("test", 0, [])
+            |> Map.put("prepare", unquote(Macro.escape(bad_prepare)))
+          )
+
+        assert {:error, reason} = VerificationPlan.load(root)
+        assert reason =~ "test"
+        assert reason =~ "prepare"
+      end
+    end
+  end
+
+  defp one_target_catalog_fixture!(entry) do
+    root =
+      Path.join(System.tmp_dir!(), "kogen-prepare-catalog-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(Path.join(root, "priv/kogen"))
+
+    File.write!(Path.join(root, "Makefile"), """
+    .PHONY: test
+    test:
+    \t@true
+    """)
+
+    File.write!(
+      Path.join(root, "priv/kogen/verification_targets.yaml"),
+      Jason.encode!(%{"targets" => [entry]})
+    )
+
+    on_exit(fn -> File.rm_rf(root) end)
+    root
   end
 
   test "proof admission accepts the cataloged cold-offline boundary" do
@@ -336,6 +434,52 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
              "package(s) with a proof declaration no longer validate against the current catalog: " <>
                inspect(failures)
     end
+
+    # A package's own Build is free to land the target its Intent declares
+    # in `catalog_changes.add` (this repository's own `build-reliability`
+    # lands `live-shaping-smoke`, for example). Once landed, the name is an
+    # ordinary existing catalog target, so preservation validates the
+    # package as if it had named an existing target, not a pending
+    # addition — while `VerificationPlan.validate_added/2`'s live rule (a
+    # *fresh* `catalog_changes.add` naming an already-existing target is
+    # refused, `test/kogen/catalog_change_test.exs`) stays untouched, since
+    # this filtering happens only here, at preservation time, never inside
+    # `VerificationPlan.build/5` itself.
+    test "an added name already landed in the current catalog validates as an ordinary target" do
+      {:ok, catalog} = VerificationPlan.load(@root)
+      landed = Enum.find(catalog.ordered_targets, &(&1 == "live-shaping-smoke"))
+      assert landed, "fixture assumption: live-shaping-smoke is landed in the tracked catalog"
+
+      contract = fake_contract(["check", landed], landed)
+
+      assert :ok = plan_build_status(contract, ["selector.txt"], catalog, [landed])
+    end
+
+    test "an added name absent from the catalog still validates as a pending addition" do
+      {:ok, catalog} = VerificationPlan.load(@root)
+      pending = "not-yet-landed-target"
+      refute Map.has_key?(catalog.targets, pending)
+
+      assert :ok =
+               plan_build_status(fake_contract([pending]), ["selector.txt"], catalog, [pending])
+    end
+
+    test "a package whose non-added verified_by target is missing still fails" do
+      {:ok, catalog} = VerificationPlan.load(@root)
+      missing = "no-such-target-in-catalog"
+      refute Map.has_key?(catalog.targets, missing)
+
+      assert {:plan_error, _reason} =
+               plan_build_status(fake_contract([missing]), ["selector.txt"], catalog, [])
+    end
+  end
+
+  defp fake_contract(verified_by, paid_target \\ "none") do
+    %{
+      scenarios: [
+        no_check_scenario(verified_by, paid_target)
+      ]
+    }
   end
 
   defp package_result(path, catalog) do
@@ -366,7 +510,13 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
   end
 
   defp plan_build_status(contract, guards, catalog, added) do
-    case VerificationPlan.build(contract.scenarios, guards, catalog, @root, added: added) do
+    # A declared addition already present in the current catalog has
+    # landed: validate it as an ordinary existing target here (drop it from
+    # `added`), not as a pending addition. Every other name, and every
+    # other rule `VerificationPlan.build/5` applies, is unchanged.
+    pending = Enum.reject(added, &Map.has_key?(catalog.targets, &1))
+
+    case VerificationPlan.build(contract.scenarios, guards, catalog, @root, added: pending) do
       {:ok, _plan} -> :ok
       {:error, reason} -> {:plan_error, reason}
     end
@@ -412,6 +562,22 @@ defmodule Kogen.SelectiveVerificationTargetsTest do
         "affected_paths" => ["selector.txt"]
       }
     }
+  end
+
+  defp target_catalog_fixture! do
+    root =
+      Path.join(System.tmp_dir!(), "kogen-target-catalog-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(Path.join(root, "priv/kogen"))
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    File.cp!(
+      Path.join(@root, "priv/kogen/verification_targets.yaml"),
+      Path.join(root, "priv/kogen/verification_targets.yaml")
+    )
+
+    File.cp!(Path.join(@root, "Makefile"), Path.join(root, "Makefile"))
+    root
   end
 
   defp recipe(makefile, target) do

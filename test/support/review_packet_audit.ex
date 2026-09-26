@@ -93,6 +93,97 @@ defmodule Kogen.ReviewPacketAudit do
     end
   end
 
+  ## Prepare-step readiness (non-raising, controllable) -----------------------
+
+  # `KOGEN_PREPARE_FORCE_SCOPE` and `KOGEN_PREPARE_FORCE_TOOLCHAIN`
+  # ("pass" or "fail") are the controlled pass/fail switches scenario
+  # `prepare-rehearsed-in-check` requires: `check`'s rehearsal of the
+  # `live-reviewer-rework` `prepare` command exercises both branches without
+  # a real login or a real hook-toolchain defect.
+
+  @doc """
+  Non-raising form of `assert_logged_in!/1`, for the `prepare` command's
+  generic result contract: returns `:ok` or `{:error, reason}` instead of
+  failing the test process, so a `prepare` CLI can report it as an
+  environment failure rather than crashing.
+  """
+  def claude_scope_ready?(fixture_root) do
+    case System.get_env("KOGEN_PREPARE_FORCE_SCOPE") do
+      "pass" ->
+        :ok
+
+      "fail" ->
+        {:error, "forced scope failure (KOGEN_PREPARE_FORCE_SCOPE=fail)"}
+
+      _ ->
+        case Kogen.ClaudeCode.open(%{harness: "claude"}, fixture_root) do
+          {:ok, selection} ->
+            Kogen.ClaudeCode.close(selection)
+            :ok
+
+          {:error, reason} ->
+            {:error,
+             "fixture root #{fixture_root} does not resolve to a logged-in Kogen Claude Code scope: #{reason}"}
+        end
+    end
+  end
+
+  @doc "Non-raising form of `assert_codex_logged_in!/1`. See `claude_scope_ready?/1`."
+  def codex_scope_ready?(fixture_root) do
+    case System.get_env("KOGEN_PREPARE_FORCE_SCOPE") do
+      "pass" ->
+        :ok
+
+      "fail" ->
+        {:error, "forced scope failure (KOGEN_PREPARE_FORCE_SCOPE=fail)"}
+
+      _ ->
+        case Kogen.Codex.open(%{harness: "codex"}, fixture_root) do
+          {:ok, selection} ->
+            Kogen.Codex.close(selection)
+            :ok
+
+          {:error, reason} ->
+            {:error,
+             "fixture root #{fixture_root} does not resolve to a logged-in Kogen Codex scope: #{reason}"}
+        end
+    end
+  end
+
+  @doc """
+  Whether the hook toolchain (the `python` version `mise.toml` pins, which
+  `.codex/hooks/*.py` runs under) meets its required version. Returns `:ok`
+  or `{:error, reason}`. See `claude_scope_ready?/1` for the controlled
+  switch.
+  """
+  def hook_toolchain_ready?(root) do
+    case System.get_env("KOGEN_PREPARE_FORCE_TOOLCHAIN") do
+      "pass" -> :ok
+      "fail" -> {:error, "forced hook toolchain failure (KOGEN_PREPARE_FORCE_TOOLCHAIN=fail)"}
+      _ -> real_hook_toolchain_ready?(root)
+    end
+  end
+
+  defp real_hook_toolchain_ready?(root) do
+    mise_path = Path.join(root, "mise.toml")
+
+    with {:ok, mise} <- File.read(mise_path),
+         [_, required] <- Regex.run(~r/python\s*=\s*"([\d.]+)"/, mise),
+         {actual_out, 0} <- System.cmd("python3", ["--version"], stderr_to_stdout: true),
+         [_, actual] <- Regex.run(~r/Python\s+([\d.]+)/, actual_out) do
+      if version_at_least?(actual, required),
+        do: :ok,
+        else: {:error, "hook toolchain python #{actual} is below its required #{required}"}
+    else
+      _ -> {:error, "could not resolve the hook toolchain version at #{mise_path}"}
+    end
+  end
+
+  defp version_at_least?(actual, required) do
+    to_tuple = fn v -> v |> String.split(".") |> Enum.map(&String.to_integer/1) end
+    to_tuple.(actual) >= to_tuple.(required)
+  end
+
   ## Evidence retention ------------------------------------------------------
 
   @doc """

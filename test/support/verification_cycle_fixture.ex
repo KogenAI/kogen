@@ -481,6 +481,7 @@ defmodule Kogen.VerificationCycleFixture do
           expert: {model: fake, effort: medium}
     outer_resumptions: #{outer_resumptions}
     verification_retries: 2
+    offline_retries: 4
     """
   end
 

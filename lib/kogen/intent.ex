@@ -46,7 +46,8 @@ defmodule Kogen.Intent do
             required(String.t()) => %{scout: role_config(), worker: role_config()}
           },
           outer_resumptions: non_neg_integer(),
-          verification_retries: non_neg_integer()
+          verification_retries: non_neg_integer(),
+          offline_retries: non_neg_integer()
         }
 
   @type intent :: %{
@@ -62,9 +63,10 @@ defmodule Kogen.Intent do
   Reads the tracked Kogen configuration and resolves one named route.
 
   `route` names the route to select; `nil` selects the configured
-  `default_route`, the only default. Every route is checked for structure and
-  no key has a default. Harness support and Claude Code proven models are
-  checked only for the selected route. The old flat shape is refused.
+  `default_route`, the only default. The route map and every route name are
+  checked globally and no key has a default; only the selected route is fully
+  normalized (see `validate_config/1` for every route). Harness support and
+  Claude Code proven models are checked only for the selected route. The old flat shape is refused.
 
   A route is either clean, naming one top-level `harness` for every role and
   its `helpers`, or role-level, naming a `harness`, `model` and `effort` for
@@ -83,20 +85,58 @@ defmodule Kogen.Intent do
   def read_config(path \\ @default_config_path, route \\ nil) do
     with {:ok, data} <- load_yaml(path, "missing #{path}"),
          :ok <- routes_shape(data),
-         {:ok, routes} <- normalize_routes(data),
-         {:ok, default_route} <- default_route(data, routes),
-         {:ok, outer_resumptions} <- config_integer(data, "outer_resumptions"),
-         {:ok, verification_retries} <- config_integer(data, "verification_retries"),
-         {:ok, name} <- select_route(routes, route || default_route),
-         selected = Map.fetch!(routes, name),
+         {:ok, bodies} <- route_bodies(data),
+         {:ok, default_route} <- default_route(data, bodies),
+         {:ok, name} <- select_route(bodies, route || default_route),
+         {:ok, selected} <- normalize_route(name, Map.fetch!(bodies, name)),
+         {:ok, policy} <- retry_policy(data),
          :ok <- supported_harnesses(selected),
          :ok <- proven_models(selected) do
+      {:ok, Map.merge(selected, Map.put(policy, :route, name))}
+    end
+  end
+
+  @doc """
+  Whole-config mode: validates the configuration at `path` as `read_config/2`
+  does, but fully normalizes every route, not only the selected one. The
+  repository's own tracked config is checked this way, so a broken route in
+  it still fails even when nothing selects that route. On success returns the
+  default route's resolved configuration, like `read_config(path, nil)`.
+  """
+  @spec validate_config(Path.t()) :: {:ok, config()} | {:error, String.t()}
+  def validate_config(path \\ @default_config_path) do
+    with {:ok, data} <- load_yaml(path, "missing #{path}"),
+         :ok <- routes_shape(data),
+         {:ok, bodies} <- route_bodies(data),
+         {:ok, _routes} <- normalize_routes(bodies) do
+      read_config(path, nil)
+    end
+  end
+
+  # The global retry policy. Every key is required and has no default; a
+  # project configured before `offline_retries` existed is refused until the
+  # key is added.
+  defp retry_policy(data) do
+    with {:ok, outer_resumptions} <- config_integer(data, "outer_resumptions"),
+         {:ok, verification_retries} <- config_integer(data, "verification_retries"),
+         {:ok, offline_retries} <- offline_retries(data) do
       {:ok,
-       Map.merge(selected, %{
-         route: name,
+       %{
          outer_resumptions: outer_resumptions,
-         verification_retries: verification_retries
-       })}
+         verification_retries: verification_retries,
+         offline_retries: offline_retries
+       }}
+    end
+  end
+
+  defp offline_retries(data) do
+    case require_integer(data, "offline_retries") do
+      {:ok, value} ->
+        {:ok, value}
+
+      {:error, _key} ->
+        {:error,
+         "config.yaml missing required key: offline_retries (add a top-level `offline_retries: <non-negative integer>` beside `verification_retries` in .kogen/config.yaml; it bounds offline verification failures per attempt and has no default)"}
     end
   end
 
@@ -112,18 +152,39 @@ defmodule Kogen.Intent do
 
   defp has_key?(map, key), do: match?({:ok, _value}, fetch(map, key))
 
-  # Every route is structurally validated, in name order, whether or not it is
-  # selected; a broken unselected route is a configuration error.
-  defp normalize_routes(data) do
+  # The route map's shape and every route name are checked globally. A route
+  # body is fully normalized only when it is selected, or in whole-config
+  # mode, so an incomplete route nobody selects blocks no other route.
+  defp route_bodies(data) do
     case fetch(data, "routes") do
       {:ok, routes} when is_map(routes) and map_size(routes) > 0 ->
         routes
         |> Enum.sort_by(fn {name, _route} -> to_string(name) end)
-        |> Enum.reduce_while({:ok, %{}}, &collect_route/2)
+        |> Enum.reduce_while({:ok, %{}}, &collect_body/2)
 
       _ ->
         {:error, "config.yaml missing required key: routes"}
     end
+  end
+
+  defp collect_body({name, route}, {:ok, acc}) when is_binary(name) and is_map(route) do
+    case route_name(name) do
+      :ok -> {:cont, {:ok, Map.put(acc, name, route)}}
+      error -> {:halt, error}
+    end
+  end
+
+  defp collect_body({name, _route}, _acc) when is_binary(name),
+    do: {:halt, {:error, "config.yaml missing required key: routes.#{name}"}}
+
+  defp collect_body({name, _route}, _acc),
+    do: {:halt, {:error, "config.yaml route names must be nonblank strings: #{inspect(name)}"}}
+
+  # Whole-config mode: every route is structurally validated, in name order.
+  defp normalize_routes(bodies) do
+    bodies
+    |> Enum.sort_by(fn {name, _route} -> name end)
+    |> Enum.reduce_while({:ok, %{}}, &collect_route/2)
   end
 
   defp collect_route({name, route}, {:ok, acc}) do

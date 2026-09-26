@@ -13,6 +13,12 @@ defmodule Kogen.Harness.Codex do
     "--dangerously-bypass-hook-trust",
     "--dangerously-bypass-approvals-and-sandbox"
   ]
+  # Provider stop, exit and failure evidence keeps the last
+  # `@output_tail_bytes` bytes of the stream, not its head, so a classifying
+  # line (a rate-limit or overload marker near the end of a long capture,
+  # itself up to ~10 KB for a Claude `result` event) survives whole for
+  # `Kogen.Harness.ProviderMarker.classify/1`.
+  @output_tail_bytes 16_384
 
   @doc "Launches a fresh Developer turn with the prompt on stdin."
   def launch_developer(prompt, model, effort, policy_environment, context) do
@@ -55,21 +61,32 @@ defmodule Kogen.Harness.Codex do
 
   @doc "Launches an independent Reviewer and requires a schema-valid Verdict."
   def launch_reviewer(prompt, model, effort, context) do
-    with_context(context, &review(prompt, model, effort, &1))
+    with_context(context, &review(nil, prompt, model, effort, &1))
   end
 
-  defp review(prompt, model, effort, context) do
+  @doc """
+  Resumes the exact Reviewer thread once (`exec resume`) with the
+  schema-error re-ask on stdin, and requires a schema-valid verdict against
+  the same per-launch schema (the context's `:ledger_paths` and
+  `:scenario_ids`).
+  """
+  def resume_reviewer(session_id, prompt, model, effort, context) do
+    with_context(context, &review({:resume, session_id}, prompt, model, effort, &1))
+  end
+
+  defp review(session, prompt, model, effort, context) do
     # Codex writes the last message itself, so inside a Build it lives in the
     # Build temp dir the boundary grants.
     dir = temporary_directory("review", Map.get(context, :tmp_dir))
     schema_path = Path.join(dir, "verdict.schema.json")
     message_path = Path.join(dir, "verdict.json")
     ledger_paths = Map.get(context, :ledger_paths, [])
-    File.write!(schema_path, Verdict.schema(ledger_paths))
+    scenario_ids = Map.get(context, :scenario_ids, [])
+    File.write!(schema_path, Verdict.schema(ledger_paths, scenario_ids))
 
     try do
       args =
-        reviewer_args(model, effort) ++
+        reviewer_args(session, model, effort) ++
           ["--output-schema", schema_path, "--output-last-message", message_path, "-"]
 
       {output, exit_code} =
@@ -81,31 +98,55 @@ defmodule Kogen.Harness.Codex do
         )
 
       case parse_turn(decode_events(output), exit_code, output) do
-        {:ok, turn} -> reviewer_response(turn, message_path, ledger_paths != [])
-        {:error, _reason} = error -> error
+        {:ok, turn} ->
+          reviewer_response(turn, message_path, verdict_opts(ledger_paths, scenario_ids), output)
+
+        {:error, _reason} = error ->
+          error
       end
     after
       File.rm_rf(dir)
     end
   end
 
-  defp reviewer_response(turn, message_path, ledger?) do
+  # A context with no per-launch scenario ids keeps the legacy validation
+  # shape (a bare boolean), which never requires the per-launch evidence
+  # `receipt` field or lookaround-free `path` pattern. Threading
+  # `Kogen.Harness.with_scenarios/2` opts into the per-launch schema and its
+  # `{:error, [errors]}` validation.
+  defp verdict_opts(ledger_paths, []), do: ledger_paths != []
+
+  defp verdict_opts(ledger_paths, scenario_ids),
+    do: %{ledger?: ledger_paths != [], ledger_paths: ledger_paths, scenario_ids: scenario_ids}
+
+  defp reviewer_response(turn, message_path, verdict_opts, output) do
     message = reviewer_message(message_path, turn.events)
 
-    case Verdict.parse(message, ledger?) do
+    case Verdict.parse(message, verdict_opts) do
       {:ok, verdict} ->
         Verdict.persist(message, turn.session_id)
         {:ok, Map.put(verdict, :session_id, turn.session_id)}
 
-      _ ->
+      {:error, errors} ->
         {:error,
          {:malformed_verdict, 0,
-          %{"reviewer_session_id" => turn.session_id, "message" => message}}}
+          %{
+            "reviewer_session_id" => turn.session_id,
+            "message" => message,
+            "output_tail" => output_tail(output),
+            "errors" => errors
+          }}}
     end
   end
 
   @doc false
   def reviewer_args(model, effort), do: ["exec"] ++ exec_flags(model, effort)
+
+  @doc false
+  def reviewer_args(nil, model, effort), do: reviewer_args(model, effort)
+
+  def reviewer_args({:resume, session_id}, model, effort),
+    do: ["exec", "resume", session_id] ++ exec_flags(model, effort)
 
   defp exec_flags(model, effort) do
     model_flags(model, effort) ++ @common_flags ++ ["--json"]
@@ -231,11 +272,40 @@ defmodule Kogen.Harness.Codex do
       {:error, reason} ->
         {:error,
          {:developer_transport_failure, reason,
-          %{harness: "codex", outcome: :provider_failure, diagnostics: output}}}
+          %{
+            harness: "codex",
+            outcome: :provider_failure,
+            diagnostics: output,
+            # The thread a failed turn started (or resumed), so a provider
+            # overload can resume that same session once.
+            session_id: observed_thread(output),
+            output_tail: output_tail(output)
+          }}}
     end
   end
 
+  defp observed_thread(output) do
+    output
+    |> decode_events()
+    |> Enum.find_value(fn
+      %{"type" => "thread.started", "thread_id" => id} when is_binary(id) and id != "" -> id
+      _event -> nil
+    end)
+  end
+
   defp digest(value), do: Base.encode16(:crypto.hash(:sha256, value), case: :lower)
+
+  # The last `@output_tail_bytes` bytes of the raw stream, byte-accurate
+  # (never splitting a multi-byte codepoint), carried on transport and
+  # Reviewer failure evidence for `Kogen.Harness.ProviderMarker.classify/1`.
+  defp output_tail(bytes) when byte_size(bytes) <= @output_tail_bytes, do: valid_utf8(bytes)
+
+  defp output_tail(bytes),
+    do: valid_utf8(binary_part(bytes, byte_size(bytes) - @output_tail_bytes, @output_tail_bytes))
+
+  defp valid_utf8(bytes) do
+    if String.valid?(bytes), do: bytes, else: String.replace_invalid(bytes)
+  end
 
   defp decode_events(output) do
     output
@@ -249,7 +319,7 @@ defmodule Kogen.Harness.Codex do
   end
 
   defp parse_turn(_events, exit_code, output) when exit_code != 0,
-    do: {:error, {:provider_exit, exit_code, String.slice(output, 0, 4000)}}
+    do: {:error, {:provider_exit, exit_code, output_tail(output)}}
 
   defp parse_turn(events, exit_code, output) do
     init = Enum.find(events, &(&1["type"] == "thread.started"))
@@ -263,7 +333,7 @@ defmodule Kogen.Harness.Codex do
           (event["type"] == "error" and not reconnect_notification?(event, last))
       end)
 
-    with :ok <- no_provider_failure(failure),
+    with :ok <- no_provider_failure(failure, output),
          {:ok, session_id} <- session_id(init, exit_code, output),
          :ok <- turn_completed(last, exit_code, output),
          :ok <- consistent_session_id(events, session_id) do
@@ -292,8 +362,10 @@ defmodule Kogen.Harness.Codex do
     end
   end
 
-  defp no_provider_failure(nil), do: :ok
-  defp no_provider_failure(failure), do: {:error, {:provider_error, failure}}
+  defp no_provider_failure(nil, _output), do: :ok
+
+  defp no_provider_failure(failure, output),
+    do: {:error, {:provider_error, Map.put(failure, "output_tail", output_tail(output))}}
 
   defp reconnect_notification?(%{"message" => "Reconnecting..." <> _}, %{
          "type" => "turn.completed"
@@ -303,7 +375,7 @@ defmodule Kogen.Harness.Codex do
   defp reconnect_notification?(_event, _last), do: false
 
   defp session_id(nil, exit_code, output),
-    do: {:error, {:no_init_event, exit_code, String.slice(output, 0, 4000)}}
+    do: {:error, {:no_init_event, exit_code, output_tail(output)}}
 
   defp session_id(%{"thread_id" => session_id}, _exit_code, _output)
        when is_binary(session_id) and session_id != "",
@@ -314,7 +386,7 @@ defmodule Kogen.Harness.Codex do
   defp turn_completed(%{"type" => "turn.completed"}, _exit_code, _output), do: :ok
 
   defp turn_completed(_last, exit_code, output),
-    do: {:error, {:no_result_event, exit_code, String.slice(output, 0, 4000)}}
+    do: {:error, {:no_result_event, exit_code, output_tail(output)}}
 
   defp consistent_session_id(events, session_id) do
     if Enum.any?(events, &different_thread?(&1, session_id)) do
@@ -348,25 +420,46 @@ defmodule Kogen.Harness.Codex do
   # A Build launch runs in its Candidate (`:cwd`) under the write boundary's
   # argv `:prefix` (`sandbox-exec -p <profile>`), so the harness process and
   # everything it spawns are confined by the kernel.
+  # Runs the role process through `Kogen.ProcessCustody`, in its own process
+  # group: a stray grandchild the CLI forks cannot outlive this turn, and the
+  # controller's death (Ctrl-C, SIGHUP, SIGTERM, `kill -9`, a crash) reaps it
+  # too, through the supervisor's own parent-death watchdog.
   defp run_with_stdin(context, args, stdin_text, extra_env) do
     dir = temporary_directory("stdin")
     tmp = Path.join(dir, "prompt")
     File.write!(tmp, stdin_text)
 
-    try do
-      argv = Map.get(context, :prefix, []) ++ [context.executable | args]
-      cmd = Enum.map_join(argv, " ", &shell_quote/1) <> " < " <> shell_quote(tmp)
-      options = [stderr_to_stdout: false, env: extra_env] ++ cwd_option(context)
-      result = System.cmd("sh", ["-c", cmd], options)
-      persist_raw_stream(result)
-      result
-    after
-      File.rm_rf(dir)
-    end
+    argv = Map.get(context, :prefix, []) ++ [context.executable | args]
+
+    custody_opts =
+      [stdin_path: tmp, tmp_dir: dir, env: extra_env] ++ custody_registration(context, extra_env)
+
+    result =
+      case Kogen.ProcessCustody.run(argv, context[:cwd] || File.cwd!(), custody_opts) do
+        {:ok, facts} -> {facts["output"] || "", facts["exit_code"]}
+        {:error, reason} -> {reason, 1}
+      end
+
+    persist_raw_stream(result)
+    result
   end
 
-  defp cwd_option(%{cwd: cwd}) when is_binary(cwd), do: [cd: cwd]
-  defp cwd_option(_context), do: []
+  # Inside a Build the launch context carries `:control` (the control
+  # checkout); the launched group is then recorded on the Build's lock, so a
+  # later Build (or this one's own sweep) can find and reap it. Outside a
+  # Build (Shaping's readiness probes, tests with no launch) there is no
+  # control root, and no registration is possible or needed.
+  defp custody_registration(%{control: control}, extra_env) when is_binary(control),
+    do: [control: control, role: role_label(extra_env)]
+
+  defp custody_registration(_context, _extra_env), do: []
+
+  defp role_label(extra_env) do
+    case List.keyfind(extra_env, "KOGEN_ROLE", 0) do
+      {_key, role} when is_binary(role) -> role
+      _ -> "process"
+    end
+  end
 
   defp persist_raw_stream({output, _exit_code}) do
     case System.get_env("KOGEN_RAW_LOG_DIR") do
@@ -382,6 +475,4 @@ defmodule Kogen.Harness.Codex do
         File.write!(Path.join(dir, name), output)
     end
   end
-
-  defp shell_quote(s), do: "'" <> String.replace(s, "'", "'\\''") <> "'"
 end

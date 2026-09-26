@@ -120,7 +120,11 @@ defmodule Kogen.ClaudeCode do
       project: selection.project,
       cwd: launch && launch.root,
       prefix: if(launch, do: launch.prefix, else: []),
-      tmp_dir: launch && launch.tmp_dir
+      tmp_dir: launch && launch.tmp_dir,
+      # The control checkout, so a role launch's process group can be
+      # recorded on the Build's lock (`Kogen.ProcessCustody`); `nil` outside
+      # a Build.
+      control: launch && Map.get(launch, :control)
     }
   end
 

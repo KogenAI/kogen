@@ -649,7 +649,9 @@ defmodule Kogen.WriteBoundaryTest do
                  env: stop_env
                )
 
-      assert reason =~ "verification retries exhausted"
+      # The fixture check is an offline target, so an always-failing check
+      # exhausts `offline_retries` (scenario offline-failures-own-budget).
+      assert reason =~ "offline retries exhausted"
 
       assert Path.wildcard(Path.join(stopped, "boundary-role-note-*")) != []
     end
@@ -768,6 +770,7 @@ defmodule Kogen.WriteBoundaryTest do
           expert: {model: claude-opus-5-5, effort: high}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """
   end
 

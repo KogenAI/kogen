@@ -1,6 +1,36 @@
+defmodule Mix.Tasks.Kogen.Build.SignalHandler do
+  @moduledoc false
+  # Traps SIGHUP (closing the terminal) and SIGTERM for `mix kogen.build`:
+  # both reach OTP's `:erl_signal_server` once `:os.set_signal/2` asks for
+  # `:handle` (probed: SIGTERM already reaches OTP's graceful shutdown by
+  # default; SIGHUP needs this to be caught at all). Ctrl-C (SIGINT) is not
+  # in this family — `:os.set_signal(:sigint, _)` is rejected by the VM — so
+  # it is covered only by `mise.toml`'s `ELIXIR_ERL_OPTIONS=+Bd` (exit at
+  # once, no BREAK menu) plus the supervisor's own parent-death watchdog,
+  # never by this handler.
+  @behaviour :gen_event
+
+  @impl :gen_event
+  def init(control), do: {:ok, control}
+
+  @impl :gen_event
+  def handle_event(signal, control) when signal in [:sighup, :sigterm] do
+    Kogen.ProcessCustody.release(control)
+    System.halt(1)
+  end
+
+  def handle_event(_signal, control), do: {:ok, control}
+
+  @impl :gen_event
+  def handle_call(_request, control), do: {:ok, :ok, control}
+
+  @impl :gen_event
+  def handle_info(_message, control), do: {:ok, control}
+end
+
 defmodule Mix.Tasks.Kogen.Build do
   use Mix.Task
-  use Boundary, deps: [Kogen.Build, Mix]
+  use Boundary, deps: [Kogen.Build, Kogen.ProcessCustody, Mix]
 
   @shortdoc "Runs the Kogen Build loop for an Approved Intent"
   @moduledoc """
@@ -15,6 +45,12 @@ defmodule Mix.Tasks.Kogen.Build do
   place that reads the process working directory, once, to find the control
   checkout (a main worktree, never a linked one); `Kogen.Build.run/3` gets it
   explicitly.
+
+  SIGHUP (closing the terminal) and SIGTERM tear down every process group
+  this Build recorded on its lock, release the lock and exit, through
+  `Mix.Tasks.Kogen.Build.SignalHandler`. Ctrl-C is covered separately, by
+  `mise.toml`'s `ELIXIR_ERL_OPTIONS=+Bd` and the process-custody watchdogs,
+  since the BEAM break handler cannot run Elixir cleanup on Ctrl-C.
   """
 
   @usage "usage: mix kogen.build [--route <name>] <slug>"
@@ -36,10 +72,19 @@ defmodule Mix.Tasks.Kogen.Build do
   end
 
   defp build(slug, route) do
-    case Kogen.Build.run(slug, route, File.cwd!()) do
+    control = File.cwd!()
+    trap_signals(control)
+
+    case Kogen.Build.run(slug, route, control) do
       :ok -> :ok
       {:error, reason} -> fail(reason)
     end
+  end
+
+  defp trap_signals(control) do
+    :os.set_signal(:sighup, :handle)
+    :os.set_signal(:sigterm, :handle)
+    :gen_event.add_handler(:erl_signal_server, Mix.Tasks.Kogen.Build.SignalHandler, control)
   end
 
   defp fail(reason) do

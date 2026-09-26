@@ -150,7 +150,10 @@ defmodule Kogen.Codex do
       env: env,
       cwd: launch.root,
       prefix: launch.prefix,
-      tmp_dir: launch.tmp_dir
+      tmp_dir: launch.tmp_dir,
+      # The control checkout, so a role launch's process group can be
+      # recorded on the Build's lock (`Kogen.ProcessCustody`).
+      control: Map.get(launch, :control)
     })
   end
 

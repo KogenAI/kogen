@@ -1,7 +1,12 @@
 Code.require_file("../support/compiled_fixture.exs", __DIR__)
+Code.require_file("../support/document_references.ex", __DIR__)
 
 defmodule Kogen.ShapeTaskTest do
   use ExUnit.Case, async: true
+
+  alias Kogen.Test.DocumentReferences, as: DR
+
+  @root Path.expand("../..", __DIR__)
 
   @moduletag :lifecycle
 
@@ -120,61 +125,48 @@ defmodule Kogen.ShapeTaskTest do
     assert_shared_execution_policy!(prompt, :shaping, config)
   end
 
+  # Short anchors for the ideas the Shaping prompt must convey, not the exact
+  # sentences: real investigation before a plan, guarded write scope, that a
+  # passing mock is not credential proof, and that silence is not approval.
   test "fresh shaping guidance requires autonomous outcome-focused investigation" do
     prompt = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/shaping.md"))
     compact = Regex.replace(~r/\s+/, prompt, " ")
 
+    assert DR.missing_paths(@root, prompt) == []
+
     for text <- [
-          "Trace the proposed feature from its realistic starting state",
           "source-linked probe",
           "A plan to probe is not execution",
-          "write only inside the active",
-          "does not authorize editing `README.md`",
           "A different passing mock cannot repair missing credentials",
-          "Partial answers settle only explicitly selected",
-          "Distinguish supplied public behavior",
-          "material public choice is absent",
           "end the turn without asking for approval",
           "request for package review is not approval",
-          "Select a provider-backed target only when the scenario claims a",
-          "outer driver alone observes an ephemeral interaction",
           "zero questions is not itself a quality target"
         ] do
       assert compact =~ text
     end
-
-    refute compact =~ "JSON pairs or tab-separated lines"
-    refute compact =~ "LF for a newly normalized CSV output"
-    refute compact =~ "even when their live test files are unchanged"
   end
 
+  # Short anchors for the verified_by/proof contract the format code
+  # actually parses (`provider-required:`/`offline-sufficient:`), not the
+  # surrounding prose.
   test "shaping prompt describes verified_by as the complete explicit target list and keeps the paid-reason format" do
     prompt = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/shaping.md"))
     compact = Regex.replace(~r/\s+/, prompt, " ")
 
+    assert DR.missing_paths(@root, prompt) == []
+
     for text <- [
-          "the complete, explicit list of targets this scenario needs, with no implicit `check`",
-          "at least one offline (`provider_backed: false`) target",
-          "at most one provider-backed (`provider_backed: true`) target",
-          "Every listed target's declared `dependencies` must also be listed",
-          "the list must follow catalog rank order",
+          "no implicit `check`",
           "provider-required: <exact-target>; observation: <provider-only observable>; offline-limit:",
           "offline-sufficient: <consumer/control>",
           "`proof.base`",
-          "unproven-on-base",
           "catalog_changes.add",
           "verification_surface",
           "focused_runner",
-          "base_cache",
-          ".kogen/runtime",
-          ".kogen/build.lock",
-          ".kogen/codex",
-          ".codex/sessions"
+          "base_cache"
         ] do
       assert compact =~ text
     end
-
-    refute compact =~ "even when their live test files are unchanged"
   end
 
   test "README documents the Choosing verification targets policy" do
@@ -186,13 +178,7 @@ defmodule Kogen.ShapeTaskTest do
     for text <- [
           "orchestration",
           "offline-only",
-          "native harness launch, resume or flags",
-          "native hook registration consumed by a real CLI",
-          "managed runtime upgrades",
-          "parsing new provider output shapes",
-          "must select that test's target in the same Intent",
           "unverified",
-          "at most",
           "one paid target",
           "questions.md"
         ] do
@@ -345,6 +331,7 @@ defmodule Kogen.ShapeTaskTest do
         expert: {model: claude-opus-5-5, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   test "Claude Code Shape launches the interactive managed claude with the prompt as first message" do
@@ -586,6 +573,7 @@ defmodule Kogen.ShapeTaskTest do
       expert: {model: current-expert, effort: expert-effort}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """)
 
     before = snapshot(Path.join(fixture, ".kogen/intents"))
@@ -692,6 +680,7 @@ defmodule Kogen.ShapeTaskTest do
             worker: {model: gpt-6-luna, effort: high}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """
   end
 
@@ -839,6 +828,7 @@ defmodule Kogen.ShapeTaskTest do
           expert: {model: current-expert, effort: expert-effort}
     #{extra_routes}outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """
   end
 

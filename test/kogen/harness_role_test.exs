@@ -27,6 +27,7 @@ defmodule Kogen.HarnessRoleTest do
           worker: {model: gpt-6-luna, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   # Claude Code speaks `-p` stream-json and Codex speaks `exec` JSONL; one

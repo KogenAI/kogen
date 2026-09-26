@@ -537,13 +537,13 @@ defmodule Kogen.VerificationSurfaceLedgerTest do
       }
 
       assert {:ok, _} = Verdict.validate(base_message, false)
-      assert :error = Verdict.validate(base_message, true)
+      assert {:error, [_ | _]} = Verdict.validate(base_message, true)
 
       with_ledger =
         Map.put(base_message, "ledger", [%{"path" => "x", "disposition" => "weakening"}])
 
       assert {:ok, _} = Verdict.validate(with_ledger, true)
-      assert :error = Verdict.validate(with_ledger, false)
+      assert {:error, [_ | _]} = Verdict.validate(with_ledger, false)
     end
   end
 

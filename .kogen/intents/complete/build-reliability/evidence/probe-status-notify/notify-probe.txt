@@ -1,0 +1,5 @@
+afplay exit 0
+osascript exit 0
+Error: AudioFileOpen failed ('wht?')
+afplay missing-file exit 1
+elapsed 2.50s

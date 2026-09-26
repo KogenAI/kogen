@@ -57,6 +57,7 @@ defmodule Kogen.BuildPreconditionsTest do
         expert: {model: gpt-5.6-sol, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @claude_config """
@@ -73,6 +74,7 @@ defmodule Kogen.BuildPreconditionsTest do
         expert: {model: claude-opus-5-5, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @claude_config_unproven String.replace(
@@ -102,6 +104,7 @@ defmodule Kogen.BuildPreconditionsTest do
           worker: {model: gpt-5.6-luna, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   # A second route on the same config, distinguishable from the default
@@ -130,6 +133,7 @@ defmodule Kogen.BuildPreconditionsTest do
         expert: {model: gpt-route-b-expert, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @makefile """
@@ -578,6 +582,7 @@ defmodule Kogen.BuildPreconditionsTest do
       expert: {model: gpt-5.6-sol, effort: medium}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """)
 
     init_route_git!(fixture)

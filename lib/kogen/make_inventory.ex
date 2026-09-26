@@ -3,16 +3,29 @@ defmodule Kogen.Check.MakeInventory do
   The small, deliberately conservative Makefile rule inventory used by all
   target admission code.
 
-  Only explicit target rules are inventoried.  Special declarations such as
-  `.PHONY` and variable assignments are not targets.  GNU make's grouped
-  target separator (`&:`) is supported; double-colon and pattern rules are
-  rejected because their semantics cannot safely be represented by this
-  inventory.
+  Only explicit target rules are inventoried. Special declarations such as
+  `.PHONY` and variable assignments are not targets. GNU make's grouped
+  target separator (`&:`) is supported and treated as ordinary. Double-colon
+  and pattern rules are never added to the ordinary target set — their
+  semantics cannot safely be represented by this inventory's simple
+  membership check — but they are not refused outright either: a project's
+  own helper rules (`fmt:`, `%.txt: ;`, and so on) are its business. They are
+  collected separately as `unsupported`, so a caller that also knows the
+  verification-target catalog (`Kogen.Build.VerificationPlan`) can refuse
+  only the ones that could define or shadow a catalog target name, naming
+  both the rule and the target.
   """
 
   @target_name ~r/^[A-Za-z0-9_.-]+$/
 
-  @spec load(Path.t()) :: {:ok, MapSet.t(String.t())} | {:error, String.t()}
+  @type inventory :: %{
+          targets: MapSet.t(String.t()),
+          unsupported: [
+            %{kind: :double_colon | :pattern, names: [String.t()], line: pos_integer()}
+          ]
+        }
+
+  @spec load(Path.t()) :: {:ok, inventory()} | {:error, String.t()}
   def load(path) do
     case File.read(path) do
       {:ok, bytes} -> parse(bytes)
@@ -20,27 +33,42 @@ defmodule Kogen.Check.MakeInventory do
     end
   end
 
-  @spec parse(String.t()) :: {:ok, MapSet.t(String.t())} | {:error, String.t()}
+  @spec parse(String.t()) :: {:ok, inventory()} | {:error, String.t()}
   def parse(bytes) when is_binary(bytes) do
     bytes
     |> String.split("\n")
     |> Enum.with_index(1)
-    |> Enum.reduce_while({:ok, MapSet.new()}, fn {line, line_number}, {:ok, targets} ->
+    |> Enum.reduce_while({:ok, %{targets: MapSet.new(), unsupported: []}}, fn {line, line_number},
+                                                                              {:ok, acc} ->
       case parse_line(line, line_number) do
-        :skip -> {:cont, {:ok, targets}}
-        {:ok, names} -> {:cont, {:ok, Enum.reduce(names, targets, &MapSet.put(&2, &1))}}
-        {:error, reason} -> {:halt, {:error, reason}}
+        :skip ->
+          {:cont, {:ok, acc}}
+
+        {:ok, :ordinary, names} ->
+          targets = Enum.reduce(names, acc.targets, &MapSet.put(&2, &1))
+          {:cont, {:ok, %{acc | targets: targets}}}
+
+        {:ok, kind, names, line_number} when kind in [:double_colon, :pattern] ->
+          entry = %{kind: kind, names: names, line: line_number}
+          {:cont, {:ok, %{acc | unsupported: [entry | acc.unsupported]}}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
       end
     end)
+    |> case do
+      {:ok, acc} -> {:ok, %{acc | unsupported: Enum.reverse(acc.unsupported)}}
+      error -> error
+    end
   end
 
   def parse(_), do: {:error, "Makefile must be a string"}
 
-  @doc "Returns the inventory, or an empty set when the Makefile is absent/invalid."
+  @doc "Returns the ordinary (single-colon) target inventory, or empty when the Makefile is absent/invalid."
   @spec declared_targets(Path.t()) :: MapSet.t(String.t())
   def declared_targets(path) do
     case load(path) do
-      {:ok, targets} -> targets
+      {:ok, %{targets: targets}} -> targets
       _ -> MapSet.new()
     end
   end
@@ -65,15 +93,15 @@ defmodule Kogen.Check.MakeInventory do
       nil ->
         :skip
 
-      [_raw_names, "::"] ->
-        {:error, "double-colon Make rule at line #{line_number} is unsupported"}
+      [raw_names, "::"] ->
+        classify(raw_names, line_number, :double_colon)
 
       [raw_names, _separator] ->
-        validate_names(raw_names, line_number)
+        classify(raw_names, line_number, :ordinary)
     end
   end
 
-  defp validate_names(raw_names, line_number) do
+  defp classify(raw_names, line_number, default_kind) do
     names = String.split(raw_names, ~r/\s+/, trim: true)
 
     cond do
@@ -84,13 +112,16 @@ defmodule Kogen.Check.MakeInventory do
         :skip
 
       Enum.any?(names, &String.contains?(&1, "%")) ->
-        {:error, "pattern Make rule at line #{line_number} is unsupported"}
+        {:ok, :pattern, names, line_number}
 
       Enum.any?(names, &(not Regex.match?(@target_name, &1))) ->
         {:error, "unsafe Make target at line #{line_number}"}
 
+      default_kind == :ordinary ->
+        {:ok, :ordinary, names}
+
       true ->
-        {:ok, names}
+        {:ok, :double_colon, names, line_number}
     end
   end
 end

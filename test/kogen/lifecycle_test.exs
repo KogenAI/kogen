@@ -387,6 +387,7 @@ defmodule Kogen.LifecycleTest do
           worker: {model: gpt-6-luna, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   # Fired once, from within the fake dispatcher, on the Developer's fresh
@@ -410,6 +411,7 @@ defmodule Kogen.LifecycleTest do
           worker: {model: gpt-6-mutated-luna, effort: low}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @frozen_expert_assignment %{
@@ -869,6 +871,7 @@ defmodule Kogen.LifecycleTest do
           expert: {model: fixture-expert, effort: expert-effort}
     outer_resumptions: 2
     verification_retries: 2
+    offline_retries: 4
     """)
   end
 

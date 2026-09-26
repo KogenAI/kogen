@@ -25,7 +25,18 @@ The owner invokes `make check`, which runs [offline.py](offline.py) in this orde
    either failure. Compilation keeps warnings as errors and Boundary enabled.
    Also compile the native test guard with warnings as errors into a fresh
    private directory; this independent preparation must pass before tests start.
-2. Run strict Credo and every offline ExUnit case, including public fake Shape/Build and the
+2. Compile and load every non-live test file with warnings as errors, running
+   none of them: `mix test --exclude live --warnings-as-errors --exclude test`
+   (every real ExUnit test also carries the implicit `:test` tag, so this
+   matches and excludes them all instead of running any). This is the
+   `TEST_COMPILE_STAGE` stage; it loads all cataloged tests in about a second,
+   clean or with a planted warning, and runs before Credo, the full test run
+   and rehearsals, so a compile warning in a test file fails `check` within
+   seconds instead of only after the whole suite finishes
+   (`"Test suite aborted after successful execution due to warnings"`).
+   `--only <unused tag>` is not usable here: ExUnit's own "no test was
+   executed" message makes it exit 1 even on a clean tree.
+3. Run strict Credo and every offline ExUnit case, including public fake Shape/Build and the
    compiler, failure, mutation, provenance, and verification-ownership controls.
    With default paths these overlap using independent dev/test build trees.
    An explicit `MIX_BUILD_PATH` keeps them sequential to avoid shared writes.
@@ -33,10 +44,11 @@ The owner invokes `make check`, which runs [offline.py](offline.py) in this orde
    `mix test --exclude live --warnings-as-errors`: excluded live owners are
    still compiled, so a stale call to a removed arity (for example a
    `Kogen.Harness` launch without its launch context) fails `check` instead of
-   only warning.
+   only warning. This stage keeps the same `--warnings-as-errors` strictness
+   as today; stage 2 above does not weaken or replace it.
 
 The recipe enables Hex offline mode, places the provider-denial shim first on PATH, and stops on any failed
-stage. Tests are rerun on every invocation. It prints stage times and complete
+stage (`run_ordered`; no later stage or phase starts once an earlier one fails). Tests are rerun on every invocation. It prints stage times and complete
 elapsed time to the owner's log; only a zero exit counts as passing. Installed
 dependencies and existing `_build` caches are the warm timing conditions. An owner
 can select an initially empty private `MIX_BUILD_PATH` for cold offline validation;
@@ -46,6 +58,30 @@ Elapsed time never changes a successful exit status. Both warm and cold runs
 report complete timing; roughly ten seconds is a warm-cache guideline.
 On macOS it resolves the installed Git behind Apple's launcher once, preserving
 arguments and exit status through a small shim. Other tool resolution is unchanged.
+
+### `KOGEN_FAILURE_SIGNATURE` frame
+
+When a stage fails, offline.py prints exactly one line for that stage:
+`KOGEN_FAILURE_SIGNATURE\t{"stage":"<stage>","test_id":"<file:line or null>","assertion":"<line or null>"}`
+(a TAB between the tag and the JSON body). `stage` is offline.py's own
+internal stage name (for example `test-compile`, `test`, `credo`, `compile`,
+`format` or `rehearsals`); `test_id` is the first failing ExUnit test's
+`file:line`, or `null` when no ExUnit test header is found; `assertion` is
+the first informative reason line after that test's header (parsed past
+`Kogen.IsolatedCase`'s wrapper banner to the real reason), or `null`. This is
+the same frame contract `lib/kogen/build/failure_signature.ex` documents for
+any target: the controller combines a target name with these fields into a
+signature, without parsing offline.py or ExUnit output itself.
+
+Another test, or tool, can replay an already-captured log through the same
+emitter without running the gate:
+
+```
+python3 -B scripts/check/offline.py --signature-frame <stage> < log.txt
+```
+
+This reads the log from stdin and prints the `KOGEN_FAILURE_SIGNATURE` line
+for `<stage>`.
 
 [Development evidence](development-evidence.md) accounts for retained cases,
 the causal resumption regression, and focused measurements. It does not replace
@@ -170,8 +206,8 @@ in dependency-valid catalog cost order, reusing only a provider-backed target's
 pass on a byte-identical Candidate within one attempt.
 
 `priv/kogen/test-reliability.yaml` binds each cataloged test declaration to its
-source bytes. After a reviewed change edits a cataloged test file, run
-`python3 scripts/check/refresh_test_reliability_sources.py` to refresh only those
-`source_sha256` bindings (declaration identities, dispositions and controls are
-unchanged); `--check` reports stale bindings and missing consumer witnesses
-without writing.
+test by name, not by source bytes: an ExUnit row resolves when its file has
+`test "<declaration>"`, and a Python row resolves when its file has
+`def <declaration>`. Editing a cataloged test's body, or adding a test,
+passes with no catalog change; a row that no longer resolves fails `check`,
+naming the row id, the file and the missing declaration.

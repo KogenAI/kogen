@@ -21,14 +21,37 @@ defmodule Kogen.SupersededObjectionTest do
   @objection "I object: s-change cannot be met as approved; it needs a path outside the guarded list."
   @answers %{"objection:scenario:s-change" => ["objection", 0.95]}
 
+  # `jev_answers` is one static override applied to every Jev call of the
+  # Build, so it cannot express "no objection on the turn's first cycle,
+  # then an objection once an earlier cycle has already failed" -- the only
+  # shape that ever reaches `ReviewPacket.superseded_objection/4` under
+  # `notes-and-selectors-before-verification`'s ordering. `jev_results`
+  # sequences a distinct fake Jev HTTP response per call instead.
+  defp no_objection_then_objection(no_objection_calls) do
+    List.duplicate({200, FakeJev.answer_body(Fixture.jev_items())}, no_objection_calls) ++
+      [
+        {200,
+         FakeJev.answer_body(Fixture.jev_items(), %{
+           "objection:scenario:s-change" => {"objection", 0.95}
+         })}
+      ]
+  end
+
   test "failed-then-passed Stop cycles in one attempt supersede the objection and reach Review" do
     dir = Fixture.fixture!()
 
+    # Scenario `notes-and-selectors-before-verification`: Jev reads notes
+    # before any cycle runs, so an objection already present on the turn's
+    # very first cycle (no earlier failed cycle of this attempt to
+    # supersede it) stops the Build at once. Supersession can only ever see
+    # a failed-then-passed history, so Jev reads no objection on cycle 1's
+    # own pre-check, then one on the resumed cycle's, after cycle 1 has
+    # already failed for an unrelated reason (the `fail_first` marker).
     assert :ok =
              Fixture.run(dir,
                notes: [@objection],
                fail_first: [1],
-               jev_answers: @answers,
+               jev_results: no_objection_then_objection(1),
                edits: %{1 => "printf 'changed\\n' > dummy.txt"}
              )
 
@@ -80,22 +103,36 @@ defmodule Kogen.SupersededObjectionTest do
     refute Map.has_key?(attempt, "review_packet")
   end
 
-  test "exhausted verification with an objection never reaches Review" do
+  # `check` is offline, so `fail_all: [1]` exhausts `offline_retries: 4`
+  # (five consecutive failures) rather than `verification_retries`. The
+  # objection is the last resumed cycle's own notes (cycle 1's, on the
+  # turn's very first cycle, would instead stop at once as a plain
+  # cannot-comply, before verification runs at all -- covered by
+  # `pre_verification_settlement_test.exs`). Once any cycle of the attempt
+  # has failed, an objection deferred past it stays the stop's reason when
+  # verification then exhausts, so this attempt's exhaustion still surfaces
+  # as `cannot_comply`, carrying the exhaustion detail, not a bare
+  # exhaustion message that would hide the objection.
+  test "exhausted verification with a lingering objection stops as cannot-comply, carrying the exhaustion detail" do
     dir = Fixture.fixture!()
 
     assert {:error, reason} =
-             Fixture.run(dir, notes: [@objection], fail_all: [1], jev_answers: @answers)
+             Fixture.run(dir,
+               notes: [@objection],
+               fail_all: [1],
+               jev_results: no_objection_then_objection(4)
+             )
 
-    # Exhaustion stops the Build before Jev and Review, ahead of other routing.
-    assert String.starts_with?(reason, "verification retries exhausted after cycle 3")
-    refute reason =~ @prefix
+    assert String.starts_with?(reason, @prefix)
+    assert reason =~ "offline retries exhausted (offline_retries: 4) after cycle 5"
     refute File.exists?(Kogen.CandidateFixture.fake_state(dir, "reviews"))
-    refute File.exists?(Path.join(dir, ".kogen/runtime/fake-jev"))
-    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "verification-resumes")) == "2"
+    assert File.read!(Kogen.CandidateFixture.fake_state(dir, "verification-resumes")) == "4"
     [attempt] = Fixture.record!(dir)["attempts"]
-    assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ~w(failed failed failed)
-    refute Map.has_key?(attempt, "outcome")
-    refute Map.has_key?(attempt, "jev")
+
+    assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) ==
+             ~w(failed failed failed failed failed)
+
+    assert attempt["outcome"] == "cannot_comply"
     refute Map.has_key?(attempt, "superseded_objection")
   end
 
@@ -108,7 +145,13 @@ defmodule Kogen.SupersededObjectionTest do
                notes: ["All scenarios are done.", @objection],
                reviews: "rework",
                fail_first: [1],
+               # Attempt 1 has two cycles (a failure the resume fixes), so
+               # Jev is asked once before each; no `F1` finding exists yet.
+               # Attempt 2's own first (and only) cycle is asked once more,
+               # after the rework Review opened `F1`, this time with the
+               # objection.
                jev_results: [
+                 {200, FakeJev.answer_body(items)},
                  {200, FakeJev.answer_body(items)},
                  {200,
                   FakeJev.answer_body(Fixture.jev_items(["F1"]), %{
@@ -121,9 +164,13 @@ defmodule Kogen.SupersededObjectionTest do
     assert File.read!(Kogen.CandidateFixture.fake_state(dir, "reviews")) == "1"
     [first, second] = Fixture.record!(dir)["attempts"]
     assert Enum.map(first["verification"]["cycles"], & &1["status"]) == ["failed", "passed"]
-    assert Enum.map(second["verification"]["cycles"], & &1["status"]) == ["passed"]
     assert second["outcome"] == "cannot_comply"
     refute Map.has_key?(second, "superseded_objection")
+
+    # The objection is on attempt 2's own first cycle, with no earlier
+    # failed cycle of *this* attempt to supersede it, so the controller
+    # stops at once, before that cycle ever runs.
+    refute Map.has_key?(second, "verification")
   end
 
   test "an objection below the threshold is unchanged after failed-then-passed cycles" do

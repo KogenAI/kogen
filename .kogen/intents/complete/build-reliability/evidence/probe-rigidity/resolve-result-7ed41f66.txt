@@ -1,0 +1,17 @@
+rows 346 {'resolved': 274, 'unresolved': 7, 'non-exunit file': 65} duplicate (file,declaration): 0
+('unresolved', 'test-kogen-codex-compatibility-test-exs:t001', 'evidence requires an initial rework, exact developer resume, and fresh accepting review')
+('unresolved', 'test-kogen-codex-compatibility-test-exs:t002', 'evidence rejects a fresh developer or a missing initial rework')
+('unresolved', 'test-kogen-codex-compatibility-test-exs:t003', 'evidence rejects an accepting initial review or a reused final reviewer')
+('unresolved', 'test-kogen-codex-compatibility-test-exs:t004', 'failed evidence names environment mismatches and preserves internal reviewer findings')
+('unresolved', 'test-kogen-harness-args-test-exs:t004', 'Shaping Controller passes the rendered prompt as Codex')
+('unresolved', 'test-kogen-lifecycle-test-exs:t001', 'public Shape, explicit fixture approval, and public Build form one offline lifecycle')
+('unresolved', 'test-kogen-scenario-tracking-test-exs:t007', 'Reviewer citation preserves the Developer')
+('non-exunit', 'test-support-codex-discovery-test-py:t001', 'test/support/codex_discovery_test.py')
+('non-exunit', 'test-support-codex-discovery-test-py:t002', 'test/support/codex_discovery_test.py')
+('non-exunit', 'test-support-codex-discovery-test-py:t003', 'test/support/codex_discovery_test.py')
+('non-exunit', 'test-support-codex-discovery-test-py:t004', 'test/support/codex_discovery_test.py')
+('non-exunit', 'test-support-codex-discovery-test-py:t005', 'test/support/codex_discovery_test.py')
+('non-exunit', 'test-support-codex-installer-test-py:t001', 'test/support/codex_installer_test.py')
+('non-exunit', 'test-support-codex-installer-test-py:t002', 'test/support/codex_installer_test.py')
+('non-exunit', 'test-support-codex-installer-test-py:t003', 'test/support/codex_installer_test.py')
+test files 90 cataloged files 72 total tests 665

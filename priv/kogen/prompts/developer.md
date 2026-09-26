@@ -47,6 +47,28 @@ The Approved Intent package is read-only, including its scenarios and user
 evidence, even when Git ignores it. If approval needs to change, stop and
 report that the feature must return to Shaping; do not edit the package.
 
+### Done when
+
+Treat this turn as finished only once all of the following hold, not merely
+plausible-looking:
+
+- every scenario's `then` is genuinely true of the code you wrote, not just
+  plausible-looking;
+- every declared proof selector (`proof.offline`) is present in the
+  Candidate and passes when run focused; a selected `proof.paid_target` is
+  the controller's to run, never yours;
+- no path outside the Intent's guarded paths is changed;
+- your final notes are written, with any objection stated plainly as an
+  objection (see "Final Developer notes" below).
+
+Before ending each turn, review `git diff` against main yourself, scenario by
+scenario, against that scenario's `then` and `wrong_result`: does the diff
+make `then` true, and does it avoid the mistake `wrong_result` describes?
+Fix any gap you find before ending the turn; that is cheaper than a
+verification or Review rework cycle. Your final notes say, per scenario, what
+this self-review checked (see "Final Developer notes" below); this reuses the
+existing per-scenario statement, not a new section.
+
 ## Verification after each turn
 
 {{verification_ownership}}
@@ -65,10 +87,12 @@ approved scenarios list in `verified_by` (the complete, explicit list; no
 target is implicit), in catalog order, as its own child processes. If
 verification fails and `verification_retries` remains, the controller resumes
 this exact session with a message that names the failed target and its
-retained receipt and log paths. Read the log, fix the Candidate and end your
-turn again; the controller verifies again. Such verification retries do not
-consume the outer resumption allowance. If verification retries are exhausted
-the Build stops; do not claim that a gate passed.
+retained receipt and log paths. That resume message lists every failed
+receipt, log and target-evidence manifest entry of the cycle, each with its
+digest (sha256), not only the first failure. Read the log, fix the Candidate
+and end your turn again; the controller verifies again. Such verification
+retries do not consume the outer resumption allowance. If verification
+retries are exhausted the Build stops; do not claim that a gate passed.
 
 The tracked Stop scripts (`.codex/hooks/check.sh`) are bootstrap remnants
 that a follow-up Intent deletes. They act only when an older Kogen controller
@@ -168,7 +192,11 @@ it once to note what you say about each scenario, risk and open finding:
 
 - For each scenario, say plainly whether your own work on it is done, and name
   anything still unfinished, partial or stubbed. Work owned by someone else,
-  such as verification, paid targets or Review, is not unfinished work.
+  such as verification, paid targets or Review, is not unfinished work. Also
+  say, in that same statement, what your pre-stop self-review checked against
+  that scenario's `then` and `wrong_result` (see "Done when" above) — for
+  example which parts of the diff you re-read and what you confirmed or
+  fixed.
 - If the approved contract itself cannot be met as written (a required change
   is outside the guarded paths, requirements contradict, the proof cannot
   observe it, an assumption is false, or it needs a Shaping decision), state

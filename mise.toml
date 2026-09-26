@@ -1,2 +1,12 @@
 [tools]
 python = "3.14.7"
+
+[env]
+# `system_flag(break_ignored)` cannot be set at runtime, and a relaunch under
+# `+Bd` can't take the terminal's foreground process group back from a BEAM
+# port child (probed: evidence/probe-custody/relaunch-result.txt). So Ctrl-C
+# during `mix kogen.build` must exit the BEAM at once, with no BREAK menu,
+# rather than block waiting for a keypress; the process-custody watchdogs
+# (`priv/kogen/process_supervisor.py`) reap every launched group however the
+# VM dies, including on Ctrl-C.
+ELIXIR_ERL_OPTIONS = "+Bd"

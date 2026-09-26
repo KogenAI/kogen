@@ -29,7 +29,9 @@ defmodule Kogen.Build.GuardedPaths do
   end
 
   # `{label, path}` pairs: Git's own files through `--git-path`, the tracked
-  # policy files at the worktree root.
+  # policy files at the worktree root. `.gitignore` is not here: it is an
+  # ordinary guarded path (scenario `declared-gitignore-edit`), checked like
+  # any other tracked file through `changed_paths/3`, not frozen here.
   defp config_files(root) do
     with {:ok, config} <- git_path(root, "config"),
          {:ok, exclude} <- git_path(root, "info/exclude") do
@@ -37,8 +39,7 @@ defmodule Kogen.Build.GuardedPaths do
        [
          {".git/config", config},
          {".git/info/exclude", exclude},
-         {".gitmodules", Path.join(root, ".gitmodules")},
-         {".gitignore", Path.join(root, ".gitignore")}
+         {".gitmodules", Path.join(root, ".gitmodules")}
        ]}
     end
   end

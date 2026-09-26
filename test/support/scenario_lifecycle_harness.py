@@ -71,6 +71,13 @@ def refs():
     return [{"path": "Makefile", "locator": "check"}]
 
 
+def vrefs(path="Makefile", locator="check", receipt=None):
+    # Reviewer verdict evidence, unlike Developer handoff evidence, carries
+    # the per-launch schema's separate `receipt` field (null, or a
+    # review-packet pointer `/receipts/<n>...`).
+    return [{"path": path, "locator": locator, "receipt": receipt}]
+
+
 def review_refs(snapshot, mode):
     if mode.startswith("target_evidence"):
         receipts = snapshot.get("attempt", {}).get("receipts", [])
@@ -84,8 +91,8 @@ def review_refs(snapshot, mode):
             raise ValueError("Reviewer did not inspect the semantic target artifact")
         if base64.b64decode(semantic.get("content_base64", "")) != b"reviewed behavior\n":
             raise ValueError("retained semantic target artifact has wrong behavior")
-        return [{"path": semantic["path"], "locator": "exact retained semantic behavior"}]
-    return refs()
+        return vrefs(semantic["path"], "exact retained semantic behavior")
+    return vrefs()
 
 
 def count(name):
@@ -145,19 +152,19 @@ def verdict(snapshot, review, mode):
     rework = mode in {"exhaust", "target_history"} or (mode == "partial_dispute" and review < 3) or (mode == "regression" and review < 3) or (mode in {"review_evidence", "omitted_disposition", "record_citations", "record_sidecar_delete", "record_sidecar_edit", "verdict_diagnostics"} and review == 1)
     status = "needs_rework" if rework else "satisfied"
     dispositions = [
-        {"id": finding, "status": "open" if rework else "closed", "reason": "fixture disposition", "evidence": refs()}
+        {"id": finding, "status": "open" if rework else "closed", "reason": "fixture disposition", "evidence": vrefs()}
         for finding in open_ids
     ]
     findings = []
     if rework and not open_ids:
         count_new = 2 if mode in {"target_history", "partial_dispute"} and review == 1 else 1
-        findings = [{"scenario_ids": ids, "reason": f"fixture finding {index}", "evidence": refs()} for index in range(1, count_new + 1)]
+        findings = [{"scenario_ids": ids, "reason": f"fixture finding {index}", "evidence": vrefs()} for index in range(1, count_new + 1)]
     if mode == "partial_dispute" and review == 2 and dispositions:
         dispositions[0]["status"] = "open"
         for item in dispositions[1:]: item["status"] = "closed"
     if mode == "regression" and review == 2:
-        dispositions = [{"id": finding, "status": "closed", "reason": "fixed", "evidence": refs()} for finding in open_ids]
-        findings = [{"scenario_ids": ids, "reason": "regression found", "evidence": refs()}]
+        dispositions = [{"id": finding, "status": "closed", "reason": "fixed", "evidence": vrefs()} for finding in open_ids]
+        findings = [{"scenario_ids": ids, "reason": "regression found", "evidence": vrefs()}]
     evidence = review_refs(snapshot, mode)
     response = {
         "candidate_id": snapshot.get("candidate_id", "missing-candidate"),
@@ -182,18 +189,38 @@ def main():
     control = control_root(prompt)
     if reviewer:
         output = args[args.index("--output-last-message") + 1]
-        snapshot = context(prompt)
+        # A resumed Review (`reviewer-reask-once`) reuses the exact
+        # requested thread id, never a freshly minted one. A real Reviewer
+        # resume continues the same conversation, so it still has the
+        # original task context; this fake harness's re-ask prompt (the
+        # schema-error text) carries none, so it reuses the fresh launch's
+        # stored prompt to rebuild the same snapshot on resume.
+        resume_id = args[args.index("resume") + 1] if resume else None
+        fresh_prompt_path = STATE / "reviewer-prompt-latest-fresh"
+        context_prompt = (
+            fresh_prompt_path.read_text() if resume and fresh_prompt_path.exists() else prompt
+        )
+        snapshot = context(context_prompt)
         review_number = count("reviews")
+        if not resume:
+            fresh_prompt_path.write_text(prompt)
         response = verdict(snapshot, review_number, mode)
         if mode == "review_evidence" and review_number == 1:
             proof = RUNTIME / "review-proof.txt"
             proof.write_text("independently inspected first-candidate evidence")
-            response["findings"][0]["evidence"] = [{"path": ".kogen/runtime/review-proof.txt", "locator": "line 1"}]
-        if mode == "omitted_disposition" and review_number == 2:
+            response["findings"][0]["evidence"] = vrefs(".kogen/runtime/review-proof.txt", "line 1")
+        # Repeated on the re-ask resume (review_number == 3), so the omission
+        # stays unrepaired and the Build still stops.
+        if mode == "omitted_disposition" and review_number in (2, 3):
             response["dispositions"] = []
-        if mode == "verdict_diagnostics" and review_number == 2:
-            response["scenarios"][0]["evidence"] = [{"path": "lib", "locator": "source directory"}]
-            response["dispositions"][0]["evidence"] = [{"path": "/etc/hosts", "locator": "absolute path"}]
+        if mode == "verdict_diagnostics" and review_number in (2, 3):
+            # The `/etc/hosts` path is invalid under the per-launch schema
+            # (leading `/`), so the controller re-asks this exact session
+            # once (`reviewer-reask-once`); repeating the same bad evidence
+            # on review_number == 3 (the resume) keeps this fixture's intent
+            # that the Reviewer's citations stay genuinely unusable.
+            response["scenarios"][0]["evidence"] = vrefs("lib", "source directory")
+            response["dispositions"][0]["evidence"] = vrefs("/etc/hosts", "absolute path")
         if mode in {"record_citations", "record_citation_tamper", "record_sidecar_delete", "record_sidecar_edit"}:
             record = next((control / ".kogen/runtime/scenario-tracking").glob("*/record.json"))
             if mode in {"record_sidecar_delete", "record_sidecar_edit"} and review_number == 2:
@@ -203,13 +230,16 @@ def main():
                 # mutation once it sees this request.
                 request_test_mutation(mode)
             (STATE / f"reviewer-inspected-{review_number}.json").write_bytes(record.read_bytes())
-            response["scenarios"][0]["evidence"].append({"path": str(record.relative_to(control)), "locator": "current attempt Check receipt"})
+            response["scenarios"][0]["evidence"].append(
+                {"path": str(record.relative_to(control)), "locator": "current attempt Check receipt", "receipt": None}
+            )
             if mode == "record_citation_tamper":
                 request_test_mutation(mode)
         pathlib.Path(output).write_text(json.dumps(response))
         review = (STATE / "reviews").read_text()
-        print(json.dumps({"type": "thread.started", "thread_id": f"review-{review}"}))
-        print(json.dumps({"type": "turn.completed", "thread_id": f"review-{review}"}))
+        sid = resume_id or f"review-{review}"
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        print(json.dumps({"type": "turn.completed", "thread_id": sid}))
         return
     call = count("developer-calls")
     if resume:
@@ -221,7 +251,9 @@ def main():
         # further Reviewer turn.
         if mode == "target_history" and call >= 2: (RUNTIME / "fail-target").touch()
         else: (RUNTIME / "fail-target").unlink(missing_ok=True)
-        if mode == "regression": (ROOT / "dummy.txt").write_text(f"candidate {call}\n")
+        # Each resumed turn changes the Candidate, so the controller verifies
+        # it again rather than stopping on an unchanged Candidate.
+        if mode in {"regression", "target_history"}: (ROOT / "dummy.txt").write_text(f"candidate {call}\n")
         if mode == "review_evidence": (RUNTIME / "review-proof.txt").unlink(missing_ok=True)
     for _ in range(3):
         hook = subprocess.run(["sh", ".codex/hooks/check.sh"], input=b'{"session_id":"developer-session"}', check=True, capture_output=True)

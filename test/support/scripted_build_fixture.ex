@@ -20,6 +20,13 @@ defmodule Kogen.ScriptedBuildFixture do
   #     UTF-8 character, so tails are cut at a code point boundary)
   #   * `:packet_mutation` - the Review number whose Reviewer edits its packet
   #   * `:edits` - shell commands the Developer runs, by call
+  #   * `:freeze_resume_edit` - resume numbers (`n`, the controller's own
+  #     count of resumed cycles) whose default Candidate-changing resume
+  #     edit is suppressed, to exercise the unchanged-Candidate stop
+  #
+  # `fixture!/1` option `:late_selector` adds a second scenario, `s-late`,
+  # whose declared offline proof selector (`@late_selector`) does not exist
+  # at admission, so a Build starts with a missing declared proof selector.
 
   import ExUnit.Callbacks, only: [on_exit: 1]
 
@@ -28,6 +35,9 @@ defmodule Kogen.ScriptedBuildFixture do
   @slug "scripted-build"
   @root Path.expand("../..", __DIR__)
   @selector "test/kogen/scripted_selector_test.exs"
+  @late_selector "test/kogen/scripted_late_selector_test.exs"
+
+  def late_selector, do: @late_selector
 
   def slug, do: @slug
 
@@ -102,10 +112,15 @@ defmodule Kogen.ScriptedBuildFixture do
     id: 01960000-0000-7000-8000-0000000c0de2
     slug: #{@slug}
     title: Scripted Build fixture
-    may_change_guarded_paths: [dummy.txt, target-evidence.txt, target-evidence-manifest.json]
+    may_change_guarded_paths: [dummy.txt, target-evidence.txt, target-evidence-manifest.json, #{@late_selector}]
     """)
 
-    File.write!(Path.join(intent, "scenarios.yaml"), Jason.encode!(scenarios()))
+    scenarios =
+      if Keyword.get(opts, :late_selector),
+        do: scenarios() ++ [late_scenario()],
+        else: scenarios()
+
+    File.write!(Path.join(intent, "scenarios.yaml"), Jason.encode!(scenarios))
     File.write!(Path.join(intent, "risks.yaml"), Jason.encode!(risks()))
 
     # Build admission copies control deps/ into each Candidate.
@@ -140,6 +155,25 @@ defmodule Kogen.ScriptedBuildFixture do
       File.write!(Path.join(notes_dir, "notes-#{call}"), notes)
     end)
 
+    # A resumed cycle's own final Developer message (distinct from the
+    # notes of the call that started the turn), keyed by the controller's
+    # own resume count `n`: this is how a real Build lets a Developer object
+    # only after an earlier cycle of the same turn already failed, the only
+    # way `Kogen.Build.ReviewPacket.superseded_objection/4` can ever see a
+    # failed-then-passed history to supersede.
+    opts
+    |> Keyword.get(:resume_notes, %{})
+    |> Enum.each(fn {n, notes} ->
+      File.write!(Path.join(notes_dir, "resume-notes-#{n}"), notes)
+    end)
+
+    # `environment-and-provider-classes`: each listed invocation
+    # (`developer-<n>` counts every Developer launch or resume, `reviewer-<n>`
+    # every Review call) prints `:provider_tail` and exits 1 instead of
+    # working, as a provider failure would.
+    provider_tail = Path.join(runtime, "provider-tail.txt")
+    File.write!(provider_tail, Keyword.get(opts, :provider_tail, ""))
+
     jev_responses =
       case Keyword.get(opts, :jev_results) do
         nil -> nil
@@ -154,7 +188,11 @@ defmodule Kogen.ScriptedBuildFixture do
         {"HANDOFF_RESPONSE_HELPER", Path.join(@root, "test/support/scenario_response.py")},
         {"HANDOFF_FAIL_FIRST", Enum.join(Keyword.get(opts, :fail_first, []), ",")},
         {"HANDOFF_FAIL_ALL", Enum.join(Keyword.get(opts, :fail_all, []), ",")},
+        {"HANDOFF_FREEZE_RESUME_EDIT",
+         Enum.join(Keyword.get(opts, :freeze_resume_edit, []), ",")},
         {"HANDOFF_PACKET_MUTATION", to_string(Keyword.get(opts, :packet_mutation, ""))},
+        {"HANDOFF_PROVIDER_FAIL", Enum.join(Keyword.get(opts, :provider_fail, []), ",")},
+        {"HANDOFF_PROVIDER_TAIL", provider_tail},
         {"FAKE_JEV_LOG_DIR", Path.join(runtime, "fake-jev")},
         {"FAKE_JEV_ANSWERS", Jason.encode!(Keyword.get(opts, :jev_answers, %{}))},
         {"FAKE_JEV_RESPONSES", jev_responses},
@@ -239,6 +277,24 @@ defmodule Kogen.ScriptedBuildFixture do
     }
   end
 
+  defp late_scenario do
+    %{
+      "id" => "s-late",
+      "given" => "a fixture Candidate",
+      "when" => "Build settles the Developer turn",
+      "then" => "the declared proof selector exists in the Candidate",
+      "wrong_result" => "the declared proof selector is missing",
+      "verified_by" => ["check"],
+      "evidence" => "scripted provider",
+      "proof" => %{
+        "offline" => [@late_selector],
+        "paid_target" => "none",
+        "paid_reason" => "offline-sufficient: scripted provider drives the real Build consumer",
+        "affected_paths" => [@late_selector]
+      }
+    }
+  end
+
   defp risks do
     [%{"id" => "r-shared", "scenario_ids" => ["s-change", "s-preserve"], "description" => "x"}]
   end
@@ -258,6 +314,7 @@ defmodule Kogen.ScriptedBuildFixture do
           expert: {model: fake, effort: medium}
     outer_resumptions: #{outer_resumptions}
     verification_retries: 2
+    offline_retries: 4
     """
   end
 
@@ -286,35 +343,85 @@ defmodule Kogen.ScriptedBuildFixture do
         path.write_text(str(value)); return value
     def listed(name, call):
         return str(call) in [item for item in os.environ.get(name, "").split(",") if item]
+    def provider_failure(label, sid):
+        # A scripted provider failure: the recorded tail, then a nonzero exit.
+        if not listed("HANDOFF_PROVIDER_FAIL", label): return
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        sys.stdout.write(pathlib.Path(os.environ["HANDOFF_PROVIDER_TAIL"]).read_text() + "\n")
+        raise SystemExit(1)
     if os.environ.get("KOGEN_ROLE") == "reviewer":
         n = count("reviews")
+        # A `resume` reuses the exact thread id Kogen asked for (the
+        # `reviewer-reask-once` scenario: the re-ask must stay in the same
+        # session), never a freshly minted one.
+        is_resume = "resume" in args
+        resume_id = args[args.index("resume") + 1] if is_resume else None
+        sid = resume_id or f"review-{n}"
         (state / f"reviewer-prompt-{n}").write_text(prompt)
-        lines = prompt.splitlines()
+        # A real Reviewer resume continues the same conversation, so it
+        # still has the original task context. This fake harness's re-ask
+        # prompt (the schema-error text) carries none, so it reuses the most
+        # recent fresh launch's stored prompt (never a resume's own, and
+        # never an older attempt's) to rebuild the same packet/candidate
+        # context on resume.
+        fresh_prompt_path = state / "reviewer-prompt-latest-fresh"
+        if not is_resume:
+            fresh_prompt_path.write_text(prompt)
+        context_prompt = fresh_prompt_path.read_text() if is_resume else prompt
+        lines = context_prompt.splitlines()
         context = json.loads(lines[lines.index("KOGEN_TASK_CONTEXT") + 1])
         packet = pathlib.Path(context["review_packet"]["path"])
         shutil.copyfile(packet, state / f"reviewer-packet-{n}.json")
+        provider_failure(f"reviewer-{n}", sid)
         if os.environ.get("HANDOFF_PACKET_MUTATION") == str(n):
             packet.write_bytes(packet.read_bytes().replace(b'"schema_version":1', b'"schema_version":2'))
         verdicts = os.environ.get("HANDOFF_REVIEWS", "accept").split(",")
         verdict = verdicts[min(n, len(verdicts)) - 1]
         out = args[args.index("--output-last-message") + 1]
         response = subprocess.run([sys.executable, os.environ["HANDOFF_RESPONSE_HELPER"], "reviewer", verdict],
-                                  input=prompt, capture_output=True, text=True, check=True).stdout
+                                  input=context_prompt, capture_output=True, text=True, check=True).stdout
+        # `reviewer-reask-once`: HANDOFF_REASK is a comma list, one entry per
+        # Review call (fresh launch, then its one resume), each `valid`,
+        # `invalid` (strips the first evidence item's `receipt`, so it fails
+        # the per-launch schema) or `changed` (schema-valid, but flips
+        # `verdict`, a control for "the repair must keep its verdict value").
+        reask_modes = [item for item in os.environ.get("HANDOFF_REASK", "").split(",") if item]
+        if len(reask_modes) >= n:
+            mode = reask_modes[n - 1]
+            value = json.loads(response)
+            if mode == "invalid":
+                del value["scenarios"][0]["evidence"][0]["receipt"]
+            elif mode == "changed":
+                value["verdict"] = "rework" if value["verdict"] == "accept" else "accept"
+            response = json.dumps(value)
         pathlib.Path(out).write_text(response)
-        print(json.dumps({"type": "thread.started", "thread_id": f"review-{n}"}))
-        print(json.dumps({"type": "turn.completed", "thread_id": f"review-{n}"}))
+        print(json.dumps({"type": "thread.started", "thread_id": sid}))
+        print(json.dumps({"type": "turn.completed", "thread_id": sid}))
         raise SystemExit(0)
     if "--output-last-message" in args or "--output-schema" in args:
         raise SystemExit("Developer turn carried a handoff output schema")
     marker = candidate_runtime / "fail-check"
     session = "developer-session"
+    invocation = count("developer-invocations")
+    (state / f"developer-invocation-{invocation}").write_text(" ".join(args))
+    (state / f"developer-invocation-{invocation}-prompt").write_text(prompt)
+    provider_failure(f"developer-{invocation}", session)
     if prompt.startswith("Controller verification failed after your turn"):
         # The controller resumed this same Developer call after a failed cycle.
         call = int((state / "developer-calls").read_text())
         n = count("verification-resumes")
+        resume_n = n
         (state / f"verification-resume-{n}").write_text(prompt)
         if not listed("HANDOFF_FAIL_ALL", call): marker.unlink(missing_ok=True)
+        # A real Developer fixing (or still failing to fix) a failure changes
+        # the Candidate; this fake one does too on every resume (unless a
+        # test freezes this resume number to exercise the controller's
+        # unchanged-Candidate stop on purpose), so that stop is never hit by
+        # accident.
+        if not listed("HANDOFF_FREEZE_RESUME_EDIT", n):
+            with open("dummy.txt", "a") as f: f.write(f"resume-{n}\n")
     else:
+        resume_n = None
         call = count("developer-calls")
         (state / f"developer-prompt-{call}").write_text(prompt)
         edit = os.environ.get(f"HANDOFF_EDIT_{call}")
@@ -326,7 +433,11 @@ defmodule Kogen.ScriptedBuildFixture do
     hook = subprocess.run(["sh", ".codex/hooks/check.sh"], input=json.dumps({"session_id": session, "thread_id": session}).encode(),
                           capture_output=True, check=True)
     if json.loads(hook.stdout) != {"continue": True}: raise SystemExit("Stop hook acted without a v1 context")
-    notes_file = pathlib.Path(os.environ["HANDOFF_NOTES_DIR"]) / f"notes-{call}"
+    # A resumed cycle prefers its own resume-specific notes (a distinct
+    # final Developer message for that resumed turn) over the call's
+    # original notes.
+    resume_notes_file = pathlib.Path(os.environ["HANDOFF_NOTES_DIR"]) / f"resume-notes-{resume_n}" if resume_n else None
+    notes_file = resume_notes_file if resume_notes_file and resume_notes_file.exists() else pathlib.Path(os.environ["HANDOFF_NOTES_DIR"]) / f"notes-{call}"
     notes = notes_file.read_text() if notes_file.exists() else "All scenarios are done; nothing is unfinished."
     print(json.dumps({"type": "thread.started", "thread_id": session}))
     print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": notes}}))

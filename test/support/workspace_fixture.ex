@@ -30,6 +30,7 @@ defmodule Kogen.WorkspaceFixture do
         expert: {model: fake, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @claude_config """
@@ -46,6 +47,7 @@ defmodule Kogen.WorkspaceFixture do
         expert: {model: claude-opus-5-5, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @hybrid_config """
@@ -65,6 +67,7 @@ defmodule Kogen.WorkspaceFixture do
           worker: {model: gpt-6-luna, effort: high}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   @makefile """

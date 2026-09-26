@@ -21,16 +21,30 @@ defmodule Kogen.CheckTest do
       \t@true
       """
 
-      assert {:ok, targets} = MakeInventory.parse(source)
+      assert {:ok, %{targets: targets, unsupported: []}} = MakeInventory.parse(source)
       assert targets == MapSet.new(["check", "helper"])
     end
 
-    test "rejects double-colon and pattern rules" do
-      assert {:error, message} = MakeInventory.parse("first::\n\t@true\n")
-      assert message =~ "double-colon"
+    test "collects double-colon and pattern rules as unsupported, not ordinary targets" do
+      assert {:ok, %{targets: targets, unsupported: [entry]}} =
+               MakeInventory.parse("first::\n\t@true\n")
 
-      assert {:error, message} = MakeInventory.parse("%.o: %.c\n\t@true\n")
-      assert message =~ "pattern"
+      assert targets == MapSet.new()
+      assert entry.kind == :double_colon
+      assert entry.names == ["first"]
+      assert entry.line == 1
+
+      assert {:ok, %{targets: targets, unsupported: [entry]}} =
+               MakeInventory.parse("%.o: %.c\n\t@true\n")
+
+      assert targets == MapSet.new()
+      assert entry.kind == :pattern
+      assert entry.names == ["%.o"]
+    end
+
+    test "still refuses an unsafe (non-pattern) target name" do
+      assert {:error, message} = MakeInventory.parse("foo bar;baz:\n\t@true\n")
+      assert message =~ "unsafe Make target"
     end
   end
 

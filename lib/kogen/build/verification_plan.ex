@@ -245,35 +245,111 @@ defmodule Kogen.Build.VerificationPlan do
 
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp validate_catalog(entries) do
-    names = Enum.map(entries, & &1["name"])
-    ranks = Enum.map(entries, & &1["rank"])
+    with :ok <- validate_prepare_shapes(entries) do
+      names = Enum.map(entries, & &1["name"])
+      ranks = Enum.map(entries, & &1["rank"])
 
-    valid =
-      entries != [] and Enum.all?(entries, &valid_entry?/1) and
-        names |> Enum.uniq() |> length() == length(names) and
-        ranks |> Enum.uniq() |> length() == length(ranks) and
-        Enum.all?(@aggregate_names, &(&1 not in names)) and
-        Enum.all?(entries, fn entry -> Enum.all?(entry["depends_on"], &(&1 in names)) end) and
-        Enum.any?(entries, &(&1["provider_backed"] == false and &1["depends_on"] == []))
+      valid =
+        entries != [] and Enum.all?(entries, &valid_entry?/1) and
+          names |> Enum.uniq() |> length() == length(names) and
+          ranks |> Enum.uniq() |> length() == length(ranks) and
+          Enum.all?(@aggregate_names, &(&1 not in names)) and
+          Enum.all?(entries, fn entry -> Enum.all?(entry["depends_on"], &(&1 in names)) end) and
+          Enum.any?(entries, &(&1["provider_backed"] == false and &1["depends_on"] == []))
 
-    if valid and acyclic?(entries),
-      do: :ok,
-      else: {:error, "verification target catalog is incomplete or contradictory"}
+      if valid and acyclic?(entries),
+        do: :ok,
+        else: {:error, "verification target catalog is incomplete or contradictory"}
+    end
   end
 
+  # A named, specific error for an invalid `prepare` shape, ahead of the
+  # generic catalog-consistency check.
+  defp validate_prepare_shapes(entries) do
+    case Enum.find(entries, &(not valid_prepare?(&1))) do
+      nil ->
+        :ok
+
+      entry ->
+        {:error,
+         "verification target #{inspect(entry["name"])}: prepare must be a nonempty argv list of nonempty strings"}
+    end
+  end
+
+  # Every catalog target must exist in the Makefile as an ordinary
+  # single-colon rule; other Makefile targets are allowed. A pattern or
+  # double-colon rule is refused only when it could define or shadow a
+  # catalog target's name.
   defp validate_declared_targets(entries, root) do
     makefile = Path.join(root, "Makefile")
+    cataloged = Enum.map(entries, & &1["name"])
 
     case MakeInventory.load(makefile) do
-      {:ok, declared} ->
-        cataloged = MapSet.new(entries, & &1["name"])
-
-        if MapSet.equal?(declared, cataloged),
-          do: :ok,
-          else: {:error, "verification target catalog does not match declared Make targets"}
+      {:ok, %{targets: declared, unsupported: unsupported}} ->
+        with :ok <- require_ordinary_targets(cataloged, declared) do
+          require_no_shadow(unsupported, cataloged)
+        end
 
       {:error, reason} ->
         {:error, "could not read Makefile for verification target inventory: #{reason}"}
+    end
+  end
+
+  defp require_ordinary_targets(cataloged, declared) do
+    case Enum.find(cataloged, &(not MapSet.member?(declared, &1))) do
+      nil ->
+        :ok
+
+      missing ->
+        {:error,
+         "verification target catalog target #{inspect(missing)} has no ordinary Make rule"}
+    end
+  end
+
+  defp require_no_shadow(unsupported, cataloged) do
+    cataloged_set = MapSet.new(cataloged)
+
+    shadow =
+      Enum.find_value(unsupported, fn rule ->
+        case shadowed_target(rule, cataloged_set) do
+          nil -> nil
+          target -> {rule, target}
+        end
+      end)
+
+    case shadow do
+      nil ->
+        :ok
+
+      {rule, target} ->
+        kind = if rule.kind == :double_colon, do: "double-colon", else: "pattern"
+
+        {:error,
+         "#{kind} Make rule at line #{rule.line} could shadow catalog target #{inspect(target)}"}
+    end
+  end
+
+  defp shadowed_target(%{kind: :double_colon, names: names}, cataloged_set) do
+    Enum.find(names, &MapSet.member?(cataloged_set, &1))
+  end
+
+  defp shadowed_target(%{kind: :pattern, names: names}, cataloged_set) do
+    Enum.find_value(names, fn name ->
+      Enum.find(cataloged_set, &pattern_matches?(name, &1))
+    end)
+  end
+
+  defp pattern_matches?(pattern, target) do
+    if String.contains?(pattern, "%") do
+      regex =
+        pattern
+        |> String.split("%")
+        |> Enum.map_join(".*", &Regex.escape/1)
+        |> then(&Regex.compile!("^#{&1}$"))
+
+      Regex.match?(regex, target)
+    else
+      pattern == target
     end
   end
 
@@ -293,7 +369,23 @@ defmodule Kogen.Build.VerificationPlan do
     is_map(entry) and is_binary(entry["name"]) and entry["name"] != "" and
       is_binary(entry["cost_class"]) and is_integer(entry["rank"]) and entry["rank"] >= 0 and
       is_list(entry["depends_on"]) and is_boolean(entry["provider_backed"]) and
-      present?(entry["owner"]) and valid_rehearsal?(entry)
+      present?(entry["owner"]) and valid_rehearsal?(entry) and valid_prepare?(entry)
+  end
+
+  # An optional `prepare` is a nonempty argv list of nonempty strings (no
+  # shell); any other shape is refused. Absent is valid: the controller does
+  # not require `prepare` (scenario `controller-runs-prepare-before-paid`).
+  defp valid_prepare?(entry) do
+    case Map.get(entry, "prepare") do
+      nil ->
+        true
+
+      list when is_list(list) and list != [] ->
+        Enum.all?(list, &(is_binary(&1) and &1 != ""))
+
+      _other ->
+        false
+    end
   end
 
   defp valid_rehearsal?(%{"provider_backed" => false} = entry),

@@ -24,6 +24,8 @@ def run(evidence, mode):
         names = ["plain.csv", "bom.csv", "invalid-date.csv", "naive_reader.py", "reader_control.py"]
     elif mode.startswith("stateful"):
         names = ["stateful_guardrail.py", "stateful_guardrail_control.py", "stateful-mode.txt"]
+    elif mode == "smoke":
+        names = ["greeting.md"]
     else:
         names = ["calendar_adapter.py", "capability-seed.json"]
     before = {name: digest(evidence / name) for name in names}
@@ -45,6 +47,8 @@ def run(evidence, mode):
             assert observed["corrupt_state"]["dispatched"] is True
             assert observed["exhausted_replay"]["dispatched"] is True
             assert observed["receipt_consumer"]["accepted"] is False
+    elif mode == "smoke":
+        pass
     else:
         seed = json.loads((evidence / "capability-seed.json").read_text())
         with tempfile.TemporaryDirectory(prefix="kogen-availability-control-") as directory:

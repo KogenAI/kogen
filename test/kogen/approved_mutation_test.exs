@@ -45,6 +45,7 @@ defmodule Kogen.ApprovedMutationTest do
         expert: {model: fake, effort: medium}
   outer_resumptions: 2
   verification_retries: 2
+  offline_retries: 4
   """
 
   test "rejects ignored Approved mutation during phase", %{phase: phase, mutation: mutation} do
