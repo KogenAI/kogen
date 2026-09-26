@@ -1,0 +1,21 @@
+- id: env-mutation-scope
+  scenario_ids: [fixtures-ignore-inherited-live-log-dir]
+  description: >-
+    WorkspaceFixture.with_env/2 and System.put_env/2 change the whole VM's environment. They are
+    safe only in a Kogen.IsolatedCase test body, which runs in its own child VM
+    (test/support/isolated_case.ex:4-7); IsolatedCase `setup` callbacks also run in the parent
+    VM (workspace_fixture.ex:89-95), so nothing may clear or set KOGEN_LIVE_LOG_DIR in `setup`.
+    All callers of build!/2 and the new run_cycle/4 are IsolatedCase test bodies.
+- id: other-nested-controller-fixtures
+  scenario_ids: [fixtures-ignore-inherited-live-log-dir]
+  description: >-
+    scripted_build_fixture.ex, controller_build_fixture.ex and integrity_fixture.ex run a nested
+    controller too, but none of their recipes reads `$KOGEN_LIVE_LOG_DIR` (only the two fixtures
+    fixed here, live_reviewer_rework_fixture.ex:229 and live-tagged tests do), so they write
+    nothing into the outer Build's live-evidence directory. No change needed.
+- id: self-hosting-running-controller
+  scenario_ids: [fixtures-ignore-inherited-live-log-dir, production-live-log-dir-unchanged]
+  description: >-
+    The installing Build runs under 7ed41f66's controller, which sets KOGEN_LIVE_LOG_DIR for
+    `check`. That is the condition this Intent fixes, so the Build's own `check` is the
+    real-controller proof. No file the running controller reads is guarded.

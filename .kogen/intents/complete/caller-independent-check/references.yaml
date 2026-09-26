@@ -1,0 +1,12 @@
+- kind: failure-analysis
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/ORCHESTRATOR.md
+  note: State at handover; Build KBv11qlQdFqPH3rjL0f30J2V (shaping-quality) failed `check` 3 cycles on candidate_verification_test.exs:249.
+- kind: probe
+  path: evidence/probe-2026-09-26.md
+  note: Reproduction on the MacBook at 7ed41f66, variable set vs unset.
+- kind: prerequisite
+  path: .kogen/intents/complete/isolated-candidate-workspace
+  note: Landed as 7ed41f66; introduced live_log_dir/1 for every controller-run target.
+- kind: reference-implementation
+  path: evidence/prototype-2026-09-26.diff
+  note: Prototype on 7ed41f66 (MacBook). Both files pass with KOGEN_LIVE_LOG_DIR set and unset; the candidate_verification regression is red on base fixtures. Re-derive rather than apply blindly.

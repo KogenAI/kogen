@@ -15,7 +15,7 @@ defmodule Kogen.VerificationCycleFixture do
   changes the Candidate id.
   """
 
-  alias Kogen.Build.VerificationPlan
+  alias Kogen.Build.{Verification, VerificationPlan}
   alias Kogen.FakeJev
 
   @counter "target-calls.log"
@@ -98,6 +98,18 @@ defmodule Kogen.VerificationCycleFixture do
       base_commit: nil,
       candidate_id: fn -> File.cd!(root, fn -> Kogen.Git.candidate_id() end) end
     }
+  end
+
+  @doc """
+  `Kogen.Build.Verification.run_cycle/4` with no inherited
+  `KOGEN_LIVE_LOG_DIR`, so target recipes log under control's own
+  live-evidence directory even when this suite runs as a controller-run
+  `check`. Call it only from a `Kogen.IsolatedCase` test body (child VM).
+  """
+  def run_cycle(exec, session, candidate, env) do
+    Kogen.WorkspaceFixture.with_env([{"KOGEN_LIVE_LOG_DIR", nil}], fn ->
+      Verification.run_cycle(exec, session, candidate, env)
+    end)
   end
 
   @doc "A hand-built plan selecting `check` and one of `a`/`b` (or both)."

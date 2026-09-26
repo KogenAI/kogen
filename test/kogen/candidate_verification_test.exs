@@ -216,6 +216,20 @@ defmodule Kogen.CandidateVerificationTest do
            "a caller-set KOGEN_LIVE_LOG_DIR wins over control's own default"
   end
 
+  test "an inherited KOGEN_LIVE_LOG_DIR in the test VM never reaches a fixture Build" do
+    control = control_with_live_recipe!()
+    on_exit(fn -> File.rm_rf(control) end)
+    outer = Fixture.tmp_dir!("outer-controller-live-log")
+    on_exit(fn -> File.rm_rf(outer) end)
+    System.put_env("KOGEN_LIVE_LOG_DIR", outer)
+
+    assert :ok = Fixture.build!(control)
+
+    assert File.regular?(Path.join(control, ".kogen/runtime/live-evidence/pwd"))
+    assert File.ls!(outer) == [], "the outer controller's live-log directory stays untouched"
+    assert System.get_env("KOGEN_LIVE_LOG_DIR") == outer
+  end
+
   # --- 5: Mix redirection is dropped from the verification child -----------
 
   test "the verification child drops inherited MIX_BUILD_PATH, MIX_DEPS_PATH and MIX_EXS, so a Candidate mix compile lands only under its own _build/" do

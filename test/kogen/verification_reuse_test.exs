@@ -43,7 +43,7 @@ defmodule Kogen.VerificationReuseTest do
     candidate1 = Fixture.candidate_id!(root)
     Fixture.fail_b!(root)
 
-    {:ok, exec1, state1} = Verification.run_cycle(exec0, "session-1", candidate1, env)
+    {:ok, exec1, state1} = Fixture.run_cycle(exec0, "session-1", candidate1, env)
     assert state1["terminal_state"] == "pending"
 
     cycle1 = List.last(state1["cycles"])
@@ -60,7 +60,7 @@ defmodule Kogen.VerificationReuseTest do
     assert candidate2 == candidate1,
            "clearing a gitignored marker must not change the Candidate id"
 
-    {:ok, exec2, state2} = Verification.run_cycle(exec1, "session-1", candidate2, env)
+    {:ok, exec2, state2} = Fixture.run_cycle(exec1, "session-1", candidate2, env)
     assert state2["terminal_state"] == "passed"
     assert :ok = Verification.validate_state(state2, exec2)
 
@@ -144,7 +144,7 @@ defmodule Kogen.VerificationReuseTest do
       )
 
     candidate1 = Fixture.candidate_id!(root)
-    {:ok, exec1, state1} = Verification.run_cycle(exec0, "session-1", candidate1, env)
+    {:ok, exec1, state1} = Fixture.run_cycle(exec0, "session-1", candidate1, env)
     assert state1["terminal_state"] == "passed"
 
     Fixture.reset_calls!(root)
@@ -152,7 +152,7 @@ defmodule Kogen.VerificationReuseTest do
     candidate2 = Fixture.candidate_id!(root)
     refute candidate2 == candidate1
 
-    {:ok, _exec2, state2} = Verification.run_cycle(exec1, "session-1", candidate2, env)
+    {:ok, _exec2, state2} = Fixture.run_cycle(exec1, "session-1", candidate2, env)
     cycle2 = List.last(state2["cycles"])
 
     assert Fixture.calls(root) == ["check", "a", "b"]
@@ -176,7 +176,7 @@ defmodule Kogen.VerificationReuseTest do
       )
 
     candidate = Fixture.candidate_id!(root)
-    {:ok, exec1, _state1} = Verification.run_cycle(exec0, "session-1", candidate, env)
+    {:ok, exec1, _state1} = Fixture.run_cycle(exec0, "session-1", candidate, env)
     _ = exec1
 
     {:ok, exec_new} =
@@ -190,7 +190,7 @@ defmodule Kogen.VerificationReuseTest do
       )
 
     Fixture.reset_calls!(root)
-    {:ok, _exec, state} = Verification.run_cycle(exec_new, "session-2", candidate, env)
+    {:ok, _exec, state} = Fixture.run_cycle(exec_new, "session-2", candidate, env)
     cycle = List.last(state["cycles"])
 
     assert Fixture.calls(root) == ["check", "a", "b"]
@@ -214,10 +214,10 @@ defmodule Kogen.VerificationReuseTest do
 
     candidate = Fixture.candidate_id!(root)
     Fixture.fail_b!(root)
-    {:ok, exec1, _state1} = Verification.run_cycle(exec0, "session-1", candidate, env)
+    {:ok, exec1, _state1} = Fixture.run_cycle(exec0, "session-1", candidate, env)
     Fixture.clear_b_failure!(root)
 
-    {:ok, exec2, state2} = Verification.run_cycle(exec1, "session-1", candidate, env)
+    {:ok, exec2, state2} = Fixture.run_cycle(exec1, "session-1", candidate, env)
     assert :ok = Verification.validate_state(state2, exec2)
 
     for mutation <- [
@@ -260,5 +260,30 @@ defmodule Kogen.VerificationReuseTest do
 
   defp tamper_receipt(receipt, fun) do
     if Map.has_key?(receipt, "reused_from"), do: fun.(receipt), else: receipt
+  end
+
+  test "an inherited KOGEN_LIVE_LOG_DIR never redirects a fixture cycle's target log",
+       %{root: root, plan: plan, env: env} do
+    outer = Path.join(System.tmp_dir!(), "outer-live-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(outer)
+    on_exit(fn -> File.rm_rf(outer) end)
+    System.put_env("KOGEN_LIVE_LOG_DIR", outer)
+
+    {:ok, exec0} =
+      Verification.initialize(
+        Fixture.tracking_path(root),
+        "token-1",
+        0,
+        plan.targets,
+        @retries,
+        plan
+      )
+
+    {:ok, _exec1, _state1} =
+      Fixture.run_cycle(exec0, "session-1", Fixture.candidate_id!(root), env)
+
+    assert Fixture.calls(root) == ["check", "a", "b"]
+    assert File.ls!(outer) == [], "the outer controller's live-log directory stays untouched"
+    assert System.get_env("KOGEN_LIVE_LOG_DIR") == outer
   end
 end

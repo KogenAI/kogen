@@ -1,0 +1,23 @@
+## Findings
+
+- **[BLOCKING]** The package requires the regression test to be `async: false`, but `check` rejects that. `test/kogen/isolation_test.exs:169-176` asserts that every `test/kogen/*_test.exs` matches `use (ExUnit.Case|Kogen.IsolatedCase),\s*async: true`, and that file isn't in the guarded paths. Even `use Kogen.IsolatedCase, async: false` quietly becomes async, because `test/support/isolated_case.ex:16` forces `async: true`. So the scenario (`scenarios.yaml:24`) can't be met, and its `wrong_result` ("mutates the global env from an async module", `scenarios.yaml:30`) rules out the only form that passes. **Fix:** require `use Kogen.IsolatedCase, async: true`. Each test runs in its own child VM (`isolated_case.ex:4-7`, `:309-321`), so changing env there can't leak. Rewrite the `then`/`wrong_result` to match.
+
+- **[BLOCKING]** The registry instructions set a trap that fails `check`. None of the four existing guarded test files is in `priv/kogen/test-reliability.yaml`: there are 0 matches for their names anywhere in `priv/kogen/`. New tests don't have to be registered either, because `Catalog.discover/1` (`test/support/test_reliability_catalog.ex:168`) is never called by any test. But `questions.md:15-17` says every test edit must be re-registered, and `scenarios.yaml:56-57` says "adds". If the Developer adds a row, `declaration_count` changes from 346. That breaks `test/kogen/test_reliability_catalog_test.exs:16`, which isn't guarded. It also has to satisfy the `maintained_sources` equality check (`test_reliability_catalog.ex:75-78`), the remediation row-equality check (`:50`) and the uniqueness rules (`:80-87`). **Fix:** say plainly that these files aren't cataloged and no registry row may be added or changed. Remove both registries from `may_change_guarded_paths` (`intent.yaml:25-26`) and from `affected_paths`.
+
+- **[ADVISORY]** The mitigation in `risks.yaml:9-11` can't be done within the guarded paths. `Verification.run_target` passes only `control_root:` (`lib/kogen/build/verification.ex:301`), so neither "an env entry for the target child" nor "the existing `:env` option of VerificationRunner" is reachable from a test. A Developer who tries it ends up editing `lib/`. The concern behind it is also mostly moot. Every `WorkspaceFixture.build!` caller uses `Kogen.IsolatedCase`, and `cold_offline_test.exs:8` is `:live`, so `check` excludes it. **Fix:** restate the approach as adding `{"KOGEN_LIVE_LOG_DIR", nil}` ahead of `opts[:env]` in `build!` (`workspace_fixture.ex:215-221`). The caller-wins test's explicit entry comes later, so it still wins.
+
+- **[ADVISORY]** The VerificationCycleFixture path is left unspecified. `verification_reuse_test.exs` calls `Verification.run_cycle/4` directly (`:46`, `:147`, `:179`, `:193`, `:217`, `:220`), and the fixture doesn't wrap it. There are two traps:
+  - Clearing the variable in the `setup` block also runs in the parent VM (`workspace_fixture.ex:89-95`), which clears it globally and hits the non-goal.
+  - Hard-coding an absolute path in `append_call/1` (`verification_cycle_fixture.ex:193-195`) passes the tests but stops exercising the controller's default.
+
+  **Fix:** name the intended approach, e.g. a `VerificationCycleFixture.run_cycle/4` that wraps the call in `with_env([{"KOGEN_LIVE_LOG_DIR", nil}], …)`, used by the reuse test and the regression test. Forbid ignoring `$KOGEN_LIVE_LOG_DIR` in the recipes.
+
+- **[ADVISORY]** The claim that the regression test is red on 7ed41f66 is fine logically, since the fixtures inherit the value there (`verification_runner.ex:113-119`). But no one checks it. The probe (`evidence/probe-2026-09-26.md`) ran only the existing files. Lesson 18 asks for a prototype run before approval. **Fix:** name the reviewer check: the new test fails against the 7ed41f66 versions of the two fixtures.
+
+- **[ADVISORY]** The Outcome (`INTENT.md:16`, "the offline suite passes whether or not…") claims more than the scope covers. Other nested-controller fixtures (`scripted_build_fixture.ex`, `controller_build_fixture.ex`, `integrity_fixture.ex`) still honour an inherited value. They don't fail today (the probe found exactly 7 failures), but under a Build they may still write into the outer live-evidence directory. **Fix:** narrow the Outcome to the two fixtures, or note that this remains.
+
+Nothing conflicts with §1.16–1.19. Nothing new is added without a caller, as long as the `run_cycle` wrapper is actually used. There's no split, and the regression test is an offline check (§1.19).
+
+## Verdict: not ready
+
+Fix the two blocking items first (the `async` contradiction and the registry trap). The advisories are optional but will make the Developer's path clearer.

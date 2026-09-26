@@ -1,0 +1,41 @@
+id: daa21f45-3b9b-4026-820f-983f7b6fc145
+slug: caller-independent-check
+title: Make the offline suite independent of the caller's KOGEN_LIVE_LOG_DIR
+status: approved
+shaped_against:
+  branch: main
+  head: 7ed41f660f379a092437464b84d5eac2392073a8
+  note: >-
+    Shaped 2026-09-26 by the Mac Studio orchestrator (ORCHESTRATOR.md "State at handover").
+    Since 7ed41f66 Kogen.Build.VerificationRunner sets KOGEN_LIVE_LOG_DIR for every target the
+    controller runs, `check` included (lib/kogen/build/verification_runner.ex:112-120), and 7
+    offline tests fail under it, so every Build fails `check`.
+shaping:
+  route: direct-package
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-26T12:40:00Z"
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_by: Mac Studio orchestrator (Claude Code, claude-opus-5-5) under the Shaper's delegation
+  approved_at: "2026-09-26T13:23:55Z"
+  source: >-
+    Delegation quotes: "shape and builds things that are in the roadmap hopefully without my
+    involvement … drive everything without stopping" (2026-09-26); "I approve whatever you guys
+    decide! so you can build, drive this without me" (2026-09-25); "you got enough info to work on
+    this stuff and fix whatever is necessary" (2026-09-26).
+  route: claude-dominant-adversarial-codex
+  statement: approval.md
+  reviewed_against:
+    branch: main
+    head: 7ed41f660f379a092437464b84d5eac2392073a8
+  scope: >-
+    ORCHESTRATOR.md "State at handover" check fix (ROADMAP current queue #0): 2 scenarios, 3 risks,
+    target check only, guarded paths = the four test files. Grants no write beyond what a Build of
+    this Intent performs within may_change_guarded_paths.
+may_change_guarded_paths:
+  - test/support/workspace_fixture.ex
+  - test/support/verification_cycle_fixture.ex
+  - test/kogen/candidate_verification_test.exs
+  - test/kogen/verification_reuse_test.exs

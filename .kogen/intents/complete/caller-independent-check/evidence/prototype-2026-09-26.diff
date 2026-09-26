@@ -1,0 +1,174 @@
+diff --git a/test/kogen/candidate_verification_test.exs b/test/kogen/candidate_verification_test.exs
+index ffd29c40..f2e4592c 100644
+--- a/test/kogen/candidate_verification_test.exs
++++ b/test/kogen/candidate_verification_test.exs
+@@ -216,6 +216,19 @@ defmodule Kogen.CandidateVerificationTest do
+            "a caller-set KOGEN_LIVE_LOG_DIR wins over control's own default"
+   end
+ 
++  test "an inherited KOGEN_LIVE_LOG_DIR in the test VM never reaches a fixture Build" do
++    control = control_with_live_recipe!()
++    on_exit(fn -> File.rm_rf(control) end)
++    outer = Fixture.tmp_dir!("outer-controller-live-log")
++    System.put_env("KOGEN_LIVE_LOG_DIR", outer)
++
++    assert :ok = Fixture.build!(control)
++
++    assert File.regular?(Path.join(control, ".kogen/runtime/live-evidence/pwd"))
++    assert File.ls!(outer) == [], "the outer controller's live-log directory stays untouched"
++    assert System.get_env("KOGEN_LIVE_LOG_DIR") == outer
++  end
++
+   # --- 5: Mix redirection is dropped from the verification child -----------
+ 
+   test "the verification child drops inherited MIX_BUILD_PATH, MIX_DEPS_PATH and MIX_EXS, so a Candidate mix compile lands only under its own _build/" do
+diff --git a/test/kogen/verification_reuse_test.exs b/test/kogen/verification_reuse_test.exs
+index 9bfb67b7..b2e4fe63 100644
+--- a/test/kogen/verification_reuse_test.exs
++++ b/test/kogen/verification_reuse_test.exs
+@@ -43,7 +43,7 @@ defmodule Kogen.VerificationReuseTest do
+     candidate1 = Fixture.candidate_id!(root)
+     Fixture.fail_b!(root)
+ 
+-    {:ok, exec1, state1} = Verification.run_cycle(exec0, "session-1", candidate1, env)
++    {:ok, exec1, state1} = Fixture.run_cycle(exec0, "session-1", candidate1, env)
+     assert state1["terminal_state"] == "pending"
+ 
+     cycle1 = List.last(state1["cycles"])
+@@ -60,7 +60,7 @@ defmodule Kogen.VerificationReuseTest do
+     assert candidate2 == candidate1,
+            "clearing a gitignored marker must not change the Candidate id"
+ 
+-    {:ok, exec2, state2} = Verification.run_cycle(exec1, "session-1", candidate2, env)
++    {:ok, exec2, state2} = Fixture.run_cycle(exec1, "session-1", candidate2, env)
+     assert state2["terminal_state"] == "passed"
+     assert :ok = Verification.validate_state(state2, exec2)
+ 
+@@ -144,7 +144,7 @@ defmodule Kogen.VerificationReuseTest do
+       )
+ 
+     candidate1 = Fixture.candidate_id!(root)
+-    {:ok, exec1, state1} = Verification.run_cycle(exec0, "session-1", candidate1, env)
++    {:ok, exec1, state1} = Fixture.run_cycle(exec0, "session-1", candidate1, env)
+     assert state1["terminal_state"] == "passed"
+ 
+     Fixture.reset_calls!(root)
+@@ -152,7 +152,7 @@ defmodule Kogen.VerificationReuseTest do
+     candidate2 = Fixture.candidate_id!(root)
+     refute candidate2 == candidate1
+ 
+-    {:ok, _exec2, state2} = Verification.run_cycle(exec1, "session-1", candidate2, env)
++    {:ok, _exec2, state2} = Fixture.run_cycle(exec1, "session-1", candidate2, env)
+     cycle2 = List.last(state2["cycles"])
+ 
+     assert Fixture.calls(root) == ["check", "a", "b"]
+@@ -176,7 +176,7 @@ defmodule Kogen.VerificationReuseTest do
+       )
+ 
+     candidate = Fixture.candidate_id!(root)
+-    {:ok, exec1, _state1} = Verification.run_cycle(exec0, "session-1", candidate, env)
++    {:ok, exec1, _state1} = Fixture.run_cycle(exec0, "session-1", candidate, env)
+     _ = exec1
+ 
+     {:ok, exec_new} =
+@@ -190,7 +190,7 @@ defmodule Kogen.VerificationReuseTest do
+       )
+ 
+     Fixture.reset_calls!(root)
+-    {:ok, _exec, state} = Verification.run_cycle(exec_new, "session-2", candidate, env)
++    {:ok, _exec, state} = Fixture.run_cycle(exec_new, "session-2", candidate, env)
+     cycle = List.last(state["cycles"])
+ 
+     assert Fixture.calls(root) == ["check", "a", "b"]
+@@ -214,10 +214,10 @@ defmodule Kogen.VerificationReuseTest do
+ 
+     candidate = Fixture.candidate_id!(root)
+     Fixture.fail_b!(root)
+-    {:ok, exec1, _state1} = Verification.run_cycle(exec0, "session-1", candidate, env)
++    {:ok, exec1, _state1} = Fixture.run_cycle(exec0, "session-1", candidate, env)
+     Fixture.clear_b_failure!(root)
+ 
+-    {:ok, exec2, state2} = Verification.run_cycle(exec1, "session-1", candidate, env)
++    {:ok, exec2, state2} = Fixture.run_cycle(exec1, "session-1", candidate, env)
+     assert :ok = Verification.validate_state(state2, exec2)
+ 
+     for mutation <- [
+@@ -261,4 +261,29 @@ defmodule Kogen.VerificationReuseTest do
+   defp tamper_receipt(receipt, fun) do
+     if Map.has_key?(receipt, "reused_from"), do: fun.(receipt), else: receipt
+   end
++
++  test "an inherited KOGEN_LIVE_LOG_DIR never redirects a fixture cycle's target log",
++       %{root: root, plan: plan, env: env} do
++    outer = Path.join(System.tmp_dir!(), "outer-live-#{System.unique_integer([:positive])}")
++    File.mkdir_p!(outer)
++    on_exit(fn -> File.rm_rf(outer) end)
++    System.put_env("KOGEN_LIVE_LOG_DIR", outer)
++
++    {:ok, exec0} =
++      Verification.initialize(
++        Fixture.tracking_path(root),
++        "token-1",
++        0,
++        plan.targets,
++        @retries,
++        plan
++      )
++
++    {:ok, _exec1, _state1} =
++      Fixture.run_cycle(exec0, "session-1", Fixture.candidate_id!(root), env)
++
++    assert Fixture.calls(root) == ["check", "a", "b"]
++    assert File.ls!(outer) == [], "the outer controller's live-log directory stays untouched"
++    assert System.get_env("KOGEN_LIVE_LOG_DIR") == outer
++  end
+ end
+diff --git a/test/support/verification_cycle_fixture.ex b/test/support/verification_cycle_fixture.ex
+index 6fea2faf..61b66225 100644
+--- a/test/support/verification_cycle_fixture.ex
++++ b/test/support/verification_cycle_fixture.ex
+@@ -15,7 +15,7 @@ defmodule Kogen.VerificationCycleFixture do
+   changes the Candidate id.
+   """
+ 
+-  alias Kogen.Build.VerificationPlan
++  alias Kogen.Build.{Verification, VerificationPlan}
+   alias Kogen.FakeJev
+ 
+   @counter "target-calls.log"
+@@ -100,6 +100,18 @@ defmodule Kogen.VerificationCycleFixture do
+     }
+   end
+ 
++  @doc """
++  `Kogen.Build.Verification.run_cycle/4` with no inherited
++  `KOGEN_LIVE_LOG_DIR`, so target recipes log under control's own
++  live-evidence directory even when this suite runs as a controller-run
++  `check`. Call it only from a `Kogen.IsolatedCase` test body (child VM).
++  """
++  def run_cycle(exec, session, candidate, env) do
++    Kogen.WorkspaceFixture.with_env([{"KOGEN_LIVE_LOG_DIR", nil}], fn ->
++      Verification.run_cycle(exec, session, candidate, env)
++    end)
++  end
++
+   @doc "A hand-built plan selecting `check` and one of `a`/`b` (or both)."
+   def plan(root, targets) do
+     {:ok, catalog} = VerificationPlan.load(root)
+diff --git a/test/support/workspace_fixture.ex b/test/support/workspace_fixture.ex
+index 24abf8cf..6cffd3ac 100644
+--- a/test/support/workspace_fixture.ex
++++ b/test/support/workspace_fixture.ex
+@@ -217,7 +217,11 @@ defmodule Kogen.WorkspaceFixture do
+         {"KOGEN_HARNESS", Keyword.get(opts, :harness, support("fake_codex_simple_accept"))},
+         {"KOGEN_JEV_TRANSPORT", support("fake_jev")},
+         {"KOGEN_JEV_SECURITY", support("fake_security")},
+-        {"FAKE_JEV_LOG_DIR", Path.join(tmp_dir!("fake-jev"), "log")}
++        {"FAKE_JEV_LOG_DIR", Path.join(tmp_dir!("fake-jev"), "log")},
++        # A caller's KOGEN_LIVE_LOG_DIR (the outer controller's, when this
++        # suite runs as a controller-run `check`) never reaches a fixture
++        # Build; a test that passes its own in `:env` still wins.
++        {"KOGEN_LIVE_LOG_DIR", nil}
+       ] ++ git_identity() ++ Keyword.get(opts, :env, [])
+ 
+     with_env(env, fn ->

@@ -1,0 +1,85 @@
+# Shaped 2026-09-26 against main 7ed41f66; reshaped the same day after the three-reviewer audit
+# (evidence/reviews/). Offline only; no paid target (DIRECTION §1.19, D8).
+# Reference implementation, prototyped and run on 7ed41f66: evidence/prototype-2026-09-26.diff.
+- id: fixtures-ignore-inherited-live-log-dir
+  given: >-
+    The offline suite runs as a child of a Kogen controller, so the test VM's environment has
+    KOGEN_LIVE_LOG_DIR set to a directory outside every fixture (the outer Build's
+    `.kogen/runtime/live-evidence`). This is what VerificationRunner.run_target/4 does for
+    `check` at 7ed41f66 (lib/kogen/build/verification_runner.ex:112-120), and
+    Verification.run_cycle/4 reaches it with only `control_root:` (lib/kogen/build/verification.ex:298-302).
+  when: >-
+    `mix test test/kogen/candidate_verification_test.exs test/kogen/verification_reuse_test.exs`
+    runs once with KOGEN_LIVE_LOG_DIR unset and once with it set to an existing outer directory.
+  then: >-
+    Both runs pass with 0 failures, and the fresh outer directory each regression test creates
+    stays empty (the Build's own outer live-evidence directory may already hold other evidence).
+    (1) Kogen.WorkspaceFixture.build!/2 applies {"KOGEN_LIVE_LOG_DIR", nil} ahead of the
+    test's own `:env` entries, so a fixture Build that doesn't pass one runs as if the caller had
+    none, and one that does (the "caller-set KOGEN_LIVE_LOG_DIR wins" test,
+    candidate_verification_test.exs:196-216) still sees its value win.
+    (2) Kogen.VerificationCycleFixture gains run_cycle/4, which calls
+    Kogen.Build.Verification.run_cycle/4 inside WorkspaceFixture.with_env([{"KOGEN_LIVE_LOG_DIR",
+    nil}], …) and has no override; every run_cycle call in verification_reuse_test.exs goes
+    through it.
+    (3) Two regression tests, one in each file, set KOGEN_LIVE_LOG_DIR to a fresh outer
+    directory in the test body with System.put_env/2 and then run, respectively, one
+    WorkspaceFixture.build!/2 on the live-recipe control (control_with_live_recipe!/1) and one
+    VerificationCycleFixture.run_cycle/4. Each asserts that the fixture's own control
+    `.kogen/runtime/live-evidence` has the marker (`pwd`, or `target-calls.log` via
+    VerificationCycleFixture.calls/1), that the outer directory is empty, and that the test VM's
+    KOGEN_LIVE_LOG_DIR is still the outer value after the call (with_env restores it). Both
+    modules stay `use Kogen.IsolatedCase, async: true` (test/kogen/isolation_test.exs:169-176
+    requires it); IsolatedCase runs each test body in its own child VM
+    (test/support/isolated_case.ex:4-7), so the put_env never reaches another test.
+    The regression in candidate_verification_test.exs fails on 7ed41f66's fixtures (prototype
+    run: the `pwd` marker is missing from control).
+  wrong_result: >-
+    Any test in the two files fails when KOGEN_LIVE_LOG_DIR is set; KOGEN_LIVE_LOG_DIR is cleared
+    globally (test/test_helper.exs, a setup block that also runs in the parent VM
+    (workspace_fixture.ex:89-95), or the Makefile); a fixture recipe stops honouring
+    `$KOGEN_LIVE_LOG_DIR` or hard-codes an absolute log path; the caller-wins test loses an
+    assertion; a test is tagged, excluded or skipped; a module drops `async: true` or stops using
+    Kogen.IsolatedCase; or anything under lib/ changes.
+  verified_by: [check]
+  evidence: >-
+    The Build's own `check` runs under the 7ed41f66 controller with KOGEN_LIVE_LOG_DIR set, so an
+    accepted Build is itself the "set" run; the two regression tests reproduce that condition
+    inside any `check`. Probe and prototype on the MacBook at 7ed41f66
+    (evidence/probe-2026-09-26.md, evidence/prototype-2026-09-26.diff): base fails exactly 7
+    tests with the variable set and nothing else in the suite (the same failure Build
+    KBv11qlQdFqPH3rjL0f30J2V hit under the real controller: first failure
+    test/kogen/candidate_verification_test.exs:249, 3 cycles, before_first_paid); with the prototype both files
+    pass set and unset and the outer directory stays empty.
+  proof:
+    offline: [test/kogen/candidate_verification_test.exs, test/kogen/verification_reuse_test.exs]
+    paid_target: none
+    paid_reason: >-
+      offline-sufficient: the defect is an environment leak into offline fixtures; no provider
+      semantics are involved
+    affected_paths: [test/support/workspace_fixture.ex, test/support/verification_cycle_fixture.ex, test/kogen/candidate_verification_test.exs, test/kogen/verification_reuse_test.exs]
+
+- id: production-live-log-dir-unchanged
+  given: >-
+    lib/kogen/build/verification_runner.ex at 7ed41f66: a caller-set KOGEN_LIVE_LOG_DIR wins;
+    otherwise a target child with a control root gets control's `.kogen/runtime/live-evidence`.
+  when: The Build's Candidate is compared with 7ed41f66.
+  then: >-
+    Only the four guarded test files change. Nothing under lib/, priv/, scripts/, the Makefile
+    or test/test_helper.exs changes. The test-reliability registries
+    (priv/kogen/test-reliability.yaml and -remediation.yaml) are untouched: neither file
+    catalogs these four files, and adding a declaration would change the declaration_count
+    of 346 that test/kogen/test_reliability_catalog_test.exs:15-19 pins. The caller-wins test
+    keeps every assertion it has at 7ed41f66.
+  wrong_result: >-
+    VerificationRunner stops setting KOGEN_LIVE_LOG_DIR for `check` or stops honouring a
+    caller-set value; an assertion about either is removed; a registry row is added or changed.
+  verified_by: [check]
+  evidence: >-
+    Guarded paths are the four test files; test_reliability_catalog_test.exs and the
+    caller-wins test run in `check`.
+  proof:
+    offline: [test/kogen/candidate_verification_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: production code is out of the guarded paths"
+    affected_paths: [test/kogen/candidate_verification_test.exs]

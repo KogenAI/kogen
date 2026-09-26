@@ -217,7 +217,11 @@ defmodule Kogen.WorkspaceFixture do
         {"KOGEN_HARNESS", Keyword.get(opts, :harness, support("fake_codex_simple_accept"))},
         {"KOGEN_JEV_TRANSPORT", support("fake_jev")},
         {"KOGEN_JEV_SECURITY", support("fake_security")},
-        {"FAKE_JEV_LOG_DIR", Path.join(tmp_dir!("fake-jev"), "log")}
+        {"FAKE_JEV_LOG_DIR", Path.join(tmp_dir!("fake-jev"), "log")},
+        # A caller's KOGEN_LIVE_LOG_DIR (the outer controller's, when this
+        # suite runs as a controller-run `check`) never reaches a fixture
+        # Build; a test that passes its own in `:env` still wins.
+        {"KOGEN_LIVE_LOG_DIR", nil}
       ] ++ git_identity() ++ Keyword.get(opts, :env, [])
 
     with_env(env, fn ->

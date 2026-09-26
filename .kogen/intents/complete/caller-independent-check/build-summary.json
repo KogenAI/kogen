@@ -1,0 +1,163 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "TQrgfivwEZ-cP_fxS6uAy8Aae3aLvojf",
+      "candidate_id": "4585c05113647f3c2d2a380fbb0ddbb739f7cfeb",
+      "developer_session_id": "c3db1a60-8afd-4508-8eed-f94d4ca755a5",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "01a0dde9-f6f1-76d0-bf91-ff8affbf1039",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "TQrgfivwEZ-cP_fxS6uAy8Aae3aLvojf",
+          "candidate_id": "4585c05113647f3c2d2a380fbb0ddbb739f7cfeb",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-26T13:31:26.007Z",
+          "session_id": "c3db1a60-8afd-4508-8eed-f94d4ca755a5",
+          "started_at": "2026-09-26T13:27:08.020Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "QT_Njj22lxXfQ-4mwgbtXLkr",
+  "candidate_id": "4585c05113647f3c2d2a380fbb0ddbb739f7cfeb",
+  "developer_session_id": "c3db1a60-8afd-4508-8eed-f94d4ca755a5",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 579370,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/QT_Njj22lxXfQ-4mwgbtXLkr/record.json",
+    "schema_version": 2,
+    "sha256": "4747a28b776ca0f68bd9ff8ebeee1a238bba9d2fd22caff5dbba0f80651bd144"
+  },
+  "intent": {
+    "id": "daa21f45-3b9b-4026-820f-983f7b6fc145",
+    "slug": "caller-independent-check",
+    "title": "Make the offline suite independent of the caller's KOGEN_LIVE_LOG_DIR"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0dde9-f6f1-76d0-bf91-ff8affbf1039"
+  },
+  "risks": [
+    {
+      "id": "env-mutation-scope"
+    },
+    {
+      "id": "other-nested-controller-fixtures"
+    },
+    {
+      "id": "self-hosting-running-controller"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "medium",
+      "harness": "claude",
+      "model": "claude-opus-5-5"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "claude": {
+        "scout": {
+          "effort": "low",
+          "model": "claude-sonnet-5"
+        },
+        "worker": {
+          "effort": "medium",
+          "model": "claude-sonnet-5"
+        }
+      },
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "claude",
+      "model": "claude-opus-5-5"
+    }
+  },
+  "route": {
+    "harness": "claude",
+    "name": "claude-dominant-adversarial-codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "build!/2 clears inherited KOGEN_LIVE_LOG_DIR before fixture execution and restores the caller environment; lines 211-240",
+          "path": "test/support/workspace_fixture.ex"
+        },
+        {
+          "locator": "run_cycle/4 clears inherited KOGEN_LIVE_LOG_DIR around Verification.run_cycle/4; lines 103-113",
+          "path": "test/support/verification_cycle_fixture.ex"
+        },
+        {
+          "locator": "Regression asserts fixture evidence is written under control, outer directory remains empty, and caller value is restored; lines 219-230",
+          "path": "test/kogen/candidate_verification_test.exs"
+        },
+        {
+          "locator": "Regression routes the cycle through the clearing wrapper and asserts check/a/b calls plus empty outer directory; lines 265-287",
+          "path": "test/kogen/verification_reuse_test.exs"
+        },
+        {
+          "locator": "Offline receipt reports the complete mix test stage passed with exit code 0",
+          "path": ".kogen/runtime/offline-results/6cbe9ca6615797ceb8565282858cb298.json"
+        }
+      ],
+      "id": "fixtures-ignore-inherited-live-log-dir",
+      "reason": "The fixture boundaries explicitly clear inherited KOGEN_LIVE_LOG_DIR while preserving explicit test overrides, every verification-reuse cycle uses the wrapper, and the added regressions check local evidence, untouched outer directories, and environment restoration. The controller's recorded offline target passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Intent limits changes to the four guarded test/support files; inspected diff contains exactly those four paths",
+          "path": ".kogen/intents/approved/caller-independent-check/intent.yaml"
+        },
+        {
+          "locator": "Caller-wins and default live-evidence assertions remain intact at lines 196-216",
+          "path": "test/kogen/candidate_verification_test.exs"
+        },
+        {
+          "locator": "Production runner retains caller-value precedence and control-root default logic at lines 112-120",
+          "path": "lib/kogen/build/verification_runner.ex"
+        },
+        {
+          "locator": "Offline receipt reports formatting, compilation, Credo, and offline test stages passed",
+          "path": ".kogen/runtime/offline-results/6cbe9ca6615797ceb8565282858cb298.json"
+        }
+      ],
+      "id": "production-live-log-dir-unchanged",
+      "reason": "Only the approved four test/support files changed. Production VerificationRunner behavior and the existing caller-wins/default assertions are unchanged, with no changes to production, Makefile, test helper, or reliability registries observed.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

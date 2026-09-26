@@ -1,0 +1,9 @@
+## Findings
+
+- **[BLOCKING]** The guarded paths omit the test-reliability count/enforcement file. Adding the required new regression declaration to either registry requires changing the catalog count from 346, but the unguarded test hard-codes 346; leaving it unregistered passes because `discover/1` is never enforced. — `intent.yaml:19-26`; `test/kogen/test_reliability_catalog_test.exs:15-19`; `test/support/test_reliability_catalog.ex:13-30,168-179` — Guard and update `test/kogen/test_reliability_catalog_test.exs`, and enforce exhaustive registration (or explicitly remove the registry requirement).
+
+- **[ADVISORY]** The `async: false` regression must not use `Kogen.IsolatedCase`: its macro unconditionally changes the option to `async: true`. Also, the proposed “pass an explicit `:env`” mitigation is unavailable through `Verification.run_cycle/4`, which calls `VerificationRunner` without forwarding one. — `test/support/isolated_case.ex:15-27`; `lib/kogen/build/verification.ex:298-302`; `risks.yaml:5-12` — Use plain `ExUnit.Case, async: false` for the regression and add a fixture-local environment wrapper in the guarded fixture/test code; preserve explicit caller overrides required by `candidate_verification_test.exs:196-216`.
+
+- **[ADVISORY]** The scenario claims WorkspaceFixture markers, env dumps, and `target-calls.log`, but its default Makefile writes none of those artifacts, so a regression could pass without proving log-directory routing. — `scenarios.yaml:13-24`; `test/support/workspace_fixture.ex:70-74` — Add/use a concrete live-writing fixture recipe and assert both fixture-owned evidence and an unchanged outer sentinel.
+
+## Verdict: not ready
