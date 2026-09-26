@@ -1,0 +1,21 @@
+- id: fixtures-ignore-global-excludes
+  given: >-
+    Any machine, and the fixture repos of test/kogen/tracked_ignored_files_test.exs; a regression test that sets
+    GIT_CONFIG_GLOBAL (in its IsolatedCase child VM) to a temporary gitconfig whose core.excludesFile lists `.DS_Store`.
+  when: "`mix test test/kogen/tracked_ignored_files_test.exs` runs, and the full offline gate runs."
+  then: >-
+    The regression test passes (`.DS_Store` is committed in the fixture despite the global exclude) and fails on 3ab70dce's
+    git_fixture!/0 on any machine; all tests in the file pass, including "a tracked file matching a hard-coded trash
+    pattern fails, naming that file",
+    because each fixture repo has a local core.excludesFile set to an empty file inside its .git; every assertion in the file
+    is byte-identical to 3ab70dce; the user's global git config is unchanged.
+  wrong_result: The assertion is loosened, `.DS_Store` is dropped from the expected list, a test is skipped or tagged, or the global git config is edited.
+  verified_by: [check]
+  evidence: >-
+    Prototype on the Mac Studio at 3ab70dce (evidence/probe-2026-09-27.md): red on base (the Build's cycle-1 failure), 7/7 with
+    the fix; the Build's own check on the Studio is the real-environment proof.
+  proof:
+    offline: [test/kogen/tracked_ignored_files_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: git fixtures only"
+    affected_paths: [test/kogen/tracked_ignored_files_test.exs]

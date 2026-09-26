@@ -1,0 +1,119 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "ebaizl46l2rM4iisd5OvlbYsOmQyCzE6",
+      "candidate_id": "186af7d06b58085863975ad19e9a66a225ab43da",
+      "developer_session_id": "01a0dfe7-45e7-7541-8dc2-bdd12793622d",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "01a0dff2-dd57-76f2-9889-ded62ccd5fa6",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "ebaizl46l2rM4iisd5OvlbYsOmQyCzE6",
+          "candidate_id": "186af7d06b58085863975ad19e9a66a225ab43da",
+          "cycle_sequence": 2,
+          "exit_code": 0,
+          "finished_at": "2026-09-26T23:00:27.531Z",
+          "session_id": "01a0dfe7-45e7-7541-8dc2-bdd12793622d",
+          "started_at": "2026-09-26T22:54:19.808Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "ty_YGXjk8wwIOaHL2fgALQBw",
+  "candidate_id": "186af7d06b58085863975ad19e9a66a225ab43da",
+  "developer_session_id": "01a0dfe7-45e7-7541-8dc2-bdd12793622d",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 209735,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/ty_YGXjk8wwIOaHL2fgALQBw/record.json",
+    "schema_version": 2,
+    "sha256": "f6ad183571ab966432898803f9c3a67f3f4ddc8121aaaf165a8eeae078909d1e"
+  },
+  "intent": {
+    "id": "72de7e74-dd89-4db9-83ab-3638d6dbf188",
+    "slug": "isolate-test-git-config",
+    "title": "Isolate git test fixtures from global ignores"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0dff2-dd57-76f2-9889-ded62ccd5fa6"
+  },
+  "risks": [
+    {
+      "id": "build-must-run-on-a-machine-with-global-excludes"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "medium",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    }
+  },
+  "route": {
+    "harness": "codex",
+    "name": "codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "Regression test sets GIT_CONFIG_GLOBAL to a .DS_Store exclude, creates a fixture, commits .DS_Store with git add -A, and asserts it is listed; git_fixture!/0 configures an empty local excludes file under .git.",
+          "path": "test/kogen/tracked_ignored_files_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "The approved contract requires the regression and all eight tests to pass while preserving existing assertions and avoiding global configuration edits.",
+          "path": ".kogen/intents/approved/isolate-test-git-config/scenarios.yaml",
+          "receipt": null
+        },
+        {
+          "locator": "Controller verification receipt reports the approved check passed; an independent focused run also completed with 8 tests passed.",
+          "path": "test/kogen/tracked_ignored_files_test.exs",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "fixtures-ignore-global-excludes",
+      "reason": "The candidate changes only the approved test file. The new isolated regression reproduces a global .DS_Store exclusion and verifies the fixture still tracks the file, while git_fixture!/0 overrides inherited excludes with an empty local file. Existing assertions remain unchanged. The focused test run passed all 8 tests, and the controller's check receipt passed.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,8 @@
+- kind: failure-analysis
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/research/build-failure-lessons-2026-09-25.md
+  note: Lesson 23.
+- kind: probe
+  path: evidence/probe-2026-09-27.md
+- kind: reference-implementation
+  path: evidence/prototype-2026-09-27.diff
+  note: Prototype run on the Mac Studio at 3ab70dce; re-derive rather than apply blindly.
