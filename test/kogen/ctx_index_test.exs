@@ -60,8 +60,9 @@ defmodule Kogen.CtxIndexTest do
     {root, home} = CtxFixture.create!()
     binary = CtxFixture.binary()
     _ = run_index(binary, root, home)
-    link = Path.join(System.tmp_dir!(), "ctx-link-#{System.unique_integer([:positive])}")
+    link = CtxFixture.tmp_path("ctx-link")
     File.ln_s!(root, link)
+    on_exit(fn -> File.rm_rf!(link) end)
 
     assert run_index(binary, root, home, ["index", "--root", link]) == [
              "index #{CtxFixture.index_path(home, root)}",
@@ -85,9 +86,11 @@ defmodule Kogen.CtxIndexTest do
     binary = CtxFixture.binary()
 
     for {h, value} <- [
-          {Path.join(System.tmp_dir!(), "ctx-home-#{System.unique_integer([:positive])}"), nil},
-          {Path.join(System.tmp_dir!(), "ctx-home-#{System.unique_integer([:positive])}"), ""}
+          {CtxFixture.tmp_path("ctx-home"), nil},
+          {CtxFixture.tmp_path("ctx-home"), ""}
         ] do
+      on_exit(fn -> File.rm_rf!(h) end)
+
       {out, err, status} =
         CtxFixture.run(binary, root, home, ["index"], [{"HOME", h}, {"KOGEN_CTX_HOME", value}])
 
@@ -155,17 +158,19 @@ defmodule Kogen.CtxIndexTest do
   test "A5 validates usage before filesystem work and reports runtime paths exactly" do
     {root, home} = CtxFixture.create!()
     binary = CtxFixture.binary()
-    outside = Path.join(System.tmp_dir!(), "ctx-outside-#{System.unique_integer([:positive])}")
+    outside = CtxFixture.tmp_path("ctx-outside")
     File.mkdir_p!(outside)
+    on_exit(fn -> File.rm_rf!(outside) end)
     {_, err, 1} = CtxFixture.run(binary, outside, home, ["index"])
 
     assert err ==
              "kogen-ctx: not a Git checkout: " <> Kogen.ProjectScope.canonical(outside) <> "\n"
 
     outside_home =
-      Path.join(System.tmp_dir!(), "ctx-outside-home-#{System.unique_integer([:positive])}")
+      CtxFixture.tmp_path("ctx-outside-home")
 
     File.mkdir_p!(outside_home)
+    on_exit(fn -> File.rm_rf!(outside_home) end)
 
     for args <- [[], ["bogus"]] do
       {out, err, 2} = CtxFixture.run(binary, outside, outside_home, args)
@@ -215,10 +220,15 @@ defmodule Kogen.CtxIndexTest do
       refute File.exists?(Path.join(root, "Library"))
     end
 
-    ro = Path.join(System.tmp_dir!(), "ctx-ro-#{System.unique_integer([:positive])}")
+    ro = CtxFixture.tmp_path("ctx-ro")
     File.mkdir_p!(ro)
     File.chmod!(ro, 0o500)
-    on_exit(fn -> File.chmod(ro, 0o700) end)
+
+    on_exit(fn ->
+      File.chmod(ro, 0o700)
+      File.rm_rf!(ro)
+    end)
+
     {out, err, 1} = CtxFixture.run(binary, root, ro, ["index"])
     assert out == ""
 
@@ -246,6 +256,29 @@ defmodule Kogen.CtxIndexTest do
       assert out == ""
       assert String.starts_with?(err, "kogen-ctx: cannot write index at #{index}:")
       assert err =~ "set KOGEN_CTX_HOME to a writable directory"
+    end
+  end
+
+  test "temp paths are collision-free and cleaned up" do
+    paths = [CtxFixture.tmp_path("x"), CtxFixture.tmp_path("x")]
+    tmp_dir = Kogen.ProjectScope.canonical(System.tmp_dir!())
+
+    assert Enum.uniq(paths) == paths
+    assert Enum.all?(paths, &(Kogen.ProjectScope.canonical(Path.dirname(&1)) == tmp_dir))
+    assert Enum.all?(paths, &String.contains?(&1, System.pid()))
+    refute Enum.any?(paths, &File.exists?/1)
+
+    source_paths = [
+      "test/kogen/ctx_index_test.exs",
+      "test/kogen/ctx_mcp_test.exs",
+      "test/support/ctx_fixture.ex"
+    ]
+
+    direct_tmp_path = ~r/System\.tmp_dir!\(\),\s*"[^"]*#\{System\.unique_integer/
+    root = Path.expand("../..", __DIR__)
+
+    for path <- source_paths do
+      refute File.read!(Path.join(root, path)) =~ direct_tmp_path
     end
   end
 

@@ -182,9 +182,10 @@ defmodule Kogen.CtxMcpTest do
     assert File.ls!(home) == []
 
     outside =
-      Path.join(System.tmp_dir!(), "kogen-ctx-outside-#{System.unique_integer([:positive])}")
+      CtxFixture.tmp_path("kogen-ctx-outside")
 
     File.mkdir_p!(outside)
+    on_exit(fn -> File.rm_rf!(outside) end)
 
     assert CtxFixture.run(CtxFixture.binary(), outside, home, ["mcp"]) ==
              {"",
@@ -192,7 +193,6 @@ defmodule Kogen.CtxMcpTest do
               1}
 
     assert File.ls!(home) == []
-    File.rm_rf!(outside)
 
     assert CtxFixture.run(CtxFixture.binary(), root, home, ["mcp"], [
              {"HOME", ""},
@@ -383,7 +383,7 @@ defmodule Kogen.CtxMcpTest do
       assert err == @usage <> "\n"
     end
 
-    ro = Path.join(System.tmp_dir!(), "kogen-ctx-read-only-#{System.unique_integer([:positive])}")
+    ro = CtxFixture.tmp_path("kogen-ctx-read-only")
     File.mkdir_p!(ro)
     File.chmod!(ro, 0o500)
 

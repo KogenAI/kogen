@@ -136,6 +136,15 @@ defmodule Kogen.Test.CtxFixture do
   def alias_sources, do: @alias_sources
   def alias_hashes, do: @alias_hashes
 
+  def tmp_path(prefix) do
+    tmp_dir = System.tmp_dir!()
+
+    Path.join(
+      tmp_dir,
+      "#{prefix}-#{System.pid()}-#{System.os_time(:nanosecond)}-#{System.unique_integer([:positive])}"
+    )
+  end
+
   def create_alias! do
     nonce = "#{System.os_time(:nanosecond)}-#{System.unique_integer([:positive])}"
     root = Path.join(System.tmp_dir!(), "kogen-ctx-alias-#{nonce}")
@@ -259,7 +268,7 @@ defmodule Kogen.Test.CtxFixture do
   end
 
   def run(binary, root, home, args, extra_env \\ []) do
-    err = Path.join(System.tmp_dir!(), "kogen-ctx-stderr-#{System.unique_integer([:positive])}")
+    err = tmp_path("kogen-ctx-stderr")
 
     base_env = %{"PATH" => "/usr/bin:/bin", "KOGEN_CTX_HOME" => home}
 

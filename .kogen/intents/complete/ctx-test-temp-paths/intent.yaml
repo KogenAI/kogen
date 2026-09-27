@@ -1,0 +1,28 @@
+id: c7578311-908f-4375-9a28-cb869048d7dc
+slug: ctx-test-temp-paths
+title: Give kogen-ctx tests collision-free temp paths
+commit_subject: Use collision-free temp paths in ctx tests
+status: approved
+shaped_against:
+  branch: develop
+  head: b775974ba8b87e723d07122cafa46c2e4395d165
+  note: Shaped 2026-09-27 by the Mac Studio orchestrator after the collision stopped build-reconcile Build TNKFPX6XyfcLVYkQfugKKMTa.
+shaping:
+  route: direct-package
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-27T18:45:00Z"
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_at: "2026-09-27T18:40:23Z"
+  approved_against_head: b775974ba8b87e723d07122cafa46c2e4395d165
+  route: codex
+  source: approval.md
+  quotes:
+    - "you gotta handle EVERYTHING"
+  covers: kogen-ctx test temp-path collisions (test-only, lesson 26 class).
+may_change_guarded_paths:
+  - test/support/ctx_fixture.ex
+  - test/kogen/ctx_index_test.exs
+  - test/kogen/ctx_mcp_test.exs
