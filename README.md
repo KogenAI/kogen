@@ -931,6 +931,8 @@ Rust 1.97.1 is required (pinned in `mise.toml`). Build the native binary with `m
 
 The schema 2 index also supports `kogen-ctx symbols <query> [--limit N] [--root DIR]` and `kogen-ctx refs <target> [--limit N] [--root DIR]`. Symbols use case-sensitive substring matching and print `<path>:<line> <kind> <Module>.<fun>/<arity>` (or a module row); refs print alias, import, use, require, call, and capture rows. Alias resolution follows the parsed file's lexical module scopes, including nested modules, and is intentionally approximate. `kogen-ctx map [--tokens N] [--focus <path>]... [--root DIR]` prints a deterministic PageRank order of code-file symbol blocks. It runs 100 iterations with damping 0.85, redistributes dangling rank through the personalization vector, estimates tokens as block bytes divided by four, and stops at the first block that exceeds the budget. Old schema 1 indexes rebuild automatically. Placeholders such as `<Module>.<fun>/<arity>` and `<path>` describe output shapes without referring to a particular checkout.
 
+Run `kogen-ctx mcp [--root DIR]` to serve the `search`, `symbols`, `refs`, and `map` queries over newline-delimited JSON-RPC on stdio. Their arguments are the corresponding query or target, optional `limit`, `tokens`, and repeated `focus` paths. Successful tool text is byte-identical to the CLI stdout; failures return the CLI stderr with `isError` set. Every tool call refreshes the index. Register the server with `claude mcp add kogen-ctx -- <path> mcp`, using the executable path printed by `mix kogen.ctx.build`.
+
 ## Run the checks
 
 ```sh

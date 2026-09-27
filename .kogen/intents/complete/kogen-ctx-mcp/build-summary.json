@@ -1,0 +1,219 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "DrcZEx4OfcW2KoE4dihTbi2yKlszDvpr",
+      "candidate_id": "6b6d88c3fca799db365374853cedfb5ac9b66d25",
+      "developer_session_id": "01a0e2fa-85c8-7391-a302-6957ee78a7ab",
+      "failure_kind": "review_rework",
+      "number": 0,
+      "reviewer_session_id": "01a0e30e-1759-7993-a830-55ef2b847ce7",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "DrcZEx4OfcW2KoE4dihTbi2yKlszDvpr",
+          "candidate_id": "6b6d88c3fca799db365374853cedfb5ac9b66d25",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T13:29:03.189Z",
+          "session_id": "01a0e2fa-85c8-7391-a302-6957ee78a7ab",
+          "started_at": "2026-09-27T13:22:40.059Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "yN43oeCxufvINyH7wTetFTFfRlMoHR9Y",
+      "candidate_id": "6b6d88c3fca799db365374853cedfb5ac9b66d25",
+      "developer_session_id": "01a0e2fa-85c8-7391-a302-6957ee78a7ab",
+      "failure_kind": null,
+      "number": 1,
+      "reviewer_session_id": "01a0e323-3010-7cb0-8c09-c2faf42791bf",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "yN43oeCxufvINyH7wTetFTFfRlMoHR9Y",
+          "candidate_id": "6b6d88c3fca799db365374853cedfb5ac9b66d25",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T13:52:05.468Z",
+          "session_id": "01a0e2fa-85c8-7391-a302-6957ee78a7ab",
+          "started_at": "2026-09-27T13:45:19.460Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "KHrfm5y1RfxTXb1ZIfEkKEKZ",
+  "candidate_id": "6b6d88c3fca799db365374853cedfb5ac9b66d25",
+  "developer_session_id": "01a0e2fa-85c8-7391-a302-6957ee78a7ab",
+  "findings": [
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Approved scenario contract reviewed; the current bound packet was readable and its controller check receipt passed.",
+            "path": ".kogen/intents/approved/kogen-ctx-mcp/scenarios.yaml",
+            "receipt": "/receipts/0"
+          }
+        ],
+        "reason": "Closed: the supplied Candidate-bound review packet parsed successfully, and the controller receipt for the check target is passed.",
+        "reviewer_session": "01a0e323-3010-7cb0-8c09-c2faf42791bf",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F1",
+      "origin": {
+        "attempt_token": "DrcZEx4OfcW2KoE4dihTbi2yKlszDvpr",
+        "candidate_id": "6b6d88c3fca799db365374853cedfb5ac9b66d25",
+        "evidence": [
+          {
+            "locator": "The supplied controller review packet at /Users/almirsarajc/Areas/Kogen/kogen/.kogen/runtime/scenario-tracking/KHrfm5y1RfxTXb1ZIfEkKEKZ/review-packets/0.json was not readable in this workspace, so receipts, open findings, and any ledger could not be assessed.",
+            "path": ".kogen/intents/approved/kogen-ctx-mcp/scenarios.yaml",
+            "receipt": null
+          }
+        ],
+        "reason": "The bound review packet is missing or unreadable at the supplied locator. Restore a readable Candidate-bound packet before acceptance so required verification receipts, open findings, and ledger evidence can be assessed.",
+        "reviewer_session": "01a0e30e-1759-7993-a830-55ef2b847ce7",
+        "scenario_ids": [
+          "mcp-answers-protocol-requests",
+          "mcp-tools-match-the-cli"
+        ]
+      },
+      "status": "closed"
+    }
+  ],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 1314715,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/KHrfm5y1RfxTXb1ZIfEkKEKZ/record.json",
+    "schema_version": 2,
+    "sha256": "322ab329de0493e54e6f658ede803a93dc70a0f014b9cf1f61556681baf89508"
+  },
+  "intent": {
+    "id": "01a0e210-f954-7c99-ba94-bb42b320fdd6",
+    "slug": "kogen-ctx-mcp",
+    "title": "Add the kogen-ctx MCP stdio server"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0e323-3010-7cb0-8c09-c2faf42791bf"
+  },
+  "risks": [
+    {
+      "id": "builds-on-landed-slices"
+    },
+    {
+      "id": "usage-line-pinned-in-landed-tests"
+    },
+    {
+      "id": "in-process-tool-calls"
+    },
+    {
+      "id": "concurrent-index-writers"
+    },
+    {
+      "id": "interactive-stdio-hang"
+    },
+    {
+      "id": "port-environment"
+    },
+    {
+      "id": "readme-guidance-references"
+    },
+    {
+      "id": "developer-cargo-in-sandbox"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    }
+  },
+  "route": {
+    "harness": "codex",
+    "name": "codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "MCP parsing, dispatch after home/root validation, and pre-refresh startup path are implemented in the CLI entry point.",
+          "path": "native/kogen-ctx/src/main.rs",
+          "receipt": "/receipts/0"
+        },
+        {
+          "locator": "Line-buffered JSON-RPC handling, notification suppression, protocol replies, error codes, flushing, and EOF behavior are implemented here.",
+          "path": "native/kogen-ctx/src/mcp.rs",
+          "receipt": "/receipts/0"
+        },
+        {
+          "locator": "M1-M4 tests cover ordered replies, malformed requests, blank lines, invalid ids, interactive stdin, command-line validation, root/home failures, and usage parity.",
+          "path": "test/kogen/ctx_mcp_test.exs",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "mcp-answers-protocol-requests",
+      "reason": "I inspected the approved contract, the Rust entry point and MCP server, and the complete M1-M4 tests. The implementation serves one line at a time, flushes replies, suppresses notifications, returns the required protocol and error shapes, validates startup before reading stdin, and leaves startup refresh to tool calls. The controller's approved check receipt passed.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Tool calls construct one query/target argument, map limit/tokens/focus flags, re-execute the current binary, and preserve CLI stdout/stderr text.",
+          "path": "native/kogen-ctx/src/mcp.rs",
+          "receipt": "/receipts/0"
+        },
+        {
+          "locator": "T1 pins CLI outputs and compares successful MCP text byte-for-byte; T2 checks flag mapping and a spaced single argument; T3 checks usage and runtime errors plus continued ping service.",
+          "path": "test/kogen/ctx_mcp_test.exs",
+          "receipt": "/receipts/0"
+        },
+        {
+          "locator": "README documents invocation, four tools, parity/error behavior, refresh semantics, and registration.",
+          "path": "README.md",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "mcp-tools-match-the-cli",
+      "reason": "I inspected the call implementation and T1-T3 tests. Calls re-execute the CLI with preserved argument boundaries and flags, successful and failing text is compared against the CLI, runtime failures remain tool errors while the server continues, and the README documents the surface. The controller's approved check receipt passed.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

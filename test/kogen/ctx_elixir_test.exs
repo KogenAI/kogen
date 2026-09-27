@@ -15,7 +15,7 @@ defmodule Kogen.CtxElixirTest do
     assert out == ""
 
     assert err ==
-             "usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] | kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx map [--tokens N] [--focus PATH]... [--root DIR]\n"
+             "usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] | kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx map [--tokens N] [--focus PATH]... [--root DIR] | kogen-ctx mcp [--root DIR]\n"
   end
 
   test "E1 symbols lists every module and function by the specified rules" do

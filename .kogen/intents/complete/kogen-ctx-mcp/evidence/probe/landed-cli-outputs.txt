@@ -1,0 +1,134 @@
+### ["search", "the"] status=0
+--stdout--
+.kogen/intents/complete/stray-rework/INTENT.md:9-9 [intent] The Developer deletes each stray path and the guard passes.
+.kogen/intents/complete/stray-rework/scenarios.yaml:1-3 [intent] - id: stray-file-reworked given: A fixture with a stray file. then: The guard reworks the stray file.
+.kogen/intents/complete/stray-rework/INTENT.md:5-5 [intent] A stray Mix lock directory stopped the Build.
+--stderr--
+
+### ["symbols", "Shop.Cart.total"] status=0
+--stdout--
+lib/shop/cart.ex:2 def Shop.Cart.total/1
+lib/shop/cart.ex:3 def Shop.Cart.total/2
+--stderr--
+
+### ["refs", "Shop.Tax.add"] status=0
+--stdout--
+lib/shop.ex:12 call Shop.Tax.add/1
+lib/shop/inventory.ex:5 capture Shop.Tax.add/1
+--stderr--
+
+### ["map", "--tokens", "25"] status=0
+--stdout--
+lib/shop/tax.ex
+  defmodule Shop.Tax
+  def Shop.Tax.add/1
+  def Shop.Tax.rate/0
+... 6 more files
+--stderr--
+
+### ["map", "--focus", "test/shop_test.exs"] status=0
+--stdout--
+test/shop_test.exs
+  defmodule ShopTest
+lib/shop/cart.ex
+  defmodule Shop.Cart
+  def Shop.Cart.total/1
+  def Shop.Cart.total/2
+  def Shop.Cart.empty/0
+  def Shop.Cart.merge/2
+lib/shop.ex
+  defmodule Shop
+  def Shop.checkout/2
+  def Shop.restock/1
+  defmacro Shop.trace/1
+  defguard Shop.positive/1
+lib/shop/format.ex
+  defmodule Shop.Format
+  def Shop.Format.money/1
+lib/shop/inventory.ex
+  defmodule Shop.Inventory
+  def Shop.Inventory.put/2
+  def Shop.Inventory.lookup/1
+  def Shop.Inventory.fetcher/0
+lib/shop/pricing.ex
+  defmodule Shop.Pricing
+  def Shop.Pricing.apply/2
+  defmodule Shop.Pricing.Rules
+  def Shop.Pricing.Rules.default/0
+  def Shop.Pricing.rules/0
+lib/shop/tax.ex
+  defmodule Shop.Tax
+  def Shop.Tax.add/1
+  def Shop.Tax.rate/0
+--stderr--
+
+### ["search", "Mix lock"] status=0
+--stdout--
+.kogen/intents/complete/stray-rework/INTENT.md:5-5 [intent] A stray Mix lock directory stopped the Build.
+.kogen/memory/lesson/lesson-stray-rework.md:1-5 [memory] --- id: "lesson-stray-rework" kind: "lesson" claim: "stray-rework published after 2 stopped Builds: stray Mix lock directories" ---
+--stderr--
+
+### ["search", "stray", "--limit", "2"] status=0
+--stdout--
+.kogen/intents/complete/stray-rework/INTENT.md:1-1 [intent] # Rework stray paths
+.kogen/intents/complete/stray-rework/scenarios.yaml:1-3 [intent] - id: stray-file-reworked given: A fixture with a stray file. then: The guard reworks the stray file.
+... 3 more
+--stderr--
+
+### ["symbols", "Shop", "--limit", "1"] status=0
+--stdout--
+lib/shop.ex:1 defmodule Shop
+... 25 more
+--stderr--
+
+### ["refs", "Shop.Cart", "--limit", "2"] status=0
+--stdout--
+lib/shop.ex:2 alias Shop.Cart
+lib/shop.ex:10 call Shop.Cart.total/1
+... 3 more
+--stderr--
+
+### ["map", "--tokens", "64", "--focus", "lib/shop/"] status=0
+--stdout--
+lib/shop/tax.ex
+  defmodule Shop.Tax
+  def Shop.Tax.add/1
+  def Shop.Tax.rate/0
+lib/shop/cart.ex
+  defmodule Shop.Cart
+  def Shop.Cart.total/1
+  def Shop.Cart.total/2
+  def Shop.Cart.empty/0
+  def Shop.Cart.merge/2
+... 5 more files
+--stderr--
+
+### ["search"] status=2
+--stdout--
+--stderr--
+usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] | kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx map [--tokens N] [--focus PATH]... [--root DIR]
+
+### ["refs"] status=2
+--stdout--
+--stderr--
+usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] | kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx map [--tokens N] [--focus PATH]... [--root DIR]
+
+### ["map", "--focus", "nope.ex"] status=2
+--stdout--
+--stderr--
+usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] | kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx map [--tokens N] [--focus PATH]... [--root DIR]
+
+### ["mcp"] status=2
+--stdout--
+--stderr--
+usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] | kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx map [--tokens N] [--focus PATH]... [--root DIR]
+
+### ["search", "Mix", "lock"] status=0
+--stdout--
+.kogen/intents/complete/stray-rework/INTENT.md:5-5 [intent] A stray Mix lock directory stopped the Build.
+.kogen/memory/lesson/lesson-stray-rework.md:1-5 [memory] --- id: "lesson-stray-rework" kind: "lesson" claim: "stray-rework published after 2 stopped Builds: stray Mix lock directories" ---
+--stderr--
+
+### ro status=1
+""
+"kogen-ctx: cannot write index at /var/folders/8f/khnp6qk51mvgk_jkxz169nr40000gn/T/ctx-ro-2946/162c281bf17c15aa5d2e6b453a7ecb765885f1b58f9d91f8fb41cb449cf70b6a/index.sqlite: Permission denied (os error 13); set KOGEN_CTX_HOME to a writable directory\n"

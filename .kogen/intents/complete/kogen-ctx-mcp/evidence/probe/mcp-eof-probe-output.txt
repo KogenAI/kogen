@@ -1,0 +1,8 @@
+M1 ok
+M2 ok
+** (ExUnit.AssertionError) 
+
+Assertion failed, no matching message after 10000ms
+     The following variables were pinned:
+       port = #Port<0.10>
+     The process mailbox is empty.

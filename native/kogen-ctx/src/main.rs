@@ -1,6 +1,7 @@
 #![deny(warnings)]
 mod elixir;
 mod map;
+mod mcp;
 mod sha256;
 use rusqlite::{Connection, Error as SqlError, ErrorCode, OptionalExtension, params};
 use std::{
@@ -10,7 +11,7 @@ use std::{
     process::{Command, Stdio},
     time::Duration,
 };
-const USAGE: &str = "usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] | kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx map [--tokens N] [--focus PATH]... [--root DIR]";
+const USAGE: &str = "usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] | kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx map [--tokens N] [--focus PATH]... [--root DIR] | kogen-ctx mcp [--root DIR]";
 fn usage() -> i32 {
     eprintln!("{USAGE}");
     2
@@ -372,7 +373,7 @@ fn parse(a: &[String]) -> Result<(String, Vec<String>, Option<String>, i64, Vec<
     let cmd = a[0].clone();
     if !matches!(
         cmd.as_str(),
-        "index" | "search" | "symbols" | "refs" | "map"
+        "index" | "search" | "symbols" | "refs" | "map" | "mcp"
     ) {
         return Err(());
     }
@@ -403,6 +404,7 @@ fn parse(a: &[String]) -> Result<(String, Vec<String>, Option<String>, i64, Vec<
             "--limit" => {
                 if cmd == "index"
                     || cmd == "map"
+                    || cmd == "mcp"
                     || limit_seen
                     || i + 1 >= a.len()
                     || a[i + 1].is_empty()
@@ -438,7 +440,7 @@ fn parse(a: &[String]) -> Result<(String, Vec<String>, Option<String>, i64, Vec<
             }
             x if x.starts_with("--") => return Err(()),
             x => {
-                if cmd == "index" || cmd == "map" {
+                if cmd == "index" || cmd == "map" || cmd == "mcp" {
                     return Err(());
                 }
                 q.push(x.into());
@@ -464,6 +466,9 @@ fn main() {
         Ok(x) => x,
         Err(e) => std::process::exit(runtime(e)),
     };
+    if cmd == "mcp" {
+        std::process::exit(mcp::serve(&r));
+    }
     let (c, b, re, rm, n) = match refresh(&r) {
         Ok(x) => x,
         Err(e) => std::process::exit(runtime(e)),

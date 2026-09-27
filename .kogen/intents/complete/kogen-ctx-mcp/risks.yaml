@@ -1,0 +1,54 @@
+- id: builds-on-landed-slices
+  scenario_ids: [mcp-answers-protocol-requests, mcp-tools-match-the-cli]
+  description: >-
+    The server exposes `symbols`, `refs` and `map` (slice 2) over slice 1's crate and CtxFixture. Both landed on
+    develop (d9013413, 8538b6a6), and this Intent was re-preflighted against 8538b6a6. If develop's
+    `native/kogen-ctx/src/main.rs`, `test/support/ctx_fixture.ex`, `test/kogen/ctx_elixir_test.exs` or
+    `test/kogen/ctx_map_test.exs` change before admission, re-preflight again: the line citations, the usage line and
+    the E4/H4 edits depend on them.
+- id: usage-line-pinned-in-landed-tests
+  scenario_ids: [mcp-answers-protocol-requests]
+  description: >-
+    Adding `mcp` to `USAGE` changes the exact stderr that two landed tests pin: the `usage!/3` helper of
+    `test/kogen/ctx_elixir_test.exs` (E4) and `H4 bad map arguments are usage errors` in
+    `test/kogen/ctx_map_test.exs`. Both files are guarded and listed in `proof.offline`, and INTENT.md states their new
+    expectation. Leaving them unedited fails `check`; editing any other landed test is a stray path.
+- id: in-process-tool-calls
+  scenario_ids: [mcp-tools-match-the-cli]
+  description: >-
+    The landed query code in `main()` prints with `println!` and exits with `std::process::exit` (runtime errors, and
+    `map`'s unmatched `--focus`). Called in-process from the server, it would corrupt the JSON-RPC stream or kill the
+    server (T3's `map` {focus ["nope.ex"]} and its 0500 home, followed by `ping`, catch both). Re-executing the binary
+    per call avoids this with no change to the query code.
+- id: concurrent-index-writers
+  scenario_ids: [mcp-tools-match-the-cli]
+  description: >-
+    A running MCP server and CLI calls may refresh the same index at once. Writes are the landed single
+    `BEGIN IMMEDIATE` transaction with a 10-second busy timeout. A rebuild of a corrupt file by one process while
+    another holds it open is not proven here (residual, carried from kogen-ctx-tool).
+- id: interactive-stdio-hang
+  scenario_ids: [mcp-answers-protocol-requests]
+  description: >-
+    A file-fed test closes stdin, so a server that answers only at EOF passes it and hangs every real client (the
+    Candidate did this). Test M3 keeps stdin open through an Erlang Port and waits for each reply before sending the
+    next request; probe Q-2 confirmed it fails on a read-all-stdin loop while M1 and M2 pass. A Port cannot
+    half-close stdin, so M3 ends with Port.close/1; the EOF exit path is proven by the file-fed M1 and M2.
+- id: port-environment
+  scenario_ids: [mcp-answers-protocol-requests]
+  description: >-
+    `Port.open/2` with `:env` (like `System.cmd/3` with `:env`) only adds or overrides names on top of the VM's
+    environment. M3 sets PATH=/usr/bin:/bin and KOGEN_CTX_HOME explicitly, so neither leaks from the test VM. Other
+    inherited names do not affect the server.
+- id: readme-guidance-references
+  scenario_ids: [mcp-answers-protocol-requests]
+  description: >-
+    `test/kogen/readme_guidance_test.exs` fails on a backticked `lib/`, `test/`, `scripts/` or `priv/` path that does
+    not exist and on any `Module.fun/<digits>` that is not an exported `Kogen.*` function. The README's `mcp`
+    paragraph must use placeholders (`<path>`), not fixture paths or names like `Port.close/1`.
+- id: developer-cargo-in-sandbox
+  scenario_ids: [mcp-tools-match-the-cli]
+  description: >-
+    As in slices 1 and 2: `~/.cargo` is read-only inside the write boundary. Run cargo only with `--locked --offline`
+    and `--target-dir _build/cargo` from the repo root, never create `native/kogen-ctx/target/`, never export
+    CARGO_HOME before `mise exec`, and do not touch Cargo.toml or Cargo.lock (`serde_json` is already pinned and
+    compiled; D4 pins the lock's SHA-256).
