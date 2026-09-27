@@ -5,8 +5,8 @@ defmodule Kogen.Build.Tracking do
   A tracking state is deliberately process-local: it contains the exact bytes
   last written by this controller. `verify/1` compares those bytes before an
   external boundary, and `update/2` refuses to replace a record that changed
-  underneath the controller. Records are evidence only; this module never
-  reloads one as Build state.
+  underneath the controller. Records are evidence only; continuation may read
+  an earlier record after binding it to the report digest, but never rewrites it.
 
   The record lives under the control checkout's
   `.kogen/runtime/scenario-tracking/<build-id>/`, whose root the Build passes
@@ -39,10 +39,15 @@ defmodule Kogen.Build.Tracking do
   and its complete role matrix under `role_assignment`.
   """
   @spec new(map(), map(), list(), map(), Path.t()) :: {:ok, state()} | {:error, String.t()}
-  def new(intent, contract, approved_entries, route, root \\ File.cwd!())
+  def new(intent, contract, approved_entries, route, root \\ File.cwd!()),
+    do: new(intent, contract, approved_entries, route, root, nil)
 
-  def new(intent, contract, approved_entries, route, root)
-      when is_map(intent) and is_map(contract) and is_map(route) do
+  @doc "Creates a tracking record, optionally linking it to a prior report for a continuation."
+  @spec new(map(), map(), list(), map(), Path.t(), map() | nil) ::
+          {:ok, state()} | {:error, String.t()}
+  def new(intent, contract, approved_entries, route, root, continues)
+      when is_map(intent) and is_map(contract) and is_map(route) and
+             (is_nil(continues) or is_map(continues)) do
     root = Path.expand(root)
 
     with {:ok, frozen_intent} <- freeze_intent(intent),
@@ -60,7 +65,8 @@ defmodule Kogen.Build.Tracking do
              scenarios,
              risks,
              risks_supplied,
-             approved_entries
+             approved_entries,
+             continues
            ),
          {:ok, state} <- write_initial(path, record) do
       {:ok, Map.put(state, :root, root)}
@@ -70,7 +76,7 @@ defmodule Kogen.Build.Tracking do
     end
   end
 
-  def new(_intent, _contract, _approved_entries, _route, _root),
+  def new(_intent, _contract, _approved_entries, _route, _root, _continues),
     do: {:error, "scenario tracking requires intent, contract and route maps"}
 
   @doc """
@@ -328,7 +334,8 @@ defmodule Kogen.Build.Tracking do
          scenarios,
          risks,
          risks_supplied,
-         approved_entries
+         approved_entries,
+         continues
        ) do
     %{
       "schema_version" => @schema_version,
@@ -344,7 +351,13 @@ defmodule Kogen.Build.Tracking do
       "findings" => [],
       "status" => "pending"
     }
+    |> maybe_put_continues(continues)
   end
+
+  defp maybe_put_continues(record, continues) when is_map(continues),
+    do: Map.put(record, "continues", continues)
+
+  defp maybe_put_continues(record, _continues), do: record
 
   # The whole resolved route is frozen, not only its name: a later config edit
   # must not change what this record says the Build used. `route` keeps its

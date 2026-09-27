@@ -56,11 +56,13 @@ defmodule Mix.Tasks.Kogen.Candidates do
   defp report_line(record) do
     control = record["control_root"]
 
+    tracking_build_id = record["tracking_build_id"] || record["build_id"]
+
     path =
       Path.join([
         control,
         ".kogen/runtime/scenario-tracking",
-        record["build_id"],
+        tracking_build_id,
         "failure-report.json"
       ])
 

@@ -28,7 +28,8 @@ defmodule Kogen.Build.Reconcile do
          {:ok, owner} <- Jason.decode(owner_bytes),
          true <- owner["status"] == "running",
          {:ok, record_path, record_bytes, record} <- tracking_record(control, build_id) do
-      report_path = FailureReport.report_path(control, build_id)
+      tracking_build_id = owner["tracking_build_id"] || build_id
+      report_path = FailureReport.report_path(control, tracking_build_id)
 
       if File.exists?(report_path) do
         with {:ok, report} <- report_file(report_path),
@@ -74,7 +75,19 @@ defmodule Kogen.Build.Reconcile do
   end
 
   defp tracking_record(control, build_id) do
-    path = Path.join([control, @runtime, build_id, "record.json"])
+    tracking_id =
+      case File.read(Workspace.owner_path(control, build_id)) do
+        {:ok, bytes} ->
+          case Jason.decode(bytes) do
+            {:ok, %{"tracking_build_id" => id}} when is_binary(id) -> id
+            _ -> build_id
+          end
+
+        _ ->
+          build_id
+      end
+
+    path = Path.join([control, @runtime, tracking_id, "record.json"])
 
     with {:ok, bytes} <- File.read(path),
          {:ok, record} <- Jason.decode(bytes) do

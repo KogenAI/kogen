@@ -44,7 +44,8 @@ defmodule Mix.Tasks.Kogen.Build do
   repository (`mix kogen.candidates` lists kept ones). This task is the only
   place that reads the process working directory, once, to find the control
   checkout (a main worktree, never a linked one); `Kogen.Build.run/3` gets it
-  explicitly.
+  explicitly. A rerun continues the kept Candidate of the continuation set
+  when its evidence is intact, or refuses with an inspection action.
 
   SIGHUP (closing the terminal) and SIGTERM tear down every process group
   this Build recorded on its lock, release the lock and exit, through

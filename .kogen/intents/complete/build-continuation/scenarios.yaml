@@ -1,0 +1,161 @@
+# Shaped against develop 99f93f60 (failure-reports, build-breakers as b775974b, ctx-test-temp-paths and
+# build-reconcile landed). Part 4 of 4 of the split of durable-builds-and-failure-reports. Offline only (rules 49, 51).
+# Every new test is in test/kogen/build_continuation_test.exs on ScriptedBuildFixture (codex protocol, session
+# developer-session, offline_retries 4, verification_retries 2, outer_resumptions 3, default route codex) with the
+# landed :hang, :slug, add_intent!/3, records!/1, start_standin!/2 and await_hanging!/1, and this package's :route,
+# codex-alt and :new_session_on_resume. INTENT.md "Tests the Developer writes" numbers each test (1-15) with its
+# setup, command and exact expected result. New records are named by id difference (new_ids/2): records have no
+# created_at, so records!/1 sorts by build id. Every fixture Build clears KOGEN_ROLE and KOGEN_HARNESS_HOME (landed
+# run/2), the stand-in unsets both (landed start_standin!/2), and mix kogen.candidates runs in process.
+
+- id: provider-stop-continues
+  given: >-
+    (1, 2) A Build P with fail_first [1] and provider_fail developer-2 (usage limit) that stops as provider: report
+    continuable true, continues null, session developer-session, two Developer invocations. (5) A Build whose turn 1
+    leaves stray.txt, whose guard rework removes it and fails a cycle, and whose verification resume (invocation 3)
+    hits the usage limit: one guard_violations entry g1 with paths [stray.txt].
+  when: >-
+    (1) Fixture.run(dir) with a call-2 edit that copies control's build.lock into the harness home; (2)
+    Fixture.run(dir, provider_fail: [developer-3]) then Fixture.run(dir); (5) Fixture.run(dir, edits: {3: touch
+    stray.txt}).
+  then: >-
+    (1) :ok; exactly one new record C whose continues is {P, P report's record_sha256, provider} and whose first
+    attempt has number 0 and session developer-session with a new token; C's candidate block names P's worktree, branch
+    and harness home; developer-invocation-3 matches ~r/^exec resume .* developer-session -$/ and its prompt has the
+    "Continuing Build <P> after it stopped (category: provider; record: <abs path>)." line, the receipts-discarded
+    sentence and FailureHandoff.first_failure_block of P's signature; the lock read during the turn names P; C's
+    context has offline_retries 3 and verification_retries 2; every receipt under C's attempt directory carries C's
+    token; Review ran; main holds the Complete package and no owner record is left; P's record and report bytes are
+    unchanged. (2) The one owner record (P's file) keeps its worktree, branch, harness home, admitted commit, bindings
+    and started_at, and names tracking_build_id C1 with status stopped: provider; C1's report has build_id C1,
+    candidate_build_id P, continues {P…}, continuable true, a stop signature and budget_state offline_retries 3,
+    offline_failures 0, pending; mix kogen.candidates prints C1's report path; the next rerun continues C1 (continues
+    {C1…}; invocation 4 resumes developer-session; no First failure block) and publishes. (5) The continuation stops as
+    guard-violation after five Developer invocations in all, with three guard_violations, the first equal to g1.
+  wrong_result: >-
+    A fresh Candidate, branch, harness home or session; a second owner record; a reused receipt or token; budgets reset
+    to 4/2 or read from settlement, verification_state or the config; guard reworks reset; the earlier record or report
+    rewritten; the report of a continuation read from, or written to, the old tracking directory; the lock claimed with
+    the new record's id; a test that picks C as List.last(records!) (the order is by build id); a prompt assertion
+    satisfied by a substring every rework prompt has; a smoke test that only checks :ok.
+  verified_by: [check]
+  evidence: Fake-state invocation argv and prompts, lock-seen.json, records, reports, receipts and the owner record.
+  proof:
+    offline: [test/kogen/build_continuation_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: continuation uses the existing session-resume path, recorded by the fake harness (rule 49)"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/continuation.ex, lib/kogen/build/failure_report.ex, lib/kogen/build/workspace.ex, lib/kogen/build/tracking.ex, lib/mix/tasks/kogen.build.ex, lib/mix/tasks/kogen.candidates.ex, README.md, test/kogen/build_continuation_test.exs, test/support/scripted_build_fixture.ex]
+    base: fail
+
+- id: controller-killed-continues
+  given: >-
+    (3) A stand-in (the landed start_standin!/2: elixir -pa with the test VM's code paths, KOGEN_ROLE and
+    KOGEN_HARNESS_HOME unset) runs the fixture with fail_first [1] and hang developer-2 and is killed with kill -9 once
+    await_hanging!/1 returns the fake's pid; the test waits (bounded) until both are gone. (4) A provider-stopped P,
+    then a stand-in that continues it with hang developer-3, killed the same way: P's owner is running with
+    tracking_build_id C1 and C1 has no report.
+  when: "(3) `Fixture.run(dir)` in the test process under capture_io; (4) `Fixture.run(dir)`."
+  then: >-
+    (3) It prints "Reclaimed a stale build lock"; reconcile writes P's report with continuable true and next_action
+    continue; the Build continues P's Candidate (continues {P, sha256 of the unchanged dead record, interrupted};
+    developer-invocation-3 resumes developer-session; offline_retries 3) and publishes. (4) Reconcile writes C1's
+    report in C1's tracking directory (interrupted, build_id C1, candidate_build_id P, continues {P, r1 sha, provider},
+    session developer-session, continuable true, next_action continue), P's report stays byte-identical, and the Build
+    continues from C1 (continues {C1, sha256 of C1's record, interrupted}; invocation 4 resumes) and publishes.
+  wrong_result: >-
+    The stale lock blocks; the dead Build is continued without a report or its report is rewritten; reconcile reads or
+    writes the owner's first tracking directory for a killed continuation; a new Candidate or session; the offline
+    budget reset to 4; the test synchronises on stand-in output, runs the stand-in with mix run inside the isolated
+    child, or inherits KOGEN_ROLE/KOGEN_HARNESS_HOME.
+  verified_by: [check]
+  evidence: Two OS processes; lock, owner, record and report files.
+  proof:
+    offline: [test/kogen/build_continuation_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: process kill, ProcessCustody reclaim and fake harness"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/continuation.ex, lib/kogen/build/reconcile.ex, lib/kogen/build/failure_report.ex, lib/kogen/build/workspace.ex, test/kogen/build_continuation_test.exs, test/support/scripted_controller_standin.exs, test/support/scripted_build_fixture.ex]
+    base: fail
+
+- id: continuation-refusals
+  given: >-
+    One fixture per refusal, each making one change so that check is the first to fail (each probed at 99f93f60 with
+    the nine checks instrumented at the decision point): (6) ambiguous: P's owner record and tracking directory copied
+    under build id copy0000000000000000000A; (7) record-changed: a space appended to P's record.json; (8)
+    publication-started: P's report removed, its record status accepted, its owner running; (9) no-session: a stand-in
+    killed while hanging on developer-1; (10) package-changed: "# edited\n" appended to the Approved intent.yaml; (11)
+    control-moved: a new commit on main; (12) route-changed: route codex-alt; (13) candidate-missing: P's worktree
+    directory removed; (14) budgets-exhausted: a stand-in killed while hanging on developer-2, its state.json then
+    replaced (temp file and rename) with offline_failures 5 and terminal_state offline_exhausted.
+  when: "`Fixture.run/2` runs for each, then once more."
+  then: >-
+    Each returns {:error, message} starting "Continuation refused (<name>): ", containing "Candidate kept: slug
+    scripted-build, build id <P>" (6: P or the copy, and both ids in the detail) and ending "; next action: remove the
+    Candidate, then rebuild", except (12) "…rerun with `--route codex`" and (8) "…inspect: fast-forward main to the
+    Candidate commit yourself, or `mix kogen.candidates.remove <P> --discard-accepted`". No record, tracking directory,
+    owner record, worktree or Developer invocation is added, the kept worktree's file hashes are unchanged, no lock is
+    left, and the second run refuses with the same name. Before refusing, reconcile wrote (8) publication-interrupted,
+    published false, inspect, continuable false; (9) interrupted, no session, continuable false, rebuild; (14)
+    interrupted, terminal_state offline_exhausted, continuable false, rebuild.
+  wrong_result: >-
+    A stale, ambiguous, edited, sessionless, exhausted, drifted or half-published Candidate is continued; a refusal is
+    silent, unreachable (an earlier check fires first), starts a fresh Build or alters the kept Candidate; only
+    continuable reports are considered, so publication-started, no-session and budgets-exhausted never fire; the
+    fixture edits the config (the clean-worktree check fires instead) or edits the state file without reconcile
+    re-reading it; an assertion only on the "Continuation refused" prefix.
+  verified_by: [check]
+  evidence: One test per refusal.
+  proof:
+    offline: [test/kogen/build_continuation_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fixtures, killed stand-ins and fabricated records"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/continuation.ex, lib/kogen/build/failure_report.ex, lib/kogen/build/workspace.ex, test/kogen/build_continuation_test.exs, test/support/scripted_controller_standin.exs, test/support/scripted_build_fixture.ex]
+    base: fail
+
+- id: session-lost-rebuilds
+  given: >-
+    (15) A provider-stopped Build P; separately a fresh fixture with fail_first [1].
+  when: >-
+    Fixture.run(dir, new_session_on_resume: true), then Fixture.run(dir); and the fresh fixture run with
+    new_session_on_resume true.
+  then: >-
+    The continuation stops with category session-lost: its report is class interrupted, next_action rebuild,
+    counts_toward null, continuable false, continues {P…}; P's owner says stopped: session-lost with
+    tracking_build_id C. The next run returns :ok with a new record (continues null) on a new worktree, P's Candidate
+    kept. The fresh Build's verification resume that answers developer-session-2 still stops as provider-failure with
+    "resume created a new session (expected developer-session, got developer-session-2)" (probed at 99f93f60 with
+    the option added to a copy of the fixture).
+  wrong_result: >-
+    The lost session stops as provider-failure or is continued again; every "resume created a new session" becomes
+    session-lost; the next rerun is refused instead of starting fresh.
+  verified_by: [check]
+  evidence: Reports, owner record and records of both runs.
+  proof:
+    offline: [test/kogen/build_continuation_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the fake harness answers a resume with another thread id"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/failure_report.ex, test/kogen/build_continuation_test.exs, test/support/scripted_build_fixture.ex]
+    base: fail
+
+- id: existing-expectations-kept
+  given: >-
+    The existing tests INTENT.md lists, the helper edit in failure_report_test.exs (assert_report!/4's continues and
+    continuable refutations become assertions) and the one expectation in build_reconcile_test.exs "a killed stand-in
+    is reconciled by the next fixture Build" (next_action continue, and continuable true added).
+  when: "`make check` runs on the Candidate."
+  then: >-
+    Every listed test passes under its unchanged name; the only edited existing lines are those stated.
+    build_breakers_test.exs "10. provider reports are skipped while the environment run continues" passes unedited
+    with its Build 4 continuing Build 3's Candidate and stopping at readiness as environment in its own tracking
+    directory; build_workspace_test.exs's seven failure-retention stops still get a fresh Candidate. No test is renamed
+    or removed; priv/kogen/test-reliability.yaml and test-reliability-remediation.yaml are unedited.
+  wrong_result: >-
+    An existing assertion is edited, loosened, skipped or deleted beyond the stated lines; a test is renamed, so the
+    ledger loses its row; the decision moves before the environment breaker and build_breakers test 10's Build 5 is no
+    longer refused.
+  verified_by: [check]
+  evidence: "`git diff` of test/ touches only the stated lines besides added tests and fixtures."
+  proof:
+    offline: [test/kogen/failure_report_test.exs, test/kogen/build_reconcile_test.exs, test/kogen/build_breakers_test.exs, test/kogen/build_workspace_test.exs, test/kogen/candidates_command_test.exs, test/kogen/controller_verification_test.exs, test/kogen/process_custody_test.exs, test/kogen/build_preconditions_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: existing offline tests"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/reconcile.ex, lib/kogen/build/workspace.ex, lib/kogen/build/failure_report.ex, lib/mix/tasks/kogen.candidates.ex, test/support/scripted_build_fixture.ex, test/kogen/failure_report_test.exs, test/kogen/build_reconcile_test.exs]

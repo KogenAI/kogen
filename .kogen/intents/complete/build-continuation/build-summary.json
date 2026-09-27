@@ -1,0 +1,391 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "C7i05YWYFjJgBAJ5532xppq6XvNbBeW-",
+      "candidate_id": "9719daaa578953f42747cf17318adb2123f5a7db",
+      "developer_session_id": "01a0e47f-1372-7b60-81d4-c30c9b440c1c",
+      "failure_kind": "review_rework",
+      "number": 0,
+      "reviewer_session_id": "01a0e4ae-7fbc-71e3-941f-9bb31cdd3ba4",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "C7i05YWYFjJgBAJ5532xppq6XvNbBeW-",
+          "candidate_id": "9719daaa578953f42747cf17318adb2123f5a7db",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T21:03:53.389Z",
+          "session_id": "01a0e47f-1372-7b60-81d4-c30c9b440c1c",
+          "started_at": "2026-09-27T20:55:29.911Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "18v_RBiq_WNRHTEyI8WLr8AdkPBy98_Q",
+      "candidate_id": "85629ef63c2976818db4900e78023baa4c46ad73",
+      "developer_session_id": "01a0e47f-1372-7b60-81d4-c30c9b440c1c",
+      "failure_kind": "review_rework",
+      "number": 1,
+      "reviewer_session_id": "01a0e4f5-260b-7462-af3a-725302febad4",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "18v_RBiq_WNRHTEyI8WLr8AdkPBy98_Q",
+          "candidate_id": "85629ef63c2976818db4900e78023baa4c46ad73",
+          "cycle_sequence": 2,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T22:21:03.740Z",
+          "session_id": "01a0e47f-1372-7b60-81d4-c30c9b440c1c",
+          "started_at": "2026-09-27T22:12:30.740Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "3gAUQPdBTZc1R7iVdNqT6_my9YciWO8N",
+      "candidate_id": "7df1d5c1601d07e670496ea232eccac466de4aa4",
+      "developer_session_id": "01a0e47f-1372-7b60-81d4-c30c9b440c1c",
+      "failure_kind": null,
+      "number": 2,
+      "reviewer_session_id": "01a0e515-9cfe-7920-9595-f6002631b844",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "3gAUQPdBTZc1R7iVdNqT6_my9YciWO8N",
+          "candidate_id": "7df1d5c1601d07e670496ea232eccac466de4aa4",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T22:56:31.249Z",
+          "session_id": "01a0e47f-1372-7b60-81d4-c30c9b440c1c",
+          "started_at": "2026-09-27T22:48:12.962Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "Xo4Psph9TZWhf1JvX15Jh2cF",
+  "candidate_id": "7df1d5c1601d07e670496ea232eccac466de4aa4",
+  "developer_session_id": "01a0e47f-1372-7b60-81d4-c30c9b440c1c",
+  "findings": [
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Continuation test suite now includes provider continuation, repeated continuation, controller recovery, guard allowance, and independent refusal coverage.",
+            "path": "test/kogen/build_continuation_test.exs",
+            "receipt": null
+          },
+          {
+            "locator": "Approved matrix requiring the numbered continuation and refusal protections.",
+            "path": ".kogen/intents/approved/build-continuation/INTENT.md",
+            "receipt": null
+          }
+        ],
+        "reason": "Closed: the Candidate adds the missing continuation matrix and independent refusal assertions, including no-side-effect checks.",
+        "reviewer_session": "01a0e515-9cfe-7920-9595-f6002631b844",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F1",
+      "origin": {
+        "attempt_token": "C7i05YWYFjJgBAJ5532xppq6XvNbBeW-",
+        "candidate_id": "9719daaa578953f42747cf17318adb2123f5a7db",
+        "evidence": [
+          {
+            "locator": "Approved test matrix requires tests 1-15, including detailed continuation, controller-kill, refusal, and session-lost assertions (INTENT.md lines 183-351).",
+            "path": ".kogen/intents/approved/build-continuation/INTENT.md",
+            "receipt": null
+          },
+          {
+            "locator": "The new test file contains only six tests and omits the required refusal fixtures and most state, lock, budget, receipt, rebuild, and session assertions (lines 9-129).",
+            "path": "test/kogen/build_continuation_test.exs",
+            "receipt": null
+          },
+          {
+            "locator": "The scenarios contract explicitly requires refusal tests 6-14 and detailed tests 1-5 and 15.",
+            "path": ".kogen/intents/approved/build-continuation/scenarios.yaml",
+            "receipt": null
+          }
+        ],
+        "reason": "The Candidate's continuation test suite is substantially incomplete against the approved contract. Add the missing numbered cases and assertions so the required behaviors and wrong-result protections are independently verified.",
+        "reviewer_session": "01a0e4ae-7fbc-71e3-941f-9bb31cdd3ba4",
+        "scenario_ids": [
+          "provider-stop-continues",
+          "controller-killed-continues",
+          "continuation-refusals",
+          "session-lost-rebuilds"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "route_check/2 compares the selected route name and resolved binding records against the owner credential_bindings.",
+            "path": "lib/kogen/build/continuation.ex",
+            "receipt": null
+          },
+          {
+            "locator": "The Candidate adds a test for changed resolved credential bindings refusing continuation.",
+            "path": "test/kogen/build_continuation_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "Closed: continuation now compares resolved credential bindings in addition to the route name, and the focused test suite covers a binding mismatch refusal.",
+        "reviewer_session": "01a0e4f5-260b-7462-af3a-725302febad4",
+        "status": "closed",
+        "verdict": "rework"
+      },
+      "id": "F2",
+      "origin": {
+        "attempt_token": "C7i05YWYFjJgBAJ5532xppq6XvNbBeW-",
+        "candidate_id": "9719daaa578953f42747cf17318adb2123f5a7db",
+        "evidence": [
+          {
+            "locator": "The approved route-changed check requires comparing both route name and resolved credential bindings (INTENT.md lines 96-97).",
+            "path": ".kogen/intents/approved/build-continuation/INTENT.md",
+            "receipt": null
+          },
+          {
+            "locator": "route_check/2 compares only record route.name with the requested route name and never compares resolved credential bindings (lines 117-126).",
+            "path": "lib/kogen/build/continuation.ex",
+            "receipt": null
+          }
+        ],
+        "reason": "Continuation can proceed when the route name is unchanged but its resolved credential bindings differ, violating the required route-changed refusal. Resolve and compare bindings in the continuation decision.",
+        "reviewer_session": "01a0e4ae-7fbc-71e3-941f-9bb31cdd3ba4",
+        "scenario_ids": [
+          "continuation-refusals"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Continuation resume state is explicitly tracked and cleared after the first matching resume; later mismatches use provider-failure.",
+            "path": "lib/kogen/build.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Regression test covers a later continuation resume creating a new session and requiring provider-failure.",
+            "path": "test/kogen/build_continuation_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "Closed: first-resume tracking now distinguishes session-lost from later provider-failure resumes.",
+        "reviewer_session": "01a0e515-9cfe-7920-9595-f6002631b844",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F3",
+      "origin": {
+        "attempt_token": "18v_RBiq_WNRHTEyI8WLr8AdkPBy98_Q",
+        "candidate_id": "85629ef63c2976818db4900e78023baa4c46ad73",
+        "evidence": [
+          {
+            "locator": "The contract requires session-lost only for the first continuation resume; later new-session resume failures remain provider-failure.",
+            "path": ".kogen/intents/approved/build-continuation/INTENT.md",
+            "receipt": null
+          },
+          {
+            "locator": "Both new-session branches classify as session-lost solely when the current attempt number is zero, rather than tracking whether this is the first continuation resume.",
+            "path": "lib/kogen/build.ex",
+            "receipt": null
+          }
+        ],
+        "reason": "A continuation resumed from an earlier outer attempt number is incorrectly classified as provider-failure, while a later provider retry or guard-rework resume in attempt 0 can be incorrectly classified as session-lost. Track the first continuation resume explicitly in both receive_developer branches.",
+        "reviewer_session": "01a0e4f5-260b-7462-af3a-725302febad4",
+        "scenario_ids": [
+          "session-lost-rebuilds"
+        ]
+      },
+      "status": "closed"
+    }
+  ],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 7621805,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/Xo4Psph9TZWhf1JvX15Jh2cF/record.json",
+    "schema_version": 2,
+    "sha256": "e9cd26b84a31efbf050d71a27881de621d6cb1a3845d212aac72acc79232bd41"
+  },
+  "intent": {
+    "id": "431aaa86-4aa2-463c-8b53-f6108e1e4fcc",
+    "slug": "build-continuation",
+    "title": "Continue interrupted Builds with the same command"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0e515-9cfe-7920-9595-f6002631b844"
+  },
+  "risks": [
+    {
+      "id": "reconcile-current-directory"
+    },
+    {
+      "id": "continuation-state"
+    },
+    {
+      "id": "owner-record-rewrites"
+    },
+    {
+      "id": "guard-baseline-on-adopt"
+    },
+    {
+      "id": "lock-names-candidate"
+    },
+    {
+      "id": "records-order"
+    },
+    {
+      "id": "breakers-provider-rerun"
+    },
+    {
+      "id": "self-hosting"
+    },
+    {
+      "id": "standin-build-path"
+    },
+    {
+      "id": "overlapping-drafts"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    }
+  },
+  "route": {
+    "harness": "codex",
+    "name": "codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "Continuation admission adopts the existing owner, claims the owner build id, preserves the session and attempt number, carries budgets and guard violations, and creates a linked tracking record.",
+          "path": "lib/kogen/build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Provider-stop tests verify same Candidate/session, owner lock id, carried budgets, fresh receipts, prompt contents, immutable prior record/report, and publication.",
+          "path": "test/kogen/build_continuation_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "provider-stop-continues",
+      "reason": "Inspected the continuation implementation and provider-stop tests; the kept Candidate and Developer session continue with carried state and fresh verification before publication.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Reconcile follows tracking_build_id and writes interrupted reports in the current tracking directory.",
+          "path": "lib/kogen/build/reconcile.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Killed-controller and killed-continuation tests verify stale-lock reclaim, current-directory reports, preserved prior bytes, resumed session, and carried budgets.",
+          "path": "test/kogen/build_continuation_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "controller-killed-continues",
+      "reason": "Inspected reconcile path handling and both process-kill scenarios; dead controllers are reconciled and reruns continue the existing Candidate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Continuation checks implement ambiguity, record/state digest, publication, session, package, control, route, Candidate, and budget refusals in the approved order.",
+          "path": "lib/kogen/build/continuation.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Refusal tests independently verify reachability, exact refusal categories/actions, no new records or invocations, and unchanged kept state.",
+          "path": "test/kogen/build_continuation_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "continuation-refusals",
+      "reason": "Inspected all nine refusal checks and their independent fixtures; each refusal is reachable and side-effect free for the kept Candidate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "receive_developer uses continuation_resume_pending to classify only the first mismatched continuation resume as session-lost and clears the flag after a matching resume.",
+          "path": "lib/kogen/build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Session-lost tests verify report fields, owner status, retained Candidate, fresh next Build, and provider-failure for a non-continuation resume mismatch.",
+          "path": "test/kogen/build_continuation_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "session-lost-rebuilds",
+      "reason": "Inspected session classification and rerun tests; first continuation session loss stops and rebuilds, while later or ordinary resume mismatches remain provider-failure.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Existing failure-report assertions were changed only to require the new always-present continuation fields.",
+          "path": "test/kogen/failure_report_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "Existing reconcile expectation was updated only for continuable interrupted reports; the controller verification receipt passed.",
+          "path": "test/kogen/build_reconcile_test.exs",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "existing-expectations-kept",
+      "reason": "Inspected the existing-test diff and the settled verification receipt; no existing test was renamed or removed, and the stated expectation updates match the contract.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

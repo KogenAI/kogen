@@ -1,0 +1,45 @@
+id: 431aaa86-4aa2-463c-8b53-f6108e1e4fcc
+slug: build-continuation
+title: Continue interrupted Builds with the same command
+commit_subject: Continue interrupted Builds on rerun
+status: approved
+shaped_against:
+  branch: develop
+  head: 99f93f6026a75700d374489821f7c3c61096df59
+  note: >-
+    Split 2026-09-27 from the approved durable-builds-and-failure-reports (shaped at f1d176b0); first shaped at
+    fa48e817, re-preflighted at e5988718 (where build-reconcile, part 3, was split off), and re-preflighted again at
+    99f93f60 after build-breakers (rebased, landed as b775974b), ctx-test-temp-paths (158a57bf) and build-reconcile
+    (99f93f60) landed. Part 4 of 4: provider-down and killed-controller continuation (EXE-04, DIRECTION rule 49), its
+    nine refusals and session-lost, extending the landed order reconcile, environment breaker, item breaker with the
+    continuation decision before the item breaker.
+shaping:
+  route: split-from-approved
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-27T07:39:22Z"
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_at: "2026-09-27T20:12:01Z"
+  approved_against_head: 99f93f6026a75700d374489821f7c3c61096df59
+  route: codex
+  source: approval.md
+  quotes:
+    - "you gotta handle EVERYTHING"
+  covers: Last part of the durable-builds split (continuation + refusals); Opus blockers fixed; codex, Developer high.
+may_change_guarded_paths:
+  - README.md
+  - lib/kogen/build.ex
+  - lib/kogen/build/tracking.ex
+  - lib/kogen/build/workspace.ex
+  - lib/kogen/build/failure_report.ex
+  - lib/kogen/build/reconcile.ex
+  - lib/kogen/build/continuation.ex
+  - lib/mix/tasks/kogen.build.ex
+  - lib/mix/tasks/kogen.candidates.ex
+  - test/support/scripted_build_fixture.ex
+  - test/support/scripted_controller_standin.exs
+  - test/kogen/build_continuation_test.exs
+  - test/kogen/build_reconcile_test.exs
+  - test/kogen/failure_report_test.exs

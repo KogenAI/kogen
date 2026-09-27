@@ -390,10 +390,10 @@ defmodule Kogen.FailureReportTest do
     assert Map.has_key?(report, "same_signature_count")
     assert Map.has_key?(report, "developer_session_id")
     assert Map.has_key?(report, "reason")
-    refute Map.has_key?(report, "continues")
+    assert Map.has_key?(report, "continues")
     assert Map.has_key?(report, "budget_state")
     assert Map.has_key?(report, "published")
-    refute Map.has_key?(report, "continuable")
+    assert Map.has_key?(report, "continuable")
 
     assert [_, reported_path] =
              Regex.run(~r/category: #{category}; failure report: (.+?); next action:/, message)

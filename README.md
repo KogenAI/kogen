@@ -134,7 +134,8 @@ The category table is the single classification contract:
 | `environment`, `provider-failure`, `write-boundary`, `admission`, `publication-failed` | `environment` | `environment` | `environment` |
 | `accepted-unpublished` | `environment` | `inspect` | `environment` |
 | `provider` | `provider` | `provider_wait` | null |
-| `interrupted` | `interrupted` | `rebuild` | null |
+| `interrupted` | `interrupted` | `rebuild` (or `continue` when continuable) | null |
+| `session-lost` | `interrupted` | `rebuild` | null |
 | `publication-interrupted` | `interrupted` | `inspect` (or `remove` when published) | null |
 
 Pre-admission refusals have no tracking record and therefore no report.
@@ -144,8 +145,14 @@ records left `running` by a dead controller, using the tracking record's
 status to distinguish an ordinary interruption from one during publication.
 `mix kogen.candidates` remains read-only; for an interrupted Candidate whose
 tip is on its admitted branch it prints `published: <tip> is on <branch>; remove
-it with mix kogen.candidates.remove <build-id>`. Continuation fields are added
-by the build-continuation feature.
+it with mix kogen.candidates.remove <build-id>`. Provider and eligible
+interrupted reports are continuable: a rerun continues the kept Candidate and
+Developer session in a new tracking directory, carrying remaining retry
+budgets and preserving the owner's `tracking_build_id`. Continuation reports
+include `continues` and `continuable`; `mix kogen.candidates` reads the current
+report named by `tracking_build_id`. Reports are refused when their evidence,
+package, control, route, Candidate, session or budgets drift. A resume that
+creates a new Developer session is `session-lost` and requires a rebuild.
 
 #### Breakers
 

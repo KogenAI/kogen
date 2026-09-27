@@ -58,6 +58,7 @@ defmodule Kogen.Build do
   alias Kogen.Build.{
     BaseWorkspace,
     Breakers,
+    Continuation,
     Contract,
     FailureHandoff,
     FailureReport,
@@ -129,9 +130,28 @@ defmodule Kogen.Build do
         :ok ->
           try do
             with :ok <- Reconcile.run(control),
-                 {:ok, breaker_state} <-
-                   admission_breakers(control, slug, intent, config, approved_entries) do
-              do_build(admission, slug, intent, config, approved_entries, breaker_state)
+                 {:ok, breaker_state} <- environment_breaker(control, config) do
+              case Continuation.decide(control, slug, intent, config, approved_entries) do
+                :none ->
+                  with {:ok, state} <-
+                         item_breaker(control, slug, intent, approved_entries, breaker_state) do
+                    do_build(admission, slug, intent, config, approved_entries, state, nil)
+                  end
+
+                {:ok, continuation} ->
+                  do_build(
+                    admission,
+                    slug,
+                    intent,
+                    config,
+                    approved_entries,
+                    breaker_state,
+                    continuation
+                  )
+
+                {:error, _reason} = error ->
+                  error
+              end
             else
               {:error, _reason} = error -> error
             end
@@ -307,14 +327,16 @@ defmodule Kogen.Build do
 
   defp release_lock(control), do: Kogen.ProcessCustody.release(control)
 
-  defp admission_breakers(control, slug, intent, config, approved_entries) do
+  defp environment_breaker(control, config) do
+    state = Breakers.environment_state(control)
+    maybe_probe_environment(state, config, control)
+  end
+
+  defp item_breaker(control, slug, intent, approved_entries, state) do
     digest = Tracking.approved_digest(approved_entries)
 
-    with state <- Breakers.environment_state(control),
-         {:ok, state} <- maybe_probe_environment(state, config, control) do
-      with :ok <- Breakers.item_refusal(control, intent.id, digest, slug) do
-        {:ok, Map.merge(state, %{intent_id: intent.id, package_digest: digest})}
-      end
+    with :ok <- Breakers.item_refusal(control, intent.id, digest, slug) do
+      {:ok, Map.merge(state, %{intent_id: intent.id, package_digest: digest})}
     end
   end
 
@@ -346,7 +368,7 @@ defmodule Kogen.Build do
   # settle/review/rework chain below stays under a sane arity as it
   # threads per-attempt state (candidate id, session id, resumption count,
   # Check record, target results) through the loop.
-  defp do_build(admission, slug, intent, config, approved_entries, breaker_state) do
+  defp do_build(admission, slug, intent, config, approved_entries, breaker_state, continuation) do
     control = admission.control
     added = added_targets(intent)
     guard_targets = catalog_guard_targets(added)
@@ -362,7 +384,15 @@ defmodule Kogen.Build do
              added: added
            ),
          {:ok, bindings} <- Kogen.Harness.bindings(config, @build_roles, control),
-         {:ok, tracking} <- Tracking.new(intent, contract, approved_entries, config, control) do
+         {:ok, tracking} <-
+           Tracking.new(
+             intent,
+             contract,
+             approved_entries,
+             config,
+             control,
+             continuation_link(continuation)
+           ) do
       _ = maybe_write_readiness_clear(tracking, breaker_state)
 
       ctx = %{
@@ -389,7 +419,9 @@ defmodule Kogen.Build do
         candidate: nil,
         boundary: nil,
         bindings: bindings,
-        guard_targets: guard_targets.(catalog)
+        guard_targets: guard_targets.(catalog),
+        continuation: continuation,
+        continuation_resume_pending: not is_nil(continuation)
       }
 
       admit_candidate(ctx, admission)
@@ -398,26 +430,46 @@ defmodule Kogen.Build do
     end
   end
 
+  defp continuation_link(nil), do: nil
+
+  defp continuation_link(%{id: id, report: report}),
+    do: %{
+      "build_id" => id,
+      "record_sha256" => report["record_sha256"],
+      "category" => report["category"]
+    }
+
   # One Candidate and one harness home per Build, created before any launch.
   # The build id is the tracking record id.
   defp admit_candidate(ctx, admission) do
     build_id = ctx.tracking.path |> Path.dirname() |> Path.basename()
-    claim_lock(ctx.control, build_id)
+    owner_id = if ctx.continuation, do: ctx.continuation.owner["build_id"], else: build_id
+    claim_lock(ctx.control, owner_id)
 
     workspace =
-      Workspace.create(
-        %{
-          control: ctx.control,
-          slug: ctx.slug,
-          build_id: build_id,
-          intent_id: ctx.intent.id,
-          title: ctx.intent.title,
-          branch: admission.branch,
-          commit: admission.commit,
-          bindings: binding_records(ctx.bindings)
-        },
-        ctx.approved_entries
-      )
+      case ctx.continuation do
+        nil ->
+          Workspace.create(
+            %{
+              control: ctx.control,
+              slug: ctx.slug,
+              build_id: build_id,
+              intent_id: ctx.intent.id,
+              title: ctx.intent.title,
+              branch: admission.branch,
+              commit: admission.commit,
+              bindings: binding_records(ctx.bindings)
+            },
+            ctx.approved_entries
+          )
+
+        continuation ->
+          with {:ok, candidate} <- Workspace.adopt(continuation.owner, ctx.approved_entries),
+               candidate = %{candidate | tracking_build_id: build_id},
+               :ok <- Workspace.update_status(candidate, "running") do
+            {:ok, candidate}
+          end
+      end
 
     case workspace do
       {:ok, candidate} ->
@@ -480,7 +532,8 @@ defmodule Kogen.Build do
         }
 
         try do
-          begin_attempt(ctx, nil, 0, nil)
+          {session_id, number, reason} = continuation_attempt(ctx)
+          begin_attempt(ctx, session_id, number, reason)
         after
           Kogen.Harness.close(runtime)
           BaseWorkspace.remove(Process.delete(:kogen_base_workspace) || ctx.workspace)
@@ -498,6 +551,15 @@ defmodule Kogen.Build do
 
         stop(ctx, reason, details)
     end
+  end
+
+  defp continuation_attempt(%{continuation: nil}), do: {nil, 0, nil}
+
+  defp continuation_attempt(%{continuation: %{record: record, report: report}}) do
+    attempt = List.last(record["attempts"] || []) || %{}
+
+    {report["developer_session_id"] || attempt["developer_session_id"], attempt["number"] || 0,
+     :continuation}
   end
 
   defp admission_step(step, {:ok, ctx}) do
@@ -646,6 +708,16 @@ defmodule Kogen.Build do
       "developer_session_id" => session_id
     }
 
+    attempt =
+      case ctx.continuation do
+        %{record: record} ->
+          previous = List.last(record["attempts"] || []) || %{}
+          Map.put(attempt, "guard_violations", List.wrap(previous["guard_violations"]))
+
+        _ ->
+          attempt
+      end
+
     record = ctx.tracking.record
 
     record =
@@ -663,7 +735,7 @@ defmodule Kogen.Build do
                  token,
                  number,
                  ctx.targets,
-                 retry_budgets(ctx.config),
+                 retry_budgets(ctx.config, ctx.continuation),
                  ctx.plan,
                  %{control_root: ctx.control, candidate_root: ctx.root}
                ) do
@@ -804,12 +876,19 @@ defmodule Kogen.Build do
         ctx,
         "resume created a new session (expected #{expected}, got #{turn.session_id})",
         %{
+          "stop_category" =>
+            if(continuation_resume_pending?(ctx),
+              do: "session-lost",
+              else: "provider-failure"
+            ),
           "developer_session_id" => turn.session_id,
           "developer_notes" => notes_record(turn.message),
           "developer_invocation" => invocation_evidence(turn.invocation_evidence)
         }
       )
     else
+      ctx = mark_continuation_resumed(ctx)
+
       verify_turn(
         ctx,
         turn.session_id,
@@ -830,11 +909,16 @@ defmodule Kogen.Build do
 
     if expected && session_id != expected do
       stop(ctx, "resume created a new session (expected #{expected}, got #{session_id})", %{
+        "stop_category" =>
+          if(continuation_resume_pending?(ctx),
+            do: "session-lost",
+            else: "provider-failure"
+          ),
         "developer_session_id" => session_id,
         "developer_invocation" => invocation_evidence(evidence)
       })
     else
-      settle_transport_failure(ctx, number, reason, evidence)
+      settle_transport_failure(mark_continuation_resumed(ctx), number, reason, evidence)
     end
   end
 
@@ -850,6 +934,17 @@ defmodule Kogen.Build do
         stop(ctx, failed_turn_violation(violation), %{"stop_category" => "integrity"})
     end
   end
+
+  defp continuation_resume_pending?(%{continuation: continuation} = ctx)
+       when is_map(continuation),
+       do: Map.get(ctx, :continuation_resume_pending, false)
+
+  defp continuation_resume_pending?(_ctx), do: false
+
+  defp mark_continuation_resumed(%{continuation: continuation} = ctx) when is_map(continuation),
+    do: Map.put(ctx, :continuation_resume_pending, false)
+
+  defp mark_continuation_resumed(ctx), do: ctx
 
   # After every Developer turn this controller settles what needs no
   # verification first: Jev reads the turn's notes once, a confident
@@ -1070,10 +1165,28 @@ defmodule Kogen.Build do
     }
   end
 
-  defp retry_budgets(%{offline_retries: offline} = config) when is_integer(offline),
-    do: %{verification: config.verification_retries, offline: offline}
+  defp retry_budgets(config, %{report: %{"budget_state" => budget}}) when is_map(budget) do
+    %{
+      verification:
+        max(
+          (budget["verification_retries"] || config.verification_retries) -
+            (budget["failures_since_pass"] || 0),
+          0
+        ),
+      offline:
+        max(
+          (budget["offline_retries"] || config.offline_retries || 0) -
+            (budget["offline_failures"] || 0),
+          0
+        )
+    }
+  end
 
-  defp retry_budgets(config), do: config.verification_retries
+  defp retry_budgets(%{offline_retries: offline} = config, _continuation)
+       when is_integer(offline),
+       do: %{verification: config.verification_retries, offline: offline}
+
+  defp retry_budgets(config, _continuation), do: config.verification_retries
 
   defp resume_after_failed_cycle(ctx, session_id, number, state, notes, invocation) do
     cycle = List.last(state["cycles"]) || %{}
@@ -2519,8 +2632,34 @@ defmodule Kogen.Build do
   end
 
   defp developer_prompt(ctx, reason) do
-    render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config, roots(ctx)) <>
-      "\n\n" <> resume_feedback(ctx, reason) <> task_context(ctx, nil, "developer")
+    base =
+      render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config, roots(ctx))
+
+    if ctx.continuation do
+      base <> continuation_prompt_block(ctx) <> task_context(ctx, nil, "developer")
+    else
+      base <> "\n\n" <> resume_feedback(ctx, reason) <> task_context(ctx, nil, "developer")
+    end
+  end
+
+  defp continuation_prompt_block(ctx) do
+    old = ctx.continuation
+    report = old.report
+    record = Path.expand(old.record_path)
+
+    first =
+      case report["signature"] do
+        %{"source" => source, "target" => target} = signature
+        when source != "stop" and is_binary(target) ->
+          FailureHandoff.first_failure_block(signature)
+
+        _ ->
+          ""
+      end
+
+    "\n\nContinuing Build #{old.id} after it stopped (category: #{report["category"]}; record: #{record}).\n" <>
+      "Receipts from before this continuation are discarded: the controller verifies the Candidate again after your turn, and a fresh Reviewer reviews it.\n" <>
+      first
   end
 
   defp roots(ctx), do: %{control: ctx.control, candidate: ctx.root}

@@ -27,6 +27,7 @@ defmodule Kogen.Build.FailureReport do
     "accepted-unpublished" => {"environment", "inspect"},
     "provider" => {"provider", "provider_wait"},
     "interrupted" => {"interrupted", "rebuild"},
+    "session-lost" => {"interrupted", "rebuild"},
     "publication-interrupted" => {"interrupted", "inspect"}
   }
 
@@ -111,6 +112,10 @@ defmodule Kogen.Build.FailureReport do
 
     next_command = details["next_command"] || login_command_from_reason(reason)
     intent = record["intent"] || %{}
+    budget = budget_state(ctx, attempt)
+    developer_session_id = details["developer_session_id"] || attempt["developer_session_id"]
+    continuable = continuable?(category, developer_session_id, budget)
+    next_action = if category == "interrupted" and continuable, do: "continue", else: next_action
 
     report = %{
       "schema_version" => @schema_version,
@@ -128,13 +133,14 @@ defmodule Kogen.Build.FailureReport do
       "same_signature_count" => same_count,
       "next_action" => next_action,
       "next_command" => next_command,
-      "developer_session_id" =>
-        details["developer_session_id"] || attempt["developer_session_id"],
+      "developer_session_id" => developer_session_id,
       "reason" => reason |> to_string() |> String.slice(0, 2_000),
       "candidate" => candidate_block(ctx),
       "record" => Path.relative_to(Path.expand(tracking[:path]), Path.expand(control)),
       "record_sha256" => record_sha(tracking),
-      "budget_state" => budget_state(ctx, attempt),
+      "budget_state" => budget,
+      "continuable" => continuable,
+      "continues" => record["continues"],
       "published" => Map.get(details, "published")
     }
 
@@ -155,6 +161,7 @@ defmodule Kogen.Build.FailureReport do
         published
       ) do
     build_id = owner["build_id"]
+    tracking_build_id = owner["tracking_build_id"] || build_id
     {class, default_action} = classify(category)
 
     {next_action, next_command} =
@@ -165,6 +172,10 @@ defmodule Kogen.Build.FailureReport do
       end
 
     attempt = List.last(record["attempts"] || []) || %{}
+    budget = budget_state_from_files(control, record_path, attempt)
+    developer_session_id = attempt["developer_session_id"]
+    continuable = continuable?(category, developer_session_id, budget)
+    next_action = if category == "interrupted" and continuable, do: "continue", else: next_action
 
     signature =
       List.last(attempt["failure_signatures"] || []) ||
@@ -173,7 +184,7 @@ defmodule Kogen.Build.FailureReport do
 
     report = %{
       "schema_version" => @schema_version,
-      "build_id" => build_id,
+      "build_id" => tracking_build_id,
       "candidate_build_id" => build_id,
       "slug" => get_in(record, ["intent", "slug"]),
       "intent_id" => get_in(record, ["intent", "id"]),
@@ -187,7 +198,7 @@ defmodule Kogen.Build.FailureReport do
       "same_signature_count" => same_signature_count(control, record, signature),
       "next_action" => next_action,
       "next_command" => next_command,
-      "developer_session_id" => attempt["developer_session_id"],
+      "developer_session_id" => developer_session_id,
       "reason" => String.slice(to_string(reason), 0, 2_000),
       "candidate" => %{
         "worktree" => owner["worktree_path"],
@@ -197,11 +208,18 @@ defmodule Kogen.Build.FailureReport do
       },
       "record" => Path.relative_to(record_path, Path.expand(control)),
       "record_sha256" => sha(record_bytes),
-      "budget_state" => budget_state_from_files(control, record_path, attempt),
+      "budget_state" => budget,
+      "continuable" => continuable,
+      "continues" => record["continues"],
       "published" => if(category == "publication-interrupted", do: published, else: nil)
     }
 
-    write(control, build_id, report)
+    write(control, tracking_build_id, report)
+  end
+
+  defp continuable?(category, developer_session_id, budget) do
+    category in ["provider", "interrupted"] and is_binary(developer_session_id) and
+      (is_nil(budget) or budget["terminal_state"] in ["pending", "provider"])
   end
 
   defp record_sha(%{bytes: bytes}) when is_binary(bytes),

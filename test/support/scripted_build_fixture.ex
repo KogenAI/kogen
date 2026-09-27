@@ -195,6 +195,10 @@ defmodule Kogen.ScriptedBuildFixture do
          Enum.join(Keyword.get(opts, :freeze_resume_edit, []), ",")},
         {"HANDOFF_PACKET_MUTATION", to_string(Keyword.get(opts, :packet_mutation, ""))},
         {"HANDOFF_PROVIDER_FAIL", Enum.join(Keyword.get(opts, :provider_fail, []), ",")},
+        {"HANDOFF_NEW_SESSION_ON_RESUME",
+         if(Keyword.get(opts, :new_session_on_resume, false), do: "1", else: nil)},
+        {"HANDOFF_NEW_SESSION_ON_RESUME_AFTER",
+         Keyword.get(opts, :new_session_on_resume_after) |> to_string()},
         {"HANDOFF_PROVIDER_TAIL", provider_tail},
         {"FAKE_JEV_LOG_DIR", Path.join(runtime, "fake-jev")},
         {"FAKE_JEV_ANSWERS", Jason.encode!(Keyword.get(opts, :jev_answers, %{}))},
@@ -226,7 +230,7 @@ defmodule Kogen.ScriptedBuildFixture do
     slug = Keyword.get(opts, :slug, @slug)
 
     try do
-      File.cd!(cwd, fn -> Kogen.Build.run(slug, nil, dir) end)
+      File.cd!(cwd, fn -> Kogen.Build.run(slug, Keyword.get(opts, :route), dir) end)
     after
       Enum.each(previous, fn
         {key, nil} -> System.delete_env(key)
@@ -397,6 +401,15 @@ defmodule Kogen.ScriptedBuildFixture do
           scout:  {model: fake, effort: low}
           worker: {model: fake, effort: medium}
           expert: {model: fake, effort: medium}
+      codex-alt:
+        harness: codex
+        shaping:   {model: fake, effort: low}
+        developer: {model: fake, effort: low}
+        reviewer:  {model: fake, effort: low}
+        helpers:
+          scout:  {model: fake, effort: low}
+          worker: {model: fake, effort: medium}
+          expert:  {model: fake, effort: medium}
     outer_resumptions: #{outer_resumptions}
     verification_retries: 2
     offline_retries: 4
@@ -497,8 +510,11 @@ defmodule Kogen.ScriptedBuildFixture do
     if "--output-last-message" in args or "--output-schema" in args:
         raise SystemExit("Developer turn carried a handoff output schema")
     marker = candidate_runtime / "fail-check"
-    session = "developer-session"
     invocation = count("developer-invocations")
+    after = os.environ.get("HANDOFF_NEW_SESSION_ON_RESUME_AFTER")
+    changed_after = after and invocation > int(after)
+    changed_now = os.environ.get("HANDOFF_NEW_SESSION_ON_RESUME") == "1" or changed_after
+    session = "developer-session-2" if "resume" in args and changed_now else "developer-session"
     (state / f"developer-invocation-{invocation}").write_text(" ".join(args))
     (state / f"developer-invocation-{invocation}-prompt").write_text(prompt)
     provider_hang(f"developer-{invocation}")

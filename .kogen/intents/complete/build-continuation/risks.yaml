@@ -1,0 +1,77 @@
+- id: reconcile-current-directory
+  scenario_ids: [controller-killed-continues, provider-stop-continues]
+  description: >-
+    At 99f93f60 Reconcile.run/1 reads `<owner build_id>/record.json` and FailureReport.record_interrupted/8 writes
+    `<owner build_id>/failure-report.json` with build_id and candidate_build_id both the owner's id. For a killed
+    continuation that directory already holds the earlier report, and write/3's no-clobber publish would keep it
+    silently: the continuation would be reported nowhere and the next rerun would continue from the stale report.
+    Reconcile must follow tracking_build_id (test 4). record_interrupted/8's arity stays, because
+    build_reconcile_test.exs calls it directly.
+- id: continuation-state
+  scenario_ids: [provider-stop-continues, controller-killed-continues, continuation-refusals]
+  description: >-
+    Continuation reads an earlier record, which the Tracking moduledoc forbids ("Records are evidence only; this module
+    never reloads one as Build state") and every record's purpose string ("inspection evidence; not a recovery
+    checkpoint") disclaims. It is bound by the report's record_sha256 (and the state file by
+    budget_state.state_sha256), read only for its session id, attempt number, route and guard violations, and never
+    updated; a new record is written. The carried counts come only from the report's budget_state, never from
+    verification_state or failure_signatures, which a provider stop or a killed controller after a pending cycle never
+    writes (probed at 99f93f60: the provider-stopped attempt's keys are attempt_token, budget_state, cycle_signatures,
+    developer_invocation, developer_notes, developer_session_id, failure, jev, number, outer_attempt, provider, status,
+    stop_class and verification_context).
+- id: owner-record-rewrites
+  scenario_ids: [provider-stop-continues, session-lost-rebuilds]
+  description: >-
+    Workspace.update_status/3 rewrites the whole owner record from the candidate map through write_owner/4's fixed
+    field list, so a tracking_build_id added only on disk is dropped by the stop's retained/2; the next rerun would
+    then read the first tracking directory. Tests 2 and 15 assert tracking_build_id after a stop.
+- id: guard-baseline-on-adopt
+  scenario_ids: [provider-stop-continues]
+  description: >-
+    Admission captures a fresh guarded-paths snapshot of the adopted Candidate (capture_candidate/1). Changed paths are
+    still diffed against the unchanged HEAD tree, so a dead turn's stray tracked or untracked paths stay visible;
+    ignored files present at adoption become the baseline and are outside the Candidate id and the publication commit.
+    The Approved copy is compared with the package before adoption (candidate-missing, package-changed).
+- id: lock-names-candidate
+  scenario_ids: [provider-stop-continues]
+  description: >-
+    Workspace.live_lock?/2 compares the lock's build_id with the owner record's build_id. admit_candidate/2 at 99f93f60
+    calls ProcessCustody.claim/2 with the new tracking record's id; a continuation must claim with the owner's
+    build_id, or mix kogen.candidates shows the running continuation as stopped: interrupted and a concurrent reconcile
+    would misread it. Test 1 reads the lock from inside the Developer turn (probed at 99f93f60: a call-1 edit copied
+    `{"build_id":…,"groups":[],"pid":…,"started_at":…}` into the harness home under the applied write boundary).
+- id: records-order
+  scenario_ids: [provider-stop-continues, controller-killed-continues, session-lost-rebuilds]
+  description: >-
+    The landed records!/1 says "oldest first" and sorts by the record's created_at, which records do not have, so it
+    sorts by random build id (probed at 99f93f60: a rerun's record sorted before the first Build's). A test that takes
+    List.last(records!) as the continuation passes or fails by chance; tests name records by id difference (new_ids/2).
+- id: breakers-provider-rerun
+  scenario_ids: [existing-expectations-kept]
+  description: >-
+    build_breakers_test.exs test 10 reruns the slug of a provider stop (Build 4, logged out). With continuation that
+    Build continues Build 3's Candidate (probed at 99f93f60: all nine checks pass) and stops at readiness as
+    environment, with its report in a new tracking directory; the test's assertions still hold. If the Developer orders
+    the decision before the environment breaker, Build 5 is no longer refused by the breaker and the test fails: keep
+    reconcile → environment breaker → continuation decision → item breaker.
+- id: self-hosting
+  scenario_ids: [controller-killed-continues]
+  description: >-
+    This Build runs under the controller of 99f93f60, which reconciles but never continues: a killed installing Build
+    is reported interrupted and its rerun restarts from scratch. Launch with `--route codex` (rule 51). Never override
+    TMPDIR and run Python with -B (lessons 20, 21).
+- id: standin-build-path
+  scenario_ids: [controller-killed-continues, continuation-refusals]
+  description: >-
+    The landed start_standin!/2 runs the stand-in as `elixir -pa <every absolute :code.get_path() entry>`, never `mix
+    run` inside an IsolatedCase child (its MIX_BUILD_PATH is an empty private _build), with KOGEN_ROLE and
+    KOGEN_HARNESS_HOME unset; tests wait with await_hanging!/1 (the fake's atomically renamed developer-hanging file)
+    and for both processes to be gone (bounded), never for stand-in output.
+- id: overlapping-drafts
+  scenario_ids: [controller-killed-continues, continuation-refusals]
+  description: >-
+    parallel-builds-with-integration (draft) replaces `.kogen/build.lock` with per-slug claims. Its re-preflight must
+    keep "a continuation claims the owner's build id" on the per-slug claim, add lib/kogen/build/continuation.ex and
+    test/kogen/build_continuation_test.exs to its guarded paths, and re-check what accepted-unpublished and
+    publication-started mean once publication merges onto a moved branch. multi-machine-orchestration (draft) says
+    "continuation = inspect only until durable-builds" (rule 47): it now waits for this package.

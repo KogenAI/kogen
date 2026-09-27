@@ -203,7 +203,8 @@ defmodule Kogen.BuildReconcileTest do
     assert report["category"] == "interrupted"
     assert report["class"] == "interrupted"
     assert report["counts_toward"] == nil
-    assert report["next_action"] == "rebuild"
+    assert report["next_action"] == "continue"
+    assert report["continuable"] == true
     assert report["developer_session_id"] == "developer-session"
     assert report["signature"] == List.last(List.last(record["attempts"])["cycle_signatures"])
     assert report["budget_state"]["outer_attempt"] == 0

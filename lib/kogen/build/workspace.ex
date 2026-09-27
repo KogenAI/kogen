@@ -72,6 +72,29 @@ defmodule Kogen.Build.Workspace do
   @spec lock_path(Path.t()) :: Path.t()
   def lock_path(control), do: Path.join(control, @lock_path)
 
+  @doc "The tracking directory id currently owned by a Candidate record."
+  @spec tracking_build_id(map()) :: String.t()
+  def tracking_build_id(record) when is_map(record) do
+    Map.get(record, "tracking_build_id") || Map.get(record, "build_id")
+  end
+
+  @doc "The current scenario-tracking directory for an owner record or build id."
+  @spec tracking_dir(Path.t(), map() | String.t()) :: Path.t()
+  def tracking_dir(control, record_or_id) when is_binary(control) do
+    id = if is_map(record_or_id), do: tracking_build_id(record_or_id), else: record_or_id
+    Path.join([Path.expand(control), ".kogen/runtime/scenario-tracking", id])
+  end
+
+  @doc "The current scenario-tracking record path for an owner record or build id."
+  @spec tracking_record_path(Path.t(), map() | String.t()) :: Path.t()
+  def tracking_record_path(control, record_or_id),
+    do: Path.join(tracking_dir(control, record_or_id), "record.json")
+
+  @doc "The current failure report path for an owner record or build id."
+  @spec tracking_report_path(Path.t(), map() | String.t()) :: Path.t()
+  def tracking_report_path(control, record_or_id),
+    do: Path.join(tracking_dir(control, record_or_id), "failure-report.json")
+
   @doc """
   The spaceless per-Build temp dir under the controller's canonical system
   temp dir, or an error naming a system temp dir that contains a space.
@@ -94,6 +117,54 @@ defmodule Kogen.Build.Workspace do
   """
   @spec canonical(Path.t()) :: Path.t()
   def canonical(path), do: Kogen.ProjectScope.canonical(path)
+
+  @doc "Build candidate attributes reconstructed from an existing owner record for continuation."
+  @spec continuation_candidate(Path.t(), map()) :: candidate()
+  def continuation_candidate(control, owner) when is_binary(control) and is_map(owner) do
+    control = Path.expand(control)
+
+    %{
+      path: owner["worktree_path"],
+      branch: owner["branch"],
+      build_id: owner["build_id"],
+      slug: owner["slug"],
+      title: owner["title"],
+      intent_id: owner["intent_id"],
+      control: control,
+      admitted_branch: owner["admitted_branch"],
+      admitted_commit: owner["admitted_commit"],
+      owner_path: owner_path(control, owner["build_id"]),
+      harness_home: owner["harness_home"],
+      tmp_dir: elem_or_nil(temp_dir(owner["build_id"]), 1),
+      bindings: owner["credential_bindings"] || [],
+      started_at: owner["started_at"],
+      tracking_build_id: owner["tracking_build_id"]
+    }
+  end
+
+  @doc "Adopts an existing Candidate owner for a continuation without creating worktree or harness paths."
+  @spec adopt(map(), list()) :: {:ok, candidate()} | {:error, String.t()}
+  def adopt(owner, _approved_entries) when is_map(owner) do
+    control = owner["control_root"]
+    candidate = continuation_candidate(control, owner)
+
+    with true <- is_binary(candidate.path) and File.dir?(candidate.path),
+         true <- is_binary(candidate.harness_home) and File.dir?(candidate.harness_home),
+         {:ok, tmp_dir} <- temp_dir(candidate.build_id),
+         :ok <- mkdir_p(tmp_dir),
+         :ok <- File.chmod(tmp_dir, 0o700) do
+      {:ok, %{candidate | tmp_dir: tmp_dir}}
+    else
+      false -> {:error, "Candidate worktree or harness home is missing"}
+      {:error, reason} -> {:error, "could not recreate continuation temp dir: #{reason}"}
+    end
+  end
+
+  def adopt(_owner, _approved_entries),
+    do: {:error, "cannot adopt malformed Candidate owner record"}
+
+  defp elem_or_nil({:ok, value}, _index), do: value
+  defp elem_or_nil(_, _index), do: nil
 
   @doc """
   Creates the Candidate and harness home for an admitted Build, before any
@@ -382,23 +453,25 @@ defmodule Kogen.Build.Workspace do
     do: write_owner(candidate, status, commit, [])
 
   defp write_owner(candidate, status, commit, modes) do
-    record = %{
-      "schema_version" => @schema_version,
-      "build_id" => candidate.build_id,
-      "intent_id" => candidate.intent_id,
-      "slug" => candidate.slug,
-      "title" => candidate.title,
-      "control_root" => candidate.control,
-      "worktree_path" => candidate.path,
-      "branch" => candidate.branch,
-      "admitted_branch" => candidate.admitted_branch,
-      "admitted_commit" => candidate.admitted_commit,
-      "harness_home" => candidate.harness_home,
-      "credential_bindings" => candidate.bindings,
-      "started_at" => candidate.started_at,
-      "status" => status,
-      "candidate_commit" => commit
-    }
+    record =
+      %{
+        "schema_version" => @schema_version,
+        "build_id" => candidate.build_id,
+        "intent_id" => candidate.intent_id,
+        "slug" => candidate.slug,
+        "title" => candidate.title,
+        "control_root" => candidate.control,
+        "worktree_path" => candidate.path,
+        "branch" => candidate.branch,
+        "admitted_branch" => candidate.admitted_branch,
+        "admitted_commit" => candidate.admitted_commit,
+        "harness_home" => candidate.harness_home,
+        "credential_bindings" => candidate.bindings,
+        "started_at" => candidate.started_at,
+        "status" => status,
+        "candidate_commit" => commit
+      }
+      |> maybe_put_tracking_build_id(candidate)
 
     path = candidate.owner_path
     bytes = Jason.encode_to_iodata!(record, pretty: true)
@@ -409,6 +482,11 @@ defmodule Kogen.Build.Workspace do
         else: replace_owner(path, bytes)
     end
   end
+
+  defp maybe_put_tracking_build_id(record, %{tracking_build_id: id}) when is_binary(id),
+    do: Map.put(record, "tracking_build_id", id)
+
+  defp maybe_put_tracking_build_id(record, _candidate), do: record
 
   defp exclusive_owner(path, bytes) do
     case File.open(path, [:write, :exclusive]) do
@@ -449,6 +527,7 @@ defmodule Kogen.Build.Workspace do
       "disposition" => disposition,
       "candidate_commit" => commit
     }
+    |> maybe_put_tracking_build_id(candidate)
   end
 
   @doc "The stop-message description of a kept Candidate."
@@ -637,6 +716,29 @@ defmodule Kogen.Build.Workspace do
         path,
         Jason.encode_to_iodata!(Map.put(record, "status", status), pretty: true)
       )
+    else
+      _ -> {:error, "could not update Candidate owner record #{path}"}
+    end
+  end
+
+  @doc "Sets the current tracking record id on an owner and updates its status atomically."
+  @spec set_owner_tracking(
+          control :: Path.t(),
+          build_id :: String.t(),
+          tracking_id :: String.t(),
+          status :: String.t()
+        ) ::
+          :ok | {:error, String.t()}
+  def set_owner_tracking(control, build_id, tracking_id, status)
+      when is_binary(control) and is_binary(build_id) and is_binary(tracking_id) and
+             is_binary(status) do
+    path = owner_path(control, build_id)
+
+    with {:ok, bytes} <- File.read(path),
+         {:ok, record} <- Jason.decode(bytes),
+         true <- record["build_id"] == build_id do
+      updated = record |> Map.put("tracking_build_id", tracking_id) |> Map.put("status", status)
+      replace_owner(path, Jason.encode_to_iodata!(updated, pretty: true))
     else
       _ -> {:error, "could not update Candidate owner record #{path}"}
     end
