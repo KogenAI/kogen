@@ -1,0 +1,339 @@
+# Shaped against develop fa48e817. Offline only. Split from kogen-ctx-tool (slice 1 of 3). The fixture repository, its
+# files and the helpers are defined in INTENT.md "Tests and fixtures": every fixture byte is embedded in
+# test/support/ctx_fixture.ex (Elixir sources byte-identical to evidence/fixture/, SHA-256-pinned), written into a
+# fresh temp dir per test by CtxFixture.create!/0, with a fresh KOGEN_CTX_HOME temp dir OUTSIDE the fixture; no test
+# reads the checkout's .kogen/. Every binary run goes through CtxFixture.run/4 (stdout and stderr separate,
+# PATH=/usr/bin:/bin, KOGEN_CTX_HOME=<home>) unless a case says otherwise. "<id>" is
+# Kogen.Build.Workspace.project_id(root); "<index>" is "<home>/<id>/index.sqlite".
+# Lines are shown separated by " | "; every listed output is the COMPLETE stdout (assert with ==, as a list of lines),
+# and stderr is "" and status 0 unless stated.
+# Each scenario's `tests` key lists the ExUnit test cases to write: name, setup, exact command, exact expected
+# output or assertion. A test that only checks the exit status, a substring or a line count, where an exact output is
+# listed, does not prove the scenario.
+- id: index-is-derived-and-outside-the-repo
+  given: >-
+    A fresh fixture repository at a temp path, a separate empty temp dir as KOGEN_CTX_HOME, a symlink to the fixture
+    root created in another temp dir, a second empty temp dir used as HOME for the default-home case, and
+    `git status --porcelain --ignored --untracked-files=all` recorded in the fixture before any run.
+  when: >-
+    `kogen-ctx index` runs at the fixture root; then `index --root <link>`; then `index` with cwd `lib/` and no
+    `--root`; `search the` is captured; then the index file is deleted, overwritten with the bytes `not a database`,
+    given `meta.schema_version` `0`, or given a foreign `meta.root`, each followed by `index` and `search the`.
+    Separately, `index` runs with HOME set to the second temp dir and KOGEN_CTX_HOME unset or empty, and the binary
+    runs outside a Git checkout, with no arguments, with a missing `--root`, and with KOGEN_CTX_HOME of mode 0500;
+    with malformed command lines (inside and outside a checkout); with both HOME and KOGEN_CTX_HOME unset or empty;
+    and against an existing index made read-only after a file edit.
+  then: >-
+    (a) The first `index` prints `index <index>` | `project <id>` | `rebuilt yes` | `reindexed
+    .kogen/intents/complete/stray-rework/INTENT.md` | `reindexed .kogen/intents/complete/stray-rework/scenarios.yaml` |
+    `reindexed .kogen/intents/drafts/cart-discounts/INTENT.md` | `reindexed
+    .kogen/memory/lesson/lesson-stray-rework.md` | `reindexed lib/shop.ex` | `reindexed lib/shop/cart.ex` | `reindexed
+    lib/shop/format.ex` | `reindexed lib/shop/inventory.ex` | `reindexed lib/shop/pricing.ex` | `reindexed
+    lib/shop/tax.ex` | `reindexed test/shop_test.exs` | `files 11 reindexed 11 removed 0`. Not listed: the symlink
+    `lib/shop/link.ex`, the non-UTF-8 `lib/shop/latin1.ex`, the 614,400-byte `evidence/big.md`, `evidence/codex-raw/`
+    and `deps/`. `<id>` equals `Kogen.Build.Workspace.project_id/1` of the fixture (the SHA-256 of
+    `Kogen.ProjectScope.canonical/1`). (b) Via the link and from `lib/`, the output is the same `index` and `project`
+    lines, then `rebuilt no` and `files 11 reindexed 0 removed 0`, and KOGEN_CTX_HOME holds exactly one entry, `<id>`.
+    (c) With HOME set and KOGEN_CTX_HOME unset or empty, the index file is created at
+    `<HOME>/Library/Caches/Kogen/ctx/<id>/index.sqlite`, and the first line printed is `index` followed by that path.
+    (d) The recorded `git status` output is unchanged after every run. (e) After the deletion, the corruption, the
+    schema-version change and the foreign root, `index` prints exactly (a)'s output, and `search the` prints output
+    byte-identical to the first capture, which is the three lines of test C1. (f) Every run had only `/usr/bin:/bin`
+    on PATH. Outside a Git checkout, `index` (cwd = that dir, no `--root`) exits 1 with stderr exactly
+    `kogen-ctx: not a Git checkout: <Kogen.ProjectScope.canonical(dir)>\n`. With no arguments at the fixture root the
+    exit status is 2 and stderr starts with `usage: kogen-ctx`. `index --root <missing path>` exits 1 with stderr
+    exactly `kogen-ctx: not a directory: <missing path>\n`. With the 0500 home, `index` exits 1, stdout is empty, and
+    stderr starts with `kogen-ctx: cannot write index at <home>/<id>/index.sqlite: ` and contains
+    `set KOGEN_CTX_HOME to a writable directory`. (g) Every usage error of INTENT.md "CLI surface" (no arguments or an
+    unknown subcommand, also outside a Git checkout; `--root` without a value; an extra argument or `--limit` on
+    `index`; `--limit` of `0`, `-1`, `abc` or no value; an unknown option; `search` with no query word) exits 2 with
+    empty stdout and stderr starting `usage: kogen-ctx`, and writes nothing into its KOGEN_CTX_HOME. (h) With HOME and
+    KOGEN_CTX_HOME both unset or empty, `index` exits 1 with stderr exactly
+    `kogen-ctx: HOME is not set; set KOGEN_CTX_HOME to a writable directory\n` and writes nothing in the checkout. With
+    an existing index file of mode 0444 in a directory of mode 0500 and a changed file, `index` and `search the` each
+    exit 1 with empty stdout and the same `cannot write index at <index>: … set KOGEN_CTX_HOME to a writable
+    directory` wording.
+  wrong_result: >-
+    The not-a-checkout message prints the unresolved spelling of the directory. A usage error exits 1 because the root
+    was resolved first, a missing `--root` value or `--limit 0` is accepted, or `index` ignores extra arguments.
+    Without HOME the index lands in a relative `Library/` inside the checkout. A failed write after the open prints a
+    bare SQLite error without the KOGEN_CTX_HOME advice. The index is written inside the
+    checkout (for example a KOGEN_CTX_HOME under the fixture root, which changes `git status`) or under another key,
+    such as a hash of the unresolved path, so the symlink gets a second index. The default location ignores HOME. A
+    corrupt, old-schema or foreign-root index crashes or is reused. Answers differ after a rebuild. Ignored drafts are
+    skipped, or deps/ and `*-raw/` evidence are indexed. The tool needs mix/elixir on PATH. Or a smoke test only
+    checks the exit status or a substring (such as `rebuilt yes`) instead of the complete listed output.
+  verified_by: [check]
+  evidence: >-
+    Captured stdout/stderr and exit statuses of real binary runs on a real git fixture; `git status` snapshots;
+    `/usr/bin/sqlite3` for the schema-version and root edits.
+  tests:
+    - >-
+      A1 "first index lists exactly the indexable files under the canonical key": {root, home} = CtxFixture.create!();
+      before = `git status --porcelain --ignored --untracked-files=all` (System.cmd in root); run(root, home,
+      ["index"]); assert stdout lines == (a)'s 15 lines with <id> = Kogen.Build.Workspace.project_id(root) and
+      <index> = Path.join([home, id, "index.sqlite"]); assert File.regular?(<index>); assert the git status after ==
+      before; assert CtxFixture.hashes() == SHA-256 of each embedded source (the pinned fixture check).
+    - >-
+      A2 "a symlinked root and a subdirectory reuse the same index": after `index` at root, link =
+      Path.join(tmp, "link") via File.ln_s!(root, link); run(root, home, ["index", "--root", link]) and
+      run(Path.join(root, "lib"), home, ["index"]); each stdout == [`index <index>`, `project <id>`, `rebuilt no`,
+      `files 11 reindexed 0 removed 0`]; File.ls!(home) == [id]; git status unchanged.
+    - >-
+      A3 "the default home is HOME/Library/Caches/Kogen/ctx": h = fresh temp dir; run(root, home, ["index"], env:
+      [{"HOME", h}, {"KOGEN_CTX_HOME", nil}]); the first stdout line == "index #{h}/Library/Caches/Kogen/ctx/#{id}/index.sqlite"
+      and that file exists; repeat with {"KOGEN_CTX_HOME", ""} and a second fresh h: same result.
+    - >-
+      A4 "a deleted, corrupt, old-schema or foreign-root index is rebuilt with identical answers": first = stdout of
+      `index`; s0 = stdout of `search the` (assert == test C1's three lines). For each damage in [File.rm!(<index>),
+      File.write!(<index>, "not a database"), `/usr/bin/sqlite3 <index> "update meta set value = '0' where key =
+      'schema_version'"`, `/usr/bin/sqlite3 <index> "update meta set value = '/elsewhere' where key = 'root'"`]:
+      apply it, then assert the `index` stdout == first (including `rebuilt yes` and all 11 `reindexed` lines) and the
+      `search the` stdout == s0. git status unchanged at the end.
+    - >-
+      A5 "errors are loud and exact": (i) dir = fresh temp dir (not a checkout); run(dir, home, ["index"]) →
+      {"", "kogen-ctx: not a Git checkout: #{Kogen.ProjectScope.canonical(dir)}\n", 1}. (ii) run(root, home, []) →
+      status 2, stdout "", stderr starts with "usage: kogen-ctx". (iii) missing = Path.join(dir, "missing");
+      run(root, home, ["index", "--root", missing]) → {"", "kogen-ctx: not a directory: #{missing}\n", 1}. (iv) ro =
+      fresh temp dir, File.chmod!(ro, 0o500), on_exit(fn -> File.chmod(ro, 0o700) end); run(root, ro, ["index"]) →
+      status 1, stdout "", stderr starts with "kogen-ctx: cannot write index at #{ro}/#{id}/index.sqlite: " and
+      contains "set KOGEN_CTX_HOME to a writable directory". Usage errors, each run with u = a fresh empty temp dir as
+      KOGEN_CTX_HOME, each → status 2, stdout "", stderr starting with "usage: kogen-ctx": (v) outside a checkout:
+      run(dir, u, []) and run(dir, u, ["bogus"]) (usage is checked before the root; not exit 1). (vi) at root:
+      ["bogus"], ["index", "--root"], ["index", "extra"], ["index", "--bogus"], ["index", "--limit", "2"] and
+      ["index", "--root", root, "--root", root]. (vii) at root: ["search", "stray", "--limit", "0"],
+      ["search", "stray", "--limit", "-1"], ["search", "stray", "--limit", "abc"], ["search", "stray", "--limit"],
+      ["search", "stray", "--bogus"] and ["search", "--limit", "2"]. (viii) after all of (v)-(vii), File.ls!(u) == []
+      and the fixture's git status is unchanged.
+    - >-
+      A6 "a missing HOME and a read-only index fail with the KOGEN_CTX_HOME advice": (i) for env in
+      [[{"HOME", nil}, {"KOGEN_CTX_HOME", nil}], [{"HOME", ""}, {"KOGEN_CTX_HOME", ""}]]: run(root, home, ["index"],
+      env: env) → {"", "kogen-ctx: HOME is not set; set KOGEN_CTX_HOME to a writable directory\n", 1}; refute
+      File.exists?(Path.join(root, "Library")); git status unchanged. (ii) run(root, home, ["index"]) (status 0);
+      File.chmod!(<index>, 0o444); File.chmod!(Path.dirname(<index>), 0o500); on_exit restores 0o700 and 0o600;
+      append "# edit\n" to lib/shop/tax.ex; run(root, home, ["index"]) and run(root, home, ["search", "the"]) → each
+      status 1, stdout "", stderr starting with "kogen-ctx: cannot write index at #{<index>}: " and containing
+      "; set KOGEN_CTX_HOME to a writable directory".
+  proof:
+    offline: [test/kogen/ctx_index_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: a local binary, a git fixture and a SQLite file; no provider is involved"
+    affected_paths: [native/kogen-ctx/**, lib/kogen/ctx.ex, test/support/ctx_fixture.ex, test/kogen/ctx_index_test.exs]
+
+- id: index-refreshes-only-changed-files
+  given: >-
+    A fresh fixture after one `index` (scenario index-is-derived-and-outside-the-repo (a)).
+  when: >-
+    Unchanged and mtime-only changes are indexed; an edited file is indexed; a file is added, one deleted and the
+    ignored draft appended to, then indexed; a query runs before `index` after further edits; and an indexed file
+    becomes non-UTF-8.
+  then: >-
+    An `index` with nothing changed, and one after a touch that changes only the mtime, each print `rebuilt no`, no
+    `reindexed` or `removed` line, and `files 11 reindexed 0 removed 0`. An edited file is the only `reindexed` line,
+    and its stored blob equals `git hash-object --no-filters`. After the add, delete and draft edit, `index` prints
+    exactly `reindexed .kogen/intents/drafts/cart-discounts/INTENT.md` | `reindexed lib/shop/extra.ex` |
+    `removed lib/shop/format.ex` | `files 11 reindexed 2 removed 1` after its `index`, `project` and `rebuilt no`
+    lines, and `search shipping` prints exactly
+    `.kogen/intents/drafts/cart-discounts/INTENT.md:3-4 [intent] Discounts apply before tax in Shop.Pricing. Also free shipping.`
+    A query refreshes the index itself, so the next `index` reports nothing to do. A file that becomes skipped is
+    reported once as `removed` and its rows are gone.
+  wrong_result: >-
+    Every `index` re-reads everything and reports all files. Freshness follows mtime, so the touch re-indexes
+    cart.ex. The stored blob is not git's blob id. Queries answer from a stale index until `index` runs. Untracked or
+    ignored-draft changes are missed, or a deleted file's rows linger. A deleted tracked file is passed to
+    `git hash-object --stdin-paths`, which fails the refresh. A file that becomes non-UTF-8 keeps its old rows. Or a
+    smoke test checks only a substring of the `index` report.
+  verified_by: [check]
+  evidence: Captured `index` reports and query outputs between real file edits in the git fixture.
+  tests:
+    - >-
+      B1 "unchanged and touched files are not re-indexed": after `index`, run `index` → exactly [`index <index>`,
+      `project <id>`, `rebuilt no`, `files 11 reindexed 0 removed 0`]; File.touch!(Path.join(root,
+      "lib/shop/cart.ex"), System.os_time(:second) + 120); `index` → the same four lines.
+    - >-
+      B2 "an edited file is re-hashed with git's blob id": after `index`, insert the line "  def vat, do: @rate" as
+      line 5 of lib/shop/tax.ex (before `end`); `index` → exactly [`index <index>`, `project <id>`, `rebuilt no`,
+      `reindexed lib/shop/tax.ex`, `files 11 reindexed 1 removed 0`]; `/usr/bin/sqlite3 <index> "select blob from
+      files where path = 'lib/shop/tax.ex'"` trimmed == `git hash-object --no-filters lib/shop/tax.ex` trimmed (git
+      run in root).
+    - >-
+      B3 "added, deleted and ignored-draft changes are picked up": after `index`, write untracked lib/shop/extra.ex
+      = "defmodule Shop.Extra do\n  def go, do: Shop.Tax.add(1)\nend\n", File.rm!(lib/shop/format.ex), append
+      "Also free shipping.\n" to .kogen/intents/drafts/cart-discounts/INTENT.md; `index` → exactly [`index <index>`,
+      `project <id>`, `rebuilt no`, `reindexed .kogen/intents/drafts/cart-discounts/INTENT.md`, `reindexed
+      lib/shop/extra.ex`, `removed lib/shop/format.ex`, `files 11 reindexed 2 removed 1`]; `search shipping` →
+      exactly [`.kogen/intents/drafts/cart-discounts/INTENT.md:3-4 [intent] Discounts apply before tax in
+      Shop.Pricing. Also free shipping.`]; `/usr/bin/sqlite3 <index> "select count(*) from files where path =
+      'lib/shop/format.ex'"` → "0".
+    - >-
+      B4 "queries refresh before answering": after `index`, append "Also free shipping.\n" to the draft INTENT.md;
+      `search shipping` (no `index` before it) → exactly B3's one search line; then `index` → exactly [`index
+      <index>`, `project <id>`, `rebuilt no`, `files 11 reindexed 0 removed 0`]; File.rm!(the draft INTENT.md);
+      `search shipping` → stdout "" and status 0; then `index` → exactly [`index <index>`, `project <id>`,
+      `rebuilt no`, `files 10 reindexed 0 removed 0`].
+    - >-
+      B5 "a file that becomes skipped loses its rows": after `index`, append the bytes <<0xE9, ?\n>> to
+      lib/shop/format.ex (a tracked file, now not UTF-8); `index` → exactly [`index <index>`, `project <id>`,
+      `rebuilt no`, `removed lib/shop/format.ex`, `files 10 reindexed 0 removed 1`]; `/usr/bin/sqlite3 <index> "select
+      count(*) from files where path = 'lib/shop/format.ex'"` → "0"; `index` again → exactly [`index <index>`,
+      `project <id>`, `rebuilt no`, `files 10 reindexed 0 removed 0`].
+  proof:
+    offline: [test/kogen/ctx_index_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: file edits in a local git fixture and a local SQLite index"
+    affected_paths: [native/kogen-ctx/**, test/support/ctx_fixture.ex, test/kogen/ctx_index_test.exs]
+
+- id: search-finds-intents-and-memory
+  given: >-
+    A fresh fixture, indexed. Its search chunks are exactly: INTENT.md lines 1, 3, 5, 7 and 9; scenarios.yaml lines
+    1-3; the draft's lines 1 and 3; and the memory record's lines 1-5 (bm25 order probed in
+    evidence/fts5-bm25-probe.txt).
+  when: >-
+    `search the`, `search stray`, `search stray --limit 2`, `search stray --limit 1`, `search "Mix lock"` (one argument), `search Mix lock`
+    (two arguments), `search rework`, `search discounts`, `search Pricing`, `search 'guard"passes'` and `search "- :"`
+    run, and `search marker` runs after a 130-line memory record is added.
+  then: >-
+    `search the` prints exactly, in this order,
+    `.kogen/intents/complete/stray-rework/INTENT.md:9-9 [intent] The Developer deletes each stray path and the guard passes.` |
+    `.kogen/intents/complete/stray-rework/scenarios.yaml:1-3 [intent] - id: stray-file-reworked given: A fixture with a stray file. then: The guard reworks the stray file.` |
+    `.kogen/intents/complete/stray-rework/INTENT.md:5-5 [intent] A stray Mix lock directory stopped the Build.`
+    (bm25 order, not path/line order). `search stray` prints 5 lines whose `<path>:<start>-<end>` set is exactly
+    INTENT.md:1-1, INTENT.md:5-5, INTENT.md:9-9, scenarios.yaml:1-3 and
+    `.kogen/memory/lesson/lesson-stray-rework.md:1-5` (tagged `[memory]`), with nothing from the draft, from
+    `evidence/codex-raw/` or from code. `--limit 2` prints the first 2 of those lines, then `... 3 more`;
+    `--limit 1` prints the first, then `... 4 more`.
+    `search Mix lock` (either form) prints INTENT.md:5-5, then the memory record's `1-5` line, whose snippet is
+    `--- id: "lesson-stray-rework" kind: "lesson" claim: "stray-rework published after 2 stopped Builds: stray Mix lock directories" ---`.
+    `search rework` prints INTENT.md:1-1, then the memory record (no stemming: `reworked` and `reworks` do not match).
+    `search discounts` prints exactly the draft's `1-1` and `3-3` lines (ignored by git, still indexed).
+    `search Pricing` prints only the draft's `3-3` line (code is not searched). `search guard"passes` prints exactly
+    INTENT.md:9-9 (the `"` is doubled inside the FTS5 string, so the term is the phrase `guard passes`).
+    `search - :` prints nothing. A 130-line run is cut into the chunks 1-60, 61-120 and 121-130. All exit 0.
+  wrong_result: >-
+    Results come in path order instead of bm25 order. Code files appear in results, drafts or memory are missing, or
+    raw evidence is included. Stemming or a trigram tokenizer changes the hit sets. A raw query is passed to MATCH, so
+    `"`, `-` or `:` errors. A `"` in a term is stripped instead of doubled, so `guard"passes` finds nothing (the
+    Candidate's F2). `--limit` is ignored, or `... k more` undercounts (the Candidate's `limit + 1` fetch prints
+    `... 1 more`). Runs over 60 lines are not cut. Or a smoke
+    test checks only that some output appeared.
+  verified_by: [check]
+  evidence: Captured search output on the fixture; ranking cross-checked against evidence/fts5-bm25-probe.txt.
+  tests:
+    - >-
+      C1 "search ranks by bm25": run(root, home, ["search", "the"]) → exactly the three lines of `then`, in that
+      order.
+    - >-
+      C2 "search covers intents and memory, not drafts-without-match, raw evidence or code": ["search", "stray"] →
+      exactly 5 lines; the set of their `<path>:<start>-<end>` prefixes == {".kogen/intents/complete/stray-rework/INTENT.md:1-1",
+      ".kogen/intents/complete/stray-rework/INTENT.md:5-5", ".kogen/intents/complete/stray-rework/INTENT.md:9-9",
+      ".kogen/intents/complete/stray-rework/scenarios.yaml:1-3", ".kogen/memory/lesson/lesson-stray-rework.md:1-5"};
+      the memory line contains " [memory] " and the others " [intent] ".
+    - >-
+      C3 "limit counts what it leaves out": ["search", "stray", "--limit", "2"] → exactly 3 lines: the first two
+      lines of C2's output, then "... 3 more"; ["search", "stray", "--limit", "1"] → exactly 2 lines: the first line
+      of C2's output, then "... 4 more".
+    - >-
+      C4 "a query is the joined arguments": ["search", "Mix lock"] and ["search", "Mix", "lock"] each → exactly
+      [".kogen/intents/complete/stray-rework/INTENT.md:5-5 [intent] A stray Mix lock directory stopped the Build.",
+      ".kogen/memory/lesson/lesson-stray-rework.md:1-5 [memory] --- id: \"lesson-stray-rework\" kind: \"lesson\"
+      claim: \"stray-rework published after 2 stopped Builds: stray Mix lock directories\" ---"] (the snippet is 131
+      characters, whitespace collapsed).
+    - >-
+      C5 "no stemming": ["search", "rework"] → exactly [".kogen/intents/complete/stray-rework/INTENT.md:1-1 [intent]
+      # Rework stray paths", the memory line of C4].
+    - >-
+      C6 "ignored drafts are searched, code is not": ["search", "discounts"] → exactly
+      [".kogen/intents/drafts/cart-discounts/INTENT.md:1-1 [intent] # Add cart discounts",
+      ".kogen/intents/drafts/cart-discounts/INTENT.md:3-3 [intent] Discounts apply before tax in Shop.Pricing."];
+      ["search", "Pricing"] → exactly the second of those lines.
+    - >-
+      C7 "a double quote inside a term is doubled, not stripped": ["search", "guard\"passes"] (one argv element) →
+      exactly [".kogen/intents/complete/stray-rework/INTENT.md:9-9 [intent] The Developer deletes each stray path and
+      the guard passes."].
+    - >-
+      C8 "punctuation-only terms are dropped, never an FTS5 error": ["search", "- :"] → {"", "", 0}; ["search"] →
+      status 2 with stderr starting "usage: kogen-ctx".
+    - >-
+      C9 "runs over 60 lines are cut into 60-line chunks": write .kogen/memory/lesson/long-run.md = for n <- 1..130,
+      "row #{n} marker\n" (no blank line); ["search", "marker"] → exactly 3 lines, whose `<path>:<start>-<end>` set
+      == {".kogen/memory/lesson/long-run.md:1-60", "…:61-120", "…:121-130"}; each line is "<loc> [memory] " <>
+      String.slice(Enum.map_join(start..end_, " ", &"row #{&1} marker"), 0, 160); e.g. the 121-130 line ends with
+      "row 130 marker" (149 characters, not cut).
+  proof:
+    offline: [test/kogen/ctx_search_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: FTS5 over fixture files in a local SQLite index"
+    affected_paths: [native/kogen-ctx/**, test/support/ctx_fixture.ex, test/kogen/ctx_search_test.exs]
+
+- id: check-builds-and-tests-the-crate
+  given: >-
+    The Candidate checkout with the crates of native/kogen-ctx/Cargo.lock in the machine's cargo cache (the launch
+    precondition).
+  when: >-
+    test/kogen/ctx_build_test.exs runs from the checkout root: `mix kogen.ctx.build --offline`, offline.py's stage
+    plan read through its own module, the crate's `cargo test`, `cargo metadata`, the lock bytes, `cargo --version`,
+    mise.toml, and `Kogen.Ctx.build/1` on a directory without the crate.
+  then: >-
+    (a) The task prints exactly one line, `<root>/_build/cargo/release/kogen-ctx`, which is an executable regular
+    file; `native/kogen-ctx/target` does not exist; and `.gitignore` has the line `/native/kogen-ctx/target/`.
+    (b) `CARGO_STAGES` is exactly the three argv lists of INTENT.md: fmt --check; build --release; test --release. The
+    latter two have `--locked --offline --target-dir _build/cargo`, and all three have
+    `--manifest-path native/kogen-ctx/Cargo.toml`. In `plan_phases`, all three are in the phase that holds
+    `mix compile --warnings-as-errors --force`, and that phase precedes the phase holding `TEST_COMPILE_STAGE`, with and
+    without a build path. `_stage_name` gives `cargo-fmt`, `cargo-build` and `cargo-test`. (c) `cargo test` exits 0 and
+    its output contains `test sha256::tests::nist_vectors ... ok`, and `src/sha256.rs` contains all four FIPS 180-2
+    digests of INTENT.md. (d) The root package's dependency names are exactly `rusqlite`, `serde_json`, `tree-sitter`
+    and `tree-sitter-elixir`; rusqlite's features include `bundled`; `target_directory` after `Path.expand/1` is
+    `<root>/_build/cargo` (cargo reports it unnormalized, P6); and the SHA-256 of `native/kogen-ctx/Cargo.lock` is
+    `2ef6860ee535431191646a3fd9fe9113d0c674b34b05d3cf2d8a306764fbf1a3`. (e) `cargo --version` starts with
+    `cargo 1.97.1`, and mise.toml's `[tools]` has `rust = "1.97.1"` next to the unchanged `python = "3.14.7"`.
+    (f) `Kogen.Ctx.build/1` on a temp dir without the crate returns `{:error, reason}`, with reason starting
+    `cargo exited `.
+  wrong_result: >-
+    A debug build, or output under `native/kogen-ctx/target/` (a guard violation in every later Build). A fetch
+    inside `check` that may use the network. No check wiring, so cargo first compiles during the timed ExUnit run or
+    never. Cargo stages placed after test-compile. An unpinned toolchain. Extra crates (MCP SDK, tokio, sha2) or a
+    changed lock. A SHA-256 test without the 448-bit vector (the Candidate's F6). Or a smoke test that only asserts
+    `len(CARGO_STAGES) == 3` or that a module is loaded (the Candidate's ctx_build_test).
+  verified_by: [check]
+  evidence: >-
+    The task's captured output, offline.py's stage plan read through its own module, cargo test output, cargo
+    metadata JSON and the lock hash.
+  tests:
+    - >-
+      D1 "mix kogen.ctx.build --offline prints only the binary path": root = File.cwd!(); out =
+      ExUnit.CaptureIO.capture_io(fn -> Mix.Tasks.Kogen.Ctx.Build.run(["--offline"]) end); assert out ==
+      "#{root}/_build/cargo/release/kogen-ctx\n"; the file is regular and (File.stat!(path).mode &&& 0o111) != 0;
+      refute File.exists?(Path.join(root, "native/kogen-ctx/target")); assert "/native/kogen-ctx/target/" in
+      String.split(File.read!(".gitignore"), "\n"); assert_raise Mix.Error, fn -> run(["--bogus"]) end.
+    - >-
+      D2 "check runs the three cargo stages in its preparation phase": python3 -B -c <program> offline.py root, the
+      program loading offline.py with importlib as test/kogen/offline_stage_results_test.exs does and printing JSON
+      {stages: CARGO_STAGES, names: [_stage_name(s) for s in CARGO_STAGES], plain: plan_phases(root, "guard", None),
+      split: plan_phases(root, "guard", "/tmp/build")}; assert stages == the three exact argv lists; names ==
+      ["cargo-fmt", "cargo-build", "cargo-test"]; for plain and split: the index of the phase containing
+      ["mix", "compile", "--warnings-as-errors", "--force"] also contains all three stages and is lower than the index
+      of the phase containing TEST_COMPILE_STAGE as a list.
+    - >-
+      D3 "the crate's Rust tests pass with the full SHA-256 vector set": System.cmd("cargo", ["test", "--release",
+      "--locked", "--offline", "--manifest-path", "native/kogen-ctx/Cargo.toml", "--target-dir", "_build/cargo"],
+      cd: root, stderr_to_stdout: true) → status 0, and the output contains "test sha256::tests::nist_vectors ... ok";
+      File.read!("native/kogen-ctx/src/sha256.rs") contains each of the four digests of INTENT.md.
+    - >-
+      D4 "the dependency set and lock are the pinned ones": `cargo metadata --format-version 1 --locked --offline`
+      with cd: native/kogen-ctx, decoded with Jason; the package whose name is "kogen-ctx" has dependency names
+      sorted == ["rusqlite", "serde_json", "tree-sitter", "tree-sitter-elixir"]; rusqlite's "features" include
+      "bundled"; Path.expand(target_directory) == Path.join(root, "_build/cargo");
+      :crypto.hash(:sha256, File.read!("native/kogen-ctx/Cargo.lock")) |> Base.encode16(case: :lower) ==
+      "2ef6860ee535431191646a3fd9fe9113d0c674b34b05d3cf2d8a306764fbf1a3".
+    - >-
+      D5 "the toolchain is pinned": `cargo --version` output starts with "cargo 1.97.1"; the `[tools]` section of
+      mise.toml contains the lines `python = "3.14.7"` and `rust = "1.97.1"`.
+    - >-
+      D6 "Kogen.Ctx reports cargo failures": dir = fresh temp dir; assert {:error, "cargo exited " <> _} =
+      Kogen.Ctx.build(dir).
+  proof:
+    offline: [test/kogen/ctx_build_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: a local cargo build and the check recipe's stage plan; no provider is involved"
+    affected_paths: [native/kogen-ctx/**, lib/kogen/ctx.ex, lib/mix/tasks/kogen.ctx.build.ex, scripts/check/offline.py, mise.toml, .gitignore, test/kogen/ctx_build_test.exs]

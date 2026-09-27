@@ -2,7 +2,9 @@
 
 Start at the repository root with Elixir 1.20 / OTP 29, Git, Make, Python 3, `rsync`,
 and macOS Command Line Tools (`xcrun clang`),
-and dependencies already installed by `mix deps.get`. The supported timing machine
+Rust 1.97.1 (pinned in `mise.toml`) with the locked crates already in the Cargo cache,
+and dependencies already installed by `mix deps.get`. Run `mix kogen.ctx.build` once per machine
+to prepare the native cache. The supported timing machine
 is the shaping macOS machine; dependency installation is a prerequisite, not a
 verification step.
 
@@ -20,7 +22,7 @@ allowance. Legacy outer-resumption configuration is a transition input only.
 
 The owner invokes `make check`, which runs [offline.py](offline.py) in this order:
 
-1. Check formatting and force application compilation in parallel. Formatting
+1. Check formatting, then run `cargo fmt --check`, the offline locked release build, and the offline locked release test for `native/kogen-ctx` with output in `_build/cargo`, alongside forced application compilation in parallel. Formatting
    only reads sources; compilation owns build output. Wait for both and reject
    either failure. Compilation keeps warnings as errors and Boundary enabled.
    Also compile the native test guard with warnings as errors into a fresh
@@ -53,7 +55,7 @@ elapsed time to the owner's log; only a zero exit counts as passing. Installed
 dependencies and existing `_build` caches are the warm timing conditions. An owner
 can select an initially empty private `MIX_BUILD_PATH` for cold offline validation;
 that run includes dependency compilation and is outside the warm timing guideline.
-Never run `deps.get` during either measurement.
+Never run `deps.get` or fetch crates during either measurement.
 Elapsed time never changes a successful exit status. Both warm and cold runs
 report complete timing; roughly ten seconds is a warm-cache guideline.
 On macOS it resolves the installed Git behind Apple's launcher once, preserving

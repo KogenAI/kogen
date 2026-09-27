@@ -25,7 +25,7 @@ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
 
 ## Get started
 
-Use Elixir 1.20 with Erlang/OTP 29, Git, Make, and Python 3.11 or newer on macOS. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.281 and Codex 0.156.1. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `dev.kogen.jev` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s dev.kogen.jev -a <account> -w` before building, or Build stops before launching the Developer.
+Use Elixir 1.20 with Erlang/OTP 29, Git, Make, Python 3.11 or newer, and Rust 1.97.1 on macOS. Run `mix kogen.ctx.build` once per machine after the locked crates are available in the Cargo cache. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.281 and Codex 0.156.1. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `dev.kogen.jev` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s dev.kogen.jev -a <account> -w` before building, or Build stops before launching the Developer.
 
 From a checkout whose `default_route` uses Claude Code:
 
@@ -924,6 +924,10 @@ a Build can affect that Build (pinned generations are future work). Codex
 keeps its rollouts, login refresh and bookkeeping inside its granted scope, so
 that scope, and the shared login keychain item, stay writable by roles for as
 long as logins need them to. Reads are never confined by this boundary.
+
+## Context index (`kogen-ctx`)
+
+Rust 1.97.1 is required (pinned in `mise.toml`). Build the native binary with `mix kogen.ctx.build` or `mix kogen.ctx.build --offline` when the locked crates are cached. Run `kogen-ctx index [--root DIR]` to refresh the derived SQLite index, or `kogen-ctx search <query>... [--limit N] [--root DIR]` to refresh and search it. Output is one index/report line per change or one `<path>:<start>-<end> [kind] <snippet>` result per hit. The index is keyed by the canonical checkout path and lives under `KOGEN_CTX_HOME/<project-id>/index.sqlite`, or `$HOME/Library/Caches/Kogen/ctx/<project-id>/index.sqlite` by default. Refreshes compare Git blob IDs, queries refresh before answering, and corrupt, old-schema, or foreign-root files rebuild. Nothing is written into or committed from the checkout.
 
 ## Run the checks
 

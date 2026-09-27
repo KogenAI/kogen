@@ -34,6 +34,11 @@ STAGES = (
 # `--only <unused tag>` is not usable here: it exits 1 even on a clean tree
 # (evidence/probe-loaders P7).
 TEST_COMPILE_STAGE = ("mix", "test", "--exclude", "live", "--warnings-as-errors", "--exclude", "test")
+CARGO_STAGES = (
+    ("cargo", "fmt", "--check", "--manifest-path", "native/kogen-ctx/Cargo.toml"),
+    ("cargo", "build", "--release", "--locked", "--offline", "--manifest-path", "native/kogen-ctx/Cargo.toml", "--target-dir", "_build/cargo"),
+    ("cargo", "test", "--release", "--locked", "--offline", "--manifest-path", "native/kogen-ctx/Cargo.toml", "--target-dir", "_build/cargo"),
+)
 SOURCE_EXCLUDES = {".git", "_build", "deps"}
 SOURCE_EXCLUDED_PATHS = {
     ".kogen/runtime", ".kogen/intents", ".kogen/build.lock",
@@ -101,6 +106,9 @@ def _stage_name(command):
         # command contains "test", so a membership test would misname the
         # full test run.
         return "test-compile" if tuple(command) == TEST_COMPILE_STAGE else "test"
+    if list(command) == list(CARGO_STAGES[0]): return "cargo-fmt"
+    if list(command) == list(CARGO_STAGES[1]): return "cargo-build"
+    if list(command) == list(CARGO_STAGES[2]): return "cargo-test"
     if list(command) == ["mix", "run", "scripts/check/rehearsals.exs"]:
         return "rehearsals"
     return names.get(pair, command[0] if command else "unknown")
@@ -301,6 +309,13 @@ def validate_provider_denial(provider_receipt):
     return []
 
 
+def plan_phases(root, guard, build_path):
+    stages = [list(stage) for stage in STAGES]
+    preparation = stages[:2] + [list(stage) for stage in CARGO_STAGES] + [["xcrun", "clang", "-dynamiclib", "-Wall", "-Werror", str(root / "test/support/process_group.c"), "-o", guard]]
+    credo_and_test = [[command] for command in stages[2:]] if build_path else [stages[2:]]
+    return [[["elixir", "--version"]], preparation, [list(TEST_COMPILE_STAGE)]] + credo_and_test + [[["mix", "run", "scripts/check/rehearsals.exs"]]]
+
+
 def main():
     if sys.argv[1:] == ["--source-manifest-sha256"]:
         print(source_manifest_sha256(Path(__file__).resolve().parents[2]))
@@ -369,24 +384,7 @@ def main():
             return result
         # Format only reads sources. Compilation owns the build output; both
         # finish and propagate their status before Credo or tests can start.
-        preparation = stages[:2] + [[
-            "xcrun", "clang", "-dynamiclib", "-Wall", "-Werror",
-            str(root / "test/support/process_group.c"),
-            "-o", env["KOGEN_TEST_PROCESS_GUARD"],
-        ]]
-        if build_path:
-            # An explicit build path can collapse Mix environments onto the
-            # same writable directory, so keep these stages ordered there.
-            credo_and_test = [[command] for command in stages[2:]]
-        else:
-            # Default Mix environments have independent dev/test build trees.
-            # Credo uses the completed dev compilation; tests own _build/test.
-            credo_and_test = [stages[2:]]
-        phases = (
-            [[["elixir", "--version"]], preparation, [list(TEST_COMPILE_STAGE)]]
-            + credo_and_test
-            + [[["mix", "run", "scripts/check/rehearsals.exs"]]]
-        )
+        phases = plan_phases(root, env["KOGEN_TEST_PROCESS_GUARD"], build_path)
         result = run_ordered(phases, root, env, stage_results)
         if result:
             return result

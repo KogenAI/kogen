@@ -1,0 +1,222 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "9iX1LzGkauC746AZW5t5DtvN2SIuakEL",
+      "candidate_id": "1077c53b032955b0bf600ce47794c32a8d4af3df",
+      "developer_session_id": "01a0e299-3198-7d73-952a-f609b355cf5e",
+      "failure_kind": null,
+      "number": 0,
+      "reviewer_session_id": "01a0e2b6-ee30-7a91-a2d1-34673771d9ef",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "9iX1LzGkauC746AZW5t5DtvN2SIuakEL",
+          "candidate_id": "1077c53b032955b0bf600ce47794c32a8d4af3df",
+          "cycle_sequence": 2,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T11:53:50.893Z",
+          "session_id": "01a0e299-3198-7d73-952a-f609b355cf5e",
+          "started_at": "2026-09-27T11:47:23.541Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "zQUJIoS0M6p3ccsWT3yqTx-J",
+  "candidate_id": "1077c53b032955b0bf600ce47794c32a8d4af3df",
+  "developer_session_id": "01a0e299-3198-7d73-952a-f609b355cf5e",
+  "findings": [],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 702246,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/zQUJIoS0M6p3ccsWT3yqTx-J/record.json",
+    "schema_version": 2,
+    "sha256": "259388cb6d42db2b789c4495c770a6f1e974c2b41c0e113ab41916630f0be5a5"
+  },
+  "intent": {
+    "id": "01a0e210-f952-75f2-8d40-03162d6bcfa4",
+    "slug": "kogen-ctx-index-and-search",
+    "title": "Add kogen-ctx index and search"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0e2b6-ee30-7a91-a2d1-34673771d9ef"
+  },
+  "risks": [
+    {
+      "id": "crates-missing-on-build-host"
+    },
+    {
+      "id": "developer-cargo-in-sandbox"
+    },
+    {
+      "id": "check-gets-slower"
+    },
+    {
+      "id": "lands-after-memory-and-telemetry"
+    },
+    {
+      "id": "concurrent-index-writers"
+    },
+    {
+      "id": "candidate-carries-out-of-scope-code"
+    },
+    {
+      "id": "derived-index-lifecycle"
+    },
+    {
+      "id": "cargo-build-output-and-cache"
+    },
+    {
+      "id": "mise-rust-pin-and-test-path"
+    },
+    {
+      "id": "fixture-read-from-intent-package"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    }
+  },
+  "route": {
+    "harness": "codex",
+    "name": "codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "refresh, home/root resolution, schema rebuild, write-error handling, and CLI parsing",
+          "path": "native/kogen-ctx/src/main.rs",
+          "receipt": null
+        },
+        {
+          "locator": "A1-A6 exact index, canonical-key, lifecycle, usage, HOME, and write-failure assertions",
+          "path": "test/kogen/ctx_index_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "Approved contract and wrong-result conditions for index-is-derived-and-outside-the-repo",
+          "path": ".kogen/intents/approved/kogen-ctx-index-and-search/scenarios.yaml",
+          "receipt": null
+        }
+      ],
+      "id": "index-is-derived-and-outside-the-repo",
+      "reason": "Inspected the implementation and all A1-A6 cases, including canonical project keys, external homes, rebuilds, usage validation, missing HOME, and write errors. The controller-bound check receipt passed; I did not rerun the gate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "batch blob hashing, skip filtering, changed-file replacement, stale-row removal, transaction commit, and sorted reports",
+          "path": "native/kogen-ctx/src/main.rs",
+          "receipt": null
+        },
+        {
+          "locator": "B1-B5 exact unchanged, mtime-only, edit, add/delete, query-refresh, and non-UTF8 removal assertions",
+          "path": "test/kogen/ctx_index_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "Approved contract and wrong-result conditions for index-refreshes-only-changed-files",
+          "path": ".kogen/intents/approved/kogen-ctx-index-and-search/scenarios.yaml",
+          "receipt": null
+        }
+      ],
+      "id": "index-refreshes-only-changed-files",
+      "reason": "Inspected refresh logic and B1-B5 exact assertions. The code hashes eligible paths in one batch, compares stored blobs, refreshes queries, and removes files that become unavailable or skipped. The controller-bound check receipt passed; I did not rerun the gate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "FTS chunk construction, quoted terms, BM25 ordering, snippets, and complete limit accounting",
+          "path": "native/kogen-ctx/src/main.rs",
+          "receipt": null
+        },
+        {
+          "locator": "C1-C9 exact ranking, coverage, quoting, punctuation, joined-query, limit, and 60-line chunk assertions",
+          "path": "test/kogen/ctx_search_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "Approved search contract and wrong-result conditions",
+          "path": ".kogen/intents/approved/kogen-ctx-index-and-search/scenarios.yaml",
+          "receipt": null
+        }
+      ],
+      "id": "search-finds-intents-and-memory",
+      "reason": "Inspected search implementation and every C1-C9 case. It indexes intent and memory documents, excludes code from FTS chunks, quotes terms safely, orders by BM25 with tie-breakers, collapses snippets, and reports all omitted hits. The controller-bound check receipt passed; I did not rerun the gate.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "offline cargo stages, phase ordering, and stage names",
+          "path": "scripts/check/offline.py",
+          "receipt": null
+        },
+        {
+          "locator": "offline locked release build, Rust tests, dependency/lock, toolchain, and failure assertions D1-D6",
+          "path": "test/kogen/ctx_build_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "cargo fetch/build integration and target-dir handling",
+          "path": "lib/kogen/ctx.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Mix task argument validation and binary-path output",
+          "path": "lib/mix/tasks/kogen.ctx.build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Candidate-bound controller check target passed with cleanup clean",
+          "path": "scripts/check/offline.py",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "check-builds-and-tests-the-crate",
+      "reason": "Inspected the Elixir build wrapper, Mix task, offline phase plan, pinned Cargo manifest, and all D1-D6 assertions. Cargo fmt/build/test are locked and offline, use _build/cargo, and precede test compilation; the controller-bound check receipt passed. I did not rerun the gate.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

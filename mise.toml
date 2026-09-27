@@ -1,5 +1,6 @@
 [tools]
 python = "3.14.7"
+rust = "1.97.1"
 
 [env]
 # `system_flag(break_ignored)` cannot be set at runtime, and a relaunch under
