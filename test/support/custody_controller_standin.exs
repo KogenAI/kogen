@@ -9,8 +9,9 @@
 #   control is the control checkout (holds .kogen/build.lock)
 #   out is the fake provider's output directory (pid files)
 #
-# Prints "READY" once the lock is held and the fake provider's launch has
-# started, so a driver can synchronize before sending a signal.
+# Prints "READY" once the lock is held, the stand-in's group is recorded,
+# and the fake provider has written both pid files, so a driver can
+# synchronize before sending a signal.
 
 [mode, control, out] = System.argv()
 
@@ -34,8 +35,31 @@ case mode do
     {:ok, _} = Kogen.ProcessCustody.acquire(control)
     Kogen.ProcessCustody.claim(control, "standin")
     Task.start(launch)
-    # Give the supervisor time to spawn and register before announcing ready.
-    Process.sleep(300)
+
+    wait_for_ready = fn wait_for_ready ->
+      group_recorded? =
+        case Kogen.ProcessCustody.read_lock(control) do
+          {:ok, %{"groups" => groups}} when groups != [] -> true
+          _ -> false
+        end
+
+      pid_files_written? =
+        Enum.all?(["provider.pid", "grandchild.pid"], fn name ->
+          case File.read(Path.join(out, name)) do
+            {:ok, contents} -> String.trim(contents) != ""
+            _ -> false
+          end
+        end)
+
+      if group_recorded? and pid_files_written? do
+        :ok
+      else
+        Process.sleep(10)
+        wait_for_ready.(wait_for_ready)
+      end
+    end
+
+    wait_for_ready.(wait_for_ready)
     IO.puts("READY")
     Process.sleep(:infinity)
 

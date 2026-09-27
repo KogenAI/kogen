@@ -1,0 +1,3 @@
+- id: timing-only-under-load
+  scenario_ids: [ready-after-provider-started]
+  description: The race shows only under load, so a passing check alone does not prove it gone; the proof is that hang mode's READY is gated on the pid files (read the stand-in), not on elapsed time.
