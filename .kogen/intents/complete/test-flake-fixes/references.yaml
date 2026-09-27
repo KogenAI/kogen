@@ -1,0 +1,12 @@
+- kind: failure-analysis
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/ORCHESTRATOR-LOG.md
+  note: 2026-09-27 02:49–03:15 entries.
+- path: evidence/candidate-j1rAH5hB-1eb24937.diff
+  relevance: >-
+    Optional starting point: Build j1rAH5hBP8eaumpgRT1209fC's Developer work; its check PASSED in attempt 0, then a Review
+    rework turn stopped on provider capacity (gpt-6-sol). Apply and verify, or ignore.
+- path: evidence/candidate-review-F1-43be3922.diff
+  relevance: >-
+    Optional starting point: the Candidate whose check passed in every attempt; its Review stayed open only on F1 (the regression
+    released forget_group before release/1 reached the serialization; the hook lived in one global persistent_term key). Fix
+    exactly that per scenario custody-release-race.

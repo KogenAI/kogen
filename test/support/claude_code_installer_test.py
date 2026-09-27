@@ -182,14 +182,15 @@ class InstallerTest(unittest.TestCase):
         before = {p: p.read_bytes() for p in sorted(old.rglob("*")) if p.is_file()}
         marker, marker_content = self.accounts_marker()
         payload = package_tar(version=installer.INITIAL_VERSION)
+        incomplete_payload = package_tar(version=installer.INITIAL_VERSION, omit="package/claude")
         def failed_download(_url):
             raise installer.InstallerError("download failed")
         failures = [
             ("download failed", dict(registry=registry_for(payload), fetch=failed_download)),
             ("integrity mismatch", dict(fetch=lambda _url: payload)),
-            ("incomplete native distribution",
-             dict(registry=registry_for(package_tar(version=installer.INITIAL_VERSION, omit="package/claude")),
-                  fetch=lambda _url: package_tar(version=installer.INITIAL_VERSION, omit="package/claude"))),
+            ("incomplete native distribution", dict(
+                registry=registry_for(incomplete_payload),
+                fetch=lambda _url: incomplete_payload)),
         ]
         for message, dependencies in failures:
             with self.assertRaisesRegex(installer.InstallerError, message):

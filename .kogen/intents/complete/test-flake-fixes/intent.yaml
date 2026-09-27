@@ -1,0 +1,30 @@
+id: 0d389bca-012c-49d6-ad6d-ba53d3a016a5
+slug: test-flake-fixes
+title: Fix the custody lock race and two flaky tests
+commit_subject: Fix the custody lock race and two flaky tests
+status: approved
+shaped_against:
+  branch: develop
+  head: b2073666973da81cc5c3253ad1f524d7e6b4fccd
+  note: Shaped 2026-09-27 by the Mac Studio orchestrator after three flakes cost Build cycles and misled Developers (lesson 25).
+shaping:
+  route: direct-package
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-27T00:20:00Z"
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_at: "2026-09-27T00:36:17Z"
+  approved_against_head: b2073666973da81cc5c3253ad1f524d7e6b4fccd
+  route: codex
+  source: approval.md
+  quotes:
+    - "you gotta handle EVERYTHING"
+  covers: Custody lock race (production) + two flaky tests; Opus rounds 1-2; codex route (DIRECTION rule 51).
+may_change_guarded_paths:
+  - lib/kogen/process_custody.ex
+  - test/support/custody_controller_standin.exs
+  - test/kogen/process_custody_test.exs
+  - test/kogen/terminal_probe_test.exs
+  - test/support/claude_code_installer_test.py

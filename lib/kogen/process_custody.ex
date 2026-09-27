@@ -66,8 +66,37 @@ defmodule Kogen.ProcessCustody do
   end
 
   defp write_lock(control, map) do
-    File.mkdir_p(Path.dirname(lock_path(control)))
-    File.write(lock_path(control), Jason.encode!(map))
+    path = lock_path(control)
+
+    case File.open(path, [:read, :write]) do
+      {:ok, io} ->
+        result =
+          case :file.truncate(io) do
+            :ok -> IO.binwrite(io, Jason.encode!(map))
+            error -> error
+          end
+
+        File.close(io)
+        result
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp with_lock(control, fun, role \\ nil) do
+    lock = {{__MODULE__, Path.expand(lock_path(control))}, self()}
+
+    unless :global.set_lock(lock, [node()], 0) do
+      if role == :release, do: maybe_release_wait(control)
+      :global.set_lock(lock, [node()])
+    end
+
+    try do
+      fun.()
+    after
+      :global.del_lock(lock, [node()])
+    end
   end
 
   @doc """
@@ -158,16 +187,21 @@ defmodule Kogen.ProcessCustody do
   @doc "Sets `build_id` on the lock this controller holds, keeping its groups."
   @spec claim(Path.t(), String.t()) :: :ok | {:error, term()}
   def claim(control, build_id) do
-    case read_lock(control) do
-      {:ok, lock} ->
-        write_lock(control, Map.put(lock, "build_id", build_id))
+    with_lock(control, fn ->
+      case read_lock(control) do
+        {:ok, lock} ->
+          write_lock(control, Map.put(lock, "build_id", build_id))
 
-      {:error, :enoent} ->
-        write_lock(control, Map.merge(self_identity(), %{"build_id" => build_id, "groups" => []}))
+        {:error, :enoent} ->
+          write_lock(
+            control,
+            Map.merge(self_identity(), %{"build_id" => build_id, "groups" => []})
+          )
 
-      other ->
-        other
-    end
+        other ->
+          other
+      end
+    end)
   end
 
   @doc "Appends a launched group's identity to the lock this controller holds."
@@ -180,15 +214,17 @@ defmodule Kogen.ProcessCustody do
       "role" => role
     }
 
-    case read_lock(control) do
-      {:ok, lock} ->
-        groups = Map.get(lock, "groups", []) ++ [entry]
-        write_lock(control, Map.put(lock, "groups", groups))
-        :ok
+    with_lock(control, fn ->
+      case read_lock(control) do
+        {:ok, lock} ->
+          groups = Map.get(lock, "groups", []) ++ [entry]
+          write_lock(control, Map.put(lock, "groups", groups))
+          :ok
 
-      _ ->
-        :ok
-    end
+        _ ->
+          :ok
+      end
+    end)
   end
 
   @doc "Removes a launched group from the lock once it has ended normally."
@@ -196,14 +232,55 @@ defmodule Kogen.ProcessCustody do
   def forget_group(_control, nil), do: :ok
 
   def forget_group(control, pid) do
-    case read_lock(control) do
-      {:ok, lock} ->
-        groups = Map.get(lock, "groups", []) |> Enum.reject(&(&1["pid"] == pid))
-        write_lock(control, Map.put(lock, "groups", groups))
-        :ok
+    with_lock(control, fn ->
+      case read_lock(control) do
+        {:ok, lock} ->
+          maybe_forget_group_pause(control)
+          groups = Map.get(lock, "groups", []) |> Enum.reject(&(&1["pid"] == pid))
+          write_lock(control, Map.put(lock, "groups", groups))
+          :ok
 
-      _ ->
-        :ok
+        _ ->
+          :ok
+      end
+    end)
+  end
+
+  @doc false
+  def set_forget_group_hook(control, hook) when is_function(hook, 1) do
+    :persistent_term.put({__MODULE__, :forget_group_hook, Path.expand(lock_path(control))}, hook)
+  end
+
+  @doc false
+  def clear_forget_group_hook(control) do
+    :persistent_term.erase({__MODULE__, :forget_group_hook, Path.expand(lock_path(control))})
+  end
+
+  @doc false
+  def set_release_wait_hook(control, hook) when is_function(hook, 0) do
+    :persistent_term.put({__MODULE__, :release_wait_hook, Path.expand(lock_path(control))}, hook)
+  end
+
+  @doc false
+  def clear_release_wait_hook(control) do
+    :persistent_term.erase({__MODULE__, :release_wait_hook, Path.expand(lock_path(control))})
+  end
+
+  defp maybe_release_wait(control) do
+    key = {__MODULE__, :release_wait_hook, Path.expand(lock_path(control))}
+
+    case :persistent_term.get(key, nil) do
+      hook when is_function(hook, 0) -> hook.()
+      _ -> :ok
+    end
+  end
+
+  defp maybe_forget_group_pause(control) do
+    key = {__MODULE__, :forget_group_hook, Path.expand(lock_path(control))}
+
+    case :persistent_term.get(key, nil) do
+      hook when is_function(hook, 1) -> hook.(control)
+      _ -> :ok
     end
   end
 
@@ -214,6 +291,10 @@ defmodule Kogen.ProcessCustody do
   """
   @spec teardown(Path.t()) :: [String.t()]
   def teardown(control) do
+    with_lock(control, fn -> teardown_unlocked(control) end)
+  end
+
+  defp teardown_unlocked(control) do
     case read_lock(control) do
       {:ok, lock} ->
         reaped = reap_groups(Map.get(lock, "groups", []))
@@ -228,9 +309,15 @@ defmodule Kogen.ProcessCustody do
   @doc "Tears down every recorded group, then removes the lock file."
   @spec release(Path.t()) :: :ok
   def release(control) do
-    teardown(control)
-    File.rm(lock_path(control))
-    :ok
+    with_lock(
+      control,
+      fn ->
+        teardown_unlocked(control)
+        File.rm(lock_path(control))
+        :ok
+      end,
+      :release
+    )
   end
 
   # Kills whichever recorded groups are still identifiable by pid+lstart,

@@ -72,6 +72,53 @@ defmodule Kogen.ProcessCustodyTest do
     end
   end
 
+  test "release cannot race a finishing group into recreating the lock", %{base: base} do
+    control = control_dir(base)
+    {:ok, :fresh} = Kogen.ProcessCustody.acquire(control)
+    Kogen.ProcessCustody.claim(control, "regression")
+    path = Kogen.ProcessCustody.lock_path(control)
+    parent = self()
+    ref = make_ref()
+
+    Kogen.ProcessCustody.set_forget_group_hook(control, fn _control ->
+      send(parent, {:paused_after_read, ref})
+
+      receive do
+        {:continue_forget, ^ref} -> :ok
+      end
+    end)
+
+    Kogen.ProcessCustody.set_release_wait_hook(control, fn ->
+      send(parent, {:release_waiting_for_lock, ref})
+    end)
+
+    on_exit(fn ->
+      Kogen.ProcessCustody.clear_forget_group_hook(control)
+      Kogen.ProcessCustody.clear_release_wait_hook(control)
+    end)
+
+    forget_task = Task.async(fn -> Kogen.ProcessCustody.forget_group(control, 123) end)
+    assert_receive {:paused_after_read, ^ref}, 1_000
+
+    release_task = Task.async(fn -> Kogen.ProcessCustody.release(control) end)
+
+    assert wait_until(
+             fn ->
+               receive do
+                 {:release_waiting_for_lock, ^ref} -> true
+               after
+                 0 -> not File.exists?(path)
+               end
+             end,
+             1_000
+           )
+
+    send(forget_task.pid, {:continue_forget, ref})
+    assert :ok = Task.await(forget_task, 5_000)
+    assert :ok = Task.await(release_task, 5_000)
+    refute File.exists?(path)
+  end
+
   # -- process-custody-teardown ----------------------------------------------
 
   test "a group leader and its SIGTERM-ignoring grandchild both die when the controller tears the group down",

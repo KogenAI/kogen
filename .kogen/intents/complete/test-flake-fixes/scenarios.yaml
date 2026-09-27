@@ -1,0 +1,37 @@
+- id: custody-release-race
+  given: A controller whose run is finishing (forget_group in flight) while release/1 runs, on develop b2073666.
+  when: >-
+    The new regression test in test/kogen/process_custody_test.exs forces that interleaving deterministically through a test
+    seam in lib/kogen/process_custody.ex that pauses forget_group between its lock read and write, and the existing "normal
+    Stop tears its own groups down and releases the lock" test runs with the standin waiting for its group registration.
+  then: >-
+    The regression forces the order deterministically: (1) a Task runs forget_group, whose seam hook signals {:paused_after_read,
+    ref} to the test and waits; (2) the test starts release/1 in a second Task and waits until release is observably past the
+    point of no return — on the fixed code blocked on the serialization (e.g. the seam reports it is waiting for the lock), on
+    b2073666 having already removed the lock file (the test polls File.exists?/1 = false) — (3) only then sends :continue to
+    forget_group; (4) asserts the lock never reappears. On b2073666 the resumed write recreates the lock, so the regression fails
+    there. The seam is keyed by the test's lock path (not one global key) and removed in on_exit, so async tests never share it.
+    After release/1, `.kogen/build.lock` does not exist and is never recreated by the finishing run; the existing test passes;
+    no lock update creates the lock; release's remove and every read-modify-write are serialised; the regression fails at b2073666.
+  wrong_result: The lock reappears after release, or the fix only adds waiting in the test.
+  verified_by: [check]
+  evidence: evidence/reviews/round-1/opus.md (race analysis with line references at b2073666).
+  proof:
+    offline: [test/kogen/process_custody_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: controller standin and real files"
+    affected_paths: [lib/kogen/process_custody.ex, test/kogen/process_custody_test.exs, test/support/custody_controller_standin.exs]
+- id: probe-and-installer-tests
+  given: test/kogen/terminal_probe_test.exs and test/support/claude_code_installer_test.py at b2073666.
+  when: They run in the full offline gate.
+  then: >-
+    terminal_probe assertions carry the probe's message; the installer's omitted-package case builds its tar once and passes;
+    no assertion is weakened or removed, no test is renamed, no deadline changes.
+  wrong_result: An assertion is loosened, a deadline changes, or a test is renamed.
+  verified_by: [check]
+  evidence: Opus round-1 review.
+  proof:
+    offline: [test/kogen/terminal_probe_test.exs, test/kogen/claude_code_install_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: test-only changes"
+    affected_paths: [test/kogen/terminal_probe_test.exs, test/support/claude_code_installer_test.py]

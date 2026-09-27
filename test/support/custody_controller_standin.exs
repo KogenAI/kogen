@@ -43,7 +43,19 @@ case mode do
     {:ok, _} = Kogen.ProcessCustody.acquire(control)
     Kogen.ProcessCustody.claim(control, "standin")
     task = Task.async(launch)
-    Process.sleep(300)
+
+    wait_for_group = fn wait_for_group ->
+      case Kogen.ProcessCustody.read_lock(control) do
+        {:ok, %{"groups" => groups}} when groups != [] ->
+          :ok
+
+        _ ->
+          Process.sleep(10)
+          wait_for_group.(wait_for_group)
+      end
+    end
+
+    wait_for_group.(wait_for_group)
     IO.puts("READY")
     # A normal Stop: the controller tears its groups down itself and exits 0.
     Kogen.ProcessCustody.release(control)

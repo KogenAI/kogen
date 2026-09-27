@@ -9,12 +9,14 @@ defmodule Kogen.TerminalProbeTest do
 
       on_exit(fn -> File.rm(marker) end)
 
-      assert {"", 0} =
-               run(
-                 mode,
-                 marker,
-                 "import os,time; time.sleep(.1); open(os.environ['KOGEN_READY_MARKER'],'w').close()"
-               )
+      {message, status} =
+        run(
+          mode,
+          marker,
+          "import os,time; time.sleep(.1); open(os.environ['KOGEN_READY_MARKER'],'w').close()"
+        )
+
+      assert status == 0, message
 
       assert File.exists?(marker)
     end
@@ -68,7 +70,7 @@ defmodule Kogen.TerminalProbeTest do
           "open(os.environ['PROBE_DESCENDANT_PID'],'w').write(str(p.pid)); " <>
           "open(os.environ['KOGEN_READY_MARKER'],'w').close(); time.sleep(.2)" <> suffix
 
-      {_message, status} =
+      {message, status} =
         System.cmd(
           "python3",
           [
@@ -88,7 +90,7 @@ defmodule Kogen.TerminalProbeTest do
           stderr_to_stdout: true
         )
 
-      if name == "success", do: assert(status == 0), else: assert(status == 1)
+      if name == "success", do: assert(status == 0, message), else: assert(status == 1, message)
       pid = pid_path |> File.read!() |> String.trim()
       assert {_, kill_status} = System.cmd("/bin/kill", ["-0", pid], stderr_to_stdout: true)
       assert kill_status != 0, "#{name} descendant #{pid} survived terminal probe cleanup"
