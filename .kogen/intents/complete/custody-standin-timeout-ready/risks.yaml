@@ -1,0 +1,20 @@
+- id: timing-only-under-load
+  scenario_ids: [timeout-after-provider-started, stop-after-provider-started]
+  description: >-
+    The race appears only under load, so a passing check alone does not prove it is gone. The proof is in reading the
+    stand-in: stop mode's READY is gated on the pid files, and timeout mode accepts only a timed-out run whose group is
+    gone and that left both pid files. Neither depends on elapsed time.
+- id: retry-hides-a-broken-provider
+  scenario_ids: [timeout-after-provider-started]
+  description: >-
+    If the provider never writes its pid files, the timeout loop must still end on its own. It is capped by attempt
+    count: four attempts (timeout_ms 300, 600, 1200, 2400), then release/1, one line naming the failure, and a non-zero
+    exit, so the test fails with {:ok, 1} instead of leaving a stand-in relaunching providers after on_exit. The cap
+    counts attempts, not time: the stand-in adds no time deadline of its own, and no test deadline changes. The last
+    attempt stays below the test's 5 s drain_standin window.
+- id: retry-hides-a-bad-timeout
+  scenario_ids: [timeout-after-provider-started]
+  description: >-
+    A retry must not hide a timeout that kills the leader without reaping the group when the kill lands before
+    grandchild.pid is written. After every run/3 attempt the stand-in checks that the attempt's group is gone
+    (kill -0 -<facts["pgid"]> fails) and that facts["timed_out"] is true, and exits non-zero if either check fails.
