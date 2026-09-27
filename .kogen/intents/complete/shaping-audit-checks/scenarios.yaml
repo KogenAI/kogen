@@ -1,0 +1,573 @@
+# Slice 1 of 4 of shaping-quality (INTENT.md). Offline only.
+# Fixture repository (test/support/shaping_audit/fixture.ex, Fixture.repo!/1):
+#   A git repository with branch main. Its first commit holds:
+#   - a Makefile declaring `check` and `live-x`;
+#   - the catalog priv/kogen/verification_targets.yaml, where `check` is offline and `live-x` is provider-backed
+#     with owner test/live_x_test.exs, rank 200, dependencies [check], and no `prepare`;
+#   - the ledger priv/kogen/test-reliability.yaml in the landed ledger-by-name format, JSON:
+#       {"declaration_count":1,"declarations":[{"id":"test-a-test-exs:t001","file":"test/a_test.exs",
+#        "declaration":"a works","disposition":"keep", ...}]},
+#     with no source_sha256 and no maintained_sources key;
+#   - priv/kogen/test-reliability-remediation.yaml with the matching `resolved` row;
+#   - test/a_test.exs, containing `test "a works"`, and test/live_x_test.exs;
+#   - the controller files .codex/hooks.json, .codex/hooks/check.sh, .codex/hooks/verification_policy.py,
+#     .codex/hooks/environment.py, .codex/hooks/stop_runner.py and priv/kogen/claude_code/settings.json;
+#   - lib/a.ex, whose line 3 is `  def cited_bytes, do: 1`, and lib/b.ex (both valid Elixir modules);
+#   - .kogen/config.yaml with `default_route: codex` and two routes, `codex` and `other`, each `harness: codex` with
+#     fake models (the shape of qb's task-test @config_yaml), which main/2 reads from the checkout.
+#   It has no scripts/check/refresh_test_reliability_sources.py: that script was deleted at 82ac4351.
+#   A second commit changes lib/a.ex line 3 to `  def cited_digest, do: 2`.
+#   After the commits, the working tree adds an untracked test/stray_test.exs and an uncommitted Makefile target
+#   `live-extra`.
+#   Two retained Build records sit in the real record shape (schema_version 2) at
+#   .kogen/runtime/scenario-tracking/FIXTUREBUILD000000000001/record.json and .../FIXTUREBUILD000000000002/record.json.
+#   Each has intent.id 01965000-0000-7000-8000-000000000001, status "failed" and
+#   attempts: [{number: 0, status: "failed", failure: "Candidate changed paths outside Approved guards: lib/b.ex",
+#   failure_signatures: []}].
+# Fixture.repo!/1 options (each changes only what it names):
+#   - catalog_mismatch: true: the first commit's catalog also declares an offline target `mismatch-x` that the
+#     committed Makefile has no rule for, so VerificationPlan.load/1 on HEAD returns {:error, "...has no ordinary Make
+#     rule"}.
+#   - oversized_record: true: adds FIXTUREBUILD000000000003/record.json, 33 MiB of spaces.
+#   - prepare: true: live-x's catalog entry has `prepare: [python3, test/support/live_x_driver.py, --prepare]`, and the
+#     first commit also holds test/support/live_x_driver.py.
+#   - compiled: true: the root is made by Kogen.CompiledFixture.create!(File.cwd!(), "shaping-audit") (mix.exs, deps/,
+#     lib/, the controller files) instead of an empty temp directory; the fixture's files above are then written over
+#     it (replacing create!'s check-only Makefile and its .kogen/config.yaml), and the repository is initialised and
+#     committed as above. The task test loads it with Code.require_file("../support/compiled_fixture.exs", __DIR__).
+# Fixture Drafts live in test/support/shaping_audit/drafts/<name>/ and are copied by Fixture.add_draft!/3 into
+# .kogen/intents/drafts/<slug>. The tokens __HEAD__ and __FIRST_COMMIT__ are substituted.
+# Each test runs the audit through its public entry (Kogen.ShapingAudit.main/2, which `mix kogen.audit` calls).
+# Where a scenario says so, it also runs the deterministic layer on a materialization. Each test asserts the exact
+# finding ids, severities, `disputable` values and `paths`.
+# Each scenario's `tests` key lists the ExUnit tests to write. The test name is exactly the quoted string; the label
+# before it (A1, D3) is not part of the name. test/kogen/shaping_audit_checks_test.exs holds exactly A1-A7, B1-B7 and
+# C1-C6, and test/kogen/shaping_audit_task_test.exs exactly D1-D8; every other qb test is removed (INTENT.md "Tests and
+# fixtures"). The ledger binds rows by test name.
+# A test that only checks an exit status, the number of findings or a substring, where exact values are listed,
+# does not prove the scenario.
+- id: audit-mirrors-build-admission
+  given: >-
+    The fixture repository and these fixture Drafts.
+    - `proof-defects`: guards `test/**` only. Its one scenario has `affected_paths: [lib/unguarded.ex]` and
+      `verified_by: [check, live-extra]`. Its `proof.offline` is `test/gone_test.exs`, `test/stray_test.exs`,
+      `"test/a_test.exs:3"`, `"test/**"`, `"/abs/x_test.exs"` and `"../x_test.exs"`. Its `paid_target` is
+      `none` and its `paid_reason` is `"not a valid reason"`.
+    - `controller-read`: affects `.codex/hooks/verification_policy.py`, guarded, with a valid proof.
+    - `catalog-added`: guards and affects the catalog. It declares `catalog_changes.add: [live-new]`, a scenario
+      selects `live-new`, and the proof is valid.
+    - `complete`: no defect. Its `title` is "Add a fixture feature" and its `commit_subject` is "Add a fixture
+      feature". It has one scenario with a valid `check` proof.
+    A variant repository (`Fixture.repo!(catalog_mismatch: true)`) commits a catalog that names a target the
+    committed Makefile lacks, so `VerificationPlan.load/1` on its HEAD returns `{:error, reason}`.
+  when: >-
+    `Kogen.ShapingAudit.main([slug], root: fixture)` audits each Draft. For each fixture Draft, the test also runs
+    the existing `Kogen.Build.VerificationPlan.build/4` on the audit's materialization, with the Draft's scenarios,
+    guards, the committed catalog and its `catalog_changes.add`.
+  then: >-
+    Every proof finding comes from exactly the predicates `build/4` applies. For proof-defects, the blocking,
+    non-disputable findings are exactly these nine ids:
+    `unguarded-affected-path lib/unguarded.ex`, `proof-selector-missing test/gone_test.exs`,
+    `proof-selector-missing test/stray_test.exs`, `unsupported-selector test/a_test.exs:3`,
+    `unsupported-selector test/**`, `unsupported-selector /abs/x_test.exs`, `unsupported-selector ../x_test.exs`,
+    `paid-reason-malformed not a valid reason` and `unknown-target live-extra`. `build/4` returns `{:error, _}`
+    on the same inputs.
+
+    The proof findings are empty exactly when `build/4` returns `{:ok, _}`, on every fixture Draft of this
+    Intent. `build/4` keeps its results: `test/kogen/selective_verification_targets_test.exs` and
+    `test/kogen/verification_policy_test.exs` pass unchanged.
+
+    controller-read gives exactly one finding, `controller-read-path .codex/hooks/verification_policy.py`. It is
+    blocking, not disputable, and its paths are `[".codex/hooks/verification_policy.py"]`. The controller list
+    is exactly `.codex/hooks.json`, `.codex/hooks/verification_policy.py` and `priv/kogen/claude_code/settings.json`.
+    `check.sh`, `stop_runner.py`, `environment.py`, the catalog and `.kogen/config.yaml` are never on it, and
+    none of these paths appears as a string literal in any file under `lib/kogen/shaping_audit`.
+
+    catalog-added gets no finding. complete gets no finding, and its report says `readiness: ready`, exit 0.
+    The catalog-mismatch repository gives exactly one finding, `repository-invalid`: scope `environment`,
+    blocking, not disputable, no paths, and its message is the `reason` that `VerificationPlan.load/1` returned
+    on the materialization. The deterministic layer is `{"status": "unavailable", "reason": <that reason>}`, no
+    catalog rule runs, readiness is `not_ready`, and the exit code is 1. The finding comes from the `{:error, _}`
+    result, not from matching its text. Build admission is unchanged: `VerificationPlan.load/1` still accepts a
+    Makefile with an extra `live-*` rule the catalog does not name (the checkout's working tree, whose Makefile
+    has the uncommitted `live-extra`).
+
+    The untracked `test/stray_test.exs` and the uncommitted `live-extra` never count. A test that commits nothing
+    new, but adds `test/stray_test.exs` to the working tree, still gets `proof-selector-missing
+    test/stray_test.exs`.
+  wrong_result: >-
+    Any of these:
+    - only the first proof error is reported;
+    - the proof check is a separate pre-#4 model that disagrees with `build/4` on any fixture;
+    - `build/4` changes behaviour;
+    - the working tree is read, so the stray test satisfies a selector;
+    - the controller list is a literal in the audit, or includes check.sh or the catalog;
+    - a mismatched catalog runs catalog rules instead of `repository-invalid`;
+    - `repository-invalid` is recognised by matching the error message, or its layer status is `ok`;
+    - a Build admission refusal is added for extra Make targets (qb's `require_no_extra_targets/2`);
+    - a smoke test that asserts only a nonzero exit or a finding count;
+    - fixture-specific shortcuts, such as matching the fixture's file names instead of running the predicates.
+  verified_by: [check]
+  evidence: >-
+    test/kogen/shaping_audit_checks_test.exs runs the audit on each fixture and compares it with `build/4` on the
+    same materialization. The two preservation selectors run unchanged.
+  tests:
+    - >-
+      A1 "proof-defects: every proof predicate fails, never only the first": root = Fixture.repo!(); add
+      proof-defects; run the deterministic layer on its materialization. Assert that the sorted finding ids equal
+      the nine ids in `then`, each `severity` is "blocking" and `disputable` is false, and the `paths` of
+      `unguarded-affected-path lib/unguarded.ex` are ["lib/unguarded.ex"]. Assert that
+      `VerificationPlan.build(scenarios, guards, catalog, materialization)` returns {:error, _}.
+    - >-
+      A2 "complete: no finding, readiness ready, and build/4 accepts the same HEAD and package": add complete; run
+      `Kogen.ShapingAudit.main(["complete"], root: root)`. Assert the return value is 0, report.json's `findings`
+      is [], its `readiness` is "ready", and its `layers` is %{"deterministic" => %{"status" => "ok", …}}. main/2
+      has already removed its materialization, so create a fresh materialization of the same HEAD and package
+      (`Materialization.create/3`, removed in an `after`) and assert build/4 on it returns {:ok, _}.
+    - >-
+      A3 "proof findings are empty exactly when build/4 accepts, on every fixture Draft": for every fixture Draft
+      of this Intent except `invalid` (its scenarios.yaml does not parse, so there is no scenario list to pass to
+      build/4) and `non-regular` (refused before any read), assert (proof findings == []) == match?({:ok, _},
+      build/4 result). The list is asserted to equal the directory listing of test/support/shaping_audit/drafts
+      minus those two. Proof findings are the findings whose rule is in the six admission predicate ids.
+    - >-
+      A4 "controller-read: the Codex policy script is flagged; the catalog and the bootstrap scripts are not":
+      audit controller-read and assert its finding ids are exactly
+      ["controller-read-path .codex/hooks/verification_policy.py"], with disputable false and the paths above.
+      Audit catalog-added and assert its findings are []. Assert `VerificationPolicy.controller_paths()` ==
+      [".codex/hooks.json", ".codex/hooks/verification_policy.py"]. For each of those two paths, deleting it from
+      a copy of a valid policy fixture makes `VerificationPolicy.preflight(["check"], dir)` return {:error, _},
+      while the intact copy returns :ok.
+    - >-
+      A5 "no controller path is a string literal under lib/kogen/shaping_audit": read every .ex file under
+      lib/kogen/shaping_audit, and refute that any contains ".codex/hooks.json", "verification_policy.py" or
+      "claude_code/settings.json".
+    - >-
+      A6 "a committed catalog that does not match the committed Makefile gives repository-invalid":
+      Fixture.repo!(catalog_mismatch: true); add complete; main/2. Assert the return is 1, the finding ids are
+      exactly ["repository-invalid"], with scope "environment", disputable false and paths [], its message equals
+      the reason `VerificationPlan.load/1` returns on a fresh materialization of the same HEAD, layers.deterministic
+      is %{"status" => "unavailable", "reason" => that reason}, and readiness is "not_ready". Then, on the default
+      Fixture.repo!(), assert `VerificationPlan.load(root)` on the checkout itself (its Makefile has the extra
+      uncommitted `live-extra` rule) returns {:ok, _}.
+    - >-
+      A7 "the working tree's stray test and uncommitted target never reach any rule": add proof-defects. Assert
+      the materialization has no test/stray_test.exs and its Makefile has no `live-extra` line, while the
+      checkout has both. Assert that `proof-selector-missing test/stray_test.exs` and `unknown-target live-extra`
+      are both present.
+  proof:
+    offline: [test/kogen/shaping_audit_checks_test.exs, test/kogen/selective_verification_targets_test.exs, test/kogen/verification_policy_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: git fixture repositories and Build's own admission predicates exercise every rule and its clean control"
+    affected_paths:
+      - lib/kogen/shaping_audit.ex
+      - lib/kogen/shaping_audit/deterministic.ex
+      - lib/kogen/shaping_audit/finding.ex
+      - lib/kogen/shaping_audit/materialization.ex
+      - lib/kogen/build/verification_plan.ex
+      - lib/kogen/verification_policy.ex
+      - lib/kogen/build.ex
+      - lib/kogen/harness.ex
+      - test/kogen/shaping_audit_checks_test.exs
+      - test/support/shaping_audit/fixture.ex
+      - test/support/shaping_audit/drafts/proof-defects
+      - test/support/shaping_audit/drafts/controller-read
+      - test/support/shaping_audit/drafts/catalog-added
+      - test/support/shaping_audit/drafts/complete
+
+- id: audit-ledger-live-and-paid-rules
+  given: >-
+    The fixture repository and these fixture Drafts. Each changes one thing from complete.
+    - `ledger-flawed`: affects `test/a_test.exs`, guards `test/**` only.
+    - `ledger-unstated`: affects `test/a_test.exs`, guards `test/**` and `priv/kogen/test-reliability.yaml`. Its
+      `then` holds the sentence `Delete the catalogued test "a works".` The capital `Delete` counts, because
+      deletion and addition words are matched as whole words ignoring case (INTENT.md "Ledger rules").
+    - `ledger-rename`: the same guards. Its `then` holds `Rename the catalogued test "a works" to "a still works".`
+    - `ledger-both`: like ledger-unstated, and it also guards `priv/kogen/test-reliability-remediation.yaml`.
+    - `ledger-body`: affects `test/a_test.exs`, guards the ledger. Its text says only that the body of
+      "a works" changes.
+    - `live-owner`: affects `test/live_x_test.exs`, guarded; no scenario selects `live-x`.
+    - `paid-unproven`: one scenario selects `live-x` (verified_by [check, live-x], paid_target live-x, a valid
+      `provider-required:` paid_reason) and affects `test/live_x_test.exs`. The package has no evidence directory.
+    - `paid-proven`: the same, plus `evidence/probe-live-x/RESULT.md` containing "live-x".
+    - `paid-overbroad`: one scenario selects `live-x` as its only paid target, and every affected path is under
+      `test/support/` (`test/support/live_x_driver.py`, guarded). No other scenario selects live-x. The package
+      has `evidence/probe-live-x/RESULT.md`.
+    - `paid-provider-only`: like paid-overbroad, but the scenario also affects `lib/kogen/harness/codex.ex`
+      (guarded).
+    - `paid-shared`: like paid-overbroad, but a second scenario also selects live-x and affects
+      `test/live_x_test.exs`.
+    Copies made inside the tests, not fixture Drafts:
+    - paid-unproven plus `evidence/proving-run-1/logs/run.log` containing "live-x passed" (proving-run branch), and
+      the same with a run.log that does not contain "live-x";
+    - paid-overbroad without its `evidence/probe-live-x/RESULT.md`, audited in `Fixture.repo!(prepare: true)`,
+      where the affected `test/support/live_x_driver.py` is in live-x's `prepare` argv (prepare branch), and in the
+      default `Fixture.repo!()`, where it is not.
+  when: >-
+    `Kogen.ShapingAudit.main([slug], root: fixture)` audits each Draft.
+  then: >-
+    The expected findings per Draft:
+    - ledger-flawed: exactly `ledger-closure`, blocking and not disputable. Its paths are `["test/a_test.exs",
+      "priv/kogen/test-reliability.yaml"]`. Its message says that the file holds catalogued tests, that renaming
+      one edits its row's declaration by hand in priv/kogen/test-reliability.yaml, that editing a body or adding
+      a test needs no row change, and that guarding the file is harmless.
+    - ledger-unstated: exactly `ledger-row-update-unstated`, blocking and disputable. Its paths are
+      `["priv/kogen/test-reliability-remediation.yaml"]`. Its message says the remediation file changes only
+      when rows are added or deleted, and names no script (it does not match `refresh` or `.py`).
+    - ledger-rename, ledger-both and ledger-body: no ledger finding.
+    - live-owner: exactly `edited-live-owner-unselected live-x`, not disputable, with paths
+      `["test/live_x_test.exs"]`.
+    - paid-unproven: exactly `paid-path-unproven live-x`, blocking and disputable, with paths
+      `["test/live_x_test.exs"]`.
+    - paid-proven, and paid-unproven with a proving-run file naming live-x: no finding. With a proving-run file
+      that does not name live-x: still exactly `paid-path-unproven live-x`.
+    - paid-overbroad without its probe, in the `prepare: true` repository: exactly `paid-path-unproven live-x`
+      (paths `["test/support/live_x_driver.py"]`) and `paid-target-overbroad paid-overbroad-case`. The same copy in
+      the default repository: only `paid-target-overbroad paid-overbroad-case`.
+    - paid-overbroad: exactly `paid-target-overbroad paid-overbroad-case`, blocking and disputable. Its message
+      holds "introduce the cheaper check" and never "ask the Shaper".
+    - paid-provider-only and paid-shared: no finding.
+    A `## Dispositions` line `paid-target-overbroad paid-overbroad-case: not a defect — the full observable is
+    needed` makes paid-overbroad ready (exit 0). The same form of line for `ledger-closure` leaves ledger-flawed
+    not ready (exit 1).
+  wrong_result: >-
+    Any of these:
+    - the ledger rule reads a `maintained_sources` or `source_sha256` key the landed ledger does not have (the
+      Candidate's defect);
+    - a rename, or a body edit, is told to update the remediation file;
+    - the message names a refresh script;
+    - `add` matched as a substring (e.g. "address") fires the row rule, or a capitalised `Delete` is missed;
+    - a prepare-listed driver path or a proving-run record is ignored by `paid-path-unproven`;
+    - an edited live owner passes unselected;
+    - a paid target shared with another scenario is flagged over-broad;
+    - an over-broad finding asks the Shaper;
+    - a mechanical finding is cleared by a disposition;
+    - a smoke test;
+    - fixture-specific shortcuts, such as hard-coding "a works" or "live-x" in the rules instead of reading the
+      committed ledger and catalog.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_checks_test.exs, one test per rule with its clean control.
+  tests:
+    - >-
+      B1 "ledger-flawed: a catalogued test file with the ledger unguarded blocks with ledger-closure": add
+      ledger-flawed and audit it. Assert the ids are ["ledger-closure"], disputable is false, the paths are
+      ["test/a_test.exs", "priv/kogen/test-reliability.yaml"], and the message contains "guarding" and "harmless".
+    - >-
+      B2 "ledger-unstated: a deleted catalogued test with the remediation file unguarded blocks": add
+      ledger-unstated (whose sentence starts with the capital "Delete") and audit it. Assert the ids are
+      ["ledger-row-update-unstated"], disputable is true, and the paths are
+      ["priv/kogen/test-reliability-remediation.yaml"]. Refute that the message matches ~r/refresh|\.py/.
+    - >-
+      B3 "ledger-rename, ledger-both and ledger-body get no ledger finding": audit each of the three, and assert
+      that no finding id starts with "ledger-". Then copy ledger-unstated, change its sentence to `Keep the
+      address of "a works".`, audit it, and assert no ledger finding either (whole-word matching).
+    - >-
+      B4 "live-owner: an edited, unselected live owner blocks with edited-live-owner-unselected": add live-owner
+      and audit it. Assert the ids are ["edited-live-owner-unselected live-x"], disputable is false, and the paths
+      are ["test/live_x_test.exs"].
+    - >-
+      B5 "paid-path-unproven: the owner and prepare branches block; a probe or proving-run record naming the target
+      proves it": audit paid-unproven and paid-proven. Assert paid-unproven's ids are ["paid-path-unproven live-x"]
+      with paths ["test/live_x_test.exs"], and paid-proven's findings are []. Copy paid-unproven with
+      evidence/proving-run-1/logs/run.log containing "live-x passed": assert []; with a run.log that does not
+      contain "live-x": assert ["paid-path-unproven live-x"]. Copy paid-overbroad without its probe RESULT.md:
+      in Fixture.repo!(prepare: true) assert the sorted ids are ["paid-path-unproven live-x",
+      "paid-target-overbroad paid-overbroad-case"], the first with paths ["test/support/live_x_driver.py"]; in
+      Fixture.repo!() assert only ["paid-target-overbroad paid-overbroad-case"].
+    - >-
+      B6 "paid-overbroad is flagged; paid-provider-only and paid-shared are not": audit all three. Assert
+      paid-overbroad's ids are ["paid-target-overbroad paid-overbroad-case"] and its message contains "introduce
+      the cheaper check". Assert the other two have no finding.
+    - >-
+      B7 "a disposition clears a disputable finding but never a mechanical one": copy paid-overbroad and add the
+      `## Dispositions` line from `then` to its questions.md. Assert main/2 returns 0 and the finding's
+      `disposition.kind` is "not-a-defect". Copy ledger-flawed with the same form of line for `ledger-closure`,
+      and assert main/2 returns 1 and the finding is still open.
+  proof:
+    offline: [test/kogen/shaping_audit_checks_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: git fixture repositories with committed ledger and catalog files exercise every rule and its clean control"
+    affected_paths:
+      - lib/kogen/shaping_audit/deterministic.ex
+      - lib/kogen/shaping_audit/finding.ex
+      - lib/kogen/shaping_audit/questions.ex
+      - test/kogen/shaping_audit_checks_test.exs
+      - test/support/shaping_audit/fixture.ex
+      - test/support/shaping_audit/drafts/ledger-flawed
+      - test/support/shaping_audit/drafts/ledger-unstated
+      - test/support/shaping_audit/drafts/ledger-rename
+      - test/support/shaping_audit/drafts/ledger-both
+      - test/support/shaping_audit/drafts/ledger-body
+      - test/support/shaping_audit/drafts/live-owner
+      - test/support/shaping_audit/drafts/paid-unproven
+      - test/support/shaping_audit/drafts/paid-proven
+      - test/support/shaping_audit/drafts/paid-overbroad
+      - test/support/shaping_audit/drafts/paid-provider-only
+      - test/support/shaping_audit/drafts/paid-shared
+
+- id: audit-anchors-titles-and-history
+  given: >-
+    The fixture repository and these fixture Drafts:
+    - `stale`: `shaped_against.head` is the first commit, and INTENT.md cites `lib/a.ex:3` and `` `cited_bytes` ``
+      and introduces `` `new_helper` ``, which exists at neither commit.
+    - `stale-disputed`: `shaped_against.head` is the first commit, and its INTENT.md cites only
+      `` `cited_bytes` `` (not `lib/a.ex:3`, which would leave an undisputed `stale-anchor lib/a.ex:3`), plus the
+      `## Dispositions` line `- stale-anchor cited_bytes: not a defect — the Draft deletes it` (with the optional
+      leading `- `).
+    - `stale-unavailable`: `shaped_against.head` is `0000000000000000000000000000000000000000`.
+    - `long-title`: `title: Own verification in the Build controller with Candidate-bound receipts.` and
+      `commit_subject: own verification in the Build controller with Candidate-bound receipts and more`.
+    - `no-subject`: like complete, without `commit_subject`.
+    - a copy of complete made inside the test whose `commit_subject` is the two-line YAML block scalar
+      `|-` "Add a fixture feature" / "With a second line".
+    - `history`: `id` 01965000-0000-7000-8000-000000000001.
+    - `invalid`: `scenarios.yaml` is the text `- id: [unclosed`.
+    A third record, `FIXTUREBUILD000000000003/record.json`, is 33 MiB of spaces (Fixture.repo!(oversized_record:
+    true)).
+  when: >-
+    Each Draft is audited through main/2. For history, a recording read function is passed as `opts[:read]`.
+  then: >-
+    - stale: exactly `stale-anchor cited_bytes` and `stale-anchor lib/a.ex:3`, blocking and disputable. Nothing
+      is raised for `new_helper`.
+    - stale-disputed: exactly one finding, `stale-anchor cited_bytes`, and it is not open: exit 0 and readiness
+      `ready`. It stays in the report with `disposition` `{"kind": "not-a-defect", "reason": "the Draft deletes
+      it"}`.
+    - stale-unavailable: exactly `stale-anchor-baseline-unavailable`. Its message tells the Controller to
+      re-verify its citations and update `shaped_against` itself.
+    - long-title: exactly `title-format` and `commit-subject-format`, both not disputable.
+      - title-format's message names "more than 50 characters" and "trailing period".
+      - commit-subject-format's names "more than 72 characters" and "lowercase".
+    - no-subject: exactly `commit-subject-format`, whose message holds "commit_subject is missing".
+    - the two-line copy: exactly `commit-subject-format`, whose message holds "more than one line".
+    - complete: no title finding.
+    - history: exactly one advisory finding, `prior-failures`. Its message lists `FIXTUREBUILD000000000001` and
+      `FIXTUREBUILD000000000002`, each with "Candidate changed paths outside Approved guards: lib/b.ex". The
+      recording read function never saw the 33 MiB record's path. The advisory finding alone does not make the
+      report not ready.
+    - invalid: exactly `package-invalid`, blocking and not disputable, exit 1.
+  wrong_result: >-
+    Any of these:
+    - an identifier the Draft introduces is flagged stale;
+    - a stale line is missed because the working tree is read;
+    - a disputed stale anchor still blocks, or a mechanical title finding can be disputed;
+    - a multi-line `commit_subject` passes;
+    - the title check judges imperative mood, or rejects a Draft for its trailers;
+    - prior-failures reads top-level `build_id` or `signature` keys that real records do not have (the
+      Candidate's fixture-specific shortcut);
+    - prior-failures reads an oversized record, or blocks readiness;
+    - a smoke test;
+    - fixture-specific shortcuts, such as matching the word `cited_bytes` instead of comparing
+      `git show <shaped_against>:<path>` with HEAD.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_checks_test.exs, one test per Draft, with the recording read function.
+  tests:
+    - >-
+      C1 "stale: a changed line and a gone identifier are stale-anchor; a new identifier is not": add stale and
+      audit it. Assert the sorted ids are ["stale-anchor cited_bytes", "stale-anchor lib/a.ex:3"], both disputable,
+      and refute any id containing "new_helper".
+    - >-
+      C2 "stale-disputed: the disposition clears the stale anchor": add stale-disputed. Assert main/2 returns 0,
+      the finding ids are exactly ["stale-anchor cited_bytes"], that finding has disposition %{"kind" =>
+      "not-a-defect", "reason" => "the Draft deletes it"}, and readiness is "ready".
+    - >-
+      C3 "stale-unavailable: a baseline that is not a local commit": assert the ids are
+      ["stale-anchor-baseline-unavailable"], and the message contains "shaped_against".
+    - >-
+      C4 "long-title and no-subject: mechanical title and subject rules": assert long-title's ids are
+      ["commit-subject-format", "title-format"], with the message fragments in `then`, both disputable false.
+      Assert no-subject's ids are ["commit-subject-format"], with "commit_subject is missing". Copy complete with
+      the two-line `commit_subject` and assert its ids are ["commit-subject-format"], with "more than one line".
+      Assert complete has no title finding.
+    - >-
+      C5 "history: advisory prior-failures from real-shaped records, bounded": Fixture.repo!(oversized_record:
+      true); add history. Pass a read function that records every path, then delegates to File.read/1. Assert
+      one finding, `prior-failures`, severity "advisory", whose message contains both Build ids and the failure
+      text. Assert the recorded paths do not include FIXTUREBUILD000000000003's record, and readiness is not
+      affected: with only this finding, readiness is "ready".
+    - >-
+      C6 "invalid: an unparseable scenarios.yaml blocks with package-invalid": assert the ids are
+      ["package-invalid"], disputable false, and main/2 returns 1.
+  proof:
+    offline: [test/kogen/shaping_audit_checks_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: git fixture history, retained-record fixtures and package files exercise every rule"
+    affected_paths:
+      - lib/kogen/shaping_audit/deterministic.ex
+      - lib/kogen/shaping_audit/materialization.ex
+      - lib/kogen/shaping_audit/questions.ex
+      - test/kogen/shaping_audit_checks_test.exs
+      - test/support/shaping_audit/fixture.ex
+      - test/support/shaping_audit/drafts/stale
+      - test/support/shaping_audit/drafts/stale-disputed
+      - test/support/shaping_audit/drafts/stale-unavailable
+      - test/support/shaping_audit/drafts/long-title
+      - test/support/shaping_audit/drafts/no-subject
+      - test/support/shaping_audit/drafts/history
+      - test/support/shaping_audit/drafts/invalid
+
+- id: audit-command-and-report
+  given: >-
+    Kogen.IsolatedCase fixture checkouts (Fixture.repo!/1) with:
+    - the complete Draft;
+    - a package holding a symlinked `scenarios.yaml`;
+    - a package holding a FIFO;
+    - the non-regular fixture (`drafts/non-regular`, a symlink added by the test);
+    - the same slug in both `drafts/` and `approved/`;
+    - the slug only in `approved/`;
+    - a `.kogen/build.lock`.
+  when: >-
+    `Kogen.ShapingAudit.main/2` runs `[slug]`, `["--route", name, slug]` and `["--status", slug]`. The runs
+    cover:
+    - a first audit;
+    - after a Draft edit;
+    - after a commit moves HEAD;
+    - for another route;
+    - for a slug never audited;
+    - under KOGEN_ROLE `developer`, `reviewer`, `expert`, `auditor` and `shaper`;
+    - while the lock exists;
+    - with a bad argument (`["--nope", "complete"]`, `[]`).
+
+    `mix kogen.audit` runs once through `Kogen.CompiledFixture.mix_task!/3` in `Fixture.repo!(compiled: true)`.
+  then: >-
+    - The first audit exits 0 and writes exactly `.kogen/runtime/shaping-audits/complete/<revision>/report.json`
+      and `report.md`. The revision is the SHA-256 of the sorted relative paths and bytes of the package.
+      report.json has `schema_version: 1` and the keys of INTENT.md "Report", with `head` equal to `git rev-parse
+      HEAD` and `route` equal to the selected route's name. report.md names the readiness and every finding id.
+    - Nothing under `.kogen/intents/` is created, changed or removed: a SHA-256 manifest before and after is
+      equal. No `kogen-audit-*` directory remains under the system tmp dir after any run, including a refused or
+      failed one.
+    - `--status` prints `current` right after the audit. After a commit it prints `stale: head`. With another
+      `--route` it prints `stale: route`. After a Draft edit (a new revision) it prints `missing`. It exits 0
+      only for `current` with a ready report, and 1 otherwise. It audits nothing: no new report file.
+    - Refused, with exit 2, no report and no materialization, and a recording read function that saw no package
+      read: each of the four roles, the lock, the ambiguous slug, a missing slug and a bad argument. Each
+      refusal prints one stderr line naming its cause.
+    - A symlinked `scenarios.yaml`, a FIFO and the non-regular fixture are each refused with exit 2, naming the
+      entry, before any file is read.
+    - `KOGEN_ROLE=shaper` and an approved-only package run normally (exit 0 on complete).
+    - `lib/mix/tasks/kogen.audit.ex` only calls `Kogen.ShapingAudit.main/1` and halts with its code, and the
+      mix task run exits with the same code as main/2.
+    - README.md gains a "### Shaping audit" section. It states the command and `--status`, the report layout, the
+      exit codes, what `ready` means, that nothing under `.kogen/intents/` changes, and "A report is never
+      approval".
+  wrong_result: >-
+    Any of these:
+    - the report is stored in the package;
+    - a symlink target is read;
+    - `--status` ignores HEAD or route, or re-audits;
+    - the audit runs inside another role or while a Build holds the lock;
+    - one of two same-named packages is picked silently;
+    - it exits 0 when not ready;
+    - the materialization is left behind;
+    - the task does more than delegate;
+    - a smoke test that checks only the exit code;
+    - fixture-specific shortcuts, such as a revision computed from file names only.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_task_test.exs runs the entry function and the task in fixture checkouts.
+  tests:
+    - >-
+      D1 "a ready audit exits 0, writes the report layout, and leaves .kogen/intents and tmp untouched": complete;
+      manifest .kogen/intents; list System.tmp_dir!() kogen-audit-* entries; main/2. Assert 0. Assert the only
+      new files are the two report files at the computed revision, with every key and value of `then`. Assert the
+      manifest is equal and there are no new kogen-audit-* entries.
+    - >-
+      D2 "--status is current, then stale after a commit, then stale for another route, then missing after an
+      edit": Fixture.repo!() (its committed .kogen/config.yaml has `default_route: codex` and a second route
+      `other`, fixture header). Audit complete; assert the output line "current" and exit 0. Commit an unrelated file; assert "stale: head"
+      and 1. With `--route other`, assert "stale: route". Edit the Draft's INTENT.md; assert "missing". Assert no report file was added by any --status run.
+    - >-
+      D3 "refuses role #{role}: exit 2, no report, no materialization, no read": for role in developer,
+      reviewer, expert and auditor, one generated test each.
+    - >-
+      D4 "refuses while .kogen/build.lock is present, for an ambiguous slug, a missing slug and a bad argument":
+      assert 2, no report, no materialization and no recorded package read for each.
+    - >-
+      D5 "non-regular package entries are refused before anything is read": symlinked scenarios.yaml, a FIFO made
+      with mkfifo, and the non-regular fixture with a symlink added. Assert 2, the stderr line naming the entry,
+      and no recorded read.
+    - >-
+      D6 "an approved-only package and the Shaper role run normally": assert 0 for approved-only complete, and
+      for complete under KOGEN_ROLE=shaper.
+    - >-
+      D7 "the mix task only delegates to the entry function and halts with its code": a source check that
+      lib/mix/tasks/kogen.audit.ex's run/1 body is `System.halt(Kogen.ShapingAudit.main(args))`. Then fixture =
+      Fixture.repo!(compiled: true) (fixture header: built on Kogen.CompiledFixture.create!/2, with the Makefile,
+      catalog and .kogen/config.yaml written and committed); add complete; run
+      `Kogen.CompiledFixture.mix_task!(fixture, ["kogen.audit", "complete"], [{"KOGEN_ROLE", nil}])` and assert exit 0 and that
+      report.json exists at the computed revision with readiness "ready". Run it again with
+      ["kogen.audit", "--nope", "complete"] and assert exit 2, the same code main/2 returns for those arguments.
+    - >-
+      D8 "the README documents the command, the report layout, readiness and that a report is never approval":
+      whitespace-normalised substrings of README.md: "### Shaping audit", "mix kogen.audit [--route <name>]
+      <slug>", "mix kogen.audit --status", ".kogen/runtime/shaping-audits/<slug>/<revision>/", "exits `0` when",
+      "A report is never approval".
+  proof:
+    offline: [test/kogen/shaping_audit_task_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the entry function and the mix task run end to end in fixture checkouts"
+    affected_paths:
+      - lib/kogen/shaping_audit.ex
+      - lib/kogen/shaping_audit/package.ex
+      - lib/kogen/shaping_audit/report.ex
+      - lib/kogen/shaping_audit/materialization.ex
+      - lib/mix/tasks/kogen.audit.ex
+      - README.md
+      - test/kogen/shaping_audit_task_test.exs
+      - test/support/shaping_audit/fixture.ex
+      - test/support/shaping_audit/drafts/complete
+      - test/support/shaping_audit/drafts/non-regular
+
+- id: build-publishes-commit-subject
+  given: >-
+    `intent.yaml` gains the optional `commit_subject` (package directions 20, 28 and 29). The publication commit
+    Build creates for a Candidate is made in the private `finish_publication/4` of `lib/kogen/build.ex`, through
+    `Kogen.Git.commit_staged(ctx.intent.title, trailers, root)` (`lib/kogen/build.ex:2742` at e65392cf, in
+    `finish_publication/4` at :2732). The
+    scripted Build fixture that `test/kogen/commit_provenance_test.exs` uses writes an intent.yaml.
+  when: >-
+    `Kogen.Intent.read/2` reads a package with `commit_subject: Add a short subject`, a package without it, and a
+    package with `commit_subject: ""`. The provenance test runs its fixture Builds to publication: two without
+    `commit_subject` and one with it.
+  then: >-
+    - read/2 returns `commit_subject: "Add a short subject"` beside the unchanged `title`.
+    - Without the key it returns `commit_subject: nil`, and every existing package and fixture that writes only
+      `title` still loads.
+    - A blank value is refused with `commit_subject must be a nonblank string`.
+    - The published commit's message is exactly the `commit_subject`, a blank line, then the unchanged
+      `Kogen-Intent-ID: <id>` and `Kogen-Intent: <slug>` trailers, with no body.
+    - Without the key, the subject is the package's `title` (the Shaper's fallback, package direction 29 and
+      Assumed 30 of the original).
+  wrong_result: >-
+    Any of these:
+    - a package with `commit_subject` is published with its title;
+    - a package without it fails to build instead of using its title;
+    - a body is added or the trailers change;
+    - the assertion calls the private publication function instead of reading the published commit;
+    - a smoke test that checks only that a commit exists;
+    - fixture-specific shortcuts, such as special-casing the fixture's subject text.
+  verified_by: [check]
+  evidence: >-
+    test/kogen/intent_test.exs reads the three packages. test/kogen/commit_provenance_test.exs reads the
+    published commit with `git log -1 --format=%B`.
+  tests:
+    - >-
+      E1 "reads an optional commit_subject beside the required title": in test/kogen/intent_test.exs, write three
+      intent.yaml files: with the value, without it, and with "". Assert read/2 returns commit_subject "Add a
+      short subject", then nil, then {:error, reason} with reason containing "commit_subject must be a nonblank
+      string".
+    - >-
+      E2 "first and subsequent Builds record truthful automated provenance" (the existing test, name unchanged,
+      body extended as in the Zuj hunk): its first two fixture Intents write only `title` and keep their existing
+      `assert_commit_message!` (subject = title). A third Intent, "intent-three", is written with
+      `commit_subject: Add the third fixture Intent` and built with `Kogen.Build.run("intent-three", nil, dest)`.
+      Assert its published message (`git log -1 --format=%B`) is exactly "Add the third fixture
+      Intent\n\nKogen-Intent-ID: <id>\nKogen-Intent: intent-three\n", with the title "Intent three" absent.
+  proof:
+    offline: [test/kogen/intent_test.exs, test/kogen/commit_provenance_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the scripted Build publishes a real commit in a fixture repository"
+    affected_paths:
+      - lib/kogen/intent.ex
+      - lib/kogen/build.ex
+      - test/kogen/intent_test.exs
+      - test/kogen/commit_provenance_test.exs

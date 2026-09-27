@@ -54,6 +54,7 @@ defmodule Kogen.Intent do
           id: String.t(),
           slug: String.t(),
           title: String.t(),
+          commit_subject: String.t() | nil,
           may_change_guarded_paths: [String.t()],
           catalog_changes: %{add: [String.t()]},
           raw: map()
@@ -630,9 +631,25 @@ defmodule Kogen.Intent do
     do:
       {:error, "unsupported harness#{label}: #{name}; expected #{Enum.join(@harnesses, " or ")}"}
 
+  defp optional_string(data, key) do
+    case fetch(data, key) do
+      :error ->
+        {:ok, nil}
+
+      {:ok, value} when is_binary(value) and byte_size(value) > 0 ->
+        if String.trim(value) == "",
+          do: {:error, {:invalid, "#{key} must be a nonblank string"}},
+          else: {:ok, value}
+
+      {:ok, _value} ->
+        {:error, {:invalid, "#{key} must be a nonblank string"}}
+    end
+  end
+
   defp normalize_intent(data, slug) do
     with {:ok, id} <- require_string(data, "id", "id"),
          {:ok, title} <- require_string(data, "title", "title"),
+         {:ok, commit_subject} <- optional_string(data, "commit_subject"),
          {:ok, guarded} <- require_nonempty_list(data, "may_change_guarded_paths"),
          {:ok, ^slug} <- require_string(data, "slug", "slug"),
          {:ok, changes} <- catalog_changes(data) do
@@ -641,6 +658,7 @@ defmodule Kogen.Intent do
          id: id,
          slug: slug,
          title: title,
+         commit_subject: commit_subject,
          may_change_guarded_paths: guarded,
          catalog_changes: changes,
          raw: data

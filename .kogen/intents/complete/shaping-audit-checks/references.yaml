@@ -1,0 +1,65 @@
+- kind: intent
+  path: .kogen/intents/drafts/shaping-quality/
+  note: >-
+    The approved shaping-quality Intent (revision 13, id 01a0d7a9-3642-720e-9809-e4962c3f1670) this slice was split
+    from, kept as a superseded reference in drafts/ (moved from approved/). Its scenario deterministic-checks and
+    revision-report-and-command, INTENT.md directions 20, 28, 29 and 34, risks and questions.md Assumed are the source
+    of this slice. Not a Build input (drafts/ is outside the Candidate); everything this slice needs is copied here.
+- kind: intent
+  path: .kogen/intents/complete/build-reliability/
+  note: The ledger-by-name contract (scripts/check/README.md), the deleted refresh script, and the finish-all-cases suite this Intent must keep.
+- kind: intent
+  path: .kogen/intents/complete/fortify-paid-verification/
+  note: "#4: the admission predicates of VerificationPlan.build/4 that the audit's proof findings mirror."
+- kind: intent
+  path: .kogen/intents/complete/guard-violation-rework/
+  note: Landed at f1d176b0 after the original's baseline; moves finish_publication/4 in lib/kogen/build.ex (no rule change).
+- kind: intent
+  path: .kogen/intents/complete/failure-reports/
+  note: Landed at e65392cf, this slice's baseline; moves finish_publication/4 and adds failure-report.json (no rule change here).
+- kind: code
+  path: lib/kogen/build/verification_plan.ex
+  note: build/4 (:66), validate_added/2 (:190), validate_proofs/5 (:499) at e65392cf; proof findings must equal its predicates. load/1 (:23) returns the {:error, reason} that becomes repository-invalid; validate_declared_targets/2 (:283) stays unchanged (no extra-target refusal).
+- kind: code
+  path: lib/kogen/verification_policy.ex
+  note: preflight/2 (:34) reads @hooks_path .codex/hooks.json (:18) and @script_path .codex/hooks/verification_policy.py (:19).
+- kind: code
+  path: lib/kogen/build.ex
+  note: finish_publication/4 (:2732) commits with Kogen.Git.commit_staged(ctx.intent.title, trailers, root) at :2742 (e65392cf).
+- kind: code
+  path: lib/kogen/intent.ex
+  note: normalize_intent/2 (:633) requires title (:635); commit_subject is added beside it.
+- kind: code
+  path: scripts/check/README.md
+  note: Lines 221-226 at e65392cf, the ledger binds each catalogued declaration to its test by name.
+- kind: code
+  path: test/support/test_reliability_catalog.ex
+  note: Line 36, the remediation file stores only id disposition scenario implementation wrong_control_locator resolution.
+- kind: lesson
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/research/build-failure-lessons-2026-09-25.md
+  note: Lessons 20 (TMPDIR), 25 (reproduce under the gate), 27 (3-5 scenarios, enumerate tests, smoke tests are wrong results).
+- kind: direction
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/DIRECTION.md
+  note: Rules 43, 44, 46, 51 and 54; 1.16 (no plumbing without a caller); 1.17 (splits); 1.19 (cheapest check).
+- kind: feature
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/features/SHP-03.md
+  note: Shaping audit feature scope and acceptance signals.
+- path: evidence/candidate-qbOzahf8-f4819c37-codex.diff
+  relevance: The whole codex Candidate of Build qbOzahf8 (copied from the original's evidence); this slice's files are listed in evidence/CANDIDATE.md.
+- path: evidence/candidate-ZujYgSGt-555d0af3.diff
+  relevance: The older Claude-route Candidate; its lib/kogen/build.ex hunk 2 (lines 161-162) and test/kogen/commit_provenance_test.exs hunk are used here.
+- kind: code
+  path: lib/kogen/build/failure_report.ex
+  note: >-
+    Since e65392cf Builds write failure-report.json beside record.json (:31-38). prior-failures deliberately keeps
+    reading record.json (INTENT.md "Prior failures"), which every retained Build has.
+- kind: code
+  path: test/support/compiled_fixture.exs
+  note: >-
+    create!/2 (:52) and mix_task!/3 (:88); Fixture.repo!(compiled: true) builds on create!/2 for D7.
+- path: evidence/CANDIDATE.md
+  relevance: File-by-file applicability at e65392cf (probe P3) and what to keep, trim or fix.
+- path: evidence/probe-candidate-at-3531023d/RESULT.md
+  relevance: Probes P1 and P2 — the qb Candidate applied to 3531023d and its tests run.
+- path: evidence/probe-candidate-at-e65392cf/RESULT.md
+  relevance: Probe P3 — apply checks at e65392cf, and format, compile, credo --strict and test-compile on the qb files.

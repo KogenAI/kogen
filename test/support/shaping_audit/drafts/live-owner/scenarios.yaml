@@ -1,0 +1,12 @@
+- id: live-owner-case
+  given: The Draft edits live-x's owner test file but never selects live-x.
+  when: The deterministic layer runs.
+  then: edited-live-owner-unselected blocks the Draft.
+  wrong_result: A live owner is edited with no live coverage.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_checks_test.exs asserts edited-live-owner-unselected.
+  proof:
+    offline: [test/a_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: this case does not select a paid target"
+    affected_paths: [test/live_x_test.exs]

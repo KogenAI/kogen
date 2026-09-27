@@ -1,0 +1,9 @@
+Checking 218 source files (this might take a while) ...
+
+Please report incorrect results: https://github.com/rrrene/credo/issues
+
+Analysis took 1.9 seconds (0.1s to load, 1.7s running 69 checks on 218 files)
+3619 mods/funs, found no issues.
+
+Use `mix credo explain` to explain issues, `mix credo --help` for options.
+credo exit 0

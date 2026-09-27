@@ -1,0 +1,9 @@
+id: 01965000-0000-7000-8000-00000000f001
+slug: controller-read
+title: Edit the controller's verification policy hook
+commit_subject: Edit the controller's verification policy hook
+may_change_guarded_paths:
+  - .codex/**
+shaped_against:
+  branch: main
+  head: __HEAD__

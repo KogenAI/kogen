@@ -1,0 +1,12 @@
+- id: a-helper-computes
+  given: A fixture module with one helper function.
+  when: The helper is called.
+  then: It returns the expected value.
+  wrong_result: The helper returns the wrong value or raises.
+  verified_by: [check]
+  evidence: test/a_test.exs asserts the helper's return value directly.
+  proof:
+    offline: [test/a_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: a pure helper function needs no provider"
+    affected_paths: [lib/a.ex]

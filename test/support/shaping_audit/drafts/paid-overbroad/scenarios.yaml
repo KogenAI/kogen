@@ -1,0 +1,12 @@
+- id: paid-overbroad-case
+  given: The only scenario selecting live-x changes test/support/ driver mechanics only.
+  when: The deterministic layer runs.
+  then: paid-target-overbroad flags the selection (direction 34, DIRECTION §1.19).
+  wrong_result: A broad paid target is kept for mechanical-only coverage.
+  verified_by: [check, live-x]
+  evidence: test/kogen/shaping_audit_checks_test.exs asserts paid-target-overbroad.
+  proof:
+    offline: [test/a_test.exs]
+    paid_target: live-x
+    paid_reason: "provider-required: live-x; observation: fixture; offline-limit: fixture cannot substitute"
+    affected_paths: [test/support/shaping_audit/fixture.ex]

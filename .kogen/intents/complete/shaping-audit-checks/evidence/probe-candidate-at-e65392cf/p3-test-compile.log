@@ -1,0 +1,21 @@
+Compiling 68 files (.ex)
+Generated kogen app
+Running ExUnit with seed: 116777, max_cases: 10
+Excluding tags: [:test, :live]
+
+
+Slowest individual cases (includes isolated process startup):
+All tests have been excluded.
+
+Finished in 0.1 seconds (0.1s async, 0.00s sync)
+
+Result: 0 tests, 46 excluded
+  0.0s Kogen.ShapingAuditTaskTest test the non-regular fixture Draft with a symlink added is refused (exit 2, naming it) before anything is read
+  0.0s Kogen.ShapingAuditTaskTest test the mix task only delegates to the entry function and halts with its code
+  0.0s Kogen.ShapingAuditTaskTest test the README documents the command, the report layout, readiness and that a report is never approval
+  0.0s Kogen.ShapingAuditTaskTest test refuses while .kogen/build.lock is present: exit 2, no report, no materialization
+  0.0s Kogen.ShapingAuditTaskTest test refuses role reviewer: exit 2, no report, no materialization, no read
+  0.0s Kogen.ShapingAuditTaskTest test refuses role expert: exit 2, no report, no materialization, no read
+  0.0s Kogen.ShapingAuditTaskTest test refuses role developer: exit 2, no report, no materialization, no read
+  0.0s Kogen.ShapingAuditTaskTest test refuses role auditor: exit 2, no report, no materialization, no read
+test-warnings exit 0

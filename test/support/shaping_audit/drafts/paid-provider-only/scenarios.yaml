@@ -1,0 +1,14 @@
+- id: paid-provider-only-case
+  given: The only scenario selecting live-x also changes a real provider launch path.
+  when: The deterministic layer runs.
+  then: paid-target-overbroad does not fire (negative control).
+  wrong_result: A genuine provider-launch change is wrongly flagged as overbroad.
+  verified_by: [check, live-x]
+  evidence: test/kogen/shaping_audit_checks_test.exs asserts no paid-target-overbroad finding.
+  proof:
+    offline: [test/a_test.exs]
+    paid_target: live-x
+    paid_reason: "provider-required: live-x; observation: fixture; offline-limit: fixture cannot substitute"
+    affected_paths:
+      - test/support/shaping_audit/fixture.ex
+      - lib/kogen/harness/codex.ex

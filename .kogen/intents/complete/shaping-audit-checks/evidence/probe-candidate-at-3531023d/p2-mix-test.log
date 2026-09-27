@@ -1,0 +1,257 @@
+Running ExUnit with seed: 66374, max_cases: 10
+Excluding tags: [:live]
+
+.........
+
+  1) test live-shape-to-build probe (claude-shaping-under-hook) the probe answers pickers and asking stops, and approves only after a presented stop (Kogen.ShapingAuditHookTest)
+     test/kogen/shaping_audit_hook_test.exs:941
+     ** (MatchError) no match of right hand side value:
+
+         nil
+
+     code: [_, generic] = Regex.run(~r/set GENERIC_QUESTION_ANSWER "([^"]+)"/, probe)
+     stacktrace:
+       test/kogen/shaping_audit_hook_test.exs:946: (test)
+
+.
+
+  2) test the shaping driver's prepare argv reports the one KOGEN_PREPARE_RESULT frame on a forced logged-out scope (Kogen.PrepareTest)
+     test/kogen/prepare_test.exs:189
+     expected exactly one KOGEN_PREPARE_RESULT frame:
+     usage: driver.py [-h] [--smoke]
+                      {csv-flawed,csv-complete,booking-flawed,booking-complete,csv-continuation,stateful-flawed,stateful-complete,suite}
+     driver.py: error: argument case: invalid choice: 'smoke' (choose from 'csv-flawed', 'csv-complete', 'booking-flawed', 'booking-complete', 'csv-continuation', 'stateful-flawed', 'stateful-complete', 'suite')
+
+     code: assert length(frames) == 1, "expected exactly one KOGEN_PREPARE_RESULT frame:\n#{output}"
+     stacktrace:
+       test/kogen/prepare_test.exs:212: (test)
+
+..........................
+
+  3) test live-shape-to-build probe (claude-shaping-under-hook) the probe's hook.jsonl reader returns the last decision of a recorded transcript (Kogen.ShapingAuditHookTest)
+     test/kogen/shaping_audit_hook_test.exs:975
+     ** (MatchError) no match of right hand side value:
+
+         nil
+
+     code: [reader] = Regex.run(~r/proc last_hook_decision \{path\} \{.*?\n\}\n/s, File.read!(@probe))
+     stacktrace:
+       test/kogen/shaping_audit_hook_test.exs:988: (test)
+
+..............
+
+  4) test Claude Code Shape launches the interactive managed claude with the prompt as first message (Kogen.ShapeTaskTest)
+     test/kogen/shape_task_test.exs:337
+     Expected truthy, got false
+     code: assert Enum.all?(agent["tools"], &(&1 not in ~w(Edit Write NotebookEdit)))
+     arguments:
+
+         # 1
+         ["Read", "Grep", "Glob", "Bash", "Edit", "Write", "WebSearch",
+          "WebFetch"]
+
+         # 2
+         #Function<35.102155437/1 in Kogen.ShapeTaskTest."test Claude Code Shape launches the interactive managed claude with the prompt as first message"/1>
+
+     stacktrace:
+       test/kogen/shape_task_test.exs:386: anonymous fn/2 in Kogen.ShapeTaskTest."test Claude Code Shape launches the interactive managed claude with the prompt as first message"/1
+       (stdlib 8.0.2) maps.erl:894: :maps.fold_1/4
+       test/kogen/shape_task_test.exs:385: anonymous fn/4 in Kogen.ShapeTaskTest."test Claude Code Shape launches the interactive managed claude with the prompt as first message"/1
+       (elixir 1.20.2) lib/enum.ex:2622: Enum."-reduce/3-lists^foldl/2-0-"/3
+       test/kogen/shape_task_test.exs:347: (test)
+
+...............
+
+  5) test transport regression controls pass offline (no provider access) (Kogen.ShapingEvaluationTest)
+     test/kogen/shaping_evaluation_test.exs:104
+     isolated test /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/kogen/shaping_evaluation_test.exs:test transport regression controls pass offline (no provider access) failed ({:exit_status, 1})
+     Running ExUnit with seed: 431123, max_cases: 2
+     Excluding tags: [:test]
+     Including tags: [test: :"test transport regression controls pass offline (no provider access)"]
+
+
+
+       1) test transport regression controls pass offline (no provider access) (Kogen.ShapingEvaluationTest)
+          test/kogen/shaping_evaluation_test.exs:104
+          ....F...FF
+          ======================================================================
+          FAIL: test_resume_types_the_case_answer_into_a_recorded_free_text_panel (__main__.TransportTest.test_resume_types_the_case_answer_into_a_recorded_free_text_panel)
+          ----------------------------------------------------------------------
+          Traceback (most recent call last):
+            File "/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/transport_test.py", line 341, in test_resume_types_the_case_answer_into_a_recorded_free_text_panel
+              output = self.wait_for(log, process, "ALL_PANELS_DONE")
+            File "/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/transport_test.py", line 151, in wait_for
+              self.fail(process.stdout.read())
+              ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+          AssertionError: spawn python3 /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/managed_resume.py /var/folders/8f/khnp6qk51mvgk_jkxz169nr40000gn/T/kogen-isolated-3218-1790518442997735000-4898/kogen-shaping-transport-ehqvb8sd/context.json resume --model fake-model -c model_reasoning_effort="low" -c hooks.Stop=[{hooks=[{type="command",command="sh \"$(git rev-parse --show-toplevel)/priv/kogen/shaping_audit/stop_hook.sh\"",timeout=1800}]}] --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox -C /var/folders/8f/khnp6qk51mvgk_jkxz169nr40000gn/T/kogen-isolated-3218-1790518442997735000-4898/kogen-shaping-transport-ehqvb8sd/fixture session-id fixture reply
+
+          Traceback (most recent call last):
+            File [35m"<stdin>"[0m, line [35m2[0m, in [35m<module>[0m
+          [1;35mFileNotFoundError[0m: [35m[Errno 2] No such file or directory: '/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/free-text-panel/queued.ansi'[0m
+          RESUME child exited: 5969 exp6 0 1
+
+
+          ======================================================================
+          FAIL: test_shape_types_the_case_answer_into_a_recorded_free_text_panel (__main__.TransportTest.test_shape_types_the_case_answer_into_a_recorded_free_text_panel)
+          ----------------------------------------------------------------------
+          Traceback (most recent call last):
+            File "/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/transport_test.py", line 306, in test_shape_types_the_case_answer_into_a_recorded_free_text_panel
+              output = self.wait_for(log, process, "ALL_PANELS_DONE")
+            File "/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/transport_test.py", line 151, in wait_for
+              self.fail(process.stdout.read())
+              ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+          AssertionError: spawn mix kogen.shape --route codex
+          Traceback (most recent call last):
+            File [35m"<stdin>"[0m, line [35m2[0m, in [35m<module>[0m
+          [1;35mFileNotFoundError[0m: [35m[Errno 2] No such file or directory: '/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/free-text-panel/queued.ansi'[0m
+          TRANSPORT startup observed; trust widget is optional
+          TRANSPORT child wait status: 7123 exp6 0 1
+
+
+          ======================================================================
+          FAIL: test_shape_types_the_fallback_into_a_free_text_panel_without_a_case_answer (__main__.TransportTest.test_shape_types_the_fallback_into_a_free_text_panel_without_a_case_answer)
+          ----------------------------------------------------------------------
+          Traceback (most recent call last):
+            File "/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/transport_test.py", line 323, in test_shape_types_the_fallback_into_a_free_text_panel_without_a_case_answer
+              output = self.wait_for(log, process, "ALL_PANELS_DONE")
+            File "/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/transport_test.py", line 151, in wait_for
+              self.fail(process.stdout.read())
+              ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+          AssertionError: spawn mix kogen.shape --route codex
+          Traceback (most recent call last):
+            File [35m"<stdin>"[0m, line [35m2[0m, in [35m<module>[0m
+          [1;35mFileNotFoundError[0m: [35m[Errno 2] No such file or directory: '/private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/support/shaping_evaluation/free-text-panel/queued.ansi'[0m
+          TRANSPORT startup observed; trust widget is optional
+          TRANSPORT child wait status: 7131 exp6 0 1
+
+
+          ----------------------------------------------------------------------
+          Ran 10 tests in 24.954s
+
+          FAILED (failures=3)
+
+          code: assert status == 0, output
+          stacktrace:
+            test/kogen/shaping_evaluation_test.exs:110: (test)
+
+
+     Finished in 25.0 seconds (25.0s async, 0.00s sync)
+
+     Result: 0/1 passed, 15 excluded
+     Failed: 1 test
+     expected exactly one passing isolated test: %{total: 16, skipped: 0, failures: 1, excluded: 15}
+     isolated children terminated; private fixture still present
+     KOGEN_ISOLATED_COMPLETION	1	DMdk1S8E8YS6Hyz1naCzB-GFH0d_4Djj	L3ByaXZhdGUvdG1wL2NsYXVkZS01MDEvLVVzZXJzLWFsbWlyc2FyYWpjaWMtQXJlYXMtS29nZW4ta29nZW4vZTNmMDk0ZmYtMmZhOS00MjljLWE2NmItZTY2MDhkNjUzNjY2L3NjcmF0Y2hwYWQvc3Etc3BsaXQvcHJvYmUvcWJ0cmVlL3Rlc3Qva29nZW4vc2hhcGluZ19ldmFsdWF0aW9uX3Rlc3QuZXhz	dGVzdCB0cmFuc3BvcnQgcmVncmVzc2lvbiBjb250cm9scyBwYXNzIG9mZmxpbmUgKG5vIHByb3ZpZGVyIGFjY2Vzcyk=	1	true	passed
+
+     code: test "transport regression controls pass offline (no provider access)" do
+     stacktrace:
+       test/support/isolated_case.ex:262: Kogen.IsolatedCase.run!/3
+       test/kogen/shaping_evaluation_test.exs:104: (test)
+
+...
+
+  6) test offline rehearsal exercises the maintained driver without provider access (Kogen.ShapingEvaluationTest)
+     test/kogen/shaping_evaluation_test.exs:93
+     ** (ExUnit.TimeoutError) test timed out after 300000ms. You can change the timeout:
+
+       1. per test by setting "@tag timeout: x" (accepts :infinity)
+       2. per test module by setting "@moduletag timeout: x" (accepts :infinity)
+       3. globally via "ExUnit.start(timeout: x)" configuration
+       4. by running "mix test --timeout x" which sets timeout
+       5. or by running "mix test --trace" which sets timeout to infinity
+          (useful when using IEx.pry/0)
+
+     where "x" is the timeout given as integer in milliseconds (defaults to 60_000).
+
+     code: test "offline rehearsal exercises the maintained driver without provider access" do
+     stacktrace:
+       test/support/isolated_case.ex:538: Kogen.IsolatedCase.collect_port/3
+       test/support/isolated_case.ex:106: Kogen.IsolatedCase.run/3
+       test/support/isolated_case.ex:242: Kogen.IsolatedCase.run!/3
+       test/kogen/shaping_evaluation_test.exs:93: (test)
+       (ex_unit 1.20.2) lib/ex_unit/runner.ex:533: ExUnit.Runner.exec_test/2
+       (stdlib 8.0.2) timer.erl:599: :timer.tc/2
+       (ex_unit 1.20.2) lib/ex_unit/runner.ex:455: anonymous fn/6 in ExUnit.Runner.spawn_test_monitor/4
+
+..
+
+  7) test the fixture's catalog matches its rewritten Makefile, so the Shaping audit loads it (Kogen.ShapingEvaluationTest)
+     test/kogen/shaping_evaluation_test.exs:208
+     isolated test /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree/test/kogen/shaping_evaluation_test.exs:test the fixture's catalog matches its rewritten Makefile, so the Shaping audit loads it failed ({:exit_status, 1})
+     Running ExUnit with seed: 578378, max_cases: 2
+     Excluding tags: [:test]
+     Including tags: [test: :"test the fixture's catalog matches its rewritten Makefile, so the Shaping audit loads it"]
+
+
+
+       1) test the fixture's catalog matches its rewritten Makefile, so the Shaping audit loads it (Kogen.ShapingEvaluationTest)
+          test/kogen/shaping_evaluation_test.exs:208
+          match (=) failed
+          code:  assert {:error, message} = VerificationPlan.load(fixture)
+          left:  {:error, message}
+          right: {:ok,
+                  %{
+                    path: "/var/folders/8f/khnp6qk51mvgk_jkxz169nr40000gn/T/kogen-isolated-3218-1790518778141050000-8770/kogen-eval-targets-554/priv/kogen/verification_targets.yaml",
+                    bytes: "# Evaluation fixture catalog: exactly the targets of the fixture Makefile.\ntargets:\n  - name: check\n    cost_class: offline-complete\n    rank: 0\n    dependencies: []\n    provider_backed: false\n    owner: evidence/prerequisite_control.py\n",
+                    ordered_targets: ["check"],
+                    targets: %{
+                      "check" => %{
+                        "cost_class" => "offline-complete",
+                        "dependencies" => [],
+                        "depends_on" => [],
+                        "name" => "check",
+                        "owner" => "evidence/prerequisite_control.py",
+                        "provider_backed" => false,
+                        "rank" => 0
+                      }
+                    },
+                    entries: [
+                      %{
+                        "cost_class" => "offline-complete",
+                        "dependencies" => [],
+                        "depends_on" => [],
+                        "name" => "check",
+                        "owner" => "evidence/prerequisite_control.py",
+                        "provider_backed" => false,
+                        "rank" => 0
+                      }
+                    ],
+                    integrity: nil,
+                    sha256: "a183557af7857d2e4386c505a2a04185a5260c8c33e28ba41e1a85e2eed686c7"
+                  }}
+          stacktrace:
+            test/kogen/shaping_evaluation_test.exs:236: (test)
+
+
+     Finished in 0.08 seconds (0.08s async, 0.00s sync)
+
+     Result: 0/1 passed, 15 excluded
+     Failed: 1 test
+     expected exactly one passing isolated test: %{total: 16, skipped: 0, failures: 1, excluded: 15}
+     isolated children terminated; private fixture still present
+     KOGEN_ISOLATED_COMPLETION	1	bUePFKYgGokbzCQQz3Q1EkanM-aLvv41	L3ByaXZhdGUvdG1wL2NsYXVkZS01MDEvLVVzZXJzLWFsbWlyc2FyYWpjaWMtQXJlYXMtS29nZW4ta29nZW4vZTNmMDk0ZmYtMmZhOS00MjljLWE2NmItZTY2MDhkNjUzNjY2L3NjcmF0Y2hwYWQvc3Etc3BsaXQvcHJvYmUvcWJ0cmVlL3Rlc3Qva29nZW4vc2hhcGluZ19ldmFsdWF0aW9uX3Rlc3QuZXhz	dGVzdCB0aGUgZml4dHVyZSdzIGNhdGFsb2cgbWF0Y2hlcyBpdHMgcmV3cml0dGVuIE1ha2VmaWxlLCBzbyB0aGUgU2hhcGluZyBhdWRpdCBsb2FkcyBpdA==	1	true	passed
+
+     code: test "the fixture's catalog matches its rewritten Makefile, so the Shaping audit loads it" do
+     stacktrace:
+       test/support/isolated_case.ex:262: Kogen.IsolatedCase.run!/3
+       test/kogen/shaping_evaluation_test.exs:208: (test)
+
+...
+Slowest individual cases (includes isolated process startup):
+
+  25.952s Kogen.ShapingEvaluationTest test transport regression controls pass offline (no provider access)
+Finished in 341.8 seconds (341.8s async, 0.00s sync)
+  7.318s Kogen.ShapingEvaluationTest test Draft provenance projection parses supported YAML forms and rejects partial data
+
+Result: 73/80 passed
+Failed: 7 tests
+  5.931s Kogen.ShapeTaskTest test invalid selections fail before harness launch
+  4.76s Kogen.ShapeTaskTest test Claude Code Shape stops before launch when the runtime, login or model is not ready
+  3.037s Kogen.ShapeTaskTest test public Shape mints an identity and persists a Draft for explicit fixture approval
+  2.406s Kogen.ShapeTaskTest test fresh and continued Shape reject invalid required profiles before harness dispatch
+  2.392s Kogen.ShapeTaskTest test Shape runs on the default route or the --route route in every argument position
+  2.308s Kogen.ShapeTaskTest test Claude Code Shape launches the interactive managed claude with the prompt as first message
+
+real	5m42.528s
+user	0m2.528s
+sys	0m2.502s

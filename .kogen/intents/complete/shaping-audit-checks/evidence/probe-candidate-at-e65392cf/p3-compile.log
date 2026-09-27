@@ -1,0 +1,70 @@
+==> boundary
+Compiling 15 files (.ex)
+Generated boundary app
+==> file_system
+Compiling 7 files (.ex)
+Generated file_system app
+==> bunt
+Compiling 2 files (.ex)
+Generated bunt app
+==> jason
+Compiling 10 files (.ex)
+Generated jason app
+==> kogen
+===> Analyzing applications...
+===> Compiling yamerl
+/Users/almirsarajcic/Areas/Kogen/kogen/deps/yamerl/src/yamerl_node_binary.erl:65:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   65|    case catch base64:decode(Text) of
+%     |         ^
+
+/Users/almirsarajcic/Areas/Kogen/kogen/deps/yamerl/src/yamerl_node_binary.erl:72:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   72|    case catch base64:decode(Text) of
+%     |         ^
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 65 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+    ┌─ src/yamerl_node_binary.erl:
+    │
+ 72 │     case catch base64:decode(Text) of
+    │          ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+/Users/almirsarajcic/Areas/Kogen/kogen/deps/yamerl/src/yamerl_constr.erl:801:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  801|     catch Mod:module_info(),
+%     |     ^
+
+     ┌─ src/yamerl_constr.erl:
+     │
+ 801 │      catch Mod:module_info(),
+     │      ╰── Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+
+
+==> yaml_elixir
+Compiling 6 files (.ex)
+Generated yaml_elixir app
+==> credo
+Compiling 257 files (.ex)
+Generated credo app
+==> kogen
+Compiling 68 files (.ex)
+Generated kogen app
+
+real	0m4.874s
+user	0m16.046s
+sys	0m2.880s
+compile exit 0

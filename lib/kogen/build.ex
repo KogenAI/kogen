@@ -53,7 +53,7 @@ defmodule Kogen.Build do
       Kogen.ProcessCustody,
       Kogen.ProjectScope
     ],
-    exports: [Workspace, WriteBoundary]
+    exports: [Workspace, WriteBoundary, VerificationPlan]
 
   alias Kogen.Build.{
     BaseWorkspace,
@@ -2739,7 +2739,8 @@ defmodule Kogen.Build do
          :ok <- Kogen.Git.assert_staged_tree(publication_id, root),
          :ok <- Kogen.Git.validate_staged_publication(root),
          :ok <- publication_unchanged(ctx, publication),
-         {:ok, head} <- Kogen.Git.commit_staged(ctx.intent.title, trailers, root) do
+         subject = Map.get(ctx.intent, :commit_subject) || ctx.intent.title,
+         {:ok, head} <- Kogen.Git.commit_staged(subject, trailers, root) do
       with :ok <- Kogen.Git.assert_head_tree(publication_id, root),
            :ok <- publication_unchanged(ctx, publication) do
         {:ok, head}

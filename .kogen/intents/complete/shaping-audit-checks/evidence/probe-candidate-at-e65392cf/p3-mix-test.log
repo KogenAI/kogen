@@ -1,0 +1,142 @@
+Running ExUnit with seed: 559920, max_cases: 10
+Excluding tags: [:live]
+
+..............................................................................
+
+  1) test read_config/1 parses the real tracked .kogen/config.yaml (Kogen.IntentTest)
+     test/kogen/intent_test.exs:108
+     Assertion with == failed
+     code:  assert codex == %{
+              route: "codex",
+              harness: "codex",
+              shaping: %{model: "gpt-6-sol", effort: "medium"},
+              developer: %{model: "gpt-6-sol", effort: "high"},
+              reviewer: %{model: "gpt-6-sol", effort: "high"},
+              helpers: %{
+                scout: %{model: "gpt-6-luna", effort: "low"},
+                worker: %{model: "gpt-6-luna", effort: "high"},
+                expert: %{model: "gpt-6-sol", effort: "high"}
+              },
+              expert: %{model: "gpt-6-sol", effort: "high"},
+              auditor: %{"model" => "gpt-6-sol", "effort" => "high"},
+              roles: %{shaping: "codex", developer: "codex", reviewer: "codex", expert: "codex"},
+              native_helpers: %{
+                "codex" => %{
+                  scout: %{model: "gpt-6-luna", effort: "low"},
+                  worker: %{model: "gpt-6-luna", effort: "high"}
+                }
+              },
+              outer_resumptions: 2,
+              verification_retries: 2,
+              offline_retries: 4
+            }
+     left:  %{
+              route: "codex",
+              harness: "codex",
+              shaping: %{model: "gpt-6-sol", effort: "medium"},
+              developer: %{model: "gpt-6-sol", effort: "high"},
+              reviewer: %{model: "gpt-6-sol", effort: "high"},
+              helpers: %{
+                worker: %{model: "gpt-6-luna", effort: "high"},
+                scout: %{model: "gpt-6-luna", effort: "low"},
+                expert: %{model: "gpt-6-sol", effort: "high"}
+              },
+              expert: %{model: "gpt-6-sol", effort: "high"},
+              outer_resumptions: 2,
+              verification_retries: 2,
+              roles: %{
+                shaping: "codex",
+                developer: "codex",
+                reviewer: "codex",
+                expert: "codex"
+              },
+              native_helpers: %{
+                "codex" => %{
+                  worker: %{model: "gpt-6-luna", effort: "high"},
+                  scout: %{model: "gpt-6-luna", effort: "low"}
+                }
+              },
+              offline_retries: 4
+            }
+     right: %{
+              route: "codex",
+              harness: "codex",
+              auditor: %{"effort" => "high", "model" => "gpt-6-sol"},
+              shaping: %{model: "gpt-6-sol", effort: "medium"},
+              developer: %{model: "gpt-6-sol", effort: "high"},
+              reviewer: %{model: "gpt-6-sol", effort: "high"},
+              helpers: %{
+                worker: %{model: "gpt-6-luna", effort: "high"},
+                scout: %{model: "gpt-6-luna", effort: "low"},
+                expert: %{model: "gpt-6-sol", effort: "high"}
+              },
+              expert: %{model: "gpt-6-sol", effort: "high"},
+              outer_resumptions: 2,
+              verification_retries: 2,
+              roles: %{
+                shaping: "codex",
+                developer: "codex",
+                reviewer: "codex",
+                expert: "codex"
+              },
+              native_helpers: %{
+                "codex" => %{
+                  worker: %{model: "gpt-6-luna", effort: "high"},
+                  scout: %{model: "gpt-6-luna", effort: "low"}
+                }
+              },
+              offline_retries: 4
+            }
+     stacktrace:
+       test/kogen/intent_test.exs:156: (test)
+
+...........................................
+
+  2) test the README documents the command, the report layout, readiness and that a report is never approval (Kogen.ShapingAuditTaskTest)
+     test/kogen/shaping_audit_task_test.exs:761
+     isolated test /private/tmp/claude-501/-Users-almirsarajcic-Areas-Kogen-kogen/e3f094ff-2fa9-429c-a66b-e6608d653666/scratchpad/sq-split/probe/qbtree-e65392cf/test/kogen/shaping_audit_task_test.exs:test the README documents the command, the report layout, readiness and that a report is never approval failed ({:exit_status, 1})
+     Running ExUnit with seed: 322373, max_cases: 2
+     Excluding tags: [:test]
+     Including tags: [test: :"test the README documents the command, the report layout, readiness and that a report is never approval"]
+
+
+
+       1) test the README documents the command, the report layout, readiness and that a report is never approval (Kogen.ShapingAuditTaskTest)
+          test/kogen/shaping_audit_task_test.exs:761
+          Assertion with =~ failed
+          code:  assert readme =~ "### Shaping audit"
+          left:  "# Kogen\n\n**Shape the feature. Leave the build to Kogen.**\n\nMake the product and UX decisions that define the feature. Specify technical decisions when they matter. Kogen handles the implementation, checking, independent review, rework, and resulting commit.\n\nKogen is being built from a small core that can shape and build further changes\nto Kogen itself. The aim is to grow the rest of the product through that loop:\nshape the next feature, approve its Intent, and let Kogen carry out the Build.\nThe core is a starting point, not the finished product.\n\nThe core runs inside this repository through one pluggable harness interface\nwith two adapters: Claude Code (`harness: claude`) and Codex CLI\n(`harness: codex`). `.kogen/config.yaml` names one or more routes, each\nassigning every role a harness and a model profile; a Shape or Build selects\none route, by default the configured `default_route`. This repository's\n`default_route` is `claude`. The `claude-dominant-adversarial-codex` route lets\nClaude Code shape and develop while Codex reviews and answers Expert\nquestions; `codex-dominant-adversarial-claude` is its mirror image. Installing\nKogen into arbitrary projects and other harnesses are future work.\nThe broader design remains a longer-term direction, open to change as Kogen develops.\n\nThis repository is being opened quietly so the ongoing work and its history\ncan be inspected. Kogen is Almir Sarajčić’s personal engineering project.\n\n## Get started\n\nUse Elixir 1.20 with Erlang/OTP 29, Git, Make, Python 3.11 or newer, and Rust 1.97.1 on macOS. Run `mix kogen.ctx.build` once per machine after the locked crates are available in the Cargo cache. Kogen manages the complete native runtime of each harness itself; personal Claude Code, personal Codex, and Node are not prerequisites. The pinned managed releases are Claude Code 2.1.281 and Codex 0.156.1. macOS arm64 is the live acceptance target; the official macOS x64 artifacts are selectable but have not been exercised on this host. Provider-backed work uses your selected Kogen login for the harness a route names, separate from any personal login. `mix kogen.build` also needs a macOS Keychain generic password for service `dev.kogen.jev` (the TypeSafe API key that Jev reads Developer notes with); add it with `security add-generic-password -s dev.kogen.jev -a <account> -w` before building, or Build stops before launching the Developer.\n\nFrom a checkout whose `default_route` uses Claude Code:\n\n```sh\nmix deps.get\nmix kogen.claude.install\nmix kogen.claude.login\nmix kogen.claude.status\nmake check\nmix kogen.shape\n```\n\nA hybrid route needs both harnesses; before `mix kogen.shape --route\nclaude-dominant-adversarial-codex`, also run `mix kogen.codex.install`,\n`mix kogen.codex.login` and `mix kogen.codex.status`.\n\nFor a route with `harness: codex`, use `mix kogen.codex.install`,\n`mix kogen.codex.login` and `mix kogen.codex.status` instead — pass\n`--route <name>` to `mix kogen.shape`/`mix kogen.build` to run a session on\nthat route, or set it as `default_route`. See\n[Choosing a route](#choosing-a-route).\n\nDescribe one feature. As the Shaper, discuss its behavior and tradeoffs with Kogen’s Shaping Controller, inspect the Draft it writes, and explicitly approve it in that conversation. Approval moves the Intent from `.kogen/intents/drafts/<slug>/` to `.kogen/intents/approved/<slug>/`.\nThe controller may also reconcile narrow current approval bookkeeping inside the\npackage at that point. It preserves agreed requirements, identity, provenance and\nhistorical evidence; a legacy `status: draft` field is harmless once the package is\nselected from `approved/`, but a genuine current pending-approval contradiction is not.\n\nTo continue a saved Draft in a fresh conversation, run:\n\n```sh\nmix kogen.shape <draft-slug>\n```\n\nKogen uses current shaping instructions and configured profiles, preserving the\nDraft’s identity and original provenance. The controller reads its saved context,\nsummarizes unresolved work, and asks where to continue. Continued saves record a\nseparate shaping visit; changed Git baselines require" <> ...
+          right: "### Shaping audit"
+          stacktrace:
+            test/kogen/shaping_audit_task_test.exs:763: (test)
+
+
+     Finished in 0.00 seconds (0.00s async, 0.00s sync)
+
+     Result: 0/1 passed, 20 excluded
+     Failed: 1 test
+     expected exactly one passing isolated test: %{total: 21, skipped: 0, failures: 1, excluded: 20}
+     isolated children terminated; private fixture still present
+     KOGEN_ISOLATED_COMPLETION	1	9zUHtcYfXMxmecij7QgtmQh6N1YpEvb_	L3ByaXZhdGUvdG1wL2NsYXVkZS01MDEvLVVzZXJzLWFsbWlyc2FyYWpjaWMtQXJlYXMtS29nZW4ta29nZW4vZTNmMDk0ZmYtMmZhOS00MjljLWE2NmItZTY2MDhkNjUzNjY2L3NjcmF0Y2hwYWQvc3Etc3BsaXQvcHJvYmUvcWJ0cmVlLWU2NTM5MmNmL3Rlc3Qva29nZW4vc2hhcGluZ19hdWRpdF90YXNrX3Rlc3QuZXhz	dGVzdCB0aGUgUkVBRE1FIGRvY3VtZW50cyB0aGUgY29tbWFuZCwgdGhlIHJlcG9ydCBsYXlvdXQsIHJlYWRpbmVzcyBhbmQgdGhhdCBhIHJlcG9ydCBpcyBuZXZlciBhcHByb3ZhbA==	1	true	passed
+
+     code: test "the README documents the command, the report layout, readiness and that a report is never approval" do
+     stacktrace:
+       test/support/isolated_case.ex:262: Kogen.IsolatedCase.run!/3
+       test/kogen/shaping_audit_task_test.exs:761: (test)
+
+............
+Slowest individual cases (includes isolated process startup):
+
+Finished in 19.3 seconds (19.3s async, 0.00s sync)
+
+Result: 133/135 passed
+Failed: 2 tests
+  7.791s Kogen.CommitProvenanceTest test first and subsequent Builds record truthful automated provenance
+  2.971s Kogen.ShapingAuditChecksTest test preservation: selective_verification_targets_test.exs and verification_policy_test.exs still pass
+  2.423s Kogen.ShapingAuditTaskTest test end to end with the real layers, through the Stop hook: the complete fixture Draft is allowed with a ready summary
+  2.054s Kogen.ShapingAuditChecksTest test proof_errors/4 is empty exactly when build/4 returns {:ok, _}, on every fixture Draft
+  1.402s Kogen.ShapingAuditTaskTest test a symlinked package entry is refused (exit 2, naming it) before anything is read
+  1.142s Kogen.ShapingAuditTaskTest test a route named ../x writes its auditor record only inside auditor/, named by the route's hash
+  1.125s Kogen.ShapingAuditTaskTest test end to end with the real layers: the complete fixture Draft reaches readiness ready
+  0.879s Kogen.ShapingAuditTaskTest test the non-regular fixture Draft with a symlink added is refused (exit 2, naming it) before anything is read
+mix test exit 2

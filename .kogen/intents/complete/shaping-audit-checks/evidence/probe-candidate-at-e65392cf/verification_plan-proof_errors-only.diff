@@ -1,0 +1,96 @@
+diff --git a/lib/kogen/build/verification_plan.ex b/lib/kogen/build/verification_plan.ex
+index c48d5fa1..0d3d0e5a 100644
+--- a/lib/kogen/build/verification_plan.ex
++++ b/lib/kogen/build/verification_plan.ex
+@@ -97,6 +97,91 @@ defmodule Kogen.Build.VerificationPlan do
+     end
+   end
+ 
++  @doc """
++  Every proof error `build/4,5` would refuse for `scenarios`, collecting all
++  violated predicates instead of short-circuiting.
++  """
++  def proof_errors(scenarios, guards, catalog, root, opts \\ [])
++      when is_list(scenarios) and is_list(guards) and is_map(catalog) do
++    added = Keyword.get(opts, :added, [])
++
++    added_errors =
++      case validate_added(added, catalog) do
++        :ok -> []
++        {:error, reason} -> [{"verified-by-invalid", reason}]
++      end
++
++    added_errors ++
++      Enum.flat_map(scenarios, &scenario_proof_errors(&1, guards, catalog, root, added))
++  end
++
++  defp scenario_proof_errors(scenario, guards, catalog, root, added) do
++    proof = scenario["proof"]
++
++    if is_map(proof) do
++      affected = List.wrap(proof["affected_paths"])
++      offline = List.wrap(proof["offline"])
++      target = proof["paid_target"]
++
++      guard_errors =
++        for path <- affected, not guarded?(path, guards), do: {"unguarded-affected-path", path}
++
++      selector_errors = Enum.flat_map(offline, &selector_errors(&1, root, affected, catalog))
++
++      reason_errors =
++        if valid_reason?(proof["paid_reason"], target, catalog, added),
++          do: [],
++          else: [{"paid-reason-malformed", proof["paid_reason"] || "(missing)"}]
++
++      verified_errors =
++        scenario
++        |> verified_by_errors(catalog.targets, added)
++        |> Enum.flat_map(&verified_by_error_kinds/1)
++
++      guard_errors ++ selector_errors ++ reason_errors ++ verified_errors
++    else
++      [{"verified-by-invalid", "scenario has no proof map"}]
++    end
++  end
++
++  defp verified_by_error_kinds(message) do
++    if String.contains?(message, "unknown target") do
++      for name <- unknown_target_names(message), do: {"unknown-target", name}
++    else
++      [{"verified-by-invalid", message}]
++    end
++  end
++
++  defp unknown_target_names(message) do
++    message |> String.split(": ", parts: 2) |> List.last() |> String.split(", ")
++  end
++
++  @broad_selector_forms [".", "test", "test/", "test/**", "test/**/*"]
++
++  defp selector_errors(selector, root, affected, catalog) do
++    if valid_selector?(selector, root, affected, catalog),
++      do: [],
++      else: [selector_error(selector, root, catalog)]
++  end
++
++  defp selector_error(selector, _root, _catalog) when not is_binary(selector),
++    do: {"unsupported-selector", inspect(selector)}
++
++  defp selector_error(selector, _root, catalog) do
++    if unsupported_selector_form?(selector, catalog),
++      do: {"unsupported-selector", selector},
++      else: {"proof-selector-missing", selector}
++  end
++
++  defp unsupported_selector_form?(selector, catalog) do
++    selector in @broad_selector_forms or String.contains?(selector, "*") or
++      (String.contains?(selector, ":") and not rehearsal_selector?(selector, catalog)) or
++      Path.type(selector) == :absolute or ".." in Path.split(selector)
++  end
++
++  defp rehearsal_selector?(selector, catalog),
++    do: Enum.any?(catalog.entries, &(get_in(&1, ["rehearsal", "id"]) == selector))
++
+   @doc """
+   Orders `names` by catalog rank using `entries` (name to catalog entry), with
+   dependencies first. Every name must have an entry.

@@ -1204,4 +1204,20 @@ defmodule Kogen.IntentTest do
       assert output =~ "routed-draft=claude"
     end
   end
+
+  test "reads an optional commit_subject beside the required title" do
+    dir = tmp_dir!()
+    base = Path.join(dir, "sample-intent")
+    valid = @valid_intent
+
+    write_yaml!(base, "intent.yaml", valid <> "commit_subject: Add a short subject\n")
+    assert {:ok, %{commit_subject: "Add a short subject"}} = Intent.read("sample-intent", dir)
+
+    write_yaml!(base, "intent.yaml", valid)
+    assert {:ok, %{commit_subject: nil}} = Intent.read("sample-intent", dir)
+
+    write_yaml!(base, "intent.yaml", valid <> "commit_subject: \"\"\n")
+    assert {:error, reason} = Intent.read("sample-intent", dir)
+    assert reason =~ "commit_subject must be a nonblank string"
+  end
 end

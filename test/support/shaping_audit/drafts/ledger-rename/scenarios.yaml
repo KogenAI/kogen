@@ -1,0 +1,12 @@
+- id: ledger-rename-case
+  given: test/a_test.exs is a maintained test source; the ledger is guarded.
+  when: The deterministic layer runs.
+  then: Rename the catalogued test "a works" to "a still works".
+  wrong_result: A stale ledger rename is treated as a row edit.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_checks_test.exs asserts ledger-row-update-unstated.
+  proof:
+    offline: [test/a_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: a maintained-source edit needs no provider"
+    affected_paths: [test/a_test.exs]

@@ -1,0 +1,101 @@
+- id: baseline-and-anchors
+  scenario_ids: [audit-mirrors-build-admission, build-publishes-commit-subject]
+  description: >-
+    Shaped against develop e65392cf; anchors are functions, re-derived there: VerificationPlan.build/4
+    (lib/kogen/build/verification_plan.ex:66), validate_added/2 (:190), validate_proofs/5 (:499);
+    VerificationPolicy.preflight/2 (lib/kogen/verification_policy.ex:34, @hooks_path :18, @script_path :19);
+    Kogen.Harness.Claude.settings_path/0 (lib/kogen/harness/claude.ex:232); Kogen.Intent's private normalize_intent/2
+    (lib/kogen/intent.ex:633); Build's private finish_publication/4 (lib/kogen/build.ex:2732) with its
+    Kogen.Git.commit_staged/3 call at :2742 (it was :2383 at b2073666 and :2606 at 3531023d; guard-violation-rework
+    and failure-reports moved it);
+    Kogen.Git.commit_staged/3 (lib/kogen/git.ex:256). If develop moves before the Build, re-read each named function
+    at the new HEAD; never trust a cached line number.
+- id: self-hosting
+  scenario_ids: [audit-mirrors-build-admission, build-publishes-commit-subject]
+  description: >-
+    This Build runs under develop's controller. It edits lib/kogen/build/verification_plan.ex (additive
+    proof_errors/4 only; build/4, load/1 and validate_declared_targets/2 unchanged, so qb's require_no_extra_targets/2
+    hunk is not taken), lib/kogen/verification_policy.ex (additive controller_paths/0; preflight/2
+    unchanged), lib/kogen/build.ex (Boundary export and the publication subject), lib/kogen/intent.ex (optional
+    commit_subject) and lib/kogen/harness.ex (Boundary export). The Candidate compiles in its own worktree with its
+    own _build (isolated-candidate-workspace), so the running controller never calls these edits and no preload is
+    needed. The running controller's own build.ex predates this change, so this Build's publication commit carries
+    the package title "Add the deterministic Shaping audit"; Builds after it lands use commit_subject. The Makefile, the
+    catalog, .codex/** and priv/kogen/claude_code/settings.json are unchanged.
+- id: ledger-contract
+  scenario_ids: [audit-ledger-live-and-paid-rules]
+  description: >-
+    At 82ac4351 (unchanged in substance at e65392cf) the ledger binds rows by test name (scripts/check/README.md:221-226) and the
+    remediation file stores only id disposition scenario implementation wrong_control_locator resolution
+    (test/support/test_reliability_catalog.ex:36). The source-refresh script was deleted
+    (scripts/check/refresh_test_reliability_sources.py does not exist). The fixture and both ledger rules follow that
+    contract; a rule or fixture using maintained_sources or source_sha256 (the candidates) tests a format that no
+    longer exists, and test/kogen/test_reliability_catalog_test.exs refutes source_sha256 in the real ledger. This
+    slice renames and deletes no catalogued test, and test bodies edited and tests added need no row change. It edits
+    catalogued files (test/kogen/intent_test.exs, rows t001-t020, and test/kogen/commit_provenance_test.exs, whose
+    extended test keeps its catalogued name), so priv/kogen/test-reliability.yaml is guarded to satisfy this slice's
+    own ledger-closure rule; no row change is expected and guarding it is harmless (Assumed 10).
+- id: tracking-record-shape
+  scenario_ids: [audit-anchors-titles-and-history]
+  description: >-
+    Real records (.kogen/runtime/scenario-tracking/<build id>/record.json, schema_version 2) carry intent.id, status
+    and attempts[].failure / attempts[].failure_signatures, and no top-level build_id or signature; the Build id is
+    the directory name (verified on the 22 records present at 3531023d, and still written the same way at e65392cf,
+    lib/kogen/build.ex:2129 and :2334; the failure-report.json beside them is not read), for example 5l_rANAlYz-dz30uKtZrRUGp and
+    qVFqG3dab4TIDX15XK8izx5a with guard failures "Candidate changed paths outside Approved guards: ..."). The fixture
+    writes records in that shape; reading any other shape is the fixture-specific shortcut lesson 27 names.
+- id: materialization-ownership
+  scenario_ids: [audit-mirrors-build-admission, audit-command-and-report]
+  description: >-
+    Each audit reads a private clone of HEAD plus the package, never the working tree, and removes it after every
+    run. Tests assert no kogen-audit-* entry remains in System.tmp_dir!() after success, refusal and failure.
+  ownership:
+    - paths: <system temp>/kogen-audit-* (the HEAD plus package materialization)
+      when_exists: Always new; a private 0700 directory per audit run.
+      owner_after_creation: The running mix kogen.audit process.
+      owner_during_operation: The deterministic checks read it; nothing writes to it after creation.
+      permitted_mutation: None after the clone and the package copy.
+      validation: The tests list System.tmp_dir!() before and after each run and compare.
+      git_state: A git clone --local --no-checkout of the checkout with HEAD checked out and the package added; never pushed, never linked back.
+      upgrade_behavior: Removed after every run, including failures and exceptions.
+- id: report-ownership
+  scenario_ids: [audit-command-and-report]
+  description: >-
+    Reports live only under .kogen/runtime/shaping-audits/, never in the package, because a report inside the package
+    would change the revision it describes. A future write-containment boundary (BLD-12) must allow this path for
+    Shaping sessions.
+  ownership:
+    - paths: .kogen/runtime/shaping-audits/<slug>/<revision>/report.json and report.md
+      when_exists: Replaced atomically by a later audit of the same revision; other revisions' reports are kept.
+      owner_after_creation: The local checkout; written only by mix kogen.audit.
+      owner_during_operation: mix kogen.audit writes; --status, people and agents read.
+      permitted_mutation: Written only by the audit's report writer.
+      validation: schema_version, revision, HEAD and route are recomputed by --status; an unknown schema counts as missing.
+      git_state: Ignored runtime data (.kogen/runtime/ is gitignored), never committed or published.
+      upgrade_behavior: Slice 2 writes schema_version 2, so slice-1 reports become missing and are re-audited.
+- id: codex-route-defects
+  scenario_ids: [audit-mirrors-build-admission, audit-ledger-live-and-paid-rules, audit-anchors-titles-and-history, build-publishes-commit-subject]
+  description: >-
+    From Build qbOzahf8 and probe P1 (evidence/probe-candidate-at-3531023d/RESULT.md), for this slice's files: cycle 1
+    failed mix format --check-formatted on lib/kogen/build/verification_plan.ex (run mix format before every turn
+    end); the qb build.ex hunk lacks the publication subject (take Zuj hunk 2); the qb ledger rule and fixture use the
+    removed ledger format; qb's prior-failures reads keys real records lack; qb marks ledger-row-update-unstated
+    mechanical; qb's verification_plan.ex adds require_no_extra_targets/2 and its repository-invalid matches that
+    message text with layer status ok; qb calls Kogen.ShapingAudit.Questions, which slice 1 now writes as a
+    Dispositions-only parser (key reason); qb's commit-subject rule has no line check and its paid-path-unproven
+    no prepare or proving-run branch. Starting from the qb hunks without these corrections fails tests A6, B1-B3,
+    B5, C2, C4, C5 and E2, or does not compile. Probe P3 (evidence/probe-candidate-at-e65392cf/RESULT.md) shows the
+    qb files pass format, compile --warnings-as-errors and credo --strict at e65392cf; keep them passing.
+- id: developer-tmpdir-override
+  scenario_ids: [audit-command-and-report]
+  description: >-
+    Build qVFqG3dab4TIDX15XK8izx5a stopped because the Developer ran TMPDIR=/var/folders/... mix test, and Mix wrote
+    mix_lock_user501/ and mix_pubsub_user501/ into the Candidate. Never override TMPDIR (Kogen sets it to the granted
+    kogen-build-<id> directory); compare paths in tests by canonicalizing both sides (realpath). Before ending a turn,
+    git status --short must show no untracked path outside the guarded paths.
+- id: gate-concurrency
+  scenario_ids: [audit-command-and-report]
+  description: >-
+    The task tests spawn Kogen.IsolatedCase children and git fixture repositories. A failure that passes alone but
+    fails under the whole offline gate is not a flake to dismiss (lesson 25): reproduce it under make check's
+    concurrency and make it deterministic (wait on conditions, never on fixed sleeps; lesson 26).

@@ -1,0 +1,451 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "LkZNYtA3lzW1CUao5zUQzYSWl5Sr50q1",
+      "candidate_id": "da7270b2edf2d649ae6e07cf3a09ad2182738fa8",
+      "developer_session_id": "01a0e367-e5f1-7ae3-9bf5-13a63aad1f06",
+      "failure_kind": "review_rework",
+      "number": 0,
+      "reviewer_session_id": "01a0e3a6-44bc-7fb3-a444-39601780b1c7",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "LkZNYtA3lzW1CUao5zUQzYSWl5Sr50q1",
+          "candidate_id": "da7270b2edf2d649ae6e07cf3a09ad2182738fa8",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T16:15:16.351Z",
+          "session_id": "01a0e367-e5f1-7ae3-9bf5-13a63aad1f06",
+          "started_at": "2026-09-27T16:07:43.235Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "h7Fej13c7Q8o4hYnUJd8q0pELRXbNrXT",
+      "candidate_id": "c42537f5bae3b74fcaef9a4fef3369e44ed5055c",
+      "developer_session_id": "01a0e367-e5f1-7ae3-9bf5-13a63aad1f06",
+      "failure_kind": "review_rework",
+      "number": 1,
+      "reviewer_session_id": "01a0e3dd-0e32-76e1-834b-6c2f6f0171fd",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "h7Fej13c7Q8o4hYnUJd8q0pELRXbNrXT",
+          "candidate_id": "c42537f5bae3b74fcaef9a4fef3369e44ed5055c",
+          "cycle_sequence": 2,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T17:15:06.763Z",
+          "session_id": "01a0e367-e5f1-7ae3-9bf5-13a63aad1f06",
+          "started_at": "2026-09-27T17:07:40.640Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "N8sSPL7It4L6yy8OIJaeL4tdhAGC3HLN",
+      "candidate_id": "cdfb5ffc676410ab92756d1e6f1a0103286377a5",
+      "developer_session_id": "01a0e367-e5f1-7ae3-9bf5-13a63aad1f06",
+      "failure_kind": null,
+      "number": 2,
+      "reviewer_session_id": "01a0e3fa-e790-78a3-b363-aab28d51aed3",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "N8sSPL7It4L6yy8OIJaeL4tdhAGC3HLN",
+          "candidate_id": "cdfb5ffc676410ab92756d1e6f1a0103286377a5",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T17:47:42.672Z",
+          "session_id": "01a0e367-e5f1-7ae3-9bf5-13a63aad1f06",
+          "started_at": "2026-09-27T17:41:12.542Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "xkGvZcVSxMd3YZtLfYinAeX9",
+  "candidate_id": "cdfb5ffc676410ab92756d1e6f1a0103286377a5",
+  "developer_session_id": "01a0e367-e5f1-7ae3-9bf5-13a63aad1f06",
+  "findings": [
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "F1 stale-anchor fixes: generalized path citations, short identifiers, and absent HEAD files are handled in stale-anchor logic.",
+            "path": "lib/kogen/shaping_audit/deterministic.ex",
+            "receipt": null
+          },
+          {
+            "locator": "C1 and C2 exercise changed-line, deleted-identifier, and disposition behavior.",
+            "path": "test/kogen/shaping_audit_checks_test.exs",
+            "receipt": "/receipts/0"
+          }
+        ],
+        "reason": "Closed: the current stale-anchor implementation covers the previously identified path, short-identifier, and deleted-file cases, and the focused checks passed.",
+        "reviewer_session": "01a0e3dd-0e32-76e1-834b-6c2f6f0171fd",
+        "status": "closed",
+        "verdict": "rework"
+      },
+      "id": "F1",
+      "origin": {
+        "attempt_token": "LkZNYtA3lzW1CUao5zUQzYSWl5Sr50q1",
+        "candidate_id": "da7270b2edf2d649ae6e07cf3a09ad2182738fa8",
+        "evidence": [
+          {
+            "locator": "Stale-anchor contract requires every path:line citation and every backticked identifier; current implementation regex only accepts .ex/.exs paths and identifiers with at least four characters, and path_line_finding drops citations whose file is absent at HEAD.",
+            "path": "lib/kogen/shaping_audit/deterministic.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Approved stale-anchor requirements and wrong-result cases.",
+            "path": ".kogen/intents/approved/shaping-audit-checks/INTENT.md",
+            "receipt": null
+          }
+        ],
+        "reason": "Stale-anchor detection is narrower than the approved contract: non-Elixir path:line citations, short identifiers, and deleted cited files can pass without findings. Expand citation parsing and treat an absent HEAD file as changed.",
+        "reviewer_session": "01a0e3a6-44bc-7fb3-a444-39601780b1c7",
+        "scenario_ids": [
+          "audit-anchors-titles-and-history"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Fixture now writes the landed ledger and remediation files, real tracking-record shape, route config, and required options.",
+            "path": "test/support/shaping_audit/fixture.ex",
+            "receipt": null
+          },
+          {
+            "locator": "The closed A1-A7, B1-B7, and C1-C6 assertions cover exact findings, parity, cleanup, no-read refusals, dispositions, and fixture controls.",
+            "path": "test/kogen/shaping_audit_checks_test.exs",
+            "receipt": "/receipts/0"
+          },
+          {
+            "locator": "The D1-D8 task tests cover report layout, status, refusals, non-regular entries, task delegation, and README requirements.",
+            "path": "test/kogen/shaping_audit_task_test.exs",
+            "receipt": "/receipts/0"
+          }
+        ],
+        "reason": "Closed: the required fixture contents and the mandated audit/task assertions are present; the focused suite passed all 84 tests.",
+        "reviewer_session": "01a0e3dd-0e32-76e1-834b-6c2f6f0171fd",
+        "status": "closed",
+        "verdict": "rework"
+      },
+      "id": "F2",
+      "origin": {
+        "attempt_token": "LkZNYtA3lzW1CUao5zUQzYSWl5Sr50q1",
+        "candidate_id": "da7270b2edf2d649ae6e07cf3a09ad2182738fa8",
+        "evidence": [
+          {
+            "locator": "Required fixture includes priv/kogen/test-reliability-remediation.yaml and complete uses title/commit_subject \"Add a fixture feature\"; current fixture writer omits the remediation file and complete draft uses \"Add A's helper\".",
+            "path": "test/support/shaping_audit/fixture.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Required exact assertions for A1-A7, B1-B7, C1-C6 and D1-D8 are specified here; candidate tests omit many severity/path/message/disposition, callback, no-read, FIFO, cleanup, and build-parity assertions.",
+            "path": ".kogen/intents/approved/shaping-audit-checks/scenarios.yaml",
+            "receipt": null
+          },
+          {
+            "locator": "Candidate audit tests contain only partial assertions for the required A/B/C cases.",
+            "path": "test/kogen/shaping_audit_checks_test.exs",
+            "receipt": null
+          },
+          {
+            "locator": "Candidate task tests do not cover the required exact report, refusal/no-read, FIFO, and temporary-materialization assertions.",
+            "path": "test/kogen/shaping_audit_task_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "The closed verification contract is not implemented: fixture contents diverge from the approved fixture, and many required tests are smoke-level or omit specified exact assertions and negative controls. Restore the required fixture files/values and complete the mandated assertions.",
+        "reviewer_session": "01a0e3a6-44bc-7fb3-a444-39601780b1c7",
+        "scenario_ids": [
+          "audit-mirrors-build-admission",
+          "audit-ledger-live-and-paid-rules",
+          "audit-anchors-titles-and-history",
+          "audit-command-and-report"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Package roots are checked with lstat before selection and content loading, refusing non-regular roots.",
+            "path": "lib/kogen/shaping_audit/package.ex",
+            "receipt": null
+          },
+          {
+            "locator": "D4 and D5 verify ambiguous/non-regular refusal and that the read callback sees no package reads.",
+            "path": "test/kogen/shaping_audit_task_test.exs",
+            "receipt": "/receipts/0"
+          }
+        ],
+        "reason": "Closed: package-root symlinks and nested non-regular entries are rejected before reads, with the refusal tests passing.",
+        "reviewer_session": "01a0e3dd-0e32-76e1-834b-6c2f6f0171fd",
+        "status": "closed",
+        "verdict": "rework"
+      },
+      "id": "F3",
+      "origin": {
+        "attempt_token": "LkZNYtA3lzW1CUao5zUQzYSWl5Sr50q1",
+        "candidate_id": "da7270b2edf2d649ae6e07cf3a09ad2182738fa8",
+        "evidence": [
+          {
+            "locator": "Package.locate uses File.dir?, which follows a symlink at the package root before Package.load's lstat walk; a symlinked package directory is therefore audited instead of refused.",
+            "path": "lib/kogen/shaping_audit/package.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Command scenario requires any symlink/non-regular package entry to be refused before reads.",
+            "path": ".kogen/intents/approved/shaping-audit-checks/scenarios.yaml",
+            "receipt": null
+          }
+        ],
+        "reason": "A symlink used as the draft/approved package directory itself bypasses the strict non-regular refusal. Check the package root with lstat and refuse it before any content read.",
+        "reviewer_session": "01a0e3a6-44bc-7fb3-a444-39601780b1c7",
+        "scenario_ids": [
+          "audit-command-and-report"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "proof_errors/5 now validates nonempty proof lists, paid target, base, selectors, guards, reasons, and verified_by predicates",
+            "path": "lib/kogen/build/verification_plan.ex",
+            "receipt": null
+          },
+          {
+            "locator": "A1-A3 exercise parity between proof findings and VerificationPlan.build/4",
+            "path": "test/kogen/shaping_audit_checks_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "Closed: the implementation now reports the malformed proof shapes identified by F4, and the parity tests pass.",
+        "reviewer_session": "01a0e3fa-e790-78a3-b363-aab28d51aed3",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F4",
+      "origin": {
+        "attempt_token": "h7Fej13c7Q8o4hYnUJd8q0pELRXbNrXT",
+        "candidate_id": "c42537f5bae3b74fcaef9a4fef3369e44ed5055c",
+        "evidence": [
+          {
+            "locator": "proof_errors/5 only checks guards, selectors, paid reason, and verified_by; it does not validate nonempty/list-shaped offline and affected_paths or the allowed base values.",
+            "path": "lib/kogen/build/verification_plan.ex",
+            "receipt": null
+          },
+          {
+            "locator": "build/4's valid_proof?/5 rejects empty or non-list offline/affected_paths and base values outside nil/fail/pass, while the approved scenario requires proof findings to mirror all admission predicates.",
+            "path": ".kogen/intents/approved/shaping-audit-checks/scenarios.yaml",
+            "receipt": null
+          }
+        ],
+        "reason": "The audit can report no proof finding for a malformed proof map whose paid reason and verified_by are otherwise valid, even though VerificationPlan.build/4 rejects it. Extend proof_errors/5 to report a blocking verified-by-invalid (or equivalent) finding for every remaining valid_proof?/5 predicate so readiness cannot diverge from Build admission.",
+        "reviewer_session": "01a0e3dd-0e32-76e1-834b-6c2f6f0171fd",
+        "scenario_ids": [
+          "audit-mirrors-build-admission"
+        ]
+      },
+      "status": "closed"
+    }
+  ],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 7232079,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/xkGvZcVSxMd3YZtLfYinAeX9/record.json",
+    "schema_version": 2,
+    "sha256": "ef66ffc6a3b2f978fe4c90408b9cd70aa6475fa3367685cd7ea92a0219b095ee"
+  },
+  "intent": {
+    "id": "01a0e335-5c9e-7d31-b51f-8a1d75864cec",
+    "slug": "shaping-audit-checks",
+    "title": "Add the deterministic Shaping audit"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0e3fa-e790-78a3-b363-aab28d51aed3"
+  },
+  "risks": [
+    {
+      "id": "baseline-and-anchors"
+    },
+    {
+      "id": "self-hosting"
+    },
+    {
+      "id": "ledger-contract"
+    },
+    {
+      "id": "tracking-record-shape"
+    },
+    {
+      "id": "materialization-ownership"
+    },
+    {
+      "id": "report-ownership"
+    },
+    {
+      "id": "codex-route-defects"
+    },
+    {
+      "id": "developer-tmpdir-override"
+    },
+    {
+      "id": "gate-concurrency"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    }
+  },
+  "route": {
+    "harness": "codex",
+    "name": "codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "proof_errors/5 mirrors build/4 admission predicates and repository-invalid handling",
+          "path": "lib/kogen/build/verification_plan.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Tests A1-A7 cover all proof predicates, controller paths, catalog mismatch, and working-tree isolation; focused suite passed",
+          "path": "test/kogen/shaping_audit_checks_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "audit-mirrors-build-admission",
+      "reason": "Inspected VerificationPlan proof validation and deterministic audit integration, then ran the A-series tests comparing audit findings with build/4. The required admission predicates and materialization isolation are satisfied.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "ledger, live-owner, paid evidence, prepare/proving-run, and overbroad-target rules",
+          "path": "lib/kogen/shaping_audit/deterministic.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Tests B1-B7 cover ledger closure/update detection, live owners, paid evidence branches, shared targets, and dispositions; focused suite passed",
+          "path": "test/kogen/shaping_audit_checks_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "audit-ledger-live-and-paid-rules",
+      "reason": "Inspected the landed ledger-by-name logic and all paid/live rule branches, including whole-word matching and proving evidence. The corresponding tests pass with the specified clean controls.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "stale-anchor comparison, bounded prior-failure records, and title/commit-subject checks",
+          "path": "lib/kogen/shaping_audit/deterministic.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Tests C1-C6 cover changed lines, identifiers, disputes, unavailable baselines, multiline subjects, bounded history, and invalid packages; focused suite passed",
+          "path": "test/kogen/shaping_audit_checks_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "audit-anchors-titles-and-history",
+      "reason": "Inspected baseline-vs-HEAD anchor checks, real tracking-record parsing with size bounds, and mechanical title rules. C-series tests pass for all required positive and negative cases.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "main/2 refusal, status, materialization cleanup, and report generation",
+          "path": "lib/kogen/shaping_audit.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Strict lstat package loading and schema/status reporting",
+          "path": "lib/kogen/shaping_audit/package.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Tests D1-D8 and README contract checks passed",
+          "path": "test/kogen/shaping_audit_task_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "audit-command-and-report",
+      "reason": "Inspected the public command, strict package loader, report/status implementation, task delegation, and documentation. D-series tests pass for layout, freshness, refusals, cleanup, approved-only and Shaper runs.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Optional commit_subject parsing and nonblank validation",
+          "path": "lib/kogen/intent.ex",
+          "receipt": null
+        },
+        {
+          "locator": "finish_publication/4 selects commit_subject with title fallback before commit_staged",
+          "path": "lib/kogen/build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "E1 and E2 verify parsing, fallback, exact trailers, and published commit subject",
+          "path": "test/kogen/commit_provenance_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "build-publishes-commit-subject",
+      "reason": "Inspected Intent parsing and publication code and ran the provenance tests. Optional subjects, title fallback, exact trailers, and body-free publication are covered and pass.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,9 @@
+id: 01965000-0000-7000-8000-00000000c002
+slug: no-subject
+title: Add no-subject helper
+may_change_guarded_paths:
+  - lib/a.ex
+  - test/a_test.exs
+shaped_against:
+  branch: main
+  head: __HEAD__

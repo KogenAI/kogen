@@ -73,6 +73,15 @@ defmodule Kogen.CommitProvenanceTest do
     assert_commit_message!(dest, "Intent two", intent_id("intent-two"), "intent-two")
 
     complete_evidence = Path.join(dest, ".kogen/intents/complete/intent-one/evidence.md")
+
+    write_intent(dest, "intent-three", "Intent three", "Add the third fixture Intent")
+    assert :ok = File.cd!(dest, fn -> Kogen.Build.run("intent-three", nil, dest) end)
+
+    assert raw_commit_message!(dest) ==
+             "Add the third fixture Intent\n\nKogen-Intent-ID: #{intent_id("intent-three")}\nKogen-Intent: intent-three\n"
+
+    refute raw_commit_message!(dest) =~ "Intent three\n\n"
+
     write_intent(dest, "intent-one", "Duplicate intent")
 
     assert {:error, "Complete Intent already exists: intent-one"} =
@@ -137,14 +146,14 @@ defmodule Kogen.CommitProvenanceTest do
     {_out, 0} = System.cmd("git", ["commit", "-q", "-m", "fixture baseline"], cd: dest, env: env)
   end
 
-  defp write_intent(dest, slug, title) do
+  defp write_intent(dest, slug, title, commit_subject \\ nil) do
     id = intent_id(slug)
 
     intent_yaml = """
     id: #{id}
     slug: #{slug}
     title: #{title}
-    may_change_guarded_paths:
+    #{if commit_subject, do: "commit_subject: #{commit_subject}\n", else: ""}may_change_guarded_paths:
       - dummy.txt
     """
 

@@ -954,6 +954,10 @@ keeps its rollouts, login refresh and bookkeeping inside its granted scope, so
 that scope, and the shared login keychain item, stay writable by roles for as
 long as logins need them to. Reads are never confined by this boundary.
 
+### Shaping audit
+
+`mix kogen.audit [--route <name>] <slug>` audits one Draft or Approved package. `mix kogen.audit --status <slug>` reports `current`, `stale` (naming the changed HEAD or route), or `missing` without auditing again. Reports live under `.kogen/runtime/shaping-audits/<slug>/<revision>/` and include the package revision, HEAD, route, deterministic layer, findings, and readiness. The command exits `0` when the report is ready, `1` when findings remain open, and `2` for a usage error or refusal. Nothing under `.kogen/intents/` changes, and each private materialization is removed after the run. A report is never approval.
+
 ## Context index (`kogen-ctx`)
 
 Rust 1.97.1 is required (pinned in `mise.toml`). Build the native binary with `mix kogen.ctx.build` or `mix kogen.ctx.build --offline` when the locked crates are cached. Run `kogen-ctx index [--root DIR]` to refresh the derived SQLite index, or `kogen-ctx search <query>... [--limit N] [--root DIR]` to refresh and search it. Output is one index/report line per change or one `<path>:<start>-<end> [kind] <snippet>` result per hit. The index is keyed by the canonical checkout path and lives under `KOGEN_CTX_HOME/<project-id>/index.sqlite`, or `$HOME/Library/Caches/Kogen/ctx/<project-id>/index.sqlite` by default. Refreshes compare Git blob IDs, queries refresh before answering, and corrupt, old-schema, or foreign-root files rebuild. Nothing is written into or committed from the checkout.

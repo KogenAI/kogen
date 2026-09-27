@@ -1,0 +1,10 @@
+id: 01965000-0000-7000-8000-00000000c00e
+slug: non-regular
+title: Add A's helper
+commit_subject: Add A's helper
+may_change_guarded_paths:
+  - lib/a.ex
+  - test/a_test.exs
+shaped_against:
+  branch: main
+  head: __HEAD__

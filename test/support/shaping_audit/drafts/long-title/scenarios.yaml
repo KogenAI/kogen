@@ -1,0 +1,12 @@
+- id: long-title-case
+  given: title and commit_subject are both over their limits.
+  when: The deterministic layer runs.
+  then: title-format and commit-subject-format both block the Draft.
+  wrong_result: An overlong title or commit_subject reaches git as-is.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_checks_test.exs asserts both findings.
+  proof:
+    offline: [test/a_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: title formatting needs no provider"
+    affected_paths: [lib/a.ex]

@@ -1,0 +1,12 @@
+- id: stale-disputed-case
+  given: The Draft cites a gone identifier from its shaped_against baseline, disputed.
+  when: The deterministic layer runs and questions.md dispositions are applied.
+  then: No blocking finding remains.
+  wrong_result: A disputed, disputable finding still blocks readiness.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_checks_test.exs asserts no open blocking finding.
+  proof:
+    offline: [test/a_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: this case does not need a provider"
+    affected_paths: [lib/a.ex]

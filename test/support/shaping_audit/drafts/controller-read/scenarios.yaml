@@ -1,0 +1,12 @@
+- id: controller-read-case
+  given: The Draft affects .codex/hooks/verification_policy.py.
+  when: The deterministic layer runs.
+  then: controller-read-path blocks the Draft.
+  wrong_result: A silent edit to the Build controller's own verification guard.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_checks_test.exs asserts controller-read-path.
+  proof:
+    offline: [test/a_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: a controller hook edit needs no provider"
+    affected_paths: [.codex/hooks/verification_policy.py]

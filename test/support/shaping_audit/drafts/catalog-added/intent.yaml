@@ -1,0 +1,13 @@
+id: 01965000-0000-7000-8000-00000000f002
+slug: catalog-added
+title: Declare a new verification target
+commit_subject: Declare a new verification target
+may_change_guarded_paths:
+  - priv/kogen/verification_targets.yaml
+  - test/**
+catalog_changes:
+  add:
+    - extra-check
+shaped_against:
+  branch: main
+  head: __HEAD__

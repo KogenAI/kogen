@@ -1,0 +1,9 @@
+id: 01965000-0000-7000-8000-000000000001
+slug: history
+title: A Draft with prior failed Builds
+commit_subject: A Draft with prior failed Builds
+may_change_guarded_paths:
+  - lib/a.ex
+shaped_against:
+  branch: main
+  head: __HEAD__

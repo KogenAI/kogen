@@ -30,7 +30,7 @@ defmodule Kogen.Harness do
   """
   use Boundary,
     deps: [Kogen.Codex, Kogen.ClaudeCode, Kogen.Intent, Kogen.ProcessCustody],
-    exports: [ProviderMarker]
+    exports: [ProviderMarker, Claude, Codex]
 
   alias Kogen.Harness.{Claude, Codex}
 

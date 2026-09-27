@@ -1,0 +1,9 @@
+id: 01965000-0000-7000-8000-00000000f00a
+slug: invalid
+title: An unparseable scenarios.yaml
+commit_subject: An unparseable scenarios.yaml
+may_change_guarded_paths:
+  - lib/a.ex
+shaped_against:
+  branch: main
+  head: __HEAD__

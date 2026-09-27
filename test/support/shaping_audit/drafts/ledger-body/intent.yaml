@@ -1,0 +1,10 @@
+id: 01965000-0000-7000-8000-00000000e005
+slug: ledger-body
+title: Edit a test body
+commit_subject: Edit a test body
+may_change_guarded_paths:
+  - test/**
+  - priv/kogen/test-reliability.yaml
+shaped_against:
+  branch: main
+  head: __HEAD__

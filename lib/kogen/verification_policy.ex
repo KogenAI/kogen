@@ -22,6 +22,15 @@ defmodule Kogen.VerificationPolicy do
   @spec normalized_targets([String.t()]) :: [String.t()]
   def normalized_targets(targets), do: Enum.uniq(targets)
 
+  @doc """
+  The repository-relative controller files `preflight/2` itself reads
+  (`.codex/hooks.json` and the verification-policy script), exactly. Never
+  `check.sh`, `stop_runner.py` or `environment.py`: those are the bootstrap
+  Stop script and its neighbours, not this Build's own PreToolUse guard.
+  """
+  @spec controller_paths() :: [String.t()]
+  def controller_paths, do: [@hooks_path, @script_path]
+
   @spec environment([String.t()], Path.t()) :: [{String.t(), String.t()}]
   def environment(targets, root \\ File.cwd!()) do
     [

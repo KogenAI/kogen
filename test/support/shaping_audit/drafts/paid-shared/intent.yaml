@@ -1,0 +1,10 @@
+id: 01965000-0000-7000-8000-00000000f00b
+slug: paid-shared
+title: Select live-x for driver mechanics only
+commit_subject: Select live-x for driver mechanics only
+may_change_guarded_paths:
+  - test/support/**
+  - test/live_x_test.exs
+shaped_against:
+  branch: main
+  head: __HEAD__
