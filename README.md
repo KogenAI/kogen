@@ -137,6 +137,22 @@ Login rejection is an `environment` stop with a harness-specific
 `mix kogen.<harness>.login` command. Reports deliberately have no continuation,
 budget, publication or `published` fields.
 
+#### Breakers
+
+Two or more item reports with the same failure signature, Intent id and
+Approved package digest refuse the next Build before admission with
+`Build refused (item breaker)` and `reshape_details` (or `reshape_scope` for
+shaping reports). The check recounts report files on disk, so deleting a
+report or editing the Approved package changes the result.
+
+Three consecutive environment reports across Intents refuse admission with
+`Build refused (environment breaker)` until the no-launch harness readiness
+check passes. A passing check writes `environment-clear.json`; a successful
+published Build clears a non-empty environment run with `reason: "published"`.
+Refusals create no tracking record, Candidate or harness home. A fresh Build
+with a matching item report carries the canonical `## First failure` block and
+the absolute `Previous failure report:` path in its first Developer prompt.
+
 Every process a Build launches (Developer, Reviewer, Expert and their
 helpers, Jev's executable transport, make targets, `prepare`, and focused and
 base runs) starts through one supervisor, `priv/kogen/process_supervisor.py`

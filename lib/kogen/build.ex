@@ -57,6 +57,7 @@ defmodule Kogen.Build do
 
   alias Kogen.Build.{
     BaseWorkspace,
+    Breakers,
     Contract,
     FailureHandoff,
     FailureReport,
@@ -126,7 +127,13 @@ defmodule Kogen.Build do
       case acquire_lock(control) do
         :ok ->
           try do
-            do_build(admission, slug, intent, config, approved_entries)
+            case admission_breakers(control, slug, intent, config, approved_entries) do
+              {:ok, breaker_state} ->
+                do_build(admission, slug, intent, config, approved_entries, breaker_state)
+
+              {:error, _reason} = error ->
+                error
+            end
           after
             release_lock(control)
           end
@@ -299,6 +306,38 @@ defmodule Kogen.Build do
 
   defp release_lock(control), do: Kogen.ProcessCustody.release(control)
 
+  defp admission_breakers(control, slug, intent, config, approved_entries) do
+    digest = Tracking.approved_digest(approved_entries)
+
+    with state <- Breakers.environment_state(control),
+         {:ok, state} <- maybe_probe_environment(state, config, control) do
+      with :ok <- Breakers.item_refusal(control, intent.id, digest, slug) do
+        {:ok, Map.merge(state, %{intent_id: intent.id, package_digest: digest})}
+      end
+    end
+  end
+
+  defp maybe_probe_environment(%{tripped: false} = state, _config, _control),
+    do: {:ok, Map.put(state, :readiness, :not_run)}
+
+  defp maybe_probe_environment(%{tripped: true, run: run} = state, config, control) do
+    case Kogen.Harness.open_roles(config, @build_roles, control) do
+      {:ok, runtime} ->
+        Kogen.Harness.close(runtime)
+        {:ok, Map.put(state, :readiness, :passed)}
+
+      {:error, reason} ->
+        {:error, Breakers.readiness_refusal_message(run, reason)}
+    end
+  end
+
+  defp maybe_write_readiness_clear(_tracking, %{readiness: readiness}) when readiness != :passed,
+    do: :ok
+
+  defp maybe_write_readiness_clear(tracking, %{run: run}) do
+    Breakers.write_clear(tracking.path, "readiness", run)
+  end
+
   @doc "Environment entries that remove every verification or tracking context from a child."
   def context_scrub, do: Enum.map(@context_variables, &{&1, nil})
 
@@ -306,7 +345,7 @@ defmodule Kogen.Build do
   # settle/review/rework chain below stays under a sane arity as it
   # threads per-attempt state (candidate id, session id, resumption count,
   # Check record, target results) through the loop.
-  defp do_build(admission, slug, intent, config, approved_entries) do
+  defp do_build(admission, slug, intent, config, approved_entries, breaker_state) do
     control = admission.control
     added = added_targets(intent)
     guard_targets = catalog_guard_targets(added)
@@ -323,6 +362,8 @@ defmodule Kogen.Build do
            ),
          {:ok, bindings} <- Kogen.Harness.bindings(config, @build_roles, control),
          {:ok, tracking} <- Tracking.new(intent, contract, approved_entries, config, control) do
+      _ = maybe_write_readiness_clear(tracking, breaker_state)
+
       ctx = %{
         slug: slug,
         intent: intent,
@@ -2163,9 +2204,13 @@ defmodule Kogen.Build do
   # Candidate worktree, branch and owner record. The harness home is kept.
   defp publish_to_control(ctx, commit) do
     candidate = ctx.candidate
+    environment_run = Breakers.environment_state(ctx.control).run
 
     case Workspace.fast_forward(candidate, commit) do
       :ok ->
+        if environment_run != [],
+          do: Breakers.write_clear(ctx.tracking.path, "published", environment_run)
+
         File.rm_rf(Path.join([ctx.control, @approved_base, ctx.slug]))
 
         case Workspace.remove_published(candidate) do
@@ -2439,8 +2484,10 @@ defmodule Kogen.Build do
   end
 
   defp developer_prompt(ctx, nil) do
-    render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config, roots(ctx)) <>
-      task_context(ctx, nil, "developer")
+    base =
+      render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config, roots(ctx))
+
+    base <> first_failure_prompt_block(ctx) <> task_context(ctx, nil, "developer")
   end
 
   defp developer_prompt(ctx, reason) do
@@ -2449,6 +2496,25 @@ defmodule Kogen.Build do
   end
 
   defp roots(ctx), do: %{control: ctx.control, candidate: ctx.root}
+
+  defp first_failure_prompt_block(ctx) do
+    digest = ctx.tracking.record["approved_package_digest"]
+
+    case Breakers.latest_item_report(ctx.control, ctx.intent.id, digest) do
+      %{path: path, report: report} ->
+        signature = report["signature"] || %{}
+
+        if signature["source"] == "stop" or not is_binary(signature["target"]) do
+          ""
+        else
+          FailureHandoff.first_failure_block(signature) <>
+            "Previous failure report: #{path}\n"
+        end
+
+      _ ->
+        ""
+    end
+  end
 
   # Role-facing control locators are absolute, so they open from the
   # Candidate cwd; `control_root` resolves the control-relative locators the

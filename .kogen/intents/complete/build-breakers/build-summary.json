@@ -1,0 +1,263 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "eLvHt_0KsrgmIS3wq3-ig6WvY9J_azb9",
+      "candidate_id": "7f112b3dfeef219bc99c339d245f2298160df455",
+      "developer_session_id": "01a0e36f-c537-70d2-a7f8-13f5145ac4f6",
+      "failure_kind": "review_rework",
+      "number": 0,
+      "reviewer_session_id": "01a0e389-4fb9-7e43-a372-6a8634f91402",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "eLvHt_0KsrgmIS3wq3-ig6WvY9J_azb9",
+          "candidate_id": "7f112b3dfeef219bc99c339d245f2298160df455",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T15:43:39.500Z",
+          "session_id": "01a0e36f-c537-70d2-a7f8-13f5145ac4f6",
+          "started_at": "2026-09-27T15:36:35.271Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "_wgQTEnTkEb7PwhKl9zTV5wSZnITMRyU",
+      "candidate_id": "484dde080806eabc7bb04863a0f6e9fc5c91556a",
+      "developer_session_id": "01a0e36f-c537-70d2-a7f8-13f5145ac4f6",
+      "failure_kind": null,
+      "number": 1,
+      "reviewer_session_id": "01a0e3af-576d-7661-9f67-a4971a74d19c",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "_wgQTEnTkEb7PwhKl9zTV5wSZnITMRyU",
+          "candidate_id": "484dde080806eabc7bb04863a0f6e9fc5c91556a",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T16:25:11.535Z",
+          "session_id": "01a0e36f-c537-70d2-a7f8-13f5145ac4f6",
+          "started_at": "2026-09-27T16:17:20.118Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "UuwUrdE1OjBqEZLUzn8hafup",
+  "candidate_id": "484dde080806eabc7bb04863a0f6e9fc5c91556a",
+  "developer_session_id": "01a0e36f-c537-70d2-a7f8-13f5145ac4f6",
+  "findings": [
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Focused cases 1-15 now cover the previously missing end-to-end breaker, environment, and prompt assertions; the bound check receipt passed.",
+            "path": "test/kogen/build_breakers_test.exs",
+            "receipt": "/receipts/0"
+          }
+        ],
+        "reason": "Closed: the candidate adds the required focused cases for item reports, environment runs and clears, prompt filtering, stop signatures, and admission side effects. The controller-bound check passed.",
+        "reviewer_session": "01a0e3af-576d-7661-9f67-a4971a74d19c",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F1",
+      "origin": {
+        "attempt_token": "eLvHt_0KsrgmIS3wq3-ig6WvY9J_azb9",
+        "candidate_id": "7f112b3dfeef219bc99c339d245f2298160df455",
+        "evidence": [
+          {
+            "locator": "Approved tests 1-6 require end-to-end coverage for recounting, edited packages, other Intents, shaping groups, and filtering environment reports; the candidate test file does not contain those cases.",
+            "path": ".kogen/intents/approved/build-breakers/scenarios.yaml",
+            "receipt": null
+          },
+          {
+            "locator": "Only the third-build refusal is exercised end-to-end; the remaining item tests are replaced by partial helper checks and do not assert the required admission state, report fields, or exact paths.",
+            "path": "test/kogen/build_breakers_test.exs",
+            "receipt": null
+          },
+          {
+            "locator": "Approved tests 7-11 require readiness clearing, revoked-token recurrence, item reset, publication clearing, provider skipping, and no-run clearing; the candidate has only one probe/refusal test.",
+            "path": ".kogen/intents/approved/build-breakers/scenarios.yaml",
+            "receipt": null
+          },
+          {
+            "locator": "Approved tests 12-15 require first-prompt absence, exact shared-block equality, package/Intent filtering, and stop-signature exclusion; the candidate checks only a subset of the second prompt.",
+            "path": "test/kogen/build_breakers_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "The implementation contains breaker and prompt paths, but the required focused test contract is incomplete and several assertions are smoke checks. Add the specified end-to-end cases and exact assertions before accepting these scenarios.",
+        "reviewer_session": "01a0e389-4fb9-7e43-a372-6a8634f91402",
+        "scenario_ids": [
+          "item-breaker",
+          "environment-breaker",
+          "first-prompt-names-last-failure"
+        ]
+      },
+      "status": "closed"
+    }
+  ],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 6039781,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/UuwUrdE1OjBqEZLUzn8hafup/record.json",
+    "schema_version": 2,
+    "sha256": "09944125c1187d86de619add0ded44cfeb07c5d3a653d96a628b52b4c4c8beea"
+  },
+  "intent": {
+    "id": "e6530632-7bd6-40bb-a9ae-c449b70ea535",
+    "slug": "build-breakers",
+    "title": "Refuse Builds that keep failing the same way"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0e3af-576d-7661-9f67-a4971a74d19c"
+  },
+  "risks": [
+    {
+      "id": "readiness-blind-to-revocation"
+    },
+    {
+      "id": "breaker-in-fixtures"
+    },
+    {
+      "id": "codex-probe-is-blind-in-fixtures"
+    },
+    {
+      "id": "stop-signatures-vary"
+    },
+    {
+      "id": "report-ordering"
+    },
+    {
+      "id": "overlapping-drafts"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    }
+  },
+  "route": {
+    "harness": "codex",
+    "name": "codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "Item report filtering, signature grouping, latest-group selection, action selection, and exact refusal formatting.",
+          "path": "lib/kogen/build/breakers.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Cases 1-6 cover repeated failures, disk recounting, package edits, other Intents, shaping reports, and nonmatching/environment reports.",
+          "path": "test/kogen/build_breakers_test.exs",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "item-breaker",
+      "reason": "Satisfied: implementation recounts decoded reports on disk by Intent, package digest, and signature, refuses before admission, selects the latest matching group, and emits the required paths and action. Focused cases 1-6 passed in the bound check.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Environment trailing-run computation, clear-file filtering and payload, readiness refusal formatting, and exclusive clear writes.",
+          "path": "lib/kogen/build/breakers.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Admission probe ordering and readiness clear placement after Tracking.new/5; publication clear handling.",
+          "path": "lib/kogen/build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Cases 7-11 cover cross-Intent runs, item/provider resets, readiness and published clears, recurrence, and no-run behavior.",
+          "path": "test/kogen/build_breakers_test.exs",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "environment-breaker",
+      "reason": "Satisfied: the candidate computes the cross-Intent trailing environment run, skips provider entries, resets on item entries and clear files, probes only when tripped, and writes readiness or published clears at the required boundaries. Focused cases 7-11 passed in the bound check.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Fresh prompt selection filters by Intent, package digest, item count, and non-stop signature; the canonical block is appended with the report path.",
+          "path": "lib/kogen/build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "The shared first-failure renderer is used by rework prompts and fresh prompts.",
+          "path": "lib/kogen/build/failure_handoff.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Cases 12-15 verify first-prompt absence/presence, byte equality with rework, package and Intent filtering, and stop-signature exclusion.",
+          "path": "test/kogen/build_breakers_test.exs",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "first-prompt-names-last-failure",
+      "reason": "Satisfied: fresh launches receive the latest matching non-stop item failure through the shared renderer, while absent, unrelated, older-package, and stop-signature reports contribute no block. Focused cases 12-15 passed in the bound check.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Only the approved implementation files and the new focused test file are changed; existing test files and fixture/reliability files remain untouched in the candidate tree.",
+          "path": "README.md",
+          "receipt": "/receipts/0"
+        },
+        {
+          "locator": "The bound check receipt reports the complete offline gate passed.",
+          "path": ".kogen/intents/approved/build-breakers/scenarios.yaml",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "existing-expectations-kept",
+      "reason": "Satisfied: I inspected the candidate change set and confirmed no existing tests, fixtures, or reliability manifests were modified. The controller-bound check passed the existing suite.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

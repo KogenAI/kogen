@@ -1,0 +1,45 @@
+- id: readiness-blind-to-revocation
+  scenario_ids: [environment-breaker]
+  description: >-
+    Readiness is local (`claude auth status` reports `loggedIn: true` with a revoked token; Build XfjCRM76 passed it
+    and then got 401). So a tripped breaker can clear on a passing probe while the token is still revoked. Each such
+    Build then stops in its first turn (about 35 s) as `environment` with `mix kogen.claude.login` (failure-reports'
+    login rejection), and three more trip the breaker again; test 7 proves exactly that cycle. Detecting revocation
+    needs a provider call or a credential change; both are out (no paid work in admission; D1 protects credentials).
+    Row `claude-login-refresh-race` owns the cause.
+- id: breaker-in-fixtures
+  scenario_ids: [item-breaker, environment-breaker, existing-expectations-kept]
+  description: >-
+    Breakers read every report of a control, so a test that drives two same-signature item reports, or three
+    trailing environment-counting reports (environment, provider-failure, write-boundary, admission,
+    publication-failed or accepted-unpublished), into one control now sees a refusal or a probe. Swept at e65392cf:
+    no existing test does (at most two reporting Builds per control: failure_report_test.exs's offline pair and
+    cannot-comply/publication pair, build_workspace_test.exs's retention matrix, scenario_lifecycle_test.exs,
+    commit_failure_rollback_test.exs, write_boundary_test.exs's hybrid setup). A new test that needs more uses a fresh
+    control.
+- id: codex-probe-is-blind-in-fixtures
+  scenario_ids: [environment-breaker]
+  description: >-
+    With KOGEN_HARNESS set, `Kogen.Codex.open` runs no command, so a codex-route fixture's admission probe always
+    passes. The environment tests therefore run on the Claude route, where fake_claude answers `auth status` and
+    honours FAKE_CLAUDE_LOGGED_OUT (no existing test sets it). Codex readiness in real use is unchanged code.
+- id: stop-signatures-vary
+  scenario_ids: [item-breaker, first-prompt-names-last-failure]
+  description: >-
+    A stop signature is a digest over the category and the whole reason. A real cannot-comply reason embeds the
+    attempt token, so two real cannot-comply stops of one package get different digests (probed at e65392cf) and
+    never trip the item breaker; test 5 therefore uses hand-written shaping reports. Stop signatures name no target,
+    so they add no first-prompt block (test 15). Normalizing stop reasons is failure-reports' table, not this package.
+- id: report-ordering
+  scenario_ids: [environment-breaker]
+  description: >-
+    The environment run depends on ordering reports and clear files. `stopped_at` and `cleared_at` carry microseconds
+    (DateTime.to_iso8601 of utc_now), and ties sort by build id. A clear file written by an admitted Build precedes
+    that Build's own stop, so a stop right after a clear counts as the first of a new run (test 7, Build 5).
+- id: overlapping-drafts
+  scenario_ids: [item-breaker, environment-breaker]
+  description: >-
+    parallel-builds-with-integration (draft) replaces `.kogen/build.lock` with per-slug claims. Its re-preflight must
+    run these admission checks under whatever it uses instead of the lock, and read reports across concurrent
+    Builds (two parallel Builds may stop at the same time). shaping-quality (approved) and
+    multi-machine-orchestration (draft) also edit build.ex; re-derive citations if either lands first.

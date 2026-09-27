@@ -58,13 +58,7 @@ defmodule Kogen.Build.FailureHandoff do
       first_failure["reproduce"] ||
         "run the command that `make #{target}` runs, whole and at its normal concurrency, not the one test alone; the controller runs `make #{target}` itself after your turn"
 
-    first_block =
-      "\n## First failure\n\n" <>
-        "- Target: #{first_failure["target"]}\n" <>
-        "- First failure: #{first_failure["first_failure"]}\n" <>
-        "- Error head: #{first_failure["error_head"]}\n" <>
-        "- Reproduce: #{reproduce}\n\n" <>
-        "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build.\n"
+    first_block = first_failure_block(Map.put(first_failure, "reproduce", reproduce))
 
     heading = header <> first_block <> "\n## Failed receipts of this cycle\n\n"
 
@@ -74,6 +68,20 @@ defmodule Kogen.Build.FailureHandoff do
       |> fit(@total_limit - byte_size(heading))
 
     heading <> sections
+  end
+
+  @doc "Renders the canonical first-failure block shared by rework and fresh prompts."
+  def first_failure_block(signature) when is_map(signature) do
+    reproduce =
+      signature["reproduce"] ||
+        "run the command that `make #{signature["target"]}` runs, whole and at its normal concurrency, not the one test alone; the controller runs `make #{signature["target"]}` itself after your turn"
+
+    "\n## First failure\n\n" <>
+      "- Target: #{signature["target"]}\n" <>
+      "- First failure: #{signature["first_failure"]}\n" <>
+      "- Error head: #{signature["error_head"]}\n" <>
+      "- Reproduce: #{reproduce}\n\n" <>
+      "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build.\n"
   end
 
   # Every failed receipt of the cycle, `prepare` receipts first (they run

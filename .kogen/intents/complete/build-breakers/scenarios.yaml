@@ -1,0 +1,147 @@
+# Shaped against develop e65392cf, where failure-reports (part 1) has landed. Part 2 of 3 of the split of
+# durable-builds-and-failure-reports. Offline only (rules 49, 51). Every new test is in test/kogen/build_breakers_test.exs,
+# each in its own fresh WorkspaceFixture control; INTENT.md "Tests the Developer writes" numbers each test (1-15) with
+# its setup, command and exact expected result, and defines the helpers (fail_always, logged_out, probe_lines,
+# admission_counts, sentinel). fake_codex with FAKE_CHECK_FAIL_ALWAYS=1 stops as offline-exhausted with one signature
+# digest per control; fake_claude on the `:claude` route with KOGEN_CLAUDE_ROOT and FAKE_CLAUDE_LOGGED_OUT=1 stops at
+# readiness as `environment` with next_command `mix kogen.claude.login` (all probed at e65392cf).
+
+- id: item-breaker
+  given: >-
+    Reports as failure-reports writes them at
+    <control>/.kogen/runtime/scenario-tracking/<build-id>/failure-report.json. Tests 1-6: (1) two fail_always
+    Builds of workspace-fixture; (2) the same with the first report deleted; (3) the same with "# edited\n" appended
+    to the Approved intent.yaml; (4) the same plus a second Intent `second-intent`; (5) one real report plus two
+    hand-written cannot-comply reports (class shaping, counts_toward item) sharing digest `hand-shaping` and the
+    current intent_id and package digest; (6) one real report plus hand-written item reports with digests other-1
+    and other-2 and two environment reports sharing digest env-same.
+  when: >-
+    `mix test test/kogen/build_breakers_test.exs`: (1) a third Build runs with the sentinel harness; (2) two more
+    fail_always Builds run; (3) a fail_always Build runs; (4) a fail_always Build of second-intent runs; (5) a Build
+    runs with the sentinel harness; (6) a fail_always Build runs.
+  then: >-
+    (1) returns {:error, message} with message exactly "Build refused (item breaker): workspace-fixture stopped 2
+    times with the same failure signature on this Approved package; next action: reshape_details; first failure:
+    check; signature: <shared digest>; failure reports: <path 1>, <path 2>". The counts of tracking directories,
+    owner records and worktrees, and Workspace.control_state, are unchanged; there are still two reports; the
+    sentinel marker does not exist. (2) the first is admitted (message contains "category: offline-exhausted") with
+    same_signature_count 2, and the second is refused naming the remaining old report and the new one. (3) admitted;
+    new package digest, same_signature_count 1, next_action rebuild. (4) admitted; intent_id
+    01a0c467-0000-7000-8000-00000000b2e2, the same signature digest, same_signature_count 1. (5) the refusal says
+    "next action: reshape_scope; first failure: cannot-comply; signature: hand-shaping" and names exactly the two
+    hand-written paths. (6) admitted.
+  wrong_result: >-
+    The unchanged package is rebuilt a third time; a refusal creates a record, report, Candidate, owner record or
+    harness home, or launches the harness; the count is read from the stored same_signature_count or a counter file
+    instead of the reports on disk, so deleting a report doesn't readmit; an edited package or another Intent is
+    refused; reports with different digests, or environment reports, trip it; the key is the category, first_failure
+    or a fixture-specific value such as "check" instead of intent_id, package digest and signature digest; a smoke
+    test that asserts only a refusal prefix.
+  verified_by: [check]
+  evidence: Test 1-6 results; the reports on disk before and after each Build.
+  proof:
+    offline: [test/kogen/build_breakers_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fixture Builds and reports on disk"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/failure_report.ex, lib/kogen/build/tracking.ex, README.md, test/kogen/build_breakers_test.exs]
+    base: fail
+
+- id: environment-breaker
+  given: >-
+    Claude-route controls, each Build given its own cwd, where probe_lines(cwd) are the `argv:` lines of
+    <cwd>/.kogen/runtime/fake-harness-log (the no-launch readiness logs there; a Build's own readiness logs in its
+    harness home). (7) three logged_out Builds of workspace-fixture, second-intent and workspace-fixture; (8)
+    logged_out, logged_out, an offline-exhausted Build (FAKE_CHECK_FAIL_ALWAYS=1), logged_out, logged_out; (9)
+    logged_out twice, then a logged-in Build of second-intent that publishes; (10) logged_out twice, a usage-limited
+    Build (FAKE_CLAUDE_FAIL_TAIL = be_n9crq_claude_session_limit.json output; category provider, counts_toward
+    null), logged_out; (11) a fresh control.
+  when: >-
+    `mix test test/kogen/build_breakers_test.exs`: (7) Build 4 logged_out; Build 5 logged in with FAKE_CLAUDE_FAIL_TAIL
+    = xfjcrm76_claude_oauth_revoked.json output; Builds 6-7 logged_out; Build 8 logged_out. (8) Build 6 logged_out.
+    (9) Builds 4-6 logged_out. (10) Build 5 logged_out. (11) one logged-in Build.
+  then: >-
+    (7) Builds 1-3 each stop as environment with probe_lines []. Build 4 returns {:error, message} with message
+    exactly "Build refused (environment breaker): 3 environment stops in a row; readiness: <error containing
+    'harness claude is not ready:' and 'Run mix kogen.claude.login'>; failure reports: <p1> (mix kogen.claude.login),
+    <p2> (mix kogen.claude.login), <p3> (mix kogen.claude.login)". probe_lines is ["argv: auth status"], and the
+    counts of tracking directories, owner records and worktrees are unchanged. Build 5 has probe_lines ["argv: auth
+    status"], is admitted, stops with "developer: claude login rejected (401) (class environment)", and its tracking
+    directory holds environment-clear.json: schema_version 1, reason "readiness", reports [p1, p2, p3], and cleared_at
+    in microseconds between Build 3's and Build 5's stopped_at. Builds 6-7 are admitted with probe_lines []. Build 8
+    is refused naming exactly Builds 5, 6 and 7's reports. (8) Build 6 is admitted, probe_lines [], and no
+    environment-clear.json exists. (9) the published Build's tracking directory holds environment-clear.json with
+    reason "published" and reports [p1, p2]; Builds 4-6 are admitted with probe_lines []. (10) Build 5 is refused
+    naming Builds 1, 2 and 4's reports, not Build 3's; probe_lines ["argv: auth status"]. (11) returns :ok, no
+    environment-clear.json, probe_lines [].
+  wrong_result: >-
+    Environment stops keep burning Builds; the refusal leaves a record, report or Candidate; an item stop counts
+    toward the run or fails to end it; a provider stop ends the run; a clear file is ignored, or written by a
+    published Build with an empty run; a tripped breaker never clears; readiness runs on every admission (a
+    probe_lines entry for an untripped Build); the run is counted per Intent instead of across Intents; the test
+    hand-writes environment or provider reports instead of running real stops (hand-written reports appear only in
+    item-breaker tests 5 and 6); a smoke test that asserts only the refusal prefix.
+  verified_by: [check]
+  evidence: Test 7-11 results; the fake's `auth status` log lines in each Build's cwd; environment-clear.json bytes.
+  proof:
+    offline: [test/kogen/build_breakers_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake Claude readiness and reports on disk"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/failure_report.ex, README.md, test/kogen/build_breakers_test.exs]
+    base: fail
+
+- id: first-prompt-names-last-failure
+  given: >-
+    (12) a control with one fail_always report r1; (13) a control with no report; (14) a control with a report of
+    workspace-fixture only, then the second Intent and an edited workspace-fixture package; (15) a control whose only
+    report is a real cannot-comply stop (fake_codex_simple_accept, FAKE_JEV_ANSWERS objection 0.99), whose signature
+    has source "stop".
+  when: >-
+    `mix test test/kogen/build_breakers_test.exs`: a fail_always Build starts and fake_codex saves its fresh launch
+    prompt as <harness home>/fake-state/developer-launch-prompt (one fresh launch per such Build).
+  then: >-
+    (12) Build 1's first prompt has no "## First failure". Build 2's has "## First failure", then "- Target: <r1
+    target>", "- First failure: <r1 first_failure>", "- Error head: <r1 error_head>" and "- Reproduce: run the
+    command that `make check` runs, whole and at its normal concurrency, not the one test alone; the controller runs
+    `make check` itself after your turn", then the exact sentence "Passes in isolation is not acceptable: reproduce
+    the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build.",
+    then "Previous failure report: <r1 absolute path>". The span from "## First failure" through that sentence is
+    byte-identical to the first such span in Build 1's verification-resume-prompts (the rework prompt). (13), (14)
+    and (15): the first prompt contains neither "## First failure" nor "Previous failure report:".
+  wrong_result: >-
+    The second try starts blind; another Intent's, an older package digest's or a stop signature's report leaks into
+    the prompt; the block is a second copy that differs from the rework prompt's; the rework prompt's bytes change;
+    the expected block is hard-coded from fixture strings instead of built from the report's signature; a smoke test
+    that checks only for the heading.
+  verified_by: [check]
+  evidence: The fake's saved first prompts and rework prompts.
+  proof:
+    offline: [test/kogen/build_breakers_test.exs, test/kogen/failure_report_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: prompts saved by the fake harness"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/failure_handoff.ex, lib/kogen/build/failure_report.ex, test/kogen/build_breakers_test.exs]
+    base: fail
+
+- id: existing-expectations-kept
+  given: >-
+    The existing tests INTENT.md lists under "Existing tests and fixtures". Among them, failure_report_test.exs,
+    build_workspace_test.exs's failure-retention matrix and scenario_lifecycle_test.exs run two Builds in one control,
+    and build_preconditions_test.exs, core_integrity_test.exs and harness_contract_test.exs refute a fake-harness-log
+    in control.
+  when: "`make check` runs on the Candidate."
+  then: >-
+    Every one passes unedited. A single same-signature report still admits a second Build (whose first prompt gains
+    a block nobody asserts). Pre-admission refusals still create no tracking record and no report, and "Complete
+    Intent already exists: intent-one" is still returned verbatim. An untripped admission runs no probe and writes no
+    file in the cwd or control, and a control with no report renders today's first prompt. The rework prompt's bytes
+    are unchanged. No existing test is renamed or removed, and priv/kogen/test-reliability.yaml and
+    test-reliability-remediation.yaml are unedited.
+  wrong_result: >-
+    An existing assertion is edited, loosened, skipped or deleted to make the change pass; a report field or category
+    changes; a fixture learns to write around a breaker.
+  verified_by: [check]
+  evidence: "`git diff --stat` touches none of the listed test files, test/support/ or priv/kogen/test-reliability*.yaml."
+  proof:
+    offline: [test/kogen/failure_report_test.exs, test/kogen/build_workspace_test.exs, test/kogen/build_preconditions_test.exs, test/kogen/scenario_lifecycle_test.exs, test/kogen/commit_provenance_test.exs, test/kogen/commit_failure_rollback_test.exs, test/kogen/write_boundary_test.exs, test/kogen/controller_handoff_test.exs, test/kogen/two_outer_resumptions_test.exs, test/kogen/candidate_verification_test.exs, test/kogen/core_integrity_test.exs, test/kogen/harness_contract_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: existing offline tests"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/failure_handoff.ex]

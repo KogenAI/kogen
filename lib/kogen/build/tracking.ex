@@ -674,7 +674,8 @@ defmodule Kogen.Build.Tracking do
     end
   end
 
-  defp approved_digest(entries) do
+  @doc "Computes the digest of the frozen Approved package entries."
+  def approved_digest(entries) do
     entries
     |> :erlang.term_to_binary()
     |> then(&:crypto.hash(:sha256, &1))

@@ -1,0 +1,699 @@
+diff --git a/README.md b/README.md
+index f9193335..1f4e5667 100644
+--- a/README.md
++++ b/README.md
+@@ -137,6 +137,22 @@ Login rejection is an `environment` stop with a harness-specific
+ `mix kogen.<harness>.login` command. Reports deliberately have no continuation,
+ budget, publication or `published` fields.
+ 
++#### Breakers
++
++Two or more item reports with the same failure signature, Intent id and
++Approved package digest refuse the next Build before admission with
++`Build refused (item breaker)` and `reshape_details` (or `reshape_scope` for
++shaping reports). The check recounts report files on disk, so deleting a
++report or editing the Approved package changes the result.
++
++Three consecutive environment reports across Intents refuse admission with
++`Build refused (environment breaker)` until the no-launch harness readiness
++check passes. A passing check writes `environment-clear.json`; a successful
++published Build clears a non-empty environment run with `reason: "published"`.
++Refusals create no tracking record, Candidate or harness home. A fresh Build
++with a matching item report carries the canonical `## First failure` block and
++the absolute `Previous failure report:` path in its first Developer prompt.
++
+ Every process a Build launches (Developer, Reviewer, Expert and their
+ helpers, Jev's executable transport, make targets, `prepare`, and focused and
+ base runs) starts through one supervisor, `priv/kogen/process_supervisor.py`
+diff --git a/lib/kogen/build.ex b/lib/kogen/build.ex
+index 97282201..53fe37f9 100644
+--- a/lib/kogen/build.ex
++++ b/lib/kogen/build.ex
+@@ -57,6 +57,7 @@ defmodule Kogen.Build do
+ 
+   alias Kogen.Build.{
+     BaseWorkspace,
++    Breakers,
+     Contract,
+     FailureHandoff,
+     FailureReport,
+@@ -126,7 +127,13 @@ defmodule Kogen.Build do
+       case acquire_lock(control) do
+         :ok ->
+           try do
+-            do_build(admission, slug, intent, config, approved_entries)
++            case admission_breakers(control, slug, intent, config, approved_entries) do
++              {:ok, breaker_state} ->
++                do_build(admission, slug, intent, config, approved_entries, breaker_state)
++
++              {:error, _reason} = error ->
++                error
++            end
+           after
+             release_lock(control)
+           end
+@@ -299,6 +306,38 @@ defmodule Kogen.Build do
+ 
+   defp release_lock(control), do: Kogen.ProcessCustody.release(control)
+ 
++  defp admission_breakers(control, slug, intent, config, approved_entries) do
++    digest = Tracking.approved_digest(approved_entries)
++
++    with state <- Breakers.environment_state(control),
++         {:ok, state} <- maybe_probe_environment(state, config, control) do
++      with :ok <- Breakers.item_refusal(control, intent.id, digest, slug) do
++        {:ok, Map.merge(state, %{intent_id: intent.id, package_digest: digest})}
++      end
++    end
++  end
++
++  defp maybe_probe_environment(%{tripped: false} = state, _config, _control),
++    do: {:ok, Map.put(state, :readiness, :not_run)}
++
++  defp maybe_probe_environment(%{tripped: true, run: run} = state, config, control) do
++    case Kogen.Harness.open_roles(config, @build_roles, control) do
++      {:ok, runtime} ->
++        Kogen.Harness.close(runtime)
++        {:ok, Map.put(state, :readiness, :passed)}
++
++      {:error, reason} ->
++        {:error, Breakers.readiness_refusal_message(run, reason)}
++    end
++  end
++
++  defp maybe_write_readiness_clear(_tracking, %{readiness: readiness}) when readiness != :passed,
++    do: :ok
++
++  defp maybe_write_readiness_clear(tracking, %{run: run}) do
++    Breakers.write_clear(tracking.path, "readiness", run)
++  end
++
+   @doc "Environment entries that remove every verification or tracking context from a child."
+   def context_scrub, do: Enum.map(@context_variables, &{&1, nil})
+ 
+@@ -306,7 +345,7 @@ defmodule Kogen.Build do
+   # settle/review/rework chain below stays under a sane arity as it
+   # threads per-attempt state (candidate id, session id, resumption count,
+   # Check record, target results) through the loop.
+-  defp do_build(admission, slug, intent, config, approved_entries) do
++  defp do_build(admission, slug, intent, config, approved_entries, breaker_state) do
+     control = admission.control
+     added = added_targets(intent)
+     guard_targets = catalog_guard_targets(added)
+@@ -323,6 +362,8 @@ defmodule Kogen.Build do
+            ),
+          {:ok, bindings} <- Kogen.Harness.bindings(config, @build_roles, control),
+          {:ok, tracking} <- Tracking.new(intent, contract, approved_entries, config, control) do
++      _ = maybe_write_readiness_clear(tracking, breaker_state)
++
+       ctx = %{
+         slug: slug,
+         intent: intent,
+@@ -2163,9 +2204,13 @@ defmodule Kogen.Build do
+   # Candidate worktree, branch and owner record. The harness home is kept.
+   defp publish_to_control(ctx, commit) do
+     candidate = ctx.candidate
++    environment_run = Breakers.environment_state(ctx.control).run
+ 
+     case Workspace.fast_forward(candidate, commit) do
+       :ok ->
++        if environment_run != [],
++          do: Breakers.write_clear(ctx.tracking.path, "published", environment_run)
++
+         File.rm_rf(Path.join([ctx.control, @approved_base, ctx.slug]))
+ 
+         case Workspace.remove_published(candidate) do
+@@ -2439,8 +2484,10 @@ defmodule Kogen.Build do
+   end
+ 
+   defp developer_prompt(ctx, nil) do
+-    render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config, roots(ctx)) <>
+-      task_context(ctx, nil, "developer")
++    base =
++      render_developer_prompt(ctx.intent, ctx.contract.text, ctx.targets, ctx.config, roots(ctx))
++
++    base <> first_failure_prompt_block(ctx) <> task_context(ctx, nil, "developer")
+   end
+ 
+   defp developer_prompt(ctx, reason) do
+@@ -2450,6 +2497,25 @@ defmodule Kogen.Build do
+ 
+   defp roots(ctx), do: %{control: ctx.control, candidate: ctx.root}
+ 
++  defp first_failure_prompt_block(ctx) do
++    digest = ctx.tracking.record["approved_package_digest"]
++
++    case Breakers.latest_item_report(ctx.control, ctx.intent.id, digest) do
++      %{path: path, report: report} ->
++        signature = report["signature"] || %{}
++
++        if signature["source"] == "stop" or not is_binary(signature["target"]) do
++          ""
++        else
++          FailureHandoff.first_failure_block(signature) <>
++            "Previous failure report: #{path}\n"
++        end
++
++      _ ->
++        ""
++    end
++  end
++
+   # Role-facing control locators are absolute, so they open from the
+   # Candidate cwd; `control_root` resolves the control-relative locators the
+   # record and the review packet hold.
+diff --git a/lib/kogen/build/breakers.ex b/lib/kogen/build/breakers.ex
+new file mode 100644
+index 00000000..03cbdae4
+--- /dev/null
++++ b/lib/kogen/build/breakers.ex
+@@ -0,0 +1,255 @@
++# credo:disable-for-this-file Credo.Check.Refactor.CyclomaticComplexity
++# credo:disable-for-this-file Credo.Check.Refactor.Nesting
++defmodule Kogen.Build.Breakers do
++  @moduledoc """
++  Admission breakers backed by the durable failure reports.
++
++  This module deliberately has no Build state.  Reports and environment clear
++  files on the control checkout are the source of truth, so removing a report
++  or changing the Approved package takes effect at the next admission.
++  """
++
++  @runtime_glob ".kogen/runtime/scenario-tracking/*/failure-report.json"
++  @clear_glob ".kogen/runtime/scenario-tracking/*/environment-clear.json"
++
++  @doc "Returns decoded failure reports, with their absolute paths, in run order."
++  @spec reports(Path.t()) :: [%{path: Path.t(), report: map()}]
++  def reports(control) when is_binary(control) do
++    control = Path.expand(control)
++
++    Path.wildcard(Path.join(control, @runtime_glob))
++    |> Enum.flat_map(fn path ->
++      case File.read(path) do
++        {:ok, bytes} ->
++          case Jason.decode(bytes) do
++            {:ok, report} when is_map(report) -> [%{path: Path.expand(path), report: report}]
++            _ -> []
++          end
++
++        _ ->
++          []
++      end
++    end)
++    |> Enum.sort_by(&report_sort_key/1)
++  end
++
++  def reports(_control), do: []
++
++  @doc "Checks whether an unchanged Approved package has a repeated item failure."
++  @spec item_refusal(Path.t(), String.t(), String.t(), String.t() | nil) ::
++          :ok | {:error, String.t()}
++  def item_refusal(control, intent_id, package_digest, slug \\ nil)
++
++  def item_refusal(control, intent_id, package_digest, slug)
++      when is_binary(control) and is_binary(intent_id) and is_binary(package_digest) do
++    matching =
++      reports(control)
++      |> Enum.filter(fn %{report: report} ->
++        report["counts_toward"] == "item" and
++          report["intent_id"] == intent_id and
++          report["approved_package_digest"] == package_digest and
++          is_map(report["signature"]) and is_binary(report["signature"]["digest"])
++      end)
++
++    groups = Enum.group_by(matching, &get_in(&1, [:report, "signature", "digest"]))
++
++    case groups
++         |> Enum.filter(fn {_digest, entries} -> length(entries) >= 2 end)
++         |> latest_group() do
++      nil ->
++        :ok
++
++      {digest, entries} ->
++        entries = Enum.sort_by(entries, &report_sort_key/1)
++        first = List.first(entries).report
++        signature = first["signature"] || %{}
++
++        action =
++          if Enum.any?(entries, &(get_in(&1, [:report, "class"]) == "shaping")),
++            do: "reshape_scope",
++            else: "reshape_details"
++
++        name = slug || first["slug"] || intent_id
++        paths = Enum.map_join(entries, ", ", & &1.path)
++
++        {:error,
++         "Build refused (item breaker): #{name} stopped #{length(entries)} times with the same failure signature on this Approved package; next action: #{action}; first failure: #{signature["first_failure"]}; signature: #{digest}; failure reports: #{paths}"}
++    end
++  end
++
++  def item_refusal(_control, _intent_id, _package_digest, _slug), do: :ok
++
++  @doc "Returns the latest matching non-stop item report, if any."
++  @spec latest_item_report(Path.t(), String.t(), String.t()) ::
++          nil | %{path: Path.t(), report: map()}
++  def latest_item_report(control, intent_id, package_digest)
++      when is_binary(control) and is_binary(intent_id) and is_binary(package_digest) do
++    reports(control)
++    |> Enum.filter(fn %{report: report} ->
++      report["counts_toward"] == "item" and
++        report["intent_id"] == intent_id and
++        report["approved_package_digest"] == package_digest and
++        get_in(report, ["signature", "source"]) != "stop"
++    end)
++    |> List.last()
++  end
++
++  def latest_item_report(_control, _intent_id, _package_digest), do: nil
++
++  @doc "Computes the cross-Intent trailing environment run and whether it is tripped."
++  @spec environment_state(Path.t()) :: %{
++          run: [%{path: Path.t(), report: map()}],
++          tripped: boolean()
++        }
++  def environment_state(control) when is_binary(control) do
++    entries = reports(control)
++    cleared_at = latest_cleared_at(control)
++
++    run =
++      entries
++      |> Enum.filter(&after_clear?(&1, cleared_at))
++      |> Enum.reduce([], fn entry, run ->
++        case get_in(entry, [:report, "counts_toward"]) do
++          "environment" -> run ++ [entry]
++          "item" -> []
++          _ -> run
++        end
++      end)
++
++    %{run: run, tripped: length(run) >= 3}
++  end
++
++  def environment_state(_control), do: %{run: [], tripped: false}
++
++  @doc "Formats the exact refusal emitted after a failed readiness probe."
++  @spec readiness_refusal_message([map()], term()) :: String.t()
++  def readiness_refusal_message(run, readiness_error) when is_list(run) do
++    reports =
++      run
++      |> Enum.map_join(", ", fn %{path: path, report: report} ->
++        case report["next_command"] do
++          command when is_binary(command) and command != "" -> "#{path} (#{command})"
++          _ -> path
++        end
++      end)
++
++    "Build refused (environment breaker): #{length(run)} environment stops in a row; readiness: #{readiness_error}; failure reports: #{reports}"
++  end
++
++  @doc "Writes one exclusive environment clear file beside a tracking record."
++  @spec write_clear(Path.t(), String.t(), [map()]) :: :ok | {:error, String.t()}
++  def write_clear(tracking_path, reason, run)
++      when is_binary(tracking_path) and is_binary(reason) and is_list(run) do
++    if run == [] do
++      :ok
++    else
++      directory = tracking_directory(tracking_path)
++
++      path = Path.join(directory, "environment-clear.json")
++
++      with :ok <- File.mkdir_p(directory) do
++        write_clear_exclusive(path, clear_payload(reason, run))
++      end
++    end
++  end
++
++  def write_clear(_tracking_path, _reason, _run), do: {:error, "invalid environment clear inputs"}
++
++  @doc "Returns the clear-file path for a tracking record path or directory."
++  def clear_path(tracking_path) when is_binary(tracking_path) do
++    Path.join(tracking_directory(tracking_path), "environment-clear.json")
++  end
++
++  defp latest_group(groups) do
++    groups
++    |> Enum.sort_by(fn {_digest, entries} ->
++      entries |> Enum.map(&report_sort_key/1) |> Enum.max(fn -> {-1, ""} end)
++    end)
++    |> List.last()
++  end
++
++  defp tracking_directory(path) do
++    path = Path.expand(path)
++    if Path.basename(path) == "record.json", do: Path.dirname(path), else: path
++  end
++
++  defp report_sort_key(%{report: report}) do
++    {timestamp_key(report["stopped_at"]), report["build_id"] || ""}
++  end
++
++  defp timestamp_key(value) when is_binary(value) do
++    case DateTime.from_iso8601(value) do
++      {:ok, datetime, _offset} -> DateTime.to_unix(datetime, :microsecond)
++      _ -> -1
++    end
++  end
++
++  defp timestamp_key(_), do: -1
++
++  defp latest_cleared_at(control) do
++    control
++    |> Path.expand()
++    |> Path.join(@clear_glob)
++    |> Path.wildcard()
++    |> Enum.reduce(nil, fn path, latest ->
++      with {:ok, bytes} <- File.read(path),
++           {:ok, clear} <- Jason.decode(bytes),
++           {:ok, value, _offset} <- DateTime.from_iso8601(clear["cleared_at"] || "") do
++        if is_nil(latest) or DateTime.compare(value, latest) == :gt, do: value, else: latest
++      else
++        _ -> latest
++      end
++    end)
++  end
++
++  defp after_clear?(_entry, nil), do: true
++
++  defp after_clear?(%{report: report}, cleared_at) do
++    case DateTime.from_iso8601(report["stopped_at"] || "") do
++      {:ok, stopped_at, _offset} -> DateTime.compare(stopped_at, cleared_at) == :gt
++      _ -> false
++    end
++  end
++
++  defp clear_payload(reason, run) do
++    %{
++      "schema_version" => 1,
++      "cleared_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
++      "reason" => reason,
++      "reports" => Enum.map(run, & &1.path)
++    }
++  end
++
++  defp write_clear_exclusive(path, payload) do
++    bytes = Jason.encode_to_iodata!(payload, pretty: true)
++
++    temporary =
++      Path.join(
++        Path.dirname(path),
++        ".environment-clear-#{System.unique_integer([:positive])}.tmp"
++      )
++
++    with {:ok, io} <- File.open(temporary, [:write, :binary, :exclusive]),
++         :ok <- IO.binwrite(io, bytes),
++         :ok <- :file.sync(io),
++         :ok <- File.close(io) do
++      case :file.make_link(String.to_charlist(temporary), String.to_charlist(path)) do
++        :ok ->
++          File.rm(temporary)
++          :ok
++
++        {:error, :eexist} ->
++          File.rm(temporary)
++          :ok
++
++        {:error, reason} ->
++          File.rm(temporary)
++          {:error, "could not write environment clear #{path}: #{inspect(reason)}"}
++      end
++    else
++      {:error, reason} ->
++        File.rm(temporary)
++        {:error, "could not write environment clear #{path}: #{inspect(reason)}"}
++    end
++  end
++end
+diff --git a/lib/kogen/build/failure_handoff.ex b/lib/kogen/build/failure_handoff.ex
+index a6f72191..533a37d4 100644
+--- a/lib/kogen/build/failure_handoff.ex
++++ b/lib/kogen/build/failure_handoff.ex
+@@ -58,13 +58,7 @@ defmodule Kogen.Build.FailureHandoff do
+       first_failure["reproduce"] ||
+         "run the command that `make #{target}` runs, whole and at its normal concurrency, not the one test alone; the controller runs `make #{target}` itself after your turn"
+ 
+-    first_block =
+-      "\n## First failure\n\n" <>
+-        "- Target: #{first_failure["target"]}\n" <>
+-        "- First failure: #{first_failure["first_failure"]}\n" <>
+-        "- Error head: #{first_failure["error_head"]}\n" <>
+-        "- Reproduce: #{reproduce}\n\n" <>
+-        "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build.\n"
++    first_block = first_failure_block(Map.put(first_failure, "reproduce", reproduce))
+ 
+     heading = header <> first_block <> "\n## Failed receipts of this cycle\n\n"
+ 
+@@ -76,6 +70,20 @@ defmodule Kogen.Build.FailureHandoff do
+     heading <> sections
+   end
+ 
++  @doc "Renders the canonical first-failure block shared by rework and fresh prompts."
++  def first_failure_block(signature) when is_map(signature) do
++    reproduce =
++      signature["reproduce"] ||
++        "run the command that `make #{signature["target"]}` runs, whole and at its normal concurrency, not the one test alone; the controller runs `make #{signature["target"]}` itself after your turn"
++
++    "\n## First failure\n\n" <>
++      "- Target: #{signature["target"]}\n" <>
++      "- First failure: #{signature["first_failure"]}\n" <>
++      "- Error head: #{signature["error_head"]}\n" <>
++      "- Reproduce: #{reproduce}\n\n" <>
++      "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build.\n"
++  end
++
+   # Every failed receipt of the cycle, `prepare` receipts first (they run
+   # before the paid targets), then target receipts in run order. A cycle that
+   # failed before any receipt (catalog check, runner or proof failure) is
+diff --git a/lib/kogen/build/tracking.ex b/lib/kogen/build/tracking.ex
+index 8110cf6d..5edf5627 100644
+--- a/lib/kogen/build/tracking.ex
++++ b/lib/kogen/build/tracking.ex
+@@ -674,7 +674,8 @@ defmodule Kogen.Build.Tracking do
+     end
+   end
+ 
+-  defp approved_digest(entries) do
++  @doc "Computes the digest of the frozen Approved package entries."
++  def approved_digest(entries) do
+     entries
+     |> :erlang.term_to_binary()
+     |> then(&:crypto.hash(:sha256, &1))
+diff --git a/test/kogen/build_breakers_test.exs b/test/kogen/build_breakers_test.exs
+new file mode 100644
+index 00000000..75de8045
+--- /dev/null
++++ b/test/kogen/build_breakers_test.exs
+@@ -0,0 +1,214 @@
++defmodule Kogen.BuildBreakersTest do
++  use Kogen.IsolatedCase, async: true
++
++  alias Kogen.Build.{Breakers, FailureHandoff}
++  alias Kogen.WorkspaceFixture, as: Workspace
++
++  defp reports(control) do
++    Breakers.reports(control)
++  end
++
++  defp report!(control, build_id, attrs) do
++    path = Path.join(control, ".kogen/runtime/scenario-tracking/#{build_id}/failure-report.json")
++    File.mkdir_p!(Path.dirname(path))
++    File.write!(path, Jason.encode!(Map.merge(%{"build_id" => build_id}, attrs)))
++    path
++  end
++
++  test "item breaker refuses a third unchanged Build before admission" do
++    control = Workspace.create!()
++    on_exit(fn -> File.rm_rf(control) end)
++
++    opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
++    assert {:error, first} = Workspace.build!(control, opts)
++    assert first =~ "category: offline-exhausted"
++    assert {:error, second} = Workspace.build!(control, opts)
++    assert second =~ "category: offline-exhausted"
++    [one, two] = reports(control)
++    assert one.report["signature"]["digest"] == two.report["signature"]["digest"]
++
++    marker = Workspace.tmp_dir!("breaker-marker") |> Path.join("launched")
++
++    sentinel =
++      Workspace.fake!(
++        Workspace.tmp_dir!("breaker-sentinel"),
++        "sentinel",
++        "#!/bin/sh\ntouch #{marker}\nexit 1\n"
++      )
++
++    assert {:error, refusal} =
++             Workspace.build!(control,
++               harness: sentinel,
++               env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]
++             )
++
++    assert refusal ==
++             "Build refused (item breaker): workspace-fixture stopped 2 times with the same failure signature on this Approved package; next action: reshape_details; first failure: check; signature: #{one.report["signature"]["digest"]}; failure reports: #{one.path}, #{two.path}"
++
++    refute File.exists?(marker)
++    assert length(reports(control)) == 2
++  end
++
++  test "item breaker recounts files and keys package and intent" do
++    control = Workspace.tmp_dir!("breaker-reports")
++    on_exit(fn -> File.rm_rf(control) end)
++
++    base = %{
++      "intent_id" => "intent-1",
++      "approved_package_digest" => "package-1",
++      "counts_toward" => "item",
++      "class" => "item",
++      "stopped_at" => "2026-01-01T00:00:00.000001Z",
++      "signature" => %{"digest" => "same", "first_failure" => "check", "source" => "tail"}
++    }
++
++    first = report!(control, "one", base)
++    report!(control, "two", %{base | "stopped_at" => "2026-01-01T00:00:00.000002Z"})
++    assert {:error, message} = Breakers.item_refusal(control, "intent-1", "package-1", "demo")
++    assert message =~ "next action: reshape_details"
++    File.rm!(first)
++    assert :ok = Breakers.item_refusal(control, "intent-1", "package-1", "demo")
++    report!(control, "other", %{base | "intent_id" => "intent-2"})
++    assert :ok = Breakers.item_refusal(control, "intent-1", "package-1", "demo")
++    assert :ok = Breakers.item_refusal(control, "intent-1", "package-2", "demo")
++  end
++
++  test "environment run spans intents, skips providers, and clears from disk" do
++    control = Workspace.tmp_dir!("environment-reports")
++    on_exit(fn -> File.rm_rf(control) end)
++
++    env = fn id, time ->
++      report!(control, id, %{
++        "intent_id" => id,
++        "counts_toward" => "environment",
++        "stopped_at" => time,
++        "next_command" => "mix kogen.claude.login",
++        "signature" => %{"digest" => id}
++      })
++    end
++
++    p1 = env.("one", "2026-01-01T00:00:00.000001Z")
++    p2 = env.("two", "2026-01-01T00:00:00.000002Z")
++    p3 = env.("three", "2026-01-01T00:00:00.000003Z")
++    assert %{tripped: true, run: run} = Breakers.environment_state(control)
++    assert Enum.map(run, & &1.path) == [p1, p2, p3]
++    tracking = Path.join(control, ".kogen/runtime/scenario-tracking/clear/record.json")
++    assert :ok = Breakers.write_clear(tracking, "readiness", run)
++    assert %{tripped: false, run: []} = Breakers.environment_state(control)
++    clear = Breakers.clear_path(tracking) |> File.read!() |> Jason.decode!()
++    assert clear["reason"] == "readiness"
++    assert clear["reports"] == [p1, p2, p3]
++  end
++
++  test "item reports choose shaping action and stop signatures stay out of prompts" do
++    control = Workspace.tmp_dir!("shaping-reports")
++    on_exit(fn -> File.rm_rf(control) end)
++
++    attrs = %{
++      "intent_id" => "intent-1",
++      "approved_package_digest" => "package-1",
++      "counts_toward" => "item",
++      "class" => "shaping",
++      "stopped_at" => "2026-01-01T00:00:00.000001Z",
++      "signature" => %{
++        "digest" => "shape",
++        "first_failure" => "cannot-comply",
++        "source" => "stop"
++      }
++    }
++
++    report!(control, "a", attrs)
++    report!(control, "b", %{attrs | "stopped_at" => "2026-01-01T00:00:00.000002Z"})
++    assert {:error, message} = Breakers.item_refusal(control, "intent-1", "package-1", "demo")
++    assert message =~ "next action: reshape_scope"
++    assert Breakers.latest_item_report(control, "intent-1", "package-1") == nil
++
++    assert is_binary(
++             FailureHandoff.first_failure_block(%{
++               "source" => "stop",
++               "target" => "cannot-comply"
++             })
++           )
++  end
++
++  test "canonical first failure block is reusable by fresh prompts" do
++    signature = %{
++      "target" => "check",
++      "first_failure" => "check",
++      "error_head" => "make: *** [check] Error 1",
++      "source" => "tail"
++    }
++
++    block = FailureHandoff.first_failure_block(signature)
++    assert block =~ "## First failure"
++    assert block =~ "- Target: check"
++    assert block =~ "Previous failure report" == false
++    assert block =~ "Passes in isolation is not acceptable"
++  end
++
++  test "environment breaker probes only after three consecutive environment stops" do
++    control = Workspace.create!(route: :claude)
++    claude_root = Workspace.claude_root!()
++    on_exit(fn -> File.rm_rf(control) end)
++
++    build = fn logged_out ->
++      cwd = Workspace.tmp_dir!("breaker-cwd")
++
++      env = [
++        {"KOGEN_CLAUDE_ROOT", claude_root},
++        {"KOGEN_HARNESS_HOME", nil},
++        {"FAKE_CLAUDE_LOGGED_OUT", if(logged_out, do: "1", else: "0")}
++      ]
++
++      Workspace.build!(control,
++        route: "claude",
++        cwd: cwd,
++        harness: Workspace.support("fake_claude"),
++        env: env
++      )
++    end
++
++    for _ <- 1..3 do
++      assert {:error, message} = build.(true)
++      assert message =~ "category: environment"
++    end
++
++    cwd4 = Workspace.tmp_dir!("breaker-cwd-refused")
++
++    assert {:error, refusal} =
++             Workspace.build!(control,
++               route: "claude",
++               cwd: cwd4,
++               harness: Workspace.support("fake_claude"),
++               env: [
++                 {"KOGEN_CLAUDE_ROOT", claude_root},
++                 {"KOGEN_HARNESS_HOME", nil},
++                 {"FAKE_CLAUDE_LOGGED_OUT", "1"}
++               ]
++             )
++
++    assert refusal =~ "Build refused (environment breaker): 3 environment stops in a row"
++    assert File.read!(Path.join(cwd4, ".kogen/runtime/fake-harness-log")) =~ "argv: auth status"
++    assert length(reports(control)) == 3
++  end
++
++  test "a second Build carries the latest matching failure into its first prompt" do
++    control = Workspace.create!()
++    on_exit(fn -> File.rm_rf(control) end)
++    opts = [harness: Workspace.support("fake_codex"), env: [{"FAKE_CHECK_FAIL_ALWAYS", "1"}]]
++    assert {:error, _} = Workspace.build!(control, opts)
++    first = reports(control) |> List.first() |> Map.fetch!(:report)
++    assert {:error, _} = Workspace.build!(control, opts)
++    second = reports(control) |> List.last() |> Map.fetch!(:report)
++
++    prompt =
++      second["candidate"]["harness_home"]
++      |> Path.join("fake-state/developer-launch-prompt")
++      |> File.read!()
++
++    assert prompt =~ "## First failure"
++    assert prompt =~ "- Target: #{first["signature"]["target"]}"
++    assert prompt =~ "Previous failure report:"
++    assert prompt =~ Breakers.reports(control) |> List.first() |> Map.fetch!(:path)
++  end
++end
