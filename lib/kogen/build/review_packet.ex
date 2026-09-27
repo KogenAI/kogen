@@ -13,6 +13,13 @@ defmodule Kogen.Build.ReviewPacket do
   stays a retained file cited by locator and sha256, never inlined): if they
   alone cannot fit, building fails instead of dropping them.
 
+  `guard_violations` carries one object per latest-attempt guard rework the
+  controller recorded, with the paths inlined as the longest whole-path
+  prefix that fits the profile's `guard_paths` cap (the last profile's cap is
+  0, so this field is always fixed-size and never makes building fail); a
+  shortened prefix is marked `truncated` and the full list stays available by
+  digest and locator in `omitted`.
+
   Digests of structured values are over their canonical JSON encoding; digests
   of strings are over the string's bytes.
   """
@@ -23,16 +30,16 @@ defmodule Kogen.Build.ReviewPacket do
 
   @keys ~w(schema_version build_id attempt_number attempt_token candidate_id scenario_ids
            risk_ids handoff developer_notes receipts open_findings superseded_objection
-           verification_ledger base_suite omitted record)
+           verification_ledger base_suite guard_violations omitted record)
 
   # Tried in order until the whole packet fits. The first profile holds the
   # per-field caps; later profiles only tighten them, and the last one keeps
   # nothing beyond the required ids and digest-bound stubs.
   @profiles [
-    %{notes: 16_384, output: 2_048, handoff: 24_576, finding: 8_192},
-    %{notes: 8_192, output: 1_024, handoff: 12_288, finding: 2_048},
-    %{notes: 2_048, output: 256, handoff: 2_048, finding: 256},
-    %{notes: 0, output: 0, handoff: 0, finding: 0}
+    %{notes: 16_384, output: 2_048, handoff: 24_576, finding: 8_192, guard_paths: 4_096},
+    %{notes: 8_192, output: 1_024, handoff: 12_288, finding: 2_048, guard_paths: 2_048},
+    %{notes: 2_048, output: 256, handoff: 2_048, finding: 256, guard_paths: 512},
+    %{notes: 0, output: 0, handoff: 0, finding: 0, guard_paths: 0}
   ]
 
   @inner_caps [4_096, 1_024, 256, 64]
@@ -180,6 +187,7 @@ defmodule Kogen.Build.ReviewPacket do
     {notes, notes_omitted} = notes(attempt, base, profile.notes)
     {receipts, receipt_omitted} = receipts(attempt, base, profile.output)
     {findings, finding_omitted} = findings(record, input.open_findings, profile.finding)
+    {guard_violations, guard_omitted} = guard_violations(attempt, base, profile.guard_paths)
 
     %{
       "schema_version" => @schema_version,
@@ -196,9 +204,11 @@ defmodule Kogen.Build.ReviewPacket do
       "superseded_objection" => superseded(attempt["superseded_objection"]),
       "verification_ledger" => ledger_index(attempt["verification_ledger"], base),
       "base_suite" => attempt["base_suite"],
+      "guard_violations" => guard_violations,
       "omitted" =>
         handoff_omitted ++
-          notes_omitted ++ receipt_omitted ++ finding_omitted ++ left_out(record, index),
+          notes_omitted ++
+          receipt_omitted ++ finding_omitted ++ guard_omitted ++ left_out(record, index),
       "record" => %{
         "path" => input.record_path,
         "byte_count" => byte_size(input.record_bytes),
@@ -315,6 +325,52 @@ defmodule Kogen.Build.ReviewPacket do
     end)
     |> Enum.unzip()
     |> then(fn {findings, omitted} -> {findings, List.flatten(omitted)} end)
+  end
+
+  # Paths the controller made the Developer delete or restore before
+  # verification (guard reworks). The full list per entry is never dropped:
+  # it stays available whole by digest and locator, and only the inlined
+  # prefix (of whole paths, never a cut one) is bound by `cap`.
+  defp guard_violations(attempt, base, cap) do
+    (attempt["guard_violations"] || [])
+    |> Enum.with_index()
+    |> Enum.map(fn {entry, k} ->
+      locator = "#{base}/guard_violations/#{k}/paths"
+      full_paths = entry["paths"] || []
+      encoded_full = encode(full_paths)
+      digest = sha256(encoded_full)
+      count = byte_size(encoded_full)
+      prefix = fit_prefix(full_paths, cap)
+
+      object = %{
+        "cycle" => entry["cycle"],
+        "path_count" => length(full_paths),
+        "paths" => prefix,
+        "sha256" => digest,
+        "byte_count" => count,
+        "locator" => locator
+      }
+
+      if length(prefix) < length(full_paths) do
+        object = Map.put(object, "truncated", true)
+        {object, [omission("/guard_violations/#{k}/paths", locator, digest, count)]}
+      else
+        {object, []}
+      end
+    end)
+    |> Enum.unzip()
+    |> then(fn {items, omitted} -> {items, List.flatten(omitted)} end)
+  end
+
+  # The longest prefix of whole paths whose canonical JSON array fits `cap`:
+  # `[` and `]`, each encoded path, and a comma between two paths.
+  defp fit_prefix(paths, cap) do
+    paths
+    |> Enum.reduce_while({[], 2}, fn path, {kept, size} ->
+      size = size + byte_size(encode(path)) + if(kept == [], do: 0, else: 1)
+      if size <= cap, do: {:cont, {[path | kept], size}}, else: {:halt, {kept, size}}
+    end)
+    |> then(fn {kept, _size} -> if cap < 2, do: [], else: Enum.reverse(kept) end)
   end
 
   defp superseded(nil), do: nil

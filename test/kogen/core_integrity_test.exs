@@ -206,7 +206,12 @@ defmodule Kogen.CoreIntegrityTest do
     refute match?({:ok, _}, File.lstat(Path.join(fixture, ".kogen/intents/complete/#{@slug}")))
     assert File.dir?(Path.join(fixture, ".kogen/intents/approved/#{@slug}"))
 
-    assert_retained!(fixture, reason, "integrity")
+    # An unguarded stray path is now reworked: the fake Developer recreates
+    # the symlink on every turn, so after the two guard reworks the third
+    # occurrence stops the Build as `guard-violation` (was `integrity`).
+    assert_retained!(fixture, reason, "guard-violation")
+    [attempt] = Kogen.CandidateFixture.record(fixture)["attempts"]
+    assert length(attempt["guard_violations"]) == 3
 
     candidate = Kogen.CandidateFixture.candidate(fixture)
     worktree = candidate["worktree_path"]
@@ -355,7 +360,7 @@ defmodule Kogen.CoreIntegrityTest do
 
   defp fake_harness(:late_dangling_complete) do
     fake_harness_body(
-      "mkdir -p .kogen/intents/complete\nln -s missing .kogen/intents/complete/#{@slug}\n",
+      "mkdir -p .kogen/intents/complete\nln -sfn missing .kogen/intents/complete/#{@slug}\n",
       "reviewer-session-1"
     )
   end

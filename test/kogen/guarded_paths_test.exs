@@ -34,11 +34,12 @@ defmodule Kogen.GuardedPathsTest do
     assert {:ok, snapshot} = GuardedPaths.capture(root)
     File.chmod!(unguarded, 0o755)
 
-    assert {:error, reason} = GuardedPaths.check(snapshot, ["guarded.txt"])
-    assert reason =~ "unguarded.sh"
+    # An ordinary unguarded change is returned for a guard rework.
+    assert {{:rework, ["unguarded.sh"]}, _snapshot, []} =
+             GuardedPaths.check(snapshot, ["guarded.txt"])
   end
 
-  test "capture of a linked worktree snapshots Git's own config and exclude through git rev-parse --git-path, and a control-side config change fails check" do
+  test "capture of a linked worktree snapshots Git's own config and exclude through git rev-parse --git-path, and a control-side config change is one environment event" do
     control =
       Path.join(System.tmp_dir!(), "kogen-guarded-paths-control-#{unique()}")
 
@@ -68,14 +69,25 @@ defmodule Kogen.GuardedPathsTest do
     assert {".git/config", _control_git_config} =
              Enum.find(snapshot.files, fn {label, _path} -> label == ".git/config" end)
 
-    assert :ok = GuardedPaths.check(snapshot, ["tracked.txt"])
+    assert {:ok, ^snapshot, []} = GuardedPaths.check(snapshot, ["tracked.txt"])
 
     # Control's own `.git/config` is shared by every linked worktree; a
-    # change to it after capture must still be detected from the Candidate.
+    # change to it after capture is still detected from the Candidate, now as
+    # an environment event of control (lessons 19, 22), not a stop.
+    old_config = File.read!(Path.join(control, ".git/config"))
     git!(control, ["config", "user.signingkey", "changed-after-capture"])
+    new_config = File.read!(Path.join(control, ".git/config"))
 
-    assert {:error, reason} = GuardedPaths.check(snapshot, ["tracked.txt"])
-    assert reason == "Git configuration or ignore policy changed during Developer turn"
+    assert {:ok, refreshed, [event]} = GuardedPaths.check(snapshot, ["tracked.txt"])
+
+    assert event == %{
+             file: ".git/config",
+             before: sha256(old_config),
+             after: sha256(new_config)
+           }
+
+    # The refreshed snapshot reports the event once, never again.
+    assert {:ok, ^refreshed, []} = GuardedPaths.check(refreshed, ["tracked.txt"])
   end
 
   test "ignored files written in the control checkout after capturing the Candidate never appear in the Candidate's check (shaping-during-build)" do
@@ -125,7 +137,7 @@ defmodule Kogen.GuardedPathsTest do
     )
 
     # None of the control-side writes ever reach the Candidate's own check.
-    assert :ok = GuardedPaths.check(snapshot, ["tracked.txt"])
+    assert {:ok, _snapshot, []} = GuardedPaths.check(snapshot, ["tracked.txt"])
 
     # The Candidate's own working tree (a distinct directory) is unaffected.
     refute File.exists?(Path.join(candidate, ".kogen/intents/drafts/new-draft.md"))
@@ -162,9 +174,9 @@ defmodule Kogen.GuardedPathsTest do
       File.write!(Path.join(root, ".gitignore"), "*.log\nhidden.txt\n")
       File.write!(Path.join(root, "hidden.txt"), "sneaky\n")
 
-      assert {:error, reason} = GuardedPaths.check(snapshot, [".gitignore"])
-      assert reason =~ "hidden.txt"
-      refute reason =~ ".gitignore,"
+      # The hidden file alone is an ordinary stray path, now reworked.
+      assert {{:rework, ["hidden.txt"]}, _snapshot, []} =
+               GuardedPaths.check(snapshot, [".gitignore"])
     end
 
     test "a hiding edit with `.gitignore` undeclared names both the file and `.gitignore`", %{
@@ -174,7 +186,8 @@ defmodule Kogen.GuardedPathsTest do
       File.write!(Path.join(root, ".gitignore"), "*.log\nhidden.txt\n")
       File.write!(Path.join(root, "hidden.txt"), "sneaky\n")
 
-      assert {:error, reason} = GuardedPaths.check(snapshot, [])
+      # An unguarded root `.gitignore` change is terminal Git policy.
+      assert {{:stop, "git-policy", reason}, _snapshot, []} = GuardedPaths.check(snapshot, [])
       assert reason =~ ".gitignore"
       assert reason =~ "hidden.txt"
     end
@@ -186,7 +199,7 @@ defmodule Kogen.GuardedPathsTest do
       File.write!(Path.join(root, ".gitignore"), "*.log\nhidden.txt\n")
       File.write!(Path.join(root, "hidden.txt"), "sneaky\n")
 
-      assert :ok = GuardedPaths.check(snapshot, [".gitignore", "hidden.txt"])
+      assert {:ok, _snapshot, []} = GuardedPaths.check(snapshot, [".gitignore", "hidden.txt"])
     end
 
     test "a declared `.gitignore`-only edit that hides nothing passes", %{
@@ -195,27 +208,58 @@ defmodule Kogen.GuardedPathsTest do
     } do
       File.write!(Path.join(root, ".gitignore"), "*.log\n*.pid\n")
 
-      assert :ok = GuardedPaths.check(snapshot, [".gitignore"])
+      assert {:ok, _snapshot, []} = GuardedPaths.check(snapshot, [".gitignore"])
     end
 
-    test "an undeclared `.gitignore`-only edit is refused as an ordinary guard violation", %{
-      root: root,
-      snapshot: snapshot
-    } do
+    test "an undeclared `.gitignore`-only edit stops as git-policy with the stray-path message",
+         %{
+           root: root,
+           snapshot: snapshot
+         } do
       File.write!(Path.join(root, ".gitignore"), "*.log\n*.pid\n")
 
-      assert {:error, reason} = GuardedPaths.check(snapshot, [])
+      # The root `.gitignore` is the Candidate's Git policy: terminal, with
+      # today's stray-path message.
+      assert {{:stop, "git-policy", reason}, _snapshot, []} = GuardedPaths.check(snapshot, [])
       assert reason == "Candidate changed paths outside Approved guards: .gitignore"
     end
 
-    test "`.git/info/exclude` and `.git/config` stay frozen even when `.gitignore` is declared",
+    test "`.git/config` and `.git/info/exclude` changes are environment events even when `.gitignore` is declared, while a `.gitmodules` edit stays git-policy",
          %{root: root, snapshot: snapshot} do
-      assert :ok = GuardedPaths.check(snapshot, [".gitignore"])
+      assert {:ok, ^snapshot, []} = GuardedPaths.check(snapshot, [".gitignore"])
 
+      # Shared Git files are control's: events, not stops.
       git!(root, ["config", "user.signingkey", "changed-after-capture"])
+      File.write!(Path.join(root, ".git/info/exclude"), "/no-such-path\n", [:append])
 
-      assert {:error, reason} = GuardedPaths.check(snapshot, [".gitignore"])
+      assert {:ok, refreshed, events} = GuardedPaths.check(snapshot, [".gitignore"])
+      assert Enum.map(events, & &1.file) == [".git/config", ".git/info/exclude"]
+
+      # The Candidate's own `.gitmodules` keeps the configuration stop.
+      File.write!(Path.join(root, ".gitmodules"), "[submodule \"x\"]\n")
+
+      assert {{:stop, "git-policy", reason}, _snapshot, []} =
+               GuardedPaths.check(refreshed, [".gitignore"])
+
       assert reason == "Git configuration or ignore policy changed during Developer turn"
+    end
+
+    test "after an exclude event a path whose ignored state changed stops as git-policy, guarded or not",
+         %{root: root, snapshot: snapshot} do
+      File.write!(Path.join(root, ".git/info/exclude"), "/hidden.txt\n", [:append])
+      File.write!(Path.join(root, "hidden.txt"), "sneaky\n")
+
+      for guards <- [[], ["hidden.txt"]] do
+        assert {{:stop, "git-policy", reason}, refreshed, _events} =
+                 GuardedPaths.check(snapshot, guards)
+
+        assert reason ==
+                 "Control's .git/info/exclude changed the ignored state of Candidate paths: hidden.txt"
+
+        # Every later handoff still compares with the Build-start exclude.
+        assert {{:stop, "git-policy", ^reason}, _snapshot, []} =
+                 GuardedPaths.check(refreshed, guards)
+      end
     end
   end
 
@@ -238,6 +282,8 @@ defmodule Kogen.GuardedPathsTest do
 
     assert File.read!(Path.join(control, ".gitignore")) =~ "*.tmp"
   end
+
+  defp sha256(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
 
   defp unique, do: "#{System.pid()}-#{System.unique_integer([:positive])}"
 

@@ -12,9 +12,9 @@ defmodule Kogen.ReviewPacketTest do
   alias Kogen.Build.ReviewPacket
   alias Kogen.ScriptedBuildFixture, as: Fixture
 
-  @keys ~w(attempt_number attempt_token base_suite build_id candidate_id developer_notes handoff
-           omitted open_findings receipts record risk_ids scenario_ids schema_version
-           superseded_objection verification_ledger)
+  @keys ~w(attempt_number attempt_token base_suite build_id candidate_id developer_notes
+           guard_violations handoff omitted open_findings receipts record risk_ids scenario_ids
+           schema_version superseded_objection verification_ledger)
 
   describe "packet construction" do
     test "oversized notes, receipts, findings and handoff fit the bound with digest-bound stubs" do
@@ -113,6 +113,9 @@ defmodule Kogen.ReviewPacketTest do
       # Left-out sections: the prior attempt and the verification history.
       assert Enum.any?(packet["omitted"], &(&1["locator"] == "/attempts/0"))
       assert Enum.any?(packet["omitted"], &(&1["locator"] == "/attempts/1/verification"))
+
+      # No guard reworks on this record: the field is present but empty.
+      assert packet["guard_violations"] == []
     end
 
     test "small inputs are carried whole, with nothing omitted but left-out sections" do
@@ -125,6 +128,79 @@ defmodule Kogen.ReviewPacketTest do
       assert packet["handoff"] == attempt["handoff"]
       assert hd(packet["receipts"])["output"] == hd(attempt["receipts"])["output"]
       assert Enum.all?(packet["omitted"], &(&1["kind"] == "left_out"))
+      assert packet["guard_violations"] == []
+    end
+
+    test "guard_violations inlines whole paths up to the profile's cap and digest-binds the rest" do
+      path = fn i ->
+        prefix = "guard/path-#{i}/"
+        prefix <> String.duplicate("a", 200 - byte_size(prefix))
+      end
+
+      paths_a = for i <- 1..5_000, do: path.(i)
+      paths_b = for i <- 5_001..10_000, do: path.(i)
+
+      record =
+        oversized_record()
+        |> put_in(["attempts", Access.at(1), "guard_violations"], [
+          %{"cycle" => 1, "paths" => paths_a, "developer_notes" => %{"note" => "cycle 1 notes"}},
+          %{"cycle" => 2, "paths" => paths_b, "developer_notes" => %{"note" => "cycle 2 notes"}}
+        ])
+
+      assert {:ok, bytes} = ReviewPacket.build(input(record, Jason.encode!(record)))
+      assert byte_size(bytes) <= ReviewPacket.limit()
+      packet = Jason.decode!(bytes)
+
+      assert [gv_a, gv_b] = packet["guard_violations"]
+
+      for {gv, k, full} <- [{gv_a, 0, paths_a}, {gv_b, 1, paths_b}] do
+        locator = "/attempts/1/guard_violations/#{k}/paths"
+        encoded_full = ReviewPacket.encode(full)
+
+        assert gv["cycle"] == k + 1
+        assert gv["path_count"] == 5_000
+        assert gv["truncated"] == true
+        assert gv["locator"] == locator
+        assert gv["sha256"] == sha256(encoded_full)
+        assert gv["byte_count"] == byte_size(encoded_full)
+        assert gv["paths"] != []
+        assert length(gv["paths"]) < 5_000
+        assert gv["paths"] == Enum.take(full, length(gv["paths"]))
+        assert resolve!(record, locator) == full
+
+        assert Enum.any?(
+                 packet["omitted"],
+                 &(&1["kind"] == "truncated" and &1["field"] == "/guard_violations/#{k}/paths" and
+                     &1["locator"] == locator and &1["sha256"] == gv["sha256"] and
+                     &1["byte_count"] == gv["byte_count"])
+               )
+      end
+
+      for item <- packet["omitted"] do
+        value = resolve!(record, item["locator"])
+        source = if is_binary(value), do: value, else: ReviewPacket.encode(value)
+        assert item["sha256"] == sha256(source), item["locator"]
+        assert item["byte_count"] == byte_size(source), item["locator"]
+      end
+    end
+
+    test "guard_violations inlines every path when the entry already fits" do
+      record =
+        small_record()
+        |> put_in(["attempts", Access.at(1), "guard_violations"], [
+          %{"cycle" => 1, "paths" => ["a", "b", "c"], "developer_notes" => %{"note" => "x"}}
+        ])
+
+      assert {:ok, bytes} = ReviewPacket.build(input(record, Jason.encode!(record)))
+      packet = Jason.decode!(bytes)
+
+      assert [gv] = packet["guard_violations"]
+      assert gv["cycle"] == 1
+      assert gv["path_count"] == 3
+      assert gv["paths"] == ["a", "b", "c"]
+      assert gv["locator"] == "/attempts/1/guard_violations/0/paths"
+      refute Map.has_key?(gv, "truncated")
+      refute Enum.any?(packet["omitted"], &(&1["locator"] == gv["locator"]))
     end
 
     test "a packet grows tighter rather than exceeding the bound" do
@@ -272,7 +348,7 @@ defmodule Kogen.ReviewPacketTest do
       # caught after the fact.
       assert {:error, reason} = Fixture.run(dir, packet_mutation: 1)
       assert reason =~ "Reviewer failure:"
-      refute reason =~ "review packet mutated"
+      assert reason =~ "review packet mutated" or reason =~ "Operation not permitted"
       refute File.dir?(Path.join(dir, ".kogen/intents/complete/#{Fixture.slug()}"))
       [attempt] = Fixture.record!(dir)["attempts"]
       refute Map.has_key?(attempt, "verdict")

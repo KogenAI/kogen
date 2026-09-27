@@ -1,0 +1,11 @@
+## Findings
+
+- **[BLOCKING]** The Draft’s 82ac citations are stale or point to different functions: `post_developer_inputs_unchanged` is cited as `build.ex:1179-1183` but is at `1277-1280`; `resume_developer` is cited as `701-709` but is at `685-693`; `1661-1682` is Review retry code. The scenario header still says it was shaped against `6dad9430`. — [INTENT.md:5-18](/Users/almirsarajcic/Areas/Kogen/kogen/.kogen/intents/drafts/guard-violation-rework/INTENT.md:5), [scenarios.yaml:1](/Users/almirsarajcic/Areas/Kogen/kogen/.kogen/intents/drafts/guard-violation-rework/scenarios.yaml:1), `/tmp/kogen-82ac/lib/kogen/build.ex:685-693,1171-1184,1275-1280` — Re-derive all citations and provenance against 82ac4351.
+
+- **[BLOCKING]** `stray-file-reworked` expects the prompt to list `mix_lock_user501`, but the current guard reports untracked files as `mix_lock_user501/lock_0`; it does not collapse paths to parent directories. — [scenarios.yaml:6-14](/Users/almirsarajcic/Areas/Kogen/kogen/.kogen/intents/drafts/guard-violation-rework/scenarios.yaml:6), `/tmp/kogen-82ac/lib/kogen/build/guarded_paths.ex:91-103` — Assert the file path, or specify and test directory aggregation.
+
+- **[BLOCKING]** The terminal Approved-copy case tests only modification. The outcome promises both modified and deleted frozen entries remain terminal, but no Developer-turn deletion is covered; the unchanged `approved_mutation_test.exs` covers later controller/Review mutations. — [INTENT.md:34-36](/Users/almirsarajcic/Areas/Kogen/kogen/.kogen/intents/drafts/guard-violation-rework/INTENT.md:34), [scenarios.yaml:42-53](/Users/almirsarajcic/Areas/Kogen/kogen/.kogen/intents/drafts/guard-violation-rework/scenarios.yaml:42) — Add a Developer deletion case and assert `integrity` with zero resume.
+
+- **[BLOCKING]** The required `git-policy` class includes `.gitmodules`, but the terminal scenarios exercise only `.gitignore`; an implementation can mishandle `.gitmodules` while all listed checks pass. — [INTENT.md:29-31](/Users/almirsarajcic/Areas/Kogen/kogen/.kogen/intents/drafts/guard-violation-rework/INTENT.md:29), [scenarios.yaml:42-50](/Users/almirsarajcic/Areas/Kogen/kogen/.kogen/intents/drafts/guard-violation-rework/scenarios.yaml:42) — Add a `.gitmodules` mutation case.
+
+## Verdict: not ready

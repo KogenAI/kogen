@@ -1,0 +1,67 @@
+- id: self-hosting
+  scenario_ids: [stray-file-reworked, stray-file-budget-spent, terminal-guard-failures-stay-terminal]
+  description: >-
+    The installing Build runs under the old controller, so a stray file in THIS Build still stops it (lessons 20, 21):
+    never override TMPDIR; run Python with -B; never import from .kogen/intents/**; check `git status --short` before
+    ending a turn. verification.ex is deliberately not edited.
+- id: separate-guard-budget
+  scenario_ids: [stray-file-budget-spent]
+  description: >-
+    build-reliability (82ac4351) owns `offline_retries`/`offline_failures` for offline verification failures, with its
+    own terminal accounting in verification.ex. Guard reworks use their own `@guard_reworks 2` in Kogen.Build and run
+    no cycle, so a change that routed them through the verification state would silently spend or hide that budget;
+    stray-file-budget-spent (b) pins "3 of 4" after one guard rework. shaping-quality also edits build.ex: re-derive
+    function citations if it lands first.
+- id: real-developer-cleanup
+  scenario_ids: [stray-file-reworked]
+  description: >-
+    A real Developer may reach for git clean/stash/reset/checkout/restore: clean/stash/reset would delete ignored deps/
+    and the Approved copy, and checkout/restore fail because the worktree index is under control's .git, outside the
+    write boundary. The prompt forbids them and names `git show HEAD:<path> > <path> && chmod <mode> <path>` for
+    tracked files, the mode taken from HEAD (review rounds 1, 4 and 5, Opus, Sol).
+- id: exclude-hiding
+  scenario_ids: [shared-git-files-do-not-stop]
+  description: >-
+    Continuing after a control-side `.git/info/exclude` change means a new rule can hide a Candidate file from
+    `git add -A` (Candidate id and publication) while verification still sees it in the worktree. Any ignored-state
+    change against the Build-start exclude, guarded or not, is therefore terminal (`git-policy`) at that handoff and
+    every later one (review round 4, Opus, Sol).
+- id: provider-failure-mid-rework
+  scenario_ids: [stray-file-reworked, terminal-guard-failures-stay-terminal]
+  description: >-
+    `settle_transport_failure/4` checks the guard before any provider retry, as at 3ab70dce, so a capacity or overload
+    failure in a rework turn that has not yet removed the stray paths stops as `integrity` (case f2) instead of
+    retrying. Accepted residual: it keeps the rule that a failed turn with a violation never resumes, and a provider
+    retry only ever resends the rework prompt on a clean tree (review round 5, Sol, Opus).
+- id: claude-exclude-lock
+  scenario_ids: [shared-git-files-do-not-stop, terminal-guard-failures-stay-terminal]
+  description: >-
+    Accepted residual: if Claude Code adds its exclude block (lesson 19, `**/.claude/scheduled_tasks.lock`) to control's
+    `.git/info/exclude` during a Build in which a Claude Developer left that lock file, the file's ignored state changes
+    and the Build stops as terminal `git-policy` rather than reworking it (case h). The volatile list is out of scope
+    (Non-goals) (review round 5, Opus).
+- id: packet-guard-paths-truncated
+  scenario_ids: [reviewer-sees-guard-violations]
+  description: >-
+    A long guard path list is inlined only as a prefix; the Reviewer gets `path_count`, a digest and the record locator
+    for the rest (reviewer.md says so), as for notes, receipts and handoff today (review round 5, Astra, Sol).
+- id: record-version-test-must-be-rewritten
+  scenario_ids: [rework-still-runs-every-input-check]
+  description: >-
+    The reference diff's test/kogen/guard_violation_rework_test.exs (~:532, "an Approved-copy addition with a rewritten retained
+    record version stops with that input's integrity message") has the ROLE rewrite control's record version, which the write
+    boundary forbids; it failed in every cycle of Builds Cz_797R_H-oABPpji8aMO5QF and sjIVXyQAJAmq4e1ifi66UJP2. Rewrite it per
+    the scenario: the TEST PROCESS rewrites the record version while the fake Developer waits
+    (WorkspaceFixture.waiting_role!/await_waiting!). The timing flakes of those Builds (process_custody_test.exs:426,
+    terminal_probe_test.exs:60) are fixed on develop by test-flake-fixes (98f65b67).
+- id: record-version-test-fails-under-full-gate
+  scenario_ids: [rework-still-runs-every-input-check]
+  description: >-
+    Build xitayJZ5n11XoYaFaPfofbSg: guard_violation_rework_test.exs:532 failed in the full offline gate (max_cases 12) with the
+    fake role's resumed session id empty ("resume created a new session (expected dev-session-1, got )"), yet passed when the
+    Developer re-ran it alone (35/35); the Developer called it a flake and changed nothing, so the Build stopped as
+    unchanged_candidate. "Passes in isolation" is NOT acceptable (never relabel a test failure; DIRECTION hard rules): reproduce
+    it under the gate's concurrency (e.g. the whole test/kogen directory with --max-cases 12, or `make check`), and rewrite the
+    case per the scenario — the TEST PROCESS rewrites the record version while the fake Developer waits
+    (WorkspaceFixture.waiting_role!/await_waiting!), with no fixed sleeps — so it is deterministic under load. Any other new test
+    in this file that depends on timing gets the same treatment.

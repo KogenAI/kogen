@@ -45,7 +45,10 @@ note the limitation in your final summary.
 
 The Approved Intent package is read-only, including its scenarios and user
 evidence, even when Git ignores it. If approval needs to change, stop and
-report that the feature must return to Shaping; do not edit the package.
+report that the feature must return to Shaping; do not edit the package. A
+file you add inside the Candidate's Approved copy (a `__pycache__` or other
+cache included) is a stray path: the controller resumes you to delete it, and
+deleting the listed added entries restores the frozen package.
 
 ### Done when
 

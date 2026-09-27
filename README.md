@@ -459,10 +459,14 @@ helper profile (`helpers.scout`, `helpers.worker`, `helpers.expert`);
 top-level, shared by every route. All three are required integers with no
 default: `offline_retries` bounds offline verification failures per attempt
 (offline targets and Candidate-caused `prepare` failures), separately from the
-paid `verification_retries`. A config without `offline_retries`, including an
-existing project's config written before the key existed, is refused before
-any launch with a message naming the key; add it beside
-`verification_retries`:
+paid `verification_retries`. Stray paths a Developer turn leaves outside the
+Approved guards resume the same session to delete or restore them up to 2 times
+per attempt (fixed, not configurable, and not `offline_retries`), then stop the
+Build as `guard-violation`; hook or agent configuration changes stop it as
+`protected-path` and Git policy changes as `git-policy`. A config without
+`offline_retries`, including an existing project's config written before the
+key existed, is refused before any launch with a message naming the key; add it
+beside `verification_retries`:
 
 ```yaml
 default_route: claude

@@ -82,6 +82,12 @@ defmodule Kogen.Build do
 
   @config_path ".kogen/config.yaml"
   @approved_base ".kogen/intents/approved"
+  @approved_changed "Approved Intent changed during Build; stopped without publication"
+
+  # Guard reworks per attempt: how many times a Developer turn that left
+  # unguarded paths resumes the same session to delete or restore them. Not
+  # a config key and not `offline_retries`; no verification cycle runs.
+  @guard_reworks 2
   @complete_base ".kogen/intents/complete"
   @publication_file_limit 5_242_880
   @publication_total_limit 10_485_760
@@ -219,17 +225,38 @@ defmodule Kogen.Build do
   end
 
   # Control's package and the Candidate's copy must both still be the frozen
-  # bytes; the controller's memory remains the authority.
+  # bytes; the controller's memory remains the authority. Outside a Developer
+  # handoff any change, an added entry included, is an integrity stop.
   defp approved_unchanged(ctx) do
-    with {:ok, entries} when entries == ctx.approved_entries <-
-           read_approved_entries(ctx.control, ctx.slug),
-         {:ok, entries} when entries == ctx.approved_entries <-
-           read_approved_entries(ctx.root, ctx.slug) do
-      :ok
-    else
-      _ -> {:error, "Approved Intent changed during Build; stopped without publication"}
+    case approved_state(ctx) do
+      :ok -> :ok
+      _changed -> {:error, @approved_changed}
     end
   end
+
+  # At a Developer handoff, entries ADDED to the Candidate's copy (and nothing
+  # else) are `{:added, paths}`: Candidate-relative leaf paths the Developer
+  # is made to delete. A modified or deleted entry, or any change to control's
+  # package, stays an integrity stop.
+  defp approved_state(ctx) do
+    with {:ok, entries} when entries == ctx.approved_entries <-
+           read_approved_entries(ctx.control, ctx.slug),
+         {:ok, entries} <- read_approved_entries(ctx.root, ctx.slug),
+         frozen = Map.new(ctx.approved_entries, &{elem(&1, 0), &1}),
+         current = Map.new(entries, &{elem(&1, 0), &1}),
+         true <- Enum.all?(frozen, fn {path, entry} -> current[path] == entry end) do
+      case current |> Map.keys() |> Enum.reject(&Map.has_key?(frozen, &1)) |> leaves() do
+        [] -> :ok
+        added -> {:added, Enum.map(added, &Path.join([@approved_base, ctx.slug, &1]))}
+      end
+    else
+      _ -> {:error, @approved_changed}
+    end
+  end
+
+  # Added entries with no added entry below them.
+  defp leaves(paths),
+    do: Enum.reject(paths, fn path -> Enum.any?(paths, &String.starts_with?(&1, path <> "/")) end)
 
   defp check_complete_absent(root, slug) do
     path = Path.join([root, @complete_base, slug])
@@ -618,7 +645,13 @@ defmodule Kogen.Build do
          :ok <- Kogen.VerificationPolicy.preflight(ctx.catalog.ordered_targets, ctx.root),
          :ok <- invalidate_verification_record(ctx.control) do
       prompt = developer_prompt(ctx, reason)
-      ctx = Map.merge(ctx, %{developer_prompt: prompt, provider_retried: false})
+
+      ctx =
+        Map.merge(ctx, %{
+          developer_prompt: prompt,
+          provider_retried: false,
+          guard_rework_notes: []
+        })
 
       result =
         if session_id do
@@ -747,14 +780,14 @@ defmodule Kogen.Build do
 
   defp receive_developer(ctx, _expected, _number, {:error, reason}) do
     case post_developer_inputs_unchanged(ctx) do
-      :ok ->
+      {:ok, ctx} ->
         stop(
           ctx,
           "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}"
         )
 
-      {:error, guard_reason} ->
-        stop(ctx, guard_reason)
+      {violation, ctx} ->
+        stop(ctx, failed_turn_violation(violation), %{"stop_category" => "integrity"})
     end
   end
 
@@ -767,9 +800,119 @@ defmodule Kogen.Build do
   # it. Only then does the controller verify the Candidate itself. A failed
   # cycle with its class's retries left resumes the exact Developer session;
   # it never consumes the outer allowance and never reaches Review.
+  #
+  # First the guard: unguarded paths the turn left resume the same session
+  # to delete or restore them (a guard rework, no cycle) until
+  # `@guard_reworks` is spent; a terminal finding stops the Build.
   defp verify_turn(ctx, session_id, number, notes, invocation) do
-    with :ok <- post_developer_inputs_unchanged(ctx),
-         {:ok, candidate_id} <- Kogen.Git.candidate_id(ctx.root),
+    case post_developer_inputs_unchanged(ctx) do
+      {:ok, ctx} ->
+        {notes, ctx} = guarded_notes(ctx, notes)
+        verify_guarded_turn(ctx, session_id, number, notes, invocation)
+
+      {{:rework, paths}, ctx} ->
+        guard_rework(ctx, session_id, number, notes, invocation, paths)
+
+      {{:stop, category, message}, ctx} ->
+        stop(ctx, message, %{"stop_category" => category})
+    end
+  end
+
+  # The notes of each turn that ended in a guard rework, followed by this
+  # turn's, each under a controller header, are the verified turn's notes;
+  # every existing notes path (Jev, record, packet, cannot_comply) carries
+  # the combined text.
+  defp guarded_notes(ctx, notes) do
+    case ctx[:guard_rework_notes] || [] do
+      [] ->
+        {notes, ctx}
+
+      kept ->
+        parts =
+          Enum.map(kept, fn {k, text} ->
+            "[Developer notes, turn that ended in guard rework #{k}]\n#{text}"
+          end) ++ ["[Developer notes, turn that passed the guard]\n#{notes}"]
+
+        {Enum.join(parts, "\n\n"), Map.put(ctx, :guard_rework_notes, [])}
+    end
+  end
+
+  defp guard_rework(ctx, session_id, number, notes, invocation, paths) do
+    items = GuardedPaths.rework_items(ctx.guarded_snapshot, paths, guard_list(ctx))
+    listed = Enum.map(items, &elem(&1, 0))
+    previous = List.wrap(current_attempt(ctx)["guard_violations"])
+
+    entry = %{
+      "cycle" => length(ctx.execution.state["cycles"] || []),
+      "paths" => listed,
+      "developer_notes" => notes_record(notes)
+    }
+
+    case record_attempt(ctx, %{
+           "guard_violations" => previous ++ [entry],
+           "developer_session_id" => session_id,
+           "developer_invocation" => invocation
+         }) do
+      {:ok, ctx} when length(previous) >= @guard_reworks ->
+        stop(ctx, GuardedPaths.violation_message(paths), %{"stop_category" => "guard-violation"})
+
+      {:ok, ctx} ->
+        kept = (ctx[:guard_rework_notes] || []) ++ [{length(previous) + 1, notes_text(notes)}]
+        prompt = guard_rework_prompt(ctx, items, @guard_reworks - length(previous) - 1)
+
+        ctx =
+          Map.merge(ctx, %{
+            developer_prompt: prompt,
+            provider_retried: false,
+            guard_rework_notes: kept
+          })
+
+        receive_developer(ctx, session_id, number, resume_developer(ctx, session_id, prompt))
+
+      {:error, reason} ->
+        stop(ctx, reason)
+    end
+  end
+
+  defp guard_list(ctx), do: ctx.intent.may_change_guarded_paths
+
+  defp notes_text(notes) when is_binary(notes), do: notes
+  defp notes_text(_notes), do: ""
+
+  defp guard_rework_prompt(ctx, items, left) do
+    lines =
+      Enum.map(items, fn
+        {path, :delete} ->
+          "- delete: `#{path}`"
+
+        {path, {:restore, mode}} ->
+          quoted = shell_quote(path)
+          "- restore: `git show HEAD:#{quoted} > #{quoted} && chmod #{mode} #{quoted}`"
+      end)
+
+    """
+    Guard rework required after your turn: the Candidate has paths outside the Approved guards (`may_change_guarded_paths`). The controller ran no verification for this turn.
+
+    Guard reworks left: #{left} of #{@guard_reworks}. When they are spent, the Build stops as `guard-violation`.
+
+    Delete or restore exactly these paths, and nothing else:
+
+    #{Enum.join(lines, "\n")}
+
+    Delete each `delete:` path (untracked files and directories, with `rm -rf <path>`). Deleting the listed entries added to the Approved copy (`#{Path.join(@approved_base, ctx.slug)}`) restores the frozen package.
+    Restore each `restore:` path (a modified, deleted or mode-changed tracked file) by running exactly its command, `git show HEAD:<path> > <path> && chmod <mode> <path>`, `<mode>` being the file's HEAD mode (644 or 755); the chmod also undoes a mode-only change. Do not use `git checkout` or `git restore`: they write the worktree index under control's `.git`, which the write boundary denies.
+    Never run `git clean`, `git stash`, `git reset`, `git checkout` or `git restore` on the tree, and never override TMPDIR. Then end your turn; the controller checks the guard again.
+    """ <> task_context(ctx, nil, "developer")
+  end
+
+  defp shell_quote(path) do
+    if path =~ ~r/^[A-Za-z0-9._\/@%+=:,-]+$/,
+      do: path,
+      else: "'" <> String.replace(path, "'", "'\\''") <> "'"
+  end
+
+  defp verify_guarded_turn(ctx, session_id, number, notes, invocation) do
+    with {:ok, candidate_id} <- Kogen.Git.candidate_id(ctx.root),
          {:ok, ctx} <-
            record_attempt(ctx, %{
              "developer_session_id" => session_id,
@@ -873,19 +1016,21 @@ defmodule Kogen.Build do
   defp resume_after_failed_cycle(ctx, session_id, number, state, notes, invocation) do
     cycle = List.last(state["cycles"])
 
-    case record_attempt(ctx, %{
-           "developer_session_id" => session_id,
-           "developer_notes" => notes_record(notes),
-           "developer_invocation" => invocation
-         }) do
-      {:ok, ctx} ->
-        prompt = verification_failure_prompt(ctx, state, cycle)
-        ctx = Map.merge(ctx, %{developer_prompt: prompt, provider_retried: false})
-        result = resume_developer(ctx, session_id, prompt)
-        receive_developer(ctx, session_id, number, result)
-
-      {:error, reason} ->
-        stop(ctx, reason)
+    # An Approved-copy change during the cycle is the controller phase's,
+    # never the Developer's to clean up.
+    with :ok <- approved_unchanged(ctx),
+         {:ok, ctx} <-
+           record_attempt(ctx, %{
+             "developer_session_id" => session_id,
+             "developer_notes" => notes_record(notes),
+             "developer_invocation" => invocation
+           }) do
+      prompt = verification_failure_prompt(ctx, state, cycle)
+      ctx = Map.merge(ctx, %{developer_prompt: prompt, provider_retried: false})
+      result = resume_developer(ctx, session_id, prompt)
+      receive_developer(ctx, session_id, number, result)
+    else
+      {:error, reason} -> stop(ctx, reason)
     end
   end
 
@@ -1215,7 +1360,11 @@ defmodule Kogen.Build do
 
     retry? = is_binary(session_id) and ctx[:provider_retried] != true
 
-    case {post_developer_inputs_unchanged(ctx), marker} do
+    # The guard runs before any retry; a retry resends `developer_prompt`
+    # (a guard-rework prompt included) and is not a guard rework.
+    {guard, ctx} = post_developer_inputs_unchanged(ctx)
+
+    case {guard, marker} do
       {:ok, %{"retry" => true}} when retry? ->
         retry_developer(ctx, number, session_id, marker, evidence)
 
@@ -1243,8 +1392,11 @@ defmodule Kogen.Build do
           }
         )
 
-      {{:error, guard_reason}, _marker} ->
-        stop(ctx, guard_reason, %{"developer_invocation" => invocation_evidence(evidence)})
+      {violation, _marker} ->
+        stop(ctx, failed_turn_violation(violation), %{
+          "developer_invocation" => invocation_evidence(evidence),
+          "stop_category" => "integrity"
+        })
     end
   end
 
@@ -1275,11 +1427,56 @@ defmodule Kogen.Build do
 
   # The catalog is no longer byte-frozen: each cycle checks the Candidate's
   # catalog as data and a violation returns to the same Developer.
+  #
+  # Returns `{result, ctx}`: `result` is `:ok`, `{:rework, paths}` (unguarded
+  # paths and entries added to the Approved copy) or `{:stop, category,
+  # message}`. `ctx` always carries the refreshed guard snapshot, with the
+  # environment events of control's shared Git files recorded once.
   defp post_developer_inputs_unchanged(ctx) do
-    with :ok <- inputs_unchanged(ctx) do
-      GuardedPaths.check(ctx.guarded_snapshot, ctx.intent.may_change_guarded_paths)
+    case handoff_inputs_unchanged(ctx) do
+      {:ok, added} ->
+        {result, snapshot, events} =
+          GuardedPaths.check(ctx.guarded_snapshot, ctx.intent.may_change_guarded_paths)
+
+        ctx = %{ctx | guarded_snapshot: snapshot}
+
+        case record_environment_events(ctx, events) do
+          {:ok, ctx} -> {guard_result(result, added), ctx}
+          {:error, reason} -> {{:stop, "integrity", reason}, ctx}
+        end
+
+      {:error, reason} ->
+        {{:stop, stop_category(reason), reason}, ctx}
     end
   end
+
+  defp guard_result({:stop, _category, _message} = stop, _added), do: stop
+  defp guard_result(:ok, []), do: :ok
+  defp guard_result(:ok, added), do: {:rework, added}
+
+  defp guard_result({:rework, paths}, added),
+    do: {:rework, (paths ++ added) |> Enum.uniq() |> Enum.sort()}
+
+  defp record_environment_events(ctx, []), do: {:ok, ctx}
+
+  defp record_environment_events(ctx, events) do
+    recorded =
+      Enum.map(events, &%{"file" => &1.file, "before" => &1.before, "after" => &1.after})
+
+    record_attempt(ctx, %{
+      "environment_events" => List.wrap(current_attempt(ctx)["environment_events"]) ++ recorded
+    })
+  end
+
+  # A failed turn never resumes over a violation: any finding, reworkable or
+  # terminal, stops with the guard's own message as `integrity`.
+  defp failed_turn_violation({:rework, paths}) do
+    if Enum.any?(paths, &String.starts_with?(&1, @approved_base <> "/")),
+      do: @approved_changed,
+      else: GuardedPaths.violation_message(paths)
+  end
+
+  defp failed_turn_violation({:stop, _category, message}), do: message
 
   defp settle_verification(ctx, session_id, candidate_id) do
     case Verification.settle(ctx.execution, session_id, candidate_id) do
@@ -1961,7 +2158,29 @@ defmodule Kogen.Build do
   defp inputs_unchanged(ctx) do
     with :ok <- Tracking.verify(ctx.tracking),
          :ok <- approved_unchanged(ctx),
-         :ok <- references_unchanged(ctx.references, ctx),
+         do: remaining_inputs_unchanged(ctx)
+  end
+
+  # The same checks at a Developer handoff, where entries added to the
+  # Candidate's Approved copy are returned for rework rather than stopping;
+  # every later check still runs, so an addition never hides a terminal one.
+  defp handoff_inputs_unchanged(ctx) do
+    with :ok <- Tracking.verify(ctx.tracking),
+         {:ok, added} <- approved_additions(ctx),
+         :ok <- remaining_inputs_unchanged(ctx),
+         do: {:ok, added}
+  end
+
+  defp approved_additions(ctx) do
+    case approved_state(ctx) do
+      :ok -> {:ok, []}
+      {:added, paths} -> {:ok, paths}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp remaining_inputs_unchanged(ctx) do
+    with :ok <- references_unchanged(ctx.references, ctx),
          :ok <- Tracking.verify_record_versions(ctx.tracking),
          :ok <- review_packets_unchanged(ctx),
          :ok <- Ledger.verify(current_attempt(ctx)["verification_ledger"], ctx.control) do
@@ -2006,7 +2225,8 @@ defmodule Kogen.Build do
 
   # Every stop keeps the Candidate worktree, branch and harness home exactly
   # as they are, marks the owner record `stopped: <category>` and names the
-  # Candidate next to the tracking record.
+  # Candidate next to the tracking record. A `stop_category` detail names the
+  # category explicitly; otherwise the prefix table below classifies it.
   defp stop(ctx, reason, details \\ %{}) do
     changes = Map.merge(details, %{"status" => "failed", "failure" => reason})
 
@@ -2030,17 +2250,20 @@ defmodule Kogen.Build do
 
     {:error,
      "#{reason}#{suffix}; unresolved scenarios: #{ids}; tracking record: #{ctx.tracking.path}" <>
-       retained(ctx, reason)}
+       retained(ctx, details["stop_category"] || stop_category(reason))}
   end
 
-  defp retained(%{candidate: nil}, _reason), do: ""
+  defp retained(%{candidate: nil}, _category), do: ""
 
-  defp retained(ctx, reason) do
-    Workspace.update_status(ctx.candidate, "stopped: #{stop_category(reason)}")
+  defp retained(ctx, category) do
+    Workspace.update_status(ctx.candidate, "stopped: #{category}")
     "; " <> Workspace.retained_description(ctx.candidate)
   end
 
   @stop_categories [
+    # Its "stopped without publication" suffix must not read as a
+    # publication failure.
+    {@approved_changed, "integrity"},
     {"verification retries exhausted", "verification-exhausted"},
     {"offline retries exhausted", "offline-exhausted"},
     {"environment failure", "environment"},

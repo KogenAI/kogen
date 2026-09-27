@@ -1,0 +1,12 @@
+- kind: failure-analysis
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/research/build-failure-lessons-2026-09-25.md
+  note: Lessons 19, 20, 21, 22.
+- kind: brief
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/briefs/build-reliability.md
+  note: offline_retries budget (:33-36); deliberately not used for guard reworks (review round 4).
+- path: evidence/candidate-Cz_797R-ee3b46d6.diff
+  relevance: >-
+    Optional starting point, unverified: Build Cz_797R_H-oABPpji8aMO5QF's Developer work (ee3b46d6, 12 files, codex route), diff
+    against b2073666. Its only persistent check failure was guard_violation_rework_test.exs:532 (the record-version case had the
+    ROLE rewrite control's record version, which the write boundary forbids; the scenario now has the test process do it).
+    process_custody_test.exs:426 failed once in cycle 5: a known timing flake (no wait before asserting the lock is gone).

@@ -116,6 +116,13 @@ one entry per ledger item: `{"path": "<ledger path>", "disposition":
 finding and returns the Candidate to the Developer. When the packet carries no
 ledger, do not add a `ledger` key: the verdict keeps exactly the keys below.
 
+When the packet carries a nonempty `guard_violations`, each entry names paths
+the controller itself made the Developer delete or restore (a guard rework)
+before this attempt's verification, with the cycle it happened in and a
+locator into the tracking record. A truncated `paths` list is still complete
+at that locator; this is not a finding and not verification. Check that the
+current Candidate no longer depends on any of those paths.
+
 {{execution_policy}}
 
 ## Role authority when delegating

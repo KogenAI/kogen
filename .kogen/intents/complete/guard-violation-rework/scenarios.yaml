@@ -1,0 +1,251 @@
+# Shaped against develop 3ab70dce; reshaped after review rounds 1–5 (evidence/reviews/). Offline only.
+# Every new test uses Kogen.IsolatedCase, async: true (test/kogen/isolation_test.exs:169-175).
+# test/support/fake_stray_writer_role wraps another fake role (fake_codex_simple_accept unless a case names another):
+# on the fresh launch it runs the wrapped role, then writes the case's paths; it answers a guard-rework resume itself,
+# running exactly what the prompt says for each listed path (`rm -rf` for untracked paths, the prompt's
+# `git show HEAD:<path> > <path> && chmod <mode> <path>` for tracked ones) and ending the turn with the same session id
+# and its own final message "Removed the listed stray paths." (so the work turn's notes, the wrapped role's canned
+# answer, differ from the cleanup turn's); every other resume goes to the wrapped role. A case may make it, on the
+# guard-rework resume, print the codex capacity marker (test/support/provider_tails/hjeqtbsg_codex_capacity_stream.json)
+# and exit non-zero once, either after its cleanup or instead of it. It records session ids and prompts.
+- id: stray-file-reworked
+  given: >-
+    A fixture control guarding only `dummy.txt` (test/support/workspace_fixture.ex) and fake_stray_writer_role that on
+    its first turn writes `stray.txt`, `mix_lock_user501/lock_0` and
+    `.kogen/intents/approved/<slug>/evidence/__pycache__/probe.pyc` (the fixture package has no evidence/). A second
+    fixture's fake instead modifies the tracked, unguarded `README.md`; a (2b) fixture's fake only runs
+    `chmod 755 README.md` (a mode-only change, HEAD mode 100644). A third's fake writes `stray.txt` and, on the
+    guard-rework resume, first removes `stray.txt` as the prompt says and then prints the codex capacity marker and
+    exits non-zero once (the guard is clean when that turn fails).
+  when: Each Build runs.
+  then: >-
+    The Build does not stop: the same session is resumed (same id) with a prompt listing exactly `stray.txt`,
+    `mix_lock_user501` (collapsed from mix_lock_user501/lock_0) and `.kogen/intents/approved/<slug>/evidence`, saying
+    deleting the listed Approved entries restores the frozen package, saying to delete or restore exactly them,
+    forbidding git clean/stash/reset/checkout/restore and TMPDIR overrides, and stating guard reworks left (1 of 2);
+    after the resume the guard passes, verification and Review run, and the Build is accepted. The attempt record has
+    one `guard_violations` entry with those paths and the work turn's `developer_notes`. In the second fixture the
+    prompt lists `README.md` with the restore command `git show HEAD:README.md > README.md && chmod 644 README.md`, the
+    fake runs it, `README.md` is byte-identical to the baseline and the Build is accepted; in (2b) the prompt gives the
+    same command, after it the worktree file mode is 0o644 (`File.stat!/1`) and `git diff --raw HEAD -- README.md` is empty, with no stray path, and the Build is accepted.
+    In the third, the failed rework turn passes the guard check, which `settle_transport_failure/4` runs before any
+    retry; the controller's one provider retry then resumes the same session with the guard-rework prompt (not the
+    launch prompt), that turn ends normally, the guard passes and the Build is accepted with one `provider_retries`
+    entry and one `guard_violations` entry (a provider retry is not a guard rework).
+  wrong_result: >-
+    The Build stops, a new session starts, the prompt omits a path or the restore or chmod command, a mode-only change
+    survives, a provider retry resends a different prompt or counts as a guard rework, or the rework is not recorded.
+  verified_by: [check]
+  evidence: Fake role records session ids and prompts.
+  proof:
+    offline: [test/kogen/guard_violation_rework_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake harness role and a real git fixture"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/guarded_paths.ex, test/kogen/guard_violation_rework_test.exs, test/support/fake_stray_writer_role]
+
+- id: stray-file-budget-spent
+  given: >-
+    (a) The same fixture, unchanged (its `offline_retries: 4` default stays), with a fake Developer that never removes
+    `stray.txt`. (b) fake_stray_writer_role wrapping test/support/fake_codex (default `FAKE_CHECK_FAIL=1`: the first
+    `check` fails, class offline) that writes `stray.txt` on its first turn and removes it on the guard-rework resume;
+    the fixture control is created with guards ["dummy.txt", "reviewer-rework-marker.txt"] (as
+    build_workspace_test.exs:359 does) so fake_codex's Review-rework marker is not a second guard violation.
+  when: Each Build runs.
+  then: >-
+    (a) The session is resumed exactly twice (`@guard_reworks 2` in Kogen.Build), then the Build stops with category
+    `guard-violation` and the message "Candidate changed paths outside Approved guards: stray.txt"; `guard_violations`
+    has three entries; the Candidate is kept; the attempt has no `verification` (no cycle ran, no `offline_failures`),
+    and `outer_resumptions` is untouched. (b) One guard rework, then cycle 1 fails offline and the verification resume
+    prompt says "Offline (`offline_retries`) retries left: 3 of 4"; cycle 2 passes and the Build is accepted with one
+    `guard_violations` entry and `offline_failures` 1 in attempt 0.
+  wrong_result: >-
+    Unbounded resumes, the limit follows `offline_retries`, a guard rework spends `offline_failures`, the outer
+    allowance or the verification budget, or the category is integrity.
+  verified_by: [check]
+  evidence: Fake role that ignores the prompt; fake_codex's one offline check failure.
+  proof:
+    offline: [test/kogen/guard_violation_rework_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake harness role"
+    affected_paths: [lib/kogen/build.ex, test/kogen/guard_violation_rework_test.exs, test/support/fake_stray_writer_role]
+
+- id: terminal-guard-failures-stay-terminal
+  given: >-
+    Fixtures where the fake Developer (a) appends to the Candidate's root `.gitignore`, (a2) edits `.gitmodules`, (b)
+    edits `.codex/hooks/check.sh`, (c) edits `.codex/hooks.json`, (c2) adds `.codex/config.toml`, (d) adds
+    `.claude/settings.json`, (d2) adds `.claude/hooks/on_stop.sh`, (d3) adds `.claude/agents/helper.md`, (d4) adds
+    `.claude/commands/run.md`, (d5) adds `.claude/skills/probe/SKILL.md`, (e) modifies a file of the Approved copy,
+    (e2) deletes a file of the Approved copy, none of them guarded; (d6) leaves `stray.txt` AND adds
+    `.claude/skills/probe/SKILL.md` in the same turn; (f) leaves `stray.txt` and then exits non-zero (harness failure);
+    (g) leaves `stray.txt` AND edits `.codex/hooks.json` in the same turn; (f2) leaves `stray.txt`, then on the
+    guard-rework resume prints the codex capacity marker and exits non-zero without removing it (a failed turn with a
+    retryable provider marker and a violation); (h) writes `.claude/scheduled_tasks.lock`
+    only; and (i) writes `.pytest_cache/.gitignore` (`*`) and `.pytest_cache/v/cache/lastfailed` only.
+  when: Each Build runs.
+  then: >-
+    (a)–(g) stop after the first turn with zero resumes: (a) `git-policy` with "Candidate changed paths outside Approved
+    guards: .gitignore"; (a2) `git-policy` with "Git configuration or ignore policy changed during Developer turn";
+    (b)–(d5), (d6) and (g) `protected-path` with "Candidate changed paths outside Approved guards: <path>" (terminal
+    wins); (e), (e2) `integrity` ("Approved Intent changed during Build"); (f) today's guard message with category
+    `integrity`. (f2) stops after the rework turn with "Candidate changed paths outside Approved guards: stray.txt",
+    category `integrity`: the guard check runs before the provider retry, so the attempt has no `provider_retries`,
+    one `guard_violations` entry and exactly one resume. (h) and (i) are reworked like any
+    stray path, (i)'s prompt listing `.pytest_cache`. The existing guarded-hooks tests in
+    candidate_verification_test.exs pass unedited.
+  wrong_result: >-
+    Any of (a)–(g) is reworked, (f2) is retried or reworked again, a protected Claude subtree is missed, a
+    protected-path message loses today's prefix, or (h) or (i) stops the Build.
+  verified_by: [check]
+  evidence: One fake role per case.
+  proof:
+    offline: [test/kogen/guard_violation_rework_test.exs, test/kogen/candidate_verification_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake harness roles"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/guarded_paths.ex, test/kogen/guard_violation_rework_test.exs, test/support/fake_stray_writer_role]
+
+- id: existing-expectations-updated
+  given: >-
+    Existing tests that expected an immediate stop after a Developer turn: test/kogen/build_workspace_test.exs:607-639
+    (Approved-copy edit, stays `integrity`) and :672-673 (the failure-retention `integrity` row: fake_codex with guards
+    [unrelated.txt]), test/kogen/core_integrity_test.exs:196-209 (`late_dangling_complete`, expects `integrity`), and
+    test/kogen/guarded_paths_test.exs (asserts string errors); test/kogen/approved_mutation_test.exs (mutations during
+    check/target/Review) is unchanged.
+  when: They run under the new controller.
+  then: >-
+    Ordinary stray paths after a Developer turn now expect rework (and acceptance or `guard-violation` when the fake
+    never cleans up); git-policy, protected paths and Approved-copy edits keep their terminal expectations;
+    guarded_paths_test asserts the `{result, snapshot, env_events}` results; its shared-file cases (:41-79, :211-219)
+    and build_workspace_test's `.git/config` stop case (:760-773) now expect environment events and a continuing Build;
+    its undeclared root `.gitignore` case (:201-209) keeps its message as a `git-policy` stop; approved_mutation_test
+    passes unedited. Each changed assertion says which new rule it follows; no assertion is dropped silently.
+  wrong_result: A test is deleted, skipped, or loosened instead of updated to the new rule.
+  verified_by: [check]
+  evidence: The three updated test files.
+  proof:
+    offline: [test/kogen/approved_mutation_test.exs, test/kogen/build_workspace_test.exs, test/kogen/core_integrity_test.exs, test/kogen/guarded_paths_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: existing offline tests"
+    affected_paths: [test/kogen/build_workspace_test.exs, test/kogen/core_integrity_test.exs, test/kogen/guarded_paths_test.exs]
+
+- id: shared-git-files-do-not-stop
+  given: >-
+    Fixture Builds whose test process, while the fake Developer waits (WorkspaceFixture.waiting_role!/await_waiting!),
+    appends `[branch "develop"]\n\tvscode-merge-base = origin/main` to control's .git/config and a line to control's
+    .git/info/exclude (lessons 19, 22): (a) the waiting role wraps fake_stray_writer_role writing only `stray.txt`, and
+    the exclude line is `/no-such-path` (so a rework turn follows); (b) the exclude line is `/hidden.txt` and
+    `FIXTURE_DEV_EDIT` creates the new, nonvolatile, unguarded Candidate file `hidden.txt`; (b2) the same with
+    `hidden.txt` guarded (`create!(guards: ["dummy.txt", "hidden.txt"])`); (c) only .git/config is changed and the
+    released role is a failing role (`exit 3`, reaching `settle_transport_failure/4`); and in guarded_paths_test, a
+    Candidate `.gitmodules` edit.
+  when: The Developer turn ends.
+  then: >-
+    (a) The Build is not stopped: after the rework turn the attempt's environment_events has exactly one
+    `%{file, before, after}` per changed file (two entries, none repeated by the rework handoff), verification and
+    Review run, and the Build is accepted. (b), (b2) The Build stops after the first turn with category `git-policy` and
+    "Control's .git/info/exclude changed the ignored state of Candidate paths: hidden.txt", with both events recorded.
+    (c) The Build stops with today's "harness failure during Developer turn" message (not the config message) and the
+    attempt's environment_events holds the .git/config event. The `.gitmodules` edit still stops as `git-policy`.
+  wrong_result: >-
+    The outside write stops the Build, an event is reported twice, a file hidden by the new exclude rule (guarded or
+    not) is not reported, the failed turn loses its event or crashes, or a Candidate-owned policy change no longer stops.
+  verified_by: [check]
+  evidence: Test-process writes during a waiting role.
+  proof:
+    offline: [test/kogen/guard_violation_rework_test.exs, test/kogen/guarded_paths_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: real git fixture"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/guarded_paths.ex, test/kogen/guard_violation_rework_test.exs, test/kogen/guarded_paths_test.exs, test/support/fake_stray_writer_role]
+
+- id: approved-addition-outside-turn-is-integrity
+  given: >-
+    Fixtures whose fake verification target (not the Developer) adds `.kogen/intents/approved/<slug>/extra.txt` during
+    check: (a) the check then passes; (b) the check then fails (class offline), so the cycle fails with offline
+    retries left.
+  when: The Build runs.
+  then: >-
+    Both stop with category `integrity` ("Approved Intent changed during Build") and zero Developer resumes; in (b)
+    `resume_after_failed_cycle/6` stops before resuming, so no verification resume prompt is sent; no guard_violations
+    entry.
+  wrong_result: The Developer is resumed to clean up a controller-phase change, or it is recorded as a guard violation.
+  verified_by: [check]
+  evidence: Fake target script.
+  proof:
+    offline: [test/kogen/guard_violation_rework_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake target and real git fixture"
+    affected_paths: [lib/kogen/build.ex, test/kogen/guard_violation_rework_test.exs]
+
+- id: reviewer-sees-guard-violations
+  given: >-
+    The stray-file-reworked fixture with a fake Reviewer that records its review packet, and a fixture Build with no
+    guard rework; and in review_packet_test, a record whose latest attempt has two `guard_violations` entries of 5,000
+    distinct 200-byte paths each, with notes and handoff larger than the first profile's caps, and a record whose one
+    entry lists three paths.
+  when: Review runs, or ReviewPacket.build/1 runs on the records.
+  then: >-
+    The first packet's top-level `guard_violations` holds one object: `cycle`, `path_count` 3, `paths` exactly the
+    three listed paths in order, `sha256`, `byte_count` and `locator` `/attempts/0/guard_violations/0/paths`, no
+    `truncated` and no `omitted` item for it; the second packet's is `[]`. For the large record the packet is at most
+    `ReviewPacket.limit/0` (65,536) bytes; each object has `path_count` 5000, `"truncated": true`, `paths` a proper
+    prefix of the record's list with no path cut, `sha256` and `byte_count` equal to those of the full list's canonical
+    JSON (`ReviewPacket.encode/1`), and a `locator` that resolves in the record to the full list; `omitted` holds one
+    `truncated` item per entry with field `/guard_violations/<k>/paths`. The three-path record inlines all paths.
+    review_packet_test's exact key set includes `guard_violations`, and priv/kogen/prompts/reviewer.md says what the
+    field means (paths the controller made the Developer delete or restore; a truncated list is complete at its
+    locator; not a finding, not verification).
+  wrong_result: >-
+    Reworked paths are invisible to the Reviewer, the key is missing when empty, a large path list makes the packet
+    exceed 65,536 bytes or fail to build, a path is cut or silently dropped without a digest-bound locator, or the
+    Reviewer is not told what it means.
+  verified_by: [check]
+  evidence: Recorded packet; the large-record packet bytes.
+  proof:
+    offline: [test/kogen/guard_violation_rework_test.exs, test/kogen/review_packet_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake Reviewer"
+    affected_paths: [lib/kogen/build/review_packet.ex, lib/kogen/build.ex, test/kogen/guard_violation_rework_test.exs, test/kogen/review_packet_test.exs, priv/kogen/prompts/reviewer.md]
+
+- id: work-turn-notes-survive-rework
+  given: >-
+    fake_stray_writer_role wrapping fake_codex_simple_accept writes `stray.txt` on its first turn (whose notes are the
+    wrapped role's canned answer) and ends the guard-rework turn with "Removed the listed stray paths.";
+    `FAKE_JEV_LOG_DIR` is set. (a) Default fake Jev answers. (b) `FAKE_JEV_ANSWERS` is
+    `{"objection:scenario:fixture-scenario": ["objection", 0.99]}`.
+  when: Each Build runs.
+  then: >-
+    (a) Exactly one Jev request follows the rework, and its notes hold the work turn's canned answer under
+    `[Developer notes, turn that ended in guard rework 1]` followed by "Removed the listed stray paths." under
+    `[Developer notes, turn that passed the guard]`; the attempt's `developer_notes` text and the review packet's
+    `developer_notes` hold that same combined text; the `guard_violations` entry's `developer_notes` is the work turn's
+    alone; the Build is accepted. (b) The Build stops as `cannot-comply` after the rework turn and before any
+    verification cycle, and the stop message quotes the work turn's canned answer.
+  wrong_result: >-
+    Jev, the attempt record or the packet sees only the cleanup turn's notes, Jev is asked twice for one verified
+    turn, or (b) is accepted or stops with another category.
+  verified_by: [check]
+  evidence: Fake Jev request log and the recorded packet.
+  proof:
+    offline: [test/kogen/guard_violation_rework_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake harness role and fake Jev transport"
+    affected_paths: [lib/kogen/build.ex, test/kogen/guard_violation_rework_test.exs, test/support/fake_stray_writer_role]
+
+- id: rework-still-runs-every-input-check
+  given: >-
+    A fake Developer that, in one turn, adds `.kogen/intents/approved/<slug>/extra.txt` (reworkable on its own) AND edits
+    `.codex/hooks.json` (protected); and separately one that adds the Approved-copy entry while the TEST PROCESS (not the role, which the write
+    boundary confines to the Candidate) rewrites a retained record version in control during that turn, using
+    WorkspaceFixture.waiting_role!/await_waiting! (an input check after approved_unchanged/1 in inputs_unchanged/1).
+  when: Each Build runs.
+  then: >-
+    A reworkable Approved-copy addition does not short-circuit the remaining checks of inputs_unchanged/1 or
+    GuardedPaths.check/2: the first stops as `protected-path`, the second stops with today's integrity message for the
+    tampered input; both with zero resumes (terminal wins).
+  wrong_result: The turn is reworked because the Approved-copy addition returned early and hid a terminal finding.
+  verified_by: [check]
+  evidence: Two fake roles.
+  proof:
+    offline: [test/kogen/guard_violation_rework_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fake roles and real git fixture"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/guarded_paths.ex, test/kogen/guard_violation_rework_test.exs, test/support/fake_stray_writer_role]

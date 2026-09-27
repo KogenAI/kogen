@@ -623,6 +623,8 @@ defmodule Kogen.BuildWorkspaceTest do
       assert reason =~ "Candidate kept"
       block = Candidate.candidate(control)
       assert block["disposition"] == "retained"
+      # A modified Approved-copy file stays terminal at the Developer handoff.
+      assert [%{"status" => "stopped: integrity"}] = Fixture.owner_records(control)
 
       assert File.read!(
                Path.join([
@@ -669,8 +671,12 @@ defmodule Kogen.BuildWorkspaceTest do
              {"FAKE_JEV_ANSWERS",
               ~s({"objection:scenario:fixture-scenario": ["objection", 0.99]})}
            ]},
-          {"an integrity failure", "stopped: integrity",
+          # An unguarded dummy.txt that fake_codex never cleans up is now
+          # reworked twice, then stops as `guard-violation`; an Approved-copy
+          # edit keeps the `integrity` stop.
+          {"a guard-violation stop", "stopped: guard-violation",
            harness: "fake_codex", env: [], guards: ["unrelated.txt"]},
+          {"an integrity failure", "stopped: integrity", harness: :approved_edit, env: []},
           {"a provider failure", "stopped: provider-failure", harness: :failing, env: []},
           {"a malformed Review", "stopped: review-failure", harness: :malformed, env: []}
         ] do
@@ -757,7 +763,7 @@ defmodule Kogen.BuildWorkspaceTest do
       assert Fixture.owner_records(control) == []
     end
 
-    test "a change to control's .git/config during the Build stops it before verification",
+    test "a change to control's .git/config during the Build is recorded as an environment event and the Build continues",
          %{control: control} do
       tools = Fixture.tmp_dir!("config-edit")
       role = Fixture.waiting_role!(tools, Fixture.support("fake_codex_simple_accept"))
@@ -765,11 +771,14 @@ defmodule Kogen.BuildWorkspaceTest do
       home = Fixture.await_waiting!(control)
       Fixture.git!(control, ["config", "kogen.fixture", "changed"])
       File.write!(Path.join(home, "go"), "")
-      assert {:error, reason} = Task.await(task, 180_000)
-      assert reason =~ "Git configuration or ignore policy changed"
 
-      assert Candidate.record(control)["attempts"] |> List.last() |> Map.get("verification") ==
-               nil
+      # Control's shared .git/config is not the Candidate's (lessons 19, 22):
+      # its change is one environment event of the attempt, not a stop, and
+      # verification and Review run.
+      assert :ok = Task.await(task, 180_000)
+      attempt = Candidate.record(control)["attempts"] |> List.last()
+      assert [%{"file" => ".git/config"}] = attempt["environment_events"]
+      assert Enum.map(attempt["verification"]["cycles"], & &1["status"]) == ["passed"]
     end
   end
 
@@ -843,6 +852,16 @@ defmodule Kogen.BuildWorkspaceTest do
       "failing_role",
       "#!/bin/sh\ncat >/dev/null\nexit 3\n"
     )
+  end
+
+  defp retention_harness(:approved_edit) do
+    Fixture.fake!(Fixture.tmp_dir!("approved-edit-role"), "approved_edit_role", """
+    #!/bin/sh
+    if [ "${KOGEN_ROLE:-}" = developer ]; then
+      printf 'mutated\\n' >> .kogen/intents/approved/#{@slug}/intent.yaml
+    fi
+    exec #{inspect(Fixture.support("fake_codex_simple_accept"))} "$@"
+    """)
   end
 
   defp retention_harness(:malformed) do
