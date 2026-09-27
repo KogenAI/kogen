@@ -1,0 +1,118 @@
+# Shaped against develop e5988718 (failure-reports and build-breakers landed). Part 3 of 4 of the split of
+# durable-builds-and-failure-reports. Offline only (rules 49, 51). Every new Build test is in
+# test/kogen/build_reconcile_test.exs on ScriptedBuildFixture (codex protocol, session developer-session,
+# offline_retries 4, verification_retries 2); INTENT.md "Tests the Developer writes" numbers each test (1-10) with its
+# setup, command and exact expected result and defines the helpers (provider_stopped!, killed!, other!, report, owner,
+# tree). Every fixture Build and stand-in clears KOGEN_ROLE and KOGEN_HARNESS_HOME.
+
+- id: budget-state-recorded
+  given: >-
+    (1) A ScriptedBuildFixture Build with fail_first [1] and provider_fail developer-2 (usage-limit tail) that stops
+    as provider; (2) one with fail_all [1] that stops as offline-exhausted after five offline cycles, and one whose
+    control deps/ was removed, which stops as admission before any attempt.
+  when: "`mix test test/kogen/build_reconcile_test.exs` (tests 1-2)."
+  then: >-
+    (1) The report's budget_state is exactly {outer_attempt 0, offline_retries 4, verification_retries 2,
+    offline_failures 1, failures_since_pass 0, terminal_state pending, state
+    .kogen/runtime/scenario-tracking/<P>/verification/attempt-0-<token>/state.json, state_sha256 = sha256 of that
+    file}, the record's last attempt holds the same map, published is null and record_sha256 still equals the sha256
+    of record.json. (2) The exhausted report's budget_state has offline_failures 5, failures_since_pass 0 and
+    terminal_state offline_exhausted and equals the record's; the admission report has budget_state null and
+    published null.
+  wrong_result: >-
+    budget_state is read from verification_state or failure_signatures (absent before settlement), from the config,
+    or hard-coded; it is missing on a provider stop; record_sha256 no longer binds the final record bytes; a smoke
+    test that only checks the key exists.
+  verified_by: [check]
+  evidence: Reports, record.json and state.json of each fixture Build.
+  proof:
+    offline: [test/kogen/build_reconcile_test.exs, test/kogen/failure_report_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: fixture Builds and files on disk"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/failure_report.ex, README.md, test/kogen/build_reconcile_test.exs, test/kogen/failure_report_test.exs, test/support/scripted_build_fixture.ex]
+    base: fail
+
+- id: killed-controller-reported
+  given: >-
+    (3) A stand-in (elixir -pa with the test VM's code paths, KOGEN_ROLE and KOGEN_HARNESS_HOME unset) running the
+    fixture with fail_first [1] and hang developer-2, killed with kill -9 once the fake wrote developer-hanging and
+    waited (bounded) until the fake is gone; (4) the same with hang developer-1; (5) a provider-stopped Build whose
+    owner record was set back to running.
+  when: >-
+    `mix test test/kogen/build_reconcile_test.exs` (tests 3-5): a Build of another slug (scripted-other) runs, and in
+    (3) then one of scripted-third.
+  then: >-
+    (3) It prints "Reclaimed a stale build lock" and publishes; P's report is category interrupted, class interrupted,
+    counts_toward null, next_action rebuild, stop_class null, developer_session_id developer-session, signature = the
+    attempt's cycle 1 cycle_signatures entry, budget_state {0, 4, 2, 1, 0, pending, state_sha256 of the dead
+    state.json}, published null, record_sha256 = sha256 of the unchanged dead record, candidate = P's worktree,
+    branch, harness home and owner record, reason starting "interrupted: "; P's owner file says stopped: interrupted;
+    P's record bytes and worktree are unchanged; after scripted-third the report is byte-identical and alone.
+    (4) developer_session_id null, a stop signature, offline_failures 0. (5) The owner says stopped: provider and the
+    existing report is byte-identical.
+  wrong_result: >-
+    No report for a dead Build, or one written twice or rewritten; the category read from the owner status; the dead
+    record modified; budget_state or signature missing; the owner left running; a live Build's record touched; the
+    test synchronises on stand-in output instead of the fake's hang marker, or inherits KOGEN_ROLE/KOGEN_HARNESS_HOME;
+    a report hand-written by the test instead of a real killed process.
+  verified_by: [check]
+  evidence: Two OS processes; lock, owner, record, state and report files.
+  proof:
+    offline: [test/kogen/build_reconcile_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: process kill, ProcessCustody reclaim and fake harness"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/reconcile.ex, lib/kogen/build/failure_report.ex, lib/kogen/build/workspace.ex, lib/kogen/build/tracking.ex, test/kogen/build_reconcile_test.exs, test/support/scripted_build_fixture.ex, test/support/scripted_controller_standin.exs]
+    base: fail
+
+- id: publication-crash-reported
+  given: >-
+    A provider-stopped Build P with its report removed, its record status set to accepted and its owner set back to
+    running with no lock: (6) its Candidate tip still admitted_commit; (7) plus a commit in P's worktree adding
+    .kogen/intents/complete/scripted-build/INTENT.md, fast-forwarded onto control's main. (9-10) Hand-written
+    candidates_command_test.exs Candidates with and without a commit on main. (8) The category table.
+  when: >-
+    (6) A Build of scripted-other, then mix kogen.candidates. (7) Fixture.run(dir) for scripted-build; mix
+    kogen.candidates; a Build of scripted-other; mix kogen.candidates; mix kogen.candidates.remove P. (9-10) mix
+    kogen.candidates and Workspace.remove.
+  then: >-
+    (6) P's report is publication-interrupted, class interrupted, published false, next_action inspect,
+    next_command null, counts_toward null; the owner says stopped: publication-interrupted; no published: line.
+    (7) The same-slug run returns {:error, "Complete Intent already exists: scripted-build"} with no lock, record or
+    report; mix kogen.candidates shows stopped: interrupted, "published: <t> is on main; remove it with mix
+    kogen.candidates.remove <P>" and "report:   none"; after scripted-other the report has published true,
+    next_action remove, next_command "mix kogen.candidates.remove <P>", the owner says stopped:
+    publication-interrupted and the output adds class/next lines; the remove succeeds without --discard-accepted.
+    (8) classify gives {interrupted, rebuild} and {interrupted, inspect}; counts_toward is null for both. (9) Running
+    and publication-interrupted records whose commit is on main print the published line; (10) an unmerged one
+    prints none and still needs --discard-accepted.
+  wrong_result: >-
+    The same-slug rerun reaches the lock or writes something; the half-published Candidate shows only as interrupted
+    with no way to learn it was published; the category comes from the owner status instead of the record's
+    accepted status; the remove needs --discard-accepted; a crash counts toward a breaker; the published line keyed
+    on the record's candidate disposition instead of Git ancestry.
+  verified_by: [check]
+  evidence: Fabricated control, owner and record files; command output.
+  proof:
+    offline: [test/kogen/build_reconcile_test.exs, test/kogen/candidates_command_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: Git state and records on disk"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/reconcile.ex, lib/kogen/build/failure_report.ex, lib/kogen/build/workspace.ex, lib/mix/tasks/kogen.candidates.ex, README.md, test/kogen/build_reconcile_test.exs, test/kogen/candidates_command_test.exs]
+    base: fail
+
+- id: existing-expectations-kept
+  given: >-
+    The existing tests INTENT.md lists, and the one helper edit in failure_report_test.exs (assert_report!/4's
+    budget_state and published refutations become assertions).
+  when: "`make check` runs on the Candidate."
+  then: >-
+    Every listed test passes; the only edited existing lines are those two in failure_report_test.exs. No test is
+    renamed or removed; priv/kogen/test-reliability.yaml and test-reliability-remediation.yaml are unedited;
+    ScriptedBuildFixture's existing callers see today's behaviour.
+  wrong_result: An existing assertion is edited, loosened, skipped or deleted beyond the two stated lines.
+  verified_by: [check]
+  evidence: "`git diff` of test/ touches only the two stated failure_report_test.exs lines besides added tests and fixtures."
+  proof:
+    offline: [test/kogen/failure_report_test.exs, test/kogen/build_workspace_test.exs, test/kogen/candidates_command_test.exs, test/kogen/commit_provenance_test.exs, test/kogen/scenario_tracking_test.exs, test/kogen/process_custody_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: existing offline tests"
+    affected_paths: [lib/kogen/build.ex, lib/kogen/build/failure_report.ex, lib/kogen/build/workspace.ex, lib/mix/tasks/kogen.candidates.ex, test/support/scripted_build_fixture.ex, test/kogen/failure_report_test.exs]

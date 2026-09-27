@@ -8,6 +8,7 @@ defmodule Kogen.ScriptedBuildFixture do
   # the review packet and superseded-objection controls.
   #
   # Options of `run/2`:
+  #   * `:slug` - approved intent slug (default `scripted-build`)
   #   * `:notes` - Developer notes per call, in order
   #   * `:reviews` - comma-separated Reviewer verdicts, in order
   #   * `:jev_answers` - one static fake Jev override map for every call
@@ -23,6 +24,8 @@ defmodule Kogen.ScriptedBuildFixture do
   #   * `:freeze_resume_edit` - resume numbers (`n`, the controller's own
   #     count of resumed cycles) whose default Candidate-changing resume
   #     edit is suppressed, to exercise the unchanged-Candidate stop
+  #   * `:hang` - Developer invocation labels (for example
+  #     `developer-1`) that should leave the fake provider hanging
   #
   # `fixture!/1` option `:late_selector` adds a second scenario, `s-late`,
   # whose declared offline proof selector (`@late_selector`) does not exist
@@ -30,6 +33,7 @@ defmodule Kogen.ScriptedBuildFixture do
 
   import ExUnit.Callbacks, only: [on_exit: 1]
 
+  alias Kogen.Build.Workspace
   alias Kogen.FakeJev
 
   @slug "scripted-build"
@@ -108,20 +112,12 @@ defmodule Kogen.ScriptedBuildFixture do
     intent = Path.join(dir, ".kogen/intents/approved/#{@slug}")
     File.mkdir_p!(intent)
 
-    File.write!(Path.join(intent, "intent.yaml"), """
-    id: 01960000-0000-7000-8000-0000000c0de2
-    slug: #{@slug}
-    title: Scripted Build fixture
-    may_change_guarded_paths: [dummy.txt, target-evidence.txt, target-evidence-manifest.json, #{@late_selector}]
-    """)
-
     scenarios =
       if Keyword.get(opts, :late_selector),
         do: scenarios() ++ [late_scenario()],
         else: scenarios()
 
-    File.write!(Path.join(intent, "scenarios.yaml"), Jason.encode!(scenarios))
-    File.write!(Path.join(intent, "risks.yaml"), Jason.encode!(risks()))
+    write_intent!(intent, "01960000-0000-7000-8000-0000000c0de2", @slug, scenarios)
 
     # Build admission copies control deps/ into each Candidate.
 
@@ -183,11 +179,18 @@ defmodule Kogen.ScriptedBuildFixture do
     env =
       [
         {"KOGEN_HARNESS", Path.join(dir, "provider.py")},
+        # A fixture Build is a fresh controller process from the point of
+        # view of the harness. Tests themselves may run inside a Build and
+        # therefore inherit both role variables unless they are explicitly
+        # scrubbed here.
+        {"KOGEN_ROLE", nil},
+        {"KOGEN_HARNESS_HOME", nil},
         {"HANDOFF_NOTES_DIR", notes_dir},
         {"HANDOFF_REVIEWS", Keyword.get(opts, :reviews, "accept")},
         {"HANDOFF_RESPONSE_HELPER", Path.join(@root, "test/support/scenario_response.py")},
         {"HANDOFF_FAIL_FIRST", Enum.join(Keyword.get(opts, :fail_first, []), ",")},
         {"HANDOFF_FAIL_ALL", Enum.join(Keyword.get(opts, :fail_all, []), ",")},
+        {"HANDOFF_HANG", Enum.join(Keyword.get(opts, :hang, []), ",")},
         {"HANDOFF_FREEZE_RESUME_EDIT",
          Enum.join(Keyword.get(opts, :freeze_resume_edit, []), ",")},
         {"HANDOFF_PACKET_MUTATION", to_string(Keyword.get(opts, :packet_mutation, ""))},
@@ -220,8 +223,10 @@ defmodule Kogen.ScriptedBuildFixture do
 
     cwd = Keyword.get(opts, :cwd, dir)
 
+    slug = Keyword.get(opts, :slug, @slug)
+
     try do
-      File.cd!(cwd, fn -> Kogen.Build.run(@slug, nil, dir) end)
+      File.cd!(cwd, fn -> Kogen.Build.run(slug, nil, dir) end)
     after
       Enum.each(previous, fn
         {key, nil} -> System.delete_env(key)
@@ -229,6 +234,86 @@ defmodule Kogen.ScriptedBuildFixture do
       end)
 
       if previous_raw, do: System.put_env("KOGEN_RAW_LOG_DIR", previous_raw)
+    end
+  end
+
+  @doc "Adds another approved fixture intent to an existing control checkout."
+  def add_intent!(dir, slug, id) do
+    intent = Path.join(dir, ".kogen/intents/approved/#{slug}")
+    File.mkdir_p!(intent)
+    write_intent!(intent, id, slug, scenarios())
+    :ok
+  end
+
+  @doc "Returns every tracking record, oldest first, with its build id and path."
+  def records!(dir) do
+    dir
+    |> Path.join(".kogen/runtime/scenario-tracking/*/record.json")
+    |> Path.wildcard()
+    |> Enum.map(fn path ->
+      build_id = path |> Path.dirname() |> Path.basename()
+      {build_id, path, path |> File.read!() |> Jason.decode!()}
+    end)
+    |> Enum.sort_by(fn {build_id, _path, record} ->
+      {Map.get(record, "created_at", ""), build_id}
+    end)
+  end
+
+  @doc "Starts the fixture controller stand-in in a separate OS process."
+  def start_standin!(dir, opts \\ []) do
+    executable = System.find_executable("elixir") || raise "elixir executable was not found"
+    script = Path.expand("scripted_controller_standin.exs", __DIR__)
+    encoded_opts = opts |> Map.new() |> Jason.encode!()
+
+    args =
+      Enum.flat_map(code_paths(), fn path -> ["-pa", path] end) ++
+        [script, Path.expand(dir), encoded_opts]
+
+    port =
+      Port.open(
+        {:spawn_executable, String.to_charlist(executable)},
+        [
+          :binary,
+          :exit_status,
+          :use_stdio,
+          :hide,
+          args: Enum.map(args, &String.to_charlist/1),
+          env: [{~c"KOGEN_ROLE", false}, {~c"KOGEN_HARNESS_HOME", false}]
+        ]
+      )
+
+    {:os_pid, pid} = Port.info(port, :os_pid)
+    %{port: port, pid: pid}
+  end
+
+  @doc "Waits up to one minute for the fake provider's atomic hang marker."
+  def await_hanging!(dir), do: await_hanging!(dir, System.monotonic_time(:millisecond) + 60_000)
+
+  defp await_hanging!(dir, deadline) do
+    project = Workspace.project_dir(dir)
+    paths = Path.wildcard(Path.join(project, "harness/*/fake-state/developer-hanging"))
+
+    case Enum.find_value(paths, &hanging_pid/1) do
+      pid when is_integer(pid) ->
+        pid
+
+      nil ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          raise "timed out waiting for developer-hanging"
+        end
+
+        Process.sleep(50)
+        await_hanging!(dir, deadline)
+    end
+  end
+
+  defp hanging_pid(path) do
+    with {:ok, contents} <- File.read(path),
+         {pid, ""} <- Integer.parse(String.trim(contents)),
+         true <- pid > 0 do
+      pid
+    else
+      _ -> nil
     end
   end
 
@@ -325,7 +410,7 @@ defmodule Kogen.ScriptedBuildFixture do
   defp provider do
     ~S'''
     #!/usr/bin/env python3
-    import json, os, pathlib, shutil, subprocess, sys
+    import json, os, pathlib, shutil, subprocess, sys, time
     # Scratch state a test reads back after the Build lives in the Build's
     # harness home, since publication removes the Candidate (where a plain
     # `.kogen/runtime` relative write would otherwise land); outside a Build
@@ -349,6 +434,17 @@ defmodule Kogen.ScriptedBuildFixture do
         print(json.dumps({"type": "thread.started", "thread_id": sid}))
         sys.stdout.write(pathlib.Path(os.environ["HANDOFF_PROVIDER_TAIL"]).read_text() + "\n")
         raise SystemExit(1)
+    def provider_hang(label):
+        # The marker is published by rename only after its complete positive
+        # pid has been written. The controller tests synchronize on this
+        # marker rather than on stand-in output, which can race the provider
+        # launch.
+        if not listed("HANDOFF_HANG", label): return
+        marker = state / "developer-hanging"
+        temporary = state / ("developer-hanging.tmp-" + str(os.getpid()))
+        temporary.write_text(str(os.getpid()))
+        os.replace(temporary, marker)
+        while True: time.sleep(1)
     if os.environ.get("KOGEN_ROLE") == "reviewer":
         n = count("reviews")
         # A `resume` reuses the exact thread id Kogen asked for (the
@@ -405,6 +501,7 @@ defmodule Kogen.ScriptedBuildFixture do
     invocation = count("developer-invocations")
     (state / f"developer-invocation-{invocation}").write_text(" ".join(args))
     (state / f"developer-invocation-{invocation}-prompt").write_text(prompt)
+    provider_hang(f"developer-{invocation}")
     provider_failure(f"developer-{invocation}", session)
     if prompt.startswith("Controller verification failed after your turn"):
         # The controller resumed this same Developer call after a failed cycle.
@@ -456,5 +553,24 @@ defmodule Kogen.ScriptedBuildFixture do
           {"GIT_COMMITTER_EMAIL", "fixture@example.invalid"}
         ]
       )
+  end
+
+  defp write_intent!(intent, id, slug, scenarios) do
+    File.write!(Path.join(intent, "intent.yaml"), """
+    id: #{id}
+    slug: #{slug}
+    title: Scripted Build fixture
+    may_change_guarded_paths: [dummy.txt, target-evidence.txt, target-evidence-manifest.json, #{@late_selector}]
+    """)
+
+    File.write!(Path.join(intent, "scenarios.yaml"), Jason.encode!(scenarios))
+    File.write!(Path.join(intent, "risks.yaml"), Jason.encode!(risks()))
+  end
+
+  defp code_paths do
+    :code.get_path()
+    |> Enum.map(&List.to_string/1)
+    |> Enum.filter(&(Path.type(&1) == :absolute))
+    |> Enum.uniq()
   end
 end

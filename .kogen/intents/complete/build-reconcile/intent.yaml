@@ -1,0 +1,42 @@
+id: 2e1d43fa-f61e-45e5-b934-47fc1ab52e00
+slug: build-reconcile
+title: Report Builds whose controller died
+commit_subject: Report killed and half-published Builds
+status: approved
+shaped_against:
+  branch: develop
+  head: e59887183b588d4000bab6c2c5db0e95f60d7b64
+  note: >-
+    Split 2026-09-27 at e5988718 from the build-continuation Draft (itself part 3 of the split of the approved
+    durable-builds-and-failure-reports, shaped at f1d176b0), after failure-reports (e65392cf) and build-breakers
+    (e5988718) landed. Part 3 of 4: reconcile of killed controllers and of controllers that died during publication,
+    the report fields budget_state and published, the categories interrupted and publication-interrupted, and the
+    `published:` line of mix kogen.candidates. build-continuation (part 4) continues the Candidates this part reports.
+shaping:
+  route: split-from-approved
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-27T16:48:28Z"
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_at: "2026-09-27T17:12:40Z"
+  approved_against_head: e59887183b588d4000bab6c2c5db0e95f60d7b64
+  route: codex
+  source: approval.md
+  quotes:
+    - "you gotta handle EVERYTHING"
+  covers: Part 3 of the durable-builds split (reconcile killed/half-published Builds); Opus blockers fixed; codex high.
+may_change_guarded_paths:
+  - README.md
+  - lib/kogen/build.ex
+  - lib/kogen/build/tracking.ex
+  - lib/kogen/build/workspace.ex
+  - lib/kogen/build/failure_report.ex
+  - lib/kogen/build/reconcile.ex
+  - lib/mix/tasks/kogen.candidates.ex
+  - test/support/scripted_build_fixture.ex
+  - test/support/scripted_controller_standin.exs
+  - test/kogen/build_reconcile_test.exs
+  - test/kogen/failure_report_test.exs
+  - test/kogen/candidates_command_test.exs

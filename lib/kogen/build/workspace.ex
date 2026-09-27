@@ -625,6 +625,39 @@ defmodule Kogen.Build.Workspace do
     end)
   end
 
+  @doc "Updates an owner's status while preserving every other on-disk field."
+  def set_owner_status(control, build_id, status)
+      when is_binary(control) and is_binary(build_id) and is_binary(status) do
+    path = owner_path(control, build_id)
+
+    with {:ok, bytes} <- File.read(path),
+         {:ok, record} <- Jason.decode(bytes),
+         true <- record["build_id"] == build_id do
+      replace_owner(
+        path,
+        Jason.encode_to_iodata!(Map.put(record, "status", status), pretty: true)
+      )
+    else
+      _ -> {:error, "could not update Candidate owner record #{path}"}
+    end
+  end
+
+  @doc "Returns the Candidate branch tip when it is published on its admitted branch."
+  def published_tip(control, record) when is_map(record) do
+    tip = branch_commit(control, record["branch"])
+    admitted = record["admitted_branch"]
+
+    if is_binary(tip) and tip != record["admitted_commit"] and is_binary(admitted) and
+         match?(
+           {:ok, _},
+           git(control, ["merge-base", "--is-ancestor", tip, "refs/heads/" <> admitted])
+         ) do
+      tip
+    else
+      nil
+    end
+  end
+
   defp owner_records(control) do
     directory = Path.join(project_dir(control), "candidates")
 

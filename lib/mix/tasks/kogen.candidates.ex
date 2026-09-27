@@ -37,16 +37,13 @@ defmodule Mix.Tasks.Kogen.Candidates do
   def run(_args), do: Mix.raise(@usage)
 
   defp print({:ok, record}) do
-    IO.puts("""
-    #{record["build_id"]}
-      slug:    #{record["slug"]}
-      title:   #{record["title"]}
-      status:  #{record["status"]}#{commit(record)}
-      started: #{record["started_at"]}
-      branch:  #{record["branch"]}
-      path:    #{record["worktree_path"]}
-      #{report_line(record)}\
-    """)
+    published = published_line(record)
+    report = report_line(record)
+    lines = if published == "", do: "  #{report}", else: "  #{published}\n  #{report}"
+
+    IO.puts(
+      "#{record["build_id"]}\n  slug:    #{record["slug"]}\n  title:   #{record["title"]}\n  status:  #{record["status"]}#{commit(record)}\n  started: #{record["started_at"]}\n  branch:  #{record["branch"]}\n  path:    #{record["worktree_path"]}\n#{lines}\n"
+    )
   end
 
   defp print({:error, path, reason}), do: IO.puts("skipped #{path}: #{reason}")
@@ -88,6 +85,20 @@ defmodule Mix.Tasks.Kogen.Candidates do
 
       _ ->
         "report:   none"
+    end
+  end
+
+  defp published_line(record) do
+    if record["status"] in ["stopped: interrupted", "stopped: publication-interrupted"] do
+      case Workspace.published_tip(record["control_root"], record) do
+        tip when is_binary(tip) ->
+          "published: #{tip} is on #{record["admitted_branch"]}; remove it with mix kogen.candidates.remove #{record["build_id"]}"
+
+        _ ->
+          ""
+      end
+    else
+      ""
     end
   end
 end

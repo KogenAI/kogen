@@ -391,8 +391,8 @@ defmodule Kogen.FailureReportTest do
     assert Map.has_key?(report, "developer_session_id")
     assert Map.has_key?(report, "reason")
     refute Map.has_key?(report, "continues")
-    refute Map.has_key?(report, "budget_state")
-    refute Map.has_key?(report, "published")
+    assert Map.has_key?(report, "budget_state")
+    assert Map.has_key?(report, "published")
     refute Map.has_key?(report, "continuable")
 
     assert [_, reported_path] =

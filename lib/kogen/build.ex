@@ -64,6 +64,7 @@ defmodule Kogen.Build do
     FailureSignature,
     GuardedPaths,
     Ledger,
+    Reconcile,
     Report,
     Review,
     ReviewPacket,
@@ -127,12 +128,12 @@ defmodule Kogen.Build do
       case acquire_lock(control) do
         :ok ->
           try do
-            case admission_breakers(control, slug, intent, config, approved_entries) do
-              {:ok, breaker_state} ->
-                do_build(admission, slug, intent, config, approved_entries, breaker_state)
-
-              {:error, _reason} = error ->
-                error
+            with :ok <- Reconcile.run(control),
+                 {:ok, breaker_state} <-
+                   admission_breakers(control, slug, intent, config, approved_entries) do
+              do_build(admission, slug, intent, config, approved_entries, breaker_state)
+            else
+              {:error, _reason} = error -> error
             end
           after
             release_lock(control)
@@ -2352,6 +2353,30 @@ defmodule Kogen.Build do
 
   defp current_attempt(ctx), do: List.last(ctx.tracking.record["attempts"])
 
+  defp budget_state(ctx) do
+    execution = Map.get(ctx, :execution)
+    context = execution && (execution[:context] || execution["context"])
+    state = execution && (execution[:state] || execution["state"])
+    state_path = execution && (execution[:state_path] || execution["state_path"])
+
+    if is_map(context) and is_map(state) and is_binary(state_path) and File.exists?(state_path) do
+      bytes = File.read!(state_path)
+
+      %{
+        "outer_attempt" => current_attempt(ctx)["number"] || context["outer_attempt"],
+        "offline_retries" => context["offline_retries"],
+        "verification_retries" => context["verification_retries"],
+        "offline_failures" => state["offline_failures"] || 0,
+        "failures_since_pass" => state["failures_since_pass"] || 0,
+        "terminal_state" => state["terminal_state"],
+        "state" => Path.relative_to(state_path, Path.expand(ctx.control)),
+        "state_sha256" => Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+      }
+    end
+  rescue
+    _ -> nil
+  end
+
   defp record_attempt(ctx, changes) do
     record = ctx.tracking.record
     attempts = List.update_at(record["attempts"], -1, &Map.merge(&1, changes))
@@ -2377,6 +2402,9 @@ defmodule Kogen.Build do
   defp stop(ctx, reason, details \\ %{}) do
     category = details["stop_category"] || stop_category(reason)
     changes = Map.merge(details, %{"status" => "failed", "failure" => reason})
+
+    changes =
+      if budget_state(ctx), do: Map.put(changes, "budget_state", budget_state(ctx)), else: changes
 
     {result, final_ctx} =
       case ctx.tracking.record["attempts"] do

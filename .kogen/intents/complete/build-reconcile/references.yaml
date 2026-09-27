@@ -1,0 +1,47 @@
+- kind: prerequisite
+  path: .kogen/intents/complete/failure-reports
+  note: >-
+    Landed at e65392cf: lib/kogen/build/failure_report.ex (the category table, classify/1, counts_toward/1, write/3's
+    temp file and hard-link no-clobber publish, record_failure/4), the report calls in build.ex's stop/3,
+    record_failure/2 and refuse_publication/4, cycle_signatures saved before the resume, and mix kogen.candidates'
+    class/next/report lines ("report:   none" without a report). This package adds budget_state, published, two rows
+    and reconcile.
+- kind: prerequisite
+  path: .kogen/intents/complete/build-breakers
+  note: >-
+    Landed at e5988718: lib/kogen/build/breakers.ex and `admission_breakers/5` in Kogen.Build.run/3, called right
+    after acquire_lock/1. Reconcile runs between the two. Breakers.environment_state/1 skips counts_toward null.
+- kind: later-intent
+  path: build-continuation
+  note: Part 4; continues the Candidates this package reports, adds continuable, continues and session-lost.
+- kind: superseded-intent
+  path: .kogen/intents/drafts/durable-builds-and-failure-reports
+  note: >-
+    The original package (approved at f1d176b0). Its controller-killed and publication-crash-reported scenarios'
+    reporting half, its budget_state rule and Assumed 9, 11 and 15 (budget part) are carried here; its final Build's
+    F4 (reconcile tested the owner status instead of the record's accepted status) is this package's. Its partial
+    reconcile/1 in .kogen/intents/complete/failure-reports/evidence/candidate-b3NQxAsT-f72a58f1.diff is a warning,
+    not a starting point.
+- kind: feature
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/features/EXE-04.md
+- kind: direction
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/DIRECTION.md
+  note: Rule 49 (provider-down stops and continues on rerun; no paid target). Rules 43, 44, 51.
+- kind: failure-analysis
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/research/build-failure-lessons-2026-09-25.md
+  note: Lesson 27 (3-5 scenarios, enumerated tests, smoke tests and fixture shortcuts as wrong_results).
+- kind: landed-intent
+  path: .kogen/intents/complete/build-reliability
+  note: ProcessCustody lock reclaim of a dead owner; Workspace.list/1 shows a running record without a live lock as stopped: interrupted.
+- kind: evidence
+  path: test/support/custody_controller_standin.exs
+  note: The separate-OS-process stand-in pattern; scripted_controller_standin.exs differs in running as `elixir -pa` (risk standin-build-path).
+- kind: draft-intent
+  path: .kogen/intents/drafts/parallel-builds-with-integration
+  note: Overlaps the lock and publication (risk reconcile-scope); add lib/kogen/build/reconcile.ex and test/kogen/build_reconcile_test.exs to its guarded paths.
+- kind: evidence
+  path: evidence/candidate-TNKFPX6X-5d572ec8.diff
+  note: >-
+    Starting point: Build TNKFPX6XyfcLVYkQfugKKMTa's Developer work (943 lines) against e5988718; applies at 158a57bf. Its
+    check cycle 1 failed only on an out-of-scope ctx temp-path collision (fixed by ctx-test-temp-paths, 158a57bf); the
+    work has not been reviewed yet: apply it, then finish and verify every scenario and test.

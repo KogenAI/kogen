@@ -167,7 +167,7 @@ defmodule Kogen.CandidatesCommandTest do
     assert output =~ "class:   item"
     assert output =~ "next:    reshape_details"
     assert output =~ "report:  "
-    refute Regex.match?(~r/^published:/m, output)
+    refute output =~ ~r/^\s*published: /m
     refute output =~ fixtures.q1.build_id
     refute output =~ fixtures.foreign_path
   end
@@ -430,6 +430,44 @@ defmodule Kogen.CandidatesCommandTest do
     assert record["status"] == "stopped: interrupted"
     assert {:ok, _lines} = Workspace.remove(p.control, fixtures.p4.build_id)
     refute File.exists?(fixtures.p4.path)
+  end
+
+  test "published interrupted Candidates print the published line and remain removable", %{
+    p: p,
+    q: q
+  } do
+    _fixtures = scenario(p, q)
+    p5 = new_worktree(p.control, "p5pub", "p5pub", p.commit)
+    c5 = commit_in_worktree(p5, "p5\n")
+    git!(p.control, ["merge", "--ff-only", c5])
+    p5 = write_owner!(p5, "running", c5)
+
+    p6 = new_worktree(p.control, "p6pub", "p6pub", c5)
+    c6 = commit_in_worktree(p6, "p6\n")
+    git!(p.control, ["merge", "--ff-only", c6])
+    write_owner!(p6, "stopped: publication-interrupted", c6)
+
+    output = capture_io(fn -> File.cd!(p.control, fn -> Candidates.run([]) end) end)
+
+    assert output =~
+             ~r/^  published: #{c5} is on main; remove it with mix kogen\.candidates\.remove p5pub$/m
+
+    assert output =~
+             ~r/^  published: #{c6} is on main; remove it with mix kogen\.candidates\.remove p6pub$/m
+
+    assert {:ok, _} = Workspace.remove(p.control, p5.build_id)
+  end
+
+  test "an unmerged interrupted Candidate has no published line and needs discard", %{p: p, q: q} do
+    _fixtures = scenario(p, q)
+    p7 = new_worktree(p.control, "p7unpub", "p7unpub", p.commit)
+    c7 = commit_in_worktree(p7, "p7\n")
+    p7 = write_owner!(p7, "running", c7)
+
+    output = capture_io(fn -> File.cd!(p.control, fn -> Candidates.run([]) end) end)
+    refute output =~ ~r/^\s*published: /m
+    assert {:error, reason} = Workspace.remove(p.control, p7.build_id)
+    assert reason =~ "not reachable"
   end
 
   # -- Fixture helpers --------------------------------------------------------
