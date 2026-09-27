@@ -1,0 +1,30 @@
+id: 2b062396-b1cc-496f-bce5-e2b2551473bf
+slug: codex-developer-high
+title: Run the codex route Developer at high effort
+commit_subject: Raise the codex Developer to high effort
+status: approved
+shaped_against:
+  branch: develop
+  head: fa48e817e9a69f2f457de6e64e57d7ed4270f9e1
+  note: Shaped 2026-09-27 by the Mac Studio orchestrator after four codex-route Builds did not converge (lesson 27).
+shaping:
+  route: direct-package
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-27T10:40:00Z"
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_at: "2026-09-27T10:35:08Z"
+  approved_against_head: fa48e817e9a69f2f457de6e64e57d7ed4270f9e1
+  route: codex
+  source: approval.md
+  quotes:
+    - "you gotta handle EVERYTHING"
+  covers: codex route Developer effort medium → high (DIRECTION rule 54); config + 3 test expectations + README.
+may_change_guarded_paths:
+  - .kogen/config.yaml
+  - test/kogen/configuration_support_contract_test.exs
+  - README.md
+  - test/kogen/intent_test.exs
+  - test/kogen/harness_args_test.exs

@@ -157,7 +157,7 @@ defmodule Kogen.IntentTest do
                route: "codex",
                harness: "codex",
                shaping: %{model: "gpt-6-sol", effort: "medium"},
-               developer: %{model: "gpt-6-sol", effort: "medium"},
+               developer: %{model: "gpt-6-sol", effort: "high"},
                reviewer: %{model: "gpt-6-sol", effort: "high"},
                helpers: %{
                  scout: %{model: "gpt-6-luna", effort: "low"},

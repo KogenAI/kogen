@@ -22,8 +22,8 @@ defmodule Kogen.HarnessArgsTest do
     sol_medium = ["--model", "gpt-6-sol", "-c", "model_reasoning_effort=\"medium\""]
     sol_high = ["--model", "gpt-6-sol", "-c", "model_reasoning_effort=\"high\""]
 
-    assert Enum.slice(developer, 1, 4) == sol_medium
-    assert Enum.slice(resumed, 2, 4) == sol_medium
+    assert Enum.slice(developer, 1, 4) == sol_high
+    assert Enum.slice(resumed, 2, 4) == sol_high
     assert Enum.take(resumed, -2) == ["abc-123", "-"]
     assert Enum.slice(reviewer, 1, 4) == sol_high
 

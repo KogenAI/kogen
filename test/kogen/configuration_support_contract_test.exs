@@ -277,7 +277,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
     assert config.route == "codex"
     assert config.harness == "codex"
     assert config.shaping == %{model: "gpt-6-sol", effort: "medium"}
-    assert config.developer == %{model: "gpt-6-sol", effort: "medium"}
+    assert config.developer == %{model: "gpt-6-sol", effort: "high"}
     assert config.reviewer == %{model: "gpt-6-sol", effort: "high"}
     assert config.helpers.scout == %{model: "gpt-6-luna", effort: "low"}
     assert config.helpers.worker == %{model: "gpt-6-luna", effort: "high"}

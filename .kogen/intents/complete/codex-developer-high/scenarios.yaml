@@ -1,0 +1,19 @@
+- id: codex-developer-high
+  given: .kogen/config.yaml at develop fa48e817, where the codex route's developer is gpt-6-sol at medium.
+  when: The tracked config is read for the codex route and every other route, and the README config block is read.
+  then: >-
+    Kogen.Intent.read_config(".kogen/config.yaml", "codex") returns developer %{model: "gpt-6-sol", effort: "high"} and every
+    other codex profile exactly as before (shaping gpt-6-sol medium, reviewer gpt-6-sol high, scout gpt-6-luna low, worker
+    gpt-6-luna high, expert gpt-6-sol high, outer_resumptions 2, verification_retries 2); every other route resolves exactly
+    as before (the existing tests pass unedited except the three tracked-config developer expectations named in INTENT.md); the README config block shows
+    the codex developer at effort high.
+  wrong_result: >-
+    Any other route, profile, budget or default changes; a test other than the named assertion is edited; the README still
+    shows medium for the codex developer.
+  verified_by: [check]
+  evidence: DIRECTION rule 54; lesson 27.
+  proof:
+    offline: [test/kogen/configuration_support_contract_test.exs, test/kogen/intent_test.exs, test/kogen/harness_args_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: tracked config parsing and README text"
+    affected_paths: [.kogen/config.yaml, test/kogen/configuration_support_contract_test.exs, README.md, test/kogen/intent_test.exs, test/kogen/harness_args_test.exs]
