@@ -165,6 +165,7 @@ defmodule Kogen.IntentTest do
                  expert: %{model: "gpt-6-sol", effort: "high"}
                },
                expert: %{model: "gpt-6-sol", effort: "high"},
+               auditor: %{"model" => "gpt-6-sol", "effort" => "high"},
                roles: %{
                  shaping: "codex",
                  developer: "codex",
@@ -182,7 +183,7 @@ defmodule Kogen.IntentTest do
                offline_retries: 4
              }
 
-      refute Map.has_key?(codex, :auditor)
+      assert Map.has_key?(codex, :auditor)
       refute Map.has_key?(codex.roles, :auditor)
 
       assert {:ok, default} = Intent.read_config()

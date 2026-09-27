@@ -1,0 +1,156 @@
+[
+ {
+  "tag": "v3",
+  "label": "S:dir-1.13",
+  "item": "May Kogen Studio approve Intents on the human's behalf when its alignment check passes, or must every Intent be approved by the human?",
+  "cited": "dir-1.13",
+  "confirm": 0.85
+ },
+ {
+  "tag": "v3",
+  "label": "S:dir-1.17",
+  "item": "Should the default-route flip move to a follow-up Intent so this Build does not need two more paid targets?",
+  "cited": "dir-1.17",
+  "confirm": 0.64
+ },
+ {
+  "tag": "v3",
+  "label": "S:dir-1.16",
+  "item": "Should this Intent add launch_auditor/4 now and let the Shaping-audit Intent add its caller later?",
+  "cited": "dir-1.16",
+  "confirm": 0.85
+ },
+ {
+  "tag": "v3",
+  "label": "S:dir-1.13",
+  "item": "Should plain Kogen approve an Intent automatically when its audit report is ready?",
+  "cited": "dir-1.13",
+  "confirm": 0.91
+ },
+ {
+  "tag": "v3",
+  "label": "S:dir-1.12",
+  "item": "Should the new planning notes be written under .kogen/runtime/shaping-followups?",
+  "cited": "dir-1.12",
+  "confirm": 0.87
+ },
+ {
+  "tag": "v3",
+  "label": "S:dir-1.15",
+  "item": "Should the roadmap refer to this Intent as number 3 or by its slug?",
+  "cited": "dir-1.15",
+  "confirm": 0.92
+ },
+ {
+  "tag": "v3",
+  "label": "S:shp-auditor-profile",
+  "item": "Which model and effort should the auditor use on the codex route?",
+  "cited": "shp-auditor-profile",
+  "confirm": 0.8
+ },
+ {
+  "tag": "v3",
+  "label": "S:shp-one-build",
+  "item": "Should the Jev layer of the Shaping audit ship as a separate Build after the deterministic checks?",
+  "cited": "shp-one-build",
+  "confirm": 0.9
+ },
+ {
+  "tag": "v3",
+  "label": "S:dir-1.17",
+  "item": "Should Kogen defer the paid-target health reader to a later Intent to keep this Build small?",
+  "cited": "dir-1.17",
+  "confirm": 0.82
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:dir-1.13",
+  "item": "May Kogen Studio approve Intents on the human's behalf when its alignment check passes, or must every Intent be approved by the human?",
+  "cited": "dir-1.13",
+  "confirm": 0.87
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:dir-1.17",
+  "item": "Should the default-route flip move to a follow-up Intent so this Build does not need two more paid targets?",
+  "cited": "dir-1.17",
+  "confirm": 0.63
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:dir-1.16",
+  "item": "Should this Intent add launch_auditor/4 now and let the Shaping-audit Intent add its caller later?",
+  "cited": "dir-1.16",
+  "confirm": 0.84
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:dir-1.13",
+  "item": "Should plain Kogen approve an Intent automatically when its audit report is ready?",
+  "cited": "dir-1.13",
+  "confirm": 0.91
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:dir-1.12",
+  "item": "Should the new planning notes be written under .kogen/runtime/shaping-followups?",
+  "cited": "dir-1.12",
+  "confirm": 0.87
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:dir-1.15",
+  "item": "Should the roadmap refer to this Intent as number 3 or by its slug?",
+  "cited": "dir-1.15",
+  "confirm": 0.92
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:shp-auditor-profile",
+  "item": "Which model and effort should the auditor use on the codex route?",
+  "cited": "shp-auditor-profile",
+  "confirm": 0.82
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:shp-one-build",
+  "item": "Should the Jev layer of the Shaping audit ship as a separate Build after the deterministic checks?",
+  "cited": "shp-one-build",
+  "confirm": 0.9
+ },
+ {
+  "tag": "v3-repeat",
+  "label": "S:dir-1.17",
+  "item": "Should Kogen defer the paid-target health reader to a later Intent to keep this Build small?",
+  "cited": "dir-1.17",
+  "confirm": 0.82
+ },
+ {
+  "tag": "v3-heldout",
+  "label": "P",
+  "item": "Should the auditor also run when the Shaper uses the Codex route directly without mix kogen.shape?",
+  "cited": "shp-auditor-profile",
+  "confirm": 0.43
+ },
+ {
+  "tag": "v3-heldout",
+  "label": "S:dir-1.16",
+  "item": "Should the auditor route key be added now even though nothing launches the auditor until a later Intent?",
+  "cited": "dir-1.16",
+  "confirm": 0.85
+ },
+ {
+  "tag": "v3-heldout",
+  "label": "S:shp-auditor-profile",
+  "item": "On the claude-dominant-adversarial-codex route, which harness should run the auditor?",
+  "cited": "shp-auditor-profile",
+  "confirm": 0.51
+ },
+ {
+  "tag": "v3-heldout",
+  "label": "S:shp-wait-only-product",
+  "item": "Should the Stop hook block and wait for the Shaper when only technical findings remain?",
+  "cited": "shp-wait-only-product",
+  "confirm": 0.69
+ }
+]

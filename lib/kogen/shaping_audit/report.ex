@@ -5,7 +5,7 @@ defmodule Kogen.ShapingAudit.Report do
   freshness check against the current package.
   """
 
-  @schema_version 1
+  @schema_version 2
 
   @doc "The directory a report for `slug`/`revision` lives in."
   @spec dir(Path.t(), String.t(), String.t()) :: Path.t()

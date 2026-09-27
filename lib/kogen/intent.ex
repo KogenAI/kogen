@@ -28,6 +28,7 @@ defmodule Kogen.Intent do
 
   @type role_config :: %{model: String.t(), effort: String.t()}
   @type role :: :shaping | :developer | :reviewer | :expert
+  @type auditor_config :: %{harness: String.t(), model: String.t(), effort: String.t()}
 
   @type config :: %{
           route: String.t(),
@@ -245,7 +246,18 @@ defmodule Kogen.Intent do
          helpers: helpers,
          roles: Map.new(@roles, &{&1, harness}),
          native_helpers: %{harness => Map.take(helpers, @native_helpers)}
-       }}
+       }
+       |> put_raw_auditor(route)}
+    end
+  end
+
+  # The raw `auditor` entry of a route, kept as-is (unvalidated); only
+  # `auditor_config/1` interprets it. A missing or malformed entry never
+  # blocks `read_config/2` or breaks a fixture with no auditor.
+  defp raw_auditor(route) do
+    case fetch(route, "auditor") do
+      {:ok, value} -> value
+      :error -> nil
     end
   end
 
@@ -270,9 +282,23 @@ defmodule Kogen.Intent do
       config =
         assigned
         |> Map.new(fn {role, _harness, profile} -> {role, profile} end)
-        |> Map.merge(%{harness: roles.developer, roles: roles, native_helpers: native_helpers})
+        |> Map.merge(%{
+          harness: roles.developer,
+          roles: roles,
+          native_helpers: native_helpers
+        })
 
-      {:ok, Map.put(config, :helpers, native_helper_set(config, roles.developer))}
+      {:ok,
+       config
+       |> Map.put(:helpers, native_helper_set(config, roles.developer))
+       |> put_raw_auditor(route)}
+    end
+  end
+
+  defp put_raw_auditor(config, route) do
+    case raw_auditor(route) do
+      nil -> config
+      value -> Map.put(config, :auditor, value)
     end
   end
 
@@ -364,6 +390,72 @@ defmodule Kogen.Intent do
 
   @doc "The route's roles in launch-readiness order."
   def roles, do: @roles
+
+  @doc """
+  Resolves the selected route's `auditor` setting, kept raw by `read_config/2`.
+
+  The auditor is separate from the Build role matrix: it never falls back to
+  the Expert, the Reviewer, or any other role, and never enters `roles/0`. A
+  clean route's auditor runs on the route's one harness; naming an
+  `auditor.harness` there is refused, naming the key. A role-level route's
+  auditor must name `auditor.harness`, and that harness must already have
+  native helpers in the route (`native_helpers`); otherwise it is refused,
+  naming the key. A route with no `auditor` entry gives `{:error, "route
+  <name> has no auditor setting"}`.
+  """
+  @spec auditor_config(config()) :: {:ok, auditor_config()} | {:error, String.t()}
+  def auditor_config(config) do
+    case Map.get(config, :auditor) do
+      entry when is_map(entry) -> resolve_auditor(config, entry)
+      _ -> {:error, "route #{config.route} has no auditor setting"}
+    end
+  end
+
+  defp resolve_auditor(config, entry) do
+    if role_level?(config),
+      do: resolve_role_level_auditor(config, entry),
+      else: resolve_clean_auditor(config, entry)
+  end
+
+  defp resolve_clean_auditor(config, entry) do
+    if has_key?(entry, "harness") do
+      {:error,
+       "config.yaml routes.#{config.route}.auditor.harness is not allowed on a clean route; the auditor uses the route's one harness"}
+    else
+      with {:ok, model} <- require_string(entry, "model", "auditor.model"),
+           {:ok, effort} <- require_string(entry, "effort", "auditor.effort") do
+        {:ok, %{harness: config.harness, model: model, effort: effort}}
+      else
+        {:error, key} ->
+          {:error, "config.yaml missing required key: routes.#{config.route}.#{key}"}
+      end
+    end
+  end
+
+  defp resolve_role_level_auditor(config, entry) do
+    case require_string(entry, "harness", "auditor.harness") do
+      {:error, key} ->
+        {:error, "config.yaml missing required key: routes.#{config.route}.#{key}"}
+
+      {:ok, harness} ->
+        resolve_role_level_auditor(config, entry, harness)
+    end
+  end
+
+  defp resolve_role_level_auditor(config, entry, harness) do
+    if is_map_key(config.native_helpers, harness) do
+      with {:ok, model} <- require_string(entry, "model", "auditor.model"),
+           {:ok, effort} <- require_string(entry, "effort", "auditor.effort") do
+        {:ok, %{harness: harness, model: model, effort: effort}}
+      else
+        {:error, key} ->
+          {:error, "config.yaml missing required key: routes.#{config.route}.#{key}"}
+      end
+    else
+      {:error,
+       "config.yaml routes.#{config.route}.auditor.harness names a harness with no helpers in this route: #{harness}"}
+    end
+  end
 
   defp native_helper_set(config, harness) do
     native = Map.fetch!(config.native_helpers, harness)
@@ -494,7 +586,9 @@ defmodule Kogen.Intent do
 
   @doc """
   Reads `<base_dir>/<slug>/intent.yaml` and validates that `id`, `title`,
-  and `may_change_guarded_paths` are all present and non-empty.
+  and `may_change_guarded_paths` are all present and non-empty. The optional
+  `commit_subject`, when present, must be a nonblank string; it is `nil` for
+  a package without one, and Build then commits `title` as the subject.
 
   Returns `{:ok, intent}` on success, where `raw` is the full parsed map.
   Returns `{:error, reason}` with a short, specific one-line reason

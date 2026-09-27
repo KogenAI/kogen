@@ -378,7 +378,7 @@ defmodule Kogen.Codex do
   end
 
   def management_allowed!(command) do
-    if System.get_env("KOGEN_ROLE") in ["developer", "reviewer", "shaper", "expert"] do
+    if System.get_env("KOGEN_ROLE") in ["developer", "reviewer", "shaper", "expert", "auditor"] do
       raise "mix kogen.codex.#{command} is an explicit user operation; managed roles cannot run setup or compatibility verification"
     end
   end

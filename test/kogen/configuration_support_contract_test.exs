@@ -43,7 +43,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
     end
 
     for {_name, route} <- data["routes"] do
-      refute Map.has_key?(route, "auditor")
+      assert Map.has_key?(route, "auditor")
     end
 
     for route <-
@@ -220,7 +220,7 @@ defmodule Kogen.ConfigurationSupportContractTest do
     assert claude_dominant.developer == %{model: "claude-opus-5-5", effort: "medium"}
     assert claude_dominant.reviewer == %{model: "gpt-6-sol", effort: "high"}
     assert claude_dominant.expert == %{model: "gpt-6-sol", effort: "high"}
-    refute Map.has_key?(claude_dominant, :auditor)
+    assert Map.has_key?(claude_dominant, :auditor)
 
     reviewer = Kogen.Intent.role_config(claude_dominant, :reviewer)
     assert reviewer.harness == "codex"
@@ -242,12 +242,12 @@ defmodule Kogen.ConfigurationSupportContractTest do
     assert codex_dominant.developer == %{model: "gpt-6-sol", effort: "medium"}
     assert codex_dominant.reviewer == %{model: "claude-opus-5-5", effort: "medium"}
     assert codex_dominant.expert == %{model: "claude-opus-5-5", effort: "high"}
-    refute Map.has_key?(codex_dominant, :auditor)
+    assert Map.has_key?(codex_dominant, :auditor)
 
     for clean <- ~w(claude codex) do
       {:ok, config} = Kogen.Intent.read_config(@config_path, clean)
       assert config.expert == config.helpers.expert
-      refute Map.has_key?(config, :auditor)
+      assert Map.has_key?(config, :auditor)
     end
 
     assert Kogen.Intent.role_config(codex_dominant, :reviewer).helpers.scout.model ==

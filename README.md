@@ -992,6 +992,91 @@ The schema 2 index also supports `kogen-ctx symbols <query> [--limit N] [--root 
 
 Run `kogen-ctx mcp [--root DIR]` to serve the `search`, `symbols`, `refs`, and `map` queries over newline-delimited JSON-RPC on stdio. Their arguments are the corresponding query or target, optional `limit`, `tokens`, and repeated `focus` paths. Successful tool text is byte-identical to the CLI stdout; failures return the CLI stderr with `isError` set. Every tool call refreshes the index. Register the server with `claude mcp add kogen-ctx -- <path> mcp`, using the executable path printed by `mix kogen.ctx.build`.
 
+### Shaping audit
+
+`mix kogen.audit [--route <name>] [--auditor] <slug>` audits one Draft or
+Approved package at `.kogen/intents/drafts/<slug>` (or `approved/<slug>`):
+deterministic checks, the blind auditor and Jev over the package's current
+revision (a SHA-256 over its sorted relative paths and bytes, taken under an
+`lstat` walk that refuses any symlink, FIFO or other non-regular entry
+before reading anything). `--auditor` launches a fresh auditor run when the
+per-`HEAD` bound allows one; without it the audit reuses whatever auditor
+record already exists. `mix kogen.audit --status [--route <name>] <slug>`
+recomputes the revision and `HEAD` and reports whether the stored report is
+`current`, `stale` (naming what changed) or `missing`, without auditing
+again. The command exits `0` when the report is ready, `1` when it is not
+(including `asking`), and `2` on a usage error, a refused role
+(`developer`, `reviewer`, `expert`, `auditor`), a present
+`.kogen/build.lock`, or a slug that exists in both `drafts/` and
+`approved/`. The audit is an explicit read-only command; it does not run as a
+Shaper Stop hook.
+
+Reports live under `.kogen/runtime/shaping-audits/<slug>/<revision>/`:
+`report.json` (schema, revision, `HEAD`, route, each layer's status, every
+finding, and `readiness`) and `report.md`, the same summary for reading.
+Nothing under `.kogen/intents/` is ever created, changed or removed by an
+audit, and its git materialization is always removed. **A report is never
+approval**: it only tells the Shaper and the audit's own callers what is
+still wrong; only the Shaper's own explicit "Approved" moves a Draft
+forward.
+
+The auditor is launched only when `mix kogen.audit --auditor <slug>` is
+requested. It is blind to the checkout and bounded to two counted runs per
+Draft revision history; failed or rejected runs are recorded as unavailable
+and close that bound.
+
+The Jev layer's Keychain lookup uses the `dev.kogen.jev` item (the same one
+the Build handoff's `Kogen.Jev.request_body/2` reads); when it is missing,
+run `security add-generic-password -s dev.kogen.jev` first.
+
+### Jev in the Shaping audit
+
+The Shaping audit's Jev layer (`Kogen.ShapingAudit.JevLayer`, `Kogen.Jev.ask/3`)
+reads its TypeSafe API key from the same macOS Keychain generic password as
+the Build handoff, service `dev.kogen.jev`; add it once with
+`security add-generic-password -s dev.kogen.jev -a <account> -w` and both uses
+share it. When the item is missing, the layer reports itself `unavailable`
+naming this same command; it never falls back to another key or endpoint.
+
+Every request carries only the risk `privacy-boundary` allowlist: the
+scenario's `given`/`when`/`then`/`wrong_result`/`evidence` text and
+`proof.offline`, the Draft's `Outcome` and `Non-goals` items, numbered
+`questions.md` entries, the settled-decision list
+(`priv/kogen/shaping_audit/settled.json` plus the package's own `## Settled`
+entries), a scenario's paid observation, and — for a citation claim — at
+most 40 numbered lines read from the `HEAD` materialization, never the
+working tree. It never sends a diff, working-tree bytes, `risks.yaml`,
+`approval.md`, `references.yaml` or anything under `evidence/`.
+
+Jev's answers here are strictly advisory: the 14 contract-question findings
+(`priv/kogen/shaping_audit/questions-v1.json`) and the question-gate routing
+(`priv/kogen/shaping_audit/question-gate-v1.json`) never make a report ready
+or not ready by themselves, except that a Jev outage makes the layer itself
+`unavailable` (which does affect readiness). A "fixed" auditor-finding
+disposition can be kept open by the fix-check (`not_addressed >= 0.6`, never
+on `partly`); the Controller may still dispute that as not a defect, with a
+reason the Shaper sees.
+
+### Shaping auditor
+
+Each route's `.kogen/config.yaml` entry gains one `auditor` setting, read by
+`Kogen.Intent.auditor_config/1` and launched by `Kogen.Harness.open_auditor/2`
+and `launch_auditor/4`:
+
+| Route | Auditor harness | Model | Effort |
+|---|---|---|---|
+| `claude` | claude | `claude-opus-5-5` | `high` |
+| `codex` | codex | `gpt-6-sol` | `high` |
+| `claude-dominant-adversarial-codex` | codex | `gpt-6-sol` | `high` |
+| `codex-dominant-adversarial-claude` | claude | `claude-opus-5-5` | `high` |
+
+The auditor is a separate profile from the Expert: it never shares the
+Expert's setting, prompt or native helpers, and it never falls back to the
+Expert, the Reviewer, or any other role. It launches one fresh, blind session
+with no deadline, `KOGEN_ROLE=auditor`, no native helpers at all (no Claude
+`--agents`, no Codex `agents.*`, and `--disable multi_agent` on Codex), and a
+schema-valid findings response.
+
 ## Run the checks
 
 ```sh

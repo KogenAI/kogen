@@ -1,0 +1,5 @@
+- id: sample-risk
+  scenario_ids: [sample-scenario]
+  description: >-
+    KOGEN-SENTINEL-RISKS-YAML. risks.yaml is never sent to Jev; it never
+    appears in a request body.

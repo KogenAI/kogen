@@ -185,6 +185,9 @@ defmodule Kogen.Codex.Environment do
   # an incomplete profile fails loudly rather than writing an empty one.
   defp write_helper_profiles!(_generation, :setup), do: %{}
 
+  # Blind auditor launches have no native helper profiles or agents.* entries.
+  defp write_helper_profiles!(_generation, %{auditor: true}), do: %{}
+
   # The expert profile is native only when the route assigns the Expert role to
   # Codex; a harness view without it gets no expert helper, never a substitute.
   defp write_helper_profiles!(generation, config) do

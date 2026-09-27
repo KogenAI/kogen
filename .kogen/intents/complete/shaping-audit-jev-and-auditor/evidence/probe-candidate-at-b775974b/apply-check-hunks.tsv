@@ -1,0 +1,16 @@
+ok	.kogen_config.yaml.1	@@ -5,6 +5,7 @@ routes:
+FAIL	.kogen_config.yaml.2	@@ -14,6 +15,7 @@ routes:
+ok	.kogen_config.yaml.3	@@ -26,6 +28,7 @@ routes:
+ok	.kogen_config.yaml.4	@@ -38,6 +41,7 @@ routes:
+FAIL	lib_kogen_harness.ex.1	@@ -30,7 +30,7 @@ defmodule Kogen.Harness do
+ok	lib_kogen_harness.ex.2	@@ -162,10 +162,19 @@ defmodule Kogen.Harness do
+ok	lib_kogen_harness.ex.3	@@ -328,6 +337,26 @@ defmodule Kogen.Harness do
+ok	lib_kogen_intent.ex.1	@@ -28,6 +28,7 @@ defmodule Kogen.Intent do
+FAIL	lib_kogen_intent.ex.2	@@ -47,13 +48,15 @@ defmodule Kogen.Intent do
+ok	lib_kogen_intent.ex.3	@@ -244,7 +247,18 @@ defmodule Kogen.Intent do
+ok	lib_kogen_intent.ex.4	@@ -269,9 +283,24 @@ defmodule Kogen.Intent do
+ok	lib_kogen_intent.ex.5	@@ -364,6 +393,72 @@ defmodule Kogen.Intent do
+ok	lib_kogen_intent.ex.6	@@ -493,7 +588,9 @@ defmodule Kogen.Intent do
+FAIL	lib_kogen_intent.ex.7	@@ -633,6 +730,7 @@ defmodule Kogen.Intent do
+FAIL	lib_kogen_intent.ex.8	@@ -641,6 +739,7 @@ defmodule Kogen.Intent do
+ok	lib_kogen_intent.ex.9	@@ -732,6 +831,19 @@ defmodule Kogen.Intent do

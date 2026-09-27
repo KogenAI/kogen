@@ -1,0 +1,8 @@
+id: 01965000-0000-7000-8000-0000000000je
+slug: jev-clauses
+title: Jev clauses fixture
+commit_subject: "Jev: fixture"
+may_change_guarded_paths:
+  - lib/demo.ex
+  - test/kogen/sample_test.exs
+  - docs/note.txt

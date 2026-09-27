@@ -1,0 +1,15 @@
+{
+ "type": "choice",
+ "instructions": {
+  "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+  "rules": [
+   "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+   "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+   "Judge the decision the item asks for, not how technical its wording is."
+  ]
+ },
+ "criteria": {
+  "technical": "How to build or prove it; the agent settles it.",
+  "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+ }
+}

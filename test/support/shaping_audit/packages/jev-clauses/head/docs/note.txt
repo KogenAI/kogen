@@ -1,0 +1,3 @@
+We standardize on JSON output for every artifact.
+KOGEN-SENTINEL-HEAD-MATERIALIZATION (committed, at HEAD, allowlisted only as bounded citation lines).
+output.json is written with the UTF-8 encoding, not Latin-1.

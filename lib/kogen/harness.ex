@@ -348,6 +348,18 @@ defmodule Kogen.Harness do
   def launch_expert(prompt, model, effort, context),
     do: adapter!(context).launch_expert(prompt, model, effort, context)
 
+  @doc "Opens the route's separate blind-auditor setting for a materialization."
+  def open_auditor(config, project) when is_map(config) and is_binary(project) do
+    with {:ok, auditor} <- Kogen.Intent.auditor_config(config),
+         {:ok, selection} <- open(%{harness: auditor.harness, auditor: true}, project) do
+      {:ok, Map.put(selection, :profile, :auditor)}
+    end
+  end
+
+  @doc "Launches one fresh blind auditor session with its findings schema."
+  def launch_auditor(prompt, model, effort, context),
+    do: adapter!(context).launch_auditor(prompt, model, effort, context)
+
   @doc "Launches the interactive Shaper with the caller's real terminal."
   def exec_shaper(model, effort, prompt_file, context),
     do: adapter!(context).exec_shaper(model, effort, prompt_file, context)

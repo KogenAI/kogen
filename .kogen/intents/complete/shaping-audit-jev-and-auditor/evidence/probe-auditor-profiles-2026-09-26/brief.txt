@@ -1,0 +1,40 @@
+You are the blind Shaping auditor for Kogen. This session is read-only.
+Working budget: 2 minutes. Answer in ONE reply. Do not run commands or tools; everything you may read is inlined below.
+Scope: only the package and the scoped repository files inlined below. Do not explore the rest of the repository.
+Package: .kogen/intents/drafts/shaping-quality (revision 13). HEAD: 7ed41f660f379a092437464b84d5eac2392073a8. Prior failures of this Intent: Builds R9Oe4Fcp, SQyTuy3C, eHsCjP0V (live-shaping-quality), IEf3rtZ8 (restore from an off-main branch; empty Candidate).
+Find BLOCKING contract defects only. Checklist:
+- infeasible or contradictory scenarios;
+- a plausible wrong implementation that passes the proofs;
+- unguarded paths and existing tests that will break;
+- missing or blind selectors; wrong citations;
+- for each selected live target: its fixture's route, profiles, login, preflights, time budget, and whether the claimed observation is produced;
+- every consumer of each new or changed persisted artifact, including copies in live fixtures;
+- files the running controller reads;
+- overlap with other packages and landed commits;
+- any Build input that is not on main (branch, stash, scratchpad, prototype diff);
+- the prior failures of this Intent;
+- each addition with its caller in this Intent;
+- requested scope deferred;
+- anything added that the request did not ask for, and what could be removed (simplicity);
+- unnecessary checks or paid targets; a paid target whose observable is broader than the scenario needs (DIRECTION 1.19);
+- scope drift into another ROADMAP row; contradictions with other packages;
+- anything relabelling a timeout or failure as provider or environment;
+- a mock instead of the real consumer; a weakened validator;
+- a decision left open for the Developer (the Intent requires one exact solution per decision).
+Files marked CUT were truncated by the audit's bounds; say so if that hides something you needed.
+At the budget, report what you have. Return JSON matching the schema: each finding has label, summary (<=200 chars), detail (<=1000 chars: defect, concrete failure, exact fix), paths (<=10).
+
+
+=== FILE .kogen/intents/drafts/shaping-quality/intent.yaml (15221 of 15221 bytes) ===
+id: 01a0d7a9-3642-720e-9809-e4962c3f1670
+slug: shaping-quality
+title: Improve Shaping quality
+commit_subject: Improve Shaping quality with audits and quick questions
+slug_history:
+  - slug: shaping-preflight-audit
+    note: >-
+      Renamed to shaping-quality on 2026-09-26 on the Shaper's direction
+      ("you should probably rename the intent / shaping-preflight-audit
+      doesn't suffice"; INTENT.md direction 28). The id is unchanged.
+status: draft
+revision_12_approval:

@@ -1,0 +1,84 @@
+FAIL	.kogen/config.yaml	error: patch failed: .kogen/config.yaml:14 error: .kogen/config.yaml: patch does not apply 
+FAIL	README.md	error: patch failed: README.md:921 error: README.md: patch does not apply 
+ok	lib/kogen/claude_code.ex
+ok	lib/kogen/codex.ex
+ok	lib/kogen/codex/environment.ex
+FAIL	lib/kogen/harness.ex	error: patch failed: lib/kogen/harness.ex:30 error: lib/kogen/harness.ex: patch does not apply 
+ok	lib/kogen/harness/claude.ex
+ok	lib/kogen/harness/codex.ex
+FAIL	lib/kogen/intent.ex	error: patch failed: lib/kogen/intent.ex:47 error: lib/kogen/intent.ex: patch does not apply 
+ok	lib/kogen/jev.ex
+FAIL	lib/kogen/shaping_audit.ex	error: lib/kogen/shaping_audit.ex: already exists in index 
+ok	lib/kogen/shaping_audit/auditor.ex
+FAIL	lib/kogen/shaping_audit/finding.ex	error: lib/kogen/shaping_audit/finding.ex: already exists in index 
+ok	lib/kogen/shaping_audit/jev_layer.ex
+FAIL	lib/kogen/shaping_audit/questions.ex	error: lib/kogen/shaping_audit/questions.ex: already exists in index 
+FAIL	lib/kogen/shaping_audit/report.ex	error: lib/kogen/shaping_audit/report.ex: already exists in index 
+FAIL	lib/mix/tasks/kogen.audit.ex	error: lib/mix/tasks/kogen.audit.ex: already exists in index 
+ok	priv/kogen/prompts/auditor.md
+ok	priv/kogen/shaping_audit/question-gate-v1.json
+ok	priv/kogen/shaping_audit/questions-v1.json
+ok	priv/kogen/shaping_audit/settled.json
+ok	test/kogen/configuration_support_contract_test.exs
+ok	test/kogen/harness_role_test.exs
+ok	test/kogen/intent_test.exs
+ok	test/kogen/shaping_audit_auditor_test.exs
+ok	test/kogen/shaping_audit_flow_test.exs
+ok	test/kogen/shaping_audit_jev_test.exs
+ok	test/kogen/shaping_audit_question_gate_test.exs
+FAIL	test/kogen/shaping_audit_task_test.exs	error: test/kogen/shaping_audit_task_test.exs: already exists in index 
+ok	test/support/shaping_audit/drafts/flow/asking-no-answers/evidence/probe-color/RESULT.md
+ok	test/support/shaping_audit/drafts/flow/asking-no-answers/intent.yaml
+ok	test/support/shaping_audit/drafts/flow/asking-no-answers/questions.md
+ok	test/support/shaping_audit/drafts/flow/asking-no-answers/scenarios.yaml
+ok	test/support/shaping_audit/drafts/flow/asking-no-evidence/evidence/probe-color/RESULT.md
+ok	test/support/shaping_audit/drafts/flow/asking-no-evidence/intent.yaml
+ok	test/support/shaping_audit/drafts/flow/asking-no-evidence/questions.md
+ok	test/support/shaping_audit/drafts/flow/asking-no-evidence/scenarios.yaml
+ok	test/support/shaping_audit/drafts/flow/asking-second-round/evidence/probe-color/RESULT.md
+ok	test/support/shaping_audit/drafts/flow/asking-second-round/intent.yaml
+ok	test/support/shaping_audit/drafts/flow/asking-second-round/questions.md
+ok	test/support/shaping_audit/drafts/flow/asking-second-round/scenarios.yaml
+ok	test/support/shaping_audit/drafts/flow/asking-technical/evidence/probe-color/RESULT.md
+ok	test/support/shaping_audit/drafts/flow/asking-technical/intent.yaml
+ok	test/support/shaping_audit/drafts/flow/asking-technical/questions.md
+ok	test/support/shaping_audit/drafts/flow/asking-technical/scenarios.yaml
+ok	test/support/shaping_audit/drafts/flow/assumed-without-reason/evidence/probe-color/RESULT.md
+ok	test/support/shaping_audit/drafts/flow/assumed-without-reason/intent.yaml
+ok	test/support/shaping_audit/drafts/flow/assumed-without-reason/questions.md
+ok	test/support/shaping_audit/drafts/flow/assumed-without-reason/scenarios.yaml
+ok	test/support/shaping_audit/drafts/flow/left-undecided/evidence/probe-color/RESULT.md
+ok	test/support/shaping_audit/drafts/flow/left-undecided/intent.yaml
+ok	test/support/shaping_audit/drafts/flow/left-undecided/questions.md
+ok	test/support/shaping_audit/drafts/flow/left-undecided/scenarios.yaml
+ok	test/support/shaping_audit/drafts/flow/not-ready/evidence/probe-color/RESULT.md
+ok	test/support/shaping_audit/drafts/flow/not-ready/intent.yaml
+ok	test/support/shaping_audit/drafts/flow/not-ready/questions.md
+ok	test/support/shaping_audit/drafts/flow/not-ready/scenarios.yaml
+ok	test/support/shaping_audit/drafts/flow/ready/evidence/probe-color/RESULT.md
+ok	test/support/shaping_audit/drafts/flow/ready/intent.yaml
+ok	test/support/shaping_audit/drafts/flow/ready/questions.md
+ok	test/support/shaping_audit/drafts/flow/ready/scenarios.yaml
+ok	test/support/shaping_audit/drafts/jev-clauses/INTENT.md
+ok	test/support/shaping_audit/drafts/jev-clauses/approval.md
+ok	test/support/shaping_audit/drafts/jev-clauses/evidence/README.md
+ok	test/support/shaping_audit/drafts/jev-clauses/head/docs/note.txt
+ok	test/support/shaping_audit/drafts/jev-clauses/questions.md
+ok	test/support/shaping_audit/drafts/jev-clauses/references.yaml
+ok	test/support/shaping_audit/drafts/jev-clauses/risks.yaml
+ok	test/support/shaping_audit/drafts/jev-clauses/scenarios.yaml
+ok	test/support/shaping_audit/drafts/jev-clauses/workdir/docs/note.txt
+ok	test/support/shaping_audit/drafts/jev-large/scenarios.yaml
+ok	test/support/shaping_audit/drafts/questions/INTENT.md
+ok	test/support/shaping_audit/drafts/questions/head/docs/note.txt
+ok	test/support/shaping_audit/drafts/questions/questions.md
+ok	test/support/shaping_audit/drafts/questions/scenarios.yaml
+ok	test/support/shaping_audit/fake_auditor
+ok	test/support/shaping_audit/fake_auditor_messages/empty.txt
+ok	test/support/shaping_audit/fake_auditor_messages/no-json.txt
+ok	test/support/shaping_audit/fake_auditor_messages/oversized.txt
+ok	test/support/shaping_audit/fake_auditor_messages/sixty-findings.txt
+ok	test/support/shaping_audit/fake_auditor_messages/three-findings.txt
+ok	test/support/shaping_audit/fake_jev_audit
+ok	test/support/shaping_audit/fake_jev_audit.ex
+ok	test/support/shaping_audit/fake_security_audit

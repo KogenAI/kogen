@@ -181,6 +181,53 @@ defmodule Kogen.Harness.Codex do
   def launch_expert(prompt, model, effort, context),
     do: launch_reader("expert", prompt, model, effort, context)
 
+  @doc "Launches one fresh blind auditor session with its findings schema."
+  def launch_auditor(prompt, model, effort, context) do
+    with_context(context, fn selected ->
+      dir = temporary_directory("auditor", Map.get(context, :tmp_dir))
+      schema_path = Path.join(dir, "auditor.schema.json")
+      File.write!(schema_path, Jason.encode!(Map.fetch!(context, :output_schema)))
+
+      try do
+        args = auditor_args(model, effort) ++ ["--output-schema", schema_path, "-"]
+
+        removed =
+          ~w(KOGEN_VERIFICATION_CONTEXT KOGEN_VERIFICATION_RETRY_LIMIT KOGEN_VERIFICATION_TARGETS KOGEN_EXPERT KOGEN_CODEX_CONTEXT_RECEIPT KOGEN_HARNESS_HOME)
+          |> Enum.map(&{&1, nil})
+
+        extra_env =
+          merge_environment(selected.env, [
+            {"KOGEN_ROLE", "auditor"},
+            {"GIT_OPTIONAL_LOCKS", "0"} | removed
+          ])
+
+        {output, exit_code} =
+          run_with_stdin(selected, selected.args ++ args, prompt, extra_env)
+
+        with {:ok, turn} <- parse_turn(decode_events(output), exit_code, output),
+             do: {:ok, %{session_id: turn.session_id, message: turn.message}}
+      after
+        File.rm_rf(dir)
+      end
+    end)
+  end
+
+  @doc false
+  def auditor_args(model, effort) do
+    ["exec"] ++
+      exec_flags(model, effort) ++
+      [
+        "--disable",
+        "multi_agent",
+        "--disable",
+        "apps",
+        "--disable",
+        "plugins",
+        "--disable",
+        "shell_snapshot"
+      ]
+  end
+
   defp launch_reader(role, prompt, model, effort, context) do
     with_context(context, fn selected ->
       removed =

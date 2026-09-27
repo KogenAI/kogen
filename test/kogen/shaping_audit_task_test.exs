@@ -2,7 +2,7 @@ Code.require_file("../support/shaping_audit/fixture.ex", __DIR__)
 Code.require_file("../support/compiled_fixture.exs", __DIR__)
 
 defmodule Kogen.ShapingAuditTaskTest do
-  use ExUnit.Case, async: true
+  use Kogen.IsolatedCase, async: true
   alias Kogen.ShapingAudit.{Fixture, Package, Report}
   @root Path.expand("../..", __DIR__)
 
@@ -41,7 +41,14 @@ defmodule Kogen.ShapingAuditTaskTest do
       err: fn line -> Agent.update(agent, &[{:err, line} | &1]) end
     }
 
-    code = Kogen.ShapingAudit.main(args, [root: root, env: %{}, io: io] ++ opts)
+    audit_args = if "--status" in args, do: args, else: ["--auditor" | args]
+
+    code =
+      Kogen.ShapingAudit.main(
+        audit_args,
+        [root: root, env: Fixture.audit_env!(root), io: io] ++ opts
+      )
+
     output = Agent.get(agent, &Enum.reverse/1)
     Agent.stop(agent)
     {code, output}
@@ -68,15 +75,17 @@ defmodule Kogen.ShapingAuditTaskTest do
     assert {:ok, report} = Report.read(root, "complete", loaded.revision)
 
     assert Map.keys(report) |> Enum.sort() ==
-             ~w(findings head layers package readiness revision route schema_version slug)
+             ~w(findings head layers not_audited_by_auditor package questions readiness revision route schema_version slug state)
 
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == 2
     assert report["slug"] == "complete"
     assert report["package"] == rel
     assert report["revision"] == loaded.revision
     assert report["head"] == Fixture.head(root)
     assert report["route"] == "codex"
-    assert report["layers"] == %{"deterministic" => %{"status" => "ok"}}
+    assert report["layers"]["deterministic"] == %{"status" => "ok"}
+    assert report["layers"]["auditor"]["status"] == "ok"
+    assert report["layers"]["jev"]["status"] == "ok"
     assert report["findings"] == []
     assert report["readiness"] == "ready"
     assert File.regular?(Path.join(Report.dir(root, "complete", loaded.revision), "report.json"))
@@ -132,9 +141,9 @@ defmodule Kogen.ShapingAuditTaskTest do
       end
 
       assert 2 =
-               Kogen.ShapingAudit.main(["complete"],
+               Kogen.ShapingAudit.main(["--auditor", "complete"],
                  root: root,
-                 env: %{"KOGEN_ROLE" => unquote(role)},
+                 env: Map.merge(Fixture.audit_env!(root), %{"KOGEN_ROLE" => unquote(role)}),
                  read: read
                )
 
@@ -238,7 +247,10 @@ defmodule Kogen.ShapingAuditTaskTest do
     add!(root2, "complete")
 
     assert 0 =
-             Kogen.ShapingAudit.main(["complete"], root: root2, env: %{"KOGEN_ROLE" => "shaper"})
+             Kogen.ShapingAudit.main(["--auditor", "complete"],
+               root: root2,
+               env: Map.merge(Fixture.audit_env!(root2), %{"KOGEN_ROLE" => "shaper"})
+             )
   end
 
   test "the mix task only delegates to the entry function and halts with its code" do
@@ -248,7 +260,18 @@ defmodule Kogen.ShapingAuditTaskTest do
     add!(root, "complete")
 
     {output, 0} =
-      Kogen.CompiledFixture.mix_task!(root, ["kogen.audit", "complete"], [{"KOGEN_ROLE", nil}])
+      Kogen.CompiledFixture.mix_task!(root, ["kogen.audit", "--auditor", "complete"], [
+        {"KOGEN_ROLE", nil},
+        {"KOGEN_HARNESS_HOME", nil},
+        {"KOGEN_HARNESS", Path.join(@root, "test/support/shaping_audit/fake_auditor")},
+        {"KOGEN_JEV_TRANSPORT", Path.join(@root, "test/support/shaping_audit/fake_jev_audit")},
+        {"KOGEN_JEV_SECURITY",
+         Path.join(@root, "test/support/shaping_audit/fake_security_audit")},
+        {"FAKE_AUDITOR_LOG_DIR", Path.join(root, ".kogen/runtime/fake-auditor")},
+        {"FAKE_JEV_LOG_DIR", Path.join(root, ".kogen/runtime/fake-jev-audit")},
+        {"FAKE_AUDITOR_MESSAGE", "empty"},
+        {"FAKE_JEV_ANSWERS", nil}
+      ])
 
     assert output =~ "ready"
     {:ok, rel} = Package.locate(root, "complete")
@@ -257,7 +280,8 @@ defmodule Kogen.ShapingAuditTaskTest do
 
     {_output, 2} =
       Kogen.CompiledFixture.mix_task!(root, ["kogen.audit", "--nope", "complete"], [
-        {"KOGEN_ROLE", nil}
+        {"KOGEN_ROLE", nil},
+        {"KOGEN_HARNESS_HOME", nil}
       ])
   end
 

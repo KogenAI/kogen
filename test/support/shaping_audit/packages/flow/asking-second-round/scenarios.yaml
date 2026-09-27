@@ -1,0 +1,11 @@
+- id: demo-scenario
+  given: something
+  when: something happens
+  then: something else
+  wrong_result: nothing
+  verified_by: [check]
+  proof:
+    offline: [test/kogen/demo_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: no paid target"
+    affected_paths: [lib/demo.ex]

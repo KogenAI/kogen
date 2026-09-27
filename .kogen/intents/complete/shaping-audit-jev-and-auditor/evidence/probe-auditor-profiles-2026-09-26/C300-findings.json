@@ -1,0 +1,121 @@
+{
+ "findings": [
+  {
+   "label": "self-audit-fails:questions-grammar",
+   "summary": "questions.md fails the Draft's own blocking rules: Assumed 5 has no Reason:, Assumed 7 has no Undo:, a duplicate ## Settled, and headings outside the fixed grammar.",
+   "detail": "Defect: Assumed 5 (the Jev deadline change to 60 s) has no `Reason:`. Assumed 7 (fix 8) has no `Undo:`. Item 15 sits under a first `## Settled` heading placed after Assumed 25, and then `## Settled` appears again. The headings `## Approval`, `## Recorded remaining failure` and `## History` are outside the fixed grammar that front-loaded-questions defines. Failure: once implemented, the audit raises blocking `assumption-without-reason` against this very package, and a strict parser may raise `package-invalid`. The Draft cannot be presented ready under its own contract. Fix: add Reason:/Undo: to Assumed 5 and 7. Merge the two Settled sections. Either list the extra headings in the grammar and say the parser ignores them, or move their content into Settled or History.",
+   "paths": [
+    ".kogen/intents/drafts/shaping-quality/questions.md",
+    ".kogen/intents/drafts/shaping-quality/scenarios.yaml"
+   ]
+  },
+  {
+   "label": "stale-approval-claim",
+   "summary": "questions.md ## Approval says revision 13 is approved (\"I approve\"), which contradicts approval.md (\"not approved; revision 13 awaits\").",
+   "detail": "Defect: questions.md opens with \"Approved by the Shaper on 2026-09-26 in this conversation: 'I approve'\u2026\". Those are the revision-12 approval words, and revision 12's Build IEf3rtZ8 failed. approval.md and intent.yaml (`revision_12_approval`: \"does not approve revision 13\") say revision 13 is unapproved. Failure: a Developer, a Reviewer or admission tooling that reads questions.md takes revision 13 as approved, and D1 human approval is misrepresented. Fix: relabel that section \"Historical: revision-12 approval\", or replace it with \"Not approved; see approval.md\".",
+   "paths": [
+    ".kogen/intents/drafts/shaping-quality/questions.md",
+    ".kogen/intents/drafts/shaping-quality/approval.md"
+   ]
+  },
+  {
+   "label": "repeat-failure:case-budget-unproven",
+   "summary": "All three prior Build failures were live-shaping-quality timeouts; that the cases fit in 600 s is still unproven, and the fallback is left open as a Shaper choice.",
+   "detail": "Defect: R9Oe4Fcp, SQyTuy3C and eHsCjP0V failed at live-shaping-quality. The proving runs aborted at 604\u2013618 s. Assumed 25 admits a saved Draft was never reached, and it moves the fit question onto the paid target itself. The 'Recorded remaining failure' section leaves \"raise budget vs faster profiles vs narrower cases\" to the Shaper. That is an open decision, and it contradicts Assumed 25's \"Undo: none\". Worst case: first question at 152 s, plus 2\u00d7180 s auditor, plus 60 s Jev, plus reshape turns, which is more than 600 s. The 10-minute reshape-chain cap is itself longer than the case budget. Direction 21 ('enough by design') is not met. Fix: prove one complete answering case under 600 s with a small replay or single-case run on the contract's prompt, driver and auditor profile. Also fix one exact fallback now, for example narrower fixture cases, and cap the per-case audit budget so the arithmetic is under 600 s by construction.",
+   "paths": [
+    ".kogen/intents/drafts/shaping-quality/questions.md",
+    ".kogen/intents/drafts/shaping-quality/risks.yaml",
+    "test/support/shaping_evaluation/driver.py"
+   ]
+  },
+  {
+   "label": "helper-stop-captures-root-id",
+   "summary": "The hook takes the root session id from the first stop, but Codex helpers start (84\u2013100 s) before the root's first stop, so a helper can become the recorded 'root'.",
+   "detail": "Defect: risk helper-thread-hooks says the hook \"records the root session id at the session's first stop and ignores other session ids\". Proving run 6 shows helpers spawned at 84 s and 100 s, and the root asking through the picker (not a stop) at 132 s. A helper turn end that fires the inherited -c Stop hook can therefore be the first stop. The hook then pins the helper's id and ignores every real root stop, so no audit ever gates the root. Whether helpers share the root's id is also left unprobed. Fix: identify the root deterministically. Either probe the Codex Stop-hook payload for a parent/agent discriminator and name it, or pin the thread id from the root's first hook event of type SessionStart/UserPromptSubmit. Add an offline flow test where a helper stops first.",
+   "paths": [
+    "lib/kogen/shaping_audit/stop_hook.ex",
+    ".kogen/intents/drafts/shaping-quality/risks.yaml"
+   ]
+  },
+  {
+   "label": "blind-proof:picker-questions",
+   "summary": "The paid observation and integrity check look only at asking revisions at stops, but Assumed 1 routes all questions through native pickers, which bypass the hook and never write to disk.",
+   "detail": "Defect: the front-loaded-questions paid_reason is \"ask routed product questions at stops\", and the integrity audit fails a case when an asking revision puts a technical question to the Shaper. Assumed 1 and risk codex-native-question-panel make the native picker the primary path, and picker questions bypass the question gate. Failure: a Codex root that asks technical or permission questions through request_user_input still passes live-shaping-quality, because the driver just presses Enter on the recommended option. So the key requirement (only product questions reach the Shaper) is not observed. Fix: have integrity.py classify the picker questions captured by the driver (the pty or transport log) with question-gate-v1, and fail on any routed-away question. Otherwise, drop the claim that live proves question routing.",
+   "paths": [
+    "test/support/shaping_evaluation/integrity.py",
+    "test/support/shaping_evaluation/driver.py",
+    ".kogen/intents/drafts/shaping-quality/scenarios.yaml"
+   ]
+  },
+  {
+   "label": "contradictory-prompt-text",
+   "summary": "shaping.md must state both \"paid or harness probes stay with the root\" and that the root delegates all probes, which replaces that line. The substring tests enforce both.",
+   "detail": "Defect: the Probing block's 'Probe mechanics' requires \"offline probes may go to helpers, but paid or harness probes stay with the root\". The Root-stays-idle block then says the root delegates every probe, including paid and harness probes, and that \"This replaces the probing handoff's 'paid or harness probes stay with the root'\". shape_task_test asserts the required passages as substrings. Failure: a Developer following the scenario literally ships both sentences, the tests pass, and the model gets contradictory instructions (directions 12 and 27 are broken). Fix: delete the 'paid or harness probes stay with the root' bullet from the required text, and add it to the list of refuted passages.",
+   "paths": [
+    "priv/kogen/prompts/shaping.md",
+    "test/kogen/shape_task_test.exs",
+    ".kogen/intents/drafts/shaping-quality/scenarios.yaml"
+   ]
+  },
+  {
+   "label": "controller-read-contradiction",
+   "summary": "deterministic-checks has controller_paths/0 exclude check.sh's scripts, yet wrong_result calls missing them wrong. It also adds an empty frozen_paths/0.",
+   "detail": "Defect: `then` defines controller_paths/0 as exactly .codex/hooks.json and verification_policy.py, and \"not check.sh, stop_runner.py or environment.py\". `wrong_result` lists \"misses the scripts check.sh runs\" as a wrong result. One of the two must be false, and the Developer cannot satisfy both. Separately, `VerificationPlan.frozen_paths/0` is new and always empty (\"#4's controller byte-freezes nothing\"). That is plumbing with no effect (directions 9 and 10). Fix: decide the list (the then clause, if #4's preflight/2 reads only those two files) and delete the check.sh clause from wrong_result. Remove frozen_paths/0 from the contract and the union.",
+   "paths": [
+    "lib/kogen/build/verification_plan.ex",
+    "lib/kogen/verification_policy.ex",
+    ".kogen/intents/drafts/shaping-quality/scenarios.yaml"
+   ]
+  },
+  {
+   "label": "unproven-auditor-flag",
+   "summary": "The Codex auditor argv carries --disable multi_agent, but Assumed 20 says the only flagged run was cut by a crash, so the flag's acceptance by 0.156.1 is unproven.",
+   "detail": "Defect: Assumed 20 keeps `--disable multi_agent` \"as a guard\", yet the A/B probe's flagged run never completed (n=1 on the unflagged side only). If the feature name is wrong or `codex exec` rejects it, every Codex auditor launch exits non-zero, the layer is `unavailable`, and every live-shaping-quality case ends not ready, which fails the paid target again. This breaks the Shaper's \"never go to Build with an unproven assumption\". Fix: run one tiny `codex exec --disable multi_agent` probe through Kogen's launch path and record it under evidence/probe-*/RESULT.md, or drop the flag and rely on the prompt.",
+   "paths": [
+    "lib/kogen/harness/codex.ex",
+    ".kogen/intents/drafts/shaping-quality/questions.md"
+   ]
+  },
+  {
+   "label": "live-shape-to-build-unproven",
+   "summary": "No probe proves the live-shape-to-build path at 7ed41f66 with the hook, Jev and a Claude auditor; the Draft's own paid-path-unproven rule would block it.",
+   "detail": "Defect: claude-shaping-under-hook selects live-shape-to-build and edits its owner test. None of the cited evidence (the proving runs were all live-shaping-quality/Codex, plus the panel and auditor A/B probes) names live-shape-to-build. That misses lesson 18, and the Draft's own `paid-path-unproven` would fire. Unchecked preflights: isolated-candidate-workspace's harness_home/HOME override may hide the login Keychain from `security find-generic-password -s dev.kogen.jev` (Jev unavailable leaves the report not_ready); the Claude `-p` auditor trust in the materialization dir; and the fixture's config copy of the new auditor keys. Fix: one helper-run small probe of the Claude Shaper Stop hook plus Jev plus the sonnet-5-low auditor in the fixture layout at 7ed41f66, recorded under evidence/probe-*/RESULT.md, before calling the Draft ready.",
+   "paths": [
+    "test/kogen/live_shape_to_build_test.exs",
+    "test/support/live_reviewer_rework_fixture.ex",
+    "lib/kogen/jev.ex"
+   ]
+  },
+  {
+   "label": "commit-subject-underspecified",
+   "summary": "commit_subject is \"required for new Drafts\" with no rule for what counts as new, and Assumed 3 still says Build writes the title and \"nothing changes\".",
+   "detail": "Defect: direction 29 makes commit_subject \"required-for-new-Drafts\", with a fallback to title for older packages. No mechanical criterion (field presence? a creation-date cutoff?) or check id enforces 'required', so the Developer has to decide. Assumed 3 says \"Build writes the title plus Kogen trailers\u2026 nothing changes there\", which contradicts the finish_publication change. Note too that this Build runs under main's controller, so its own commit uses `title`, not commit_subject (D9). Fix: state one rule, for example \"commit-subject-format flags a missing commit_subject on every Draft; Build falls back to title only when the key is absent\". Name the test (commit_provenance_test or intent_test) and correct Assumed 3.",
+   "paths": [
+    "lib/kogen/intent.ex",
+    "lib/kogen/build.ex",
+    "test/kogen/commit_provenance_test.exs",
+    ".kogen/intents/drafts/shaping-quality/questions.md"
+   ]
+  },
+  {
+   "label": "config-consumers-unguarded",
+   "summary": "New auditor keys in .kogen/config.yaml reach consumers outside the guarded list (live_reviewer_rework_fixture.ex, compatibility.ex, other config-writing tests).",
+   "detail": "Defect: the Intent adds four `auditor` route entries and a Kogen.Intent :auditor role. references.yaml names test/support/live_reviewer_rework_fixture.ex and lib/kogen/codex/compatibility.ex as copying the checkout or config, but neither is in may_change_guarded_paths, and the contract doesn't say whether read_config treats `auditor` as required. If it is required, every test or fixture that writes a minimal route config fails validation and the Build hits guarded-path failures. Fix: state that the `auditor` keys are optional in read_config and validated only when the audit launches, with an intent_test asserting that an auditor-less config still loads. Or guard and list every config writer. The CUT scenarios (auditor-setting) may cover this; I could not verify.",
+   "paths": [
+    ".kogen/config.yaml",
+    "lib/kogen/intent.ex",
+    "test/support/live_reviewer_rework_fixture.ex",
+    "lib/kogen/codex/compatibility.ex"
+   ]
+  },
+  {
+   "label": "audit-truncation",
+   "summary": "CUT files hide 10 of 12 scenarios, the rest of deterministic-checks, and INTENT.md's scope, Non-goals and lessons, so those were not audited.",
+   "detail": "INTENT.md (24000/40259), scenarios.yaml (24000/86446), questions.md (24000/57523) and lib/kogen/intent.ex (790/25669) were truncated. I could not check the following: auditor-setting and launch_auditor/4 callers, research-helpers (the shaper worker Edit/Write and web tools must not leak to Reviewer scouts via the shared helper(:scout)), evaluation-* and claude-shaping-under-hook selectors, the direction-34 build-reliability overbroad fixture, the paid-target-overbroad rule's place in the mechanical set, ledger 'Python tests as far as they are listed' (open), and the claim that normalize_intent accepts commit_subject. Re-audit with those files uncut.",
+   "paths": [
+    ".kogen/intents/drafts/shaping-quality/scenarios.yaml",
+    ".kogen/intents/drafts/shaping-quality/INTENT.md"
+   ]
+  }
+ ]
+}

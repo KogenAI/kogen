@@ -123,6 +123,43 @@ defmodule Kogen.Harness.Claude do
   def launch_expert(prompt, model, effort, context),
     do: launch_reader("expert", prompt, model, effort, context)
 
+  @doc "Launches one fresh blind auditor session with its findings schema."
+  def launch_auditor(prompt, model, effort, context) do
+    with_context(context, fn resolved ->
+      session_id = uuid4()
+
+      args =
+        ["-p", "--output-format", "stream-json", "--verbose", "--disallowedTools"] ++
+          disallowed_tools("auditor") ++
+          [
+            "--model",
+            model,
+            "--effort",
+            effort,
+            "--dangerously-skip-permissions",
+            "--setting-sources",
+            "project",
+            "--strict-mcp-config",
+            "--settings",
+            settings_path(),
+            "--json-schema",
+            Jason.encode!(Map.fetch!(resolved, :output_schema))
+          ] ++ session_args({:fresh, session_id})
+
+      role_environment = [
+        {"KOGEN_ROLE", "auditor"},
+        {"GIT_OPTIONAL_LOCKS", "0"},
+        {"KOGEN_CODEX_CONTEXT_RECEIPT", nil},
+        {"KOGEN_HARNESS_HOME", nil} | expert_removed_environment()
+      ]
+
+      {output, exit_code} = run_with_stdin(resolved, args, prompt, role_environment)
+
+      with {:ok, turn} <- parse_stream(output, exit_code, session_id, model),
+           do: {:ok, expert_response(turn)}
+    end)
+  end
+
   defp launch_reader(role, prompt, model, effort, context) do
     with_context(context, fn resolved ->
       session_id = uuid4()
@@ -221,7 +258,7 @@ defmodule Kogen.Harness.Claude do
   end
 
   @doc "Tools denied to a role: every built-in agent, and editing for the Reviewer and Expert."
-  def disallowed_tools(role) when role in ["reviewer", "expert"],
+  def disallowed_tools(role) when role in ["reviewer", "expert", "auditor"],
     do: builtin_agent_rules() ++ @editing_tools
 
   def disallowed_tools(_role), do: builtin_agent_rules()

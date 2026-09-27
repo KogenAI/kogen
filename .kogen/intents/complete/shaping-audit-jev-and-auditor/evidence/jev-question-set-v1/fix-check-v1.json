@@ -1,0 +1,27 @@
+{
+ "id": "fix-check",
+ "source": "plan/research/jev-trials-2026-09-25/trial3.py (ADDR), jev-uses.md use 1: 26/26 (13 true fixes, 13 unrelated pairings)",
+ "model": "jev-1.13.0",
+ "state": [
+  "finding",
+  "scenario {id, given, when, then, wrong_result, evidence}"
+ ],
+ "question": {
+  "type": "choice",
+  "instructions": {
+   "task": "Does the revised scenario `scenario` address finding `finding`?",
+   "rules": [
+    "addressed: the scenario now states the requirement or control the finding asked for, or narrows the claim as the finding suggested.",
+    "partly: it addresses some of the finding.",
+    "not_addressed: the scenario does not deal with the finding's defect."
+   ]
+  },
+  "criteria": {
+   "addressed": "The scenario now contains what the finding asked for.",
+   "partly": "It addresses part of the finding.",
+   "not_addressed": "The scenario does not deal with the finding's defect."
+  }
+ },
+ "gate": "not_addressed >= 0.6 keeps the finding open; partly never closes it",
+ "severity": "advisory"
+}

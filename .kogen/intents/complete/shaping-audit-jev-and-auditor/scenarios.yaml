@@ -1,0 +1,759 @@
+# Slice 2 of 4 of shaping-quality (INTENT.md). Offline only. Shaped against develop b775974b. It extends slice 1's
+# landed code (6b4376e9): Kogen.ShapingAudit.main/2 and audit/2, Report, Finding, Questions.parse/1, Fixture.repo!/1
+# and Fixture.add_draft!/3, and mix kogen.audit.
+# Fakes (all audit-only; the cataloged fake_jev, fake_security, fake_claude and fake_codex stay unedited):
+#   - test/support/shaping_audit/fake_jev_audit (KOGEN_JEV_TRANSPORT) replays scripted answers (FAKE_JEV_ANSWERS)
+#     and logs each request under FAKE_JEV_LOG_DIR. Its default is a per-question non-gate table, so it raises no
+#     finding; `<question id>@<match>` keys script one item (INTENT.md "Tests and fixtures").
+#     Its helper module test/support/shaping_audit/fake_jev_audit.ex builds scripted distributions.
+#   - test/support/shaping_audit/fake_security_audit (KOGEN_JEV_SECURITY) is the Keychain. It logs each call to
+#     FAKE_SECURITY_LOG and reports the item missing with FAKE_SECURITY_ITEM=missing.
+#   - test/support/shaping_audit/fake_auditor (KOGEN_HARNESS) answers `auth status` with loggedIn true and exit 0
+#     before reading stdin, and echoes the requested --session-id on the Claude protocol. Per launch it appends a line
+#     to `launches` and logs argv, `pwd -P`, environment, stdin, `git rev-parse HEAD` of its working directory, the
+#     sorted list of its files outside .git/ and (Codex) the --output-schema file under FAKE_AUDITOR_LOG_DIR. It
+#     replays one of fake_auditor_messages/{three-findings,sixty-findings,oversized,empty,no-json}.txt
+#     (FAKE_AUDITOR_MESSAGE), can sleep (FAKE_AUDITOR_SLEEP_SECONDS), can do one scripted write (FAKE_AUDITOR_WRITE)
+#     and can exit 1 after logging and before any output (FAKE_AUDITOR_FAIL=1).
+#   - test/support/managed_codex_fixture.py gains the trace keys `cwd` and `project_root` (KOGEN_PROJECT_ROOT), nothing
+#     else (INTENT.md "Tests and fixtures").
+# Environment (INTENT.md "Tests and fixtures"): every test file below uses Kogen.IsolatedCase; every main/2 call
+# passes an explicit env holding the audit-only KOGEN_JEV_TRANSPORT and KOGEN_JEV_SECURITY; every mix_task!/3 call
+# passes {"KOGEN_ROLE", nil} and {"KOGEN_HARNESS_HOME", nil}; Fixture.audit_env!/1 deletes both from the test VM.
+# The calibration copies test/support/shaping_audit/calibration/{question-set-v1.json,fix-check-v1.json,
+# question-gate-v1.question.json} are byte copies of this package's evidence files (SHA-256 in INTENT.md).
+# This slice's fixture packages live under test/support/shaping_audit/packages/ (added with source: "packages"),
+# never under drafts/, which slice 1's A3 walks. Tests never read .kogen/intents/** of the real checkout.
+# Each scenario's `tests` key lists the ExUnit tests to write or change, named exactly as quoted (the label, such
+# as J1, is not part of the name); the ledger binds rows by test name. A test that only checks an exit status, a
+# count or a substring, where exact values are listed, does not prove the scenario.
+- id: jev-contract-questions
+  given: >-
+    A fixture checkout (Fixture.repo!/1) with these fixture packages under test/support/shaping_audit/packages/:
+    - `jev-clauses` plants one case for every question: an unobservable clause, a scoping clause, an uncaught wrong
+      result, an offline-checkable paid observation, a provider-only clause in an offline scenario, a scenario that
+      requires a non-goal, an Outcome item with no scenario, a Settled entry without provenance, and one supported
+      and one contradicted `path:line` claim on `docs/note.txt`;
+    - the clean counterpart of each planted case;
+    - the scenarios `fix-target` and `unrelated-target`, which J6's `fixed` dispositions name (the fixed pair is
+      three-findings' finding 1 with `fix-target`; the unrelated pair is its finding 2 with `unrelated-target`);
+    - the sentinel `SENTINEL-NOT-ALLOWLISTED` in each non-allowlisted package file (`risks.yaml`, `approval.md`,
+      `references.yaml`, `evidence/README.md`);
+    - `jev-large`, with a clause over 16 KiB, and enough small items to make a request over 64 KiB.
+
+    `jev-clauses` has no deterministic finding (J14 asserts `layers.deterministic == %{"status" => "ok"}`). The test
+    commits `docs/note.txt` to the fixture repository and then writes `SENTINEL-WORKING-TREE` into its
+    working-tree copy without committing.
+  when: >-
+    `Kogen.ShapingAudit.main(["--auditor", slug], root: root, env: Fixture.audit_env!(root))` runs on jev-clauses,
+    with the fake auditor replaying `empty` (audit_env!'s default) unless a test names another message, and the fake
+    transport scripted at, and just below, each entry's own gate (the `gate` field of question-set-v1.json). It runs
+    again with the fake returning:
+    - HTTP 500, 401 and 422;
+    - 429 twice, then success;
+    - invalid JSON;
+    - a missing answer;
+    - an unknown option id;
+    - an echoed key;
+    - a sleep past the layer deadline, with main/2's `jev_deadline_ms: 200`.
+
+    It runs with the Keychain item missing. `Kogen.Jev.request_body/2` is called for a fixed Build-handoff input.
+  then: >-
+    - Shipped table: decoding `priv/kogen/shaping_audit/questions-v1.json` without its `fix-check` key equals the
+      decoded calibration copy `question-set-v1.json`, and its `fix-check` equals the decoded `fix-check-v1.json`.
+      The copies' SHA-256s equal the INTENT.md literals.
+    - Gates: each of the 14 entries raises its finding at its gate and not just below it. Every Jev finding has
+      `layer: jev` and `severity: advisory`. With only advisory Jev findings and the other layers `ok`, the report's
+      readiness is `ready`.
+    - Planted and clean cases: each planted case raises its finding, and each clean counterpart raises none.
+    - Citations: a citation request carries the claim and at most 40 numbered lines read from the materialization,
+      never from the working tree. `SENTINEL-WORKING-TREE` is never sent.
+    - Fix-check: only auditor findings with a `fixed` disposition are fix-checked, each paired with the scenario its
+      disposition names. A finding is marked `still_open` when `not_addressed >= 0.6` or `partly` is the most
+      probable option, so `partly` never closes it.
+    - Privacy: from the fake's request log, no request contains `SENTINEL-NOT-ALLOWLISTED`,
+      `SENTINEL-WORKING-TREE` or a unified-diff header (`diff --git`), and only `clause-provider-only` and fix-check
+      requests carry a scenario's `given` or `when`.
+    - Size limits: jev-large raises advisory `jev-item-too-large` for the big clause, which is not sent, and advisory
+      `jev-request-too-large`.
+    - Load: at most 4 requests are in flight at once.
+    - Failures: a 429 answered twice is retried and then answered, and the layer is `ok`. Every other failure mode
+      gives `layers.jev.status` `unavailable`, a reason naming the failure, exactly one Jev finding
+      (`jev-unavailable`, advisory, scope `environment`) and no other Jev finding, and readiness `not_ready`.
+    - Keychain: with the item missing, the layer is `unavailable`, and its reason contains `security
+      add-generic-password -s dev.kogen.jev`. The transport is never called, and the Keychain log names only the
+      service `dev.kogen.jev`.
+    - Stored data: `layers.jev.requests` holds the SHA-256 of every request body sent and `layers.jev.answers` the
+      parsed answers per digest; the report never holds a response body.
+    - Build handoff: `Kogen.Jev.request_body/2` for the fixed input is byte-identical to its value at b775974b
+      (`lib/kogen/jev.ex` is unchanged since 3531023d), and `test/kogen/jev_test.exs` passes unchanged.
+    - README: it gains "### Jev in the Shaping audit", stating the `dev.kogen.jev` setup command, the allowlist and
+      that Jev's answers are advisory.
+  wrong_result: >-
+    Any of these:
+    - questions are reworded or dropped;
+    - the shipped table is compared against a `.kogen/intents/` path (the Candidate's latent defect);
+    - whole files are sent;
+    - citation lines come from the working tree;
+    - `partly` closes a finding;
+    - an advisory Jev answer blocks readiness;
+    - an outage passes;
+    - the key falls back to `ai.typesafe.api`;
+    - the Jev executable is read from anywhere but main/2's env;
+    - the Build handoff changes;
+    - a smoke test that checks one planted case, or only an exit status;
+    - fixture-specific shortcuts, such as matching the planted sentences instead of reading Jev's answers, or a
+      `:jev_transport` option replacing the transport.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_jev_test.exs with the fake transport and Keychain logs; test/kogen/jev_test.exs unchanged.
+  tests:
+    - >-
+      J1 "the shipped question table equals the calibration copies": assert the lowercase-hex
+      :crypto.hash(:sha256, File.read!("test/support/shaping_audit/calibration/question-set-v1.json")) equals
+      "6057cdd1169cc62ec746efd07851771dcc9106c94f11fb89ec8380a5419353ef", and fix-check-v1.json's equals
+      "d71c560cc152bacc81a459b7913f9d1d75af5e5e085b47bc88f041cd1d569690". Assert Map.delete(shipped, "fix-check")
+      == Jason.decode!(question set copy) and shipped["fix-check"] == Jason.decode!(fix-check copy). Refute that the
+      test file's own source contains the needle built at run time as Enum.join([".kogen", "intents"], "/"), so the
+      assertion's own text never matches it.
+    - >-
+      J2 "#{id} raises #{rule} at its gate and not just below it": one generated test per entry of the shipped
+      table, 14 in all; the companion test "the gate table covers exactly the 14 shipped entry ids" asserts the
+      test's table ids == the shipped entry ids, in order. Scripted at the gate: the report holds exactly one
+      finding with that rule on the planted item, with layer "jev" and severity "advisory". Scripted 0.01 below the
+      gate (or the non-gate option): no finding with that rule.
+    - >-
+      J3 "planted cases raise their findings and clean counterparts raise none": run once with every planted item
+      scripted at its gate. Assert the set of Jev rules equals exactly then-unobservable,
+      wrong-result-not-caught, paid-observation-offline-checkable, provider-behaviour-in-offline-scenario,
+      non-goal-leakage, outcome-without-scenario, question-without-provenance and citation-contradicted, each once
+      and each on its planted scenario or entry; the scoping clause raises no then-without-described-proof; the clean
+      counterparts and the supported claim raise nothing.
+    - >-
+      J4 "citation lines come from the HEAD materialization, never the working tree": the logged citation request for
+      the supported claim holds the committed text of `docs/note.txt`, at most 40 lines each prefixed with its line
+      number, and no request contains "SENTINEL-WORKING-TREE".
+    - >-
+      J5 "never sends risks.yaml, references.yaml, approval.md, evidence/ or the working tree": for every logged
+      request body, refute "SENTINEL-NOT-ALLOWLISTED", "SENTINEL-WORKING-TREE" and "diff --git"; and every logged
+      request whose state has a "given" or "when" key asks only clause-provider-only or fix-check.
+    - >-
+      J6 "the fix-check keeps a partly-addressed fix open and closes only at not_addressed below 0.6": one
+      generated case per distribution, each on a fresh fixture. With FAKE_AUDITOR_MESSAGE=three-findings, a first
+      `--auditor` run yields the three aud- ids. The test then appends to jev-clauses' questions.md `## Dispositions`
+      "<id 1>: fixed — scenario fix-target now lists test/kogen/x_test.exs in proof.offline" and "<id 2>: fixed —
+      scenario unrelated-target was reworded" (a Draft edit, so the confirming run launches), and runs again with
+      FAKE_JEV_ANSWERS "fix-check@<id 1>" scripted as a full distribution and "fix-check@<id 2>" at not_addressed 0.95.
+      Assert: exactly two fix-check requests, whose state.scenario.id is "fix-target" for id 1 and
+      "unrelated-target" for id 2; finding 3 has no fix-check request and stays open; id 2 has still_open true. For
+      id 1, not_addressed 0.60 / addressed 0.40 gives still_open true; not_addressed 0.59 / addressed 0.41 gives
+      still_open false; partly 0.90 / not_addressed 0.10 gives still_open true.
+    - >-
+      J7 "size limits raise advisory findings": jev-large's report holds jev-item-too-large and
+      jev-request-too-large, both severity "advisory", and no logged request contains the big clause's first 64
+      bytes.
+    - >-
+      J8 "at most 4 requests run at once": the fake records each call's entry and exit time. Assert the maximum
+      overlap is at most 4 and at least 2.
+    - >-
+      J9 "#{label} makes the layer unavailable with a precise reason": one generated test each, with the reason
+      substring: HTTP 500 "HTTP 500"; 401 "HTTP 401"; 422 "HTTP 422"; invalid JSON "not a JSON object"; a missing
+      answer "missing"; an unknown option id "was not sent"; an echoed key (the report's bytes never contain
+      "kogen-offline-sentinel-jev-key"); the deadline "deadline". Assert layers.jev.status == "unavailable", the Jev
+      findings are exactly [jev-unavailable] with severity "advisory" and scope "environment", and readiness
+      "not_ready".
+    - >-
+      J10 "429 twice then success still answers": the fake log shows 3 attempts of the same request, and
+      layers.jev.status == "ok".
+    - >-
+      J11 "a missing Keychain item names the setup command": with FAKE_SECURITY_ITEM=missing, layers.jev.reason
+      contains "security add-generic-password -s dev.kogen.jev", the transport log is empty, and every Keychain log
+      line names "dev.kogen.jev" and none names "ai.typesafe.api".
+    - >-
+      J12 "the Build handoff request body is byte-identical": Kogen.Jev.request_body/2 for the fixed input equals a
+      literal captured at b775974b and pinned in the test.
+    - >-
+      J14 "with only advisory Jev findings and the other layers ok, an --auditor audit is ready": clause-kind
+      scripted at its gate on jev-clauses gives exactly the advisory then-unobservable finding(s),
+      layers.deterministic == %{"status" => "ok"}, layers.jev.status and layers.auditor.status "ok", readiness
+      "ready" and main/2 returning 0.
+    - >-
+      J15 "the report stores request digests and parsed answers, never response bodies": layers.jev.requests ==
+      the sorted lowercase-hex SHA-256 of the logged request bodies; Map.keys(layers.jev.answers) equals that list;
+      each answers value holds only question ids with choice, confidence and probabilities (or noul); and the
+      report.json bytes contain none of "input_tokens", "usage" or any logged response body.
+    - >-
+      J13 "the README states the setup step, the allowlist and that Jev's answers are advisory": whitespace-normalised
+      substrings "### Jev in the Shaping audit", "security add-generic-password -s dev.kogen.jev", "never sends a
+      diff" and "advisory".
+  proof:
+    offline: [test/kogen/shaping_audit_jev_test.exs, test/kogen/jev_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the audit-only fake transport logs exact requests; Jev accuracy is the recorded calibration, and the real API is observed in slice 3's live-shaping-quality"
+    affected_paths:
+      - lib/kogen/jev.ex
+      - lib/kogen/shaping_audit/jev_layer.ex
+      - lib/kogen/shaping_audit.ex
+      - lib/kogen/shaping_audit/report.ex
+      - priv/kogen/shaping_audit/questions-v1.json
+      - README.md
+      - test/kogen/shaping_audit_jev_test.exs
+      - test/support/shaping_audit/fake_jev_audit
+      - test/support/shaping_audit/fake_jev_audit.ex
+      - test/support/shaping_audit/fake_security_audit
+      - test/support/shaping_audit/calibration
+      - test/support/shaping_audit/packages/jev-clauses
+      - test/support/shaping_audit/packages/jev-large
+
+- id: question-gate-routes-questions
+  given: >-
+    A fixture package `questions` (test/support/shaping_audit/packages/questions) in the asking state. Its
+    `## Ask the Shaper` holds:
+    1. a product question;
+    2. a technical question;
+    3. a question already answered by DIRECTION 1.13 ("Does plain Kogen always require explicit human approval of
+       each Intent?");
+    4. a related-topic product question that a naive citation would answer wrongly;
+    5. a question to split off requested scope.
+
+    Its `## Settled` holds one entry, "1. Reports are JSON files.". A copy of the package in the autonomous state (no `## Ask the Shaper` entry; it keeps a valid scenarios.yaml and a clean deterministic layer, so the auditor is not skipped) is audited with `--auditor` and
+    the fake auditor replaying three-findings. The fake transport returns scripted answers at and around each
+    threshold.
+  when: >-
+    The audit routes each entry and each auditor finding through the gate.
+  then: >-
+    - Shipped files: `priv/kogen/shaping_audit/question-gate-v1.json` is a byte copy of the calibration file (SHA-256
+      `18de817ba4ee6de027b28f289635d90bc313680ef8880e87afcf1d0039198446`), and its `product_ux` rule names
+      "splitting or deferring any requested scope".
+    - Settled list: `priv/kogen/shaping_audit/settled.json`'s `entries` ids are exactly `dir-1.7`, `dir-1.11-live`,
+      `dir-1.12`, `dir-1.13`, `dir-1.15`, `dir-1.16`, `dir-1.17`, `shp-auditor-profile` and `shp-wait-only-product`,
+      in that order. Each `text` is byte-equal to the calibration `SETTLED` text. No `source` names `.kogen/intents/`.
+      The package's `## Settled` entries are appended at run time after the nine, as `package-<n>`, and
+      `settled.json` is never written.
+    - Routing:
+      - cite at `already_settled 0.80`, `settled_by dir-1.13 0.80` and `confirm 0.60`;
+      - with `confirm 0.59`, never cite;
+      - controller at `technical 0.50`;
+      - the Shaper at `technical 0.49`;
+      - the related-topic control (`already_settled 0.85`, `confirm 0.45`) routes to the Shaper;
+      - the split question is never cited or handed to the controller.
+    - Asking-state findings:
+      - a controller-routed entry raises blocking `technical-question-to-shaper <n>`, whose message is "question <n>
+        is technical: decide it and record it under ## Settled";
+      - a cited entry raises blocking `question-already-settled <n>`, whose message is "question <n> is already
+        settled by `dir-1.13` — move it under ## Settled with the citation";
+      - both findings are disputable.
+    - Autonomous state: an auditor finding routed to the Shaper keeps route `shaper`, and its message ends "(routed
+      to the Shaper: in the autonomous state this becomes a listed assumption, never a question.)". A technical
+      finding gets route `controller`.
+    - Stored route: each `layers.jev.routes` entry keeps its item, route, distributions, the model `jev-1.13.0`
+      and the wording version `question-gate-v1`.
+    - Request shape: a gate request holds exactly the questions `gate` and `settled_by` (as calibrated), a confirm
+      request holds exactly `confirm`, and neither holds a Kogen.Jev status or objection question. The gate
+      question's instructions name technical, product_ux and already_settled as the only valid answers. One
+      out-of-vocabulary answer is re-asked once. A second makes the layer `unavailable`.
+    - No `finding-routing` file ships under `priv/kogen/shaping_audit/`.
+  wrong_result: >-
+    Any of these:
+    - splits count as technical;
+    - a citation is accepted on topic similarity;
+    - a cited entry disappears without a record;
+    - a routed-to-Shaper finding becomes a question after the answers;
+    - the gate question shares a request with Kogen.Jev's objection questions;
+    - an invalid answer silently passes;
+    - `shp-one-build` or a `.kogen/intents/` source ships;
+    - a smoke test that checks one route or only an exit status;
+    - fixture-specific shortcuts, such as routing by keywords in the question text instead of by Jev's answers.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_question_gate_test.exs with the fake transport's request log.
+  tests:
+    - >-
+      G1 "the shipped question-gate-v1 table is a byte copy of the calibration file": assert the lowercase-hex
+      SHA-256 of priv/kogen/shaping_audit/question-gate-v1.json and of the calibration copy both equal
+      "18de817ba4ee6de027b28f289635d90bc313680ef8880e87afcf1d0039198446", and the decoded product_ux rule contains
+      "splitting or deferring any requested scope".
+    - >-
+      G2 "settled.json holds exactly the nine calibrated decisions": assert the ids list above, each text equals a
+      literal copied from calibrate_gate_v3.py SETTLED, and no source contains ".kogen/intents".
+    - >-
+      G3 "cite at the threshold, never just below confirm": entry 3 scripted at the thresholds gives exactly one
+      finding "question-already-settled 3" with the message above; with confirm 0.59 the report has no
+      question-already-settled finding and the layers.jev.routes entry for item "question 3" has route "shaper".
+    - >-
+      G4 "controller at 0.50 technical, the Shaper just below": entry 2 at technical 0.50 gives exactly one finding
+      "technical-question-to-shaper 2" with the message above and disputable true; at 0.49 no finding, and its
+      layers.jev.routes entry has route "shaper".
+    - >-
+      G5 "the related-topic control and the split question route to the Shaper": no finding for entries 4 and 5,
+      and their layers.jev.routes entries have route "shaper".
+    - >-
+      G6 "auditor findings in the autonomous state never become questions": of the three auditor findings, the one
+      scripted product_ux has route "shaper" and its message ends with the exact suffix above; the one scripted
+      technical 0.90 has route "controller"; state is "autonomous" and no finding id starts with
+      "technical-question-to-shaper" or "question-already-settled".
+    - >-
+      G7 "the gate goes in its own request naming its three answers; one invalid answer is re-asked": from the fake
+      log, the question ids of every request holding "gate" are exactly ["gate", "settled_by"], of every request
+      holding "confirm" exactly ["confirm"], and no such request holds a Kogen.Jev status or objection question id;
+      the gate instructions contain "technical", "product_ux" and "already_settled". "gate@<entry 1 text>" scripted
+      as {"sequence": [["no_objection", 1.0], ["product_ux", 1.0]]} gives 2 gate requests for entry 1 and
+      layers.jev.status "ok"; "no_objection" twice gives layers.jev.status "unavailable".
+    - >-
+      G9 "stored routes keep distributions, model and wording version; the package's Settled entries are appended at
+      run time": every layers.jev.routes entry has exactly the keys item, route, settled_by, distributions, model and
+      wording_version, with model "jev-1.13.0" and wording_version "question-gate-v1", and distributions.gate holds
+      probabilities for exactly technical, product_ux and already_settled; every logged gate request's
+      state.settled ids are the nine shipped ids followed by "package-1", whose text is "Reports are JSON files.";
+      and the SHA-256 of priv/kogen/shaping_audit/settled.json is the same before and
+      after the run.
+    - >-
+      G8 "no finding-routing file ships": File.ls!("priv/kogen/shaping_audit") contains no name matching
+      "finding-routing".
+  proof:
+    offline: [test/kogen/shaping_audit_question_gate_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: scripted Jev answers exercise every branch; accuracy is the recorded calibration"
+    affected_paths:
+      - lib/kogen/shaping_audit/jev_layer.ex
+      - lib/kogen/shaping_audit/questions.ex
+      - lib/kogen/shaping_audit/finding.ex
+      - priv/kogen/shaping_audit/question-gate-v1.json
+      - priv/kogen/shaping_audit/settled.json
+      - test/kogen/shaping_audit_question_gate_test.exs
+      - test/support/shaping_audit/calibration
+      - test/support/shaping_audit/packages/questions
+
+- id: questions-md-states
+  given: >-
+    A fixture checkout and fixture packages under `test/support/shaping_audit/packages/flow/`, each with an
+    `intent.yaml` holding its slug. The deterministic layer is real, and only Jev (the gate) is faked.
+    - `asking-no-answers`: only `intent.yaml`, `questions.md` and `evidence/probe-color/RESULT.md`, with one
+      product `## Ask the Shaper` entry carrying `Question:`, `Recommendation:` and
+      `Evidence: evidence/probe-color/RESULT.md`, and no `scenarios.yaml`.
+    - `asking-technical`: the same, plus entry 2, technical.
+    - `asking-no-evidence`: one entry with no `Evidence:` line.
+    - `asking-second-round`: `## Shaper answers` recorded, and a new `## Ask the Shaper` entry 1.
+    - `left-undecided`: a complete Draft with one `## Left undecided` entry with a recommendation.
+    - `assumed-without-reason`: a complete Draft whose `## Assumed` entry 1 has `Reason:` but no `Undo:`.
+    - `not-ready`: a complete Draft with an unguarded affected path.
+    - `ready`: a complete Draft with two `## Assumed` entries (with Reason and Undo), one `## Left undecided`
+      entry and a `## History` section.
+  when: >-
+    `Kogen.ShapingAudit.main(["--auditor", slug], root: root, env: Fixture.audit_env!(root))` audits each package,
+    with the fake auditor replaying empty.
+  then: >-
+    - asking-no-answers: `state: asking`, `readiness: asking`, exit 1, and findings `[]`. There is no
+      `package-invalid` for the missing `scenarios.yaml`, `layers.deterministic` is `skipped`, the fake Jev log holds
+      only gate requests, and the auditor layer is `skipped` with no launch.
+    - asking-technical: readiness `asking` and exactly one finding, blocking `technical-question-to-shaper 2`.
+    - asking-no-evidence: readiness `asking` and exactly one finding, blocking, not disputable
+      `recommendation-without-evidence 1`.
+    - asking-second-round: findings `[]` and readiness `asking`, the same as a first round (no
+      `question-after-answers` rule).
+    - left-undecided: exit 0 and readiness `ready`. The entry never blocks and stays under `## Left undecided`.
+      `questions.sections["Left undecided"]` holds it with its recommendation, and the package's bytes are unchanged.
+    - assumed-without-reason: exit 1, readiness `not_ready`, and blocking `assumption-without-reason 1`, not
+      disputable.
+    - not-ready: exit 1 and readiness `not_ready`, with `unguarded-affected-path` among the findings.
+    - ready: exit 0 and readiness `ready`. `questions.sections["Assumed"]` holds both entries, and
+      `["Left undecided"]` holds one, with its recommendation. `## History` is ignored.
+  wrong_result: >-
+    Any of these:
+    - a first question stop is blocked for a missing scenarios.yaml;
+    - Jev contract questions or the auditor run while asking;
+    - a second round of questions is blocked;
+    - an item left undecided gets decided or moved;
+    - an assumption without Undo passes;
+    - the Candidate's FakeDeterministic or a `:layers` option replaces the real layer;
+    - a smoke test that checks only exit codes;
+    - fixture-specific shortcuts, such as keying behaviour on the fixture directory names.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_flow_test.exs runs main/2 on each package with the real deterministic layer.
+  tests:
+    - >-
+      F1 "asking with a product question and evidence: readiness asking, no finding, only gate requests": assert
+      main/2 returns 1, readiness "asking", state "asking", findings [], layers.deterministic.status "skipped",
+      every logged Jev request's question id is the gate's, layers.auditor.status "skipped", and the fake auditor's
+      log directory has no argv file.
+    - >-
+      F2 "asking with a technical entry: technical-question-to-shaper": assert the finding ids are exactly
+      ["technical-question-to-shaper 2"] and its message is "question 2 is technical: decide it and record it under
+      ## Settled".
+    - >-
+      F3 "asking with an entry lacking Evidence: recommendation-without-evidence": assert the finding ids are exactly
+      ["recommendation-without-evidence 1"], severity "blocking", disputable false.
+    - >-
+      F4 "a second round of Ask the Shaper entries after answers is treated like the first": assert findings [] and
+      readiness "asking".
+    - >-
+      F5 "an entry left undecided never blocks and is never moved": assert exit 0, readiness "ready",
+      questions.sections["Left undecided"] == [%{"number" => 1, "title" => <the literal title>, "text" => <the
+      literal text>, "recommendation" => <the literal recommendation>}], and the package's revision SHA-256 is the
+      same before and after.
+    - >-
+      F6 "an Assumed entry without Undo: assumption-without-reason": assert exit 1, the finding ids are exactly
+      ["assumption-without-reason 1"], and disputable false.
+    - >-
+      F7 "not ready and ready Drafts, with the Assumed and Left undecided summary": assert not-ready exits 1 with
+      readiness "not_ready" and an "unguarded-affected-path" id; ready exits 0 with readiness "ready" and the exact
+      sections (numbers 1 and 2 under Assumed, 1 under Left undecided, each title and recommendation as literals).
+  proof:
+    offline: [test/kogen/shaping_audit_flow_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the entry function runs the real deterministic layer on fixture packages with a scripted gate"
+    affected_paths:
+      - lib/kogen/shaping_audit.ex
+      - lib/kogen/shaping_audit/questions.ex
+      - lib/kogen/shaping_audit/finding.ex
+      - test/kogen/shaping_audit_flow_test.exs
+      - test/support/shaping_audit/packages/flow
+
+- id: auditor-setting-and-launch
+  given: >-
+    The tracked `.kogen/config.yaml` with its four routes, and fixture configs:
+    - a route with no `auditor`;
+    - a clean route whose `auditor` names a `harness`;
+    - a role-level route whose `auditor` names a harness with no helpers there;
+    - the lifecycle test's hybrid config, which has no auditor.
+
+    For the launch, `test/support/shaping_audit/fake_auditor` is `KOGEN_HARNESS` and speaks both protocols: it
+    answers `auth status` (exit 0, stdin never read), echoes the requested `--session-id` on Claude, and logs argv,
+    `pwd -P`, environment, stdin and the Codex `--output-schema` file. The Claude half uses a private Claude scope
+    (harness_role_test's `private_claude_scope!/1`, `test/kogen/harness_role_test.exs:787`). The Codex half runs
+    twice: once through the fake auditor (`KOGEN_HARNESS` set; argv, stdin, environment and working directory), and
+    once through the managed open path with `KOGEN_HARNESS` deleted, `KOGEN_CODEX_ROOT` holding
+    `test/support/managed_codex_fixture.py`'s install, the shared scope's `auth.json` seeded and
+    `KOGEN_TEST_NATIVE_TRACE` set (the pattern at `test/kogen/harness_role_test.exs:319-379`), whose trace lines now
+    carry `cwd` and `project_root` (prepared context: trusted-project arguments, `KOGEN_PROJECT_ROOT`, working
+    directory, login scope). The managed launch's return value is not asserted. The test VM carries a hostile
+    inherited `KOGEN_ROLE=developer` and `KOGEN_HARNESS_HOME=<tmp>/inherited-home`.
+  when: >-
+    `Kogen.Intent.read_config/2` and `Kogen.Intent.auditor_config/1` read each route. `Kogen.Harness.open_auditor/2`
+    and `launch_auditor/4` launch the auditor on each harness for a materialization directory.
+    `Kogen.Harness.launch_expert/4` launches the Expert for comparison. `mix kogen.codex.login` and `mix
+    kogen.claude.login` run with `KOGEN_ROLE=auditor`.
+  then: >-
+    - Config: `.kogen/config.yaml` gains exactly four lines, the four `auditor` entries of INTENT.md. `git diff` of
+      the file shows only those additions.
+    - Resolution: `auditor_config/1` returns these four literals:
+      - `claude`: `{:ok, %{harness: "claude", model: "claude-opus-5-5", effort: "high"}}`;
+      - `codex`: `{:ok, %{harness: "codex", model: "gpt-6-sol", effort: "high"}}`;
+      - `claude-dominant-adversarial-codex`: the codex/gpt-6-sol/high map;
+      - `codex-dominant-adversarial-claude`: the claude/claude-opus-5-5/high map.
+    - Missing entry: `{:error, "route <name> has no auditor setting"}`, and the config map has no `:auditor` key at
+      all.
+    - Refusals: a clean route's `auditor.harness`, or a harness with no helpers, is refused naming the key.
+    - Unchanged: editing a route's `expert` leaves its auditor unchanged. `Kogen.Intent.roles/0`
+      (`lib/kogen/intent.ex:366`) is still `[:shaping, :developer, :reviewer, :expert]`, `Kogen.Build.assigned_config/2`
+      (`lib/kogen/build.ex:2121`) is not edited, and `test/kogen/lifecycle_test.exs` and
+      `test/kogen/scenario_tracking_test.exs` pass unchanged.
+    - Launch on each protocol:
+      - stdin holds no line of expert.md, and the Expert's stdin holds no line of auditor.md;
+      - argv and config hold no `--agents` and no `agents.`;
+      - the Codex argv contains `--disable multi_agent`, `--disable apps`, `--disable plugins` and
+        `--disable shell_snapshot`;
+      - the shared-scope fixture has no `plugins/` directory after a launch;
+      - the argv carries the findings schema: `--output-schema <file>` on Codex, whose file content has no `(?=`,
+        `(?!`, `(?<=` or `(?<!`, and `--json-schema` on Claude, together with `-p` and the editing tools denied;
+      - the production findings parser accepts the schema's example object: the fenced JSON example in
+        `priv/kogen/prompts/auditor.md` has exactly the schema's required keys and parses;
+      - the environment has `KOGEN_ROLE=auditor` and `GIT_OPTIONAL_LOCKS=0`, and no `KOGEN_EXPERT`,
+        `KOGEN_CODEX_CONTEXT_RECEIPT` or `KOGEN_HARNESS_HOME`, although the test VM carries the inherited values;
+      - on Codex, `KOGEN_PROJECT_ROOT`, the trusted-project arguments and the working directory name the
+        materialization, never the checkout (from the managed trace's `project_root`, `args` and `cwd`), and the
+        trace's `scope` is the shared login scope.
+    - Setup guards: both login commands raise "managed roles cannot run setup" under `KOGEN_ROLE=auditor`.
+    - Callers: `launch_auditor/4` has exactly one caller outside `lib/kogen/harness*`, which is
+      `lib/kogen/shaping_audit/auditor.ex`.
+    - README: it gains "### Shaping auditor", with the four-route table and the sentence that the auditor is a
+      separate profile from the Expert.
+    - Tests changed to the new expectations:
+      - `configuration_support_contract_test`'s "the tracked config validates in whole-config mode and resolves every
+        route's roles" asserts each route's raw `auditor` entry as an exact literal instead of refuting it (`:46`);
+      - "the tracked config exposes the four-route role-to-harness matrix" asserts the two hybrid routes' and the
+        two clean routes' `auditor_config/1` literals (at `:223`, `:245` and `:250`) instead of refuting `:auditor`,
+        and still refutes `:auditor` in `roles` (`:213`);
+      - `intent_test`'s "parses the real tracked .kogen/config.yaml" (`:108`) includes the raw
+        `auditor: %{"model" => "gpt-6-sol", "effort" => "high"}` in its exact codex config map (`:156-183`), and
+        asserts the codex route's `auditor_config/1` literal instead of refuting `:auditor` (`:185`); it still
+        refutes `:auditor` in `codex.roles` (`:186`);
+      - its two fixture-config refutes, `:1001` and `:1041`, stay;
+      - `harness_role_test`'s "no harness exposes an auditor launch" (`:766`) is replaced by "the auditor launch is
+        exposed only through launch_auditor/4, with one caller", which keeps its `roles/0`, `open_roles/2` and
+        `role_config/2` assertions for `:auditor` (`:775-784`).
+  wrong_result: >-
+    Any of these:
+    - the auditor reuses the Expert's setting, prompt or helpers, or spawns Codex sub-agents because `multi_agent`
+      stays on;
+    - a missing setting falls back to another role, or refuses Shaping and breaks existing fixtures;
+    - `:auditor` enters the Build role matrix;
+    - a `:auditor => nil` key breaks lifecycle_test (the Candidate's defect (1));
+    - the Codex context names the checkout;
+    - the auditor collides with the Shaper's context receipt, or inherits a Build's `KOGEN_HARNESS_HOME`;
+    - the absence tests are deleted rather than replaced;
+    - a smoke test that checks only that a launch happened;
+    - fixture-specific shortcuts, such as comparing against the fake's own echo instead of the real launch argv.
+  verified_by: [check]
+  evidence: test/kogen/intent_test.exs, configuration_support_contract_test.exs, harness_role_test.exs and shaping_audit_auditor_test.exs through the fake executables; lifecycle_test.exs and scenario_tracking_test.exs unchanged.
+  tests:
+    - >-
+      S1 "the four tracked auditor settings resolve to their literals" (intent_test): read_config/2 for each route,
+      then auditor_config/1 equals the four literals.
+    - >-
+      S2 "a route without an auditor loads, has no :auditor key and reports it missing" (intent_test): with
+      intent_test's @valid_config (`test/kogen/intent_test.exs:77-80`, route `codex`, no auditor), refute
+      Map.has_key?(config, :auditor), and assert auditor_config/1 returns exactly
+      {:error, "route codex has no auditor setting"}.
+    - >-
+      S3 "auditor settings refuse a clean-route harness and a helperless harness, naming the key" (intent_test):
+      assert the two exact error strings, each containing "auditor.harness".
+    - >-
+      S4 "editing a route's expert leaves its auditor and roles/0 unchanged" (configuration_support_contract_test):
+      auditor_config/1 before and after the edit are equal literals, and roles/0 ==
+      [:shaping, :developer, :reviewer, :expert].
+    - >-
+      S5 "the auditor launch is exposed only through launch_auditor/4, with one caller" (harness_role_test,
+      replacing "no harness exposes an auditor launch"): launch on both protocols and assert every argv, stdin and
+      environment fact in `then`. The Claude facts, and the Codex argv, stdin, environment and working directory,
+      come from the fake auditor's log (its argv, pwd, env and stdin files; its Claude launch returns the requested
+      session id). The Codex prepared-context facts come from the managed trace: `project_root` and `cwd` equal the
+      canonical materialization path, the trusted-project arguments in `args` name it and never the checkout, and
+      `scope` is `<KOGEN_CODEX_ROOT>/accounts/shared`. The single-caller check is a source scan of lib/ excluding
+      lib/kogen/harness*.
+    - >-
+      S6 "KOGEN_ROLE=auditor refuses mix kogen.codex and mix kogen.claude management commands"
+      (shaping_audit_auditor_test): assert_raise RuntimeError, ~r/managed roles cannot run setup/ for each (the
+      real messages are longer: `lib/kogen/codex.ex:382`, `lib/kogen/claude_code.ex:478`).
+    - >-
+      S7 "the README shows the four auditor settings, separate from the Expert" (configuration_support_contract_test):
+      whitespace-normalised substrings of the four table rows and "separate profile from the Expert".
+    - >-
+      S8 "the production findings parser accepts the brief's example object" (shaping_audit_auditor_test): the last
+      ```json block of priv/kogen/prompts/auditor.md decodes to one finding whose keys are exactly the "required" list
+      of the logged output-schema.json's item schema (label, summary, detail, paths), and
+      Kogen.ShapingAudit.Auditor.parse_message/1 on that block returns {:ok, [finding]} with label "short-slug".
+  proof:
+    offline: [test/kogen/intent_test.exs, test/kogen/configuration_support_contract_test.exs, test/kogen/harness_role_test.exs, test/kogen/shaping_audit_auditor_test.exs, test/kogen/lifecycle_test.exs, test/kogen/scenario_tracking_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: resolution, isolation and both launch protocols run through fake executables; a real Codex auditor launch is observed in slice 3's live-shaping-quality"
+    affected_paths:
+      - .kogen/config.yaml
+      - README.md
+      - lib/kogen/intent.ex
+      - lib/kogen/harness.ex
+      - lib/kogen/harness/claude.ex
+      - lib/kogen/harness/codex.ex
+      - lib/kogen/codex.ex
+      - lib/kogen/claude_code.ex
+      - lib/kogen/codex/environment.ex
+      - priv/kogen/prompts/auditor.md
+      - test/kogen/intent_test.exs
+      - test/kogen/configuration_support_contract_test.exs
+      - test/kogen/harness_role_test.exs
+      - test/kogen/shaping_audit_auditor_test.exs
+      - test/support/shaping_audit/fake_auditor
+      - test/support/managed_codex_fixture.py
+
+- id: auditor-runs-and-findings
+  given: >-
+    A fixture checkout (Fixture.repo!/1) with the `complete` Draft and a committed config whose hybrid route has
+    `expert: {harness: codex, model: expert-model, effort: low}` and
+    `auditor: {harness: codex, model: audit-model, effort: low}`. After the commit, the checkout holds the sentinel
+    `SENTINEL-CHECKOUT` in an uncommitted edit, an untracked file, a second package and `.kogen/runtime/`.
+    `Fixture.audit_env!/1` sets `KOGEN_HARNESS` to the fake auditor.
+  when: >-
+    `Kogen.ShapingAudit.main(["--auditor", "complete"], root: root, env: Fixture.audit_env!(root))` runs:
+    - with a blocking deterministic finding;
+    - on the clean Draft;
+    - again after a Draft edit at the same HEAD;
+    - after dispositions;
+    - a fourth time.
+
+    It also runs without `--auditor`, and with the setting missing. Each scripted message is tried (three findings,
+    60 findings, oversized fields, `{"findings": []}`, no JSON), and each scripted write: in its own directory
+    outside every watched location, a ref and the index inside `.git/`, in the checkout, and in the report
+    directory. A fake that sleeps 5 s is tried, as is a launch failure (FAKE_AUDITOR_FAIL=1: exit 1 before any
+    output). Slice 1's audit tests run on the new readiness contract.
+  then: >-
+    - Gating: dispositions are applied to the deterministic findings before the gate. With an open blocking
+      deterministic finding, the auditor layer is `skipped` and there is no launch; with its only blocking finding
+      disputable and dispositioned `not a defect`, the auditor runs. With Jev failing with HTTP 500 and a clean
+      deterministic layer, the fake log shows exactly one launch.
+    - Profile and place: the log shows `audit-model`, never `expert-model`. `pwd` is the materialization, a git
+      work tree of HEAD plus the package, holding neither the untracked sentinel file nor the second package.
+    - Prompt:
+      - it holds auditor.md's read-only sentence, the `date` rule ("Run `date` first"), "answer within about 4
+        minutes", the one-reply rule and every checklist item, as whitespace-normalised substrings;
+      - it holds the package path, revision, HEAD and the prior-failures list, and no finding of the other layers
+        or checkout path;
+      - intent.yaml is inlined without `revisions`, `baseline_history`, `shaping_continuations` or `*approval*`,
+        and questions.md is cut after `## Dispositions`;
+      - with a package over 160,000 bytes, the cut is marked, and every file left out is listed in
+        `not_audited_by_auditor`.
+    - Runs:
+      - three findings: one launch, then one confirming launch after the edit, then no launch on the fourth run
+        (`bound_reached: true`);
+      - `{"findings": []}`: a changed revision reuses it (`reused: true`, with the reason text), and there is no
+        second launch;
+      - no JSON: `unavailable` and `bound_reached: true`, with no second launch;
+      - a launch failure is not counted, and the next run launches and counts.
+    - No deadline: the 5-second fake is waited for and parsed, and the launch passes no deadline.
+    - Without `--auditor`: nothing is launched. The stored run of the same revision, HEAD and route is reused, or
+      the layer is `not-run`, and the report is `not_ready`.
+    - Missing setting: `unavailable` with the reason "route codex has no auditor setting", and no launch.
+    - Findings:
+      - ids have the form `aud-<6 hex>-<n>`, blocking, with `auditor_label` kept;
+      - 60 findings are cut to 50, the dropped count is stored, and blocking `auditor-findings-dropped` is raised;
+      - oversized fields are cut to 200 and 1,000 characters and 10 paths;
+      - dispositions are applied to the auditor findings before the gate routes them and the fix-check reads them;
+      - a listed id without a disposition stays blocking;
+      - "fixed" with the fix-check scripted `still_open` stays blocking;
+      - "not a defect" clears it.
+    - Writes: every write case, including `.git/` refs and the index, makes the layer `rejected`, naming the path,
+      and the findings are discarded. A write outside every watched location does not reject.
+    - Records: auditor records are named `<revision>-<12 hex of SHA-256(route)>.json`. A route named `../x` writes
+      only inside `auditor/`.
+    - Cleanup: the materialization is gone after every run, whether the layer ends `ok`, `unavailable`,
+      `rejected` or with a launch failure.
+    - Direct launches: no file under `lib/kogen/shaping_audit` starts a harness executable itself (source scan for
+      `System.cmd`, `Port.open` and `:os.cmd`, excluding the landed `materialization.ex`'s git calls and the
+      auditor's `git ls-files`).
+    - Slice 1's audit tests (their names unchanged) hold on the new contract:
+      - both files switch to `use Kogen.IsolatedCase, async: true`;
+      - every `Kogen.ShapingAudit.main/2` call passes `env: Fixture.audit_env!(root)` (D3 merges its role into
+        it), and every audit call that is not `--status` passes `--auditor`; `report!/3`
+        (`test/kogen/shaping_audit_checks_test.exs:25-32`) and `call/3` (`test/kogen/shaping_audit_task_test.exs:36-48`)
+        do this for their callers; every other expected code, finding id list and message stays as landed;
+      - B7 "a disposition clears a disputable finding but never a mechanical one" (`:406-440`) still expects exit 0 and
+        `ready` for paid-overbroad (`:417`, `:421`), and C2 "stale-disputed: the disposition clears the stale anchor"
+        (`:444-453`) still expects `ready` (`:448`): the dispositions close their disputable findings before the
+        auditor gate, so the auditor runs and is `ok`;
+      - D6 "an approved-only package and the Shaper role run normally" (`test/kogen/shaping_audit_task_test.exs:234`)
+        passes `Map.put(Fixture.audit_env!(root2), "KOGEN_ROLE", "shaper")` (was `env: %{"KOGEN_ROLE" => "shaper"}`
+        at `:241`), so the Shaper-role check stays;
+      - D1 "a ready audit exits 0, writes the report layout, and leaves .kogen/intents and tmp untouched" expects the
+        twelve report keys of INTENT.md, `schema_version` 2, `layers.deterministic == %{"status" => "ok"}`,
+        `layers.jev.status` and `layers.auditor.status` "ok", `state` "autonomous", `questions ==
+        %{"sections" => %{"Assumed" => [], "Left undecided" => []}}` and `not_audited_by_auditor == []`
+        (were `:70-79`);
+      - D2's first audit, and D6's two audits, pass `--auditor`;
+      - D7 "the mix task only delegates to the entry function and halts with its code" runs `["kogen.audit",
+        "--auditor", "complete"]` and `["kogen.audit", "--nope", "complete"]` with `{"KOGEN_ROLE", nil}`,
+        `{"KOGEN_HARNESS_HOME", nil}`, the audit-only Jev fakes, `KOGEN_HARNESS` and the fake auditor's controls
+        (were `:250-251` and `:258-261`, `KOGEN_ROLE` only), expects exit 0 with the output line exactly `ready: <revision>` and no
+        `not_ready`, then exit 2. Its `repo!(compiled: true)` fixture holds the four files `auditor.ex` and
+        `jev_layer.ex` read from the working directory (INTENT.md "Fixture helpers");
+      - D8 and slice 1's README paragraph are unchanged.
+  wrong_result: >-
+    Any of these:
+    - the auditor runs in the checkout or on the Expert's setting;
+    - its prompt carries earlier findings;
+    - old findings carry over to a new revision;
+    - an id listed with no disposition passes;
+    - "fixed" is trusted without the fix-check;
+    - writes are trusted or reverted;
+    - it runs twice when the first run found nothing, or a launch failure uses up the bound;
+    - the auditor is killed at a time limit, or its brief has no `date` rule;
+    - a slice-1 test keeps passing `env: %{}` (the Jev layer would fall back to the Keychain), inherits the
+      Build's `KOGEN_ROLE` or `KOGEN_HARNESS_HOME`, or is renamed or weakened to `not_ready` to pass;
+    - a smoke test that checks only an exit code or a launch count;
+    - fixture-specific shortcuts, such as a run counter kept in the test instead of the stored records, or a
+      `:launcher` or `:manifest` option replacing the launch or the write detection.
+  verified_by: [check]
+  evidence: test/kogen/shaping_audit_auditor_test.exs and test/kogen/shaping_audit_task_test.exs from the fake auditor's log; test/kogen/shaping_audit_checks_test.exs and the task file's D1-D8 on the new readiness contract.
+  tests:
+    - >-
+      R1 "skipped while an open blocking deterministic finding exists; Jev never gates it": on the not-ready copy,
+      layers.auditor.status "skipped" and no argv file in the fake's log; on paid-overbroad with its disputable
+      finding dispositioned "not a defect" (B7's line), exactly one launch and layers.auditor.status "ok"; on
+      complete with Jev at HTTP 500, exactly one launch, layers.auditor.status "ok" and layers.jev.status
+      "unavailable".
+    - >-
+      R2 "launches through the route's auditor setting, in the materialization, with the auditor.md prompt only":
+      the logged argv contains "audit-model" and not "expert-model"; the logged pwd (`pwd -P`, so `/private/var/...`
+      on macOS) is a `work` directory inside a `kogen-audit-*` directory of
+      Kogen.ProjectScope.canonical(System.tmp_dir!()) (compare canonical paths, never the raw System.tmp_dir!()
+      prefix), and never Kogen.ProjectScope.canonical(root); the logged HEAD equals Fixture.head(root); the
+      logged file list holds the package's files under .kogen/intents/drafts/complete/ and neither the untracked
+      sentinel file nor the second package; no logged stdin contains "SENTINEL-CHECKOUT"; the logged env has
+      KOGEN_ROLE=auditor and no KOGEN_HARNESS_HOME; and the prompt contents and exclusions from `then`.
+    - >-
+      R3 "the prompt inlines the contract without history and names every file left out": the logged stdin has none
+      of the keys revisions, baseline_history, shaping_continuations or approval from intent.yaml, no text after
+      the heading that follows `## Dispositions`, and, for an oversized package, the CUT marker and
+      not_audited_by_auditor equal to the exact list of left-out paths.
+    - >-
+      R4 "a first run with findings, one confirming run, then a third --auditor on the same HEAD launches nothing":
+      the fake's launch count is 1, 2, 2 after the three audits, the three reports' auditor finding ids are the
+      same three `aud-` ids with n 1-3, and the third report's layers.auditor.bound_reached is true.
+    - >-
+      R5 "a first run with no findings is reused on a changed revision": after the edit, layers.auditor.reused is
+      true, its reason is exactly "ran once on HEAD <HEAD> with no findings; not re-run", and the launch count is 1.
+    - >-
+      R6 "an unparseable first run gives unavailable with bound_reached and no second run": with no-json,
+      layers.auditor.status "unavailable" and bound_reached true on that first run (qb returns false there); after a Draft edit, the launch count is still 1
+      and readiness "not_ready".
+    - >-
+      R7 "a launch failure does not count toward the bound and is followed by a counted run": with
+      FAKE_AUDITOR_FAIL=1, layers.auditor.status "unavailable" and the record has counted false; then with empty,
+      layers.auditor.status "ok", the record has counted true and seq 1.
+    - >-
+      R8 "nothing kills a slow auditor; the layer waits and parses its answer": FAKE_AUDITOR_SLEEP_SECONDS=5 with
+      empty gives layers.auditor.status "ok" and elapsed_ms >= 5000.
+    - >-
+      R9 "without --auditor nothing launches and readiness is not_ready until a run exists": a first audit without
+      --auditor gives layers.auditor.status "not-run", readiness "not_ready" and no launch; after one --auditor run
+      with empty, an audit without --auditor at the same revision reuses it (status "ok", launch count 1) and
+      readiness "ready".
+    - >-
+      R10 "findings are bounded, labelled and gated only by dispositions": sixty-findings gives exactly 50 `aud-`
+      findings plus blocking "auditor-findings-dropped" and dropped.findings 10; oversized gives a summary of 200
+      characters, a detail of 1,000 and 10 paths. For three-findings, a first run yields the three ids; the test
+      then appends "<id 2>: fixed — scenario a-helper-computes now names the check" and "<id 3>: not a defect —
+      <reason>" to complete's questions.md `## Dispositions` and runs again (the confirming run) with
+      "fix-check@<id 2>" scripted not_addressed 0.9: finding 1 (no disposition) stays open, finding 2 carries
+      disposition kind "fixed" and still_open true and stays open, finding 3 carries kind "not-a-defect" and is
+      closed, the items in layers.jev.routes are the three ids, and readiness "not_ready".
+    - >-
+      R11 "#{case} rejects the layer, naming the path": generated for the .git ref, .git/index, the checkout and the
+      report directory: layers.auditor.status "rejected", its reason names the written path, and no `aud-` finding
+      is kept; plus "a write outside every watched location does not reject the layer": status "ok".
+    - >-
+      R12 "a route named ../x writes its auditor record only inside auditor/, named by the route's hash"
+      (shaping_audit_task_test): the only record is
+      `.kogen/runtime/shaping-audits/complete/auditor/<revision>-<first 12 hex of SHA-256("../x")>.json`, and nothing
+      is written outside `.kogen/runtime/shaping-audits/complete/`.
+    - >-
+      R15 "a route without an auditor setting makes the layer unavailable and launches nothing": on Fixture.repo!() whose
+      `.kogen/config.yaml` (Fixture.config_yaml/0, default route codex) is rewritten without the codex route's
+      `auditor:` line, layers.auditor.status
+      "unavailable", reason exactly "route codex has no auditor setting", scope "environment", no `launches` file in
+      the fake's log, and readiness "not_ready".
+    - >-
+      R16 "the materialization is removed after every run": for runs ending ok (empty), unavailable (no-json),
+      rejected (git-index write) and a launch failure (FAKE_AUDITOR_FAIL=1), the `kogen-audit-*` directory that
+      holds the logged pwd no longer exists once main/2 returns.
+    - >-
+      R13 "no file under lib/kogen/shaping_audit starts a harness executable itself": the source scan above finds
+      no `System.cmd`, `Port.open` or `:os.cmd` naming a harness executable.
+    - >-
+      R14 "--status with --auditor is a usage error" (shaping_audit_task_test): exit 2, stderr holds the new usage
+      line, the recording read function is never called, and no report is written.
+  proof:
+    offline: [test/kogen/shaping_audit_auditor_test.exs, test/kogen/shaping_audit_task_test.exs, test/kogen/shaping_audit_checks_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: the fake auditor logs argv, directory, environment and prompt through the real launch path, and the run rule is deterministic; a real launch is observed in slice 3's live-shaping-quality"
+    affected_paths:
+      - lib/kogen/shaping_audit/auditor.ex
+      - lib/kogen/shaping_audit/materialization.ex
+      - lib/kogen/shaping_audit/finding.ex
+      - lib/kogen/shaping_audit.ex
+      - lib/kogen/shaping_audit/report.ex
+      - lib/mix/tasks/kogen.audit.ex
+      - priv/kogen/prompts/auditor.md
+      - test/kogen/shaping_audit_auditor_test.exs
+      - test/kogen/shaping_audit_task_test.exs
+      - test/kogen/shaping_audit_checks_test.exs
+      - test/support/shaping_audit/fixture.ex
+      - test/support/shaping_audit/fake_auditor
+      - test/support/shaping_audit/fake_auditor_messages
+      - test/support/shaping_audit/drafts/complete

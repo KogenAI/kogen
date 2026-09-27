@@ -14,6 +14,7 @@ defmodule Kogen.ShapingAudit.Finding do
     unguarded-affected-path proof-selector-missing unsupported-selector unknown-target
     verified-by-invalid paid-reason-malformed ledger-closure controller-read-path
     edited-live-owner-unselected title-format commit-subject-format package-invalid
+    recommendation-without-evidence assumption-without-reason
   )
 
   @doc "The rules that no disposition can clear."

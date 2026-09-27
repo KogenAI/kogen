@@ -1,4 +1,5 @@
 defmodule Kogen.ShapingAudit.Fixture do
+  # credo:disable-for-this-file Credo.Check.Refactor.CyclomaticComplexity
   @moduledoc """
   The git fixture repository for the Shaping audit's deterministic checks
   (`deterministic-checks` in `scenarios.yaml`): a committed `HEAD` with a
@@ -36,6 +37,53 @@ defmodule Kogen.ShapingAudit.Fixture do
           "kogen-shaping-fixture-#{Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)}"
         )
       end
+
+    if Keyword.get(opts, :compiled, false) do
+      File.write!(Path.join(root, ".kogen/config.yaml"), config_yaml())
+
+      for relative <- [
+            "lib/kogen/shaping_audit.ex",
+            "lib/kogen/shaping_audit/auditor.ex",
+            "lib/kogen/shaping_audit/jev_layer.ex",
+            "lib/kogen/shaping_audit/questions.ex",
+            "lib/kogen/shaping_audit/report.ex"
+          ] do
+        destination = Path.join(root, relative)
+        File.mkdir_p!(Path.dirname(destination))
+        File.cp!(Path.join(File.cwd!(), relative), destination)
+      end
+
+      for relative <- [
+            "test/support/shaping_audit/fake_auditor",
+            "test/support/shaping_audit/fake_jev_audit",
+            "test/support/shaping_audit/fake_security_audit"
+          ] do
+        destination = Path.join(root, relative)
+        File.mkdir_p!(Path.dirname(destination))
+        File.cp!(Path.join(File.cwd!(), relative), destination)
+        File.chmod!(destination, 0o755)
+      end
+
+      for relative <-
+            Path.wildcard(
+              Path.join(File.cwd!(), "test/support/shaping_audit/fake_auditor_messages/*")
+            ) do
+        destination = Path.join(root, Path.relative_to(relative, File.cwd!()))
+        File.mkdir_p!(Path.dirname(destination))
+        File.cp!(relative, destination)
+      end
+
+      for relative <- [
+            "priv/kogen/prompts/auditor.md",
+            "priv/kogen/shaping_audit/questions-v1.json",
+            "priv/kogen/shaping_audit/question-gate-v1.json",
+            "priv/kogen/shaping_audit/settled.json"
+          ] do
+        destination = Path.join(root, relative)
+        File.mkdir_p!(Path.dirname(destination))
+        File.cp!(Path.join(File.cwd!(), relative), destination)
+      end
+    end
 
     File.mkdir_p!(root)
     git!(root, ["init", "-q", "-b", "main"])
@@ -84,7 +132,7 @@ defmodule Kogen.ShapingAudit.Fixture do
   """
   @spec add_draft!(Path.t(), String.t(), keyword()) :: String.t()
   def add_draft!(root, name, opts \\ []) do
-    source = Path.join([__DIR__, "drafts", name])
+    source = Path.join([__DIR__, Keyword.get(opts, :source, "drafts"), name])
     tokens = %{"__FIRST_COMMIT__" => first_commit(root), "__HEAD__" => head(root)}
 
     files = walk(source)
@@ -100,6 +148,25 @@ defmodule Kogen.ShapingAudit.Fixture do
     end)
 
     package_rel
+  end
+
+  def audit_env!(root) do
+    Enum.each(["KOGEN_ROLE", "KOGEN_HARNESS_HOME", "FAKE_JEV_ANSWERS"], &System.delete_env/1)
+
+    env = %{
+      "KOGEN_HARNESS" => Path.join(File.cwd!(), "test/support/shaping_audit/fake_auditor"),
+      "KOGEN_JEV_TRANSPORT" =>
+        Path.join(File.cwd!(), "test/support/shaping_audit/fake_jev_audit"),
+      "KOGEN_JEV_SECURITY" =>
+        Path.join(File.cwd!(), "test/support/shaping_audit/fake_security_audit"),
+      "FAKE_AUDITOR_LOG_DIR" => Path.join(root, ".kogen/runtime/fake-auditor"),
+      "FAKE_JEV_LOG_DIR" => Path.join(root, ".kogen/runtime/fake-jev-audit"),
+      "FAKE_SECURITY_LOG" => Path.join(root, ".kogen/runtime/fake-security.log"),
+      "FAKE_AUDITOR_MESSAGE" => "empty"
+    }
+
+    Enum.each(env, fn {key, value} -> System.put_env(key, value) end)
+    env
   end
 
   defp slug_of(intent_path, tokens) do
@@ -318,6 +385,7 @@ defmodule Kogen.ShapingAudit.Fixture do
         shaping: {model: gpt-5.6-sol, effort: low}
         developer: {model: gpt-5.6-sol, effort: low}
         reviewer: {model: gpt-5.6-terra, effort: medium}
+        auditor: {model: gpt-6-sol, effort: high}
         helpers:
           scout: {model: gpt-5.6-luna, effort: low}
           worker: {model: gpt-5.6-luna, effort: medium}

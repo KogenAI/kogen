@@ -1,0 +1,98 @@
+#!/bin/sh
+# The audit-only fake auditor executable for test/kogen/shaping_audit_auditor_test.exs.
+#
+# It speaks both the Codex `exec` JSONL protocol and the Claude Code `-p`
+# stream-json protocol (whichever `launch_auditor/4` uses), selected the same
+# way the other offline fixtures detect it: by scanning argv for `exec`
+# (Codex) or `-p` (Claude). It never starts a real provider.
+#
+# Logging (all paths under $FAKE_AUDITOR_LOG_DIR, created if missing):
+#   argv          - the received argv, one token per line
+#   pwd           - `pwd -P` at launch
+#   env           - the full received environment, `KEY=value` per line
+#   stdin         - the prompt received on stdin
+#   cwd-listing   - SHA-256 of a sorted `find` listing of the launch cwd
+#
+# $FAKE_AUDITOR_MESSAGE selects the scripted final message:
+#   three-findings | sixty-findings | oversized | empty | no-json
+# $FAKE_AUDITOR_SLEEP_SECONDS sleeps that many seconds before answering.
+# $FAKE_AUDITOR_WRITE selects one scripted write, performed just before the
+# final message is emitted:
+#   own-dir    - writes a file inside $FAKE_AUDITOR_OWN_DIR (never watched)
+#   git-ref    - writes a ref file under $PWD/.git/refs
+#   git-index  - touches $PWD/.git/index
+#   checkout   - appends to $FAKE_AUDITOR_CHECKOUT/Makefile (a tracked file)
+#   report-dir - writes a file inside $FAKE_AUDITOR_REPORT_DIR
+set -eu
+
+log_dir="${FAKE_AUDITOR_LOG_DIR:?FAKE_AUDITOR_LOG_DIR is required}"
+mkdir -p "$log_dir"
+
+: >"$log_dir/argv"
+for a in "$@"; do printf '%s\n' "$a" >>"$log_dir/argv"; done
+
+pwd -P >"$log_dir/pwd"
+env >"$log_dir/env"
+cat >"$log_dir/stdin"
+find . -type f 2>/dev/null | LC_ALL=C sort | shasum -a 256 | awk '{print $1}' >"$log_dir/cwd-listing"
+
+if [ -n "${FAKE_AUDITOR_SLEEP_SECONDS:-}" ]; then
+  sleep "$FAKE_AUDITOR_SLEEP_SECONDS"
+fi
+
+case "${FAKE_AUDITOR_WRITE:-}" in
+  own-dir)
+    # A write somewhere the audit never watches (e.g. a private harness
+    # state directory), never the fake script's own source location.
+    echo "scripted write" >"${FAKE_AUDITOR_OWN_DIR:?}/fake-auditor-scripted-write"
+    ;;
+  git-ref)
+    mkdir -p .git/refs/heads
+    echo "0000000000000000000000000000000000000000" >.git/refs/heads/fake-auditor-write
+    ;;
+  git-index)
+    date >>.git/index
+    ;;
+  checkout)
+    # The checkout's watched set is its tracked files, so this appends to one
+    # rather than creating a new, untracked file.
+    echo "# scripted write" >>"${FAKE_AUDITOR_CHECKOUT:?}/Makefile"
+    ;;
+  report-dir)
+    mkdir -p "${FAKE_AUDITOR_REPORT_DIR:?}"
+    echo "scripted write" >"${FAKE_AUDITOR_REPORT_DIR:?}/fake-auditor-scripted-write"
+    ;;
+  "") ;;
+  *)
+    echo "unknown FAKE_AUDITOR_WRITE: $FAKE_AUDITOR_WRITE" >&2
+    exit 1
+    ;;
+esac
+
+message="$(cat "$(dirname -- "$0")/fake_auditor_messages/${FAKE_AUDITOR_MESSAGE:-three-findings}.txt")"
+
+protocol=
+for a in "$@"; do
+  case "$a" in
+    exec) protocol=codex ;;
+    -p) protocol=claude ;;
+  esac
+  [ -n "$protocol" ] && break
+done
+
+sid="fake-auditor-session"
+
+if [ "$protocol" = codex ]; then
+  printf '{"type":"thread.started","thread_id":"%s"}\n' "$sid"
+  python3 -c '
+import json, sys
+print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": sys.argv[1]}}))
+' "$message"
+  printf '{"type":"turn.completed"}\n'
+else
+  printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
+  python3 -c '
+import json, sys
+print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": sys.argv[1], "session_id": sys.argv[2]}))
+' "$message" "$sid"
+fi

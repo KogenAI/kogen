@@ -1,0 +1,1 @@
+KOGEN-SENTINEL-UNCOMMITTED-WORKING-TREE-EDIT: never sent to Jev; the citation reads only the HEAD materialization, never this working-tree copy.

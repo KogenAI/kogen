@@ -1,0 +1,1577 @@
+[
+ {
+  "i": 0,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Old flat config: should Kogen refuse an old flat-shape config, warn and migrate it, or keep a compatibility reader?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.87,
+     "probabilities": {
+      "technical": 0.06,
+      "product_ux": 0.94
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 521,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1004
+ },
+ {
+  "i": 1,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Route names: should this repository's routes be named after their harness (claude, codex) or after the vendor (chatgpt)?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.07,
+     "probabilities": {
+      "technical": 0.54,
+      "product_ux": 0.46
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 524,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1179
+ },
+ {
+  "i": 2,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should Kogen drive development with Claude Code and Opus 5.5 for the next few days and switch to ChatGPT later, keeping Codex as an adapter?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.72,
+     "probabilities": {
+      "product_ux": 0.86,
+      "technical": 0.14
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 529,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1004
+ },
+ {
+  "i": 3,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should Opus 5.5 run at medium effort for shaping, developer and reviewer, with only the expert at high?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.18,
+     "probabilities": {
+      "technical": 0.41,
+      "product_ux": 0.59
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 520,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1126
+ },
+ {
+  "i": 4,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should every Kogen claude invocation use --dangerously-skip-permissions, including interactive Shaping and login?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.78,
+     "probabilities": {
+      "product_ux": 0.89,
+      "technical": 0.11
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 522,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1104
+ },
+ {
+  "i": 5,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Is Haiku 4.5 on the proven model list, or is Sonnet 5 at low the scout?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.98,
+     "probabilities": {
+      "product_ux": 0.99,
+      "technical": 0.01
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 519,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 2568
+ },
+ {
+  "i": 6,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should the Shaping audit run automatically inside every Shaping session, or only when someone runs mix kogen.audit?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.9,
+     "probabilities": {
+      "product_ux": 0.95,
+      "technical": 0.05
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 521,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1121
+ },
+ {
+  "i": 7,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should the Shaping audit gate approval, or only advise the Shaper what is approval-ready?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.82,
+     "probabilities": {
+      "technical": 0.09,
+      "product_ux": 0.91
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 515,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 997
+ },
+ {
+  "i": 8,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "May Kogen Studio approve Intents on the human's behalf when its alignment check passes, or must every Intent be approved by the human?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 1.0,
+     "probabilities": {
+      "product_ux": 1.0,
+      "technical": 0.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 523,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1060
+ },
+ {
+  "i": 9,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should a failed Build notify the Shaper by email, by a macOS notification, or only in the status command?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.96,
+     "probabilities": {
+      "technical": 0.02,
+      "product_ux": 0.98
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 519,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1139
+ },
+ {
+  "i": 10,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should the CSV normalizer drop rows with missing required columns, or fail the whole file?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.87,
+     "probabilities": {
+      "product_ux": 0.94,
+      "technical": 0.06
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 514,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 2572
+ },
+ {
+  "i": 11,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should the booking command show times in the organizer's timezone or the viewer's timezone?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 1.0,
+     "probabilities": {
+      "product_ux": 1.0,
+      "technical": 0.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 512,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1102
+ },
+ {
+  "i": 12,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Is support for Windows hosts in scope for this Intent, or a non-goal?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 1.0,
+     "probabilities": {
+      "product_ux": 1.0,
+      "technical": 0.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 512,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1149
+ },
+ {
+  "i": 13,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "How many paid live checks per Intent are acceptable to spend by default?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.98,
+     "probabilities": {
+      "product_ux": 0.99,
+      "technical": 0.01
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 509,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 990
+ },
+ {
+  "i": 14,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should mix kogen.audit print every advisory finding, or only a count with the report path?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.99,
+     "probabilities": {
+      "technical": 0.01,
+      "product_ux": 0.99
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 515,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1094
+ },
+ {
+  "i": 15,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Do the harness setup commands (mix kogen.claude.install, login, status) need to know about routes, given that credentials are per harness scope?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.57,
+     "probabilities": {
+      "product_ux": 0.22,
+      "technical": 0.78
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 527,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 951
+ },
+ {
+  "i": 16,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should read_draft/1 treat shaping.route as optional so existing Drafts stay valid?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.09,
+     "probabilities": {
+      "technical": 0.54,
+      "product_ux": 0.46
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 513,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1040
+ },
+ {
+  "i": 17,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Where should the audit report be stored: inside the Draft package, or under .kogen/runtime/shaping-audits/<slug>/<revision>/?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.98,
+     "probabilities": {
+      "technical": 0.99,
+      "product_ux": 0.01
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 526,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1084
+ },
+ {
+  "i": 18,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should selector existence and the ledger be read from the HEAD tree or from the working tree?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.82,
+     "probabilities": {
+      "technical": 0.91,
+      "product_ux": 0.09
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 513,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1075
+ },
+ {
+  "i": 19,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "What bound should the paid-target health reader use: the newest 50 records, files at most 32 MiB, the last 10 receipts per target?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.19,
+     "probabilities": {
+      "technical": 0.59,
+      "product_ux": 0.41
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 530,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1051
+ },
+ {
+  "i": 20,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "What format should the auditor's findings use, and what are the limits on title and detail length?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.02,
+     "probabilities": {
+      "product_ux": 0.51,
+      "technical": 0.49
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 515,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1132
+ },
+ {
+  "i": 21,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should the auditor's working directory come from an optional cd in the launch context, or from File.cd/1 in the shared VM?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.31,
+     "probabilities": {
+      "product_ux": 0.35,
+      "technical": 0.65
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 522,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1052
+ },
+ {
+  "i": 22,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should the audit use a separate Jev answer parser so the Build handoff parser stays byte-for-byte unchanged?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.99,
+     "probabilities": {
+      "technical": 1.0,
+      "product_ux": 0.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 517,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1113
+ },
+ {
+  "i": 23,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Payload boundary is contradictory: the Draft says Jev receives full INTENT.md and risks.yaml while the research boundary allows only selected scenario fields. Define one allowlisted serializer."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.71,
+     "probabilities": {
+      "technical": 0.86,
+      "product_ux": 0.14
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 530,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1042
+ },
+ {
+  "i": 24,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "The audit evidence hard-codes the forbidden Keychain service ai.typesafe.api in jev_audit.py."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.93,
+     "probabilities": {
+      "technical": 0.97,
+      "product_ux": 0.03
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 518,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1074
+ },
+ {
+  "i": 25,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Modifying the fake Jev can weaken cataloged Jev proofs without a ledger guard; add a new audit-only fake instead."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.95,
+     "probabilities": {
+      "technical": 0.98,
+      "product_ux": 0.02
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 523,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 954
+ },
+ {
+  "i": 26,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Response retention can leak the Keychain value; redact the key before retaining any response body."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.96,
+     "probabilities": {
+      "product_ux": 0.02,
+      "technical": 0.98
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 514,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1031
+ },
+ {
+  "i": 27,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "The effect of advisory findings on readiness is unspecified; state that findings never block readiness and test it."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "product_ux",
+     "confidence": 0.18,
+     "probabilities": {
+      "technical": 0.41,
+      "product_ux": 0.59
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 515,
+    "output_tokens": 35
+   }
+  },
+  "latency_ms": 1010
+ },
+ {
+  "i": 28,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Scope exceeds one Build: the Draft combines a 14-entry question engine, Noul parsing, batching, citation extraction and docs. Split it or add checkpoints."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.7,
+     "probabilities": {
+      "product_ux": 0.15,
+      "technical": 0.85
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 528,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1117
+ },
+ {
+  "i": 29,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "The frozen path list is hardcoded and proven only by comparing it with itself; derive it from a controller function with an independent behavioural control."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 1.0,
+     "probabilities": {
+      "product_ux": 0.0,
+      "technical": 1.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 523,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 964
+ },
+ {
+  "i": 30,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Stat-before-read is not proven: a reader could read an oversized record before checking its size."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 1.0,
+     "probabilities": {
+      "product_ux": 0.0,
+      "technical": 1.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 514,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1083
+ },
+ {
+  "i": 31,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Make the ledger-consumer-witness finding blocking instead of advisory."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.4,
+     "probabilities": {
+      "technical": 0.7,
+      "product_ux": 0.3
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 509,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1040
+ },
+ {
+  "i": 32,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "The scenario selects live-native, but its observation (the record has no inline self copy) is checkable offline."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.71,
+     "probabilities": {
+      "technical": 0.86,
+      "product_ux": 0.14
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 519,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 993
+ },
+ {
+  "i": 33,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "The proof selector test/kogen/foo_test.exs does not exist at HEAD and is not in the scenario's affected_paths."
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.98,
+     "probabilities": {
+      "technical": 0.99,
+      "product_ux": 0.01
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 520,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1106
+ },
+ {
+  "i": 34,
+  "request": {
+   "model": "jev-1.13.0",
+   "state": {
+    "item": "Should the report's revision hash include file modes as well as paths and bytes?"
+   },
+   "questions": {
+    "r": {
+     "type": "choice",
+     "instructions": {
+      "task": "Who must decide item `item`, raised while shaping one software feature contract?",
+      "rules": [
+       "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, which models, vendors or spending to use, and who may approve or act.",
+       "technical: how to build and prove it: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, fixing a defect or gap in the contract, and splitting work into Builds.",
+       "Judge the decision the item asks for, not how technical its wording is."
+      ]
+     },
+     "criteria": {
+      "technical": "How to build or prove it; the agent settles it.",
+      "product_ux": "What users or developers get, scope, vendors, spending or authority; the human decides."
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "jev-1.13.0",
+   "answers": {
+    "r": {
+     "type": "choice",
+     "choice": "technical",
+     "confidence": 0.57,
+     "probabilities": {
+      "technical": 0.78,
+      "product_ux": 0.22
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 511,
+    "output_tokens": 33
+   }
+  },
+  "latency_ms": 1046
+ }
+]

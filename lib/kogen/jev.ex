@@ -519,9 +519,194 @@ defmodule Kogen.Jev do
   @doc false
   def format(confidence), do: :erlang.float_to_binary(confidence / 1, decimals: 2)
 
+  # Retry policy for `ask/3`'s Shaping-audit requests (question-set-v1 and
+  # question-gate-v1): a 429 is retried up to twice (three attempts total),
+  # with backoff. This is a separate, wider allowance than the Build
+  # handoff's single retry above; it does not change `read_notes/3`.
+  @ask_max_retries 2
+  @ask_backoff_ms 500
+
+  @doc """
+  Asks Jev one arbitrary `state`/`questions` request (a Shaping-audit
+  request: `questions` maps a question id to its `type: "choice" | "noul"`
+  spec) through the same key and transport path as `read_notes/3` — the
+  same Keychain item, `KOGEN_JEV_TRANSPORT`/`KOGEN_JEV_SECURITY` selection,
+  endpoint and 60 s per-request timeout.
+
+  Returns `{:ok, %{"answers" => %{id => answer}, "usage" => usage,
+  "request" => %{"sha256", "byte_count"}}}` or `{:error, reason}`. Every
+  answer's option (a Choice `choice`, and every key of a returned
+  `probabilities` distribution) is validated against the question's
+  `criteria`; a Noul answer is validated to be a number in `0..1`. Full
+  distributions are kept as sent by Jev. The response body itself is never
+  returned; only the parsed answers and the request digest are.
+
+  Options (tests only): `:transport`, `:security`, `:timeout` (as
+  `read_notes/3`) and `:sleep` (a `(non_neg_integer() -> any())` replacing
+  the retry backoff sleep).
+  """
+  @spec ask(map(), map(), keyword()) :: {:ok, map()} | {:error, String.t()}
+  def ask(state, questions, opts \\ []) when is_map(state) and is_map(questions) do
+    body = ask_body(state, questions)
+    request = %{"sha256" => digest(body), "byte_count" => byte_size(body)}
+
+    case ask_with_key(opts, &ask_send(&1, body, questions, opts, 0)) do
+      {:ok, result} -> {:ok, Map.put(result, "request", request)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "The exact request bytes `ask/3` would send for `state` and `questions`."
+  @spec ask_body(map(), map()) :: binary()
+  def ask_body(state, questions) do
+    Jason.encode!(%{"model" => @model, "state" => state, "questions" => questions})
+  end
+
+  defp ask_with_key(opts, function) do
+    case security(opts, ["find-generic-password", "-s", @keychain_service, "-w"]) do
+      {:ok, output} ->
+        case String.trim_trailing(output, "\n") do
+          "" -> {:error, "Keychain item `#{@keychain_service}` returned an empty key"}
+          key -> function.(key)
+        end
+
+      :error ->
+        {:error, "Keychain item `#{@keychain_service}` could not be read at call time"}
+    end
+  end
+
+  defp ask_send(key, body, questions, opts, tries) do
+    request = %{
+      url: @endpoint,
+      headers: [
+        {"authorization", "Bearer " <> key},
+        {"content-type", "application/json"}
+      ],
+      body: body,
+      timeout: Keyword.get(opts, :timeout, @timeout_ms)
+    }
+
+    case safe_post(transport(opts), request) do
+      {:ok, %{status: 200, body: response}} ->
+        ask_answered(response, questions)
+
+      {:ok, %{status: 429}} when tries < @ask_max_retries ->
+        sleep = Keyword.get(opts, :sleep, &:timer.sleep/1)
+        sleep.(@ask_backoff_ms * (tries + 1))
+        ask_send(key, body, questions, opts, tries + 1)
+
+      {:ok, %{status: status, body: response}} ->
+        _ = response
+        {:error, "HTTP #{status}"}
+
+      {:error, :timeout} ->
+        {:error, "timeout after #{Keyword.get(opts, :timeout, @timeout_ms)} ms"}
+
+      {:error, reason} ->
+        {:error, "transport failure: " <> redact(inspect(reason), key)}
+    end
+  end
+
+  defp ask_answered(response, questions) do
+    with {:ok, decoded} <- decode(response),
+         :ok <- same_model(decoded),
+         {:ok, answers} <- validate_ask_answers(decoded["answers"], questions) do
+      {:ok, %{"answers" => answers, "usage" => usage(decoded)}}
+    end
+  end
+
+  defp validate_ask_answers(answers, questions) when is_map(answers) do
+    asked_ids = Map.keys(questions)
+
+    case Map.keys(answers) -- asked_ids do
+      [] ->
+        Enum.reduce_while(questions, {:ok, %{}}, &collect_ask_answer(answers, &1, &2))
+
+      extra ->
+        {:error, "response answers unasked questions: #{Enum.join(Enum.sort(extra), ", ")}"}
+    end
+  end
+
+  defp validate_ask_answers(_answers, _questions), do: {:error, "response has no answers object"}
+
+  defp collect_ask_answer(answers, {id, question}, {:ok, acc}) do
+    case valid_ask_answer(answers[id], question) do
+      {:ok, answer} -> {:cont, {:ok, Map.put(acc, id, answer)}}
+      {:error, problem} -> {:halt, {:error, "answer for #{id} is #{problem}"}}
+    end
+  end
+
+  defp valid_ask_answer(nil, _question), do: {:error, "missing"}
+
+  defp valid_ask_answer(answer, %{"type" => "noul"}) do
+    case answer do
+      %{"noul" => noul} when is_number(noul) and noul >= 0 and noul <= 1 ->
+        {:ok, %{"type" => "noul", "noul" => noul}}
+
+      %{"noul" => _noul} ->
+        {:error, "invalid (noul out of range)"}
+
+      _ ->
+        {:error, "invalid (not a noul)"}
+    end
+  end
+
+  defp valid_ask_answer(answer, %{"type" => "choice", "criteria" => criteria}) do
+    options = Map.keys(criteria)
+
+    case answer do
+      %{"choice" => choice, "confidence" => confidence} = full
+      when is_binary(choice) and is_number(confidence) ->
+        with :ok <- valid_ask_option(choice, options),
+             :ok <- valid_ask_confidence(confidence),
+             {:ok, probabilities} <- valid_ask_distribution(full["probabilities"], options) do
+          {:ok,
+           %{"type" => "choice", "choice" => choice, "confidence" => confidence}
+           |> maybe_put_probabilities(probabilities)}
+        end
+
+      _ ->
+        {:error, "invalid (not a choice)"}
+    end
+  end
+
+  defp valid_ask_answer(_answer, _question), do: {:error, "invalid (unknown question type)"}
+
+  defp valid_ask_option(choice, options) do
+    if choice in options,
+      do: :ok,
+      else: {:error, "invalid (option #{inspect(choice)} was not sent)"}
+  end
+
+  defp valid_ask_confidence(confidence) do
+    if confidence >= 0 and confidence <= 1,
+      do: :ok,
+      else: {:error, "invalid (confidence out of range)"}
+  end
+
+  defp valid_ask_distribution(nil, _options), do: {:ok, nil}
+
+  defp valid_ask_distribution(probabilities, options) when is_map(probabilities) do
+    case Map.keys(probabilities) -- options do
+      [] -> {:ok, probabilities}
+      extra -> {:error, "invalid (probabilities name unsent options #{inspect(extra)})"}
+    end
+  end
+
+  defp valid_ask_distribution(_probabilities, _options), do: {:error, "invalid (probabilities)"}
+
+  defp maybe_put_probabilities(answer, nil), do: answer
+
+  defp maybe_put_probabilities(answer, probabilities),
+    do: Map.put(answer, "probabilities", probabilities)
+
   defp security(opts, args) do
     executable =
-      Keyword.get(opts, :security) || System.get_env("KOGEN_JEV_SECURITY") || @default_security
+      if Keyword.has_key?(opts, :security) do
+        Keyword.get(opts, :security) || @default_security
+      else
+        System.get_env("KOGEN_JEV_SECURITY") || @default_security
+      end
 
     case System.cmd(executable, args, stderr_to_stdout: true) do
       {output, 0} -> {:ok, output}
@@ -532,16 +717,22 @@ defmodule Kogen.Jev do
   end
 
   defp transport(opts) do
-    case Keyword.get(opts, :transport) do
-      nil ->
+    case {Keyword.has_key?(opts, :transport), Keyword.get(opts, :transport)} do
+      {true, nil} ->
+        &network_post/1
+
+      {false, nil} ->
         case System.get_env("KOGEN_JEV_TRANSPORT") do
           nil -> &network_post/1
           "" -> &network_post/1
           executable -> &executable_post(executable, &1, custody_opts(opts))
         end
 
-      function when is_function(function, 1) ->
+      {_, function} when is_function(function, 1) ->
         function
+
+      {_, executable} when is_binary(executable) ->
+        &executable_post(executable, &1, custody_opts(opts))
     end
   end
 

@@ -1,0 +1,40 @@
+{
+ "version": "question-gate-v1",
+ "model": "jev-1.13.0",
+ "questions": {
+  "gate": {
+   "type": "choice",
+   "instructions": {
+    "task": "Who must answer item `item`, raised while shaping one software feature contract, given the decisions in `settled`?",
+    "rules": [
+     "already_settled: a decision in `settled` already answers exactly what the item asks; the agent cites it and nobody is asked.",
+     "product_ux: what the product does or shows for its users or developers (behaviour, output, workflow, commands they run, defaults they see), which features or platforms are in or out, splitting or deferring any requested scope to another Intent or Build, which models, vendors or spending to use, and who may approve or act.",
+     "technical: how to build and prove the requested scope: code structure, modules, file locations, formats, limits, parsing, tests and proofs, severities and thresholds of internal checks, and fixing a defect or gap in the contract.",
+     "Judge the decision the item asks for, not how technical its wording is. A decision that is only related, or merely on the same topic, is not already_settled."
+    ]
+   },
+   "criteria": {
+    "technical": "How to build or prove it; the agent settles it.",
+    "product_ux": "What users or developers get, scope and splits, vendors, spending or authority; the human decides.",
+    "already_settled": "A listed decision already answers it."
+   }
+  },
+  "settled_by": {
+   "type": "choice",
+   "instructions": {
+    "task": "Which decision in `settled` directly answers item `item`? Choose none if no decision answers exactly what it asks."
+   },
+   "criteria": {
+    "<decision ids from the settled list>": "...",
+    "none": "No listed decision answers it."
+   }
+  },
+  "confirm": {
+   "type": "noul",
+   "instructions": {
+    "task": "Does decision `decision` by itself fully answer what item `item` asks, so that nobody needs to be asked? Answer no if the decision is only about a related topic, or answers only part of it."
+   }
+  }
+ },
+ "routing": "cite when gate.already_settled>=0.8 and settled_by names a decision with confidence>=0.8 and confirm>=0.6; else controller when gate.technical>=0.5; else the Shaper"
+}

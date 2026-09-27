@@ -16,7 +16,8 @@ trace = pathlib.Path(os.environ["KOGEN_TEST_NATIVE_TRACE"])
 auth = home / "auth.json"
 with trace.open("a") as f:
     f.write(json.dumps({"args": args, "scope": str(home), "home": os.environ.get("HOME"),
-        "override": os.environ.get("OPENAI_API_KEY"), "executable": sys.argv[0]}) + "\n")
+        "override": os.environ.get("OPENAI_API_KEY"), "executable": sys.argv[0],
+        "cwd": os.getcwd(), "project_root": os.environ.get("KOGEN_PROJECT_ROOT")}) + "\n")
 if "login" in args:
     native = args[args.index("login") + 1:]
     if native == ["status"]:

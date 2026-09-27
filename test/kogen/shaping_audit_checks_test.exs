@@ -2,7 +2,7 @@ Code.require_file("../support/shaping_audit/fixture.ex", __DIR__)
 Code.require_file("../support/compiled_fixture.exs", __DIR__)
 
 defmodule Kogen.ShapingAuditChecksTest do
-  use ExUnit.Case, async: true
+  use Kogen.IsolatedCase, async: true
 
   alias Kogen.Build.VerificationPlan
   alias Kogen.ShapingAudit.{Deterministic, Fixture, Materialization, Package, Questions, Report}
@@ -24,7 +24,15 @@ defmodule Kogen.ShapingAuditChecksTest do
 
   defp report!(root, slug, opts \\ []) do
     add!(root, slug)
-    assert Kogen.ShapingAudit.main([slug], [root: root, env: %{}] ++ opts) in [0, 1]
+
+    assert Kogen.ShapingAudit.main(
+             ["--auditor", slug],
+             [root: root, env: Fixture.audit_env!(root)] ++ opts
+           ) in [
+             0,
+             1
+           ]
+
     {:ok, rel} = Package.locate(root, slug)
     {:ok, loaded} = Package.load(root, rel)
     {:ok, report} = Report.read(root, slug, loaded.revision)
@@ -307,7 +315,12 @@ defmodule Kogen.ShapingAuditChecksTest do
       String.replace(File.read!(scenario), "Delete the catalogued test", "Keep the address of")
     )
 
-    assert Kogen.ShapingAudit.main(["ledger-unstated"], root: root, env: %{}) == 0
+    assert Kogen.ShapingAudit.main(["--auditor", "ledger-unstated"],
+             root: root,
+             env: Fixture.audit_env!(root)
+           ) ==
+             0
+
     {:ok, rel} = Package.locate(root, "ledger-unstated")
     {:ok, loaded} = Package.load(root, rel)
     {:ok, revised} = Report.read(root, "ledger-unstated", loaded.revision)
@@ -357,7 +370,11 @@ defmodule Kogen.ShapingAuditChecksTest do
       )
     )
 
-    assert Kogen.ShapingAudit.main(["paid-overbroad"], root: prepare_root, env: %{}) == 1
+    assert Kogen.ShapingAudit.main(["--auditor", "paid-overbroad"],
+             root: prepare_root,
+             env: Fixture.audit_env!(prepare_root)
+           ) == 1
+
     {:ok, pre_rel} = Package.locate(prepare_root, "paid-overbroad")
     {:ok, pre_loaded} = Package.load(prepare_root, pre_rel)
 
@@ -382,7 +399,12 @@ defmodule Kogen.ShapingAuditChecksTest do
       )
 
     File.rm!(default_probe)
-    assert Kogen.ShapingAudit.main(["paid-overbroad"], root: default_root, env: %{}) == 1
+
+    assert Kogen.ShapingAudit.main(["--auditor", "paid-overbroad"],
+             root: default_root,
+             env: Fixture.audit_env!(default_root)
+           ) == 1
+
     {:ok, default_rel} = Package.locate(default_root, "paid-overbroad")
     {:ok, default_loaded} = Package.load(default_root, default_rel)
     {:ok, default_report} = Report.read(default_root, "paid-overbroad", default_loaded.revision)
@@ -414,7 +436,12 @@ defmodule Kogen.ShapingAuditChecksTest do
         "\n## Dispositions\npaid-target-overbroad paid-overbroad-case: not a defect — the full observable is needed\n"
     )
 
-    assert Kogen.ShapingAudit.main(["paid-overbroad"], root: root, env: %{}) == 0
+    assert Kogen.ShapingAudit.main(["--auditor", "paid-overbroad"],
+             root: root,
+             env: Fixture.audit_env!(root)
+           ) ==
+             0
+
     {:ok, rel} = Package.locate(root, "paid-overbroad")
     {:ok, loaded} = Package.load(root, rel)
     {:ok, report} = Report.read(root, "paid-overbroad", loaded.revision)
@@ -433,7 +460,10 @@ defmodule Kogen.ShapingAuditChecksTest do
       "## Dispositions\nledger-closure: not a defect — accepted\n"
     )
 
-    assert Kogen.ShapingAudit.main(["ledger-flawed"], root: mechanical_root, env: %{}) == 1
+    assert Kogen.ShapingAudit.main(["--auditor", "ledger-flawed"],
+             root: mechanical_root,
+             env: Fixture.audit_env!(mechanical_root)
+           ) == 1
   end
 
   test "stale: a changed line and a gone identifier are stale-anchor; a new identifier is not" do
@@ -493,7 +523,11 @@ defmodule Kogen.ShapingAuditChecksTest do
       )
     )
 
-    assert Kogen.ShapingAudit.main(["complete"], root: root, env: %{}) == 1
+    assert Kogen.ShapingAudit.main(["--auditor", "complete"],
+             root: root,
+             env: Fixture.audit_env!(root)
+           ) == 1
+
     {:ok, rel} = Package.locate(root, "complete")
     {:ok, loaded} = Package.load(root, rel)
     {:ok, multiline} = Report.read(root, "complete", loaded.revision)
@@ -512,7 +546,12 @@ defmodule Kogen.ShapingAuditChecksTest do
       File.read(path)
     end
 
-    assert Kogen.ShapingAudit.main(["history"], root: root, env: %{}, read: read) == 0
+    assert Kogen.ShapingAudit.main(["--auditor", "history"],
+             root: root,
+             env: Fixture.audit_env!(root),
+             read: read
+           ) == 0
+
     {:ok, rel} = Package.locate(root, "history")
     {:ok, loaded} = Package.load(root, rel)
     {:ok, report} = Report.read(root, "history", loaded.revision)
@@ -533,7 +572,12 @@ defmodule Kogen.ShapingAuditChecksTest do
   test "invalid: an unparseable scenarios.yaml blocks with package-invalid" do
     root = repo!()
     add!(root, "invalid")
-    assert Kogen.ShapingAudit.main(["invalid"], root: root, env: %{}) == 1
+
+    assert Kogen.ShapingAudit.main(["--auditor", "invalid"],
+             root: root,
+             env: Fixture.audit_env!(root)
+           ) == 1
+
     {:ok, rel} = Package.locate(root, "invalid")
     {:ok, loaded} = Package.load(root, rel)
     {:ok, report} = Report.read(root, "invalid", loaded.revision)

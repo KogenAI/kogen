@@ -768,9 +768,9 @@ defmodule Kogen.HarnessRoleTest do
     Code.ensure_loaded(Kogen.Harness.Claude)
     Code.ensure_loaded(Kogen.Harness.Codex)
 
-    refute function_exported?(Kogen.Harness, :launch_auditor, 4)
-    refute function_exported?(Kogen.Harness.Claude, :launch_auditor, 4)
-    refute function_exported?(Kogen.Harness.Codex, :launch_auditor, 4)
+    assert function_exported?(Kogen.Harness, :launch_auditor, 4)
+    assert function_exported?(Kogen.Harness.Claude, :launch_auditor, 4)
+    assert function_exported?(Kogen.Harness.Codex, :launch_auditor, 4)
 
     assert Kogen.Intent.roles() == [:shaping, :developer, :reviewer, :expert]
     config = %{harness: "claude"}

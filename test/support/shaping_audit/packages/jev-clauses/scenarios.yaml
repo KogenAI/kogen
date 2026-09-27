@@ -1,0 +1,37 @@
+- id: sample-scenario
+  given: >-
+    A Draft with one `then` clause and one `wrong_result` alternative.
+  when: >-
+    The Jev layer runs its 14 advisory contract questions over the Draft.
+  then: >-
+    The system writes file `output.json` with field `status`.
+  wrong_result: >-
+    It writes `output.txt` instead
+  evidence: >-
+    test/kogen/sample_test.exs asserts output.json has field status
+  verified_by: [check]
+  proof:
+    offline:
+      - test/kogen/sample_test.exs
+    paid_target: none
+    paid_reason: "offline-sufficient: no paid target"
+    affected_paths:
+      - lib/demo.ex
+- id: paid-scenario
+  given: A Draft scenario with a paid target.
+  when: A real provider run happens.
+  then: >-
+    The real provider accepts the request.
+  wrong_result: >-
+    The real provider rejects the request
+  evidence: >-
+    live log shows acceptance
+  verified_by: [check, live-x]
+  proof:
+    offline:
+      - test/kogen/sample_test.exs
+    paid_target: live-x
+    paid_reason: >-
+      provider-required: live-x; observation: the real provider accepts the request; offline-limit: cannot observe the provider's acceptance
+    affected_paths:
+      - lib/demo.ex
