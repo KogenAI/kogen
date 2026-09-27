@@ -1,0 +1,51 @@
+S	lib/shop.ex:1 defmodule Shop
+S	lib/shop.ex:8 def Shop.checkout/2
+S	lib/shop.ex:16 def Shop.restock/1
+S	lib/shop.ex:18 defp Shop.audit/1
+S	lib/shop.ex:20 defmacro Shop.trace/1
+S	lib/shop.ex:22 defguard Shop.positive/1
+S	lib/shop/cart.ex:1 defmodule Shop.Cart
+S	lib/shop/cart.ex:2 def Shop.Cart.total/1
+S	lib/shop/cart.ex:3 def Shop.Cart.total/2
+S	lib/shop/cart.ex:5 def Shop.Cart.empty/0
+S	lib/shop/cart.ex:7 def Shop.Cart.merge/2
+S	lib/shop/format.ex:1 defmodule Shop.Format
+S	lib/shop/format.ex:2 def Shop.Format.money/1
+S	lib/shop/inventory.ex:1 defmodule Shop.Inventory
+S	lib/shop/inventory.ex:3 def Shop.Inventory.put/2
+S	lib/shop/inventory.ex:4 def Shop.Inventory.lookup/1
+S	lib/shop/inventory.ex:5 def Shop.Inventory.fetcher/0
+S	lib/shop/pricing.ex:1 defmodule Shop.Pricing
+S	lib/shop/pricing.ex:2 def Shop.Pricing.apply/2
+S	lib/shop/pricing.ex:4 defmodule Shop.Pricing.Rules
+S	lib/shop/pricing.ex:5 def Shop.Pricing.Rules.default/0
+S	lib/shop/pricing.ex:8 def Shop.Pricing.rules/0
+S	lib/shop/tax.ex:1 defmodule Shop.Tax
+S	lib/shop/tax.ex:3 def Shop.Tax.add/1
+S	lib/shop/tax.ex:4 def Shop.Tax.rate/0
+S	test/shop_test.exs:1 defmodule ShopTest
+R	Shop.Cart	lib/shop.ex:2 alias Shop.Cart
+R	Shop.Pricing	lib/shop.ex:3 alias Shop.Pricing
+R	Shop.Tax	lib/shop.ex:3 alias Shop.Tax
+R	Shop.Inventory	lib/shop.ex:4 alias Shop.Inventory
+R	Shop.Format	lib/shop.ex:5 import Shop.Format
+R	Logger	lib/shop.ex:6 require Logger
+R	Shop.Cart	lib/shop.ex:10 call Shop.Cart.total/1
+R	Shop.Pricing	lib/shop.ex:11 call Shop.Pricing.apply/2
+R	Shop.Tax	lib/shop.ex:12 call Shop.Tax.add/1
+R	Shop.Inventory	lib/shop.ex:16 call Shop.Inventory.put/2
+R	Logger	lib/shop.ex:18 call Logger.info/1
+R	Enum	lib/shop/cart.ex:2 call Enum.sum/1
+R	Shop.Cart	lib/shop/cart.ex:7 call Shop.Cart.total/1
+R	Float	lib/shop/format.ex:2 call Float.to_string/1
+R	Agent	lib/shop/inventory.ex:2 use Agent
+R	Agent	lib/shop/inventory.ex:3 call Agent.update/2
+R	Map	lib/shop/inventory.ex:3 call Map.put/3
+R	Agent	lib/shop/inventory.ex:4 call Agent.get/2
+R	Map	lib/shop/inventory.ex:4 call Map.get/2
+R	Shop.Tax	lib/shop/inventory.ex:5 capture Shop.Tax.add/1
+R	Keyword	lib/shop/pricing.ex:2 call Keyword.get/3
+R	Shop.Pricing.Rules	lib/shop/pricing.ex:8 call Shop.Pricing.Rules.default/0
+R	ExUnit.Case	test/shop_test.exs:2 use ExUnit.Case
+R	Shop.Cart	test/shop_test.exs:3 alias Shop.Cart
+R	Shop.Cart	test/shop_test.exs:6 call Shop.Cart.total/1

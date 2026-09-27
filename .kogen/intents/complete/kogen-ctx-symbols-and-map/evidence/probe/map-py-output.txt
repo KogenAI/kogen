@@ -1,0 +1,11 @@
+all [('lib/shop/tax.ex', '0.22650037187482108'), ('lib/shop/cart.ex', '0.20996624520853582'), ('lib/shop/inventory.ex', '0.12243263344584923'), ('lib/shop/pricing.ex', '0.12243263344584923'), ('lib/shop/format.ex', '0.11270667658332849'), ('lib/shop.ex', '0.10298071972080776'), ('test/shop_test.exs', '0.10298071972080776')]
+test [('test/shop_test.exs', '0.5405405807325545'), ('lib/shop/cart.ex', '0.4594594192674454'), ('lib/shop.ex', '0.0'), ('lib/shop/format.ex', '0.0'), ('lib/shop/inventory.ex', '0.0'), ('lib/shop/pricing.ex', '0.0'), ('lib/shop/tax.ex', '0.0')]
+lib/shop/ [('lib/shop/tax.ex', '0.31623931623931634'), ('lib/shop/cart.ex', '0.17094017094017097'), ('lib/shop/format.ex', '0.17094017094017097'), ('lib/shop/inventory.ex', '0.17094017094017097'), ('lib/shop/pricing.ex', '0.17094017094017097'), ('lib/shop.ex', '0.0'), ('test/shop_test.exs', '0.0')]
+lib/shop/tax.ex 80 20
+lib/shop/cart.ex 135 34
+lib/shop/inventory.ex 137 35
+lib/shop/pricing.ex 165 42
+lib/shop/format.ex 69 18
+lib/shop.ex 123 31
+test/shop_test.exs 40 10
+total bytes 749 188

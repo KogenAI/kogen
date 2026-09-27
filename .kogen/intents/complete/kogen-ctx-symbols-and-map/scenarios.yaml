@@ -1,0 +1,369 @@
+# Re-preflighted against develop d9013413eeb50af9cc2993fa839acfb277827e27, where kogen-ctx-index-and-search (slice 1)
+# has landed; this slice extends its code. Offline only.
+# Fixtures: Kogen.Test.CtxFixture (test/support/ctx_fixture.ex, loaded with Code.require_file and aliased as
+# CtxFixture): create!/0 (the landed shop fixture, unchanged) and create_alias!/0 (new; the three
+# evidence/alias-fixture/ files, embedded as alias_sources/0 and SHA-256-pinned as alias_hashes/0). Each returns
+# {root, home} with a fresh KOGEN_CTX_HOME outside root.
+# `run(root, home, args)` below abbreviates CtxFixture.run(CtxFixture.binary(), root, home, args), the landed
+# run/5 with no extra env ({stdout, stderr, status}, PATH=/usr/bin:/bin); a bare argument list such as
+# ["symbols", "Shop"] means run(root, home, that list) on the test's fixture. No test reads the checkout's .kogen/.
+# "<id>" is CtxFixture.project_id(root); "<index>" is CtxFixture.index_path(home, root).
+# USAGE is exactly "usage: kogen-ctx index [--root DIR] | kogen-ctx search <query>... [--limit N] [--root DIR] |
+# kogen-ctx symbols <query> [--limit N] [--root DIR] | kogen-ctx refs <target> [--limit N] [--root DIR] | kogen-ctx
+# map [--tokens N] [--focus PATH]... [--root DIR]" (one line; wrapped here) followed by "\n".
+# Lines are shown separated by " | "; every listed output is the COMPLETE stdout (assert with == on
+# String.split(stdout, "\n", trim: true)), stderr "" and status 0 unless stated. Each scenario's `tests` key lists
+# the ExUnit test cases to write; each test is named exactly `<id> <title>` as listed (the ledger binds rows by test
+# name). A test that only checks the exit status, a substring or a line count, where an exact output is listed, does
+# not prove the scenario. The landed slice 1 tests (test/kogen/ctx_index_test.exs, ctx_search_test.exs,
+# ctx_build_test.exs) are not edited and must still pass.
+- id: symbols-and-refs-resolve-elixir
+  given: >-
+    The shop fixture, indexed, whose seven embedded Elixir sources hash to the pinned SHA-256s. It contains: nested
+    module Shop.Pricing.Rules; multi-clause Shop.Cart.total/2; a default argument; a `when` guard head;
+    defp/defmacro/defguard; `alias Shop.{Pricing, Tax}`; `alias Shop.Inventory, as: Stock`; pipes;
+    `__MODULE__.total/1`; `&Shop.Tax.add/1`; `use Agent`; `require Logger`; an imported local call; and an ignored
+    `deps/dep/lib/dep.ex`.
+  when: >-
+    `symbols` runs with `Shop`, `Shop.Cart.total`, `Shop.Pricing`, `Shop.checkout`, `Shop.audit`, `trace`,
+    `positive`, `ShopTest`, `Dep` and `Shop --limit 1`. `refs` runs with `Shop.Cart`, `Shop.Cart --limit 2`,
+    `Shop.Tax.add`, `Shop.Tax.add/1`, `Shop.Cart.total/2`, `Shop.Inventory.put`, `Stock`, `Shop.Pricing`,
+    `Shop.Pricing.Rules.default`, `Shop.Format`, `Agent`, `Logger` and `Map.put`. Malformed `symbols`, `refs` and
+    `map` command lines run on a fresh fixture before any index exists.
+  then: >-
+    symbols:
+    `Shop.Cart.total` → `lib/shop/cart.ex:2 def Shop.Cart.total/1` | `lib/shop/cart.ex:3 def Shop.Cart.total/2`;
+    `Shop.Pricing` → `lib/shop/pricing.ex:1 defmodule Shop.Pricing` | `lib/shop/pricing.ex:2 def Shop.Pricing.apply/2` |
+    `lib/shop/pricing.ex:4 defmodule Shop.Pricing.Rules` | `lib/shop/pricing.ex:5 def Shop.Pricing.Rules.default/0` |
+    `lib/shop/pricing.ex:8 def Shop.Pricing.rules/0`;
+    `Shop.checkout` → `lib/shop.ex:8 def Shop.checkout/2`;
+    `Shop.audit` → `lib/shop.ex:18 defp Shop.audit/1`;
+    `trace` → `lib/shop.ex:20 defmacro Shop.trace/1`;
+    `positive` → `lib/shop.ex:22 defguard Shop.positive/1`;
+    `ShopTest` → `test/shop_test.exs:1 defmodule ShopTest`;
+    `Dep` → nothing;
+    `Shop --limit 1` → `lib/shop.ex:1 defmodule Shop` | `... 25 more`;
+    `Shop` → the 26 lines of test E1.
+    refs:
+    `Shop.Cart` → `lib/shop.ex:2 alias Shop.Cart` | `lib/shop.ex:10 call Shop.Cart.total/1` |
+    `lib/shop/cart.ex:7 call Shop.Cart.total/1` | `test/shop_test.exs:3 alias Shop.Cart` |
+    `test/shop_test.exs:6 call Shop.Cart.total/1`;
+    `Shop.Cart --limit 2` → the first two of those | `... 3 more`;
+    `Shop.Tax.add` and `Shop.Tax.add/1` → `lib/shop.ex:12 call Shop.Tax.add/1` |
+    `lib/shop/inventory.ex:5 capture Shop.Tax.add/1`;
+    `Shop.Cart.total/2` → nothing;
+    `Shop.Inventory.put` → `lib/shop.ex:16 call Shop.Inventory.put/2`;
+    `Stock` → nothing;
+    `Shop.Pricing` → `lib/shop.ex:3 alias Shop.Pricing` | `lib/shop.ex:11 call Shop.Pricing.apply/2`;
+    `Shop.Pricing.Rules.default` → `lib/shop/pricing.ex:8 call Shop.Pricing.Rules.default/0`;
+    `Shop.Format` → `lib/shop.ex:5 import Shop.Format`;
+    `Agent` → `lib/shop/inventory.ex:2 use Agent` | `lib/shop/inventory.ex:3 call Agent.update/2` |
+    `lib/shop/inventory.ex:4 call Agent.get/2`;
+    `Logger` → `lib/shop.ex:6 require Logger` | `lib/shop.ex:18 call Logger.info/1`;
+    `Map.put` → `lib/shop/inventory.ex:3 call Map.put/3`.
+    All exit 0. Each malformed command line exits 2 with empty stdout and stderr exactly USAGE, and the index home
+    stays empty.
+  wrong_result: >-
+    Any of these:
+    - aliases left unresolved (a `Stock` or `Rules` ref, a missing `Shop.Inventory.put`);
+    - aliases resolved by a hard-coded table of the fixture's names (the Candidate's `resolve_mod`), which passes
+      these shop outputs and fails scenario aliases-resolve-by-scope-not-by-name;
+    - pipe arity not incremented (`Shop.Cart.total/0`, `Shop.Tax.add/0`);
+    - one symbol per clause;
+    - default arguments or `when` heads mis-counted;
+    - nested modules unqualified;
+    - captures reported as calls, or missed;
+    - `__MODULE__` calls missed;
+    - local or imported calls reported;
+    - defp missing;
+    - ignored deps indexed;
+    - fixture sources that differ from evidence/fixture/ (a heredoc that unescaped `\\`), or that are read from the
+      checkout's `.kogen/`;
+    - a usage error that creates the index home, or a malformed command line accepted;
+    - an edited or renamed landed slice 1 test;
+    - a smoke test that only checks the exit status or a substring.
+  verified_by: [check]
+  evidence: >-
+    Captured symbols/refs output. The same outputs come from evidence/probe/reference-extractor.rs
+    (reference-extractor-shop.txt), also when built against the landed lock and run on the landed fixture bytes
+    (evidence/probe-preflight-d9013413.md P-1, P-2); node shapes are in evidence/tree-sitter-sexp.txt.
+  tests:
+    - >-
+      E1 "symbols lists every module and function by the specified rules": {root, home} = CtxFixture.create!(); for
+      each {path, _} in CtxFixture.sources(), assert the SHA-256 of File.read!(Path.join(root, path)) ==
+      CtxFixture.hashes()[path]; run(root, home, ["symbols", "Shop"]) → exactly these 26 lines: "lib/shop.ex:1 defmodule Shop", "lib/shop.ex:8 def
+      Shop.checkout/2", "lib/shop.ex:16 def Shop.restock/1", "lib/shop.ex:18 defp Shop.audit/1", "lib/shop.ex:20
+      defmacro Shop.trace/1", "lib/shop.ex:22 defguard Shop.positive/1", "lib/shop/cart.ex:1 defmodule Shop.Cart",
+      "lib/shop/cart.ex:2 def Shop.Cart.total/1", "lib/shop/cart.ex:3 def Shop.Cart.total/2", "lib/shop/cart.ex:5
+      def Shop.Cart.empty/0", "lib/shop/cart.ex:7 def Shop.Cart.merge/2", "lib/shop/format.ex:1 defmodule
+      Shop.Format", "lib/shop/format.ex:2 def Shop.Format.money/1", "lib/shop/inventory.ex:1 defmodule
+      Shop.Inventory", "lib/shop/inventory.ex:3 def Shop.Inventory.put/2", "lib/shop/inventory.ex:4 def
+      Shop.Inventory.lookup/1", "lib/shop/inventory.ex:5 def Shop.Inventory.fetcher/0", "lib/shop/pricing.ex:1
+      defmodule Shop.Pricing", "lib/shop/pricing.ex:2 def Shop.Pricing.apply/2", "lib/shop/pricing.ex:4 defmodule
+      Shop.Pricing.Rules", "lib/shop/pricing.ex:5 def Shop.Pricing.Rules.default/0", "lib/shop/pricing.ex:8 def
+      Shop.Pricing.rules/0", "lib/shop/tax.ex:1 defmodule Shop.Tax", "lib/shop/tax.ex:3 def Shop.Tax.add/1",
+      "lib/shop/tax.ex:4 def Shop.Tax.rate/0", "test/shop_test.exs:1 defmodule ShopTest".
+    - >-
+      E2 "symbols queries are case-sensitive substrings with a limit": each of the `then` symbols queries other than
+      `Shop` (Shop.Cart.total, Shop.Pricing, Shop.checkout, Shop.audit, trace, positive, ShopTest, Dep, and
+      ["Shop", "--limit", "1"]) → exactly its listed lines (Dep → stdout "").
+    - >-
+      E3 "refs resolve aliases, pipes, captures and __MODULE__": each `then` refs query (Shop.Cart,
+      ["Shop.Cart", "--limit", "2"], Shop.Tax.add, Shop.Tax.add/1, Shop.Cart.total/2, Shop.Inventory.put, Stock,
+      Shop.Pricing, Shop.Pricing.Rules.default, Shop.Format, Agent, Logger, Map.put) → exactly its listed lines
+      (Shop.Cart.total/2 and Stock → stdout "").
+    - >-
+      E4 "malformed symbols, refs and map command lines are usage errors before any index work": {root, home} =
+      CtxFixture.create!() (no `index`); for each args in [["symbols"], ["symbols", "a", "b"], ["symbols", "Shop",
+      "--limit", "0"], ["symbols", "Shop", "--limit"], ["symbols", "Shop", "--limit", "1", "--limit", "2"],
+      ["symbols", "Shop", "--tokens", "5"], ["symbols", "Shop", "--focus", "lib/"], ["symbols", "Shop", "--bogus"],
+      ["refs"], ["refs", "a", "b"], ["refs", "Shop", "--limit", "x"], ["map", "extra"], ["map", "--limit", "2"],
+      ["map", "--tokens"], ["map", "--tokens", "0"], ["map", "--tokens", "5", "--tokens", "6"], ["map",
+      "--focus"], ["map", "--bogus"], ["search", "x", "--tokens", "5"], ["index", "--focus", "lib/"]] →
+      {"", USAGE, 2}; then File.ls!(home) == [].
+  proof:
+    offline: [test/kogen/ctx_elixir_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: tree-sitter parsing of fixture Elixir sources, no provider"
+    affected_paths: [native/kogen-ctx/src/**, test/support/ctx_fixture.ex, test/kogen/ctx_elixir_test.exs]
+
+- id: aliases-resolve-by-scope-not-by-name
+  given: >-
+    The alias fixture (CtxFixture.create_alias!/0), indexed. Its files are lib/acme/billing.ex, lib/acme/report.ex
+    and lib/outer.ex, byte-identical to evidence/alias-fixture/. None of their module names occurs in the shop
+    fixture. They cover:
+    - an alias used before it is written;
+    - `as:`;
+    - `A.{B, C}`;
+    - a nested module's name used in its parent;
+    - an enclosing module's alias used in a nested module;
+    - a two-step pipe;
+    - a capture;
+    - an unaliased name in a sibling module;
+    - a call in a default argument;
+    - a function-level alias;
+    - an inner `as:` that shadows it.
+  when: >-
+    `symbols Acme`, `symbols Outer`, and `refs` with `Acme.Mailer`, `Acme.Billing.Invoice.build`,
+    `Acme.Ledger.Entry`, `Acme.Clock`, `Row`, `Invoice`, `Mailer`, `Kit.Box` and `Other.Thing` run.
+  then: >-
+    `symbols Acme` → `lib/acme/billing.ex:1 defmodule Acme.Billing` | `lib/acme/billing.ex:2 def
+    Acme.Billing.dispatch/1` | `lib/acme/billing.ex:7 defmodule Acme.Billing.Invoice` | `lib/acme/billing.ex:8 def
+    Acme.Billing.Invoice.build/1` | `lib/acme/billing.ex:11 def Acme.Billing.hook/0` | `lib/acme/report.ex:1
+    defmodule Acme.Report` | `lib/acme/report.ex:2 def Acme.Report.run/0`.
+    `symbols Outer` → `lib/outer.ex:1 defmodule Outer` | `lib/outer.ex:2 def Outer.f/1` | `lib/outer.ex:3 def
+    Outer.g/0` | `lib/outer.ex:7 defmodule Outer.Inner` | `lib/outer.ex:9 def Outer.Inner.h/0` | `lib/outer.ex:11
+    def Outer.k/0`.
+    `refs Acme.Mailer` → `lib/acme/billing.ex:2 call Acme.Mailer.deliver/1` | `lib/acme/billing.ex:5 alias
+    Acme.Mailer` | `lib/acme/billing.ex:11 capture Acme.Mailer.deliver/2`.
+    `refs Acme.Billing.Invoice.build` → `lib/acme/billing.ex:2 call Acme.Billing.Invoice.build/1`.
+    `refs Acme.Ledger.Entry` → `lib/acme/billing.ex:4 alias Acme.Ledger.Entry` | `lib/acme/billing.ex:8 call
+    Acme.Ledger.Entry.new/1`.
+    `refs Acme.Clock` → `lib/acme/billing.ex:5 alias Acme.Clock` | `lib/acme/billing.ex:8 call Acme.Clock.stamp/2`.
+    `refs Row` → `lib/acme/report.ex:2 call Row.new/1`.
+    `refs Invoice` and `refs Mailer` → nothing.
+    `refs Kit.Box` → `lib/outer.ex:2 call Kit.Box.new/0` | `lib/outer.ex:4 alias Kit.Box` | `lib/outer.ex:5 call
+    Kit.Box.open/0` | `lib/outer.ex:11 call Kit.Box.close/0`.
+    `refs Other.Thing` → `lib/outer.ex:8 alias Other.Thing` | `lib/outer.ex:9 call Other.Thing.open/0`.
+    No Rust source under native/kogen-ctx/src/ contains a string literal naming a fixture module.
+  wrong_result: >-
+    Any of these:
+    - alias resolution by a hard-coded table of names, fixture-specific or otherwise (the Candidate's `resolve_mod`
+      mapped "Cart", "Pricing", "Tax", "Stock", "Inventory" and "Rules"), so the shop outputs pass and the Acme
+      outputs fail;
+    - an alias that leaks into a sibling module (`Row` resolved in Acme.Report);
+    - an alias used before its line left unresolved;
+    - a nested module's short name not resolved in its parent;
+    - an enclosing alias not seen in a nested module;
+    - the inner `as: Box` not shadowing `Kit.Box` (line 9 reported as `Kit.Box.open/0`);
+    - a call in a default argument missed;
+    - a function-level alias ignored;
+    - pipe arity counted only once in a chain;
+    - a Rust unit test in the crate that names a fixture module (F3 rejects it);
+    - a smoke test that only checks a substring or the exit status.
+  verified_by: [check]
+  evidence: >-
+    Captured symbols/refs output on the alias fixture; identical to
+    evidence/probe/reference-extractor-alias.txt; parse trees in evidence/probe/tree-sitter-sexp-alias.txt.
+  tests:
+    - >-
+      F1 "a second fixture with unrelated names gets its symbols": {root, home} = CtxFixture.create_alias!(); for
+      each {path, bytes} in CtxFixture.alias_sources(), assert File.read!(Path.join(root, path)) == bytes and its
+      SHA-256 == CtxFixture.alias_hashes()[path]; ["index"] → exactly [`index <index>`, `project <id>`, `rebuilt
+      yes`, `reindexed lib/acme/billing.ex`, `reindexed lib/acme/report.ex`, `reindexed lib/outer.ex`, `files 3
+      reindexed 3 removed 0`]; ["symbols", "Acme"] and ["symbols", "Outer"] → exactly the `then` lines.
+    - >-
+      F2 "aliases resolve by lexical scope": run each `then` refs query (Acme.Mailer, Acme.Billing.Invoice.build,
+      Acme.Ledger.Entry, Acme.Clock, Row, Invoice, Mailer, Kit.Box, Other.Thing) → exactly its listed lines (Invoice
+      and Mailer → stdout "").
+    - >-
+      F3 "the crate has no table of fixture names": for every file in Path.wildcard("native/kogen-ctx/src/**/*.rs")
+      (relative to File.cwd!(), the checkout root; at d9013413 that is main.rs and sha256.rs, which contain none of
+      them), refute its text contains any of the literals ~s("Shop), ~s("Cart"),
+      ~s("Pricing"), ~s("Tax"), ~s("Stock"), ~s("Inventory"), ~s("Rules"), ~s("Format"), ~s("Acme),
+      ~s("Row"), ~s("Invoice"), ~s("Mailer"), ~s("Clock"), ~s("Kit), ~s("Outer). (Rust unit tests in the crate use
+      other names; file paths such as "lib/shop/tax.ex" in map_rank_values do not match these literals.)
+  proof:
+    offline: [test/kogen/ctx_elixir_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: tree-sitter parsing of a second local fixture and a source scan; no provider"
+    affected_paths: [native/kogen-ctx/src/**, test/support/ctx_fixture.ex, test/kogen/ctx_elixir_test.exs]
+
+- id: code-index-refreshes-and-rebuilds
+  given: >-
+    The shop fixture after one `index`.
+  when: >-
+    A code file is edited and queried with no `index` before the query. A code file is added and one deleted. The
+    index is edited to look like one written by slice 1's schema-1 binary. The index is deleted, corrupted and given
+    schema version 0, each followed by the same queries.
+  then: >-
+    After the line `  def vat, do: @rate` is inserted as line 5 of `lib/shop/tax.ex`, `symbols Shop.Tax.vat` prints
+    exactly `lib/shop/tax.ex:5 def Shop.Tax.vat/0` (the query refreshed the index), and the following `index` prints
+    `index <index>` | `project <id>` | `rebuilt no` | `files 11 reindexed 0 removed 0`. After `lib/shop/extra.ex` is
+    added and `lib/shop/format.ex` deleted:
+    - `refs Shop.Format` prints exactly `lib/shop.ex:5 import Shop.Format` (the unchanged file was not re-parsed,
+      and its refs stay);
+    - `symbols Shop.Format` prints nothing;
+    - `symbols Shop.Extra` prints `lib/shop/extra.ex:1 defmodule Shop.Extra` | `lib/shop/extra.ex:2 def
+      Shop.Extra.go/0`;
+    - `refs Shop.Tax.add` prints exactly `lib/shop.ex:12 call Shop.Tax.add/1` |
+      `lib/shop/extra.ex:2 call Shop.Tax.add/1` | `lib/shop/inventory.ex:5 capture Shop.Tax.add/1`.
+
+    An index with slice 1's schema-1 layout (no `symbols` or `refs` table, `schema_version` `1`) is rebuilt: `index`
+    prints exactly slice 1's 15-line first-index report with `rebuilt yes` (the `initial(root, home, "yes")` lines of
+    the landed test/kogen/ctx_index_test.exs), after which `meta.schema_version` is `2` and symbols answer. After each deletion, corruption and schema change, `symbols Shop`, `refs Shop.Cart` and `map`
+    print output byte-identical to the first capture.
+  wrong_result: >-
+    Any of these:
+    - queries answer from a stale index until `index` runs;
+    - a deleted file's symbols linger;
+    - an unchanged file's refs are dropped;
+    - a schema-1 index is reused, so code files whose blobs did not change have no symbols, or a query fails on its
+      missing `symbols` table;
+    - answers differ after a rebuild;
+    - a smoke test that only checks `rebuilt yes` or a line count.
+  verified_by: [check]
+  evidence: Captured query outputs and `index` reports between real file edits; `/usr/bin/sqlite3` for the schema edits.
+  tests:
+    - >-
+      G1 "a query sees a code edit without index": after `index`, insert "  def vat, do: @rate" as line 5 of
+      lib/shop/tax.ex; run(root, home, ["symbols", "Shop.Tax.vat"]) → exactly ["lib/shop/tax.ex:5 def
+      Shop.Tax.vat/0"]; then ["index"] → exactly [`index <index>`, `project <id>`, `rebuilt no`, `files 11 reindexed
+      0 removed 0`].
+    - >-
+      G2 "added and deleted code files update symbols and refs": after `index`, write lib/shop/extra.ex =
+      "defmodule Shop.Extra do\n  def go, do: Shop.Tax.add(1)\nend\n" and File.rm!(lib/shop/format.ex); then
+      ["refs", "Shop.Format"] → exactly ["lib/shop.ex:5 import Shop.Format"]; ["symbols", "Shop.Format"] → "";
+      ["symbols", "Shop.Extra"] → exactly ["lib/shop/extra.ex:1 defmodule Shop.Extra", "lib/shop/extra.ex:2 def
+      Shop.Extra.go/0"]; ["refs", "Shop.Tax.add"] → exactly ["lib/shop.ex:12 call Shop.Tax.add/1",
+      "lib/shop/extra.ex:2 call Shop.Tax.add/1", "lib/shop/inventory.ex:5 capture Shop.Tax.add/1"].
+    - >-
+      G3 "an index written by the schema-1 binary is rebuilt": after `index`, `/usr/bin/sqlite3 <index> "drop table
+      symbols; drop table refs; update meta set value = '1' where key = 'schema_version'"` (exit 0; the file now has
+      exactly slice 1's layout and version); ["index"] → exactly the
+      15 lines [`index <index>`, `project <id>`, `rebuilt yes`, `reindexed
+      .kogen/intents/complete/stray-rework/INTENT.md`, `reindexed .kogen/intents/complete/stray-rework/scenarios.yaml`,
+      `reindexed .kogen/intents/drafts/cart-discounts/INTENT.md`, `reindexed
+      .kogen/memory/lesson/lesson-stray-rework.md`, `reindexed lib/shop.ex`, `reindexed lib/shop/cart.ex`, `reindexed
+      lib/shop/format.ex`, `reindexed lib/shop/inventory.ex`, `reindexed lib/shop/pricing.ex`, `reindexed
+      lib/shop/tax.ex`, `reindexed test/shop_test.exs`, `files 11 reindexed 11 removed 0`]; `/usr/bin/sqlite3
+      <index> "select value from meta where key = 'schema_version'"` → "2"; ["symbols", "Shop.Cart.total"] → exactly
+      its two E2 lines.
+    - >-
+      G4 "a rebuilt index answers byte-identically": after `index`, capture s = stdout of ["symbols", "Shop"], r =
+      ["refs", "Shop.Cart"] and m = ["map"] (assert s == E1's lines and m == H1's lines, so the check is not
+      vacuous); for each damage in [File.rm!(<index>), File.write!(<index>, "not a database"), `/usr/bin/sqlite3
+      <index> "update meta set value = '0' where key = 'schema_version'"`], apply it, run ["index"] (its third line
+      == "rebuilt yes"), then assert the three queries print s, r and m again (the same damages as the landed
+      `A4 rebuilds deleted, corrupt, old-schema and foreign-root indexes identically`, which stays unedited).
+  proof:
+    offline: [test/kogen/ctx_elixir_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: file edits in a local git fixture and a local SQLite index"
+    affected_paths: [native/kogen-ctx/src/**, test/support/ctx_fixture.ex, test/kogen/ctx_elixir_test.exs]
+
+- id: repo-map-ranks-and-fits-budget
+  given: >-
+    The shop fixture, indexed. File edges (refs into modules defined in another file): lib/shop.ex → cart 2,
+    pricing 2, tax 2, inventory 2, format 1; lib/shop/inventory.ex → tax 1; test/shop_test.exs → cart 2. The dangling
+    files are cart, format, pricing and tax. Block sizes in bytes: tax 80, cart 135, inventory 137, pricing 165,
+    format 69, lib/shop.ex 123, test 40.
+  when: >-
+    `map`, `map --tokens 25`, `map --tokens 64`, `map --tokens 10`, `map --focus test/shop_test.exs`,
+    `map --focus lib/shop/`, `map --focus nope.ex`, `map --focus lib/nope/` and `map --tokens x` run, and the
+    crate's `map_rank_values` unit test runs.
+  then: >-
+    `map` prints exactly the 32 lines of test H1: lib/shop/tax.ex, lib/shop/cart.ex, lib/shop/inventory.ex,
+    lib/shop/pricing.ex, lib/shop/format.ex, lib/shop.ex and test/shop_test.exs, each followed by its non-private
+    symbols as `  <kind> <name>` (inventory and pricing tie and are ordered by path; so are lib/shop.ex and
+    test/shop_test.exs). `map --tokens 25` prints exactly the lib/shop/tax.ex block (80 bytes, 20 tokens) and
+    `... 6 more files`. `map --tokens 64` prints exactly the tax and cart blocks and `... 5 more files`; the smaller
+    test/shop_test.exs block would still fit, but output stops at the first block that does not. `map --tokens 10`
+    prints only `... 7 more files`. `map --focus test/shop_test.exs` lists the files in the order
+    test/shop_test.exs, lib/shop/cart.ex, lib/shop.ex, lib/shop/format.ex, lib/shop/inventory.ex,
+    lib/shop/pricing.ex, lib/shop/tax.ex. `map --focus lib/shop/` lists lib/shop/tax.ex, lib/shop/cart.ex,
+    lib/shop/format.ex, lib/shop/inventory.ex, lib/shop/pricing.ex, lib/shop.ex, test/shop_test.exs (the four exact
+    ties by path). `map --focus nope.ex`, `map --focus lib/nope/` and `map --tokens x` exit 2 with stderr exactly
+    USAGE and nothing on stdout. `map_rank_values` passes.
+  wrong_result: >-
+    Any of these:
+    - files in path or reference-count order instead of the specified PageRank;
+    - unweighted edges (format before inventory);
+    - dangling mass dropped or spread uniformly instead of by p (the focus order changes; the rank values change);
+    - iterating to convergence instead of exactly 100 times;
+    - --focus ignored;
+    - private symbols listed;
+    - ties broken other than by path;
+    - budget charged by source-file bytes instead of block bytes, or per block instead of by the running total;
+    - skipping a block that does not fit and adding a later smaller one (the Candidate's F4);
+    - a block cut in the middle;
+    - a bad focus or token value silently accepted;
+    - a map_rank_values that builds its graph from module names instead of path-to-path edges (F3 rejects it), or
+      that is not run by the cargo-test check stage;
+    - a smoke test that only checks that the first line is a path.
+  verified_by: [check]
+  evidence: >-
+    Captured map output; the orders, block sizes and rank values come from evidence/probe/map.py and ranks.py (the
+    INTENT.md formula, 100 iterations).
+  tests:
+    - >-
+      H1 "map prints every block in PageRank order": run(root, home, ["map"]) → exactly these 32 lines:
+      "lib/shop/tax.ex", "  defmodule Shop.Tax", "  def Shop.Tax.add/1", "  def Shop.Tax.rate/0",
+      "lib/shop/cart.ex", "  defmodule Shop.Cart", "  def Shop.Cart.total/1", "  def Shop.Cart.total/2", "  def
+      Shop.Cart.empty/0", "  def Shop.Cart.merge/2", "lib/shop/inventory.ex", "  defmodule Shop.Inventory", "  def
+      Shop.Inventory.put/2", "  def Shop.Inventory.lookup/1", "  def Shop.Inventory.fetcher/0",
+      "lib/shop/pricing.ex", "  defmodule Shop.Pricing", "  def Shop.Pricing.apply/2", "  defmodule
+      Shop.Pricing.Rules", "  def Shop.Pricing.Rules.default/0", "  def Shop.Pricing.rules/0", "lib/shop/format.ex",
+      "  defmodule Shop.Format", "  def Shop.Format.money/1", "lib/shop.ex", "  defmodule Shop", "  def
+      Shop.checkout/2", "  def Shop.restock/1", "  defmacro Shop.trace/1", "  defguard Shop.positive/1",
+      "test/shop_test.exs", "  defmodule ShopTest" (identical to evidence/probe/map-default-expected.txt). Keep each
+      block as a module attribute; H2 and H3 reuse them.
+    - >-
+      H2 "the budget stops at the first block that does not fit": ["map", "--tokens", "25"] → exactly the 4 tax-block
+      lines, then "... 6 more files"; ["map", "--tokens", "64"] → exactly the tax block, the cart block, then "... 5
+      more files"; ["map", "--tokens", "10"] → exactly ["... 7 more files"].
+    - >-
+      H3 "focus personalizes the ranking": ["map", "--focus", "test/shop_test.exs"] → exactly the concatenation of
+      the blocks of test/shop_test.exs, lib/shop/cart.ex, lib/shop.ex, lib/shop/format.ex, lib/shop/inventory.ex,
+      lib/shop/pricing.ex and lib/shop/tax.ex, in that order; ["map", "--focus", "lib/shop/"] → exactly the blocks of
+      lib/shop/tax.ex, lib/shop/cart.ex, lib/shop/format.ex, lib/shop/inventory.ex, lib/shop/pricing.ex, lib/shop.ex
+      and test/shop_test.exs, in that order.
+    - >-
+      H4 "bad map arguments are usage errors": ["map", "--focus", "nope.ex"], ["map", "--focus", "lib/nope/"] and
+      ["map", "--tokens", "x"] each → {"", USAGE, 2}; then ["map", "--focus", "lib/shop/tax.ex", "--focus",
+      "nope.ex"] → {"", USAGE, 2} too (one unmatched value is enough).
+    - >-
+      H5 "the rank values are the specified formula": System.cmd("cargo", ["test", "--release", "--locked",
+      "--offline", "--manifest-path", "native/kogen-ctx/Cargo.toml", "--target-dir", "_build/cargo",
+      "map_rank_values"], stderr_to_stdout: true) from the checkout root, as the landed `D3 Rust tests include all
+      NIST vectors` runs cargo → status 0, and the output matches
+      ~r/^test (\S+::)?map_rank_values \.\.\. ok$/m. The Rust test asserts, within 1e-12: uniform p → lib/shop.ex
+      0.102980719720808, lib/shop/cart.ex 0.209966245208536, lib/shop/format.ex 0.112706676583328,
+      lib/shop/inventory.ex 0.122432633445849, lib/shop/pricing.ex 0.122432633445849, lib/shop/tax.ex
+      0.226500371874821, test/shop_test.exs 0.102980719720808; p focused on test/shop_test.exs → lib/shop/cart.ex
+      0.459459419267445, test/shop_test.exs 0.540540580732555, every other file 0.
+  proof:
+    offline: [test/kogen/ctx_map_test.exs]
+    paid_target: none
+    paid_reason: "offline-sufficient: deterministic ranking over a fixture's symbol graph"
+    affected_paths: [native/kogen-ctx/src/**, test/support/ctx_fixture.ex, test/kogen/ctx_map_test.exs]

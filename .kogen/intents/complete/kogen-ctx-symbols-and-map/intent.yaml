@@ -1,0 +1,37 @@
+id: 01a0e210-f953-7eed-9630-ccbad480dab6
+slug: kogen-ctx-symbols-and-map
+title: Add kogen-ctx Elixir symbols, refs and map
+commit_subject: Add kogen-ctx symbols, refs and repo map
+status: approved
+shaped_against:
+  branch: develop
+  head: d9013413eeb50af9cc2993fa839acfb277827e27
+  note: >-
+    Slice 2 of 3, split 2026-09-27 from the approved kogen-ctx-tool (01a0e18a-475b-7d2c-8155-cd32e172d37b, kept as a
+    superseded reference in drafts/) after its codex Build XARfeVP5 did not converge (Final Review F3 alias table and
+    pipe/capture refs, F4 map; lesson 27). First shaped at fa48e817; re-preflighted at d9013413 ("Add kogen-ctx index
+    and search"), where slice 1 kogen-ctx-index-and-search has landed (.kogen/intents/complete/). It extends the landed
+    native/kogen-ctx/src/main.rs, test/support/ctx_fixture.ex and README.md; the landed ctx_index/ctx_search/ctx_build
+    tests stay unedited. No new crates and no Cargo.lock change, so no launch fetch (probe P-1). Probes:
+    evidence/probe-split-2026-09-27.md, evidence/probe-preflight-d9013413.md.
+shaping:
+  route: direct-package
+  harness: claude
+  model: claude-opus-5-5
+  effort: high
+  started: "2026-09-27T08:40:00Z"
+approval:
+  actor: human Shaper, delegated to the orchestrator
+  approved_at: "2026-09-27T12:24:25Z"
+  approved_against_head: d9013413eeb50af9cc2993fa839acfb277827e27
+  route: codex
+  source: approval.md
+  quotes:
+    - "you gotta handle EVERYTHING"
+  covers: Slice 2 of the kogen-ctx-tool split; re-preflighted at d9013413; Opus ready; codex route, Developer high (rule 54).
+may_change_guarded_paths:
+  - native/kogen-ctx/src/**
+  - README.md
+  - test/support/ctx_fixture.ex
+  - test/kogen/ctx_elixir_test.exs
+  - test/kogen/ctx_map_test.exs

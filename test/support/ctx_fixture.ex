@@ -89,8 +89,77 @@ defmodule Kogen.Test.CtxFixture do
     "lib/shop.ex" => "f935965dfac50cd7de8a8bc79f3f50882558f965897414e1f95dae870a9ad347",
     "test/shop_test.exs" => "59f23a5513964b133c5496d1c8953d6e1d8790ade8caf75f0d65c6ed83793200"
   }
+
+  @alias_sources %{
+    "lib/acme/billing.ex" => ~S"""
+    defmodule Acme.Billing do
+      def dispatch(invoice), do: invoice |> Invoice.build() |> Mailer.deliver()
+
+      alias Acme.Ledger.Entry, as: Row
+      alias Acme.{Clock, Mailer}
+
+      defmodule Invoice do
+        def build(id), do: Row.new(id) |> Clock.stamp(:utc)
+      end
+
+      def hook, do: &Mailer.deliver/2
+    end
+    """,
+    "lib/acme/report.ex" => ~S"""
+    defmodule Acme.Report do
+      def run, do: Row.new(1)
+    end
+    """,
+    "lib/outer.ex" => ~S"""
+    defmodule Outer do
+      def f(x \\ Kit.Box.new()), do: x
+      def g do
+        alias Kit.Box
+        Box.open()
+      end
+      defmodule Inner do
+        alias Other.Thing, as: Box
+        def h, do: Box.open()
+      end
+      def k, do: Box.close()
+    end
+    """
+  }
+
+  @alias_hashes %{
+    "lib/acme/billing.ex" => "f1f2c61aa124a218811d4ec295b9e561a69d174560539879976a77e5be6aceab",
+    "lib/acme/report.ex" => "4ddb4fb346e4ae955dcb6849b8a14512721ca415c36bab64f3189fa212991083",
+    "lib/outer.ex" => "69263cc79f10ee3610b9e6643da5b99649d455ece5309cbf05ae558d699a6b3c"
+  }
   def sources, do: @sources
   def hashes, do: @hashes
+  def alias_sources, do: @alias_sources
+  def alias_hashes, do: @alias_hashes
+
+  def create_alias! do
+    nonce = "#{System.os_time(:nanosecond)}-#{System.unique_integer([:positive])}"
+    root = Path.join(System.tmp_dir!(), "kogen-ctx-alias-#{nonce}")
+    File.mkdir_p!(root)
+    for {path, bytes} <- @alias_sources, do: write!(root, path, bytes)
+    {_, 0} = System.cmd("git", ["init", "-q", root])
+    File.write!(Path.join(root, ".git/empty-excludes"), "")
+    git!(root, ["config", "core.excludesFile", Path.join(root, ".git/empty-excludes")])
+    git!(root, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "add", "."])
+
+    git!(root, [
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-qm",
+      "fixture"
+    ])
+
+    home = Path.join(System.tmp_dir!(), "kogen-ctx-home-#{nonce}")
+    File.mkdir_p!(home)
+    {root, home}
+  end
 
   def project_id(root), do: Workspace.project_id(root)
 
