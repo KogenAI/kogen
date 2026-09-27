@@ -1,0 +1,56 @@
+- id: self-hosting
+  scenario_ids: [every-stop-writes-a-report]
+  description: >-
+    This Build runs under fa48e817's controller, so its own stops write no report and use the old prefix table. Launch
+    with `--route codex` (rule 51). Since 7ed41f66 control's controller never loads Candidate code (lesson 17). Never
+    override TMPDIR and run Python with -B (lessons 20, 21).
+- id: categories-preserved
+  scenario_ids: [every-stop-writes-a-report, existing-expectations-kept]
+  description: >-
+    Deciding each category once tempts a cleanup that renames categories or rewrites the prefix table. Keep
+    fa48e817's `stop_category/1` table unchanged as the one reason→category function: the call sites whose reason
+    varies at runtime (`run_in_candidate/2` apart from the readiness error, `launch_attempt/4`,
+    `verify_guarded_turn/5`, `resume_after_failed_cycle/6`, `settle/6`, `post_developer_inputs_unchanged/1`,
+    `publish/5`) then keep the category it gives their reasons today: `write-boundary` for boundary errors,
+    `publication-failed` for `do_accept/6` errors, `integrity` for the fallback. Keep the recorded detail key
+    `stop_category`. The tests existing-expectations-kept lists assert today's strings. The only deliberate changes
+    are readiness → environment and login rejected → environment (original rounds 1 and 2, Opus), both passed as an
+    explicit `stop_category`, and the paid-target login stop, whose reason no longer starts with "environment
+    failure" and so must pass it explicitly or it falls to `integrity`.
+- id: stale-record-bytes
+  scenario_ids: [every-stop-writes-a-report]
+  description: >-
+    The starting point hashes the context's record bytes from before the stop's own update (F1). The update returns a
+    new context; the report must be built from that one (or from the file), after the last write to record.json, or
+    `record_sha256` will not match and build-continuation's `record-changed` check will refuse every continuation.
+- id: login-marker-scope
+  scenario_ids: [login-rejected-is-environment]
+  description: >-
+    The login marker must stay structured like `classify/1`. Claude's check is on `is_error` + 401 or
+    `authentication_failed` (the XfjCRM76 stream also has a `system api_retry` line with `error_status: 401`, which
+    has no `is_error` and must not count on its own). Codex text matching is scoped to `error`/`turn.failed` events,
+    because a bare 401 appears in ordinary test output. A timeout is never a login failure. The Codex sample is
+    synthetic (no local Codex 401 exists): if a real one differs, the Build shows `provider-failure` (class
+    environment), never a wrong `item`.
+- id: readiness-blind-to-revocation
+  scenario_ids: [login-rejected-is-environment]
+  description: >-
+    Readiness is local (`claude auth status` reports `loggedIn: true` with a revoked token; Build XfjCRM76 passed it
+    and then got 401 about 35 s into its first turn). So a revoked token is only caught at the first turn, as an
+    environment stop naming the login command. Detecting revocation needs a provider call or a credential change;
+    both are out (no paid work in admission; D1 protects credentials). Row `claude-login-refresh-race` owns the cause.
+- id: signature-stability
+  scenario_ids: [every-stop-writes-a-report]
+  description: >-
+    Case (a) needs two offline exhaustions of one package to produce the same signature digest. WorkspaceFixture's
+    check fails with one fixed line ("fixture check: kogen_fake_break remains"), and FailureSignature's tail
+    normalization already replaces temp paths, seeds, durations, timestamps and hex digests, so the digests match. If
+    they don't, the digest input is wrong: don't loosen the assertion.
+- id: overlapping-drafts
+  scenario_ids: [every-stop-writes-a-report]
+  description: >-
+    parallel-builds-with-integration and session-telemetry-and-event-log (drafts) cite the original package's
+    `FailureReport` and report file. After this lands they re-preflight against it: parallel-builds adds
+    lib/kogen/build/failure_report.ex to its guarded paths and gives its `integration` stop a category in the table;
+    session-telemetry adds its `events`/`transcripts` locators to the report. shaping-quality (approved) and
+    multi-machine-orchestration (draft) also edit build.ex; re-derive citations if either lands first.

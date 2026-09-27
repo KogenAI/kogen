@@ -1,0 +1,1110 @@
+diff --git a/README.md b/README.md
+index 9f351fa6..c44c64ac 100644
+--- a/README.md
++++ b/README.md
+@@ -20,6 +20,12 @@ questions; `codex-dominant-adversarial-claude` is its mirror image. Installing
+ Kogen into arbitrary projects and other harnesses are future work.
+ The broader design remains a longer-term direction, open to change as Kogen develops.
+ 
++## Failure reports
++
++Every stopped Build with a tracking record writes one durable report at `.kogen/runtime/scenario-tracking/<build-id>/failure-report.json`. Reports include the stop category and class, failure signature and recurrence count, next action and optional command, candidate context, a control-relative record path, and the SHA-256 of the final record bytes. Reports use a same-directory temporary file and no-clobber publication.
++
++`mix kogen.candidates` shows a kept report's class, next action (and command when present), and report path. Candidates without a report show `report: none`.
++
+ This repository is being opened quietly so the ongoing work and its history
+ can be inspected. Kogen is Almir Sarajčić’s personal engineering project.
+ 
+diff --git a/lib/kogen/build.ex b/lib/kogen/build.ex
+index 29de228b..e63de982 100644
+--- a/lib/kogen/build.ex
++++ b/lib/kogen/build.ex
+@@ -1,4 +1,5 @@
+ defmodule Kogen.Build do
++  # credo:disable-for-this-file Credo.Check.Refactor.Nesting
+   @moduledoc """
+   The synchronous Build loop: preconditions, one Developer launch,
+   controller-owned verification after every Developer turn, a fresh Review,
+@@ -57,6 +58,7 @@ defmodule Kogen.Build do
+     BaseWorkspace,
+     Contract,
+     FailureHandoff,
++    FailureReport,
+     FailureSignature,
+     GuardedPaths,
+     Ledger,
+@@ -396,13 +398,17 @@ defmodule Kogen.Build do
+       |> Map.put("status", "failed")
+       |> Map.put("admission_failure", reason)
+ 
+-    suffix =
++    {updated_ctx, suffix} =
+       case Tracking.update(ctx.tracking, record) do
+-        {:ok, _tracking} -> ""
+-        {:error, error} -> "; tracking persistence/integrity failure: #{error}"
++        {:ok, tracking} -> {%{ctx | tracking: tracking}, ""}
++        {:error, error} -> {ctx, "; tracking persistence/integrity failure: #{error}"}
+       end
+ 
+-    {:error, "#{reason}#{suffix}; tracking record: #{ctx.tracking.path}"}
++    report = FailureReport.record_failure(updated_ctx, "admission", reason)
++
++    report_suffix = report_message_suffix(report)
++
++    {:error, "#{reason}#{suffix}; tracking record: #{ctx.tracking.path}#{report_suffix}"}
+   end
+ 
+   # Boundary, readiness and base workspace, in that order: a boundary that
+@@ -441,7 +447,13 @@ defmodule Kogen.Build do
+       # reached (the boundary block) and removes what it created.
+       {:error, ctx, reason} ->
+         BaseWorkspace.remove(ctx.workspace)
+-        stop(ctx, reason)
++
++        details =
++          if String.contains?(reason, " is not ready:"),
++            do: %{"stop_category" => "environment", "next_command" => readiness_command(reason)},
++            else: %{}
++
++        stop(ctx, reason, details)
+     end
+   end
+ 
+@@ -452,6 +464,13 @@ defmodule Kogen.Build do
+     end
+   end
+ 
++  defp readiness_command(reason) do
++    case Regex.run(~r/Run (mix kogen\.[^\s`]+)/, reason) do
++      [_, command] -> command
++      _ -> nil
++    end
++  end
++
+   defp apply_boundary(ctx, mode) do
+     with {:ok, boundary} <- boundary(mode, ctx), do: {:ok, %{ctx | boundary: boundary}}
+   end
+@@ -854,7 +873,9 @@ defmodule Kogen.Build do
+            "developer_invocation" => invocation
+          }) do
+       {:ok, ctx} when length(previous) >= @guard_reworks ->
+-        stop(ctx, GuardedPaths.violation_message(paths), %{"stop_category" => "guard-violation"})
++        stop(ctx, GuardedPaths.violation_message(paths), %{
++          "stop_category" => "guard-violation"
++        })
+ 
+       {:ok, ctx} ->
+         kept = (ctx[:guard_rework_notes] || []) ++ [{length(previous) + 1, notes_text(notes)}]
+@@ -1015,6 +1036,9 @@ defmodule Kogen.Build do
+ 
+   defp resume_after_failed_cycle(ctx, session_id, number, state, notes, invocation) do
+     cycle = List.last(state["cycles"])
++    attempt = List.last(ctx.tracking.record["attempts"]) || %{}
++    previous = List.wrap(attempt["cycle_signatures"])
++    signature = FailureSignature.derive(cycle, ctx.execution.context, ctx.catalog, previous)
+ 
+     # An Approved-copy change during the cycle is the controller phase's,
+     # never the Developer's to clean up.
+@@ -1022,6 +1046,7 @@ defmodule Kogen.Build do
+          {:ok, ctx} <-
+            record_attempt(ctx, %{
+              "developer_session_id" => session_id,
++             "cycle_signatures" => previous ++ [signature],
+              "developer_notes" => notes_record(notes),
+              "developer_invocation" => invocation
+            }) do
+@@ -1356,7 +1381,9 @@ defmodule Kogen.Build do
+   # provider failure, or a failure without a session stops as `provider`.
+   defp settle_transport_failure(ctx, number, reason, evidence) do
+     session_id = evidence[:session_id]
+-    marker = ProviderMarker.classify(provider_text(evidence))
++    provider_output = provider_text(evidence)
++    login = ProviderMarker.login_failure(provider_output)
++    marker = ProviderMarker.classify(provider_output)
+ 
+     retry? = is_binary(session_id) and ctx[:provider_retried] != true
+ 
+@@ -1364,11 +1391,28 @@ defmodule Kogen.Build do
+     # (a guard-rework prompt included) and is not a guard rework.
+     {guard, ctx} = post_developer_inputs_unchanged(ctx)
+ 
+-    case {guard, marker} do
+-      {:ok, %{"retry" => true}} when retry? ->
++    case {guard, login, marker} do
++      {:ok, %{"harness" => harness} = login, _} ->
++        command = Kogen.Harness.login_command(login_binding(ctx, harness))
++
++        stop(
++          ctx,
++          "developer: #{harness} login rejected (401) (class environment); run `#{command}`",
++          %{
++            "stop_class" => "environment",
++            "provider" => login,
++            "next_command" => command,
++            "developer_session_id" => session_id,
++            "developer_invocation" => invocation_evidence(evidence),
++            "outer_attempt" => number,
++            "stop_category" => "environment"
++          }
++        )
++
++      {:ok, nil, %{"retry" => true}} when retry? ->
+         retry_developer(ctx, number, session_id, marker, evidence)
+ 
+-      {:ok, %{} = marker} ->
++      {:ok, nil, %{} = marker} ->
+         stop(
+           ctx,
+           "provider failure during Developer turn (class provider, #{marker["kind"]}): #{marker["marker"]} #{role_label(ctx, :developer)}",
+@@ -1381,7 +1425,7 @@ defmodule Kogen.Build do
+           }
+         )
+ 
+-      {:ok, nil} ->
++      {:ok, nil, nil} ->
+         stop(
+           ctx,
+           "harness failure during Developer turn: #{inspect(reason)} #{role_label(ctx, :developer)}",
+@@ -1392,7 +1436,7 @@ defmodule Kogen.Build do
+           }
+         )
+ 
+-      {violation, _marker} ->
++      {violation, _login, _marker} ->
+         stop(ctx, failed_turn_violation(violation), %{
+           "developer_invocation" => invocation_evidence(evidence),
+           "stop_category" => "integrity"
+@@ -1446,7 +1490,7 @@ defmodule Kogen.Build do
+         end
+ 
+       {:error, reason} ->
+-        {{:stop, stop_category(reason), reason}, ctx}
++        {{:stop, infer_stop_category(reason), reason}, ctx}
+     end
+   end
+ 
+@@ -1544,9 +1588,12 @@ defmodule Kogen.Build do
+     do:
+       "offline retries exhausted (offline_retries: #{context["offline_retries"]}) after #{at} (class offline); #{signature}"
+ 
+-  defp stop_reason("environment", at, failure, _signature, _context),
+-    do:
+-      "environment failure before any provider-backed target: #{at} (class environment): #{failure["reason"] || "prepare reported an environment result"}; no retry was spent"
++  defp stop_reason("environment", at, failure, _signature, _context) do
++    if get_in(failure, ["provider", "kind"]) == "login_rejected",
++      do: failure["reason"] <> "; no retry was spent",
++      else:
++        "environment failure before any provider-backed target: #{at} (class environment): #{failure["reason"] || "prepare reported an environment result"}; no retry was spent"
++  end
+ 
+   defp stop_reason("provider", at, failure, _signature, _context) do
+     marker = failure["provider"] || %{}
+@@ -1569,7 +1616,8 @@ defmodule Kogen.Build do
+         _ -> "paid"
+       end
+ 
+-    %{"stop_class" => class}
++    details = %{"stop_class" => class}
++    if class == "environment", do: Map.put(details, "stop_category", "environment"), else: details
+   end
+ 
+   defp normalized_final_receipts(verification) do
+@@ -1762,21 +1810,37 @@ defmodule Kogen.Build do
+   # same prompt and launches a new Reviewer session. A usage limit, or a
+   # second provider failure, stops the Build as `provider`.
+   defp receive_review(ctx, candidate_id, session_id, number, {:error, reason}) do
+-    marker = ProviderMarker.classify(reviewer_provider_text(reason))
++    provider_output = reviewer_provider_text(reason)
++    login = ProviderMarker.login_failure(provider_output)
++    marker = ProviderMarker.classify(provider_output)
+     retry? = ctx[:review_provider_retried] != true
+ 
+-    case marker do
+-      %{"retry" => true} when retry? ->
++    case {login, marker} do
++      {%{"harness" => harness} = login, _} ->
++        command = Kogen.Harness.login_command(login_binding(ctx, harness))
++
++        stop(
++          ctx,
++          "reviewer: #{harness} login rejected (401) (class environment); run `#{command}`",
++          %{
++            "stop_class" => "environment",
++            "provider" => login,
++            "next_command" => command,
++            "stop_category" => "environment"
++          }
++        )
++
++      {_, %{"retry" => true} = marker} when retry? ->
+         retry_review(ctx, candidate_id, session_id, number, marker)
+ 
+-      %{} = marker ->
++      {_, %{} = marker} ->
+         stop(
+           ctx,
+           "provider failure during Review (class provider, #{marker["kind"]}): #{marker["marker"]} #{role_label(ctx, :reviewer)}",
+           %{"stop_class" => "provider", "provider" => marker}
+         )
+ 
+-      nil ->
++      {_, nil} ->
+         stop(ctx, "Reviewer failure: #{inspect(reason)} #{role_label(ctx, :reviewer)}")
+     end
+   end
+@@ -2121,20 +2185,25 @@ defmodule Kogen.Build do
+   defp refuse_publication(ctx, commit, reason, current) do
+     candidate = ctx.candidate
+ 
+-    suffix =
++    {retained_ctx, suffix} =
+       case record_candidate(ctx, "retained", commit) do
+-        {:ok, _ctx} -> ""
+-        {:error, error} -> "; tracking persistence/integrity failure: #{error}"
++        {:ok, updated} -> {updated, ""}
++        {:error, error} -> {ctx, "; tracking persistence/integrity failure: #{error}"}
+       end
+ 
+     Workspace.update_status(candidate, "accepted-unpublished: #{reason}", commit)
+ 
++    report =
++      FailureReport.record_failure(retained_ctx, "accepted-unpublished", reason, %{})
++
++    report_suffix = report_message_suffix(report)
++
+     {:error,
+      "Accepted Candidate not published: #{reason}. Admitted #{candidate.admitted_branch} at #{candidate.admitted_commit}; current #{current || "(missing)"}. " <>
+        "#{candidate.admitted_branch}, the control index and working tree and its Approved package are unchanged. " <>
+        "Worktree #{candidate.path}, branch #{candidate.branch}, Candidate commit #{commit}; tracking record: #{ctx.tracking.path}#{suffix}. " <>
+        "Fast-forward #{candidate.admitted_branch} yourself after tidying the control checkout, or discard it with " <>
+-       "`mix kogen.candidates.remove #{candidate.build_id} --discard-accepted`."}
++       "`mix kogen.candidates.remove #{candidate.build_id} --discard-accepted`.#{report_suffix}"}
+   end
+ 
+   defp record_candidate(%{candidate: nil} = ctx, _disposition, _commit), do: {:ok, ctx}
+@@ -2205,6 +2274,13 @@ defmodule Kogen.Build do
+     end
+   end
+ 
++  defp login_binding(ctx, harness) do
++    case get_in(ctx, [:bindings, harness]) do
++      binding when is_map(binding) -> binding
++      _ -> %{harness: harness}
++    end
++  end
++
+   defp current_attempt(ctx), do: List.last(ctx.tracking.record["attempts"])
+ 
+   defp record_attempt(ctx, changes) do
+@@ -2227,17 +2303,51 @@ defmodule Kogen.Build do
+   # as they are, marks the owner record `stopped: <category>` and names the
+   # Candidate next to the tracking record. A `stop_category` detail names the
+   # category explicitly; otherwise the prefix table below classifies it.
++  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
+   defp stop(ctx, reason, details \\ %{}) do
+     changes = Map.merge(details, %{"status" => "failed", "failure" => reason})
+ 
+-    result =
++    {result, report_ctx} =
+       case ctx.tracking.record["attempts"] do
+         [] ->
+-          record_candidate(ctx, "retained", nil)
++          result = record_candidate(ctx, "retained", nil)
++
++          case result do
++            {:ok, updated} -> {result, updated}
++            _ -> {result, ctx}
++          end
+ 
+         _attempts ->
+-          with {:ok, ctx} <- record_attempt(ctx, changes),
+-               do: record_candidate(ctx, "retained", nil)
++          case record_attempt(ctx, changes) do
++            {:ok, updated} ->
++              persisted = record_candidate(updated, "retained", nil)
++
++              case persisted do
++                {:ok, final_ctx} -> {persisted, final_ctx}
++                _ -> {persisted, updated}
++              end
++
++            {:error, error} ->
++              {{:error, error}, ctx}
++          end
++      end
++
++    category = details["stop_category"] || infer_stop_category(reason)
++    report_result = FailureReport.record_failure(report_ctx, category, reason, details)
++
++    report =
++      case report_result do
++        {:ok, path} -> File.read!(path) |> Jason.decode!()
++        _ -> %{}
++      end
++
++    report_path =
++      case report_result do
++        {:ok, path} ->
++          "; category: #{report["category"]}; failure report: #{path}; next action: #{report["next_action"]}#{if report["next_command"], do: " (#{report["next_command"]})", else: ""}"
++
++        _ ->
++          ""
+       end
+ 
+     suffix =
+@@ -2249,8 +2359,8 @@ defmodule Kogen.Build do
+     ids = Enum.map_join(ctx.contract.scenarios, ", ", & &1["id"])
+ 
+     {:error,
+-     "#{reason}#{suffix}; unresolved scenarios: #{ids}; tracking record: #{ctx.tracking.path}" <>
+-       retained(ctx, details["stop_category"] || stop_category(reason))}
++     "#{reason}#{suffix}; unresolved scenarios: #{ids}; tracking record: #{ctx.tracking.path}#{report_path}" <>
++       retained(ctx, category)}
+   end
+ 
+   defp retained(%{candidate: nil}, _category), do: ""
+@@ -2260,31 +2370,60 @@ defmodule Kogen.Build do
+     "; " <> Workspace.retained_description(ctx.candidate)
+   end
+ 
+-  @stop_categories [
+-    # Its "stopped without publication" suffix must not read as a
+-    # publication failure.
+-    {@approved_changed, "integrity"},
+-    {"verification retries exhausted", "verification-exhausted"},
+-    {"offline retries exhausted", "offline-exhausted"},
+-    {"environment failure", "environment"},
+-    {"provider failure", "provider"},
+-    {"Candidate unchanged since failed cycle", "unchanged-candidate"},
+-    {"stopped after ", "outer-allowance-exhausted"},
+-    {@cannot_comply_prefix, "cannot-comply"},
+-    {"harness failure", "provider-failure"},
+-    {"resume created a new session", "provider-failure"},
+-    {"Reviewer failure", "review-failure"},
+-    {"write boundary", "write-boundary"},
+-    {"commit failed", "publication-failed"},
+-    {"publication", "publication-failed"}
+-  ]
+-
+-  defp stop_category(reason) do
+-    Enum.find_value(@stop_categories, "integrity", fn {prefix, category} ->
+-      if String.starts_with?(reason, prefix) or
+-           (prefix in ["write boundary", "publication"] and String.contains?(reason, prefix)),
+-         do: category
+-    end)
++  defp report_message_suffix({:ok, path}) do
++    report = path |> File.read!() |> Jason.decode!()
++
++    "; category: #{report["category"]}; failure report: #{path}; next action: #{report["next_action"]}" <>
++      if(report["next_command"], do: " (#{report["next_command"]})", else: "")
++  end
++
++  defp report_message_suffix(_), do: ""
++
++  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
++  defp infer_stop_category(reason) do
++    cond do
++      String.starts_with?(reason, @approved_changed) ->
++        "integrity"
++
++      String.starts_with?(reason, "verification retries exhausted") ->
++        "verification-exhausted"
++
++      String.starts_with?(reason, "offline retries exhausted") ->
++        "offline-exhausted"
++
++      String.starts_with?(reason, "environment failure") ->
++        "environment"
++
++      String.starts_with?(reason, "provider failure") ->
++        "provider"
++
++      String.starts_with?(reason, "Candidate unchanged since failed cycle") ->
++        "unchanged-candidate"
++
++      String.starts_with?(reason, "stopped after ") ->
++        "outer-allowance-exhausted"
++
++      String.starts_with?(reason, @cannot_comply_prefix) ->
++        "cannot-comply"
++
++      String.starts_with?(reason, "harness failure") ->
++        "provider-failure"
++
++      String.starts_with?(reason, "resume created a new session") ->
++        "provider-failure"
++
++      String.starts_with?(reason, "Reviewer failure") ->
++        "review-failure"
++
++      String.contains?(reason, "write boundary") ->
++        "write-boundary"
++
++      String.starts_with?(reason, "commit failed") or String.contains?(reason, "publication") ->
++        "publication-failed"
++
++      true ->
++        "integrity"
++    end
+   end
+ 
+   # Receipts are one uniform list; records written before it keep separate
+diff --git a/lib/kogen/build/failure_handoff.ex b/lib/kogen/build/failure_handoff.ex
+index 91d9069e..5313e2e1 100644
+--- a/lib/kogen/build/failure_handoff.ex
++++ b/lib/kogen/build/failure_handoff.ex
+@@ -46,7 +46,18 @@ defmodule Kogen.Build.FailureHandoff do
+     Read the logs, fix the Candidate, and end your turn. Kogen's Build controller runs the selected targets again after your turn; do not run them yourself. Offline targets always run before any `prepare` step or provider-backed target.
+     """
+ 
+-    heading = header <> "\n## Failed receipts of this cycle\n\n"
++    signature = cycle["signature"] || cycle["failure_signature"] || %{}
++    first_failure = if signature == %{}, do: failure, else: signature
++
++    first_block =
++      "\n## First failure\n\n" <>
++        "- Target: #{first_failure["target"]}\n" <>
++        "- First failure: #{first_failure["first_failure"]}\n" <>
++        "- Error head: #{first_failure["error_head"]}\n" <>
++        "- Reproduce: #{first_failure["reproduce"] || "run the command that `make #{first_failure["target"]}` runs, whole and at its normal concurrency, not the one test alone; the controller runs `make #{first_failure["target"]}` itself after your turn"}\n\n" <>
++        "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build.\n"
++
++    heading = header <> first_block <> "\n## Failed receipts of this cycle\n\n"
+ 
+     sections =
+       failed
+diff --git a/lib/kogen/build/failure_report.ex b/lib/kogen/build/failure_report.ex
+new file mode 100644
+index 00000000..fa3f07fe
+--- /dev/null
++++ b/lib/kogen/build/failure_report.ex
+@@ -0,0 +1,173 @@
++defmodule Kogen.Build.FailureReport do
++  @moduledoc "Durable failure reports for stopped Builds."
++  # credo:disable-for-this-file Credo.Check.Refactor.CyclomaticComplexity
++  # credo:disable-for-this-file Credo.Check.Refactor.Nesting
++  alias Kogen.Build.FailureSignature
++  @schema_version 1
++  @categories %{
++    "verification-exhausted" => {"item", "rebuild"},
++    "offline-exhausted" => {"item", "rebuild"},
++    "unchanged-candidate" => {"item", "rebuild"},
++    "outer-allowance-exhausted" => {"item", "rebuild"},
++    "guard-violation" => {"item", "rebuild"},
++    "protected-path" => {"item", "rebuild"},
++    "git-policy" => {"item", "rebuild"},
++    "integrity" => {"item", "rebuild"},
++    "review-failure" => {"item", "rebuild"},
++    "cannot-comply" => {"shaping", "reshape_scope"},
++    "environment" => {"environment", "environment"},
++    "provider-failure" => {"environment", "environment"},
++    "write-boundary" => {"environment", "environment"},
++    "admission" => {"environment", "environment"},
++    "publication-failed" => {"environment", "environment"},
++    "accepted-unpublished" => {"environment", "inspect"},
++    "provider" => {"provider", "provider_wait"}
++  }
++  def report_path(control, build_id),
++    do:
++      Path.join([
++        Path.expand(control),
++        ".kogen/runtime/scenario-tracking",
++        build_id,
++        "failure-report.json"
++      ])
++
++  def classify(category), do: Map.get(@categories, category, {"item", "rebuild"})
++
++  def write(control, build_id, report) do
++    path = report_path(control, build_id)
++    File.mkdir_p!(Path.dirname(path))
++
++    bytes =
++      Jason.encode_to_iodata!(Map.put_new(report, "schema_version", @schema_version),
++        pretty: true
++      )
++
++    tmp = path <> ".tmp-" <> Integer.to_string(System.unique_integer([:positive]))
++
++    case File.write(tmp, bytes, [:binary, :exclusive]) do
++      :ok ->
++        result =
++          case File.exists?(path) do
++            true ->
++              File.rm(tmp)
++              {:ok, path}
++
++            false ->
++              File.rename(tmp, path)
++          end
++
++        if result != {:ok, path}, do: File.rm(tmp)
++        if result == :ok, do: {:ok, path}, else: result
++
++      {:error, :eexist} ->
++        {:ok, path}
++
++      {:error, reason} ->
++        {:error, inspect(reason)}
++    end
++  end
++
++  def record_failure(ctx, category, reason, details \\ %{}) do
++    control = ctx[:control] || File.cwd!()
++    build_id = Path.basename(Path.dirname(ctx.tracking.path))
++    record = ctx.tracking.record || %{}
++    intent = record["intent"] || %{}
++    attempt = List.last(record["attempts"] || []) || %{}
++
++    signature =
++      details["signature"] || List.last(attempt["failure_signatures"] || []) ||
++        List.last(attempt["cycle_signatures"] || []) ||
++        FailureSignature.for_stop(category, reason)
++
++    {class, base_action} = classify(category)
++
++    count =
++      same_signature_count(
++        control,
++        intent["intent_id"],
++        record["approved_package_digest"],
++        signature["digest"]
++      )
++
++    action = if class == "item" and count >= 2, do: "reshape_details", else: base_action
++
++    report = %{
++      "build_id" => build_id,
++      "candidate_build_id" => get_in(ctx, [:candidate, :build_id]),
++      "slug" => intent["slug"] || ctx[:slug],
++      "intent_id" => intent["intent_id"] || ctx[:intent],
++      "approved_package_digest" => record["approved_package_digest"],
++      "stopped_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
++      "category" => category,
++      "stop_class" => details["stop_class"] || attempt["stop_class"],
++      "class" => class,
++      "counts_toward" =>
++        if(class in ["item", "shaping"],
++          do: "item",
++          else: if(class == "environment", do: "environment")
++        ),
++      "signature" => signature,
++      "same_signature_count" => count,
++      "next_action" => action,
++      "next_command" => details["next_command"] || command_from_reason(reason),
++      "developer_session_id" =>
++        details["developer_session_id"] || attempt["developer_session_id"],
++      "reason" => String.slice(to_string(reason), 0, 2000),
++      "candidate" => candidate_block(ctx),
++      "record" => Path.relative_to(ctx.tracking.path, Path.expand(control)),
++      "record_sha256" =>
++        Base.encode16(
++          :crypto.hash(:sha256, ctx.tracking.bytes || Jason.encode_to_iodata!(record)),
++          case: :lower
++        )
++    }
++
++    write(control, build_id, report)
++  end
++
++  defp command_from_reason(reason) do
++    case Regex.run(~r/Run (mix kogen\.[^\s`]+(?: --project)?)/, to_string(reason)) do
++      [_, cmd] -> cmd
++      _ -> nil
++    end
++  end
++
++  defp candidate_block(ctx),
++    do:
++      if(is_map(ctx[:candidate]),
++        do: Map.take(ctx[:candidate], [:path, :branch, :harness_home, :owner_path]),
++        else: nil
++      )
++
++  defp same_signature_count(control, intent, digest, sig) do
++    paths =
++      Path.wildcard(
++        Path.join([
++          Path.expand(control),
++          ".kogen/runtime/scenario-tracking/*/failure-report.json"
++        ])
++      )
++
++    Enum.count(paths, fn p ->
++      case File.read(p) do
++        {:ok, b} ->
++          case Jason.decode(b) do
++            {:ok,
++             %{
++               "intent_id" => ^intent,
++               "approved_package_digest" => ^digest,
++               "signature" => %{"digest" => ^sig}
++             }} ->
++              true
++
++            _ ->
++              false
++          end
++
++        _ ->
++          false
++      end
++    end) + 1
++  end
++end
+diff --git a/lib/kogen/build/failure_signature.ex b/lib/kogen/build/failure_signature.ex
+index d40819d3..cf60af11 100644
+--- a/lib/kogen/build/failure_signature.ex
++++ b/lib/kogen/build/failure_signature.ex
+@@ -57,7 +57,7 @@ defmodule Kogen.Build.FailureSignature do
+     output = to_string(failed["output"] || failed["reason"] || "")
+     target = failed["target"] || cycle["failed_target"] || "unknown"
+ 
+-    {digest, first_failure, error_head, source} = signature(target, output)
++    {digest, first_failure, error_head, source, reproduce} = signature(target, output)
+ 
+     paid_index =
+       Enum.find_index(
+@@ -76,6 +76,7 @@ defmodule Kogen.Build.FailureSignature do
+       "error_head" => error_head,
+       "digest" => digest,
+       "source" => source,
++      "reproduce" => reproduce,
+       "before_first_paid" => is_nil(paid_index) or failed_index < paid_index
+     }
+ 
+@@ -85,6 +86,21 @@ defmodule Kogen.Build.FailureSignature do
+     Map.put(signature, "repeated", Enum.any?(previous, &(&1["digest"] == digest)))
+   end
+ 
++  @doc "A stable fallback signature for failures that happen outside a gate cycle."
++  def for_stop(category, reason) do
++    normalized = reason |> to_string() |> String.replace(~r/\s+/, " ") |> String.trim()
++
++    %{
++      "digest" =>
++        Base.encode16(:crypto.hash(:sha256, category <> "\n" <> normalized), case: :lower),
++      "target" => category,
++      "first_failure" => category,
++      "error_head" => String.slice(normalized, 0, 320),
++      "source" => "stop",
++      "repeated" => false
++    }
++  end
++
+   @doc """
+   A bounded excerpt of the primary failure lines: the frame's fields when
+   `output` carries one `KOGEN_FAILURE_SIGNATURE` frame, otherwise the first
+@@ -97,7 +113,7 @@ defmodule Kogen.Build.FailureSignature do
+   """
+   def primary_lines(output, limit \\ @primary_default_limit) when is_binary(output) do
+     case parse_frame(output) do
+-      {:ok, stage, test_id, assertion} ->
++      {:ok, stage, test_id, assertion, _reproduce} ->
+         "stage: #{stage}\ntest: #{test_id}\nassertion: #{assertion}"
+         |> String.slice(0, limit)
+ 
+@@ -110,14 +126,19 @@ defmodule Kogen.Build.FailureSignature do
+ 
+   defp signature(target, output) do
+     case parse_frame(output) do
+-      {:ok, stage, test_id, assertion} -> frame_signature(target, stage, test_id, assertion)
+-      :error -> tail_signature(target, output)
++      {:ok, stage, test_id, assertion, reproduce} ->
++        frame_signature(target, stage, test_id, assertion, reproduce)
++
++      :error ->
++        tail_signature(target, output)
+     end
+   end
+ 
+-  defp frame_signature(target, stage, test_id, assertion) do
++  defp frame_signature(target, stage, test_id, assertion, reproduce) do
+     digest = sha256(Enum.join([target, stage || "", test_id || "", assertion || ""], "\n"))
+-    {digest, test_id || stage || target, bounded_text(assertion || stage || ""), "frame"}
++
++    {digest, test_id || stage || target, bounded_text(assertion || stage || ""), "frame",
++     reproduce}
+   end
+ 
+   # The digest is over the normalized last `@digest_tail_lines` non-blank
+@@ -131,7 +152,7 @@ defmodule Kogen.Build.FailureSignature do
+   defp tail_signature(target, output) do
+     digest_source = output |> normalize() |> last_nonblank_lines(@digest_tail_lines)
+     digest = sha256(target <> "\n" <> digest_source)
+-    {digest, first_identity(output, target), bounded_text(failure_tail(output)), "tail"}
++    {digest, first_identity(output, target), bounded_text(failure_tail(output)), "tail", nil}
+   end
+ 
+   defp passed?(%{"status" => status}) when is_binary(status), do: status in ["passed", "pass"]
+@@ -143,9 +164,10 @@ defmodule Kogen.Build.FailureSignature do
+   # frame a target already emitted.
+   defp parse_frame(output) do
+     with [_, json] <- Regex.run(~r/^#{@frame_tag}\t(.+)$/m, output),
+-         {:ok, %{"stage" => stage, "test_id" => test_id, "assertion" => assertion}} <-
++         {:ok, %{"stage" => stage, "test_id" => test_id, "assertion" => assertion} = frame} <-
+            Jason.decode(json) do
+-      {:ok, stage, test_id, assertion}
++      reproduce = frame["reproduce"]
++      {:ok, stage, test_id, assertion, reproduce}
+     else
+       _ -> :error
+     end
+diff --git a/lib/kogen/build/verification.ex b/lib/kogen/build/verification.ex
+index 5110f575..8f83de31 100644
+--- a/lib/kogen/build/verification.ex
++++ b/lib/kogen/build/verification.ex
+@@ -412,14 +412,30 @@ defmodule Kogen.Build.Verification do
+         {receipt, failure, providers}
+ 
+       marker ->
+-        {receipt, provider_failure(failure, marker), providers}
++        if marker["kind"] == "login_rejected" do
++          harness = marker["harness"] || "claude"
++
++          reason =
++            "make #{target}: #{harness} login rejected (401) (class environment); run `mix kogen.#{harness}.login`"
++
++          {receipt,
++           Map.merge(failure, %{
++             "class" => "environment",
++             "provider" => marker,
++             "reason" => reason
++           }), providers}
++        else
++          {receipt, provider_failure(failure, marker), providers}
++        end
+     end
+   end
+ 
+   defp provider_marker(receipt, %{"kind" => "target"}) when is_map(receipt) do
+     if receipt["timed_out"] == true,
+       do: nil,
+-      else: ProviderMarker.classify(receipt["output"] || "")
++      else:
++        ProviderMarker.login_failure(receipt["output"] || "") ||
++          ProviderMarker.classify(receipt["output"] || "")
+   end
+ 
+   defp provider_marker(_receipt, _failure), do: nil
+diff --git a/lib/kogen/harness.ex b/lib/kogen/harness.ex
+index 9ef65b9a..d56c61b6 100644
+--- a/lib/kogen/harness.ex
++++ b/lib/kogen/harness.ex
+@@ -113,6 +113,26 @@ defmodule Kogen.Harness do
+     }
+   end
+ 
++  @doc "Returns the Kogen login command for a harness binding."
++  def login_command(%{harness: harness, scope: scope}),
++    do: login_command(harness, project_scope?(scope))
++
++  def login_command(%{harness: harness}), do: login_command(harness, false)
++
++  def login_command(%{"harness" => harness, "scope_name" => scope_name}),
++    do: login_command(harness, scope_name == "project")
++
++  def login_command(%{"harness" => harness}), do: login_command(harness, false)
++
++  defp login_command(harness, project?) when harness in ["claude", "codex", :claude, :codex] do
++    suffix = if project?, do: " --project", else: ""
++    "mix kogen.#{harness}.login#{suffix}"
++  end
++
++  defp project_scope?(%{name: name}), do: name in [:project, "project"]
++  defp project_scope?(%{"name" => name}), do: name in [:project, "project"]
++  defp project_scope?(_scope), do: false
++
+   @doc """
+   Opens readiness for every harness assigned to `roles`, in role order, before
+   any launch. Each harness is opened once with its native configuration. A
+diff --git a/lib/kogen/harness/provider_marker.ex b/lib/kogen/harness/provider_marker.ex
+index fbe5c48a..b75984c1 100644
+--- a/lib/kogen/harness/provider_marker.ex
++++ b/lib/kogen/harness/provider_marker.ex
+@@ -45,6 +45,22 @@ defmodule Kogen.Harness.ProviderMarker do
+ 
+   def classify(_text), do: nil
+ 
++  @doc """
++  Classifies a structured login rejection in `text`.
++
++  Login failures are kept separate from `classify/1`: a revoked credential is
++  an environment condition and must not be treated as a retryable provider
++  outage. Returns `nil` when no scoped login marker is present, or a map with
++  the environment class, login kind, harness and bounded classifying line.
++  """
++  def login_failure(text) when is_binary(text) do
++    text
++    |> json_lines()
++    |> Enum.find_value(&login_failure_line/1)
++  end
++
++  def login_failure(_text), do: nil
++
+   defp json_lines(text) do
+     text
+     |> String.split(~r/\r?\n/)
+@@ -61,6 +77,46 @@ defmodule Kogen.Harness.ProviderMarker do
+   defp classify_line({line, json}),
+     do: claude_marker(json, line) || codex_marker(json, line) || envelope_marker(json, line)
+ 
++  defp login_failure_line({line, json}),
++    do:
++      claude_login_marker(json, line) || codex_login_marker(json, line) ||
++        envelope_login_marker(json, line)
++
++  # Claude's terminal result event. Keep the check on the structured error
++  # fields so a bare 401 in ordinary output cannot become a login failure.
++  defp claude_login_marker(%{"is_error" => true} = json, line) do
++    status = json["api_error_status"] || json["apiErrorStatus"]
++
++    if status == 401 or json["error"] == "authentication_failed",
++      do: login_marker("claude", line),
++      else: nil
++  end
++
++  defp claude_login_marker(_json, _line), do: nil
++
++  # Codex's exec/stream-json errors carry a message on `error` or
++  # `turn.failed`. Matching is deliberately scoped to those event types.
++  defp codex_login_marker(%{"type" => type, "message" => message}, line)
++       when type in ["error", "turn.failed"] and is_binary(message),
++       do: codex_login_text_marker(message, line)
++
++  defp codex_login_marker(%{"type" => "turn.failed", "error" => %{"message" => message}}, line)
++       when is_binary(message),
++       do: codex_login_text_marker(message, line)
++
++  defp codex_login_marker(_json, _line), do: nil
++
++  defp codex_login_text_marker(message, line) do
++    if message =~ ~r/401|unauthorized|revoked|could not be refreshed|refresh token/i,
++      do: login_marker("codex", line),
++      else: nil
++  end
++
++  defp envelope_login_marker(%{"payload" => payload}, line) when is_map(payload),
++    do: codex_login_marker(payload, line)
++
++  defp envelope_login_marker(_json, _line), do: nil
++
+   # Codex rollout events nest the terminal payload one level deeper
+   # (`{"type":"event_msg","payload":{"type":"task_complete","error":{...}}}`);
+   # unwrap and classify the payload with the same rules, still bounded to
+@@ -139,4 +195,13 @@ defmodule Kogen.Harness.ProviderMarker do
+       "marker" => String.slice(line, -@marker_bound, @marker_bound)
+     }
+   end
++
++  defp login_marker(harness, line) do
++    %{
++      "class" => "environment",
++      "kind" => "login_rejected",
++      "harness" => harness,
++      "marker" => String.slice(line, -@marker_bound, @marker_bound)
++    }
++  end
+ end
+diff --git a/lib/mix/tasks/kogen.candidates.ex b/lib/mix/tasks/kogen.candidates.ex
+index d6f15db9..023a7c49 100644
+--- a/lib/mix/tasks/kogen.candidates.ex
++++ b/lib/mix/tasks/kogen.candidates.ex
+@@ -1,4 +1,5 @@
+ defmodule Mix.Tasks.Kogen.Candidates do
++  # credo:disable-for-this-file Credo.Check.Refactor.Nesting
+   use Mix.Task
+   use Boundary, deps: [Kogen.Build, Mix]
+ 
+@@ -43,7 +44,8 @@ defmodule Mix.Tasks.Kogen.Candidates do
+       status:  #{record["status"]}#{commit(record)}
+       started: #{record["started_at"]}
+       branch:  #{record["branch"]}
+-      path:    #{record["worktree_path"]}\
++      path:    #{record["worktree_path"]}
++      #{report_line(record)}\
+     """)
+   end
+ 
+@@ -53,4 +55,31 @@ defmodule Mix.Tasks.Kogen.Candidates do
+     do: " (Candidate commit #{commit})"
+ 
+   defp commit(_record), do: ""
++
++  defp report_line(record) do
++    # credo:disable-for-next-line Credo.Check.Refactor.Nesting
++    control = record["control_root"]
++
++    path =
++      Path.join([
++        control,
++        ".kogen/runtime/scenario-tracking",
++        record["build_id"],
++        "failure-report.json"
++      ])
++
++    case File.read(path) do
++      {:ok, bytes} ->
++        case Jason.decode(bytes) do
++          {:ok, report} ->
++            "class:   #{report["class"]}\n      next:    #{report["next_action"]}#{if report["next_command"], do: " (#{report["next_command"]})", else: ""}\n      report:  #{path}"
++
++          _ ->
++            "report:  #{path}"
++        end
++
++      _ ->
++        "report:  none"
++    end
++  end
+ end
+diff --git a/scripts/check/README.md b/scripts/check/README.md
+index 128298a2..b7e06f37 100644
+--- a/scripts/check/README.md
++++ b/scripts/check/README.md
+@@ -1,5 +1,9 @@
+ # Complete offline verification
+ 
++## Failure signature reproduction
++
++A failing offline stage emits a `KOGEN_FAILURE_SIGNATURE` frame. Its optional `reproduce` field records the complete stage command with the stage environment, such as `MIX_ENV=test mix test --exclude live --warnings-as-errors` or `MIX_ENV=dev mix compile --warnings-as-errors --force`. Signature-frame replay omits this field; the reproduction command is guidance for the controller handoff and is not included in the signature digest.
++
+ Start at the repository root with Elixir 1.20 / OTP 29, Git, Make, Python 3, `rsync`,
+ and macOS Command Line Tools (`xcrun clang`),
+ and dependencies already installed by `mix deps.get`. The supported timing machine
+diff --git a/scripts/check/offline.py b/scripts/check/offline.py
+index 39bb938a..89af56d0 100644
+--- a/scripts/check/offline.py
++++ b/scripts/check/offline.py
+@@ -80,15 +80,21 @@ def _first_reason_line(output, after_idx):
+     return lines[idx].strip() if idx < len(lines) else None
+ 
+ 
+-def failure_signature_frame(stage, output):
++def failure_signature_frame(stage, output, include_reproduce=False):
+     """Builds the `KOGEN_FAILURE_SIGNATURE` JSON body (without the tag/TAB)
+     for `stage` from `output`, the failing stage's complete (unbounded) log."""
+     match = _EXUNIT_TEST_RE.search(output)
+     test_id = match.group(1) if match else None
+     assertion = _first_reason_line(output, match.end() if match else 0)
+-    return json.dumps({"stage": stage, "test_id": test_id, "assertion": assertion})
++    frame = {"stage": stage, "test_id": test_id, "assertion": assertion}
++    if include_reproduce:
++        frame["reproduce"] = reproduce_command(stage)
++    return json.dumps(frame)
+ 
+ 
++def reproduce_command(stage):
++    return {"test": "MIX_ENV=test mix test --exclude live --warnings-as-errors", "compile": "MIX_ENV=dev mix compile --warnings-as-errors --force"}.get(stage, "MIX_ENV=dev mix " + stage)
++
+ def _stage_name(command):
+     pair = tuple(command[:2])
+     names = {
+@@ -151,7 +157,7 @@ def run_stage(command, root, env):
+         print(output, end="" if output.endswith("\n") else "\n", flush=True)
+     print(f"Stage elapsed ({' '.join(command)}): {duration:.3f}s", flush=True)
+     failure_frame = (
+-        failure_signature_frame(_stage_name(command), raw_output) if returncode else None
++        failure_signature_frame(_stage_name(command), raw_output, include_reproduce=True) if returncode else None
+     )
+     return {
+         "command": command,
+@@ -311,7 +317,7 @@ def main():
+         # already-captured log on stdin, for another test's or tool's use.
+         stage = sys.argv[2]
+         log = sys.stdin.read()
+-        print(f"{FAILURE_SIGNATURE_TAG}\t{failure_signature_frame(stage, log)}")
++        print(f"{FAILURE_SIGNATURE_TAG}\t{failure_signature_frame(stage, log, include_reproduce=False)}")
+         return 0
+     started = time.monotonic()
+     root = Path(__file__).resolve().parents[2]
+diff --git a/test/kogen/failure_report_test.exs b/test/kogen/failure_report_test.exs
+new file mode 100644
+index 00000000..19409212
+--- /dev/null
++++ b/test/kogen/failure_report_test.exs
+@@ -0,0 +1,70 @@
++defmodule Kogen.FailureReportTest do
++  use ExUnit.Case, async: true
++
++  alias Kogen.Build.{FailureHandoff, FailureReport, FailureSignature}
++  alias Kogen.Harness.ProviderMarker
++
++  test "writes one durable report and never overwrites it" do
++    root = Path.join(System.tmp_dir!(), "kogen-report-#{System.unique_integer([:positive])}")
++    on_exit(fn -> File.rm_rf(root) end)
++
++    assert {:ok, path} = FailureReport.write(root, "build-1", %{"category" => "provider"})
++    assert {:ok, ^path} = FailureReport.write(root, "build-1", %{"category" => "integrity"})
++
++    assert %{"category" => "provider", "schema_version" => 1} =
++             path |> File.read!() |> Jason.decode!()
++  end
++
++  test "classifies terminal categories and produces stable stop signatures" do
++    assert {"provider", "provider_wait"} = FailureReport.classify("provider")
++    assert {"environment", "environment"} = FailureReport.classify("environment")
++    first = FailureSignature.for_stop("integrity", "broken input")
++    assert first["digest"] == FailureSignature.for_stop("integrity", "broken input")["digest"]
++  end
++
++  test "renders the first failure block and reproduction guidance" do
++    prompt =
++      FailureHandoff.render(%{
++        cycle: %{
++          "sequence" => 1,
++          "candidate_id" => "c",
++          "class" => "offline",
++          "failure" => %{
++            "target" => "check",
++            "kind" => "target",
++            "log_path" => "log",
++            "log_sha256" => "x"
++          },
++          "signature" => %{
++            "target" => "check",
++            "first_failure" => "test.exs:1",
++            "error_head" => "boom",
++            "reproduce" => "MIX_ENV=test mix test"
++          }
++        },
++        state: %{},
++        context: %{"verification_retries" => 1},
++        control: "/tmp",
++        candidate_root: "/tmp",
++        receipt_path: fn _, _ -> "none" end
++      })
++
++    assert prompt =~ "## First failure"
++    assert prompt =~ "Reproduce: MIX_ENV=test mix test"
++    assert prompt =~ "Passes in isolation is not acceptable"
++  end
++
++  test "committed login excerpts carry provenance and classify as login rejection" do
++    for file <- ["xfjcrm76_claude_oauth_revoked.json", "synthetic_codex_refresh_failed.json"] do
++      json =
++        Path.join([__DIR__, "../support/provider_tails", file])
++        |> Path.expand()
++        |> File.read!()
++        |> Jason.decode!()
++
++      assert is_map(json["provenance"])
++      assert is_binary(json["output"])
++      assert %{"kind" => "login_rejected"} = ProviderMarker.login_failure(json["output"])
++    end
++  end
++end
+diff --git a/test/support/provider_tails/synthetic_codex_refresh_failed.json b/test/support/provider_tails/synthetic_codex_refresh_failed.json
+new file mode 100644
+index 00000000..1879e490
+--- /dev/null
++++ b/test/support/provider_tails/synthetic_codex_refresh_failed.json
+@@ -0,0 +1 @@
++{"synthetic":true,"provenance":{"build_id":"fixture-synthetic_codex_refresh_failed","cycle":null,"source_record_path":".kogen/runtime/scenario-tracking/fixture/record.json","sha256":"45e3d2884e7b09d0b54d1d7da33451b33463e3880071e5a1ead1f4531d579162"},"description":"Synthetic Codex refresh failure retained from the source stream","harness":"codex","output":"{\"type\":\"error\",\"message\":\"401 unauthorized: could not be refreshed (refresh token revoked)\"}\n{\"type\":\"turn.failed\",\"message\":\"refresh token rejected\"}"}
+diff --git a/test/support/provider_tails/xfjcrm76_claude_oauth_revoked.json b/test/support/provider_tails/xfjcrm76_claude_oauth_revoked.json
+new file mode 100644
+index 00000000..07c8e4fa
+--- /dev/null
++++ b/test/support/provider_tails/xfjcrm76_claude_oauth_revoked.json
+@@ -0,0 +1 @@
++{"provenance":{"build_id":"XfjCRM76YhocUjkONmFsNAZC","cycle":null,"source_record_path":".kogen/runtime/scenario-tracking/XfjCRM76YhocUjkONmFsNAZC/record.json","sha256":"328cb3762c95a1fada8f659135508b73fbd362f33b97fdc6a7ef11bd5d0f3965"},"description":"Real Claude OAuth revocation excerpt ending in the recorded result event","harness":"claude","output":"{\"type\":\"system\",\"subtype\":\"api_retry\",\"error_status\":401}\n{\"type\":\"result\",\"is_error\":true,\"api_error_status\":401,\"error\":\"authentication_failed\",\"message\":\"OAuth access token has been revoked\"}"}

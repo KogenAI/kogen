@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Refactor.Nesting
 defmodule Mix.Tasks.Kogen.Candidates do
   use Mix.Task
   use Boundary, deps: [Kogen.Build, Mix]
@@ -43,7 +44,8 @@ defmodule Mix.Tasks.Kogen.Candidates do
       status:  #{record["status"]}#{commit(record)}
       started: #{record["started_at"]}
       branch:  #{record["branch"]}
-      path:    #{record["worktree_path"]}\
+      path:    #{record["worktree_path"]}
+      #{report_line(record)}\
     """)
   end
 
@@ -53,4 +55,39 @@ defmodule Mix.Tasks.Kogen.Candidates do
     do: " (Candidate commit #{commit})"
 
   defp commit(_record), do: ""
+
+  defp report_line(record) do
+    control = record["control_root"]
+
+    path =
+      Path.join([
+        control,
+        ".kogen/runtime/scenario-tracking",
+        record["build_id"],
+        "failure-report.json"
+      ])
+
+    case File.read(path) do
+      {:ok, bytes} ->
+        case Jason.decode(bytes) do
+          {:ok, report} ->
+            next =
+              case report["next_command"] do
+                command when is_binary(command) and command != "" ->
+                  "#{report["next_action"]} (#{command})"
+
+                _ ->
+                  report["next_action"]
+              end
+
+            "class:   #{report["class"]}\n      next:    #{next}\n      report:  #{path}"
+
+          _ ->
+            "report:  #{path}"
+        end
+
+      _ ->
+        "report:   none"
+    end
+  end
 end

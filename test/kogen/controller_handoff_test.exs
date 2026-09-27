@@ -1364,6 +1364,12 @@ defmodule Kogen.ControllerHandoffTest do
       assert prompt =~ "test/kogen/intent_test.exs:102"
       assert prompt =~ ~s(assert config.route == "claude")
       assert prompt =~ "five-session shaping evaluation failed"
+      assert prompt =~ "## First failure"
+
+      assert prompt =~
+               "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build."
+
+      assert prompt =~ "run the command that `make live-shaping-quality` runs"
 
       # The remaining retries of both classes.
       assert prompt =~ "Offline (`offline_retries`) retries left: 1 of 4"
@@ -1405,8 +1411,52 @@ defmodule Kogen.ControllerHandoffTest do
       assert prompt =~ "test: Kogen.IntentTest:102"
       assert prompt =~ ~s(assertion: assert config.route == "claude")
       assert prompt =~ "### `target-1`"
+      assert prompt =~ "## First failure"
       assert prompt =~ ~r/further failed receipt\(s\) omitted|section truncated/
       refute_private!(prompt)
+    end
+
+    test "a frame reproduction command is copied, and a cycle without a receipt still gets a first-failure block" do
+      frame =
+        ~s(KOGEN_FAILURE_SIGNATURE\t{"stage":"test","test_id":"test/x.exs:7","assertion":"boom","reproduce":"MIX_ENV=test mix test test/x.exs:7"})
+
+      with_frame = %{
+        "sequence" => 1,
+        "candidate_id" => String.duplicate("a", 40),
+        "class" => "offline",
+        "receipts" => [receipt("check", "failed", frame, false)],
+        "failure" => %{
+          "kind" => "target",
+          "target" => "check",
+          "class" => "offline",
+          "output" => frame
+        }
+      }
+
+      prompt = render(with_frame, %{"failures_since_pass" => 1, "offline_failures" => 1})
+      assert prompt =~ "Reproduce: MIX_ENV=test mix test test/x.exs:7"
+      assert prompt =~ "test: test/x.exs:7"
+
+      no_receipt = %{
+        "sequence" => 2,
+        "candidate_id" => String.duplicate("b", 40),
+        "class" => "offline",
+        "receipts" => [],
+        "failure" => %{
+          "kind" => "prepare",
+          "target" => "check",
+          "class" => "offline",
+          "output" => "prepare failed before a receipt was written"
+        }
+      }
+
+      fallback = render(no_receipt, %{"failures_since_pass" => 1, "offline_failures" => 1})
+      assert fallback =~ "## First failure"
+      assert fallback =~ "- Target: check"
+      assert fallback =~ "run the command that `make check` runs"
+
+      assert fallback =~
+               "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build."
     end
 
     test "the mined excerpts carry their provenance headers" do

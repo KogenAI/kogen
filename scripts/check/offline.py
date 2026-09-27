@@ -85,13 +85,21 @@ def _first_reason_line(output, after_idx):
     return lines[idx].strip() if idx < len(lines) else None
 
 
-def failure_signature_frame(stage, output):
+def reproduce_command(command):
+    mix_env = "test" if len(command) > 1 and command[1] == "test" else "dev"
+    return "MIX_ENV=" + mix_env + " " + " ".join(command)
+
+
+def failure_signature_frame(stage, output, include_reproduce=False, command=None):
     """Builds the `KOGEN_FAILURE_SIGNATURE` JSON body (without the tag/TAB)
     for `stage` from `output`, the failing stage's complete (unbounded) log."""
     match = _EXUNIT_TEST_RE.search(output)
     test_id = match.group(1) if match else None
     assertion = _first_reason_line(output, match.end() if match else 0)
-    return json.dumps({"stage": stage, "test_id": test_id, "assertion": assertion})
+    frame = {"stage": stage, "test_id": test_id, "assertion": assertion}
+    if include_reproduce and command is not None:
+        frame["reproduce"] = reproduce_command(command)
+    return json.dumps(frame)
 
 
 def _stage_name(command):
@@ -159,7 +167,7 @@ def run_stage(command, root, env):
         print(output, end="" if output.endswith("\n") else "\n", flush=True)
     print(f"Stage elapsed ({' '.join(command)}): {duration:.3f}s", flush=True)
     failure_frame = (
-        failure_signature_frame(_stage_name(command), raw_output) if returncode else None
+        failure_signature_frame(_stage_name(command), raw_output, include_reproduce=True, command=command) if returncode else None
     )
     return {
         "command": command,
@@ -326,7 +334,7 @@ def main():
         # already-captured log on stdin, for another test's or tool's use.
         stage = sys.argv[2]
         log = sys.stdin.read()
-        print(f"{FAILURE_SIGNATURE_TAG}\t{failure_signature_frame(stage, log)}")
+        print(f"{FAILURE_SIGNATURE_TAG}\t{failure_signature_frame(stage, log, include_reproduce=False)}")
         return 0
     started = time.monotonic()
     root = Path(__file__).resolve().parents[2]

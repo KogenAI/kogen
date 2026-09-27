@@ -1517,7 +1517,72 @@ defmodule Kogen.ControllerVerificationTest do
       assert attempt["stop_class"] == "provider"
     end
 
+    test "a Codex Developer login rejection stops once as an environment failure" do
+      dir = Fixture.fixture!()
+
+      assert {:error, reason} =
+               Fixture.run(dir,
+                 provider_fail: ["developer-1"],
+                 provider_tail: provider_tail("synthetic_codex_refresh_failed.json")
+               )
+
+      assert String.starts_with?(
+               reason,
+               "developer: codex login rejected (401) (class environment); run `mix kogen.codex.login`"
+             )
+
+      assert fake_state(dir, "developer-invocations") == "1"
+      [attempt] = Fixture.record!(dir)["attempts"]
+      assert attempt["stop_class"] == "environment"
+    end
+
+    test "a Claude Reviewer login rejection is not a review failure and is not retried" do
+      dir = Fixture.fixture!()
+
+      assert {:error, reason} =
+               Fixture.run(dir,
+                 provider_fail: ["reviewer-1"],
+                 provider_tail: provider_tail("xfjcrm76_claude_oauth_revoked.json")
+               )
+
+      assert String.starts_with?(
+               reason,
+               "reviewer: claude login rejected (401) (class environment); run `mix kogen.claude.login`"
+             )
+
+      refute reason =~ "review-failure"
+      assert fake_state(dir, "reviews") == "1"
+      [attempt] = Fixture.record!(dir)["attempts"]
+      assert attempt["stop_class"] == "environment"
+    end
+
     defp fake_state(dir, name), do: File.read!(Kogen.CandidateFixture.fake_state(dir, name))
+  end
+
+  test "a paid target login rejection is terminal environment without retry" do
+    dir = provider_repo!()
+
+    File.cd!(dir, fn ->
+      {execution, env} = provider_execution!(dir)
+      candidate_id = F.candidate_id!(dir)
+
+      File.write!(
+        Path.join(dir, ".kogen/runtime/paid-tail.txt"),
+        provider_tail("xfjcrm76_claude_oauth_revoked.json")
+      )
+
+      {_execution, state} = F.run_cycle!(execution, "dev-1", candidate_id, env)
+      cycle = List.last(state["cycles"])
+
+      assert cycle["status"] == "failed"
+      assert cycle["class"] == "environment"
+      assert state["terminal_state"] == "environment"
+
+      assert cycle["failure"]["reason"] ==
+               "make paid: claude login rejected (401) (class environment); run `mix kogen.claude.login`"
+
+      refute Map.has_key?(cycle, "provider_failures")
+    end)
   end
 
   # --- unchanged-candidate-stops -------------------------------------------

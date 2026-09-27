@@ -1,0 +1,14 @@
+{
+  "provenance": {
+    "build_id": "hJeqtBSgm52RC3xO6fMza8gq",
+    "cycle": null,
+    "cycle_note": "Not cycle-scoped: attempts[0].developer_invocation of the Build record.",
+    "source_record_path": ".kogen/runtime/scenario-tracking/hJeqtBSgm52RC3xO6fMza8gq/record.json (attempts[0].developer_invocation.diagnostics, last 3 decodable JSONL lines of a 50,552-character stream)",
+    "sha256": "6127a090ca307f0b3b14892f0c0cf3d62bebb6ff4fe833d3ffe06e993573ac5e",
+    "sha256_note": "sha256 of the source record.json file"
+  },
+  "description": "Synthetic Codex refresh-token rejection using the committed exec/stream-json event shape.",
+  "harness": "codex",
+  "synthetic": true,
+  "output": "{\"type\":\"error\",\"message\":\"unexpected status 401 Unauthorized: Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.\"}\n{\"type\":\"turn.failed\",\"error\":{\"message\":\"unexpected status 401 Unauthorized: Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.\"}}\n"
+}

@@ -108,6 +108,35 @@ Candidate and, without the flag, one holding a commit unreachable from its
 admitted branch. Neither command prunes. Still one Build at a time: the
 global `.kogen/build.lock` stays in control.
 
+### Failure reports
+
+Every admitted Build that stops writes one atomic report at
+`.kogen/runtime/scenario-tracking/<build-id>/failure-report.json`. It records
+the identity (`build_id`, Candidate build id, slug, intent id, approved package
+digest and microsecond UTC timestamp), classification (`category`, `class`,
+`stop_class` and `counts_toward`), failure signature and recurrence count,
+the `next_action` and optional `next_command`, the Developer session and
+reason, retained Candidate paths, the control-relative tracking record and
+its final-byte SHA256. Reports are never replaced: they are written to a
+same-directory temporary file and published without clobbering an existing
+report, so no partial or temporary report remains. A repeated item signature
+changes the suggested action from `rebuild` to `reshape_details`.
+
+The category table is the single classification contract:
+
+| categories | class | next action | counts toward |
+| --- | --- | --- | --- |
+| `verification-exhausted`, `offline-exhausted`, `unchanged-candidate`, `outer-allowance-exhausted`, `guard-violation`, `protected-path`, `git-policy`, `integrity`, `review-failure` | `item` | `rebuild` or repeated `reshape_details` | `item` |
+| `cannot-comply` | `shaping` | `reshape_scope` | `item` |
+| `environment`, `provider-failure`, `write-boundary`, `admission`, `publication-failed` | `environment` | `environment` | `environment` |
+| `accepted-unpublished` | `environment` | `inspect` | `environment` |
+| `provider` | `provider` | `provider_wait` | null |
+
+Pre-admission refusals have no tracking record and therefore no report.
+Login rejection is an `environment` stop with a harness-specific
+`mix kogen.<harness>.login` command. Reports deliberately have no continuation,
+budget, publication or `published` fields.
+
 Every process a Build launches (Developer, Reviewer, Expert and their
 helpers, Jev's executable transport, make targets, `prepare`, and focused and
 base runs) starts through one supervisor, `priv/kogen/process_supervisor.py`

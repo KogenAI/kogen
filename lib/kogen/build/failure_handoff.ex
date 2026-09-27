@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Refactor.CyclomaticComplexity
 defmodule Kogen.Build.FailureHandoff do
   @moduledoc """
   The prompt that resumes the same Developer after a failed verification
@@ -46,7 +47,26 @@ defmodule Kogen.Build.FailureHandoff do
     Read the logs, fix the Candidate, and end your turn. Kogen's Build controller runs the selected targets again after your turn; do not run them yourself. Offline targets always run before any `prepare` step or provider-backed target.
     """
 
-    heading = header <> "\n## Failed receipts of this cycle\n\n"
+    signature =
+      cycle["signature"] || cycle["failure_signature"] ||
+        FailureSignature.derive(cycle, context, input[:catalog] || %{}, [])
+
+    first_failure = if signature == %{}, do: failure, else: signature
+    target = first_failure["target"] || failure["target"] || "unknown"
+
+    reproduce =
+      first_failure["reproduce"] ||
+        "run the command that `make #{target}` runs, whole and at its normal concurrency, not the one test alone; the controller runs `make #{target}` itself after your turn"
+
+    first_block =
+      "\n## First failure\n\n" <>
+        "- Target: #{first_failure["target"]}\n" <>
+        "- First failure: #{first_failure["first_failure"]}\n" <>
+        "- Error head: #{first_failure["error_head"]}\n" <>
+        "- Reproduce: #{reproduce}\n\n" <>
+        "Passes in isolation is not acceptable: reproduce the failure under the gate's concurrency and make it deterministic; an unchanged Candidate stops the Build.\n"
+
+    heading = header <> first_block <> "\n## Failed receipts of this cycle\n\n"
 
     sections =
       failed

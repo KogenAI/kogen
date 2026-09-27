@@ -45,6 +45,22 @@ defmodule Kogen.Harness.ProviderMarker do
 
   def classify(_text), do: nil
 
+  @doc """
+  Classifies a structured login rejection in `text`.
+
+  Login failures are kept separate from `classify/1`: a revoked credential is
+  an environment condition and must not be treated as a retryable provider
+  outage. Returns `nil` when no scoped login marker is present, or a map with
+  the environment class, login kind, harness and bounded classifying line.
+  """
+  def login_failure(text) when is_binary(text) do
+    text
+    |> json_lines()
+    |> Enum.find_value(&login_failure_line/1)
+  end
+
+  def login_failure(_text), do: nil
+
   defp json_lines(text) do
     text
     |> String.split(~r/\r?\n/)
@@ -60,6 +76,46 @@ defmodule Kogen.Harness.ProviderMarker do
 
   defp classify_line({line, json}),
     do: claude_marker(json, line) || codex_marker(json, line) || envelope_marker(json, line)
+
+  defp login_failure_line({line, json}),
+    do:
+      claude_login_marker(json, line) || codex_login_marker(json, line) ||
+        envelope_login_marker(json, line)
+
+  # Claude's terminal result event. Keep the check on the structured error
+  # fields so a bare 401 in ordinary output cannot become a login failure.
+  defp claude_login_marker(%{"is_error" => true} = json, line) do
+    status = json["api_error_status"] || json["apiErrorStatus"]
+
+    if status == 401 or json["error"] == "authentication_failed",
+      do: login_marker("claude", line),
+      else: nil
+  end
+
+  defp claude_login_marker(_json, _line), do: nil
+
+  # Codex's exec/stream-json errors carry a message on `error` or
+  # `turn.failed`. Matching is deliberately scoped to those event types.
+  defp codex_login_marker(%{"type" => type, "message" => message}, line)
+       when type in ["error", "turn.failed"] and is_binary(message),
+       do: codex_login_text_marker(message, line)
+
+  defp codex_login_marker(%{"type" => "turn.failed", "error" => %{"message" => message}}, line)
+       when is_binary(message),
+       do: codex_login_text_marker(message, line)
+
+  defp codex_login_marker(_json, _line), do: nil
+
+  defp codex_login_text_marker(message, line) do
+    if message =~ ~r/401|unauthorized|revoked|could not be refreshed|refresh token/i,
+      do: login_marker("codex", line),
+      else: nil
+  end
+
+  defp envelope_login_marker(%{"payload" => payload}, line) when is_map(payload),
+    do: codex_login_marker(payload, line)
+
+  defp envelope_login_marker(_json, _line), do: nil
 
   # Codex rollout events nest the terminal payload one level deeper
   # (`{"type":"event_msg","payload":{"type":"task_complete","error":{...}}}`);
@@ -136,6 +192,15 @@ defmodule Kogen.Harness.ProviderMarker do
       # `is_error`/`api_error_status`, Codex's `codex_error_info`) can sit
       # after a large payload (permission denials, tool output) earlier in
       # the same decoded line.
+      "marker" => String.slice(line, -@marker_bound, @marker_bound)
+    }
+  end
+
+  defp login_marker(harness, line) do
+    %{
+      "class" => "environment",
+      "kind" => "login_rejected",
+      "harness" => harness,
       "marker" => String.slice(line, -@marker_bound, @marker_bound)
     }
   end

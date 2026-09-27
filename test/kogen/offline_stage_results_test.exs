@@ -282,6 +282,8 @@ defmodule Kogen.OfflineStageResultsTest do
 
     assert frame["assertion"] ==
              "pty success: terminal probe failed: [Errno 9] Bad file descriptor"
+
+    refute Map.has_key?(frame, "reproduce")
   end
 
   # Build jhzmOMHW cycle 1: the full test run was named `test-compile` (every
@@ -374,6 +376,7 @@ defmodule Kogen.OfflineStageResultsTest do
     assert frame["stage"] == "check"
     assert frame["test_id"] == "test/kogen/some_test.exs:42"
     assert frame["assertion"] == "Assertion with == failed"
+    refute Map.has_key?(frame, "reproduce")
   end
 
   test "run_stage attaches a failure_frame only when the stage fails" do
@@ -404,6 +407,7 @@ defmodule Kogen.OfflineStageResultsTest do
     frame = Jason.decode!(result["bad"])
     assert frame["test_id"] == "f.exs:1"
     assert frame["assertion"] == "boom"
+    assert frame["reproduce"] =~ "MIX_ENV=dev"
   end
 
   defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"

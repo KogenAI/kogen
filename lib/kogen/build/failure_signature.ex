@@ -57,7 +57,7 @@ defmodule Kogen.Build.FailureSignature do
     output = to_string(failed["output"] || failed["reason"] || "")
     target = failed["target"] || cycle["failed_target"] || "unknown"
 
-    {digest, first_failure, error_head, source} = signature(target, output)
+    {digest, first_failure, error_head, source, reproduce} = signature(target, output)
 
     paid_index =
       Enum.find_index(
@@ -76,6 +76,7 @@ defmodule Kogen.Build.FailureSignature do
       "error_head" => error_head,
       "digest" => digest,
       "source" => source,
+      "reproduce" => reproduce,
       "before_first_paid" => is_nil(paid_index) or failed_index < paid_index
     }
 
@@ -83,6 +84,21 @@ defmodule Kogen.Build.FailureSignature do
       if cycle["class"], do: Map.put(signature, "class", cycle["class"]), else: signature
 
     Map.put(signature, "repeated", Enum.any?(previous, &(&1["digest"] == digest)))
+  end
+
+  @doc "A stable fallback signature for failures that happen outside a gate cycle."
+  def for_stop(category, reason) do
+    normalized = reason |> to_string() |> String.replace(~r/\s+/, " ") |> String.trim()
+
+    %{
+      "digest" =>
+        Base.encode16(:crypto.hash(:sha256, category <> "\n" <> normalized), case: :lower),
+      "target" => category,
+      "first_failure" => category,
+      "error_head" => String.slice(normalized, 0, 320),
+      "source" => "stop",
+      "repeated" => false
+    }
   end
 
   @doc """
@@ -97,7 +113,7 @@ defmodule Kogen.Build.FailureSignature do
   """
   def primary_lines(output, limit \\ @primary_default_limit) when is_binary(output) do
     case parse_frame(output) do
-      {:ok, stage, test_id, assertion} ->
+      {:ok, stage, test_id, assertion, _reproduce} ->
         "stage: #{stage}\ntest: #{test_id}\nassertion: #{assertion}"
         |> String.slice(0, limit)
 
@@ -110,14 +126,19 @@ defmodule Kogen.Build.FailureSignature do
 
   defp signature(target, output) do
     case parse_frame(output) do
-      {:ok, stage, test_id, assertion} -> frame_signature(target, stage, test_id, assertion)
-      :error -> tail_signature(target, output)
+      {:ok, stage, test_id, assertion, reproduce} ->
+        frame_signature(target, stage, test_id, assertion, reproduce)
+
+      :error ->
+        tail_signature(target, output)
     end
   end
 
-  defp frame_signature(target, stage, test_id, assertion) do
+  defp frame_signature(target, stage, test_id, assertion, reproduce) do
     digest = sha256(Enum.join([target, stage || "", test_id || "", assertion || ""], "\n"))
-    {digest, test_id || stage || target, bounded_text(assertion || stage || ""), "frame"}
+
+    {digest, test_id || stage || target, bounded_text(assertion || stage || ""), "frame",
+     reproduce}
   end
 
   # The digest is over the normalized last `@digest_tail_lines` non-blank
@@ -131,7 +152,7 @@ defmodule Kogen.Build.FailureSignature do
   defp tail_signature(target, output) do
     digest_source = output |> normalize() |> last_nonblank_lines(@digest_tail_lines)
     digest = sha256(target <> "\n" <> digest_source)
-    {digest, first_identity(output, target), bounded_text(failure_tail(output)), "tail"}
+    {digest, first_identity(output, target), bounded_text(failure_tail(output)), "tail", nil}
   end
 
   defp passed?(%{"status" => status}) when is_binary(status), do: status in ["passed", "pass"]
@@ -143,9 +164,10 @@ defmodule Kogen.Build.FailureSignature do
   # frame a target already emitted.
   defp parse_frame(output) do
     with [_, json] <- Regex.run(~r/^#{@frame_tag}\t(.+)$/m, output),
-         {:ok, %{"stage" => stage, "test_id" => test_id, "assertion" => assertion}} <-
+         {:ok, %{"stage" => stage, "test_id" => test_id, "assertion" => assertion} = frame} <-
            Jason.decode(json) do
-      {:ok, stage, test_id, assertion}
+      reproduce = frame["reproduce"]
+      {:ok, stage, test_id, assertion, reproduce}
     else
       _ -> :error
     end

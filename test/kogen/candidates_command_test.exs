@@ -70,6 +70,19 @@ defmodule Kogen.CandidatesCommandTest do
       new_worktree(p.control, "alpha", "p1stopped", p.commit)
       |> write_owner!("stopped: integrity")
 
+    report_dir = Path.join([p.control, ".kogen/runtime/scenario-tracking", p1.build_id])
+    File.mkdir_p!(report_dir)
+
+    File.write!(
+      Path.join(report_dir, "failure-report.json"),
+      Jason.encode!(%{
+        "schema_version" => 1,
+        "class" => "item",
+        "next_action" => "reshape_details",
+        "next_command" => nil
+      })
+    )
+
     File.write!(Path.join(p1.path, "untracked.txt"), "uncommitted edit\n")
 
     p2 = new_worktree(p.control, "beta", "p2accepted", p.commit)
@@ -151,6 +164,10 @@ defmodule Kogen.CandidatesCommandTest do
 
     assert output =~ "stopped: interrupted"
     assert output =~ "running"
+    assert output =~ "class:   item"
+    assert output =~ "next:    reshape_details"
+    assert output =~ "report:  "
+    refute Regex.match?(~r/^published:/m, output)
     refute output =~ fixtures.q1.build_id
     refute output =~ fixtures.foreign_path
   end

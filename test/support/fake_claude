@@ -43,6 +43,10 @@ for a in "$@"; do
  [ "$previous" = --model ] && model="$a"
  previous="$a"
 done
+if [ "${KOGEN_ROLE:-}" != reviewer ] && [ -z "$resume" ] && [ -n "${FAKE_CLAUDE_FAIL_TAIL:-}" ]; then
+ cat "$FAKE_CLAUDE_FAIL_TAIL" >&2
+ exit 1
+fi
 if [ "${KOGEN_ROLE:-}" = reviewer ]; then
  n=0; [ -f "$state_dir/fake-reviewer-calls" ] && n="$(cat "$state_dir/fake-reviewer-calls")"; n=$((n+1)); echo "$n" >"$state_dir/fake-reviewer-calls"
  printf '%s' "$input" > "$state_dir/reviewer-prompt-$n"

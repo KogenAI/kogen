@@ -1,0 +1,282 @@
+{
+ "attempt_token": "9TZqXWnvUNrXCckaD7I78mhWyqfRTTHJ",
+ "candidate_id": "d75e4dec0b00e790e4d0fe082cc93950608c2c88",
+ "dispositions": [
+  {
+   "evidence": [
+    {
+     "locator": "stop/3 remains defined with a default details argument; infer_category_override/1 remains the prefix classifier (lines 2285-2370).",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    },
+    {
+     "locator": "write/3 opens the final report path directly with :exclusive (lines 47-73), and record_failure hashes ctx.tracking.bytes (lines 120-124).",
+     "path": "lib/kogen/build/failure_report.ex",
+     "receipt": null
+    }
+   ],
+   "id": "F1",
+   "reason": "Open. The explicit stop/4 API and single explicit classifier are absent, publication is not temp-file plus rename, and the stop path updates owner state before constructing the report from the updated record bytes.",
+   "status": "open"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "run/3 invokes only FailureReport.reconcile/1 and do_build/5 after acquiring the lock; no breaker admission path exists (lines 124-128).",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    },
+    {
+     "locator": "same_signature_count/3 only counts matching report files and no refusal or readiness-clear workflow is implemented.",
+     "path": "lib/kogen/build/failure_report.ex",
+     "receipt": null
+    }
+   ],
+   "id": "F2",
+   "reason": "Open. Item and environment breaker refusals, readiness probing, and environment-clear.json handling are not integrated into Build admission.",
+   "status": "open"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "No call to Kogen.Build.Continuation.decide/2 or Candidate adoption exists in the Build flow.",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    },
+    {
+     "locator": "Continuation.decide/2 is only a partial pure helper and stops after control-moved, without route, candidate, budget, or session-loss checks.",
+     "path": "lib/kogen/build/continuation.ex",
+     "receipt": null
+    }
+   ],
+   "id": "F3",
+   "reason": "Open. Provider and interrupted reruns still create fresh Builds; exact Candidate/session continuation and the required refusal matrix are not implemented.",
+   "status": "open"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "reconcile/1 filters effective owners with status stopped: interrupted, then tests that same effective status for accepted, making publication-interrupted unreachable; published is always nil (lines 134-185).",
+     "path": "lib/kogen/build/failure_report.ex",
+     "receipt": null
+    },
+    {
+     "locator": "The approved publication-crash contract requires published true/false reconciliation and removal workflow.",
+     "path": ".kogen/intents/approved/durable-builds-and-failure-reports/scenarios.yaml",
+     "receipt": null
+    }
+   ],
+   "id": "F4",
+   "reason": "Open. A controller kill during publication cannot be classified or reconciled as publication-interrupted, so the published state and required removal action are not produced.",
+   "status": "open"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "resume_after_failed_cycle/6 records session and notes but never appends the failed cycle signature to cycle_signatures before resuming (lines 1028-1043).",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    },
+    {
+     "locator": "FailureHandoff.render/1 contains the First failure block, but receives no persisted signature from that real resume path (lines 49-58).",
+     "path": "lib/kogen/build/failure_handoff.ex",
+     "receipt": null
+    }
+   ],
+   "id": "F5",
+   "reason": "Open. The real failed-cycle resume does not persist the derived cycle signature before launching the resumed Developer, so the required first_failure and reproduction data are not reliably inlined.",
+   "status": "open"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "The two required files contain bare JSON provider events and no provenance/output wrapper required by the approved fixture contract.",
+     "path": "test/support/provider_tails/xfjcrm76_claude_oauth_revoked.json",
+     "receipt": null
+    },
+    {
+     "locator": "The Codex refresh fixture is likewise a bare event with no provenance/output wrapper, while the provider tests contain no replay through Developer, Reviewer, and paid-target paths.",
+     "path": "test/support/provider_tails/synthetic_codex_refresh_failed.json",
+     "receipt": null
+    },
+    {
+     "locator": "Current provider tests cover existing 429/5xx/capacity controls only.",
+     "path": "test/kogen/provider_outcome_test.exs",
+     "receipt": null
+    }
+   ],
+   "id": "F7",
+   "reason": "Open. The added login fixtures do not satisfy the committed excerpt format and the required Build-path replay tests are absent.",
+   "status": "open"
+  }
+ ],
+ "findings": [],
+ "scenarios": [
+  {
+   "evidence": [
+    {
+     "locator": "stop/3 with default arity and infer_category_override/1 remain; report publication is direct and owner status is updated before report creation.",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    },
+    {
+     "locator": "FailureReport.write/3 directly opens the destination and reconcile/report construction does not guarantee final record bytes.",
+     "path": "lib/kogen/build/failure_report.ex",
+     "receipt": null
+    }
+   ],
+   "id": "every-stop-has-a-report",
+   "reason": "Needs rework. The required explicit stop/4 calls and classifier are absent, report publication is not atomic temp-file plus rename, and the stop ordering can hash stale record bytes and update owner status before report publication.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "The approved scenario requires provenance/output wrappers for both committed provider excerpts (lines 14-24).",
+     "path": ".kogen/intents/approved/durable-builds-and-failure-reports/scenarios.yaml",
+     "receipt": null
+    },
+    {
+     "locator": "Both new fixtures are bare provider events, and provider_outcome_test.exs has no required Build-path replay cases.",
+     "path": "test/support/provider_tails/xfjcrm76_claude_oauth_revoked.json",
+     "receipt": null
+    }
+   ],
+   "id": "login-rejected-is-environment",
+   "reason": "Needs rework. Although login_failure/login_command code exists, the committed fixtures are malformed for the approved replay contract and the required Developer, Reviewer, and paid-target no-retry tests are missing.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "Build.run/3 has no item-breaker admission or refusal after reconciliation.",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    },
+    {
+     "locator": "FailureReport only computes a report-local same_signature_count; no third-build refusal is implemented.",
+     "path": "lib/kogen/build/failure_report.ex",
+     "receipt": null
+    }
+   ],
+   "id": "item-breaker",
+   "reason": "Needs rework. Repeated same-signature item failures are never refused, and package/Intent scoping and reshape_details/reshape_scope actions are absent.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "Build.run/3 has no environment-breaker count, readiness probe, or clear-file write.",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    },
+    {
+     "locator": "FailureReport has no cross-Intent consecutive environment scan or environment-clear.json workflow.",
+     "path": "lib/kogen/build/failure_report.ex",
+     "receipt": null
+    }
+   ],
+   "id": "environment-breaker",
+   "reason": "Needs rework. Three consecutive environment reports do not trip admission refusal/readiness probing, and successful readiness cannot clear the breaker as specified.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "After reconciliation, run/3 always proceeds to do_build/5; no continuation decision or workspace adoption is called.",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    },
+    {
+     "locator": "The continuation module only defines a pure partial checker.",
+     "path": "lib/kogen/build/continuation.ex",
+     "receipt": null
+    }
+   ],
+   "id": "provider-stop-continues",
+   "reason": "Needs rework. A provider-stopped Build is not rerun with its existing Candidate, harness home, exact session, carried budget, or discarded prior receipts.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "reconcile/1 copies attempt budget_state and cycle_signatures but does not derive them from the dead attempt state.json; the Build has no continuation caller.",
+     "path": "lib/kogen/build/failure_report.ex",
+     "receipt": null
+    },
+    {
+     "locator": "Build.run/3 performs no stale-owner adoption after reconcile.",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    }
+   ],
+   "id": "controller-killed-continues",
+   "reason": "Needs rework. Killed controllers produce no required state-derived budget/signature report and the next Build starts a new Candidate instead of continuing the interrupted one.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "Continuation.decide/2 lacks route, candidate-missing, budgets-exhausted, and session-lost handling, and is never called by Build.run/3.",
+     "path": "lib/kogen/build/continuation.ex",
+     "receipt": null
+    },
+    {
+     "locator": "The only added continuation test checks fresh/ambiguous/member predicates, not the approved refusal matrix.",
+     "path": "test/kogen/build_continuation_test.exs",
+     "receipt": null
+    }
+   ],
+   "id": "continuation-refusals",
+   "reason": "Needs rework. The ten required refusal cases are neither integrated nor fully checked, so edited, ambiguous, route-changed, missing, exhausted, or session-lost Candidates are not handled as contracted.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "reconcile/1's accepted branch is unreachable under its stopped: interrupted filter and reports always set published to nil.",
+     "path": "lib/kogen/build/failure_report.ex",
+     "receipt": null
+    },
+    {
+     "locator": "The approved scenario requires same-slug pre-lock rejection, published true/false reports, and removal guidance.",
+     "path": ".kogen/intents/approved/durable-builds-and-failure-reports/scenarios.yaml",
+     "receipt": null
+    }
+   ],
+   "id": "publication-crash-reported",
+   "reason": "Needs rework. Publication-interrupted reconciliation and published-state-specific removal guidance cannot occur with the current owner-status condition and nil published field.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "The renderer has the requested First failure block, but resume_after_failed_cycle/6 does not persist cycle_signatures before the resumed turn.",
+     "path": "lib/kogen/build/failure_handoff.ex",
+     "receipt": null
+    },
+    {
+     "locator": "The real resume path records only session/notes/invocation and then renders from the raw cycle.",
+     "path": "lib/kogen/build.ex",
+     "receipt": null
+    }
+   ],
+   "id": "rework-prompt-inlines-first-failure",
+   "reason": "Needs rework. Direct rendering support exists, but a real pending failed cycle does not receive the required persisted derived signature before resume, so the approved first-failure/reproduction prompt behavior is incomplete.",
+   "status": "needs_rework"
+  },
+  {
+   "evidence": [
+    {
+     "locator": "The controller's declared check receipt passed for the Candidate, and the existing retention/category test file remains present and unedited in the Candidate tree.",
+     "path": "test/kogen/build_workspace_test.exs",
+     "receipt": "/receipts/0"
+    },
+    {
+     "locator": "The scenario requires existing expectations to remain intact.",
+     "path": ".kogen/intents/approved/durable-builds-and-failure-reports/scenarios.yaml",
+     "receipt": null
+    }
+   ],
+   "id": "existing-expectations-kept",
+   "reason": "Satisfied. The controller-provided check receipt passed, and inspection of the

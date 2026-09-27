@@ -64,7 +64,7 @@ arguments and exit status through a small shim. Other tool resolution is unchang
 ### `KOGEN_FAILURE_SIGNATURE` frame
 
 When a stage fails, offline.py prints exactly one line for that stage:
-`KOGEN_FAILURE_SIGNATURE\t{"stage":"<stage>","test_id":"<file:line or null>","assertion":"<line or null>"}`
+`KOGEN_FAILURE_SIGNATURE\t{"stage":"<stage>","test_id":"<file:line or null>","assertion":"<line or null>","reproduce":"MIX_ENV=<env> <stage argv>"}`
 (a TAB between the tag and the JSON body). `stage` is offline.py's own
 internal stage name (for example `test-compile`, `test`, `credo`, `compile`,
 `format` or `rehearsals`); `test_id` is the first failing ExUnit test's
@@ -73,7 +73,18 @@ the first informative reason line after that test's header (parsed past
 `Kogen.IsolatedCase`'s wrapper banner to the real reason), or `null`. This is
 the same frame contract `lib/kogen/build/failure_signature.ex` documents for
 any target: the controller combines a target name with these fields into a
-signature, without parsing offline.py or ExUnit output itself.
+signature, without parsing offline.py or ExUnit output itself. Failing stages
+also carry `reproduce`, the stage command prefixed with its `MIX_ENV` (`test`
+for `mix test`, `dev` otherwise). The `--signature-frame` replay omits this
+field and only replays captured frame data.
+
+The `reproduce` value is copied into the Build's failure signature and the
+Developer's `## First failure` handoff block, but it is excluded from the
+signature digest. This keeps recurrence detection stable while giving the
+Developer the whole stage command at its normal concurrency. The generic
+fallback names the command that `make <target>` runs and says that the
+controller runs the target after the turn; it never tells the Developer to
+run `make <target>` directly.
 
 Another test, or tool, can replay an already-captured log through the same
 emitter without running the gate:

@@ -1,0 +1,442 @@
+{
+  "attempts": [
+    {
+      "attempt_token": "P5DeyYzHH6OEvrEap9UG8NiYkKzTFzPP",
+      "candidate_id": "27645050831a9f1168d8c4b2351f69da4ee5a6d5",
+      "developer_session_id": "01a0e29a-e484-7a50-aeb7-42afaf282578",
+      "failure_kind": "review_rework",
+      "number": 0,
+      "reviewer_session_id": "01a0e2fd-e9da-7132-9105-3f949d389dea",
+      "status": "failed",
+      "targets": [
+        {
+          "attempt_token": "P5DeyYzHH6OEvrEap9UG8NiYkKzTFzPP",
+          "candidate_id": "27645050831a9f1168d8c4b2351f69da4ee5a6d5",
+          "cycle_sequence": 2,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T13:11:23.719Z",
+          "session_id": "01a0e29a-e484-7a50-aeb7-42afaf282578",
+          "started_at": "2026-09-27T13:03:43.526Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    },
+    {
+      "attempt_token": "LIVjOd_ZabWuRH0-d46o0Vi2sIPsQAxQ",
+      "candidate_id": "730a5e86f1f6581ca2cb1ed37253c916c2af2c43",
+      "developer_session_id": "01a0e29a-e484-7a50-aeb7-42afaf282578",
+      "failure_kind": null,
+      "number": 1,
+      "reviewer_session_id": "01a0e331-b419-71b0-af55-67d0a60b1393",
+      "status": "accepted",
+      "targets": [
+        {
+          "attempt_token": "LIVjOd_ZabWuRH0-d46o0Vi2sIPsQAxQ",
+          "candidate_id": "730a5e86f1f6581ca2cb1ed37253c916c2af2c43",
+          "cycle_sequence": 1,
+          "exit_code": 0,
+          "finished_at": "2026-09-27T14:07:57.222Z",
+          "session_id": "01a0e29a-e484-7a50-aeb7-42afaf282578",
+          "started_at": "2026-09-27T14:00:22.338Z",
+          "status": "passed",
+          "target": "check"
+        }
+      ]
+    }
+  ],
+  "build_id": "OuHbanjrS64OSKKvtQR7gAwJ",
+  "candidate_id": "730a5e86f1f6581ca2cb1ed37253c916c2af2c43",
+  "developer_session_id": "01a0e29a-e484-7a50-aeb7-42afaf282578",
+  "findings": [
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Atomic writer, category table, field construction, final record hash, and recurrence counting are implemented in FailureReport.",
+            "path": "lib/kogen/build/failure_report.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Build stop, admission, readiness, and publication paths now persist reports and use one category value.",
+            "path": "lib/kogen/build.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Tests cover atomic no-overwrite, category matrix, final record bytes/path, repeated offline reports, readiness, admission, Jev, publication, provider, and pre-admission behavior.",
+            "path": "test/kogen/failure_report_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "The previously missing report matrix and exhaustive assertions are now present, with implementation and documentation covering the required report fields and category behavior.",
+        "reviewer_session": "01a0e331-b419-71b0-af55-67d0a60b1393",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F1",
+      "origin": {
+        "attempt_token": "P5DeyYzHH6OEvrEap9UG8NiYkKzTFzPP",
+        "candidate_id": "27645050831a9f1168d8c4b2351f69da4ee5a6d5",
+        "evidence": [
+          {
+            "locator": "Tests the Developer writes requires the complete (a)-(f) fixture stop matrix, exhaustive report-field assertions, and report/category documentation.",
+            "path": ".kogen/intents/approved/failure-reports/INTENT.md",
+            "receipt": null
+          },
+          {
+            "locator": "Only offline exhaustion, a synthetic readiness report construction, usage-limited Developer stop, and cycle-signature persistence are present; the required Jev, publication-refusal, missing-deps admission, Claude login Build-path cases and full field comparisons are absent.",
+            "path": "test/kogen/failure_report_test.exs",
+            "receipt": null
+          },
+          {
+            "locator": "README adds only a short summary and does not document the required report fields or category table.",
+            "path": "README.md",
+            "receipt": null
+          }
+        ],
+        "reason": "The report implementation and several focused paths were inspected, but the approved contract's required complete stop matrix, exhaustive field checks, and report/category documentation are still missing. Add those tests and documentation so every stopped-Build behavior is independently exercised.",
+        "reviewer_session": "01a0e2fd-e9da-7132-9105-3f949d389dea",
+        "scenario_ids": [
+          "every-stop-writes-a-report"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Scoped Claude and Codex login marker detection is implemented separately from ProviderMarker.classify/1.",
+            "path": "lib/kogen/harness/provider_marker.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Developer, Reviewer, and paid-target login handling sets environment classification, exact commands, and terminal no-retry behavior.",
+            "path": "lib/kogen/build.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Build-path replay tests cover Codex Developer, Claude Reviewer, paid target, invocation counts, and terminal classes; provider tests cover labelled fixtures and 403 control.",
+            "path": "test/kogen/controller_verification_test.exs",
+            "receipt": null
+          },
+          {
+            "locator": "Committed real and synthetic tails include provenance wrappers.",
+            "path": "test/support/provider_tails/xfjcrm76_claude_oauth_revoked.json",
+            "receipt": null
+          }
+        ],
+        "reason": "The required Build-path login replays, exact messages, terminal environment state, and no-retry assertions are now implemented and tested with provenance-labelled fixtures.",
+        "reviewer_session": "01a0e331-b419-71b0-af55-67d0a60b1393",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F2",
+      "origin": {
+        "attempt_token": "P5DeyYzHH6OEvrEap9UG8NiYkKzTFzPP",
+        "candidate_id": "27645050831a9f1168d8c4b2351f69da4ee5a6d5",
+        "evidence": [
+          {
+            "locator": "The approved test section requires Codex Developer, Claude Reviewer, and paid-target 401 replays through the Build, including no retry, exact messages, and terminal state.",
+            "path": ".kogen/intents/approved/failure-reports/INTENT.md",
+            "receipt": null
+          },
+          {
+            "locator": "The provider-marker section contains overload, usage-limit, timeout, and other existing cases but no login-rejection Developer, Reviewer, or paid-target Build tests.",
+            "path": "test/kogen/controller_verification_test.exs",
+            "receipt": null
+          },
+          {
+            "locator": "The new login test only exercises ProviderMarker classification and login_command unit behavior; no FAKE_CLAUDE_FAIL_TAIL Build replay is present.",
+            "path": "test/kogen/provider_outcome_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "Structured 401 marker classification and paid-target implementation were inspected, but the required Build-path login replays and exact no-retry/terminal assertions are absent. Add the approved Developer, Reviewer, and paid-target integration tests.",
+        "reviewer_session": "01a0e2fd-e9da-7132-9105-3f949d389dea",
+        "scenario_ids": [
+          "login-rejected-is-environment"
+        ]
+      },
+      "status": "closed"
+    },
+    {
+      "current_disposition": {
+        "evidence": [
+          {
+            "locator": "Failed cycle signatures are derived and persisted before resuming the Developer session.",
+            "path": "lib/kogen/build.ex",
+            "receipt": null
+          },
+          {
+            "locator": "FailureHandoff renders the First failure block, reproduce fallback, and deterministic-gate sentence within the prompt bound.",
+            "path": "lib/kogen/build/failure_handoff.ex",
+            "receipt": null
+          },
+          {
+            "locator": "FailureSignature copies reproduce without hashing it, and offline.py emits stage commands while replay omits reproduce.",
+            "path": "lib/kogen/build/failure_signature.ex",
+            "receipt": null
+          },
+          {
+            "locator": "Integration, fallback, bound, frame, replay, and digest-stability assertions are present.",
+            "path": "test/kogen/controller_handoff_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "The resumed prompt now receives a pre-resume cycle signature and renders the required first-failure and reproduction details; frame and digest behavior are covered by the added tests.",
+        "reviewer_session": "01a0e331-b419-71b0-af55-67d0a60b1393",
+        "status": "closed",
+        "verdict": "accepted"
+      },
+      "id": "F3",
+      "origin": {
+        "attempt_token": "P5DeyYzHH6OEvrEap9UG8NiYkKzTFzPP",
+        "candidate_id": "27645050831a9f1168d8c4b2351f69da4ee5a6d5",
+        "evidence": [
+          {
+            "locator": "The approved test section requires the real resumed Developer-2 prompt, prompt fallback cases, reproduce propagation, replay omission, and unchanged signature digests.",
+            "path": ".kogen/intents/approved/failure-reports/INTENT.md",
+            "receipt": null
+          },
+          {
+            "locator": "This test verifies cycle_signatures are persisted and used for the final report, but never inspects the saved Developer-2 prompt for the First failure block or determinism sentence.",
+            "path": "test/kogen/failure_report_test.exs",
+            "receipt": null
+          },
+          {
+            "locator": "No reproduce-copy or digest-stability assertions were added to the existing FailureSignature test suite.",
+            "path": "test/kogen/failure_signature_test.exs",
+            "receipt": null
+          }
+        ],
+        "reason": "The resume code now derives and records a cycle signature, and handoff rendering was inspected, but the required real resumed-prompt and FailureSignature reproduce/digest tests are missing. Add the specified integration assertions.",
+        "reviewer_session": "01a0e2fd-e9da-7132-9105-3f949d389dea",
+        "scenario_ids": [
+          "rework-prompt-inlines-first-failure"
+        ]
+      },
+      "status": "closed"
+    }
+  ],
+  "format": "kogen-build-summary",
+  "full_record": {
+    "byte_count": 7934195,
+    "format": "kogen-scenario-tracking-record",
+    "path": ".kogen/runtime/scenario-tracking/OuHbanjrS64OSKKvtQR7gAwJ/record.json",
+    "schema_version": 2,
+    "sha256": "6da298054a5b7c0eb2f0f4e1a39090219ba930eec97b2cac51a37568d6a01c41"
+  },
+  "intent": {
+    "id": "05eb52cb-5146-48dd-a57c-b381cf14bb5f",
+    "slug": "failure-reports",
+    "title": "Write a failure report for every stopped Build"
+  },
+  "review": {
+    "outcome": "accept",
+    "session_id": "01a0e331-b419-71b0-af55-67d0a60b1393"
+  },
+  "risks": [
+    {
+      "id": "self-hosting"
+    },
+    {
+      "id": "categories-preserved"
+    },
+    {
+      "id": "stale-record-bytes"
+    },
+    {
+      "id": "login-marker-scope"
+    },
+    {
+      "id": "readiness-blind-to-revocation"
+    },
+    {
+      "id": "signature-stability"
+    },
+    {
+      "id": "overlapping-drafts"
+    }
+  ],
+  "role_assignment": {
+    "developer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "expert": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "helpers": {
+      "codex": {
+        "expert": {
+          "effort": "high",
+          "model": "gpt-6-sol"
+        },
+        "scout": {
+          "effort": "low",
+          "model": "gpt-6-luna"
+        },
+        "worker": {
+          "effort": "high",
+          "model": "gpt-6-luna"
+        }
+      }
+    },
+    "reviewer": {
+      "effort": "high",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    },
+    "shaping": {
+      "effort": "medium",
+      "harness": "codex",
+      "model": "gpt-6-sol"
+    }
+  },
+  "route": {
+    "harness": "codex",
+    "name": "codex"
+  },
+  "scenarios": [
+    {
+      "evidence": [
+        {
+          "locator": "Approved stop matrix and field/category requirements.",
+          "path": ".kogen/intents/approved/failure-reports/scenarios.yaml",
+          "receipt": null
+        },
+        {
+          "locator": "Atomic report publication, field construction, signature selection, recurrence counting, and category table.",
+          "path": "lib/kogen/build/failure_report.ex",
+          "receipt": null
+        },
+        {
+          "locator": "All stop-path integrations, final record update ordering, owner status, message suffixes, admission, readiness, and publication refusal.",
+          "path": "lib/kogen/build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Coverage for report persistence, all listed stop kinds, no-overwrite behavior, final record hash/path, recurrence counts, and pre-admission absence.",
+          "path": "test/kogen/failure_report_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "every-stop-writes-a-report",
+      "reason": "I inspected the approved matrix, report implementation, Build stop integrations, and focused tests. The Candidate writes one atomic non-clobbering report after final record updates, keeps category/status/message consistent, computes recurrence counts, and preserves pre-admission refusals without reports.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Scoped login marker implementation and separation from provider classification.",
+          "path": "lib/kogen/harness/provider_marker.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Developer and Reviewer handling plus binding-specific login commands.",
+          "path": "lib/kogen/build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Paid-target marker handling, exact reason, environment terminal state, and no retry.",
+          "path": "lib/kogen/build/verification.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Provider marker and Build replay tests with real/synthetic provenance-wrapped tails.",
+          "path": "test/kogen/provider_outcome_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "Provenance wrapper for the real Claude 401 excerpt.",
+          "path": "test/support/provider_tails/xfjcrm76_claude_oauth_revoked.json",
+          "receipt": null
+        }
+      ],
+      "id": "login-rejected-is-environment",
+      "reason": "I inspected the scoped marker logic and all three Build paths. The Candidate classifies the approved 401/revocation forms as environment login rejections, leaves ProviderMarker.classify unchanged, supplies harness/scope commands, and avoids retries; control tests cover 403 and existing provider markers.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Pre-resume cycle signature derivation and persistence.",
+          "path": "lib/kogen/build.ex",
+          "receipt": null
+        },
+        {
+          "locator": "First failure block, generic reproduction fallback, exact deterministic sentence, and 24,000-byte fitting.",
+          "path": "lib/kogen/build/failure_handoff.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Frame reproduce parsing and digest exclusion.",
+          "path": "lib/kogen/build/failure_signature.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Stage-specific MIX_ENV reproduction and replay omission.",
+          "path": "scripts/check/offline.py",
+          "receipt": null
+        },
+        {
+          "locator": "Resumed prompt, fallback, frame, replay, and digest tests.",
+          "path": "test/kogen/failure_report_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "rework-prompt-inlines-first-failure",
+      "reason": "I inspected the resume path, handoff renderer, signature code, offline frame emitter, and focused tests. The failed cycle is recorded before Developer-2 launches; prompts include the required first-failure/reproduce block and exact sentence, while reproduce is excluded from digests and replay output.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Report-bearing and report-absent Candidate formatting, including class, next command, report path, and report:none behavior.",
+          "path": "lib/mix/tasks/kogen.candidates.ex",
+          "receipt": null
+        },
+        {
+          "locator": "Listing test fixture includes a report-bearing owner record and verifies added output while preserving existing listing behavior.",
+          "path": "test/kogen/candidates_command_test.exs",
+          "receipt": null
+        }
+      ],
+      "id": "candidates-show-the-report",
+      "reason": "I inspected the read-only candidates task and its listing fixture. It reads the tracking report, prints class/next/report for report-bearing Candidates, prints report none otherwise, and does not add publication output.",
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        {
+          "locator": "Existing failure-retention and category assertions remain in the Candidate.",
+          "path": "test/kogen/build_workspace_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "Existing lifecycle, integrity, rollback, boundary, guard, and precondition suites remain present.",
+          "path": "test/kogen/scenario_lifecycle_test.exs",
+          "receipt": null
+        },
+        {
+          "locator": "Reliability-bound existing expectations file is present and unchanged by the Candidate diff.",
+          "path": "priv/kogen/test-reliability.yaml",
+          "receipt": null
+        },
+        {
+          "locator": "Controller check receipt for the Candidate is marked passed.",
+          "path": "test/kogen/build_preconditions_test.exs",
+          "receipt": "/receipts/0"
+        }
+      ],
+      "id": "existing-expectations-kept",
+      "reason": "I inspected the existing expectation suites and the Candidate diff: no listed existing test was renamed or removed, reliability metadata was untouched, and changes add the report display/tests while preserving prior category and stop-class assertions. The bound controller check receipt is passed; I did not rerun the gate.",
+      "status": "satisfied"
+    }
+  ],
+  "schema_version": 1
+}

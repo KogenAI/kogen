@@ -43,6 +43,43 @@ defmodule Kogen.FailureSignatureTest do
     assert repeated["repeated"]
   end
 
+  test "reproduce is copied into a signature without changing its digest" do
+    base_output =
+      "KOGEN_FAILURE_SIGNATURE\t" <>
+        Jason.encode!(%{
+          "stage" => "test",
+          "test_id" => "test/example_test.exs:7",
+          "assertion" => "assert value == expected"
+        })
+
+    with_reproduce =
+      "KOGEN_FAILURE_SIGNATURE\t" <>
+        Jason.encode!(%{
+          "stage" => "test",
+          "test_id" => "test/example_test.exs:7",
+          "assertion" => "assert value == expected",
+          "reproduce" => "MIX_ENV=test mix test --exclude live --warnings-as-errors"
+        })
+
+    cycle = fn output ->
+      %{
+        "candidate_id" => "candidate-a",
+        "sequence" => 1,
+        "receipts" => [
+          %{"target" => "check", "status" => "failed", "exit_code" => 1, "output" => output}
+        ]
+      }
+    end
+
+    without = FailureSignature.derive(cycle.(base_output), %{"targets" => []}, %{targets: %{}})
+
+    with_value =
+      FailureSignature.derive(cycle.(with_reproduce), %{"targets" => []}, %{targets: %{}})
+
+    assert with_value["reproduce"] == "MIX_ENV=test mix test --exclude live --warnings-as-errors"
+    assert with_value["digest"] == without["digest"]
+  end
+
   describe "against real mined excerpts (evidence/probe-signals, signatures-identify-failures)" do
     @fixtures_dir Path.expand("../support/mined_failures", __DIR__)
     @catalog %{targets: %{}}

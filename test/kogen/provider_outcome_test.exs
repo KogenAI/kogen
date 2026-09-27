@@ -106,6 +106,33 @@ defmodule Kogen.Harness.ProviderMarkerTest do
     refute ProviderMarker.classify("")
   end
 
+  test "401 login tails are environment markers and stay separate from provider markers" do
+    claude = fixture("xfjcrm76_claude_oauth_revoked.json")
+    codex = fixture("synthetic_codex_refresh_failed.json")
+
+    assert %{"class" => "environment", "kind" => "login_rejected", "harness" => "claude"} =
+             ProviderMarker.login_failure(claude)
+
+    assert %{"class" => "environment", "kind" => "login_rejected", "harness" => "codex"} =
+             ProviderMarker.login_failure(codex)
+
+    refute ProviderMarker.classify(claude)
+    refute ProviderMarker.classify(codex)
+
+    refute ProviderMarker.login_failure(
+             Jason.encode!(%{"is_error" => true, "api_error_status" => 403})
+           )
+  end
+
+  test "login commands follow the binding scope" do
+    for harness <- ["claude", "codex"] do
+      assert Kogen.Harness.login_command(%{harness: harness}) == "mix kogen.#{harness}.login"
+
+      assert Kogen.Harness.login_command(%{harness: harness, scope: %{name: :project}}) ==
+               "mix kogen.#{harness}.login --project"
+    end
+  end
+
   test "a marker can be anywhere inside a nested harness stream, not just at the end" do
     output =
       Enum.join(

@@ -412,14 +412,30 @@ defmodule Kogen.Build.Verification do
         {receipt, failure, providers}
 
       marker ->
-        {receipt, provider_failure(failure, marker), providers}
+        if marker["kind"] == "login_rejected" do
+          harness = marker["harness"] || "claude"
+
+          reason =
+            "make #{target}: #{harness} login rejected (401) (class environment); run `mix kogen.#{harness}.login`"
+
+          {receipt,
+           Map.merge(failure, %{
+             "class" => "environment",
+             "provider" => marker,
+             "reason" => reason
+           }), providers}
+        else
+          {receipt, provider_failure(failure, marker), providers}
+        end
     end
   end
 
   defp provider_marker(receipt, %{"kind" => "target"}) when is_map(receipt) do
     if receipt["timed_out"] == true,
       do: nil,
-      else: ProviderMarker.classify(receipt["output"] || "")
+      else:
+        ProviderMarker.login_failure(receipt["output"] || "") ||
+          ProviderMarker.classify(receipt["output"] || "")
   end
 
   defp provider_marker(_receipt, _failure), do: nil

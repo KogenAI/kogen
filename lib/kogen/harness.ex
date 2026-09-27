@@ -113,6 +113,26 @@ defmodule Kogen.Harness do
     }
   end
 
+  @doc "Returns the Kogen login command for a harness binding."
+  def login_command(%{harness: harness, scope: scope}),
+    do: login_command(harness, project_scope?(scope))
+
+  def login_command(%{harness: harness}), do: login_command(harness, false)
+
+  def login_command(%{"harness" => harness, "scope_name" => scope_name}),
+    do: login_command(harness, scope_name == "project")
+
+  def login_command(%{"harness" => harness}), do: login_command(harness, false)
+
+  defp login_command(harness, project?) when harness in ["claude", "codex", :claude, :codex] do
+    suffix = if project?, do: " --project", else: ""
+    "mix kogen.#{harness}.login#{suffix}"
+  end
+
+  defp project_scope?(%{name: name}), do: name in [:project, "project"]
+  defp project_scope?(%{"name" => name}), do: name in [:project, "project"]
+  defp project_scope?(_scope), do: false
+
   @doc """
   Opens readiness for every harness assigned to `roles`, in role order, before
   any launch. Each harness is opened once with its native configuration. A
