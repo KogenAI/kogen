@@ -6,6 +6,7 @@ path, with only the provider transport (Popen) and the mix compile/mix run
 subprocess boundary faked -- never a reimplementation of that logic.
 """
 import contextlib
+import difflib
 import importlib.util
 import io
 import json
@@ -49,6 +50,28 @@ class Clock:
 
 
 class DriverSmokeRehearsalTest(unittest.TestCase):
+    def test_smoke_bounds_and_correlation_are_unchanged(self):
+        self.assertEqual(self.driver.SMOKE_MAX_SECONDS, 300)
+        self.assertEqual(self.driver.integrity_module().SMOKE_MAX_SECONDS, 300)
+        receipt = {
+            "scripted_replies": 0,
+            "git_status": {"baseline_unchanged": True, "draft_exists": True},
+            "source_identity": {"unchanged": True},
+            "outcome": "completed",
+            "correlation": {
+                "exactly_one_root": True,
+                "all_owned_terminal": True,
+                "all_profiles_match": True,
+            },
+            "cleanup": [{"all_reaped": True}],
+        }
+        self.assertTrue(self.driver.case_succeeded(receipt))
+        receipt["correlation"]["exactly_one_root"] = False
+        self.assertFalse(self.driver.case_succeeded(receipt))
+        receipt["correlation"]["exactly_one_root"] = True
+        receipt["correlation"]["all_profiles_match"] = False
+        self.assertFalse(self.driver.case_succeeded(receipt))
+
     def setUp(self):
         self.output = io.StringIO()
         redirect = contextlib.redirect_stdout(self.output)
@@ -73,11 +96,15 @@ class DriverSmokeRehearsalTest(unittest.TestCase):
         (self.project / ".kogen" / "config.yaml").write_text(
             "default_route: claude-fake\nroutes:\n"
             "  claude-fake:\n    harness: claude\n    shaping:   {model: fake-claude, effort: high}\n"
-            "  codex-fake:\n    harness: codex\n    shaping:   {model: fake-model, effort: medium}\n")
+            "  codex-fake:\n    harness: codex\n    shaping:   {model: fake-model, effort: medium}\n"
+            "    auditor:   {model: fake-model, effort: high}\n    helpers:\n"
+            "      scout:  {model: fake-model, effort: low}\n"
+            "      worker: {model: fake-model, effort: high}\n"
+            "      expert: {model: fake-model, effort: high}\n")
         # Drafts are git-ignored in the real repo; match that so the smoke
         # fixture's own baseline_unchanged git-status check behaves as it
         # does for a real fixture once the transport saves its Draft.
-        (self.project / ".gitignore").write_text(".kogen/intents/drafts/\n")
+        (self.project / ".gitignore").write_text(".kogen/intents/drafts/\n.kogen/runtime/\n")
         old_runtime = os.environ.get("KOGEN_SHAPING_EVALUATION_RUNTIME")
         os.environ["KOGEN_SHAPING_EVALUATION_RUNTIME"] = str(self.runtime)
         # The real elixir YAML-parser subprocess is faked below (see run()'s
@@ -97,7 +124,7 @@ class DriverSmokeRehearsalTest(unittest.TestCase):
 
     def tearDown(self): self.temp.cleanup()
 
-    def run_smoke(self, *, missing_answer=False, corrupt_manifest_call=None):
+    def run_smoke(self, *, missing_answer=False, corrupt_manifest_call=None, hook_files=False):
         """Exercises the real driver.run_smoke() end to end offline: real
         setup_fixture (rsync/git/prerequisite control for real; only `mix
         compile` and `mix run` are faked), real drive(), real
@@ -111,6 +138,12 @@ class DriverSmokeRehearsalTest(unittest.TestCase):
             return not missing_answer
 
         def append_startup(fixture):
+            if hook_files:
+                hook_dir = fixture / ".kogen/runtime/shaping-audits/eval-smoke"
+                hook_dir.mkdir(parents=True, exist_ok=True)
+                (hook_dir / "hook.jsonl").write_text("{}\n")
+                (hook_dir / ("a" * 64) / "report.json").parent.mkdir(parents=True, exist_ok=True)
+                (hook_dir / ("a" * 64) / "report.json").write_text("{}\n")
             events = [
                 {"type": "session_meta", "payload": {"id": "root-smoke", "cwd": str(fixture), "source": "cli"}},
                 {"type": "turn_context", "payload": {"turn_id": "startup", "model": "fake-model", "effort": "low"}},
@@ -268,12 +301,45 @@ class DriverSmokeRehearsalTest(unittest.TestCase):
         nothing else changes; a session observed at another effort fails."""
         tracked = (HERE.parents[2] / ".kogen" / "config.yaml").read_text()
         pinned = self.driver.pinned_smoke_config(tracked)
-        changed = [(a, b) for a, b in zip(tracked.splitlines(), pinned.splitlines()) if a != b]
-        self.assertEqual(len(tracked.splitlines()), len(pinned.splitlines()))
-        self.assertLessEqual(len(changed), 1)
+        diff = list(difflib.unified_diff(tracked.splitlines(), pinned.splitlines(), n=0, lineterm=""))
+        removed = [line for line in diff if line.startswith("-") and not line.startswith("---")]
+        added = [line for line in diff if line.startswith("+") and not line.startswith("+++")]
+        self.assertEqual(removed, [
+            "-    shaping:   {model: gpt-6-sol, effort: medium}",
+            "-    auditor:   {model: gpt-6-sol, effort: high}",
+            "-      worker: {model: gpt-6-luna, effort: high}",
+            "-      expert: {model: gpt-6-sol, effort: high}",
+        ])
+        self.assertEqual(added, [
+            "+    shaping:   {model: gpt-6-sol, effort: low}",
+            "+      worker: {model: gpt-6-luna, effort: low}",
+            "+      expert: {model: gpt-6-luna, effort: low}",
+        ])
+        def split_codex(text):
+            before, rest = text.split("  codex:\n", 1)
+            codex_block, after = rest.split("  claude-dominant-adversarial-codex:\n", 1)
+            return before, codex_block, after
+
+        tracked_before, tracked_codex, tracked_after = split_codex(tracked)
+        pinned_before, pinned_codex, pinned_after = split_codex(pinned)
+        self.assertFalse(any(line.startswith("    auditor:") for line in pinned_codex.splitlines()))
+        self.assertEqual(pinned_before, tracked_before)
+        self.assertEqual(pinned_after, tracked_after)
         self.assertRegex(pinned, r"  codex:\n    harness: codex\n    shaping:\s*\{[^}]*effort: low\}")
         with self.assertRaisesRegex(RuntimeError, "exactly one block-style codex route"):
             self.driver.pinned_smoke_config("routes:\n  codex-fake: {harness: codex}\n")
+
+        def without_codex_line(prefix):
+            kept = [line for line in tracked_codex.splitlines(keepends=True) if not line.startswith(prefix)]
+            self.assertEqual(len(kept), len(tracked_codex.splitlines()) - 1)
+            return (tracked_before + "  codex:\n" + "".join(kept)
+                    + "  claude-dominant-adversarial-codex:\n" + tracked_after)
+
+        with self.assertRaisesRegex(RuntimeError, "^smoke: the codex route has no auditor entry to remove$"):
+            self.driver.pinned_smoke_config(without_codex_line("    auditor:"))
+        with self.assertRaisesRegex(
+                RuntimeError, "^smoke: the codex route has no single flow-map expert helper line to pin$"):
+            self.driver.pinned_smoke_config(without_codex_line("      expert:"))
 
         def receipt(configured, observed):
             return {"configured_profiles": {"normalized": {"shaping": {"effort": configured}}},
@@ -282,6 +348,40 @@ class DriverSmokeRehearsalTest(unittest.TestCase):
         for configured, observed in (("medium", ["medium"]), ("low", ["medium"]), ("low", ["low", "medium"])):
             with self.assertRaisesRegex(RuntimeError, "Shaping effort not applied"):
                 self.driver.require_smoke_effort(receipt(configured, observed))
+
+    def test_smoke_manifest_ignores_shaping_audit_files(self):
+        first_status, _ = self.run_smoke()
+        self.assertEqual(0, first_status)
+        frames = [line for line in self.output.getvalue().splitlines()
+                  if line.startswith("KOGEN_TARGET_EVIDENCE_MANIFEST\t")]
+        self.assertEqual(1, len(frames))
+        first_locator = json.loads(frames[0].split("\t", 1)[1])
+        first_manifest = self.project / first_locator["manifest_path"]
+        first_payload = json.loads(first_manifest.read_text())
+        first_paths = {entry["path"] for entry in first_payload["required_evidence"]}
+        manifest = self.runtime / "evidence-manifest.json"
+        if manifest.exists():
+            manifest.unlink()
+        runtime = self.runtime
+        shutil.rmtree(runtime / "runs", ignore_errors=True)
+        for child in self.sessions.iterdir():
+            if child.is_file() or child.is_symlink():
+                child.unlink()
+            elif child.is_dir():
+                shutil.rmtree(child)
+        self.output.seek(0)
+        self.output.truncate(0)
+        second_status, _ = self.run_smoke(hook_files=True)
+        self.assertEqual(0, second_status)
+        frames = [line for line in self.output.getvalue().splitlines()
+                  if line.startswith("KOGEN_TARGET_EVIDENCE_MANIFEST\t")]
+        self.assertEqual(1, len(frames))
+        second_locator = json.loads(frames[0].split("\t", 1)[1])
+        second_manifest = self.project / second_locator["manifest_path"]
+        second_payload = json.loads(second_manifest.read_text())
+        second_paths = {entry["path"] for entry in second_payload["required_evidence"]}
+        self.assertEqual(first_paths, second_paths)
+        self.assertFalse((self.runtime / "smoke").exists())
 
     def test_smoke_wrong_control_missing_scripted_answer_fires_fail_fast(self):
         """Wrong control: the scripted reply is delivered but the Draft never

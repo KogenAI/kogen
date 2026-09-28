@@ -1,0 +1,106 @@
+- id: builds-on-slices-1-and-2
+  scenario_ids: [stop-hook-decides-every-stop]
+  description: >-
+    The hook runs slice 1's and slice 2's audit (all three layers, --auditor semantics, report schema 2, the questions.md
+    states). Both have landed (6b4376e9, 3962af8b) and this Draft is re-preflighted at dece3e84 (INTENT.md "The landed
+    audit interface this slice calls"; evidence/CANDIDATE.md; evidence/probe-preflight-dece3e84/RESULT.md). The hook
+    calls the landed audit/2 with auditor: true and never a layer seam (slice 2 excluded :layers, :launcher,
+    :manifest); --stop-hook is dispatched before the landed role and lock refusals; the landed :clock returns a
+    DateTime; the hook's {:error, reason} text is the landed report_error/2 text through the extracted error_text/1.
+    A later commit that changes Kogen.ShapingAudit.main/2, audit/2, report_error/2, Report or the fakes needs another
+    re-preflight before admission.
+- id: codex-tui-stop-hook
+  scenario_ids: [stop-hook-decides-every-stop, shaping-flow-prompts-and-codex-launch]
+  description: >-
+    The hook is registered only through `-c hooks.Stop=…` on the interactive Codex Shaper. The probe
+    (evidence/probe-codex-stop-hook-tui/RESULT.md, plain codex 0.157.1 with Kogen's @common_flags) shows the TUI runs it
+    at the root turn end on fresh and resumed turns, and a block continues the same turn (one task_complete per turn,
+    the reason as a role user `<hook_prompt …>` message). Kogen's managed runtime is 0.156.1: the probe did not run on
+    it (the operator's own default login and the plain CLI were used, never Kogen's managed runtime or scopes), so the
+    0.156.1 observation is shaping-evaluation-live's live-shaping-quality run. If 0.156.1 differed, the hook would
+    simply never block (every stop allowed), which the hook tests cannot see; shaping-evaluation-live's integrity
+    checks each case's hook.jsonl.
+- id: evaluation-lands-next
+  scenario_ids: [stop-hook-decides-every-stop, shaping-flow-prompts-and-codex-launch, smoke-fixture-without-auditor]
+  description: >-
+    This Intent changes the live Shaper (hook, --search, prompts that ask through request_user_input) and the smoke
+    fixture, but not the evaluation that drives them. HEAD's integrity.ordered_turn_bindings rejects a hook-blocked
+    resumed turn ("native user intervenes before completion" on the <hook_prompt> message), the resume transport
+    carries neither the hook nor KOGEN_ROLE=shaper, and helper rollouts break the correlation. So between this landing
+    and shaping-evaluation-live's, live-shaping-quality and live-shaping-smoke are not expected to pass: the
+    orchestrator admits no Intent that selects either target in between, and shaping-evaluation-live is the next Build.
+    No catalogued offline test depends on the live behaviour, so check stays green.
+- id: self-hosting
+  scenario_ids: [stop-hook-decides-every-stop, smoke-fixture-without-auditor]
+  description: >-
+    The Makefile, the catalog, .codex/** and priv/kogen/claude_code/settings.json stay byte-identical; how Builds start
+    is unchanged; the hook is registered only on the Codex Shaper. driver.py changes only in pinned_smoke_config; every
+    catalog-pinned name (driver.prepare_login_scope_ok, driver.prepare_toolchain_ok, driver.setup_continuation_seed,
+    driver.setup_fixture, driver.run_smoke, Kogen.ShapingDraftAudit.audit!,
+    Kogen.ShapingEvaluation.Integrity.validate_manifest, validate_smoke_manifest) stays byte-identical, and both
+    catalogued smoke fixtures (test_smoke_rehearsal_dispatches_real_functions_and_manifests_once,
+    test_smoke_wrong_control_missing_scripted_answer_fires_fail_fast) keep their names and bodies, as does the fake's
+    scripted Draft. Their shared setUp does change: the new pinned_smoke_config refuses its synthetic codex-fake route
+    (no auditor: line, no helpers), so run_smoke() would raise before any transport and both controls would fail
+    and stop check (Opus finding on the split). setUp's codex-fake route gains exactly the auditor: line and the
+    helpers: block with flow-map scout, worker and expert lines, and its .gitignore gains .kogen/runtime/, nothing
+    else (scenario smoke-fixture-without-auditor); with them both controls and K3 pass against the new
+    pinned_smoke_config (evidence/probe-smoke-rehearsal-setup/RESULT.md). The --prepare protocol is unchanged
+    (driver.py run_prepare :1513; prepare_test.exs passes with only its env lists changed).
+- id: claude-interim
+  scenario_ids: [shaping-flow-prompts-and-codex-launch]
+  description: >-
+    Until slice 5 (claude-shaping-under-hook) lands, the Claude Shaper runs the new prompts without the Stop hook or the
+    widened helpers, and live-shape-to-build is not re-proven. The orchestrator must not admit any Intent that selects
+    live-shape-to-build before slice 5, and slice 5 follows once the Shaper's Kogen Claude login is back. The prompts'
+    "ask only when a real product question is open" and the probe's "Do not ask me anything else" keep the probe's
+    single-directive flow viable meanwhile (not proven live). Slice 5's own landing_order must gain
+    shaping-evaluation-live when it is re-preflighted.
+- id: helper-thread-hooks
+  scenario_ids: [stop-hook-decides-every-stop]
+  description: >-
+    Codex native helpers inherit the root's -c overrides, so their turn ends might fire the Stop hook. On codex 0.157.1
+    exec a plain spawn_agent helper's turn end did not (evidence/probe-codex-stop-hook-tui/RESULT.md part 2); 0.156.1
+    and forked helpers are unobserved. The hook tells them apart by the rollout's session_meta.payload.source
+    (from the payload's transcript_path): helpers carry subagent.thread_spawn, the root "cli"
+    (evidence/probe-hooks-2026-09-26.md; the TUI probe's root is "cli" too). A Codex upgrade that changes the field fails
+    the recorded-rollout tests H11/H12 first.
+- id: developer-tmpdir-override
+  scenario_ids: [stop-hook-decides-every-stop]
+  description: >-
+    Build qVFqG3da stopped on stray mix_lock_user501/ and mix_pubsub_user501/ after the Developer overrode TMPDIR. Never
+    override TMPDIR; canonicalize both sides of path comparisons (realpath).
+- id: report-ownership
+  scenario_ids: [stop-hook-decides-every-stop]
+  description: >-
+    The hook's state joins slice 1-2's runtime directory, never the package (a file in the package would change the
+    revision). A future write-containment boundary (BLD-12) must allow this path for Shaping sessions.
+  ownership:
+    - paths: .kogen/runtime/shaping-audits/<slug>/hook.jsonl and hook-state.json
+      when_exists: hook.jsonl is appended per decision; hook-state.json is replaced atomically per decision.
+      owner_after_creation: The local checkout; written only by mix kogen.audit --stop-hook.
+      owner_during_operation: The Stop hook writes; stop_hook.sh reads the skip key and stored decision; mix kogen.audit inside a Shaping session, the evaluation driver, people and agents read.
+      permitted_mutation: Written only by the hook entry's writer.
+      validation: The skip key is recomputed from HEAD and package bytes on every stop; an undecodable hook-state.json counts as absent.
+      git_state: Ignored runtime data, never committed or published.
+      upgrade_behavior: An unknown or missing field makes the hook re-audit (never reuse) and start a new chain.
+- id: codex-route-defects
+  scenario_ids: [stop-hook-decides-every-stop, smoke-fixture-without-auditor]
+  description: >-
+    Build qbOzahf8 did not converge on the codex route (lesson 27). In this slice's files: qb's
+    shaping_audit_hook_test.exs injects layers: fakes the landed audit/2 does not accept (write the tests on the landed
+    fakes, Assumed 20); qb's stop_hook.ex needs the thirteen adaptations of evidence/CANDIDATE.md, each pinned by an H
+    test; qb's driver_smoke_rehearsal_test.py hunks 2, 3 and 5 edit the catalogued wrong control and its fake (never
+    take them); qb's fast_auditor.ex has no caller here. Reproduce any failure under the whole offline gate, never
+    "passes alone" (lesson 25); wait on conditions, not sleeps (lesson 26).
+- id: build-session-environment
+  scenario_ids: [stop-hook-decides-every-stop, shaping-flow-prompts-and-codex-launch, smoke-fixture-without-auditor]
+  description: >-
+    The Developer's Build session exports KOGEN_ROLE=developer and KOGEN_HARNESS_HOME (lib/kogen/harness/codex.ex:287,
+    lib/kogen/build.ex:639), and System.cmd/3 merges a given env into the inherited one. Earlier Reviews repeatedly found
+    tests that passed or failed because of them: the audit refuses KOGEN_ROLE=developer with exit 2, the hook allows
+    every non-shaper stop with no audit, and an inherited harness home redirects a launch. Every test in this slice
+    that runs the audit, the hook, stop_hook.sh, mix kogen.shape or a Python process clears both or sets them
+    explicitly (INTENT.md "Build-session environment"), including shaping_smoke_rehearsal_test.exs:15 and
+    prepare_test.exs:150/163/196/238, which previously inherited both (Opus round 1 finding 7). K5 plants hostile
+    values.

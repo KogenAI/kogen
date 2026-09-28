@@ -182,9 +182,18 @@ defmodule Kogen.Harness do
   def role_context(%{route: config, selections: selections, roles: roles} = runtime, role) do
     unless role in roles, do: raise(ArgumentError, "role #{role} was not opened for this session")
     harness = Kogen.Intent.role_harness(config, role)
-    context = launch_context(Map.fetch!(selections, harness))
+    selection = tag_current_role(Map.fetch!(selections, harness), role)
+    context = launch_context(selection)
     %{context | env: context.env ++ expert_environment(config, role, Map.get(runtime, :launch))}
   end
+
+  defp tag_current_role(%{config: config} = selection, role) when is_map(config),
+    do: %{selection | config: Map.put(config, :current_role, role_label(role))}
+
+  defp tag_current_role(selection, _role), do: selection
+
+  defp role_label(:shaping), do: "shaper"
+  defp role_label(role), do: Atom.to_string(role)
 
   @doc """
   The Expert assignment a role's launch carries. When the route assigns the
@@ -359,6 +368,14 @@ defmodule Kogen.Harness do
   @doc "Launches one fresh blind auditor session with its findings schema."
   def launch_auditor(prompt, model, effort, context),
     do: adapter!(context).launch_auditor(prompt, model, effort, context)
+
+  @doc false
+  def shaping_stop_hook do
+    %{
+      command: "sh \"$(git rev-parse --show-toplevel)/priv/kogen/shaping_audit/stop_hook.sh\"",
+      timeout: 1800
+    }
+  end
 
   @doc "Launches the interactive Shaper with the caller's real terminal."
   def exec_shaper(model, effort, prompt_file, context),

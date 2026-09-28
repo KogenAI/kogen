@@ -1,0 +1,74 @@
+- kind: intent
+  path: .kogen/intents/drafts/shaping-quality/
+  note: >-
+    The approved shaping-quality Intent (revision 13) this slice was split from, kept as a superseded reference in
+    drafts/. Its INTENT.md directions 1-37 and "How Shaping must go" are carried verbatim here; its scenarios
+    front-loaded-questions, shaping-stop-hook, research-helpers (Codex half), evaluation-fixture-excludes-build-lock,
+    evaluation-answers-front-loaded-questions and smoke-fixture-without-auditor are this slice's source. Not a Build
+    input; what this slice needs is copied into evidence/.
+- kind: intent
+  path: .kogen/intents/complete/shaping-audit-checks/
+  note: Slice 1, landed as 6b4376e9 (mix kogen.audit, the deterministic layer, Report, Package, Fixture.repo!/add_draft!).
+- kind: intent
+  path: .kogen/intents/complete/shaping-audit-jev-and-auditor/
+  note: >-
+    Slice 2, landed as 3962af8b (Jev layer, question gate, questions.md states, auditor setting and launch, the
+    audit-only fakes, Fixture.audit_env!/1, the flow packages). It excluded qb's test seams (:layers, :launcher,
+    :manifest), which is why this slice's hook tests run the real layers through the fakes.
+- kind: intent
+  path: .kogen/intents/drafts/shaping-evaluation-live/
+  note: >-
+    Slice 4 (id 01a0e582-0b35-75c3-a430-8ddb64ab1975), split from this one on 2026-09-28: the evaluation port under
+    the hook and the paid targets live-shaping-quality and live-shaping-smoke. Lands right after this Intent.
+- kind: intent
+  path: .kogen/intents/drafts/claude-shaping-under-hook/
+  note: Slice 5, the Claude half; waits for the Shaper's Kogen Claude login.
+- kind: intent
+  path: .kogen/intents/complete/build-reliability/
+  note: The finish-all-cases suite, the prepare protocol, live-shaping-smoke, the ledger by name, the build.lock exclusion (82ac4351).
+- kind: staging
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/staging/shaping-probing-HANDOFF-2026-09-26.md
+  note: The probing rules folded into the prompts (scenario shaping-flow-prompts-and-codex-launch).
+- kind: staging
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/staging/shaping-preflight-audit-PARKED.md
+  note: The 8 fixes, option B and the seven default fixes (lessons only).
+- kind: lesson
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/research/build-failure-lessons-2026-09-25.md
+  note: Lessons 10, 12, 13, 16, 18, 20, 21, 24-27.
+- kind: direction
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/DIRECTION.md
+  note: 1.2, 1.3, 1.14, 1.16, 1.17, 1.19, D8; rules 43, 46, 51, 54.
+- kind: feature
+  path: ~/Library/Mobile Documents/com~apple~CloudDocs/Areas/Kogen/plan/features/SHP-03.md
+  note: Shaping quality feature; this slice delivers the in-Shaping audit and the flow.
+- path: evidence/probe-hooks-2026-09-26.md
+  relevance: The Codex -c Stop hook and the helper-vs-root session_meta.payload.source discriminator; the Claude Stop-hook block.
+- path: evidence/proving-run-2026-09-26/
+  relevance: Runs 1-6 lessons (auditor attribution, panels, self-run audit, timeouts); not a Build input.
+- path: evidence/CANDIDATE.md
+  relevance: File-by-file and hunk-by-hunk applicability at dece3e84 and what to keep, port or refuse.
+- path: evidence/probe-candidate-at-3531023d-RESULT.md
+  relevance: Probe P2 (the qb evaluation/hook tests at 3531023d, including the lost --prepare).
+- path: evidence/probe-preflight-dece3e84/RESULT.md
+  relevance: >-
+    Re-preflight probes at dece3e84: P0 hunk applicability, P3 the landed audit on the fixture packages the hook tests
+    use (exact readiness, layer statuses and finding ids), P4 the landed mix kogen.audit on this package.
+- path: evidence/probe-codex-stop-hook-tui/RESULT.md
+  relevance: >-
+    The real Codex TUI (0.157.1, disposable scope) runs a -c Stop hook at a root turn end on fresh and resumed turns;
+    a block continues the same turn (one task_complete per turn) and appears as a role user <hook_prompt> message.
+- path: evidence/probe-smoke-rehearsal-setup/RESULT.md
+  relevance: >-
+    The smoke rehearsal at dece3e84 with the new pinned_smoke_config: HEAD's setUp fails both catalogued controls,
+    setUp's five codex-fake route lines fix them, and K3 passes only with .kogen/runtime/ in the rehearsal
+    .gitignore. Also the 42 P1 substrings checked against zuj's shaping.md (six to insert).
+- kind: evidence
+  path: evidence/candidate-o7HF00i7-4e5dc359.diff
+  note: >-
+    STARTING POINT: the cumulative Developer work of Build o7HF00i7 (continued after a provider stop) against dece3e84;
+    implementation and broad tests present. Review kept open that H7 (exact presented summary), H16 (chain reset after
+    an allowed stop), H17 (elapsed invariance) and H25 (full flow-state matrix) are not asserted exactly
+    (evidence/review-findings-o7HF00i7.md). Apply it, then write those tests exactly as scenarios.yaml states.
+- kind: evidence
+  path: evidence/review-findings-o7HF00i7.md
+  note: Open Review findings from the last attempt.

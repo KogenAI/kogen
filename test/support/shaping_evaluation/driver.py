@@ -578,11 +578,13 @@ SMOKE_ANSWER = 'Use a period. Save the Draft now without approval; keep it minim
 # The case bound was probed at low effort only (156 s low, 410 s medium).
 SMOKE_EFFORT = "low"
 SMOKE_SHAPING_LINE = re.compile(r"^(    shaping:\s*\{[^}\n]*\beffort:\s*)([\w-]+)", re.M)
+SMOKE_AUDITOR_LINE = re.compile(r"^    auditor:\s*\{[^}\n]*\}\n", re.M)
+SMOKE_WORKER_LINE = re.compile(r"^      worker:\s*\{[^}\n]*\}\n", re.M)
+SMOKE_EXPERT_LINE = re.compile(r"^      expert:\s*\{[^}\n]*\}\n", re.M)
 
 
 def pinned_smoke_config(config):
-    """The project config with only its one Codex route's Shaping effort set
-    to SMOKE_EFFORT. Any other shape is refused rather than guessed."""
+    """Pin the smoke Codex route to low effort and remove its auditor."""
     routes = re.split(r"^(?=  \S[^\n]*:\s*$)", config, flags=re.M)
     codex = [index for index, block in enumerate(routes)
              if index and re.search(r"^    harness:\s*codex\s*$", block, re.M)]
@@ -591,6 +593,18 @@ def pinned_smoke_config(config):
     block, count = SMOKE_SHAPING_LINE.subn(lambda m: m.group(1) + SMOKE_EFFORT, routes[codex[0]])
     if count != 1:
         raise RuntimeError("smoke: the codex route has no single flow-map shaping line to pin")
+    block, auditor_count = SMOKE_AUDITOR_LINE.subn("", block)
+    if auditor_count != 1:
+        raise RuntimeError("smoke: the codex route has no auditor entry to remove")
+
+    def pin_helper(pattern, name):
+        nonlocal block
+        block, changed = pattern.subn(f"      {name}: {{model: gpt-6-luna, effort: low}}\n", block)
+        if changed != 1:
+            raise RuntimeError(f"smoke: the codex route has no single flow-map {name} helper line to pin")
+
+    pin_helper(SMOKE_WORKER_LINE, "worker")
+    pin_helper(SMOKE_EXPERT_LINE, "expert")
     routes[codex[0]] = block
     return "".join(routes)
 

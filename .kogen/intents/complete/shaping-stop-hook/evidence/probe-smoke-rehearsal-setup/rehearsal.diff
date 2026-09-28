@@ -1,0 +1,92 @@
+--- head/test/support/shaping_evaluation/driver_smoke_rehearsal_test.py	2026-09-28 02:55:34
++++ new/test/support/shaping_evaluation/driver_smoke_rehearsal_test.py	2026-09-28 04:50:20
+@@ -8,6 +8,7 @@
+ import contextlib
+ import importlib.util
+ import io
++import difflib
+ import json
+ import re
+ import os
+@@ -73,11 +74,16 @@
+         (self.project / ".kogen" / "config.yaml").write_text(
+             "default_route: claude-fake\nroutes:\n"
+             "  claude-fake:\n    harness: claude\n    shaping:   {model: fake-claude, effort: high}\n"
+-            "  codex-fake:\n    harness: codex\n    shaping:   {model: fake-model, effort: medium}\n")
++            "  codex-fake:\n    harness: codex\n    shaping:   {model: fake-model, effort: medium}\n"
++            "    auditor:   {model: fake-model, effort: high}\n"
++            "    helpers:\n"
++            "      scout:  {model: fake-model, effort: low}\n"
++            "      worker: {model: fake-model, effort: high}\n"
++            "      expert: {model: fake-model, effort: high}\n")
+         # Drafts are git-ignored in the real repo; match that so the smoke
+         # fixture's own baseline_unchanged git-status check behaves as it
+         # does for a real fixture once the transport saves its Draft.
+-        (self.project / ".gitignore").write_text(".kogen/intents/drafts/\n")
++        (self.project / ".gitignore").write_text(".kogen/intents/drafts/\n.kogen/runtime/\n")
+         old_runtime = os.environ.get("KOGEN_SHAPING_EVALUATION_RUNTIME")
+         os.environ["KOGEN_SHAPING_EVALUATION_RUNTIME"] = str(self.runtime)
+         # The real elixir YAML-parser subprocess is faked below (see run()'s
+@@ -97,7 +103,7 @@
+ 
+     def tearDown(self): self.temp.cleanup()
+ 
+-    def run_smoke(self, *, missing_answer=False, corrupt_manifest_call=None):
++    def run_smoke(self, *, missing_answer=False, corrupt_manifest_call=None, hook_files=False):
+         """Exercises the real driver.run_smoke() end to end offline: real
+         setup_fixture (rsync/git/prerequisite control for real; only `mix
+         compile` and `mix run` are faked), real drive(), real
+@@ -134,6 +140,11 @@
+             }
+             (draft / "intent.yaml").write_text(json.dumps(fixture_holder["intent"], indent=2) + "\n")
+             (draft / "questions.md").write_text("What punctuation should I use?\n")
++            if hook_files:
++                audits = fixture / ".kogen/runtime/shaping-audits/eval-smoke"
++                (audits / ("a" * 64)).mkdir(parents=True)
++                (audits / "hook.jsonl").write_text('{"kind":"environment"}\n')
++                (audits / ("a" * 64) / "report.json").write_text("{}\n")
+ 
+         def append_reply(fixture, text):
+             turn = "turn-1"
+@@ -268,9 +279,20 @@
+         nothing else changes; a session observed at another effort fails."""
+         tracked = (HERE.parents[2] / ".kogen" / "config.yaml").read_text()
+         pinned = self.driver.pinned_smoke_config(tracked)
+-        changed = [(a, b) for a, b in zip(tracked.splitlines(), pinned.splitlines()) if a != b]
+-        self.assertEqual(len(tracked.splitlines()), len(pinned.splitlines()))
+-        self.assertLessEqual(len(changed), 1)
++        diff = list(difflib.unified_diff(tracked.splitlines(), pinned.splitlines(), n=0, lineterm=""))
++        self.assertEqual(["-    shaping:   {model: gpt-6-sol, effort: medium}",
++                          "-    auditor:   {model: gpt-6-sol, effort: high}",
++                          "-      worker: {model: gpt-6-luna, effort: high}",
++                          "-      expert: {model: gpt-6-sol, effort: high}"],
++                         [line for line in diff if line.startswith("-") and not line.startswith("---")])
++        self.assertEqual(["+    shaping:   {model: gpt-6-sol, effort: low}",
++                          "+      worker: {model: gpt-6-luna, effort: low}",
++                          "+      expert: {model: gpt-6-luna, effort: low}"],
++                         [line for line in diff if line.startswith("+") and not line.startswith("+++")])
++        with self.assertRaisesRegex(RuntimeError, "smoke: the codex route has no auditor entry to remove"):
++            self.driver.pinned_smoke_config(tracked.replace("    auditor:   {model: gpt-6-sol, effort: high}\n    helpers:", "    helpers:"))
++        with self.assertRaisesRegex(RuntimeError, "smoke: the codex route has no single flow-map expert helper line to pin"):
++            self.driver.pinned_smoke_config(tracked.replace("      expert: {model: gpt-6-sol, effort: high}\n  #", "  #"))
+         self.assertRegex(pinned, r"  codex:\n    harness: codex\n    shaping:\s*\{[^}]*effort: low\}")
+         with self.assertRaisesRegex(RuntimeError, "exactly one block-style codex route"):
+             self.driver.pinned_smoke_config("routes:\n  codex-fake: {harness: codex}\n")
+@@ -283,6 +305,17 @@
+             with self.assertRaisesRegex(RuntimeError, "Shaping effort not applied"):
+                 self.driver.require_smoke_effort(receipt(configured, observed))
+ 
++    def test_smoke_manifest_ignores_shaping_audit_files(self):
++        manifest = self.runtime / "evidence-manifest.json"
++        status, _launches = self.run_smoke()
++        self.assertEqual(0, status)
++        plain = [entry["path"] for entry in json.loads(manifest.read_text())["required_evidence"]]
++        manifest.unlink(); shutil.rmtree(self.runtime / "runs"); shutil.rmtree(self.sessions); self.sessions.mkdir()
++        status, _launches = self.run_smoke(hook_files=True)
++        self.assertEqual(0, status)
++        self.assertEqual(plain, [entry["path"] for entry in json.loads(manifest.read_text())["required_evidence"]])
++        self.assertFalse((self.runtime / "smoke").exists())
++
+     def test_smoke_wrong_control_missing_scripted_answer_fires_fail_fast(self):
+         """Wrong control: the scripted reply is delivered but the Draft never
+         reaches its expected end state (no scenarios.yaml) -- fail-fast must

@@ -147,7 +147,12 @@ defmodule Kogen.PrepareTest do
     print("VOLATILE_COPIED=" + repr(volatile_copied))
     """
 
-    {output, 0} = System.cmd("python3", ["-B", "-c", code], stderr_to_stdout: true)
+    {output, 0} =
+      System.cmd("python3", ["-B", "-c", code],
+        stderr_to_stdout: true,
+        env: [{"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}]
+      )
+
     assert output =~ "VOLATILE_COPIED=[]"
     assert File.read!(Path.join(fixture, "tracked.txt")) == "kept\n"
   end
@@ -163,7 +168,12 @@ defmodule Kogen.PrepareTest do
       System.cmd(cmd, args,
         cd: @root,
         stderr_to_stdout: true,
-        env: [{"MIX_ENV", "test"}, {"KOGEN_PREPARE_FORCE_SCOPE", "fail"}]
+        env: [
+          {"MIX_ENV", "test"},
+          {"KOGEN_PREPARE_FORCE_SCOPE", "fail"},
+          {"KOGEN_ROLE", nil},
+          {"KOGEN_HARNESS_HOME", nil}
+        ]
       )
 
     refute status == 0
@@ -197,6 +207,8 @@ defmodule Kogen.PrepareTest do
         cd: @root,
         stderr_to_stdout: true,
         env: [
+          {"KOGEN_ROLE", nil},
+          {"KOGEN_HARNESS_HOME", nil},
           {"KOGEN_SHAPING_EVALUATION_RUNTIME", runtime},
           {"KOGEN_PREPARE_FORCE_SCOPE", "fail"}
         ]
@@ -235,7 +247,11 @@ defmodule Kogen.PrepareTest do
     [cmd | args] = catalog.targets["live-reviewer-rework"]["prepare"]
 
     {output, status} =
-      System.cmd(cmd, args, cd: fake_root, stderr_to_stdout: true, env: [{"MIX_ENV", "test"}])
+      System.cmd(cmd, args,
+        cd: fake_root,
+        stderr_to_stdout: true,
+        env: [{"MIX_ENV", "test"}, {"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}]
+      )
 
     refute status == 0
     refute output =~ "KOGEN_PREPARE_RESULT\t"

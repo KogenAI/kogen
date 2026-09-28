@@ -96,16 +96,37 @@ defmodule Mix.Tasks.Kogen.Shape do
       )
     )
 
+    context = Kogen.Harness.role_context(runtime, :shaping)
+    context = %{context | env: context.env ++ shaping_environment(id, config)}
+
     status =
       Kogen.Harness.exec_shaper(
         config.shaping.model,
         config.shaping.effort,
         prompt_file,
-        Kogen.Harness.role_context(runtime, :shaping)
+        context
       )
 
     File.rm(prompt_file)
     System.halt(status)
+  end
+
+  defp shaping_environment(id, config) do
+    [
+      {"KOGEN_SHAPING_INTENT_ID", id},
+      {"KOGEN_SHAPING_ROUTE", config.route},
+      {"KOGEN_SHAPING_LAUNCH_ID", Kogen.Intent.mint_uuid7()},
+      {"KOGEN_SHAPING_TOOLCHAIN_PATH", toolchain_path()}
+    ]
+  end
+
+  defp toolchain_path do
+    ["python3", "elixir", "mix"]
+    |> Enum.map(&System.find_executable/1)
+    |> Enum.filter(& &1)
+    |> Enum.map(&Path.dirname/1)
+    |> Enum.uniq()
+    |> Enum.join(":")
   end
 
   defp fail(reason) do

@@ -50,6 +50,59 @@ defmodule Kogen.ShapeTaskTest do
     assert File.exists?(Path.join(approved, "scenarios.yaml"))
   end
 
+  test "P4 mix kogen.shape passes the Intent id, route, launch id and toolchain path" do
+    fixture = shape_fixture()
+    wrapper = Path.join(fixture, "capture-shaper")
+    fake = Path.join(fixture, "test/support/fake_codex_shaper")
+
+    File.write!(
+      wrapper,
+      "#!/bin/sh\nset -eu\nmkdir -p .kogen/runtime\nenv | grep '^KOGEN_' > .kogen/runtime/shaping-env\nexec \"$KOGEN_FAKE\" \"$@\"\n"
+    )
+
+    File.chmod!(wrapper, 0o755)
+
+    {output, 0} =
+      Kogen.CompiledFixture.mix_task!(fixture, "kogen.shape", [
+        {"KOGEN_HARNESS", wrapper},
+        {"KOGEN_FAKE", fake},
+        {"KOGEN_ROLE", nil},
+        {"KOGEN_HARNESS_HOME", nil}
+      ])
+
+    [intent_id | _] =
+      Regex.run(~r/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/, output)
+
+    env =
+      fixture
+      |> Path.join(".kogen/runtime/shaping-env")
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Map.new(fn line -> String.split(line, "=", parts: 2) |> List.to_tuple() end)
+
+    assert env["KOGEN_ROLE"] == "shaper"
+    assert env["KOGEN_SHAPING_INTENT_ID"] == intent_id
+    assert env["KOGEN_SHAPING_ROUTE"] == "codex"
+
+    assert env["KOGEN_SHAPING_LAUNCH_ID"] =~
+             ~r/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+    refute env["KOGEN_SHAPING_LAUNCH_ID"] == intent_id
+
+    toolchain = String.split(env["KOGEN_SHAPING_TOOLCHAIN_PATH"], ":", trim: true)
+    assert toolchain != []
+
+    for executable <- ~w(python3 elixir mix) do
+      assert Enum.any?(toolchain, fn directory ->
+               case System.cmd("test", ["-x", Path.join(directory, executable)]) do
+                 {_, 0} -> true
+                 _ -> false
+               end
+             end),
+             executable
+    end
+  end
+
   @draft """
   id: 01960000-0000-7000-8000-000000000abc
   slug: unfinished
@@ -143,6 +196,74 @@ defmodule Kogen.ShapeTaskTest do
           "zero questions is not itself a quality target"
         ] do
       assert compact =~ text
+    end
+
+    required = [
+      "Right after the initial request, start native helpers for the codebase, every supplied source, the web and probes. Do not research, read or probe in the root session. The root stays idle and reacts to the Shaper and to finished helper results.",
+      "While they work, ask short product questions, each with a recommendation, only when a real product question is open. Use the native question tool (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), or stop with `## Ask the Shaper` entries. When an answer arrives, move its entry out of `## Ask the Shaper` and quote the answer under `## Shaper answers`.",
+      "Do not run `mix kogen.audit` during Shaping; end the turn instead.",
+      "Ask about a product gap a helper finds in a supplied source within the window.",
+      "After the first 5 minutes ask nothing more, not even something that looks important, and record it under `## Assumed` with `Reason:` and `Undo:`.",
+      "Only big UI/UX/DX/product decisions reach the Shaper; never a technical, process or permission question (\"Should I do it?\", \"Confirm you want this probed\").",
+      "Keep it simple: no config switches, no plumbing without a caller, no unrequested splits.",
+      "`title` and `commit_subject` are related but separate fields. Both follow [cbea.ms](https://cbea.ms/git-commit/): imperative mood, capitalised, no trailing period, no commit body. `title` stays the Intent's short name, at most 50 characters. `commit_subject` is required in `intent.yaml` on every Draft, aims at most 50 characters, and must never exceed 72. Prefer a subject derived from the slug in words",
+      "a probe is executed, not planned.",
+      "Use the smallest probe that settles the assumption: a mini-project in a temp git repo; one real CLI call through Kogen's own launch path",
+      "Probe every harness a change reaches, with a disconfirming control.",
+      "Check harness readiness first for every harness the probes or paid targets use",
+      "one clone per parallel helper",
+      "Evidence goes in `evidence/probe-<topic>/`: the script, the inputs, per-run summaries and a `RESULT.md`",
+      "never the full test suite, a full live target, a full Build or a full Shape session as the probe itself.",
+      "List every risk and assumption behind each scenario, proof and paid target, including whether the end result works at all.",
+      "The Draft names exactly one chosen solution per decision",
+      "no \"the Developer decides\", no alternative left open, and no unproven assumption at approval.",
+      "Whether the end result is viable at all is itself a risk to probe, not an assumption left for Build.",
+      "an offline test, then an offline replay of retained real provider evidence, then a minimal live smoke, and an existing expensive target only when its full observable is needed.",
+      "Before probing a tool's behaviour, have a helper research its documentation on the web first.",
+      "Run `date` at the start of the session and again at each step",
+      "Report progress without being asked.",
+      "Respect the time budget: 5 minutes of the Shaper, then 10 minutes autonomous, 30 at most for a complex Draft.",
+      "nothing kills the session.",
+      "Every one of the Shaper's words, in the picker or otherwise, is written into the Draft verbatim and is final.",
+      "A remark about how Shaping itself works is also a requirement for all future Shaping sessions.",
+      "Environment facts the Shaper supplies (a key, a path, \"try again\") are used at once, not re-derived.",
+      "A file or handoff the Shaper points to is read in full and folded into the Draft in the same turn.",
+      "A slug rename changes the directory first and the slug second, in one step, and tells the Shaper the new `mix kogen.shape` command.",
+      "Shaper workers may write, but only their disposable probe directories outside the repository and the Draft files their packet assigns, on both harnesses.",
+      "A probe that launches a provider in a disposable directory is not a verification gate.",
+      "The Shaper is involved exactly twice:",
+      "Reshape against the latest `HEAD` by yourself: re-verify anchors, update `shaped_against`, and record the move in `baseline_history`",
+      "### Technical findings never reach the Shaper: the seven default fixes",
+      "An edited live owner that is not selected: remove the edit when the outcome does not need it; otherwise select the target.",
+      "Scope drift into another ROADMAP row's area",
+      "A contradiction with another staged or approved package: align with the other package, whose contract wins.",
+      "An unproven paid-path assumption: run the probe in a disposable clone; never ask.",
+      "A paid target justified only by an edited owner: apply rule 1.",
+      "A moved baseline: re-verify the anchors and update `shaped_against`",
+      "Anything relabelling a timeout or failure as provider or environment: challenge it, because only explicit provider markers count."
+    ]
+
+    for text <- required, do: assert(compact =~ text)
+
+    removed = [
+      "If it changed, surface this and discuss reassessment with the Shaper",
+      "Any eventual baseline update requires an explicit shaping decision",
+      "ask where the Shaper wants to continue only when the human supplied no direction",
+      "Continue independent work while a useful human choice is pending",
+      "A real new contradiction can still require a question",
+      "the Shaper has authorized",
+      "no separate approval command or Intent-quality validator",
+      "The first stop is the only time you may ask",
+      "There is no native mid-turn question tool",
+      "never from timers",
+      "or implement production code during Shaping",
+      "paid or harness probes stay with the root"
+    ]
+
+    for name <- ["shaping.md", "shaping-fresh.md", "shaping-continuation.md"],
+        text <- removed do
+      other = File.read!(Path.join(File.cwd!(), "priv/kogen/prompts/#{name}"))
+      refute Regex.replace(~r/\s+/, other, " ") =~ text, "#{name}: #{text}"
     end
   end
 
@@ -429,11 +550,15 @@ defmodule Kogen.ShapeTaskTest do
     source = File.cwd!()
 
     {_out, 0} =
-      System.cmd("python3", [
-        Path.join(source, "test/support/managed_claude_fixture.py"),
-        claude_root,
-        Path.join(source, "priv/kogen/claude_code/install.py")
-      ])
+      System.cmd(
+        "python3",
+        [
+          Path.join(source, "test/support/managed_claude_fixture.py"),
+          claude_root,
+          Path.join(source, "priv/kogen/claude_code/install.py")
+        ],
+        env: [{"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}]
+      )
 
     for args <- [[], ["unfinished"]] do
       {output, status} = route.(args)
@@ -694,11 +819,15 @@ defmodule Kogen.ShapeTaskTest do
     source = File.cwd!()
 
     {_out, 0} =
-      System.cmd("python3", [
-        Path.join(source, "test/support/managed_claude_fixture.py"),
-        claude_root,
-        Path.join(source, "priv/kogen/claude_code/install.py")
-      ])
+      System.cmd(
+        "python3",
+        [
+          Path.join(source, "test/support/managed_claude_fixture.py"),
+          claude_root,
+          Path.join(source, "priv/kogen/claude_code/install.py")
+        ],
+        env: [{"KOGEN_ROLE", nil}, {"KOGEN_HARNESS_HOME", nil}]
+      )
 
     File.write!(Path.join(claude_root, "accounts/shared/.fake-login"), "claude.ai\n")
 
@@ -802,7 +931,9 @@ defmodule Kogen.ShapeTaskTest do
   defp capture(fixture, args) do
     Kogen.CompiledFixture.mix_task!(fixture, ["kogen.shape" | args], [
       {"KOGEN_HARNESS", Path.join(fixture, "test/support/fake_codex_shaper")},
-      {"KOGEN_SHAPE_CAPTURE_ONLY", "1"}
+      {"KOGEN_SHAPE_CAPTURE_ONLY", "1"},
+      {"KOGEN_ROLE", nil},
+      {"KOGEN_HARNESS_HOME", nil}
     ])
   end
 

@@ -8,6 +8,45 @@ defmodule Kogen.HarnessRoleTest do
   alias Kogen.Harness.Claude
   alias Mix.Tasks.Kogen.Expert
 
+  test "P2 the Codex Shaper alone carries the Stop-hook override and --search" do
+    prompt_file =
+      Path.join(System.tmp_dir!(), "kogen-shaper-prompt-#{System.unique_integer([:positive])}")
+
+    File.write!(prompt_file, "shape")
+    on_exit(fn -> File.rm(prompt_file) end)
+    shaper = Kogen.Harness.Codex.shaper_args("gpt-6-sol", "high", prompt_file)
+    developer = Kogen.Harness.Codex.developer_args("gpt-6-sol", "high")
+    reviewer = Kogen.Harness.Codex.reviewer_args("gpt-6-sol", "high")
+    expert = Kogen.Harness.Codex.expert_args("gpt-6-sol", "high")
+    auditor = Kogen.Harness.Codex.auditor_args("gpt-6-sol", "high")
+
+    hooks = Enum.filter(shaper, &String.starts_with?(&1, "hooks.Stop="))
+
+    assert hooks == [
+             "hooks.Stop=[{hooks=[{type=\"command\",command=\"sh \\\"$(git rev-parse --show-toplevel)/priv/kogen/shaping_audit/stop_hook.sh\\\"\",timeout=1800}]}]"
+           ]
+
+    %{command: command, timeout: 1800} = Kogen.Harness.shaping_stop_hook()
+
+    assert command ==
+             ~s|sh "$(git rev-parse --show-toplevel)/priv/kogen/shaping_audit/stop_hook.sh"|
+
+    assert hooks == [
+             "hooks.Stop=[{hooks=[{type=\"command\",command=#{Jason.encode!(command)},timeout=1800}]}]"
+           ]
+
+    hook_index = Enum.find_index(shaper, &String.starts_with?(&1, "hooks.Stop="))
+    assert Enum.at(shaper, hook_index - 1) == "-c"
+    assert hook_index < Enum.find_index(shaper, &(&1 == "--"))
+    assert Enum.count(shaper, &(&1 == "--search")) == 1
+    assert Enum.find_index(shaper, &(&1 == "--search")) < Enum.find_index(shaper, &(&1 == "--"))
+
+    for args <- [developer, reviewer, expert, auditor] do
+      refute Enum.any?(args, &String.starts_with?(&1, "hooks.Stop="))
+      refute "--search" in args
+    end
+  end
+
   @moduletag timeout: 120_000
 
   @hybrid_config """

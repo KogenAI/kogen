@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+# Probe: how a TUI Stop-hook block appears in a Codex rollout (fresh turn, next turn, resumed turn).
+set P [lindex $argv 0]
+set phase [lindex $argv 1]
+set sid [lindex $argv 2]
+set env(TERM) "xterm-256color"
+set env(CODEX_HOME) "$P/home"
+log_file -a "$P/pty-$phase.log"
+log_user 0
+set buf ""
+proc visible {s} {
+  regsub -all {\033\[[0-?]*[ -/]*[@-~]} $s "" s
+  regsub -all {\033\][^\a\033]*(\a|\033\\)} $s "" s
+  return $s
+}
+proc nstops {} { return [llength [glob -nocomplain -directory "$::P/log" stop-*.json]] }
+proc pump {secs} {
+  global buf
+  expect {
+    -timeout $secs
+    -re {.+} { append buf $expect_out(buffer); if {[string length $buf] > 300000} { set buf [string range $buf end-299999 end] } }
+    timeout {}
+    eof { puts "PROBE eof"; return }
+  }
+  set v [visible $buf]
+  if {[regexp -nocase {Trust\s*and\s*continue|Yes, continue|Press enter to continue} $v]} { after 1500; send -- "\r"; set buf ""; puts "PROBE ack dialog" }
+}
+proc wait_stops {want secs} {
+  set start [clock seconds]; puts "PROBE waiting for $want stops"
+  while {[clock seconds] - $start < $secs} { pump 1; if {[nstops] >= $want} { break } }
+  set t [clock seconds]; while {[clock seconds] - $t < 10} { pump 1 }
+  puts "PROBE stops=[nstops] after wait for $want"
+}
+proc snap {label} { global buf; set f [open "$::P/snap-$label.txt" w]; puts $f [visible $buf]; close $f }
+set flags [list --enable hooks --dangerously-bypass-hook-trust --dangerously-bypass-approvals-and-sandbox --disable apps --disable plugins -m gpt-6-luna -c model_reasoning_effort="low" -c "projects.\"$P/repo\".trust_level=\"trusted\"" -c "hooks.Stop=\[{hooks=\[{type=\"command\",command=\"sh $P/hook.sh\",timeout=60}\]}\]" -C "$P/repo"]
+cd "$P/repo"
+if {$phase eq "fresh"} {
+  spawn codex {*}$flags "Probe only. Reply with exactly the word ONE and end your turn. Do not run any tools."
+  catch {stty rows 40 columns 120 < $spawn_out(slave,name)}
+  match_max 300000
+  wait_stops 2 240
+  snap fresh-1
+  set buf ""
+  send -- "Reply with exactly the word THREE and end your turn. Do not run any tools."; after 500; send -- "\r"
+  wait_stops 3 180
+  snap fresh-2
+} else {
+  spawn codex resume {*}$flags $sid "Reply with exactly the word FOUR and end your turn. Do not run any tools."
+  catch {stty rows 40 columns 120 < $spawn_out(slave,name)}
+  match_max 300000
+  wait_stops 4 240
+  snap resume-1
+  set buf ""
+  send -- "Reply with exactly the word SIX and end your turn. Do not run any tools."; after 2500; send -- "\r"
+  wait_stops 5 180
+  snap resume-2
+}
+send -- "\x03"; after 700; send -- "\x03"; after 1500
+catch {exec kill -TERM [exp_pid]}
+puts "PROBE done $phase"
+exit 0

@@ -1,0 +1,35 @@
+--- head/test/support/shaping_evaluation/driver.py	2026-09-28 02:55:34
++++ new/test/support/shaping_evaluation/driver.py	2026-09-28 04:43:44
+@@ -578,11 +578,16 @@
+ # The case bound was probed at low effort only (156 s low, 410 s medium).
+ SMOKE_EFFORT = "low"
+ SMOKE_SHAPING_LINE = re.compile(r"^(    shaping:\s*\{[^}\n]*\beffort:\s*)([\w-]+)", re.M)
++
++
++SMOKE_HELPER_LINE = r"^(      {name}:\s*)\{{[^}}\n]*\}}[ \t]*$"
++SMOKE_HELPER = "{model: gpt-6-luna, effort: low}"
+ 
+ 
+ def pinned_smoke_config(config):
+-    """The project config with only its one Codex route's Shaping effort set
+-    to SMOKE_EFFORT. Any other shape is refused rather than guessed."""
++    """The project config with its one Codex route's Shaping effort set to
++    SMOKE_EFFORT, its auditor line removed and its worker and expert helpers
++    pinned to SMOKE_HELPER. Any other shape is refused rather than guessed."""
+     routes = re.split(r"^(?=  \S[^\n]*:\s*$)", config, flags=re.M)
+     codex = [index for index, block in enumerate(routes)
+              if index and re.search(r"^    harness:\s*codex\s*$", block, re.M)]
+@@ -591,6 +596,13 @@
+     block, count = SMOKE_SHAPING_LINE.subn(lambda m: m.group(1) + SMOKE_EFFORT, routes[codex[0]])
+     if count != 1:
+         raise RuntimeError("smoke: the codex route has no single flow-map shaping line to pin")
++    block, count = re.subn(r"^    auditor:[^\n]*\n", "", block, flags=re.M)
++    if count != 1:
++        raise RuntimeError("smoke: the codex route has no auditor entry to remove")
++    for name in ("worker", "expert"):
++        block, count = re.subn(SMOKE_HELPER_LINE.format(name=name), lambda m: m.group(1) + SMOKE_HELPER, block, flags=re.M)
++        if count != 1:
++            raise RuntimeError(f"smoke: the codex route has no single flow-map {name} helper line to pin")
+     routes[codex[0]] = block
+     return "".join(routes)
+ 

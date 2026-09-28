@@ -423,7 +423,8 @@ defmodule Kogen.Codex.Environment do
     |> Enum.flat_map(&["-c", "projects.#{toml(&1)}.trust_level=\"untrusted\""])
   end
 
-  defp config_args(_config, project_root, helpers, sqlite_home, caller) do
+  defp config_args(config, project_root, helpers, sqlite_home, caller) do
+    current_role = if is_map(config), do: value(config, :current_role)
     shell_excludes = Enum.map_join(@private_xdg, ", ", &toml/1)
 
     base = [
@@ -452,13 +453,23 @@ defmodule Kogen.Codex.Environment do
           not is_nil(path),
           setting <- [
             "agents.#{role}.config_file=#{toml(path)}",
-            "agents.#{role}.description=#{toml(helper_description(role))}"
+            "agents.#{role}.description=#{toml(helper_description(role, current_role))}"
           ],
           do: setting
 
     config_args = Enum.flat_map(base ++ caller_xdg ++ helper_profiles, &["-c", &1])
     ["--disable", "apps", "--disable", "plugins", "--disable", "shell_snapshot" | config_args]
   end
+
+  defp helper_description(:worker, "shaper"),
+    do:
+      "Probe in disposable directories outside the repository (including launching Codex, Claude Code or Jev directly), and edit only the Draft files your packet assigns. Never run make targets or Kogen verification gates on the checkout. A probe that launches a provider in a disposable directory is not a verification gate."
+
+  defp helper_description(:scout, "shaper"),
+    do:
+      "Read-only focused discovery, including web research. Use the configured scout profile; never run verification gates."
+
+  defp helper_description(role, _current_role), do: helper_description(role)
 
   defp helper_description(:scout),
     do:

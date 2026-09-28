@@ -307,6 +307,41 @@ defmodule Kogen.Codex.EnvironmentTest do
     end
   end
 
+  test "P3 the Shaper's own worker and scout descriptions differ; other roles stay unchanged" do
+    root = temporary_root!()
+    on_exit(fn -> File.rm_rf(root) end)
+    %{project: project, operation: operation, scope: scope} = paths!(root)
+    assert {:ok, config} = Kogen.Intent.read_config(".kogen/config.yaml", "codex")
+    shaper_config = Map.put(config, :current_role, "shaper")
+
+    result =
+      Environment.prepare(%{"executable" => "codex"}, scope, shaper_config, project, operation)
+
+    assert "agents.worker.description=#{Jason.encode!("Probe in disposable directories outside the repository (including launching Codex, Claude Code or Jev directly), and edit only the Draft files your packet assigns. Never run make targets or Kogen verification gates on the checkout. A probe that launches a provider in a disposable directory is not a verification gate.")}" in result.args
+
+    assert "agents.scout.description=#{Jason.encode!("Read-only focused discovery, including web research. Use the configured scout profile; never run verification gates.")}" in result.args
+
+    expected = %{
+      "scout" =>
+        "Read-only focused discovery. Use the configured scout profile; never run verification gates.",
+      "worker" =>
+        "Bounded implementation in assigned files. Preserve other edits; never run verification gates.",
+      "expert" =>
+        "One named difficult uncertainty. Use the configured expert profile; never run verification gates."
+    }
+
+    for role <- [:developer, :reviewer, :expert] do
+      role_config = Map.put(config, :current_role, Atom.to_string(role))
+
+      result =
+        Environment.prepare(%{"executable" => "codex"}, scope, role_config, project, operation)
+
+      for {helper, description} <- expected do
+        assert "agents.#{helper}.description=#{Jason.encode!(description)}" in result.args
+      end
+    end
+  end
+
   # A hybrid route prepares Codex from the adversarial harness's own view:
   # its native helpers, the native expert only where the Expert role runs on
   # Codex, and the one central output limit for every Codex root.

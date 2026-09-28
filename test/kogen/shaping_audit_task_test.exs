@@ -239,18 +239,72 @@ defmodule Kogen.ShapingAuditTaskTest do
     assert Agent.get(reads, & &1) == []
   end
 
-  test "an approved-only package and the Shaper role run normally" do
+  test "an approved-only package runs normally" do
     root = repo!()
     Fixture.add_draft!(root, "complete", dir: "approved")
     assert {0, _} = call(root, ["complete"])
-    root2 = repo!()
-    add!(root2, "complete")
+  end
 
-    assert 0 =
-             Kogen.ShapingAudit.main(["--auditor", "complete"],
-               root: root2,
-               env: Map.merge(Fixture.audit_env!(root2), %{"KOGEN_ROLE" => "shaper"})
-             )
+  test "H26 inside a Shaping session a manual run audits nothing and prints the hook status" do
+    root = repo!()
+    package_rel = add!(root, "complete")
+    shaper_env = Map.put(Fixture.audit_env!(root), "KOGEN_ROLE", "shaper")
+
+    first_line =
+      "Inside a Shaping session the Stop hook audits the Draft at every stop: end your turn to re-audit"
+
+    parent = self()
+    io = %{puts: &send(parent, {:out, &1}), err: &send(parent, {:err, &1})}
+
+    lines = fn ->
+      Stream.repeatedly(fn ->
+        receive do
+          message -> message
+        after
+          0 -> nil
+        end
+      end)
+      |> Enum.take_while(& &1)
+    end
+
+    for args <- [["complete"], ["--auditor", "complete"], ["--status", "complete"]] do
+      assert Kogen.ShapingAudit.main(args, root: root, env: shaper_env, io: io) == 1
+      assert lines.() == [{:out, first_line}, {:out, "last hook report: missing"}], inspect(args)
+      refute File.exists?(Path.join(root, ".kogen/runtime/shaping-audits"))
+      refute File.exists?(shaper_env["FAKE_AUDITOR_LOG_DIR"])
+    end
+
+    output = Path.join(root, "hook-output.json")
+
+    hook_env =
+      Map.merge(shaper_env, %{
+        "KOGEN_SHAPING_INTENT_ID" => "01965000-0000-7000-8000-00000000c001",
+        "KOGEN_SHAPING_ROUTE" => "codex",
+        "KOGEN_SHAPING_HOOK_OUTPUT" => output
+      })
+
+    assert Kogen.ShapingAudit.main(["--stop-hook"], root: root, env: hook_env, io: io, stdin: "") ==
+             0
+
+    assert %{"continue" => true, "systemMessage" => "ready: " <> _} =
+             output |> File.read!() |> Jason.decode!()
+
+    {:ok, %{revision: revision}} = Package.load(root, package_rel)
+    assert Kogen.ShapingAudit.main(["complete"], root: root, env: shaper_env, io: io) == 0
+
+    assert lines.() == [
+             {:out, first_line},
+             {:out, "last hook report: ready (revision #{revision})"}
+           ]
+
+    audits = Path.join(root, ".kogen/runtime/shaping-audits/complete")
+
+    assert Path.wildcard(Path.join(audits, "*/report.json")) == [
+             Path.join([audits, revision, "report.json"])
+           ]
+
+    assert length(Path.wildcard(Path.join(audits, "auditor/*.json"))) == 1
+    assert File.exists?(Path.join(shaper_env["FAKE_AUDITOR_LOG_DIR"], "argv"))
   end
 
   test "the mix task only delegates to the entry function and halts with its code" do

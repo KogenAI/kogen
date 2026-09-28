@@ -1015,8 +1015,13 @@ again. The command exits `0` when the report is ready, `1` when it is not
 (including `asking`), and `2` on a usage error, a refused role
 (`developer`, `reviewer`, `expert`, `auditor`), a present
 `.kogen/build.lock`, or a slug that exists in both `drafts/` and
-`approved/`. The audit is an explicit read-only command; it does not run as a
-Shaper Stop hook.
+`approved/`. During Shaping, the Codex Stop hook runs this same audit at every
+root turn end. It blocks on open blocking findings, allows an unchanged
+revision to stall, allows the ninth block in a chain, and allows once the
+auditor bound is reached so a flawed Draft cannot trap the session. The hook
+entry point is `mix kogen.audit --stop-hook` and writes one JSON decision to
+its configured hook output path. Inside a Shaping session the Stop hook audits
+the Draft at every stop; a manual audit prints the last hook report's status.
 
 Reports live under `.kogen/runtime/shaping-audits/<slug>/<revision>/`:
 `report.json` (schema, revision, `HEAD`, route, each layer's status, every
@@ -1027,10 +1032,10 @@ approval**: it only tells the Shaper and the audit's own callers what is
 still wrong; only the Shaper's own explicit "Approved" moves a Draft
 forward.
 
-The auditor is launched only when `mix kogen.audit --auditor <slug>` is
-requested. It is blind to the checkout and bounded to two counted runs per
-Draft revision history; failed or rejected runs are recorded as unavailable
-and close that bound.
+The auditor is launched by the Stop hook when its per-HEAD bound allows it, or
+explicitly by `mix kogen.audit --auditor <slug>`. It is blind to the checkout
+and bounded to counted runs per Draft revision history; failed or rejected runs
+are recorded as unavailable and close that bound.
 
 The Jev layer's Keychain lookup uses the `dev.kogen.jev` item (the same one
 the Build handoff's `Kogen.Jev.request_body/2` reads); when it is missing,

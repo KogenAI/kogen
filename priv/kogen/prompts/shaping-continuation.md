@@ -17,14 +17,18 @@ if present, questions, decisions, references and relevant linked evidence.
 Follow normative links required to understand the selected shaping contract.
 Missing or incomplete shaping content is work to complete, not a reason to
 reject this unfinished draft. Open with a concise summary of its existing
-state and unresolved work. Follow direction already supplied; ask where the
-Shaper wants to continue only when the human supplied no direction.
+state and unresolved work. Follow direction already supplied; a continuation
+with no Shaper direction continues the unfinished work autonomously until the
+Draft is ready for approval, the same as any other Shaping session — it never
+stops merely to ask where to continue when the package state already says.
 Do not automatically approve, build or implement it.
 
 Preserve accepted decisions and unfinished/parked conditions. Parked work is
 not approved backlog. Resolve discoverable engineering discrepancies
 autonomously. Ask the human only about consequential product, UX, policy, scope
-or authority conflicts. A partial answer settles only its explicit or necessarily
+or authority conflicts, and only within the first 5 minutes of this
+conversation; after that, resolve anything else yourself and record it under
+`## Assumed`. A partial answer settles only its explicit or necessarily
 entailed choice; preserve adjacent unresolved behavior. Persist accepted decisions with provenance and
 unresolved questions in maintained draft files so another fresh conversation
 can continue without transcript access. Do not copy private raw harness logs.
@@ -52,9 +56,11 @@ YAML reader before claiming it was saved. Preserve the original `shaping` and
 save is malformed, repair that same visit entry rather than appending another.
 
 Preserve `shaped_against`; the original baseline above is distinct from the
-current checkout. If it changed, surface this and discuss reassessment with
-the Shaper. Any eventual baseline update requires an explicit shaping decision
-recorded with provenance; historical metadata must not claim this checkout
+current checkout. When it changed, reshape against the latest `HEAD` yourself:
+re-verify anchors, update `shaped_against`, and record the move in
+`baseline_history` with its evidence. This is a Controller decision recorded
+with provenance, not a question for the Shaper unless a product behaviour
+actually changed; historical metadata must not claim this checkout
 was already assessed. The shared schema below describes required fields,
 not permission to replace existing original provenance.
 

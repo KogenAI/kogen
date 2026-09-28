@@ -26,7 +26,8 @@ defmodule Kogen.ShapingAudit do
     Materialization,
     Package,
     Questions,
-    Report
+    Report,
+    StopHook
   }
 
   @refused_roles ~w(developer reviewer expert auditor)
@@ -41,7 +42,8 @@ defmodule Kogen.ShapingAudit do
   `opts` (all optional): `:root` (default `File.cwd!()`), `:env` (default
   `System.get_env()`), `:read` (recording read function, default
   `&File.read/1`), `:clock` (default `fn -> DateTime.utc_now() end`),
-  `:io` (`%{puts: fun, err: fun}`, default `IO.puts/1`).
+  `:io` (`%{puts: fun, err: fun}`, default `IO.puts/1`), `:stdin` (the
+  `--stop-hook` Stop payload, default standard input).
   """
   @spec main([String.t()], keyword()) :: 0 | 1 | 2
   def main(args, opts \\ []) do
@@ -50,6 +52,10 @@ defmodule Kogen.ShapingAudit do
     io = Keyword.get(opts, :io, default_io())
 
     case parse_args(args) do
+      {:stop_hook} ->
+        StopHook.run(root, env, opts)
+        0
+
       {:ok, mode, route, auditor?, slug} ->
         run_command(root, env, io, opts, mode, route, auditor?, slug)
 
@@ -61,7 +67,7 @@ defmodule Kogen.ShapingAudit do
 
   defp usage do
     "usage: mix kogen.audit [--route <name>] [--auditor] <slug> | " <>
-      "mix kogen.audit --status [--route <name>] <slug>"
+      "mix kogen.audit --status [--route <name>] <slug> | mix kogen.audit --stop-hook"
   end
 
   defp default_io, do: %{puts: &IO.puts/1, err: fn msg -> IO.puts(:stderr, msg) end}
@@ -71,7 +77,10 @@ defmodule Kogen.ShapingAudit do
   defp normalize_env(_env), do: %{}
 
   defp parse_args(args) do
-    case OptionParser.parse(args, strict: [route: :string, auditor: :boolean, status: :boolean]) do
+    case OptionParser.parse(args,
+           strict: [route: :string, auditor: :boolean, status: :boolean, stop_hook: :boolean]
+         ) do
+      {[stop_hook: true], [], []} -> {:stop_hook}
       {opts, [slug], []} when slug != "" -> parse_with_slug(opts, slug)
       _usage -> :usage
     end
@@ -83,6 +92,7 @@ defmodule Kogen.ShapingAudit do
     status? = Keyword.get(opts, :status, false)
 
     cond do
+      Keyword.get(opts, :stop_hook, false) -> :usage
       status? and auditor? -> :usage
       status? -> {:ok, :status, route, false, slug}
       true -> {:ok, :audit, route, auditor?, slug}
@@ -101,11 +111,34 @@ defmodule Kogen.ShapingAudit do
         io.err.("mix kogen.audit refuses to run while #{@lock_path} is present")
         2
 
+      role == "shaper" and blank?(Map.get(env, "KOGEN_SHAPING_HOOK_OUTPUT")) ->
+        shaping_session_status(root, io, slug)
+
       mode == :status ->
         run_status(root, env, io, opts, route, slug)
 
       true ->
         run_audit(root, env, io, opts, route, auditor?, slug)
+    end
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_), do: false
+
+  defp shaping_session_status(root, io, slug) do
+    io.puts.(
+      "Inside a Shaping session the Stop hook audits the Draft at every stop: end your turn to re-audit"
+    )
+
+    with {:ok, revision} <- Report.latest_revision(root, slug),
+         {:ok, report} <- Report.read(root, slug, revision) do
+      io.puts.("last hook report: #{report["readiness"]} (revision #{revision})")
+      if report["readiness"] == "ready", do: 0, else: 1
+    else
+      {:error, :missing} ->
+        io.puts.("last hook report: missing")
+        1
     end
   end
 
@@ -149,24 +182,30 @@ defmodule Kogen.ShapingAudit do
   end
 
   defp report_error(io, {:ambiguous, message}) do
-    io.err.(message)
+    io.err.(error_text({:ambiguous, message}))
     2
   end
 
   defp report_error(io, {:not_found, message}) do
-    io.err.(message)
+    io.err.(error_text({:not_found, message}))
     2
   end
 
   defp report_error(io, {:non_regular, path}) do
-    io.err.("refusing non-regular package entry: #{path}")
+    io.err.(error_text({:non_regular, path}))
     2
   end
 
   defp report_error(io, reason) do
-    io.err.("mix kogen.audit failed: #{inspect(reason)}")
+    io.err.(error_text(reason))
     2
   end
+
+  @doc false
+  def error_text({:ambiguous, message}), do: message
+  def error_text({:not_found, message}), do: message
+  def error_text({:non_regular, path}), do: "refusing non-regular package entry: #{path}"
+  def error_text(reason), do: "mix kogen.audit failed: #{inspect(reason)}"
 
   @doc """
   Runs one audit end to end: locates the package, walks it under `lstat`,

@@ -1,0 +1,6 @@
+{"type": "session_meta", "payload": {"id": "01a0e58f-af93-7ff1-988d-c5746dd488a0", "source": {"subagent": {"thread_spawn": {"parent_thread_id": "01a0e58f-9749-7873-9e4d-efcec8d40fcf", "depth": 1, "agent_path": "/root/helper", "agent_nickname": "Pasteur", "agent_role": null}}}, "cli_version": "0.157.1", "originator": "codex_exec"}, "line": 0}
+{"type": "event_msg", "payload": {"type": "task_started", "turn_id": "01a0e58f-afe7-7d80-8066-d35c0a28fc7e"}, "line": 1}
+{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"text": "<environment_context>\u2026(trimmed)"}], "internal_chat_message_metadata_passthrough": {"turn_id": "01a0e58f-afe7-7d80-8066-d35c0a28fc7e"}}, "line": 5}
+{"type": "turn_context", "payload": {"turn_id": "01a0e58f-afe7-7d80-8066-d35c0a28fc7e", "model": "gpt-6-luna", "effort": "low"}, "line": 7}
+{"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"text": "HELPER-OK"}], "internal_chat_message_metadata_passthrough": {"turn_id": "01a0e58f-afe7-7d80-8066-d35c0a28fc7e"}}, "line": 11}
+{"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "01a0e58f-afe7-7d80-8066-d35c0a28fc7e"}, "line": 14}

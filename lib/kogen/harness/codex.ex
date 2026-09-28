@@ -263,7 +263,17 @@ defmodule Kogen.Harness.Codex do
 
   @doc false
   def shaper_args(model, effort, prompt_file) do
-    model_flags(model, effort) ++ @common_flags ++ ["--", File.read!(prompt_file)]
+    %{command: command, timeout: timeout} = Kogen.Harness.shaping_stop_hook()
+
+    model_flags(model, effort) ++
+      @common_flags ++
+      [
+        "-c",
+        "hooks.Stop=[{hooks=[{type=\"command\",command=#{Jason.encode!(command)},timeout=#{timeout}}]}]",
+        "--search",
+        "--",
+        File.read!(prompt_file)
+      ]
   end
 
   # Every launch receives the session's Codex launch context; there is no

@@ -10,6 +10,9 @@ defmodule Mix.Tasks.Kogen.Audit do
   `mix kogen.audit --status <slug>` reports whether the latest report is
   `current`, `stale` or `missing` without auditing again.
 
+  `mix kogen.audit --stop-hook` dispatches the Codex Shaper Stop decision and
+  writes exactly one JSON decision to the hook output path.
+
   The task only delegates to `Kogen.ShapingAudit.main/1` and halts with its
   exit code.
   """
